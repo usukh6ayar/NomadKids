@@ -335,13 +335,41 @@ None of these were visible before a real deploy:
 PRE_DEPLOY_COMMAND`, empty logs, three command variations. Moved to the
    container entrypoint, where the output is visible — see `RAILWAY_SETUP.md` §3.
 
+### Frontend deployed — Vercel
+
+**https://nomadkids.vercel.app**
+
+| Check                               | Result                                                  |
+| ----------------------------------- | ------------------------------------------------------- |
+| `/login` renders                    | ✅ HTTP 200, `<title>NomadKids</title>`                 |
+| CSP names the API origin            | ✅ `connect-src`/`img-src` include the Railway host     |
+| Production CSP has no `unsafe-eval` | ✅ dev-only, as intended                                |
+| HSTS · nosniff · frame DENY         | ✅                                                      |
+| **CORS from the Vercel origin**     | ✅ `access-control-allow-origin` + credentials          |
+| **Browser-shaped login**            | ✅ 200, three cookies set (`access`, `refresh`, `csrf`) |
+| **Authenticated follow-up**         | ✅ `/auth/me` → `bagsh`, role TEACHER                   |
+
+Two monorepo details cost a deploy each and are worth recording:
+
+- **Root Directory.** Vercel looked for `next` in the repository root
+  `package.json` and reported "No Next.js version detected". `rootDirectory`
+  is a project setting, not something `vercel.json` can express — it had to be
+  set through the API.
+- **`@kinder/contracts` must be built first.** The app imports its compiled
+  output, so `buildCommand` steps up to the workspace root and builds contracts
+  before the app.
+
+**CORS had to be widened.** `CORS_ORIGINS` was `https://nomadkids.mn` only, so
+the browser refused every request from the Vercel origin — verified by asking
+for the header and getting nothing back. It now lists both, and `WEB_ORIGIN`
+(the password-reset link host) points at the live Vercel URL until DNS moves.
+
 ### Still outstanding
 
 - **SMTP** — password reset issues valid tokens but cannot deliver them.
-- **`nomadkids.mn` / `api.nomadkids.mn`** — not yet pointed at Railway.
-  `CORS_ORIGINS` and `WEB_ORIGIN` are already set to `https://nomadkids.mn`, so
-  the browser flow only works once DNS is in place.
-- **Frontend** — not yet deployed to Vercel.
+- **`nomadkids.mn` / `api.nomadkids.mn`** — not yet pointed at Railway or
+  Vercel. Both origins are already in `CORS_ORIGINS`, so the switch is a DNS
+  change plus moving `WEB_ORIGIN` back to the custom domain.
 - **Smoke-test data** — one child and one observation remain in the production
   database from the PDF verification; harmless, and to be removed with the first
   real data load.
