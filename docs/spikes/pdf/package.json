@@ -1,0 +1,10 @@
+{
+  "name": "pdf-spike",
+  "private": true,
+  "type": "module",
+  "description": "Throwaway spike — benchmarks PDF engines against the MVP report requirements. Not part of the application.",
+  "dependencies": {
+    "puppeteer": "^25.8.0",
+    "unpdf": "^1.8.1"
+  }
+}

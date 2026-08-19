@@ -1,0 +1,123 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens — the approved Phase 1 direction.
+ *
+ * Warm and quiet rather than corporate. This is a product about small children,
+ * used by teachers who are on their feet and by parents on a phone in the
+ * evening. The palette is deliberately narrow: one primary, one surface, one
+ * background, and four soft accents used only to carry meaning.
+ *
+ * ★ Sizing tokens are load-bearing, not cosmetic.
+ *
+ *   --size-control: 48px  — the height of anything you type into
+ *   --size-tap:     44px  — the floor for anything you press
+ *
+ * They exist as tokens so `responsive.test.ts` can assert on them, and so a
+ * component cannot quietly ship a 32px button that is unusable with a thumb.
+ */
+
+@theme {
+  /* Surfaces */
+  --color-canvas: #f8f7f4;
+  --color-surface: #ffffff;
+  --color-border: #e9e6e0;
+
+  /* Text */
+  --color-ink: #26242b;
+  --color-muted: #77737d;
+
+  /* Primary */
+  --color-primary: #6c63ff;
+  --color-primary-hover: #5b52f0;
+  --color-primary-soft: #eeecff;
+  --color-primary-ink: #ffffff;
+
+  /*
+   * Accents. Restrained on purpose — each one means something (mint = done,
+   * blue = information, yellow = waiting, peach = needs attention) and none of
+   * them is ever the only signal, because colour alone must not carry meaning.
+   */
+  --color-mint: #e6f6ef;
+  --color-mint-ink: #1f6b4d;
+  --color-sky: #e8f1fd;
+  --color-sky-ink: #1d4e89;
+  --color-sun: #fdf3dd;
+  --color-sun-ink: #8a6512;
+  --color-peach: #fdece6;
+  --color-peach-ink: #9a4a25;
+
+  --color-danger: #c0392b;
+  --color-danger-soft: #fdeceb;
+
+  /* Radii */
+  --radius-control: 12px;
+  --radius-card: 16px;
+  --radius-pill: 999px;
+
+  /* Sizing floors */
+  --size-control: 48px;
+  --size-tap: 44px;
+}
+
+:root {
+  color-scheme: light;
+}
+
+/*
+ * No dark theme. The brief specifies one palette, and shipping an
+ * unspecified dark variant means every screen has a second appearance nobody
+ * has designed or reviewed.
+ */
+
+html,
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  /*
+   * Mongolian Cyrillic wraps at word boundaries and its words are long.
+   * `overflow-wrap` stops a single long word (a kindergarten's full name, an
+   * email) from pushing the layout sideways on a 375px screen.
+   */
+  overflow-wrap: break-word;
+}
+
+/*
+ * Nothing may scroll the page sideways. Wide content — tables, the assessment
+ * grid — scrolls inside its own container instead.
+ */
+html {
+  overflow-x: hidden;
+}
+
+/* A single, consistent focus ring. Never removed, only restyled. */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/*
+ * iOS zooms the page when a focused input's text is under 16px. That zoom does
+ * not undo itself, so the user is left on a horizontally scrolled page — which
+ * is why every text control is at least 16px and why this is a rule rather
+ * than a per-component choice.
+ */
+input,
+textarea,
+select {
+  font-size: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

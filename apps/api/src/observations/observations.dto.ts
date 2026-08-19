@@ -1,0 +1,92 @@
+import { z } from "zod";
+import { paginationQuerySchema, uuidSchema } from "@kinder/contracts";
+
+const text = (max: number) => z.string().max(max).nullable().optional();
+
+/** The narrative fields. Long, because teachers write paragraphs here. */
+const textFields = {
+  activityName: text(200),
+  situation: text(4000),
+  childDid: text(4000),
+  childSaid: text(4000),
+  teacherComment: text(4000),
+  nextSteps: text(4000),
+};
+
+export const createObservationSchema = z
+  .object({
+    typeId: uuidSchema,
+    observedOn: z.coerce.date().refine((d) => d <= new Date(), {
+      message: "Ажиглалтын огноо ирээдүйд байж болохгүй",
+    }),
+    ...textFields,
+    domainIds: z.array(uuidSchema).max(10).optional(),
+    /**
+     * Optional: the default depends on who is filing. A teacher's note is
+     * private unless they say otherwise; a parent's own note is visible to them.
+     * Resolved in the service, which knows the source.
+     */
+    visibleToParents: z.boolean().optional(),
+    includeInReport: z.boolean().optional(),
+  })
+  .strict();
+export type CreateObservationDto = z.infer<typeof createObservationSchema>;
+
+/**
+ * A parent's submission.
+ *
+ * Deliberately smaller than the teacher form — a family shares what happened at
+ * home, not a professional assessment. `visibleToParents`, `includeInReport`
+ * and `domainIds` are absent because RFP §5.4 makes those the teacher's
+ * decisions; a schema that accepted them would need the service to strip them.
+ */
+export const createParentObservationSchema = z
+  .object({
+    observedOn: z.coerce.date().refine((d) => d <= new Date(), {
+      message: "Ажиглалтын огноо ирээдүйд байж болохгүй",
+    }),
+    situation: text(4000),
+    childDid: text(4000),
+    childSaid: text(4000),
+  })
+  .strict();
+export type CreateParentObservationDto = z.infer<typeof createParentObservationSchema>;
+
+export const updateObservationSchema = z
+  .object({
+    typeId: uuidSchema.optional(),
+    observedOn: z.coerce.date().optional(),
+    ...textFields,
+    domainIds: z.array(uuidSchema).max(10).optional(),
+    visibleToParents: z.boolean().optional(),
+    includeInReport: z.boolean().optional(),
+  })
+  .strict();
+export type UpdateObservationDto = z.infer<typeof updateObservationSchema>;
+
+export const listObservationsQuerySchema = paginationQuerySchema.extend({
+  typeId: uuidSchema.optional(),
+  domainId: uuidSchema.optional(),
+  source: z.enum(["TEACHER", "PARENT"]).optional(),
+  reviewStatus: z.enum(["PENDING", "APPROVED", "RETURNED"]).optional(),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+});
+export type ListObservationsQuery = z.infer<typeof listObservationsQuerySchema>;
+
+/**
+ * A teacher's review decision.
+ *
+ * Approving may also publish the note to the family in one step, which is what
+ * the review screen actually does — otherwise every approval needs a second
+ * request the teacher will forget.
+ */
+export const reviewObservationSchema = z
+  .object({
+    decision: z.enum(["APPROVED", "RETURNED"]),
+    reviewNote: z.string().max(2000).nullable().optional(),
+    visibleToParents: z.boolean().optional(),
+    domainIds: z.array(uuidSchema).max(10).optional(),
+  })
+  .strict();
+export type ReviewObservationDto = z.infer<typeof reviewObservationSchema>;

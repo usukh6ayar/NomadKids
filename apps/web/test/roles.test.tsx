@@ -1,0 +1,166 @@
+import { screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithProviders, ROUTER, sessionFor, setParams, stubApi } from "./support/render";
+import AppLayout from "@/app/(app)/layout";
+import ChildrenPage from "@/app/(app)/children/page";
+import AdminPage from "@/app/(app)/admin/page";
+import ReviewQueuePage from "@/app/(app)/observations/review/page";
+
+/**
+ * Role isolation in the UI.
+ *
+ * ★★ These assert **navigation and affordances**, not data protection.
+ *
+ * The API is the security authority: it re-derives memberships, guardianships
+ * and group assignments on every request, and a user who bypasses everything
+ * tested here gets a different menu and exactly the same 404s. What these tests
+ * protect is a different failure — a parent shown "Хянах" in their navigation,
+ * tapping it, and landing on a screen that only ever errors.
+ */
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  setParams({});
+});
+
+describe("navigation is built from the session's roles", () => {
+  it("a teacher sees the staff navigation", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: "/notifications/unread-count", body: { count: 0 } },
+    ]);
+
+    renderWithProviders(
+      <AppLayout>
+        <div>агуулга</div>
+      </AppLayout>,
+    );
+
+    await waitFor(() => expect(screen.getAllByText("Хүүхдүүд").length).toBeGreaterThan(0));
+    expect(screen.getAllByText("Хянах").length).toBeGreaterThan(0);
+    // Administration belongs to admins only.
+    expect(screen.queryByText("Удирдлага")).toBeNull();
+  });
+
+  it("a parent sees the parent navigation and no staff-only destinations", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["PARENT"]) },
+      { path: "/notifications/unread-count", body: { count: 0 } },
+    ]);
+
+    renderWithProviders(
+      <AppLayout>
+        <div>агуулга</div>
+      </AppLayout>,
+    );
+
+    await waitFor(() => expect(screen.getAllByText("Хавтас").length).toBeGreaterThan(0));
+
+    // ★ The review queue is a teacher's job. Offering it to a family would be a
+    // menu item that only ever 404s.
+    expect(screen.queryByText("Хянах")).toBeNull();
+    expect(screen.queryByText("Удирдлага")).toBeNull();
+  });
+
+  it("an admin additionally sees Удирдлага", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: "/notifications/unread-count", body: { count: 0 } },
+    ]);
+
+    renderWithProviders(
+      <AppLayout>
+        <div>агуулга</div>
+      </AppLayout>,
+    );
+
+    await waitFor(() => expect(screen.getAllByText("Удирдлага").length).toBeGreaterThan(0));
+  });
+
+  /**
+   * ★ A dual-role user is why the route tree is shared rather than split into
+   * three route groups — the client has administrators whose own children
+   * attend. They get one product, not two they must sign out of to switch.
+   */
+  it("a teacher who is also a parent gets the staff shell, not a broken hybrid", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER", "PARENT"]) },
+      { path: "/notifications/unread-count", body: { count: 0 } },
+    ]);
+
+    renderWithProviders(
+      <AppLayout>
+        <div>агуулга</div>
+      </AppLayout>,
+    );
+
+    await waitFor(() => expect(screen.getAllByText("Хянах").length).toBeGreaterThan(0));
+  });
+});
+
+describe("role-guarded screens", () => {
+  it("redirects a parent away from the admin screen", async () => {
+    stubApi([{ path: "/auth/me", body: sessionFor(["PARENT"]) }]);
+
+    renderWithProviders(<AdminPage />);
+
+    // Sent to their own start page, not to /login — they are authenticated, and
+    // a login form would be baffling.
+    await waitFor(() => expect(ROUTER.replace).toHaveBeenCalledWith("/"));
+  });
+
+  it("redirects a parent away from the review queue", async () => {
+    stubApi([{ path: "/auth/me", body: sessionFor(["PARENT"]) }]);
+
+    renderWithProviders(<ReviewQueuePage />);
+
+    await waitFor(() => expect(ROUTER.replace).toHaveBeenCalledWith("/"));
+  });
+
+  it("sends a signed-out visitor to login with a return path", async () => {
+    stubApi([{ path: "/auth/me", status: 401 }]);
+
+    renderWithProviders(<AdminPage />);
+
+    await waitFor(() =>
+      expect(ROUTER.replace).toHaveBeenCalledWith(expect.stringContaining("/login")),
+    );
+  });
+});
+
+describe("the children screen adapts to who is asking", () => {
+  it("a teacher gets the searchable roster", async () => {
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: "/children",
+        body: { items: [], page: 1, pageSize: 25, total: 0, totalPages: 0 },
+      },
+    ]);
+
+    renderWithProviders(<ChildrenPage />);
+
+    await waitFor(() => expect(screen.getByLabelText("Хүүхдийн нэрээр хайх")).toBeInTheDocument());
+    expect(calls.some((c) => c.url.startsWith("/children?"))).toBe(true);
+  });
+
+  /**
+   * A parent hits `/children/mine`, which is a different endpoint — not the
+   * roster with a filter. The distinction matters: `/children` would return
+   * their children too, but the slimmer route exists precisely so a family
+   * screen never issues a query that could page through a kindergarten.
+   */
+  it("a parent gets their own children, with no search box", async () => {
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["PARENT"]) },
+      { path: "/children/mine", body: [] },
+    ]);
+
+    renderWithProviders(<ChildrenPage />);
+
+    await waitFor(() => expect(screen.getByText("Хүүхэд холбогдоогүй байна")).toBeInTheDocument());
+
+    expect(screen.queryByLabelText("Хүүхдийн нэрээр хайх")).toBeNull();
+    expect(calls.some((c) => c.url.startsWith("/children/mine"))).toBe(true);
+  });
+});

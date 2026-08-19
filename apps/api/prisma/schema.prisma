@@ -1,0 +1,1059 @@
+// Бяцхан Нүүдэлчид — MVP data model.
+//
+// Designed in docs/DATABASE.md; that document explains the reasoning and this
+// file is its implementation. Where they disagree, the document is the intent
+// and this file is the bug.
+//
+// Three conventions run through everything and matter more than they look:
+//
+//   1. `kindergartenId` is denormalised onto every tenant-scoped table even
+//      where a relation could reach it. One WHERE clause then enforces tenant
+//      isolation instead of a three-join traversal somebody eventually forgets.
+//
+//   2. `deletedAt` is a soft delete. Prisma has no equivalent of Django's
+//      model manager, so EVERY query must filter it explicitly. That is why
+//      `PrismaClient` is importable only from *.repository.ts — CLAUDE.md §2.2.
+//
+//   3. Authorization NEVER reads `Child.kindergartenId`. It resolves the
+//      kindergarten set from Enrollment history, with exactly one documented
+//      exception for a child that has no enrollments at all.
+//      docs/SECURITY.md §5.2.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Enums — system-level values only.
+//
+// Anything an administrator can edit is a TABLE, not an enum: development
+// domains, assessment levels and observation types are configuration and live
+// in DevelopmentDomain / AssessmentLevel / ObservationType. Adding a value to
+// one of the enums below is a code change by design.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  TEACHER
+  PARENT
+}
+
+enum AuthTokenPurpose {
+  PASSWORD_RESET
+  INVITATION
+}
+
+enum AgeBand {
+  NURSERY // Бага бүлэг
+  JUNIOR // Дунд бүлэг
+  MIDDLE // Ахлах бүлэг
+  SENIOR // Бэлтгэл бүлэг
+}
+
+enum GroupStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum TeacherRole {
+  LEAD
+  ASSISTANT
+}
+
+enum Sex {
+  MALE
+  FEMALE
+}
+
+enum ChildStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum GuardianRelation {
+  MOTHER
+  FATHER
+  GRANDPARENT
+  SIBLING
+  OTHER
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  ENDED
+  TRANSFERRED
+}
+
+enum ObservationSource {
+  TEACHER
+  PARENT
+}
+
+/// §5.4 — the teacher reviews what a parent submits.
+///
+/// A teacher's own observation is APPROVED on save: there is nobody above them
+/// to approve it. There is deliberately no "not required" state — the parent
+/// read filter is `visibleToParents AND APPROVED`, so a teacher observation in
+/// any other state would be invisible to the family it was written for.
+enum ReviewStatus {
+  PENDING // parent-submitted, awaiting a teacher
+  APPROVED
+  RETURNED // teacher returned it with a note
+}
+
+enum MediaPurpose {
+  CHILD_PHOTO
+  OBSERVATION
+  REPORT_OUTPUT
+}
+
+enum MediaStatus {
+  READY
+  ARCHIVED
+}
+
+enum NotificationStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum TermReportStatus {
+  DRAFT
+  FINAL
+}
+
+enum ReportType {
+  CHILD_PORTFOLIO
+  TERM_REPORT
+}
+
+enum ReportStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+}
+
+enum AuditAction {
+  LOGIN
+  LOGIN_FAILED
+  LOGOUT
+  VIEW
+  CREATE
+  UPDATE
+  DELETE
+  RESTORE
+  DOWNLOAD
+  PERMISSION_CHANGE
+  PASSWORD_RESET
+  INVITE
+  ACTIVATE
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Identity and access
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// One login. Deliberately carries NO role column — the same person can be a
+/// teacher in one kindergarten and a parent in another, so all authority comes
+/// from Membership.
+model User {
+  id           String  @id @default(uuid()) @db.Uuid
+  username     String  @unique
+  email        String? @unique
+  phone        String? @unique
+  passwordHash String
+
+  lastName  String
+  firstName String
+
+  /// Teacher-facing profile fields. Flattened from the reference system's
+  /// near-empty TeacherProfile/GuardianProfile side tables.
+  specialization String?
+  education      String?
+  bio            String?
+
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  memberships    Membership[]
+  guardianships  Guardianship[]
+  authTokens     AuthToken[]
+  sessions       Session[]
+  auditLogs      AuditLog[]
+  observations   Observation[]  @relation("ObservationAuthor")
+  reviewed       Observation[]  @relation("ObservationReviewer")
+  assessments    Assessment[]   @relation("AssessmentAuthor")
+  termReports    TermReport[]   @relation("TermReportAuthor")
+  notifications  Notification[] @relation("NotificationAuthor")
+  reads          NotificationRead[]
+  reportJobs     ReportJob[]
+
+  @@index([deletedAt])
+  @@map("users")
+}
+
+/// ★ The only source of authority in the system.
+///
+/// A user's role is not global; it is held per kindergarten. Every
+/// authorization decision starts here.
+model Membership {
+  id             String  @id @default(uuid()) @db.Uuid
+  userId         String  @db.Uuid
+  kindergartenId String  @db.Uuid
+  role           Role
+  /// Revocation without deletion — the record of the relationship survives.
+  isActive       Boolean @default(true)
+
+  startedOn DateTime? @db.Date
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kindergarten Kindergarten  @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  assignments  GroupTeacher[]
+
+  @@unique([userId, kindergartenId, role])
+  @@index([userId, isActive])
+  @@index([kindergartenId, role, isActive])
+  @@map("memberships")
+}
+
+/// Opaque refresh-token family. One row per active browser session.
+///
+/// The token itself is never stored — only its SHA-256. `familyId` groups the
+/// rotations of one login so that presenting an already-rotated token (the
+/// signature of a stolen cookie) can revoke the whole family at once.
+model Session {
+  id        String @id @default(uuid()) @db.Uuid
+  userId    String @db.Uuid
+  familyId  String @db.Uuid
+  tokenHash String @unique
+
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  userAgent String?
+  ipAddress String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+/// Single-use tokens for password reset and invitation. Merged from two
+/// reference tables that had identical mechanics (D6).
+model AuthToken {
+  id      String           @id @default(uuid()) @db.Uuid
+  userId  String           @db.Uuid
+  purpose AuthTokenPurpose
+  /// SHA-256 of the token. The token itself exists only in the email.
+  tokenHash String         @unique
+
+  expiresAt   DateTime
+  usedAt      DateTime?
+  requestedIp String?
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, usedAt])
+  @@index([expiresAt])
+  @@map("auth_tokens")
+}
+
+/// Brute-force lockout counter: 5 failures per identifier in 15 minutes.
+///
+/// `identifier` is free text, not a foreign key — failures against a
+/// non-existent username must count too, or the lockout becomes a user
+/// enumeration oracle.
+///
+/// ★ Rows must be written OUTSIDE any interactive transaction. A failed login
+/// often runs inside a request that then errors; rolled back with it, the
+/// counter silently resets and the lockout never fires. docs/SECURITY.md §2.
+model LoginAttempt {
+  id         String   @id @default(uuid()) @db.Uuid
+  identifier String
+  ipAddress  String?
+  succeeded  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([identifier, succeeded, createdAt])
+  @@index([ipAddress, succeeded, createdAt])
+  @@map("login_attempts")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tenancy
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Kindergarten {
+  id          String  @id @default(uuid()) @db.Uuid
+  name        String
+  address     String?
+  phone       String?
+  email       String?
+  description String?
+  isActive    Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  memberships        Membership[]
+  schoolYears        SchoolYear[]
+  groups             Group[]
+  groupTeachers      GroupTeacher[]
+  children           Child[]
+  guardianships      Guardianship[]
+  enrollments        Enrollment[]
+  childProfiles      ChildProfile[]
+  childAgeProfiles   ChildAgeProfile[]
+  birthdayNotes      BirthdayNote[]
+  developmentDomains DevelopmentDomain[]
+  assessmentLevels   AssessmentLevel[]
+  observationTypes   ObservationType[]
+  terms              Term[]
+  observations       Observation[]
+  observationDomains ObservationDomain[]
+  assessments        Assessment[]
+  termReports        TermReport[]
+  mediaFiles         MediaFile[]
+  notifications      Notification[]
+  notificationTargets NotificationTarget[]
+  reportJobs         ReportJob[]
+  auditLogs          AuditLog[]
+
+  @@index([deletedAt])
+  @@map("kindergartens")
+}
+
+model SchoolYear {
+  id             String   @id @default(uuid()) @db.Uuid
+  kindergartenId String   @db.Uuid
+  /// e.g. "2025-2026"
+  name           String
+  startsOn       DateTime @db.Date
+  endsOn         DateTime @db.Date
+  isCurrent      Boolean  @default(false)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten     Kindergarten      @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  groups           Group[]
+  enrollments      Enrollment[]
+  terms            Term[]
+  childAgeProfiles ChildAgeProfile[]
+
+  @@unique([kindergartenId, name])
+  @@index([kindergartenId, isCurrent])
+  @@map("school_years")
+}
+
+model Group {
+  id             String      @id @default(uuid()) @db.Uuid
+  kindergartenId String      @db.Uuid
+  schoolYearId   String      @db.Uuid
+  name           String
+  ageBand        AgeBand
+  status         GroupStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten        Kindergarten         @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  schoolYear          SchoolYear           @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
+  teachers            GroupTeacher[]
+  enrollments         Enrollment[]
+  notificationTargets NotificationTarget[]
+
+  @@unique([schoolYearId, name])
+  @@index([kindergartenId, status])
+  @@map("groups")
+}
+
+/// ★ The teacher half of the authorization graph.
+///
+/// Points at Membership, not User, so it is structurally impossible to assign a
+/// teacher to a group in a kindergarten where they hold no membership.
+///
+/// Access is revoked by setting `endedOn`, never by deleting the row — the
+/// record of who taught whom has to survive.
+model GroupTeacher {
+  id             String      @id @default(uuid()) @db.Uuid
+  kindergartenId String      @db.Uuid
+  groupId        String      @db.Uuid
+  membershipId   String      @db.Uuid
+  role           TeacherRole @default(LEAD)
+
+  startedOn DateTime? @db.Date
+  endedOn   DateTime? @db.Date
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  group        Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  membership   Membership   @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([groupId, membershipId])
+  @@index([membershipId, endedOn])
+  @@map("group_teachers")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Children
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Child {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// ★ "Currently attending" — for listing and filtering ONLY.
+  ///
+  /// This is NOT an authorization input. Reading it to decide access would
+  /// mean a teacher loses the observations they wrote themselves the moment a
+  /// child transfers. Authorization resolves the kindergarten set from
+  /// Enrollment history. docs/SECURITY.md §5.2.
+  kindergartenId String @db.Uuid
+
+  lastName    String
+  firstName   String
+  nationalId  String?
+  sex         Sex
+  dateOfBirth DateTime    @db.Date
+  status      ChildStatus @default(ACTIVE)
+
+  healthNotes String?
+
+  photoMediaFileId String? @unique @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten        Kindergarten         @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  photo               MediaFile?           @relation("ChildPhoto", fields: [photoMediaFileId], references: [id], onDelete: SetNull)
+  guardianships       Guardianship[]
+  enrollments         Enrollment[]
+  profile             ChildProfile?
+  ageProfiles         ChildAgeProfile[]
+  birthdayNotes       BirthdayNote[]
+  observations        Observation[]
+  assessments         Assessment[]
+  termReports         TermReport[]
+  mediaFiles          MediaFile[]          @relation("ChildMedia")
+  notificationTargets NotificationTarget[]
+  reportJobs          ReportJob[]
+  auditLogs           AuditLog[]
+
+  @@unique([kindergartenId, nationalId])
+  @@index([kindergartenId, status])
+  @@index([kindergartenId, lastName, firstName])
+  @@index([kindergartenId, dateOfBirth])
+  @@map("children")
+}
+
+/// ★ The parent half of the authorization graph.
+///
+/// `canView = false` revokes a parent's access while preserving the record of
+/// the relationship — needed for custody changes. Never delete a guardianship
+/// to revoke access.
+model Guardianship {
+  id             String           @id @default(uuid()) @db.Uuid
+  kindergartenId String           @db.Uuid
+  childId        String           @db.Uuid
+  guardianUserId String           @db.Uuid
+  relation       GuardianRelation
+  isPrimary      Boolean          @default(false)
+  canView        Boolean          @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  guardian     User         @relation(fields: [guardianUserId], references: [id], onDelete: Cascade)
+
+  @@unique([childId, guardianUserId])
+  @@index([guardianUserId, canView])
+  @@index([childId])
+  @@map("guardianships")
+}
+
+/// ★ The child's history, and the authoritative answer to "which kindergartens
+/// may see this child".
+///
+/// Rows are ended, never deleted.
+model Enrollment {
+  id             String           @id @default(uuid()) @db.Uuid
+  kindergartenId String           @db.Uuid
+  childId        String           @db.Uuid
+  groupId        String           @db.Uuid
+  schoolYearId   String           @db.Uuid
+  startedOn      DateTime         @db.Date
+  endedOn        DateTime?        @db.Date
+  status         EnrollmentStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten  @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child         @relation(fields: [childId], references: [id], onDelete: Cascade)
+  group        Group         @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  schoolYear   SchoolYear    @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
+  observations Observation[]
+  assessments  Assessment[]
+  termReports  TermReport[]
+
+  @@index([groupId, status])
+  @@index([schoolYearId, status])
+  @@index([childId, schoolYearId])
+  @@index([childId, status])
+  @@map("enrollments")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Portfolio
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// "Миний тухай" — one per child.
+model ChildProfile {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  childId        String @unique @db.Uuid
+
+  introduction          String?
+  nameMeaning           String?
+  memorableSayings      String?
+  dream                 String?
+  distinguishingTraits  String?
+
+  heightCm   Decimal?  @db.Decimal(5, 1)
+  weightKg   Decimal?  @db.Decimal(5, 2)
+  recordedOn DateTime? @db.Date
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@map("child_profiles")
+}
+
+/// One row per child per age, 2 to 5. `age` is validated in the service layer;
+/// Postgres has no cheap way to express "2..5" that Prisma can model portably.
+model ChildAgeProfile {
+  id             String  @id @default(uuid()) @db.Uuid
+  kindergartenId String  @db.Uuid
+  childId        String  @db.Uuid
+  age            Int     @db.SmallInt
+  schoolYearId   String? @db.Uuid
+
+  favoriteColor    String?
+  favoriteFood     String?
+  favoriteToy      String?
+  favoriteBook     String?
+  favoriteSong     String?
+  favoriteStory    String?
+  favoriteActivity String?
+
+  personality      String?
+  emotionalTraits  String?
+  familyMembers    String?
+  learningInterest String?
+  newSkills        String?
+
+  parentNote  String?
+  teacherNote String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  schoolYear   SchoolYear?  @relation(fields: [schoolYearId], references: [id], onDelete: SetNull)
+
+  @@unique([childId, age])
+  @@index([childId, age])
+  @@map("child_age_profiles")
+}
+
+model BirthdayNote {
+  id             String  @id @default(uuid()) @db.Uuid
+  kindergartenId String  @db.Uuid
+  childId        String  @db.Uuid
+  age            Int     @db.SmallInt
+  note           String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@unique([childId, age])
+  @@map("birthday_notes")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Configuration — administrator-editable, therefore tables and not enums
+//
+// `kindergartenId = NULL` means a system default shared by every kindergarten.
+// A kindergarten admin may create and edit their own rows; they may NOT edit a
+// system row — they create an override instead.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model DevelopmentDomain {
+  id             String  @id @default(uuid()) @db.Uuid
+  /// NULL = system default, visible to all kindergartens.
+  kindergartenId String? @db.Uuid
+  name           String
+  code           String
+  order          Int     @default(0)
+  color          String  @default("#94a3b8")
+  description    String?
+  isActive       Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten       Kindergarten?       @relation(fields: [kindergartenId], references: [id], onDelete: Cascade)
+  observationDomains ObservationDomain[]
+  assessments        Assessment[]
+
+  @@unique([kindergartenId, code])
+  @@index([kindergartenId, isActive, order])
+  @@map("development_domains")
+}
+
+model AssessmentLevel {
+  id             String  @id @default(uuid()) @db.Uuid
+  kindergartenId String? @db.Uuid
+  /// 1..4 — "Дэмжлэгтэй" … "Давсан"
+  value          Int     @db.SmallInt
+  label          String
+  color          String  @default("#94a3b8")
+  description    String?
+  order          Int     @default(0)
+  isActive       Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten       Kindergarten?       @relation(fields: [kindergartenId], references: [id], onDelete: Cascade)
+  observationDomains ObservationDomain[]
+  assessments        Assessment[]
+
+  @@unique([kindergartenId, value])
+  @@index([kindergartenId, isActive, order])
+  @@map("assessment_levels")
+}
+
+model ObservationType {
+  id             String  @id @default(uuid()) @db.Uuid
+  kindergartenId String? @db.Uuid
+  name           String
+  code           String
+  order          Int     @default(0)
+  isActive       Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten? @relation(fields: [kindergartenId], references: [id], onDelete: Cascade)
+  observations Observation[]
+
+  @@unique([kindergartenId, code])
+  @@index([kindergartenId, isActive, order])
+  @@map("observation_types")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Observation and assessment
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Observation {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  childId        String @db.Uuid
+  /// Pins the observation to the group and school year it was written in, so a
+  /// later transfer does not rewrite history.
+  enrollmentId   String @db.Uuid
+  typeId         String @db.Uuid
+
+  source     ObservationSource @default(TEACHER)
+  observedOn DateTime          @db.Date
+
+  activityName   String?
+  situation      String?
+  childDid       String?
+  childSaid      String?
+  teacherComment String?
+  nextSteps      String?
+
+  /// ★ Defaults to FALSE. A teacher's working note is private until deliberately
+  /// shared. Filtering on this is enforced server-side, never in the client.
+  visibleToParents Boolean @default(false)
+  includeInReport  Boolean @default(true)
+
+  /// Domain authorship, not audit data. Needed at query time: a guardian may
+  /// edit their own submission before it is approved, and always sees their own
+  /// pending note — otherwise they cannot tell whether it saved.
+  authorId     String?      @db.Uuid
+
+  reviewStatus ReviewStatus @default(APPROVED)
+  reviewedById String?      @db.Uuid
+  reviewedAt   DateTime?
+  reviewNote   String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten        @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child               @relation(fields: [childId], references: [id], onDelete: Cascade)
+  enrollment   Enrollment          @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
+  type         ObservationType     @relation(fields: [typeId], references: [id], onDelete: Restrict)
+  author       User?               @relation("ObservationAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  reviewedBy   User?               @relation("ObservationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  domains      ObservationDomain[]
+  media        MediaFile[]         @relation("ObservationMedia")
+
+  @@index([childId, observedOn(sort: Desc)])
+  @@index([kindergartenId, observedOn(sort: Desc)])
+  @@index([enrollmentId, observedOn(sort: Desc)])
+  @@index([source, reviewStatus])
+  @@index([authorId, createdAt(sort: Desc)])
+  @@index([childId, visibleToParents, observedOn(sort: Desc)])
+  @@map("observations")
+}
+
+model ObservationDomain {
+  id             String  @id @default(uuid()) @db.Uuid
+  kindergartenId String  @db.Uuid
+  observationId  String  @db.Uuid
+  domainId       String  @db.Uuid
+  levelId        String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten      @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  observation  Observation       @relation(fields: [observationId], references: [id], onDelete: Cascade)
+  domain       DevelopmentDomain @relation(fields: [domainId], references: [id], onDelete: Restrict)
+  level        AssessmentLevel?  @relation(fields: [levelId], references: [id], onDelete: SetNull)
+
+  @@unique([observationId, domainId])
+  @@index([domainId])
+  @@map("observation_domains")
+}
+
+model Term {
+  id             String   @id @default(uuid()) @db.Uuid
+  kindergartenId String   @db.Uuid
+  schoolYearId   String   @db.Uuid
+  /// 1..3
+  number         Int      @db.SmallInt
+  name           String
+  startsOn       DateTime @db.Date
+  endsOn         DateTime @db.Date
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  schoolYear   SchoolYear   @relation(fields: [schoolYearId], references: [id], onDelete: Cascade)
+  assessments  Assessment[]
+  termReports  TermReport[]
+
+  @@unique([schoolYearId, number])
+  @@index([kindergartenId, startsOn])
+  @@map("terms")
+}
+
+model Assessment {
+  id             String  @id @default(uuid()) @db.Uuid
+  kindergartenId String  @db.Uuid
+  childId        String  @db.Uuid
+  enrollmentId   String  @db.Uuid
+  domainId       String  @db.Uuid
+  termId         String  @db.Uuid
+  levelId        String  @db.Uuid
+  comment        String?
+
+  visibleToParents Boolean @default(false)
+
+  assessedById String?  @db.Uuid
+  assessedAt   DateTime @default(now())
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten      @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child             @relation(fields: [childId], references: [id], onDelete: Cascade)
+  enrollment   Enrollment        @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
+  domain       DevelopmentDomain @relation(fields: [domainId], references: [id], onDelete: Restrict)
+  term         Term              @relation(fields: [termId], references: [id], onDelete: Restrict)
+  level        AssessmentLevel   @relation(fields: [levelId], references: [id], onDelete: Restrict)
+  assessedBy   User?             @relation("AssessmentAuthor", fields: [assessedById], references: [id], onDelete: SetNull)
+
+  @@unique([childId, termId, domainId])
+  @@index([childId, termId])
+  @@index([kindergartenId, termId])
+  @@index([enrollmentId, termId])
+  @@map("assessments")
+}
+
+model TermReport {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  childId        String @db.Uuid
+  enrollmentId   String @db.Uuid
+  termId         String @db.Uuid
+
+  strengths        String?
+  needsSupport     String?
+  nextGoals        String?
+  adviceForParents String?
+
+  status      TermReportStatus @default(DRAFT)
+  authorId    String?          @db.Uuid
+  finalizedAt DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  enrollment   Enrollment   @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
+  term         Term         @relation(fields: [termId], references: [id], onDelete: Restrict)
+  author       User?        @relation("TermReportAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@unique([childId, termId])
+  @@index([childId, termId])
+  @@index([kindergartenId, termId])
+  @@map("term_reports")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Media
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// File metadata. The bytes live in R2; this table never holds binary.
+///
+/// `storageKey` is a random UUID path — `children/{uuid}/{uuid}`. It is NEVER
+/// derived from the child's name, id or the uploaded filename. The real
+/// filename lives only in `originalName`, for display, and is never used to
+/// build a URL. docs/SECURITY.md §7.
+model MediaFile {
+  id             String  @id @default(uuid()) @db.Uuid
+  kindergartenId String  @db.Uuid
+  /// The authorization anchor. NULL only for kindergarten-level outputs.
+  childId        String? @db.Uuid
+  observationId  String? @db.Uuid
+  order          Int     @default(0)
+
+  purpose MediaPurpose
+
+  storageKey   String @unique
+  originalName String
+  /// Detected from CONTENT, never from the extension.
+  mimeType     String
+  sizeBytes    Int
+  width        Int?
+  height       Int?
+  checksum     String?
+
+  status  MediaStatus @default(READY)
+  caption String?
+
+  uploadedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  deletedAt  DateTime?
+
+  kindergarten     Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child            Child?       @relation("ChildMedia", fields: [childId], references: [id], onDelete: Cascade)
+  observation      Observation? @relation("ObservationMedia", fields: [observationId], references: [id], onDelete: Cascade)
+  childPhotoOf     Child?       @relation("ChildPhoto")
+  reportJob        ReportJob?   @relation("ReportOutput")
+
+  @@index([childId, purpose, uploadedAt(sort: Desc)])
+  @@index([kindergartenId, uploadedAt(sort: Desc)])
+  @@index([observationId, order])
+  @@index([status, deletedAt])
+  @@map("media_files")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Notifications
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Notification {
+  id             String             @id @default(uuid()) @db.Uuid
+  kindergartenId String             @db.Uuid
+  title          String
+  body           String
+  startsOn       DateTime?          @db.Date
+  endsOn         DateTime?          @db.Date
+  isImportant    Boolean            @default(false)
+  status         NotificationStatus @default(DRAFT)
+  publishedAt    DateTime?
+  authorId       String?            @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten         @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  author       User?                @relation("NotificationAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  targets      NotificationTarget[]
+  reads        NotificationRead[]
+
+  @@index([kindergartenId, status, publishedAt(sort: Desc)])
+  @@map("notifications")
+}
+
+/// Audience. Both `groupId` and `childId` NULL means the whole kindergarten.
+model NotificationTarget {
+  id             String  @id @default(uuid()) @db.Uuid
+  kindergartenId String  @db.Uuid
+  notificationId String  @db.Uuid
+  groupId        String? @db.Uuid
+  childId        String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  group        Group?       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  child        Child?       @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@index([notificationId])
+  @@index([groupId])
+  @@index([childId])
+  @@map("notification_targets")
+}
+
+/// Append-only read receipt. No soft delete — unreading is not a thing.
+model NotificationRead {
+  id             String   @id @default(uuid()) @db.Uuid
+  notificationId String   @db.Uuid
+  userId         String   @db.Uuid
+  readAt         DateTime @default(now())
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, userId])
+  @@index([userId, readAt(sort: Desc)])
+  @@map("notification_reads")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reports and audit
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ReportJob {
+  id             String       @id @default(uuid()) @db.Uuid
+  kindergartenId String       @db.Uuid
+  childId        String?      @db.Uuid
+  type           ReportType
+  params         Json         @default("{}")
+  requestedById  String?      @db.Uuid
+  status         ReportStatus @default(QUEUED)
+
+  progressPercent   Int     @default(0) @db.SmallInt
+  resultMediaFileId String? @unique @db.Uuid
+  fileSize          Int     @default(0)
+  pageCount         Int     @default(0) @db.SmallInt
+  errorMessage      String?
+
+  requestedAt DateTime  @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+  expiresAt   DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child?       @relation(fields: [childId], references: [id], onDelete: Cascade)
+  requestedBy  User?        @relation(fields: [requestedById], references: [id], onDelete: SetNull)
+  resultMedia  MediaFile?   @relation("ReportOutput", fields: [resultMediaFileId], references: [id], onDelete: SetNull)
+
+  @@index([childId, requestedAt(sort: Desc)])
+  @@index([kindergartenId, status, requestedAt(sort: Desc)])
+  @@map("report_jobs")
+}
+
+/// ★ Append-only. The ONLY table with no soft delete, no `updatedAt` and no
+/// authorship columns — a record that can be edited is not an audit record.
+/// Enforced at the repository layer, which exposes only `append()`.
+model AuditLog {
+  id             String  @id @default(uuid()) @db.Uuid
+  kindergartenId String? @db.Uuid
+  actorUserId    String? @db.Uuid
+  actorRole      String?
+  /// The actor's name as plain text, so a deleted user's actions stay
+  /// attributable.
+  actorLabel     String?
+
+  action     AuditAction
+  objectType String?
+  objectId   String?
+  /// Set whenever child data was involved, so "who accessed this child's
+  /// record" is one indexed query.
+  childId    String?     @db.Uuid
+
+  ipAddress String?
+  userAgent String?
+  metadata  Json    @default("{}")
+
+  createdAt DateTime @default(now())
+
+  kindergarten Kindergarten? @relation(fields: [kindergartenId], references: [id], onDelete: SetNull)
+  actor        User?         @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  child        Child?        @relation(fields: [childId], references: [id], onDelete: SetNull)
+
+  @@index([childId, createdAt(sort: Desc)])
+  @@index([actorUserId, createdAt(sort: Desc)])
+  @@index([kindergartenId, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@map("audit_logs")
+}

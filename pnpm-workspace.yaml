@@ -1,0 +1,17 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# The PDF spike (docs/spikes/pdf) is deliberately outside the workspace: it has
+# its own dependency tree including Chromium, and no `pnpm install` of the real
+# project should drag 400 MB of it along.
+
+# pnpm 10 blocks postinstall scripts unless a package is listed here. These
+# three genuinely need them — Prisma downloads its query engine and generates a
+# client, SWC installs a native binary — and each is listed so the block stays
+# meaningful for everything else.
+onlyBuiltDependencies:
+  - "@prisma/client"
+  - "@prisma/engines"
+  - "@swc/core"
+  - prisma

@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate the Prisma client
+        # Types from the generated client are needed before anything typechecks.
+        run: pnpm --filter @kinder/api prisma:generate
+
+      - name: Build the contracts package
+        # apps/* import its compiled output, so it must exist first.
+        run: pnpm --filter @kinder/contracts build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        # Includes the Prisma-boundary test — the check that stops a service
+        # reaching past the repository layer. See CLAUDE.md §2.2.
+        run: pnpm test
+
+      - name: Check formatting
+        run: pnpm format:check

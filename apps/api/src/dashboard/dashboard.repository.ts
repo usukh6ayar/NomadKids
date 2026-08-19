@@ -1,0 +1,316 @@
+import { Injectable } from "@nestjs/common";
+import { PrismaService } from "../prisma/prisma.service";
+import type { VisibleChildrenFilter } from "../authz/authz.repository";
+import type { AuditAction } from "../domain/enums";
+
+/**
+ * Dashboard reads.
+ *
+ * ★ Every query here is bounded — `take` on every list, `count` rather than
+ * fetching to measure. A dashboard is the first screen of every session, so an
+ * unbounded query here is felt on every login rather than occasionally.
+ */
+@Injectable()
+export class DashboardRepository {
+  constructor(private readonly prisma: PrismaService) {}
+
+  // ── Teacher ───────────────────────────────────────────────────────────────
+
+  /** Parent submissions awaiting this teacher — the only true queue. */
+  async pendingReviewCount(groupIds: string[]): Promise<number> {
+    if (groupIds.length === 0) return 0;
+    return this.prisma.observation.count({
+      where: {
+        deletedAt: null,
+        source: "PARENT",
+        reviewStatus: "PENDING",
+        enrollment: { groupId: { in: groupIds }, deletedAt: null },
+      },
+    });
+  }
+
+  /**
+   * Children in this teacher's groups with no assessment in the current term.
+   *
+   * The gap, not the coverage: a dashboard answers "what needs attention", and
+   * a list of children already assessed needs no action.
+   */
+  async childrenMissingAssessment(groupIds: string[], termId: string, take = 10) {
+    if (groupIds.length === 0) return [];
+    return this.prisma.child.findMany({
+      where: {
+        deletedAt: null,
+        status: "ACTIVE",
+        enrollments: { some: { groupId: { in: groupIds }, status: "ACTIVE", deletedAt: null } },
+        assessments: { none: { termId, deletedAt: null } },
+      },
+      select: {
+        id: true,
+        lastName: true,
+        firstName: true,
+        photoMediaFileId: true,
+        enrollments: {
+          where: { status: "ACTIVE", deletedAt: null },
+          select: { group: { select: { id: true, name: true } } },
+          take: 1,
+        },
+      },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      take,
+    });
+  }
+
+  /** Recent observations, so a teacher can resume where they left off. */
+  async recentObservations(groupIds: string[], take = 5) {
+    if (groupIds.length === 0) return [];
+    return this.prisma.observation.findMany({
+      where: {
+        deletedAt: null,
+        enrollment: { groupId: { in: groupIds }, deletedAt: null },
+      },
+      orderBy: { createdAt: "desc" },
+      take,
+      select: {
+        id: true,
+        observedOn: true,
+        situation: true,
+        source: true,
+        visibleToParents: true,
+        child: { select: { id: true, lastName: true, firstName: true } },
+        type: { select: { id: true, name: true } },
+      },
+    });
+  }
+
+  async activeChildCount(groupIds: string[]): Promise<number> {
+    if (groupIds.length === 0) return 0;
+    return this.prisma.child.count({
+      where: {
+        deletedAt: null,
+        status: "ACTIVE",
+        enrollments: { some: { groupId: { in: groupIds }, status: "ACTIVE", deletedAt: null } },
+      },
+    });
+  }
+
+  /** The current term, so the dashboard knows what "this term" means. */
+  async currentTerm(kindergartenIds: string[], on: Date) {
+    if (kindergartenIds.length === 0) return null;
+    return this.prisma.term.findFirst({
+      where: {
+        kindergartenId: { in: kindergartenIds },
+        deletedAt: null,
+        startsOn: { lte: on },
+        endsOn: { gte: on },
+      },
+      orderBy: { startsOn: "desc" },
+      include: { schoolYear: { select: { id: true, name: true } } },
+    });
+  }
+
+  // ── Admin ─────────────────────────────────────────────────────────────────
+
+  async kindergartenCounts(kindergartenIds: string[]) {
+    if (kindergartenIds.length === 0) {
+      return { children: 0, groups: 0, staff: 0, guardians: 0 };
+    }
+
+    const [children, groups, staff, guardians] = await Promise.all([
+      this.prisma.child.count({
+        where: { kindergartenId: { in: kindergartenIds }, deletedAt: null, status: "ACTIVE" },
+      }),
+      this.prisma.group.count({
+        where: { kindergartenId: { in: kindergartenIds }, deletedAt: null, status: "ACTIVE" },
+      }),
+      this.prisma.membership.count({
+        where: {
+          kindergartenId: { in: kindergartenIds },
+          deletedAt: null,
+          isActive: true,
+          role: { in: ["TEACHER", "ADMIN"] },
+        },
+      }),
+      this.prisma.membership.count({
+        where: {
+          kindergartenId: { in: kindergartenIds },
+          deletedAt: null,
+          isActive: true,
+          role: "PARENT",
+        },
+      }),
+    ]);
+
+    return { children, groups, staff, guardians };
+  }
+
+  /** Assessment coverage for the current term, per group. */
+  async assessmentCoverage(kindergartenIds: string[], termId: string) {
+    if (kindergartenIds.length === 0) return [];
+
+    const groups = await this.prisma.group.findMany({
+      where: { kindergartenId: { in: kindergartenIds }, deletedAt: null, status: "ACTIVE" },
+      select: {
+        id: true,
+        name: true,
+        _count: { select: { enrollments: { where: { status: "ACTIVE", deletedAt: null } } } },
+      },
+      orderBy: { name: "asc" },
+      take: 20,
+    });
+
+    if (groups.length === 0) return [];
+
+    // One grouped query for every group, rather than one per group.
+    const assessed = await this.prisma.assessment.groupBy({
+      by: ["enrollmentId"],
+      where: {
+        termId,
+        deletedAt: null,
+        enrollment: { groupId: { in: groups.map((g) => g.id) }, status: "ACTIVE", deletedAt: null },
+      },
+    });
+
+    const enrollments = await this.prisma.enrollment.findMany({
+      where: { id: { in: assessed.map((a) => a.enrollmentId) } },
+      select: { id: true, groupId: true },
+    });
+
+    const perGroup = new Map<string, number>();
+    for (const e of enrollments) {
+      perGroup.set(e.groupId, (perGroup.get(e.groupId) ?? 0) + 1);
+    }
+
+    return groups.map((g) => ({
+      groupId: g.id,
+      name: g.name,
+      children: g._count.enrollments,
+      assessed: perGroup.get(g.id) ?? 0,
+    }));
+  }
+
+  async recentAuditEntries(kindergartenIds: string[], take = 10) {
+    if (kindergartenIds.length === 0) return [];
+    return this.prisma.auditLog.findMany({
+      where: { kindergartenId: { in: kindergartenIds } },
+      orderBy: { createdAt: "desc" },
+      take,
+      select: {
+        id: true,
+        action: true,
+        actorLabel: true,
+        objectType: true,
+        createdAt: true,
+      },
+    });
+  }
+
+  // ── Parent ────────────────────────────────────────────────────────────────
+
+  /**
+   * The parent home feed.
+   *
+   * Only observations the family may see — the same filter the observations
+   * module uses, restated here because a dashboard that builds its own is
+   * exactly how a private note reaches a family.
+   */
+  async recentForGuardian(childIds: string[], guardianUserId: string, take = 10) {
+    if (childIds.length === 0) return [];
+    return this.prisma.observation.findMany({
+      where: {
+        childId: { in: childIds },
+        deletedAt: null,
+        OR: [
+          { visibleToParents: true, reviewStatus: "APPROVED" },
+          { source: "PARENT", authorId: guardianUserId },
+        ],
+      },
+      orderBy: { observedOn: "desc" },
+      take,
+      select: {
+        id: true,
+        observedOn: true,
+        situation: true,
+        source: true,
+        reviewStatus: true,
+        child: { select: { id: true, lastName: true, firstName: true } },
+        type: { select: { id: true, name: true } },
+      },
+    });
+  }
+
+  /** Published assessments for a child in the current term. */
+  async publishedAssessments(childIds: string[], termId: string) {
+    if (childIds.length === 0) return [];
+    return this.prisma.assessment.findMany({
+      where: { childId: { in: childIds }, termId, visibleToParents: true, deletedAt: null },
+      select: {
+        childId: true,
+        domain: { select: { id: true, name: true, color: true } },
+        level: { select: { id: true, value: true, label: true, color: true } },
+      },
+      orderBy: { domain: { order: "asc" } },
+    });
+  }
+
+  /** Children a guardian may see, for the home screen. */
+  async guardianChildren(visible: VisibleChildrenFilter) {
+    return this.prisma.child.findMany({
+      where: visible,
+      select: {
+        id: true,
+        lastName: true,
+        firstName: true,
+        dateOfBirth: true,
+        photoMediaFileId: true,
+        enrollments: {
+          where: { status: "ACTIVE", deletedAt: null },
+          select: { group: { select: { id: true, name: true } } },
+          take: 1,
+        },
+      },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      take: 20,
+    });
+  }
+
+  // ── Audit ─────────────────────────────────────────────────────────────────
+
+  async listAudit(
+    kindergartenIds: string[],
+    filters: {
+      childId?: string;
+      actorUserId?: string;
+      action?: AuditAction;
+      from?: Date;
+      to?: Date;
+    },
+    page: { skip: number; take: number },
+  ) {
+    const where = {
+      kindergartenId: { in: kindergartenIds },
+      ...(filters.childId ? { childId: filters.childId } : {}),
+      ...(filters.actorUserId ? { actorUserId: filters.actorUserId } : {}),
+      ...(filters.action ? { action: filters.action } : {}),
+      ...(filters.from || filters.to
+        ? {
+            createdAt: {
+              ...(filters.from ? { gte: filters.from } : {}),
+              ...(filters.to ? { lte: filters.to } : {}),
+            },
+          }
+        : {}),
+    };
+
+    const [items, total] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: page.skip,
+        take: page.take,
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
+
+    return { items, total };
+  }
+}

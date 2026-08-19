@@ -1,0 +1,27 @@
+# The build context is the repository root (apps/api/Dockerfile expects it), so
+# everything not needed to build the API is excluded here — otherwise the
+# context includes the PDF spike's own Chromium install and every node_modules
+# tree, and the upload alone takes minutes.
+
+node_modules
+**/node_modules
+**/dist
+**/.turbo
+**/*.tsbuildinfo
+
+.git
+.github
+.env
+.env.*
+!.env.example
+
+# Its own dependency tree, deliberately outside the workspace.
+docs/spikes
+
+apps/web
+docs
+*.md
+!apps/api/assets/fonts/README.md
+
+**/coverage
+**/.vitest

@@ -1,0 +1,59 @@
+# Local development dependencies only. Production uses managed Postgres and
+# Cloudflare R2 — see docs/ARCHITECTURE.md §2.
+#
+# MinIO stands in for R2 locally: both speak the S3 API, so the storage client
+# is written once. That indirection is also what makes D13 (data residency,
+# docs/SECURITY.md §14.1) a deployment change rather than a rewrite.
+#
+# Host ports are offset by one from the defaults (5433, 6380, 9002/9003) so this
+# project and the Django reference system can run side by side. The reference
+# system holds the standard ports, and comparing behaviour between the two is
+# exactly what it is kept for.
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: kinder
+      POSTGRES_PASSWORD: kinder
+      POSTGRES_DB: kinder
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kinder"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  storage:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9002:9000"
+      - "9003:9001"
+    volumes:
+      - storagedata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
+  storagedata:

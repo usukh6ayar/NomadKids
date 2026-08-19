@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // CommonJS, deliberately. NestJS runs CJS; emitting ESM here would force
+    // either an ESM Nest app or a dual build, and neither buys anything the
+    // project needs. Next.js consumes CJS packages without complaint.
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts"]
+}

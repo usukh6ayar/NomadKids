@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Keep the incremental cache INSIDE dist. With it outside, `deleteOutDir`
+    // wipes the output but leaves the cache claiming everything is current, and
+    // the next build emits only the files that happen to have changed — a dist
+    // missing app.module.js that fails at require time, not at build time.
+    "tsBuildInfoFile": "./dist/.tsbuildinfo"
+  },
+  // Tests are not shipped.
+  "exclude": ["node_modules", "dist", "test", "**/*.test.ts"]
+}
