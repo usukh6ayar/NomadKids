@@ -14,6 +14,21 @@
 FROM node:22-slim AS build
 
 RUN corepack enable
+
+# ★ OpenSSL, for Prisma.
+#
+# `node:*-slim` ships without libssl, and Prisma's query engine links against
+# it. Without this, `prisma generate` warns that it "failed to detect the
+# libssl/openssl version" and defaults to openssl-1.1.x — then the engine
+# cannot load at runtime on a Debian 12 image, which is bookworm/openssl-3.
+#
+# The warning is easy to scroll past because the build still *succeeds*; the
+# failure lands later, when the container starts and Prisma cannot open a
+# connection. Found on the first Railway deploy.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends openssl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Skip Puppeteer's ~170 MB Chromium download at install time: the runtime stage
@@ -66,6 +81,8 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       chromium \
       ca-certificates \
+      # Prisma's query engine links against libssl — see the build stage.
+      openssl \
       # fontconfig supplies fc-cache and fc-list. The boot assertion in
       # src/reports/font-check.ts reads fc-list; without this package it falls
       # back to a weaker check.
