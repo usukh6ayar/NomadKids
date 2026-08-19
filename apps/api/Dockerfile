@@ -85,6 +85,21 @@ COPY --from=build /app/apps/api/dist apps/api/dist
 COPY --from=build /app/apps/api/prisma apps/api/prisma
 COPY --from=build /app/apps/api/package.json apps/api/package.json
 
+# ★ Migrations run INSIDE the container, as the platform's pre-deploy step.
+#
+# That needs two things this image did not originally have, and neither failure
+# is visible until a real deploy:
+#
+#   1. `prisma.config.ts` — in Prisma 7 the datasource URL lives here, not in
+#      schema.prisma. Without it the CLI has no database to migrate.
+#   2. The `prisma` CLI itself — it was a devDependency, so `pnpm prune --prod`
+#      deleted it from the image. It is now a runtime dependency for exactly
+#      this reason.
+#
+# The alternative — migrating by hand from a laptop against the production URL —
+# is a step somebody eventually forgets, on the deploy where it matters.
+COPY --from=build /app/apps/api/prisma.config.ts apps/api/prisma.config.ts
+
 # The application reads these at runtime to embed @font-face in the HTML.
 COPY --from=build /app/apps/api/assets apps/api/assets
 
