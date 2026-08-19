@@ -1,7 +1,9 @@
-import { screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, ROUTER, sessionFor, setParams, stubApi } from "./support/render";
 import AppLayout from "@/app/(app)/layout";
+import { Providers } from "@/app/providers";
+import { useSession } from "@/lib/auth/session";
 import ChildrenPage from "@/app/(app)/children/page";
 import AdminPage from "@/app/(app)/admin/page";
 import ReviewQueuePage from "@/app/(app)/observations/review/page";
@@ -97,6 +99,61 @@ describe("navigation is built from the session's roles", () => {
     await waitFor(() => expect(screen.getAllByText("Хянах").length).toBeGreaterThan(0));
   });
 });
+
+/**
+ * ★ Regression: the signed-out session must not loop.
+ *
+ * The real failure, seen in a browser on `/login`: `/auth/me` answered 401, the
+ * session query **threw**, the global `onError` handler read that as an expired
+ * session and called `client.clear()`, which invalidated the session query,
+ * which refetched and 401'd again — an endless `GET /v1/auth/me 401`.
+ *
+ * ★★ This exercises the **real** QueryClient from `providers.tsx`, not the
+ * test harness's simplified one. An earlier version of this test used
+ * `renderWithProviders`, which builds its own client with no `QueryCache`
+ * onError — so the loop could not occur there and the test passed with the fix
+ * reverted. A regression test that cannot fail is worse than none.
+ */
+describe("a signed-out visitor does not loop on /auth/me", () => {
+  it("requests /auth/me exactly once for a 401", async () => {
+    const { calls } = stubApi([{ path: "/auth/me", status: 401 }]);
+
+    render(
+      <Providers>
+        <SessionReader />
+      </Providers>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent(/signed-out/));
+    // Settle: a loop keeps issuing requests well after the first answer.
+    await new Promise((r) => setTimeout(r, 250));
+
+    const meCalls = calls.filter((c) => c.url.startsWith("/auth/me"));
+    expect(meCalls.length, `/auth/me was requested ${meCalls.length} times`).toBe(1);
+  });
+
+  it("reports a 401 as signed out rather than as an error", async () => {
+    stubApi([{ path: "/auth/me", status: 401 }]);
+
+    render(
+      <Providers>
+        <SessionReader />
+      </Providers>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("signed-out"));
+  });
+});
+
+/** Renders what `useSession` reports, so the test can assert on it. */
+function SessionReader() {
+  const { session, isLoading } = useSession();
+  return (
+    <span data-testid="state">
+      {isLoading ? "loading" : session ? `signed-in:${session.user.username}` : "signed-out"}
+    </span>
+  );
+}
 
 describe("role-guarded screens", () => {
   it("redirects a parent away from the admin screen", async () => {

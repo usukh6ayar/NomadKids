@@ -32,14 +32,40 @@ export function Providers({ children }: { children: ReactNode }) {
      * to every request, including ones written later by someone who has not
      * read this comment.
      */
+    /**
+     * ★ Guarded against re-entry.
+     *
+     * `client.clear()` invalidates every query, so each one that was in flight
+     * refetches, 401s and lands back here. Without the flag that is a loop —
+     * observed in production as an endless `GET /v1/auth/me 401` in the console.
+     *
+     * The session query no longer throws on 401 (it resolves to `null`), which
+     * removes the main source. This latch covers the rest: any other query
+     * hitting 401 after the cookie expires.
+     *
+     * It is never reset. The redirect leaves this page, and a fresh page load
+     * gets a fresh client.
+     */
+    let redirecting = false;
+
     const onAuthError = (error: unknown) => {
+      if (redirecting) return;
       if (!isSessionExpired(error)) return;
       if (typeof window === "undefined") return;
-      // Already on a public page — redirecting again would loop.
-      if (window.location.pathname.startsWith("/login")) return;
 
+      // Already on a public page — redirecting again would loop.
+      const path = window.location.pathname;
+      if (
+        path.startsWith("/login") ||
+        path.startsWith("/forgot-password") ||
+        path.startsWith("/reset-password")
+      ) {
+        return;
+      }
+
+      redirecting = true;
       client.clear();
-      const from = encodeURIComponent(window.location.pathname + window.location.search);
+      const from = encodeURIComponent(path + window.location.search);
       router.replace(`/login?from=${from}`);
     };
 

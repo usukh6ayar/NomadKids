@@ -45,15 +45,31 @@ const SessionContext = createContext<SessionValue | null>(null);
 export function SessionProvider({ children }: { children: ReactNode }) {
   const { data, isLoading } = useQuery({
     queryKey: qk.session(),
-    queryFn: () => get("/auth/me", sessionSchema),
-    // A 401 here is the normal signed-out state, not an error worth retrying.
+    /**
+     * ★ A 401 here resolves to `null`; it is never thrown.
+     *
+     * "Signed out" is the ordinary state of this endpoint, not a failure. When
+     * it threw, the global `onError` handler treated it as an expired session
+     * and cleared the cache — which invalidated this very query, which refetched,
+     * which 401'd again. On `/login`, where nobody is signed in by definition,
+     * that was an endless loop of `GET /v1/auth/me 401` in the console.
+     *
+     * Any other error still throws, so a genuine outage is not silently rendered
+     * as "signed out".
+     */
+    queryFn: async () => {
+      try {
+        return await get("/auth/me", sessionSchema);
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) return null;
+        throw error;
+      }
+    },
+    // A 401 is answered above, and nothing else here is worth retrying.
     retry: false,
     // The session rarely changes and every screen reads it; refetching on each
     // focus would add a request to every tab switch for no benefit.
     staleTime: 5 * 60_000,
-    // Null rather than a thrown error, so a signed-out visitor renders the
-    // login redirect instead of an error boundary.
-    select: (s) => s,
   });
 
   const value = useMemo<SessionValue>(() => {
