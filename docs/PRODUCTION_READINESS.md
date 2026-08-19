@@ -289,6 +289,65 @@ Deployment specifics are in `DEPLOYMENT.md` §7. Consolidated here:
 
 ---
 
+## 6b. Deployed — 2026-08-20
+
+The API is live on Railway and verified end to end against the running
+production system.
+
+**https://nomadkids.up.railway.app**
+
+| Check                           | Result                                                              |
+| ------------------------------- | ------------------------------------------------------------------- |
+| `GET /v1/health`                | ✅ `{"status":"ok"}`                                                |
+| `GET /v1/health/readiness`      | ✅ `status: ok`                                                     |
+| storage (Cloudflare R2)         | ✅ true                                                             |
+| chromium                        | ✅ true                                                             |
+| redis                           | ✅ true                                                             |
+| cyrillicFont                    | ✅ true — 4 Mongolian-capable fonts                                 |
+| smtp                            | ⛔ not configured (does not gate readiness, by design)              |
+| Migrations                      | ✅ both applied, logged by the entrypoint                           |
+| Real login                      | ✅ 200, **no token in the response body**                           |
+| **PDF generated on production** | ✅ A4, 2 pages, 596 chars extracted, `өүӨҮ` × 19, NotoSans embedded |
+| PDF served from R2              | ✅ presigned URL on `…r2.cloudflarestorage.com`                     |
+| HSTS / CSP / nosniff / DENY     | ✅ all present over HTTPS                                           |
+
+### R2 verified independently
+
+Before wiring the credentials in, the bucket was probed directly: write
+succeeded, a presigned read returned the object, and an **unsigned** read was
+refused (`InvalidArgument: Authorization`) — the object was not served. Public
+access via the `r2.dev` URL is disabled.
+
+### Four defects found by deploying, all fixed
+
+None of these were visible before a real deploy:
+
+1. **`tsconfig.base.json` was not copied into the image.** A missing `extends`
+   target is not an error in TypeScript — it silently falls back to defaults
+   without `esModuleInterop`, and the build died inside zod's declarations with
+   fifty `TS1259` errors that named nothing relevant.
+2. **No OpenSSL for Prisma.** `node:22-slim` ships without libssl; Prisma warned
+   and defaulted to openssl-1.1.x on a Debian 12 (openssl-3) image. The build
+   still succeeded — the failure landed at runtime.
+3. **`prisma` CLI removed by `pnpm prune --prod`**, so migrations could not run
+   in the image at all. Now a runtime dependency.
+4. **Railway's pre-deploy step failed silently.** `failureStage:
+PRE_DEPLOY_COMMAND`, empty logs, three command variations. Moved to the
+   container entrypoint, where the output is visible — see `RAILWAY_SETUP.md` §3.
+
+### Still outstanding
+
+- **SMTP** — password reset issues valid tokens but cannot deliver them.
+- **`nomadkids.mn` / `api.nomadkids.mn`** — not yet pointed at Railway.
+  `CORS_ORIGINS` and `WEB_ORIGIN` are already set to `https://nomadkids.mn`, so
+  the browser flow only works once DNS is in place.
+- **Frontend** — not yet deployed to Vercel.
+- **Smoke-test data** — one child and one observation remain in the production
+  database from the PDF verification; harmless, and to be removed with the first
+  real data load.
+
+---
+
 ## 7. Verdict
 
 **The application is ready to deploy.** Two of the four Phase 12 blockers are

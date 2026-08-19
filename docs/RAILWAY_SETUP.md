@@ -64,15 +64,39 @@ refused to start because `WEB_ORIGIN` was `http://`, which was exactly right.
 
 ---
 
-## 3. Migrations
+## 3. Migrations — from the entrypoint, not pre-deploy
 
-`railway.json` sets a pre-deploy command:
+`apps/api/docker-entrypoint.sh` runs `prisma migrate deploy` and then execs the
+API. `set -e` means a failed migration stops the container rather than serving
+against a schema that is not there.
+
+### ★ Why not Railway's pre-deploy step
+
+It was tried first, and it failed in the worst possible way: the deployment
+went `FAILED` with `failureStage: PRE_DEPLOY_COMMAND` and **no readable output
+at all** — the deploy logs came back empty through both the CLI and the MCP API.
+Three variations of the command were attempted (relative path, absolute path,
+with diagnostics prepended); each produced the same silent failure.
+
+Removing the step entirely made the same image deploy successfully and log
+`Database connected`, which proved the image, the credentials and the private
+network were all fine. Only the pre-deploy step itself was broken.
+
+Running the migration from the entrypoint puts its output in the ordinary
+service log, where it is visible:
 
 ```
-cd apps/api && node_modules/.bin/prisma migrate deploy
+[entrypoint] applying database migrations…
+2 migrations found in prisma/migrations
+Applying migration `20260819055205_init`
+Applying migration `20260819190000_observation_author_and_review_status`
+All migrations have been successfully applied.
+[entrypoint] migrations applied; starting the API
 ```
 
-It runs in the built image, before the new version takes traffic.
+The trade-off: with several replicas each would attempt to migrate. Prisma takes
+an advisory lock, so the others wait and then find nothing to do — and this
+service runs a single replica.
 
 ### ★ Two things had to change to make this possible
 
