@@ -117,6 +117,10 @@ COPY --from=build /app/apps/api/package.json apps/api/package.json
 # is a step somebody eventually forgets, on the deploy where it matters.
 COPY --from=build /app/apps/api/prisma.config.ts apps/api/prisma.config.ts
 
+# Migrations run at container start — see the script for why not pre-deploy.
+COPY apps/api/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # The application reads these at runtime to embed @font-face in the HTML.
 COPY --from=build /app/apps/api/assets apps/api/assets
 
@@ -152,4 +156,4 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3001/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["node", "apps/api/dist/main.js"]
+CMD ["/usr/local/bin/docker-entrypoint.sh"]
