@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { z } from "zod";
-import { Pencil } from "lucide-react";
+import { BookOpen, Heart, MessageCircle, Pencil, Ruler, Sparkles, Sun, Weight } from "lucide-react";
 import {
   aboutMeSchema,
   ageProfileSchema,
@@ -24,6 +24,26 @@ import { ChildHeader } from "@/components/child/child-header";
 import { cn } from "@/lib/utils";
 
 const PORTFOLIO_AGES = [2, 3, 4, 5] as const;
+
+/**
+ * One soft accent per age — the client's front-v2 redesign gives each year its
+ * own colour so the row reads as a progression rather than four identical
+ * buttons. The accents are the ones already in the palette; no new colours.
+ */
+const AGE_TONE: Record<number, string> = {
+  2: "border-mint bg-mint text-mint-ink hover:opacity-90",
+  3: "border-sky bg-sky text-sky-ink hover:opacity-90",
+  4: "border-sun bg-sun text-sun-ink hover:opacity-90",
+  5: "border-peach bg-peach text-peach-ink hover:opacity-90",
+};
+
+/** Whether an age section has anything in it yet — drives the filled dot. */
+function hasAgeContent(profile?: z.infer<typeof ageProfileSchema>): boolean {
+  if (!profile) return false;
+  return Object.entries(profile).some(
+    ([key, value]) => key !== "age" && typeof value === "string" && value.trim().length > 0,
+  );
+}
 
 // `/about-me` answers with `{ exists: false }` when nothing is written yet.
 const aboutMeResponseSchema = aboutMeSchema.extend({ exists: z.boolean().nullish() });
@@ -109,12 +129,47 @@ export default function PortfolioPage() {
     <div className="flex flex-col gap-6 py-2">
       <ChildHeader child={data} />
 
-      <nav aria-label="Хавтасны хэсгүүд" className="flex flex-wrap gap-2">
-        <SectionLink href="#about-me" label="Миний тухай" />
-        {PORTFOLIO_AGES.map((age) => (
-          <SectionLink key={age} href={`#age-${age}`} label={`${age} нас`} />
-        ))}
-        <SectionLink href="#birthdays" label="Төрсөн өдөр" />
+      <nav aria-label="Хавтасны хэсгүүд" className="flex flex-col gap-3">
+        <div className="flex flex-wrap gap-2">
+          <SectionLink href="#about-me" label="Миний тухай" />
+          <SectionLink href="#birthdays" label="Төрсөн өдөр" />
+        </div>
+
+        {/*
+          ★ The age row, carried over from the client's front-v2 redesign
+          (PR #5, `age-buttons`). Four years is a fixed, tiny set, so a row of
+          coloured buttons reads as a timeline in a way identical grey pills do
+          not — and the filled/empty dot answers "how much of this is done"
+          without a progress bar.
+
+          The dot is paired with `aria-label` text, never colour alone.
+        */}
+        <ul className="grid grid-cols-4 gap-2">
+          {PORTFOLIO_AGES.map((age) => {
+            const filled = hasAgeContent(ageProfiles.data?.find((p) => p.age === age));
+            return (
+              <li key={age}>
+                <a
+                  href={`#age-${age}`}
+                  aria-label={`${age} нас — ${filled ? "мэдээлэлтэй" : "хоосон"}`}
+                  className={cn(
+                    "flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-[14px] border px-2 py-2 text-sm font-semibold transition-colors",
+                    AGE_TONE[age],
+                  )}
+                >
+                  <span>{age} нас</span>
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "size-1.5 rounded-full",
+                      filled ? "bg-current opacity-80" : "bg-current opacity-25",
+                    )}
+                  />
+                </a>
+              </li>
+            );
+          })}
+        </ul>
       </nav>
 
       <AboutMeSection
@@ -157,13 +212,35 @@ function SectionLink({ href, label }: { href: string; label: string }) {
 
 // ── Миний тухай ─────────────────────────────────────────────────────────────
 
+/**
+ * ★ The "story" fields, rendered as icon cards — the client's front-v2
+ * redesign (PR #5, `about-story`).
+ *
+ * These are keepsake details, not statistics. The previous treatment was a
+ * two-column definition list, which read as a form somebody had filled in; a
+ * card with an icon and a heading reads as something written *about a child*.
+ * The icon is decorative and paired with a visible label, never on its own.
+ */
 const ABOUT_FIELDS = [
-  { key: "introduction", label: "Танилцуулга", long: true },
-  { key: "nameMeaning", label: "Нэрний утга", long: false },
-  { key: "dream", label: "Миний мөрөөдөл", long: false },
-  { key: "distinguishingTraits", label: "Миний онцлог", long: true },
-  { key: "memorableSayings", label: "Сонирхолтой үг", long: true },
+  { key: "introduction", label: "Танилцуулга", long: true, Icon: BookOpen, tone: "sky" },
+  { key: "nameMeaning", label: "Нэрний утга", long: false, Icon: Heart, tone: "peach" },
+  { key: "dream", label: "Миний мөрөөдөл", long: false, Icon: Sun, tone: "sun" },
+  { key: "distinguishingTraits", label: "Миний онцлог", long: true, Icon: Sparkles, tone: "mint" },
+  {
+    key: "memorableSayings",
+    label: "Сонирхолтой үг",
+    long: true,
+    Icon: MessageCircle,
+    tone: "sky",
+  },
 ] as const;
+
+const STORY_TONE: Record<string, string> = {
+  mint: "bg-mint text-mint-ink",
+  sky: "bg-sky text-sky-ink",
+  sun: "bg-sun text-sun-ink",
+  peach: "bg-peach text-peach-ink",
+};
 
 function AboutMeSection({
   childId,
@@ -240,28 +317,54 @@ function AboutMeSection({
 
         {!isLoading && !editing ? (
           filled || data?.heightCm || data?.weightKg ? (
-            <dl className="grid gap-3 sm:grid-cols-2">
-              {ABOUT_FIELDS.filter((f) => data?.[f.key]).map((field) => (
-                <div key={field.key} className={field.long ? "sm:col-span-2" : undefined}>
-                  <dt className="text-xs font-medium text-muted">{field.label}</dt>
-                  <dd className="mt-0.5 whitespace-pre-wrap text-sm text-ink">
-                    {String(data?.[field.key])}
-                  </dd>
-                </div>
-              ))}
-              {data?.heightCm ? (
-                <div>
-                  <dt className="text-xs font-medium text-muted">Өндөр</dt>
-                  <dd className="mt-0.5 text-sm text-ink">{String(data.heightCm)} см</dd>
+            <div className="flex flex-col gap-4">
+              {/* Height and weight are measurements, so they stay compact facts. */}
+              {data?.heightCm || data?.weightKg ? (
+                <div className="flex flex-wrap gap-2">
+                  {data?.heightCm ? (
+                    <span className="inline-flex items-center gap-2 rounded-[12px] bg-canvas px-3 py-2 text-sm">
+                      <Ruler size={16} aria-hidden="true" className="text-muted" />
+                      <span className="text-muted">Өндөр</span>
+                      <strong className="font-semibold text-ink">{String(data.heightCm)} см</strong>
+                    </span>
+                  ) : null}
+                  {data?.weightKg ? (
+                    <span className="inline-flex items-center gap-2 rounded-[12px] bg-canvas px-3 py-2 text-sm">
+                      <Weight size={16} aria-hidden="true" className="text-muted" />
+                      <span className="text-muted">Жин</span>
+                      <strong className="font-semibold text-ink">{String(data.weightKg)} кг</strong>
+                    </span>
+                  ) : null}
                 </div>
               ) : null}
-              {data?.weightKg ? (
-                <div>
-                  <dt className="text-xs font-medium text-muted">Жин</dt>
-                  <dd className="mt-0.5 text-sm text-ink">{String(data.weightKg)} кг</dd>
-                </div>
-              ) : null}
-            </dl>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {ABOUT_FIELDS.filter((f) => data?.[f.key]).map((field) => (
+                  <article
+                    key={field.key}
+                    className={cn(
+                      "rounded-[14px] border border-border bg-canvas px-4 py-3.5",
+                      field.long && "sm:col-span-2",
+                    )}
+                  >
+                    <h3 className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-ink">
+                      <span
+                        className={cn(
+                          "flex size-6 items-center justify-center rounded-[8px]",
+                          STORY_TONE[field.tone],
+                        )}
+                      >
+                        <field.Icon size={13} aria-hidden="true" />
+                      </span>
+                      {field.label}
+                    </h3>
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink">
+                      {String(data?.[field.key])}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            </div>
           ) : (
             <p className="text-sm text-muted">
               Хараахан бөглөөгүй байна. «Засах» дарж эхлүүлнэ үү.
