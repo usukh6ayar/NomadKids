@@ -349,6 +349,41 @@ PRE_DEPLOY_COMMAND`, empty logs, three command variations. Moved to the
 | **Browser-shaped login**            | ✅ 200, three cookies set (`access`, `refresh`, `csrf`) |
 | **Authenticated follow-up**         | ✅ `/auth/me` → `bagsh`, role TEACHER                   |
 
+### ★ The first deployed build was broken in the browser
+
+It looked fine to every check that did not open it: HTTP 200, correct title,
+CSP present, HSTS present. In an actual browser the page painted and then
+**nothing responded to a click** — two inline scripts blocked by CSP, and React
+error #412 from a hydration that never completed.
+
+The cause was my own `script-src 'self'`: Next emits inline bootstrap and
+hydration scripts, and that policy refuses them.
+
+Fixed with a **per-request nonce**, not `'unsafe-inline'`. Re-admitting all
+inline script would also re-admit whatever an XSS injected — the wrong trade for
+a product holding children's records. A nonce admits only what this server
+emitted.
+
+Two pieces were needed, and either alone is silently useless:
+
+1. `middleware.ts` mints the nonce and sets the CSP on the **request** headers,
+   which is where Next reads it from to stamp its own script tags.
+2. The root layout is `force-dynamic`. A statically pre-rendered page is built
+   before any nonce exists, so its inline bootstrap ships without one — which is
+   exactly what the first deploy did. Setting it on the layout means a new route
+   cannot quietly reintroduce the bug. The cost is nil here: every screen but
+   login and password-reset is authenticated and was never cacheable.
+
+CSP was removed from `next.config.ts` entirely — two CSP headers are **both**
+enforced, so leaving the static one would have defeated the nonce.
+
+Verified on the live deployment, headers and body from a single request:
+**0 script tags without a nonce**, the header nonce matches the tags, no
+`unsafe-inline` in `script-src`, and consecutive requests get different nonces.
+
+The lesson worth keeping: a deployment check that never renders the page in a
+browser cannot see this class of failure. Every signal short of that was green.
+
 Two monorepo details cost a deploy each and are worth recording:
 
 - **Root Directory.** Vercel looked for `next` in the repository root
