@@ -1,48 +1,16 @@
 import type { NextConfig } from "next";
 
-const API_ORIGIN = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 const isProduction = process.env.NODE_ENV === "production";
 
 /**
- * Content Security Policy.
+ * ★ CSP is NOT set here — it lives in `middleware.ts`.
  *
- * ★ `connect-src` and `img-src` must include the API origin.
- *
- * Every authenticated request goes to `api.nomadkids.mn`, and every photo is an
- * `<img src>` pointing at `/v1/media/:id` on that same host. A policy that
- * omitted it would block the entire application — and would do so only in
- * production, where the origins actually differ, which is the worst possible
- * time to discover it.
- *
- * `'unsafe-inline'` for styles is required by Next: it inlines critical CSS and
- * React sets inline `style` attributes. It is a real, accepted weakening —
- * style injection can exfiltrate data through selectors — and it is scoped to
- * styles only. **Scripts get no such allowance.**
- *
- * `'unsafe-eval'` appears in development only, where Next's fast refresh needs
- * it. Shipping it to production would defeat most of the point of a script
- * policy.
+ * A static header cannot carry a nonce, and a nonce is what lets Next's own
+ * inline bootstrap script run under a policy that still refuses everything an
+ * XSS might inject. Setting a second CSP here would not soften that one either:
+ * when two Content-Security-Policy headers are present, a browser enforces both,
+ * so the strictest wins and the nonce would be defeated.
  */
-function contentSecurityPolicy(): string {
-  return [
-    "default-src 'self'",
-    `script-src 'self'${isProduction ? "" : " 'unsafe-eval' 'unsafe-inline'"}`,
-    "style-src 'self' 'unsafe-inline'",
-    // `blob:` covers a locally previewed upload before it is sent.
-    `img-src 'self' data: blob: ${API_ORIGIN}`,
-    "font-src 'self' data:",
-    `connect-src 'self' ${API_ORIGIN}${isProduction ? "" : " ws: http://localhost:*"}`,
-    // The product embeds nothing and is embedded nowhere.
-    "frame-ancestors 'none'",
-    "frame-src 'none'",
-    "object-src 'none'",
-    "base-uri 'self'",
-    // A form posting anywhere else is either a bug or an exfiltration attempt.
-    "form-action 'self'",
-    ...(isProduction ? ["upgrade-insecure-requests"] : []),
-  ].join("; ");
-}
-
 const config: NextConfig = {
   reactStrictMode: true,
 
@@ -64,7 +32,6 @@ const config: NextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "X-Frame-Options", value: "DENY" },
-          { key: "Content-Security-Policy", value: contentSecurityPolicy() },
           // A kindergarten portfolio needs none of these.
           {
             key: "Permissions-Policy",

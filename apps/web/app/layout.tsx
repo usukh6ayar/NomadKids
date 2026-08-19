@@ -8,6 +8,24 @@ export const metadata: Metadata = {
   description: "Хүүхдийн хөгжлийн цахим хавтас",
 };
 
+/**
+ * ★ Every page is rendered per request.
+ *
+ * The CSP in `middleware.ts` carries a per-request nonce, and a nonce only
+ * reaches the HTML if that HTML is generated per request. A statically
+ * pre-rendered page was built before any nonce existed, so Next's inline
+ * bootstrap script ships without one — the browser then blocks it and
+ * hydration dies with React error #412: the page paints, and nothing responds
+ * to a click.
+ *
+ * That is exactly what the first deployed build did. Setting it here rather
+ * than page by page means a new route cannot quietly reintroduce it.
+ *
+ * The cost is nil in practice: every screen but login and password-reset is
+ * authenticated and personalised, so none of them were cacheable anyway.
+ */
+export const dynamic = "force-dynamic";
+
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
