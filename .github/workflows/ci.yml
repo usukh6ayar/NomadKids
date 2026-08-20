@@ -45,18 +45,9 @@ jobs:
           --health-timeout 5s
           --health-retries 20
 
-      # `bitnami/minio` rather than `minio/minio`, which docker-compose uses.
-      # A GitHub service container cannot be given a custom command, and the
-      # upstream image needs `server /data`; this one starts the server itself
-      # and creates the bucket from `MINIO_DEFAULT_BUCKETS`. Nothing in the
-      # application can tell the difference — it is the same S3 API.
-      minio:
-        image: bitnami/minio:latest
-        env:
-          MINIO_ROOT_USER: minioadmin
-          MINIO_ROOT_PASSWORD: minioadmin
-          MINIO_DEFAULT_BUCKETS: kinder-media
-        ports: ["9000:9000"]
+      # ★ Object storage is NOT a service container — see the step that starts
+      # it. `services:` cannot pass a command, and `minio/minio` needs
+      # `server /data` to do anything.
 
     # ★ Not secrets, and deliberately inline.
     #
@@ -127,20 +118,44 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Wait for object storage
-        # The other two services have container health checks; this image has no
-        # shell tool to health-check with, so it is polled from the runner
-        # instead. Failing here with a clear message beats a media test failing
-        # with a socket error thirty seconds later.
+      - name: Start object storage
+        # ★ Started here rather than under `services:`, because a service
+        # container cannot be given a command and `minio/minio` needs
+        # `server /data`.
+        #
+        # The first attempt used `bitnami/minio`, which starts the server itself
+        # and seeds a bucket from an env var — but that tag no longer exists
+        # ("manifest unknown"), and reaching for a vendor's convenience image to
+        # dodge a `services:` limitation was the wrong trade anyway. This runs
+        # the *same image docker-compose uses locally*, so CI and a developer
+        # machine exercise identical storage.
+        #
+        # The bucket is created explicitly: nothing in the application creates
+        # it — `StorageService` only ever calls `HeadBucket`.
         run: |
-          for i in $(seq 1 30); do
+          set -euo pipefail
+
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio:latest server /data
+
+          # Polled from the runner: the image has no shell tool to health-check
+          # with. Failing here with a clear message beats a media test failing
+          # on a socket error thirty seconds later.
+          for _ in $(seq 1 30); do
             if curl -sf http://localhost:9000/minio/health/live > /dev/null; then
-              echo "storage ready"
+              docker run --rm --network host --entrypoint sh minio/mc:latest -c \
+                "mc alias set ci http://localhost:9000 minioadmin minioadmin \
+                 && mc mb --ignore-existing ci/kinder-media"
+              echo "storage ready, bucket created"
               exit 0
             fi
             sleep 2
           done
+
           echo "object storage did not become ready" >&2
+          docker logs minio >&2 || true
           exit 1
 
       - name: Apply migrations
