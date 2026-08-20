@@ -533,3 +533,73 @@ browser-shaped flow in §6b stays **unverified** until they exist. Nothing in
 this document that was checked with `curl` is evidence about that flow.
 
 Nothing found in Phase 12 or Phase 13 remains unfixed.
+
+---
+
+## 8. CI — green for the first time, 2026-08-21
+
+### 8.1 It had never actually run
+
+Every push since 2026-08-19 failed in about 30 seconds, always at the same step:
+
+```
+prisma generate
+→ PrismaConfigEnvError: Cannot resolve environment variable: DATABASE_URL
+```
+
+`prisma.config.ts` resolves the datasource through `env()`, and `.env` is
+gitignored, so the variable never existed on a runner. §2.1 records the Docker
+build hitting exactly this and solving it with a build-stage placeholder — CI
+never got the same fix.
+
+**The consequence was worse than a red X.** Every run died before the test step,
+so the Prisma-boundary check that CLAUDE.md §2.2 calls "enforced by CI" was never
+enforced. Neither was anything else: not the tests, not the lint rule, not the
+formatter. Two days of commits went in with no verification but a local one.
+
+### 8.2 Five failures, each hidden behind the last
+
+A workflow that dies in 30 seconds cannot tell you what is behind it. Each fix
+revealed the next:
+
+| #   | Failure                 | Cause                                   | Fix                                              |
+| --- | ----------------------- | --------------------------------------- | ------------------------------------------------ |
+| 1   | `prisma generate`       | no `DATABASE_URL`                       | Postgres service — real, not a placeholder       |
+| 2   | `Initialize containers` | `bitnami/minio:latest` no longer exists | `minio/minio`, started as a step                 |
+| 3   | `format:check`          | 16 unformatted files                    | `pnpm format`                                    |
+| 4   | `Test` — 12 cases       | no Chrome                               | Puppeteer's download + the repo's Cyrillic fonts |
+| 5   | `Test` — 4 cases        | no `pdftotext`                          | `poppler-utils`                                  |
+
+**No placeholder was needed in the end.** The API's tests run against a real
+database, Redis and object storage on purpose (§4.1 — a mocked repository proves
+only that the mock works), so CI needs those services regardless. Once Postgres
+is a service, `DATABASE_URL` is real and `prisma generate` works without being
+lied to. The Dockerfile's placeholder is still right _there_, where nothing
+connects.
+
+**On #2:** `bitnami/minio` was chosen to dodge a `services:` limitation — a
+service container cannot be given a command, and `minio/minio` needs
+`server /data`. When the tag turned out not to exist, the better answer was not
+a different vendor image but running the _same image docker-compose uses_, as an
+explicit step. CI and a developer machine now exercise identical storage.
+
+**On #4 and #5:** both are the PDF suite, and both are the cost of §4.3 — the
+tests read the generated PDF back and assert on extracted text. That needs a
+browser, fonts covering Cyrillic, and an extractor. A suite that only checked
+"a file appeared" would have needed none of it, and would catch nothing.
+
+### 8.3 Verified
+
+```
+contracts     6 passed
+web          65 passed
+api         679 passed | 1 skipped
+             ─────────
+             750 passing, in CI, on every push and pull request
+```
+
+### 8.4 Still open
+
+**CI does not gate deploys.** Railway and Vercel build on push; the workflow runs
+alongside them. A red build does not stop a release — it only reports one. Now
+that CI is meaningful, making it a gate is worth doing.
