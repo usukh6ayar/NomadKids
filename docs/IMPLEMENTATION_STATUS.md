@@ -1190,3 +1190,149 @@ for the Docker change), with one final full verification below.
 - Managed Postgres, Redis, an R2 bucket, two signing secrets, DNS and TLS for
   `nomadkids.mn` / `api.nomadkids.mn`
 - Device QA per `FINAL_DEVICE_QA.md`
+
+---
+
+## Phase 13 — the split origin, 2026-08-20
+
+### ★ The CSRF token was read from a cookie the web origin cannot see
+
+Found while explaining a `GET /v1/auth/me 401` in the browser console. That
+particular 401 was benign — the designed signed-out response — but looking for
+it surfaced two defects behind it, neither reachable from localhost.
+
+**The deployment is cross-site.** `nomadkids.vercel.app` against
+`nomadkids.up.railway.app` are different registrable domains, and the session
+cookies are `SameSite=Lax` — confirmed against the live API by sending
+`POST /v1/auth/refresh` with a junk refresh cookie, which makes
+`clearAuthCookies` echo the real attribute set:
+
+```
+set-cookie: kinder_access=;  Path=/;                HttpOnly; Secure; SameSite=Lax
+set-cookie: kinder_refresh=; Path=/v1/auth/refresh; HttpOnly; Secure; SameSite=Lax
+set-cookie: kinder_csrf=;    Path=/;                          Secure; SameSite=Lax
+```
+
+A `SameSite=Lax` cookie is not sent on a cross-site fetch, so no browser can
+hold a session on this host pair. **Fixed by DNS, not by code** — see
+`PRODUCTION_READINESS.md` §2.4. Nothing in this repository is wrong about it;
+`ARCHITECTURE.md` §2.1 predicted it in writing.
+
+**The second wall, which _was_ code.** `lib/api/browser.ts` read `kinder_csrf`
+from `document.cookie`. That cannot work once the API owns its own host:
+
+```
+cookies scope by DOMAIN, not by site
+  → api.nomadkids.mn issues a host-only cookie   (correct — SECURITY.md §3.1)
+  → the browser sends it to api.nomadkids.mn     (correct — same-site)
+  → document.cookie on nomadkids.mn cannot read it
+  → no X-CSRF-Token header → CsrfGuard → 403 on every save
+```
+
+Same-site is not same-host, and this survives the DNS move — it would have
+turned the first working login into a product where nothing can be saved.
+
+The token was already in the response body of `/auth/login`, `/auth/refresh` and
+`/auth/me`, and already in `sessionSchema`. The API needed no change. The client
+now mirrors `data.csrfToken` from the session query into a small in-memory
+module that `mutate()` reads.
+
+Mirroring from the query's **data**, not from inside its `queryFn`, is the part
+worth keeping: it follows the session however it changes, including a 401. The
+login response also writes it, closing the window between a successful login and
+the `/auth/me` refetch.
+
+**★ And one assumption in that design was wrong, which the test caught.** The
+plan was that the mirror alone would be enough — `useLogout` and `providers.tsx`
+both call `queryClient.clear()`, which was expected to drop `data` and take the
+token with it. It does not. `clear()` removes the query but **does not reset an
+active observer's `data` and does not refetch**, so the effect never re-runs.
+Measured, not reasoned about: after a logout the stub recorded
+`["GET /auth/me", "POST /auth/logout"]` — no second `/auth/me` — and the token
+was still in memory.
+
+The consequence was small (a CSRF token is not a credential, and the server had
+already revoked the session) but the shape was not: a departed user's auth state
+surviving in memory on a shared kindergarten computer is the exact thing
+`useLogout`'s `clear()` exists to prevent. Both clear sites now forget the token
+explicitly, and the logout test asserts it against a stub that still answers
+`/auth/me` with a live session — so it tests the logout path itself, not a 401
+arriving.
+
+Worth stating plainly because the first version of this note claimed the
+self-clearing behaviour as a design virtue. It was not true. The test is the
+only reason that was found.
+
+**Why neither defect appeared in development.** `localhost:3000` and
+`localhost:3001` are the **same cookie domain** — ports are invisible to
+cookies. Development is same-site and same-host, so both mechanisms worked
+locally and could only fail once deployed.
+
+### ★ A green table that was measuring the wrong thing
+
+`PRODUCTION_READINESS.md` recorded "Browser-shaped login ✅ three cookies set"
+and "Authenticated follow-up ✅ `/auth/me` → bagsh". Both were `curl`.
+
+**curl has no cookie policy.** No `SameSite`, no notion of a registrable domain,
+and it replays any `Set-Cookie` to any host you next name. Every rule that
+actually decides whether a browser keeps and returns a session cookie is
+invisible to it. The check could not have failed, whatever the configuration
+was.
+
+That section is now split into three labelled groups — verified with curl,
+verified in a browser, split-origin cookie behaviour — with the curl evidence
+kept and the authenticated browser flow marked **BLOCKED / NOT YET VERIFIED**.
+
+This is the second time in two days that a deployment check passed while the
+product was broken in a browser, after the CSP nonce. Same shape both times: the
+signal was real, and it was measuring something adjacent to the thing that
+mattered.
+
+### Tests
+
+Both halves are covered, because either alone proves nothing:
+
+- `apps/web/test/csrf.test.tsx` — jsdom's empty cookie jar models the split
+  origin exactly. Proves the token comes from session state, that a decoy
+  `kinder_csrf` on the web origin is ignored, that `document.cookie` is never
+  read, that login and logout both carry it, and that it is dropped on logout
+  and on a 401. **Three of these fail against the old implementation** —
+  checked by restoring it and re-running, not assumed. A fourth (logout)
+  failed against the *new* implementation and is the reason the explicit
+  forget exists.
+- **Session refresh has no web-client flow to test.** `POST /auth/refresh`
+  exists and returns `csrfToken`, but nothing in `apps/web` calls it: an expired
+  access cookie surfaces as a 401 and `providers.tsx` redirects to `/login`.
+  The server-side contract is covered by the API test below; there is no browser
+  path to break, which is worth recording so the absence does not later read as
+  an oversight.
+- `apps/api/test/csrf-session-token.test.ts` — real app, real database. Proves
+  the token in the `/auth/me` **body** is the one `CsrfGuard` accepts, that it
+  equals the cookie the browser holds, and that a missing or mismatched header
+  is a 403. Every other CSRF test takes the token from `Set-Cookie`, which is
+  something only a server-side client can do.
+
+```
+apps/web  full suite (7 files)              65 passed
+apps/api  test/csrf-session-token.test.ts    7 passed
+apps/api  test/auth.test.ts                 47 passed
+tsc --noEmit (web, api) · eslint             clean
+```
+
+The whole web suite was run rather than a subset because `test/support/render.tsx`
+is shared by every web test — `stubApi` now records request headers, which is
+what makes asserting on `X-CSRF-Token` possible at all. The API suite was **not**
+re-run in full, per the Phase 13 testing policy; no API source changed except a
+comment.
+
+★ Note what the API test does and does not prove. The API was already correct,
+so `csrf-session-token.test.ts` would have passed before this change too — it is
+a **regression lock on an existing contract**, not evidence that the fix works.
+Only the web tests that were confirmed to fail against the old client are that.
+
+### Still not verified in a browser
+
+`nomadkids.mn` answers `NOERROR` with no A record; `api.nomadkids.mn` answers
+`NXDOMAIN`. The zone is delegated but neither host is published, so the
+browser-shaped flow — login, session, a real save, logout — **cannot be
+attempted**, and is recorded as blocked rather than passed.

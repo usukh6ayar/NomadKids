@@ -96,6 +96,24 @@ against it — including that an untrusted origin receives no
 `Access-Control-Allow-Origin`, and that a cross-origin POST is refused even with
 a valid CSRF token.
 
+**★ Promoted to a launch blocker, 2026-08-20.** This was filed as provisioning
+tidy-up. It is not: until the records exist, **nobody can log in with a
+browser**. The deployment runs `*.vercel.app` against `*.up.railway.app`, which
+are different registrable domains, so the `SameSite=Lax` session cookies are
+never sent back and every authenticated request 401s. §6b has the evidence and
+the two consequences. Current state, measured:
+
+```
+dig nomadkids.mn      A  →  NOERROR, no answer   (zone delegated, apex unpublished)
+dig api.nomadkids.mn  A  →  NXDOMAIN             (subdomain does not exist)
+```
+
+Moving the records also needs `CORS_ORIGINS` narrowed back to
+`https://nomadkids.mn` alone (`SECURITY.md` §11 forbids the `*.vercel.app`
+entry that was added to unblock the deploy), `WEB_ORIGIN` moved with it, and
+`NEXT_PUBLIC_API_URL` rebuilt on Vercel — it is inlined at build time, so a
+variable change alone does nothing.
+
 ---
 
 ## 3. Backup and restore — verified procedure
@@ -339,15 +357,86 @@ PRE_DEPLOY_COMMAND`, empty logs, three command variations. Moved to the
 
 **https://nomadkids.vercel.app**
 
-| Check                               | Result                                                  |
-| ----------------------------------- | ------------------------------------------------------- |
-| `/login` renders                    | ✅ HTTP 200, `<title>NomadKids</title>`                 |
-| CSP names the API origin            | ✅ `connect-src`/`img-src` include the Railway host     |
-| Production CSP has no `unsafe-eval` | ✅ dev-only, as intended                                |
-| HSTS · nosniff · frame DENY         | ✅                                                      |
-| **CORS from the Vercel origin**     | ✅ `access-control-allow-origin` + credentials          |
-| **Browser-shaped login**            | ✅ 200, three cookies set (`access`, `refresh`, `csrf`) |
-| **Authenticated follow-up**         | ✅ `/auth/me` → `bagsh`, role TEACHER                   |
+★ **Corrected 2026-08-20.** This section previously recorded the auth rows below
+as "browser-shaped" and marked them ✅. They were `curl`, and **curl is not a
+browser**. See _What curl cannot verify_ below — the distinction is not
+pedantic, it is the difference between a green table and a login that cannot
+work in any browser. The evidence is kept; only its label and its verdict change.
+
+**Verified with curl — these results stand.** A request is a request, and
+everything here is a property of the response itself:
+
+| Check                               | Result                                              |
+| ----------------------------------- | --------------------------------------------------- |
+| `/login` renders                    | ✅ HTTP 200, `<title>NomadKids</title>`             |
+| CSP names the API origin            | ✅ `connect-src`/`img-src` include the Railway host |
+| Production CSP has no `unsafe-eval` | ✅ dev-only, as intended                            |
+| HSTS · nosniff · frame DENY         | ✅                                                  |
+| CORS from the Vercel origin         | ✅ `access-control-allow-origin` + credentials      |
+| `POST /auth/login` answers 200      | ✅ three `Set-Cookie` headers present in the response |
+| `GET /auth/me` with those cookies   | ✅ `bagsh`, role TEACHER — cookies replayed by hand  |
+
+**Verified in a browser: nothing yet.** The DOM-level checks were done once, by
+hand, and caught the CSP nonce defect below. No authenticated flow has ever been
+exercised in a browser.
+
+| Check                                       | Status                       |
+| ------------------------------------------- | ---------------------------- |
+| Page paints and responds to a click         | ✅ after the nonce fix       |
+| **Login, in a browser**                     | 🚫 **BLOCKED — not verified** |
+| **Session survives a navigation**           | 🚫 **BLOCKED — not verified** |
+| **A protected mutation (save) succeeds**    | 🚫 **BLOCKED — not verified** |
+| **Logout clears the session**               | 🚫 **BLOCKED — not verified** |
+
+**Split-origin cookie behaviour: known broken, by inspection.** Not a pending
+check — a finding.
+
+| Check                                        | Status                                        |
+| -------------------------------------------- | --------------------------------------------- |
+| Session cookie is stored by a browser         | ❌ **fails on the Vercel↔Railway host pair**  |
+| `SameSite` permits the cross-site request     | ❌ cookies are `SameSite=Lax`, hosts are cross-site |
+| Web origin can read `kinder_csrf`             | ❌ host-only cookie on the API host — **fixed in the client**, see below |
+
+Blocked on DNS, and blocked precisely: as of 2026-08-20 `nomadkids.mn` answers
+`NOERROR` with **no A record**, and `api.nomadkids.mn` answers **`NXDOMAIN`**.
+The zone is delegated (`*.orderbox-dns.com`) but neither host is published, so
+`curl https://nomadkids.mn/login` fails to resolve. The browser verification
+below cannot be attempted, let alone passed, until those records exist.
+
+#### What curl cannot verify
+
+`curl` has no cookie policy. It does not implement `SameSite`, it does not know
+what a registrable domain is, and it replays whatever `Set-Cookie` it is given
+to whatever host you next name. **Every cookie-scoping rule that governs a real
+browser is invisible to it.** So a green curl login says only that the server
+issued cookies — never that a browser would keep them or send them back.
+
+That is what hid the real defect. Production runs `https://nomadkids.vercel.app`
+against `https://nomadkids.up.railway.app`, which are different registrable
+domains, so the session cookies — `SameSite=Lax`, confirmed on the live
+deployment — are not sent on the cross-site request at all. Every authenticated
+request 401s in a browser while the curl table above stays green.
+`ARCHITECTURE.md` §2.1 and `DEPLOYMENT.md` §1 both warned about exactly this in
+advance; no check in this document was capable of catching it.
+
+Two consequences, tracked separately:
+
+1. **The cookie topology.** Fixed by DNS, not by code — `nomadkids.mn` and
+   `api.nomadkids.mn` are same-site, which is what the whole security model
+   assumes. No code change; see §2.4.
+2. **The CSRF token source.** Fixed in code, 2026-08-20. The web client read
+   `kinder_csrf` from `document.cookie`, which cannot work when the API owns its
+   own host: cookies scope by **domain**, not by site, so `nomadkids.mn` cannot
+   read a host-only cookie belonging to `api.nomadkids.mn`. It now takes the
+   token from the session response (`/auth/login`, `/auth/me`), which the API
+   has always returned. This would have 403'd every save immediately after the
+   DNS move — a second wall directly behind the first. Covered by
+   `apps/web/test/csrf.test.tsx` and
+   `apps/api/test/csrf-session-token.test.ts`.
+
+Local development never showed either problem: `localhost:3000` and
+`localhost:3001` are the **same** cookie domain, because ports are invisible to
+cookies.
 
 ### ★ The first deployed build was broken in the browser
 
@@ -403,8 +492,21 @@ for the header and getting nothing back. It now lists both, and `WEB_ORIGIN`
 
 - **SMTP** — password reset issues valid tokens but cannot deliver them.
 - **`nomadkids.mn` / `api.nomadkids.mn`** — not yet pointed at Railway or
-  Vercel. Both origins are already in `CORS_ORIGINS`, so the switch is a DNS
-  change plus moving `WEB_ORIGIN` back to the custom domain.
+  Vercel, and now the **launch blocker**, not a tidy-up: browser login cannot
+  work on the current host pair at all. §2.4 has the measured DNS state and the
+  full list of settings that move with the records.
+- **`NEXT_PUBLIC_MEDIA_URL` is not set on Vercel.** Without it the page's own
+  CSP blocks every photo in the product: `/v1/media/:id` redirects to a
+  presigned URL on the R2 host, and `img-src` is enforced against the redirect
+  target. Found by rendering an upload in a browser — see
+  `UI_MIGRATION_STATUS.md` §7.3. Set it to the R2 S3 endpoint and rebuild;
+  `NEXT_PUBLIC_*` is inlined at build time.
+- **Every image 401s in a browser, for the same reason.** `lib/api/client.ts`
+  documents `mediaUrl` as relying on the auth cookie riding along on an
+  `<img src>` — true only while the two apps share a registrable domain. On the
+  Vercel↔Railway pair the cookie is not attached, so `GET /v1/media/:id` is
+  unauthenticated and every photo is broken. No code change; the DNS move fixes
+  it, and it is worth re-checking explicitly afterwards.
 - **Smoke-test data** — one child and one observation remain in the production
   database from the PDF verification; harmless, and to be removed with the first
   real data load.
@@ -421,5 +523,13 @@ What remains is not code. It is **provisioning** — managed Postgres, Redis, an
 R2 bucket, two signing secrets, DNS and certificates — and **device QA**, which
 needs a phone. Neither can be done from this environment, and neither is
 blocked by anything in the repository.
+
+**★ Amended 2026-08-20. Deployed is not the same as usable.** The current
+deployment cannot log anybody in from a browser, because the two hosts are
+cross-site and the session cookies are `SameSite=Lax` (§2.4, §6b). The DNS
+records are therefore not the last item on a provisioning list — they are the
+thing standing between a deployed build and a working product, and the
+browser-shaped flow in §6b stays **unverified** until they exist. Nothing in
+this document that was checked with `curl` is evidence about that flow.
 
 Nothing found in Phase 12 or Phase 13 remains unfixed.
