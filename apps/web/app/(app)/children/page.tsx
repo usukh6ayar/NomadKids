@@ -6,12 +6,13 @@ import { Search } from "lucide-react";
 import { useState } from "react";
 import { childSummarySchema, paginated } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
+import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { useDebounced } from "@/lib/use-debounced";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, RowList } from "@/components/ui/card";
 import { Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
@@ -63,15 +64,18 @@ function StaffChildren() {
   });
 
   return (
-    <div className="flex flex-col gap-5 py-2">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink">Хүүхдүүд</h1>
-        {data ? (
-          <p className="text-sm text-muted" aria-live="polite">
-            Нийт {data.total}
-          </p>
-        ) : null}
-      </header>
+    <div className="flex flex-col gap-5 lg:gap-7">
+      <PageHeader
+        title="Хүүхдүүд"
+        lede="Хариуцсан бүлгийн хүүхдүүд."
+        actions={
+          data ? (
+            <p className="text-sm text-muted" aria-live="polite">
+              Нийт {data.total}
+            </p>
+          ) : null
+        }
+      />
 
       <div className="relative">
         <Search
@@ -122,14 +126,16 @@ function StaffChildren() {
 
       {data && data.items.length > 0 ? (
         <>
-          <Card
-            className={`divide-y divide-border ${isPlaceholderData ? "opacity-60" : ""}`}
-            aria-busy={isPlaceholderData}
-          >
+          {/*
+            A column of separate cards, per the reference's `.kidlist` —
+            not one card with dividers. Every list screen in this product now
+            reads the same way.
+          */}
+          <RowList className={isPlaceholderData ? "opacity-60" : ""} aria-busy={isPlaceholderData}>
             {data.items.map((child) => (
               <ChildRow key={child.id} child={child} />
             ))}
-          </Card>
+          </RowList>
 
           {data.totalPages > 1 ? (
             <nav aria-label="Хуудаслалт" className="flex items-center justify-between gap-3">
@@ -185,12 +191,17 @@ function ChildRow({
   return (
     <Link
       href={`/children/${child.id}`}
-      className="flex min-h-[64px] items-center gap-3 px-4 py-3 hover:bg-canvas"
+      // The whole row is one card and one link. `hover:border-primary` is the
+      // reference's `.kidrow:hover` — the affordance is the border moving to
+      // the brand colour, not a background wash.
+      className="flex min-h-[64px] items-center gap-3 rounded-[14px] border border-border bg-surface px-4 py-3 transition-colors hover:border-primary"
     >
       <ChildAvatar child={child} size={44} />
       <span className="min-w-0 flex-1">
-        <span className="block truncate font-medium text-ink">{fullName(child)}</span>
-        <span className="block truncate text-sm text-muted">
+        <span className="block truncate text-[.94rem] font-semibold leading-[1.35] text-ink">
+          {fullName(child)}
+        </span>
+        <span className="mt-px block truncate text-[.78rem] text-muted">
           {[group, formatAge(child.dateOfBirth)].filter(Boolean).join(" · ")}
         </span>
       </span>
@@ -207,7 +218,7 @@ function MyChildren() {
   });
 
   return (
-    <div className="flex flex-col gap-5 py-2">
+    <div className="flex flex-col gap-5 lg:gap-7">
       <h1 className="text-xl font-semibold text-ink">Хөгжлийн хавтас</h1>
 
       {isLoading ? <LoadingState rows={2} /> : null}

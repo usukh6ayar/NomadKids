@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ClipboardList, Users } from "lucide-react";
 import { groupSchema, paginated, teacherDashboardSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
+import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { RequireRole } from "@/components/shell/require-role";
@@ -44,7 +45,7 @@ function TeacherDashboard() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-5 py-2">
+      <div className="flex flex-col gap-5 lg:gap-7">
         <h1 className="text-xl font-semibold text-ink">Нүүр</h1>
         <LoadingState rows={4} />
       </div>
@@ -77,13 +78,13 @@ function TeacherDashboard() {
     counts.pendingReviews === 0 && missing.length === 0 && recentObservations.length === 0;
 
   return (
-    <div className="flex flex-col gap-6 py-2">
-      <header>
-        <h1 className="text-xl font-semibold text-ink">Нүүр</h1>
-        <p className="mt-0.5 text-sm text-muted">
-          {currentTerm ? `${currentTerm.name} · идэвхтэй улирал` : "Идэвхтэй улирал тохируулаагүй"}
-        </p>
-      </header>
+    <div className="flex flex-col gap-6 lg:gap-8">
+      <PageHeader
+        title="Хяналтын самбар"
+        lede={
+          currentTerm ? `${currentTerm.name} · идэвхтэй улирал` : "Идэвхтэй улирал тохируулаагүй"
+        }
+      />
 
       <section aria-label="Товч мэдээлэл" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Хүүхэд" value={counts.children} />
@@ -143,7 +144,10 @@ function TeacherDashboard() {
 
       {missing.length > 0 ? (
         <section aria-labelledby="assessment-gap-heading">
-          <SectionHeader title="Энэ улиралд үнэлгээ хийгдээгүй" />
+          <SectionHeader
+            title="Энэ улиралд үнэлгээ хийгдээгүй"
+            lede="Улирал хаагдахаас өмнө үнэлгээ шаардлагатай хүүхдүүд."
+          />
           <Card className="divide-y divide-border">
             {missing.slice(0, 6).map((child) => (
               <Link
@@ -232,7 +236,7 @@ function GroupsSection() {
 
   return (
     <section aria-labelledby="groups-heading">
-      <SectionHeader title="Бүлгүүд" />
+      <SectionHeader title="Бүлгүүд" lede="Хариуцсан бүлгүүд, улирлын үнэлгээ рүү шууд." />
       <Card className="divide-y divide-border">
         {data.items.map((group) => (
           <Link

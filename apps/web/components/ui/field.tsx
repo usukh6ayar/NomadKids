@@ -151,14 +151,29 @@ export function Checkbox({
   const id = useId();
 
   return (
-    <div className={cn("flex min-h-[44px] items-start gap-3 py-1", className)}>
+    /*
+     * ★ The whole row is the label, not just the text beside the box.
+     *
+     * The box itself is 20px — the native control, deliberately, because a
+     * restyled one loses the platform's own focus ring and checked state. What
+     * makes it tappable is that the entire 44px row toggles it, so a thumb
+     * landing anywhere on the line hits the target. With the label wrapping
+     * only the text, the gap and the row's trailing space were dead pixels.
+     */
+    <label
+      htmlFor={id}
+      className={cn(
+        "flex min-h-[44px] cursor-pointer select-none items-start gap-3 py-1",
+        className,
+      )}
+    >
       <input id={id} type="checkbox" className="mt-1 size-5 shrink-0 accent-primary" {...props} />
-      <label htmlFor={id} className="cursor-pointer select-none text-sm leading-snug">
+      <span className="text-sm leading-snug">
         <span className="font-medium text-ink">{label}</span>
         {description ? (
           <span className="mt-0.5 block text-xs text-muted">{description}</span>
         ) : null}
-      </label>
-    </div>
+      </span>
+    </label>
   );
 }

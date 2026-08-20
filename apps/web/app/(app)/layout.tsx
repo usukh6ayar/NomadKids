@@ -12,7 +12,12 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
-import { AppShell, type NavItem } from "@/components/shell/app-shell";
+import {
+  AppShell,
+  type NavItem,
+  type NavSection,
+  type NavShortcut,
+} from "@/components/shell/app-shell";
 import { LoadingState } from "@/components/ui/states";
 import { useSession } from "@/lib/auth/session";
 
@@ -59,13 +64,30 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const nav = isStaff ? staffNav(hasRole("ADMIN")) : parentNav();
 
   return (
-    <AppShell nav={nav} variant={isStaff ? "teacher" : "parent"}>
+    <AppShell
+      nav={nav}
+      sections={isStaff ? staffSections(hasRole("ADMIN")) : undefined}
+      shortcuts={isStaff ? STAFF_SHORTCUTS : undefined}
+      variant={isStaff ? "teacher" : "parent"}
+    >
       {children}
     </AppShell>
   );
 }
 
 const iconProps = { size: 20, strokeWidth: 2, "aria-hidden": true } as const;
+
+/**
+ * The quick-links box. Three destinations a teacher reaches every day.
+ *
+ * The reference's third is Ирц, which is Phase 2 here; the review queue takes
+ * that slot because it is the teacher's actual daily task in the MVP.
+ */
+const STAFF_SHORTCUTS: NavShortcut[] = [
+  { href: "/children", label: "Хүүхдүүд", icon: <Users size={18} aria-hidden /> },
+  { href: "/observations/review", label: "Хянах", icon: <ClipboardList size={18} aria-hidden /> },
+  { href: "/notifications", label: "Самбар", icon: <Bell size={18} aria-hidden /> },
+];
 
 /**
  * Staff navigation.
@@ -89,6 +111,69 @@ function staffNav(isAdmin: boolean): NavItem[] {
 
   items.push({ href: "/settings", label: "Профайл", icon: <Settings {...iconProps} /> });
   return items;
+}
+
+/**
+ * The desktop sidebar's grouped sections — the reference's five `nav-group`s,
+ * with its headings and its ordering.
+ *
+ * ★ Entries the MVP does not have are `soon`, not links.
+ *
+ * That is the reference's own device: its "Санхүү удахгүй" and "Баримт бичиг
+ * удахгүй" are plain spans for exactly this reason, and `base_teacher.html`
+ * states the rule — "a menu entry that goes nowhere teaches users the system is
+ * broken". So the menu names the whole product, as the design does, while only
+ * the built parts are reachable.
+ *
+ * Which entries those are follows CLAUDE.md §7: attendance, meals, finance,
+ * documents, chat and surveys are Phase 2. Nothing here pulls any of them
+ * forward — this is the navigation's appearance, not their implementation.
+ */
+function staffSections(isAdmin: boolean): NavSection[] {
+  return [
+    {
+      title: "Хүүхдийн хөгжил ба үнэлгээ",
+      entries: [
+        { label: "Хүүхдүүд", href: "/children" },
+        { label: "Ажиглалт хянах", href: "/observations/review" },
+        // Assessment always begins from a group, and reports from a child, so
+        // neither has a top-level route to point at.
+        { label: "Явцын үнэлгээ", soon: true },
+        { label: "Тайлан", soon: true },
+      ],
+    },
+    {
+      title: "Өдөр тутмын бүртгэл",
+      entries: [
+        { label: "Ирц", soon: true },
+        { label: "Хоол", soon: true },
+      ],
+    },
+    {
+      title: "Харилцаа холбоо",
+      entries: [
+        { label: "Ангийн самбар / Мэдээ", href: "/notifications" },
+        { label: "Судалгаа", soon: true },
+        { label: "Чат", soon: true },
+      ],
+    },
+    {
+      title: "Санхүү ба баримт бичиг",
+      entries: [
+        { label: "Санхүү", soon: true },
+        { label: "Баримт бичиг", soon: true },
+      ],
+    },
+    {
+      title: "Багш ба байгууллага",
+      entries: [
+        { label: "Багшийн мэдээлэл", href: "/settings" },
+        isAdmin
+          ? { label: "Бүлэг, цэцэрлэгийн мэдээлэл", href: "/admin" }
+          : { label: "Бүлэг, цэцэрлэгийн мэдээлэл", soon: true },
+      ],
+    },
+  ];
 }
 
 /** Parent navigation — four items, the brief's Нүүр / Хавтас / Мэдэгдэл plus profile. */

@@ -7,6 +7,7 @@ import { z } from "zod";
 import { Check, Undo2 } from "lucide-react";
 import { observationSchema, paginated, personRefSchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
+import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { RequireRole } from "@/components/shell/require-role";
@@ -47,20 +48,18 @@ function ReviewQueue() {
   });
 
   return (
-    <div className="flex flex-col gap-5 py-2">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-ink">Эцэг эхийн ажиглалт хянах</h1>
-          <p className="mt-0.5 text-sm text-muted">
-            Гэрээс хуваалцсан бичлэгүүдийг хянаж, хавтаст нэмнэ.
-          </p>
-        </div>
-        {data ? (
-          <p className="text-sm text-muted" aria-live="polite">
-            {data.total} хүлээгдэж буй
-          </p>
-        ) : null}
-      </header>
+    <div className="flex flex-col gap-5 lg:gap-7">
+      <PageHeader
+        title="Эцэг эхийн ажиглалт — хянах"
+        lede="Гэрээс хуваалцсан бичлэгүүдийг хянаж, хавтаст нэмнэ."
+        actions={
+          data ? (
+            <p className="text-sm text-muted" aria-live="polite">
+              {data.total} хүлээгдэж буй
+            </p>
+          ) : null
+        }
+      />
 
       {isLoading ? <LoadingState rows={3} /> : null}
 
@@ -125,7 +124,9 @@ function ReviewCard({ observation }: { observation: z.infer<typeof queueItemSche
           {observation.child ? (
             <Link
               href={`/children/${observation.child.id}`}
-              className="font-medium text-ink underline-offset-4 hover:underline"
+              // Inline in a sentence, so the box is grown rather than the text:
+              // measured at 18px, which is not a target a thumb finds.
+              className="inline-flex min-h-[44px] items-center font-medium text-ink underline-offset-4 hover:underline"
             >
               {fullName(observation.child)}
             </Link>

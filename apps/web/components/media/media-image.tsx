@@ -31,6 +31,32 @@ import { initials } from "@/lib/format";
  * photo for their first weeks, and a column of identical grey figures makes a
  * class list unreadable.
  */
+/**
+ * The tints a photoless avatar cycles through.
+ *
+ * ★ The reference gives each child a different colour so a teacher finds a row
+ * by shape rather than by reading every name — the same argument its `app.css`
+ * makes for tinting the dashboard statistics. These are v2's own accent tokens,
+ * not new colours: mint, sky, sun, peach, and the brand.
+ *
+ * Chosen from the name, not from the list position, so a child keeps the same
+ * colour between the list, the dashboard and their own page. An index would
+ * repaint everyone the moment the sort order changed.
+ */
+const AVATAR_TINTS = [
+  "bg-primary-soft text-primary",
+  "bg-mint text-mint-ink",
+  "bg-sky text-sky-ink",
+  "bg-sun text-sun-ink",
+  "bg-peach text-peach-ink",
+] as const;
+
+function tintFor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i += 1) hash = (hash * 31 + name.charCodeAt(i)) % 100000;
+  return AVATAR_TINTS[hash % AVATAR_TINTS.length]!;
+}
+
 export function ChildAvatar({
   child,
   size = 44,
@@ -51,7 +77,8 @@ export function ChildAvatar({
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-soft font-semibold text-primary",
+        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold",
+        showPhoto ? "bg-primary-soft text-primary" : tintFor(name),
         className,
       )}
       style={{ width: size, height: size, fontSize: Math.max(12, Math.round(size * 0.36)) }}
