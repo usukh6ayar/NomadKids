@@ -18,10 +18,12 @@ import { AuthService, type RequestContext } from "./auth.service";
 import {
   changePasswordSchema,
   loginSchema,
+  invitationAcceptSchema,
   passwordResetConfirmSchema,
   passwordResetRequestSchema,
   type ChangePasswordDto,
   type LoginDto,
+  type InvitationAcceptDto,
   type PasswordResetConfirmDto,
   type PasswordResetRequestDto,
 } from "./auth.dto";
@@ -192,6 +194,31 @@ export class AuthController {
   ): Promise<void> {
     await this.auth.confirmPasswordReset(body.token, body.password, context(req));
     // Every session was revoked server-side; clear this browser's cookies too.
+    clearAuthCookies(res);
+  }
+
+  /**
+   * Accepts an invitation and sets the first password.
+   *
+   * Public, because by definition the person cannot log in yet — the account
+   * has no usable credential until this succeeds.
+   *
+   * Rate-limited like the reset confirmation: the token is the only thing
+   * standing between a guesser and a new account, so the endpoint must not be
+   * cheap to hammer.
+   */
+  @Public()
+  @Post("invitation/accept")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RateLimit({ limit: 10, windowMs: HOUR })
+  async acceptInvitation(
+    @Body(new ZodValidationPipe(invitationAcceptSchema)) body: InvitationAcceptDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    await this.auth.acceptInvitation(body.token, body.password, context(req));
+    // Any session this account had was revoked server-side; clear the browser's
+    // cookies too, so the next step is a deliberate login.
     clearAuthCookies(res);
   }
 

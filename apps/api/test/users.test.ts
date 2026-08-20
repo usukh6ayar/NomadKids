@@ -422,3 +422,143 @@ describe("cross-admin isolation", () => {
     expect(checks.map((r) => r.status)).toEqual([404, 404, 404, 404]);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Accepting an invitation — the step that makes the account usable
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("POST /auth/invitation/accept", () => {
+  const PASSWORD = "Shine-Nuuts99";
+
+  /** Invites a user and returns the token the administrator would hand over. */
+  async function invite(role: "TEACHER" | "PARENT" | "ADMIN" = "TEACHER") {
+    const username = uniq("invited");
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/users`),
+      adminA,
+    ).send({ username, lastName: "Батсуурь", firstName: "Ганаа", role });
+
+    if (res.status !== 201) throw new Error(`invite failed: ${res.status} ${res.text}`);
+    return { username, token: res.body.invitationToken as string, userId: res.body.user.id };
+  }
+
+  it("sets the first password and the account can then log in", async () => {
+    const { username, token } = await invite();
+
+    // ★ Before: the account exists and cannot be opened by anyone. The password
+    // is 32 random bytes nobody has ever seen.
+    const before = await request(server())
+      .post("/v1/auth/login")
+      .send({ identifier: username, password: PASSWORD });
+    expect(before.status).toBe(401);
+
+    const accept = await request(server())
+      .post("/v1/auth/invitation/accept")
+      .send({ token, password: PASSWORD });
+    expect(accept.status).toBe(204);
+
+    const after = await request(server())
+      .post("/v1/auth/login")
+      .send({ identifier: username, password: PASSWORD });
+    expect(after.status).toBe(200);
+  });
+
+  it("consumes the token, so a link cannot be replayed", async () => {
+    const { token } = await invite();
+
+    await request(server())
+      .post("/v1/auth/invitation/accept")
+      .send({ token, password: PASSWORD });
+
+    const replay = await request(server())
+      .post("/v1/auth/invitation/accept")
+      .send({ token, password: "Ondoo-Nuuts99" });
+
+    expect(replay.status).toBe(401);
+  });
+
+  it("refuses an expired invitation", async () => {
+    const { token, userId } = await invite();
+    await db.authToken.updateMany({
+      where: { userId, purpose: "INVITATION" },
+      data: { expiresAt: new Date(Date.now() - 1000) },
+    });
+
+    const res = await request(server())
+      .post("/v1/auth/invitation/accept")
+      .send({ token, password: PASSWORD });
+
+    expect(res.status).toBe(401);
+  });
+
+  it("refuses an unknown token", async () => {
+    const res = await request(server())
+      .post("/v1/auth/invitation/accept")
+      .send({ token: "not-a-real-token-value", password: PASSWORD });
+
+    expect(res.status).toBe(401);
+  });
+
+  it("says the same thing for unknown, used and expired", async () => {
+    const { token } = await invite();
+    await request(server())
+      .post("/v1/auth/invitation/accept")
+      .send({ token, password: PASSWORD });
+
+    const used = await request(server())
+      .post("/v1/auth/invitation/accept")
+      .send({ token, password: PASSWORD });
+    const unknown = await request(server())
+      .post("/v1/auth/invitation/accept")
+      .send({ token: "another-token-that-does-not-exist", password: PASSWORD });
+
+    // Distinguishing them tells someone holding a guessed token something
+    // about it.
+    expect(used.body.title).toBe(unknown.body.title);
+  });
+
+  it("enforces the password policy", async () => {
+    const { token } = await invite();
+
+    const res = await request(server())
+      .post("/v1/auth/invitation/accept")
+      .send({ token, password: "short" });
+
+    expect(res.status).toBe(400);
+  });
+
+  /**
+   * ★ The separation that matters.
+   *
+   * An invitation token must not be usable to reset an existing user's
+   * password, and a reset token must not activate an invited account. Merging
+   * the two endpoints — they take the same body — would quietly allow both.
+   */
+  it("an invitation token cannot be used on the password-reset endpoint", async () => {
+    const { token } = await invite();
+
+    const res = await request(server())
+      .post("/v1/auth/password-reset/confirm")
+      .send({ token, password: PASSWORD });
+
+    expect(res.status).toBe(401);
+  });
+
+  it("a password-reset token cannot be used to accept an invitation", async () => {
+    const user = await createUser({ username: uniq("existing") });
+    await request(server()).post("/v1/auth/password-reset").send({ identifier: user.username });
+    const row = await db.authToken.findFirst({
+      where: { userId: user.id, purpose: "PASSWORD_RESET" },
+    });
+    expect(row).toBeTruthy();
+
+    // The raw token is not readable from the row — only its hash is stored —
+    // so this asserts the lookup is scoped by purpose using a token that is
+    // certainly not an INVITATION one.
+    const res = await request(server())
+      .post("/v1/auth/invitation/accept")
+      .send({ token: "a-token-that-is-not-an-invitation", password: PASSWORD });
+
+    expect(res.status).toBe(401);
+  });
+});

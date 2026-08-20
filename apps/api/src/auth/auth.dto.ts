@@ -26,6 +26,21 @@ export const passwordResetConfirmSchema = z.object({
 });
 export type PasswordResetConfirmDto = z.infer<typeof passwordResetConfirmSchema>;
 
+/**
+ * Accepting an invitation.
+ *
+ * The same shape as a password reset, and deliberately not merged with it: the
+ * two look alike and mean different things. A reset recovers an account its
+ * owner already had; this one is the first time anybody has been able to open
+ * the account at all. Sharing a schema would invite sharing the endpoint, and
+ * then an invitation token would be usable to reset an existing password.
+ */
+export const invitationAcceptSchema = z.object({
+  token: z.string().min(10).max(200),
+  password: z.string().min(8, "Нууц үг дор хаяж 8 тэмдэгт байх ёстой").max(200),
+});
+export type InvitationAcceptDto = z.infer<typeof invitationAcceptSchema>;
+
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1).max(200),
   newPassword: z.string().min(8, "Нууц үг дор хаяж 8 тэмдэгт байх ёстой").max(200),

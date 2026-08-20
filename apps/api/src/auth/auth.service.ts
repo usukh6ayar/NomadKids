@@ -299,6 +299,59 @@ export class AuthService {
     });
   }
 
+  /**
+   * Accepts an invitation: sets the first password on an account.
+   *
+   * ★ Until this runs the account cannot be opened by anyone.
+   *
+   * `UsersService.create` hashes 32 random bytes nobody ever sees, so the
+   * account exists, holds a membership and is visible to an administrator, but
+   * has no usable credential. This is what turns it into an account somebody
+   * can log into — and it is the only thing that can, because the invitation
+   * token is scoped to `INVITATION` and the reset endpoint only accepts
+   * `PASSWORD_RESET`.
+   *
+   * ★★ Separate from `confirmPasswordReset` even though the body is identical.
+   *
+   * Folding them together would mean one code path where an invitation token
+   * could reset an existing user's password — the token an administrator hands
+   * out would become a way into an account that already has an owner. Two
+   * purposes, two endpoints, two lookups.
+   *
+   * The failure message never distinguishes "unknown", "already used" and
+   * "expired". Each of those tells someone holding a guessed token something
+   * about it.
+   */
+  async acceptInvitation(token: string, password: string, ctx: RequestContext) {
+    const errors = validatePasswordStrength(password);
+    if (errors.length > 0) throw new UnauthorizedException(errors.join(". "));
+
+    const row = await this.repo.findAuthToken(hashToken(token), "INVITATION");
+    if (!row || row.usedAt || row.expiresAt.getTime() < Date.now()) {
+      throw new UnauthorizedException("Урилга хүчингүй эсвэл хугацаа нь дууссан байна");
+    }
+
+    await this.repo.consumeAuthToken(row.id);
+    await this.repo.setPassword(row.userId, await this.passwords.hash(password));
+
+    /*
+     * Revoked for the same reason a reset does it, not because a fresh account
+     * has sessions: an invitation can be re-issued for an existing user, and if
+     * it ever is, whoever was logged in should be logged out by it.
+     */
+    await this.repo.revokeAllUserSessions(row.userId);
+    await this.clearLockoutForUser(row.userId);
+
+    await this.audit.append({
+      // `ACTIVATE` already exists for exactly this — no new enum value, and so
+      // no migration, for an action the audit vocabulary already names.
+      action: "ACTIVATE",
+      actorUserId: row.userId,
+      ipAddress: ctx.ipAddress,
+      metadata: { stage: "completed" },
+    });
+  }
+
   /** Changing your own password, while logged in. */
   async changePassword(actor: Actor, current: string, next: string, ctx: RequestContext) {
     const hash = await this.repo.getPasswordHash(actor.userId);
