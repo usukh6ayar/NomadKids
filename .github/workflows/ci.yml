@@ -158,6 +158,27 @@ jobs:
           docker logs minio >&2 || true
           exit 1
 
+      - name: Install Chrome and the Cyrillic fonts
+        # ★ The report tests render real PDFs and assert on extracted text.
+        #
+        # `docs/PDF_SPIKE.md` §4 is the reason they do: a generator returning a
+        # megabyte of blank pages passes every "did it produce a file" check.
+        # Asserting on the text means the run needs a browser and needs fonts
+        # that cover Cyrillic — without them the assertion fails on tofu, which
+        # is exactly the failure it exists to catch.
+        #
+        # The Dockerfile does the same two things (apt `chromium`, plus
+        # `assets/fonts` copied into /usr/share/fonts). Puppeteer's own download
+        # is used here instead of apt: on ubuntu-latest `chromium` is a snap,
+        # which does not run in this environment.
+        run: |
+          set -euo pipefail
+          pnpm --filter @kinder/api exec puppeteer browsers install chrome
+          sudo mkdir -p /usr/share/fonts/truetype/kinder
+          sudo cp apps/api/assets/fonts/*.ttf /usr/share/fonts/truetype/kinder/
+          sudo fc-cache -f
+          fc-list | grep -ci "noto sans" || (echo "fonts did not register" >&2; exit 1)
+
       - name: Apply migrations
         # The integration suite truncates between cases; the tables have to
         # exist first. `deploy` rather than `dev` — it applies what is committed
