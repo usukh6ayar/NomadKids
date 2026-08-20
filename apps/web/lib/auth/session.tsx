@@ -2,10 +2,11 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 import { sessionSchema, type Role, type Session } from "@kinder/contracts";
 import { z } from "zod";
 import { get, mutate } from "@/lib/api/browser";
+import { rememberCsrfToken } from "@/lib/api/csrf";
 import { qk } from "@/lib/api/keys";
 import { ApiError } from "@/lib/api/client";
 
@@ -38,6 +39,13 @@ interface SessionValue {
   kindergartenIds: string[];
   /** The first kindergarten — most staff belong to exactly one. */
   primaryKindergartenId: string | null;
+  /**
+   * The double-submit CSRF token for this session, as the API reported it.
+   *
+   * Exposed for visibility and for tests; components do not need it, because
+   * `mutate()` attaches it itself from `lib/api/csrf`.
+   */
+  csrfToken: string | null;
 }
 
 const SessionContext = createContext<SessionValue | null>(null);
@@ -72,6 +80,28 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     staleTime: 5 * 60_000,
   });
 
+  /**
+   * ★ The CSRF token is mirrored out of the session, not read from a cookie.
+   *
+   * `mutate()` is a plain function called from mutation callbacks, so it cannot
+   * read this context. It reads `lib/api/csrf` instead, and this is the one
+   * place that writes it.
+   *
+   * Mirroring from `data` rather than from inside the queryFn means it follows
+   * the session however it changes — including a 401, which lands here as
+   * `null`.
+   *
+   * ★ It does **not** cover `queryClient.clear()`, and that was measured, not
+   * assumed. `clear()` removes the query but does not reset an active
+   * observer's `data` or trigger a refetch, so this effect never re-runs and a
+   * token would survive a logout. The two places that clear the cache therefore
+   * forget the token explicitly — `useLogout` below, and `providers.tsx` on
+   * session expiry. `apps/web/test/csrf.test.tsx` holds both paths down.
+   */
+  useEffect(() => {
+    rememberCsrfToken(data?.csrfToken ?? null);
+  }, [data]);
+
   const value = useMemo<SessionValue>(() => {
     const session = data ?? null;
     const roles = new Set((session?.memberships ?? []).map((m) => m.role));
@@ -84,6 +114,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       hasRole: (role) => roles.has(role),
       kindergartenIds,
       primaryKindergartenId: kindergartenIds[0] ?? null,
+      csrfToken: session?.csrfToken ?? null,
     };
   }, [data, isLoading]);
 
@@ -118,6 +149,10 @@ export function useLogout() {
       if (!(error instanceof ApiError)) throw error;
     } finally {
       queryClient.clear();
+      // `clear()` does not reset the session observer, so the mirror above will
+      // not fire — the token has to be dropped by hand or it outlives the
+      // session that owned it.
+      rememberCsrfToken(null);
       router.replace("/login");
     }
   };

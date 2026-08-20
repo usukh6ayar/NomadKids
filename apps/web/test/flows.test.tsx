@@ -64,7 +64,7 @@ describe("login", () => {
 
     renderWithProviders(<LoginPage />);
 
-    const identifier = screen.getByLabelText(/Хэрэглэгчийн нэр/);
+    const identifier = screen.getByLabelText(/Нэвтрэх нэр эсвэл и-мэйл/);
     await user.type(identifier, "bagsh");
     await user.type(screen.getByLabelText("Нууц үг *"), "wrong-password");
     await user.click(screen.getByRole("button", { name: "Нэвтрэх" }));
@@ -95,7 +95,7 @@ describe("login", () => {
 
     renderWithProviders(<LoginPage />);
 
-    await user.type(screen.getByLabelText(/Хэрэглэгчийн нэр/), "bagsh");
+    await user.type(screen.getByLabelText(/Нэвтрэх нэр эсвэл и-мэйл/), "bagsh");
     await user.type(screen.getByLabelText("Нууц үг *"), "correct-password");
     await user.click(screen.getByRole("button", { name: "Нэвтрэх" }));
 

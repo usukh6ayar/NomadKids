@@ -1,31 +1,24 @@
 "use client";
 
 import { apiFetch, type RequestOptions } from "./client";
+import { currentCsrfToken } from "./csrf";
 
 /**
  * The browser-side wrapper.
  *
- * ★ It reads the CSRF token from the cookie itself.
+ * ★ It attaches the CSRF token for every unsafe call.
  *
  * `apiFetch` takes `csrfToken` as an option, which means every unsafe call site
  * has to remember to pass it — and forgetting produces a 403 that looks like a
- * permissions bug. The token is not a secret (the cookie is deliberately not
- * HttpOnly, docs/SECURITY.md §3.2); the protection comes from a third-party
- * site being unable to *read* it. So reading it here is safe and removes the
- * whole class of mistake.
+ * permissions bug. Attaching it in one place removes the whole class of mistake.
+ *
+ * The token comes from the session response, held in `./csrf`. It used to be
+ * read out of `document.cookie`, which cannot work once the API is on its own
+ * host — see the note there.
  *
  * Server components keep using `apiFetch` directly with an explicit cookie
- * header, because there is no `document` there.
+ * header, because there is no session context there.
  */
-
-const CSRF_COOKIE = "kinder_csrf";
-
-export function readCsrfToken(): string | undefined {
-  if (typeof document === "undefined") return undefined;
-
-  const match = document.cookie.split("; ").find((c) => c.startsWith(`${CSRF_COOKIE}=`));
-  return match?.slice(CSRF_COOKIE.length + 1) || undefined;
-}
 
 /** A GET. */
 export async function get<T>(
@@ -42,5 +35,5 @@ export async function mutate<T>(
   schema: { parse: (data: unknown) => T },
   options: Omit<RequestOptions, "csrfToken" | "cookie"> = {},
 ): Promise<T> {
-  return apiFetch(path, schema, { ...options, csrfToken: readCsrfToken() });
+  return apiFetch(path, schema, { ...options, csrfToken: currentCsrfToken() });
 }

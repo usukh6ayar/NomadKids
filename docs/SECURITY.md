@@ -153,9 +153,22 @@ revoking a teacher's assignment would not take effect until their token expires.
 
 Two layers:
 
-1. **Double-submit token.** A non-HttpOnly `csrfToken` cookie plus an
-   `X-CSRF-Token` header the frontend copies from it. Required on every
-   `POST`/`PATCH`/`DELETE`. Rejected mismatches return 403 and are audited.
+1. **Double-submit token.** A `csrfToken` cookie plus an `X-CSRF-Token` header
+   carrying the same value. Required on every `POST`/`PATCH`/`DELETE`. Rejected
+   mismatches return 403 and are audited.
+
+   ★ **The frontend does not copy the header value out of the cookie.** It takes
+   it from the session response — `/auth/login` and `/auth/me` both return
+   `csrfToken` — because `document.cookie` cannot reach it. The cookie is
+   host-only on `api.nomadkids.mn` (§3.1) and cookies scope by **domain**, not
+   by site, so a page on `nomadkids.mn` cannot read it even though the browser
+   attaches it to every request going to the API. Reading it from the cookie is
+   what the client used to do, and it 403'd every write; corrected 2026-08-20,
+   see `IMPLEMENTATION_STATUS.md`.
+
+   The browser still supplies the cookie half by itself, which is what makes it
+   a double submit: an attacker's page can cause the cookie to be sent but
+   cannot learn the value to echo in the header.
 2. **Origin check.** Reject unsafe methods whose `Origin` is not in the
    allowlist — in production, exactly `https://nomadkids.mn`.
 

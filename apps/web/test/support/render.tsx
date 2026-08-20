@@ -59,7 +59,13 @@ export interface RouteStub {
  * test with a network error that masks what the component actually did.
  */
 export function stubApi(routes: RouteStub[]) {
-  const calls: { url: string; method: string; body?: unknown }[] = [];
+  const calls: {
+    url: string;
+    method: string;
+    body?: unknown;
+    /** Lower-cased, so an assertion cannot pass or fail on header casing. */
+    headers: Record<string, string>;
+  }[] = [];
 
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
@@ -77,7 +83,7 @@ export function stubApi(routes: RouteStub[]) {
       parsedBody = init.body;
     }
 
-    calls.push({ url: path, method, body: parsedBody });
+    calls.push({ url: path, method, body: parsedBody, headers: lowerCased(init?.headers) });
 
     const route = routes.find(
       (r) => path.startsWith(r.path) && (!r.method || r.method.toUpperCase() === method),
@@ -98,6 +104,21 @@ export function stubApi(routes: RouteStub[]) {
 
   vi.stubGlobal("fetch", fetchMock);
   return { calls, fetchMock };
+}
+
+function lowerCased(headers: HeadersInit | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!headers) return out;
+
+  if (headers instanceof Headers) {
+    headers.forEach((value, key) => (out[key.toLowerCase()] = value));
+  } else if (Array.isArray(headers)) {
+    for (const [key, value] of headers) out[key!.toLowerCase()] = value!;
+  } else {
+    for (const [key, value] of Object.entries(headers)) out[key.toLowerCase()] = value;
+  }
+
+  return out;
 }
 
 function jsonResponse(status: number, body: unknown): Response {

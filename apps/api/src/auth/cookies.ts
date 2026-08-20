@@ -44,10 +44,20 @@ export function refreshCookieOptions(env: Env = loadEnv()): CookieOptions {
 }
 
 /**
- * The CSRF cookie is the one that is NOT HttpOnly — the frontend has to read it
- * to echo the value back in a header. That is the whole double-submit
- * mechanism; the value is not a secret, it only has to be unguessable by a
- * third-party site, which the same-origin policy guarantees.
+ * The CSRF cookie is the one that is NOT HttpOnly.
+ *
+ * ★ The frontend does **not** read it, and cannot. This cookie is host-only on
+ * the API's host, and `document.cookie` scopes by domain rather than by site —
+ * so a page on `nomadkids.mn` never sees a cookie belonging to
+ * `api.nomadkids.mn`, same-site or not. The web client takes the value from the
+ * session response instead (`/auth/login`, `/auth/me`); reading it here is what
+ * used to 403 every write in a split-origin deployment.
+ *
+ * The flag stays off because it is the honest description of a double-submit
+ * token — the value is not a secret, it only has to be unguessable by a
+ * third-party site — and because a future same-host client may legitimately
+ * read it. The protection is that the attacker cannot read the value, not that
+ * the browser hides it.
  */
 export function csrfCookieOptions(env: Env = loadEnv()): CookieOptions {
   return {

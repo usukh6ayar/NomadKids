@@ -6,11 +6,13 @@ import Link from "next/link";
 import { Suspense, useState, type FormEvent } from "react";
 import { primaryDashboardSchema, sessionSchema } from "@kinder/contracts";
 import { mutate, get } from "@/lib/api/browser";
+import { rememberCsrfToken } from "@/lib/api/csrf";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
+import { AuthShell, LoginTabs, LOGIN_TABS, type LoginTab } from "@/components/shell/auth-shell";
 
 /**
  * Sign in.
@@ -34,13 +36,25 @@ function LoginForm() {
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [tab, setTab] = useState<LoginTab>("teacher");
+
+  const identifierLabel =
+    LOGIN_TABS.find((t) => t.key === tab)?.identifierLabel ?? LOGIN_TABS[0].identifierLabel;
 
   const login = useMutation({
     mutationFn: async () => {
-      await mutate("/auth/login", sessionSchema, {
+      const session = await mutate("/auth/login", sessionSchema, {
         method: "POST",
         body: { identifier, password },
       });
+
+      // Login is the one unsafe request that needs no CSRF token — it is
+      // `@Public()`, there being no session yet to pair one with. Its response
+      // carries the token for every request after it. `SessionProvider` will
+      // mirror the same value once `/auth/me` answers; taking it here closes
+      // the window in between, so a save made immediately after signing in
+      // cannot go out unaccompanied.
+      rememberCsrfToken(session.csrfToken);
 
       // Fetched after login so the redirect uses the new session's cookie.
       return get("/dashboard/primary", primaryDashboardSchema);
@@ -86,11 +100,14 @@ function LoginForm() {
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-[420px] flex-col justify-center gap-6 px-5 py-10">
-      <div className="text-center">
-        <h1 className="text-2xl font-semibold text-ink">NomadKids</h1>
-        <p className="mt-1 text-sm text-muted">Хүүхдийн хөгжлийн цахим хавтас</p>
-      </div>
+    <AuthShell>
+      <h2 className="mb-1.5 text-[1.35rem] font-bold tracking-[-.01em] text-ink">Нэвтрэх</h2>
+
+      {/*
+        The tabs only change the label below. See `LOGIN_TABS` for why that is
+        deliberate rather than unfinished.
+      */}
+      <LoginTabs value={tab} onChange={setTab} />
 
       <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
         <FormError
@@ -99,7 +116,7 @@ function LoginForm() {
           }
         />
 
-        <Field label="Хэрэглэгчийн нэр, и-мэйл эсвэл утас" error={errors.identifier} required>
+        <Field label={identifierLabel} error={errors.identifier} required>
           {({ id, describedBy, invalid }) => (
             <Input
               id={id}
@@ -133,15 +150,22 @@ function LoginForm() {
         <Button type="submit" size="lg" block disabled={login.isPending}>
           {login.isPending ? "Нэвтэрч байна…" : "Нэвтрэх"}
         </Button>
+      </form>
 
+      {/*
+        Left-aligned above a rule, as in the reference. The reference's own link
+        is 17px tall — measured — which is not a tappable target, so this one
+        keeps the 44px floor while looking the same.
+      */}
+      <p className="mt-[22px] border-t border-border pt-4">
         <Link
           href="/forgot-password"
-          className="mx-auto inline-flex min-h-[44px] items-center text-sm text-primary underline underline-offset-4"
+          className="inline-flex min-h-[44px] items-center text-sm font-semibold text-primary hover:underline"
         >
           Нууц үгээ мартсан уу?
         </Link>
-      </form>
-    </main>
+      </p>
+    </AuthShell>
   );
 }
 

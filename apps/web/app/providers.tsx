@@ -4,6 +4,7 @@ import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@ta
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { SessionProvider } from "@/lib/auth/session";
+import { rememberCsrfToken } from "@/lib/api/csrf";
 import { isSessionExpired } from "@/lib/api/errors";
 
 /**
@@ -65,6 +66,9 @@ export function Providers({ children }: { children: ReactNode }) {
 
       redirecting = true;
       client.clear();
+      // Same reason as in `useLogout`: `clear()` leaves the session observer's
+      // data in place, so the token does not drop by itself.
+      rememberCsrfToken(null);
       const from = encodeURIComponent(path + window.location.search);
       router.replace(`/login?from=${from}`);
     };
