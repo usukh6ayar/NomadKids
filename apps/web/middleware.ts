@@ -25,10 +25,45 @@ import { NextResponse, type NextRequest } from "next/server";
  * without listing each one; browsers that do not support it fall back to
  * `'self'`, which is why both are present.
  */
+/**
+ * The scheme and host of a URL, or `undefined` if it is unset or unparseable.
+ *
+ * A malformed value must not throw: this runs on every request, and a typo in
+ * an environment variable should cost a missing photo, not the whole site.
+ */
+function originOf(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    return new URL(value).origin;
+  } catch {
+    return undefined;
+  }
+}
+
 export function middleware(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const isProduction = process.env.NODE_ENV === "production";
   const apiOrigin = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+
+  /**
+   * ★ The storage origin has to be in `img-src`, and it is not obvious why.
+   *
+   * Every photo is loaded as `<img src="{api}/v1/media/:id">`. That endpoint
+   * checks permission and then **302s to a presigned URL on the storage host**
+   * — R2 in production, MinIO locally. CSP is enforced against the URL the
+   * browser finally fetches, not the one in the attribute, so listing the API
+   * origin alone blocks every child photo in the product.
+   *
+   * Found by uploading a real file in a real browser: the request chain was
+   * correct end to end — 302, presigned URL, 200, `image/png` — and the image
+   * still did not appear, because the policy refused the redirect target.
+   * Nothing short of rendering a photo could have caught it: no server check
+   * sees a CSP violation.
+   *
+   * The exact origin, never a wildcard. Presigned URLs are unguessable and
+   * short-lived, but `img-src *` would let an injected tag exfiltrate by URL.
+   */
+  const storageOrigin = originOf(process.env.NEXT_PUBLIC_MEDIA_URL);
 
   const csp = [
     "default-src 'self'",
@@ -39,7 +74,7 @@ export function middleware(request: NextRequest) {
     // inline `style` attributes. A real, scoped weakening — styles only.
     "style-src 'self' 'unsafe-inline'",
     // `blob:` covers a locally previewed upload before it is sent.
-    `img-src 'self' data: blob: ${apiOrigin}`,
+    `img-src 'self' data: blob: ${apiOrigin}${storageOrigin ? ` ${storageOrigin}` : ""}`,
     "font-src 'self' data:",
     `connect-src 'self' ${apiOrigin}${isProduction ? "" : " ws: http://localhost:*"}`,
     "frame-ancestors 'none'",

@@ -21,6 +21,8 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ChildHeader } from "@/components/child/child-header";
+import { ChildGallery } from "@/components/media/child-gallery";
+import { fullName } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const PORTFOLIO_AGES = [2, 3, 4, 5] as const;
@@ -73,7 +75,8 @@ const birthdayNotesSchema = z.array(birthdayNoteSchema);
 export default function PortfolioPage() {
   const params = useParams<{ childId: string }>();
   const childId = params.childId;
-  const { session } = useSession();
+  const { session, hasRole } = useSession();
+  const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
 
   const child = useQuery({
     queryKey: qk.child(childId),
@@ -132,6 +135,7 @@ export default function PortfolioPage() {
       <nav aria-label="Хавтасны хэсгүүд" className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-2">
           <SectionLink href="#about-me" label="Миний тухай" />
+          <SectionLink href="#gallery" label="Зураг, бүтээл" />
           <SectionLink href="#birthdays" label="Төрсөн өдөр" />
         </div>
 
@@ -189,6 +193,18 @@ export default function PortfolioPage() {
           isGuardian={isGuardian}
         />
       ))}
+
+      {/*
+        Photographs and work, between the age timeline and the birthday notes.
+        A guardian may add to it — the API decides that, through
+        `assertCanRecord`; this only decides whether to offer the control.
+      */}
+      <ChildGallery
+        childId={childId}
+        childName={fullName(data)}
+        canEdit={isStaff || isGuardian}
+        photoMediaFileId={data.photoMediaFileId}
+      />
 
       <BirthdaySection
         childId={childId}
