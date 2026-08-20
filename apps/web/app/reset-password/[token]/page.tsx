@@ -9,8 +9,8 @@ import { mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
-import { Card } from "@/components/ui/card";
 import { FormError } from "@/components/ui/states";
+import { AuthShell } from "@/components/shell/auth-shell";
 
 const MIN_LENGTH = 8;
 
@@ -63,31 +63,39 @@ export default function ResetPasswordPage() {
 
   if (reset.isSuccess) {
     return (
-      <main className="mx-auto flex min-h-dvh w-full max-w-[420px] flex-col justify-center px-5">
-        <Card className="px-5 py-6 text-center">
-          <p role="status" className="font-medium text-ink">
-            Нууц үг шинэчлэгдлээ.
-          </p>
-          <p className="mt-1 text-sm text-muted">Нэвтрэх хуудас руу шилжиж байна…</p>
+      <AuthShell>
+        <h2 className="mb-1.5 text-[1.35rem] font-bold tracking-[-.01em] text-ink">
+          Нууц үг шинэчлэгдлээ
+        </h2>
+        <p role="status" className="text-sm text-muted">
+          Нэвтрэх хуудас руу шилжиж байна…
+        </p>
+        <p>
           <Link
             href="/login"
-            className="mt-4 inline-flex min-h-[44px] items-center text-sm text-primary underline underline-offset-4"
+            className="inline-flex min-h-[44px] items-center text-sm font-semibold text-primary hover:underline"
           >
             Нэвтрэх
           </Link>
-        </Card>
-      </main>
+        </p>
+      </AuthShell>
     );
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-[420px] flex-col justify-center gap-6 px-5 py-10">
-      <div className="text-center">
-        <h1 className="text-xl font-semibold text-ink">Шинэ нууц үг</h1>
-        <p className="mt-1 text-sm text-muted">
-          Дор хаяж {MIN_LENGTH} тэмдэгттэй нууц үг оруулна уу.
-        </p>
-      </div>
+    <AuthShell>
+      <h2 className="mb-2.5 text-[1.35rem] font-bold tracking-[-.01em] text-ink">Шинэ нууц үг</h2>
+
+      {/*
+        ★ One rule, because one rule is enforced.
+        The reference lists four — length, upper, lower, digit — mirroring
+        Django's AUTH_PASSWORD_VALIDATORS. This API's `auth.dto.ts` requires
+        length alone. Copying the list would announce requirements that do not
+        exist and reject nothing, which teaches users the messages are noise.
+      */}
+      <ul className="mb-4 list-disc space-y-1 pl-5 text-sm text-muted">
+        <li>{MIN_LENGTH}-аас доошгүй тэмдэгт</li>
+      </ul>
 
       <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
         <FormError message={localError ?? (reset.isError ? errorMessage(reset.error) : null)} />
@@ -121,9 +129,9 @@ export default function ResetPasswordPage() {
         </Field>
 
         <Button type="submit" size="lg" block disabled={reset.isPending}>
-          {reset.isPending ? "Хадгалж байна…" : "Нууц үг шинэчлэх"}
+          {reset.isPending ? "Хадгалж байна…" : "Нууц үг хадгалах"}
         </Button>
       </form>
-    </main>
+    </AuthShell>
   );
 }

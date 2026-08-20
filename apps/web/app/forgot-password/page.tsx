@@ -8,8 +8,8 @@ import { mutate } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
-import { Card } from "@/components/ui/card";
 import { FormError } from "@/components/ui/states";
+import { AuthShell } from "@/components/shell/auth-shell";
 
 /**
  * Request a password reset.
@@ -39,57 +39,62 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-[420px] flex-col justify-center gap-6 px-5 py-10">
-      <div className="text-center">
-        <h1 className="text-xl font-semibold text-ink">Нууц үг сэргээх</h1>
-        <p className="mt-1 text-sm text-muted">
-          Бүртгэлтэй хэрэглэгчийн нэр, и-мэйл эсвэл утсаа оруулна уу.
-        </p>
-      </div>
+    <AuthShell>
+      <h2 className="mb-1.5 text-[1.35rem] font-bold tracking-[-.01em] text-ink">Нууц үг сэргээх</h2>
 
       {request.isSuccess ? (
-        <Card className="px-5 py-6 text-center">
-          <p role="status" className="text-sm text-ink">
-            Хэрэв ийм бүртгэл байгаа бол сэргээх заавар илгээгдэнэ. И-мэйлээ шалгана уу.
-          </p>
-          <Link
-            href="/login"
-            className="mt-4 inline-flex min-h-[44px] items-center text-sm text-primary underline underline-offset-4"
-          >
-            Нэвтрэх хуудас руу буцах
-          </Link>
-        </Card>
+        <p role="status" className="text-sm leading-relaxed text-ink">
+          Хэрэв ийм бүртгэл байгаа бол сэргээх заавар илгээгдэнэ. И-мэйлээ шалгана уу.
+        </p>
       ) : (
-        <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
-          <FormError message={request.isError ? errorMessage(request.error) : null} />
+        <>
+          {/*
+            The reference asks for an e-mail address only. This asks for any
+            identifier, because the API accepts any and many parents here have a
+            phone number and no e-mail — refusing them would mean an account
+            that can never be recovered. The wording is the reference's;
+            the field is v2's, deliberately wider.
+          */}
+          <p className="mb-4 text-sm leading-relaxed text-muted">
+            Бүртгэлтэй хэрэглэгчийн нэр, и-мэйл эсвэл утсаа оруулна уу. Сэргээх холбоос илгээнэ.
+          </p>
 
-          <Field label="Хэрэглэгчийн нэр, и-мэйл эсвэл утас" required>
-            {({ id, describedBy }) => (
-              <Input
-                id={id}
-                aria-describedby={describedBy}
-                name="identifier"
-                autoComplete="username"
-                autoCapitalize="none"
-                autoFocus
-                value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
-              />
-            )}
-          </Field>
+          <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+            <FormError message={request.isError ? errorMessage(request.error) : null} />
 
-          <Button type="submit" size="lg" block disabled={request.isPending}>
-            {request.isPending ? "Илгээж байна…" : "Илгээх"}
-          </Button>
+            <Field label="Хэрэглэгчийн нэр, и-мэйл эсвэл утас" required>
+              {({ id, describedBy }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  name="identifier"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  autoFocus
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                />
+              )}
+            </Field>
 
-          <Link
-            href="/login"
-            className="mx-auto inline-flex min-h-[44px] items-center text-sm text-muted underline underline-offset-4"
-          >
-            Буцах
-          </Link>
-        </form>
+            <Button type="submit" size="lg" block disabled={request.isPending}>
+              {request.isPending ? "Илгээж байна…" : "Холбоос илгээх"}
+            </Button>
+          </form>
+        </>
       )}
-    </main>
+
+      <p className="mt-[22px] border-t border-border pt-4 text-sm leading-relaxed text-muted">
+        И-мэйл хаяггүй юу? Цэцэрлэгийн администратортаа хандаж нууц үгээ сэргээлгэнэ үү.
+      </p>
+      <p>
+        <Link
+          href="/login"
+          className="inline-flex min-h-[44px] items-center text-sm font-semibold text-primary hover:underline"
+        >
+          Нэвтрэх хуудас руу буцах
+        </Link>
+      </p>
+    </AuthShell>
   );
 }
