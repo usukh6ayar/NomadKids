@@ -10,12 +10,14 @@ import { ChildAccessService } from "../authz/child-access.service";
 import { TenantAccessService } from "../authz/tenant-access.service";
 import type { Actor } from "../authz/actor";
 import { paginate, type PageParams } from "../common/pagination";
+import { UsersService } from "../users/users.service";
 import { ChildrenRepository } from "./children.repository";
 import type {
   AddGuardianDto,
   CreateChildDto,
   EndEnrollmentDto,
   EnrollDto,
+  InviteGuardianDto,
   ListChildrenQuery,
   UpdateChildDto,
   UpdateGuardianshipDto,
@@ -28,6 +30,7 @@ export class ChildrenService {
     private readonly childAccess: ChildAccessService,
     private readonly tenants: TenantAccessService,
     private readonly authz: AuthzRepository,
+    private readonly users: UsersService,
     private readonly audit: AuditRepository,
   ) {}
 
@@ -215,6 +218,62 @@ export class ChildrenService {
       "granted",
     );
     return guardianship;
+  }
+
+  /**
+   * Invites a guardian who has no account yet, for one child.
+   *
+   * ★ A teacher may do this; linking an *existing* account still may not.
+   *
+   * `addGuardian` needs `assertCanAdminister` because it hands an account that
+   * already has an owner access to a child — a real authorization decision, and
+   * an administrator's. This creates a new account that nobody can open until
+   * the invitation is accepted, for a child the teacher already writes about.
+   * `assertCanRecord` is the same bar as posting an observation about them.
+   *
+   * ★★ The guardianship is created **now**, not when the invitation is
+   * accepted.
+   *
+   * The alternative is carrying a `childId` on the token and creating the link
+   * on redemption. That would mean the authorization decision — "this person may
+   * see this child" — is made by whoever holds the link rather than by the
+   * teacher who issued it, and it would put a second guardianship-creating path
+   * behind an unauthenticated endpoint. Creating it here keeps the decision, the
+   * audit entry and the check in one place. The account it points at cannot be
+   * opened by anyone, so an unaccepted invitation grants nothing.
+   *
+   * A duplicate username, email or phone is a 409 rather than a silent link to
+   * the existing account: giving an account somebody already owns access to a
+   * child is exactly the decision this endpoint is not allowed to make.
+   */
+  async inviteGuardian(actor: Actor, childId: string, dto: InviteGuardianDto) {
+    const facts = await this.childAccess.assertCanRecord(actor, childId);
+
+    const created = await this.users.createGuardianAccount(
+      actor,
+      facts.childKindergartenId,
+      dto,
+    );
+
+    const guardianship = await this.repo.createGuardianship({
+      kindergartenId: facts.childKindergartenId,
+      childId,
+      guardianUserId: created.user.id,
+      relation: dto.relation,
+      isPrimary: dto.isPrimary,
+    });
+
+    await this.auditGuardianship(
+      actor,
+      facts.childKindergartenId,
+      childId,
+      guardianship.id,
+      "invited",
+    );
+
+    // The token is returned so the caller can deliver it — as a QR code on
+    // screen, or read out. Never logged.
+    return { user: created.user, guardianship, invitationToken: created.invitationToken };
   }
 
   /**

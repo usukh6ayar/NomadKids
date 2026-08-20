@@ -914,3 +914,116 @@ One harness bug worth recording: the test clicked `button[type="submit"]` and
 hit the wrong control once the upload block appeared, silently navigating away
 via "Болих". Buttons are now targeted by their label. A test that drives the
 wrong element reports a product failure that does not exist.
+
+---
+
+## 10. Registration — invitations and the QR flow
+
+Added 2026-08-21. Backend and frontend.
+
+### 10.1 There is no self-registration, deliberately
+
+Nobody signs themselves up. A system holding children's development records
+cannot have a "Sign up" button, so every account is created downward:
+
+```
+superadmin           seed.ts, from SEED_ADMIN_PASSWORD
+  └─ ADMIN           POST /kindergartens/:id/users        (admin only)
+       └─ TEACHER    POST /kindergartens/:id/users        (admin only)
+       └─ PARENT     POST /children/:id/guardian-invitations  (teacher, new)
+```
+
+The account is created with 32 random bytes as its password. Nobody has seen
+that value, so an invited account cannot be opened by anyone — including the
+person who created it — until the invitation is accepted.
+
+### 10.2 ★ The flow had no end
+
+`UsersService.create` issued an INVITATION token and **nothing could ever redeem
+it**. `grep` across the whole API found the purpose written in exactly three
+places: the enum, the TTL constant, and the line that creates the row. The
+password-reset endpoint looks up `PASSWORD_RESET` only, so it was not a way in
+either.
+
+An administrator could create a teacher, see them in the list, and that teacher
+could never log in. `POST /auth/invitation/accept` plus `/invitation/[token]`
+closes it.
+
+**Kept separate from password reset even though the request body is identical.**
+Merging them would give one code path where an invitation token could reset an
+existing user's password — the link an administrator hands out would become a
+way into an account that already has an owner. Two purposes, two lookups, two
+endpoints, and two tests that hold them apart.
+
+### 10.3 Teachers invite families, with a QR
+
+A teacher knows which parent belongs to which child; an administrator often does
+not. So `POST /children/:id/guardian-invitations` is teacher-level, and the
+child page has an "Урих" button that ends in a QR code.
+
+**Why a teacher may do this when they may not use `POST children/:id/guardians`.**
+That endpoint links an account that *already exists* to a child, which grants a
+real person access to a real record — an administrator's decision. This one
+creates a new account nobody can open, for a child the teacher already writes
+about. `assertCanRecord` is the same bar as posting an observation.
+
+**★ The guardianship is created at invite time, not at redemption.**
+
+The alternative — carrying a `childId` on the token and creating the link when
+it is accepted — moves the authorization decision from the teacher who issued
+the invitation to whoever ends up holding the link, and puts a second
+guardianship-creating path behind an unauthenticated endpoint. Creating it up
+front keeps the decision, the check and the audit entry in one place. It is safe
+because the account it points at cannot be opened, so an unaccepted invitation
+grants nothing.
+
+**A duplicate username is a 409, not a silent link.** Attaching an account
+somebody already owns to this child is precisely the decision this endpoint may
+not make. The teacher is sent to ask an administrator.
+
+**The QR encodes the invitation URL and nothing else.** It is a way to move a
+link from a screen into a phone, not a credential of its own. Drawn on a canvas
+locally — fetching a QR image would mean sending the token to a third party to
+render it. Shown once, with copy that says so: a screen that could re-display a
+live token would be a screen that leaks it.
+
+### 10.4 Tests
+
+Twenty-two new API cases, all through HTTP.
+
+```
+accepting          sets the first password · the account can then log in
+                   consumes the token, a link cannot be replayed
+                   expired → 401 · unknown → 401 · weak password → 400
+                   unknown, used and expired all say the same thing
+separation         an invitation token fails on password-reset/confirm
+                   a reset token fails on invitation/accept
+inviting           teacher invites for their own child
+                   guardianship + PARENT membership created immediately
+                   the account cannot be opened until accepted
+authorization      other kindergarten → 404
+                   a teacher who does not teach the child → 404
+                   a guardian cannot invite → refused
+                   unauthenticated → 401 · no CSRF → 403
+                   duplicate username → 409, and no guardianship created
+```
+
+**The case that matters most:** an accepted guardian sees *that* child and gets
+404 on another child in the same group. A QR a teacher prints must open one
+portfolio, not the class.
+
+### 10.5 Verified in a browser
+
+Teacher → invite → QR → parent scans → password → logs in → sees the child:
+
+```
+dialog       opens on the child page, teacher never types a password
+QR           canvas painted, encodes http://…/invitation/<token>
+link         opens the invitation screen — "Тавтай морил"
+accept       password set, redirected to login
+login        succeeds with the new credentials
+access       the invited child is visible
+responsive   child detail, 8 widths — clean
+```
+
+Full API suite after the change: **679 passed**, no regression.

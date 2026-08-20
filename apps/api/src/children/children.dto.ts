@@ -71,6 +71,33 @@ export const addGuardianSchema = z.object({
 });
 export type AddGuardianDto = z.infer<typeof addGuardianSchema>;
 
+/**
+ * Inviting a guardian who has no account yet.
+ *
+ * ★ No `guardianUserId`, unlike `addGuardianSchema` — that one links an account
+ * that already exists, which is an administrator's job because it grants an
+ * existing person access to a child. This creates a *new* account that nobody
+ * can open until its invitation is accepted, which is a far smaller act and one
+ * a teacher can be trusted with for a child in their own group.
+ *
+ * No password field. An adult who types a password for someone else knows that
+ * password, and "temporary" credentials are permanent in practice.
+ */
+export const inviteGuardianSchema = z.object({
+  username: z
+    .string()
+    .min(3, "Нэвтрэх нэр дор хаяж 3 тэмдэгт байх ёстой")
+    .max(64)
+    .regex(/^[a-zA-Z0-9._-]+$/, "Нэвтрэх нэр латин үсэг, тоо, . _ - агуулна"),
+  email: z.email().max(254).nullable().optional(),
+  phone: z.string().max(32).nullable().optional(),
+  lastName: z.string().min(1, "Овгийг оруулна уу").max(100),
+  firstName: z.string().min(1, "Нэрийг оруулна уу").max(100),
+  relation: guardianRelationSchema,
+  isPrimary: z.boolean().default(false),
+});
+export type InviteGuardianDto = z.infer<typeof inviteGuardianSchema>;
+
 export const updateGuardianshipSchema = z.object({
   relation: guardianRelationSchema.optional(),
   isPrimary: z.boolean().optional(),

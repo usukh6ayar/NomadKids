@@ -719,3 +719,177 @@ describe("teacher B sees only B's children", () => {
     expect(res.body.map((c: { id: string }) => c.id)).toEqual([b.child.id]);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Inviting a guardian — a teacher creates the family's account
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("POST /children/:id/guardian-invitations", () => {
+  const invitation = (extra: Record<string, unknown> = {}) => ({
+    username: uniq("etseg"),
+    lastName: "Ганболд",
+    firstName: "Сарнай",
+    relation: "MOTHER",
+    ...extra,
+  });
+
+  it("a teacher can invite a guardian for a child in their group", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/guardian-invitations`),
+      teacherA,
+    ).send(invitation());
+
+    expect(res.status).toBe(201);
+    expect(res.body.invitationToken).toEqual(expect.any(String));
+    expect(res.body.user.id).toBeDefined();
+    // Never echoed back, even though the account was just created.
+    expect(res.body.user.passwordHash).toBeUndefined();
+  });
+
+  it("creates the guardianship immediately, and a PARENT membership", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/guardian-invitations`),
+      teacherA,
+    ).send(invitation());
+
+    const guardianship = await db.guardianship.findFirst({
+      where: { childId: a.child.id, guardianUserId: res.body.user.id },
+    });
+    expect(guardianship?.canView).toBe(true);
+    expect(guardianship?.relation).toBe("MOTHER");
+
+    const membership = await db.membership.findFirst({
+      where: { userId: res.body.user.id, kindergartenId: a.kindergarten.id },
+    });
+    // Fixed to PARENT — a teacher must not be able to mint a colleague.
+    expect(membership?.role).toBe("PARENT");
+  });
+
+  it("the invited account cannot be opened until the invitation is accepted", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/guardian-invitations`),
+      teacherA,
+    ).send(invitation({ username: "etseg-shalgalt" }));
+
+    // The password is random bytes nobody has seen. An unaccepted invitation
+    // therefore grants nothing, which is what makes creating the guardianship
+    // up front safe.
+    const login = await request(server())
+      .post("/v1/auth/login")
+      .send({ identifier: "etseg-shalgalt", password: "Shine-Nuuts99" });
+    expect(login.status).toBe(401);
+
+    const accept = await request(server())
+      .post("/v1/auth/invitation/accept")
+      .send({ token: res.body.invitationToken, password: "Shine-Nuuts99" });
+    expect(accept.status).toBe(204);
+
+    const after = await request(server())
+      .post("/v1/auth/login")
+      .send({ identifier: "etseg-shalgalt", password: "Shine-Nuuts99" });
+    expect(after.status).toBe(200);
+  });
+
+  it("the accepted guardian sees that child and no other", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/guardian-invitations`),
+      teacherA,
+    ).send(invitation({ username: "etseg-hamrah" }));
+
+    await request(server())
+      .post("/v1/auth/invitation/accept")
+      .send({ token: res.body.invitationToken, password: "Shine-Nuuts99" });
+
+    const session = await login(app, "etseg-hamrah", "Shine-Nuuts99");
+
+    const mine = await request(server())
+      .get(`/v1/children/${a.child.id}`)
+      .set("Cookie", session.cookies);
+    expect(mine.status).toBe(200);
+
+    // ★ The invitation binds one child. Another child in the same kindergarten
+    // must stay invisible, or the QR a teacher prints would be a key to the
+    // whole class.
+    const otherChild = await createChild(a.kindergarten.id, { lastName: "Өөр" });
+    await enrollChild(a.kindergarten.id, otherChild.id, a.group.id, a.schoolYear.id);
+
+    const theirs = await request(server())
+      .get(`/v1/children/${otherChild.id}`)
+      .set("Cookie", session.cookies);
+    expect(theirs.status).toBe(404);
+  });
+
+  // ── Authorization — CLAUDE.md §4.1 ──────────────────────────────────────
+
+  it("a teacher from another kindergarten gets 404", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/children/${b.child.id}/guardian-invitations`),
+      teacherA,
+    ).send(invitation());
+
+    expect(res.status).toBe(404);
+  });
+
+  it("a teacher who does not teach the child gets 404", async () => {
+    const otherGroup = await createGroup(a.kindergarten.id, a.schoolYear.id, uniq("Өөр бүлэг"));
+    const otherChild = await createChild(a.kindergarten.id, { lastName: "Хол" });
+    await enrollChild(a.kindergarten.id, otherChild.id, otherGroup.id, a.schoolYear.id);
+
+    const res = await authed(
+      request(server()).post(`/v1/children/${otherChild.id}/guardian-invitations`),
+      teacherA,
+    ).send(invitation());
+
+    // Same bar as writing an observation about them — `assertCanRecord`.
+    expect(res.status).toBe(404);
+  });
+
+  it("a guardian cannot invite another guardian", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/guardian-invitations`),
+      parentA,
+    ).send(invitation());
+
+    expect([403, 404]).toContain(res.status);
+  });
+
+  it("requires authentication", async () => {
+    const res = await request(server())
+      .post(`/v1/children/${a.child.id}/guardian-invitations`)
+      .send(invitation());
+
+    expect(res.status).toBe(401);
+  });
+
+  it("requires CSRF", async () => {
+    const res = await request(server())
+      .post(`/v1/children/${a.child.id}/guardian-invitations`)
+      .set("Cookie", teacherA.cookies)
+      .send(invitation());
+
+    expect(res.status).toBe(403);
+  });
+
+  it("refuses a username that already exists", async () => {
+    const existing = await createUser({ username: uniq("busad") });
+
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/guardian-invitations`),
+      teacherA,
+    ).send(invitation({ username: existing.username }));
+
+    /*
+     * ★ A conflict, not a silent link.
+     *
+     * Attaching an account somebody already owns to this child is exactly the
+     * decision this endpoint may not make — it is `POST children/:id/guardians`,
+     * and an administrator's. Answering 409 sends the teacher to ask for one.
+     */
+    expect(res.status).toBe(409);
+
+    const guardianship = await db.guardianship.findFirst({
+      where: { childId: a.child.id, guardianUserId: existing.id },
+    });
+    expect(guardianship).toBeNull();
+  });
+});

@@ -7,6 +7,7 @@ import type { Actor } from "../authz/actor";
 import { ChildrenService } from "./children.service";
 import {
   addGuardianSchema,
+  inviteGuardianSchema,
   createChildSchema,
   endEnrollmentSchema,
   enrollSchema,
@@ -14,6 +15,7 @@ import {
   updateChildSchema,
   updateGuardianshipSchema,
   type AddGuardianDto,
+  type InviteGuardianDto,
   type CreateChildDto,
   type EndEnrollmentDto,
   type EnrollDto,
@@ -101,6 +103,23 @@ export class ChildrenController {
     @Body(new ZodValidationPipe(addGuardianSchema)) body: AddGuardianDto,
   ) {
     return this.service.addGuardian(actor, params.id, body);
+  }
+
+  /**
+   * Invites a guardian who has no account yet.
+   *
+   * Teacher-level, unlike `POST children/:id/guardians` — see the service for
+   * why the two differ. The response carries the invitation token so the caller
+   * can show it as a QR code; it is never logged.
+   */
+  @Post("children/:id/guardian-invitations")
+  @Roles("TEACHER", "ADMIN")
+  async inviteGuardian(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(inviteGuardianSchema)) body: InviteGuardianDto,
+  ) {
+    return this.service.inviteGuardian(actor, params.id, body);
   }
 
   /** `canView: false` here is the revocation path. */

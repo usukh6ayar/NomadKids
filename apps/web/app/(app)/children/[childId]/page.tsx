@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { BookOpen, FileText, Plus } from "lucide-react";
+import { BookOpen, FileText, Plus, UserPlus } from "lucide-react";
 import { z } from "zod";
 import {
   assessmentSchema,
@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildHeader } from "@/components/child/child-header";
+import { InviteGuardianDialog } from "@/components/child/invite-guardian-dialog";
 import { ReportDialog } from "@/components/reports/report-dialog";
 import { ObservationRow } from "@/components/observations/observation-row";
 import { excerpt, fullName } from "@/lib/format";
@@ -218,7 +219,23 @@ export default function ChildDetailPage() {
       {/* ── Guardians — staff only ──────────────────────────────────────── */}
       {isStaff && data.guardianships.length > 0 ? (
         <section aria-labelledby="guardians-heading">
-          <SectionHeader title="Асран хамгаалагч" />
+          <SectionHeader
+            title="Асран хамгаалагч"
+            action={
+              isStaff ? (
+                <InviteGuardianDialog
+                  childId={childId}
+                  childName={fullName(data)}
+                  trigger={
+                    <Button variant="secondary" size="sm">
+                      <UserPlus size={18} />
+                      Урих
+                    </Button>
+                  }
+                />
+              ) : null
+            }
+          />
           <Card className="divide-y divide-border">
             {data.guardianships
               .filter((g) => g.canView !== false)

@@ -63,6 +63,33 @@ export class UsersService {
    */
   async create(actor: Actor, kindergartenId: string, dto: CreateUserDto) {
     this.tenants.assertAdmin(actor, kindergartenId);
+    return this.createInvitedAccount(actor, kindergartenId, dto);
+  }
+
+  /**
+   * Creates a guardian account for a teacher inviting a family.
+   *
+   * ★ No tenant check here — the caller has already made a stronger one.
+   *
+   * `ChildrenService.inviteGuardian` runs `assertCanRecord` against the child,
+   * which proves the actor teaches that child in that kindergarten. Re-running
+   * `assertAdmin` would refuse a teacher, and loosening `create` to accept them
+   * would let a teacher mint accounts with any role, in any kindergarten they
+   * belong to. Two callers, two authorization paths, one account-creation
+   * routine — which is why the check is at the caller and this is not exported
+   * beyond the module boundary as a general "create a user".
+   *
+   * The role is fixed to PARENT for the same reason.
+   */
+  async createGuardianAccount(
+    actor: Actor,
+    kindergartenId: string,
+    dto: Omit<CreateUserDto, "role">,
+  ) {
+    return this.createInvitedAccount(actor, kindergartenId, { ...dto, role: "PARENT" });
+  }
+
+  private async createInvitedAccount(actor: Actor, kindergartenId: string, dto: CreateUserDto) {
 
     // Checked explicitly so a collision is a readable 409 rather than a raw
     // unique-constraint error surfacing as a 500.
