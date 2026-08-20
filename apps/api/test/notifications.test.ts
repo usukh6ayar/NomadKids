@@ -675,8 +675,10 @@ describe("likes", () => {
 
     // Guards the decision, not an accident of routing: a class board parents
     // can reply to is a moderation surface nobody has been staffed to police.
-    const res = await authed(request(server()).post(`/v1/notifications/${id}/comments`), parentA)
-      .send({ body: "Сэтгэгдэл" });
+    const res = await authed(
+      request(server()).post(`/v1/notifications/${id}/comments`),
+      parentA,
+    ).send({ body: "Сэтгэгдэл" });
 
     expect(res.status).toBe(404);
   });

@@ -12,7 +12,80 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+
+    # ★ The API's tests run against a real database, a real Redis and real
+    # object storage — deliberately, because the thing under test is whether an
+    # *endpoint* enforces authorization, and a mocked repository would prove
+    # only that the mock works (CLAUDE.md §4.1).
+    #
+    # That means CI needs the same three services `docker-compose.yml` provides
+    # locally. Without them `pnpm test` cannot run at all, which is how this
+    # workflow spent weeks reporting a red X that nobody could act on.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: kinder
+          POSTGRES_PASSWORD: kinder
+          POSTGRES_DB: kinder
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+      # `bitnami/minio` rather than `minio/minio`, which docker-compose uses.
+      # A GitHub service container cannot be given a custom command, and the
+      # upstream image needs `server /data`; this one starts the server itself
+      # and creates the bucket from `MINIO_DEFAULT_BUCKETS`. Nothing in the
+      # application can tell the difference — it is the same S3 API.
+      minio:
+        image: bitnami/minio:latest
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+          MINIO_DEFAULT_BUCKETS: kinder-media
+        ports: ["9000:9000"]
+
+    # ★ Not secrets, and deliberately inline.
+    #
+    # These are throwaway values for containers that live five minutes and are
+    # unreachable from outside the runner. Putting them in GitHub secrets would
+    # imply they protect something, and would make a green build depend on
+    # repository settings nobody can see in review. The real secrets live on
+    # Railway and Vercel.
+    #
+    # `loadEnv()` validates all of them at boot, which is why every one is here
+    # rather than only the ones a given step happens to need.
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://kinder:kinder@localhost:5432/kinder
+      REDIS_URL: redis://localhost:6379
+      CORS_ORIGINS: http://localhost:3000
+      WEB_ORIGIN: http://localhost:3000
+      # 32-character floor, and the two must differ — `loadEnv` refuses
+      # identical signing secrets.
+      JWT_SECRET: ci-only-jwt-secret-not-a-real-key-000000
+      REFRESH_SECRET: ci-only-refresh-secret-not-a-real-key-11
+      STORAGE_ENDPOINT: http://localhost:9000
+      STORAGE_REGION: auto
+      STORAGE_BUCKET: kinder-media
+      STORAGE_ACCESS_KEY_ID: minioadmin
+      STORAGE_SECRET_ACCESS_KEY: minioadmin
+      # The report worker never runs in tests: a background consumer draining
+      # the queue would race every assertion about a job's status.
+      REPORTS_WORKER_ENABLED: "false"
 
     steps:
       - uses: actions/checkout@v4
@@ -31,6 +104,17 @@ jobs:
 
       - name: Generate the Prisma client
         # Types from the generated client are needed before anything typechecks.
+        #
+        # ★ This step is why CI was red from 2026-08-19 to 2026-08-21.
+        # `prisma.config.ts` resolves the datasource through `env()`, which
+        # throws when DATABASE_URL is unset — and `.env` is gitignored, so it
+        # never existed on a runner. The Dockerfile had already hit this and
+        # solved it with a build-stage placeholder; CI never got the same fix,
+        # so every run died here, 32 seconds in, long before reaching the
+        # Prisma-boundary test that CLAUDE.md §2.2 says CI enforces.
+        #
+        # No placeholder is needed now: the Postgres service means DATABASE_URL
+        # is a real, reachable database for every step.
         run: pnpm --filter @kinder/api prisma:generate
 
       - name: Build the contracts package
@@ -42,6 +126,29 @@ jobs:
 
       - name: Lint
         run: pnpm lint
+
+      - name: Wait for object storage
+        # The other two services have container health checks; this image has no
+        # shell tool to health-check with, so it is polled from the runner
+        # instead. Failing here with a clear message beats a media test failing
+        # with a socket error thirty seconds later.
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:9000/minio/health/live > /dev/null; then
+              echo "storage ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "object storage did not become ready" >&2
+          exit 1
+
+      - name: Apply migrations
+        # The integration suite truncates between cases; the tables have to
+        # exist first. `deploy` rather than `dev` — it applies what is committed
+        # and never generates a new migration, so a drifted schema fails CI
+        # instead of being silently patched over.
+        run: pnpm --filter @kinder/api exec prisma migrate deploy
 
       - name: Test
         # Includes the Prisma-boundary test — the check that stops a service

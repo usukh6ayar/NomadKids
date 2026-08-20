@@ -249,11 +249,7 @@ export class ChildrenService {
   async inviteGuardian(actor: Actor, childId: string, dto: InviteGuardianDto) {
     const facts = await this.childAccess.assertCanRecord(actor, childId);
 
-    const created = await this.users.createGuardianAccount(
-      actor,
-      facts.childKindergartenId,
-      dto,
-    );
+    const created = await this.users.createGuardianAccount(actor, facts.childKindergartenId, dto);
 
     const guardianship = await this.repo.createGuardianship({
       kindergartenId: facts.childKindergartenId,

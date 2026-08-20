@@ -38,7 +38,7 @@ undersized.
 ### What curl and source-reading cannot do
 
 Overflow, clipping, overlap and tap-target size are properties of a rendered
-layout. They are measured here, not deduced. Colour and spacing tokens *can* be
+layout. They are measured here, not deduced. Colour and spacing tokens _can_ be
 compared from source and are, in §2.
 
 ---
@@ -48,20 +48,20 @@ compared from source and are, in §2.
 Checked before any screen work, and the result reframed the task: the palette
 was ported already. The difference is layout and composition, not colour.
 
-| Token | Reference `app.css` | v2 `globals.css` | Match |
-| --- | --- | --- | --- |
-| Canvas | `--bg: #f8f7f4` | `--color-canvas: #f8f7f4` | ✅ |
-| Surface | `--card: #ffffff` | `--color-surface: #ffffff` | ✅ |
-| Border | `--line: #e9e6e0` | `--color-border: #e9e6e0` | ✅ |
-| Ink | `--ink: #26242b` | `--color-ink: #26242b` | ✅ |
-| Muted | `--muted: #77737d` | `--color-muted: #77737d` | ✅ |
-| Brand | `--brand: #6c63ff` | `--color-primary: #6c63ff` | ✅ |
-| Brand soft | `--brand-soft: #eeecff` | `--color-primary-soft: #eeecff` | ✅ |
-| Control radius | `--radius-ctl: 12px` | `--radius-control: 12px` | ✅ |
-| Control height | `--control-h: 48px` | `--size-control: 48px` | ✅ |
-| Card radius | `--radius: 18px` | `--radius-card: 18px` | ✅ |
-| Row radius | `--radius-sm: 14px` | `--radius-row: 14px` | ✅ |
-| Card shadow | `--shadow` two soft layers | `--shadow-card`, same values | ✅ |
+| Token          | Reference `app.css`        | v2 `globals.css`                | Match |
+| -------------- | -------------------------- | ------------------------------- | ----- |
+| Canvas         | `--bg: #f8f7f4`            | `--color-canvas: #f8f7f4`       | ✅    |
+| Surface        | `--card: #ffffff`          | `--color-surface: #ffffff`      | ✅    |
+| Border         | `--line: #e9e6e0`          | `--color-border: #e9e6e0`       | ✅    |
+| Ink            | `--ink: #26242b`           | `--color-ink: #26242b`          | ✅    |
+| Muted          | `--muted: #77737d`         | `--color-muted: #77737d`        | ✅    |
+| Brand          | `--brand: #6c63ff`         | `--color-primary: #6c63ff`      | ✅    |
+| Brand soft     | `--brand-soft: #eeecff`    | `--color-primary-soft: #eeecff` | ✅    |
+| Control radius | `--radius-ctl: 12px`       | `--radius-control: 12px`        | ✅    |
+| Control height | `--control-h: 48px`        | `--size-control: 48px`          | ✅    |
+| Card radius    | `--radius: 18px`           | `--radius-card: 18px`           | ✅    |
+| Row radius     | `--radius-sm: 14px`        | `--radius-row: 14px`            | ✅    |
+| Card shadow    | `--shadow` two soft layers | `--shadow-card`, same values    | ✅    |
 
 Confirmed at runtime: both apps compute `body` background as
 `rgb(248, 247, 244)`.
@@ -97,18 +97,18 @@ Before this work the two screens shared only their background colour. The new
 login was a centred 420px column with a text wordmark; the reference is a
 two-column split with a branded card.
 
-| Element | Was | Now |
-| --- | --- | --- |
-| Container | bare form on canvas | white card, 440px, 18px radius, hairline border, soft shadow ≥900px |
-| Desktop layout | single centred column | two columns — card left, illustration panel right |
-| Brand | text "NomadKids" | `logo-160.png` beside the uppercase two-line product title |
-| Subtitle | "Хүүхдийн хөгжлийн цахим хавтас" | "Багш, эцэг эх, администраторт зориулсан аюулгүй нэвтрэх систем." |
-| Section heading | absent | "Нэвтрэх", 1.35rem bold |
-| Role tabs | absent | Багш / Эцэг эх / Админ segmented control |
+| Element          | Was                                   | Now                                                                         |
+| ---------------- | ------------------------------------- | --------------------------------------------------------------------------- |
+| Container        | bare form on canvas                   | white card, 440px, 18px radius, hairline border, soft shadow ≥900px         |
+| Desktop layout   | single centred column                 | two columns — card left, illustration panel right                           |
+| Brand            | text "NomadKids"                      | `logo-160.png` beside the uppercase two-line product title                  |
+| Subtitle         | "Хүүхдийн хөгжлийн цахим хавтас"      | "Багш, эцэг эх, администраторт зориулсан аюулгүй нэвтрэх систем."           |
+| Section heading  | absent                                | "Нэвтрэх", 1.35rem bold                                                     |
+| Role tabs        | absent                                | Багш / Эцэг эх / Админ segmented control                                    |
 | Identifier label | "Хэрэглэгчийн нэр, и-мэйл эсвэл утас" | follows the tab — "Нэвтрэх нэр эсвэл и-мэйл" / "Утасны дугаар эсвэл и-мэйл" |
-| Forgot link | centred, underlined | left-aligned, semibold, above a rule |
-| Footer | absent | "Аюулгүй нэвтрэлт · HTTPS · Нууц үг хамгаалагдсан" |
-| Art panel | absent | gradient panel with logo and tagline, hidden below 900px |
+| Forgot link      | centred, underlined                   | left-aligned, semibold, above a rule                                        |
+| Footer           | absent                                | "Аюулгүй нэвтрэлт · HTTPS · Нууц үг хамгаалагдсан"                          |
+| Art panel        | absent                                | gradient panel with logo and tagline, hidden below 900px                    |
 
 The 900px breakpoint is the reference's own, not Tailwind's `lg` (1024px). At
 1000px the split still has room; folding early leaves a visibly empty half.
@@ -133,10 +133,10 @@ security decision and would have stopped here.
 
 Measured at 390 · 768 · 1440, after the change:
 
-| Check | Reference | New |
-| --- | --- | --- |
-| Horizontal overflow | 0 | 0 |
-| Tap targets < 44px | **4** | **0** |
+| Check               | Reference | New   |
+| ------------------- | --------- | ----- |
+| Horizontal overflow | 0         | 0     |
+| Tap targets < 44px  | **4**     | **0** |
 
 Three deviations from the reference, all deliberate:
 
@@ -149,7 +149,7 @@ Three deviations from the reference, all deliberate:
 3. **Required fields keep their asterisk.** The reference marks required fields
    with the `required` attribute alone, with no visual indicator. Removing v2's
    asterisk would match the screenshot and lose a real affordance, so it stays.
-   This is the one place the new screen is visibly *not* pixel-identical.
+   This is the one place the new screen is visibly _not_ pixel-identical.
 
 Tabs are `role="group"` with `aria-pressed`, not tab semantics: there are no
 tabpanels, only one form whose label changes, and calling them tabs would
@@ -206,7 +206,7 @@ uppercase, lowercase and digit, mirroring Django's `AUTH_PASSWORD_VALIDATORS`.
 This API enforces length alone — `auth.dto.ts`:
 
 ```ts
-password: z.string().min(8, "Нууц үг дор хаяж 8 тэмдэгт байх ёстой").max(200)
+password: z.string().min(8, "Нууц үг дор хаяж 8 тэмдэгт байх ёстой").max(200);
 ```
 
 Copying the list would announce three requirements that reject nothing. A rule
@@ -223,17 +223,17 @@ Reference: `templates/base_teacher.html`, `base_parent.html`, and the
 This was the single largest visual gap in the product: every authenticated
 screen is inside it.
 
-| Element | Was | Now (reference's values) |
-| --- | --- | --- |
-| Sidebar width | 232px | **244px** |
-| Sidebar padding | `px-3 py-5` | **18px 14px** |
-| Brand | `NK` square + "NomadKids" | `mark-96.png` in a **40px `#f1efff`** rounded tile |
-| Brand text | one line | **two lines** — product name, then "Багшийн хэсэг" |
-| Nav item | `text-sm`, `gap-2.5` | **.92rem, 11px gap, 10px 12px padding** |
-| Identity | in the top bar | **`whoami` block pinned to the sidebar foot** |
-| Logout | text button in the top bar | **44px icon button** inside `whoami` |
-| Phone header | generic top bar | **`mhead`** — brand, avatar, logout, sticky |
-| Main padding | `pt-4` | **22px top, 26px side, 48px bottom** |
+| Element         | Was                        | Now (reference's values)                           |
+| --------------- | -------------------------- | -------------------------------------------------- |
+| Sidebar width   | 232px                      | **244px**                                          |
+| Sidebar padding | `px-3 py-5`                | **18px 14px**                                      |
+| Brand           | `NK` square + "NomadKids"  | `mark-96.png` in a **40px `#f1efff`** rounded tile |
+| Brand text      | one line                   | **two lines** — product name, then "Багшийн хэсэг" |
+| Nav item        | `text-sm`, `gap-2.5`       | **.92rem, 11px gap, 10px 12px padding**            |
+| Identity        | in the top bar             | **`whoami` block pinned to the sidebar foot**      |
+| Logout          | text button in the top bar | **44px icon button** inside `whoami`               |
+| Phone header    | generic top bar            | **`mhead`** — brand, avatar, logout, sticky        |
+| Main padding    | `pt-4`                     | **22px top, 26px side, 48px bottom**               |
 
 Active/hover states follow `.nav a[aria-current]` and `.nav a:hover` exactly:
 `--brand-soft` on `--brand` at weight 600 when current, canvas-on-ink on hover.
@@ -250,18 +250,18 @@ screen. Now 44px.
 With demo data in place (§5), every MVP screen was driven in a real browser:
 signed in, navigated, measured, screenshotted.
 
-| Screen | 375 | 768 | 1024 | 1440 |
-| --- | --- | --- | --- | --- |
-| Teacher dashboard | ✅ | ✅ | ✅ | ✅ |
-| Children list | ✅ | ✅ | ✅ | ✅ |
-| Child detail | ✅ | ✅ | ✅ | ✅ |
-| Observation form | ✅ | ✅ | ✅ | ✅ |
-| Assessment | ✅ | ✅ | ✅ | ✅ |
-| Review queue | ✅ | ✅ | ✅ | ✅ |
-| Notifications | ✅ | ✅ | ✅ | ✅ |
-| Portfolio | ✅ | ✅ | ✅ | ✅ |
-| Parent home | ✅ | ✅ | ✅ | ✅ |
-| Parent notifications | ✅ | — | — | — |
+| Screen               | 375 | 768 | 1024 | 1440 |
+| -------------------- | --- | --- | ---- | ---- |
+| Teacher dashboard    | ✅  | ✅  | ✅   | ✅   |
+| Children list        | ✅  | ✅  | ✅   | ✅   |
+| Child detail         | ✅  | ✅  | ✅   | ✅   |
+| Observation form     | ✅  | ✅  | ✅   | ✅   |
+| Assessment           | ✅  | ✅  | ✅   | ✅   |
+| Review queue         | ✅  | ✅  | ✅   | ✅   |
+| Notifications        | ✅  | ✅  | ✅   | ✅   |
+| Portfolio            | ✅  | ✅  | ✅   | ✅   |
+| Parent home          | ✅  | ✅  | ✅   | ✅   |
+| Parent notifications | ✅  | —   | —    | —    |
 
 ✅ = 0 horizontal overflow, 0 effective tap targets under 44px.
 
@@ -292,7 +292,7 @@ a PDF. The PDF's own layout is verified separately, against extracted text —
 
 ### 3.13 Parent child detail — **same as parent home**
 
-`/home` *is* the parent's child view in v2: the child switcher, the profile
+`/home` _is_ the parent's child view in v2: the child switcher, the profile
 card, the term assessment and the moment feed are all on it. The reference
 splits `parent_home` and `parent_child_detail`; v2 does not, and that predates
 this work. Recorded as a structural difference, not a styling mismatch.
@@ -301,28 +301,28 @@ this work. Recorded as a structural difference, not a styling mismatch.
 
 ## 4. Files changed
 
-| File | Change |
-| --- | --- |
-| `apps/web/components/shell/auth-shell.tsx` | new — auth layout, role tabs |
-| `apps/web/components/shell/app-shell.tsx` | rebuilt — sidebar, brand, `whoami`, phone header |
-| `apps/web/app/login/page.tsx` | rebuilt against the reference |
-| `apps/web/app/forgot-password/page.tsx` | moved onto `AuthShell` |
-| `apps/web/app/reset-password/[token]/page.tsx` | moved onto `AuthShell` |
-| `apps/web/app/(app)/notifications/page.tsx` | filter buttons 40px → 44px; `PageHeader` |
-| `apps/web/app/(app)/observations/review/page.tsx` | child link 18px → 44px; `PageHeader` |
-| `apps/web/app/(app)/dashboard/page.tsx` · `children/page.tsx` | `PageHeader` |
-| `apps/web/components/ui/field.tsx` | checkbox row is now the label |
-| `apps/web/components/ui/card.tsx` | 18px radius + shadow; new `RowList` / `RowCard` |
-| `apps/web/components/media/media-image.tsx` | avatars tinted per child |
-| `apps/web/app/globals.css` | `--radius-card` 16→18px; `--radius-row`, `--shadow-card` |
-| `apps/web/components/shell/app-shell.tsx` | grouped `NavSection`s, `NavShortcut`s, sidebar scroll fix |
-| `apps/web/app/(app)/layout.tsx` | the reference's five sections and quick links |
-| `apps/web/components/ui/card.tsx` | `SectionHeader` takes a `lede` |
-| `apps/web/app/globals.css` | `--color-faint` |
-| `apps/web/public/logo-160.png` · `mark-96.png` | brand assets, copied from the reference |
-| `apps/web/test/flows.test.tsx` · `csrf.test.tsx` | identifier label updated |
-| `apps/api/prisma/seed-demo.ts` | new — local-only demo data (§5) |
-| `apps/api/package.json` | `seed:demo` script |
+| File                                                          | Change                                                    |
+| ------------------------------------------------------------- | --------------------------------------------------------- |
+| `apps/web/components/shell/auth-shell.tsx`                    | new — auth layout, role tabs                              |
+| `apps/web/components/shell/app-shell.tsx`                     | rebuilt — sidebar, brand, `whoami`, phone header          |
+| `apps/web/app/login/page.tsx`                                 | rebuilt against the reference                             |
+| `apps/web/app/forgot-password/page.tsx`                       | moved onto `AuthShell`                                    |
+| `apps/web/app/reset-password/[token]/page.tsx`                | moved onto `AuthShell`                                    |
+| `apps/web/app/(app)/notifications/page.tsx`                   | filter buttons 40px → 44px; `PageHeader`                  |
+| `apps/web/app/(app)/observations/review/page.tsx`             | child link 18px → 44px; `PageHeader`                      |
+| `apps/web/app/(app)/dashboard/page.tsx` · `children/page.tsx` | `PageHeader`                                              |
+| `apps/web/components/ui/field.tsx`                            | checkbox row is now the label                             |
+| `apps/web/components/ui/card.tsx`                             | 18px radius + shadow; new `RowList` / `RowCard`           |
+| `apps/web/components/media/media-image.tsx`                   | avatars tinted per child                                  |
+| `apps/web/app/globals.css`                                    | `--radius-card` 16→18px; `--radius-row`, `--shadow-card`  |
+| `apps/web/components/shell/app-shell.tsx`                     | grouped `NavSection`s, `NavShortcut`s, sidebar scroll fix |
+| `apps/web/app/(app)/layout.tsx`                               | the reference's five sections and quick links             |
+| `apps/web/components/ui/card.tsx`                             | `SectionHeader` takes a `lede`                            |
+| `apps/web/app/globals.css`                                    | `--color-faint`                                           |
+| `apps/web/public/logo-160.png` · `mark-96.png`                | brand assets, copied from the reference                   |
+| `apps/web/test/flows.test.tsx` · `csrf.test.tsx`              | identifier label updated                                  |
+| `apps/api/prisma/seed-demo.ts`                                | new — local-only demo data (§5)                           |
+| `apps/api/package.json`                                       | `seed:demo` script                                        |
 
 All three signed-out screens share one shell, as they do in the reference, and
 every authenticated screen shares the rebuilt `AppShell`.
@@ -370,7 +370,7 @@ than read. That changed two conclusions.
 An earlier note here claimed the reference shows the identity **once**, in the
 sidebar, and hides the topbar pill "because it was the same fact twice". That is
 only true below 900px. Rendered at 1440, the reference shows **both** — the
-sidebar `whoami` *and* the topbar `.who` pill.
+sidebar `whoami` _and_ the topbar `.who` pill.
 
 Fixed: `PageHeader` now carries the pill on a desktop and drops it below `lg`,
 where the phone header holds it. This is what the reference does, and the port
@@ -387,7 +387,7 @@ Applied to the dashboard, children, review queue and notifications. The
 dashboard's title is now "Хяналтын самбар" and the review queue's
 "Эцэг эхийн ажиглалт — хянах", both the reference's wording.
 
-### 6.3 What the rendered reference showed that v2 will *not* copy
+### 6.3 What the rendered reference showed that v2 will _not_ copy
 
 This is the substantive finding, and it is a scope one.
 
@@ -416,18 +416,18 @@ without its reason.
 
 ### 6.4 Per-screen differences that remain, with cause
 
-| Screen | Difference | Cause |
-| --- | --- | --- |
-| Dashboard | No attendance register, trend chart, donut, meal costs | Phase 2 — CLAUDE.md §7 |
-| Dashboard | No `bandmini` age-band strip | Feature v2 does not expose; porting it is backend work, not styling |
-| Children | No Excel import / CSV / PDF row | Excel import/export excluded — §7 |
-| Children | No attendance or meal-cost stat cards | Phase 2 |
-| Children | No profile-completion ring | Not a v2 concept |
-| Children | No registration code under the name | No equivalent field surfaced |
-| Children | Rows share one card with dividers; reference gives each row its own card | Open — cosmetic, listed below |
-| Children | Live debounced search; reference has a submit button and a sort menu | v2's is a deliberate improvement |
-| Sidebar | Flat list; reference groups into `<details>` sections | v2 has five destinations, not fifteen |
-| Sidebar | No theme toggle | v2 ships one palette — `globals.css` |
+| Screen    | Difference                                                               | Cause                                                               |
+| --------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| Dashboard | No attendance register, trend chart, donut, meal costs                   | Phase 2 — CLAUDE.md §7                                              |
+| Dashboard | No `bandmini` age-band strip                                             | Feature v2 does not expose; porting it is backend work, not styling |
+| Children  | No Excel import / CSV / PDF row                                          | Excel import/export excluded — §7                                   |
+| Children  | No attendance or meal-cost stat cards                                    | Phase 2                                                             |
+| Children  | No profile-completion ring                                               | Not a v2 concept                                                    |
+| Children  | No registration code under the name                                      | No equivalent field surfaced                                        |
+| Children  | Rows share one card with dividers; reference gives each row its own card | Open — cosmetic, listed below                                       |
+| Children  | Live debounced search; reference has a submit button and a sort menu     | v2's is a deliberate improvement                                    |
+| Sidebar   | Flat list; reference groups into `<details>` sections                    | v2 has five destinations, not fifteen                               |
+| Sidebar   | No theme toggle                                                          | v2 ships one palette — `globals.css`                                |
 
 ### 6.5 Cosmetic alignment — **closed**
 
@@ -492,7 +492,7 @@ has a top-level route to point at.
 
 **A defect the port introduced, found by measurement.** Five sections make the
 sidebar taller than a laptop viewport. The whole panel scrolled, so `whoami`'s
-`mt-auto` placed it at the foot of the *content* rather than the panel — it
+`mt-auto` placed it at the foot of the _content_ rather than the panel — it
 overlapped the last section and the way out scrolled off the screen. Fixed: the
 brand and the identity are fixed, and only the menu between them scrolls.
 
@@ -517,9 +517,9 @@ real.
 
 Two genuine findings, both fixed:
 
-| Where | Was | Now |
-| --- | --- | --- |
-| Unread badge digit | 10px | **11px** |
+| Where                    | Was             | Now      |
+| ------------------------ | --------------- | -------- |
+| Unread badge digit       | 10px            | **11px** |
 | "ТҮРГЭН ХОЛБООС" eyebrow | .64rem (10.2px) | **11px** |
 
 The eyebrow is the reference's own size. An all-caps label at 10px is the
@@ -548,7 +548,7 @@ eslint        — clean
 ### 6.9 Direction change — E-Mongolia principles now lead
 
 **2026-08-20, mid-work.** The brief changed: e-mongolia.mn is a style reference
-for its *principles* — spacious layout, strong hierarchy, restrained colour,
+for its _principles_ — spacious layout, strong hierarchy, restrained colour,
 minimal decorative UI, clear primary actions — adapted to something warmer and
 child-focused. No branding, illustrations or components copied.
 
@@ -560,12 +560,12 @@ Django-derived.
 
 Applied:
 
-| Principle | Change |
-| --- | --- |
-| Warmer · minimal decorative UI | The quick-links box was `#f7fbff` on `#dbe9f3` — the one cool element in a warm product. Now canvas on the standard border. |
-| Strong hierarchy | `SectionHeader` takes a `lede`, so a module says what it is for. Heading up to 1.05rem per `--t-title`. |
-| Spacious | Desktop gains 40px lead-in, 32px sides, 64px tail, and 28–32px between modules. The phone keeps 16px — 26px of side padding costs a seventh of a 375px screen. |
-| Restrained colour | `#a6a3ae` was hard-coded twice; it is now `--color-faint`, the third text step. |
+| Principle                      | Change                                                                                                                                                         |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Warmer · minimal decorative UI | The quick-links box was `#f7fbff` on `#dbe9f3` — the one cool element in a warm product. Now canvas on the standard border.                                    |
+| Strong hierarchy               | `SectionHeader` takes a `lede`, so a module says what it is for. Heading up to 1.05rem per `--t-title`.                                                        |
+| Spacious                       | Desktop gains 40px lead-in, 32px sides, 64px tail, and 28–32px between modules. The phone keeps 16px — 26px of side padding costs a seventh of a 375px screen. |
+| Restrained colour              | `#a6a3ae` was hard-coded twice; it is now `--color-faint`, the third text step.                                                                                |
 
 **What did not change**, deliberately: the sidebar structure, the grouped
 sections, the row-card lists, the palette, the component vocabulary. The
@@ -597,12 +597,12 @@ been in the schema and the API from the start, and **nothing in the web app
 ever called either**. A child's avatar was always initials, and the only way a
 photo entered the product was as an attachment to an observation.
 
-| Piece | New |
-| --- | --- |
-| `components/media/photo-upload.tsx` | Picking, size check, sequential upload, retry |
+| Piece                                | New                                                     |
+| ------------------------------------ | ------------------------------------------------------- |
+| `components/media/photo-upload.tsx`  | Picking, size check, sequential upload, retry           |
 | `components/media/child-gallery.tsx` | The grid, the full-size viewer, profile picture, delete |
-| Portfolio page | "Зураг, бүтээл" section and its anchor |
-| `observation-photos.tsx` | Rewritten onto the shared uploader |
+| Portfolio page                       | "Зураг, бүтээл" section and its anchor                  |
+| `observation-photos.tsx`             | Rewritten onto the shared uploader                      |
 
 `PhotoUpload` exists because the same behaviour is now needed in three places,
 and three copies of a sequential-upload-with-retry loop is three chances to get
@@ -750,7 +750,7 @@ A class board families can reply to is a moderation surface, and nobody has been
 given the job of moderating it. Posting stays with staff; reacting is open to
 anyone who can read the notice.
 
-`notifications.test.ts` asserts the *absence* — `POST /notifications/:id/comments`
+`notifications.test.ts` asserts the _absence_ — `POST /notifications/:id/comments`
 must 404 — so the decision cannot be undone by someone adding a route without
 reading why. The same file re-asserts that a guardian still cannot post.
 
@@ -772,7 +772,7 @@ the absent feature       no comment endpoint → 404
                          a guardian still cannot post → refused
 ```
 
-Three of these failed on first run, all because the *test* was wrong, not the
+Three of these failed on first run, all because the _test_ was wrong, not the
 code — a helper's argument order, an assertion that scanned the whole payload
 for a user id (the notice's author is a legitimate id in it), and one that
 expected 403 where the tenant check correctly answers 404 first. Worth recording
@@ -962,7 +962,7 @@ not. So `POST /children/:id/guardian-invitations` is teacher-level, and the
 child page has an "Урих" button that ends in a QR code.
 
 **Why a teacher may do this when they may not use `POST children/:id/guardians`.**
-That endpoint links an account that *already exists* to a child, which grants a
+That endpoint links an account that _already exists_ to a child, which grants a
 real person access to a real record — an administrator's decision. This one
 creates a new account nobody can open, for a child the teacher already writes
 about. `assertCanRecord` is the same bar as posting an observation.
@@ -1008,7 +1008,7 @@ authorization      other kindergarten → 404
                    duplicate username → 409, and no guardianship created
 ```
 
-**The case that matters most:** an accepted guardian sees *that* child and gets
+**The case that matters most:** an accepted guardian sees _that_ child and gets
 404 on another child in the same group. A QR a teacher prints must open one
 portfolio, not the class.
 

@@ -80,7 +80,9 @@ export function SectionHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("mb-3 flex flex-wrap items-start justify-between gap-x-3 gap-y-2", className)}>
+    <div
+      className={cn("mb-3 flex flex-wrap items-start justify-between gap-x-3 gap-y-2", className)}
+    >
       <div className="min-w-0">
         <Tag className="text-[1.05rem] font-semibold leading-[1.35] text-ink">{title}</Tag>
         {lede ? <p className="mt-0.5 text-sm text-muted">{lede}</p> : null}

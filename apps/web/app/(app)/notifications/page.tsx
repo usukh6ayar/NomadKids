@@ -52,17 +52,25 @@ export default function NotificationsPage() {
    * is what says whether another exists, so the last page ends rather than
    * fetching for ever.
    */
-  const { data, isLoading, isError, error, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
-    useInfiniteQuery({
-      queryKey: qk.notifications(filters),
-      initialPageParam: 1,
-      queryFn: ({ pageParam }) => {
-        const params = new URLSearchParams({ page: String(pageParam), pageSize: "15" });
-        if (showUnreadOnly) params.set("unread", "true");
-        return get(`/notifications?${params}`, listSchema);
-      },
-      getNextPageParam: (last) => (last.page < last.totalPages ? last.page + 1 : undefined),
-    });
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: qk.notifications(filters),
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams({ page: String(pageParam), pageSize: "15" });
+      if (showUnreadOnly) params.set("unread", "true");
+      return get(`/notifications?${params}`, listSchema);
+    },
+    getNextPageParam: (last) => (last.page < last.totalPages ? last.page + 1 : undefined),
+  });
 
   const items = data?.pages.flatMap((p) => p.items) ?? [];
 

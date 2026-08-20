@@ -90,7 +90,6 @@ export class UsersService {
   }
 
   private async createInvitedAccount(actor: Actor, kindergartenId: string, dto: CreateUserDto) {
-
     // Checked explicitly so a collision is a readable 409 rather than a raw
     // unique-constraint error surfacing as a 500.
     if (await this.repo.findByUsername(dto.username)) {

@@ -366,36 +366,36 @@ work in any browser. The evidence is kept; only its label and its verdict change
 **Verified with curl — these results stand.** A request is a request, and
 everything here is a property of the response itself:
 
-| Check                               | Result                                              |
-| ----------------------------------- | --------------------------------------------------- |
-| `/login` renders                    | ✅ HTTP 200, `<title>NomadKids</title>`             |
-| CSP names the API origin            | ✅ `connect-src`/`img-src` include the Railway host |
-| Production CSP has no `unsafe-eval` | ✅ dev-only, as intended                            |
-| HSTS · nosniff · frame DENY         | ✅                                                  |
-| CORS from the Vercel origin         | ✅ `access-control-allow-origin` + credentials      |
+| Check                               | Result                                                |
+| ----------------------------------- | ----------------------------------------------------- |
+| `/login` renders                    | ✅ HTTP 200, `<title>NomadKids</title>`               |
+| CSP names the API origin            | ✅ `connect-src`/`img-src` include the Railway host   |
+| Production CSP has no `unsafe-eval` | ✅ dev-only, as intended                              |
+| HSTS · nosniff · frame DENY         | ✅                                                    |
+| CORS from the Vercel origin         | ✅ `access-control-allow-origin` + credentials        |
 | `POST /auth/login` answers 200      | ✅ three `Set-Cookie` headers present in the response |
-| `GET /auth/me` with those cookies   | ✅ `bagsh`, role TEACHER — cookies replayed by hand  |
+| `GET /auth/me` with those cookies   | ✅ `bagsh`, role TEACHER — cookies replayed by hand   |
 
 **Verified in a browser: nothing yet.** The DOM-level checks were done once, by
 hand, and caught the CSP nonce defect below. No authenticated flow has ever been
 exercised in a browser.
 
-| Check                                       | Status                       |
-| ------------------------------------------- | ---------------------------- |
-| Page paints and responds to a click         | ✅ after the nonce fix       |
-| **Login, in a browser**                     | 🚫 **BLOCKED — not verified** |
-| **Session survives a navigation**           | 🚫 **BLOCKED — not verified** |
-| **A protected mutation (save) succeeds**    | 🚫 **BLOCKED — not verified** |
-| **Logout clears the session**               | 🚫 **BLOCKED — not verified** |
+| Check                                    | Status                        |
+| ---------------------------------------- | ----------------------------- |
+| Page paints and responds to a click      | ✅ after the nonce fix        |
+| **Login, in a browser**                  | 🚫 **BLOCKED — not verified** |
+| **Session survives a navigation**        | 🚫 **BLOCKED — not verified** |
+| **A protected mutation (save) succeeds** | 🚫 **BLOCKED — not verified** |
+| **Logout clears the session**            | 🚫 **BLOCKED — not verified** |
 
 **Split-origin cookie behaviour: known broken, by inspection.** Not a pending
 check — a finding.
 
-| Check                                        | Status                                        |
-| -------------------------------------------- | --------------------------------------------- |
-| Session cookie is stored by a browser         | ❌ **fails on the Vercel↔Railway host pair**  |
-| `SameSite` permits the cross-site request     | ❌ cookies are `SameSite=Lax`, hosts are cross-site |
-| Web origin can read `kinder_csrf`             | ❌ host-only cookie on the API host — **fixed in the client**, see below |
+| Check                                     | Status                                                                   |
+| ----------------------------------------- | ------------------------------------------------------------------------ |
+| Session cookie is stored by a browser     | ❌ **fails on the Vercel↔Railway host pair**                             |
+| `SameSite` permits the cross-site request | ❌ cookies are `SameSite=Lax`, hosts are cross-site                      |
+| Web origin can read `kinder_csrf`         | ❌ host-only cookie on the API host — **fixed in the client**, see below |
 
 Blocked on DNS, and blocked precisely: as of 2026-08-20 `nomadkids.mn` answers
 `NOERROR` with **no A record**, and `api.nomadkids.mn` answers **`NXDOMAIN`**.

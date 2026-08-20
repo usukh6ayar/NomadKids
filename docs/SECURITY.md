@@ -169,6 +169,7 @@ Two layers:
    The browser still supplies the cookie half by itself, which is what makes it
    a double submit: an attacker's page can cause the cookie to be sent but
    cannot learn the value to echo in the header.
+
 2. **Origin check.** Reject unsafe methods whose `Origin` is not in the
    allowlist — in production, exactly `https://nomadkids.mn`.
 

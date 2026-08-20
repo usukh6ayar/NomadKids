@@ -68,8 +68,7 @@ export function ChildGallery({
   });
 
   const remove = useMutation({
-    mutationFn: (mediaId: string) =>
-      mutate(`/media/${mediaId}`, z.unknown(), { method: "DELETE" }),
+    mutationFn: (mediaId: string) => mutate(`/media/${mediaId}`, z.unknown(), { method: "DELETE" }),
     onSuccess: () => {
       setViewing(null);
       void queryClient.invalidateQueries({ queryKey: qk.childMedia(childId) });

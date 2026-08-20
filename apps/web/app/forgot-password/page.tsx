@@ -40,7 +40,9 @@ export default function ForgotPasswordPage() {
 
   return (
     <AuthShell>
-      <h2 className="mb-1.5 text-[1.35rem] font-bold tracking-[-.01em] text-ink">Нууц үг сэргээх</h2>
+      <h2 className="mb-1.5 text-[1.35rem] font-bold tracking-[-.01em] text-ink">
+        Нууц үг сэргээх
+      </h2>
 
       {request.isSuccess ? (
         <p role="status" className="text-sm leading-relaxed text-ink">

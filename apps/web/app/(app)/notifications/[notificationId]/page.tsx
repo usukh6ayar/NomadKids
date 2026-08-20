@@ -123,9 +123,7 @@ export default function NotificationDetailPage() {
                   // opened to look at the picture.
                   className="aspect-auto max-h-[70vh] w-full object-contain"
                 />
-                {photo.caption ? (
-                  <p className="mt-1 text-xs text-muted">{photo.caption}</p>
-                ) : null}
+                {photo.caption ? <p className="mt-1 text-xs text-muted">{photo.caption}</p> : null}
               </li>
             ))}
           </ul>
@@ -142,9 +140,7 @@ export default function NotificationDetailPage() {
             likedByMe={notification.likedByMe}
           />
           {notification.likeCount > 0 ? (
-            <span className="text-sm text-muted">
-              {notification.likeCount} хүн таалав
-            </span>
+            <span className="text-sm text-muted">{notification.likeCount} хүн таалав</span>
           ) : null}
         </div>
       </Card>

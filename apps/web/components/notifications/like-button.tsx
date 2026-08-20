@@ -58,7 +58,10 @@ export function LikeButton({
   // were. `variables` is the value passed to `mutate`.
   const optimistic = toggle.isPending ? toggle.variables : likedByMe;
   const count = toggle.isPending
-    ? Math.max(0, likeCount + (toggle.variables ? 1 : -1) * (toggle.variables === likedByMe ? 0 : 1))
+    ? Math.max(
+        0,
+        likeCount + (toggle.variables ? 1 : -1) * (toggle.variables === likedByMe ? 0 : 1),
+      )
     : likeCount;
 
   return (

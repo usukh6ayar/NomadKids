@@ -466,9 +466,7 @@ describe("POST /auth/invitation/accept", () => {
   it("consumes the token, so a link cannot be replayed", async () => {
     const { token } = await invite();
 
-    await request(server())
-      .post("/v1/auth/invitation/accept")
-      .send({ token, password: PASSWORD });
+    await request(server()).post("/v1/auth/invitation/accept").send({ token, password: PASSWORD });
 
     const replay = await request(server())
       .post("/v1/auth/invitation/accept")
@@ -501,9 +499,7 @@ describe("POST /auth/invitation/accept", () => {
 
   it("says the same thing for unknown, used and expired", async () => {
     const { token } = await invite();
-    await request(server())
-      .post("/v1/auth/invitation/accept")
-      .send({ token, password: PASSWORD });
+    await request(server()).post("/v1/auth/invitation/accept").send({ token, password: PASSWORD });
 
     const used = await request(server())
       .post("/v1/auth/invitation/accept")

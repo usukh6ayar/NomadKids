@@ -1298,7 +1298,7 @@ Both halves are covered, because either alone proves nothing:
   read, that login and logout both carry it, and that it is dropped on logout
   and on a 401. **Three of these fail against the old implementation** —
   checked by restoring it and re-running, not assumed. A fourth (logout)
-  failed against the *new* implementation and is the reason the explicit
+  failed against the _new_ implementation and is the reason the explicit
   forget exists.
 - **Session refresh has no web-client flow to test.** `POST /auth/refresh`
   exists and returns `csrfToken`, but nothing in `apps/web` calls it: an expired

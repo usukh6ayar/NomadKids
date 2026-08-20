@@ -86,9 +86,7 @@ export function PageHeader({
             <span className="block max-w-[180px] truncate text-[.87rem] font-semibold leading-[1.2] text-ink">
               {fullName(session?.user)}
             </span>
-            <span className="block text-[.75rem] text-muted">
-              {roleLabel}
-            </span>
+            <span className="block text-[.75rem] text-muted">{roleLabel}</span>
           </span>
         </span>
       </div>
@@ -273,9 +271,7 @@ function Sidebar({
       <Brand subtitle={subtitle} />
 
       <div className="-mr-1.5 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1.5">
-        {primary ? (
-          <NavLink item={primary} pathname={pathname} orientation="vertical" />
-        ) : null}
+        {primary ? <NavLink item={primary} pathname={pathname} orientation="vertical" /> : null}
 
         {shortcuts?.length ? <NavShortcuts shortcuts={shortcuts} /> : null}
 
@@ -357,10 +353,7 @@ function NavGroup({ section, pathname }: { section: NavSection; pathname: string
         if (!entry.href || entry.soon) {
           return (
             // Not a link, deliberately — see `NavSection`.
-            <span
-              key={entry.label}
-              className="ml-3 block px-2.5 py-1.5 text-[.8rem] text-faint"
-            >
+            <span key={entry.label} className="ml-3 block px-2.5 py-1.5 text-[.8rem] text-faint">
               {entry.label}
               <small className="ml-1 text-[.78rem]">удахгүй</small>
             </span>
