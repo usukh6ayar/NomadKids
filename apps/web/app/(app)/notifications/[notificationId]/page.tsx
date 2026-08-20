@@ -12,6 +12,8 @@ import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { LikeButton } from "@/components/notifications/like-button";
+import { MediaThumb } from "@/components/media/media-image";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { formatLongDate, fullName } from "@/lib/format";
 
@@ -108,6 +110,42 @@ export default function NotificationDetailPage() {
         */}
         <div className="mt-5 whitespace-pre-wrap text-[15px] leading-relaxed text-ink">
           {notification.body}
+        </div>
+
+        {notification.media.length > 0 ? (
+          <ul className="mt-5 grid gap-2 sm:grid-cols-2">
+            {notification.media.map((photo) => (
+              <li key={photo.id} className={notification.media.length === 1 ? "sm:col-span-2" : ""}>
+                <MediaThumb
+                  mediaId={photo.id}
+                  caption={photo.caption}
+                  // Full size here, unlike the feed: this is the screen someone
+                  // opened to look at the picture.
+                  className="aspect-auto max-h-[70vh] w-full object-contain"
+                />
+                {photo.caption ? (
+                  <p className="mt-1 text-xs text-muted">{photo.caption}</p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
+        {/*
+          Below the notice, above nothing else. There is no comment box here by
+          design — see `LikeButton`.
+        */}
+        <div className="mt-5 flex items-center gap-2 border-t border-border pt-3">
+          <LikeButton
+            notificationId={notification.id}
+            likeCount={notification.likeCount}
+            likedByMe={notification.likedByMe}
+          />
+          {notification.likeCount > 0 ? (
+            <span className="text-sm text-muted">
+              {notification.likeCount} хүн таалав
+            </span>
+          ) : null}
         </div>
       </Card>
     </div>

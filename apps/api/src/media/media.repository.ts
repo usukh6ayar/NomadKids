@@ -20,6 +20,7 @@ export class MediaRepository {
         childId: true,
         kindergartenId: true,
         observationId: true,
+        notificationId: true,
         storageKey: true,
         originalName: true,
         mimeType: true,
@@ -100,6 +101,20 @@ export class MediaRepository {
     return this.prisma.mediaFile.create({ data });
   }
 
+  /** The notice a photo is being attached to. Only what authorization needs. */
+  async findNotificationForAttachment(id: string) {
+    return this.prisma.notification.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true, kindergartenId: true },
+    });
+  }
+
+  async countForNotification(notificationId: string): Promise<number> {
+    return this.prisma.mediaFile.count({
+      where: { notificationId, deletedAt: null, status: "READY" },
+    });
+  }
+
   async archive(id: string) {
     return this.prisma.mediaFile.update({
       where: { id },
@@ -153,8 +168,10 @@ export class MediaRepository {
 
 export interface CreateMediaData {
   kindergartenId: string;
-  childId: string | null;
-  observationId: string | null;
+  /** Null for a class-board photo — a notice is addressed to a group. */
+  childId?: string | null;
+  observationId?: string | null;
+  notificationId?: string | null;
   purpose: MediaPurpose;
   storageKey: string;
   originalName: string;

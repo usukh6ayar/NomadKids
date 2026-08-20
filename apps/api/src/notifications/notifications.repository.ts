@@ -76,6 +76,16 @@ export class NotificationsRepository {
           // Only this user's receipt, so the response says "have I read it"
           // rather than listing everyone who has.
           reads: { where: { userId }, select: { readAt: true } },
+          // The count everyone sees, and this user's own reaction — never the
+          // list of who liked it. A parent should not learn which other
+          // families are reading the board.
+          reactions: { where: { userId, deletedAt: null }, select: { id: true } },
+          _count: { select: { reactions: { where: { deletedAt: null } } } },
+          media: {
+            where: { deletedAt: null, status: "READY" },
+            orderBy: { order: "asc" },
+            select: { id: true, caption: true, width: true, height: true },
+          },
           targets: {
             where: { deletedAt: null },
             select: {
@@ -104,6 +114,13 @@ export class NotificationsRepository {
       include: {
         author: { select: { id: true, lastName: true, firstName: true } },
         reads: { where: { userId }, select: { readAt: true } },
+        reactions: { where: { userId, deletedAt: null }, select: { id: true } },
+        _count: { select: { reactions: { where: { deletedAt: null } } } },
+        media: {
+          where: { deletedAt: null, status: "READY" },
+          orderBy: { order: "asc" },
+          select: { id: true, caption: true, width: true, height: true },
+        },
         targets: {
           where: { deletedAt: null },
           select: {
@@ -200,6 +217,31 @@ export class NotificationsRepository {
       where: { notificationId_userId: { notificationId, userId } },
       create: { notificationId, userId },
       update: {},
+    });
+  }
+
+  /**
+   * Likes or un-likes, in one statement.
+   *
+   * ★ An upsert, not an insert-or-delete. The unique pair means a second like
+   * from the same person must update the row that already exists — and because
+   * un-liking soft-deletes rather than removing, that row is still there. A
+   * plain create would fail on the constraint the moment anyone changed their
+   * mind twice.
+   */
+  async setReaction(input: {
+    notificationId: string;
+    userId: string;
+    kindergartenId: string;
+    liked: boolean;
+  }) {
+    const { notificationId, userId, kindergartenId, liked } = input;
+    const deletedAt = liked ? null : new Date();
+
+    return this.prisma.notificationReaction.upsert({
+      where: { notificationId_userId: { notificationId, userId } },
+      create: { notificationId, userId, kindergartenId, deletedAt },
+      update: { deletedAt },
     });
   }
 

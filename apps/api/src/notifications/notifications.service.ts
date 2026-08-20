@@ -76,7 +76,7 @@ export class NotificationsService {
     );
 
     return paginate(
-      items.map((n) => ({ ...n, isRead: n.reads.length > 0, reads: undefined })),
+      items.map((n) => toPublicShape(n)),
       total,
       page,
     );
@@ -99,7 +99,7 @@ export class NotificationsService {
     // 404 for a draft somebody else is writing, or a notice for another family.
     if (!notification) throw new NotFoundException();
 
-    return { ...notification, isRead: notification.reads.length > 0, reads: undefined };
+    return toPublicShape(notification);
   }
 
   /**
@@ -197,6 +197,61 @@ export class NotificationsService {
    * Goes through the audience filter first: marking a notice read must not be a
    * way to confirm that one exists.
    */
+  /**
+   * Whether this actor may read the notice.
+   *
+   * ★ Exists so the media module can authorise a photo attached to an
+   * announcement **without knowing the audience rules**. A notice's photo is
+   * readable exactly when the notice is, and re-deriving that inside
+   * `MediaService` would be the second copy §1.1 forbids — the copy that
+   * eventually disagrees.
+   */
+  async isReadable(actor: Actor, id: string): Promise<boolean> {
+    const where = await this.audienceFilter(actor);
+    const notification = await this.repo.findReadable(
+      id,
+      where as Record<string, unknown>,
+      actor.userId,
+    );
+    return Boolean(notification);
+  }
+
+  /**
+   * Likes or un-likes an announcement.
+   *
+   * ★ The same readability check as everything else on this board. A guardian
+   * who may not see a notice gets a 404 from `findReadable`, so a like cannot
+   * be used to probe which announcements exist — §1.7.
+   *
+   * Idempotent in both directions: liking twice leaves one like, and un-liking
+   * something never liked is a no-op rather than an error. A double-tap on a
+   * phone should not produce a failure the user has to understand.
+   */
+  async setReaction(actor: Actor, id: string, liked: boolean) {
+    const where = await this.audienceFilter(actor);
+    const notification = await this.repo.findReadable(
+      id,
+      where as Record<string, unknown>,
+      actor.userId,
+    );
+    if (!notification) throw new NotFoundException();
+
+    await this.repo.setReaction({
+      notificationId: id,
+      userId: actor.userId,
+      kindergartenId: notification.kindergartenId,
+      liked,
+    });
+
+    // Re-read, so the caller gets the count without a second request.
+    const updated = await this.repo.findReadable(
+      id,
+      where as Record<string, unknown>,
+      actor.userId,
+    );
+    return toPublicShape(updated!);
+  }
+
   async markRead(actor: Actor, id: string) {
     const where = await this.audienceFilter(actor);
     const notification = await this.repo.findReadable(
@@ -248,4 +303,30 @@ export class NotificationsService {
 
 function definedOnly(dto: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(dto).filter(([, value]) => value !== undefined));
+}
+
+/**
+ * The shape a client receives.
+ *
+ * `reads` and `reactions` are this user's own rows, and `_count` is everyone's
+ * total. Both are collapsed to booleans and a number here so the response never
+ * carries a list of who read or liked something — a parent must not be able to
+ * work out which other families are on the board.
+ */
+function toPublicShape<
+  T extends {
+    reads: unknown[];
+    reactions?: unknown[];
+    _count?: { reactions: number };
+  },
+>(notification: T) {
+  return {
+    ...notification,
+    isRead: notification.reads.length > 0,
+    likedByMe: (notification.reactions?.length ?? 0) > 0,
+    likeCount: notification._count?.reactions ?? 0,
+    reads: undefined,
+    reactions: undefined,
+    _count: undefined,
+  };
 }

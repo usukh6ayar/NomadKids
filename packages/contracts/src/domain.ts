@@ -302,6 +302,33 @@ export const notificationSchema = z.object({
   author: personRefSchema.nullish(),
   /** Only this user's receipt — "have I read it", not who else has. */
   reads: z.array(z.object({ readAt: z.string().nullish() })).default([]),
+  /**
+   * Reactions, collapsed.
+   *
+   * A count and a boolean, never a list of who. A parent must not be able to
+   * work out which other families are reading the board — the same reasoning as
+   * `reads`. There is no comment field, and that is deliberate: see the `like`
+   * endpoint in `notifications.controller.ts`.
+   */
+  likeCount: z.number().default(0),
+  likedByMe: z.boolean().default(false),
+  /**
+   * Photos on the notice, in the order they were attached.
+   *
+   * Ids only — the bytes come from `GET /media/:id`, which checks permission
+   * and redirects to a short-lived presigned URL. A storage key never leaves
+   * the API.
+   */
+  media: z
+    .array(
+      z.object({
+        id: uuidSchema,
+        caption: z.string().nullish(),
+        width: z.number().nullish(),
+        height: z.number().nullish(),
+      }),
+    )
+    .default([]),
   targets: z
     .array(
       z.object({

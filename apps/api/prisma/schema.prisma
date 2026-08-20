@@ -109,6 +109,9 @@ enum ReviewStatus {
 enum MediaPurpose {
   CHILD_PHOTO
   OBSERVATION
+  /// A photo on a class-board announcement. Not about one child, so the row
+  /// carries no `childId` — the kindergarten scope is what protects it.
+  NOTIFICATION
   REPORT_OUTPUT
 }
 
@@ -196,6 +199,7 @@ model User {
   termReports    TermReport[]   @relation("TermReportAuthor")
   notifications  Notification[] @relation("NotificationAuthor")
   reads          NotificationRead[]
+  reactions      NotificationReaction[]
   reportJobs     ReportJob[]
 
   @@index([deletedAt])
@@ -336,6 +340,7 @@ model Kindergarten {
   mediaFiles         MediaFile[]
   notifications      Notification[]
   notificationTargets NotificationTarget[]
+  notificationReactions NotificationReaction[]
   reportJobs         ReportJob[]
   auditLogs          AuditLog[]
 
@@ -883,6 +888,9 @@ model MediaFile {
   /// The authorization anchor. NULL only for kindergarten-level outputs.
   childId        String? @db.Uuid
   observationId  String? @db.Uuid
+  /// Set for `NOTIFICATION` media. Mutually exclusive with `childId` in
+  /// practice: a class announcement is addressed to a group, not a child.
+  notificationId String? @db.Uuid
   order          Int     @default(0)
 
   purpose MediaPurpose
@@ -907,12 +915,14 @@ model MediaFile {
   kindergarten     Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   child            Child?       @relation("ChildMedia", fields: [childId], references: [id], onDelete: Cascade)
   observation      Observation? @relation("ObservationMedia", fields: [observationId], references: [id], onDelete: Cascade)
+  notification     Notification? @relation("NotificationMedia", fields: [notificationId], references: [id], onDelete: Cascade)
   childPhotoOf     Child?       @relation("ChildPhoto")
   reportJob        ReportJob?   @relation("ReportOutput")
 
   @@index([childId, purpose, uploadedAt(sort: Desc)])
   @@index([kindergartenId, uploadedAt(sort: Desc)])
   @@index([observationId, order])
+  @@index([notificationId, order])
   @@index([status, deletedAt])
   @@map("media_files")
 }
@@ -941,6 +951,8 @@ model Notification {
   author       User?                @relation("NotificationAuthor", fields: [authorId], references: [id], onDelete: SetNull)
   targets      NotificationTarget[]
   reads        NotificationRead[]
+  reactions    NotificationReaction[]
+  media        MediaFile[]            @relation("NotificationMedia")
 
   @@index([kindergartenId, status, publishedAt(sort: Desc)])
   @@map("notifications")
@@ -982,6 +994,37 @@ model NotificationRead {
   @@unique([notificationId, userId])
   @@index([userId, readAt(sort: Desc)])
   @@map("notification_reads")
+}
+
+/// A "like" on an announcement.
+///
+/// ★ Reactions only. There is no comment model and there is not going to be
+/// one: a class board where parents can reply is a moderation surface, and
+/// nobody has been given the job of moderating it. A like says "seen and
+/// appreciated" without creating anything a teacher has to police.
+///
+/// Soft-deleted rather than removed, per §3.2 — un-liking sets `deletedAt` and
+/// liking again clears it, so the unique pair survives the round trip and the
+/// history of who reacted is not silently rewritten.
+model NotificationReaction {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  notificationId String @db.Uuid
+  userId         String @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// One reaction per person per notice. The toggle updates this row rather
+  /// than inserting a second one.
+  @@unique([notificationId, userId])
+  @@index([notificationId, deletedAt])
+  @@map("notification_reactions")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

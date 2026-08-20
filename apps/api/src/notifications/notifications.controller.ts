@@ -85,6 +85,36 @@ export class NotificationsController {
     return this.service.archive(actor, params.id);
   }
 
+  /**
+   * Likes an announcement.
+   *
+   * ★ Anyone who can read the notice can like it, including guardians — that is
+   * the point. There is deliberately **no comment endpoint**: a class board
+   * parents can reply to is a moderation surface, and nobody has been given the
+   * job of moderating it. Posting stays with staff, reacting is open.
+   *
+   * Returns the updated notice so the button can show the new count without a
+   * second request.
+   */
+  @Post(":id/like")
+  @HttpCode(HttpStatus.OK)
+  async like(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.setReaction(actor, params.id, true);
+  }
+
+  /** Removes a like. Idempotent — un-liking twice is not an error. */
+  @Delete(":id/like")
+  @HttpCode(HttpStatus.OK)
+  async unlike(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.setReaction(actor, params.id, false);
+  }
+
   /** Idempotent — reading twice is not an error. */
   @Post(":id/read")
   @HttpCode(HttpStatus.NO_CONTENT)

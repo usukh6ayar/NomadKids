@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { AuditRepository } from "../audit/audit.repository";
 import { ChildAccessService } from "../authz/child-access.service";
+import { TenantAccessService } from "../authz/tenant-access.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { isGuardianOf } from "../authz/child-access";
 import type { Actor } from "../authz/actor";
 import { StorageService } from "../storage/storage.service";
@@ -10,6 +12,7 @@ import type { MediaPurpose } from "../domain/enums";
 
 /** A generous ceiling; the UI shows far fewer per observation. */
 const MAX_PHOTOS_PER_OBSERVATION = 12;
+const MAX_PHOTOS_PER_NOTIFICATION = 12;
 
 @Injectable()
 export class MediaService {
@@ -17,6 +20,8 @@ export class MediaService {
     private readonly repo: MediaRepository,
     private readonly storage: StorageService,
     private readonly childAccess: ChildAccessService,
+    private readonly tenants: TenantAccessService,
+    private readonly notifications: NotificationsService,
     private readonly audit: AuditRepository,
   ) {}
 
@@ -112,8 +117,36 @@ export class MediaService {
    */
   async getDownloadUrl(actor: Actor, mediaId: string): Promise<string> {
     const media = await this.repo.findForAuthorization(mediaId);
-    if (!media || !media.childId) throw new NotFoundException();
+    if (!media) throw new NotFoundException();
     if (media.status !== "READY") throw new NotFoundException();
+
+    /*
+     * ★ Two kinds of media, two authorities.
+     *
+     * A class-board photo belongs to a notice, not a child, so there is no
+     * child to check it against — it is readable exactly when the notice is.
+     * `NotificationsService` owns that rule and is asked rather than copied.
+     *
+     * This branch is why the child guard below is not simply `!media.childId`
+     * any more: that test used to stand in for "is this a real file", and a
+     * notice photo is a real file with no child.
+     */
+    if (media.notificationId) {
+      const readable = await this.notifications.isReadable(actor, media.notificationId);
+      if (!readable) throw new NotFoundException();
+
+      await this.audit.append({
+        action: "DOWNLOAD",
+        kindergartenId: media.kindergartenId,
+        actorUserId: actor.userId,
+        objectType: "MediaFile",
+        objectId: mediaId,
+      });
+
+      return this.storage.presignedGetUrl(media.storageKey, media.originalName);
+    }
+
+    if (!media.childId) throw new NotFoundException();
 
     const facts = await this.childAccess.assertCanAccess(actor, media.childId);
 
@@ -193,6 +226,78 @@ export class MediaService {
     await this.childAccess.assertCanRecord(actor, media.childId);
     const updated = await this.repo.setCaption(mediaId, caption);
     return this.toPublicShape(updated);
+  }
+
+  /**
+   * Attaches a photo to a class-board announcement.
+   *
+   * ★ Staff only, and scoped by kindergarten rather than by child.
+   *
+   * A notice is addressed to a group, so there is no child to run
+   * `assertCanRecord` against — the tenant check is what protects it, and the
+   * caller must hold a staff membership in the notice's kindergarten. Guardians
+   * may like a notice, never illustrate one: posting is a staff act, and an
+   * upload endpoint that accepted a parent would be a way around that.
+   *
+   * The storage key is kindergarten-scoped for the same reason. It stays
+   * random — never derived from the notice, the kindergarten name or the
+   * uploaded filename.
+   */
+  async uploadForNotification(
+    actor: Actor,
+    notificationId: string,
+    file: { buffer: Buffer; originalname: string },
+    caption?: string | null,
+  ) {
+    const notification = await this.repo.findNotificationForAttachment(notificationId);
+    if (!notification) throw new NotFoundException();
+    this.tenants.assertStaff(actor, notification.kindergartenId);
+
+    let validated;
+    try {
+      validated = await validateImageUpload(file.buffer);
+    } catch (error) {
+      if (error instanceof UploadRejected) throw new BadRequestException(error.reason);
+      throw error;
+    }
+
+    const existing = await this.repo.countForNotification(notificationId);
+    if (existing >= MAX_PHOTOS_PER_NOTIFICATION) {
+      throw new BadRequestException(
+        `Нэг мэдэгдэлд дээд тал нь ${MAX_PHOTOS_PER_NOTIFICATION} зураг хавсаргана`,
+      );
+    }
+
+    const storageKey = this.storage.buildKindergartenKey(
+      notification.kindergartenId,
+      "notifications",
+    );
+    await this.storage.put(storageKey, validated.buffer, validated.mimeType);
+
+    const media = await this.repo.create({
+      kindergartenId: notification.kindergartenId,
+      notificationId,
+      purpose: "NOTIFICATION",
+      storageKey,
+      originalName: sanitiseFilename(file.originalname),
+      mimeType: validated.mimeType,
+      sizeBytes: validated.sizeBytes,
+      width: validated.width,
+      height: validated.height,
+      caption: caption ?? null,
+      order: existing,
+    });
+
+    await this.audit.append({
+      action: "CREATE",
+      kindergartenId: notification.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "MediaFile",
+      objectId: media.id,
+      metadata: { purpose: media.purpose, sizeBytes: media.sizeBytes, notificationId },
+    });
+
+    return this.toPublicShape(media);
   }
 
   /** Makes an already-uploaded photo the child's profile picture. */

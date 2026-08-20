@@ -20,6 +20,7 @@ import { RateLimit, RateLimitGuard } from "../common/rate-limit/rate-limit.guard
 import { UseGuards } from "@nestjs/common";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
 import type { Actor } from "../authz/actor";
+import { Roles } from "../auth/decorators/roles.decorator";
 import { MediaService } from "./media.service";
 import { MAX_UPLOAD_BYTES } from "./upload-validation";
 
@@ -90,6 +91,40 @@ export class ChildMediaController {
     @Body(new ZodValidationPipe(z.object({ mediaId: z.uuid() }))) body: { mediaId: string },
   ) {
     return this.service.setAsChildPhoto(actor, params.id, body.mediaId);
+  }
+}
+
+/**
+ * Photos on a class-board announcement.
+ *
+ * Separate controller because the scope is different: child media is authorised
+ * per child, this is authorised per kindergarten, and folding them together
+ * would mean one method with two authorization paths — the shape mistake
+ * CLAUDE.md §1.1 exists to prevent.
+ */
+@Controller("notifications/:id/media")
+@UseGuards(RateLimitGuard)
+export class NotificationMediaController {
+  constructor(private readonly service: MediaService) {}
+
+  @Post()
+  @Roles("TEACHER", "ADMIN")
+  @RateLimit({ limit: 60, windowMs: 60 * 60 * 1000, byUser: true })
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
+    }),
+  )
+  async upload(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @UploadedFile() file: { buffer: Buffer; originalname: string } | undefined,
+    @Body(new ZodValidationPipe(z.object({ caption: z.string().max(500).optional() })))
+    body: { caption?: string },
+  ) {
+    if (!file) throw new BadRequestException("Файл хавсаргаагүй байна");
+
+    return this.service.uploadForNotification(actor, params.id, file, body.caption ?? null);
   }
 }
 

@@ -1,16 +1,21 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { notificationSchema, paginated } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
+import { PageHeader } from "@/components/shell/app-shell";
+import { LikeButton } from "@/components/notifications/like-button";
+import { MediaThumb } from "@/components/media/media-image";
+import { useSession } from "@/lib/auth/session";
+import { Plus } from "lucide-react";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { RowList } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { excerpt, formatRelative, fullName } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -30,37 +35,91 @@ const listSchema = paginated(notificationSchema);
  * week is indistinguishable from a push (docs/ARCHITECTURE.md §7).
  */
 export default function NotificationsPage() {
+  const { hasRole } = useSession();
+  const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
   const filters = { unread: showUnreadOnly };
 
-  const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: qk.notifications(filters),
-    queryFn: () => {
-      const params = new URLSearchParams({ page: "1", pageSize: "25" });
-      if (showUnreadOnly) params.set("unread", "true");
-      return get(`/notifications?${params}`, listSchema);
-    },
-  });
+  /**
+   * ★ An endless feed, not pages.
+   *
+   * A class board is read the way a phone is read — thumb down until something
+   * looks familiar. "Өмнөх / Дараах" makes the reader hold a page number in
+   * their head to answer "have I seen this one", which is the wrong question to
+   * make a parent answer on a bus.
+   *
+   * The API is still paginated; this stitches the pages together. `totalPages`
+   * is what says whether another exists, so the last page ends rather than
+   * fetching for ever.
+   */
+  const { data, isLoading, isError, error, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    useInfiniteQuery({
+      queryKey: qk.notifications(filters),
+      initialPageParam: 1,
+      queryFn: ({ pageParam }) => {
+        const params = new URLSearchParams({ page: String(pageParam), pageSize: "15" });
+        if (showUnreadOnly) params.set("unread", "true");
+        return get(`/notifications?${params}`, listSchema);
+      },
+      getNextPageParam: (last) => (last.page < last.totalPages ? last.page + 1 : undefined),
+    });
+
+  const items = data?.pages.flatMap((p) => p.items) ?? [];
+
+  /**
+   * The sentinel below the list. Loading on intersection rather than on a
+   * button: the button is the thing the feed exists to remove.
+   *
+   * `rootMargin` starts the fetch before the reader reaches the end, so the
+   * next batch is usually there by the time they get to it.
+   */
+  const sentinel = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const node = sentinel.current;
+    if (!node || !hasNextPage) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && !isFetchingNextPage) void fetchNextPage();
+      },
+      { rootMargin: "400px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   return (
-    <div className="flex flex-col gap-5 py-2">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink">Мэдэгдэл</h1>
-
-        {/*
+    <div className="flex flex-col gap-5 lg:gap-7">
+      <PageHeader
+        title="Мэдэгдэл"
+        lede="Цэцэрлэгээс ирсэн зар, мэдээлэл."
+        /*
           A two-state toggle rendered as buttons with `aria-pressed`, so the
           current filter is announced rather than being visible only as a
           background colour.
-        */}
-        <div className="flex gap-1 rounded-[12px] border border-border bg-surface p-1">
-          <FilterButton active={!showUnreadOnly} onClick={() => setShowUnreadOnly(false)}>
-            Бүгд
-          </FilterButton>
-          <FilterButton active={showUnreadOnly} onClick={() => setShowUnreadOnly(true)}>
-            Уншаагүй
-          </FilterButton>
-        </div>
-      </header>
+        */
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            {isStaff ? (
+              <Button asChild size="sm">
+                <Link href="/notifications/new">
+                  <Plus size={18} />
+                  Шинэ мэдэгдэл
+                </Link>
+              </Button>
+            ) : null}
+
+            <div className="flex gap-1 rounded-[12px] border border-border bg-surface p-1">
+              <FilterButton active={!showUnreadOnly} onClick={() => setShowUnreadOnly(false)}>
+                Бүгд
+              </FilterButton>
+              <FilterButton active={showUnreadOnly} onClick={() => setShowUnreadOnly(true)}>
+                Уншаагүй
+              </FilterButton>
+            </div>
+          </div>
+        }
+      />
 
       {isLoading ? <LoadingState rows={4} /> : null}
 
@@ -75,7 +134,7 @@ export default function NotificationsPage() {
         />
       ) : null}
 
-      {data && data.items.length === 0 ? (
+      {data && items.length === 0 ? (
         <EmptyState
           title={showUnreadOnly ? "Уншаагүй мэдэгдэл алга" : "Мэдэгдэл алга"}
           description={
@@ -86,12 +145,25 @@ export default function NotificationsPage() {
         />
       ) : null}
 
-      {data && data.items.length > 0 ? (
-        <Card className="divide-y divide-border">
-          {data.items.map((notification) => (
+      {items.length > 0 ? (
+        <RowList>
+          {items.map((notification) => (
             <NotificationRow key={notification.id} notification={notification} />
           ))}
-        </Card>
+        </RowList>
+      ) : null}
+
+      {/* Height, so it can intersect at all — a zero-height div never does. */}
+      <div ref={sentinel} aria-hidden="true" className="h-px" />
+
+      {isFetchingNextPage ? (
+        <p role="status" className="py-2 text-center text-sm text-muted">
+          Ачаалж байна…
+        </p>
+      ) : null}
+
+      {!hasNextPage && items.length > 0 ? (
+        <p className="py-2 text-center text-sm text-muted">Бүх мэдэгдлийг үзлээ.</p>
       ) : null}
     </div>
   );
@@ -112,7 +184,8 @@ function FilterButton({
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        "min-h-[40px] rounded-[10px] px-3 text-sm font-medium",
+        // 44px, not 40: this is the tap floor the rest of the product holds to.
+        "min-h-[44px] rounded-[10px] px-3 text-sm font-medium",
         active ? "bg-primary-soft text-primary" : "text-muted hover:text-ink",
       )}
     >
@@ -142,7 +215,9 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
       onClick={() => {
         if (isUnread) markRead.mutate();
       }}
-      className="flex min-h-[72px] items-start gap-3 px-4 py-3 hover:bg-canvas"
+      // Its own card, per `.kidrow`. The border moving to the brand colour is
+      // the reference's hover affordance for a row that is a link.
+      className="flex min-h-[72px] items-start gap-3 rounded-[14px] border border-border bg-surface px-4 py-3 transition-colors hover:border-primary"
     >
       {/*
         Unread is signalled three ways — a dot, a bolder title, and an sr-only
@@ -168,13 +243,47 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
 
         <span className="mt-0.5 block text-sm text-muted">{excerpt(notification.body, 110)}</span>
 
-        <span className="mt-1 block text-xs text-muted">
-          {[
-            fullName(notification.author),
-            formatRelative(notification.publishedAt ?? notification.createdAt),
-          ]
-            .filter((v) => v !== "—")
-            .join(" · ")}
+        {/*
+          Photos, as a feed shows them: one fills the width, several become a
+          grid. `max-h` keeps a tall portrait photo from pushing the next post
+          off the screen — the row is a summary, and the detail page is where a
+          picture gets to be its own size.
+        */}
+        {notification.media.length > 0 ? (
+          <span
+            className={cn(
+              "mt-2 grid gap-1.5 overflow-hidden rounded-[12px]",
+              notification.media.length === 1 ? "grid-cols-1" : "grid-cols-2 sm:grid-cols-3",
+            )}
+          >
+            {notification.media.slice(0, 6).map((photo) => (
+              <MediaThumb
+                key={photo.id}
+                mediaId={photo.id}
+                caption={photo.caption}
+                className={notification.media.length === 1 ? "aspect-[16/9] max-h-[320px]" : ""}
+              />
+            ))}
+          </span>
+        ) : null}
+
+        <span className="mt-1 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-muted">
+            {[
+              fullName(notification.author),
+              formatRelative(notification.publishedAt ?? notification.createdAt),
+            ]
+              .filter((v) => v !== "—")
+              .join(" · ")}
+          </span>
+
+          {/* Inside the row, which is a link — the button stops the click. */}
+          <LikeButton
+            notificationId={notification.id}
+            likeCount={notification.likeCount}
+            likedByMe={notification.likedByMe}
+            className="-my-2"
+          />
         </span>
       </span>
     </Link>

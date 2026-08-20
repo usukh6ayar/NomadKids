@@ -530,3 +530,327 @@ describe("ordering and audit", () => {
     expect(res.body.items).toHaveLength(2);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Reactions — the class board is likeable, not commentable
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("likes", () => {
+  it("a guardian can like a notice they can see", async () => {
+    const id = await notify([]);
+
+    const res = await authed(request(server()).post(`/v1/notifications/${id}/like`), parentA);
+
+    expect(res.status).toBe(200);
+    expect(res.body.likeCount).toBe(1);
+    expect(res.body.likedByMe).toBe(true);
+  });
+
+  it("liking twice still counts once", async () => {
+    const id = await notify([]);
+
+    await authed(request(server()).post(`/v1/notifications/${id}/like`), parentA);
+    const res = await authed(request(server()).post(`/v1/notifications/${id}/like`), parentA);
+
+    // Idempotent: a double-tap on a phone must not produce two likes, and must
+    // not fail on the unique constraint either.
+    expect(res.status).toBe(200);
+    expect(res.body.likeCount).toBe(1);
+  });
+
+  it("un-liking removes it, and can be repeated", async () => {
+    const id = await notify([]);
+
+    await authed(request(server()).post(`/v1/notifications/${id}/like`), parentA);
+    const off = await authed(request(server()).delete(`/v1/notifications/${id}/like`), parentA);
+    expect(off.status).toBe(200);
+    expect(off.body.likeCount).toBe(0);
+    expect(off.body.likedByMe).toBe(false);
+
+    const again = await authed(request(server()).delete(`/v1/notifications/${id}/like`), parentA);
+    expect(again.status).toBe(200);
+    expect(again.body.likeCount).toBe(0);
+  });
+
+  it("re-liking after un-liking works", async () => {
+    const id = await notify([]);
+
+    await authed(request(server()).post(`/v1/notifications/${id}/like`), parentA);
+    await authed(request(server()).delete(`/v1/notifications/${id}/like`), parentA);
+    const res = await authed(request(server()).post(`/v1/notifications/${id}/like`), parentA);
+
+    // The soft-deleted row is still there and its unique pair still applies —
+    // this is the case a plain `create` would fail on.
+    expect(res.status).toBe(200);
+    expect(res.body.likeCount).toBe(1);
+    expect(res.body.likedByMe).toBe(true);
+  });
+
+  it("counts everyone but reports only my own reaction", async () => {
+    const id = await notify([]);
+
+    await authed(request(server()).post(`/v1/notifications/${id}/like`), parentA);
+    await authed(request(server()).post(`/v1/notifications/${id}/like`), teacherA);
+
+    const mine = await request(server())
+      .get(`/v1/notifications/${id}`)
+      .set("Cookie", parentA.cookies);
+
+    expect(mine.body.likeCount).toBe(2);
+    expect(mine.body.likedByMe).toBe(true);
+
+    /*
+     * ★ Never a list of who liked it.
+     *
+     * Asserted as the absence of the fields rather than by scanning the payload
+     * for a user id — the notice's author is a real, intended id in the
+     * response, and a blanket search fails on it while proving nothing about
+     * reactions.
+     */
+    expect(mine.body.reactions).toBeUndefined();
+    expect(mine.body._count).toBeUndefined();
+    expect(Object.keys(mine.body)).not.toContain("reactions");
+  });
+
+  it("the count shows in the list", async () => {
+    const id = await notify([]);
+    await authed(request(server()).post(`/v1/notifications/${id}/like`), teacherA);
+
+    const res = await request(server()).get("/v1/notifications").set("Cookie", parentA.cookies);
+
+    const row = res.body.items.find((n: { id: string }) => n.id === id);
+    expect(row.likeCount).toBe(1);
+    expect(row.likedByMe).toBe(false);
+  });
+
+  // ── Authorization — CLAUDE.md §4.1 ──────────────────────────────────────
+
+  it("a guardian from another kindergarten gets 404", async () => {
+    const id = await notify([]);
+
+    const res = await authed(request(server()).post(`/v1/notifications/${id}/like`), parentB);
+
+    // 404, never 403 — a like must not confirm that a notice exists.
+    expect(res.status).toBe(404);
+  });
+
+  it("a guardian cannot like a notice targeted at another family", async () => {
+    const otherChild = await createChild(a.kindergarten.id, { lastName: "Өөр" });
+    await enrollChild(a.kindergarten.id, otherChild.id, a.group.id, a.schoolYear.id);
+    const id = await notify([{ childId: otherChild.id }]);
+
+    const res = await authed(request(server()).post(`/v1/notifications/${id}/like`), parentA);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("a guardian cannot like an unpublished draft", async () => {
+    const id = await notify([], { publish: false });
+
+    const res = await authed(request(server()).post(`/v1/notifications/${id}/like`), parentA);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("requires authentication", async () => {
+    const id = await notify([]);
+
+    expect((await request(server()).post(`/v1/notifications/${id}/like`)).status).toBe(401);
+  });
+
+  it("requires CSRF", async () => {
+    const id = await notify([]);
+
+    const res = await request(server())
+      .post(`/v1/notifications/${id}/like`)
+      .set("Cookie", parentA.cookies);
+
+    expect(res.status).toBe(403);
+  });
+
+  // ── The absent feature ──────────────────────────────────────────────────
+
+  it("there is no comment endpoint", async () => {
+    const id = await notify([]);
+
+    // Guards the decision, not an accident of routing: a class board parents
+    // can reply to is a moderation surface nobody has been staffed to police.
+    const res = await authed(request(server()).post(`/v1/notifications/${id}/comments`), parentA)
+      .send({ body: "Сэтгэгдэл" });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("a guardian still cannot post a notice", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/notifications`),
+      parentA,
+    ).send({ title: "Эцэг эхээс", body: "Болохгүй", targets: [] });
+
+    // 404, not 403: the tenant check runs before the role check, and a
+    // kindergarten a guardian holds no staff membership in is simply not there
+    // as far as this endpoint is concerned. Refused either way — the assertion
+    // is that nothing was created.
+    expect(res.status).toBe(404);
+    expect(res.body.id).toBeUndefined();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Photos on a notice — staff attach, everyone in the audience sees
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("notice photos", () => {
+  /** A tiny valid PNG — enough for the content sniffer to accept. */
+  const PNG = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+
+  const attach = (id: string, session: AuthSession) =>
+    authed(request(server()).post(`/v1/notifications/${id}/media`), session).attach(
+      "file",
+      PNG,
+      "zurag.png",
+    );
+
+  it("a teacher can attach a photo", async () => {
+    const id = await notify([]);
+
+    const res = await attach(id, teacherA);
+
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBeDefined();
+    // Never the storage key — §1.4.
+    expect(res.body.storageKey).toBeUndefined();
+  });
+
+  it("the photo appears on the notice for the audience", async () => {
+    const id = await notify([]);
+    await attach(id, teacherA);
+
+    const res = await request(server())
+      .get(`/v1/notifications/${id}`)
+      .set("Cookie", parentA.cookies);
+
+    expect(res.body.media).toHaveLength(1);
+    expect(res.body.media[0].id).toBeDefined();
+    expect(JSON.stringify(res.body)).not.toContain("notifications/");
+  });
+
+  it("photos show in the list too", async () => {
+    const id = await notify([]);
+    await attach(id, teacherA);
+
+    const res = await request(server()).get("/v1/notifications").set("Cookie", parentA.cookies);
+
+    const row = res.body.items.find((n: { id: string }) => n.id === id);
+    expect(row.media).toHaveLength(1);
+  });
+
+  // ── Authorization — CLAUDE.md §4.1 ──────────────────────────────────────
+
+  it("a guardian cannot attach a photo", async () => {
+    const id = await notify([]);
+
+    const res = await attach(id, parentA);
+
+    /*
+     * Liking is open; illustrating is not. An upload endpoint that accepted a
+     * parent would be a way around "only staff post".
+     *
+     * 404 rather than 403, because `assertStaff` answers "no such kindergarten"
+     * to someone holding no staff membership in it — the same non-confirming
+     * shape as §1.7, and the same status a guardian gets when trying to create
+     * a notice. What the test pins is that nothing was attached.
+     */
+    expect(res.status).toBe(404);
+    expect(res.body.id).toBeUndefined();
+  });
+
+  it("staff from another kindergarten cannot attach", async () => {
+    const id = await notify([]);
+    const teacherB = await login(app, b.teacherUser.username);
+
+    const res = await attach(id, teacherB);
+
+    expect([403, 404]).toContain(res.status);
+  });
+
+  it("requires authentication", async () => {
+    const id = await notify([]);
+
+    const res = await request(server())
+      .post(`/v1/notifications/${id}/media`)
+      .attach("file", PNG, "zurag.png");
+
+    expect(res.status).toBe(401);
+  });
+
+  it("requires CSRF", async () => {
+    const id = await notify([]);
+
+    const res = await request(server())
+      .post(`/v1/notifications/${id}/media`)
+      .set("Cookie", teacherA.cookies)
+      .attach("file", PNG, "zurag.png");
+
+    expect(res.status).toBe(403);
+  });
+
+  it("the audience can actually fetch the photo", async () => {
+    const id = await notify([]);
+    const attached = await attach(id, teacherA);
+
+    const res = await request(server())
+      .get(`/v1/media/${attached.body.id}`)
+      .set("Cookie", parentA.cookies)
+      .redirects(0);
+
+    /*
+     * ★ The case that made this endpoint necessary.
+     *
+     * `getDownloadUrl` used to reject anything without a `childId`, and a class
+     * photo has none — so the upload succeeded and the image 404'd. A notice
+     * photo is readable exactly when its notice is.
+     */
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain("http");
+  });
+
+  it("someone outside the audience cannot fetch it", async () => {
+    const id = await notify([]);
+    const attached = await attach(id, teacherA);
+
+    const res = await request(server())
+      .get(`/v1/media/${attached.body.id}`)
+      .set("Cookie", parentB.cookies)
+      .redirects(0);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("a photo on an unpublished draft is not fetchable by a guardian", async () => {
+    const id = await notify([], { publish: false });
+    const attached = await attach(id, teacherA);
+
+    const res = await request(server())
+      .get(`/v1/media/${attached.body.id}`)
+      .set("Cookie", parentA.cookies)
+      .redirects(0);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("rejects a file that is not an image", async () => {
+    const id = await notify([]);
+
+    const res = await authed(
+      request(server()).post(`/v1/notifications/${id}/media`),
+      teacherA,
+    ).attach("file", Buffer.from("#!/bin/sh\necho hi\n"), "zurag.png");
+
+    // Sniffed from content, not trusted from the extension — §1.6.
+    expect(res.status).toBe(400);
+  });
+});
