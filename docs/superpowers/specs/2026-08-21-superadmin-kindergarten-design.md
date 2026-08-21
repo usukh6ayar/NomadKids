@@ -75,8 +75,8 @@ assertSuperAdmin(actor: Actor): void   // throws NotFoundException
 
 **`TenantAccessService` and `ChildAccessService` are not touched.** The flag
 grants platform reach and nothing else: a superadmin does not become an admin of
-every kindergarten and cannot read a child, an observation, a media file or a
-report. §6 makes that a tested property rather than an intention.
+every kindergarten and cannot read a child, its portfolio, its observations or
+its guardians. §7 makes that a tested property rather than an intention.
 
 A `@SuperAdmin()` decorator plus a guard provides the coarse gate, mirroring
 `RolesGuard` — 404, never 403 (§1.7). The guard is a filter, not the decision;
@@ -94,8 +94,8 @@ A separate `platform` module, under its own prefix:
 | PATCH  | `/platform/kindergartens/:id`    | any of the above fields, `isActive`   | updated                      |
 
 "Counts" on the detail route means three numbers, each over live rows only:
-active groups, active enrollments, and active memberships by role. Both list and
-detail exclude soft-deleted kindergartens; `isActive` is a filter, not a delete.
+active groups, active enrollments, and active memberships. Both list and detail
+exclude soft-deleted kindergartens; `isActive` is a filter, not a delete.
 
 No DELETE. Deactivation is `PATCH { isActive: false }` — §3.2, and the reference
 system describes the superadmin as deactivating kindergartens, not deleting
@@ -172,7 +172,8 @@ against the real route — §4.1.
 | PARENT → all four                                                       | **404**  |
 | unauthenticated → all four                                              | 401      |
 | superadmin lists                                                        | both kindergarten A and kindergarten B appear |
-| superadmin → `/children/:id`, `/observations/:id`, `/media/:id`         | **404** — the flag did not widen child access |
+| superadmin → a child, its portfolio, its observations, its guardians    | **404** — the flag did not widen child access |
+| superadmin → `/dashboard/admin`, and `GET /kindergartens`               | 404, and an empty list — membership scope is unchanged |
 | duplicate username                                                      | 409, **and** no kindergarten row was created |
 | PATCH `{ isActive: false }`                                             | 200, row updated |
 
