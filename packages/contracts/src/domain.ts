@@ -402,6 +402,74 @@ export const groupSchema = z.object({
   schoolYearId: uuidSchema.nullish(),
 });
 
+/**
+ * A user as the admin list returns them.
+ *
+ * `memberships` carries only the ones the requesting admin may see — the API
+ * filters them by the same kindergarten scope it used to select the user, so an
+ * admin of one kindergarten never learns that a parent also has a child at
+ * another. The shape mirrors that; it is not a full user record.
+ */
+export const adminUserSchema = z.object({
+  id: uuidSchema,
+  username: z.string().nullish(),
+  email: z.string().nullish(),
+  phone: z.string().nullish(),
+  lastName: z.string(),
+  firstName: z.string(),
+  isActive: z.boolean().nullish(),
+  lastLoginAt: z.string().nullish(),
+  memberships: z
+    .array(
+      z.object({
+        id: uuidSchema,
+        kindergartenId: uuidSchema,
+        role: roleSchema,
+        isActive: z.boolean().nullish(),
+      }),
+    )
+    .default([]),
+});
+
+/** `POST /kindergartens/:id/users` — the account plus the token to hand over. */
+export const invitedUserSchema = z.object({
+  user: adminUserSchema.partial({ memberships: true }),
+  invitationToken: z.string(),
+});
+
+/**
+ * A group as the *list* returns it.
+ *
+ * ★ No teachers here — `GET /groups` does not include them, only a count of
+ * enrolments. Fetching the assignments for every row would be an N+1 the client
+ * pays on a screen that mostly does not need them, so the list shows how many
+ * children are in a group and the teacher list is fetched per group, on demand.
+ */
+export const groupListItemSchema = groupSchema.extend({
+  status: z.string().nullish(),
+  schoolYear: schoolYearSchema.nullish(),
+  _count: z.object({ enrollments: z.number() }).nullish(),
+});
+
+/** A single group, from `GET /groups/:id` — this one carries the assignments. */
+export const groupWithTeachersSchema = groupListItemSchema.extend({
+  teachers: z
+    .array(
+      z.object({
+        id: uuidSchema,
+        role: z.string().nullish(),
+        endedOn: z.string().nullish(),
+        membership: z
+          .object({
+            id: uuidSchema,
+            user: personRefSchema.nullish(),
+          })
+          .nullish(),
+      }),
+    )
+    .default([]),
+});
+
 export const userProfileSchema = z.object({
   id: uuidSchema,
   username: z.string().nullish(),

@@ -80,6 +80,19 @@ function AdminDashboard() {
         <Stat label="Багш, ажилтан" value={counts.staff} />
         <Stat label="Эцэг эх" value={counts.guardians} />
       </section>
+      {/*
+        The admin's actual work lives on these screens; this page is the read-only
+        summary. Ordered by the dependency chain — a group needs a school year,
+        a child needs a group — so a new kindergarten can be set up top to bottom.
+      */}
+      <section aria-label="Удирдлагын хэсгүүд">
+        <SectionHeader title="Удирдлага" lede="Хичээлийн жил, бүлэг, хэрэглэгчийн бүртгэл." />
+        <div className="grid gap-2 sm:grid-cols-3">
+          <AdminLink href="/admin/school-years" title="Хичээлийн жил" note="Эхлээд үүсгэнэ" />
+          <AdminLink href="/admin/groups" title="Бүлгүүд" note="Багш хуваарилах" />
+          <AdminLink href="/admin/users" title="Хэрэглэгчид" note="Багш, админ урих" />
+        </div>
+      </section>
 
       <section aria-labelledby="coverage-heading">
         <SectionHeader title="Улирлын үнэлгээний явц" />
@@ -162,5 +175,18 @@ function Stat({ label, value }: { label: string; value: number }) {
       <p className="text-sm text-muted">{label}</p>
       <p className="mt-1 text-2xl font-semibold tabular-nums text-ink">{value}</p>
     </Card>
+  );
+}
+
+/** One destination in the admin hub. */
+function AdminLink({ href, title, note }: { href: string; title: string; note: string }) {
+  return (
+    <Link
+      href={href}
+      className="flex min-h-[64px] flex-col justify-center rounded-[14px] border border-border bg-surface px-4 py-3 transition-colors hover:border-primary"
+    >
+      <span className="text-[.94rem] font-semibold text-ink">{title}</span>
+      <span className="mt-px text-[.78rem] text-muted">{note}</span>
+    </Link>
   );
 }

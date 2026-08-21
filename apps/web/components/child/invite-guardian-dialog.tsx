@@ -1,9 +1,8 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, UserPlus } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import QRCode from "qrcode";
+import { UserPlus } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 import { z } from "zod";
 import { mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
@@ -11,6 +10,7 @@ import { qk } from "@/lib/api/keys";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
+import { InvitationHandover } from "@/components/admin/invitation-handover";
 
 const RELATIONS = [
   { value: "MOTHER", label: "Ээж" },
@@ -124,10 +124,10 @@ function InviteDialog({
     >
       <div className="w-full max-w-[480px] rounded-[18px] border border-border bg-surface p-5">
         {invite.isSuccess ? (
-          <InvitationIssued
+          <InvitationHandover
             token={invite.data.invitationToken}
-            guardianName={`${invite.data.user.lastName} ${invite.data.user.firstName}`.trim()}
-            childName={childName}
+            title="Урилга бэлэн"
+            subtitle={`${invite.data.user.lastName} ${invite.data.user.firstName} — ${childName}-ийн хавтас руу`}
             onClose={onClose}
           />
         ) : (
@@ -235,93 +235,6 @@ function InviteDialog({
             </div>
           </form>
         )}
-      </div>
-    </div>
-  );
-}
-
-/**
- * The issued invitation: a QR to scan and a link to read out.
- *
- * ★ Shown once and not stored anywhere in the client.
- *
- * The token is one-time. If the teacher closes this before the parent scans it,
- * the right answer is a new invitation, not a way to retrieve the old one — a
- * screen that could re-display a live token would be a screen that leaks it.
- * The copy explains that rather than leaving the teacher to discover it.
- */
-function InvitationIssued({
-  token,
-  guardianName,
-  childName,
-  onClose,
-}: {
-  token: string;
-  guardianName: string;
-  childName: string;
-  onClose: () => void;
-}) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [copied, setCopied] = useState(false);
-
-  // `window.location.origin`, so the link works on whichever host the teacher
-  // is actually using — localhost in development, the real domain in production.
-  const url = typeof window === "undefined" ? "" : `${window.location.origin}/invitation/${token}`;
-
-  useEffect(() => {
-    if (!canvasRef.current || !url) return;
-    // Drawn locally. Fetching a QR image would mean sending the token to a
-    // third-party service to be rendered.
-    void QRCode.toCanvas(canvasRef.current, url, { width: 220, margin: 1 });
-  }, [url]);
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-[1.05rem] font-semibold text-ink">Урилга бэлэн</h2>
-        <p className="mt-0.5 text-sm text-muted">
-          {guardianName} — {childName}-ийн хавтас руу.
-        </p>
-      </div>
-
-      <div className="grid place-items-center rounded-[14px] border border-border bg-canvas p-4">
-        <canvas ref={canvasRef} aria-label="Урилгын QR код" role="img" />
-        <p className="mt-2 text-center text-xs text-muted">
-          Утсаараа уншуулна уу. Урилга 7 хоног хүчинтэй.
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <p className="text-xs font-medium text-muted">Эсвэл холбоосыг дамжуулна уу:</p>
-        <div className="flex items-center gap-2">
-          <code className="min-w-0 flex-1 truncate rounded-[10px] bg-canvas px-3 py-2 text-xs text-ink">
-            {url}
-          </code>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => {
-              void navigator.clipboard.writeText(url).then(() => {
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
-              });
-            }}
-          >
-            {copied ? <Check size={16} /> : <Copy size={16} />}
-            {copied ? "Хуулагдлаа" : "Хуулах"}
-          </Button>
-        </div>
-      </div>
-
-      <p className="rounded-[12px] bg-sun px-3 py-2 text-xs leading-relaxed text-sun-ink">
-        Энэ QR-ыг дахин харуулах боломжгүй. Хаасны дараа шаардлагатай бол шинэ урилга үүсгэнэ үү.
-      </p>
-
-      <div className="border-t border-border pt-4">
-        <Button type="button" onClick={onClose}>
-          Хаах
-        </Button>
       </div>
     </div>
   );

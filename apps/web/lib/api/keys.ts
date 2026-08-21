@@ -63,6 +63,10 @@ export const qk = {
   childMedia: (childId: string) => ["child", childId, "media"] as const,
   childReports: (childId: string) => ["child", childId, "reports"] as const,
   report: (jobId: string) => ["report", jobId] as const,
+  /** Admin lists. Filters are part of the key so a search does not reuse a page. */
+  adminUsers: (filters: Record<string, string>) => ["admin", "users", filters] as const,
+  adminGroups: () => ["admin", "groups"] as const,
+  adminSchoolYears: (kindergartenId: string) => ["admin", "school-years", kindergartenId] as const,
 
   profile: () => ["me", "profile"] as const,
 } as const;
