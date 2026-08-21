@@ -274,3 +274,69 @@ describe("unauthenticated access", () => {
     expect(responses.map((r) => r.status)).toEqual([401, 401, 401]);
   });
 });
+
+describe("a platform operator is not an admin of anything", () => {
+  it("gets 404 on a child", async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/v1/children/${a.child.id}`)
+      .set("Cookie", superadmin.cookies);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("gets 404 on a child's portfolio", async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/v1/children/${a.child.id}/portfolio`)
+      .set("Cookie", superadmin.cookies);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("gets 404 on a child's observations", async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/v1/children/${a.child.id}/observations`)
+      .set("Cookie", superadmin.cookies);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("gets 404 on a child's guardians", async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/v1/children/${a.child.id}/guardians`)
+      .set("Cookie", superadmin.cookies);
+
+    expect(res.status).toBe(404);
+  });
+
+  // Positive control: `children/:id/guardians` has no other 200 assertion in
+  // the suite (only a cross-tenant 404 in children.test.ts), so the 404 above
+  // would be indistinguishable from a dead route without this. `children/:id`,
+  // `portfolio`, `observations`, `dashboard/admin` and `kindergartens` already
+  // carry 200 coverage in their own suites (children.test.ts, portfolio.test.ts,
+  // observations.test.ts, dashboard.test.ts, tenants.test.ts) — not duplicated
+  // here.
+  it("an admin, unlike the operator, gets the guardians of their own child", async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/v1/children/${a.child.id}/guardians`)
+      .set("Cookie", adminA.cookies);
+
+    expect(res.status).toBe(200);
+  });
+
+  it("sees an empty list from the membership-scoped kindergarten route", async () => {
+    const res = await request(app.getHttpServer())
+      .get("/v1/kindergartens")
+      .set("Cookie", superadmin.cookies);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it("gets 404 from the admin dashboard", async () => {
+    const res = await request(app.getHttpServer())
+      .get("/v1/dashboard/admin")
+      .set("Cookie", superadmin.cookies);
+
+    expect(res.status).toBe(404);
+  });
+});
