@@ -11,6 +11,7 @@ import { MailModule } from "./mail/mail.module";
 import { MediaModule } from "./media/media.module";
 import { ObservationsModule } from "./observations/observations.module";
 import { NotificationsModule } from "./notifications/notifications.module";
+import { PlatformModule } from "./platform/platform.module";
 import { PortfolioModule } from "./portfolio/portfolio.module";
 import { ReportsModule } from "./reports/reports.module";
 import { StorageModule } from "./storage/storage.module";
@@ -38,6 +39,7 @@ import { UsersModule } from "./users/users.module";
     HealthModule,
     MaintenanceModule,
     TenantsModule,
+    PlatformModule,
     UsersModule,
     ChildrenModule,
     PortfolioModule,
