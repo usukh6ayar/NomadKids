@@ -771,7 +771,14 @@ export type CreateKindergartenDto = z.infer<typeof createKindergartenSchema>;
 
 export const listPlatformKindergartensQuerySchema = paginationQuerySchema.extend({
   q: z.string().max(100).optional(),
-  isActive: z.coerce.boolean().optional(),
+  /**
+   * ★ `z.stringbool()`, NOT `z.coerce.boolean()`.
+   *
+   * `Boolean("false")` is `true`, so a coerced boolean turns `?isActive=false`
+   * into a filter for *active* rows — the opposite of what was asked, silently.
+   * `listUsersQuerySchema` has that bug today; do not copy it here.
+   */
+  isActive: z.stringbool().optional(),
 });
 export type ListPlatformKindergartensQuery = z.infer<
   typeof listPlatformKindergartensQuerySchema
@@ -1265,6 +1272,20 @@ describe("GET /platform/kindergartens", () => {
     expect(res.status).toBe(200);
     expect(res.body.items).toHaveLength(1);
     expect(res.body.items[0].id).toBe(a.kindergarten.id);
+  });
+
+  it("filters by isActive, and ?isActive=false means inactive", async () => {
+    await db.kindergarten.update({
+      where: { id: b.kindergarten.id },
+      data: { isActive: false },
+    });
+
+    const res = await request(app.getHttpServer())
+      .get("/v1/platform/kindergartens?isActive=false")
+      .set("Cookie", superadmin.cookies);
+
+    expect(res.status).toBe(200);
+    expect(res.body.items.map((k: { id: string }) => k.id)).toEqual([b.kindergarten.id]);
   });
 
   it.each([
