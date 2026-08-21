@@ -208,7 +208,12 @@ export class AuthService {
     const user = await this.repo.findById(userId);
     if (!user) return null;
 
-    return { userId, sessionId, memberships: await this.authz.loadMemberships(userId) };
+    return {
+      userId,
+      sessionId,
+      isSuperAdmin: user.isSuperAdmin,
+      memberships: await this.authz.loadMemberships(userId),
+    };
   }
 
   // ── Password reset ────────────────────────────────────────────────────────

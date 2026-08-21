@@ -54,6 +54,7 @@ export class AuthRepository {
         lastName: true,
         firstName: true,
         lastLoginAt: true,
+        isSuperAdmin: true,
       },
     });
   }

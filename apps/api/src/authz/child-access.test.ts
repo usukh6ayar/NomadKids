@@ -25,13 +25,14 @@ const GROUP_1 = "group-1";
 const GROUP_2 = "group-2";
 
 function actor(overrides: Partial<Actor> & { memberships: Actor["memberships"] }): Actor {
-  return { userId: "user-1", sessionId: "session-1", ...overrides };
+  return { userId: "user-1", sessionId: "session-1", isSuperAdmin: false, ...overrides };
 }
 
 function teacher(kindergartenId = KG_A, userId = "teacher-1"): Actor {
   return {
     userId,
     sessionId: "s",
+    isSuperAdmin: false,
     memberships: [{ id: "m-teacher", kindergartenId, role: Role.TEACHER }],
   };
 }
@@ -40,6 +41,7 @@ function parent(userId = "parent-1", kindergartenId = KG_A): Actor {
   return {
     userId,
     sessionId: "s",
+    isSuperAdmin: false,
     memberships: [{ id: "m-parent", kindergartenId, role: Role.PARENT }],
   };
 }
@@ -48,6 +50,7 @@ function admin(kindergartenId = KG_A, userId = "admin-1"): Actor {
   return {
     userId,
     sessionId: "s",
+    isSuperAdmin: false,
     memberships: [{ id: "m-admin", kindergartenId, role: Role.ADMIN }],
   };
 }
@@ -240,6 +243,7 @@ describe("canAccessChild", () => {
     const dual: Actor = {
       userId: "dual",
       sessionId: "s",
+      isSuperAdmin: false,
       memberships: [
         { id: "m1", kindergartenId: KG_A, role: Role.TEACHER },
         { id: "m2", kindergartenId: KG_A, role: Role.PARENT },
