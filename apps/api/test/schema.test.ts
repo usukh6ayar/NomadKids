@@ -415,3 +415,32 @@ describe("defaults that carry security weight", () => {
     expect(m.isActive).toBe(true);
   });
 });
+
+describe("platform operator flag", () => {
+  it("defaults to false", async () => {
+    const user = await db.user.create({
+      data: {
+        username: uniq("plain"),
+        passwordHash: "x",
+        lastName: "Овог",
+        firstName: "Нэр",
+      },
+    });
+
+    expect(user.isSuperAdmin).toBe(false);
+  });
+
+  it("can be set", async () => {
+    const user = await db.user.create({
+      data: {
+        username: uniq("super"),
+        passwordHash: "x",
+        lastName: "Систем",
+        firstName: "Админ",
+        isSuperAdmin: true,
+      },
+    });
+
+    expect(user.isSuperAdmin).toBe(true);
+  });
+});
