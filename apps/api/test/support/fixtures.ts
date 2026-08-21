@@ -48,6 +48,7 @@ export async function createUser(overrides: Partial<UserInput> = {}) {
       lastName: overrides.lastName ?? "Овог",
       firstName: overrides.firstName ?? "Нэр",
       isActive: overrides.isActive ?? true,
+      isSuperAdmin: overrides.isSuperAdmin ?? false,
     },
   });
 }
@@ -232,6 +233,7 @@ interface UserInput {
   lastName: string;
   firstName: string;
   isActive: boolean;
+  isSuperAdmin: boolean;
 }
 
 interface ChildInput {
