@@ -94,6 +94,7 @@ function AdminDashboard() {
           <AdminLink href="/admin/school-years" title="Хичээлийн жил" note="Эхлээд үүсгэнэ" />
           <AdminLink href="/admin/groups" title="Бүлгүүд" note="Багш хуваарилах" />
           <AdminLink href="/admin/users" title="Хэрэглэгчид" note="Багш, админ урих" />
+          <AdminLink href="/admin/terms" title="Улирал" note="Үнэлгээний хугацаа" />
           <AdminLink
             href="/admin/kindergarten"
             title="Цэцэрлэгийн мэдээлэл"

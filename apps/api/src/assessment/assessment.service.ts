@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { AuditRepository } from "../audit/audit.repository";
 import { AuthzRepository } from "../authz/authz.repository";
 import { ChildAccessService } from "../authz/child-access.service";
@@ -53,7 +58,36 @@ export class AssessmentService {
   async createTerm(actor: Actor, kindergartenId: string, dto: CreateTermDto) {
     this.tenants.assertAdmin(actor, kindergartenId);
 
-    const term = await this.repo.createTerm({ ...dto, kindergartenId });
+    // ★ The school year must belong to this kindergarten.
+    //
+    // `kindergartenId` is the authorized path parameter; `schoolYearId` comes
+    // from the body. Without this an admin of one kindergarten could attach a
+    // term to another's year by pasting its id, and the row would carry a
+    // kindergartenId and a schoolYearId pointing at different tenants.
+    // `TenantsService.createGroup` guards the same seam.
+    const year = await this.repo.findSchoolYearInKindergarten(dto.schoolYearId, kindergartenId);
+    if (!year) throw new BadRequestException("Хичээлийн жил олдсонгүй");
+
+    // Checked explicitly so a second "2-р улирал" is a readable 409 rather
+    // than a raw @@unique([schoolYearId, number]) violation surfacing as a 500
+    // — which is what an admin adding a term that already exists used to get.
+    const clash = await this.repo.findTermByNumber(dto.schoolYearId, dto.number);
+    if (clash) {
+      throw new ConflictException(`${dto.number}-р улирал энэ хичээлийн жилд бүртгэлтэй байна`);
+    }
+
+    let term;
+    try {
+      term = await this.repo.createTerm({ ...dto, kindergartenId });
+    } catch (error) {
+      // The pre-check above closes the common case; this closes the race
+      // between it and the insert, which would otherwise be the 500 again.
+      if (isUniqueViolation(error)) {
+        throw new ConflictException(`${dto.number}-р улирал энэ хичээлийн жилд бүртгэлтэй байна`);
+      }
+      throw error;
+    }
+
     await this.audit.append({
       action: "CREATE",
       kindergartenId,
@@ -380,4 +414,17 @@ export class AssessmentService {
     const level = await this.repo.findLevel(levelId, kindergartenId);
     if (!level) throw new BadRequestException("Үнэлгээний түвшин олдсонгүй");
   }
+}
+
+/**
+ * Prisma's unique-constraint code. Narrowed without importing the client,
+ * which a service may not do — CLAUDE.md §2.2.
+ */
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "P2002"
+  );
 }

@@ -553,6 +553,62 @@ describe("terms and config", () => {
     expect(res.status).toBe(404);
   });
 
+  /**
+   * ★ A duplicate number is a 409, not a 500.
+   *
+   * `@@unique([schoolYearId, number])` is the real guard, but reaching it
+   * unguarded surfaced a raw constraint violation as a server error — which is
+   * what an admin adding a term that already existed actually saw.
+   */
+  it("refuses a second term with the same number", async () => {
+    const body = {
+      schoolYearId: a.schoolYear.id,
+      number: 2,
+      name: "II улирал",
+      startsOn: "2026-01-05",
+      endsOn: "2026-03-31",
+    };
+
+    const first = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/terms`),
+      adminA,
+    ).send(body);
+    expect(first.status).toBe(201);
+
+    const second = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/terms`),
+      adminA,
+    ).send({ ...body, name: "Давхардсан" });
+
+    expect(second.status).toBe(409);
+  });
+
+  /**
+   * ★ The school year must belong to this kindergarten.
+   *
+   * The kindergarten comes from the authorized path; the school year from the
+   * body. Without the check the term row would carry a kindergartenId and a
+   * schoolYearId pointing at different tenants. `createGroup` guards the same
+   * seam and this one did not.
+   */
+  it("refuses another kindergarten's school year", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/terms`),
+      adminA,
+    ).send({
+      schoolYearId: b.schoolYear.id,
+      number: 2,
+      name: "Хулгайлсан жил",
+      startsOn: "2026-01-05",
+      endsOn: "2026-03-31",
+    });
+
+    expect(res.status).toBe(400);
+    expect(
+      await db.term.findFirst({ where: { schoolYearId: b.schoolYear.id, number: 2 } }),
+    ).toBeNull();
+  });
+
   it("rejects a term ending before it starts", async () => {
     const res = await authed(
       request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/terms`),

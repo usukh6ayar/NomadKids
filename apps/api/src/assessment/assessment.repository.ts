@@ -70,6 +70,29 @@ export class AssessmentRepository {
     });
   }
 
+  /**
+   * A school year, but only if it belongs to this kindergarten.
+   *
+   * The kindergarten id comes from the authorized path parameter and the year
+   * id from the request body, so this is what stops an admin of one
+   * kindergarten attaching a term to another's year by pasting its id.
+   * `TenantsService.createGroup` makes the same check for the same reason.
+   */
+  async findSchoolYearInKindergarten(schoolYearId: string, kindergartenId: string) {
+    return this.prisma.schoolYear.findFirst({
+      where: { id: schoolYearId, kindergartenId, deletedAt: null },
+      select: { id: true },
+    });
+  }
+
+  /** Whether this school year already has a term with this number. */
+  async findTermByNumber(schoolYearId: string, number: number) {
+    return this.prisma.term.findFirst({
+      where: { schoolYearId, number, deletedAt: null },
+      select: { id: true },
+    });
+  }
+
   async createTerm(data: {
     kindergartenId: string;
     schoolYearId: string;

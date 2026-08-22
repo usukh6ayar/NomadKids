@@ -1,0 +1,410 @@
+"use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
+import { useState } from "react";
+import { Pencil, Plus } from "lucide-react";
+import { z } from "zod";
+import { schoolYearSchema, termSchema } from "@kinder/contracts";
+import { get, mutate } from "@/lib/api/browser";
+import { errorMessage, fieldErrors } from "@/lib/api/errors";
+import { qk } from "@/lib/api/keys";
+import { useSession } from "@/lib/auth/session";
+import { Button } from "@/components/ui/button";
+import { RowList } from "@/components/ui/card";
+import { Field, Input, Select } from "@/components/ui/field";
+import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { PageHeader } from "@/components/shell/app-shell";
+import { RequireRole } from "@/components/shell/require-role";
+import { formatDate } from "@/lib/format";
+
+/**
+ * Terms.
+ *
+ * ★ Nothing in the assessment half of this product works without one.
+ *
+ * An assessment is stored against a child, a domain and a **term**; a term
+ * report is a term's worth of them. `POST /kindergartens/:id/terms` has existed
+ * since Phase 8 with no screen, so a kindergarten that finished setting itself
+ * up still found "Идэвхтэй улирал тохируулаагүй" on the admin dashboard and no
+ * way to answer it. The assessment grid could read terms and never create one.
+ *
+ * Numbered 1–3 by the API, which is the Mongolian preschool year. The number is
+ * fixed at creation and is not editable afterwards: assessments already point
+ * at the term, and renumbering would silently move a term's worth of records
+ * into a different part of the year.
+ */
+const listSchema = z.array(termSchema);
+const yearsSchema = z.array(schoolYearSchema);
+
+export default function AdminTermsPage() {
+  return (
+    <RequireRole roles={["ADMIN"]}>
+      <AdminTerms />
+    </RequireRole>
+  );
+}
+
+function AdminTerms() {
+  const { primaryKindergartenId } = useSession();
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<z.infer<typeof termSchema> | null>(null);
+
+  const years = useQuery({
+    queryKey: qk.adminSchoolYears(primaryKindergartenId ?? ""),
+    queryFn: () => get(`/kindergartens/${primaryKindergartenId}/school-years`, yearsSchema),
+    enabled: Boolean(primaryKindergartenId),
+  });
+
+  const terms = useQuery({
+    queryKey: qk.adminTerms(primaryKindergartenId ?? ""),
+    queryFn: () => get(`/kindergartens/${primaryKindergartenId}/terms`, listSchema),
+    enabled: Boolean(primaryKindergartenId),
+  });
+
+  const yearItems = years.data ?? [];
+  const items = terms.data ?? [];
+  const currentYear = yearItems.find((year) => year.isCurrent) ?? yearItems[0];
+
+  return (
+    <div className="flex flex-col gap-5 lg:gap-7">
+      <PageHeader
+        title="Улирал"
+        lede="Үнэлгээ ба улирлын тайлан улиралд харьяалагдана."
+        actions={
+          currentYear ? (
+            <Button size="sm" onClick={() => setCreating(true)}>
+              <Plus size={16} aria-hidden /> Улирал нэмэх
+            </Button>
+          ) : null
+        }
+      />
+
+      {terms.isLoading || years.isLoading ? (
+        <LoadingState rows={3} />
+      ) : terms.isError ? (
+        <ErrorState description={errorMessage(terms.error)} />
+      ) : !currentYear ? (
+        // The dependency chain has one more link above this screen, and saying
+        // so is more useful than an empty list with an "add" button that would
+        // fail on submit.
+        <EmptyState
+          title="Эхлээд хичээлийн жил үүсгэнэ"
+          description="Улирал хичээлийн жилд харьяалагддаг тул хичээлийн жилгүйгээр үүсгэх боломжгүй."
+          action={
+            <Button asChild variant="secondary">
+              <Link href="/admin/school-years">Хичээлийн жил рүү</Link>
+            </Button>
+          }
+        />
+      ) : items.length === 0 ? (
+        <EmptyState
+          title="Улирал бүртгэгдээгүй байна"
+          description="Ихэвчлэн намар, өвөл, хавар гэсэн гурван улирал байдаг."
+        />
+      ) : (
+        <RowList>
+          {items.map((term) => (
+            <div
+              key={term.id}
+              className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3"
+            >
+              <span className="min-w-0">
+                <span className="block truncate font-medium text-ink">
+                  {term.number}. {term.name}
+                </span>
+                <span className="block truncate text-xs text-muted">
+                  {formatDate(term.startsOn)} – {formatDate(term.endsOn)}
+                  {term.schoolYear ? ` · ${term.schoolYear.name}` : ""}
+                </span>
+              </span>
+              <Button variant="ghost" size="icon" onClick={() => setEditing(term)}>
+                <Pencil size={18} />
+                <span className="sr-only">{term.name} засах</span>
+              </Button>
+            </div>
+          ))}
+        </RowList>
+      )}
+
+      {creating && currentYear ? (
+        <CreateTermDialog
+          kindergartenId={primaryKindergartenId!}
+          years={yearItems}
+          defaultYearId={currentYear.id}
+          nextNumber={Math.min(items.length + 1, 3)}
+          onClose={() => setCreating(false)}
+        />
+      ) : null}
+
+      {editing ? <EditTermDialog term={editing} onClose={() => setEditing(null)} /> : null}
+    </div>
+  );
+}
+
+function CreateTermDialog({
+  kindergartenId,
+  years,
+  defaultYearId,
+  nextNumber,
+  onClose,
+}: {
+  kindergartenId: string;
+  years: z.infer<typeof yearsSchema>;
+  defaultYearId: string;
+  nextNumber: number;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [schoolYearId, setSchoolYearId] = useState(defaultYearId);
+  const [number, setNumber] = useState(String(nextNumber));
+  const [name, setName] = useState("");
+  const [startsOn, setStartsOn] = useState("");
+  const [endsOn, setEndsOn] = useState("");
+
+  const create = useMutation({
+    mutationFn: () =>
+      mutate(`/kindergartens/${kindergartenId}/terms`, z.unknown(), {
+        method: "POST",
+        body: { schoolYearId, number: Number(number), name: name.trim(), startsOn, endsOn },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin", "terms"] });
+      // The admin dashboard prints the current term in its header.
+      void queryClient.invalidateQueries({ queryKey: qk.dashboard.admin() });
+      onClose();
+    },
+  });
+
+  const errors = fieldErrors(create.error);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Улирал нэмэх"
+      className="fixed inset-0 z-50 grid place-items-center bg-ink/50 p-4"
+    >
+      <div className="w-full max-w-[420px] rounded-[18px] border border-border bg-surface p-5">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!create.isPending) create.mutate();
+          }}
+          className="flex flex-col gap-4"
+          noValidate
+        >
+          <h2 className="text-[1.05rem] font-semibold text-ink">Улирал нэмэх</h2>
+
+          <FormError message={create.isError ? errorMessage(create.error) : null} />
+
+          <Field label="Хичээлийн жил" error={errors.schoolYearId} required>
+            {({ id, describedBy, invalid }) => (
+              <Select
+                id={id}
+                aria-describedby={describedBy}
+                invalid={invalid}
+                value={schoolYearId}
+                onChange={(e) => setSchoolYearId(e.target.value)}
+              >
+                {years.map((year) => (
+                  <option key={year.id} value={year.id}>
+                    {year.name}
+                    {year.isCurrent ? " (одоогийн)" : ""}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field
+              label="Дугаар"
+              error={errors.number}
+              hint="Жилд гурав. Дараа нь өөрчлөх боломжгүй."
+              required
+            >
+              {({ id, describedBy, invalid }) => (
+                <Select
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  value={number}
+                  onChange={(e) => setNumber(e.target.value)}
+                >
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                </Select>
+              )}
+            </Field>
+
+            <Field label="Нэр" error={errors.name} hint="Жишээ: Намар" required>
+              {({ id, describedBy, invalid }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Намар"
+                  autoFocus
+                />
+              )}
+            </Field>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Эхлэх" error={errors.startsOn} required>
+              {({ id, describedBy, invalid }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  type="date"
+                  value={startsOn}
+                  onChange={(e) => setStartsOn(e.target.value)}
+                />
+              )}
+            </Field>
+
+            <Field label="Дуусах" error={errors.endsOn} required>
+              {({ id, describedBy, invalid }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  type="date"
+                  value={endsOn}
+                  onChange={(e) => setEndsOn(e.target.value)}
+                />
+              )}
+            </Field>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Болих
+            </Button>
+            <Button type="submit" disabled={create.isPending}>
+              {create.isPending ? "Хадгалж байна…" : "Нэмэх"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Correcting a term.
+ *
+ * ★ The number is not here.
+ *
+ * `PATCH /terms/:id` accepts a name and dates and nothing else, deliberately:
+ * assessments and term reports already point at the term, so renumbering would
+ * silently move a term's worth of records into a different part of the year.
+ * A term created with the wrong number is deleted and made again, before any
+ * assessment is written against it.
+ */
+function EditTermDialog({
+  term,
+  onClose,
+}: {
+  term: z.infer<typeof termSchema>;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState(term.name);
+  const [startsOn, setStartsOn] = useState((term.startsOn ?? "").slice(0, 10));
+  const [endsOn, setEndsOn] = useState((term.endsOn ?? "").slice(0, 10));
+
+  const save = useMutation({
+    mutationFn: () =>
+      mutate(`/terms/${term.id}`, z.unknown(), {
+        method: "PATCH",
+        body: { name: name.trim(), startsOn, endsOn },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin", "terms"] });
+      void queryClient.invalidateQueries({ queryKey: qk.dashboard.admin() });
+      onClose();
+    },
+  });
+
+  const errors = fieldErrors(save.error);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Улирал засах"
+      className="fixed inset-0 z-50 grid place-items-center bg-ink/50 p-4"
+    >
+      <div className="w-full max-w-[420px] rounded-[18px] border border-border bg-surface p-5">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!save.isPending) save.mutate();
+          }}
+          className="flex flex-col gap-4"
+          noValidate
+        >
+          <h2 className="text-[1.05rem] font-semibold text-ink">{term.number}-р улирал засах</h2>
+
+          <FormError message={save.isError ? errorMessage(save.error) : null} />
+
+          <Field label="Нэр" error={errors.name} required>
+            {({ id, describedBy, invalid }) => (
+              <Input
+                id={id}
+                aria-describedby={describedBy}
+                invalid={invalid}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                autoFocus
+              />
+            )}
+          </Field>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Эхлэх" error={errors.startsOn} required>
+              {({ id, describedBy, invalid }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  type="date"
+                  value={startsOn}
+                  onChange={(e) => setStartsOn(e.target.value)}
+                />
+              )}
+            </Field>
+
+            <Field label="Дуусах" error={errors.endsOn} required>
+              {({ id, describedBy, invalid }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  type="date"
+                  value={endsOn}
+                  onChange={(e) => setEndsOn(e.target.value)}
+                />
+              )}
+            </Field>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Болих
+            </Button>
+            <Button type="submit" disabled={save.isPending}>
+              {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
