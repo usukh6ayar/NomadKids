@@ -125,6 +125,13 @@ export const guardianshipSchema = z.object({
 });
 
 export const childDetailSchema = childSummarySchema.extend({
+  /**
+   * On the detail response only, never on a list. It is the one field on a
+   * child that identifies them outside this system, so it travels with the
+   * single record a member of staff opened rather than with every row of a
+   * roster.
+   */
+  nationalId: z.string().nullish(),
   healthNotes: z.string().nullish(),
   kindergarten: namedRefSchema.nullish(),
   guardianships: z.array(guardianshipSchema).default([]),

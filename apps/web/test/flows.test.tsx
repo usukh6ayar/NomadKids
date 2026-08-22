@@ -15,6 +15,7 @@ import GroupAssessmentPage from "@/app/(app)/groups/[groupId]/assessment/page";
 import NotificationsPage from "@/app/(app)/notifications/page";
 import ChildDetailPage from "@/app/(app)/children/[childId]/page";
 import NewChildPage from "@/app/(app)/children/new/page";
+import EditChildPage from "@/app/(app)/children/[childId]/edit/page";
 
 const CHILD_ID = "44444444-4444-4444-8444-444444444444";
 const GROUP_ID = "55555555-5555-4555-8555-555555555555";
@@ -465,5 +466,86 @@ describe("registering a child", () => {
     // recorded yet", which is what an empty field means.
     expect(post.body).not.toHaveProperty("nationalId");
     expect(post.body).not.toHaveProperty("groupId");
+  });
+});
+
+// ── Editing a child ─────────────────────────────────────────────────────────
+
+describe("editing a child", () => {
+  const childWithId = { ...child, nationalId: "УБ12345678" };
+
+  /**
+   * ★ A teacher is not shown the transfer card.
+   *
+   * `POST /children/:id/enrollments` resolves the target group through the
+   * actor's *admin* kindergartens, so for a teacher it can only ever answer
+   * "Бүлэг олдсонгүй". Offering the control would be offering a failure.
+   */
+  it("hides the group transfer from a teacher", async () => {
+    setParams({ childId: CHILD_ID });
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: `/children/${CHILD_ID}`, body: childWithId },
+      {
+        path: "/groups",
+        body: { items: [], total: 0, page: 1, pageSize: 25, totalPages: 0 },
+      },
+    ]);
+
+    renderWithProviders(<EditChildPage />);
+
+    // The details form is theirs to use…
+    await screen.findByLabelText(/Овог/);
+    // …the transfer is not.
+    expect(screen.queryByText("Бүлэг шилжүүлэх")).not.toBeInTheDocument();
+  });
+
+  it("shows the group transfer to an admin", async () => {
+    setParams({ childId: CHILD_ID });
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: `/children/${CHILD_ID}`, body: childWithId },
+      {
+        path: "/groups",
+        body: {
+          items: [{ id: GROUP_ID, name: "Ахлах бүлэг" }],
+          total: 1,
+          page: 1,
+          pageSize: 25,
+          totalPages: 1,
+        },
+      },
+    ]);
+
+    renderWithProviders(<EditChildPage />);
+
+    expect(await screen.findByText("Бүлэг шилжүүлэх")).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "Ахлах бүлэг" })).toBeInTheDocument();
+  });
+
+  it("clears the register number with null rather than an empty string", async () => {
+    const user = userEvent.setup();
+    setParams({ childId: CHILD_ID });
+
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: `/children/${CHILD_ID}`, body: childWithId },
+      { path: `/children/${CHILD_ID}`, method: "PATCH", body: childWithId },
+      {
+        path: "/groups",
+        body: { items: [], total: 0, page: 1, pageSize: 25, totalPages: 0 },
+      },
+    ]);
+
+    renderWithProviders(<EditChildPage />);
+
+    await user.clear(await screen.findByLabelText(/Регистрийн дугаар/));
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
+
+    await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true));
+
+    const patch = calls.find((c) => c.method === "PATCH")!;
+    // "" would fail the format rule; null is how the API is told to forget it.
+    expect(patch.body).toMatchObject({ nationalId: null });
   });
 });

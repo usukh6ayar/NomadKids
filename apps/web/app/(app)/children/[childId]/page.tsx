@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { BookOpen, FileText, Plus, UserPlus } from "lucide-react";
+import { BookOpen, FileText, Pencil, Plus, UserPlus } from "lucide-react";
 import { z } from "zod";
 import {
   assessmentSchema,
@@ -124,6 +124,15 @@ export default function ChildDetailPage() {
                 Хавтас
               </Link>
             </Button>
+
+            {isStaff ? (
+              <Button asChild variant="secondary" size="sm">
+                <Link href={`/children/${childId}/edit`}>
+                  <Pencil size={18} />
+                  Засах
+                </Link>
+              </Button>
+            ) : null}
 
             <ReportDialog
               childId={childId}
