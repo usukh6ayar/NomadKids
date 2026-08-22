@@ -4,6 +4,11 @@
 portfolio, observations, media, assessment, notifications, dashboard, audit,
 reports). Sections 11 and 12b describe shipped routes; a full reconciliation
 against the route map is scheduled before Phase 11.
+
+**2026-08-22:** §12 (administrator-editable configuration) is now implemented,
+at routes that differ from the shape this document proposed for it — the
+reasoning is at the end of that section. §8 (media) gained pagination and album
+metadata.
 **Base:** `https://api.<domain>/v1`
 
 ---
@@ -229,14 +234,45 @@ teacher form. Reference tests in [SECURITY.md](SECURITY.md) §6.5.
 
 ## 8. Media
 
-| Method | Route                           | Role           | Ownership            | Request                          | Response                               |
-| ------ | ------------------------------- | -------------- | -------------------- | -------------------------------- | -------------------------------------- |
-| POST   | `/children/:id/media`           | teacher, admin | child:write          | multipart, 1–6 `file`, `purpose` | `{ items, failed }`                    |
-| GET    | `/media/:id`                    | any            | child (via the file) | —                                | **302** to a 5-minute presigned R2 URL |
-| GET    | `/media/:id/meta`               | any            | child                | —                                | metadata, no URL                       |
-| DELETE | `/media/:id`                    | teacher, admin | child:write          | —                                | 204; archives, stops serving           |
-| POST   | `/observations/:id/media`       | teacher, admin | child:write          | mediaFileId, caption, order      | attachment                             |
-| DELETE | `/observations/:oid/media/:mid` | teacher, admin | child:write          | —                                | 204                                    |
+| Method | Route                           | Role           | Ownership            | Request                                             | Response                               |
+| ------ | ------------------------------- | -------------- | -------------------- | --------------------------------------------------- | -------------------------------------- |
+| GET    | `/children/:id/media`           | any            | child                | `?page&pageSize&purpose&observationId&category&age` | **paginated** page of MediaFile        |
+| POST   | `/children/:id/media`           | teacher, admin | child:write          | multipart, 1–6 `file`, `purpose`, album metadata    | `{ items, failed }`                    |
+| GET    | `/media/:id`                    | any            | child (via the file) | —                                                   | **302** to a 5-minute presigned R2 URL |
+| GET    | `/media/:id/meta`               | any            | child                | —                                                   | metadata, no URL                       |
+| PATCH  | `/media/:id`                    | teacher, admin | child:write          | caption, takenAt, age, category, attribution        | updated MediaFile                      |
+| DELETE | `/media/:id`                    | teacher, admin | child:write          | —                                                   | 204; archives, stops serving           |
+| POST   | `/observations/:id/media`       | teacher, admin | child:write          | mediaFileId, caption, order                         | attachment                             |
+| DELETE | `/observations/:oid/media/:mid` | teacher, admin | child:write          | —                                                   | 204                                    |
+
+**The gallery is paginated** (2026-08-22). It was the one list in this API that
+was not, and a child with six hundred photographs answered with six hundred rows
+and six hundred signed-URL redirects on one screen — CLAUDE.md §3.4, RFP §17.
+
+`?observationId=` landed with it. The screen that shows one observation's photos
+previously fetched the child's whole `OBSERVATION` set and filtered in the
+browser, which page one of twenty-five silently breaks.
+
+★ **The guardian visibility rule is one predicate, used twice.** The paginated
+list and the per-file check behind `GET /media/:id` compose the same `where`
+fragment. They were one method returning a list that the download path searched
+in memory; paginating that would have made a guardian 404 on photo twenty-six of
+their own child while the gallery showed it on page two.
+
+**Album metadata** (RFP §4.4): `takenAt` — when the photograph was taken, not
+uploaded; `age` (2–5); `category` from a closed vocabulary; `attribution`
+(`TEACHER | PARENT | JOINT`), defaulted from who uploads and correctable; and
+`uploadedBy`, taken from the authenticated actor and never from the body. On
+`PATCH`, an absent field is left alone and an explicit `null` clears it — so
+editing a caption cannot blank the date.
+
+**Tenant images** — `KINDERGARTEN_LOGO`, `USER_PHOTO`, `GROUP_PHOTO` — are
+served by `GET /media/:id` too, authorised by membership of the file's own
+kindergarten rather than through a child. They are still never public: CLAUDE.md
+§1.4 admits no exception for a logo. **There are no upload routes for them
+yet**, so `Kindergarten.logoMediaFileId`, `User.photoMediaFileId` and
+`Group.photoMediaFileId` exist and serve correctly but nothing can populate
+them.
 
 **Upload takes a batch.** One request carries up to six repeated `file` parts
 and answers `{ items: MediaFile[], failed: [{ name, reason }] }`. Six because
@@ -384,25 +420,85 @@ long do copies live" is a question the client can now be given an answer to.
 
 ## 12. Configuration (admin)
 
-| Method | Route                             | Role  | Ownership | Request                      | Response                                    |
-| ------ | --------------------------------- | ----- | --------- | ---------------------------- | ------------------------------------------- |
-| GET    | `/config/development-domains`     | any   | kg        | —                            | system rows + this kindergarten's overrides |
-| POST   | `/config/development-domains`     | admin | kg:admin  | name, code, color, order     | created for this kindergarten               |
-| PATCH  | `/config/development-domains/:id` | admin | kg:admin  | name, color, order, isActive | updated                                     |
-| GET    | `/config/assessment-levels`       | any   | kg        | —                            | levels                                      |
-| POST   | `/config/assessment-levels`       | admin | kg:admin  | value, label, color          | created                                     |
-| PATCH  | `/config/assessment-levels/:id`   | admin | kg:admin  | label, color, order          | updated                                     |
-| GET    | `/config/observation-types`       | any   | kg        | —                            | types                                       |
-| POST   | `/config/observation-types`       | admin | kg:admin  | name, code, order            | created                                     |
-| PATCH  | `/config/observation-types/:id`   | admin | kg:admin  | name, order, isActive        | updated                                     |
+Implemented 2026-08-22. **The routes differ from the `/config/...` shape this
+section proposed before it was built** — see the note at the end for why.
+
+### Management surface — admin only
+
+| Method | Route                                    | Role  | Ownership | Request                       | Response                        |
+| ------ | ---------------------------------------- | ----- | --------- | ----------------------------- | ------------------------------- |
+| GET    | `/kindergartens/:id/development-domains` | admin | kg:admin  | —                             | own + system rows, `isSystem`   |
+| POST   | `/kindergartens/:id/development-domains` | admin | kg:admin  | name, code, color, order      | created for this kindergarten   |
+| PATCH  | `/development-domains/:id`               | admin | kg:admin  | name, color, order, isActive  | updated                         |
+| DELETE | `/development-domains/:id`               | admin | kg:admin  | —                             | **deactivates**, `{ isActive }` |
+| GET    | `/kindergartens/:id/assessment-levels`   | admin | kg:admin  | —                             | own + system rows               |
+| POST   | `/kindergartens/:id/assessment-levels`   | admin | kg:admin  | value (1–4), label, color     | created                         |
+| PATCH  | `/assessment-levels/:id`                 | admin | kg:admin  | label, color, order, isActive | updated                         |
+| DELETE | `/assessment-levels/:id`                 | admin | kg:admin  | —                             | deactivates                     |
+| GET    | `/kindergartens/:id/observation-types`   | admin | kg:admin  | —                             | own + system rows               |
+| POST   | `/kindergartens/:id/observation-types`   | admin | kg:admin  | name, code, order             | created                         |
+| PATCH  | `/observation-types/:id`                 | admin | kg:admin  | name, order, isActive         | updated                         |
+| DELETE | `/observation-types/:id`                 | admin | kg:admin  | —                             | deactivates                     |
+
+### Read surface — everyone else, unchanged
+
+| Method | Route                                  | Role | Ownership | Response                 |
+| ------ | -------------------------------------- | ---- | --------- | ------------------------ |
+| GET    | `/kindergartens/:id/assessment-config` | any  | kg        | active domains + levels  |
+| GET    | `/children/:id/observations/types`     | any  | child     | active observation types |
+
+Two surfaces rather than one because the audiences differ: a parent's screen
+needs domain names to render and must not see deactivated rows or the
+management affordances, while an administrator needs exactly those. The read
+path already existed and is untouched.
 
 **A kindergarten admin may not edit a system row** (`kindergartenId IS NULL`);
-they create an override instead. Attempting it returns 404. Reference:
+they create an override instead. Attempting it returns 404 — enforced by
+loading every write through a scope that cannot match a null, so it fails at
+the load rather than in a check a later method could forget. Reference:
 `test_a_director_cannot_open_a_system_domains_edit_form`.
 
-Teachers and parents may **read** configuration — the UI needs domain names and
-level labels to render anything — but may not write. Reference:
+Teachers and parents may **read** configuration but never write it. Reference:
 `test_a_teacher_cannot_reach_the_configuration`.
+
+### Three rules worth knowing before you call these
+
+- **`DELETE` deactivates — and deactivation is enforced, not cosmetic.**
+  `isActive: false` removes a row from the pickers **and** from the write paths:
+  a retired domain or level is refused by `PUT /children/:id/assessments` and
+  `PUT /groups/:id/assessments`, and a retired observation type is refused by
+  `POST /children/:id/observations`, each with a **400**. Records already filed
+  against it keep reading normally — the read paths join the row without
+  filtering on `isActive`, so last year's term report still renders the level it
+  was written with. `deletedAt` would orphan that history and is not offered
+  here. The response carries the number of records still attached.
+
+  **The stated consequence:** an existing assessment on a retired domain becomes
+  read-only, because the update path runs the same check as the create path. An
+  administrator retiring a criterion mid-term should expect that.
+
+- **The lists are bounded by construction, not by paging.** They deliberately
+  return whole arrays — the group assessment grid needs every active domain to
+  render. CLAUDE.md §3.4 is satisfied at the other end: a kindergarten may own
+  at most **40** rows per kind, and the 41st `POST` is a **409**. System rows do
+  not count against it.
+- **Identity is immutable.** `DevelopmentDomain.code` and
+  `AssessmentLevel.value` are absent from the PATCH schemas. A rename is a
+  display change; re-coding silently repoints everything that looks the row up,
+  and re-numbering a level rewrites what a family was already told.
+- **A duplicate `code` or `value` is a 409**, not a 500.
+
+### ★ Why not `/config/...`
+
+This section originally proposed `/config/development-domains`, with the
+kindergarten implied by the caller. That cannot be expressed: an actor may hold
+`ADMIN` in more than one kindergarten — `adminKindergartenIds()` returns an
+array — so `POST /config/development-domains` has no way to say which one it
+creates in, and the answer would have to be guessed. Every other create route
+in this API is nested under `/kindergartens/:id/…` for the same reason, and
+every single-row route is addressed by the row's own id with the tenant read
+back from it. The implemented shape follows that convention rather than
+inventing a second one.
 
 ---
 
