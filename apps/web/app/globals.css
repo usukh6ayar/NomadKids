@@ -40,15 +40,33 @@
    * Accents. Restrained on purpose — each one means something (mint = done,
    * blue = information, yellow = waiting, peach = needs attention) and none of
    * them is ever the only signal, because colour alone must not carry meaning.
+   *
+   * ★ The tints are the reference's stat palette verbatim (`--c-green-soft`,
+   * `--c-sky-soft`, `--c-amber-soft`, `--c-pink-soft`) — that saturated pastel
+   * is what makes a screen recognisably this product rather than a generic
+   * admin panel.
+   *
+   * The ink values are NOT the reference's. There they sit under a 1.75rem
+   * statistic, where 3:1 is the accessible floor; here the same pair carries
+   * badge text at 0.8rem, where the floor is 4.5:1. `--c-green: #2f9367` on
+   * its own tint is about 3.0:1 — correct for a numeral, a regression for a
+   * label. The darker inks below clear 5:1 on the reference's own tints, so
+   * the screen matches and the text stays legible.
    */
-  --color-mint: #e6f6ef;
+  --color-mint: #bfe8d4;
   --color-mint-ink: #1f6b4d;
-  --color-sky: #e8f1fd;
+  --color-sky: #cde7f7;
   --color-sky-ink: #1d4e89;
-  --color-sun: #fdf3dd;
+  --color-sun: #f8e6a0;
   --color-sun-ink: #8a6512;
-  --color-peach: #fdece6;
+  --color-peach: #f8d5c2;
   --color-peach-ink: #9a4a25;
+  /* The reference's remaining two stat tints, unused until a screen needs a
+     fifth and sixth category to be told apart by shape rather than by reading. */
+  --color-cornflower: #e6eefb;
+  --color-cornflower-ink: #2b5aa8;
+  --color-teal: #cfeeeb;
+  --color-teal-ink: #14615c;
 
   --color-danger: #c0392b;
   --color-danger-soft: #fdeceb;
@@ -73,6 +91,14 @@
   /* Sizing floors */
   --size-control: 48px;
   --size-tap: 44px;
+
+  /*
+   * Heading line-height, deliberately looser than the 1.2 a Latin-only design
+   * would use. Mongolian compounds are long — "Хөгжлийн үнэлгээний явц",
+   * "Бүртгэлийн дугаар" — and wrap onto two lines at almost every width, so a
+   * heading has to survive wrapping without its lines touching.
+   */
+  --leading-heading: 1.35;
 }
 
 :root {
@@ -91,7 +117,26 @@ body {
   color: var(--color-ink);
 }
 
+/*
+ * Two very soft washes rather than a flat ground.
+ *
+ * This is a product for small children used by teachers and parents, and a
+ * uniform off-white reads as an office tool. Two gradients at 6% and 4% are
+ * enough to warm the page and are invisible behind a dense screen — the
+ * failure mode to avoid is decoration that competes with content, so the
+ * opacity is low and there is no image, nothing to load, and nothing that
+ * moves.
+ *
+ * `fixed` keeps the wash on the viewport instead of the document: attached to
+ * the document it repeats down a long child list, which turns one soft corner
+ * into a visible band every screenful.
+ */
 body {
+  background:
+    radial-gradient(70% 45% at 8% -5%, rgba(108, 99, 255, 0.06) 0%, transparent 55%),
+    radial-gradient(55% 40% at 95% 2%, rgba(207, 106, 82, 0.04) 0%, transparent 52%),
+    var(--color-canvas);
+  background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   /*
    * Mongolian Cyrillic wraps at word boundaries and its words are long.
