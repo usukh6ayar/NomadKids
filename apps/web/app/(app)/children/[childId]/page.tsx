@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { BookOpen, FileText, Pencil, Plus, UserPlus } from "lucide-react";
+import { BookOpen, ClipboardList, FileText, Pencil, Plus, UserPlus } from "lucide-react";
 import { z } from "zod";
 import {
   assessmentSchema,
@@ -122,6 +122,18 @@ export default function ChildDetailPage() {
               <Link href={`/children/${childId}/portfolio`}>
                 <BookOpen size={18} />
                 Хавтас
+              </Link>
+            </Button>
+
+            {/*
+              Both roles, one route: a teacher writes the report and a family
+              reads it once finalised. The API filters a guardian to FINAL, so
+              the same URL is safe for either.
+            */}
+            <Button asChild variant="secondary" size="sm">
+              <Link href={`/children/${childId}/term-report`}>
+                <ClipboardList size={18} />
+                Улирлын тайлан
               </Link>
             </Button>
 

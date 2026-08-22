@@ -17,6 +17,7 @@ import ChildDetailPage from "@/app/(app)/children/[childId]/page";
 import NewChildPage from "@/app/(app)/children/new/page";
 import EditChildPage from "@/app/(app)/children/[childId]/edit/page";
 import { PhotoUpload } from "@/components/media/photo-upload";
+import TermReportPage from "@/app/(app)/children/[childId]/term-report/page";
 
 const CHILD_ID = "44444444-4444-4444-8444-444444444444";
 const GROUP_ID = "55555555-5555-4555-8555-555555555555";
@@ -622,5 +623,82 @@ describe("uploading photos", () => {
 
     expect(await screen.findByText("утас.heic")).toBeInTheDocument();
     expect(await screen.findByText(/HEIC/)).toBeInTheDocument();
+  });
+});
+
+// ── Term report ─────────────────────────────────────────────────────────────
+
+describe("the term report", () => {
+  const TERM = {
+    id: TERM_ID,
+    number: 1,
+    name: "I улирал",
+    startsOn: "2026-09-01",
+    endsOn: "2026-12-31",
+  };
+
+  function stubFor(role: "TEACHER" | "PARENT", report: Record<string, unknown>) {
+    // Order matters: `stubApi` matches by startsWith, so the term-report stub
+    // has to come before the child detail one it would otherwise be swallowed
+    // by. The terms request is `/kindergartens/:id/terms`, not `/terms`.
+    return stubApi([
+      { path: "/auth/me", body: sessionFor([role]) },
+      { path: `/children/${CHILD_ID}/term-report`, body: report },
+      { path: `/children/${CHILD_ID}`, body: child },
+      { path: "/kindergartens/", body: [TERM] },
+    ]);
+  }
+
+  /**
+   * ★ A draft is the teacher's working text.
+   *
+   * The API refuses a guardian anything but FINAL, so the screen must not imply
+   * one is coming — and must never render the form for them.
+   */
+  it("shows a parent nothing while the report is still a draft", async () => {
+    setParams({ childId: CHILD_ID });
+    stubFor("PARENT", { exists: true, status: "DRAFT", strengths: "Ноорог" });
+
+    renderWithProviders(<TermReportPage />);
+
+    expect(await screen.findByText("Тайлан хараахан бэлэн болоогүй")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Давуу тал")).not.toBeInTheDocument();
+    expect(screen.queryByText("Ноорог")).not.toBeInTheDocument();
+  });
+
+  it("shows a parent the finalised report, read-only", async () => {
+    setParams({ childId: CHILD_ID });
+    stubFor("PARENT", {
+      exists: true,
+      status: "FINAL",
+      strengths: "Хамт олонтойгоо сайн",
+      nextGoals: "Тоо таних",
+    });
+
+    renderWithProviders(<TermReportPage />);
+
+    expect(await screen.findByText("Хамт олонтойгоо сайн")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Ноорог хадгалах/ })).not.toBeInTheDocument();
+  });
+
+  it("gives a teacher the form while it is a draft", async () => {
+    setParams({ childId: CHILD_ID });
+    stubFor("TEACHER", { exists: true, status: "DRAFT", strengths: "Ноорог" });
+
+    renderWithProviders(<TermReportPage />);
+
+    expect(await screen.findByLabelText("Давуу тал")).toHaveValue("Ноорог");
+    expect(screen.getByRole("button", { name: /Ноорог хадгалах/ })).toBeInTheDocument();
+  });
+
+  /** Finalising is one-way, so the form is gone rather than merely disabled. */
+  it("stops offering a teacher the form once it is final", async () => {
+    setParams({ childId: CHILD_ID });
+    stubFor("TEACHER", { exists: true, status: "FINAL", strengths: "Хамт олонтойгоо сайн" });
+
+    renderWithProviders(<TermReportPage />);
+
+    expect(await screen.findByText(/баталгаажсан тул засах боломжгүй/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Давуу тал")).not.toBeInTheDocument();
   });
 });
