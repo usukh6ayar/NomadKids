@@ -3,6 +3,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ImagePlus, RotateCw } from "lucide-react";
 import { useId, useRef, useState, type ReactNode } from "react";
+import { z } from "zod";
 import { mediaSchema } from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -13,6 +14,21 @@ import { FormError } from "@/components/ui/states";
 /** The API's own ceiling. Checked here too, so a 12 MB photo fails instantly. */
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MAX_MB = MAX_UPLOAD_BYTES / 1024 / 1024;
+
+/**
+ * Files per request. Mirrors the API's own cap, which exists because multer
+ * buffers every file in memory before the handler runs.
+ *
+ * A teacher selecting a whole morning's photographs should not have to know
+ * that, so `handleFiles` slices the selection rather than refusing it.
+ */
+const MAX_FILES_PER_REQUEST = 6;
+
+/** What the batch endpoint answers with: what it stored, and what it would not. */
+const uploadResultSchema = z.object({
+  items: z.array(mediaSchema),
+  failed: z.array(z.object({ name: z.string(), reason: z.string() })),
+});
 
 export const ACCEPTED_TYPES = "image/jpeg,image/png,image/webp";
 
@@ -28,10 +44,15 @@ export const ACCEPTED_TYPES = "image/jpeg,image/png,image/webp";
  * these are photographs of children, and a phone writes GPS coordinates into
  * them by default.
  *
- * ★★ One file at a time, sequentially. The API rate-limits uploads per user,
- * and firing eight parallel requests is the reliable way to trip that limit and
- * have most of them fail — which the user then reads as "the app is broken"
- * rather than "slow down".
+ * ★★ The whole selection in one request, in batches of six, awaited in turn.
+ *
+ * The API rate-limits uploads per user, and this used to send one request per
+ * photograph: twenty photographs on a class-board post spent a third of a
+ * teacher's hourly budget and the rest of the morning was refused. Batching
+ * makes that four requests. They are still awaited rather than fired together,
+ * because parallel requests are the reliable way to trip the same limit and
+ * have most of them fail — which a user reads as "the app is broken" rather
+ * than "slow down".
  *
  * This was inlined in `ObservationPhotos`. It is shared now because the child
  * gallery and the profile picture need exactly the same behaviour, and three
@@ -66,38 +87,59 @@ export function PhotoUpload({
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const [localError, setLocalError] = useState<string | null>(null);
-  /** The file that failed, kept so "retry" does not need it re-picked. */
-  const [failed, setFailed] = useState<File | null>(null);
+  /** The files that failed, kept so "retry" does not need them re-picked. */
+  const [failed, setFailed] = useState<File[] | null>(null);
+  /** What the server refused, per file, so the message names them. */
+  const [refused, setRefused] = useState<{ name: string; reason: string }[]>([]);
 
   const upload = useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async (files: File[]) => {
       const form = new FormData();
-      form.append("file", file);
+      // ★ One request for the whole selection.
+      //
+      // The endpoint takes repeated `file` parts. It used to be one request
+      // per photograph, which at 60 uploads an hour meant a class-board post
+      // with twenty photographs spent a third of a teacher's daily budget.
+      for (const file of files) form.append("file", file);
       if (observationId) form.append("observationId", observationId);
       if (purpose) form.append("purpose", purpose);
       // No Content-Type is set: the browser must add the multipart boundary.
-      return mutate(`/children/${childId}/media`, mediaSchema, { method: "POST", body: form });
+      return mutate(`/children/${childId}/media`, uploadResultSchema, {
+        method: "POST",
+        body: form,
+      });
     },
-    onSuccess: async (media) => {
+    onSuccess: async (result) => {
       setFailed(null);
-      await onUploaded?.(media.id);
+      // Partial success is normal, not an error: the server stored what it
+      // could and named what it would not. Saying so beats a silent shortfall.
+      setRefused(result.failed);
+      for (const media of result.items) await onUploaded?.(media.id);
       void queryClient.invalidateQueries({ queryKey: qk.childMedia(childId) });
       void queryClient.invalidateQueries({ queryKey: qk.child(childId) });
     },
-    onError: (_error, file) => setFailed(file),
+    onError: (_error, files) => setFailed(files),
   });
 
-  async function handleFiles(files: FileList | null) {
-    if (!files?.length) return;
+  async function handleFiles(list: FileList | null) {
+    if (!list?.length) return;
     setLocalError(null);
+    setRefused([]);
 
-    for (const file of Array.from(files)) {
-      if (file.size > MAX_UPLOAD_BYTES) {
-        setLocalError(`"${file.name}" хэт том байна. Дээд хэмжээ ${MAX_MB} MB.`);
-        continue;
-      }
-      // Awaited in sequence — see the note above about the rate limit.
-      await upload.mutateAsync(file).catch(() => undefined);
+    const chosen = Array.from(list);
+    const tooBig = chosen.filter((file) => file.size > MAX_UPLOAD_BYTES);
+    const sendable = chosen.filter((file) => file.size <= MAX_UPLOAD_BYTES);
+
+    if (tooBig.length) {
+      setLocalError(
+        `${tooBig.map((f) => `"${f.name}"`).join(", ")} хэт том байна. Дээд хэмжээ ${MAX_MB} MB.`,
+      );
+    }
+
+    // In batches, because the endpoint caps a request at six files — a teacher
+    // selecting a whole morning's photographs should not have to know that.
+    for (let i = 0; i < sendable.length; i += MAX_FILES_PER_REQUEST) {
+      await upload.mutateAsync(sendable.slice(i, i + MAX_FILES_PER_REQUEST)).catch(() => undefined);
     }
 
     // Cleared so picking the same file again still fires a change event.
@@ -139,6 +181,20 @@ export function PhotoUpload({
 
         {children}
       </div>
+
+      {/*
+        Named, not counted. "2 зураг орсонгүй" leaves a teacher to work out
+        which two and why; the server already said, so it is repeated here.
+      */}
+      {refused.length ? (
+        <ul role="status" className="flex flex-col gap-1 text-xs text-peach-ink">
+          {refused.map((file) => (
+            <li key={file.name}>
+              <span className="font-medium">{file.name}</span> — {file.reason}
+            </li>
+          ))}
+        </ul>
+      ) : null}
 
       {hint === null ? null : (
         <p className="text-xs text-muted">

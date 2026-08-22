@@ -16,6 +16,7 @@ import NotificationsPage from "@/app/(app)/notifications/page";
 import ChildDetailPage from "@/app/(app)/children/[childId]/page";
 import NewChildPage from "@/app/(app)/children/new/page";
 import EditChildPage from "@/app/(app)/children/[childId]/edit/page";
+import { PhotoUpload } from "@/components/media/photo-upload";
 
 const CHILD_ID = "44444444-4444-4444-8444-444444444444";
 const GROUP_ID = "55555555-5555-4555-8555-555555555555";
@@ -547,5 +548,79 @@ describe("editing a child", () => {
     const patch = calls.find((c) => c.method === "PATCH")!;
     // "" would fail the format rule; null is how the API is told to forget it.
     expect(patch.body).toMatchObject({ nationalId: null });
+  });
+});
+
+// ── Uploading photos ────────────────────────────────────────────────────────
+
+describe("uploading photos", () => {
+  /**
+   * ★ One request for the whole selection.
+   *
+   * This used to be one request per photograph. At 60 uploads an hour, a
+   * class-board post with twenty photographs spent a third of a teacher's
+   * budget and the rest of the morning was refused.
+   */
+  it("sends every picked file in a single request", async () => {
+    const user = userEvent.setup();
+
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: `/children/${CHILD_ID}/media`,
+        method: "POST",
+        body: {
+          items: [
+            { id: "11111111-1111-4111-8111-111111111111", purpose: "CHILD_PHOTO" },
+            { id: "22222222-2222-4222-8222-222222222222", purpose: "CHILD_PHOTO" },
+            { id: "33333333-3333-4333-8333-333333333331", purpose: "CHILD_PHOTO" },
+          ],
+          failed: [],
+        },
+      },
+    ]);
+
+    renderWithProviders(<PhotoUpload childId={CHILD_ID} />);
+
+    const input = document.querySelector("input[type=file]") as HTMLInputElement;
+    await user.upload(input, [
+      new File(["a"], "нэг.jpg", { type: "image/jpeg" }),
+      new File(["b"], "хоёр.jpg", { type: "image/jpeg" }),
+      new File(["c"], "гурав.jpg", { type: "image/jpeg" }),
+    ]);
+
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+
+    const posts = calls.filter((c) => c.method === "POST");
+    expect(posts).toHaveLength(1);
+    expect((posts[0]!.body as FormData).getAll("file")).toHaveLength(3);
+  });
+
+  /** Partial success names what was refused rather than quietly storing fewer. */
+  it("names the files the server would not take", async () => {
+    const user = userEvent.setup();
+
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: `/children/${CHILD_ID}/media`,
+        method: "POST",
+        body: {
+          items: [{ id: "11111111-1111-4111-8111-111111111111", purpose: "CHILD_PHOTO" }],
+          failed: [{ name: "утас.heic", reason: "HEIC зургийг дэмжихгүй байна." }],
+        },
+      },
+    ]);
+
+    renderWithProviders(<PhotoUpload childId={CHILD_ID} />);
+
+    const input = document.querySelector("input[type=file]") as HTMLInputElement;
+    await user.upload(input, [
+      new File(["a"], "сайн.jpg", { type: "image/jpeg" }),
+      new File(["b"], "утас.heic", { type: "image/heic" }),
+    ]);
+
+    expect(await screen.findByText("утас.heic")).toBeInTheDocument();
+    expect(await screen.findByText(/HEIC/)).toBeInTheDocument();
   });
 });

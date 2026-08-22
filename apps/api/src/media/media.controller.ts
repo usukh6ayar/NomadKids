@@ -10,9 +10,10 @@ import {
   Query,
   Redirect,
   UploadedFile,
+  UploadedFiles,
   UseInterceptors,
 } from "@nestjs/common";
-import { FileInterceptor } from "@nestjs/platform-express";
+import { FileInterceptor, FilesInterceptor } from "@nestjs/platform-express";
 import { idParamSchema } from "@kinder/contracts";
 import { z } from "zod";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
@@ -23,6 +24,17 @@ import type { Actor } from "../authz/actor";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { MediaService } from "./media.service";
 import { MAX_UPLOAD_BYTES } from "./upload-validation";
+
+/**
+ * Files one request may carry.
+ *
+ * Six, not twelve. Multer buffers every file in memory before the handler
+ * runs, so this number multiplied by MAX_UPLOAD_BYTES is the worst case a
+ * single request can hold — 60 MB here, in a container that also runs
+ * Chromium for the report worker. A full twelve-photo observation is two
+ * requests instead of twelve, which is already the whole point.
+ */
+const MAX_FILES_PER_UPLOAD = 6;
 
 const uploadOptionsSchema = z.object({
   observationId: z.uuid().optional(),
@@ -63,24 +75,39 @@ export class ChildMediaController {
   @Post()
   @RateLimit({ limit: 60, windowMs: 60 * 60 * 1000, byUser: true })
   @UseInterceptors(
-    FileInterceptor("file", {
-      limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
+    FilesInterceptor("file", MAX_FILES_PER_UPLOAD, {
+      limits: { fileSize: MAX_UPLOAD_BYTES, files: MAX_FILES_PER_UPLOAD },
     }),
   )
   async upload(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
-    @UploadedFile() file: { buffer: Buffer; originalname: string } | undefined,
+    @UploadedFiles() files: { buffer: Buffer; originalname: string }[] | undefined,
     @Body(new ZodValidationPipe(uploadOptionsSchema))
     body: { observationId?: string; caption?: string; purpose?: "CHILD_PHOTO" | "OBSERVATION" },
   ) {
-    if (!file) throw new BadRequestException("Файл хавсаргаагүй байна");
+    if (!files?.length) throw new BadRequestException("Файл хавсаргаагүй байна");
 
-    return this.service.upload(actor, params.id, file, {
+    const result = await this.service.uploadMany(actor, params.id, files, {
       observationId: body.observationId,
       caption: body.caption ?? null,
       purpose: body.purpose,
     });
+
+    /*
+     * ★ Nothing stored means the request failed.
+     *
+     * Partial success is a 201 carrying both lists — nine photographs really
+     * were stored and the tenth really was not. But a batch where every file
+     * was refused is not a success with footnotes, and answering 201 for it
+     * would mean a renamed executable, or a HEIC, came back as "created".
+     * The first reason is the message; the rest are in the body.
+     */
+    if (result.items.length === 0) {
+      throw new BadRequestException(result.failed[0]?.reason ?? "Зургийг хүлээж авсангүй");
+    }
+
+    return result;
   }
 
   /** Makes an existing photo the child's profile picture. */

@@ -108,6 +108,64 @@ export class MediaService {
   }
 
   /**
+   * Uploads several photos in one request.
+   *
+   * ★ The point is the rate limit, not the click count.
+   *
+   * The browser could already pick a dozen photographs at once — it just sent
+   * a dozen requests. At 60 uploads an hour per user, a teacher posting one
+   * class-board announcement with twenty photographs spent a third of their
+   * day's budget on it and was refused halfway through the next one. One
+   * request is one unit.
+   *
+   * ★ Partial success is reported, not hidden and not rolled back.
+   *
+   * Each file is validated and stored on its own, so a HEIC in the middle of a
+   * selection cannot discard the nine that were fine. Rolling the good ones
+   * back would mean deleting objects a teacher watched upload; failing the
+   * whole request would mean asking them to find which one was wrong by
+   * bisection. The caller gets both lists and can say "10 орлоо, 2 орсонгүй".
+   *
+   * Sequential rather than parallel: `upload` re-reads the per-observation
+   * count each time, and decoding six photographs at once would hold six
+   * sharp buffers in a container that also runs Chromium.
+   */
+  async uploadMany(
+    actor: Actor,
+    childId: string,
+    files: { buffer: Buffer; originalname: string }[],
+    options: { purpose?: MediaPurpose; observationId?: string; caption?: string | null } = {},
+  ) {
+    // Once, before the loop. Every file goes to the same child, so failing the
+    // whole request on an unauthorized caller is right — and it means an
+    // unauthorized caller cannot use the batch to probe one file at a time.
+    await this.childAccess.assertCanRecord(actor, childId);
+
+    const items: Awaited<ReturnType<MediaService["upload"]>>[] = [];
+    const failed: { name: string; reason: string }[] = [];
+
+    for (const file of files) {
+      try {
+        items.push(await this.upload(actor, childId, file, options));
+      } catch (error) {
+        // A rejection is about this file. Anything else — storage down, the
+        // database gone — is about the request, and swallowing it would report
+        // "2 орсонгүй" for an outage.
+        if (error instanceof BadRequestException) {
+          failed.push({
+            name: sanitiseFilename(file.originalname),
+            reason: describeBadRequest(error),
+          });
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    return { items, failed };
+  }
+
+  /**
    * Issues a short-lived download URL.
    *
    * ★ The authorization check runs BEFORE the URL is created — the reference
@@ -341,4 +399,23 @@ export class MediaService {
       observationId: media.observationId ?? null,
     };
   }
+}
+
+/**
+ * The human-readable half of a Nest `BadRequestException`.
+ *
+ * Its `getResponse()` is a string when the exception was constructed with one
+ * and an object when a pipe built it, so reading `.message` off the instance
+ * would print "Bad Request Exception" for the very cases a teacher needs to
+ * understand.
+ */
+function describeBadRequest(error: BadRequestException): string {
+  const body = error.getResponse();
+  if (typeof body === "string") return body;
+
+  const message = (body as { message?: unknown }).message;
+  if (typeof message === "string") return message;
+  if (Array.isArray(message)) return message.join(", ");
+
+  return "Зургийг хүлээж авсангүй";
 }

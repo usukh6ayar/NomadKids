@@ -92,7 +92,12 @@ async function upload(
 
   const res = await req;
   if (res.status !== 201) throw new Error(`upload failed: ${res.status} ${res.text}`);
-  return res.body.id as string;
+  // The endpoint takes a batch and always answers with one, so a single-file
+  // upload is a batch of one rather than a special case.
+  if (res.body.items.length !== 1) {
+    throw new Error(`upload rejected: ${JSON.stringify(res.body.failed)}`);
+  }
+  return res.body.items[0].id as string;
 }
 
 async function teacherObservation(visibleToParents: boolean) {
@@ -458,5 +463,81 @@ describe("revoked access", () => {
       (await request(server()).get(`/v1/media/${mediaId}`).set("Cookie", fatherSession.cookies))
         .status,
     ).toBe(302);
+  });
+});
+
+/**
+ * Batch upload.
+ *
+ * ★ The reason is the rate limit, not the number of clicks.
+ *
+ * The browser could already pick a dozen photographs; it sent a dozen requests.
+ * At 60 uploads an hour per user, one class-board announcement with twenty
+ * photographs spent a third of a teacher's daily budget. One request is one
+ * unit.
+ */
+describe("uploading several photos at once", () => {
+  it("stores every file in one request", async () => {
+    const res = await authed(request(server()).post(`/v1/children/${a.child.id}/media`), teacherA)
+      .attach("file", await photoBytes(), "нэг.jpg")
+      .attach("file", await photoBytes(), "хоёр.jpg")
+      .attach("file", await photoBytes(), "гурав.jpg");
+
+    expect(res.status).toBe(201);
+    expect(res.body.items).toHaveLength(3);
+    expect(res.body.failed).toHaveLength(0);
+
+    // And they are all really there, not merely acknowledged.
+    const list = await authed(request(server()).get(`/v1/children/${a.child.id}/media`), teacherA);
+    expect(list.body).toHaveLength(3);
+  });
+
+  /**
+   * ★ One bad file must not discard the good ones.
+   *
+   * Rolling back would delete photographs a teacher watched upload; failing
+   * the whole request would ask them to find the bad one by bisection.
+   */
+  it("keeps the good files and names the ones it refused", async () => {
+    const machO = Buffer.concat([Buffer.from([0xcf, 0xfa, 0xed, 0xfe]), Buffer.alloc(64, 0x41)]);
+
+    const res = await authed(request(server()).post(`/v1/children/${a.child.id}/media`), teacherA)
+      .attach("file", await photoBytes(), "сайн.jpg")
+      .attach("file", machO, "хортой.jpg")
+      .attach("file", await photoBytes(), "бас сайн.jpg");
+
+    expect(res.status).toBe(201);
+    expect(res.body.items).toHaveLength(2);
+    expect(res.body.failed).toHaveLength(1);
+    expect(res.body.failed[0].name).toContain("хортой");
+    expect(res.body.failed[0].reason).toBeTruthy();
+
+    const list = await authed(request(server()).get(`/v1/children/${a.child.id}/media`), teacherA);
+    expect(list.body).toHaveLength(2);
+  });
+
+  /** A batch where nothing survived is a failed request, not a 201 with notes. */
+  it("answers 400 when every file was refused", async () => {
+    const machO = Buffer.concat([Buffer.from([0xcf, 0xfa, 0xed, 0xfe]), Buffer.alloc(64, 0x41)]);
+
+    const res = await authed(request(server()).post(`/v1/children/${a.child.id}/media`), teacherA)
+      .attach("file", machO, "нэг.jpg")
+      .attach("file", machO, "хоёр.jpg");
+
+    expect(res.status).toBe(400);
+
+    const list = await authed(request(server()).get(`/v1/children/${a.child.id}/media`), teacherA);
+    expect(list.body).toHaveLength(0);
+  });
+
+  /** Authorization is decided once, for the child, before any file is read. */
+  it("refuses the whole batch for a teacher from another kindergarten", async () => {
+    const teacherB = await login(app, b.teacherUser.username);
+
+    const res = await authed(request(server()).post(`/v1/children/${a.child.id}/media`), teacherB)
+      .attach("file", await photoBytes(), "нэг.jpg")
+      .attach("file", await photoBytes(), "хоёр.jpg");
+
+    expect(res.status).toBe(404);
   });
 });
