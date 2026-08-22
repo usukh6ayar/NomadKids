@@ -229,14 +229,32 @@ teacher form. Reference tests in [SECURITY.md](SECURITY.md) §6.5.
 
 ## 8. Media
 
-| Method | Route                           | Role           | Ownership            | Request                     | Response                               |
-| ------ | ------------------------------- | -------------- | -------------------- | --------------------------- | -------------------------------------- |
-| POST   | `/children/:id/media`           | teacher, admin | child:write          | multipart, `purpose`        | MediaFile metadata                     |
-| GET    | `/media/:id`                    | any            | child (via the file) | —                           | **302** to a 5-minute presigned R2 URL |
-| GET    | `/media/:id/meta`               | any            | child                | —                           | metadata, no URL                       |
-| DELETE | `/media/:id`                    | teacher, admin | child:write          | —                           | 204; archives, stops serving           |
-| POST   | `/observations/:id/media`       | teacher, admin | child:write          | mediaFileId, caption, order | attachment                             |
-| DELETE | `/observations/:oid/media/:mid` | teacher, admin | child:write          | —                           | 204                                    |
+| Method | Route                           | Role           | Ownership            | Request                          | Response                               |
+| ------ | ------------------------------- | -------------- | -------------------- | -------------------------------- | -------------------------------------- |
+| POST   | `/children/:id/media`           | teacher, admin | child:write          | multipart, 1–6 `file`, `purpose` | `{ items, failed }`                    |
+| GET    | `/media/:id`                    | any            | child (via the file) | —                                | **302** to a 5-minute presigned R2 URL |
+| GET    | `/media/:id/meta`               | any            | child                | —                                | metadata, no URL                       |
+| DELETE | `/media/:id`                    | teacher, admin | child:write          | —                                | 204; archives, stops serving           |
+| POST   | `/observations/:id/media`       | teacher, admin | child:write          | mediaFileId, caption, order      | attachment                             |
+| DELETE | `/observations/:oid/media/:mid` | teacher, admin | child:write          | —                                | 204                                    |
+
+**Upload takes a batch.** One request carries up to six repeated `file` parts
+and answers `{ items: MediaFile[], failed: [{ name, reason }] }`. Six because
+multer buffers every file in memory before the handler runs; the web client
+slices a larger selection rather than refusing it.
+
+Partial success is a **201** carrying both lists — nine photographs stored and
+the tenth refused is not an error. A batch where **nothing** was stored is a
+**400** with the first reason, so a renamed executable never comes back as
+"created". Authorization is decided once for the child, before any file is
+read.
+
+Stored images are re-encoded (which is the EXIF strip) and bounded at 2000px on
+the longest edge — past 300dpi at the size the PDF places them. HEIC is the one
+format named in a rejection, with the camera setting to change: `sharp` here has
+libheif without the HEVC decoder, and iOS converts to JPEG on its own when a
+photo is chosen through `<input type="file">`, so it arrives essentially only
+from a Mac.
 
 **The permission check runs before the redirect**, always. Reference:
 `test_the_permission_check_runs_before_the_redirect`.
