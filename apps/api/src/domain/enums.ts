@@ -23,6 +23,7 @@ export {
   EnrollmentStatus,
   GroupStatus,
   GuardianRelation,
+  MediaAttribution,
   MediaPurpose,
   MediaStatus,
   NotificationStatus,
