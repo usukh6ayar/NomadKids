@@ -1,6 +1,6 @@
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestApp } from "./support/app";
 import { resetData, testDb, uniq } from "./support/db";
 import {
@@ -13,6 +13,7 @@ import {
   type Scenario,
 } from "./support/fixtures";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
+import { PlatformRepository } from "../src/platform/platform.repository";
 
 /**
  * Platform routes — through HTTP.
@@ -338,5 +339,77 @@ describe("a platform operator is not an admin of anything", () => {
       .set("Cookie", superadmin.cookies);
 
     expect(res.status).toBe(404);
+  });
+});
+
+/**
+ * The two halves of the duplicate-identifier race, which the endpoint's own
+ * pre-check hides from every test above.
+ *
+ * `PlatformService.assertIdentifiersFree` answers an ordinary duplicate before
+ * the transaction opens, so the 409 case earlier in this file never reaches
+ * either the `$transaction` rollback or the P2002 branch that catches a
+ * collision losing the race between the check and the insert. Left there, both
+ * would be untested code on the failure path of the one endpoint that writes
+ * four rows at once.
+ *
+ * Splitting it in two keeps both halves deterministic rather than racing two
+ * requests and hoping they interleave:
+ *
+ *  1. The repository against a real Postgres proves a genuine collision throws
+ *     P2002 **and** takes the kindergarten down with it.
+ *  2. The endpoint, with the repository made to throw exactly that, proves the
+ *     service turns it into 409 rather than 500.
+ *
+ * The first is what makes the second honest: it establishes that a real
+ * collision looks the way the second one pretends it does.
+ */
+describe("duplicate identifiers losing the race with the pre-check", () => {
+  it("rolls the kindergarten back when the director insert collides", async () => {
+    const repo = app.get(PlatformRepository);
+    const name = `Цэцэрлэг ${uniq()}`;
+
+    // Called directly, because the service's pre-check is precisely what stops
+    // an HTTP request from ever reaching the transaction with a taken username.
+    const attempt = repo.createWithAdmin({
+      kindergarten: { name },
+      admin: {
+        username: a.adminUser.username, // already taken
+        email: null,
+        phone: null,
+        lastName: "Дорж",
+        firstName: "Болд",
+        passwordHash: "unused",
+        invitationTokenHash: uniq("hash"),
+        invitationExpiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+
+    await expect(attempt).rejects.toMatchObject({ code: "P2002" });
+
+    // The kindergarten is inserted first, so this is the assertion that proves
+    // the rollback rather than the ordering.
+    expect(await db.kindergarten.findFirst({ where: { name } })).toBeNull();
+    expect(await db.authToken.findFirst({ where: { userId: a.adminUser.id } })).toBeNull();
+  });
+
+  it("answers that collision with 409, not 500", async () => {
+    const repo = app.get(PlatformRepository);
+    const collision = Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+    const spy = vi.spyOn(repo, "createWithAdmin").mockRejectedValueOnce(collision);
+
+    try {
+      const body = createBody();
+      const res = await authed(
+        request(app.getHttpServer()).post("/v1/platform/kindergartens"),
+        superadmin,
+      ).send(body);
+
+      expect(res.status).toBe(409);
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(await db.kindergarten.findFirst({ where: { name: body.name } })).toBeNull();
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
