@@ -1,15 +1,15 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { z } from "zod";
-import { mediaSchema } from "@kinder/contracts";
+import { mediaListSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { MediaThumb } from "@/components/media/media-image";
 import { PhotoUpload } from "@/components/media/photo-upload";
 
-const listSchema = z.array(mediaSchema);
+/** The API's own ceiling per observation — one page always holds them all. */
+const MAX_PHOTOS_PER_OBSERVATION = 12;
 
 /**
  * Attach photos to an observation.
@@ -18,6 +18,15 @@ const listSchema = z.array(mediaSchema);
  * `PhotoUpload` — see the notes there for why uploads go through the API and
  * why they are not parallel. This component is the observation-shaped view of
  * it: the photos already attached, plus a way to add more.
+ *
+ * ★ The filtering is the API's, not this component's.
+ *
+ * It used to fetch every `OBSERVATION` photograph the child had and keep the
+ * ones matching `observationId` in the browser. That was wasteful while the
+ * endpoint was unbounded and became *wrong* the moment it was paginated: page
+ * one of twenty-five may contain none of this observation's photos, and the
+ * section would render empty with no error to explain it. `?observationId=`
+ * exists for exactly this reason.
  */
 export function ObservationPhotos({
   childId,
@@ -27,11 +36,18 @@ export function ObservationPhotos({
   observationId: string;
 }) {
   const photos = useQuery({
-    queryKey: qk.childMedia(childId),
-    queryFn: () => get(`/children/${childId}/media?purpose=OBSERVATION`, listSchema),
+    // Keyed by the observation too: two observations on one child are two
+    // different requests now, and sharing a cache entry would show one the
+    // other's photographs.
+    queryKey: [...qk.childMedia(childId), observationId],
+    queryFn: () =>
+      get(
+        `/children/${childId}/media?purpose=OBSERVATION&observationId=${observationId}&pageSize=${MAX_PHOTOS_PER_OBSERVATION}`,
+        mediaListSchema,
+      ),
   });
 
-  const attached = (photos.data ?? []).filter((m) => m.observationId === observationId);
+  const attached = photos.data?.items ?? [];
 
   return (
     <section aria-labelledby="photos-heading">

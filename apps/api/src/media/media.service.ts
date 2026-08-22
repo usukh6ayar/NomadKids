@@ -6,13 +6,45 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { isGuardianOf } from "../authz/child-access";
 import type { Actor } from "../authz/actor";
 import { StorageService } from "../storage/storage.service";
-import { MediaRepository } from "./media.repository";
+import { MediaRepository, type MediaFilters } from "./media.repository";
 import { sanitiseFilename, UploadRejected, validateImageUpload } from "./upload-validation";
-import type { MediaPurpose } from "../domain/enums";
+import { paginate, type PageParams } from "../common/pagination";
+import { MediaAttribution, type MediaPurpose } from "../domain/enums";
+import type { ListMediaQuery, UpdateMediaDto } from "./media.dto";
+
+/** What a caller may set when a photograph is uploaded. */
+export interface UploadOptions {
+  purpose?: MediaPurpose;
+  observationId?: string;
+  caption?: string | null;
+  takenAt?: Date | null;
+  age?: number | null;
+  category?: string | null;
+  attribution?: MediaAttribution | null;
+}
 
 /** A generous ceiling; the UI shows far fewer per observation. */
 const MAX_PHOTOS_PER_OBSERVATION = 12;
 const MAX_PHOTOS_PER_NOTIFICATION = 12;
+
+/**
+ * Media that belongs to a kindergarten rather than to a child.
+ *
+ * ★ Rows with these purposes carry no `childId`, so `canAccessChild` has
+ * nothing to decide about and membership of the file's own kindergarten is the
+ * authority. Adding a purpose here widens who may read it — do not extend this
+ * set without reading §7 of docs/SECURITY.md.
+ *
+ * There are no upload endpoints for these yet: the columns
+ * (`Kindergarten.logoMediaFileId`, `User.photoMediaFileId`,
+ * `Group.photoMediaFileId`) and this serve path exist, and the routes that
+ * write them are the next piece of work.
+ */
+const TENANT_IMAGE_PURPOSES: ReadonlySet<MediaPurpose> = new Set<MediaPurpose>([
+  "KINDERGARTEN_LOGO",
+  "USER_PHOTO",
+  "GROUP_PHOTO",
+]);
 
 @Injectable()
 export class MediaService {
@@ -37,7 +69,7 @@ export class MediaService {
     actor: Actor,
     childId: string,
     file: { buffer: Buffer; originalname: string },
-    options: { purpose?: MediaPurpose; observationId?: string; caption?: string | null } = {},
+    options: UploadOptions = {},
   ) {
     // Writing about a child needs record access; a guardian uploads through
     // their own observation, not straight into the gallery.
@@ -92,6 +124,21 @@ export class MediaService {
       height: validated.height,
       caption: options.caption ?? null,
       order: observationId ? await this.repo.countForObservation(observationId) : 0,
+      // ★ Who sent the bytes. Recorded from the authenticated actor, never from
+      // the request body — a client-supplied uploader is an attribution anyone
+      // could forge.
+      uploadedById: actor.userId,
+      takenAt: options.takenAt ?? null,
+      age: options.age ?? null,
+      category: options.category ?? null,
+      // RFP §4.4 "багшийн, эцэг эхийн эсвэл хамтын".
+      //
+      // ★ Defaults to TEACHER because only staff reach this method:
+      // `canRecordForChild` is assigned-teacher-or-admin, so a guardian never
+      // gets here — their photographs arrive through their own observation.
+      // The default is therefore a fact, not a guess. `PARENT` and `JOINT` are
+      // set explicitly, for the family photograph a teacher was handed.
+      attribution: options.attribution ?? MediaAttribution.TEACHER,
     });
 
     await this.audit.append({
@@ -134,7 +181,7 @@ export class MediaService {
     actor: Actor,
     childId: string,
     files: { buffer: Buffer; originalname: string }[],
-    options: { purpose?: MediaPurpose; observationId?: string; caption?: string | null } = {},
+    options: UploadOptions = {},
   ) {
     // Once, before the loop. Every file goes to the same child, so failing the
     // whole request on an unauthorized caller is right — and it means an
@@ -204,6 +251,34 @@ export class MediaService {
       return this.storage.presignedGetUrl(media.storageKey, media.originalName);
     }
 
+    /*
+     * ★ Tenant images — a kindergarten's logo, a teacher's portrait, a group's
+     * class photo.
+     *
+     * These have no `childId` either, and unlike an observation photo they are
+     * not child data at all: a logo appears in the letterhead of every report a
+     * family receives. Membership is therefore the whole check, and it is
+     * membership of the file's OWN kindergarten — read from the row, never from
+     * the request.
+     *
+     * They still go through this endpoint rather than a public URL. CLAUDE.md
+     * §1.4 admits no exception for "harmless" files, and a bucket that is
+     * private except for one prefix is a bucket somebody will widen.
+     */
+    if (TENANT_IMAGE_PURPOSES.has(media.purpose)) {
+      this.tenants.assertMember(actor, media.kindergartenId);
+
+      await this.audit.append({
+        action: "DOWNLOAD",
+        kindergartenId: media.kindergartenId,
+        actorUserId: actor.userId,
+        objectType: "MediaFile",
+        objectId: mediaId,
+      });
+
+      return this.storage.presignedGetUrl(media.storageKey, media.originalName);
+    }
+
     if (!media.childId) throw new NotFoundException();
 
     const facts = await this.childAccess.assertCanAccess(actor, media.childId);
@@ -212,8 +287,8 @@ export class MediaService {
     // this particular file: an observation photo inherits its observation's
     // visibility.
     if (isGuardianOf(actor, facts)) {
-      const visible = await this.repo.listVisibleForGuardian(media.childId, actor.userId);
-      if (!visible.some((m) => m.id === mediaId)) throw new NotFoundException();
+      const visible = await this.repo.isVisibleToGuardian(media.childId, mediaId, actor.userId);
+      if (!visible) throw new NotFoundException();
     }
 
     await this.audit.append({
@@ -236,22 +311,38 @@ export class MediaService {
 
     const facts = await this.childAccess.assertCanAccess(actor, media.childId);
     if (isGuardianOf(actor, facts)) {
-      const visible = await this.repo.listVisibleForGuardian(media.childId, actor.userId);
-      if (!visible.some((m) => m.id === mediaId)) throw new NotFoundException();
+      const visible = await this.repo.isVisibleToGuardian(media.childId, mediaId, actor.userId);
+      if (!visible) throw new NotFoundException();
     }
 
     return this.toPublicShape(media);
   }
 
-  /** A child's photos, filtered to what this viewer may see. */
-  async listForChild(actor: Actor, childId: string, purpose?: MediaPurpose) {
+  /**
+   * A child's photos, filtered to what this viewer may see — paginated.
+   *
+   * ★ The guardian branch and the per-file check in `getDownloadUrl` compose
+   * the same `where` fragment in the repository. They used to be one method
+   * returning a list, which the download path searched in memory; paginating
+   * that would have made a guardian 404 on photo twenty-six of their own child
+   * while the gallery happily showed it on page two.
+   */
+  async listForChild(actor: Actor, childId: string, query: ListMediaQuery) {
     const facts = await this.childAccess.assertCanAccess(actor, childId);
 
-    const items = isGuardianOf(actor, facts)
-      ? await this.repo.listVisibleForGuardian(childId, actor.userId)
-      : await this.repo.listForChild(childId, purpose);
+    const filters: MediaFilters = {
+      purpose: query.purpose,
+      observationId: query.observationId,
+      category: query.category,
+      age: query.age,
+    };
+    const page: PageParams = { page: query.page, pageSize: query.pageSize };
 
-    return items;
+    const { items, total } = isGuardianOf(actor, facts)
+      ? await this.repo.listVisibleForGuardian(childId, actor.userId, filters, page)
+      : await this.repo.listForChild(childId, filters, page);
+
+    return paginate(items, total, page);
   }
 
   /** Archives a photo. Record access — a guardian cannot delete gallery items. */
@@ -277,12 +368,30 @@ export class MediaService {
     return { id: archived.id, status: archived.status };
   }
 
-  async setCaption(actor: Actor, mediaId: string, caption: string | null) {
+  /**
+   * Caption and album metadata — RFP §4.4.
+   *
+   * Record access, like every other write about a child: a guardian may add a
+   * photograph through their own observation but may not retitle or re-date the
+   * gallery.
+   */
+  async updateMetadata(actor: Actor, mediaId: string, dto: UpdateMediaDto) {
     const media = await this.repo.findForAuthorization(mediaId);
     if (!media || !media.childId) throw new NotFoundException();
 
     await this.childAccess.assertCanRecord(actor, media.childId);
-    const updated = await this.repo.setCaption(mediaId, caption);
+    const updated = await this.repo.updateMetadata(mediaId, dto);
+
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId: media.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "MediaFile",
+      objectId: mediaId,
+      childId: media.childId,
+      metadata: { fields: Object.keys(dto) },
+    });
+
     return this.toPublicShape(updated);
   }
 
@@ -387,6 +496,14 @@ export class MediaService {
     height?: number | null;
     purpose: MediaPurpose;
     observationId?: string | null;
+    // Album metadata — RFP §4.4. Optional in the parameter because some callers
+    // load only what authorization needs, and one response shape that sometimes
+    // omits a field is better than two shapes that drift.
+    takenAt?: Date | null;
+    age?: number | null;
+    category?: string | null;
+    attribution?: MediaAttribution | null;
+    uploadedBy?: { id: string; lastName: string; firstName: string } | null;
   }) {
     return {
       id: media.id,
@@ -397,6 +514,11 @@ export class MediaService {
       height: media.height ?? null,
       purpose: media.purpose,
       observationId: media.observationId ?? null,
+      takenAt: media.takenAt ?? null,
+      age: media.age ?? null,
+      category: media.category ?? null,
+      attribution: media.attribution ?? null,
+      uploadedBy: media.uploadedBy ?? null,
     };
   }
 }
