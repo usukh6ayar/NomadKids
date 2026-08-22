@@ -2,7 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { UserPlus } from "lucide-react";
+import { z } from "zod";
+import { UserPlus, X } from "lucide-react";
 import { adminUserSchema, invitedUserSchema, paginated, type Role } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
@@ -144,12 +145,28 @@ function AdminUsers() {
                 </span>
               </span>
 
-              <span className="flex flex-wrap gap-1">
-                {user.memberships.map((m) => (
-                  <Badge key={m.id} tone={m.role === "ADMIN" ? "peach" : "sky"}>
-                    {ROLE_LABEL[m.role] ?? m.role}
-                  </Badge>
-                ))}
+              <span className="flex flex-wrap items-center gap-1">
+                {user.memberships.map((m) =>
+                  m.isActive === false ? (
+                    // Kept visible rather than filtered out. The record of the
+                    // relationship survives revocation, and an admin looking
+                    // for "why can this teacher not see the group" needs to see
+                    // that the answer is here.
+                    <Badge key={m.id} tone="neutral">
+                      {ROLE_LABEL[m.role] ?? m.role} · хураасан
+                    </Badge>
+                  ) : (
+                    <span key={m.id} className="flex items-center gap-1">
+                      <Badge tone={m.role === "ADMIN" ? "peach" : "sky"}>
+                        {ROLE_LABEL[m.role] ?? m.role}
+                      </Badge>
+                      <RevokeMembershipButton
+                        membershipId={m.id}
+                        label={`${fullName(user)} — ${ROLE_LABEL[m.role] ?? m.role}`}
+                      />
+                    </span>
+                  ),
+                )}
                 {user.isActive === false ? <Badge tone="sun">Идэвхгүй</Badge> : null}
               </span>
             </div>
@@ -328,5 +345,60 @@ function InviteUserDialog({
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Revoking one membership.
+ *
+ * ★ This is how a teacher who has left loses access, and there was no way to
+ * do it from the product.
+ *
+ * `DELETE /memberships/:id` deactivates rather than deleting — the record of
+ * the relationship survives, so a group a teacher taught still says who taught
+ * it. The effect on access is immediate: `Actor` is rebuilt from `Membership`
+ * on every request, so the next one they make already fails.
+ *
+ * ★ It also ends every group assignment the membership carried, and
+ * re-granting does NOT bring them back.
+ *
+ * That is deliberate in the API — reactivating a membership must not silently
+ * restore access to groups nobody re-granted — but it is invisible from here,
+ * so the confirmation says it. An admin who revokes a teacher by mistake and
+ * puts the role back would otherwise be left wondering why their rosters are
+ * empty.
+ *
+ * Confirmed, because it takes someone's access away and the row it acts on is
+ * a badge among several. The confirmation names which person and which role,
+ * so a mis-click on a user with two memberships is not silently the wrong one.
+ */
+function RevokeMembershipButton({ membershipId, label }: { membershipId: string; label: string }) {
+  const queryClient = useQueryClient();
+
+  const revoke = useMutation({
+    mutationFn: () => mutate(`/memberships/${membershipId}`, z.unknown(), { method: "DELETE" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin", "users"] }),
+  });
+
+  return (
+    <button
+      type="button"
+      disabled={revoke.isPending}
+      onClick={() => {
+        if (
+          window.confirm(
+            `${label} эрхийг хураах уу?\n\n` +
+              "Бүлгийн хуваарилалт нь мөн дуусна. Эрхийг буцааж өгөхөд хуваарилалт " +
+              "автоматаар сэргэхгүй тул дахин хийх шаардлагатай.",
+          )
+        ) {
+          revoke.mutate();
+        }
+      }}
+      className="grid size-[28px] place-items-center rounded-full text-muted transition-colors hover:bg-danger-soft hover:text-danger disabled:opacity-50"
+    >
+      <X size={14} aria-hidden />
+      <span className="sr-only">{label} эрхийг хураах</span>
+    </button>
   );
 }

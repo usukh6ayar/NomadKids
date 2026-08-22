@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildHeader } from "@/components/child/child-header";
+import { GuardianAccessButton } from "@/components/child/guardian-access-button";
 import { InviteGuardianDialog } from "@/components/child/invite-guardian-dialog";
 import { ReportDialog } from "@/components/reports/report-dialog";
 import { ObservationRow } from "@/components/observations/observation-row";
@@ -257,16 +258,24 @@ export default function ChildDetailPage() {
               ) : null
             }
           />
+          {/*
+            Revoked guardians stay on the list rather than disappearing from it.
+            Hiding them made a revocation look like a deletion and left staff no
+            way back when a situation reversed — and no way to see that the
+            reason a parent cannot open the child is a decision someone made.
+          */}
           <Card className="divide-y divide-border">
-            {data.guardianships
-              .filter((g) => g.canView !== false)
-              .map((guardianship) => (
+            {data.guardianships.map((guardianship) => {
+              const revoked = guardianship.canView === false;
+              return (
                 <div
                   key={guardianship.id}
                   className="flex min-h-[56px] items-center gap-3 px-4 py-3"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium text-ink">
+                    <p
+                      className={`truncate font-medium ${revoked ? "text-muted line-through" : "text-ink"}`}
+                    >
                       {fullName(guardianship.guardian)}
                     </p>
                     <p className="truncate text-sm text-muted">
@@ -278,9 +287,17 @@ export default function ChildDetailPage() {
                         .join(" · ")}
                     </p>
                   </div>
-                  {guardianship.isPrimary ? <Badge tone="primary">Үндсэн</Badge> : null}
+                  {revoked ? <Badge tone="neutral">Хураасан</Badge> : null}
+                  {guardianship.isPrimary && !revoked ? <Badge tone="primary">Үндсэн</Badge> : null}
+                  <GuardianAccessButton
+                    guardianshipId={guardianship.id}
+                    childId={childId}
+                    guardianName={fullName(guardianship.guardian)}
+                    canView={!revoked}
+                  />
                 </div>
-              ))}
+              );
+            })}
           </Card>
         </section>
       ) : null}

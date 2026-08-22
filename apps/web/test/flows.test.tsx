@@ -702,3 +702,81 @@ describe("the term report", () => {
     expect(screen.queryByLabelText("Давуу тал")).not.toBeInTheDocument();
   });
 });
+
+// ── Revoking access ─────────────────────────────────────────────────────────
+
+describe("revoking a guardian's access", () => {
+  const GUARDIANSHIP_ID = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
+
+  function childWithGuardian(canView: boolean) {
+    return {
+      ...child,
+      guardianships: [
+        {
+          id: GUARDIANSHIP_ID,
+          relation: "MOTHER",
+          canView,
+          isPrimary: true,
+          guardian: {
+            id: "bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb",
+            lastName: "Дорж",
+            firstName: "Сараа",
+            phone: "99112233",
+          },
+        },
+      ],
+    };
+  }
+
+  /**
+   * ★ A revoked guardian stays on the list.
+   *
+   * Hiding them made a revocation look like a deletion, left staff no way back
+   * when a custody situation reversed, and hid the reason a parent could no
+   * longer open the child.
+   */
+  it("keeps a revoked guardian visible, with a way to restore them", async () => {
+    setParams({ childId: CHILD_ID });
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: `/children/${CHILD_ID}/observations`,
+        body: { items: [], total: 0, page: 1, pageSize: 5, totalPages: 0 },
+      },
+      { path: `/children/${CHILD_ID}/assessments`, body: [] },
+      { path: `/children/${CHILD_ID}`, body: childWithGuardian(false) },
+    ]);
+
+    renderWithProviders(<ChildDetailPage />);
+
+    expect(await screen.findByText("Хураасан")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Сэргээх/ })).toBeInTheDocument();
+  });
+
+  it("sends canView false when staff revoke", async () => {
+    const user = userEvent.setup();
+    setParams({ childId: CHILD_ID });
+
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: `/children/${CHILD_ID}/observations`,
+        body: { items: [], total: 0, page: 1, pageSize: 5, totalPages: 0 },
+      },
+      { path: `/children/${CHILD_ID}/assessments`, body: [] },
+      { path: `/guardianships/${GUARDIANSHIP_ID}`, method: "PATCH", body: {} },
+      { path: `/children/${CHILD_ID}`, body: childWithGuardian(true) },
+    ]);
+
+    renderWithProviders(<ChildDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: /харах эрхийг хураах/ }));
+
+    await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true));
+    expect(calls.find((c) => c.method === "PATCH")!.body).toMatchObject({ canView: false });
+
+    confirmSpy.mockRestore();
+  });
+});
