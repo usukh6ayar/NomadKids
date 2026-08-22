@@ -23,6 +23,13 @@ import { CurrentActor } from "../auth/decorators/actor.decorator";
 import type { Actor } from "../authz/actor";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { MediaService } from "./media.service";
+import {
+  listMediaQuerySchema,
+  updateMediaSchema,
+  uploadMetadataSchema,
+  type ListMediaQuery,
+  type UpdateMediaDto,
+} from "./media.dto";
 import { MAX_UPLOAD_BYTES } from "./upload-validation";
 
 /**
@@ -36,16 +43,11 @@ import { MAX_UPLOAD_BYTES } from "./upload-validation";
  */
 const MAX_FILES_PER_UPLOAD = 6;
 
-const uploadOptionsSchema = z.object({
+const uploadOptionsSchema = uploadMetadataSchema.extend({
   observationId: z.uuid().optional(),
-  caption: z.string().max(255).optional(),
   purpose: z.enum(["CHILD_PHOTO", "OBSERVATION"]).optional(),
 });
-
-const captionSchema = z.object({ caption: z.string().max(255).nullable() });
-const listQuerySchema = z.object({
-  purpose: z.enum(["CHILD_PHOTO", "OBSERVATION", "REPORT_OUTPUT"]).optional(),
-});
+type UploadOptionsDto = z.infer<typeof uploadOptionsSchema>;
 
 @Controller("children/:id/media")
 @UseGuards(RateLimitGuard)
@@ -56,10 +58,9 @@ export class ChildMediaController {
   async list(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
-    @Query(new ZodValidationPipe(listQuerySchema))
-    query: { purpose?: "CHILD_PHOTO" | "OBSERVATION" | "REPORT_OUTPUT" },
+    @Query(new ZodValidationPipe(listMediaQuerySchema)) query: ListMediaQuery,
   ) {
-    return this.service.listForChild(actor, params.id, query.purpose);
+    return this.service.listForChild(actor, params.id, query);
   }
 
   /**
@@ -83,8 +84,7 @@ export class ChildMediaController {
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
     @UploadedFiles() files: { buffer: Buffer; originalname: string }[] | undefined,
-    @Body(new ZodValidationPipe(uploadOptionsSchema))
-    body: { observationId?: string; caption?: string; purpose?: "CHILD_PHOTO" | "OBSERVATION" },
+    @Body(new ZodValidationPipe(uploadOptionsSchema)) body: UploadOptionsDto,
   ) {
     if (!files?.length) throw new BadRequestException("Файл хавсаргаагүй байна");
 
@@ -92,6 +92,14 @@ export class ChildMediaController {
       observationId: body.observationId,
       caption: body.caption ?? null,
       purpose: body.purpose,
+      // ★ Forwarded, not dropped. The schema accepted these before this line
+      // did, which meant a client could send `takenAt` on an upload, get a 201,
+      // and find the field empty — validation that silently discards what it
+      // just approved is worse than not accepting it at all.
+      takenAt: body.takenAt ?? null,
+      age: body.age ?? null,
+      category: body.category ?? null,
+      attribution: body.attribution ?? null,
     });
 
     /*
@@ -187,13 +195,14 @@ export class MediaController {
     return this.service.getMetadata(actor, params.id);
   }
 
+  /** Caption and album metadata — RFP §4.4. */
   @Patch(":id")
-  async setCaption(
+  async update(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
-    @Body(new ZodValidationPipe(captionSchema)) body: { caption: string | null },
+    @Body(new ZodValidationPipe(updateMediaSchema)) body: UpdateMediaDto,
   ) {
-    return this.service.setCaption(actor, params.id, body.caption);
+    return this.service.updateMetadata(actor, params.id, body);
   }
 
   @Delete(":id")

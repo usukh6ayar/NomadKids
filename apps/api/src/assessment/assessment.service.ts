@@ -233,8 +233,7 @@ export class AssessmentService {
     // Every level must belong here too — one query for the distinct set rather
     // than one per row.
     for (const levelId of new Set(dto.entries.map((e) => e.levelId))) {
-      const level = await this.repo.findLevel(levelId, group.kindergartenId);
-      if (!level) throw new BadRequestException("Үнэлгээний түвшин олдсонгүй");
+      await this.requireLevel(levelId, group.kindergartenId);
     }
 
     // ★ Every child must actually be enrolled in THIS group for THIS year.
@@ -420,16 +419,41 @@ export class AssessmentService {
     return term;
   }
 
+  /**
+   * A domain that may be **written** to.
+   *
+   * ★ Refuse new, permit existing.
+   *
+   * An administrator may retire a criterion mid-year (`isActive: false`, via
+   * DELETE /development-domains/:id). From that moment it cannot be assessed
+   * against — but every assessment already recorded under it keeps rendering,
+   * because `groupColumn` and the child views look the row up without this
+   * check. The consequence, stated rather than discovered: an existing
+   * assessment on a retired domain becomes read-only, since `upsertAssessment`
+   * comes through here too.
+   */
   private async requireDomain(domainId: string, kindergartenId: string) {
     const domain = await this.repo.findDomain(domainId, kindergartenId);
     if (!domain) throw new BadRequestException("Хөгжлийн чиглэл олдсонгүй");
+    if (!domain.isActive) {
+      throw new BadRequestException("Энэ хөгжлийн чиглэл идэвхгүй болсон байна");
+    }
     return domain;
+  }
+
+  /** As `requireDomain`, for a level. Same refuse-new-permit-existing rule. */
+  private async requireLevel(levelId: string, kindergartenId: string) {
+    const level = await this.repo.findLevel(levelId, kindergartenId);
+    if (!level) throw new BadRequestException("Үнэлгээний түвшин олдсонгүй");
+    if (!level.isActive) {
+      throw new BadRequestException("Энэ үнэлгээний түвшин идэвхгүй болсон байна");
+    }
+    return level;
   }
 
   private async requireDomainAndLevel(domainId: string, levelId: string, kindergartenId: string) {
     await this.requireDomain(domainId, kindergartenId);
-    const level = await this.repo.findLevel(levelId, kindergartenId);
-    if (!level) throw new BadRequestException("Үнэлгээний түвшин олдсонгүй");
+    await this.requireLevel(levelId, kindergartenId);
   }
 }
 

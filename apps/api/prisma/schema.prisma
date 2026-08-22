@@ -113,6 +113,25 @@ enum MediaPurpose {
   /// carries no `childId` — the kindergarten scope is what protects it.
   NOTIFICATION
   REPORT_OUTPUT
+  /// ★ Tenant-scoped images: a kindergarten's logo, a teacher's portrait, a
+  /// group's class photo. Like NOTIFICATION they carry no `childId`, so the
+  /// kindergarten scope is the only thing protecting them — and unlike the
+  /// others they are not child data at all, which is why `MediaService`
+  /// authorises them by membership rather than through `canAccessChild`.
+  KINDERGARTEN_LOGO
+  USER_PHOTO
+  GROUP_PHOTO
+}
+
+/// Who a photograph came from — RFP §4.4, "багшийн, эцэг эхийн эсвэл хамтын".
+///
+/// Distinct from `uploadedById`, which records *which account* sent the bytes.
+/// A teacher may upload a photograph a family brought in on a memory stick; the
+/// attribution is PARENT and the uploader is the teacher.
+enum MediaAttribution {
+  TEACHER
+  PARENT
+  JOINT
 }
 
 enum MediaStatus {
@@ -181,6 +200,10 @@ model User {
   education      String?
   bio            String?
 
+  /// RFP §3.3 — профайл зураг. A MediaFile reference for the same reason as
+  /// `Kindergarten.logoMediaFileId`.
+  photoMediaFileId String? @unique @db.Uuid
+
   isActive    Boolean   @default(true)
   lastLoginAt DateTime?
 
@@ -201,6 +224,8 @@ model User {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
+  photo          MediaFile?     @relation("UserPhoto", fields: [photoMediaFileId], references: [id], onDelete: SetNull)
+  uploadedMedia  MediaFile[]    @relation("MediaUploader")
   memberships    Membership[]
   guardianships  Guardianship[]
   authTokens     AuthToken[]
@@ -328,10 +353,20 @@ model Kindergarten {
   description String?
   isActive    Boolean @default(true)
 
+  /// ★ RFP §3.2 (лого) and §10.3, which requires the logo on every generated
+  /// PDF.
+  ///
+  /// A MediaFile reference, NOT a URL column. CLAUDE.md §1.4: files are never
+  /// directly reachable, so there is no address a `logo String` could hold that
+  /// this system is allowed to hand out. The column mirrors
+  /// `Child.photoMediaFileId` exactly — one image pattern, not two.
+  logoMediaFileId String? @unique @db.Uuid
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
+  logo               MediaFile?          @relation("KindergartenLogo", fields: [logoMediaFileId], references: [id], onDelete: SetNull)
   memberships        Membership[]
   schoolYears        SchoolYear[]
   groups             Group[]
@@ -393,10 +428,20 @@ model Group {
   ageBand        AgeBand
   status         GroupStatus @default(ACTIVE)
 
+  /// RFP §3.2 — ангийн зураг, хичээлийн хуваарь, бүлгийн дүрэм.
+  ///
+  /// The schedule and the rules are free text rather than structured columns.
+  /// The RFP asks that they be *recorded and shown*, not queried or enforced,
+  /// and a timetable modelled as rows would be a feature nobody specified.
+  photoMediaFileId String? @unique @db.Uuid
+  schedule         String?
+  rules            String?
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
+  photo               MediaFile?           @relation("GroupPhoto", fields: [photoMediaFileId], references: [id], onDelete: SetNull)
   kindergarten        Kindergarten         @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   schoolYear          SchoolYear           @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
   teachers            GroupTeacher[]
@@ -920,6 +965,42 @@ model MediaFile {
   status  MediaStatus @default(READY)
   caption String?
 
+  /// ── Album metadata — RFP §4.4 ───────────────────────────────────────────
+  ///
+  /// All nullable: every one of these arrived after photographs had already
+  /// been stored, and a required column would have needed a value invented for
+  /// rows nobody can go back and ask about.
+
+  /// When the photograph was TAKEN, as distinct from `uploadedAt`. A parent
+  /// uploading last summer's holiday in October is the ordinary case, and
+  /// sorting an album by upload time puts it in the wrong year.
+  takenAt DateTime? @db.Date
+
+  /// The child's age in the photograph, 2..5 — the album's "нас" facet.
+  /// Validated in the service layer, like `ChildAgeProfile.age`.
+  age Int? @db.SmallInt
+
+  /// The album's "ангилал" facet.
+  ///
+  /// ★ A plain string constrained by a zod enum in the DTO, deliberately NOT a
+  /// Prisma enum and NOT a configuration table. The RFP does not say an
+  /// administrator edits this list, so CLAUDE.md §2.3 does not bind; and of the
+  /// three shapes this is the only one that can become either of the others
+  /// without rewriting stored rows. If the client asks for it to be editable,
+  /// the existing values become seed rows in a new table.
+  category String?
+
+  /// Whose photograph this is, for display. See `MediaAttribution`.
+  attribution MediaAttribution?
+
+  /// The account that uploaded the bytes.
+  ///
+  /// Domain data, not audit data — the same distinction `Observation.authorId`
+  /// draws. The gallery labels a photograph with who contributed it, which is a
+  /// query-time need; `AuditLog` answers the forensic question separately and
+  /// outlives the row.
+  uploadedById String? @db.Uuid
+
   uploadedAt DateTime @default(now())
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -929,14 +1010,28 @@ model MediaFile {
   child            Child?       @relation("ChildMedia", fields: [childId], references: [id], onDelete: Cascade)
   observation      Observation? @relation("ObservationMedia", fields: [observationId], references: [id], onDelete: Cascade)
   notification     Notification? @relation("NotificationMedia", fields: [notificationId], references: [id], onDelete: Cascade)
+  uploadedBy       User?        @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
   childPhotoOf     Child?       @relation("ChildPhoto")
   reportJob        ReportJob?   @relation("ReportOutput")
+  kindergartenLogoOf Kindergarten? @relation("KindergartenLogo")
+  userPhotoOf        User?         @relation("UserPhoto")
+  groupPhotoOf       Group?        @relation("GroupPhoto")
 
   @@index([childId, purpose, uploadedAt(sort: Desc)])
   @@index([kindergartenId, uploadedAt(sort: Desc)])
   @@index([observationId, order])
   @@index([notificationId, order])
   @@index([status, deletedAt])
+  /// ★ This does NOT serve the gallery's default sort, and the comment that
+  /// claimed it did was wrong.
+  ///
+  /// `GALLERY_ORDER` leads with `order ASC` (the sequence a teacher arranged by
+  /// hand), so Postgres sorts in memory whatever indexes exist — a
+  /// `(childId, takenAt)` index cannot satisfy a sort whose leading key is
+  /// something else. What it does buy is a date-ranged album: "photographs of
+  /// this child taken in the spring term", which is the query `takenAt` was
+  /// added to make possible. Drop it if that filter never ships.
+  @@index([childId, takenAt(sort: Desc)])
   @@map("media_files")
 }
 

@@ -3,6 +3,7 @@ import { AuditModule } from "./audit/audit.module";
 import { AuthModule } from "./auth/auth.module";
 import { AssessmentModule } from "./assessment/assessment.module";
 import { AuthzModule } from "./authz/authz.module";
+import { CatalogModule } from "./catalog/catalog.module";
 import { ChildrenModule } from "./children/children.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { HealthModule } from "./health/health.module";
@@ -47,6 +48,7 @@ import { UsersModule } from "./users/users.module";
     StorageModule,
     MediaModule,
     AssessmentModule,
+    CatalogModule,
     NotificationsModule,
     DashboardModule,
     ReportsModule,

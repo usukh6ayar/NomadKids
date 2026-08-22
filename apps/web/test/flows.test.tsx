@@ -17,6 +17,8 @@ import ChildDetailPage from "@/app/(app)/children/[childId]/page";
 import NewChildPage from "@/app/(app)/children/new/page";
 import EditChildPage from "@/app/(app)/children/[childId]/edit/page";
 import { PhotoUpload } from "@/components/media/photo-upload";
+import { ChildGallery } from "@/components/media/child-gallery";
+import { ObservationPhotos } from "@/components/observations/observation-photos";
 import TermReportPage from "@/app/(app)/children/[childId]/term-report/page";
 import NotificationDetailPage from "@/app/(app)/notifications/[notificationId]/page";
 
@@ -26,6 +28,17 @@ const TERM_ID = "66666666-6666-4666-8666-666666666666";
 const DOMAIN_ID = "77777777-7777-4777-8777-777777777777";
 const LEVEL_ID = "88888888-8888-4888-8888-888888888888";
 const TYPE_ID = "99999999-9999-4999-8999-999999999999";
+
+/**
+ * `GET /children/:id/media` answers with a page, not an array.
+ *
+ * ★ Worth spelling out rather than reusing `[]`: a stub of the wrong shape does
+ * not fail here, it makes the component's query error and render an error
+ * state, and the assertions in these tests are about other things — so the
+ * suite would stay green while the fixture described an API that no longer
+ * exists.
+ */
+const emptyMediaPage = { items: [], page: 1, pageSize: 25, total: 0, totalPages: 0 };
 
 const child = {
   id: CHILD_ID,
@@ -157,7 +170,7 @@ describe("recording an observation", () => {
           media: [],
         },
       },
-      { path: `/children/${CHILD_ID}/media`, body: [] },
+      { path: `/children/${CHILD_ID}/media`, body: emptyMediaPage },
       { path: `/children/${CHILD_ID}`, body: child },
     ]);
 
@@ -202,7 +215,7 @@ describe("recording an observation", () => {
           media: [],
         },
       },
-      { path: `/children/${CHILD_ID}/media`, body: [] },
+      { path: `/children/${CHILD_ID}/media`, body: emptyMediaPage },
       { path: `/children/${CHILD_ID}`, body: child },
     ]);
 
@@ -859,5 +872,95 @@ describe("archiving", () => {
 
     expect(calls.some((c) => c.method === "DELETE")).toBe(false);
     confirmSpy.mockRestore();
+  });
+});
+
+/**
+ * The gallery and the observation photo strip, after `GET /children/:id/media`
+ * became paginated.
+ *
+ * ★ Both of these assert against the *request*, not just the render. The
+ * regression these guard against is silent: a component that quietly shows the
+ * first page of a larger set looks exactly like one showing everything, and a
+ * component that filters in the browser looks exactly like one that asks the
+ * server to filter — right up to the day the second page exists.
+ */
+describe("paginated media", () => {
+  const PHOTO_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
+  const OBSERVATION_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1";
+
+  const photo = {
+    id: PHOTO_ID,
+    caption: "Зурсан зураг",
+    originalName: "art.jpg",
+    mimeType: "image/jpeg",
+    purpose: "CHILD_PHOTO",
+  };
+
+  /**
+   * Truncation is stated, never silent.
+   *
+   * There is no pager yet, so the gallery asks for one large page. If a child
+   * has more photographs than that, the screen has to say so — showing 100 of
+   * 140 with nothing to indicate it is a worse failure than the unbounded list
+   * this replaced, because nobody can see it happening.
+   */
+  it("says so when there are more photos than one page", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: `/children/${CHILD_ID}/media`,
+        body: { items: [photo], page: 1, pageSize: 100, total: 140, totalPages: 2 },
+      },
+    ]);
+
+    renderWithProviders(<ChildGallery childId={CHILD_ID} canEdit={false} />);
+
+    expect(await screen.findByText(/Нийт 140/)).toBeInTheDocument();
+  });
+
+  /** One page that holds everything says nothing. */
+  it("stays quiet when one page holds them all", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: `/children/${CHILD_ID}/media`,
+        body: { items: [photo], page: 1, pageSize: 100, total: 1, totalPages: 1 },
+      },
+    ]);
+
+    renderWithProviders(<ChildGallery childId={CHILD_ID} canEdit={false} />);
+
+    await screen.findByRole("button", { name: /томоор харах/ });
+    expect(screen.queryByText(/Нийт/)).not.toBeInTheDocument();
+  });
+
+  /**
+   * ★ The filter is the server's.
+   *
+   * This component used to fetch the child's whole OBSERVATION set and match
+   * `observationId` in the browser. With pagination that returns the wrong
+   * photos — or none — so the id has to reach the query string.
+   */
+  it("asks the API for one observation's photos", async () => {
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: `/children/${CHILD_ID}/media`,
+        body: {
+          items: [{ ...photo, purpose: "OBSERVATION", observationId: OBSERVATION_ID }],
+          page: 1,
+          pageSize: 12,
+          total: 1,
+          totalPages: 1,
+        },
+      },
+    ]);
+
+    renderWithProviders(<ObservationPhotos childId={CHILD_ID} observationId={OBSERVATION_ID} />);
+
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.includes(`observationId=${OBSERVATION_ID}`))).toBe(true),
+    );
   });
 });

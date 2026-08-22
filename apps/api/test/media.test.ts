@@ -329,7 +329,7 @@ describe("observation photos inherit visibility", () => {
       .get(`/v1/children/${a.child.id}/media`)
       .set("Cookie", parentA.cookies);
 
-    expect(res.body.map((m: { id: string }) => m.id)).toEqual([visibleId]);
+    expect(res.body.items.map((m: { id: string }) => m.id)).toEqual([visibleId]);
   });
 
   it("a teacher's gallery shows everything", async () => {
@@ -341,7 +341,8 @@ describe("observation photos inherit visibility", () => {
       .get(`/v1/children/${a.child.id}/media`)
       .set("Cookie", teacherA.cookies);
 
-    expect(res.body).toHaveLength(2);
+    expect(res.body.items).toHaveLength(2);
+    expect(res.body.total).toBe(2);
   });
 
   it("metadata is refused for a photo the guardian may not see", async () => {
@@ -489,7 +490,7 @@ describe("uploading several photos at once", () => {
 
     // And they are all really there, not merely acknowledged.
     const list = await authed(request(server()).get(`/v1/children/${a.child.id}/media`), teacherA);
-    expect(list.body).toHaveLength(3);
+    expect(list.body.items).toHaveLength(3);
   });
 
   /**
@@ -513,7 +514,7 @@ describe("uploading several photos at once", () => {
     expect(res.body.failed[0].reason).toBeTruthy();
 
     const list = await authed(request(server()).get(`/v1/children/${a.child.id}/media`), teacherA);
-    expect(list.body).toHaveLength(2);
+    expect(list.body.items).toHaveLength(2);
   });
 
   /** A batch where nothing survived is a failed request, not a 201 with notes. */
@@ -527,7 +528,7 @@ describe("uploading several photos at once", () => {
     expect(res.status).toBe(400);
 
     const list = await authed(request(server()).get(`/v1/children/${a.child.id}/media`), teacherA);
-    expect(list.body).toHaveLength(0);
+    expect(list.body.items).toHaveLength(0);
   });
 
   /** Authorization is decided once, for the child, before any file is read. */
@@ -539,5 +540,217 @@ describe("uploading several photos at once", () => {
       .attach("file", await photoBytes(), "хоёр.jpg");
 
     expect(res.status).toBe(404);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Pagination — CLAUDE.md §3.4
+//
+// `GET /children/:id/media` was the one list in the API that returned an
+// unbounded set. A child with six hundred photographs returned six hundred rows
+// and six hundred signed-URL redirects on one screen.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("gallery pagination", () => {
+  it("bounds the page and reports the true total", async () => {
+    for (let i = 0; i < 3; i += 1) await upload();
+
+    const res = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/media?pageSize=2`),
+      teacherA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(2);
+    expect(res.body.total).toBe(3);
+    expect(res.body.totalPages).toBe(2);
+  });
+
+  it("refuses a page size above the ceiling", async () => {
+    // Without the ceiling `?pageSize=100000` turns the gallery back into the
+    // bulk export it just stopped being.
+    const res = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/media?pageSize=100000`),
+      teacherA,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  /**
+   * ★★ The regression this whole split exists to prevent.
+   *
+   * `getDownloadUrl` used to decide whether a guardian may read one file by
+   * loading their entire visible set and searching it. Paginating that method
+   * would have silently capped the check at one page: a guardian would still
+   * SEE photo twenty-six on page two of the gallery, and get a 404 the moment
+   * they clicked it. The list and the check now compose the same `where`
+   * fragment in the repository, so they cannot disagree.
+   */
+  it("a guardian can open a visible photo that falls beyond the first page", async () => {
+    const observationId = await teacherObservation(true);
+
+    const ids: string[] = [];
+    for (let i = 0; i < 4; i += 1) {
+      ids.push(await upload(teacherA, a.child.id, { observationId }));
+    }
+
+    // Prove it really is off page one at this size.
+    const firstPage = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/media?pageSize=2`),
+      parentA,
+    );
+    expect(firstPage.body.items).toHaveLength(2);
+    expect(firstPage.body.total).toBe(4);
+
+    const beyond = ids.filter(
+      (id) => !firstPage.body.items.some((m: { id: string }) => m.id === id),
+    );
+    expect(beyond.length).toBeGreaterThan(0);
+
+    const res = await request(server())
+      .get(`/v1/media/${beyond[0]}`)
+      .set("Cookie", parentA.cookies);
+
+    expect(res.status).toBe(302);
+  });
+
+  /** The visibility rule still holds when the list is paged. */
+  it("a guardian still cannot open a private photo on any page", async () => {
+    const privateObs = await teacherObservation(false);
+    const hidden = await upload(teacherA, a.child.id, { observationId: privateObs });
+
+    expect(
+      (await request(server()).get(`/v1/media/${hidden}`).set("Cookie", parentA.cookies)).status,
+    ).toBe(404);
+  });
+
+  /**
+   * ★ `?observationId=` exists because the screen that shows one observation's
+   * photos used to fetch the child's whole OBSERVATION set and filter in the
+   * browser. Page one of twenty-five may contain none of the ones it wants.
+   */
+  it("filters to a single observation", async () => {
+    const first = await teacherObservation(true);
+    const second = await teacherObservation(true);
+
+    const wanted = await upload(teacherA, a.child.id, { observationId: first });
+    await upload(teacherA, a.child.id, { observationId: second });
+    await upload();
+
+    const res = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/media?observationId=${first}`),
+      teacherA,
+    );
+
+    expect(res.body.items.map((m: { id: string }) => m.id)).toEqual([wanted]);
+    expect(res.body.total).toBe(1);
+  });
+
+  it("teacher from another group gets 404", async () => {
+    const outsider = await login(app, b.teacherUser.username);
+    expect(
+      (await authed(request(server()).get(`/v1/children/${a.child.id}/media?pageSize=5`), outsider))
+        .status,
+    ).toBe(404);
+  });
+
+  it("guardian of another child gets 404", async () => {
+    expect(
+      (await authed(request(server()).get(`/v1/children/${a.child.id}/media?pageSize=5`), parentB))
+        .status,
+    ).toBe(404);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Album metadata — RFP §4.4
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("album metadata", () => {
+  it("records who uploaded and attributes by their role", async () => {
+    const id = await upload();
+    const row = await db.mediaFile.findUniqueOrThrow({ where: { id } });
+
+    expect(row.uploadedById).toBe(a.teacherUser.id);
+    expect(row.attribution).toBe("TEACHER");
+  });
+
+  /**
+   * ★ What the upload schema accepts, the upload must store.
+   *
+   * These fields were validated by `uploadOptionsSchema` and then dropped on
+   * the way to the service: a client could send `takenAt`, receive a 201, and
+   * find the column empty. Validation that silently discards what it just
+   * approved is worse than not accepting the field at all, and nothing about
+   * the response would have revealed it.
+   */
+  it("stores metadata sent with the upload itself", async () => {
+    const id = await upload(teacherA, a.child.id, {
+      takenAt: "2026-05-04",
+      age: "5",
+      category: "EVENT",
+      attribution: "PARENT",
+    });
+
+    const row = await db.mediaFile.findUniqueOrThrow({ where: { id } });
+    expect(row.age).toBe(5);
+    expect(row.category).toBe("EVENT");
+    expect(row.attribution).toBe("PARENT");
+    expect(row.takenAt?.toISOString()).toContain("2026-05-04");
+  });
+
+  it("takes the date the photograph was taken, the age and the category", async () => {
+    const id = await upload();
+
+    const res = await authed(request(server()).patch(`/v1/media/${id}`), teacherA).send({
+      takenAt: "2026-03-01",
+      age: 4,
+      category: "ARTWORK",
+      attribution: "JOINT",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.age).toBe(4);
+    expect(res.body.category).toBe("ARTWORK");
+    expect(res.body.attribution).toBe("JOINT");
+    expect(String(res.body.takenAt)).toContain("2026-03-01");
+  });
+
+  /**
+   * ★ A PATCH naming only the caption must not blank the rest.
+   *
+   * `undefined` leaves a field alone and `null` clears it. Collapsing the two
+   * would make every caption edit quietly erase the date a photograph was
+   * taken — a data loss nobody would report, because nothing tells them.
+   */
+  it("editing the caption leaves the other metadata alone", async () => {
+    const id = await upload();
+    await authed(request(server()).patch(`/v1/media/${id}`), teacherA).send({
+      takenAt: "2026-03-01",
+      category: "ARTWORK",
+    });
+
+    const res = await authed(request(server()).patch(`/v1/media/${id}`), teacherA).send({
+      caption: "Шинэ тэмдэглэл",
+    });
+
+    expect(res.body.caption).toBe("Шинэ тэмдэглэл");
+    expect(res.body.category).toBe("ARTWORK");
+    expect(String(res.body.takenAt)).toContain("2026-03-01");
+  });
+
+  it("refuses a category outside the vocabulary", async () => {
+    const id = await upload();
+    const res = await authed(request(server()).patch(`/v1/media/${id}`), teacherA).send({
+      category: "WHATEVER",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("a guardian cannot retitle or re-date the gallery", async () => {
+    const id = await upload();
+    expect(
+      (await authed(request(server()).patch(`/v1/media/${id}`), parentA).send({ age: 3 })).status,
+    ).toBe(404);
   });
 });

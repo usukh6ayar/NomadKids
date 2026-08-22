@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Star, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { z } from "zod";
-import { mediaSchema } from "@kinder/contracts";
+import { mediaListSchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { mediaUrl } from "@/lib/api/client";
 import { qk } from "@/lib/api/keys";
@@ -14,7 +14,16 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { MediaThumb } from "@/components/media/media-image";
 import { PhotoUpload } from "@/components/media/photo-upload";
 
-const listSchema = z.array(mediaSchema);
+/**
+ * ★ One page, deliberately large — an interim, not the destination.
+ *
+ * `GET /children/:id/media` is now paginated (it was not, and returned every
+ * photograph a child had). This screen has no pager yet, so it asks for the
+ * API's maximum and *says so* when there are more. Silently showing the first
+ * twenty-five of ninety would be a worse regression than the unbounded list it
+ * replaces, because nothing on screen would reveal it.
+ */
+const GALLERY_PAGE_SIZE = 100;
 
 /**
  * A child's photographs and work.
@@ -25,11 +34,10 @@ const listSchema = z.array(mediaSchema);
  * `purpose`, and this reads both lists rather than making a family go to two
  * places for one idea.
  *
- * ★★ There is no "artwork" purpose, deliberately. `MediaPurpose` has three
- * values and adding a fourth is a schema migration; a drawing is a photograph
- * of a drawing, and the caption is what says which. If artwork later needs its
- * own filtering, sorting or report section, that is the point at which the
- * enum earns a new value — not before.
+ * ★★ There is still no "artwork" *purpose*. `MediaPurpose` says how a
+ * photograph got here, and adding a value to it is a schema migration; what
+ * kind of picture it is now lives in `category` (RFP §4.4), which is a plain
+ * column precisely so the vocabulary can change without one.
  *
  * Deleting archives rather than removing: `DELETE /media/:id` sets a status, so
  * a photo taken out of the gallery still exists for the audit trail.
@@ -52,7 +60,7 @@ export function ChildGallery({
 
   const photos = useQuery({
     queryKey: qk.childMedia(childId),
-    queryFn: () => get(`/children/${childId}/media`, listSchema),
+    queryFn: () => get(`/children/${childId}/media?pageSize=${GALLERY_PAGE_SIZE}`, mediaListSchema),
   });
 
   const setProfile = useMutation({
@@ -76,7 +84,9 @@ export function ChildGallery({
     },
   });
 
-  const items = photos.data ?? [];
+  const items = photos.data?.items ?? [];
+  const total = photos.data?.total ?? 0;
+  const truncated = total > items.length;
 
   return (
     <section id="gallery" aria-labelledby="gallery-heading" className="scroll-mt-20">
@@ -135,6 +145,12 @@ export function ChildGallery({
               );
             })}
           </ul>
+        ) : null}
+
+        {truncated ? (
+          <p className="text-[.82rem] text-muted">
+            Хамгийн сүүлийн {items.length} зураг харагдаж байна. Нийт {total}.
+          </p>
         ) : null}
 
         {canEdit ? (

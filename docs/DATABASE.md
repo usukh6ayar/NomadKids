@@ -197,8 +197,13 @@ MVP. The reference `Invitation.codeHash` (a short SMS code alongside the link) i
 
 ### 4.1 `Kindergarten`
 
-`name`, `address`, `phone`, `email`, `description`, `isActive`. Root of every
-authorization boundary. Nothing above it.
+`name`, `address`, `phone`, `email`, `description`, `isActive`,
+`logoMediaFileId?`. Root of every authorization boundary. Nothing above it.
+
+★ **The logo is a `MediaFile` reference, not a URL** (added 2026-08-22, RFP §3.2
+and §10.3). CLAUDE.md §1.4 says files are never directly reachable, so there is
+no address a `logo String` column could legally hold. The shape mirrors
+`Child.photoMediaFileId` — one image pattern in this schema, not two.
 
 ### 4.2 `SchoolYear`
 
@@ -207,9 +212,15 @@ authorization boundary. Nothing above it.
 
 ### 4.3 `Group`
 
-`kindergartenId`, `schoolYearId`, `name`, `ageBand`, `status`.
+`kindergartenId`, `schoolYearId`, `name`, `ageBand`, `status`,
+`photoMediaFileId?`, `schedule?`, `rules?`.
 **Constraint:** unique `(schoolYearId, name)` among non-deleted rows.
 **Indexes:** `(kindergartenId, status)`.
+
+`schedule` (хичээлийн хуваарь) and `rules` (бүлгийн дүрэм) are free text, added
+2026-08-22 for RFP §3.2. The RFP asks that they be recorded and shown, not
+queried or enforced — a timetable modelled as rows would be a feature nobody
+asked for.
 
 `ageBand` stays an enum (`JUNIOR` … `PREP`) — it is a Mongolian preschool
 structure, not something an administrator configures.
@@ -429,22 +440,33 @@ Unique `(schoolYearId, number)`.
 
 ### 10.1 `MediaFile` ★ security-critical
 
-| Field                          | Type                                                   | Notes                                             |
-| ------------------------------ | ------------------------------------------------------ | ------------------------------------------------- |
-| `kindergartenId`               | uuid                                                   | tenant filter                                     |
-| `childId`                      | uuid?                                                  | the authorization anchor                          |
-| `observationId`                | uuid?                                                  | set when attached to an observation               |
-| `order`                        | int, default 0                                         | gallery ordering within an observation            |
-| `purpose`                      | enum `CHILD_PHOTO` \| `OBSERVATION` \| `REPORT_OUTPUT` |                                                   |
-| `storageKey`                   | string, unique                                         | **random UUID path** — `children/{uuid}/{uuid}`   |
-| `originalName`                 | string                                                 | display only; never used to build a path          |
-| `mimeType`                     | string                                                 | **detected from content**, not from the extension |
-| `sizeBytes`, `width`, `height` | int                                                    |                                                   |
-| `checksum`                     | string                                                 | sha256, for duplicate detection                   |
-| `status`                       | enum `READY` \| `ARCHIVED`                             | archived files stop being served                  |
+| Field                          | Type                                            | Notes                                             |
+| ------------------------------ | ----------------------------------------------- | ------------------------------------------------- |
+| `kindergartenId`               | uuid                                            | tenant filter                                     |
+| `childId`                      | uuid?                                           | the authorization anchor                          |
+| `observationId`                | uuid?                                           | set when attached to an observation               |
+| `order`                        | int, default 0                                  | gallery ordering within an observation            |
+| `purpose`                      | enum, see below                                 |                                                   |
+| `storageKey`                   | string, unique                                  | **random UUID path** — `children/{uuid}/{uuid}`   |
+| `originalName`                 | string                                          | display only; never used to build a path          |
+| `mimeType`                     | string                                          | **detected from content**, not from the extension |
+| `sizeBytes`, `width`, `height` | int                                             |                                                   |
+| `checksum`                     | string                                          | sha256, for duplicate detection                   |
+| `status`                       | enum `READY` \| `ARCHIVED`                      | archived files stop being served                  |
+| `takenAt`                      | date?                                           | when the photograph was TAKEN, not uploaded       |
+| `age`                          | smallint?                                       | 2–5, the album's "нас" facet                      |
+| `category`                     | string?                                         | the album's "ангилал" facet — see below           |
+| `attribution`                  | enum `TEACHER` \| `PARENT` \| `JOINT`, nullable | whose photograph this is, for display             |
+| `uploadedById`                 | uuid? → User                                    | which account sent the bytes                      |
+
+`purpose` is `CHILD_PHOTO | OBSERVATION | NOTIFICATION | REPORT_OUTPUT |
+KINDERGARTEN_LOGO | USER_PHOTO | GROUP_PHOTO`. The last three are **tenant
+images** — they carry no `childId`, and unlike a notice photo they are not child
+data at all, so `MediaService` authorises them by membership of the file's own
+kindergarten.
 
 **Indexes:** `(childId, purpose, uploadedAt desc)`, `(kindergartenId, uploadedAt desc)`,
-`(observationId, order)`.
+`(observationId, order)`, `(notificationId, order)`, `(childId, takenAt desc)`.
 
 > **Decision — the `ObservationMedia` join table is dropped.** The reference
 > system uses a join so one file could be attached to several observations;
@@ -455,6 +477,26 @@ Unique `(schoolYearId, number)`.
 
 `storageKey` is never derived from `originalName`, and `originalName` is never
 used to build a URL. See [SECURITY.md](SECURITY.md) §7.
+
+### 10.2 Album metadata — RFP §4.4, added 2026-08-22
+
+`attribution` and `uploadedById` are **two different questions**. A teacher may
+upload a photograph a family brought in on a memory stick: the attribution is
+`PARENT`, the uploader is the teacher. `uploadedById` is set from the
+authenticated actor and never from the request body; `attribution` defaults from
+who is uploading and is correctable through `PATCH /media/:id`.
+
+★ **`category` is a plain `String`, deliberately** — not a Prisma enum and not a
+configuration table. The RFP names the facet but does not say an administrator
+edits the list, so CLAUDE.md §2.3 does not bind. Of the three shapes it is the
+only one that can become either of the others without rewriting stored rows: the
+vocabulary lives in a zod enum in `@kinder/contracts`, and if the client asks
+for editable categories those values become the seed rows of a new table.
+
+`uploadedById` is domain data, not audit data — the same distinction
+`Observation.authorId` draws. The gallery labels a photograph with who
+contributed it, which is a query-time need; `AuditLog` answers the forensic
+question separately and outlives the row.
 
 ---
 

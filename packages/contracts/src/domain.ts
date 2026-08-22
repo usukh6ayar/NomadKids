@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { uuidSchema } from "./ids";
+import { paginated } from "./pagination";
 
 /**
  * Response shapes shared by the API and the web app.
@@ -353,6 +354,35 @@ export const unreadCountSchema = z.object({ count: z.number() });
 
 // ── Media ────────────────────────────────────────────────────────────────────
 
+export const mediaAttributionSchema = z.enum(["TEACHER", "PARENT", "JOINT"]);
+
+export const MEDIA_ATTRIBUTION_LABEL: Record<string, string> = {
+  TEACHER: "Багшийн",
+  PARENT: "Эцэг эхийн",
+  JOINT: "Хамтын",
+};
+
+/**
+ * Album categories — RFP §4.4 "ангилал".
+ *
+ * ★ A closed list here and a plain `String` column in the database. The RFP
+ * names the facet but not its values, so these are a proposal, not a
+ * requirement: changing the list is a one-line edit with no migration, and if
+ * the client asks for administrator-editable categories these values become the
+ * seed rows of a new table. See the note on `MediaFile.category`.
+ */
+export const MEDIA_CATEGORIES = ["ARTWORK", "ACTIVITY", "EVENT", "DAILY", "PORTRAIT"] as const;
+
+export const mediaCategorySchema = z.enum(MEDIA_CATEGORIES);
+
+export const MEDIA_CATEGORY_LABEL: Record<string, string> = {
+  ARTWORK: "Бүтээл",
+  ACTIVITY: "Үйл ажиллагаа",
+  EVENT: "Баяр ёслол",
+  DAILY: "Өдөр тутам",
+  PORTRAIT: "Хөрөг",
+};
+
 export const mediaSchema = z.object({
   id: uuidSchema,
   caption: z.string().nullish(),
@@ -362,7 +392,17 @@ export const mediaSchema = z.object({
   height: z.number().nullish(),
   purpose: z.string().nullish(),
   observationId: uuidSchema.nullish(),
+  // Album metadata — RFP §4.4. Nullish throughout: photographs stored before
+  // these fields existed carry none of them.
+  takenAt: z.string().nullish(),
+  age: z.number().nullish(),
+  category: z.string().nullish(),
+  attribution: mediaAttributionSchema.nullish(),
+  uploadedBy: personRefSchema.nullish(),
 });
+
+/** The gallery response. Every list is paginated — CLAUDE.md §3.4. */
+export const mediaListSchema = paginated(mediaSchema);
 
 // ── Reports ──────────────────────────────────────────────────────────────────
 
