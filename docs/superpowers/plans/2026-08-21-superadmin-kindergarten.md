@@ -14,31 +14,31 @@
 
 ## File Structure
 
-| File | Responsibility |
-| --- | --- |
-| `apps/api/prisma/schema.prisma` (modify) | `User.isSuperAdmin` column |
-| `apps/api/prisma/migrations/<ts>_add_user_is_super_admin/migration.sql` (generated) | additive `ALTER TABLE` |
-| `apps/api/prisma/seed.ts` (modify) | set the flag on the seeded operator |
-| `apps/api/test/support/fixtures.ts` (modify) | `createUser({ isSuperAdmin })` |
-| `apps/api/src/authz/actor.ts` (modify) | `Actor.isSuperAdmin` |
-| `apps/api/src/auth/auth.repository.ts` (modify) | select the column in `findById` |
-| `apps/api/src/auth/auth.service.ts` (modify) | populate it in `resolveActor` |
-| `apps/api/src/authz/platform-access.service.ts` (create) | the only place that decides platform reach |
-| `apps/api/src/authz/authz.module.ts` (modify) | provide/export it |
-| `apps/api/src/auth/decorators/super-admin.decorator.ts` (create) | `@SuperAdmin()` metadata |
-| `apps/api/src/auth/guards/super-admin.guard.ts` (create) | coarse gate, 404 |
-| `apps/api/src/auth/auth.module.ts` (modify) | register the guard globally |
-| `apps/api/src/platform/platform.dto.ts` (create) | request validation |
-| `apps/api/src/platform/platform.repository.ts` (create) | the only Prisma access; the create transaction |
-| `apps/api/src/platform/platform.service.ts` (create) | authorize, collision checks, audit |
-| `apps/api/src/platform/platform.controller.ts` (create) | parse, delegate |
-| `apps/api/src/platform/platform.module.ts` (create) | wiring |
-| `apps/api/src/app.module.ts` (modify) | register the module |
-| `apps/api/test/platform.test.ts` (create) | HTTP authorization + behaviour suite |
-| `apps/api/test/schema.test.ts` (modify) | column default |
-| `apps/api/src/authz/child-access.test.ts` (modify) | Actor literals gain the field |
-| `apps/api/test/authz-consistency.test.ts` (modify) | same |
-| `docs/API.md` (modify) | the four new routes |
+| File                                                                                | Responsibility                                 |
+| ----------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `apps/api/prisma/schema.prisma` (modify)                                            | `User.isSuperAdmin` column                     |
+| `apps/api/prisma/migrations/<ts>_add_user_is_super_admin/migration.sql` (generated) | additive `ALTER TABLE`                         |
+| `apps/api/prisma/seed.ts` (modify)                                                  | set the flag on the seeded operator            |
+| `apps/api/test/support/fixtures.ts` (modify)                                        | `createUser({ isSuperAdmin })`                 |
+| `apps/api/src/authz/actor.ts` (modify)                                              | `Actor.isSuperAdmin`                           |
+| `apps/api/src/auth/auth.repository.ts` (modify)                                     | select the column in `findById`                |
+| `apps/api/src/auth/auth.service.ts` (modify)                                        | populate it in `resolveActor`                  |
+| `apps/api/src/authz/platform-access.service.ts` (create)                            | the only place that decides platform reach     |
+| `apps/api/src/authz/authz.module.ts` (modify)                                       | provide/export it                              |
+| `apps/api/src/auth/decorators/super-admin.decorator.ts` (create)                    | `@SuperAdmin()` metadata                       |
+| `apps/api/src/auth/guards/super-admin.guard.ts` (create)                            | coarse gate, 404                               |
+| `apps/api/src/auth/auth.module.ts` (modify)                                         | register the guard globally                    |
+| `apps/api/src/platform/platform.dto.ts` (create)                                    | request validation                             |
+| `apps/api/src/platform/platform.repository.ts` (create)                             | the only Prisma access; the create transaction |
+| `apps/api/src/platform/platform.service.ts` (create)                                | authorize, collision checks, audit             |
+| `apps/api/src/platform/platform.controller.ts` (create)                             | parse, delegate                                |
+| `apps/api/src/platform/platform.module.ts` (create)                                 | wiring                                         |
+| `apps/api/src/app.module.ts` (modify)                                               | register the module                            |
+| `apps/api/test/platform.test.ts` (create)                                           | HTTP authorization + behaviour suite           |
+| `apps/api/test/schema.test.ts` (modify)                                             | column default                                 |
+| `apps/api/src/authz/child-access.test.ts` (modify)                                  | Actor literals gain the field                  |
+| `apps/api/test/authz-consistency.test.ts` (modify)                                  | same                                           |
+| `docs/API.md` (modify)                                                              | the four new routes                            |
 
 **Before you start:** the integration tests need Postgres running. `docker compose up -d db` from the repo root, and `DATABASE_URL` set as `apps/api/.env` already does for the other suites.
 
@@ -187,19 +187,19 @@ and to the `data` object in `createUser`:
 Replace the `existing` branch in `seedSuperadmin()` (`apps/api/prisma/seed.ts`) with:
 
 ```ts
-  const existing = await prisma.user.findUnique({ where: { username } });
-  if (existing) {
-    // A database seeded before the column existed has the account but not the
-    // flag. Repairing it here keeps `seed` the one command that produces a
-    // working system, rather than a command plus a remembered SQL statement.
-    if (!existing.isSuperAdmin) {
-      await prisma.user.update({ where: { id: existing.id }, data: { isSuperAdmin: true } });
-      console.log(`  superadmin: flag repaired (${username})`);
-    } else {
-      console.log(`  superadmin: exists (${username})`);
-    }
-    return;
+const existing = await prisma.user.findUnique({ where: { username } });
+if (existing) {
+  // A database seeded before the column existed has the account but not the
+  // flag. Repairing it here keeps `seed` the one command that produces a
+  // working system, rather than a command plus a remembered SQL statement.
+  if (!existing.isSuperAdmin) {
+    await prisma.user.update({ where: { id: existing.id }, data: { isSuperAdmin: true } });
+    console.log(`  superadmin: flag repaired (${username})`);
+  } else {
+    console.log(`  superadmin: exists (${username})`);
   }
+  return;
+}
 ```
 
 and add the flag to the `prisma.user.create` call below it:
@@ -281,12 +281,12 @@ In `apps/api/src/auth/auth.repository.ts`, add to the `select` in `findById`:
 In `apps/api/src/auth/auth.service.ts`, the return of `resolveActor`:
 
 ```ts
-    return {
-      userId,
-      sessionId,
-      isSuperAdmin: user.isSuperAdmin,
-      memberships: await this.authz.loadMemberships(userId),
-    };
+return {
+  userId,
+  sessionId,
+  isSuperAdmin: user.isSuperAdmin,
+  memberships: await this.authz.loadMemberships(userId),
+};
 ```
 
 - [ ] **Step 5: Fix the test literals**
@@ -780,9 +780,7 @@ export const listPlatformKindergartensQuerySchema = paginationQuerySchema.extend
    */
   isActive: z.stringbool().optional(),
 });
-export type ListPlatformKindergartensQuery = z.infer<
-  typeof listPlatformKindergartensQuerySchema
->;
+export type ListPlatformKindergartensQuery = z.infer<typeof listPlatformKindergartensQuerySchema>;
 ```
 
 - [ ] **Step 4: Write the repository**
@@ -1498,12 +1496,12 @@ Reachable only by a user with `User.isSuperAdmin`. The `sa` scope below means
 exactly that and nothing more — a platform operator holds no membership, so
 every membership-scoped route in this document still answers them with 404.
 
-| Method | Path                          | Role | Scope | Body / query                                    | Returns                              |
-| ------ | ----------------------------- | ---- | ----- | ----------------------------------------------- | ------------------------------------ |
-| POST   | `/platform/kindergartens`     | —    | `sa`  | name, address, phone, email, description, admin | kindergarten, admin, invitationToken |
-| GET    | `/platform/kindergartens`     | —    | `sa`  | `?q&isActive&page&pageSize`                     | paginated, every kindergarten        |
+| Method | Path                          | Role | Scope | Body / query                                    | Returns                                        |
+| ------ | ----------------------------- | ---- | ----- | ----------------------------------------------- | ---------------------------------------------- |
+| POST   | `/platform/kindergartens`     | —    | `sa`  | name, address, phone, email, description, admin | kindergarten, admin, invitationToken           |
+| GET    | `/platform/kindergartens`     | —    | `sa`  | `?q&isActive&page&pageSize`                     | paginated, every kindergarten                  |
 | GET    | `/platform/kindergartens/:id` | —    | `sa`  | —                                               | detail with group/enrollment/membership counts |
-| PATCH  | `/platform/kindergartens/:id` | —    | `sa`  | name, address, contact, isActive                | updated                              |
+| PATCH  | `/platform/kindergartens/:id` | —    | `sa`  | name, address, contact, isActive                | updated                                        |
 
 There is no DELETE. Deactivation is `PATCH { isActive: false }` — CLAUDE.md §3.2.
 

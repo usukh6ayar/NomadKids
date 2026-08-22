@@ -184,6 +184,19 @@ model User {
   isActive    Boolean   @default(true)
   lastLoginAt DateTime?
 
+  /// Platform-level operator: registers kindergartens.
+  ///
+  /// ★ Deliberately NOT a Membership role. Every authorization primitive in
+  /// this system is tenant-derived, and a system-wide membership row has no
+  /// kindergarten to point at — the reference implementation made
+  /// `kindergarten` nullable to model it, which would put a null case into
+  /// every `kindergartenId: { in: [...] }` filter we have. CLAUDE.md §3.1.
+  ///
+  /// Grants platform routes and nothing else. It is not consulted by
+  /// TenantAccessService or ChildAccessService, and test/platform.test.ts
+  /// asserts that a superadmin still gets 404 on child data.
+  isSuperAdmin Boolean @default(false)
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?

@@ -46,8 +46,8 @@ would mean making `Membership.kindergartenId` nullable, which breaks CLAUDE.md
 §3.1, invalidates `@@unique([userId, kindergartenId, role])`, and adds a null
 case to every `kindergartenId: { in: [...] }` filter in the system. That last
 consequence is precisely the cross-tenant leak surface §2.2 exists to prevent.
-CLAUDE.md's precedence rule puts the Django project ahead on *authorization
-requirements* — the requirement is "a system-wide operator registers
+CLAUDE.md's precedence rule puts the Django project ahead on _authorization
+requirements_ — the requirement is "a system-wide operator registers
 kindergartens", and that requirement is satisfied either way. The storage shape
 is architecture, where the reference is explicitly not authoritative.
 
@@ -86,12 +86,12 @@ the service still calls `assertSuperAdmin`.
 
 A separate `platform` module, under its own prefix:
 
-| Method | Route                            | Body / query                          | Result                       |
-| ------ | -------------------------------- | ------------------------------------- | ---------------------------- |
-| POST   | `/platform/kindergartens`        | name, address?, phone?, email?, description?, admin{} | kindergarten + admin + invitation token |
-| GET    | `/platform/kindergartens`        | `?q=&isActive=&page=&pageSize=`       | paginated list of all        |
-| GET    | `/platform/kindergartens/:id`    | —                                     | detail + counts              |
-| PATCH  | `/platform/kindergartens/:id`    | any of the above fields, `isActive`   | updated                      |
+| Method | Route                         | Body / query                                          | Result                                  |
+| ------ | ----------------------------- | ----------------------------------------------------- | --------------------------------------- |
+| POST   | `/platform/kindergartens`     | name, address?, phone?, email?, description?, admin{} | kindergarten + admin + invitation token |
+| GET    | `/platform/kindergartens`     | `?q=&isActive=&page=&pageSize=`                       | paginated list of all                   |
+| GET    | `/platform/kindergartens/:id` | —                                                     | detail + counts                         |
+| PATCH  | `/platform/kindergartens/:id` | any of the above fields, `isActive`                   | updated                                 |
 
 "Counts" on the detail route means three numbers, each over live rows only:
 active groups, active enrollments, and active memberships. Both list and detail
@@ -163,19 +163,19 @@ Appended after the transaction commits (§3.5 ordering discipline):
 `apps/api/test/platform.test.ts`, every assertion through a real HTTP request
 against the real route — §4.1.
 
-| Case                                                                    | Expected |
-| ----------------------------------------------------------------------- | -------- |
-| superadmin creates a kindergarten                                       | 201; kindergarten, user, ADMIN membership and invitation token all exist |
-| the returned token sets a password, then that account logs in           | 200, and it is an ADMIN of the new kindergarten |
-| ADMIN of an existing kindergarten → POST / GET / GET :id / PATCH        | **404** on all four |
-| TEACHER → all four                                                      | **404**  |
-| PARENT → all four                                                       | **404**  |
-| unauthenticated → all four                                              | 401      |
-| superadmin lists                                                        | both kindergarten A and kindergarten B appear |
-| superadmin → a child, its portfolio, its observations, its guardians    | **404** — the flag did not widen child access |
-| superadmin → `/dashboard/admin`, and `GET /kindergartens`               | 404, and an empty list — membership scope is unchanged |
-| duplicate username                                                      | 409, **and** no kindergarten row was created |
-| PATCH `{ isActive: false }`                                             | 200, row updated |
+| Case                                                                 | Expected                                                                 |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| superadmin creates a kindergarten                                    | 201; kindergarten, user, ADMIN membership and invitation token all exist |
+| the returned token sets a password, then that account logs in        | 200, and it is an ADMIN of the new kindergarten                          |
+| ADMIN of an existing kindergarten → POST / GET / GET :id / PATCH     | **404** on all four                                                      |
+| TEACHER → all four                                                   | **404**                                                                  |
+| PARENT → all four                                                    | **404**                                                                  |
+| unauthenticated → all four                                           | 401                                                                      |
+| superadmin lists                                                     | both kindergarten A and kindergarten B appear                            |
+| superadmin → a child, its portfolio, its observations, its guardians | **404** — the flag did not widen child access                            |
+| superadmin → `/dashboard/admin`, and `GET /kindergartens`            | 404, and an empty list — membership scope is unchanged                   |
+| duplicate username                                                   | 409, **and** no kindergarten row was created                             |
+| PATCH `{ isActive: false }`                                          | 200, row updated                                                         |
 
 `schema.test.ts` is updated for the new column.
 

@@ -12,6 +12,12 @@ import { Role } from "../domain/enums";
 export interface Actor {
   readonly userId: string;
   readonly sessionId: string;
+  /**
+   * Platform operator. Read from `User` on every request like everything else
+   * here — never from the token, so clearing it takes effect immediately.
+   * CLAUDE.md §1.3.
+   */
+  readonly isSuperAdmin: boolean;
   readonly memberships: readonly ActorMembership[];
 }
 

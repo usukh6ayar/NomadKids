@@ -69,6 +69,7 @@ Every route below names an ownership rule. These resolve to the two chains in
 | `child`       | `canAccessChild(actor, child)` — read                           |
 | `child:write` | `canRecordForChild(actor, child)` — teachers and admins only    |
 | `self`        | the resource belongs to the authenticated user                  |
+| `sa`          | `User.isSuperAdmin` — platform level, no kindergarten at all    |
 
 ---
 
@@ -129,6 +130,35 @@ tests: `test_a_revoked_teacher_gets_404_on_the_child_detail`,
 `GET /groups` for a teacher returns **only** their assigned groups. Reference:
 `test_a_teacher_from_another_group_gets_404`,
 `test_a_director_cannot_open_another_kindergartens_group`.
+
+### 4.1 Platform routes
+
+Registering a kindergarten cannot be scoped to one, so these sit outside the
+membership model entirely. `sa` means `User.isSuperAdmin` and nothing more — a
+platform operator holds no membership, so every other route in this document
+still answers them with 404, including `GET /kindergartens`, which returns an
+empty list. `test/platform.test.ts` asserts that over children, portfolios,
+observations, guardians and the admin dashboard.
+
+| Method | Route                         | Role | Ownership | Request                                         | Response                                         |
+| ------ | ----------------------------- | ---- | --------- | ----------------------------------------------- | ------------------------------------------------ |
+| POST   | `/platform/kindergartens`     | any  | sa        | name, address, phone, email, description, admin | kindergarten + admin + invitationToken           |
+| GET    | `/platform/kindergartens`     | any  | sa        | `?q&isActive&page&pageSize`                     | paginated; **every** kindergarten                |
+| GET    | `/platform/kindergartens/:id` | any  | sa        | —                                               | detail + group, enrollment and membership counts |
+| PATCH  | `/platform/kindergartens/:id` | any  | sa        | name, address, contact, description, isActive   | updated                                          |
+
+`admin` is `{ username, lastName, firstName, email?, phone? }` and always
+becomes an ADMIN membership in the new kindergarten — the role is not accepted
+from the body, or an operator could register a kindergarten whose only member is
+a parent. Kindergarten, user, membership and invitation are written in one
+transaction: a kindergarten with no director is unreachable, and a director with
+no invitation token can never set a password.
+
+The response's `invitationToken` is the director's one-time link, returned so the
+operator can deliver it, exactly as the teacher-invites-a-family flow does. It is
+never logged.
+
+There is no DELETE. Deactivation is `PATCH { isActive: false }` — CLAUDE.md §3.2.
 
 ---
 

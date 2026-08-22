@@ -8,6 +8,7 @@ import { TokenService } from "./token.service";
 import { AuthGuard } from "./guards/auth.guard";
 import { CsrfGuard } from "./guards/csrf.guard";
 import { RolesGuard } from "./guards/roles.guard";
+import { SuperAdminGuard } from "./guards/super-admin.guard";
 
 @Module({
   controllers: [AuthController],
@@ -23,6 +24,7 @@ import { RolesGuard } from "./guards/roles.guard";
     //   2. CsrfGuard  — needs the request to be authenticated before it can
     //                   compare the CSRF cookie against the header.
     //   3. RolesGuard — needs the Actor to read its memberships.
+    //   4. SuperAdminGuard — same, for the platform routes.
     //
     // Registered globally so a new controller is protected by default. Opting
     // out takes an explicit @Public(), which means a forgotten decorator locks
@@ -30,6 +32,7 @@ import { RolesGuard } from "./guards/roles.guard";
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: CsrfGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_GUARD, useClass: SuperAdminGuard },
   ],
   exports: [AuthService, AuthRepository, TokenService, PasswordService],
 })

@@ -92,6 +92,7 @@ async function actorFor(userId: string): Promise<Actor> {
   return {
     userId,
     sessionId: "test-session",
+    isSuperAdmin: false,
     memberships: await authz.loadMemberships(userId),
   };
 }

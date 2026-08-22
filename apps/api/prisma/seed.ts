@@ -41,7 +41,15 @@ async function seedSuperadmin(): Promise<void> {
 
   const existing = await prisma.user.findUnique({ where: { username } });
   if (existing) {
-    console.log(`  superadmin: exists (${username})`);
+    // A database seeded before the column existed has the account but not the
+    // flag. Repairing it here keeps `seed` the one command that produces a
+    // working system, rather than a command plus a remembered SQL statement.
+    if (!existing.isSuperAdmin) {
+      await prisma.user.update({ where: { id: existing.id }, data: { isSuperAdmin: true } });
+      console.log(`  superadmin: flag repaired (${username})`);
+    } else {
+      console.log(`  superadmin: exists (${username})`);
+    }
     return;
   }
 
@@ -51,6 +59,7 @@ async function seedSuperadmin(): Promise<void> {
       passwordHash: await argon2.hash(password, { type: argon2.argon2id }),
       lastName: "Систем",
       firstName: "Админ",
+      isSuperAdmin: true,
     },
   });
   console.log(`  superadmin: created (${username})`);
