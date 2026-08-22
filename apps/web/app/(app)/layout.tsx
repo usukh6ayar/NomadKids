@@ -114,20 +114,30 @@ function staffNav(isAdmin: boolean): NavItem[] {
 }
 
 /**
- * The desktop sidebar's grouped sections — the reference's five `nav-group`s,
- * with its headings and its ordering.
+ * The desktop sidebar's grouped sections.
  *
- * ★ Entries the MVP does not have are `soon`, not links.
+ * ★ Every entry goes somewhere. There are no "удахгүй" placeholders.
  *
- * That is the reference's own device: its "Санхүү удахгүй" and "Баримт бичиг
- * удахгүй" are plain spans for exactly this reason, and `base_teacher.html`
- * states the rule — "a menu entry that goes nowhere teaches users the system is
- * broken". So the menu names the whole product, as the design does, while only
- * the built parts are reachable.
+ * This sidebar previously named the whole product across three phases and left
+ * eight of its thirteen entries as dead labels. Two failure modes came out of
+ * that, and the second is the worse one:
  *
- * Which entries those are follows CLAUDE.md §7: attendance, meals, finance,
- * documents, chat and surveys are Phase 2. Nothing here pulls any of them
- * forward — this is the navigation's appearance, not their implementation.
+ *  - **Ирц · Хоол · Судалгаа · Чат · Санхүү · Баримт бичиг** are Phase 2 and
+ *    Phase 3 (CLAUDE.md §7). A teacher opening the menu every day and reading
+ *    six things they cannot do learns that most of this product is broken.
+ *    They are gone until the screen behind them exists; adding a line back is
+ *    a one-line change on the day it ships.
+ *
+ *  - **Явцын үнэлгээ** and **Тайлан** were marked `soon` while both are fully
+ *    built. Assessment begins from a group and a report from a child, so
+ *    neither has a top-level route — but advertising a working feature as
+ *    missing is worse than not listing it. They are reached where the work
+ *    actually starts: the dashboard's group card, and the child page's PDF
+ *    button.
+ *
+ * **Бүлэг, цэцэрлэгийн мэдээлэл** is an admin destination, so a teacher does
+ * not see it at all. Showing it to them greyed out promised something that was
+ * never going to arrive for that account.
  */
 function staffSections(isAdmin: boolean): NavSection[] {
   return [
@@ -136,41 +146,17 @@ function staffSections(isAdmin: boolean): NavSection[] {
       entries: [
         { label: "Хүүхдүүд", href: "/children" },
         { label: "Ажиглалт хянах", href: "/observations/review" },
-        // Assessment always begins from a group, and reports from a child, so
-        // neither has a top-level route to point at.
-        { label: "Явцын үнэлгээ", soon: true },
-        { label: "Тайлан", soon: true },
-      ],
-    },
-    {
-      title: "Өдөр тутмын бүртгэл",
-      entries: [
-        { label: "Ирц", soon: true },
-        { label: "Хоол", soon: true },
       ],
     },
     {
       title: "Харилцаа холбоо",
-      entries: [
-        { label: "Ангийн самбар / Мэдээ", href: "/notifications" },
-        { label: "Судалгаа", soon: true },
-        { label: "Чат", soon: true },
-      ],
-    },
-    {
-      title: "Санхүү ба баримт бичиг",
-      entries: [
-        { label: "Санхүү", soon: true },
-        { label: "Баримт бичиг", soon: true },
-      ],
+      entries: [{ label: "Ангийн самбар / Мэдээ", href: "/notifications" }],
     },
     {
       title: "Багш ба байгууллага",
       entries: [
         { label: "Багшийн мэдээлэл", href: "/settings" },
-        isAdmin
-          ? { label: "Бүлэг, цэцэрлэгийн мэдээлэл", href: "/admin" }
-          : { label: "Бүлэг, цэцэрлэгийн мэдээлэл", soon: true },
+        ...(isAdmin ? [{ label: "Бүлэг, цэцэрлэгийн мэдээлэл", href: "/admin" }] : []),
       ],
     },
   ];

@@ -25,15 +25,15 @@ export interface NavItem {
  *
  * ★ Ported from the reference's `<details class="nav-group">`.
  *
- * Entries are either a link or a **`soon`** label. The reference does exactly
- * this — its own "Санхүү удахгүй" and "Баримт бичиг удахгүй" are plain `<span>`s
- * rather than links, because a menu entry that goes nowhere teaches users the
- * system is broken. So a section can name a part of the product without
- * pretending it is built.
+ * Every entry is a link. There is no placeholder variant, deliberately: a menu
+ * entry that goes nowhere teaches users the system is broken, and the version
+ * of this sidebar that had eight of them proved the point. A section names the
+ * parts of the product that are built, and gains a line on the day another one
+ * ships.
  */
 export interface NavSection {
   title: string;
-  entries: { label: string; href?: string; soon?: boolean }[];
+  entries: { label: string; href: string }[];
 }
 
 /** The tinted quick-links box above the sections — the reference's `.nav-shortcuts`. */
@@ -260,11 +260,13 @@ function Sidebar({
       /*
        * ★ Only the menu scrolls.
        *
-       * With five sections the sidebar is taller than a laptop viewport, and
-       * when the whole panel scrolled, `whoami`'s `mt-auto` put it at the foot
-       * of the *content* rather than the panel — so it overlapped the last
-       * section and the way out scrolled off the screen. The brand and the
-       * identity are fixed now, and the nav between them takes the overflow.
+       * The sidebar can be taller than a laptop viewport, and when the whole
+       * panel scrolled, `whoami`'s `mt-auto` put it at the foot of the
+       * *content* rather than the panel — so it overlapped the last section
+       * and the way out scrolled off the screen. The brand and the identity
+       * are fixed now, and the nav between them takes the overflow. Trimming
+       * the menu to built screens made this comfortable rather than moot: it
+       * has to keep holding as sections come back.
        */
       className="fixed inset-y-0 left-0 z-20 hidden w-[244px] flex-col gap-5 overflow-hidden border-r border-border bg-surface px-3.5 py-[18px] lg:flex"
     >
@@ -350,16 +352,6 @@ function NavGroup({ section, pathname }: { section: NavSection; pathname: string
       </summary>
 
       {section.entries.map((entry) => {
-        if (!entry.href || entry.soon) {
-          return (
-            // Not a link, deliberately — see `NavSection`.
-            <span key={entry.label} className="ml-3 block px-2.5 py-1.5 text-[.8rem] text-faint">
-              {entry.label}
-              <small className="ml-1 text-[.78rem]">удахгүй</small>
-            </span>
-          );
-        }
-
         const active = pathname === entry.href || pathname.startsWith(`${entry.href}/`);
         return (
           <Link
