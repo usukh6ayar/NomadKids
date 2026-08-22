@@ -14,6 +14,7 @@ import NewObservationPage from "@/app/(app)/children/[childId]/observations/new/
 import GroupAssessmentPage from "@/app/(app)/groups/[groupId]/assessment/page";
 import NotificationsPage from "@/app/(app)/notifications/page";
 import ChildDetailPage from "@/app/(app)/children/[childId]/page";
+import NewChildPage from "@/app/(app)/children/new/page";
 
 const CHILD_ID = "44444444-4444-4444-8444-444444444444";
 const GROUP_ID = "55555555-5555-4555-8555-555555555555";
@@ -385,5 +386,84 @@ describe("a child the viewer may not see", () => {
 
     await waitFor(() => expect(screen.getByText("Олдсонгүй")).toBeInTheDocument());
     expect(screen.queryByText(/эрх байхгүй/)).toBeNull();
+  });
+});
+
+// ── Registering a child ─────────────────────────────────────────────────────
+
+describe("registering a child", () => {
+  it("sends the group with the child, so the roster shows them at once", async () => {
+    const user = userEvent.setup();
+
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: "/groups",
+        body: {
+          items: [{ id: GROUP_ID, name: "Дунд бүлэг" }],
+          total: 1,
+          page: 1,
+          pageSize: 25,
+          totalPages: 1,
+        },
+      },
+      { path: "/kindergartens/", method: "POST", body: { id: CHILD_ID } },
+    ]);
+
+    renderWithProviders(<NewChildPage />);
+
+    await user.type(await screen.findByLabelText(/Овог/), "Ганболд");
+    await user.type(screen.getByLabelText(/^Нэр/), "Батбаяр");
+    await user.selectOptions(screen.getByLabelText(/Хүйс/), "MALE");
+    await user.type(screen.getByLabelText(/Төрсөн огноо/), "2022-03-15");
+    // The select is disabled while the group list loads, so waiting for the
+    // option is what makes this deterministic rather than lucky.
+    await screen.findByRole("option", { name: "Дунд бүлэг" });
+    await user.selectOptions(screen.getByLabelText(/Бүлэг/), GROUP_ID);
+
+    await user.click(screen.getByRole("button", { name: "Бүртгэх" }));
+
+    await waitFor(() => expect(ROUTER.push).toHaveBeenCalledWith(`/children/${CHILD_ID}`));
+
+    const post = calls.find((c) => c.method === "POST")!;
+    // ★ The group has to travel with the child. Registered without one, the
+    // child belongs to no roster and no teacher ever sees them.
+    expect(post.body).toMatchObject({
+      lastName: "Ганболд",
+      firstName: "Батбаяр",
+      sex: "MALE",
+      dateOfBirth: "2022-03-15",
+      groupId: GROUP_ID,
+    });
+  });
+
+  it("omits the register number rather than sending an empty one", async () => {
+    const user = userEvent.setup();
+
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: "/groups",
+        body: { items: [], total: 0, page: 1, pageSize: 25, totalPages: 0 },
+      },
+      { path: "/kindergartens/", method: "POST", body: { id: CHILD_ID } },
+    ]);
+
+    renderWithProviders(<NewChildPage />);
+
+    await user.type(await screen.findByLabelText(/Овог/), "Ганболд");
+    await user.type(screen.getByLabelText(/^Нэр/), "Батбаяр");
+    await user.selectOptions(screen.getByLabelText(/Хүйс/), "FEMALE");
+    await user.type(screen.getByLabelText(/Төрсөн огноо/), "2022-03-15");
+
+    await user.click(screen.getByRole("button", { name: "Бүртгэх" }));
+
+    await waitFor(() => expect(ROUTER.push).toHaveBeenCalled());
+
+    const post = calls.find((c) => c.method === "POST")!;
+    // "" would fail the two-letters-eight-digits rule; absent means "not
+    // recorded yet", which is what an empty field means.
+    expect(post.body).not.toHaveProperty("nationalId");
+    expect(post.body).not.toHaveProperty("groupId");
   });
 });

@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { useState } from "react";
 import { childSummarySchema, paginated } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
@@ -69,11 +69,22 @@ function StaffChildren() {
         title="Хүүхдүүд"
         lede="Хариуцсан бүлгийн хүүхдүүд."
         actions={
-          data ? (
-            <p className="text-sm text-muted" aria-live="polite">
-              Нийт {data.total}
-            </p>
-          ) : null
+          <div className="flex items-center gap-3">
+            {data ? (
+              <p className="text-sm text-muted" aria-live="polite">
+                Нийт {data.total}
+              </p>
+            ) : null}
+            {/*
+              No role check: guardians never reach this component — the page
+              routes them to `MyChildren`, which has nothing to register.
+            */}
+            <Button asChild size="sm">
+              <Link href="/children/new">
+                <Plus size={16} aria-hidden /> Хүүхэд бүртгэх
+              </Link>
+            </Button>
+          </div>
         }
       />
 
