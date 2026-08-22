@@ -9,9 +9,11 @@ import { notificationSchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
+import { useSession } from "@/lib/auth/session";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ArchiveButton } from "@/components/ui/archive-button";
 import { LikeButton } from "@/components/notifications/like-button";
 import { MediaThumb } from "@/components/media/media-image";
 import { ErrorState, LoadingState } from "@/components/ui/states";
@@ -28,6 +30,8 @@ export default function NotificationDetailPage() {
   const params = useParams<{ notificationId: string }>();
   const id = params.notificationId;
   const queryClient = useQueryClient();
+  const { hasRole } = useSession();
+  const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: qk.notification(id),
@@ -71,12 +75,29 @@ export default function NotificationDetailPage() {
 
   return (
     <div className="flex flex-col gap-4 py-2">
-      <Link
-        href="/notifications"
-        className="inline-flex min-h-[44px] items-center text-sm text-primary underline underline-offset-4"
-      >
-        ← Мэдэгдэл
-      </Link>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Link
+          href="/notifications"
+          className="inline-flex min-h-[44px] items-center text-sm text-primary underline underline-offset-4"
+        >
+          ← Мэдэгдэл
+        </Link>
+
+        {/*
+          Staff only, matching `@Roles("TEACHER", "ADMIN")` on the endpoint —
+          a parent offered this would get a 404 from a button that looked live.
+        */}
+        {isStaff ? (
+          <ArchiveButton
+            path={`/notifications/${id}`}
+            label="Архивлах"
+            confirmation={`"${notification.title}" — архивлах уу? Эцэг эхэд харагдахаа болино.`}
+            invalidate={[["notifications"], qk.notification(id)]}
+            redirectTo="/notifications"
+            variant="ghost"
+          />
+        ) : null}
+      </div>
 
       <Card className="px-4 py-5 sm:px-6">
         <div className="flex flex-wrap items-start justify-between gap-2">

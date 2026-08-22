@@ -18,6 +18,7 @@ import NewChildPage from "@/app/(app)/children/new/page";
 import EditChildPage from "@/app/(app)/children/[childId]/edit/page";
 import { PhotoUpload } from "@/components/media/photo-upload";
 import TermReportPage from "@/app/(app)/children/[childId]/term-report/page";
+import NotificationDetailPage from "@/app/(app)/notifications/[notificationId]/page";
 
 const CHILD_ID = "44444444-4444-4444-8444-444444444444";
 const GROUP_ID = "55555555-5555-4555-8555-555555555555";
@@ -777,6 +778,86 @@ describe("revoking a guardian's access", () => {
     await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true));
     expect(calls.find((c) => c.method === "PATCH")!.body).toMatchObject({ canView: false });
 
+    confirmSpy.mockRestore();
+  });
+});
+
+// ── Archiving ───────────────────────────────────────────────────────────────
+
+describe("archiving", () => {
+  const NOTICE_ID = "cccccccc-1111-4111-8111-cccccccccccc";
+
+  const notice = {
+    id: NOTICE_ID,
+    title: "Аяллын мэдээлэл",
+    body: "Маргааш 9 цагт",
+    status: "PUBLISHED",
+    isImportant: false,
+    publishedAt: "2026-08-20T09:00:00.000Z",
+    createdAt: "2026-08-20T09:00:00.000Z",
+    author: { id: "dddddddd-1111-4111-8111-dddddddddddd", lastName: "Дорж", firstName: "Багш" },
+    targets: [],
+    reads: [{ id: "eeeeeeee-1111-4111-8111-eeeeeeeeeeee" }],
+    media: [],
+    likeCount: 0,
+    likedByMe: false,
+  };
+
+  /**
+   * ★ Staff only, matching `@Roles("TEACHER", "ADMIN")` on the endpoint.
+   *
+   * A parent offered this would get a 404 from a button that looked live.
+   */
+  it("does not offer a parent the archive control", async () => {
+    setParams({ notificationId: NOTICE_ID });
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["PARENT"]) },
+      { path: `/notifications/${NOTICE_ID}`, body: notice },
+    ]);
+
+    renderWithProviders(<NotificationDetailPage />);
+
+    await screen.findByText("Аяллын мэдээлэл");
+    expect(screen.queryByRole("button", { name: /Архивлах/ })).not.toBeInTheDocument();
+  });
+
+  it("archives with DELETE and returns to the list", async () => {
+    const user = userEvent.setup();
+    setParams({ notificationId: NOTICE_ID });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: `/notifications/${NOTICE_ID}`, method: "DELETE", body: {} },
+      { path: `/notifications/${NOTICE_ID}`, body: notice },
+    ]);
+
+    renderWithProviders(<NotificationDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Архивлах/ }));
+
+    await waitFor(() => expect(calls.some((c) => c.method === "DELETE")).toBe(true));
+    await waitFor(() => expect(ROUTER.push).toHaveBeenCalledWith("/notifications"));
+
+    confirmSpy.mockRestore();
+  });
+
+  /** Nothing happens if the confirmation is declined — it is a soft delete, not a free one. */
+  it("does nothing when the confirmation is declined", async () => {
+    const user = userEvent.setup();
+    setParams({ notificationId: NOTICE_ID });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: `/notifications/${NOTICE_ID}`, body: notice },
+    ]);
+
+    renderWithProviders(<NotificationDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Архивлах/ }));
+
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
     confirmSpy.mockRestore();
   });
 });

@@ -489,6 +489,56 @@ describe("term reports", () => {
     expect(row.finalizedAt).not.toBeNull();
   });
 
+  /**
+   * ★ FINAL has to mean final.
+   *
+   * Once a report is finalised a family is reading it. A later write would
+   * change the text underneath them with no trace and no notification — the
+   * teacher would believe they had corrected a draft, the parent would have
+   * read something else. The upsert accepted that write.
+   */
+  it("refuses to rewrite a finalised report", async () => {
+    await writeReport();
+    await authed(
+      request(server()).post(`/v1/children/${a.child.id}/term-report/finalize`),
+      teacherA,
+    ).send({ termId });
+
+    const res = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/term-report`),
+      teacherA,
+    ).send({ termId, strengths: "Дараа нь өөрчилсөн" });
+
+    expect(res.status).toBe(409);
+
+    // And the published text is untouched, which is the property that matters.
+    const row = await db.termReport.findFirstOrThrow({ where: { childId: a.child.id, termId } });
+    expect(row.strengths).toBe("Хамтран ажиллах чадвартай");
+  });
+
+  /**
+   * Finalising twice is a double-click, not an error — but it must not move
+   * `finalizedAt`, which is when the family were told it was ready.
+   */
+  it("is idempotent when finalised twice", async () => {
+    await writeReport();
+    await authed(
+      request(server()).post(`/v1/children/${a.child.id}/term-report/finalize`),
+      teacherA,
+    ).send({ termId });
+
+    const first = await db.termReport.findFirstOrThrow({ where: { childId: a.child.id, termId } });
+
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/term-report/finalize`),
+      teacherA,
+    ).send({ termId });
+    expect(res.status).toBe(201);
+
+    const second = await db.termReport.findFirstOrThrow({ where: { childId: a.child.id, termId } });
+    expect(second.finalizedAt?.toISOString()).toBe(first.finalizedAt?.toISOString());
+  });
+
   it("a guardian cannot reach the editor", async () => {
     const res = await authed(
       request(server()).put(`/v1/children/${a.child.id}/term-report`),

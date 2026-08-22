@@ -14,6 +14,7 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
+import { ArchiveButton } from "@/components/ui/archive-button";
 import { RequireRole } from "@/components/shell/require-role";
 
 /**
@@ -34,11 +35,12 @@ import { RequireRole } from "@/components/shell/require-role";
  * should work. Rather than let them meet that, the transfer card is not
  * rendered for them.
  *
- * ★ Archiving is deliberately absent.
+ * ★ Archiving is here, but last and behind a confirmation.
  *
- * Both `PATCH { status: "ARCHIVED" }` and `DELETE /children/:id` can do it, and
- * a destructive action with two doors and no undo does not belong on the same
- * screen as a typo fix. It needs its own confirmation flow.
+ * `DELETE /children/:id` is ADMIN-only and soft — it sets `deletedAt`, so the
+ * child stops appearing and the record survives. It sits at the foot of the
+ * page rather than beside "Хадгалах", because a destructive action next to a
+ * typo fix is a mis-click waiting to happen.
  */
 const groupsSchema = paginated(groupListItemSchema);
 
@@ -72,6 +74,10 @@ function EditChild() {
 
       <DetailsForm childId={childId} child={child.data!} />
       <TransferCard childId={childId} />
+      <ArchiveCard
+        childId={childId}
+        childName={`${child.data!.lastName} ${child.data!.firstName}`}
+      />
     </div>
   );
 }
@@ -337,6 +343,41 @@ function TransferCard({ childId }: { childId: string }) {
             </Button>
           </div>
         </form>
+      </Card>
+    </section>
+  );
+}
+
+// ── Archiving ────────────────────────────────────────────────────────────────
+
+/**
+ * Archiving the child.
+ *
+ * Admin only, mirroring the endpoint: `DELETE /children/:id` carries
+ * `@Roles("ADMIN")`, so offering it to a teacher would be offering a 404.
+ */
+function ArchiveCard({ childId, childName }: { childId: string; childName: string }) {
+  const { hasRole } = useSession();
+  if (!hasRole("ADMIN")) return null;
+
+  return (
+    <section aria-labelledby="archive-heading">
+      <SectionHeader
+        title="Архивлах"
+        lede="Хүүхэд жагсаалтад харагдахаа болино. Бүртгэл нь устахгүй."
+      />
+
+      <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
+        <p className="text-sm text-muted">
+          Цэцэрлэгээс гарсан хүүхдийг архивлана. Ажиглалт, үнэлгээ нь хадгалагдана.
+        </p>
+        <ArchiveButton
+          path={`/children/${childId}`}
+          label="Архивлах"
+          confirmation={`${childName} — архивлах уу? Хүүхэд жагсаалтад харагдахаа болино.`}
+          invalidate={[["children"], ["child", childId]]}
+          redirectTo="/children"
+        />
       </Card>
     </section>
   );

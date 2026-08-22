@@ -34,12 +34,13 @@ import { PageHeader } from "@/components/shell/app-shell";
  * parent opening this URL gets the finished report or an empty state, never a
  * form, and that is enforced server-side rather than by hiding a button.
  *
- * ★ A finalised report is read-only here.
+ * ★ A finalised report is read-only, and the API enforces it.
  *
- * The API's upsert does not refuse a write after finalisation, so this is
- * currently a UI decision rather than a guarantee — worth closing on the server
- * too, because "final" that can change underneath the family who read it is not
- * final. Until then the form does not offer it.
+ * `PUT` answers 409 once the report is FINAL, so this screen not offering the
+ * form is a courtesy rather than the guarantee — "final" that could change
+ * underneath the family who read it would not be final. Finalising twice is a
+ * no-op on the server, so a double-click cannot move the timestamp the family
+ * were told about.
  */
 const termsSchema = z.array(termSchema);
 

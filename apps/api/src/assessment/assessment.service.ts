@@ -339,6 +339,17 @@ export class AssessmentService {
     const facts = await this.childAccess.assertCanRecord(actor, childId);
     const term = await this.requireTerm(actor, dto.termId, facts.childKindergartenId);
 
+    // ★ FINAL means final.
+    //
+    // Once finalised, a family is reading this text. Accepting a later write
+    // would change it underneath them with no trace and no notification: the
+    // teacher would believe they had corrected a draft and the parent would
+    // have read something else. The upsert used to allow it.
+    const existing = await this.repo.findTermReport(childId, dto.termId, false);
+    if (existing?.status === "FINAL") {
+      throw new ConflictException("Баталгаажсан тайланг засах боломжгүй");
+    }
+
     const enrollment = await this.repo.enrollmentForTerm(childId, term.schoolYearId);
     if (!enrollment) {
       throw new BadRequestException("Хүүхэд энэ хичээлийн жилд бүртгэлгүй байна");
@@ -375,6 +386,12 @@ export class AssessmentService {
 
     const existing = await this.repo.findTermReport(childId, termId, false);
     if (!existing) throw new BadRequestException("Эхлээд улирлын тайланг бичнэ үү");
+
+    // Finalising twice is a double-click, not an error — the postcondition
+    // already holds. Returning early rather than re-finalising is what keeps
+    // `finalizedAt` at the moment the family were actually told it was ready,
+    // and keeps one audit row per finalisation.
+    if (existing.status === "FINAL") return existing;
 
     const finalized = await this.repo.finalizeTermReport(childId, termId);
 
