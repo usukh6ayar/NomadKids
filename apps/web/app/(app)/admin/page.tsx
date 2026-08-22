@@ -20,9 +20,9 @@ import { formatRelative } from "@/lib/format";
  * The brief is explicit about no dead navigation, and the temptation on an
  * admin screen is to lay out the whole eventual product — user management,
  * kindergarten settings, domain and level configuration — and wire the links
- * later. Every one of those would 404 today. `GET /users` exists, so it is
- * reachable through the counts; the configuration tables have read endpoints
- * but no admin UI in this phase, so they are not linked at all.
+ * later. Every link here goes somewhere that exists today. The configuration
+ * tables (domains, levels, observation types) have read endpoints but no admin
+ * UI, so they are not linked at all rather than linked and empty.
  */
 export default function AdminPage() {
   return (
@@ -86,11 +86,19 @@ function AdminDashboard() {
         a child needs a group — so a new kindergarten can be set up top to bottom.
       */}
       <section aria-label="Удирдлагын хэсгүүд">
-        <SectionHeader title="Удирдлага" lede="Хичээлийн жил, бүлэг, хэрэглэгчийн бүртгэл." />
-        <div className="grid gap-2 sm:grid-cols-3">
+        <SectionHeader
+          title="Удирдлага"
+          lede="Цэцэрлэг, хичээлийн жил, бүлэг, хэрэглэгчийн бүртгэл."
+        />
+        <div className="grid gap-2 sm:grid-cols-2">
           <AdminLink href="/admin/school-years" title="Хичээлийн жил" note="Эхлээд үүсгэнэ" />
           <AdminLink href="/admin/groups" title="Бүлгүүд" note="Багш хуваарилах" />
           <AdminLink href="/admin/users" title="Хэрэглэгчид" note="Багш, админ урих" />
+          <AdminLink
+            href="/admin/kindergarten"
+            title="Цэцэрлэгийн мэдээлэл"
+            note="Нэр, хаяг, холбоо барих"
+          />
         </div>
       </section>
 

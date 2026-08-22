@@ -67,6 +67,7 @@ export const qk = {
   adminUsers: (filters: Record<string, string>) => ["admin", "users", filters] as const,
   adminGroups: () => ["admin", "groups"] as const,
   adminSchoolYears: (kindergartenId: string) => ["admin", "school-years", kindergartenId] as const,
+  adminKindergarten: (kindergartenId: string) => ["admin", "kindergarten", kindergartenId] as const,
 
   profile: () => ["me", "profile"] as const,
 } as const;
