@@ -76,6 +76,53 @@ export function detectImageType(buffer: Buffer): "image/jpeg" | "image/png" | "i
 }
 
 /**
+ * Whether these bytes are an ISO-BMFF image — HEIC, HEIF or AVIF.
+ *
+ * ★ Not a supported format. This exists only so the rejection can say which
+ * format it was and what to do about it.
+ *
+ * `sharp` here is built without HEVC (its prebuilt binary reports
+ * `heif.input.fileSuffix: ['.avif']` — libheif is present, the patent-
+ * encumbered HEVC decoder is not), so a `.heic` cannot be decoded server-side.
+ * Adding a WASM decoder for it is roughly two megabytes and a new parser on the
+ * upload path, which is a poor trade for how rarely it arrives: iOS converts
+ * HEIC to JPEG on its own when a photo is chosen through `<input type="file">`,
+ * so these bytes reach us essentially only when someone drags a `.heic` off a
+ * Mac.
+ *
+ * That person can fix it in ten seconds if they are told how, and cannot guess
+ * if they are told "Зөвхөн JPEG, PNG, WebP". The whole feature is the sentence.
+ *
+ * Layout: bytes 4-8 are "ftyp", then a brand. `heic`/`heix`/`hevc`/`hevx` are
+ * HEVC-coded, `mif1`/`msf1` are the generic HEIF brands Apple also emits, and
+ * `avif` is the one sharp could actually read — but accepting AVIF while
+ * rejecting its siblings would be a distinction nobody could predict, and no
+ * camera in a kindergarten produces it.
+ */
+export function isUnsupportedHeifFamily(buffer: Buffer): boolean {
+  if (buffer.length < 12) return false;
+  if (buffer.subarray(4, 8).toString("ascii") !== "ftyp") return false;
+
+  const brand = buffer.subarray(8, 12).toString("ascii");
+  return ["heic", "heix", "hevc", "hevx", "mif1", "msf1", "avif"].includes(brand);
+}
+
+/**
+ * The longest edge a stored photograph may have.
+ *
+ * A phone photograph arrives at 4032×3024 and was stored at that size, which
+ * nothing in this product can use: the PDF places photographs a few centimetres
+ * wide, where 2000px is still past 300dpi, and the gallery renders them smaller
+ * than that again. The cost of keeping the original was paid three times over —
+ * in the bucket, in the report worker's memory, and on a parent's mobile data
+ * every time they opened the gallery.
+ *
+ * `withoutEnlargement` matters: a scanned drawing at 900px must not be blown up
+ * to 2000 and stored as a blurrier, larger file than it arrived as.
+ */
+export const MAX_IMAGE_EDGE = 2000;
+
+/**
  * Validates and normalises an uploaded image.
  *
  * The order matters: size first (cheapest, and bounds everything after it),
@@ -102,6 +149,17 @@ export async function validateImageUpload(input: Buffer): Promise<ValidatedUploa
 
   const detected = detectImageType(input);
   if (!detected) {
+    // The one exception to the rule below. Naming HEIC confirms nothing an
+    // attacker could not determine from the bytes they just sent, and it is
+    // the difference between a teacher fixing their camera setting and
+    // giving up on the photo.
+    if (isUnsupportedHeifFamily(input)) {
+      throw new UploadRejected(
+        "HEIC зургийг дэмжихгүй байна. iPhone дээрээ Тохиргоо → Камер → " +
+          "Формат → «Хамгийн нийцтэй» болгоод дахин авна уу.",
+      );
+    }
+
     // Deliberately does not echo the declared name or the detected type: a
     // rejection message is not the place to confirm what an attacker's probe
     // was recognised as.
@@ -124,6 +182,14 @@ export async function validateImageUpload(input: Buffer): Promise<ValidatedUploa
 
     const output = await pipeline
       .rotate() // applies EXIF orientation before the metadata is discarded
+      // After `rotate`, so a portrait photograph is bounded on the edge it
+      // actually has rather than the one EXIF claimed.
+      .resize({
+        width: MAX_IMAGE_EDGE,
+        height: MAX_IMAGE_EDGE,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
       .toFormat(keepPng ? "png" : "jpeg", { quality: 88 })
       .toBuffer({ resolveWithObject: true });
 
