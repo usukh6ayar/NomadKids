@@ -102,6 +102,13 @@ export class ObservationsService {
     const enrollment = await this.resolveEnrollment(childId);
     const type = await this.repo.findType(dto.typeId, enrollment.kindergartenId);
     if (!type) throw new BadRequestException("Ажиглалтын төрөл олдсонгүй");
+    // ★ Refuse new, permit existing. An administrator who retires a type
+    // (`isActive: false`, via DELETE /observation-types/:id) stops it being
+    // chosen from here on; observations already filed against it keep rendering,
+    // because the read paths join the row without filtering on `isActive`.
+    // Enforced here rather than in `findType`, which is also the lookup a read
+    // uses — filtering there would make old observations unreadable.
+    if (!type.isActive) throw new BadRequestException("Энэ ажиглалтын төрөл идэвхгүй болсон байна");
 
     const domainIds = dto.domainIds ?? [];
     await this.assertDomainsValid(domainIds, enrollment.kindergartenId);
