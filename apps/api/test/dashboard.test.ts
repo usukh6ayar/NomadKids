@@ -465,3 +465,54 @@ describe("audit log", () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RFP §12.1 tiles — birthdays today and this term's assessment progress
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("teacher dashboard — §12.1 tiles", () => {
+  it("names the children whose birthday is today", async () => {
+    const today = new Date();
+    const born = new Date(Date.UTC(2021, today.getMonth(), today.getDate()));
+    await db.child.update({ where: { id: a.child.id }, data: { dateOfBirth: born } });
+
+    const res = await authed(request(server()).get("/v1/dashboard/teacher"), teacherA);
+
+    expect(res.status).toBe(200);
+    expect(res.body.birthdaysToday.map((c: { id: string }) => c.id)).toContain(a.child.id);
+  });
+
+  it("does not list a child whose birthday is another day", async () => {
+    const today = new Date();
+    const notToday = new Date(Date.UTC(2021, today.getMonth(), today.getDate()));
+    notToday.setUTCDate(notToday.getUTCDate() + 1);
+    await db.child.update({ where: { id: a.child.id }, data: { dateOfBirth: notToday } });
+
+    const res = await authed(request(server()).get("/v1/dashboard/teacher"), teacherA);
+    expect(res.body.birthdaysToday.map((c: { id: string }) => c.id)).not.toContain(a.child.id);
+  });
+
+  /**
+   * ★ The tile is scoped like everything else.
+   *
+   * A birthday is child data. A teacher must not learn that a child in another
+   * group — or another kindergarten — has a birthday today, which is exactly
+   * the kind of leak a "harmless" dashboard widget introduces.
+   */
+  it("never names a child from another kindergarten", async () => {
+    const today = new Date();
+    const born = new Date(Date.UTC(2021, today.getMonth(), today.getDate()));
+    await db.child.update({ where: { id: b.child.id }, data: { dateOfBirth: born } });
+
+    const res = await authed(request(server()).get("/v1/dashboard/teacher"), teacherA);
+    expect(res.body.birthdaysToday.map((c: { id: string }) => c.id)).not.toContain(b.child.id);
+  });
+
+  it("reports this term's assessment progress against the roster", async () => {
+    const res = await authed(request(server()).get("/v1/dashboard/teacher"), teacherA);
+
+    expect(res.body.termProgress).toBeDefined();
+    expect(res.body.termProgress.total).toBe(res.body.counts.children);
+    expect(res.body.termProgress.assessed).toBeLessThanOrEqual(res.body.termProgress.total);
+  });
+});

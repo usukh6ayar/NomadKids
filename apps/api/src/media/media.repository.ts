@@ -68,6 +68,9 @@ export class MediaRepository {
         mimeType: true,
         status: true,
         purpose: true,
+        // Who uploaded it — a guardian may edit their own photograph's caption
+        // and nobody else's. `MediaService.updateMetadata`.
+        uploadedById: true,
       },
     });
   }
@@ -249,10 +252,24 @@ export class MediaRepository {
     });
   }
 
+  /**
+   * The observation a photograph is being attached to.
+   *
+   * `source` and `authorId` are selected because a guardian may attach only to
+   * their OWN parent observation. Without them the endpoint would let a family
+   * illustrate a teacher's private note — the note stays hidden while a
+   * photograph they chose sits inside it.
+   */
   async findObservationForAttachment(observationId: string) {
     return this.prisma.observation.findFirst({
       where: { id: observationId, deletedAt: null },
-      select: { id: true, childId: true, kindergartenId: true },
+      select: {
+        id: true,
+        childId: true,
+        kindergartenId: true,
+        source: true,
+        authorId: true,
+      },
     });
   }
 

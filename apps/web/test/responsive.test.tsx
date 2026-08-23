@@ -23,6 +23,26 @@ import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field"
 
 const GLOBALS_CSS = readFileSync(join(__dirname, "..", "app", "globals.css"), "utf8");
 
+/**
+ * WCAG 2.1 relative luminance and contrast ratio.
+ *
+ * ★ Computed here rather than trusted from a palette tool, because the whole
+ * point is that these ratios are invisible to the person choosing the colour.
+ * The formula is the specification's: linearise each channel, weight by
+ * 0.2126/0.7152/0.0722, then `(lighter + 0.05) / (darker + 0.05)`.
+ */
+function luminance(hex: string): number {
+  const value = hex.replace("#", "");
+  const channels = [0, 2, 4].map((i) => parseInt(value.slice(i, i + 2), 16) / 255);
+  const [r, g, b] = channels.map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+}
+
+function contrast(a: string, b: string): number {
+  const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (light! + 0.05) / (dark! + 0.05);
+}
+
 describe("touch targets", () => {
   it("every button size is at least 44px", () => {
     const sizes = ["md", "sm", "lg", "icon"] as const;
@@ -151,11 +171,44 @@ describe("design tokens", () => {
   it("defines the approved palette", () => {
     // The brief names these exactly; a drifted hex is a visual regression no
     // screenshot test would catch either.
-    expect(GLOBALS_CSS).toContain("#f8f7f4"); // canvas
-    expect(GLOBALS_CSS).toContain("#6c63ff"); // primary
-    expect(GLOBALS_CSS).toContain("#26242b"); // ink
-    expect(GLOBALS_CSS).toContain("#77737d"); // muted
-    expect(GLOBALS_CSS).toContain("#e9e6e0"); // border
+    // ★ Repainted 2026-08-22 on the client's instruction: white ground, sky
+    // blue accent. The previous values were the approved Phase 1 palette
+    // (PHASE_1_ACCEPTANCE item 15) — that approval now needs re-confirming.
+    expect(GLOBALS_CSS).toContain("#f8fafc"); // canvas
+    expect(GLOBALS_CSS).toContain("#0ea5e9"); // primary-bright — surfaces only
+    expect(GLOBALS_CSS).toContain("#0369a1"); // primary — filled buttons, rings
+    expect(GLOBALS_CSS).toContain("#075985"); // primary-strong — coloured text
+    expect(GLOBALS_CSS).toContain("#0f172a"); // ink
+    expect(GLOBALS_CSS).toContain("#64748b"); // muted
+    expect(GLOBALS_CSS).toContain("#e2e8f0"); // border
+  });
+
+  /**
+   * ★ Measured, not eyeballed.
+   *
+   * White on sky-500 is 2.77:1 and would have shipped as the primary button —
+   * the brief asked for sky-500 and the failure is invisible to anyone with
+   * ordinary vision. RFP §13 requires sufficient contrast, so the button colour
+   * is pinned here: if someone "restores" the brighter blue to match a mockup,
+   * this fails and says why.
+   */
+  it("the filled button colour clears 4.5:1 against white text", () => {
+    const ratio = contrast("#0369a1", "#ffffff");
+    expect(ratio).toBeGreaterThanOrEqual(4.5);
+    expect(GLOBALS_CSS).toContain("--color-primary: #0369a1");
+  });
+
+  it("every accent ink clears 4.5:1 on its own tint", () => {
+    const pairs: [string, string, string][] = [
+      ["mint", "#bfe8d4", "#1f6b4d"],
+      ["sky", "#cde7f7", "#1d4e89"],
+      ["sun", "#f8e6a0", "#7a5810"],
+      ["peach", "#f8d5c2", "#9a4a25"],
+    ];
+    for (const [name, tint, ink] of pairs) {
+      expect(GLOBALS_CSS).toContain(ink);
+      expect(contrast(tint, ink), `${name} badge text`).toBeGreaterThanOrEqual(4.5);
+    }
   });
 
   it("defines the sizing floors as tokens", () => {

@@ -4,6 +4,7 @@ import type { Actor } from "./actor";
 import {
   canAccessChild,
   canAdministerChild,
+  canContributeMediaForChild,
   canRecordForChild,
   type ChildAccessFacts,
 } from "./child-access";
@@ -44,6 +45,16 @@ export class ChildAccessService {
   async assertCanRecord(actor: Actor, childId: string): Promise<ChildAccessFacts> {
     const facts = await this.repo.loadChildAccessFacts(actor, childId);
     if (!facts || !canRecordForChild(actor, facts)) throw new NotFoundException();
+    return facts;
+  }
+
+  /**
+   * Throws 404 unless the actor may add a photograph to this child's album —
+   * staff, or one of this child's own guardians. RFP §2.3.
+   */
+  async assertCanContributeMedia(actor: Actor, childId: string): Promise<ChildAccessFacts> {
+    const facts = await this.repo.loadChildAccessFacts(actor, childId);
+    if (!facts || !canContributeMediaForChild(actor, facts)) throw new NotFoundException();
     return facts;
   }
 
