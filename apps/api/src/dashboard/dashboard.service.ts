@@ -34,14 +34,21 @@ export class DashboardService {
     const kindergartenIds = this.tenants.memberKindergartenIds(actor);
     const term = await this.repo.currentTerm(kindergartenIds, new Date());
 
-    const [pendingReviews, recentObservations, childCount, missingAssessment] = await Promise.all([
-      this.repo.pendingReviewCount(groupIds),
-      this.repo.recentObservations(groupIds),
-      this.repo.activeChildCount(groupIds),
-      // No current term means no assessment gap to report — an honest empty
-      // list rather than a query against a term that does not exist.
-      term ? this.repo.childrenMissingAssessment(groupIds, term.id) : Promise.resolve([]),
-    ]);
+    const today = new Date();
+
+    const [pendingReviews, recentObservations, childCount, missingAssessment, birthdays, progress] =
+      await Promise.all([
+        this.repo.pendingReviewCount(groupIds),
+        this.repo.recentObservations(groupIds),
+        this.repo.activeChildCount(groupIds),
+        // No current term means no assessment gap to report — an honest empty
+        // list rather than a query against a term that does not exist.
+        term ? this.repo.childrenMissingAssessment(groupIds, term.id) : Promise.resolve([]),
+        this.repo.birthdaysToday(groupIds, today),
+        term
+          ? this.repo.termAssessmentProgress(groupIds, term.id)
+          : Promise.resolve({ assessed: 0 }),
+      ]);
 
     return {
       currentTerm: term
@@ -58,6 +65,22 @@ export class DashboardService {
           group: c.enrollments[0]?.group ?? null,
         })),
       },
+      /** RFP §12.1 — "тухайн өдөр төрсөн өдөртэй хүүхэд". */
+      birthdaysToday: birthdays.map((c) => ({
+        id: c.id,
+        lastName: c.lastName,
+        firstName: c.firstName,
+        dateOfBirth: c.dateOfBirth,
+        photoMediaFileId: c.photoMediaFileId,
+      })),
+      /**
+       * RFP §12.1 — "улирлын үнэлгээний явц".
+       *
+       * `total` is the roster, not the number of assessments: the question a
+       * teacher is asking is "how many of my children have I got to", and a
+       * percentage of domain-rows would answer a different one.
+       */
+      termProgress: { assessed: progress.assessed, total: childCount },
       recentObservations,
     };
   }

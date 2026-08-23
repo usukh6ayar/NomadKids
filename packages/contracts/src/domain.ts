@@ -560,6 +560,22 @@ export const teacherDashboardSchema = z.object({
       }),
     ),
   }),
+  /** RFP §12.1 — children whose birthday is today. */
+  birthdaysToday: z
+    .array(
+      z.object({
+        id: uuidSchema,
+        lastName: z.string(),
+        firstName: z.string(),
+        dateOfBirth: z.string().nullish(),
+        photoMediaFileId: uuidSchema.nullish(),
+      }),
+    )
+    .default([]),
+  /** RFP §12.1 — how many of the roster have been assessed this term. */
+  termProgress: z
+    .object({ assessed: z.number(), total: z.number() })
+    .default({ assessed: 0, total: 0 }),
   recentObservations: z.array(feedObservationSchema).default([]),
 });
 export type TeacherDashboard = z.infer<typeof teacherDashboardSchema>;
