@@ -190,16 +190,21 @@ describe("upload", () => {
     expect(res.status).toBe(400);
   });
 
-  it("a GUARDIAN cannot upload to the gallery", async () => {
-    // Record access is required; a family contributes through their own
-    // observation, not straight into the child's photo album.
-    const res = await authed(
-      request(server()).post(`/v1/children/${a.child.id}/media`),
-      parentA,
-    ).attach("file", await photoBytes(), "гэрийн.jpg");
-
-    expect(res.status).toBe(404);
-  });
+  /*
+   * ★ REVERSED 2026-08-22, on the client's instruction.
+   *
+   * This case used to assert that a guardian gets 404 on the gallery, matching
+   * the Django reference. RFP §2.3 says the opposite in as many words —
+   * "Хүүхдийн зураг болон зургийн цомог үүсгэх" — and the RFP outranks the
+   * reference. The behaviour it used to guard now lives in
+   * "a guardian contributing to the album" at the end of this file, along with
+   * everything that did NOT change: a guardian still cannot delete, cannot set
+   * the profile photo, cannot edit somebody else's caption, and cannot attach
+   * to a teacher's observation.
+   *
+   * Left as a note rather than deleted, so that the next person to read the
+   * reference suite and find a missing case knows it was a decision.
+   */
 
   it("cross-kindergarten upload gets 404", async () => {
     const res = await authed(
@@ -752,5 +757,136 @@ describe("album metadata", () => {
     expect(
       (await authed(request(server()).patch(`/v1/media/${id}`), parentA).send({ age: 3 })).status,
     ).toBe(404);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A family may build the album — RFP §2.3
+//
+// ★ This overrides the reference system, which refused guardian uploads
+// outright. The RFP is explicit ("Хүүхдийн зураг болон зургийн цомог үүсгэх")
+// and is the final authority. What it does NOT do is widen anything else, and
+// most of this block is the proof of that.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("a guardian contributing to the album", () => {
+  it("uploads a photo of their own child", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/media`),
+      parentA,
+    ).attach("file", await photoBytes(), "гэрийн зураг.jpg");
+
+    expect(res.status).toBe(201);
+    expect(res.body.items).toHaveLength(1);
+  });
+
+  it("is attributed to the parent, and records who uploaded it", async () => {
+    const id = await upload(parentA, a.child.id);
+    const row = await db.mediaFile.findUniqueOrThrow({ where: { id } });
+
+    expect(row.attribution).toBe("PARENT");
+    expect(row.uploadedById).toBe(a.parentUser.id);
+  });
+
+  it("the photo appears in the family's own gallery", async () => {
+    const id = await upload(parentA, a.child.id);
+
+    const res = await authed(request(server()).get(`/v1/children/${a.child.id}/media`), parentA);
+    expect(res.body.items.map((m: { id: string }) => m.id)).toContain(id);
+  });
+
+  it("and the teacher sees it too — one album, not two", async () => {
+    const id = await upload(parentA, a.child.id);
+
+    const res = await authed(request(server()).get(`/v1/children/${a.child.id}/media`), teacherA);
+    expect(res.body.items.map((m: { id: string }) => m.id)).toContain(id);
+  });
+
+  it("a guardian of another child gets 404", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/media`),
+      parentB,
+    ).attach("file", await photoBytes(), "зураг.jpg");
+    expect(res.status).toBe(404);
+  });
+
+  it("a teacher from another group gets 404", async () => {
+    const outsider = await login(app, b.teacherUser.username);
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/media`),
+      outsider,
+    ).attach("file", await photoBytes(), "зураг.jpg");
+    expect(res.status).toBe(404);
+  });
+
+  /**
+   * ★★ The rule that makes guardian upload safe.
+   *
+   * The album is theirs; a teacher's observation is not. Without this a family
+   * could attach a photograph to a private teaching note — the note stays
+   * hidden from them while a picture they chose sits inside it and travels into
+   * the teacher's report.
+   */
+  it("cannot attach a photo to a teacher's observation", async () => {
+    const observationId = await teacherObservation(true);
+
+    const res = await authed(request(server()).post(`/v1/children/${a.child.id}/media`), parentA)
+      .field("observationId", observationId)
+      .attach("file", await photoBytes(), "зураг.jpg");
+
+    expect(res.status).toBe(400);
+  });
+
+  it("can attach a photo to their own home observation", async () => {
+    const observation = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/parent-observations`),
+      parentA,
+    ).send({ observedOn: "2026-02-10", situation: "Гэртээ" });
+    expect(observation.status).toBe(201);
+
+    const res = await authed(request(server()).post(`/v1/children/${a.child.id}/media`), parentA)
+      .field("observationId", observation.body.id)
+      .attach("file", await photoBytes(), "гэртээ.jpg");
+
+    expect(res.status).toBe(201);
+  });
+
+  it("can title the photo they uploaded", async () => {
+    const id = await upload(parentA, a.child.id);
+
+    const res = await authed(request(server()).patch(`/v1/media/${id}`), parentA).send({
+      caption: "Аав хоёулаа",
+      takenAt: "2026-01-15",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.caption).toBe("Аав хоёулаа");
+  });
+
+  // ── And nothing else widened ────────────────────────────────────────────
+
+  it("still cannot retitle a photo the teacher uploaded", async () => {
+    const id = await upload(teacherA, a.child.id);
+    const res = await authed(request(server()).patch(`/v1/media/${id}`), parentA).send({
+      caption: "Миний гарчиг",
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("still cannot delete their own upload", async () => {
+    // Deletion of child media stays a staff act — it is not in RFP §2.3, and
+    // retention is the kindergarten's responsibility. Recorded as an open
+    // question rather than assumed either way.
+    const id = await upload(parentA, a.child.id);
+    expect((await authed(request(server()).delete(`/v1/media/${id}`), parentA)).status).toBe(404);
+  });
+
+  it("still cannot set the child's profile photo", async () => {
+    const id = await upload(parentA, a.child.id);
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/media/profile-photo`),
+      parentA,
+    ).send({ mediaId: id });
+    expect(res.status).toBe(404);
   });
 });

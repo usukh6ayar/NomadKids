@@ -71,9 +71,11 @@ export class MediaService {
     file: { buffer: Buffer; originalname: string },
     options: UploadOptions = {},
   ) {
-    // Writing about a child needs record access; a guardian uploads through
-    // their own observation, not straight into the gallery.
-    const facts = await this.childAccess.assertCanRecord(actor, childId);
+    // ★ Staff, or one of this child's own guardians — RFP §2.3 gives a family
+    // the album in as many words. See `canContributeMediaForChild` for why this
+    // is wider than every other write about a child.
+    const facts = await this.childAccess.assertCanContributeMedia(actor, childId);
+    const isGuardian = isGuardianOf(actor, facts);
 
     let validated;
     try {
@@ -89,6 +91,24 @@ export class MediaService {
       // The observation must be about THIS child. Otherwise a valid observation
       // id from elsewhere would attach a photo to someone else's record.
       if (!observation || observation.childId !== childId) {
+        throw new BadRequestException("Ажиглалт олдсонгүй");
+      }
+
+      /*
+       * ★ A guardian may illustrate only their OWN note.
+       *
+       * Uploading to the album is theirs by right; a teacher's observation is
+       * not. Without this a family could attach a photograph to a private
+       * teaching note — the note stays hidden from them while a picture they
+       * chose sits inside it, and it would surface in the teacher's report.
+       *
+       * The same message as "not found", because which observation exists is
+       * not a family's business either.
+       */
+      if (
+        isGuardian &&
+        !(observation.source === "PARENT" && observation.authorId === actor.userId)
+      ) {
         throw new BadRequestException("Ажиглалт олдсонгүй");
       }
 
@@ -133,12 +153,14 @@ export class MediaService {
       category: options.category ?? null,
       // RFP §4.4 "багшийн, эцэг эхийн эсвэл хамтын".
       //
-      // ★ Defaults to TEACHER because only staff reach this method:
-      // `canRecordForChild` is assigned-teacher-or-admin, so a guardian never
-      // gets here — their photographs arrive through their own observation.
-      // The default is therefore a fact, not a guess. `PARENT` and `JOINT` are
-      // set explicitly, for the family photograph a teacher was handed.
-      attribution: options.attribution ?? MediaAttribution.TEACHER,
+      // ★ Defaulted from the relationship to THIS child, not from a role: a
+      // teacher whose own child attends the same kindergarten uploads as a
+      // parent for their own child and as a teacher for everyone else's —
+      // the same rule `editableAgeProfileFields` applies to the two notes.
+      // `JOINT`, and the family photograph a teacher was handed, are set
+      // explicitly.
+      attribution:
+        options.attribution ?? (isGuardian ? MediaAttribution.PARENT : MediaAttribution.TEACHER),
     });
 
     await this.audit.append({
@@ -186,7 +208,7 @@ export class MediaService {
     // Once, before the loop. Every file goes to the same child, so failing the
     // whole request on an unauthorized caller is right — and it means an
     // unauthorized caller cannot use the batch to probe one file at a time.
-    await this.childAccess.assertCanRecord(actor, childId);
+    await this.childAccess.assertCanContributeMedia(actor, childId);
 
     const items: Awaited<ReturnType<MediaService["upload"]>>[] = [];
     const failed: { name: string; reason: string }[] = [];
@@ -371,15 +393,24 @@ export class MediaService {
   /**
    * Caption and album metadata — RFP §4.4.
    *
-   * Record access, like every other write about a child: a guardian may add a
-   * photograph through their own observation but may not retitle or re-date the
-   * gallery.
+   * ★ Staff may edit any photograph of a child they record for. A guardian may
+   * edit **only the ones they uploaded themselves.**
+   *
+   * A photograph you can add but never title is half a feature — §4.4 lists the
+   * title, the date taken and the category as album capabilities, and a family
+   * that may create an album must be able to fill those in. Letting them edit a
+   * teacher's photograph would be a different thing entirely, so the test is
+   * authorship, not role.
    */
   async updateMetadata(actor: Actor, mediaId: string, dto: UpdateMediaDto) {
     const media = await this.repo.findForAuthorization(mediaId);
     if (!media || !media.childId) throw new NotFoundException();
 
-    await this.childAccess.assertCanRecord(actor, media.childId);
+    const facts = await this.childAccess.assertCanContributeMedia(actor, media.childId);
+    if (isGuardianOf(actor, facts) && media.uploadedById !== actor.userId) {
+      throw new NotFoundException();
+    }
+
     const updated = await this.repo.updateMetadata(mediaId, dto);
 
     await this.audit.append({

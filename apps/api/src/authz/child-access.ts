@@ -121,6 +121,32 @@ export function canRecordForChild(actor: Actor, facts: ChildAccessFacts): boolea
 }
 
 /**
+ * ★ May this actor add a photograph to this child's album?
+ *
+ * Wider than `canRecordForChild` and narrower than nothing: **staff, plus this
+ * child's own guardians.**
+ *
+ * RFP §2.3 gives a family "хүүхдийн зураг болон зургийн цомог үүсгэх" in as many
+ * words, and §4.4 classifies a photograph as the teacher's, the parent's or
+ * joint — a distinction that cannot arise if only staff may upload. The album is
+ * a family record, the same argument that makes the portfolio writable by
+ * guardians (`portfolio-fields.ts`).
+ *
+ * ★★ This deliberately does NOT widen anything else. A guardian still may not
+ * delete a photograph, set the profile picture, or edit metadata on a
+ * photograph somebody else uploaded — `canRecordForChild` still governs all
+ * three, and the reference cases `test_delete_refuses_the_childs_own_guardian`
+ * and `test_a_guardian_cannot_edit_their_own_child` still hold.
+ *
+ * The reference system refused guardian uploads outright. That behaviour is
+ * overridden here on purpose: the RFP is the final authority (CLAUDE.md
+ * precedence) and it is explicit.
+ */
+export function canContributeMediaForChild(actor: Actor, facts: ChildAccessFacts): boolean {
+  return canRecordForChild(actor, facts) || isGuardianOf(actor, facts);
+}
+
+/**
  * May this actor administer this child — transfers, guardianship changes,
  * enrollment edits? Admins only.
  */
