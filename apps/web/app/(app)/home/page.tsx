@@ -2,12 +2,13 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { BookOpen, Plus } from "lucide-react";
-import { useState } from "react";
-import { parentDashboardSchema } from "@kinder/contracts";
+import { Bell, BookOpen, Plus, TrendingUp } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { parentDashboardSchema, unreadCountSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
+import { PageHeader } from "@/components/shell/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
@@ -33,6 +34,16 @@ export default function ParentHomePage() {
     queryFn: () => get("/dashboard/parent", parentDashboardSchema),
   });
 
+  // Powers the "Ангийн самбар" preview card below — the same count the
+  // sidebar's unread dot shows, reused here as a share reason to open
+  // /notifications rather than a bare number.
+  const { data: unread } = useQuery({
+    queryKey: qk.unreadCount(),
+    queryFn: () => get("/notifications/unread-count", unreadCountSchema),
+    staleTime: 60_000,
+    retry: false,
+  });
+
   /**
    * Which child's summary is expanded.
    *
@@ -44,17 +55,17 @@ export default function ParentHomePage() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-5 py-2">
-        <h1 className="text-xl font-semibold text-ink">Нүүр</h1>
+      <HomeBackdrop>
+        <PageHeader title="Нүүр хуудас" />
         <LoadingState rows={3} />
-      </div>
+      </HomeBackdrop>
     );
   }
 
   if (isError) {
     return (
-      <div className="py-2">
-        <h1 className="mb-4 text-xl font-semibold text-ink">Нүүр</h1>
+      <HomeBackdrop>
+        <PageHeader title="Нүүр хуудас" />
         <ErrorState
           description={errorMessage(error)}
           action={
@@ -63,7 +74,7 @@ export default function ParentHomePage() {
             </Button>
           }
         />
-      </div>
+      </HomeBackdrop>
     );
   }
 
@@ -71,21 +82,21 @@ export default function ParentHomePage() {
 
   if (children.length === 0) {
     return (
-      <div className="flex flex-col gap-5 py-2">
-        <h1 className="text-xl font-semibold text-ink">Нүүр</h1>
+      <HomeBackdrop>
+        <PageHeader title="Нүүр хуудас" />
         <EmptyState
           title="Хүүхэд холбогдоогүй байна"
           description="Танд холбогдсон хүүхэд байхгүй байна. Цэцэрлэгийн багштайгаа холбогдоно уу."
         />
-      </div>
+      </HomeBackdrop>
     );
   }
 
   const selected = children.find((c) => c.id === selectedId) ?? children[0]!;
 
   return (
-    <div className="flex flex-col gap-6 py-2">
-      <h1 className="text-xl font-semibold text-ink">Нүүр</h1>
+    <HomeBackdrop>
+      <PageHeader title="Нүүр хуудас" />
 
       {children.length > 1 ? (
         <div
@@ -119,21 +130,15 @@ export default function ParentHomePage() {
         </div>
       ) : null}
 
-      <Card className="flex flex-wrap items-center gap-4 px-4 py-4 sm:px-5">
-        <ChildAvatar child={selected} size={56} />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-lg font-semibold text-ink">{fullName(selected)}</p>
-          <p className="text-sm text-muted">
-            {[formatAge(selected.dateOfBirth), selected.group?.name].filter(Boolean).join(" · ")}
-          </p>
-        </div>
-        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-          <Button asChild size="sm">
-            <Link href={`/children/${selected.id}/portfolio`}>
-              <BookOpen size={18} />
-              Хавтас
-            </Link>
-          </Button>
+      <Card className="flex flex-col gap-3 px-4 py-4 sm:px-5">
+        <div className="flex flex-wrap items-center gap-4">
+          <ChildAvatar child={selected} size={56} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-lg font-semibold text-ink">{fullName(selected)}</p>
+            <p className="text-sm text-muted">
+              {[formatAge(selected.dateOfBirth), selected.group?.name].filter(Boolean).join(" · ")}
+            </p>
+          </div>
           <Button asChild variant="secondary" size="sm">
             <Link href={`/children/${selected.id}/observations/new`}>
               <Plus size={18} />
@@ -141,7 +146,72 @@ export default function ParentHomePage() {
             </Link>
           </Button>
         </div>
+
+        <Link
+          href={`/children/${selected.id}`}
+          className="text-sm font-semibold text-primary hover:opacity-80"
+        >
+          Хүүхдийн дэлгэрэнгүй хуудас →
+        </Link>
       </Card>
+
+      <section aria-labelledby="board-heading">
+        <SectionHeader
+          title="Ангийн самбар"
+          action={
+            <Link href="/notifications" className="text-sm font-semibold text-primary hover:opacity-80">
+              Бүгдийг харах →
+            </Link>
+          }
+        />
+        <Link
+          href="/notifications"
+          className="flex min-h-16 items-center gap-3 rounded-card border border-border bg-surface px-4 py-3 shadow-card transition-colors hover:bg-canvas"
+        >
+          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-sky text-sky-ink">
+            <Bell size={20} aria-hidden />
+          </span>
+          <span className="min-w-0">
+            <span className="block font-semibold text-ink">
+              {unread && unread.count > 0
+                ? `${unread.count} шинэ мэдээ байна`
+                : "Шинэ мэдээ алга"}
+            </span>
+            <span className="block text-sm text-muted">Ангийн сүүлийн мэдээллийг харах</span>
+          </span>
+        </Link>
+      </section>
+
+      <section aria-labelledby="highlights-heading">
+        <SectionHeader title="Оюун-ийн мэдээлэл" />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Link
+            href={`/children/${selected.id}/portfolio`}
+            className="flex items-center gap-3 rounded-card border border-border bg-surface px-4 py-4 shadow-card transition-colors hover:bg-canvas"
+          >
+            <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary-soft text-primary">
+              <BookOpen size={20} aria-hidden />
+            </span>
+            <span className="min-w-0">
+              <span className="block font-semibold text-ink">Хавтас</span>
+              <span className="block text-sm text-muted">Зураг, бүтээл, тэмдэглэл</span>
+            </span>
+          </Link>
+
+          <Link
+            href={`/children/${selected.id}/observations`}
+            className="flex items-center gap-3 rounded-card border border-border bg-surface px-4 py-4 shadow-card transition-colors hover:bg-canvas"
+          >
+            <span className="grid size-10 shrink-0 place-items-center rounded-full bg-mint text-mint-ink">
+              <TrendingUp size={20} aria-hidden />
+            </span>
+            <span className="min-w-0">
+              <span className="block font-semibold text-ink">Хөгжил ба цэцэрлэгтээ</span>
+              <span className="block text-sm text-muted">Ажиглалт, хөгжлийн ахиц</span>
+            </span>
+          </Link>
+        </div>
+      </section>
 
       {selected.assessments.length > 0 ? (
         <section aria-labelledby="development-heading">
@@ -201,6 +271,83 @@ export default function ParentHomePage() {
           </Card>
         )}
       </section>
+    </HomeBackdrop>
+  );
+}
+
+/**
+ * A muted, looping video backdrop behind the whole page.
+ *
+ * ★ `absolute`, not `fixed` — and that choice is load-bearing, not stylistic.
+ * `AppShell`'s outer `<div className="min-h-dvh bg-canvas">` wraps this whole
+ * page, and it is a plain, non-positioned box: per the CSS painting order, its
+ * own opaque background is a normal in-flow paint step, which always comes
+ * *after* — i.e. on top of — a `position: fixed` negative-z-index descendant
+ * in the same stacking context, no matter how deep that descendant is nested
+ * or what z-index it carries. A `fixed -z-10` video here is invisible 100% of
+ * the time, painted over by that ancestor's own background; this was verified
+ * by sampling the composited page and getting the canvas colour back exactly,
+ * with zero contribution from the video.
+ *
+ * `position: relative` on both this wrapper and the content sibling opens a
+ * *local* stacking context that no ancestor can reach into, and DOM order
+ * inside it (video div first, content div second) is what keeps the video
+ * behind the cards — no z-index needed.
+ *
+ * ★★ `inset-0`, matching the content sibling's own height, not a fixed
+ * banner height. A fixed height (an earlier `h-56`, then `h-96`) cuts off
+ * mid-page regardless of how much the query returns — for a family with two
+ * children, or several recent moments, the cutoff landed inside a section
+ * (behind "Ангийн самбар"'s heading, un-faded) instead of between two of
+ * them, which read as a layout bug rather than a banner edge. Sizing to the
+ * sibling instead means the backdrop always ends exactly where the page does,
+ * however long that is.
+ *
+ * The fade is a percentage gradient for the same reason: fixed pixel stops
+ * only fade correctly for one content length. `from-transparent` through the
+ * first half keeps the clip's own top — clouds fading toward white, sampled
+ * at `rgb(211,241,251)` down to `rgb(255,255,255)` — reading as intended
+ * behind the header and the selected-child card; `to-canvas` by three
+ * quarters down clears the video before a long feed's tail end, on a short
+ * page and a long one alike.
+ *
+ * Paused under `prefers-reduced-motion`: autoplay is otherwise unconditional,
+ * and a looping background video is exactly the motion that preference exists
+ * to suppress.
+ */
+function HomeBackdrop({ children }: { children: ReactNode }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      video.pause();
+    } else {
+      void video.play();
+    }
+  }, []);
+
+  return (
+    <div className="relative">
+      <div
+        className="pointer-events-none absolute inset-0 overflow-hidden rounded-t-card"
+        aria-hidden="true"
+      >
+        <video
+          ref={videoRef}
+          className="h-full w-full object-cover object-top filter-[saturate(1.7)_contrast(1.25)_brightness(0.97)]"
+          src="/video.mp4"
+          autoPlay
+          loop
+          muted
+          playsInline
+        />
+        <div className="absolute inset-0 bg-canvas/20" />
+        <div className="absolute inset-0 bg-linear-to-b from-transparent from-35% to-canvas to-75%" />
+      </div>
+      <div className="relative flex flex-col gap-6">{children}</div>
     </div>
   );
 }

@@ -30,7 +30,13 @@ export interface RequestContext {
 export interface LoginResult {
   accessToken: string;
   refreshToken: string;
-  user: { id: string; username: string; lastName: string; firstName: string };
+  user: {
+    id: string;
+    username: string;
+    lastName: string;
+    firstName: string;
+    isSuperAdmin: boolean;
+  };
 }
 
 @Injectable()
@@ -111,6 +117,7 @@ export class AuthService {
         username: user.username,
         lastName: user.lastName,
         firstName: user.firstName,
+        isSuperAdmin: user.isSuperAdmin,
       },
     };
   }
@@ -170,6 +177,7 @@ export class AuthService {
         username: user.username,
         lastName: user.lastName,
         firstName: user.firstName,
+        isSuperAdmin: user.isSuperAdmin,
       },
     };
   }

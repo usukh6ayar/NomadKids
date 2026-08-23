@@ -2,12 +2,14 @@
 
 import {
   BookOpen,
+  Building2,
   ClipboardList,
   Home,
   LayoutGrid,
   Bell,
   Settings,
   ShieldCheck,
+  User,
   Users,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -43,7 +45,7 @@ import { useSession } from "@/lib/auth/session";
  * one coherent product rather than two apps they must sign out of to switch.
  */
 export default function AppLayout({ children }: { children: ReactNode }) {
-  const { session, isLoading, hasRole } = useSession();
+  const { session, isLoading, hasRole, isSuperAdmin } = useSession();
   const router = useRouter();
 
   useEffect(() => {
@@ -57,6 +59,19 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <div className="mx-auto w-full max-w-[1200px] px-4 py-10">
         <LoadingState label="Ачаалж байна…" />
       </div>
+    );
+  }
+
+  // Checked ahead of the staff/parent split: a superadmin holds no
+  // kindergarten membership (CLAUDE.md §1.1), so `hasRole` reads false for
+  // everything and this would otherwise fall into the parent shell — the
+  // "Танд холбогдсон хүүхэд байхгүй байна" screen a platform operator has no
+  // business seeing.
+  if (isSuperAdmin) {
+    return (
+      <AppShell nav={platformNav()} variant="platform">
+        {children}
+      </AppShell>
     );
   }
 
@@ -162,12 +177,27 @@ function staffSections(isAdmin: boolean): NavSection[] {
   ];
 }
 
-/** Parent navigation — four items, the brief's Нүүр / Хавтас / Мэдэгдэл plus profile. */
+/**
+ * Platform-operator navigation.
+ *
+ * Two items, because the operator's whole job in this MVP is registering
+ * kindergartens — everything else (their teachers, groups, children) belongs
+ * to the kindergarten's own admin from that point on. §7 keeps this MVP's
+ * platform surface deliberately small.
+ */
+function platformNav(): NavItem[] {
+  return [
+    { href: "/platform", label: "Цэцэрлэгүүд", icon: <Building2 {...iconProps} /> },
+    { href: "/settings", label: "Профайл", icon: <Settings {...iconProps} /> },
+  ];
+}
+
+/** Parent navigation — four items, the brief's Нүүр / Хавтас / Мэдэгдэл plus account. */
 function parentNav(): NavItem[] {
   return [
-    { href: "/home", label: "Нүүр", icon: <Home {...iconProps} /> },
+    { href: "/home", label: "Нүүр хуудас", icon: <Home {...iconProps} /> },
     { href: "/children", label: "Хавтас", icon: <BookOpen {...iconProps} /> },
     { href: "/notifications", label: "Мэдэгдэл", icon: <Bell {...iconProps} />, badge: "unread" },
-    { href: "/settings", label: "Профайл", icon: <Settings {...iconProps} /> },
+    { href: "/settings", label: "Миний бүртгэл", icon: <User {...iconProps} /> },
   ];
 }

@@ -77,14 +77,16 @@ function LoginForm() {
       }
 
       router.replace(
-        primary.dashboard === "admin"
-          ? "/admin"
-          : primary.dashboard === "teacher"
-            ? "/dashboard"
-            : primary.dashboard === "parent"
-              ? "/home"
-              : // No membership at all — a real state after a revocation.
-                "/no-access",
+        primary.dashboard === "platform"
+          ? "/platform"
+          : primary.dashboard === "admin"
+            ? "/admin"
+            : primary.dashboard === "teacher"
+              ? "/dashboard"
+              : primary.dashboard === "parent"
+                ? "/home"
+                : // No membership at all — a real state after a revocation.
+                  "/no-access",
       );
     },
   });

@@ -75,6 +75,14 @@ export const currentUserSchema = z.object({
   firstName: z.string(),
   email: z.string().nullish(),
   phone: z.string().nullish(),
+  /**
+   * Platform operator, not a kindergarten role — CLAUDE.md §1.3. Absent from
+   * older responses, so `.default(false)` rather than a required field: this is
+   * UX only (it picks a nav and a landing page), and the API re-derives the
+   * real authority from `User.isSuperAdmin` on every request regardless of what
+   * this says.
+   */
+  isSuperAdmin: z.boolean().default(false),
 });
 
 export const sessionSchema = z.object({
@@ -641,7 +649,40 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
  * `null` means the account holds no membership at all — a real state (an
  * invited user whose membership was revoked), and the UI has to say something
  * rather than redirect in a loop.
+ *
+ * `"platform"` is the superadmin, checked ahead of every membership role: they
+ * hold none by design (CLAUDE.md §1.1 — platform routes stay outside tenant
+ * scoping), so without this branch they fall through to the same `null` a
+ * revoked user gets.
  */
 export const primaryDashboardSchema = z.object({
-  dashboard: z.enum(["admin", "teacher", "parent"]).nullable(),
+  dashboard: z.enum(["platform", "admin", "teacher", "parent"]).nullable(),
+});
+
+// ── Platform (superadmin) ───────────────────────────────────────────────────
+
+/** A kindergarten as the platform operator's list returns it. */
+export const platformKindergartenSchema = z.object({
+  id: uuidSchema,
+  name: z.string(),
+  address: z.string().nullish(),
+  phone: z.string().nullish(),
+  email: z.string().nullish(),
+  isActive: z.boolean(),
+  createdAt: z.string(),
+});
+export type PlatformKindergarten = z.infer<typeof platformKindergartenSchema>;
+
+/** `POST /platform/kindergartens` — the tenant, its first admin, and the invite. */
+export const createdKindergartenSchema = z.object({
+  kindergarten: platformKindergartenSchema.pick({ id: true, name: true }),
+  admin: z.object({
+    id: uuidSchema,
+    username: z.string(),
+    email: z.string().nullish(),
+    phone: z.string().nullish(),
+    lastName: z.string(),
+    firstName: z.string(),
+  }),
+  invitationToken: z.string(),
 });

@@ -65,8 +65,14 @@ export function PageHeader({
   /** Trailing controls — a count, a filter, a primary action. */
   actions?: ReactNode;
 }) {
-  const { session, roles } = useSession();
-  const roleLabel = roles.has("TEACHER") ? "Багш" : roles.has("ADMIN") ? "Админ" : "Эцэг эх";
+  const { session, roles, isSuperAdmin } = useSession();
+  const roleLabel = isSuperAdmin
+    ? "Платформын админ"
+    : roles.has("TEACHER")
+      ? "Багш"
+      : roles.has("ADMIN")
+        ? "Админ"
+        : "Эцэг эх";
 
   return (
     <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -121,10 +127,17 @@ export function AppShell({
   sections?: NavSection[];
   shortcuts?: NavShortcut[];
   children: ReactNode;
-  variant?: "teacher" | "parent";
+  variant?: "teacher" | "parent" | "platform";
 }) {
-  const desktopSidebar = variant === "teacher";
-  const subtitle = variant === "teacher" ? "Багшийн хэсэг" : "Эцэг эхийн хэсэг";
+  // Every role gets the sidebar from `lg` up; only the bottom bar is
+  // role-dependent (mobile-only, all three variants).
+  const desktopSidebar = true;
+  const subtitle =
+    variant === "teacher"
+      ? "Багшийн хэсэг"
+      : variant === "platform"
+        ? "Платформын удирдлага"
+        : "Эцэг эхийн хэсэг";
 
   return (
     <div className="min-h-dvh bg-canvas">
@@ -132,7 +145,7 @@ export function AppShell({
         <Sidebar nav={nav} sections={sections} shortcuts={shortcuts} subtitle={subtitle} />
       ) : null}
 
-      <MobileHeader variant={variant} subtitle={subtitle} />
+      <MobileHeader subtitle={subtitle} />
 
       {/*
         `pb-24` on mobile clears the fixed bottom bar. Without it the last row
@@ -204,35 +217,26 @@ function Brand({ subtitle }: { subtitle: string }) {
 }
 
 /**
- * Who is signed in, and the way out — at the foot of the sidebar.
+ * The way out — the last row of the sidebar's menu.
  *
- * `mt-auto` pins it to the bottom however short the navigation is. Ported from
- * `.whoami`; the logout control is a 44px square, as it is there.
+ * ★ Matches the reference exactly: "Гарах" is a plain nav-style row at the
+ * foot of the list, not a separate identity card. Who is signed in is shown
+ * once, in the page header's pill (`PageHeader`'s `hidden lg:flex` block) —
+ * showing it again here duplicated the same three facts the mobile header
+ * already carries, which is what the old `WhoAmI` card did.
  */
-function WhoAmI({ subtitle }: { subtitle: string }) {
-  const { session } = useSession();
+function LogoutLink() {
   const logout = useLogout();
 
   return (
-    <div className="flex min-h-[44px] shrink-0 items-center gap-2 rounded-[14px] bg-canvas px-3 py-2">
-      <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary-soft text-[.7rem] font-bold text-primary">
-        {initials(session?.user)}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-[.78rem] font-semibold leading-[1.2] text-ink [overflow-wrap:anywhere]">
-          {fullName(session?.user)}
-        </span>
-        <span className="block text-[.75rem] text-muted">{subtitle}</span>
-      </span>
-      <button
-        type="button"
-        onClick={() => void logout()}
-        aria-label="Гарах"
-        className="grid size-11 shrink-0 place-items-center rounded-[12px] text-muted hover:bg-surface hover:text-primary"
-      >
-        <LogoutIcon />
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={() => void logout()}
+      className="flex min-h-[44px] items-center gap-[11px] rounded-lg px-3 py-2.5 text-left text-[.92rem] font-medium text-muted transition-colors hover:bg-canvas hover:text-ink"
+    >
+      <LogoutIcon />
+      Гарах
+    </button>
   );
 }
 
@@ -260,13 +264,10 @@ function Sidebar({
       /*
        * ★ Only the menu scrolls.
        *
-       * The sidebar can be taller than a laptop viewport, and when the whole
-       * panel scrolled, `whoami`'s `mt-auto` put it at the foot of the
-       * *content* rather than the panel — so it overlapped the last section
-       * and the way out scrolled off the screen. The brand and the identity
-       * are fixed now, and the nav between them takes the overflow. Trimming
-       * the menu to built screens made this comfortable rather than moot: it
-       * has to keep holding as sections come back.
+       * The sidebar can be taller than a laptop viewport. The brand stays
+       * fixed at the top, and the nav below it — "Гарах" included, as its
+       * last row — takes the overflow, so the way out is always reachable
+       * even when a long section list pushes the rest off-screen.
        */
       className="fixed inset-y-0 left-0 z-20 hidden w-[244px] flex-col gap-5 overflow-hidden border-r border-border bg-surface px-3.5 py-[18px] lg:flex"
     >
@@ -286,9 +287,9 @@ function Sidebar({
               .map((item) => (
                 <NavLink key={item.href} item={item} pathname={pathname} orientation="vertical" />
               ))}
-      </div>
 
-      <WhoAmI subtitle={subtitle} />
+        <LogoutLink />
+      </div>
     </nav>
   );
 }
@@ -398,19 +399,18 @@ function ChevronIcon() {
  * entirely — this plus the bottom navigation is a deliberate mobile layout
  * rather than a folded desktop one.
  *
- * Hidden on the teacher's desktop, where the sidebar already carries all three
- * facts (brand, identity, logout). Showing them twice is what crowded the page
- * title in the reference, which solved it the same way.
+ * Hidden from `lg` up on every variant, where the sidebar already carries all
+ * three facts (brand, identity, logout). Showing them twice is what crowded
+ * the page title in the reference, which solved it the same way.
  */
-function MobileHeader({ variant, subtitle }: { variant: "teacher" | "parent"; subtitle: string }) {
+function MobileHeader({ subtitle }: { subtitle: string }) {
   const { session } = useSession();
   const logout = useLogout();
 
   return (
     <header
       className={cn(
-        "sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-surface px-4 py-3",
-        variant === "teacher" && "lg:hidden",
+        "sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-surface px-4 py-3 lg:hidden",
       )}
     >
       <Link href="/" className="flex min-h-[44px] items-center gap-3">

@@ -39,6 +39,7 @@ export class AuthRepository {
         passwordHash: true,
         lastName: true,
         firstName: true,
+        isSuperAdmin: true,
       },
     });
   }
