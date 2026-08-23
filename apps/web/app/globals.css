@@ -1,11 +1,19 @@
 @import "tailwindcss";
 
 /*
- * Design tokens — the approved Phase 1 direction.
+ * Design tokens.
  *
- * Warm and quiet rather than corporate. This is a product about small children,
- * used by teachers who are on their feet and by parents on a phone in the
- * evening. The palette is deliberately narrow: one primary, one surface, one
+ * ★ REPAINTED 2026-08-22, on the client's instruction: white ground, soft sky
+ * blue accent. The previous direction (warm #F8F7F4 canvas, violet #6C63FF)
+ * was the approved Phase 1 palette recorded in PHASE_1_ACCEPTANCE item 15 —
+ * **that approval no longer describes what ships and needs re-confirming.**
+ *
+ * The values changed; the structure did not, deliberately. Every screen reads
+ * these tokens, so the repaint is one file rather than 27, and a page written
+ * against raw `slate-100` / `sky-500` utilities would be the one page that
+ * stops following the next change. The sizing floors below are untouched.
+ *
+ * The palette stays deliberately narrow: one primary, one surface, one
  * background, and four soft accents used only to carry meaning.
  *
  * ★ Sizing tokens are load-bearing, not cosmetic.
@@ -18,22 +26,57 @@
  */
 
 @theme {
-  /* Surfaces */
-  --color-canvas: #f8f7f4;
+  /*
+   * Surfaces.
+   *
+   * ★ Canvas is a hair off white (slate-50) rather than #fff, while cards are
+   * pure white. "Pure white background with white cards" needs a shadow heavy
+   * enough to separate them, and heavy shadows are what make a clean layout
+   * look cheap. One step of tint does the separating instead, so the card
+   * shadow can stay almost invisible.
+   */
+  --color-canvas: #f8fafc;
   --color-surface: #ffffff;
-  --color-border: #e9e6e0;
+  --color-border: #e2e8f0;
+  /* The lighter hairline, for card edges where --color-border is too present. */
+  --color-border-soft: #f1f5f9;
 
   /* Text */
-  --color-ink: #26242b;
-  --color-muted: #77737d;
+  --color-ink: #0f172a;
+  --color-muted: #64748b;
   /* The third step — for text that is present but not being offered, such as a
-     menu entry naming a part of the product that is not built yet. */
-  --color-faint: #a6a3ae;
+     menu entry naming a part of the product that is not built yet.
+     Decorative contrast only; never the sole carrier of meaning. */
+  --color-faint: #94a3b8;
 
-  /* Primary */
-  --color-primary: #6c63ff;
-  --color-primary-hover: #5b52f0;
-  --color-primary-soft: #eeecff;
+  /*
+   * Primary — the sky-blue family, in three steps, and the split is not
+   * decorative.
+   *
+   * ★ White text on sky-500 (#0ea5e9) is **2.77:1**. WCAG AA wants 4.5:1 for
+   * body-sized text and 3:1 even for large text, so a filled sky-500 button
+   * with a white label fails both — measured, not assumed. sky-600 is 4.1:1 and
+   * still fails. sky-700 is 5.93:1 and passes.
+   *
+   * So the brief's "soft sky blue" survives where it is a *surface* and steps
+   * darker wherever it sits behind or beside text:
+   *
+   *   --color-primary-bright  #0ea5e9  progress fills, indicators, tint edges.
+   *                                    NEVER behind text.
+   *   --color-primary         #0369a1  filled buttons (5.93:1 with white),
+   *                                    focus rings, links.
+   *   --color-primary-strong  #075985  coloured text on white (7.56:1).
+   *
+   * RFP §13 lists "өнгөний хангалттай ялгарал" as a requirement, so this is a
+   * conformance question rather than a taste one. The visible brand hue is
+   * still sky-500 — it is what the eye lands on in a progress bar and an active
+   * nav indicator — but no label is ever asked to be legible on it.
+   */
+  --color-primary-bright: #0ea5e9;
+  --color-primary: #0369a1;
+  --color-primary-strong: #075985;
+  --color-primary-hover: #075985;
+  --color-primary-soft: #f0f9ff;
   --color-primary-ink: #ffffff;
 
   /*
@@ -58,7 +101,10 @@
   --color-sky: #cde7f7;
   --color-sky-ink: #1d4e89;
   --color-sun: #f8e6a0;
-  --color-sun-ink: #8a6512;
+  /* Was #8a6512, which measures 4.26:1 on this tint — under the 4.5:1 floor for
+     badge-sized text. The comment above claimed the inks cleared 5:1; that was
+     true of the other three and not of this one. #7a5810 is 5.21:1. */
+  --color-sun-ink: #7a5810;
   --color-peach: #f8d5c2;
   --color-peach-ink: #9a4a25;
   /* The reference's remaining two stat tints, unused until a screen needs a
@@ -86,7 +132,7 @@
    * separates a white card from a warm canvas that is only four steps away from
    * white — a border alone reads as flat at this contrast.
    */
-  --shadow-card: 0 1px 2px rgba(37, 35, 42, 0.04), 0 6px 16px rgba(37, 35, 42, 0.045);
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.03);
 
   /* Sizing floors */
   --size-control: 48px;
@@ -118,25 +164,20 @@ body {
 }
 
 /*
- * Two very soft washes rather than a flat ground.
+ * A flat ground.
  *
- * This is a product for small children used by teachers and parents, and a
- * uniform off-white reads as an office tool. Two gradients at 6% and 4% are
- * enough to warm the page and are invisible behind a dense screen — the
- * failure mode to avoid is decoration that competes with content, so the
- * opacity is low and there is no image, nothing to load, and nothing that
- * moves.
+ * ★ There were two radial washes here, tinting the page violet and peach at 6%
+ * and 4%. They were right for the warm direction and are wrong for this one:
+ * the brief asks for pure white and ample whitespace, and a tinted corner is
+ * the first thing that reads as decoration in a layout whose whole argument is
+ * restraint. Removed rather than recoloured — a sky-blue wash would be the same
+ * mistake in a different hue.
  *
- * `fixed` keeps the wash on the viewport instead of the document: attached to
- * the document it repeats down a long child list, which turns one soft corner
- * into a visible band every screenful.
+ * What separates a card from the page now is one step of tint plus a hairline,
+ * which is why `--shadow-card` could get lighter at the same time.
  */
 body {
-  background:
-    radial-gradient(70% 45% at 8% -5%, rgba(108, 99, 255, 0.06) 0%, transparent 55%),
-    radial-gradient(55% 40% at 95% 2%, rgba(207, 106, 82, 0.04) 0%, transparent 52%),
-    var(--color-canvas);
-  background-attachment: fixed;
+  background: var(--color-canvas);
   -webkit-font-smoothing: antialiased;
   /*
    * Mongolian Cyrillic wraps at word boundaries and its words are long.
