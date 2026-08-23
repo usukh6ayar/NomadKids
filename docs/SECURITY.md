@@ -432,13 +432,37 @@ Same kindergarten, wrong group, still 404.
 
 ### 6.6 Private media leakage
 
-| Case                                                            | Reference test                                                                               |
-| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Permission check runs **before** the redirect to the signed URL | `test_the_permission_check_runs_before_the_redirect`                                         |
-| Archived file is no longer served                               | `test_an_archived_file_is_no_longer_served`                                                  |
-| Unknown variant → 404                                           | `test_an_unknown_variant_gets_404`                                                           |
-| Child's own guardian cannot attach or delete media              | `test_attach_refuses_the_childs_own_guardian`, `test_delete_refuses_the_childs_own_guardian` |
-| Delete refuses a GET                                            | `test_delete_refuses_a_get`                                                                  |
+| Case                                                            | Reference test                                                         |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Permission check runs **before** the redirect to the signed URL | `test_the_permission_check_runs_before_the_redirect`                   |
+| Archived file is no longer served                               | `test_an_archived_file_is_no_longer_served`                            |
+| Unknown variant → 404                                           | `test_an_unknown_variant_gets_404`                                     |
+| Child's own guardian cannot **delete** media                    | `test_delete_refuses_the_childs_own_guardian`                          |
+| Child's own guardian cannot attach to a **teacher's** note      | `test_attach_refuses_the_childs_own_guardian` — **amended, see below** |
+| Delete refuses a GET                                            | `test_delete_refuses_a_get`                                            |
+
+> ### ★ Amendment — guardian uploads, 2026-08-22
+>
+> `test_attach_refuses_the_childs_own_guardian` originally asserted that a
+> child's own guardian is refused **all** media attachment. **The client
+> instructed on 2026-08-22 that parents may build the photo album**, which RFP
+> §2.3 states explicitly ("Хүүхдийн зураг болон зургийн цомог үүсгэх") and which
+> §4.4's teacher/parent/joint attribution presumes. The RFP outranks the
+> reference implementation.
+>
+> The case is therefore **narrowed, not dropped**. What it now asserts:
+>
+> - a guardian may upload to their own child's album, and to **their own**
+>   parent observation
+> - a guardian is still refused attachment to a **teacher's** observation —
+>   otherwise a family could illustrate a private teaching note, which is the
+>   leak the original case existed to prevent
+> - a guardian may edit metadata only on photographs they uploaded
+> - deletion and the profile picture stay staff-only, unchanged
+>
+> This is the only one of the 108 cases whose meaning has changed. It is
+> recorded here rather than in a commit message so the acceptance count stays
+> honest: 108 cases, one amended by the client, none silently dropped.
 
 ### 6.7 Unauthorized report download
 
