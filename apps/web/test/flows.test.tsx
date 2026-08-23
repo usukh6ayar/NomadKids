@@ -19,6 +19,7 @@ import EditChildPage from "@/app/(app)/children/[childId]/edit/page";
 import { PhotoUpload } from "@/components/media/photo-upload";
 import { ChildGallery } from "@/components/media/child-gallery";
 import { ObservationPhotos } from "@/components/observations/observation-photos";
+import DashboardPage from "@/app/(app)/dashboard/page";
 import TermReportPage from "@/app/(app)/children/[childId]/term-report/page";
 import NotificationDetailPage from "@/app/(app)/notifications/[notificationId]/page";
 
@@ -962,5 +963,88 @@ describe("paginated media", () => {
     await waitFor(() =>
       expect(calls.some((c) => c.url.includes(`observationId=${OBSERVATION_ID}`))).toBe(true),
     );
+  });
+});
+
+/**
+ * The teacher dashboard's §12.1 tiles.
+ *
+ * ★ Both of these are new fields on `GET /dashboard/teacher`, and both are the
+ * kind of thing that renders plausibly while being wrong: a birthday list that
+ * quietly shows nobody, a progress bar that divides by zero and prints "NaN%".
+ */
+describe("teacher dashboard", () => {
+  const BIRTHDAY_CHILD = "cccccccc-cccc-4ccc-8ccc-ccccccccccc1";
+
+  function dashboardBody(over: Record<string, unknown> = {}) {
+    return {
+      currentTerm: { id: TERM_ID, number: 1, name: "I улирал" },
+      counts: { children: 10, groups: 1, pendingReviews: 0 },
+      needsAttention: { pendingReviews: 0, childrenMissingAssessment: [] },
+      birthdaysToday: [],
+      termProgress: { assessed: 0, total: 10 },
+      recentObservations: [],
+      ...over,
+    };
+  }
+
+  it("names the children whose birthday is today", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: "/dashboard/teacher",
+        body: dashboardBody({
+          birthdaysToday: [
+            { id: BIRTHDAY_CHILD, lastName: "Ганболд", firstName: "Сарнай", dateOfBirth: null },
+          ],
+        }),
+      },
+      { path: "/groups", body: { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 } },
+    ]);
+
+    renderWithProviders(<DashboardPage />);
+
+    expect(await screen.findByText(/Өнөөдөр төрсөн өдөртэй/)).toBeInTheDocument();
+    expect(screen.getByText(/Сарнай/)).toBeInTheDocument();
+  });
+
+  it("shows the term progress as a labelled progressbar", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: "/dashboard/teacher",
+        body: dashboardBody({ termProgress: { assessed: 4, total: 10 } }),
+      },
+      { path: "/groups", body: { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 } },
+    ]);
+
+    renderWithProviders(<DashboardPage />);
+
+    const bar = await screen.findByRole("progressbar");
+    expect(bar).toHaveAttribute("aria-valuenow", "40");
+  });
+
+  /**
+   * ★ A group with no children is a real state on the first day of a school
+   * year. `4/0` is not — and `Math.round(0/0)` renders the string "NaN%".
+   */
+  it("does not print NaN when the roster is empty", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: "/dashboard/teacher",
+        body: dashboardBody({
+          counts: { children: 0, groups: 1, pendingReviews: 0 },
+          termProgress: { assessed: 0, total: 0 },
+        }),
+      },
+      { path: "/groups", body: { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 } },
+    ]);
+
+    renderWithProviders(<DashboardPage />);
+
+    const bar = await screen.findByRole("progressbar");
+    expect(bar).toHaveAttribute("aria-valuenow", "0");
+    expect(screen.queryByText(/NaN/)).not.toBeInTheDocument();
   });
 });
