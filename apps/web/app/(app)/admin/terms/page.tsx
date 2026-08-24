@@ -67,7 +67,7 @@ function AdminTerms() {
   const currentYear = yearItems.find((year) => year.isCurrent) ?? yearItems[0];
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-7">
+    <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Улирал"
         lede="Үнэлгээ ба улирлын тайлан улиралд харьяалагдана."

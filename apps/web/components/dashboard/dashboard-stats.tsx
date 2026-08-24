@@ -29,7 +29,7 @@ import { Card } from "@/components/ui/card";
  */
 export function DashboardStats({ counts }: { counts: TeacherDashboard["counts"] }) {
   return (
-    <section aria-label="Товч мэдээлэл" className="grid grid-cols-2 gap-3">
+    <section aria-label="Өнөөдрийн тойм" className="grid grid-cols-2 gap-3">
       <Stat label="Хүүхэд" value={counts.children} />
       <Stat label="Бүлэг" value={counts.groups} />
     </section>
@@ -46,7 +46,7 @@ export function DashboardStats({ counts }: { counts: TeacherDashboard["counts"] 
  */
 function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <Card className="px-4 py-3.5">
+    <Card pad="compact">
       <p className="text-body text-muted">{label}</p>
       <p className="mt-1 text-display font-semibold tabular-nums text-ink">{value}</p>
     </Card>

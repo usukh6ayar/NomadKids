@@ -97,7 +97,7 @@ export default function NotificationsPage() {
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-7">
+    <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Мэдэгдэл"
         lede="Цэцэрлэгээс ирсэн зар, мэдээлэл."

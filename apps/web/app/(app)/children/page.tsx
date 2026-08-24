@@ -93,7 +93,7 @@ function StaffChildren() {
   });
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-7">
+    <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Хүүхдүүд"
         lede="Хариуцсан бүлгийн хүүхдүүд."
@@ -258,7 +258,7 @@ function MyChildren() {
   });
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-7">
+    <div className="flex flex-col gap-6 lg:gap-8">
       <h1 className="text-heading font-semibold text-ink">{MY_CHILDREN}</h1>
 
       {isLoading ? <LoadingState rows={2} /> : null}

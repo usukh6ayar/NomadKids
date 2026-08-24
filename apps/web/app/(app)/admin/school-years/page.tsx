@@ -53,7 +53,7 @@ function AdminSchoolYears() {
   const items = years.data ?? [];
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-7">
+    <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Хичээлийн жил"
         lede="Бүлэг, элсэлт бүр хичээлийн жилд харьяалагдана."

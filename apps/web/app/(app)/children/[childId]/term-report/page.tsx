@@ -82,7 +82,7 @@ function TermReport({ childId }: { childId: string }) {
   if (child.isError) return <ErrorState description={errorMessage(child.error)} />;
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-7">
+    <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Улирлын тайлан"
         lede={`${child.data!.lastName} ${child.data!.firstName}`}
@@ -213,7 +213,7 @@ function ReportBody({
   }
 
   return (
-    <Card className="px-4 py-4 sm:px-5">
+    <Card pad="roomy">
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -345,7 +345,7 @@ function ReadOnlyReport({ report }: { report: z.infer<typeof termReportSchema> }
       {sections.map((section) => (
         <section key={section.title}>
           <SectionHeader title={section.title} as="h3" />
-          <Card className="px-4 py-3.5">
+          <Card pad="compact">
             {/* Preserves the line breaks a teacher typed. */}
             <p className="whitespace-pre-wrap text-body text-ink">{section.body}</p>
           </Card>

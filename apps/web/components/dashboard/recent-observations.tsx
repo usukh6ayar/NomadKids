@@ -34,9 +34,9 @@ export function RecentObservations({
   // does not take an id, so pointing at one would name this section after an
   // element that does not exist.
   return (
-    <section aria-label="Сүүлийн үйл явдал">
+    <section aria-label="Сүүлийн ажиглалтууд">
       <SectionHeader
-        title="Сүүлийн үйл явдал"
+        title="Сүүлийн ажиглалтууд"
         lede={isEmpty ? undefined : "Хамгийн сүүлд бичигдсэн ажиглалтууд."}
         // The empty state already offers this exact link, and two identical
         // buttons three inches apart is a question about which one is the real

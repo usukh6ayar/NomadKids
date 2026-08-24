@@ -63,7 +63,7 @@ export default function NotificationDetailPage() {
           description={isNotFound(error) ? "Энэ мэдэгдэл олдсонгүй." : errorMessage(error)}
           action={
             <Button asChild variant="secondary">
-              <Link href="/notifications">Буцах</Link>
+              <Link href="/notifications">Мэдэгдлүүд рүү буцах</Link>
             </Button>
           }
         />

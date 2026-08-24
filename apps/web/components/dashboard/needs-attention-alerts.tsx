@@ -49,7 +49,9 @@ export function NeedsAttentionAlerts({
       <SectionHeader
         as="h2"
         title="Анхаарах зүйлс"
-        lede="Өнөөдөр таны хариу үйлдэл шаардаж буй зүйлс."
+        // No lede: it read "Өнөөдөр таны хариу үйлдэл шаардаж буй зүйлс", which
+        // is the title in more words. This section renders only when it has
+        // something to say, so its presence is already the message.
         className="mb-0"
       />
 

@@ -127,7 +127,7 @@ export default function NewObservationPage() {
           description={errorMessage(child.error)}
           action={
             <Button asChild variant="secondary">
-              <Link href="/children">Буцах</Link>
+              <Link href="/children">Жагсаалт руу буцах</Link>
             </Button>
           }
         />
@@ -210,7 +210,7 @@ export default function NewObservationPage() {
           }
         />
 
-        <Card className="flex flex-col gap-4 px-4 py-4 sm:px-5">
+        <Card pad="roomy" className="flex flex-col gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
             {isStaff ? (
               <Field label="Ажиглалтын төрөл" error={errors.typeId} required>
@@ -267,7 +267,7 @@ export default function NewObservationPage() {
 
         <section>
           <SectionHeader title="Юу болсон бэ?" as="h2" />
-          <Card className="flex flex-col gap-4 px-4 py-4 sm:px-5">
+          <Card pad="roomy" className="flex flex-col gap-4">
             <Field label="Нөхцөл байдал" error={errors.situation}>
               {({ id, describedBy, invalid }) => (
                 <Textarea
@@ -311,7 +311,7 @@ export default function NewObservationPage() {
           <>
             <section>
               <SectionHeader title="Багшийн дүгнэлт" as="h2" />
-              <Card className="flex flex-col gap-4 px-4 py-4 sm:px-5">
+              <Card pad="roomy" className="flex flex-col gap-4">
                 <Field label="Тайлбар" error={errors.teacherComment}>
                   {({ id, describedBy, invalid }) => (
                     <Textarea

@@ -142,6 +142,38 @@ describe("the radius scale", () => {
   });
 });
 
+describe("the icon set", () => {
+  /**
+   * ★ One icon library, so stroke weight is not a per-file decision.
+   *
+   * `app-shell.tsx` imported `Bell` and `Search` from lucide-react at the
+   * default weight and then hand-rolled two more icons beside them at
+   * `strokeWidth` 2 and 2.5 — three weights in one file, in a header where all
+   * of them are visible at once. Nothing about a hand-written `<svg>` is wrong
+   * on its own; the cost is that it has no scale, no weight and no viewBox in
+   * common with the ones around it, and nobody notices until two sit adjacent.
+   *
+   * The `bg-[url('data:image/svg+xml…')]` in `field.tsx` is exempt: a CSS
+   * background cannot be a React component, and the select's chevron has to be
+   * paintable from a class.
+   */
+  it("has no hand-written <svg> markup", () => {
+    const inline = offences(/<svg[\s>]/g).filter(
+      (hit) => !hit.includes("data:image/svg+xml"),
+    );
+
+    // The scan reports `file:line → match`, so filter on the source line.
+    const handRolled = inline.filter((hit) => {
+      const [location] = hit.split(" → ");
+      const [file, line] = location!.split(":");
+      const source = readFileSync(join(WEB_ROOT, file!), "utf8").split("\n")[Number(line) - 1]!;
+      return !source.includes("data:image/svg+xml");
+    });
+
+    expect(handRolled).toEqual([]);
+  });
+});
+
 describe("the scale coexists with the colour utilities", () => {
   /**
    * ★ The bug this exists for was silent, total, and invisible in the source.

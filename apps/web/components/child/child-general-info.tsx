@@ -41,7 +41,7 @@ export function ChildGeneralInfo({
       {isStaff && child.healthNotes ? (
         <section aria-label="Эрүүл мэндийн тэмдэглэл">
           <SectionHeader title="Эрүүл мэндийн тэмдэглэл" />
-          <Card className="border-l-4 border-l-peach px-4 py-3.5">
+          <Card pad="compact" className="border-l-4 border-l-peach">
             <p className="whitespace-pre-wrap text-body text-ink">
               {excerpt(child.healthNotes, 500)}
             </p>

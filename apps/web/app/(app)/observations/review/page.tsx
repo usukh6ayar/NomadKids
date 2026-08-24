@@ -48,7 +48,7 @@ function ReviewQueue() {
   });
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-7">
+    <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Эцэг эхийн ажиглалт — хянах"
         lede="Гэрээс хуваалцсан бичлэгүүдийг хянаж, хавтаст нэмнэ."
@@ -118,7 +118,7 @@ function ReviewCard({ observation }: { observation: z.infer<typeof queueItemSche
   });
 
   return (
-    <Card className="flex flex-col gap-4 px-4 py-4 sm:px-5">
+    <Card pad="roomy" className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           {observation.child ? (

@@ -63,7 +63,7 @@ export function ChildHeroProfile({
   ].filter(Boolean);
 
   return (
-    <Card className="px-4 py-4 sm:px-5">
+    <Card pad="roomy">
       <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center">
         <ChildAvatar child={child} size={72} className="shrink-0" />
 

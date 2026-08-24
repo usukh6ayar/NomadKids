@@ -7,6 +7,8 @@ import { useEffect, useState } from "react";
 import { z } from "zod";
 import {
   BookOpen,
+  ArrowLeft,
+  Check,
   ChevronDown,
   FileText,
   Heart,
@@ -31,28 +33,37 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/field";
-import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { AgeSectionShell } from "@/components/child/age-section-shell";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { ChildGallery } from "@/components/media/child-gallery";
 import { ReportDialog } from "@/components/reports/report-dialog";
 import { ageInYears, fullName } from "@/lib/format";
-import { GALLERY, PORTFOLIO } from "@/lib/vocabulary";
+import { PORTFOLIO } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
 
 const PORTFOLIO_AGES = [2, 3, 4, 5] as const;
 
-/**
- * One soft accent per age — the client's front-v2 redesign gives each year its
- * own colour so the row reads as a progression rather than four identical
- * buttons. The accents are the ones already in the palette; no new colours.
+/*
+ * ★ `AGE_TONE` was removed on 2026-08-24, and so was `SectionLink`.
+ *
+ * The map gave each year its own saturated tint — mint, sky, sun, peach — while
+ * whether the year had *any content* was carried by a 6px dot at 25% opacity of
+ * that same colour. The signal was inverted: the loudest thing on the row
+ * encoded the label, which the text already gave you, and the variable that
+ * actually matters was the faintest mark on the page (about 1.5:1 against its
+ * own tint — invisible, and only WCAG-safe because the `aria-label` carried the
+ * state).
+ *
+ * Gestalt similarity says a set of peers should look alike and difference
+ * should encode a variable. Four colours for four labels also read as four
+ * different *kinds* of thing rather than as one timeline.
+ *
+ * Now: one tint for the set, and it means "done" — `mint`, which is what that
+ * token is documented for — plus a check. Empty years are a plain surface. The
+ * row reads as progress at a glance, which is what its own note always claimed
+ * it was for.
  */
-const AGE_TONE: Record<number, string> = {
-  2: "border-mint bg-mint text-mint-ink hover:opacity-90",
-  3: "border-sky bg-sky text-sky-ink hover:opacity-90",
-  4: "border-sun bg-sun text-sun-ink hover:opacity-90",
-  5: "border-peach bg-peach text-peach-ink hover:opacity-90",
-};
 
 /** Whether an age section has anything in it yet — drives the filled dot. */
 function hasAgeContent(profile?: z.infer<typeof ageProfileSchema>): boolean {
@@ -128,7 +139,7 @@ export default function PortfolioPage() {
           }
           action={
             <Button asChild variant="secondary">
-              <Link href="/children">Буцах</Link>
+              <Link href="/children">Жагсаалт руу буцах</Link>
             </Button>
           }
         />
@@ -152,6 +163,18 @@ export default function PortfolioPage() {
   return (
     <div className="flex flex-col gap-6 py-2">
       {/*
+        The way back. This screen is reached from the child's record and had no
+        return path — `ChildHeroProfile` renders identity, not navigation, so
+        the link sits above it rather than becoming a slot on that component.
+      */}
+      <Button asChild variant="ghost" size="sm" className="-ml-2 self-start">
+        <Link href={`/children/${childId}`}>
+          <ArrowLeft size={18} />
+          Хүүхдийн бүртгэл
+        </Link>
+      </Button>
+
+      {/*
         ★ The PDF lives here now, not on the child hub.
 
         `type: "CHILD_PORTFOLIO"` exports this record — the RFP §4 document this
@@ -161,6 +184,17 @@ export default function PortfolioPage() {
       */}
       <ChildHeroProfile
         child={data}
+        /*
+          ★ The same hero as the child hub, not a stripped copy of it.
+
+          This rendered `<ChildHeroProfile child={data} />` and nothing else, so
+          a teacher moving from the record to the portfolio lost the health-note
+          badge and every action, and the screen had no way back to the record it
+          belongs to. The block whose stated purpose is "a teacher moving between
+          screens never loses track of whose record is open" was changing shape
+          between those screens.
+        */
+        showHealthAlert={isStaff}
         actions={
           <ReportDialog
             childId={childId}
@@ -174,22 +208,20 @@ export default function PortfolioPage() {
         }
       />
 
-      <nav aria-label="Хэсгүүд рүү шилжих" className="flex flex-col gap-3">
-        <div className="flex flex-wrap gap-2">
-          <SectionLink href="#about-me" label="Миний тухай" />
-          <SectionLink href="#gallery" label={GALLERY} />
-          <SectionLink href="#birthdays" label="Төрсөн өдөр" />
-        </div>
+      {/*
+        ★ One navigation, not two.
 
-        {/*
-          ★ The age row, carried over from the client's front-v2 redesign
-          (PR #5, `age-buttons`). Four years is a fixed, tiny set, so a row of
-          coloured buttons reads as a timeline in a way identical grey pills do
-          not — and the filled/empty dot answers "how much of this is done"
-          without a progress bar.
+        A row of three jump pills (Миний тухай / Зургийн цомог / Төрсөн өдөр) sat
+        above this, so the screen opened with seven links to content that was
+        directly below them — a full phone screen of navigation for a page you
+        were about to scroll anyway. "Миний тухай" was the first thing under its
+        own pill.
 
-          The dot is paired with `aria-label` text, never colour alone.
-        */}
+        The age row earns its place where the pills did not: the four years are
+        the one part of this record that is *collapsed*, so these are the only
+        links that reveal something rather than scrolling to it.
+      */}
+      <nav aria-label="Насны хэсгүүд рүү шилжих">
         <ul className="grid grid-cols-4 gap-2">
           {PORTFOLIO_AGES.map((age) => {
             const filled = hasAgeContent(ageProfiles.data?.find((p) => p.age === age));
@@ -200,17 +232,19 @@ export default function PortfolioPage() {
                   aria-label={`${age} нас — ${filled ? "мэдээлэлтэй" : "хоосон"}`}
                   className={cn(
                     "flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-row border px-2 py-2 text-body font-semibold transition-colors",
-                    AGE_TONE[age],
+                    filled
+                      ? "border-mint bg-mint text-mint-ink hover:opacity-90"
+                      : "border-border bg-surface text-muted hover:border-primary hover:text-ink",
                   )}
                 >
                   <span>{age} нас</span>
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      "size-1.5 rounded-pill",
-                      filled ? "bg-current opacity-80" : "bg-current opacity-25",
-                    )}
-                  />
+                  {filled ? (
+                    <Check size={14} aria-hidden="true" />
+                  ) : (
+                    // Holds the line's height so the four buttons stay the same
+                    // size whether or not they are filled.
+                    <span aria-hidden="true" className="block h-[14px]" />
+                  )}
                 </a>
               </li>
             );
@@ -256,17 +290,6 @@ export default function PortfolioPage() {
         currentAge={currentAge}
       />
     </div>
-  );
-}
-
-function SectionLink({ href, label }: { href: string; label: string }) {
-  return (
-    <a
-      href={href}
-      className="inline-flex min-h-[44px] items-center rounded-pill border border-border bg-surface px-3.5 text-body font-medium text-muted hover:bg-canvas hover:text-ink"
-    >
-      {label}
-    </a>
   );
 }
 
@@ -372,7 +395,7 @@ function AboutMeSection({
         }
       />
 
-      <Card className="px-4 py-4 sm:px-5">
+      <Card pad="roomy">
         {isLoading ? <LoadingState rows={2} /> : null}
         {error ? <p className="text-body text-danger">{errorMessage(error)}</p> : null}
 
@@ -427,9 +450,11 @@ function AboutMeSection({
               </div>
             </div>
           ) : (
-            <p className="text-body text-muted">
-              Хараахан бөглөөгүй байна. «Засах» дарж эхлүүлнэ үү.
-            </p>
+            <EmptyState
+              icon={<BookOpen size={28} aria-hidden="true" />}
+              title="Хараахан бөглөөгүй байна"
+              description="Танилцуулга, нэрний утга, мөрөөдөл — «Засах» дарж эхлүүлнэ үү."
+            />
           )
         ) : null}
 
@@ -649,9 +674,10 @@ function AgeSection({
             </div>
           ) : (
             // Says what to do next, not only what is absent — CLAUDE.md §5.
-            <p className="text-body text-muted">
-              Энэ насны тэмдэглэл хоосон байна. «Засах» дарж бөглөнө үү.
-            </p>
+            <EmptyState
+              title="Энэ насны тэмдэглэл хоосон байна"
+              description="Дуртай зүйлс, зан чанар, шинэ чадварууд — «Засах» дарж бөглөнө үү."
+            />
           )
         ) : null}
 
@@ -878,6 +904,9 @@ function BirthdaySection({
                       <p className="whitespace-pre-wrap text-body text-ink">{note.note}</p>
                     ) : (
                       // Says what to do next, not only what is absent.
+                      // Not `EmptyState`: it renders a `Card`, and this sits
+                      // inside one already. A card nested in a card reads as a
+                      // rendering mistake rather than as an empty state.
                       <p className="text-body text-muted">
                         Тэмдэглэл бичээгүй. «Засах» дарж нэмнэ үү.
                       </p>

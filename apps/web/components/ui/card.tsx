@@ -15,11 +15,43 @@ import { cn } from "@/lib/utils";
  *
  * 18px, matching `--radius` in the reference. It was 16px here, which made
  * every card in the product 2px tighter than the design.
+ *
+ * ★★ `pad` exists because every call site was inventing its own.
+ *
+ * Across the product cards were padded `px-4 py-3`, `px-4 py-3.5`,
+ * `px-4 py-4`, `px-4 py-4 sm:px-5`, `px-5 py-5` and `px-6 py-10`. Each value is
+ * defensible alone; together they meant no two screens shared a rhythm and a
+ * new screen had no default to inherit — so it copied whichever card was
+ * nearest and the set grew again.
+ *
+ * Two named steps cover nineteen and four of those call sites respectively.
+ *
+ * `none` stays the default, and that is deliberate rather than lazy: ten cards
+ * are list containers (`<Card className="divide-y divide-border">`) whose rows
+ * carry their own padding. Defaulting to a value would have put a margin
+ * inside every list in the product.
+ *
+ * The genuine one-offs — the empty state's `px-6 py-10`, the dialog's — keep
+ * passing a `className`. A variant per exception is how a scale becomes a list.
  */
-export function Card({ className, ...props }: ComponentProps<"div">) {
+const PADDING = {
+  none: "",
+  compact: "px-4 py-3.5",
+  roomy: "px-4 py-4 sm:px-5",
+} as const;
+
+export function Card({
+  className,
+  pad = "none",
+  ...props
+}: ComponentProps<"div"> & { pad?: keyof typeof PADDING }) {
   return (
     <div
-      className={cn("rounded-card border border-border bg-surface shadow-sm", className)}
+      className={cn(
+        "rounded-card border border-border bg-surface shadow-sm",
+        PADDING[pad],
+        className,
+      )}
       {...props}
     />
   );

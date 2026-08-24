@@ -66,7 +66,7 @@ function EditChild() {
   if (child.isError) return <ErrorState description={errorMessage(child.error)} />;
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-7">
+    <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Хүүхдийн мэдээлэл засах"
         lede={`${child.data!.lastName} ${child.data!.firstName}`}
@@ -128,7 +128,7 @@ function DetailsForm({
     <section aria-labelledby="details-heading">
       <SectionHeader id="details-heading" title="Хувийн мэдээлэл" />
 
-      <Card className="px-4 py-4 sm:px-5">
+      <Card pad="roomy">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -304,7 +304,7 @@ function TransferCard({ childId }: { childId: string }) {
         lede="Одоогийн бүртгэл автоматаар хаагдаж, шинэ бүлэгт нээгдэнэ."
       />
 
-      <Card className="px-4 py-4 sm:px-5">
+      <Card pad="roomy">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -375,7 +375,7 @@ function ArchiveCard({ childId, childName }: { childId: string; childName: strin
         lede="Хүүхэд жагсаалтад харагдахаа болино. Бүртгэл нь устахгүй."
       />
 
-      <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
+      <Card pad="roomy" className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-body text-muted">
           Цэцэрлэгээс гарсан хүүхдийг архивлана. Ажиглалт, үнэлгээ нь хадгалагдана.
         </p>

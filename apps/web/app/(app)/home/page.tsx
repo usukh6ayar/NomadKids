@@ -8,11 +8,13 @@ import { parentDashboardSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
+import { PageHeader } from "@/components/shell/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
+import { useSession } from "@/lib/auth/session";
 import { excerpt, formatAge, formatRelative, fullName } from "@/lib/format";
 import { PORTFOLIO } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
@@ -29,6 +31,7 @@ import { cn } from "@/lib/utils";
  * filtering of its own, which is what keeps the rule in one place.
  */
 export default function ParentHomePage() {
+  const { session } = useSession();
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: qk.dashboard.parent(),
     queryFn: () => get("/dashboard/parent", parentDashboardSchema),
@@ -43,10 +46,29 @@ export default function ParentHomePage() {
    */
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  /*
+   * ★ `PageHeader`, and a title that says something.
+   *
+   * Four branches of this component each hand-rolled `<h1>Нүүр</h1>` — a
+   * navigation label used as a page title, which tells a parent nothing they
+   * did not already know from tapping it, in typography that matched neither
+   * `PageHeader` nor the other branches.
+   *
+   * `AppLayout` holds the whole tree behind a loading state until the session
+   * resolves, so the name is present on the first render here and the greeting
+   * does not appear a beat late.
+   */
+  const header = (
+    <PageHeader
+      title={session?.user.firstName ? `Сайн байна уу, ${session.user.firstName}` : "Сайн байна уу"}
+      lede="Хүүхдийнхээ сүүлийн мэдээллийг эндээс харна."
+    />
+  );
+
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-5 py-2">
-        <h1 className="text-heading font-semibold text-ink">Нүүр</h1>
+      <div className="flex flex-col gap-6 py-2 lg:gap-8">
+        {header}
         <LoadingState rows={3} />
       </div>
     );
@@ -54,8 +76,8 @@ export default function ParentHomePage() {
 
   if (isError) {
     return (
-      <div className="py-2">
-        <h1 className="mb-4 text-heading font-semibold text-ink">Нүүр</h1>
+      <div className="flex flex-col gap-6 py-2 lg:gap-8">
+        {header}
         <ErrorState
           description={errorMessage(error)}
           action={
@@ -72,8 +94,8 @@ export default function ParentHomePage() {
 
   if (children.length === 0) {
     return (
-      <div className="flex flex-col gap-5 py-2">
-        <h1 className="text-heading font-semibold text-ink">Нүүр</h1>
+      <div className="flex flex-col gap-6 py-2 lg:gap-8">
+        {header}
         <EmptyState
           title="Хүүхэд холбогдоогүй байна"
           description="Танд холбогдсон хүүхэд байхгүй байна. Цэцэрлэгийн багштайгаа холбогдоно уу."
@@ -85,8 +107,8 @@ export default function ParentHomePage() {
   const selected = children.find((c) => c.id === selectedId) ?? children[0]!;
 
   return (
-    <div className="flex flex-col gap-6 py-2">
-      <h1 className="text-heading font-semibold text-ink">Нүүр</h1>
+    <div className="flex flex-col gap-6 py-2 lg:gap-8">
+      {header}
 
       {/*
         ★ A group of toggles, not a tab set.
@@ -132,7 +154,7 @@ export default function ParentHomePage() {
         </div>
       ) : null}
 
-      <Card className="flex flex-wrap items-center gap-4 px-4 py-4 sm:px-5">
+      <Card pad="roomy" className="flex flex-wrap items-center gap-4">
         <ChildAvatar child={selected} size={56} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-title font-semibold text-ink">{fullName(selected)}</p>

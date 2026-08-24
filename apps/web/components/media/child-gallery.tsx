@@ -98,7 +98,7 @@ export function ChildGallery({
         as="h2"
       />
 
-      <Card className="flex flex-col gap-4 px-4 py-4 sm:px-5">
+      <Card pad="roomy" className="flex flex-col gap-4">
         {photos.isLoading ? <LoadingState rows={2} /> : null}
 
         {photos.isError ? <ErrorState description="Зургийг ачаалж чадсангүй." /> : null}

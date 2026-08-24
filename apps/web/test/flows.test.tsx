@@ -1332,7 +1332,7 @@ describe("teacher dashboard", () => {
 
     renderWithProviders(<DashboardPage />);
 
-    const feed = await screen.findByRole("region", { name: "Сүүлийн үйл явдал" });
+    const feed = await screen.findByRole("region", { name: "Сүүлийн ажиглалтууд" });
     expect(within(feed).getByText("Ажиглалт хараахан бичигдээгүй")).toBeInTheDocument();
     expect(within(feed).getByRole("link", { name: "Хүүхдүүд" })).toBeInTheDocument();
   });
@@ -1371,7 +1371,7 @@ describe("teacher dashboard", () => {
 
     renderWithProviders(<DashboardPage />);
 
-    const tiles = await screen.findByRole("region", { name: "Товч мэдээлэл" });
+    const tiles = await screen.findByRole("region", { name: "Өнөөдрийн тойм" });
     expect(within(tiles).getByText("Хүүхэд")).toBeInTheDocument();
     expect(within(tiles).getByText("Бүлэг")).toBeInTheDocument();
 

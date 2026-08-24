@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -136,6 +136,39 @@ describe("portfolio age sections", () => {
     const closed = ageDisclosure(5);
     expect(closed.open).toBe(false);
     expect(closed.querySelector("summary")).toHaveTextContent("Ирээдүйд");
+  });
+
+  /**
+   * ★ The row's colour has to encode the variable, not the label.
+   *
+   * Each year used to get its own saturated tint — mint, sky, sun, peach — while
+   * "has anything been written here" was a 6px dot at 25% opacity of that same
+   * colour, about 1.5:1 against its own background. The loudest signal carried
+   * the label the text already gave you, and the fact that mattered was the
+   * faintest mark on the page.
+   *
+   * So this asserts the two states are *distinguishable from each other* rather
+   * than asserting a particular hue: four different tints would pass a test that
+   * only checked "filled has a class".
+   */
+  it("marks the years with content differently from the empty ones", async () => {
+    stubPortfolio(bornYearsAgo(3), [{ age: 2, favoriteFood: "Бууз" }]);
+
+    renderWithProviders(<PortfolioPage />);
+
+    const row = await screen.findByRole("navigation", { name: /Насны хэсгүүд/ });
+    const link = (age: number) =>
+      within(row).getByRole("link", { name: new RegExp(`^${age} нас`) });
+
+    // The accessible name states it outright — colour is never the only carrier.
+    expect(link(2)).toHaveAccessibleName("2 нас — мэдээлэлтэй");
+    expect(link(3)).toHaveAccessibleName("3 нас — хоосон");
+
+    // …and the empty years all look alike, which is what makes the filled one
+    // stand out. Four tints for four labels is the state this replaced.
+    const empty = [3, 4, 5].map((age) => link(age).className);
+    expect(new Set(empty).size, "empty years are one style, not four").toBe(1);
+    expect(link(2).className).not.toBe(empty[0]);
   });
 
   it("opening a closed year reveals its edit control", async () => {

@@ -92,7 +92,7 @@ function ProfileForm() {
     <section aria-labelledby="profile-heading">
       <SectionHeader id="profile-heading" title="Хувийн мэдээлэл" />
 
-      <Card className="px-4 py-4 sm:px-5">
+      <Card pad="roomy">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -219,7 +219,7 @@ function PasswordForm() {
     <section aria-labelledby="password-heading">
       <SectionHeader id="password-heading" title="Нууц үг солих" />
 
-      <Card className="px-4 py-4 sm:px-5">
+      <Card pad="roomy">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -309,7 +309,7 @@ function SignOutCard() {
   const logout = useLogout();
 
   return (
-    <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
+    <Card pad="roomy" className="flex flex-wrap items-center justify-between gap-3">
       <div>
         <p className="font-medium text-ink">Системээс гарах</p>
         <p className="text-body text-muted">Энэ төхөөрөмжөөс гарна.</p>

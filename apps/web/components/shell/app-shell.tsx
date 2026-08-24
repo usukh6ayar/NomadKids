@@ -4,10 +4,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Bell, Search } from "lucide-react";
+import { Bell, ChevronDown, LogOut, Search } from "lucide-react";
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { unreadCountSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
+import { Input } from "@/components/ui/field";
 import { qk } from "@/lib/api/keys";
 import { useLogout, useSession } from "@/lib/auth/session";
 import { fullName, initials } from "@/lib/format";
@@ -201,24 +202,26 @@ function HeaderSearch({ className }: { className?: string }) {
           aria-hidden="true"
           className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
         />
-        <input
+        {/*
+          ★ The shared `Input`, not a bespoke field.
+
+          This was `h-[44px] rounded-pill` with the placeholder "Хүүхдийн нэрээр
+          хайх…", while `/children` — the screen this submits into — renders the
+          48px `rounded-control` `Input` with "Нэр эсвэл овгоор хайх". Two
+          shapes, two heights and two wordings for one job, and using the first
+          one puts you next to the second.
+
+          `Input` also names no font size, which is what keeps a focused field
+          at the 16px iOS needs. That property was the reason this field was
+          wrong before; inheriting it is how it stays right.
+        */}
+        <Input
           id={id}
           type="search"
           value={term}
           onChange={(event) => setTerm(event.target.value)}
-          placeholder="Хүүхдийн нэрээр хайх…"
-          /*
-            ★ No font-size class, deliberately.
-
-            It carried `text-sm`, and a class beats the `input { font-size:
-            16px }` rule in globals.css — so this field rendered at 14px, which
-            is under the threshold where iOS zooms a focused input and does not
-            zoom back out. The user was left on a horizontally scrolled page
-            with no way back, which is the exact failure that rule exists to
-            prevent. Every other control in the product inherits the 16px
-            because none of them names a size either.
-          */
-          className="h-[44px] w-full rounded-pill border border-border bg-surface pl-10 pr-3.5 text-ink transition-colors placeholder:text-muted focus:border-primary focus:outline-none"
+          placeholder="Нэр эсвэл овгоор хайх"
+          className="pl-11"
         />
       </div>
     </form>
@@ -395,7 +398,7 @@ function WhoAmI({ subtitle }: { subtitle: string }) {
         aria-label="Гарах"
         className="grid size-11 shrink-0 place-items-center rounded-control text-muted hover:bg-surface hover:text-primary"
       >
-        <LogoutIcon />
+        <LogOut size={18} aria-hidden="true" />
       </button>
     </div>
   );
@@ -479,7 +482,11 @@ function NavGroup({ section, pathname }: { section: NavSection; pathname: string
     <details open className="border-b border-border py-0.5 [&[open]>summary>svg]:rotate-180">
       <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between px-2.5 py-2 text-compact font-semibold text-ink [&::-webkit-details-marker]:hidden">
         {section.title}
-        <ChevronIcon />
+        <ChevronDown
+          size={16}
+          aria-hidden="true"
+          className="shrink-0 text-faint transition-transform"
+        />
       </summary>
 
       {section.entries.map((entry) => {
@@ -504,23 +511,6 @@ function NavGroup({ section, pathname }: { section: NavSection; pathname: string
         );
       })}
     </details>
-  );
-}
-
-function ChevronIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      className="size-4 shrink-0 text-faint transition-transform"
-    >
-      <path d="M6 9l6 6 6-6" />
-    </svg>
   );
 }
 
@@ -582,29 +572,10 @@ function MobileHeader({ variant, subtitle }: { variant: "teacher" | "parent"; su
           aria-label="Гарах"
           className="grid size-11 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
         >
-          <LogoutIcon />
+          <LogOut size={18} aria-hidden="true" />
         </button>
       </div>
     </header>
-  );
-}
-
-function LogoutIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      className="size-[18px]"
-    >
-      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-      <polyline points="16 17 21 12 16 7" />
-      <line x1="21" y1="12" x2="9" y2="12" />
-    </svg>
   );
 }
 
