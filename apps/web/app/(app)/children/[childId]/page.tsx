@@ -16,6 +16,7 @@ import { ChildAssessments } from "@/components/child/child-assessments";
 import { ChildAttendance } from "@/components/child/child-attendance";
 import { ChildGeneralInfo } from "@/components/child/child-general-info";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
+import { ChildMenu } from "@/components/child/child-menu";
 import { ChildTabs } from "@/components/child/child-tabs";
 import { ChildObservations } from "@/components/child/child-observations";
 import { ChildGallery } from "@/components/media/child-gallery";
@@ -26,6 +27,7 @@ const GENERAL = "general";
 const OBSERVATIONS = "observations";
 const ASSESSMENTS = "assessments";
 const ATTENDANCE = "attendance";
+const MENU = "menu";
 const GALLERY = "gallery";
 
 /**
@@ -146,6 +148,17 @@ export default function ChildDetailPage() {
             value: ATTENDANCE,
             label: "Ирц",
             content: <ChildAttendance childId={childId} isStaff={isStaff} />,
+          },
+          {
+            value: MENU,
+            label: "Хоол ба цэс",
+            content: (
+              <ChildMenu
+                kindergartenId={data.kindergarten?.id ?? ""}
+                healthNotes={data.healthNotes}
+                isStaff={isStaff}
+              />
+            ),
           },
           {
             value: GALLERY,

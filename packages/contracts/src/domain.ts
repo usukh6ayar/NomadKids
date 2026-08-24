@@ -256,6 +256,21 @@ export const attendanceRequestSchema = z.object({
 });
 export type AttendanceRequest = z.infer<typeof attendanceRequestSchema>;
 
+// ── Meals ────────────────────────────────────────────────────────────────────
+
+export const menuDishSchema = z.object({
+  name: z.string(),
+  allergenTags: z.array(z.string()).default([]),
+});
+export type MenuDish = z.infer<typeof menuDishSchema>;
+
+export const menuDaySchema = z.object({
+  id: uuidSchema,
+  date: z.string(),
+  dishes: z.array(menuDishSchema),
+});
+export type MenuDay = z.infer<typeof menuDaySchema>;
+
 // ── Assessment ───────────────────────────────────────────────────────────────
 
 export const domainSchema = z.object({

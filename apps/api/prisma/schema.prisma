@@ -242,6 +242,7 @@ model User {
   attendanceRecorded Attendance[]        @relation("AttendanceRecordedBy")
   attendanceRequested AttendanceRequest[] @relation("AttendanceRequestedBy")
   attendanceReviewed AttendanceRequest[]  @relation("AttendanceReviewedBy")
+  menuDaysCreated    MenuDay[]            @relation("MenuDayCreatedBy")
 
   @@index([deletedAt])
   @@map("users")
@@ -396,6 +397,7 @@ model Kindergarten {
   auditLogs          AuditLog[]
   attendanceRecords  Attendance[]
   attendanceRequests AttendanceRequest[]
+  menuDays           MenuDay[]
 
   @@index([deletedAt])
   @@map("kindergartens")
@@ -941,6 +943,40 @@ model AttendanceRequest {
   @@index([childId, dateFrom(sort: Desc)])
   @@index([kindergartenId, reviewStatus])
   @@map("attendance_requests")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Meals — the weekly menu, RFP §989. Kindergarten-wide, not per-child: a
+// per-child "did they eat" record is not in the RFP and is not built here.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// One row per kindergarten per day. "Weekly" is a query range over these,
+/// not its own entity — there is nothing a week needs beyond seven days.
+///
+/// `dishes` is `Json`, an array of `{ name: string, allergenTags: string[] }`.
+/// Allergen tags are admin-typed free strings, not a lookup table: the
+/// cross-check against a child's freeform `healthNotes` is a best-effort
+/// substring match done in the UI, not a structured allergy system (that is
+/// its own, separately excluded MVP feature — CLAUDE.md §7).
+model MenuDay {
+  id             String   @id @default(uuid()) @db.Uuid
+  kindergartenId String   @db.Uuid
+  date           DateTime @db.Date
+  dishes         Json
+
+  createdById String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  deletedById String? @db.Uuid
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  createdBy    User?        @relation("MenuDayCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([kindergartenId, date])
+  @@index([kindergartenId, date(sort: Desc)])
+  @@map("menu_days")
 }
 
 model Term {

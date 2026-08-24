@@ -10,6 +10,7 @@ import { DashboardModule } from "./dashboard/dashboard.module";
 import { HealthModule } from "./health/health.module";
 import { MaintenanceModule } from "./maintenance/maintenance.module";
 import { MailModule } from "./mail/mail.module";
+import { MealsModule } from "./meals/meals.module";
 import { MediaModule } from "./media/media.module";
 import { ObservationsModule } from "./observations/observations.module";
 import { NotificationsModule } from "./notifications/notifications.module";
@@ -50,6 +51,7 @@ import { UsersModule } from "./users/users.module";
     MediaModule,
     AssessmentModule,
     AttendanceModule,
+    MealsModule,
     CatalogModule,
     NotificationsModule,
     DashboardModule,
