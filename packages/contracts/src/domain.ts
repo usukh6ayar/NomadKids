@@ -38,6 +38,18 @@ export const guardianRelationSchema = z.enum([
   "OTHER",
 ]);
 
+/**
+ * "Хүү" / "Охин", not "Эрэгтэй" / "Эмэгтэй".
+ *
+ * The words a kindergarten uses about a four-year-old. Both registration forms
+ * already spelled them inline; they live here now so the child's profile, the
+ * roster and the forms cannot drift into three vocabularies for one field.
+ */
+export const SEX_LABEL: Record<string, string> = {
+  MALE: "Хүү",
+  FEMALE: "Охин",
+};
+
 /** Relation labels, so a list does not show a raw enum to a parent. */
 export const GUARDIAN_RELATION_LABEL: Record<string, string> = {
   MOTHER: "Ээж",
@@ -99,6 +111,19 @@ export const enrollmentSummarySchema = z.object({
   id: uuidSchema.nullish(),
   group: groupRefSchema.nullish(),
   schoolYear: namedRefSchema.nullish(),
+  /**
+   * ★ The API already sends these; the schema simply did not declare them, and
+   * Zod strips what it is not told about.
+   *
+   * `children.repository.ts` includes the enrollment without a `select`, so
+   * every scalar comes back — and it orders `startedOn: "desc"`. Without
+   * `status` a screen has to infer "current" from being first in the list,
+   * which is wrong for any child who has left: their most recent enrollment is
+   * an ENDED one. Nullish because `/children/mine` returns a slimmer row.
+   */
+  status: enrollmentStatusSchema.nullish(),
+  startedOn: z.string().nullish(),
+  endedOn: z.string().nullish(),
 });
 
 export const childSummarySchema = z.object({
