@@ -38,8 +38,45 @@
 > "Хүүхдийн цахим хувийн хавтас" and §4.4 names the album "Зургийн цомог", so the
 > tab's existing "Цомог" was closer than the audit's proposed "Зураг".
 >
-> **Still open:** 1.5 (two icon systems), 2.2/2.3 (portfolio navigation and the
-> age row's inverted signal), 2.4–2.7, 3.2–3.4, 4.3, 4.4.
+> **Closed 2026-08-24 (final batch).** Every finding in this audit is now
+> resolved:
+>
+> | Finding | Resolution |
+> |---|---|
+> | 1.5 two icon systems | `ChevronIcon`/`LogoutIcon` → lucide. `tokens.test.tsx` bans hand-written `<svg>`. |
+> | 1.6 lede restating its title | Removed. |
+> | 2.2 portfolio double navigation | Three jump pills deleted; the age row stays, as the only links that *reveal* rather than scroll. |
+> | 2.3 age row's inverted signal | One tint for the set (`mint` = done) + a check; empty years are a plain surface. |
+> | 2.4 stat number in a pill | Already gone with the tiles it belonged to. |
+> | 2.5 home built from different parts | Uses `PageHeader`; greets the reader by name. |
+> | 2.6 two search fields | The header uses the shared `Input`. |
+> | 2.7 portfolio's hero was a stripped copy | Health badge and a way back restored. |
+> | 3.2 verb-only labels | "Сүүлийн ажиглалтууд", "Өнөөдрийн тойм", named back-links. |
+> | 3.3 empty states | Two become `EmptyState`; the third documents why it cannot. |
+> | 3.4 inconsistent back-links | Each names its destination. |
+> | 4.3 contrast | The 25%-opacity age dot was the only real failure; it went with 2.3. |
+> | 4.4 spacing rhythm | `Card` takes `pad="compact" \| "roomy"` (23 sites); page roots unify on `gap-6 lg:gap-8`. |
+>
+> Suite 145 passing across 14 files.
+
+---
+
+## Deferred to Phase 2 — the dashboard request
+
+Asked for on **2026-08-22, 2026-08-23 and 2026-08-24**, and held each time under
+CLAUDE.md §7. The client confirmed the hold on 2026-08-24. Recorded here and in
+`dashboard/page.tsx` so the next person does not re-derive it.
+
+| Requested | Status | What it would take |
+|---|---|---|
+| Radar chart of the 5 development domains, child vs class average | **Scope decision, not a data problem.** `DevelopmentDomain`, `AssessmentLevel` (1–4) and `Assessment` already carry the axes. | A class-average aggregate endpoint + a charting dependency. §7 excludes "radar charts" and "analytics". |
+| Attendance KPIs (30/35, 86%, monthly mean) | **Data problem.** No model, no migration, no endpoint. RFP Module 2. | A real feature: schema, tenant scoping, soft delete, authorization tests, then UI. Any KPI before that is an invented number. |
+| Per-type completion (Ажиглалт / Ярилцлага / Бүтээл) | Closer than it looks — `ObservationType` is a real configuration table. | An aggregate endpoint. No schema change. |
+| Upcoming birthdays | **Shipped.** | — |
+| Task board / ажлын самбар | Not in the MVP. | — |
+
+The birthdays and the term-progress bar already on the dashboard are the parts of
+that design that had data behind them.
 
 **Scope.** Teacher dashboard, child detail, portfolio, parent home, children list,
 login, and the shared design system (`globals.css`, `ui/*`, `shell/*`).

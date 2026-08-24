@@ -48,6 +48,35 @@ import { TermProgress } from "@/components/dashboard/term-progress";
  * allergy badge, and a radar chart — and held out again, deliberately, by the
  * same decision. What changed that day was the chrome, not the content: the
  * palette, the header's search and action menu, and the sidebar.
+ *
+ * ★★★★ Asked for a third time on 2026-08-24, and held again. Logged for Phase 2.
+ *
+ * The request: a radar chart of the five development domains with the child's
+ * scores against the class average, attendance KPIs (30/35, 86%, a monthly
+ * mean), per-type completion bars for Ажиглалт / Ярилцлага / Бүтээл, and a task
+ * board. The client reviewed the scope and confirmed the hold the same day.
+ *
+ * Worth writing down, because the three requests are not equally hard to say no
+ * to and the next person should not have to re-derive that:
+ *
+ *  - **The radar is a scope decision, not a data problem.** `DevelopmentDomain`,
+ *    `AssessmentLevel` (1..4) and `Assessment` all exist and carry exactly the
+ *    axes asked for. What is missing is a class-average aggregate endpoint and a
+ *    charting dependency. CLAUDE.md §7 excludes "radar charts" and "analytics",
+ *    so it is Phase 2 — but it is buildable on real data the day that changes.
+ *
+ *  - **Attendance is a data problem.** There is no model, no migration and no
+ *    endpoint anywhere in the API; it is RFP Module 2. Any KPI on this screen
+ *    could only render an invented number, and a teacher reading a fabricated
+ *    86% is worse than a dashboard that never mentions attendance.
+ *
+ *  - **Per-type completion may be closer than it looks.** `ObservationType` is a
+ *    real configuration table, so Ажиглалт / Ярилцлага / Бүтээл are real values
+ *    rather than an invented taxonomy. It needs an aggregate endpoint, not a
+ *    schema change.
+ *
+ * The birthdays and the term-progress bar this screen already renders are the
+ * parts of that design that had data behind them, and they shipped.
  */
 export default function DashboardPage() {
   return (
