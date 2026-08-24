@@ -156,15 +156,46 @@ function TeacherDashboard() {
 
       <DashboardStats counts={counts} />
 
+      {/*
+        ★ What needs doing stays full width, above the grid.
+
+        The wireframe lays this screen out as a grid of equal cards, and most of
+        it can be — but not this. `NeedsAttentionAlerts` renders only when it
+        has something to say, so its *presence* is the signal; put it in a
+        column beside a progress bar and it becomes one card among several,
+        which is the exact "wall of equally-weighted cards" this dashboard's
+        own note argues against. It is the first thing a teacher reads at 8am.
+      */}
       <NeedsAttentionAlerts birthdaysToday={birthdaysToday} needsAttention={needsAttention} />
 
-      {currentTerm ? <TermProgress term={currentTerm.name} progress={termProgress} /> : null}
+      {/*
+        ★★ Two columns from `lg`, one below it.
 
-      <ObservationMix observationsByType={observationsByType} term={currentTerm?.name ?? null} />
+        These four sections are reference rather than instruction — how far the
+        term has got, what the observations are made of, which groups exist,
+        what was written lately. Side by side they fit a laptop without
+        scrolling; stacked on a phone they keep the reading order the markup
+        already has, because `grid` reflows without reordering.
 
-      <GroupsSection />
+        Not `columns-2`: CSS multi-column would break a single section across
+        the fold, and a progress bar split down the middle is unreadable.
+      */}
+      <div className="grid gap-6 lg:grid-cols-2 lg:gap-8">
+        {currentTerm ? <TermProgress term={currentTerm.name} progress={termProgress} /> : null}
 
-      <RecentObservations observations={recentObservations} />
+        <ObservationMix observationsByType={observationsByType} term={currentTerm?.name ?? null} />
+
+        <GroupsSection />
+
+        {/*
+          The feed is the longest section and the least urgent, so it takes the
+          full width at the foot rather than stretching one column to twice the
+          height of its neighbour.
+        */}
+        <div className="lg:col-span-2">
+          <RecentObservations observations={recentObservations} />
+        </div>
+      </div>
     </div>
   );
 }

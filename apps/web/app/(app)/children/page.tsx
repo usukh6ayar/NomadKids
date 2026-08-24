@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Plus, Search } from "lucide-react";
 import { useEffect, useState } from "react";
-import { childSummarySchema, paginated } from "@kinder/contracts";
+import { childSummarySchema, paginated, rosterSummarySchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
@@ -17,7 +17,7 @@ import { Card, RowList } from "@/components/ui/card";
 import { Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
-import { formatAge, fullName } from "@/lib/format";
+import { formatAge, formatAgeFromMonths, fullName } from "@/lib/format";
 import { MY_CHILDREN } from "@/lib/vocabulary";
 import { z } from "zod";
 
@@ -116,6 +116,8 @@ function StaffChildren() {
           </div>
         }
       />
+
+      <RosterSummary search={search} />
 
       <div className="relative">
         <Search
@@ -246,6 +248,64 @@ function ChildRow({
         </span>
       </span>
     </Link>
+  );
+}
+
+/**
+ * The roster's headline numbers — RFP §12.1.
+ *
+ * ★ Two cards, and the wireframe's third is deliberately absent.
+ *
+ * It asked for Total / Average age / **Attendance**. The first two are
+ * computable from data this system holds; attendance has no model, no
+ * migration and no endpoint anywhere in the API, so a card for it could only
+ * render a number somebody invented. `dashboard/page.tsx` records the same
+ * decision, taken three times now.
+ *
+ * ★★ The count comes from `GET /children/summary`, not from `data.total`.
+ *
+ * Both would be correct for the total — but the average cannot be computed on
+ * the client at all: the list is paginated at 25, so a mean taken from the rows
+ * on screen changes when you press "next" and describes no cohort. One request
+ * answers both over the whole filtered roster, and the endpoint shares its
+ * `where` with the list so the header cannot contradict the rows.
+ */
+function RosterSummary({ search }: { search: string }) {
+  const filters = { q: search || undefined };
+
+  const { data } = useQuery({
+    queryKey: qk.rosterSummary(filters),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (search) params.set("q", search);
+      const query = params.toString();
+      return get(`/children/summary${query ? `?${query}` : ""}`, rosterSummarySchema);
+    },
+    // The roster is the point of this screen; its totals are context. A failure
+    // here removes the cards rather than the list.
+    retry: false,
+  });
+
+  if (!data) return null;
+
+  return (
+    <section aria-label="Товч тоо" className="grid grid-cols-2 gap-3">
+      <Card pad="compact">
+        <p className="text-body text-muted">Нийт хүүхэд</p>
+        <p className="mt-1 text-display font-semibold tabular-nums text-ink">{data.total}</p>
+      </Card>
+      <Card pad="compact">
+        <p className="text-body text-muted">Дундаж нас</p>
+        <p className="mt-1 text-display font-semibold tabular-nums text-ink">
+          {/*
+            Months, formatted as the product formats every other age. A mean of
+            41 months is "3 нас 5 сар"; rounded to whole years it would read "3"
+            for most of a school year and stop moving.
+          */}
+          {data.averageAgeMonths === null ? "—" : formatAgeFromMonths(data.averageAgeMonths)}
+        </p>
+      </Card>
+    </section>
   );
 }
 

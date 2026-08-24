@@ -48,6 +48,22 @@ export class ChildrenController {
     return this.service.list(actor, query);
   }
 
+  /*
+   * ★ Declared before `children/:id`, and that ordering is load-bearing.
+   *
+   * Nest matches routes in declaration order, so a `:id` parameter registered
+   * first would swallow `/children/summary` and hand "summary" to the child
+   * lookup — which answers 404, the same status an unauthorized child gets.
+   * The bug would read as a permissions problem rather than a routing one.
+   */
+  @Get("children/summary")
+  async summary(
+    @CurrentActor() actor: Actor,
+    @Query(new ZodValidationPipe(listChildrenQuerySchema)) query: ListChildrenQuery,
+  ) {
+    return this.service.rosterSummary(actor, query);
+  }
+
   @Get("children/:id")
   async get(
     @CurrentActor() actor: Actor,

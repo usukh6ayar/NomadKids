@@ -755,3 +755,18 @@ export const assessmentRadarSchema = z.object({
 });
 export type AssessmentRadar = z.infer<typeof assessmentRadarSchema>;
 export type RadarAxis = z.infer<typeof radarAxisSchema>;
+
+/**
+ * The roster's headline numbers — RFP §12.1.
+ *
+ * `averageAgeMonths` is months rather than years because a kindergarten's
+ * roster spans about 2 to 5 years old: rounded to whole years the mean reads
+ * "3" for most of a school year and stops carrying information. Null when no
+ * child has a usable birth date — "0 нас" would be a claim rather than an
+ * absence.
+ */
+export const rosterSummarySchema = z.object({
+  total: z.number(),
+  averageAgeMonths: z.number().nullable(),
+});
+export type RosterSummary = z.infer<typeof rosterSummarySchema>;

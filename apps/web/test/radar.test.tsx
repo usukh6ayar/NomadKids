@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { AssessmentRadar } from "@kinder/contracts";
 import { DevelopmentRadar } from "@/components/assessment/development-radar";
 import { ObservationMix } from "@/components/dashboard/observation-mix";
+import { formatAgeFromMonths } from "@/lib/format";
 
 /**
  * The radar, and the promise that justified hand-drawing it.
@@ -147,5 +148,19 @@ describe("the observation mix", () => {
     // Not a chart of zeroes — the feed below already carries the empty case and
     // the way to write the first observation.
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe("the roster summary", () => {
+  /**
+   * ★ A mean over the page on screen would be a different number each time you
+   * pressed "next". The endpoint computes it over the whole filtered roster,
+   * sharing its `where` with the list, so the header cannot contradict the rows.
+   */
+  it("words the average as an age rather than a month count", () => {
+    // 41 months — "3" alone would be true of most of a school year.
+    expect(formatAgeFromMonths(41)).toBe("3 нас 5 сар");
+    expect(formatAgeFromMonths(48)).toBe("4 нас");
+    expect(formatAgeFromMonths(null)).toBe("—");
   });
 });

@@ -18,10 +18,19 @@ import type { ChildStatus, EnrollmentStatus, GuardianRelation, Sex } from "../do
 export class ChildrenRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listChildren(visible: VisibleChildrenFilter, filters: ChildFilters, page: PageParams) {
-    const { skip, take } = toSkipTake(page);
-
-    const where = {
+  /**
+   * The roster filter — visibility plus the caller's search terms.
+   *
+   * ★ Extracted so the list and its summary cannot diverge.
+   *
+   * It was inline in `listChildren`, and `rosterAges` needs the identical
+   * predicate: a total computed over a second, hand-copied `where` is how a
+   * header ends up reporting a number the rows beneath it contradict — or, far
+   * worse, counting children the caller may not see. One expression, two
+   * callers, no opportunity to drift.
+   */
+  private childWhere(visible: VisibleChildrenFilter, filters: ChildFilters) {
+    return {
       AND: [
         visible,
         {
@@ -51,6 +60,11 @@ export class ChildrenRepository {
         },
       ],
     };
+  }
+
+  async listChildren(visible: VisibleChildrenFilter, filters: ChildFilters, page: PageParams) {
+    const { skip, take } = toSkipTake(page);
+    const where = this.childWhere(visible, filters);
 
     const [items, total] = await Promise.all([
       this.prisma.child.findMany({
@@ -167,6 +181,31 @@ export class ChildrenRepository {
   }
 
   /** Lists a guardian's children — the parent's own view. */
+  /**
+   * The roster's size and mean age, over the *same* filter the list uses.
+   *
+   * ★ It takes the caller's `visible` filter and `filters` rather than
+   * rebuilding a query. Authorization lives in one module (CLAUDE.md §1.1), and
+   * a summary that assembled its own `where` would be a second place deciding
+   * who is counted — the kind of divergence that shows up as a roster total
+   * that disagrees with the rows beneath it, or worse, counts children the
+   * caller may not see.
+   *
+   * ★★ Selects `dateOfBirth` alone and averages in the service.
+   *
+   * Postgres cannot average a `date` directly, and the alternatives are worse:
+   * `$queryRaw` would mean expressing the visibility filter a second time in
+   * SQL, which is exactly what the note above forbids. The projection is one
+   * column over a kindergarten's roster — hundreds of rows at most, none of
+   * which leaves the server — so the cost is a rounding error against the risk.
+   */
+  async rosterAges(visible: VisibleChildrenFilter, filters: ChildFilters) {
+    return this.prisma.child.findMany({
+      where: this.childWhere(visible, filters),
+      select: { dateOfBirth: true },
+    });
+  }
+
   async listChildrenForGuardian(guardianUserId: string) {
     return this.prisma.child.findMany({
       where: {

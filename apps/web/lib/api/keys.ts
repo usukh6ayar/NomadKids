@@ -42,6 +42,7 @@ export const qk = {
 
   childAssessments: (childId: string, termId?: string) =>
     ["child", childId, "assessments", termId ?? "all"] as const,
+  rosterSummary: (filters: Record<string, unknown>) => ["children", "summary", filters] as const,
   assessmentRadar: (childId: string, termId: string) =>
     ["child", childId, "assessment-radar", termId] as const,
   termReport: (childId: string, termId: string) =>
