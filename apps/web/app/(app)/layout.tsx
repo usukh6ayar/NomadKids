@@ -119,15 +119,19 @@ function staffNav(isAdmin: boolean): NavItem[] {
  * eight of its thirteen entries as dead labels. Two failure modes came out of
  * that, and the second is the worse one:
  *
- *  - **Хоол · Судалгаа · Чат · Санхүү · Баримт бичиг** are Phase 2 and Phase 3
- *    (CLAUDE.md §7). A teacher opening the menu every day and reading six
- *    things they cannot do learns that most of this product is broken. They
- *    are gone until the screen behind them exists; adding a line back is a
- *    one-line change on the day it ships. **Ирц** was pulled forward by
- *    explicit client request and shipped 2026-08-24 — the group day sheet is
- *    reached from the dashboard's group card, same as assessment, and the
- *    review queue for a guardian's advance notice earns the sidebar line
- *    below since it is where a teacher checks in, not where a group starts.
+ *  - **Чат · Санхүү · Баримт бичиг** are Phase 2 and Phase 3 (CLAUDE.md §7). A
+ *    teacher opening the menu every day and reading six things they cannot do
+ *    learns that most of this product is broken. They are gone until the
+ *    screen behind them exists; adding a line back is a one-line change on
+ *    the day it ships. **Ирц** and **Судалгаа** were pulled forward by
+ *    explicit client request and shipped 2026-08-24: the attendance day
+ *    sheet is reached from the dashboard's group card, same as assessment,
+ *    with its own review-queue line below for a guardian's advance notice;
+ *    survey management earns a line here directly since — unlike
+ *    attendance — it has no group to start from. Хоол ба цэс shipped the
+ *    same day too, reached from the child page rather than the sidebar,
+ *    since there is nothing kindergarten-wide to manage from here — only
+ *    per-day content that belongs where a family reads it.
  *
  *  - **Явцын үнэлгээ** and **Тайлан** were marked `soon` while both are fully
  *    built. Assessment begins from a group and a report from a child, so
@@ -152,7 +156,10 @@ function staffSections(isAdmin: boolean): NavSection[] {
     },
     {
       title: "Харилцаа холбоо",
-      entries: [{ label: "Ангийн самбар / Мэдээ", href: "/notifications" }],
+      entries: [
+        { label: "Ангийн самбар / Мэдээ", href: "/notifications" },
+        { label: "Судалгаа", href: "/surveys" },
+      ],
     },
     {
       title: "Багш ба байгууллага",

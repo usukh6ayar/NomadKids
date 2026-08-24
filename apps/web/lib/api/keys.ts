@@ -49,6 +49,12 @@ export const qk = {
   attendanceReviewQueue: (filters: Record<string, unknown> = {}) =>
     ["attendance-requests", "review-queue", filters] as const,
 
+  childSurveys: (childId: string) => ["child", childId, "surveys"] as const,
+  kindergartenSurveys: (kindergartenId: string) =>
+    ["kindergarten", kindergartenId, "surveys"] as const,
+  survey: (surveyId: string) => ["survey", surveyId] as const,
+  surveyResults: (surveyId: string) => ["survey", surveyId, "results"] as const,
+
   childAssessments: (childId: string, termId?: string) =>
     ["child", childId, "assessments", termId ?? "all"] as const,
   rosterSummary: (filters: Record<string, unknown>) => ["children", "summary", filters] as const,

@@ -7,12 +7,14 @@ import {
   BookOpen,
   CalendarCheck,
   ChevronRight,
+  ClipboardCheck,
   Plus,
   TrendingUp,
   UtensilsCrossed,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { parentDashboardSchema, unreadCountSchema } from "@kinder/contracts";
+import { z } from "zod";
+import { parentDashboardSchema, surveySchema, unreadCountSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
@@ -200,29 +202,36 @@ export default function ParentHomePage() {
         ★ Entry points, restyled to the reference's icon-circle row —
         `RowCard`'s own radius and border, applied straight to the `Link` since
         the whole row is the click target, matching `ChildRow` elsewhere.
-        Every reference card that names an out-of-MVP feature (Санхүү, Чат,
-        Судалгаа — CLAUDE.md §7) is left out rather than dimmed or marked
-        "удахгүй": the sidebar's own rule already forbids a menu entry that
-        goes nowhere, and the same reasoning holds here. Ирц and Хоол ба цэс
-        are no longer among them — both shipped 2026-08-24.
+        Every reference card that names an out-of-MVP feature (Санхүү, Чат —
+        CLAUDE.md §7) is left out rather than dimmed or marked "удахгүй": the
+        sidebar's own rule already forbids a menu entry that goes nowhere, and
+        the same reasoning holds here. Ирц and Хоол ба цэс are no longer
+        among them — both shipped 2026-08-24. Судалгаа shipped the same day
+        too, but earns no permanent slot here at all — see `SurveyPrompt`
+        below, which renders only while an unanswered one actually exists,
+        matching the reference's own "Бөглөх судалгаа" card.
       */}
       <section aria-labelledby="board-heading">
         <SectionHeader id="board-heading" title="Ангийн самбар" />
-        <Link
-          href="/notifications"
-          className="flex min-h-16 items-center gap-3 rounded-row border border-border bg-surface px-4 py-3 transition-colors hover:border-primary"
-        >
-          <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-sky text-sky-ink">
-            <Bell size={20} aria-hidden />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block font-semibold text-ink">
-              {unread && unread.count > 0 ? `${unread.count} шинэ мэдээ байна` : "Шинэ мэдээ алга"}
+        <div className="flex flex-col gap-2">
+          <Link
+            href="/notifications"
+            className="flex min-h-16 items-center gap-3 rounded-row border border-border bg-surface px-4 py-3 transition-colors hover:border-primary"
+          >
+            <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-sky text-sky-ink">
+              <Bell size={20} aria-hidden />
             </span>
-            <span className="block text-body text-muted">Ангийн сүүлийн мэдээллийг харах</span>
-          </span>
-          <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden />
-        </Link>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold text-ink">
+                {unread && unread.count > 0 ? `${unread.count} шинэ мэдээ байна` : "Шинэ мэдээ алга"}
+              </span>
+              <span className="block text-body text-muted">Ангийн сүүлийн мэдээллийг харах</span>
+            </span>
+            <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden />
+          </Link>
+
+          <SurveyPrompt childId={selected.id} />
+        </div>
       </section>
 
       <section aria-labelledby="highlights-heading">
@@ -408,6 +417,45 @@ export default function ParentHomePage() {
  * and a looping background video is exactly the motion that preference exists
  * to suppress.
  */
+
+const activeSurveysSchema = z.array(surveySchema);
+
+/**
+ * "Бөглөх судалгаа" — present only while it is true.
+ *
+ * ★ Renders nothing (not a disabled or greyed row) when there is no
+ * unanswered survey for the selected child. A permanent card here would be
+ * exactly the dead menu entry `(app)/layout.tsx`'s sidebar rule forbids;
+ * this is the same rule applied to a card instead of a nav item.
+ */
+function SurveyPrompt({ childId }: { childId: string }) {
+  const { data } = useQuery({
+    queryKey: qk.childSurveys(childId),
+    queryFn: () => get(`/children/${childId}/surveys`, activeSurveysSchema),
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  const pending = data?.find((survey) => !survey.respondedByMe);
+  if (!pending) return null;
+
+  return (
+    <Link
+      href={`/children/${childId}/surveys/${pending.id}`}
+      className="flex items-center gap-3 rounded-row border border-border bg-surface px-4 py-4 transition-colors hover:border-primary"
+    >
+      <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-sun text-sun-ink">
+        <ClipboardCheck size={20} aria-hidden />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block font-semibold text-ink">Бөглөх судалгаа</span>
+        <span className="block truncate text-body text-muted">{pending.title}</span>
+      </span>
+      <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden />
+    </Link>
+  );
+}
+
 function HomeBackdrop({ children }: { children: ReactNode }) {
   const videoRef = useRef<HTMLVideoElement>(null);
 

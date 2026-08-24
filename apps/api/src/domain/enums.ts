@@ -35,6 +35,9 @@ export {
   ReviewStatus,
   Role,
   Sex,
+  SurveyQuestionType,
+  SurveyScope,
+  SurveyStatus,
   TeacherRole,
   TermReportStatus,
 } from "../generated/prisma/enums";

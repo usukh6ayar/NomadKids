@@ -243,6 +243,8 @@ model User {
   attendanceRequested AttendanceRequest[] @relation("AttendanceRequestedBy")
   attendanceReviewed AttendanceRequest[]  @relation("AttendanceReviewedBy")
   menuDaysCreated    MenuDay[]            @relation("MenuDayCreatedBy")
+  surveysCreated     Survey[]             @relation("SurveyCreatedBy")
+  surveyResponses    SurveyResponse[]     @relation("SurveyRespondent")
 
   @@index([deletedAt])
   @@map("users")
@@ -398,6 +400,10 @@ model Kindergarten {
   attendanceRecords  Attendance[]
   attendanceRequests AttendanceRequest[]
   menuDays           MenuDay[]
+  surveys            Survey[]
+  surveyQuestions    SurveyQuestion[]
+  surveyResponses    SurveyResponse[]
+  surveyAnswers      SurveyAnswer[]
 
   @@index([deletedAt])
   @@map("kindergartens")
@@ -536,6 +542,7 @@ model Child {
   auditLogs           AuditLog[]
   attendanceRecords   Attendance[]
   attendanceRequests  AttendanceRequest[]
+  surveyResponses     SurveyResponse[]
 
   @@unique([kindergartenId, nationalId])
   @@index([kindergartenId, status])
@@ -977,6 +984,127 @@ model MenuDay {
   @@unique([kindergartenId, date])
   @@index([kindergartenId, date(sort: Desc)])
   @@map("menu_days")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Surveys — RFP "Модуль 1: Судалгаа, Асуулга". This ships the RFP's core
+// mechanism only: create, publish, respond, see aggregate results. The
+// September-vs-May term comparison, the 5-sheet Excel export, and folding
+// survey data into the development radar are each their own future pass —
+// deliberately not built here, not silently dropped.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum SurveyScope {
+  /// Answered by a guardian, about their own child.
+  CHILD
+  /// Answered once by any member of the kindergarten — no child attached.
+  KINDERGARTEN
+}
+
+enum SurveyStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+}
+
+enum SurveyQuestionType {
+  RATING // 1-5
+  YES_NO
+  TEXT
+  CHECKBOX // multi-select; `options` holds the choices
+}
+
+model Survey {
+  id             String       @id @default(uuid()) @db.Uuid
+  kindergartenId String       @db.Uuid
+  title          String
+  description    String?
+  scope          SurveyScope
+  status         SurveyStatus @default(DRAFT)
+  createdById    String?      @db.Uuid
+  publishedAt    DateTime?
+  closedAt       DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  deletedById String? @db.Uuid
+
+  kindergarten Kindergarten     @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  createdBy    User?            @relation("SurveyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  questions    SurveyQuestion[]
+  responses    SurveyResponse[]
+
+  @@index([kindergartenId, status])
+  @@map("surveys")
+}
+
+model SurveyQuestion {
+  id             String             @id @default(uuid()) @db.Uuid
+  kindergartenId String             @db.Uuid
+  surveyId       String             @db.Uuid
+  order          Int
+  type           SurveyQuestionType
+  prompt         String
+  /// CHECKBOX's choices, as a string array. Unused by the other three types.
+  options        Json?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten   @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  survey       Survey         @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  answers      SurveyAnswer[]
+
+  @@index([surveyId, order])
+  @@map("survey_questions")
+}
+
+/// One guardian's (or, for a KINDERGARTEN-scope survey, one member's) full
+/// submission. `childId` is set only for a CHILD-scope survey.
+model SurveyResponse {
+  id             String   @id @default(uuid()) @db.Uuid
+  kindergartenId String   @db.Uuid
+  surveyId       String   @db.Uuid
+  childId        String?  @db.Uuid
+  respondentId   String   @db.Uuid
+  submittedAt    DateTime @default(now())
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  deletedById String? @db.Uuid
+
+  kindergarten Kindergarten   @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  survey       Survey         @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  child        Child?         @relation(fields: [childId], references: [id], onDelete: Cascade)
+  respondent   User           @relation("SurveyRespondent", fields: [respondentId], references: [id], onDelete: Cascade)
+  answers      SurveyAnswer[]
+
+  @@index([surveyId, childId])
+  @@index([surveyId, respondentId])
+  @@map("survey_responses")
+}
+
+model SurveyAnswer {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  responseId     String @db.Uuid
+  questionId     String @db.Uuid
+  /// A number (RATING), a boolean (YES_NO), a string (TEXT) or a string
+  /// array (CHECKBOX) — the shape `SurveyQuestion.type` says it should be.
+  value          Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  kindergarten Kindergarten   @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  response     SurveyResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  question     SurveyQuestion @relation(fields: [questionId], references: [id], onDelete: Restrict)
+
+  @@unique([responseId, questionId])
+  @@map("survey_answers")
 }
 
 model Term {

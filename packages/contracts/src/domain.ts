@@ -271,6 +271,76 @@ export const menuDaySchema = z.object({
 });
 export type MenuDay = z.infer<typeof menuDaySchema>;
 
+// ── Surveys ──────────────────────────────────────────────────────────────────
+
+export const surveyScopeSchema = z.enum(["CHILD", "KINDERGARTEN"]);
+export type SurveyScope = z.infer<typeof surveyScopeSchema>;
+
+export const surveyStatusSchema = z.enum(["DRAFT", "PUBLISHED", "CLOSED"]);
+export type SurveyStatus = z.infer<typeof surveyStatusSchema>;
+
+export const surveyQuestionTypeSchema = z.enum(["RATING", "YES_NO", "TEXT", "CHECKBOX"]);
+export type SurveyQuestionType = z.infer<typeof surveyQuestionTypeSchema>;
+
+export const surveyQuestionSchema = z.object({
+  id: uuidSchema,
+  order: z.number(),
+  type: surveyQuestionTypeSchema,
+  prompt: z.string(),
+  /** CHECKBOX's choices. Empty for the other three types. */
+  options: z.array(z.string()).nullish(),
+});
+export type SurveyQuestion = z.infer<typeof surveyQuestionSchema>;
+
+export const surveySchema = z.object({
+  id: uuidSchema,
+  title: z.string(),
+  description: z.string().nullish(),
+  scope: surveyScopeSchema,
+  status: surveyStatusSchema,
+  publishedAt: z.string().nullish(),
+  closedAt: z.string().nullish(),
+  createdAt: z.string(),
+  questions: z.array(surveyQuestionSchema).default([]),
+  /** Set only on the child-facing list — has this guardian already answered
+   * for this child (or, for a KINDERGARTEN-scope survey, at all)? */
+  respondedByMe: z.boolean().nullish(),
+});
+export type Survey = z.infer<typeof surveySchema>;
+
+/** A single answer's value: a number (RATING), a boolean (YES_NO), a string
+ * (TEXT), or a string array (CHECKBOX). */
+export const surveyAnswerValueSchema = z.union([
+  z.number(),
+  z.boolean(),
+  z.string(),
+  z.array(z.string()),
+]);
+export type SurveyAnswerValue = z.infer<typeof surveyAnswerValueSchema>;
+
+export const surveyAnswerSchema = z.object({
+  questionId: uuidSchema,
+  value: surveyAnswerValueSchema,
+});
+export type SurveyAnswer = z.infer<typeof surveyAnswerSchema>;
+
+/** One question's aggregated results — shape depends on the question type:
+ * RATING/YES_NO carry `counts` keyed by value; TEXT carries raw `responses`. */
+export const surveyQuestionResultSchema = z.object({
+  question: surveyQuestionSchema,
+  responseCount: z.number(),
+  counts: z.record(z.string(), z.number()).nullish(),
+  responses: z.array(z.string()).nullish(),
+});
+export type SurveyQuestionResult = z.infer<typeof surveyQuestionResultSchema>;
+
+export const surveyResultsSchema = z.object({
+  survey: surveySchema,
+  totalResponses: z.number(),
+  questions: z.array(surveyQuestionResultSchema),
+});
+export type SurveyResults = z.infer<typeof surveyResultsSchema>;
+
 // ── Assessment ───────────────────────────────────────────────────────────────
 
 export const domainSchema = z.object({
