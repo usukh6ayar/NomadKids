@@ -85,7 +85,13 @@ async function main(): Promise<void> {
   }
 
   console.log("Applying migrations…");
-  execFileSync("./node_modules/.bin/prisma", ["migrate", "deploy"], {
+  // `require.resolve` to Prisma's own CLI entrypoint, run under `node`
+  // directly — not a `.bin/prisma` path. On Windows the installed shim is
+  // `prisma.CMD`, not the extensionless POSIX name, and `spawnSync` without a
+  // shell fails to resolve it (ENOENT); a shell fixes that but reintroduces
+  // argument-escaping risk for no reason when the real entrypoint is one
+  // `require.resolve` away.
+  execFileSync(process.execPath, [require.resolve("prisma/build/index.js"), "migrate", "deploy"], {
     cwd: resolve(__dirname, ".."),
     stdio: "inherit",
     // `prisma.config.ts` reads DATABASE_URL, and `migrate deploy` must land in

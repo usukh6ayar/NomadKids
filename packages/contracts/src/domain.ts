@@ -208,6 +208,54 @@ export const observationTypeSchema = z.object({
   code: z.string().nullish(),
 });
 
+// ── Attendance ───────────────────────────────────────────────────────────────
+
+export const attendanceStatusSchema = z.enum(["PRESENT", "HALF_DAY", "EXCUSED", "SICK", "ABSENT"]);
+export type AttendanceStatus = z.infer<typeof attendanceStatusSchema>;
+
+export const attendanceRequestStatusSchema = z.enum(["PENDING", "APPROVED", "REJECTED"]);
+export type AttendanceRequestStatus = z.infer<typeof attendanceRequestStatusSchema>;
+
+export const attendanceRecordSchema = z.object({
+  id: uuidSchema,
+  childId: uuidSchema,
+  date: z.string(),
+  status: attendanceStatusSchema,
+  note: z.string().nullish(),
+  recordedBy: personRefSchema.nullish(),
+});
+export type AttendanceRecord = z.infer<typeof attendanceRecordSchema>;
+
+/** Per-status counts for a month — never a collapsed "funding day" figure. */
+export const attendanceSummarySchema = z.record(attendanceStatusSchema, z.number());
+export type AttendanceSummary = z.infer<typeof attendanceSummarySchema>;
+
+/** One row of a group's day sheet — a child, reconciled against whatever has
+ * already been marked. `record` is `null` for a child nobody has marked yet. */
+export const groupAttendanceRowSchema = z.object({
+  child: personRefSchema,
+  enrollmentId: uuidSchema,
+  record: z
+    .object({ id: uuidSchema, status: attendanceStatusSchema, note: z.string().nullish() })
+    .nullish(),
+});
+export type GroupAttendanceRow = z.infer<typeof groupAttendanceRowSchema>;
+
+export const attendanceRequestSchema = z.object({
+  id: uuidSchema,
+  childId: uuidSchema,
+  dateFrom: z.string(),
+  dateTo: z.string(),
+  requestedStatus: attendanceStatusSchema,
+  reason: z.string().nullish(),
+  reviewStatus: attendanceRequestStatusSchema,
+  reviewedBy: personRefSchema.nullish(),
+  reviewedAt: z.string().nullish(),
+  requestedBy: personRefSchema.nullish(),
+  createdAt: z.string(),
+});
+export type AttendanceRequest = z.infer<typeof attendanceRequestSchema>;
+
 // ── Assessment ───────────────────────────────────────────────────────────────
 
 export const domainSchema = z.object({

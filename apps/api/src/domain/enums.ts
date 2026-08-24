@@ -17,6 +17,8 @@
 
 export {
   AgeBand,
+  AttendanceRequestStatus,
+  AttendanceStatus,
   AuditAction,
   AuthTokenPurpose,
   ChildStatus,

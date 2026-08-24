@@ -119,11 +119,15 @@ function staffNav(isAdmin: boolean): NavItem[] {
  * eight of its thirteen entries as dead labels. Two failure modes came out of
  * that, and the second is the worse one:
  *
- *  - **Ирц · Хоол · Судалгаа · Чат · Санхүү · Баримт бичиг** are Phase 2 and
- *    Phase 3 (CLAUDE.md §7). A teacher opening the menu every day and reading
- *    six things they cannot do learns that most of this product is broken.
- *    They are gone until the screen behind them exists; adding a line back is
- *    a one-line change on the day it ships.
+ *  - **Хоол · Судалгаа · Чат · Санхүү · Баримт бичиг** are Phase 2 and Phase 3
+ *    (CLAUDE.md §7). A teacher opening the menu every day and reading six
+ *    things they cannot do learns that most of this product is broken. They
+ *    are gone until the screen behind them exists; adding a line back is a
+ *    one-line change on the day it ships. **Ирц** was pulled forward by
+ *    explicit client request and shipped 2026-08-24 — the group day sheet is
+ *    reached from the dashboard's group card, same as assessment, and the
+ *    review queue for a guardian's advance notice earns the sidebar line
+ *    below since it is where a teacher checks in, not where a group starts.
  *
  *  - **Явцын үнэлгээ** and **Тайлан** were marked `soon` while both are fully
  *    built. Assessment begins from a group and a report from a child, so
@@ -143,6 +147,7 @@ function staffSections(isAdmin: boolean): NavSection[] {
       entries: [
         { label: "Хүүхдүүд", href: "/children" },
         { label: "Ажиглалт хянах", href: "/observations/review" },
+        { label: "Чөлөөний хүсэлт хянах", href: "/attendance-requests/review" },
       ],
     },
     {

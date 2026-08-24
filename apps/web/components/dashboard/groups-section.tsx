@@ -5,22 +5,22 @@ import Link from "next/link";
 import { groupSchema, paginated } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
-import { ClipboardList } from "lucide-react";
+import { CalendarCheck, ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 
 const groupsSchema = paginated(groupSchema);
 
 /**
- * The way into assessment.
+ * The way into assessment and the daily attendance sheet.
  *
- * ★ Assessment has no top-level menu item, because it cannot start without a
+ * ★ Neither has a top-level menu item, because neither can start without a
  * group — a menu entry would open a screen whose first act is to ask "which
  * group?". So the groups a teacher actually teaches are listed here, and each
- * one is a direct link into its assessment column.
+ * one is a direct link into its assessment column and its attendance sheet.
  *
- * Without this the `/groups/[groupId]/assessment` route would be unreachable
- * through the UI, which is its own kind of dead route.
+ * Without this `/groups/[groupId]/assessment` and `/groups/[groupId]/attendance`
+ * would be unreachable through the UI, which is its own kind of dead route.
  *
  * ★★ It fetches its own data, deliberately.
  *
@@ -45,9 +45,10 @@ export function GroupsSection() {
    * A teacher here is responsible for a single group, so this section rendered
    * a heading, a supporting line and one row — three lines of chrome around one
    * link, naming a group the teacher already knows they teach. The name is not
-   * the information; "go and assess them" is.
+   * the information; "go and act on them" is — now two actions, attendance and
+   * assessment, since both are real, daily-and-quarterly tasks that start here.
    *
-   * So a single group collapses to the action itself. The list survives for the
+   * So a single group collapses to its actions. The list survives for the
    * cases that are genuinely lists: an admin sees every group in the
    * kindergarten, and `TeacherAssignment` permits a teacher covering two. The
    * shape follows the data rather than an assumption about it — hard-coding
@@ -57,18 +58,26 @@ export function GroupsSection() {
     const group = data.items[0]!;
 
     return (
-      <section aria-label="Улирлын үнэлгээ">
+      <section aria-label="Бүлгийн үйлдлүүд">
         <Card pad="roomy" className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="truncate font-medium text-ink">{group.name}</p>
-            <p className="text-body text-muted">Улирлын үнэлгээ хийх.</p>
+            <p className="text-body text-muted">Ирц бүртгэх, улирлын үнэлгээ хийх.</p>
           </div>
-          <Button asChild variant="secondary" size="sm">
-            <Link href={`/groups/${group.id}/assessment`}>
-              <ClipboardList size={18} />
-              Үнэлгээ
-            </Link>
-          </Button>
+          <div className="flex gap-2">
+            <Button asChild variant="secondary" size="sm">
+              <Link href={`/groups/${group.id}/attendance`}>
+                <CalendarCheck size={18} />
+                Ирц
+              </Link>
+            </Button>
+            <Button asChild variant="secondary" size="sm">
+              <Link href={`/groups/${group.id}/assessment`}>
+                <ClipboardList size={18} />
+                Үнэлгээ
+              </Link>
+            </Button>
+          </div>
         </Card>
       </section>
     );
@@ -76,17 +85,29 @@ export function GroupsSection() {
 
   return (
     <section aria-label="Бүлгүүд">
-      <SectionHeader title="Бүлгүүд" lede="Хариуцсан бүлгүүд, улирлын үнэлгээ рүү шууд." />
+      <SectionHeader title="Бүлгүүд" lede="Хариуцсан бүлгүүд, ирц болон үнэлгээ рүү шууд." />
       <Card className="divide-y divide-border">
         {data.items.map((group) => (
-          <Link
+          <div
             key={group.id}
-            href={`/groups/${group.id}/assessment`}
-            className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-canvas"
+            className="flex min-h-[56px] flex-wrap items-center justify-between gap-3 px-4 py-3"
           >
             <span className="min-w-0 truncate font-medium text-ink">{group.name}</span>
-            <span className="shrink-0 text-body text-primary-strong">Үнэлгээ →</span>
-          </Link>
+            <div className="flex gap-3">
+              <Link
+                href={`/groups/${group.id}/attendance`}
+                className="shrink-0 text-body text-primary-strong hover:underline"
+              >
+                Ирц →
+              </Link>
+              <Link
+                href={`/groups/${group.id}/assessment`}
+                className="shrink-0 text-body text-primary-strong hover:underline"
+              >
+                Үнэлгээ →
+              </Link>
+            </div>
+          </div>
         ))}
       </Card>
     </section>

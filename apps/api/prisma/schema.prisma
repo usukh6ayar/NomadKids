@@ -239,6 +239,9 @@ model User {
   reads          NotificationRead[]
   reactions      NotificationReaction[]
   reportJobs     ReportJob[]
+  attendanceRecorded Attendance[]        @relation("AttendanceRecordedBy")
+  attendanceRequested AttendanceRequest[] @relation("AttendanceRequestedBy")
+  attendanceReviewed AttendanceRequest[]  @relation("AttendanceReviewedBy")
 
   @@index([deletedAt])
   @@map("users")
@@ -391,6 +394,8 @@ model Kindergarten {
   notificationReactions NotificationReaction[]
   reportJobs         ReportJob[]
   auditLogs          AuditLog[]
+  attendanceRecords  Attendance[]
+  attendanceRequests AttendanceRequest[]
 
   @@index([deletedAt])
   @@map("kindergartens")
@@ -527,6 +532,8 @@ model Child {
   notificationTargets NotificationTarget[]
   reportJobs          ReportJob[]
   auditLogs           AuditLog[]
+  attendanceRecords   Attendance[]
+  attendanceRequests  AttendanceRequest[]
 
   @@unique([kindergartenId, nationalId])
   @@index([kindergartenId, status])
@@ -585,9 +592,11 @@ model Enrollment {
   child        Child         @relation(fields: [childId], references: [id], onDelete: Cascade)
   group        Group         @relation(fields: [groupId], references: [id], onDelete: Restrict)
   schoolYear   SchoolYear    @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
-  observations Observation[]
-  assessments  Assessment[]
-  termReports  TermReport[]
+  observations       Observation[]
+  assessments        Assessment[]
+  termReports        TermReport[]
+  attendanceRecords  Attendance[]
+  attendanceRequests AttendanceRequest[]
 
   @@index([groupId, status])
   @@index([schoolYearId, status])
@@ -838,6 +847,100 @@ model ObservationDomain {
   @@unique([observationId, domainId])
   @@index([domainId])
   @@map("observation_domains")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Attendance
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Ирсэн/Хагас өдөр/Чөлөөтэй are confirmed against the reference system;
+/// SICK and ABSENT are this project's own addition to round out an ordinary
+/// attendance set and are not yet confirmed against the client's full list —
+/// see docs/reference for the open question.
+enum AttendanceStatus {
+  PRESENT // Ирсэн
+  HALF_DAY // Хагас өдөр
+  EXCUSED // Чөлөөтэй
+  SICK // Өвчтэй
+  ABSENT // Тасалсан
+}
+
+enum AttendanceRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// One row per enrollment per day — never per bare `childId`, so a transfer
+/// mid-year does not rewrite which kindergarten a day of attendance belongs
+/// to (this feeds funding claims later, RFP appendix).
+model Attendance {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  childId        String @db.Uuid
+  enrollmentId   String @db.Uuid
+
+  date   DateTime         @db.Date
+  status AttendanceStatus
+  /// Medication instructions when SICK — RFP: "эмийн зааварчилгаа, тун
+  /// болон цагийн санамж".
+  note   String?
+
+  /// The staff member who recorded it. Matches `Observation.authorId` —
+  /// `User.id`, not `Membership.id`, so it reads across a role change.
+  recordedById String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  deletedById String? @db.Uuid
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  enrollment   Enrollment   @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
+  recordedBy   User?        @relation("AttendanceRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@unique([enrollmentId, date])
+  @@index([childId, date(sort: Desc)])
+  @@index([kindergartenId, date(sort: Desc)])
+  @@map("attendance_records")
+}
+
+/// A guardian's advance notice ("my child will be excused tomorrow"), not
+/// itself an attendance record. Approving one writes the actual `Attendance`
+/// rows for the covered range — staff stays the sole author of `Attendance`,
+/// matching the decision that parents may request but not record directly.
+model AttendanceRequest {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  childId        String @db.Uuid
+  enrollmentId   String @db.Uuid
+
+  /// User.id of the guardian who asked — a guardian has no Membership.
+  requestedById   String                  @db.Uuid
+  dateFrom        DateTime                @db.Date
+  dateTo          DateTime                @db.Date
+  requestedStatus AttendanceStatus
+  reason          String?
+  reviewStatus    AttendanceRequestStatus @default(PENDING)
+  /// The staff member who reviewed it — `User.id`, matching `recordedById`.
+  reviewedById    String?                 @db.Uuid
+  reviewedAt      DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  deletedById String? @db.Uuid
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  enrollment   Enrollment   @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
+  requestedBy  User         @relation("AttendanceRequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+  reviewedBy   User?        @relation("AttendanceReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([childId, dateFrom(sort: Desc)])
+  @@index([kindergartenId, reviewStatus])
+  @@map("attendance_requests")
 }
 
 model Term {

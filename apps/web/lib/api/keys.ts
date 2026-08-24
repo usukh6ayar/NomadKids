@@ -40,6 +40,15 @@ export const qk = {
   ageProfiles: (childId: string) => ["child", childId, "age-profiles"] as const,
   birthdayNotes: (childId: string) => ["child", childId, "birthday-notes"] as const,
 
+  attendance: (childId: string, month: string) => ["child", childId, "attendance", month] as const,
+  attendanceSummary: (childId: string, month: string) =>
+    ["child", childId, "attendance", "summary", month] as const,
+  attendanceRequests: (childId: string) => ["child", childId, "attendance-requests"] as const,
+  groupAttendance: (groupId: string, date: string) =>
+    ["group", groupId, "attendance", date] as const,
+  attendanceReviewQueue: (filters: Record<string, unknown> = {}) =>
+    ["attendance-requests", "review-queue", filters] as const,
+
   childAssessments: (childId: string, termId?: string) =>
     ["child", childId, "assessments", termId ?? "all"] as const,
   rosterSummary: (filters: Record<string, unknown>) => ["children", "summary", filters] as const,

@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Menu, type MenuItem } from "@/components/ui/menu";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAssessments } from "@/components/child/child-assessments";
+import { ChildAttendance } from "@/components/child/child-attendance";
 import { ChildGeneralInfo } from "@/components/child/child-general-info";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { ChildTabs } from "@/components/child/child-tabs";
@@ -24,6 +25,7 @@ import { GALLERY as GALLERY_LABEL, PORTFOLIO } from "@/lib/vocabulary";
 const GENERAL = "general";
 const OBSERVATIONS = "observations";
 const ASSESSMENTS = "assessments";
+const ATTENDANCE = "attendance";
 const GALLERY = "gallery";
 
 /**
@@ -139,6 +141,11 @@ export default function ChildDetailPage() {
             value: ASSESSMENTS,
             label: "Үнэлгээ",
             content: <ChildAssessments childId={childId} isStaff={isStaff} />,
+          },
+          {
+            value: ATTENDANCE,
+            label: "Ирц",
+            content: <ChildAttendance childId={childId} isStaff={isStaff} />,
           },
           {
             value: GALLERY,

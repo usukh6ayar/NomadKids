@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { Bell, BookOpen, ChevronRight, Plus, TrendingUp } from "lucide-react";
+import { Bell, BookOpen, CalendarCheck, ChevronRight, Plus, TrendingUp } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { parentDashboardSchema, unreadCountSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
@@ -189,13 +189,14 @@ export default function ParentHomePage() {
       </Card>
 
       {/*
-        ★ Two entry points, restyled to the reference's icon-circle row —
+        ★ Entry points, restyled to the reference's icon-circle row —
         `RowCard`'s own radius and border, applied straight to the `Link` since
         the whole row is the click target, matching `ChildRow` elsewhere.
-        Every reference card that named an out-of-MVP feature (Ирц, Хоол ба
-        цэс, Санхүү, Чат, Судалгаа — CLAUDE.md §7) is left out rather than
-        dimmed or marked "удахгүй": the sidebar's own rule already forbids a
-        menu entry that goes nowhere, and the same reasoning holds here.
+        Every reference card that names an out-of-MVP feature (Хоол ба цэс,
+        Санхүү, Чат, Судалгаа — CLAUDE.md §7) is left out rather than dimmed or
+        marked "удахгүй": the sidebar's own rule already forbids a menu entry
+        that goes nowhere, and the same reasoning holds here. Ирц is no longer
+        one of them — it shipped 2026-08-24.
       */}
       <section aria-labelledby="board-heading">
         <SectionHeader id="board-heading" title="Ангийн самбар" />
@@ -243,6 +244,26 @@ export default function ParentHomePage() {
             <span className="min-w-0 flex-1">
               <span className="block font-semibold text-ink">Хөгжил ба цэцэрлэгтээ</span>
               <span className="block text-body text-muted">Ажиглалт, хөгжлийн ахиц</span>
+            </span>
+            <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden />
+          </Link>
+
+          {/*
+            Ирц shipped 2026-08-24, pulled forward by explicit client request —
+            see `(app)/layout.tsx`'s `staffSections` comment. The other four
+            reference cards (Хоол ба цэс, Санхүү, Чат, Судалгаа) stay out until
+            each one is real, same reasoning as the sidebar's no-dead-entry rule.
+          */}
+          <Link
+            href={`/children/${selected.id}?tab=attendance`}
+            className="flex items-center gap-3 rounded-row border border-border bg-surface px-4 py-4 transition-colors hover:border-primary"
+          >
+            <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-sun text-sun-ink">
+              <CalendarCheck size={20} aria-hidden />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold text-ink">Ирц</span>
+              <span className="block text-body text-muted">Өдөр тутмын ирц, чөлөөний хүсэлт</span>
             </span>
             <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden />
           </Link>
