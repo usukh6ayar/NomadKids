@@ -96,17 +96,17 @@ function Platform() {
           {items.map((kg) => (
             <div
               key={kg.id}
-              className="flex min-h-[64px] flex-wrap items-center gap-3 rounded-[14px] border border-border bg-surface px-4 py-3"
+              className="flex min-h-[64px] flex-wrap items-center gap-3 rounded-row border border-border bg-surface px-4 py-3"
             >
-              <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary-soft text-primary">
+              <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-primary-soft text-primary">
                 <Building2 size={18} aria-hidden />
               </span>
 
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[.94rem] font-semibold text-ink">
+                <span className="block truncate text-lead font-semibold text-ink">
                   {kg.name}
                 </span>
-                <span className="mt-px block truncate text-[.78rem] text-muted">
+                <span className="mt-px block truncate text-compact text-muted">
                   {[kg.address, kg.phone, kg.email].filter(Boolean).join(" · ") || "—"}
                   {" · "}
                   {formatRelative(kg.createdAt)}
@@ -216,7 +216,7 @@ function CreateKindergartenDialog({ onClose }: { onClose: () => void }) {
       aria-label="Цэцэрлэг бүртгэх"
       className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4"
     >
-      <div className="w-full max-w-[520px] rounded-[18px] border border-border bg-surface p-5">
+      <div className="w-full max-w-[520px] rounded-card border border-border bg-surface p-5">
         {create.isSuccess ? (
           <InvitationHandover
             token={create.data.invitationToken}
@@ -234,8 +234,8 @@ function CreateKindergartenDialog({ onClose }: { onClose: () => void }) {
             noValidate
           >
             <div>
-              <h2 className="text-[1.05rem] font-semibold text-ink">Цэцэрлэг бүртгэх</h2>
-              <p className="mt-0.5 text-sm text-muted">
+              <h2 className="text-title font-semibold text-ink">Цэцэрлэг бүртгэх</h2>
+              <p className="mt-0.5 text-body text-muted">
                 Эхний удирдлагын бүртгэл нэгэн зэрэг үүснэ. Нууц үгээ тэр хүн өөрөө сонгоно.
               </p>
             </div>
@@ -297,7 +297,7 @@ function CreateKindergartenDialog({ onClose }: { onClose: () => void }) {
             </Field>
 
             <div className="border-t border-border pt-4">
-              <p className="mb-3 text-sm font-semibold text-ink">Эхний удирдлага</p>
+              <p className="mb-3 text-body font-semibold text-ink">Эхний удирдлага</p>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Овог" error={errors["admin.lastName"]} required>

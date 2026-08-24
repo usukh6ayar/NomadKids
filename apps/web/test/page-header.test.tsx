@@ -118,11 +118,14 @@ async function renderHeaderFor(role: "TEACHER" | "PARENT", title: string) {
 
 describe("who is signed in appears once", () => {
   /**
-   * ★ Staff have a sidebar, and the sidebar already says who they are.
+   * ★ Every audience has a sidebar, and the sidebar already says who they are.
    *
-   * The pill rendered for everyone from `lg` up — the exact width at which a
-   * teacher's `WhoAmI` is visible in the sidebar with the same name, describing
-   * the same person as "Багш" in one place and "Багшийн хэсэг" in the other.
+   * The pill rendered for everyone from `lg` up — the exact width at which
+   * `WhoAmI` is visible in the sidebar with the same name, describing the same
+   * person as "Багш" in one place and "Багшийн хэсэг" in the other. `AppShell`
+   * gives every role — teacher, parent, admin, platform operator — that same
+   * desktop sidebar (`(app)/layout.tsx`: "Every role gets the sidebar from
+   * `lg` up"), so this holds for a parent exactly as it does for a teacher.
    */
   it("a teacher's name is not repeated in the header", async () => {
     await renderHeaderFor("TEACHER", "Хяналтын самбар");
@@ -130,10 +133,9 @@ describe("who is signed in appears once", () => {
     expect(screen.queryByText("Тест Хэрэглэгч")).toBeNull();
   });
 
-  it("a parent's name is shown, because a parent has no sidebar", async () => {
+  it("a parent's name is not repeated in the header either", async () => {
     await renderHeaderFor("PARENT", "Нүүр");
 
-    expect(screen.getByText("Тест Хэрэглэгч")).toBeInTheDocument();
-    expect(screen.getByText("Эцэг эх")).toBeInTheDocument();
+    expect(screen.queryByText("Тест Хэрэглэгч")).toBeNull();
   });
 });
