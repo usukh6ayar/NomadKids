@@ -4,6 +4,7 @@ import { renderWithProviders, ROUTER, sessionFor, setParams, stubApi } from "./s
 import AppLayout from "@/app/(app)/layout";
 import { Providers } from "@/app/providers";
 import { useSession } from "@/lib/auth/session";
+import { MY_CHILDREN } from "@/lib/vocabulary";
 import ChildrenPage from "@/app/(app)/children/page";
 import AdminPage from "@/app/(app)/admin/page";
 import ReviewQueuePage from "@/app/(app)/observations/review/page";
@@ -56,7 +57,10 @@ describe("navigation is built from the session's roles", () => {
       </AppLayout>,
     );
 
-    await waitFor(() => expect(screen.getAllByText("Хавтас").length).toBeGreaterThan(0));
+    // "Хавтас" until 2026-08-24, when it named five different things across the
+    // product. The bottom-bar entry and the screen it opens now agree; see
+    // `lib/vocabulary.ts`.
+    await waitFor(() => expect(screen.getAllByText(MY_CHILDREN).length).toBeGreaterThan(0));
 
     // ★ The review queue is a teacher's job. Offering it to a family would be a
     // menu item that only ever 404s.

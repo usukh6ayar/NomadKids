@@ -48,13 +48,13 @@ function ReviewQueue() {
   });
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-7">
+    <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Эцэг эхийн ажиглалт — хянах"
         lede="Гэрээс хуваалцсан бичлэгүүдийг хянаж, хавтаст нэмнэ."
         actions={
           data ? (
-            <p className="text-sm text-muted" aria-live="polite">
+            <p className="text-body text-muted" aria-live="polite">
               {data.total} хүлээгдэж буй
             </p>
           ) : null
@@ -118,7 +118,7 @@ function ReviewCard({ observation }: { observation: z.infer<typeof queueItemSche
   });
 
   return (
-    <Card className="flex flex-col gap-4 px-4 py-4 sm:px-5">
+    <Card pad="roomy" className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           {observation.child ? (
@@ -133,7 +133,7 @@ function ReviewCard({ observation }: { observation: z.infer<typeof queueItemSche
           ) : (
             <span className="font-medium text-ink">—</span>
           )}
-          <p className="text-sm text-muted">
+          <p className="text-body text-muted">
             {[fullName(observation.author), formatDate(observation.observedOn)]
               .filter((v) => v !== "—")
               .join(" · ")}
@@ -142,7 +142,7 @@ function ReviewCard({ observation }: { observation: z.infer<typeof queueItemSche
         <Badge tone="sun">Хүлээгдэж буй</Badge>
       </div>
 
-      <div className="flex flex-col gap-2 rounded-[12px] bg-canvas px-3.5 py-3 text-sm text-ink">
+      <div className="flex flex-col gap-2 rounded-control bg-canvas px-3.5 py-3 text-body text-ink">
         {observation.situation ? (
           <p className="whitespace-pre-wrap">{observation.situation}</p>
         ) : null}

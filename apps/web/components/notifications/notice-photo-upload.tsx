@@ -104,7 +104,9 @@ export function NoticePhotoUpload({
         ) : null}
       </div>
 
-      <p className="text-xs text-muted">JPEG, PNG эсвэл WebP. Нэг зураг дээд тал нь {MAX_MB} MB.</p>
+      <p className="text-caption text-muted">
+        JPEG, PNG эсвэл WebP. Нэг зураг дээд тал нь {MAX_MB} MB.
+      </p>
 
       {upload.isPending ? (
         <p role="status" className="sr-only">

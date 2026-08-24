@@ -2,8 +2,9 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Plus, Search } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { childSummarySchema, paginated } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
@@ -17,6 +18,7 @@ import { Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
 import { formatAge, fullName } from "@/lib/format";
+import { MY_CHILDREN } from "@/lib/vocabulary";
 import { z } from "zod";
 
 const listSchema = paginated(childSummarySchema);
@@ -43,10 +45,37 @@ export default function ChildrenPage() {
 
 // ── Staff ────────────────────────────────────────────────────────────────────
 
+/**
+ * ★ `?q=` seeds the box, and changing it re-seeds the box.
+ *
+ * `PageHeader`'s search submits to `/children?q=…` from any screen. Its docblock
+ * has always said "the list picks the term up from the URL and takes over" —
+ * this is the half that was missing. Without it the header field navigated here
+ * and landed on a complete, unfiltered roster with an empty search box, which
+ * reads as "no results for a name I can see on the list".
+ *
+ * ★★ The URL seeds the state; it is not the state.
+ *
+ * Typing here stays local and debounced. Writing every keystroke back to the URL
+ * is precisely what `HeaderSearch` avoids doing — it would push a history entry
+ * per character — and it is not needed, because the only thing that has to
+ * survive a navigation is the term someone arrived with.
+ */
 function StaffChildren() {
-  const [query, setQuery] = useState("");
+  const searchParams = useSearchParams();
+  const urlQuery = searchParams.get("q") ?? "";
+
+  const [query, setQuery] = useState(urlQuery);
   const [page, setPage] = useState(1);
   const search = useDebounced(query.trim());
+
+  // Only when `?q=` itself changes — arriving from the header, or Back to an
+  // earlier search. Local typing does not touch `urlQuery`, so this does not
+  // fight the input on every keystroke.
+  useEffect(() => {
+    setQuery(urlQuery);
+    setPage(1);
+  }, [urlQuery]);
 
   const filters = { q: search || undefined, page, pageSize: 25 };
 
@@ -64,14 +93,14 @@ function StaffChildren() {
   });
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-7">
+    <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Хүүхдүүд"
         lede="Хариуцсан бүлгийн хүүхдүүд."
         actions={
           <div className="flex items-center gap-3">
             {data ? (
-              <p className="text-sm text-muted" aria-live="polite">
+              <p className="text-body text-muted" aria-live="polite">
                 Нийт {data.total}
               </p>
             ) : null}
@@ -158,7 +187,7 @@ function StaffChildren() {
               >
                 Өмнөх
               </Button>
-              <span className="text-sm text-muted" aria-live="polite">
+              <span className="text-body text-muted" aria-live="polite">
                 {data.page} / {data.totalPages}
               </span>
               <Button
@@ -205,14 +234,14 @@ function ChildRow({
       // The whole row is one card and one link. `hover:border-primary` is the
       // reference's `.kidrow:hover` — the affordance is the border moving to
       // the brand colour, not a background wash.
-      className="flex min-h-[64px] items-center gap-3 rounded-[14px] border border-border bg-surface px-4 py-3 transition-colors hover:border-primary"
+      className="flex min-h-[64px] items-center gap-3 rounded-row border border-border bg-surface px-4 py-3 transition-colors hover:border-primary"
     >
       <ChildAvatar child={child} size={44} />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[.94rem] font-semibold leading-[1.35] text-ink">
+        <span className="block truncate text-lead font-semibold leading-[1.35] text-ink">
           {fullName(child)}
         </span>
-        <span className="mt-px block truncate text-[.78rem] text-muted">
+        <span className="mt-px block truncate text-compact text-muted">
           {[group, formatAge(child.dateOfBirth)].filter(Boolean).join(" · ")}
         </span>
       </span>
@@ -229,8 +258,8 @@ function MyChildren() {
   });
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-7">
-      <h1 className="text-xl font-semibold text-ink">Хөгжлийн хавтас</h1>
+    <div className="flex flex-col gap-6 lg:gap-8">
+      <h1 className="text-heading font-semibold text-ink">{MY_CHILDREN}</h1>
 
       {isLoading ? <LoadingState rows={2} /> : null}
 
@@ -260,7 +289,7 @@ function MyChildren() {
                 <ChildAvatar child={child} size={56} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium text-ink">{fullName(child)}</span>
-                  <span className="block text-sm text-muted">{formatAge(child.dateOfBirth)}</span>
+                  <span className="block text-body text-muted">{formatAge(child.dateOfBirth)}</span>
                 </span>
               </Card>
             </Link>

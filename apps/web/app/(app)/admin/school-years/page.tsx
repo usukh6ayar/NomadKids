@@ -53,7 +53,7 @@ function AdminSchoolYears() {
   const items = years.data ?? [];
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-7">
+    <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Хичээлийн жил"
         lede="Бүлэг, элсэлт бүр хичээлийн жилд харьяалагдана."
@@ -80,11 +80,11 @@ function AdminSchoolYears() {
           {items.map((year) => (
             <div
               key={year.id}
-              className="flex min-h-[56px] flex-wrap items-center gap-3 rounded-[14px] border border-border bg-surface px-4 py-3"
+              className="flex min-h-[56px] flex-wrap items-center gap-3 rounded-row border border-border bg-surface px-4 py-3"
             >
               <span className="min-w-0 flex-1">
-                <span className="block text-[.94rem] font-semibold text-ink">{year.name}</span>
-                <span className="mt-px block text-[.78rem] text-muted">
+                <span className="block text-lead font-semibold text-ink">{year.name}</span>
+                <span className="mt-px block text-compact text-muted">
                   {[year.startsOn?.slice(0, 10), year.endsOn?.slice(0, 10)]
                     .filter(Boolean)
                     .join(" — ") || "—"}
@@ -144,7 +144,7 @@ function CreateYearDialog({
       aria-label="Хичээлийн жил нэмэх"
       className="fixed inset-0 z-50 grid place-items-center bg-ink/50 p-4"
     >
-      <div className="w-full max-w-[420px] rounded-[18px] border border-border bg-surface p-5">
+      <div className="w-full max-w-[420px] rounded-card border border-border bg-surface p-5">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -153,7 +153,7 @@ function CreateYearDialog({
           className="flex flex-col gap-4"
           noValidate
         >
-          <h2 className="text-[1.05rem] font-semibold text-ink">Хичээлийн жил нэмэх</h2>
+          <h2 className="text-title font-semibold text-ink">Хичээлийн жил нэмэх</h2>
 
           <FormError message={create.isError ? errorMessage(create.error) : null} />
 

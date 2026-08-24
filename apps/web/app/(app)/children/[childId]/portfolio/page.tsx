@@ -5,7 +5,20 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { z } from "zod";
-import { BookOpen, Heart, MessageCircle, Pencil, Ruler, Sparkles, Sun, Weight } from "lucide-react";
+import {
+  BookOpen,
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  FileText,
+  Heart,
+  MessageCircle,
+  Pencil,
+  Ruler,
+  Sparkles,
+  Sun,
+  Weight,
+} from "lucide-react";
 import {
   aboutMeSchema,
   ageProfileSchema,
@@ -16,28 +29,41 @@ import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors, isNotFound } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/field";
-import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
-import { ChildHeader } from "@/components/child/child-header";
+import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { AgeSectionShell } from "@/components/child/age-section-shell";
+import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { ChildGallery } from "@/components/media/child-gallery";
-import { fullName } from "@/lib/format";
+import { ReportDialog } from "@/components/reports/report-dialog";
+import { ageInYears, fullName } from "@/lib/format";
+import { PORTFOLIO } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
 
 const PORTFOLIO_AGES = [2, 3, 4, 5] as const;
 
-/**
- * One soft accent per age — the client's front-v2 redesign gives each year its
- * own colour so the row reads as a progression rather than four identical
- * buttons. The accents are the ones already in the palette; no new colours.
+/*
+ * ★ `AGE_TONE` was removed on 2026-08-24, and so was `SectionLink`.
+ *
+ * The map gave each year its own saturated tint — mint, sky, sun, peach — while
+ * whether the year had *any content* was carried by a 6px dot at 25% opacity of
+ * that same colour. The signal was inverted: the loudest thing on the row
+ * encoded the label, which the text already gave you, and the variable that
+ * actually matters was the faintest mark on the page (about 1.5:1 against its
+ * own tint — invisible, and only WCAG-safe because the `aria-label` carried the
+ * state).
+ *
+ * Gestalt similarity says a set of peers should look alike and difference
+ * should encode a variable. Four colours for four labels also read as four
+ * different *kinds* of thing rather than as one timeline.
+ *
+ * Now: one tint for the set, and it means "done" — `mint`, which is what that
+ * token is documented for — plus a check. Empty years are a plain surface. The
+ * row reads as progress at a glance, which is what its own note always claimed
+ * it was for.
  */
-const AGE_TONE: Record<number, string> = {
-  2: "border-mint bg-mint text-mint-ink hover:opacity-90",
-  3: "border-sky bg-sky text-sky-ink hover:opacity-90",
-  4: "border-sun bg-sun text-sun-ink hover:opacity-90",
-  5: "border-peach bg-peach text-peach-ink hover:opacity-90",
-};
 
 /** Whether an age section has anything in it yet — drives the filled dot. */
 function hasAgeContent(profile?: z.infer<typeof ageProfileSchema>): boolean {
@@ -109,11 +135,11 @@ export default function PortfolioPage() {
         <ErrorState
           title={isNotFound(child.error) ? "Олдсонгүй" : "Алдаа гарлаа"}
           description={
-            isNotFound(child.error) ? "Энэ хавтас олдсонгүй." : errorMessage(child.error)
+            isNotFound(child.error) ? `${PORTFOLIO} олдсонгүй.` : errorMessage(child.error)
           }
           action={
             <Button asChild variant="secondary">
-              <Link href="/children">Буцах</Link>
+              <Link href="/children">Жагсаалт руу буцах</Link>
             </Button>
           }
         />
@@ -128,26 +154,74 @@ export default function PortfolioPage() {
     (g) => g.guardian?.id === session?.user.id && g.canView !== false,
   );
 
+  /*
+   * ★ Which years are already lived, so the sections for the rest arrive
+   * collapsed. RFP §4.3 keeps all four; only their default state changes.
+   */
+  const currentAge = ageInYears(data.dateOfBirth);
+
   return (
     <div className="flex flex-col gap-6 py-2">
-      <ChildHeader child={data} />
+      {/*
+        The way back. This screen is reached from the child's record and had no
+        return path — `ChildHeroProfile` renders identity, not navigation, so
+        the link sits above it rather than becoming a slot on that component.
+      */}
+      <Button asChild variant="ghost" size="sm" className="-ml-2 self-start">
+        <Link href={`/children/${childId}`}>
+          <ArrowLeft size={18} />
+          Хүүхдийн бүртгэл
+        </Link>
+      </Button>
 
-      <nav aria-label="Хавтасны хэсгүүд" className="flex flex-col gap-3">
-        <div className="flex flex-wrap gap-2">
-          <SectionLink href="#about-me" label="Миний тухай" />
-          <SectionLink href="#gallery" label="Зураг, бүтээл" />
-          <SectionLink href="#birthdays" label="Төрсөн өдөр" />
-        </div>
+      {/*
+        ★ The PDF lives here now, not on the child hub.
 
-        {/*
-          ★ The age row, carried over from the client's front-v2 redesign
-          (PR #5, `age-buttons`). Four years is a fixed, tiny set, so a row of
-          coloured buttons reads as a timeline in a way identical grey pills do
-          not — and the filled/empty dot answers "how much of this is done"
-          without a progress bar.
+        `type: "CHILD_PORTFOLIO"` exports this record — the RFP §4 document this
+        screen *is*. On the hub it sat in a row of five buttons next to
+        "Улирлын тайлан", which is a different document, and nothing in the row
+        said which one the PDF would contain.
+      */}
+      <ChildHeroProfile
+        child={data}
+        /*
+          ★ The same hero as the child hub, not a stripped copy of it.
 
-          The dot is paired with `aria-label` text, never colour alone.
-        */}
+          This rendered `<ChildHeroProfile child={data} />` and nothing else, so
+          a teacher moving from the record to the portfolio lost the health-note
+          badge and every action, and the screen had no way back to the record it
+          belongs to. The block whose stated purpose is "a teacher moving between
+          screens never loses track of whose record is open" was changing shape
+          between those screens.
+        */
+        showHealthAlert={isStaff}
+        actions={
+          <ReportDialog
+            childId={childId}
+            trigger={
+              <Button variant="secondary" size="sm">
+                <FileText size={18} />
+                PDF татах
+              </Button>
+            }
+          />
+        }
+      />
+
+      {/*
+        ★ One navigation, not two.
+
+        A row of three jump pills (Миний тухай / Зургийн цомог / Төрсөн өдөр) sat
+        above this, so the screen opened with seven links to content that was
+        directly below them — a full phone screen of navigation for a page you
+        were about to scroll anyway. "Миний тухай" was the first thing under its
+        own pill.
+
+        The age row earns its place where the pills did not: the four years are
+        the one part of this record that is *collapsed*, so these are the only
+        links that reveal something rather than scrolling to it.
+      */}
+      <nav aria-label="Насны хэсгүүд рүү шилжих">
         <ul className="grid grid-cols-4 gap-2">
           {PORTFOLIO_AGES.map((age) => {
             const filled = hasAgeContent(ageProfiles.data?.find((p) => p.age === age));
@@ -157,18 +231,20 @@ export default function PortfolioPage() {
                   href={`#age-${age}`}
                   aria-label={`${age} нас — ${filled ? "мэдээлэлтэй" : "хоосон"}`}
                   className={cn(
-                    "flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-[14px] border px-2 py-2 text-sm font-semibold transition-colors",
-                    AGE_TONE[age],
+                    "flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-row border px-2 py-2 text-body font-semibold transition-colors",
+                    filled
+                      ? "border-mint bg-mint text-mint-ink hover:opacity-90"
+                      : "border-border bg-surface text-muted hover:border-primary hover:text-ink",
                   )}
                 >
                   <span>{age} нас</span>
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      "size-1.5 rounded-full",
-                      filled ? "bg-current opacity-80" : "bg-current opacity-25",
-                    )}
-                  />
+                  {filled ? (
+                    <Check size={14} aria-hidden="true" />
+                  ) : (
+                    // Holds the line's height so the four buttons stay the same
+                    // size whether or not they are filled.
+                    <span aria-hidden="true" className="block h-[14px]" />
+                  )}
                 </a>
               </li>
             );
@@ -191,6 +267,7 @@ export default function PortfolioPage() {
           profile={ageProfiles.data?.find((p) => p.age === age)}
           isLoading={ageProfiles.isLoading}
           isGuardian={isGuardian}
+          currentAge={currentAge}
         />
       ))}
 
@@ -210,19 +287,9 @@ export default function PortfolioPage() {
         childId={childId}
         notes={birthdays.data ?? []}
         isLoading={birthdays.isLoading}
+        currentAge={currentAge}
       />
     </div>
-  );
-}
-
-function SectionLink({ href, label }: { href: string; label: string }) {
-  return (
-    <a
-      href={href}
-      className="inline-flex min-h-[44px] items-center rounded-[999px] border border-border bg-surface px-3.5 text-sm font-medium text-muted hover:bg-canvas hover:text-ink"
-    >
-      {label}
-    </a>
   );
 }
 
@@ -316,6 +383,7 @@ function AboutMeSection({
   return (
     <section id="about-me" aria-labelledby="about-me-heading" className="scroll-mt-20">
       <SectionHeader
+        id="about-me-heading"
         title="Миний тухай"
         action={
           !editing ? (
@@ -327,9 +395,9 @@ function AboutMeSection({
         }
       />
 
-      <Card className="px-4 py-4 sm:px-5">
+      <Card pad="roomy">
         {isLoading ? <LoadingState rows={2} /> : null}
-        {error ? <p className="text-sm text-danger">{errorMessage(error)}</p> : null}
+        {error ? <p className="text-body text-danger">{errorMessage(error)}</p> : null}
 
         {!isLoading && !editing ? (
           filled || data?.heightCm || data?.weightKg ? (
@@ -338,14 +406,14 @@ function AboutMeSection({
               {data?.heightCm || data?.weightKg ? (
                 <div className="flex flex-wrap gap-2">
                   {data?.heightCm ? (
-                    <span className="inline-flex items-center gap-2 rounded-[12px] bg-canvas px-3 py-2 text-sm">
+                    <span className="inline-flex items-center gap-2 rounded-control bg-canvas px-3 py-2 text-body">
                       <Ruler size={16} aria-hidden="true" className="text-muted" />
                       <span className="text-muted">Өндөр</span>
                       <strong className="font-semibold text-ink">{String(data.heightCm)} см</strong>
                     </span>
                   ) : null}
                   {data?.weightKg ? (
-                    <span className="inline-flex items-center gap-2 rounded-[12px] bg-canvas px-3 py-2 text-sm">
+                    <span className="inline-flex items-center gap-2 rounded-control bg-canvas px-3 py-2 text-body">
                       <Weight size={16} aria-hidden="true" className="text-muted" />
                       <span className="text-muted">Жин</span>
                       <strong className="font-semibold text-ink">{String(data.weightKg)} кг</strong>
@@ -359,14 +427,14 @@ function AboutMeSection({
                   <article
                     key={field.key}
                     className={cn(
-                      "rounded-[14px] border border-border bg-canvas px-4 py-3.5",
+                      "rounded-row border border-border bg-canvas px-4 py-3.5",
                       field.long && "sm:col-span-2",
                     )}
                   >
-                    <h3 className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-ink">
+                    <h3 className="mb-1.5 flex items-center gap-2 text-caption font-semibold text-ink">
                       <span
                         className={cn(
-                          "flex size-6 items-center justify-center rounded-[8px]",
+                          "flex size-6 items-center justify-center rounded-control",
                           STORY_TONE[field.tone],
                         )}
                       >
@@ -374,7 +442,7 @@ function AboutMeSection({
                       </span>
                       {field.label}
                     </h3>
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink">
+                    <p className="whitespace-pre-wrap text-body leading-relaxed text-ink">
                       {String(data?.[field.key])}
                     </p>
                   </article>
@@ -382,9 +450,11 @@ function AboutMeSection({
               </div>
             </div>
           ) : (
-            <p className="text-sm text-muted">
-              Хараахан бөглөөгүй байна. «Засах» дарж эхлүүлнэ үү.
-            </p>
+            <EmptyState
+              icon={<BookOpen size={28} aria-hidden="true" />}
+              title="Хараахан бөглөөгүй байна"
+              description="Танилцуулга, нэрний утга, мөрөөдөл — «Засах» дарж эхлүүлнэ үү."
+            />
           )
         ) : null}
 
@@ -498,12 +568,15 @@ function AgeSection({
   profile,
   isLoading,
   isGuardian,
+  currentAge,
 }: {
   childId: string;
   age: number;
   profile?: z.infer<typeof ageProfileSchema>;
   isLoading: boolean;
   isGuardian: boolean;
+  /** Decides which years open by default. See `AgeSectionShell`. */
+  currentAge: number | null;
 }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -549,20 +622,28 @@ function AgeSection({
     Boolean(otherNote);
 
   return (
-    <section id={`age-${age}`} aria-labelledby={`age-${age}-heading`} className="scroll-mt-20">
-      <SectionHeader
-        title={`${age} нас`}
-        action={
-          !editing ? (
-            <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
-              <Pencil size={16} />
-              Засах
-            </Button>
-          ) : null
-        }
-      />
-
-      <Card className={cn("px-4 py-4 sm:px-5", !hasContent && !editing && "border-dashed")}>
+    <AgeSectionShell
+      age={age}
+      anchor={`age-${age}`}
+      headingId={`age-${age}-heading`}
+      filled={hasContent}
+      currentAge={currentAge}
+      /*
+        The edit control moved out of the section heading and into the panel.
+        A `<summary>` may not usefully contain a button — clicking it toggles
+        the disclosure instead — and "open the year, then edit it" is the right
+        order anyway.
+      */
+      action={
+        !editing ? (
+          <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
+            <Pencil size={16} />
+            Засах
+          </Button>
+        ) : null
+      }
+    >
+      <>
         {isLoading ? <LoadingState rows={1} /> : null}
 
         {!isLoading && !editing ? (
@@ -571,8 +652,8 @@ function AgeSection({
               <dl className="grid gap-3 sm:grid-cols-2">
                 {AGE_FIELDS.filter((f) => profile?.[f.key]).map((field) => (
                   <div key={field.key} className={field.long ? "sm:col-span-2" : undefined}>
-                    <dt className="text-xs font-medium text-muted">{field.label}</dt>
-                    <dd className="mt-0.5 whitespace-pre-wrap text-sm text-ink">
+                    <dt className="text-caption font-medium text-muted">{field.label}</dt>
+                    <dd className="mt-0.5 whitespace-pre-wrap text-body text-ink">
                       {String(profile?.[field.key])}
                     </dd>
                   </div>
@@ -592,7 +673,11 @@ function AgeSection({
               ) : null}
             </div>
           ) : (
-            <p className="text-sm text-muted">Энэ насны мэдээлэл хараахан бөглөөгүй байна.</p>
+            // Says what to do next, not only what is absent — CLAUDE.md §5.
+            <EmptyState
+              title="Энэ насны тэмдэглэл хоосон байна"
+              description="Дуртай зүйлс, зан чанар, шинэ чадварууд — «Засах» дарж бөглөнө үү."
+            />
           )
         ) : null}
 
@@ -681,18 +766,21 @@ function AgeSection({
             </div>
           </form>
         ) : null}
-      </Card>
-    </section>
+      </>
+    </AgeSectionShell>
   );
 }
 
 function NoteBlock({ label, text, tone }: { label: string; text: string; tone: "own" | "other" }) {
   return (
     <div
-      className={cn("rounded-[12px] px-3.5 py-3", tone === "own" ? "bg-primary-soft" : "bg-canvas")}
+      className={cn(
+        "rounded-control px-3.5 py-3",
+        tone === "own" ? "bg-primary-soft" : "bg-canvas",
+      )}
     >
-      <p className="text-xs font-medium text-muted">{label}</p>
-      <p className="mt-0.5 whitespace-pre-wrap text-sm text-ink">{text}</p>
+      <p className="text-caption font-medium text-muted">{label}</p>
+      <p className="mt-0.5 whitespace-pre-wrap text-body text-ink">{text}</p>
     </div>
   );
 }
@@ -703,10 +791,13 @@ function BirthdaySection({
   childId,
   notes,
   isLoading,
+  currentAge,
 }: {
   childId: string;
   notes: z.infer<typeof birthdayNotesSchema>;
   isLoading: boolean;
+  /** Birthdays not yet had arrive collapsed, as the age sections do. */
+  currentAge: number | null;
 }) {
   const queryClient = useQueryClient();
   const [editingAge, setEditingAge] = useState<number | null>(null);
@@ -726,7 +817,7 @@ function BirthdaySection({
 
   return (
     <section id="birthdays" aria-labelledby="birthdays-heading" className="scroll-mt-20">
-      <SectionHeader title="Төрсөн өдрийн тэмдэглэл" />
+      <SectionHeader id="birthdays-heading" title="Төрсөн өдрийн тэмдэглэл" />
 
       {isLoading ? (
         <LoadingState rows={1} />
@@ -736,60 +827,92 @@ function BirthdaySection({
             const note = notes.find((n) => n.age === age);
             const isEditing = editingAge === age;
 
-            return (
-              <Card key={age} className="flex flex-col gap-2 px-4 py-4">
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="font-medium text-ink">{age} нас</h3>
-                  {!isEditing ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setEditingAge(age);
-                        setText(note?.note ?? "");
-                        save.reset();
-                      }}
-                    >
-                      <Pencil size={16} />
-                      Засах
-                    </Button>
-                  ) : null}
-                </div>
+            /*
+             * ★ A birthday that has not happened arrives closed.
+             *
+             * The four cards rendered open regardless, so a two-year-old's
+             * portfolio ended with three "Тэмдэглэл бичээгүй байна." boxes for
+             * birthdays up to three years away, each offering to write the note
+             * early. An existing note opens the card whatever the age — see
+             * `AgeSectionShell` for why content outranks the date.
+             */
+            const reached = currentAge === null || age <= currentAge;
 
-                {isEditing ? (
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      if (!save.isPending) save.mutate(age);
-                    }}
-                    className="flex flex-col gap-3"
-                  >
-                    <FormError message={save.isError ? errorMessage(save.error) : null} />
-                    <Field label={`${age} насны төрсөн өдрийн тэмдэглэл`}>
-                      {({ id, describedBy }) => (
-                        <Textarea
-                          id={id}
-                          aria-describedby={describedBy}
-                          value={text}
-                          onChange={(e) => setText(e.target.value)}
-                          autoFocus
-                        />
-                      )}
-                    </Field>
-                    <div className="flex gap-2">
-                      <Button type="submit" size="sm" disabled={save.isPending}>
-                        {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
+            return (
+              <Card key={age} className="px-4 py-4">
+                <details
+                  open={Boolean(note?.note) || reached}
+                  className="flex flex-col gap-2 [&[open]_svg.chevron]:rotate-180"
+                >
+                  <summary className="flex min-h-[44px] cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+                    <h3 className="font-medium text-ink">{age} нас</h3>
+                    {!reached && !note?.note ? <Badge tone="neutral">Ирээдүйд</Badge> : null}
+                    <ChevronDown
+                      size={18}
+                      aria-hidden="true"
+                      className="chevron ml-auto shrink-0 text-faint transition-transform"
+                    />
+                  </summary>
+
+                  <div className="mt-2 flex flex-col gap-2">
+                    {!isEditing ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="self-start"
+                        onClick={() => {
+                          setEditingAge(age);
+                          setText(note?.note ?? "");
+                          save.reset();
+                        }}
+                      >
+                        <Pencil size={16} />
+                        Засах
                       </Button>
-                      <Button variant="secondary" size="sm" onClick={() => setEditingAge(null)}>
-                        Цуцлах
-                      </Button>
-                    </div>
-                  </form>
-                ) : note?.note ? (
-                  <p className="whitespace-pre-wrap text-sm text-ink">{note.note}</p>
-                ) : (
-                  <p className="text-sm text-muted">Тэмдэглэл бичээгүй байна.</p>
-                )}
+                    ) : null}
+
+                    {isEditing ? (
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          if (!save.isPending) save.mutate(age);
+                        }}
+                        className="flex flex-col gap-3"
+                      >
+                        <FormError message={save.isError ? errorMessage(save.error) : null} />
+                        <Field label={`${age} насны төрсөн өдрийн тэмдэглэл`}>
+                          {({ id, describedBy }) => (
+                            <Textarea
+                              id={id}
+                              aria-describedby={describedBy}
+                              value={text}
+                              onChange={(e) => setText(e.target.value)}
+                              autoFocus
+                            />
+                          )}
+                        </Field>
+                        <div className="flex gap-2">
+                          <Button type="submit" size="sm" disabled={save.isPending}>
+                            {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
+                          </Button>
+                          <Button variant="secondary" size="sm" onClick={() => setEditingAge(null)}>
+                            Цуцлах
+                          </Button>
+                        </div>
+                      </form>
+                    ) : note?.note ? (
+                      <p className="whitespace-pre-wrap text-body text-ink">{note.note}</p>
+                    ) : (
+                      // Says what to do next, not only what is absent.
+                      // Not `EmptyState`: it renders a `Card`, and this sits
+                      // inside one already. A card nested in a card reads as a
+                      // rendering mistake rather than as an empty state.
+                      <p className="text-body text-muted">
+                        Тэмдэглэл бичээгүй. «Засах» дарж нэмнэ үү.
+                      </p>
+                    )}
+                  </div>
+                </details>
               </Card>
             );
           })}

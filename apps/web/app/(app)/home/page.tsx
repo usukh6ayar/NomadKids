@@ -8,12 +8,15 @@ import { parentDashboardSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
+import { PageHeader } from "@/components/shell/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
+import { useSession } from "@/lib/auth/session";
 import { excerpt, formatAge, formatRelative, fullName } from "@/lib/format";
+import { PORTFOLIO } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
 
 /**
@@ -28,6 +31,7 @@ import { cn } from "@/lib/utils";
  * filtering of its own, which is what keeps the rule in one place.
  */
 export default function ParentHomePage() {
+  const { session } = useSession();
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: qk.dashboard.parent(),
     queryFn: () => get("/dashboard/parent", parentDashboardSchema),
@@ -42,10 +46,29 @@ export default function ParentHomePage() {
    */
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  /*
+   * ★ `PageHeader`, and a title that says something.
+   *
+   * Four branches of this component each hand-rolled `<h1>Нүүр</h1>` — a
+   * navigation label used as a page title, which tells a parent nothing they
+   * did not already know from tapping it, in typography that matched neither
+   * `PageHeader` nor the other branches.
+   *
+   * `AppLayout` holds the whole tree behind a loading state until the session
+   * resolves, so the name is present on the first render here and the greeting
+   * does not appear a beat late.
+   */
+  const header = (
+    <PageHeader
+      title={session?.user.firstName ? `Сайн байна уу, ${session.user.firstName}` : "Сайн байна уу"}
+      lede="Хүүхдийнхээ сүүлийн мэдээллийг эндээс харна."
+    />
+  );
+
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-5 py-2">
-        <h1 className="text-xl font-semibold text-ink">Нүүр</h1>
+      <div className="flex flex-col gap-6 py-2 lg:gap-8">
+        {header}
         <LoadingState rows={3} />
       </div>
     );
@@ -53,8 +76,8 @@ export default function ParentHomePage() {
 
   if (isError) {
     return (
-      <div className="py-2">
-        <h1 className="mb-4 text-xl font-semibold text-ink">Нүүр</h1>
+      <div className="flex flex-col gap-6 py-2 lg:gap-8">
+        {header}
         <ErrorState
           description={errorMessage(error)}
           action={
@@ -71,8 +94,8 @@ export default function ParentHomePage() {
 
   if (children.length === 0) {
     return (
-      <div className="flex flex-col gap-5 py-2">
-        <h1 className="text-xl font-semibold text-ink">Нүүр</h1>
+      <div className="flex flex-col gap-6 py-2 lg:gap-8">
+        {header}
         <EmptyState
           title="Хүүхэд холбогдоогүй байна"
           description="Танд холбогдсон хүүхэд байхгүй байна. Цэцэрлэгийн багштайгаа холбогдоно уу."
@@ -84,12 +107,25 @@ export default function ParentHomePage() {
   const selected = children.find((c) => c.id === selectedId) ?? children[0]!;
 
   return (
-    <div className="flex flex-col gap-6 py-2">
-      <h1 className="text-xl font-semibold text-ink">Нүүр</h1>
+    <div className="flex flex-col gap-6 py-2 lg:gap-8">
+      {header}
 
+      {/*
+        ★ A group of toggles, not a tab set.
+
+        These carried `role="tablist"` and `role="tab"` with `aria-selected`, and
+        none of what those roles promise was here: no `tabpanel`, no
+        `aria-controls`, no roving tabindex, no arrow-key movement. A screen
+        reader announced "tab, 1 of 3" and then the arrow keys did nothing, and a
+        keyboard user had to Tab past every child instead of one stop for the
+        group. Claiming a pattern is worse than not claiming one — it tells
+        somebody a structure exists and then withholds it.
+
+        `aria-pressed` is what these actually are: buttons that stay in.
+      */}
       {children.length > 1 ? (
         <div
-          role="tablist"
+          role="group"
           aria-label="Хүүхэд сонгох"
           // Scrolls inside itself rather than widening the page — four children
           // with long names would otherwise push the layout sideways at 375px.
@@ -101,11 +137,10 @@ export default function ParentHomePage() {
               <button
                 key={child.id}
                 type="button"
-                role="tab"
-                aria-selected={active}
+                aria-pressed={active}
                 onClick={() => setSelectedId(child.id)}
                 className={cn(
-                  "flex min-h-[44px] shrink-0 items-center gap-2 rounded-[999px] border px-3 py-2 text-sm font-medium",
+                  "flex min-h-[44px] shrink-0 items-center gap-2 rounded-pill border px-3 py-2 text-body font-medium",
                   active
                     ? "border-primary bg-primary-soft text-primary"
                     : "border-border bg-surface text-muted",
@@ -119,11 +154,11 @@ export default function ParentHomePage() {
         </div>
       ) : null}
 
-      <Card className="flex flex-wrap items-center gap-4 px-4 py-4 sm:px-5">
+      <Card pad="roomy" className="flex flex-wrap items-center gap-4">
         <ChildAvatar child={selected} size={56} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-lg font-semibold text-ink">{fullName(selected)}</p>
-          <p className="text-sm text-muted">
+          <p className="truncate text-title font-semibold text-ink">{fullName(selected)}</p>
+          <p className="text-body text-muted">
             {[formatAge(selected.dateOfBirth), selected.group?.name].filter(Boolean).join(" · ")}
           </p>
         </div>
@@ -131,7 +166,7 @@ export default function ParentHomePage() {
           <Button asChild size="sm">
             <Link href={`/children/${selected.id}/portfolio`}>
               <BookOpen size={18} />
-              Хавтас
+              {PORTFOLIO}
             </Link>
           </Button>
           <Button asChild variant="secondary" size="sm">
@@ -146,6 +181,7 @@ export default function ParentHomePage() {
       {selected.assessments.length > 0 ? (
         <section aria-labelledby="development-heading">
           <SectionHeader
+            id="development-heading"
             title={currentTerm ? `${currentTerm.name} — хөгжлийн үнэлгээ` : "Хөгжлийн үнэлгээ"}
           />
           <Card className="flex flex-wrap gap-2 px-4 py-4">
@@ -159,7 +195,7 @@ export default function ParentHomePage() {
       ) : null}
 
       <section aria-labelledby="recent-heading">
-        <SectionHeader title="Сүүлийн мөчүүд" />
+        <SectionHeader id="recent-heading" title="Сүүлийн мөчүүд" />
 
         {recent.length === 0 ? (
           <EmptyState
@@ -186,14 +222,16 @@ export default function ParentHomePage() {
                       <Badge tone="peach">Буцаагдсан</Badge>
                     ) : null}
                   </span>
-                  <span className="mt-0.5 block text-sm text-muted">
+                  <span className="mt-0.5 block text-body text-muted">
                     {excerpt(item.situation, 100) || "Тайлбаргүй"}
                   </span>
                   {children.length > 1 && item.child ? (
-                    <span className="mt-0.5 block text-xs text-muted">{fullName(item.child)}</span>
+                    <span className="mt-0.5 block text-caption text-muted">
+                      {fullName(item.child)}
+                    </span>
                   ) : null}
                 </span>
-                <span className="shrink-0 whitespace-nowrap text-xs text-muted">
+                <span className="shrink-0 whitespace-nowrap text-caption text-muted">
                   {formatRelative(item.observedOn)}
                 </span>
               </Link>

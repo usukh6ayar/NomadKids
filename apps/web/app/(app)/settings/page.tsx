@@ -30,7 +30,7 @@ const MIN_PASSWORD_LENGTH = 8;
 export default function SettingsPage() {
   return (
     <div className="flex flex-col gap-6 py-2">
-      <h1 className="text-xl font-semibold text-ink">Профайл</h1>
+      <h1 className="text-heading font-semibold text-ink">Профайл</h1>
       <ProfileForm />
       <PasswordForm />
       <SignOutCard />
@@ -90,9 +90,9 @@ function ProfileForm() {
 
   return (
     <section aria-labelledby="profile-heading">
-      <SectionHeader title="Хувийн мэдээлэл" />
+      <SectionHeader id="profile-heading" title="Хувийн мэдээлэл" />
 
-      <Card className="px-4 py-4 sm:px-5">
+      <Card pad="roomy">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -108,7 +108,10 @@ function ProfileForm() {
           />
 
           {save.isSuccess ? (
-            <p role="status" className="rounded-[12px] bg-mint px-3.5 py-2.5 text-sm text-mint-ink">
+            <p
+              role="status"
+              className="rounded-control bg-mint px-3.5 py-2.5 text-body text-mint-ink"
+            >
               Хадгалагдлаа.
             </p>
           ) : null}
@@ -214,9 +217,9 @@ function PasswordForm() {
 
   return (
     <section aria-labelledby="password-heading">
-      <SectionHeader title="Нууц үг солих" />
+      <SectionHeader id="password-heading" title="Нууц үг солих" />
 
-      <Card className="px-4 py-4 sm:px-5">
+      <Card pad="roomy">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -240,7 +243,10 @@ function PasswordForm() {
           <FormError message={localError ?? (change.isError ? errorMessage(change.error) : null)} />
 
           {change.isSuccess ? (
-            <p role="status" className="rounded-[12px] bg-mint px-3.5 py-2.5 text-sm text-mint-ink">
+            <p
+              role="status"
+              className="rounded-control bg-mint px-3.5 py-2.5 text-body text-mint-ink"
+            >
               Нууц үг солигдлоо. Бусад төхөөрөмжөөс гарсан байна.
             </p>
           ) : null}
@@ -303,10 +309,10 @@ function SignOutCard() {
   const logout = useLogout();
 
   return (
-    <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
+    <Card pad="roomy" className="flex flex-wrap items-center justify-between gap-3">
       <div>
         <p className="font-medium text-ink">Системээс гарах</p>
-        <p className="text-sm text-muted">Энэ төхөөрөмжөөс гарна.</p>
+        <p className="text-body text-muted">Энэ төхөөрөмжөөс гарна.</p>
       </div>
       <Button variant="secondary" onClick={() => void logout()}>
         Гарах

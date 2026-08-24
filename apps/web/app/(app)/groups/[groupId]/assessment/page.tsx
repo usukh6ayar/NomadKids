@@ -159,8 +159,8 @@ function GroupAssessment() {
   return (
     <div className="flex flex-col gap-5 py-2">
       <header>
-        <h1 className="text-xl font-semibold text-ink">Үнэлгээ</h1>
-        <p className="mt-0.5 text-sm text-muted">{group.data?.name}</p>
+        <h1 className="text-heading font-semibold text-ink">Үнэлгээ</h1>
+        <p className="mt-0.5 text-body text-muted">{group.data?.name}</p>
       </header>
 
       <Card className="grid gap-4 px-4 py-4 sm:grid-cols-2 sm:px-5">
@@ -226,7 +226,7 @@ function GroupAssessment() {
           <SectionHeader
             title={column.data.domain.name}
             action={
-              <span className="text-sm text-muted">{column.data.children.length} хүүхэд</span>
+              <span className="text-body text-muted">{column.data.children.length} хүүхэд</span>
             }
           />
 
@@ -262,7 +262,7 @@ function GroupAssessment() {
           {pendingCount > 0 ? (
             <div className="sticky bottom-[76px] z-10 lg:bottom-4">
               <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 shadow-lg">
-                <p className="text-sm text-ink" aria-live="polite">
+                <p className="text-body text-ink" aria-live="polite">
                   {pendingCount} хүүхдийн үнэлгээ хадгалагдаагүй байна
                 </p>
                 <div className="flex gap-2">
@@ -278,7 +278,7 @@ function GroupAssessment() {
           ) : null}
 
           {save.isSuccess && pendingCount === 0 ? (
-            <p role="status" className="rounded-[12px] bg-mint px-4 py-3 text-sm text-mint-ink">
+            <p role="status" className="rounded-control bg-mint px-4 py-3 text-body text-mint-ink">
               Үнэлгээ хадгалагдлаа.
             </p>
           ) : null}
@@ -319,7 +319,7 @@ function ChildRow({
         <ChildAvatar child={child} size={40} />
         <span className="min-w-0">
           <span className="block truncate font-medium text-ink">{fullName(child)}</span>
-          {isDirty ? <span className="text-xs text-primary">Хадгалаагүй</span> : null}
+          {isDirty ? <span className="text-caption text-primary">Хадгалаагүй</span> : null}
         </span>
       </div>
 
@@ -338,7 +338,7 @@ function ChildRow({
               aria-checked={selected}
               onClick={() => onSelect(level.id)}
               className={cn(
-                "min-h-[44px] rounded-[12px] border px-3 text-sm font-medium transition-colors",
+                "min-h-[44px] rounded-control border px-3 text-body font-medium transition-colors",
                 selected
                   ? "border-primary bg-primary text-primary-ink"
                   : "border-border bg-surface text-muted hover:bg-canvas hover:text-ink",

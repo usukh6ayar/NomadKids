@@ -11,6 +11,7 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
+import { PORTFOLIO } from "@/lib/vocabulary";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
@@ -126,7 +127,7 @@ export default function NewObservationPage() {
           description={errorMessage(child.error)}
           action={
             <Button asChild variant="secondary">
-              <Link href="/children">Буцах</Link>
+              <Link href="/children">Жагсаалт руу буцах</Link>
             </Button>
           }
         />
@@ -144,7 +145,7 @@ export default function NewObservationPage() {
           <p role="status" className="font-medium text-mint-ink">
             Ажиглалт хадгалагдлаа.
           </p>
-          <p className="mt-1 text-sm text-muted">
+          <p className="mt-1 text-body text-muted">
             {isStaff
               ? "Хүсвэл зураг хавсаргана уу."
               : "Багш хянаад баталгаажуулна. Хүсвэл зураг хавсаргана уу."}
@@ -182,15 +183,15 @@ export default function NewObservationPage() {
       <header>
         <Link
           href={`/children/${childId}`}
-          className="inline-flex min-h-[44px] items-center text-sm text-primary underline underline-offset-4"
+          className="inline-flex min-h-[44px] items-center text-body text-primary underline underline-offset-4"
         >
           ← {fullName(child.data)}
         </Link>
-        <h1 className="mt-1 text-xl font-semibold text-ink">
+        <h1 className="mt-1 text-heading font-semibold text-ink">
           {isStaff ? "Шинэ ажиглалт" : "Гэрийн мөч хуваалцах"}
         </h1>
         {!isStaff ? (
-          <p className="mt-1 text-sm text-muted">Таны бичсэнийг багш хянаад хавтаст нэмнэ.</p>
+          <p className="mt-1 text-body text-muted">Таны бичсэнийг багш хянаад хавтаст нэмнэ.</p>
         ) : null}
       </header>
 
@@ -209,7 +210,7 @@ export default function NewObservationPage() {
           }
         />
 
-        <Card className="flex flex-col gap-4 px-4 py-4 sm:px-5">
+        <Card pad="roomy" className="flex flex-col gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
             {isStaff ? (
               <Field label="Ажиглалтын төрөл" error={errors.typeId} required>
@@ -266,7 +267,7 @@ export default function NewObservationPage() {
 
         <section>
           <SectionHeader title="Юу болсон бэ?" as="h2" />
-          <Card className="flex flex-col gap-4 px-4 py-4 sm:px-5">
+          <Card pad="roomy" className="flex flex-col gap-4">
             <Field label="Нөхцөл байдал" error={errors.situation}>
               {({ id, describedBy, invalid }) => (
                 <Textarea
@@ -310,7 +311,7 @@ export default function NewObservationPage() {
           <>
             <section>
               <SectionHeader title="Багшийн дүгнэлт" as="h2" />
-              <Card className="flex flex-col gap-4 px-4 py-4 sm:px-5">
+              <Card pad="roomy" className="flex flex-col gap-4">
                 <Field label="Тайлбар" error={errors.teacherComment}>
                   {({ id, describedBy, invalid }) => (
                     <Textarea
@@ -353,7 +354,7 @@ export default function NewObservationPage() {
                   onChange={(e) => setVisibleToParents(e.target.checked)}
                 />
                 <Checkbox
-                  label="Хөгжлийн хавтасны PDF-д оруулах"
+                  label={`${PORTFOLIO}ны PDF-д оруулах`}
                   checked={includeInReport}
                   onChange={(e) => setIncludeInReport(e.target.checked)}
                 />

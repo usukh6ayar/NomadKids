@@ -20,7 +20,7 @@ import { Card } from "./card";
  */
 export function Skeleton({ className }: { className?: string }) {
   return (
-    <div aria-hidden="true" className={cn("animate-pulse rounded-[12px] bg-canvas", className)} />
+    <div aria-hidden="true" className={cn("animate-pulse rounded-control bg-canvas", className)} />
   );
 }
 
@@ -68,7 +68,7 @@ export function EmptyState({
     <Card className="flex flex-col items-center gap-2 px-6 py-10 text-center">
       {icon ? <div className="mb-1 text-muted">{icon}</div> : null}
       <p className="font-medium text-ink">{title}</p>
-      {description ? <p className="max-w-sm text-sm text-muted">{description}</p> : null}
+      {description ? <p className="max-w-sm text-body text-muted">{description}</p> : null}
       {action ? <div className="mt-3">{action}</div> : null}
     </Card>
   );
@@ -96,7 +96,7 @@ export function ErrorState({
       className="flex flex-col items-center gap-2 border-danger/30 bg-danger-soft px-6 py-10 text-center"
     >
       <p className="font-medium text-danger">{title}</p>
-      {description ? <p className="max-w-sm text-sm text-ink/70">{description}</p> : null}
+      {description ? <p className="max-w-sm text-body text-ink/70">{description}</p> : null}
       {action ? <div className="mt-3">{action}</div> : null}
     </Card>
   );
@@ -115,7 +115,7 @@ export function FormError({ message }: { message?: string | null }) {
   return (
     <p
       role="alert"
-      className="rounded-[12px] border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-sm font-medium text-danger"
+      className="rounded-control border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-body font-medium text-danger"
     >
       {message}
     </p>

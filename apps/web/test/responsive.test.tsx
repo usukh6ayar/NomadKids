@@ -171,31 +171,84 @@ describe("design tokens", () => {
   it("defines the approved palette", () => {
     // The brief names these exactly; a drifted hex is a visual regression no
     // screenshot test would catch either.
-    // ★ Repainted 2026-08-22 on the client's instruction: white ground, sky
-    // blue accent. The previous values were the approved Phase 1 palette
-    // (PHASE_1_ACCEPTANCE item 15) — that approval now needs re-confirming.
-    expect(GLOBALS_CSS).toContain("#f8fafc"); // canvas
-    expect(GLOBALS_CSS).toContain("#0ea5e9"); // primary-bright — surfaces only
-    expect(GLOBALS_CSS).toContain("#0369a1"); // primary — filled buttons, rings
-    expect(GLOBALS_CSS).toContain("#075985"); // primary-strong — coloured text
-    expect(GLOBALS_CSS).toContain("#0f172a"); // ink
-    expect(GLOBALS_CSS).toContain("#64748b"); // muted
-    expect(GLOBALS_CSS).toContain("#e2e8f0"); // border
+    // ★ Repainted twice. 2026-08-22: white ground, sky blue accent.
+    // 2026-08-23: the E-Mongolia deep blue with slate typography. The approved
+    // Phase 1 palette (PHASE_1_ACCEPTANCE item 15) is two directions behind and
+    // needs re-confirming before sign-off.
+    expect(GLOBALS_CSS).toContain("#f8fafc"); // canvas — slate-50
+    expect(GLOBALS_CSS).toContain("#1d4ed8"); // primary — blue-700
+    expect(GLOBALS_CSS).toContain("#1e40af"); // primary-strong/hover — blue-800
+    expect(GLOBALS_CSS).toContain("#eff6ff"); // primary-soft — blue-50
+    expect(GLOBALS_CSS).toContain("#1e293b"); // ink — slate-800
+    expect(GLOBALS_CSS).toContain("#64748b"); // muted — slate-500
+    expect(GLOBALS_CSS).toContain("#e2e8f0"); // border — slate-200
+    expect(GLOBALS_CSS).toContain("#f1f5f9"); // track — slate-100
+  });
+
+  /**
+   * ★ The sky palette left exactly one trap behind, and this is it.
+   *
+   * `--color-primary-bright` (sky-500) existed because sky could not carry a
+   * white label — 2.77:1 — so the brand colour and the text-bearing fill had to
+   * be two different values. blue-700 does both, so the token was deleted. If it
+   * comes back, some surface is about to be painted a colour that was chosen
+   * under the old constraint, and the button is the first thing to break.
+   */
+  it("has no leftover 'bright' primary from the sky palette", () => {
+    expect(GLOBALS_CSS).not.toContain("--color-primary-bright");
+    expect(GLOBALS_CSS).not.toContain("#0ea5e9");
   });
 
   /**
    * ★ Measured, not eyeballed.
    *
-   * White on sky-500 is 2.77:1 and would have shipped as the primary button —
-   * the brief asked for sky-500 and the failure is invisible to anyone with
-   * ordinary vision. RFP §13 requires sufficient contrast, so the button colour
-   * is pinned here: if someone "restores" the brighter blue to match a mockup,
-   * this fails and says why.
+   * RFP §13 requires sufficient contrast, and the button is where a repaint
+   * breaks it first: this is the third palette this project has shipped, and the
+   * second one failed here before the ratio was computed.
+   *
+   * Both halves are asserted — the ratio *and* the class the Button actually
+   * ships — because either one alone passes while the pair is broken.
    */
-  it("the filled button colour clears 4.5:1 against white text", () => {
-    const ratio = contrast("#0369a1", "#ffffff");
-    expect(ratio).toBeGreaterThanOrEqual(4.5);
-    expect(GLOBALS_CSS).toContain("--color-primary: #0369a1");
+  it("the filled button pairs blue-700 with a white label, clearing 4.5:1", () => {
+    expect(contrast("#1d4ed8", "#ffffff")).toBeGreaterThanOrEqual(4.5);
+    expect(contrast("#1e40af", "#ffffff")).toBeGreaterThanOrEqual(4.5); // hover
+    expect(GLOBALS_CSS).toContain("--color-primary: #1d4ed8");
+
+    const { container } = render(<Button>Товч</Button>);
+    const className = container.firstElementChild!.className;
+    expect(className).toContain("bg-primary");
+    expect(className).toContain("text-primary-ink");
+    expect(className).toContain("font-medium");
+  });
+
+  /**
+   * The tinted back used for avatars, active menu rows and informational chips.
+   * `--color-primary` is the text that sits on it, so the pair has to clear the
+   * bar in its own right — a soft tint is exactly where this gets forgotten.
+   */
+  it("coloured text on the soft tint clears 4.5:1", () => {
+    expect(contrast("#1d4ed8", "#eff6ff")).toBeGreaterThanOrEqual(4.5);
+    expect(GLOBALS_CSS).toContain("--color-primary-soft: #eff6ff");
+  });
+
+  /**
+   * ★ The one pairing in this palette that does NOT clear the bar.
+   *
+   * `--color-muted` on `--color-track` is 4.34:1. Neither is a mistake on its
+   * own — slate-500 is 4.76:1 on white and the track only ever holds a progress
+   * fill — but the two are one careless `text-muted` away from shipping unread
+   * secondary text. Asserted as a known-bad pair so the number is written down
+   * rather than rediscovered.
+   */
+  it("records that muted text must not be placed on the progress track", () => {
+    expect(contrast("#64748b", "#f1f5f9")).toBeLessThan(4.5);
+    expect(contrast("#64748b", "#ffffff")).toBeGreaterThanOrEqual(4.5);
+  });
+
+  /** The unread badge is red now, and carries a white number. */
+  it("the unread badge clears 4.5:1 against white text", () => {
+    expect(contrast("#c0392b", "#ffffff")).toBeGreaterThanOrEqual(4.5);
+    expect(GLOBALS_CSS).toContain("--color-danger: #c0392b");
   });
 
   it("every accent ink clears 4.5:1 on its own tint", () => {

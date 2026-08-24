@@ -10,6 +10,7 @@ import { mediaUrl } from "@/lib/api/client";
 import { qk } from "@/lib/api/keys";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
+import { GALLERY } from "@/lib/vocabulary";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { MediaThumb } from "@/components/media/media-image";
 import { PhotoUpload } from "@/components/media/photo-upload";
@@ -91,12 +92,13 @@ export function ChildGallery({
   return (
     <section id="gallery" aria-labelledby="gallery-heading" className="scroll-mt-20">
       <SectionHeader
-        title="Зураг, бүтээл"
+        id="gallery-heading"
+        title={GALLERY}
         lede="Ажиглалтад хавсаргасан болон тусад нь нэмсэн бүх зураг."
         as="h2"
       />
 
-      <Card className="flex flex-col gap-4 px-4 py-4 sm:px-5">
+      <Card pad="roomy" className="flex flex-col gap-4">
         {photos.isLoading ? <LoadingState rows={2} /> : null}
 
         {photos.isError ? <ErrorState description="Зургийг ачаалж чадсангүй." /> : null}
@@ -124,7 +126,7 @@ export function ChildGallery({
                     // The grid is a set of buttons, not links: opening a photo
                     // is a state change on this page, and a link would put a
                     // presigned URL in the address bar.
-                    className="block w-full overflow-hidden rounded-[12px] focus-visible:outline-2 focus-visible:outline-primary"
+                    className="block w-full overflow-hidden rounded-control focus-visible:outline-2 focus-visible:outline-primary"
                   >
                     <MediaThumb mediaId={photo.id} caption={photo.caption} />
                     <span className="sr-only">
@@ -134,7 +136,7 @@ export function ChildGallery({
 
                   {isProfile ? (
                     <span
-                      className="absolute left-1.5 top-1.5 grid size-6 place-items-center rounded-full bg-primary text-primary-ink"
+                      className="absolute left-1.5 top-1.5 grid size-6 place-items-center rounded-pill bg-primary text-primary-ink"
                       title="Хувийн зураг"
                     >
                       <Star size={13} aria-hidden="true" />
@@ -148,7 +150,7 @@ export function ChildGallery({
         ) : null}
 
         {truncated ? (
-          <p className="text-[.82rem] text-muted">
+          <p className="text-compact text-muted">
             Хамгийн сүүлийн {items.length} зураг харагдаж байна. Нийт {total}.
           </p>
         ) : null}
@@ -256,19 +258,19 @@ function PhotoViewer({
         <img
           src={mediaUrl(mediaId)}
           alt={caption || `${childName ?? "Хүүхдийн"} зураг`}
-          className="max-h-full max-w-full rounded-[14px] object-contain"
+          className="max-h-full max-w-full rounded-row object-contain"
         />
       </div>
 
-      <div className="relative z-10 flex flex-wrap items-center justify-between gap-3 rounded-[14px] bg-surface px-4 py-3">
-        <p className="min-w-0 flex-1 text-sm text-ink">
+      <div className="relative z-10 flex flex-wrap items-center justify-between gap-3 rounded-row bg-surface px-4 py-3">
+        <p className="min-w-0 flex-1 text-body text-ink">
           {caption || <span className="text-muted">Тэмдэглэлгүй</span>}
         </p>
 
         {canEdit ? (
           <div className="flex flex-wrap items-center gap-2">
             {isProfile ? (
-              <span className="text-xs font-semibold text-primary">Хувийн зураг</span>
+              <span className="text-caption font-semibold text-primary">Хувийн зураг</span>
             ) : (
               <Button variant="secondary" size="sm" onClick={onSetProfile} disabled={busy}>
                 <Star size={16} />
@@ -281,7 +283,7 @@ function PhotoViewer({
               // asks for a confirmation before a delete, not for a dialog on
               // top of a dialog.
               <span className="flex items-center gap-2">
-                <span className="text-xs text-muted">Устгах уу?</span>
+                <span className="text-caption text-muted">Устгах уу?</span>
                 <Button variant="danger" size="sm" onClick={onRemove} disabled={busy}>
                   Тийм
                 </Button>

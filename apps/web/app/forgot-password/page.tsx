@@ -40,12 +40,12 @@ export default function ForgotPasswordPage() {
 
   return (
     <AuthShell>
-      <h2 className="mb-1.5 text-[1.35rem] font-bold tracking-[-.01em] text-ink">
+      <h2 className="mb-1.5 text-heading font-semibold tracking-[-.01em] text-ink">
         Нууц үг сэргээх
       </h2>
 
       {request.isSuccess ? (
-        <p role="status" className="text-sm leading-relaxed text-ink">
+        <p role="status" className="text-body leading-relaxed text-ink">
           Хэрэв ийм бүртгэл байгаа бол сэргээх заавар илгээгдэнэ. И-мэйлээ шалгана уу.
         </p>
       ) : (
@@ -57,7 +57,7 @@ export default function ForgotPasswordPage() {
             that can never be recovered. The wording is the reference's;
             the field is v2's, deliberately wider.
           */}
-          <p className="mb-4 text-sm leading-relaxed text-muted">
+          <p className="mb-4 text-body leading-relaxed text-muted">
             Бүртгэлтэй хэрэглэгчийн нэр, и-мэйл эсвэл утсаа оруулна уу. Сэргээх холбоос илгээнэ.
           </p>
 
@@ -86,13 +86,13 @@ export default function ForgotPasswordPage() {
         </>
       )}
 
-      <p className="mt-[22px] border-t border-border pt-4 text-sm leading-relaxed text-muted">
+      <p className="mt-[22px] border-t border-border pt-4 text-body leading-relaxed text-muted">
         И-мэйл хаяггүй юу? Цэцэрлэгийн администратортаа хандаж нууц үгээ сэргээлгэнэ үү.
       </p>
       <p>
         <Link
           href="/login"
-          className="inline-flex min-h-[44px] items-center text-sm font-semibold text-primary hover:underline"
+          className="inline-flex min-h-[44px] items-center text-body font-semibold text-primary hover:underline"
         >
           Нэвтрэх хуудас руу буцах
         </Link>

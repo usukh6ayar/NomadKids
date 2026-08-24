@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -83,7 +83,7 @@ describe("login", () => {
 
     renderWithProviders(<LoginPage />);
 
-    const identifier = screen.getByLabelText(/Нэвтрэх нэр эсвэл и-мэйл/);
+    const identifier = screen.getByLabelText(/Нэвтрэх нэр, утас эсвэл и-мэйл/);
     await user.type(identifier, "bagsh");
     await user.type(screen.getByLabelText("Нууц үг *"), "wrong-password");
     await user.click(screen.getByRole("button", { name: "Нэвтрэх" }));
@@ -114,7 +114,7 @@ describe("login", () => {
 
     renderWithProviders(<LoginPage />);
 
-    await user.type(screen.getByLabelText(/Нэвтрэх нэр эсвэл и-мэйл/), "bagsh");
+    await user.type(screen.getByLabelText(/Нэвтрэх нэр, утас эсвэл и-мэйл/), "bagsh");
     await user.type(screen.getByLabelText("Нууц үг *"), "correct-password");
     await user.click(screen.getByRole("button", { name: "Нэвтрэх" }));
 
@@ -796,6 +796,219 @@ describe("revoking a guardian's access", () => {
   });
 });
 
+// ── The child profile's tabs ────────────────────────────────────────────────
+
+/**
+ * The tabbed child profile.
+ *
+ * ★ These exist because the tab state lives in the URL rather than in `useState`,
+ * and that is the whole argument for accepting tabs on a screen that used to
+ * scroll. A `useState` version passes any test that clicks a tab and reads the
+ * panel — and still loses the user's place on refresh, breaks the Back button
+ * and cannot be linked to.
+ */
+describe("the child profile tabs", () => {
+  const enrolled = (over: Record<string, unknown> = {}) => ({
+    ...child,
+    enrollments: [
+      {
+        id: "eeee1111-1111-4111-8111-eeeeeeeeeeee",
+        group: { id: GROUP_ID, name: "Дунд бүлэг", ageBand: "JUNIOR" },
+        schoolYear: { id: "ffff1111-1111-4111-8111-ffffffffffff", name: "2026-2027" },
+        status: "ACTIVE",
+        startedOn: "2026-08-01",
+        endedOn: null,
+      },
+    ],
+    ...over,
+  });
+
+  function stubChild(body: unknown) {
+    return stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: `/children/${CHILD_ID}/observations`, body: emptyMediaPage },
+      { path: `/children/${CHILD_ID}/assessments`, body: [] },
+      { path: `/children/${CHILD_ID}`, body },
+    ]);
+  }
+
+  it("opens on Ерөнхий when the URL carries no tab", async () => {
+    setParams({ childId: CHILD_ID });
+    setSearchParams("");
+    stubChild(enrolled());
+
+    renderWithProviders(<ChildDetailPage />);
+
+    const general = await screen.findByRole("tab", { name: "Ерөнхий" });
+    expect(general).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Ажиглалт" })).toHaveAttribute("aria-selected", "false");
+  });
+
+  /** A shared link must land on what the sender was looking at. */
+  it("opens the tab named in the URL", async () => {
+    setParams({ childId: CHILD_ID });
+    setSearchParams("tab=assessments");
+    stubChild(enrolled());
+
+    renderWithProviders(<ChildDetailPage />);
+
+    expect(await screen.findByRole("tab", { name: "Үнэлгээ" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(await screen.findByText("Үнэлгээ хараахан алга")).toBeInTheDocument();
+  });
+
+  /** A hand-edited or stale link opens the record rather than an empty page. */
+  it("falls back to the first tab when the URL names one that does not exist", async () => {
+    setParams({ childId: CHILD_ID });
+    setSearchParams("tab=meals");
+    stubChild(enrolled());
+
+    renderWithProviders(<ChildDetailPage />);
+
+    expect(await screen.findByRole("tab", { name: "Ерөнхий" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("writes the chosen tab to the URL", async () => {
+    const user = userEvent.setup();
+    setParams({ childId: CHILD_ID });
+    setSearchParams("");
+    stubChild(enrolled());
+
+    renderWithProviders(<ChildDetailPage />);
+
+    await user.click(await screen.findByRole("tab", { name: "Ажиглалт" }));
+
+    expect(ROUTER.replace).toHaveBeenCalledWith(
+      expect.stringContaining("tab=observations"),
+      // `push` would make every tab press a history entry to unwind, and
+      // re-anchoring to the top on each one is disorienting on a phone.
+      expect.objectContaining({ scroll: false }),
+    );
+  });
+
+  /**
+   * The canonical URL of a child is the bare path — going back to the default
+   * tab must not leave `?tab=general` behind for someone to copy and share.
+   *
+   * Rendered at `?tab=observations` rather than clicked into it: the test
+   * harness's `useSearchParams` is a static mock, so a click cannot change what
+   * the next render reads. Starting there is the honest way to exercise the
+   * clearing branch.
+   */
+  it("clears the parameter when returning to the default tab", async () => {
+    const user = userEvent.setup();
+    setParams({ childId: CHILD_ID });
+    setSearchParams("tab=observations");
+    stubChild(enrolled());
+
+    renderWithProviders(<ChildDetailPage />);
+
+    await user.click(await screen.findByRole("tab", { name: "Ерөнхий" }));
+
+    const last = ROUTER.replace.mock.calls.at(-1)!;
+    expect(last[0]).not.toContain("tab=");
+  });
+
+  /**
+   * ★ "Current" is the ACTIVE enrollment, not the first one.
+   *
+   * The API orders enrollments newest-first, so for a child who has left, the
+   * row at the top is the year they finished. Reading position as state labels
+   * that as the group they are in now.
+   */
+  it("marks the ended enrollment as finished, not as current", async () => {
+    setParams({ childId: CHILD_ID });
+    setSearchParams("");
+    stubChild(
+      enrolled({
+        enrollments: [
+          {
+            id: "eeee2222-2222-4222-8222-eeeeeeeeeeee",
+            group: { id: GROUP_ID, name: "Ахлах бүлэг", ageBand: "MIDDLE" },
+            schoolYear: { id: "ffff2222-2222-4222-8222-ffffffffffff", name: "2025-2026" },
+            status: "ENDED",
+            startedOn: "2025-08-01",
+            endedOn: "2026-06-01",
+          },
+        ],
+      }),
+    );
+
+    renderWithProviders(<ChildDetailPage />);
+
+    const history = await screen.findByRole("region", { name: "Бүртгэлийн түүх" });
+    expect(within(history).getByText("Дууссан")).toBeInTheDocument();
+    expect(within(history).queryByText("Одоогийн")).not.toBeInTheDocument();
+  });
+
+  /**
+   * ★ A tab's data is not fetched until the tab is opened.
+   *
+   * This is Radix's doing, not the page's: an inactive `Tabs.Content` is
+   * unmounted, so a panel's query cannot fire early. The page relies on that
+   * rather than gating each panel on `?tab=` itself, which would be a second
+   * derivation of the same fact.
+   *
+   * Pinned here because the failure mode is silent and cheap to reintroduce:
+   * `forceMount` on the panels makes four requests happen on every visit to a
+   * child, and everything still renders correctly while it does.
+   */
+  it("does not fetch a tab's data until the tab is opened", async () => {
+    setParams({ childId: CHILD_ID });
+    setSearchParams("");
+    const { calls } = stubChild(enrolled());
+
+    renderWithProviders(<ChildDetailPage />);
+    await screen.findByRole("region", { name: "Бүртгэлийн түүх" });
+
+    expect(calls.some((c) => c.url.includes("/observations"))).toBe(false);
+    expect(calls.some((c) => c.url.includes("/assessments"))).toBe(false);
+    expect(calls.some((c) => c.url.includes("/media"))).toBe(false);
+    // Exactly one panel is in the DOM, which is what makes the above true.
+    expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
+  });
+
+  it("fetches the observations once that tab is the one in the URL", async () => {
+    setParams({ childId: CHILD_ID });
+    setSearchParams("tab=observations");
+    const { calls } = stubChild(enrolled());
+
+    renderWithProviders(<ChildDetailPage />);
+    await screen.findByText("Ажиглалт бичигдээгүй байна");
+
+    expect(calls.some((c) => c.url.includes("/observations"))).toBe(true);
+    expect(calls.some((c) => c.url.includes("/assessments"))).toBe(false);
+  });
+
+  /**
+   * The hero's health badge says "there is a note to read", and it is staff
+   * only — the notes section it points at is. A chip a family cannot open is
+   * worse than none, and this is a health field, which §7 keeps out of the
+   * parent-facing product entirely.
+   */
+  it("never shows the health badge to a guardian", async () => {
+    setParams({ childId: CHILD_ID });
+    setSearchParams("");
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["PARENT"]) },
+      { path: `/children/${CHILD_ID}/observations`, body: emptyMediaPage },
+      { path: `/children/${CHILD_ID}/assessments`, body: [] },
+      { path: `/children/${CHILD_ID}`, body: enrolled({ healthNotes: "Харшилтай" }) },
+    ]);
+
+    renderWithProviders(<ChildDetailPage />);
+
+    expect(await screen.findByRole("tab", { name: "Ерөнхий" })).toBeInTheDocument();
+    expect(screen.queryByText(/Эрүүл мэнд/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Харшилтай")).not.toBeInTheDocument();
+  });
+});
+
 // ── Archiving ───────────────────────────────────────────────────────────────
 
 describe("archiving", () => {
@@ -1046,5 +1259,135 @@ describe("teacher dashboard", () => {
     const bar = await screen.findByRole("progressbar");
     expect(bar).toHaveAttribute("aria-valuenow", "0");
     expect(screen.queryByText(/NaN/)).not.toBeInTheDocument();
+  });
+
+  /**
+   * ★ The alerts section is absent, not empty, on a quiet day.
+   *
+   * Its whole value is that seeing it means something. A version that always
+   * rendered — three headings over three "байхгүй" lines — would teach a teacher
+   * to skip past the one part of the screen that is asking for something, and
+   * that failure is invisible in a screenshot of a busy day.
+   */
+  it("hides the alerts entirely when nothing needs attention", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: "/dashboard/teacher", body: dashboardBody() },
+      { path: "/groups", body: { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 } },
+    ]);
+
+    renderWithProviders(<DashboardPage />);
+
+    // Wait for the render to settle on content before asserting an absence —
+    // otherwise this passes against the loading state.
+    expect(await screen.findByRole("progressbar")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Анхаарах зүйлс" })).not.toBeInTheDocument();
+  });
+
+  it("names every child still missing an assessment, and links to them", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: "/dashboard/teacher",
+        body: dashboardBody({
+          needsAttention: {
+            pendingReviews: 0,
+            childrenMissingAssessment: [
+              {
+                id: BIRTHDAY_CHILD,
+                lastName: "Ганболд",
+                firstName: "Сарнай",
+                photoMediaFileId: null,
+                group: { id: GROUP_ID, name: "Дунд бүлэг" },
+              },
+            ],
+          },
+        }),
+      },
+      { path: "/groups", body: { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 } },
+    ]);
+
+    renderWithProviders(<DashboardPage />);
+
+    const alerts = await screen.findByRole("region", { name: "Анхаарах зүйлс" });
+    expect(within(alerts).getByText(/Сарнай/)).toBeInTheDocument();
+    expect(within(alerts).getByText("Дунд бүлэг")).toBeInTheDocument();
+    expect(within(alerts).getByRole("link", { name: /Сарнай/ })).toHaveAttribute(
+      "href",
+      `/children/${BIRTHDAY_CHILD}`,
+    );
+  });
+
+  /**
+   * A new kindergarten has no observations for its first week. That is a quiet
+   * day, not a broken screen, and it has to say so — an empty section that
+   * simply vanishes reads as a feature that failed to load.
+   */
+  it("offers the way to write the first observation when the feed is empty", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: "/dashboard/teacher", body: dashboardBody({ recentObservations: [] }) },
+      { path: "/groups", body: { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 } },
+    ]);
+
+    renderWithProviders(<DashboardPage />);
+
+    const feed = await screen.findByRole("region", { name: "Сүүлийн ажиглалтууд" });
+    expect(within(feed).getByText("Ажиглалт хараахан бичигдээгүй")).toBeInTheDocument();
+    expect(within(feed).getByRole("link", { name: "Хүүхдүүд" })).toBeInTheDocument();
+  });
+
+  /**
+   * ★ The tile row lost its term-progress and review tiles, and the rule one of
+   * them carried had to survive the removal.
+   *
+   * Both were already on the screen: "Улирлын явц" repeated the `TermProgress`
+   * section's own numbers a few hundred pixels above it, and "Хянах" repeated a
+   * count that the alert card below states *and acts on*.
+   *
+   * The review tile was pinned here for a reason worth keeping, though. The two
+   * `pendingReviews` fields are given **different** values in this fixture:
+   * `dashboard.service.ts` computes one number and writes it to both
+   * `counts.pendingReviews` and `needsAttention.pendingReviews`, so a fixture
+   * that sets them equal — as every other one in this file does — cannot tell
+   * which field the screen reads. "Waiting for you" is the `needsAttention` one,
+   * and the day the queue is narrowed to a teacher's own groups this is what
+   * catches the alert card reading the other. The assertion moved from the tile
+   * to the card; the guarantee did not move at all.
+   */
+  it("counts the roster and the groups, and leaves the rest to the sections", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: "/dashboard/teacher",
+        body: dashboardBody({
+          counts: { children: 10, groups: 2, pendingReviews: 9 },
+          needsAttention: { pendingReviews: 3, childrenMissingAssessment: [] },
+          termProgress: { assessed: 7, total: 10 },
+        }),
+      },
+      { path: "/groups", body: { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 } },
+    ]);
+
+    renderWithProviders(<DashboardPage />);
+
+    const tiles = await screen.findByRole("region", { name: "Өнөөдрийн тойм" });
+    expect(within(tiles).getByText("Хүүхэд")).toBeInTheDocument();
+    expect(within(tiles).getByText("Бүлэг")).toBeInTheDocument();
+
+    // The two that were saying what the sections below already said.
+    expect(within(tiles).queryByText("70%")).not.toBeInTheDocument();
+    expect(within(tiles).queryByText("Хянах")).not.toBeInTheDocument();
+
+    // The term's share is stated once, by the element that is a `progressbar`.
+    const progress = await screen.findByRole("region", { name: "Улирлын үнэлгээний явц" });
+    expect(within(progress).getByText("70%")).toBeInTheDocument();
+    expect(within(progress).getByRole("progressbar")).toHaveAttribute("aria-valuenow", "70");
+
+    // …and the review queue is stated once, by the card that can act on it.
+    const alerts = await screen.findByRole("region", { name: "Анхаарах зүйлс" });
+    expect(within(alerts).getByText(/3 бичлэг/)).toBeInTheDocument();
+    expect(within(alerts).queryByText(/9 бичлэг/)).not.toBeInTheDocument();
+    expect(within(alerts).getByRole("link", { name: "Хянах" })).toBeInTheDocument();
   });
 });

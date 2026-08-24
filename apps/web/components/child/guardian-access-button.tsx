@@ -53,7 +53,7 @@ export function GuardianAccessButton({
         type="button"
         disabled={change.isPending}
         onClick={() => change.mutate(true)}
-        className="flex min-h-[36px] items-center gap-1.5 rounded-full px-2.5 text-[.78rem] text-muted transition-colors hover:bg-canvas hover:text-ink disabled:opacity-50"
+        className="flex min-h-[36px] items-center gap-1.5 rounded-pill px-2.5 text-compact text-muted transition-colors hover:bg-canvas hover:text-ink disabled:opacity-50"
       >
         <RotateCcw size={14} aria-hidden />
         Сэргээх
@@ -73,7 +73,7 @@ export function GuardianAccessButton({
           change.mutate(false);
         }
       }}
-      className="grid size-[36px] place-items-center rounded-full text-muted transition-colors hover:bg-danger-soft hover:text-danger disabled:opacity-50"
+      className="grid size-[36px] place-items-center rounded-pill text-muted transition-colors hover:bg-danger-soft hover:text-danger disabled:opacity-50"
     >
       <X size={16} aria-hidden />
       <span className="sr-only">{guardianName} — харах эрхийг хураах</span>

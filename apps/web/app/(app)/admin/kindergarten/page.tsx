@@ -102,13 +102,13 @@ function AdminKindergarten() {
   if (isError) return <ErrorState description={errorMessage(error)} />;
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-7">
+    <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Цэцэрлэгийн мэдээлэл"
         lede="Эцэг эхэд харагдах нэр, хаяг, холбоо барих мэдээлэл."
       />
 
-      <Card className="px-4 py-4 sm:px-5">
+      <Card pad="roomy">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -124,7 +124,10 @@ function AdminKindergarten() {
           />
 
           {save.isSuccess ? (
-            <p role="status" className="rounded-[12px] bg-mint px-3.5 py-2.5 text-sm text-mint-ink">
+            <p
+              role="status"
+              className="rounded-control bg-mint px-3.5 py-2.5 text-body text-mint-ink"
+            >
               Хадгалагдлаа.
             </p>
           ) : null}

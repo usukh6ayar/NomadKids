@@ -71,7 +71,7 @@ function AdminGroups() {
   const items = groups.data?.items ?? [];
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-7">
+    <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Бүлгүүд"
         lede="Бүлэг үүсгэж, багш хуваарилна."
@@ -116,10 +116,10 @@ function GroupRow({ group }: { group: z.infer<typeof groupListItemSchema> }) {
   const children = group._count?.enrollments ?? 0;
 
   return (
-    <div className="flex min-h-[64px] flex-wrap items-center gap-3 rounded-[14px] border border-border bg-surface px-4 py-3">
+    <div className="flex min-h-[64px] flex-wrap items-center gap-3 rounded-row border border-border bg-surface px-4 py-3">
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[.94rem] font-semibold text-ink">{group.name}</span>
-        <span className="mt-px block text-[.78rem] text-muted">
+        <span className="block truncate text-lead font-semibold text-ink">{group.name}</span>
+        <span className="mt-px block text-compact text-muted">
           {[
             group.ageBand ? (BAND_LABEL[group.ageBand] ?? group.ageBand) : null,
             group.schoolYear?.name,
@@ -229,11 +229,11 @@ function ManageTeachersDialog({
       aria-label={`${groupName} — багш`}
       className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4"
     >
-      <div className="w-full max-w-[460px] rounded-[18px] border border-border bg-surface p-5">
+      <div className="w-full max-w-[460px] rounded-card border border-border bg-surface p-5">
         <div className="flex flex-col gap-4">
           <div>
-            <h2 className="text-[1.05rem] font-semibold text-ink">Багш хуваарилалт</h2>
-            <p className="mt-0.5 text-sm text-muted">{groupName}</p>
+            <h2 className="text-title font-semibold text-ink">Багш хуваарилалт</h2>
+            <p className="mt-0.5 text-body text-muted">{groupName}</p>
           </div>
 
           <FormError
@@ -250,20 +250,20 @@ function ManageTeachersDialog({
 
           <div className="flex flex-wrap items-center gap-2">
             {assigned.length === 0 && !group.isLoading ? (
-              <span className="text-sm text-muted">Багш хуваарилаагүй байна.</span>
+              <span className="text-body text-muted">Багш хуваарилаагүй байна.</span>
             ) : null}
 
             {assigned.map((t) => (
               <span
                 key={t.id}
-                className="inline-flex min-h-[40px] items-center gap-1.5 rounded-full border border-border bg-canvas py-1 pl-3 pr-1.5 text-sm"
+                className="inline-flex min-h-[40px] items-center gap-1.5 rounded-pill border border-border bg-canvas py-1 pl-3 pr-1.5 text-body"
               >
                 <span className="text-ink">{fullName(t.membership?.user)}</span>
                 {t.role === "ASSISTANT" ? <Badge tone="sky">Туслах</Badge> : null}
 
                 {removingId === t.id ? (
                   <>
-                    <span className="text-xs text-muted">Хасах уу?</span>
+                    <span className="text-caption text-muted">Хасах уу?</span>
                     <Button
                       variant="danger"
                       size="sm"
@@ -281,7 +281,7 @@ function ManageTeachersDialog({
                     type="button"
                     onClick={() => setRemovingId(t.id)}
                     aria-label={`${fullName(t.membership?.user)}-г бүлгээс хасах`}
-                    className="grid size-9 place-items-center rounded-full text-muted hover:bg-surface hover:text-danger"
+                    className="grid size-9 place-items-center rounded-pill text-muted hover:bg-surface hover:text-danger"
                   >
                     <UserMinus size={15} />
                   </button>
@@ -298,7 +298,7 @@ function ManageTeachersDialog({
             className="flex flex-col gap-3 border-t border-border pt-4"
           >
             {options.length === 0 && teachers.data ? (
-              <p className="rounded-[12px] bg-sun px-3 py-2 text-sm text-sun-ink">
+              <p className="rounded-control bg-sun px-3 py-2 text-body text-sun-ink">
                 Нэмэх багш алга. «Хэрэглэгчид» хэсгээс багш урина уу.
               </p>
             ) : (
@@ -390,7 +390,7 @@ function CreateGroupDialog({
       aria-label="Бүлэг нэмэх"
       className="fixed inset-0 z-50 grid place-items-center bg-ink/50 p-4"
     >
-      <div className="w-full max-w-[420px] rounded-[18px] border border-border bg-surface p-5">
+      <div className="w-full max-w-[420px] rounded-card border border-border bg-surface p-5">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -399,12 +399,12 @@ function CreateGroupDialog({
           className="flex flex-col gap-4"
           noValidate
         >
-          <h2 className="text-[1.05rem] font-semibold text-ink">Бүлэг нэмэх</h2>
+          <h2 className="text-title font-semibold text-ink">Бүлэг нэмэх</h2>
 
           <FormError message={create.isError ? errorMessage(create.error) : null} />
 
           {years.data && years.data.length === 0 ? (
-            <p className="rounded-[12px] bg-sun px-3 py-2 text-sm text-sun-ink">
+            <p className="rounded-control bg-sun px-3 py-2 text-body text-sun-ink">
               Хичээлийн жил үүсгээгүй байна. «Хичээлийн жил» хэсгээс эхэлнэ үү.
             </p>
           ) : null}
