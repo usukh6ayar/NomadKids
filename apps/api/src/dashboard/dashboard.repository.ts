@@ -146,6 +146,53 @@ export class DashboardRepository {
     return { assessed };
   }
 
+  /**
+   * How this term's observations are distributed across the configured types.
+   *
+   * ★ Counts, and deliberately not a completion percentage.
+   *
+   * The wireframe asked for "биелэлт" — a fulfilment rate — and there is no
+   * target anywhere in the schema to divide by. A percentage would need a
+   * denominator somebody invented, which is the shape of number that makes a
+   * dashboard lie. What exists is how many of each kind were written, so that
+   * is what this returns; the UI shows each type's share of the total, which is
+   * a fact rather than a score.
+   *
+   * ★★ Driven by `ObservationType`, which is a table an administrator edits
+   * (CLAUDE.md §2.3), so this reports whatever a kindergarten has configured
+   * rather than three names hard-coded from a drawing. Types with no
+   * observations are absent here and filled in by the service, so a
+   * newly-configured type reads as "0" rather than vanishing.
+   *
+   * One `groupBy`, not one query per type.
+   */
+  async observationCountsByType(groupIds: string[], from: Date, to: Date) {
+    if (groupIds.length === 0) return [];
+
+    return this.prisma.observation.groupBy({
+      by: ["typeId"],
+      where: {
+        deletedAt: null,
+        observedOn: { gte: from, lte: to },
+        child: { enrollments: { some: { groupId: { in: groupIds }, deletedAt: null } } },
+      },
+      _count: { _all: true },
+    });
+  }
+
+  /** The kindergarten's observation types, in configured order. */
+  async listObservationTypes(kindergartenIds: string[]) {
+    return this.prisma.observationType.findMany({
+      where: {
+        deletedAt: null,
+        isActive: true,
+        OR: [{ kindergartenId: null }, { kindergartenId: { in: kindergartenIds } }],
+      },
+      select: { id: true, name: true, order: true },
+      orderBy: { order: "asc" },
+    });
+  }
+
   async activeChildCount(groupIds: string[]): Promise<number> {
     if (groupIds.length === 0) return 0;
     return this.prisma.child.count({

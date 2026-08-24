@@ -14,6 +14,7 @@ import { ErrorState, LoadingState } from "@/components/ui/states";
 import { DashboardStats } from "@/components/dashboard/dashboard-stats";
 import { GroupsSection } from "@/components/dashboard/groups-section";
 import { NeedsAttentionAlerts } from "@/components/dashboard/needs-attention-alerts";
+import { ObservationMix } from "@/components/dashboard/observation-mix";
 import { RecentObservations } from "@/components/dashboard/recent-observations";
 import { TermProgress } from "@/components/dashboard/term-progress";
 
@@ -137,8 +138,15 @@ function TeacherDashboard() {
   }
 
   const dashboard = data!;
-  const { counts, needsAttention, recentObservations, currentTerm, birthdaysToday, termProgress } =
-    dashboard;
+  const {
+    counts,
+    needsAttention,
+    recentObservations,
+    currentTerm,
+    birthdaysToday,
+    termProgress,
+    observationsByType,
+  } = dashboard;
 
   return (
     <div className="flex flex-col gap-6 lg:gap-8">
@@ -151,6 +159,8 @@ function TeacherDashboard() {
       <NeedsAttentionAlerts birthdaysToday={birthdaysToday} needsAttention={needsAttention} />
 
       {currentTerm ? <TermProgress term={currentTerm.name} progress={termProgress} /> : null}
+
+      <ObservationMix observationsByType={observationsByType} term={currentTerm?.name ?? null} />
 
       <GroupsSection />
 

@@ -585,6 +585,16 @@ export const teacherDashboardSchema = z.object({
       }),
     ),
   }),
+  /**
+   * This term's observations per configured type — counts, never a rate.
+   *
+   * There is no target in the schema to divide by, so a "биелэлт" percentage
+   * would need an invented denominator. The share of the total is a fact; a
+   * completion score against a number nobody set is not.
+   */
+  observationsByType: z
+    .array(z.object({ type: namedRefSchema, count: z.number() }))
+    .default([]),
   /** RFP §12.1 — children whose birthday is today. */
   birthdaysToday: z
     .array(
