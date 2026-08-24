@@ -127,6 +127,102 @@ export class AssessmentService {
     return this.repo.listForChild(childId, isGuardianOf(actor, facts), termId);
   }
 
+  /**
+   * The radar — one child against their group, across the five domains.
+   *
+   * ★ Every domain is an axis, assessed or not.
+   *
+   * The axes come from the kindergarten's domain table rather than from the
+   * child's assessments, so an unassessed domain is a point at the origin
+   * instead of a missing side. A radar whose outline changes shape between two
+   * children is not a comparison; shape is the entire signal.
+   *
+   * ★★ Who may see the cohort line is decided here, once.
+   *
+   * An average over a small group is an individual score: a parent who knows
+   * their own child's mark and the mean of a group of two computes the other
+   * child's exactly. Guardians therefore get no cohort line until the group is
+   * large enough for the mean to describe a group rather than a person. Staff
+   * are never suppressed — a teacher opens every child in their group
+   * individually on the assessment grid, so hiding the aggregate from them
+   * protects nobody.
+   *
+   * ★★★ Three queries, and none of them per-domain: the child's own
+   * assessments, the domain table, and the cohort's assessments in one `IN`.
+   */
+  async radarForChild(actor: Actor, childId: string, termId: string) {
+    const facts = await this.childAccess.assertCanAccess(actor, childId);
+    const isGuardian = isGuardianOf(actor, facts);
+    const term = await this.requireTerm(actor, termId, facts.childKindergartenId);
+
+    const [own, domains, enrollment] = await Promise.all([
+      this.repo.listForChild(childId, isGuardian, termId),
+      this.repo.listDomains(facts.childKindergartenId),
+      this.repo.groupForChildInYear(childId, term.schoolYearId),
+    ]);
+
+    const byDomainId = new Map(own.map((a) => [a.domain?.id, a]));
+    const axes = domains.map((domain) => {
+      const assessment = byDomainId.get(domain.id);
+      return {
+        domain,
+        score: assessment?.level?.value ?? null,
+        level: assessment?.level ?? null,
+      };
+    });
+
+    const group = enrollment?.group ?? null;
+    const cohort = group
+      ? await this.buildCohort(group, term.schoolYearId, termId, isGuardian)
+      : null;
+
+    return { term: { id: term.id, number: term.number, name: term.name }, axes, cohort };
+  }
+
+  /**
+   * ★ The minimum cohort a mean may be published over.
+   *
+   * Five leaves four other children behind the average, so a family reading
+   * their own score learns the mean of four strangers rather than one
+   * classmate's mark. Below it the comparison is withheld entirely rather than
+   * blurred — a rounded or noised average still narrows the range, and a number
+   * that is *approximately* somebody's score is not a meaningful improvement on
+   * their score.
+   */
+  private static readonly MIN_DISCLOSED_COHORT = 5;
+
+  private async buildCohort(
+    group: { id: string; name: string },
+    schoolYearId: string,
+    termId: string,
+    isGuardian: boolean,
+  ) {
+    const rows = await this.repo.loadCohortAssessments(group.id, schoolYearId, termId);
+    const sampleSize = new Set(rows.map((r) => r.childId)).size;
+
+    if (sampleSize === 0) return null;
+    if (isGuardian && sampleSize < AssessmentService.MIN_DISCLOSED_COHORT) return null;
+
+    const totals = new Map<string, { sum: number; n: number }>();
+    for (const row of rows) {
+      const value = row.level?.value;
+      if (value === undefined || value === null) continue;
+      const acc = totals.get(row.domainId) ?? { sum: 0, n: 0 };
+      acc.sum += value;
+      acc.n += 1;
+      totals.set(row.domainId, acc);
+    }
+
+    const averageByDomain: Record<string, number> = {};
+    for (const [domainId, { sum, n }] of totals) {
+      // One decimal: the underlying scale is 1–4 with four steps, and a mean
+      // printed to three places claims a precision the instrument does not have.
+      averageByDomain[domainId] = Math.round((sum / n) * 10) / 10;
+    }
+
+    return { group: { id: group.id, name: group.name }, sampleSize, averageByDomain };
+  }
+
   async saveForChild(actor: Actor, childId: string, dto: SaveAssessmentDto) {
     const facts = await this.childAccess.assertCanRecord(actor, childId);
     const term = await this.requireTerm(actor, dto.termId, facts.childKindergartenId);
