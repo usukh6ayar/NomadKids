@@ -14,6 +14,7 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
 import { excerpt, formatAge, formatRelative, fullName } from "@/lib/format";
+import { PORTFOLIO } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
 
 /**
@@ -98,8 +99,7 @@ export default function ParentHomePage() {
         group. Claiming a pattern is worse than not claiming one — it tells
         somebody a structure exists and then withholds it.
 
-        `aria-pressed` is what these actually are: buttons that stay in. It is
-        also what `LoginTabs` uses, for the same reason and with the same note.
+        `aria-pressed` is what these actually are: buttons that stay in.
       */}
       {children.length > 1 ? (
         <div
@@ -144,7 +144,7 @@ export default function ParentHomePage() {
           <Button asChild size="sm">
             <Link href={`/children/${selected.id}/portfolio`}>
               <BookOpen size={18} />
-              Хавтас
+              {PORTFOLIO}
             </Link>
           </Button>
           <Button asChild variant="secondary" size="sm">

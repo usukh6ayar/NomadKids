@@ -117,7 +117,7 @@ function TeacherDashboard() {
         currentTerm ? `${currentTerm.name} · идэвхтэй улирал` : "Идэвхтэй улирал тохируулаагүй",
       )}
 
-      <DashboardStats counts={counts} needsAttention={needsAttention} termProgress={termProgress} />
+      <DashboardStats counts={counts} />
 
       <NeedsAttentionAlerts birthdaysToday={birthdaysToday} needsAttention={needsAttention} />
 

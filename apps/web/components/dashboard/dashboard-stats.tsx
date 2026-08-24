@@ -1,62 +1,37 @@
 import type { TeacherDashboard } from "@kinder/contracts";
 import { Card } from "@/components/ui/card";
-import { percentOf } from "./percent";
 
 /**
- * The four counts at the top of the teacher's dashboard.
+ * How big this teacher's world is — and nothing else.
  *
- * ★ Context, not the point of the screen.
+ * ★ This row was four tiles, and two of them were already on the screen.
  *
- * These answer "how big is my world today" in one glance — roster, groups, how
- * far this term's assessment has got, how many parent notes are waiting. What
- * needs *doing* is below, in the alerts. That ordering is deliberate: a
- * dashboard whose largest elements are four numbers teaches a teacher to read
- * numbers rather than to act.
+ * "Улирлын явц" showed `47%` and `12 / 26 үнэлэгдсэн` about three hundred pixels
+ * above a `TermProgress` section showing `12 / 26 хүүхэд үнэлэгдсэн` and `47%`.
+ * The argument for keeping both was that the tile summarises and the section
+ * details — but the tile carried *both* numbers, so it was not a summary of the
+ * section, it was the section minus the bar.
  *
- * Every value is a real field of `GET /dashboard/teacher`. None is derived from
- * a placeholder, and the tile set does not grow to fill the row.
+ * `term-progress.tsx` settled it in its own note: "only one of the two is a
+ * `progressbar` an assistive technology can report." That is a reason to keep
+ * the bar, not the tile.
+ *
+ * "Хянах" was the same shape of duplication with a sharper edge: a number you
+ * could not act on, directly above the same number on an alert card that
+ * carries the button. A count with no verb teaches people to look past the row.
+ *
+ * ★★ What is left is two counts, which is the point.
+ *
+ * The docblock this component has always carried opens "Context, not the point
+ * of the screen" and warns that "a dashboard whose largest elements are four
+ * numbers teaches a teacher to read numbers rather than to act". Four tiles were
+ * arguing with that sentence. Two agree with it.
  */
-export function DashboardStats({
-  counts,
-  needsAttention,
-  termProgress,
-}: {
-  counts: TeacherDashboard["counts"];
-  /**
-   * ★ The review count comes from here, not from `counts.pendingReviews`.
-   *
-   * `dashboard.service.ts` currently computes one number and writes it to both
-   * fields, so today they cannot disagree. That is an implementation detail:
-   * `counts` is the "how big is my world" block and `needsAttention` is the
-   * work queue, and the day the queue is narrowed to a teacher's own groups
-   * they will diverge. Reading the field that means "waiting for you" keeps the
-   * tile correct through that change instead of one commit after it.
-   */
-  needsAttention: TeacherDashboard["needsAttention"];
-  termProgress: TeacherDashboard["termProgress"];
-}) {
-  const percent = percentOf(termProgress);
-  const pendingReviews = needsAttention.pendingReviews;
-
+export function DashboardStats({ counts }: { counts: TeacherDashboard["counts"] }) {
   return (
-    <section aria-label="Товч мэдээлэл" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <section aria-label="Товч мэдээлэл" className="grid grid-cols-2 gap-3">
       <Stat label="Хүүхэд" value={counts.children} />
       <Stat label="Бүлэг" value={counts.groups} />
-      <Stat
-        label="Улирлын явц"
-        value={`${percent}%`}
-        // The one tile that carries the brand colour: it is the only one whose
-        // number is a *share* rather than a count, and the tint is what makes
-        // that legible without reading the label.
-        tone="sky"
-        detail={`${termProgress.assessed} / ${termProgress.total} үнэлэгдсэн`}
-      />
-      <Stat
-        label="Хянах"
-        value={pendingReviews}
-        tone={pendingReviews > 0 ? "sun" : "neutral"}
-        detail={pendingReviews > 0 ? "Эцэг эхийн бичлэг" : undefined}
-      />
     </section>
   );
 }
@@ -64,44 +39,16 @@ export function DashboardStats({
 /**
  * One tile.
  *
- * The tint sits on the number rather than on the card, so four tiles in a row
- * stay a row of tiles instead of four competing coloured blocks — and a tile
- * whose count is zero loses its colour, because there is nothing to notice.
+ * ★ No `tone` and no `detail` any more. Both existed for the two tiles that are
+ * gone — the tint marked a share rather than a count, and the detail line
+ * disambiguated a bare number. A count of children needs neither, and a prop
+ * nothing passes is the next person's puzzle.
  */
-function Stat({
-  label,
-  value,
-  detail,
-  tone = "neutral",
-}: {
-  label: string;
-  value: number | string;
-  /** The line under the number, where the count alone is ambiguous. */
-  detail?: string;
-  tone?: "neutral" | "sun" | "peach" | "mint" | "sky";
-}) {
-  const toneClass =
-    tone === "sun"
-      ? "bg-sun text-sun-ink"
-      : tone === "peach"
-        ? "bg-peach text-peach-ink"
-        : tone === "mint"
-          ? "bg-mint text-mint-ink"
-          : tone === "sky"
-            ? "bg-sky text-sky-ink"
-            : "";
-
+function Stat({ label, value }: { label: string; value: number }) {
   return (
     <Card className="px-4 py-3.5">
       <p className="text-body text-muted">{label}</p>
-      <p
-        className={`mt-1 inline-flex min-w-[2ch] justify-center rounded-control px-1.5 text-display font-semibold tabular-nums ${
-          toneClass || "text-ink"
-        }`}
-      >
-        {value}
-      </p>
-      {detail ? <p className="mt-1 truncate text-caption text-muted">{detail}</p> : null}
+      <p className="mt-1 text-display font-semibold tabular-nums text-ink">{value}</p>
     </Card>
   );
 }

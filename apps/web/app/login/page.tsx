@@ -12,7 +12,7 @@ import { qk } from "@/lib/api/keys";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
-import { AuthShell, LoginTabs, LOGIN_TABS, type LoginTab } from "@/components/shell/auth-shell";
+import { AuthShell } from "@/components/shell/auth-shell";
 
 /**
  * Sign in.
@@ -36,10 +36,6 @@ function LoginForm() {
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
-  const [tab, setTab] = useState<LoginTab>("teacher");
-
-  const identifierLabel =
-    LOGIN_TABS.find((t) => t.key === tab)?.identifierLabel ?? LOGIN_TABS[0].identifierLabel;
 
   const login = useMutation({
     mutationFn: async () => {
@@ -103,12 +99,6 @@ function LoginForm() {
     <AuthShell>
       <h2 className="mb-1.5 text-heading font-semibold tracking-[-.01em] text-ink">Нэвтрэх</h2>
 
-      {/*
-        The tabs only change the label below. See `LOGIN_TABS` for why that is
-        deliberate rather than unfinished.
-      */}
-      <LoginTabs value={tab} onChange={setTab} />
-
       <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
         <FormError
           message={
@@ -116,7 +106,16 @@ function LoginForm() {
           }
         />
 
-        <Field label={identifierLabel} error={errors.identifier} required>
+        {/*
+          ★ One field, naming all three things it accepts.
+
+          A segmented Багш / Эцэг эх / Админ control stood above this. It changed
+          only this label, two of its three options changed it to the same
+          string, and the choice was never sent to the API — see `auth-shell.tsx`.
+          Asking someone to classify themselves before they can type their
+          username is a decision the system does not need and cannot use.
+        */}
+        <Field label="Нэвтрэх нэр, утас эсвэл и-мэйл" error={errors.identifier} required>
           {({ id, describedBy, invalid }) => (
             <Input
               id={id}

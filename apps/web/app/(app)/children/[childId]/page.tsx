@@ -3,13 +3,14 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { BookOpen, ClipboardList, FileText, Pencil, Plus } from "lucide-react";
+import { BookOpen, ClipboardList, MoreHorizontal, Pencil, Plus } from "lucide-react";
 import { childDetailSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
+import { Menu, type MenuItem } from "@/components/ui/menu";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAssessments } from "@/components/child/child-assessments";
 import { ChildGeneralInfo } from "@/components/child/child-general-info";
@@ -17,8 +18,8 @@ import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { ChildTabs } from "@/components/child/child-tabs";
 import { ChildObservations } from "@/components/child/child-observations";
 import { ChildGallery } from "@/components/media/child-gallery";
-import { ReportDialog } from "@/components/reports/report-dialog";
 import { fullName } from "@/lib/format";
+import { GALLERY as GALLERY_LABEL, PORTFOLIO } from "@/lib/vocabulary";
 
 const GENERAL = "general";
 const OBSERVATIONS = "observations";
@@ -119,60 +120,7 @@ export default function ChildDetailPage() {
       <ChildHeroProfile
         child={data}
         showHealthAlert={isStaff}
-        actions={
-          <>
-            <Button asChild size="sm">
-              <Link href={`/children/${childId}/observations/new`}>
-                <Plus size={18} />
-                {isStaff ? "Ажиглалт" : "Хуваалцах"}
-              </Link>
-            </Button>
-
-            {/*
-              The gallery is a tab now, but `/portfolio` is not a duplicate of
-              it: that screen also carries "Миний тухай", the age profiles and
-              the birthday notes, which the tab does not. It stays, and this
-              button keeps pointing at it.
-            */}
-            <Button asChild variant="secondary" size="sm">
-              <Link href={`/children/${childId}/portfolio`}>
-                <BookOpen size={18} />
-                Хавтас
-              </Link>
-            </Button>
-
-            {/*
-              Both roles, one route: a teacher writes the report and a family
-              reads it once finalised. The API filters a guardian to FINAL, so
-              the same URL is safe for either.
-            */}
-            <Button asChild variant="secondary" size="sm">
-              <Link href={`/children/${childId}/term-report`}>
-                <ClipboardList size={18} />
-                Улирлын тайлан
-              </Link>
-            </Button>
-
-            {isStaff ? (
-              <Button asChild variant="secondary" size="sm">
-                <Link href={`/children/${childId}/edit`}>
-                  <Pencil size={18} />
-                  Засах
-                </Link>
-              </Button>
-            ) : null}
-
-            <ReportDialog
-              childId={childId}
-              trigger={
-                <Button variant="secondary" size="sm">
-                  <FileText size={18} />
-                  PDF
-                </Button>
-              }
-            />
-          </>
-        }
+        actions={<ChildActions childId={childId} isStaff={isStaff} />}
       />
 
       <ChildTabs
@@ -194,7 +142,7 @@ export default function ChildDetailPage() {
           },
           {
             value: GALLERY,
-            label: "Цомог",
+            label: GALLERY_LABEL,
             content:
               (
                 /*
@@ -214,5 +162,107 @@ export default function ChildDetailPage() {
         ]}
       />
     </div>
+  );
+}
+
+/**
+ * What you can do to this child, in order of how often you do it.
+ *
+ * ★ This row was five buttons, four of them identical white pills.
+ *
+ * `[+ Ажиглалт] [Хавтас] [Улирлын тайлан] [Засах] [PDF]` — one primary and four
+ * secondaries at the same size, weight and colour, wrapping to three rows at
+ * 375px and filling most of the first screen with undifferentiated controls.
+ * Five equal targets means the primary action is found by reading rather than
+ * by looking, which is Hick's law charging for a decision nobody wanted to make.
+ *
+ * Two of them also overlapped: **Улирлын тайлан** opened the term report and
+ * **PDF** generated one, and the row gave no way to tell which produced the
+ * document.
+ *
+ * Now: the action, the destination, and everything else behind one control.
+ *
+ * ★★ PDF moved to the portfolio rather than into the menu.
+ *
+ * The report's type is `CHILD_PORTFOLIO` — it exports the RFP §4 record, which
+ * has its own screen. "Export this" belongs on the thing being exported, and
+ * that placement also ends the collision with the term report: two documents,
+ * two screens, one button each.
+ *
+ * ★★★ A menu is only a menu when it holds more than one thing.
+ *
+ * Staff overflow two entries; a family overflows one, and a menu that opens to
+ * reveal a single item is a worse button. So the last slot renders as a menu or
+ * as a button depending on what is in it, and both audiences see exactly three
+ * controls.
+ */
+function ChildActions({ childId, isStaff }: { childId: string; isStaff: boolean }) {
+  // Both roles, one route: a teacher writes the report and a family reads it
+  // once finalised. The API filters a guardian to FINAL, so the URL is safe for
+  // either.
+  const overflow: MenuItem[] = [
+    {
+      href: `/children/${childId}/term-report`,
+      label: "Улирлын тайлан",
+      hint: "Улирлын үнэлгээ, багшийн дүгнэлт.",
+      icon: <ClipboardList size={18} aria-hidden="true" />,
+    },
+    ...(isStaff
+      ? [
+          {
+            href: `/children/${childId}/edit`,
+            label: "Мэдээлэл засах",
+            hint: "Нэр, төрсөн огноо, бүлгийн бүртгэл.",
+            icon: <Pencil size={18} aria-hidden="true" />,
+          },
+        ]
+      : []),
+  ];
+
+  return (
+    <>
+      <Button asChild size="sm">
+        <Link href={`/children/${childId}/observations/new`}>
+          <Plus size={18} />
+          {isStaff ? "Ажиглалт" : "Хуваалцах"}
+        </Link>
+      </Button>
+
+      {/*
+        The album is a tab on this page, but `/portfolio` is not a duplicate of
+        it: that screen also carries "Миний тухай", the age profiles and the
+        birthday notes, which the tab does not.
+      */}
+      <Button asChild variant="secondary" size="sm">
+        <Link href={`/children/${childId}/portfolio`}>
+          <BookOpen size={18} />
+          {PORTFOLIO}
+        </Link>
+      </Button>
+
+      {overflow.length > 1 ? (
+        <Menu
+          variant="secondary"
+          ariaLabel="Бусад үйлдэл"
+          items={overflow}
+          // Icon-only: the standard overflow affordance, and the row has to
+          // survive 375px. The name is `sr-only` rather than absent, so the
+          // trigger is announced as something other than "button".
+          label={
+            <>
+              <MoreHorizontal size={18} aria-hidden="true" />
+              <span className="sr-only">Бусад үйлдэл</span>
+            </>
+          }
+        />
+      ) : (
+        <Button asChild variant="secondary" size="sm">
+          <Link href={overflow[0]!.href}>
+            <ClipboardList size={18} />
+            {overflow[0]!.label}
+          </Link>
+        </Button>
+      )}
+    </>
   );
 }

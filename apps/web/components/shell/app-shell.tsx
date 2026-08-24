@@ -11,6 +11,7 @@ import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { useLogout, useSession } from "@/lib/auth/session";
 import { fullName, initials } from "@/lib/format";
+import { BRAND } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
 
 export interface NavItem {
@@ -360,11 +361,7 @@ function Brand({ subtitle }: { subtitle: string }) {
         />
       </span>
       <span className="min-w-0">
-        <span className="block text-body font-semibold leading-[1.25] text-ink">
-          Хүүхдийн хөгжлийн
-          <br />
-          цахим хувийн хавтас
-        </span>
+        <span className="block text-body font-semibold leading-[1.25] text-ink">{BRAND}</span>
         <span className="block text-caption text-muted">{subtitle}</span>
       </span>
     </Link>
@@ -563,7 +560,7 @@ function MobileHeader({ variant, subtitle }: { variant: "teacher" | "parent"; su
         </span>
         <span className="min-w-0">
           <span className="block truncate text-body font-semibold leading-[1.2] text-ink">
-            Хүүхдийн хавтас
+            {BRAND}
           </span>
           <span className="block text-caption text-muted">{subtitle}</span>
         </span>

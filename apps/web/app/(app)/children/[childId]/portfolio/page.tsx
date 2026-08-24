@@ -8,6 +8,7 @@ import { z } from "zod";
 import {
   BookOpen,
   ChevronDown,
+  FileText,
   Heart,
   MessageCircle,
   Pencil,
@@ -34,7 +35,9 @@ import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { AgeSectionShell } from "@/components/child/age-section-shell";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { ChildGallery } from "@/components/media/child-gallery";
+import { ReportDialog } from "@/components/reports/report-dialog";
 import { ageInYears, fullName } from "@/lib/format";
+import { GALLERY, PORTFOLIO } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
 
 const PORTFOLIO_AGES = [2, 3, 4, 5] as const;
@@ -121,7 +124,7 @@ export default function PortfolioPage() {
         <ErrorState
           title={isNotFound(child.error) ? "Олдсонгүй" : "Алдаа гарлаа"}
           description={
-            isNotFound(child.error) ? "Энэ хавтас олдсонгүй." : errorMessage(child.error)
+            isNotFound(child.error) ? `${PORTFOLIO} олдсонгүй.` : errorMessage(child.error)
           }
           action={
             <Button asChild variant="secondary">
@@ -148,12 +151,33 @@ export default function PortfolioPage() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <ChildHeroProfile child={data} />
+      {/*
+        ★ The PDF lives here now, not on the child hub.
 
-      <nav aria-label="Хавтасны хэсгүүд" className="flex flex-col gap-3">
+        `type: "CHILD_PORTFOLIO"` exports this record — the RFP §4 document this
+        screen *is*. On the hub it sat in a row of five buttons next to
+        "Улирлын тайлан", which is a different document, and nothing in the row
+        said which one the PDF would contain.
+      */}
+      <ChildHeroProfile
+        child={data}
+        actions={
+          <ReportDialog
+            childId={childId}
+            trigger={
+              <Button variant="secondary" size="sm">
+                <FileText size={18} />
+                PDF татах
+              </Button>
+            }
+          />
+        }
+      />
+
+      <nav aria-label="Хэсгүүд рүү шилжих" className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-2">
           <SectionLink href="#about-me" label="Миний тухай" />
-          <SectionLink href="#gallery" label="Зураг, бүтээл" />
+          <SectionLink href="#gallery" label={GALLERY} />
           <SectionLink href="#birthdays" label="Төрсөн өдөр" />
         </div>
 

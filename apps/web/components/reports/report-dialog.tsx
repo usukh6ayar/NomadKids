@@ -11,6 +11,7 @@ import { errorMessage } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { FormError } from "@/components/ui/states";
 import { formatFileSize } from "@/lib/format";
+import { PORTFOLIO } from "@/lib/vocabulary";
 
 /**
  * Request a PDF and follow it to completion.
@@ -74,7 +75,7 @@ export function ReportDialog({ childId, trigger }: { childId: string; trigger: R
           <div className="mb-3 flex items-start justify-between gap-3">
             <div>
               <Dialog.Title className="text-lead font-semibold text-ink">
-                Хөгжлийн хавтас PDF
+                {PORTFOLIO} PDF
               </Dialog.Title>
               <Dialog.Description
                 id="report-dialog-description"

@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
 import { formatAge, fullName } from "@/lib/format";
+import { MY_CHILDREN } from "@/lib/vocabulary";
 import { z } from "zod";
 
 const listSchema = paginated(childSummarySchema);
@@ -258,7 +259,7 @@ function MyChildren() {
 
   return (
     <div className="flex flex-col gap-5 lg:gap-7">
-      <h1 className="text-heading font-semibold text-ink">Хөгжлийн хавтас</h1>
+      <h1 className="text-heading font-semibold text-ink">{MY_CHILDREN}</h1>
 
       {isLoading ? <LoadingState rows={2} /> : null}
 

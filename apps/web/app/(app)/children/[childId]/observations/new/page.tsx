@@ -11,6 +11,7 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
+import { PORTFOLIO } from "@/lib/vocabulary";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
@@ -353,7 +354,7 @@ export default function NewObservationPage() {
                   onChange={(e) => setVisibleToParents(e.target.checked)}
                 />
                 <Checkbox
-                  label="Хөгжлийн хавтасны PDF-д оруулах"
+                  label={`${PORTFOLIO}ны PDF-д оруулах`}
                   checked={includeInReport}
                   onChange={(e) => setIncludeInReport(e.target.checked)}
                 />

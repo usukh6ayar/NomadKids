@@ -83,7 +83,7 @@ describe("login", () => {
 
     renderWithProviders(<LoginPage />);
 
-    const identifier = screen.getByLabelText(/Нэвтрэх нэр эсвэл и-мэйл/);
+    const identifier = screen.getByLabelText(/Нэвтрэх нэр, утас эсвэл и-мэйл/);
     await user.type(identifier, "bagsh");
     await user.type(screen.getByLabelText("Нууц үг *"), "wrong-password");
     await user.click(screen.getByRole("button", { name: "Нэвтрэх" }));
@@ -114,7 +114,7 @@ describe("login", () => {
 
     renderWithProviders(<LoginPage />);
 
-    await user.type(screen.getByLabelText(/Нэвтрэх нэр эсвэл и-мэйл/), "bagsh");
+    await user.type(screen.getByLabelText(/Нэвтрэх нэр, утас эсвэл и-мэйл/), "bagsh");
     await user.type(screen.getByLabelText("Нууц үг *"), "correct-password");
     await user.click(screen.getByRole("button", { name: "Нэвтрэх" }));
 
@@ -1338,18 +1338,24 @@ describe("teacher dashboard", () => {
   });
 
   /**
-   * The tile row is the §12.1 summary: roster, groups, term share, review queue.
+   * ★ The tile row lost its term-progress and review tiles, and the rule one of
+   * them carried had to survive the removal.
    *
-   * ★ The two `pendingReviews` fields are given **different** values here.
+   * Both were already on the screen: "Улирлын явц" repeated the `TermProgress`
+   * section's own numbers a few hundred pixels above it, and "Хянах" repeated a
+   * count that the alert card below states *and acts on*.
    *
+   * The review tile was pinned here for a reason worth keeping, though. The two
+   * `pendingReviews` fields are given **different** values in this fixture:
    * `dashboard.service.ts` computes one number and writes it to both
    * `counts.pendingReviews` and `needsAttention.pendingReviews`, so a fixture
    * that sets them equal — as every other one in this file does — cannot tell
-   * which field the tile reads. The tile means "waiting for you", which is the
-   * `needsAttention` one, and the day the queue is narrowed to a teacher's own
-   * groups this assertion is what catches the tile still reading the other.
+   * which field the screen reads. "Waiting for you" is the `needsAttention` one,
+   * and the day the queue is narrowed to a teacher's own groups this is what
+   * catches the alert card reading the other. The assertion moved from the tile
+   * to the card; the guarantee did not move at all.
    */
-  it("summarises the roster, the groups and the term's share in the tiles", async () => {
+  it("counts the roster and the groups, and leaves the rest to the sections", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
       {
@@ -1366,10 +1372,22 @@ describe("teacher dashboard", () => {
     renderWithProviders(<DashboardPage />);
 
     const tiles = await screen.findByRole("region", { name: "Товч мэдээлэл" });
+    expect(within(tiles).getByText("Хүүхэд")).toBeInTheDocument();
     expect(within(tiles).getByText("Бүлэг")).toBeInTheDocument();
-    expect(within(tiles).getByText("70%")).toBeInTheDocument();
-    expect(within(tiles).getByText("7 / 10 үнэлэгдсэн")).toBeInTheDocument();
-    expect(within(tiles).getByText("3")).toBeInTheDocument();
-    expect(within(tiles).queryByText("9")).not.toBeInTheDocument();
+
+    // The two that were saying what the sections below already said.
+    expect(within(tiles).queryByText("70%")).not.toBeInTheDocument();
+    expect(within(tiles).queryByText("Хянах")).not.toBeInTheDocument();
+
+    // The term's share is stated once, by the element that is a `progressbar`.
+    const progress = await screen.findByRole("region", { name: "Улирлын үнэлгээний явц" });
+    expect(within(progress).getByText("70%")).toBeInTheDocument();
+    expect(within(progress).getByRole("progressbar")).toHaveAttribute("aria-valuenow", "70");
+
+    // …and the review queue is stated once, by the card that can act on it.
+    const alerts = await screen.findByRole("region", { name: "Анхаарах зүйлс" });
+    expect(within(alerts).getByText(/3 бичлэг/)).toBeInTheDocument();
+    expect(within(alerts).queryByText(/9 бичлэг/)).not.toBeInTheDocument();
+    expect(within(alerts).getByRole("link", { name: "Хянах" })).toBeInTheDocument();
   });
 });

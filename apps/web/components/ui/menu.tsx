@@ -45,12 +45,20 @@ export function Menu({
   label,
   items,
   ariaLabel,
+  variant = "primary",
   className,
 }: {
   label: ReactNode;
   items: MenuItem[];
   /** Names the menu itself, for a screen reader listing it. */
   ariaLabel: string;
+  /**
+   * The trigger's weight. `primary` is right where the menu *is* the screen's
+   * call to action, as on the dashboard. An overflow menu beside a real primary
+   * button is not that, and two filled buttons side by side is the hierarchy
+   * problem this component was used to solve.
+   */
+  variant?: "primary" | "secondary";
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -118,6 +126,7 @@ export function Menu({
       <Button
         ref={trigger}
         size="sm"
+        variant={variant}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((was) => !was)}

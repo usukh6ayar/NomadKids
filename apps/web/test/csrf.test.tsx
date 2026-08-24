@@ -259,7 +259,7 @@ describe("signing in", () => {
 
     renderWithProviders(<LoginPage />);
 
-    await user.type(screen.getByLabelText(/Нэвтрэх нэр эсвэл и-мэйл/), "bagsh");
+    await user.type(screen.getByLabelText(/Нэвтрэх нэр, утас эсвэл и-мэйл/), "bagsh");
     await user.type(screen.getByLabelText("Нууц үг *"), "нууц-үг");
     await user.click(screen.getByRole("button", { name: "Нэвтрэх" }));
 

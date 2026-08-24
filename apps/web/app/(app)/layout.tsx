@@ -15,6 +15,7 @@ import { useEffect, type ReactNode } from "react";
 import { AppShell, type NavItem, type NavSection } from "@/components/shell/app-shell";
 import { LoadingState } from "@/components/ui/states";
 import { useSession } from "@/lib/auth/session";
+import { MY_CHILDREN } from "@/lib/vocabulary";
 
 /**
  * The authenticated shell.
@@ -148,7 +149,7 @@ function staffSections(isAdmin: boolean): NavSection[] {
 function parentNav(): NavItem[] {
   return [
     { href: "/home", label: "Нүүр", icon: <Home {...iconProps} /> },
-    { href: "/children", label: "Хавтас", icon: <BookOpen {...iconProps} /> },
+    { href: "/children", label: MY_CHILDREN, icon: <BookOpen {...iconProps} /> },
     { href: "/notifications", label: "Мэдэгдэл", icon: <Bell {...iconProps} />, badge: "unread" },
     { href: "/settings", label: "Профайл", icon: <Settings {...iconProps} /> },
   ];

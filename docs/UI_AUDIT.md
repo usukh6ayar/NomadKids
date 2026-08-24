@@ -25,10 +25,21 @@
 >   silently dropped `text-primary-ink` from every filled button. Fixed by
 >   registering the steps as a `font-size` group in `lib/utils.ts`.
 >
-> **Open:** the judgement items in Parts 1–3 — 1.2 (login tabs), 1.3/1.4
-> (duplicate dashboard tiles), 1.5 (two icon systems), 2.1 (five-button hero
-> row), 2.2/2.3 (portfolio navigation and the age row's inverted signal),
-> 2.5–2.7, 3.1 (five meanings of "Хавтас"), 3.2–3.4, 4.3, 4.4.
+> **Judgement calls resolved 2026-08-24**, pinned by `test/vocabulary.test.tsx`:
+>
+> | Finding | Resolution |
+> |---|---|
+> | 3.1 five meanings of "Хавтас" | `lib/vocabulary.ts` — `BRAND` / `PORTFOLIO` / `GALLERY` / `MY_CHILDREN`. The word now names one thing. |
+> | 2.1 five-button hero row | Primary + portfolio + overflow menu. PDF moved to the portfolio, whose record it exports. |
+> | 1.3 / 1.4 duplicate tiles | "Улирлын явц" and "Хянах" removed; both facts are stated once, by the elements that can act on them. |
+> | 1.2 login tabs | Deleted. One field: "Нэвтрэх нэр, утас эсвэл и-мэйл". |
+>
+> The RFP decided two of these against my first instinct: §4 titles the record
+> "Хүүхдийн цахим хувийн хавтас" and §4.4 names the album "Зургийн цомог", so the
+> tab's existing "Цомог" was closer than the audit's proposed "Зураг".
+>
+> **Still open:** 1.5 (two icon systems), 2.2/2.3 (portfolio navigation and the
+> age row's inverted signal), 2.4–2.7, 3.2–3.4, 4.3, 4.4.
 
 **Scope.** Teacher dashboard, child detail, portfolio, parent home, children list,
 login, and the shared design system (`globals.css`, `ui/*`, `shell/*`).

@@ -10,6 +10,7 @@ import { mediaUrl } from "@/lib/api/client";
 import { qk } from "@/lib/api/keys";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
+import { GALLERY } from "@/lib/vocabulary";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { MediaThumb } from "@/components/media/media-image";
 import { PhotoUpload } from "@/components/media/photo-upload";
@@ -92,7 +93,7 @@ export function ChildGallery({
     <section id="gallery" aria-labelledby="gallery-heading" className="scroll-mt-20">
       <SectionHeader
         id="gallery-heading"
-        title="Зураг, бүтээл"
+        title={GALLERY}
         lede="Ажиглалтад хавсаргасан болон тусад нь нэмсэн бүх зураг."
         as="h2"
       />
