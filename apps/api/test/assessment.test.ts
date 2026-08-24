@@ -737,3 +737,201 @@ describe("isolation", () => {
     expect((entry?.metadata as { domainId: string }).domainId).toBe(domainId);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The radar — RFP §12.1
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Assesses `count` extra children in group A on `domain`, at level index 2. */
+async function assessCohort(count: number, domain = domainId) {
+  for (let i = 0; i < count; i += 1) {
+    const child = await createChild(a.kindergarten.id);
+    const enrollment = await enrollChild(a.kindergarten.id, child.id, a.group.id, a.schoolYear.id);
+    await db.assessment.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        childId: child.id,
+        enrollmentId: enrollment.id,
+        domainId: domain,
+        termId,
+        levelId: levelIds[2]!,
+        visibleToParents: false,
+        assessedById: a.teacherUser.id,
+      },
+    });
+  }
+}
+
+async function assessOwnChild(domain: string, levelIndex: number, visibleToParents = true) {
+  await db.assessment.create({
+    data: {
+      kindergartenId: a.kindergarten.id,
+      childId: a.child.id,
+      enrollmentId: a.enrollment.id,
+      domainId: domain,
+      termId,
+      levelId: levelIds[levelIndex]!,
+      visibleToParents,
+      assessedById: a.teacherUser.id,
+    },
+  });
+}
+
+describe("the radar", () => {
+  /**
+   * ★ Shape is the signal, so the axis count cannot depend on the data.
+   *
+   * A radar drawn only from assessed domains is a four-sided figure for one
+   * child and a five-sided one for the next, and the two are not comparable at
+   * a glance. An unassessed domain is a point at the origin, not a missing side.
+   */
+  it("returns every domain as an axis, assessed or not", async () => {
+    await assessOwnChild(domainId, 3);
+
+    const res = await authed(request(server()).get(`/v1/children/${a.child.id}/assessment-radar`), teacherA)
+      .query({ termId });
+
+    expect(res.status).toBe(200);
+    const domains = await db.developmentDomain.count({ where: { kindergartenId: null } });
+    expect(res.body.axes).toHaveLength(domains);
+
+    const assessed = res.body.axes.find((ax: { domain: { id: string } }) => ax.domain.id === domainId);
+    expect(assessed.score).toBe(4);
+    const untouched = res.body.axes.find(
+      (ax: { domain: { id: string } }) => ax.domain.id === otherDomainId,
+    );
+    expect(untouched.score).toBeNull();
+    expect(untouched.level).toBeNull();
+  });
+
+  /**
+   * ★★ The disclosure rule, from the guardian's side.
+   *
+   * A mean over a group of two lets a parent solve for the other child exactly:
+   * `other = mean × 2 − own`. This is the ordinary way an aggregate defeats an
+   * authorization model, and it is the reason the cohort line is nullable.
+   */
+  it("withholds the cohort average from a guardian while the group is small", async () => {
+    await assessOwnChild(domainId, 3);
+    await assessCohort(1); // two assessed children in the group
+
+    const res = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/assessment-radar`),
+      parentA,
+    ).query({ termId });
+
+    expect(res.status).toBe(200);
+    expect(res.body.cohort).toBeNull();
+  });
+
+  it("discloses it to a guardian once the cohort is large enough", async () => {
+    await assessOwnChild(domainId, 3);
+    await assessCohort(4); // five assessed children including their own
+
+    const res = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/assessment-radar`),
+      parentA,
+    ).query({ termId });
+
+    expect(res.status).toBe(200);
+    expect(res.body.cohort).not.toBeNull();
+    expect(res.body.cohort.sampleSize).toBe(5);
+    // Four children at level 3 and their own at 4 → 3.2.
+    expect(res.body.cohort.averageByDomain[domainId]).toBeCloseTo(3.2, 5);
+  });
+
+  /**
+   * A teacher opens every child in their group individually on the assessment
+   * grid, so suppressing the aggregate from them protects nobody and costs the
+   * feature. The rule is about disclosure, not about secrecy.
+   */
+  it("never suppresses the cohort for staff", async () => {
+    await assessOwnChild(domainId, 3);
+    await assessCohort(1);
+
+    const res = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/assessment-radar`),
+      teacherA,
+    ).query({ termId });
+
+    expect(res.body.cohort).not.toBeNull();
+    expect(res.body.cohort.sampleSize).toBe(2);
+  });
+
+  /**
+   * ★★★ `visibleToParents` governs a family reading *their own* child, and the
+   * cohort line is not that. If it filtered the aggregate too, the comparison
+   * would silently mean "the average of the children whose teacher has
+   * published" — a statistic that moves as colleagues publish and describes
+   * nothing a reader could name.
+   */
+  it("averages the whole cohort, not only the published assessments", async () => {
+    await assessOwnChild(domainId, 3);
+    await assessCohort(4); // created with visibleToParents: false
+
+    const res = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/assessment-radar`),
+      parentA,
+    ).query({ termId });
+
+    expect(res.body.cohort.sampleSize).toBe(5);
+  });
+
+  it("hides the guardian's own unpublished score while still drawing the axis", async () => {
+    await assessOwnChild(domainId, 3, false);
+
+    const res = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/assessment-radar`),
+      parentA,
+    ).query({ termId });
+
+    const axis = res.body.axes.find((ax: { domain: { id: string } }) => ax.domain.id === domainId);
+    expect(axis.score).toBeNull();
+  });
+
+  // ── The three mandatory cases, CLAUDE.md §4.1 ────────────────────────────
+
+  it("teacher from another kindergarten gets 404", async () => {
+    const teacherB = await login(app, b.teacherUser.username);
+
+    const res = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/assessment-radar`),
+      teacherB,
+    ).query({ termId });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("guardian of another child gets 404", async () => {
+    const parentB = await login(app, b.parentUser.username);
+
+    const res = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/assessment-radar`),
+      parentB,
+    ).query({ termId });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("a teacher assigned to no group containing the child gets 404", async () => {
+    const otherGroup = await createGroup(a.kindergarten.id, a.schoolYear.id, "Бусад бүлэг");
+    const stranger = await createChild(a.kindergarten.id);
+    await enrollChild(a.kindergarten.id, stranger.id, otherGroup.id, a.schoolYear.id);
+
+    const res = await authed(
+      request(server()).get(`/v1/children/${stranger.id}/assessment-radar`),
+      teacherA,
+    ).query({ termId });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("requires a term — a radar of everything describes no moment", async () => {
+    const res = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/assessment-radar`),
+      teacherA,
+    );
+
+    expect(res.status).toBe(400);
+  });
+});

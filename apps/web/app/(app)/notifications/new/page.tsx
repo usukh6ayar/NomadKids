@@ -84,7 +84,7 @@ function ComposeNotice() {
     return (
       <div>
         <PageHeader title="Шинэ мэдэгдэл" />
-        <Card className="px-4 py-6 text-sm text-muted">
+        <Card className="px-4 py-6 text-body text-muted">
           Та ямар нэг цэцэрлэгт бүртгэлгүй байна.
         </Card>
       </div>
@@ -92,7 +92,7 @@ function ComposeNotice() {
   }
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-7">
+    <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Шинэ мэдэгдэл"
         lede={
@@ -102,7 +102,7 @@ function ComposeNotice() {
         }
       />
 
-      <Card className="px-4 py-4 sm:px-5">
+      <Card pad="roomy">
         <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
           <FormError
             message={

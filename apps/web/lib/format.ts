@@ -71,19 +71,66 @@ export function formatRelative(value: string | Date | null | undefined): string 
  * 23-month-old is most of what a nursery teacher plans around.
  */
 export function formatAge(dateOfBirth: string | Date | null | undefined): string {
-  const dob = toDate(dateOfBirth);
-  if (!dob) return "—";
-
-  const now = new Date();
-  let months = (now.getFullYear() - dob.getFullYear()) * 12 + (now.getMonth() - dob.getMonth());
-  if (now.getDate() < dob.getDate()) months -= 1;
-  if (months < 0) return "—";
+  const months = monthsSinceBirth(dateOfBirth);
+  if (months === null) return "—";
 
   const years = Math.floor(months / 12);
   const rest = months % 12;
 
   if (years < 2) return rest === 0 ? `${years} нас` : `${years} нас ${rest} сар`;
   return `${years} нас`;
+}
+
+/**
+ * Whole years since birth. `null` when the date is missing or in the future.
+ *
+ * ★ Shares `monthsSinceBirth` with `formatAge` rather than recomputing.
+ *
+ * The portfolio prints an age with one and decides which age sections open with
+ * the other. Two independent date calculations for one fact disagree on exactly
+ * one day a year — the child's birthday — which is both the day it matters most
+ * and the day nobody is testing on.
+ */
+export function ageInYears(dateOfBirth: string | Date | null | undefined): number | null {
+  const months = monthsSinceBirth(dateOfBirth);
+  return months === null ? null : Math.floor(months / 12);
+}
+
+/** Completed months since `dateOfBirth`; `null` if absent or not yet reached. */
+function monthsSinceBirth(dateOfBirth: string | Date | null | undefined): number | null {
+  const dob = toDate(dateOfBirth);
+  if (!dob) return null;
+
+  const now = new Date();
+  let months = (now.getFullYear() - dob.getFullYear()) * 12 + (now.getMonth() - dob.getMonth());
+  // The month has turned but the day has not: still the previous month.
+  if (now.getDate() < dob.getDate()) months -= 1;
+
+  return months < 0 ? null : months;
+}
+
+/**
+ * A duration in months, worded as an age.
+ *
+ * ★ Always carries the months, where `formatAge` drops them above two years.
+ *
+ * That difference is deliberate rather than an oversight. `formatAge` describes
+ * one child, and "4 нас" is how anyone would say it aloud. This describes a
+ * *mean* over a roster spanning roughly 2 to 5 years old: rounded to whole
+ * years it reads "3" for most of a school year and stops moving, so the one
+ * number on the card that should respond to the roster changing does not.
+ *
+ * Separate from `formatAge` because the input differs too — that takes a birth
+ * date and asks how old someone is now; this takes a span already computed,
+ * which may belong to nobody.
+ */
+export function formatAgeFromMonths(months: number | null | undefined): string {
+  if (months === null || months === undefined || months < 0) return "—";
+
+  const years = Math.floor(months / 12);
+  const rest = months % 12;
+
+  return rest === 0 ? `${years} нас` : `${years} нас ${rest} сар`;
 }
 
 /** `Ганболд Батбаяр` — surname first, as Mongolian names are written. */

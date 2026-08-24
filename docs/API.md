@@ -295,10 +295,23 @@ from a Mac.
 **The permission check runs before the redirect**, always. Reference:
 `test_the_permission_check_runs_before_the_redirect`.
 
-Guardians may **view** their child's media; they may not upload, attach or
-delete — including for their own child. Reference:
-`test_attach_refuses_the_childs_own_guardian`,
-`test_delete_refuses_the_childs_own_guardian`.
+**Guardians may build the album** — RFP §2.3, decided 2026-08-22. A family
+uploads photographs of their own child, and those photographs are attributed
+`PARENT` and carry the uploader. This **reverses** the reference system, which
+refused guardian uploads; the RFP names the capability explicitly and outranks
+the reference.
+
+What did **not** widen, each still asserted:
+
+- a guardian may attach only to **their own** parent observation, never to a
+  teacher's — otherwise a family could illustrate a private teaching note
+- a guardian may edit the caption, date and category of **photographs they
+  uploaded**, and nobody else's
+- a guardian may **not** delete any photograph, including their own upload —
+  deletion stays a staff act, and is an open question rather than a settled one
+- a guardian may **not** set the child's profile picture
+
+Reference: `test_delete_refuses_the_childs_own_guardian` still holds.
 
 `DELETE` never accepts a GET. Upload rules in [SECURITY.md](SECURITY.md) §7.3.
 
@@ -523,11 +536,32 @@ reports success doing it.
 
 ## 13. Dashboard
 
-| Method | Route                | Role    | Ownership    | Request | Response                                                                    |
-| ------ | -------------------- | ------- | ------------ | ------- | --------------------------------------------------------------------------- |
-| GET    | `/dashboard/teacher` | teacher | own groups   | —       | children needing attention, pending parent submissions, recent observations |
-| GET    | `/dashboard/admin`   | admin   | kg:admin     | —       | counts, assessment coverage, recent activity                                |
-| GET    | `/dashboard/parent`  | parent  | own children | —       | recent visible observations, unread notices, latest assessment              |
+| Method | Route                | Role    | Ownership    | Request | Response                                                       |
+| ------ | -------------------- | ------- | ------------ | ------- | -------------------------------------------------------------- |
+| GET    | `/dashboard/teacher` | teacher | own groups   | —       | see below                                                      |
+| GET    | `/dashboard/admin`   | admin   | kg:admin     | —       | counts, assessment coverage, recent activity                   |
+| GET    | `/dashboard/parent`  | parent  | own children | —       | recent visible observations, unread notices, latest assessment |
+
+`GET /dashboard/teacher` answers with, all scoped to the teacher's own groups:
+
+| Field                                       | RFP   | Meaning                                     |
+| ------------------------------------------- | ----- | ------------------------------------------- |
+| `counts.children / groups / pendingReviews` | §12.1 | roster size, groups taught, review queue    |
+| `needsAttention.childrenMissingAssessment`  | §12.1 | the **gap**, not the coverage               |
+| `birthdaysToday`                            | §12.1 | added 2026-08-22; month/day matched in SQL  |
+| `termProgress { assessed, total }`          | §12.1 | added 2026-08-22; children, not domain rows |
+| `recentObservations`                        | §12.1 | so a teacher can resume                     |
+| `currentTerm`                               | —     | what "this term" means, or `null`           |
+
+★ `birthdaysToday` is child data and is scoped like child data. A teacher must
+not learn that a child in another group — or another kindergarten — has a
+birthday today, which is exactly the leak a "harmless" dashboard widget
+introduces. Asserted in `dashboard.test.ts`.
+
+Still **not** implemented from §12.1: the per-domain average. §12.2 is missing
+storage size and report statistics. Everything the requested dashboard design
+also asked for — attendance, medication, pick-up, lunch menu, messages, a radar
+chart — is excluded from the MVP by CLAUDE.md §7 and is not served here.
 
 Cross-role access returns 404, like every other authorization failure (§1.1).
 Reference: `test_a_guardian_cannot_open_the_teacher_dashboard`,

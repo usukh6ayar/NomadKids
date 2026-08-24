@@ -41,7 +41,7 @@ export function Field({
 
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
-      <LabelPrimitive.Root htmlFor={id} className="text-sm font-medium text-ink">
+      <LabelPrimitive.Root htmlFor={id} className="text-body font-medium text-ink">
         {label}
         {required ? (
           <span className="text-danger" aria-hidden="true">
@@ -53,13 +53,13 @@ export function Field({
       {children({ id, describedBy, invalid: Boolean(error) })}
 
       {hint ? (
-        <p id={hintId} className="text-xs text-muted">
+        <p id={hintId} className="text-caption text-muted">
           {hint}
         </p>
       ) : null}
 
       {error ? (
-        <p id={errorId} role="alert" className="text-xs font-medium text-danger">
+        <p id={errorId} role="alert" className="text-caption font-medium text-danger">
           {error}
         </p>
       ) : null}
@@ -68,7 +68,7 @@ export function Field({
 }
 
 const controlBase =
-  "w-full rounded-[12px] border bg-surface px-3.5 text-ink placeholder:text-muted " +
+  "w-full rounded-control border bg-surface px-3.5 text-ink placeholder:text-muted " +
   "transition-colors disabled:opacity-60 disabled:bg-canvas";
 
 export function Input({
@@ -168,10 +168,10 @@ export function Checkbox({
       )}
     >
       <input id={id} type="checkbox" className="mt-1 size-5 shrink-0 accent-primary" {...props} />
-      <span className="text-sm leading-snug">
+      <span className="text-body leading-snug">
         <span className="font-medium text-ink">{label}</span>
         {description ? (
-          <span className="mt-0.5 block text-xs text-muted">{description}</span>
+          <span className="mt-0.5 block text-caption text-muted">{description}</span>
         ) : null}
       </span>
     </label>

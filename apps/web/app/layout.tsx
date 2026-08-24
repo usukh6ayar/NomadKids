@@ -1,11 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { Providers } from "./providers";
+import { BRAND } from "@/lib/vocabulary";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "NomadKids",
-  description: "Хүүхдийн хөгжлийн цахим хавтас",
+  title: BRAND,
+  description: "Цэцэрлэгийн хүүхдийн хөгжлийн цахим бүртгэл.",
 };
 
 /**

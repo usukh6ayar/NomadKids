@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
  * "Зөвшөөрсөн" without seeing the difference between yellow and green.
  */
 const badgeVariants = cva(
-  "inline-flex items-center gap-1.5 rounded-[999px] px-2.5 py-1 text-xs font-medium whitespace-nowrap",
+  "inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-caption font-medium whitespace-nowrap",
   {
     variants: {
       tone: {

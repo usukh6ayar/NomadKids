@@ -23,7 +23,19 @@
 
 import { PrismaPg } from "@prisma/adapter-pg";
 import argon2 from "argon2";
+import { config as loadDotenv } from "dotenv";
+import { resolve } from "node:path";
 import { PrismaClient } from "../src/generated/prisma/client";
+
+// ★ Loads the repository-root `.env`, for the same reason `prisma.config.ts`
+// does: this script runs as its own process and never imports the application,
+// so nothing else has put `DATABASE_URL` into `process.env`. Without it the
+// documented `pnpm --filter @kinder/api seed:demo` fails on every machine that
+// has not exported the variable by hand.
+//
+// `override` is off, so an explicitly exported variable always wins over the
+// file. `assertLocalOnly` below still refuses anything but a local host.
+loadDotenv({ path: resolve(__dirname, "..", "..", "..", ".env"), quiet: true });
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),

@@ -11,6 +11,7 @@ import { errorMessage } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { FormError } from "@/components/ui/states";
 import { formatFileSize } from "@/lib/format";
+import { PORTFOLIO } from "@/lib/vocabulary";
 
 /**
  * Request a PDF and follow it to completion.
@@ -68,17 +69,17 @@ export function ReportDialog({ childId, trigger }: { childId: string; trigger: R
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-ink/40" />
         <Dialog.Content
-          className="fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-[420px] -translate-x-1/2 -translate-y-1/2 rounded-[16px] border border-border bg-surface p-5 shadow-lg"
+          className="fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-[420px] -translate-x-1/2 -translate-y-1/2 rounded-card border border-border bg-surface p-5 shadow-lg"
           aria-describedby="report-dialog-description"
         >
           <div className="mb-3 flex items-start justify-between gap-3">
             <div>
-              <Dialog.Title className="text-base font-semibold text-ink">
-                Хөгжлийн хавтас PDF
+              <Dialog.Title className="text-lead font-semibold text-ink">
+                {PORTFOLIO} PDF
               </Dialog.Title>
               <Dialog.Description
                 id="report-dialog-description"
-                className="mt-1 text-sm text-muted"
+                className="mt-1 text-body text-muted"
               >
                 Хүүхдийн хавтсыг PDF болгон бэлтгэнэ. Хэдэн секунд болно.
               </Dialog.Description>
@@ -159,12 +160,12 @@ function ReportProgress({ job, onRetry }: { job?: ReportJob; onRetry: () => void
 
   if (!job || job.status === "QUEUED" || job.status === "RUNNING") {
     return (
-      <div role="status" className="flex items-center gap-3 rounded-[12px] bg-canvas px-4 py-3.5">
+      <div role="status" className="flex items-center gap-3 rounded-control bg-canvas px-4 py-3.5">
         <span
           aria-hidden="true"
-          className="size-4 shrink-0 animate-spin rounded-full border-2 border-primary border-t-transparent"
+          className="size-4 shrink-0 animate-spin rounded-pill border-2 border-primary border-t-transparent"
         />
-        <span className="text-sm text-ink">
+        <span className="text-body text-ink">
           {job?.status === "RUNNING" ? "Бэлтгэж байна…" : "Дараалалд орлоо…"}
         </span>
       </div>
@@ -174,7 +175,7 @@ function ReportProgress({ job, onRetry }: { job?: ReportJob; onRetry: () => void
   if (job.status === "FAILED") {
     return (
       <div className="flex flex-col gap-3">
-        <p role="alert" className="rounded-[12px] bg-danger-soft px-4 py-3 text-sm text-danger">
+        <p role="alert" className="rounded-control bg-danger-soft px-4 py-3 text-body text-danger">
           {job.errorMessage || "Тайлан үүсгэхэд алдаа гарлаа."}
         </p>
         <Button variant="secondary" block onClick={onRetry}>
@@ -186,7 +187,7 @@ function ReportProgress({ job, onRetry }: { job?: ReportJob; onRetry: () => void
 
   return (
     <div className="flex flex-col gap-3">
-      <p role="status" className="rounded-[12px] bg-mint px-4 py-3 text-sm text-mint-ink">
+      <p role="status" className="rounded-control bg-mint px-4 py-3 text-body text-mint-ink">
         Бэлэн боллоо
         {job.pageCount ? ` · ${job.pageCount} хуудас` : ""}
         {job.fileSize ? ` · ${formatFileSize(job.fileSize)}` : ""}

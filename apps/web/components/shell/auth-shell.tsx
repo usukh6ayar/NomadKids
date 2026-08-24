@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { BRAND } from "@/lib/vocabulary";
 import type { ReactNode } from "react";
 
 /**
@@ -27,7 +28,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
           and without it a single unbroken word pushes the card wider than its
           column and the inputs run off the right edge.
         */}
-        <main className="w-full max-w-[440px] rounded-[18px] border border-border bg-surface px-7 py-8 [overflow-wrap:anywhere] min-[900px]:shadow-[0_1px_2px_rgba(37,35,42,.04),0_6px_16px_rgba(37,35,42,.045)]">
+        <main className="w-full max-w-[440px] rounded-card border border-border bg-surface px-7 py-8 [overflow-wrap:anywhere] min-[900px]:shadow-sm">
           <div className="mb-[22px] flex items-center gap-3.5">
             <Image
               src="/logo-160.png"
@@ -39,12 +40,10 @@ export function AuthShell({ children }: { children: ReactNode }) {
               priority
             />
             <div>
-              <h1 className="text-[1.05rem] font-bold uppercase leading-[1.3] tracking-[.01em] text-ink">
-                Хүүхдийн хөгжлийн
-                <br />
-                цахим хувийн хавтас
+              <h1 className="text-title font-semibold uppercase leading-[1.3] tracking-[.01em] text-ink">
+                {BRAND}
               </h1>
-              <p className="mt-1 text-[.82rem] leading-snug text-muted">
+              <p className="mt-1 text-compact leading-snug text-muted">
                 Багш, эцэг эх, администраторт зориулсан аюулгүй нэвтрэх систем.
               </p>
             </div>
@@ -52,7 +51,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
 
           {children}
 
-          <div className="mt-[22px] flex flex-wrap justify-center gap-x-3.5 gap-y-1.5 border-t border-border pt-4 text-[.78rem] text-muted">
+          <div className="mt-[22px] flex flex-wrap justify-center gap-x-3.5 gap-y-1.5 border-t border-border pt-4 text-compact text-muted">
             <span>Аюулгүй нэвтрэлт</span>
             <span aria-hidden="true">·</span>
             <span>HTTPS</span>
@@ -80,8 +79,8 @@ export function AuthShell({ children }: { children: ReactNode }) {
             className="mx-auto w-[210px] max-w-full"
             style={{ height: "auto" }}
           />
-          <p className="mt-6 text-[1.05rem] font-bold text-ink">Хүүхэд бүрийн хөгжлийн түүх</p>
-          <p className="mx-auto mt-2.5 max-w-[34ch] text-[.9rem] leading-relaxed text-muted">
+          <p className="mt-6 text-title font-semibold text-ink">Хүүхэд бүрийн хөгжлийн түүх</p>
+          <p className="mx-auto mt-2.5 max-w-[34ch] text-body leading-relaxed text-muted">
             Багшийн ажиглалт, эцэг эхийн оролцоо, улирлын үнэлгээ — бүгд нэг дор, хүүхэд тус бүрийн
             цахим хувийн хавтаст.
           </p>
@@ -91,71 +90,29 @@ export function AuthShell({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * The identifier the login form asks for, chosen by the role tabs.
+/*
+ * ★ The role tabs were removed on 2026-08-24.
  *
- * ★ Presentational only, and that is a security property rather than a
- * simplification. Filtering authentication by the selected tab would turn the
- * form into a role oracle — an attacker could learn which role an address
- * belongs to by watching which tab accepts it. The API takes `identifier` and
- * `password` and nothing else; the role is resolved from `Membership` after a
- * successful login, as it is on every other request. Same reasoning, and same
- * wording, as `LOGIN_TABS` in the reference project's `accounts/views.py`.
+ * `LOGIN_TABS` offered Багш / Эцэг эх / Админ and changed one thing: the label
+ * above the identifier field. Багш and Админ were byte-identical
+ * ("Нэвтрэх нэр эсвэл и-мэйл"), so two of the three did not even do that — and
+ * the choice was never sent anywhere. The API takes `identifier` and `password`
+ * and resolves the role from `Membership` afterwards, so someone who picked the
+ * wrong tab signed in exactly as well as someone who picked the right one.
+ *
+ * The first control every user in this system touches asked a question, ignored
+ * the answer, and in two cases out of three did not change the screen. That is a
+ * false affordance in the most consequential position in the product, and the
+ * support call it generates is "Би багш дээр дарах ёстой юу?".
+ *
+ * The docblock that stood here defended the control's *presentational* nature as
+ * a security property — filtering authentication by tab would make the form a
+ * role oracle — and that argument is correct and still binding. It is an
+ * argument for never wiring the tabs up. Given that, the tabs had nothing left
+ * to do. `login/page.tsx` asks for one identifier and names all three things it
+ * accepts.
+ *
+ * RFP §3.1 requires "хэрэглэгчийн эрхэд суурилсан нэвтрэх систем" — role-*based
+ * access* — and line 800 that all three roles can sign in. Neither asks the user
+ * to declare a role at the door.
  */
-export const LOGIN_TABS = [
-  { key: "teacher", label: "Багш", identifierLabel: "Нэвтрэх нэр эсвэл и-мэйл" },
-  { key: "parent", label: "Эцэг эх", identifierLabel: "Утасны дугаар эсвэл и-мэйл" },
-  { key: "admin", label: "Админ", identifierLabel: "Нэвтрэх нэр эсвэл и-мэйл" },
-] as const;
-
-export type LoginTab = (typeof LOGIN_TABS)[number]["key"];
-
-/**
- * The segmented control.
- *
- * ★ 44px minimum, where the reference is 41px.
- *
- * Measured on the running reference at 390px: the three tabs render 41px tall,
- * under the thumb floor the rest of this product holds to. Matching the design
- * does not extend to reproducing a target that is hard to hit, so these are
- * `min-h-[44px]`. It is the same control, two pixels more forgiving.
- *
- * `aria-pressed` rather than tab semantics: there are no tabpanels here, only
- * one form whose label changes. Calling them tabs would promise a screen reader
- * a structure that does not exist.
- */
-export function LoginTabs({
-  value,
-  onChange,
-}: {
-  value: LoginTab;
-  onChange: (next: LoginTab) => void;
-}) {
-  return (
-    <div
-      role="group"
-      aria-label="Хэрэглэгчийн төрөл"
-      className="mb-4 grid grid-cols-3 gap-1 rounded-[14px] bg-canvas p-1"
-    >
-      {LOGIN_TABS.map((tab) => {
-        const active = tab.key === value;
-        return (
-          <button
-            key={tab.key}
-            type="button"
-            aria-pressed={active}
-            onClick={() => onChange(tab.key)}
-            className={
-              "min-h-[44px] rounded-[12px] px-2 text-sm font-semibold transition-colors " +
-              (active
-                ? "bg-primary text-primary-ink"
-                : "text-muted hover:bg-surface hover:text-ink")
-            }
-          >
-            {tab.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}

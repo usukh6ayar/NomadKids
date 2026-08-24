@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { z } from "zod";
-import { childDetailSchema, groupListItemSchema, paginated } from "@kinder/contracts";
+import { childDetailSchema, groupListItemSchema, paginated, SEX_LABEL } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
@@ -66,7 +66,7 @@ function EditChild() {
   if (child.isError) return <ErrorState description={errorMessage(child.error)} />;
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-7">
+    <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Хүүхдийн мэдээлэл засах"
         lede={`${child.data!.lastName} ${child.data!.firstName}`}
@@ -126,9 +126,9 @@ function DetailsForm({
 
   return (
     <section aria-labelledby="details-heading">
-      <SectionHeader title="Хувийн мэдээлэл" />
+      <SectionHeader id="details-heading" title="Хувийн мэдээлэл" />
 
-      <Card className="px-4 py-4 sm:px-5">
+      <Card pad="roomy">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -144,7 +144,10 @@ function DetailsForm({
           />
 
           {save.isSuccess ? (
-            <p role="status" className="rounded-[12px] bg-mint px-3.5 py-2.5 text-sm text-mint-ink">
+            <p
+              role="status"
+              className="rounded-control bg-mint px-3.5 py-2.5 text-body text-mint-ink"
+            >
               Хадгалагдлаа.
             </p>
           ) : null}
@@ -185,8 +188,8 @@ function DetailsForm({
                   value={sex}
                   onChange={(e) => setSex(e.target.value)}
                 >
-                  <option value="MALE">Хүү</option>
-                  <option value="FEMALE">Охин</option>
+                  <option value="MALE">{SEX_LABEL.MALE}</option>
+                  <option value="FEMALE">{SEX_LABEL.FEMALE}</option>
                 </Select>
               )}
             </Field>
@@ -296,11 +299,12 @@ function TransferCard({ childId }: { childId: string }) {
   return (
     <section aria-labelledby="transfer-heading">
       <SectionHeader
+        id="transfer-heading"
         title="Бүлэг шилжүүлэх"
         lede="Одоогийн бүртгэл автоматаар хаагдаж, шинэ бүлэгт нээгдэнэ."
       />
 
-      <Card className="px-4 py-4 sm:px-5">
+      <Card pad="roomy">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -312,7 +316,10 @@ function TransferCard({ childId }: { childId: string }) {
           <FormError message={move.isError ? errorMessage(move.error) : null} />
 
           {move.isSuccess ? (
-            <p role="status" className="rounded-[12px] bg-mint px-3.5 py-2.5 text-sm text-mint-ink">
+            <p
+              role="status"
+              className="rounded-control bg-mint px-3.5 py-2.5 text-body text-mint-ink"
+            >
               Шилжүүллээ.
             </p>
           ) : null}
@@ -363,12 +370,13 @@ function ArchiveCard({ childId, childName }: { childId: string; childName: strin
   return (
     <section aria-labelledby="archive-heading">
       <SectionHeader
+        id="archive-heading"
         title="Архивлах"
         lede="Хүүхэд жагсаалтад харагдахаа болино. Бүртгэл нь устахгүй."
       />
 
-      <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
-        <p className="text-sm text-muted">
+      <Card pad="roomy" className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-body text-muted">
           Цэцэрлэгээс гарсан хүүхдийг архивлана. Ажиглалт, үнэлгээ нь хадгалагдана.
         </p>
         <ArchiveButton

@@ -21,8 +21,8 @@ export default function NoAccessPage() {
   return (
     <div className="mx-auto flex max-w-[520px] flex-col gap-4 py-10">
       <Card className="px-6 py-8 text-center">
-        <h1 className="text-lg font-semibold text-ink">Таны бүртгэл идэвхжээгүй байна</h1>
-        <p className="mt-2 text-sm text-muted">
+        <h1 className="text-title font-semibold text-ink">Таны бүртгэл идэвхжээгүй байна</h1>
+        <p className="mt-2 text-body text-muted">
           Таны хэрэглэгч ямар нэг цэцэрлэгт бүртгэгдээгүй эсвэл эрх нь хаагдсан байна. Цэцэрлэгийн
           удирдлагатай холбогдоно уу.
         </p>

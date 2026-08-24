@@ -25,12 +25,31 @@ Next.js · NestJS · Prisma · PostgreSQL · Cloudflare R2.
 pnpm install
 docker compose up -d                              # postgres · redis · minio
 cp .env.example .env                              # then fill in the two secrets
-pnpm --filter @kinder/api prisma:generate
 pnpm --filter @kinder/contracts build
+pnpm --filter @kinder/api prisma:generate
+pnpm --filter @kinder/api prisma:migrate          # create the schema
+pnpm --filter @kinder/api seed                    # system configuration
+pnpm --filter @kinder/api seed:demo               # optional: data to look at
+pnpm --filter @kinder/api test:db:setup           # ★ the tests' own database
 pnpm dev                                          # web :3000 · api :3001
 ```
 
+`seed:demo` prints the accounts it creates. Sign in with `bagsh1`, `zahiral` or
+`etseg1` — password `demo-password-123`.
+
 `pnpm verify` runs typecheck, lint and tests — the same three checks as CI.
+
+> **★ `test:db:setup` is not optional on a development machine.**
+>
+> The integration suite runs against a real Postgres and `TRUNCATE`s every table
+> between cases. Without `TEST_DATABASE_URL` it does that to `DATABASE_URL` —
+> so `pnpm test` silently deletes everything `seed:demo` just created, and the
+> only symptom is an empty kindergarten the next time you open the app. The
+> command creates `kinder_test` and migrates it; `test/setup.ts` then points the
+> suite there and warns loudly when it cannot.
+>
+> CI leaves the variable unset on purpose: its `DATABASE_URL` is already a
+> throwaway service container.
 
 > Host ports are offset by one (Postgres 5433, Redis 6380, MinIO 9002/9003) so
 > this project and the Django reference system can run at the same time.

@@ -2,9 +2,9 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { Bell, BookOpen, Plus, TrendingUp } from "lucide-react";
+import { BookOpen, Plus } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { parentDashboardSchema, unreadCountSchema } from "@kinder/contracts";
+import { parentDashboardSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
@@ -14,7 +14,9 @@ import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
+import { useSession } from "@/lib/auth/session";
 import { excerpt, formatAge, formatRelative, fullName } from "@/lib/format";
+import { PORTFOLIO } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
 
 /**
@@ -29,19 +31,10 @@ import { cn } from "@/lib/utils";
  * filtering of its own, which is what keeps the rule in one place.
  */
 export default function ParentHomePage() {
+  const { session } = useSession();
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: qk.dashboard.parent(),
     queryFn: () => get("/dashboard/parent", parentDashboardSchema),
-  });
-
-  // Powers the "Ангийн самбар" preview card below — the same count the
-  // sidebar's unread dot shows, reused here as a share reason to open
-  // /notifications rather than a bare number.
-  const { data: unread } = useQuery({
-    queryKey: qk.unreadCount(),
-    queryFn: () => get("/notifications/unread-count", unreadCountSchema),
-    staleTime: 60_000,
-    retry: false,
   });
 
   /**
@@ -53,10 +46,29 @@ export default function ParentHomePage() {
    */
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  /*
+   * ★ `PageHeader`, and a title that says something.
+   *
+   * Four branches of this component each hand-rolled `<h1>Нүүр</h1>` — a
+   * navigation label used as a page title, which tells a parent nothing they
+   * did not already know from tapping it, in typography that matched neither
+   * `PageHeader` nor the other branches.
+   *
+   * `AppLayout` holds the whole tree behind a loading state until the session
+   * resolves, so the name is present on the first render here and the greeting
+   * does not appear a beat late.
+   */
+  const header = (
+    <PageHeader
+      title={session?.user.firstName ? `Сайн байна уу, ${session.user.firstName}` : "Сайн байна уу"}
+      lede="Хүүхдийнхээ сүүлийн мэдээллийг эндээс харна."
+    />
+  );
+
   if (isLoading) {
     return (
       <HomeBackdrop>
-        <PageHeader title="Нүүр хуудас" />
+        {header}
         <LoadingState rows={3} />
       </HomeBackdrop>
     );
@@ -65,7 +77,7 @@ export default function ParentHomePage() {
   if (isError) {
     return (
       <HomeBackdrop>
-        <PageHeader title="Нүүр хуудас" />
+        {header}
         <ErrorState
           description={errorMessage(error)}
           action={
@@ -83,7 +95,7 @@ export default function ParentHomePage() {
   if (children.length === 0) {
     return (
       <HomeBackdrop>
-        <PageHeader title="Нүүр хуудас" />
+        {header}
         <EmptyState
           title="Хүүхэд холбогдоогүй байна"
           description="Танд холбогдсон хүүхэд байхгүй байна. Цэцэрлэгийн багштайгаа холбогдоно уу."
@@ -96,11 +108,24 @@ export default function ParentHomePage() {
 
   return (
     <HomeBackdrop>
-      <PageHeader title="Нүүр хуудас" />
+      {header}
 
+      {/*
+        ★ A group of toggles, not a tab set.
+
+        These carried `role="tablist"` and `role="tab"` with `aria-selected`, and
+        none of what those roles promise was here: no `tabpanel`, no
+        `aria-controls`, no roving tabindex, no arrow-key movement. A screen
+        reader announced "tab, 1 of 3" and then the arrow keys did nothing, and a
+        keyboard user had to Tab past every child instead of one stop for the
+        group. Claiming a pattern is worse than not claiming one — it tells
+        somebody a structure exists and then withholds it.
+
+        `aria-pressed` is what these actually are: buttons that stay in.
+      */}
       {children.length > 1 ? (
         <div
-          role="tablist"
+          role="group"
           aria-label="Хүүхэд сонгох"
           // Scrolls inside itself rather than widening the page — four children
           // with long names would otherwise push the layout sideways at 375px.
@@ -112,11 +137,10 @@ export default function ParentHomePage() {
               <button
                 key={child.id}
                 type="button"
-                role="tab"
-                aria-selected={active}
+                aria-pressed={active}
                 onClick={() => setSelectedId(child.id)}
                 className={cn(
-                  "flex min-h-[44px] shrink-0 items-center gap-2 rounded-[999px] border px-3 py-2 text-sm font-medium",
+                  "flex min-h-[44px] shrink-0 items-center gap-2 rounded-pill border px-3 py-2 text-body font-medium",
                   active
                     ? "border-primary bg-primary-soft text-primary"
                     : "border-border bg-surface text-muted",
@@ -130,15 +154,21 @@ export default function ParentHomePage() {
         </div>
       ) : null}
 
-      <Card className="flex flex-col gap-3 px-4 py-4 sm:px-5">
-        <div className="flex flex-wrap items-center gap-4">
-          <ChildAvatar child={selected} size={56} />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-lg font-semibold text-ink">{fullName(selected)}</p>
-            <p className="text-sm text-muted">
-              {[formatAge(selected.dateOfBirth), selected.group?.name].filter(Boolean).join(" · ")}
-            </p>
-          </div>
+      <Card pad="roomy" className="flex flex-wrap items-center gap-4">
+        <ChildAvatar child={selected} size={56} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-title font-semibold text-ink">{fullName(selected)}</p>
+          <p className="text-body text-muted">
+            {[formatAge(selected.dateOfBirth), selected.group?.name].filter(Boolean).join(" · ")}
+          </p>
+        </div>
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+          <Button asChild size="sm">
+            <Link href={`/children/${selected.id}/portfolio`}>
+              <BookOpen size={18} />
+              {PORTFOLIO}
+            </Link>
+          </Button>
           <Button asChild variant="secondary" size="sm">
             <Link href={`/children/${selected.id}/observations/new`}>
               <Plus size={18} />
@@ -146,76 +176,12 @@ export default function ParentHomePage() {
             </Link>
           </Button>
         </div>
-
-        <Link
-          href={`/children/${selected.id}`}
-          className="text-sm font-semibold text-primary hover:opacity-80"
-        >
-          Хүүхдийн дэлгэрэнгүй хуудас →
-        </Link>
       </Card>
-
-      <section aria-labelledby="board-heading">
-        <SectionHeader
-          title="Ангийн самбар"
-          action={
-            <Link href="/notifications" className="text-sm font-semibold text-primary hover:opacity-80">
-              Бүгдийг харах →
-            </Link>
-          }
-        />
-        <Link
-          href="/notifications"
-          className="flex min-h-16 items-center gap-3 rounded-card border border-border bg-surface px-4 py-3 shadow-card transition-colors hover:bg-canvas"
-        >
-          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-sky text-sky-ink">
-            <Bell size={20} aria-hidden />
-          </span>
-          <span className="min-w-0">
-            <span className="block font-semibold text-ink">
-              {unread && unread.count > 0
-                ? `${unread.count} шинэ мэдээ байна`
-                : "Шинэ мэдээ алга"}
-            </span>
-            <span className="block text-sm text-muted">Ангийн сүүлийн мэдээллийг харах</span>
-          </span>
-        </Link>
-      </section>
-
-      <section aria-labelledby="highlights-heading">
-        <SectionHeader title="Оюун-ийн мэдээлэл" />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Link
-            href={`/children/${selected.id}/portfolio`}
-            className="flex items-center gap-3 rounded-card border border-border bg-surface px-4 py-4 shadow-card transition-colors hover:bg-canvas"
-          >
-            <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary-soft text-primary">
-              <BookOpen size={20} aria-hidden />
-            </span>
-            <span className="min-w-0">
-              <span className="block font-semibold text-ink">Хавтас</span>
-              <span className="block text-sm text-muted">Зураг, бүтээл, тэмдэглэл</span>
-            </span>
-          </Link>
-
-          <Link
-            href={`/children/${selected.id}/observations`}
-            className="flex items-center gap-3 rounded-card border border-border bg-surface px-4 py-4 shadow-card transition-colors hover:bg-canvas"
-          >
-            <span className="grid size-10 shrink-0 place-items-center rounded-full bg-mint text-mint-ink">
-              <TrendingUp size={20} aria-hidden />
-            </span>
-            <span className="min-w-0">
-              <span className="block font-semibold text-ink">Хөгжил ба цэцэрлэгтээ</span>
-              <span className="block text-sm text-muted">Ажиглалт, хөгжлийн ахиц</span>
-            </span>
-          </Link>
-        </div>
-      </section>
 
       {selected.assessments.length > 0 ? (
         <section aria-labelledby="development-heading">
           <SectionHeader
+            id="development-heading"
             title={currentTerm ? `${currentTerm.name} — хөгжлийн үнэлгээ` : "Хөгжлийн үнэлгээ"}
           />
           <Card className="flex flex-wrap gap-2 px-4 py-4">
@@ -229,7 +195,7 @@ export default function ParentHomePage() {
       ) : null}
 
       <section aria-labelledby="recent-heading">
-        <SectionHeader title="Сүүлийн мөчүүд" />
+        <SectionHeader id="recent-heading" title="Сүүлийн мөчүүд" />
 
         {recent.length === 0 ? (
           <EmptyState
@@ -256,14 +222,16 @@ export default function ParentHomePage() {
                       <Badge tone="peach">Буцаагдсан</Badge>
                     ) : null}
                   </span>
-                  <span className="mt-0.5 block text-sm text-muted">
+                  <span className="mt-0.5 block text-body text-muted">
                     {excerpt(item.situation, 100) || "Тайлбаргүй"}
                   </span>
                   {children.length > 1 && item.child ? (
-                    <span className="mt-0.5 block text-xs text-muted">{fullName(item.child)}</span>
+                    <span className="mt-0.5 block text-caption text-muted">
+                      {fullName(item.child)}
+                    </span>
                   ) : null}
                 </span>
-                <span className="shrink-0 whitespace-nowrap text-xs text-muted">
+                <span className="shrink-0 whitespace-nowrap text-caption text-muted">
                   {formatRelative(item.observedOn)}
                 </span>
               </Link>
@@ -297,11 +265,10 @@ export default function ParentHomePage() {
  * ★★ Sized to the content sibling's own height, not a fixed banner height.
  * A fixed height (an earlier `h-56`, then `h-96`) cuts off mid-page
  * regardless of how much the query returns — for a family with two children,
- * or several recent moments, the cutoff landed inside a section (behind
- * "Ангийн самбар"'s heading, un-faded) instead of between two of them, which
- * read as a layout bug rather than a banner edge. Sizing to the sibling
- * instead means the backdrop always ends exactly where the page does,
- * however long that is.
+ * or several recent moments, the cutoff landed inside a section (behind a
+ * heading, un-faded) instead of between two of them, which read as a layout
+ * bug rather than a banner edge. Sizing to the sibling instead means the
+ * backdrop always ends exactly where the page does, however long that is.
  *
  * ★★★ Bled past this wrapper's own box with negative insets, not `inset-0`.
  * `<main>` in `AppShell` (app-shell.tsx) pads its content — `px-4 sm:px-6
@@ -358,7 +325,7 @@ function HomeBackdrop({ children }: { children: ReactNode }) {
         <div className="absolute inset-0 bg-canvas/5" />
         <div className="absolute inset-0 bg-linear-to-b from-transparent from-92% to-canvas to-100%" />
       </div>
-      <div className="relative flex flex-col gap-6">{children}</div>
+      <div className="relative flex flex-col gap-6 py-2 lg:gap-8">{children}</div>
     </div>
   );
 }

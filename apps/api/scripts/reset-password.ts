@@ -97,9 +97,7 @@ async function main(): Promise<void> {
      * the result. An operator running it at 2am needs to read what happened, not
      * find it in a structured log stream.
      */
-    // eslint-disable-next-line no-console
     console.log(`Password set for ${username} (${user.lastName} ${user.firstName}).`);
-    // eslint-disable-next-line no-console
     console.log("Existing sessions revoked and any lockout cleared.");
   } finally {
     await prisma.$disconnect();

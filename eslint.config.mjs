@@ -129,4 +129,15 @@ export default tseslint.config(
       "no-restricted-imports": "off",
     },
   },
+
+  // Operator scripts — `reset-password`, `setup-test-db`. Same argument for
+  // stdout as the seeds above, and deliberately NOT the same exemption for
+  // Prisma: these run against real databases, so if one ever needs a client it
+  // should have to justify that rather than inherit permission from a glob.
+  {
+    files: ["apps/api/scripts/**/*.ts"],
+    rules: {
+      "no-console": "off",
+    },
+  },
 );

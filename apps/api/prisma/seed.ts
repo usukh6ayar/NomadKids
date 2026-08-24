@@ -12,6 +12,8 @@
 
 import { PrismaPg } from "@prisma/adapter-pg";
 import argon2 from "argon2";
+import { config as loadDotenv } from "dotenv";
+import { resolve } from "node:path";
 import { PrismaClient } from "../src/generated/prisma/client";
 import {
   applySystemConfig,
@@ -19,6 +21,12 @@ import {
   SYSTEM_LEVELS,
   SYSTEM_OBSERVATION_TYPES,
 } from "./system-config";
+
+// ★ Loads the repository-root `.env` — see `prisma.config.ts`. A seed script is
+// its own process and never imports the application, so nothing else has read
+// the file. `override` is off: a real environment variable, which is how this
+// runs against a deployment, always wins.
+loadDotenv({ path: resolve(__dirname, "..", "..", "..", ".env"), quiet: true });
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),

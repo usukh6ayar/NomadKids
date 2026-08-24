@@ -78,7 +78,7 @@ export function LikeButton({
         toggle.mutate(!optimistic);
       }}
       className={cn(
-        "inline-flex min-h-[44px] items-center gap-1.5 rounded-[12px] px-2.5 text-sm font-medium transition-colors",
+        "inline-flex min-h-[44px] items-center gap-1.5 rounded-control px-2.5 text-body font-medium transition-colors",
         optimistic ? "text-danger" : "text-muted hover:bg-canvas hover:text-ink",
         className,
       )}

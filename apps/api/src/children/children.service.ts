@@ -60,6 +60,47 @@ export class ChildrenService {
     return paginate(items, total, page);
   }
 
+  /**
+   * The roster's headline numbers — RFP §12.1's "нийт хүүхэд" and mean age.
+   *
+   * ★ Over the whole filtered roster, not the page on screen.
+   *
+   * The list is paginated at 25, so an average computed on the client would be
+   * the mean age of whichever 25 children happened to be visible — a number
+   * that changes when you press "next" and describes nothing. It takes the same
+   * query the list does, so filtering by group narrows both together.
+   *
+   * ★★ Months, not years, and that is a domain decision rather than precision
+   * for its own sake. A kindergarten's roster spans roughly 2 to 5 years old;
+   * rounded to whole years the mean is "3" for most of a school year and the
+   * number stops moving. `formatAge` already reasons the same way about a child
+   * under two.
+   */
+  async rosterSummary(actor: Actor, query: ListChildrenQuery) {
+    const visible = await this.authz.visibleChildrenWhere(actor);
+    const rows = await this.repo.rosterAges(visible, {
+      q: query.q,
+      status: query.status,
+      groupId: query.groupId,
+      schoolYearId: query.schoolYearId,
+    });
+
+    const now = new Date();
+    const months = rows
+      .map((row) => monthsBetween(row.dateOfBirth, now))
+      .filter((m): m is number => m !== null);
+
+    return {
+      total: rows.length,
+      // Null rather than 0 where nothing is countable: a roster of children
+      // with no recorded birthday has no average age, and "0 нас" is a claim.
+      averageAgeMonths:
+        months.length === 0
+          ? null
+          : Math.round(months.reduce((sum, m) => sum + m, 0) / months.length),
+    };
+  }
+
   async get(actor: Actor, childId: string) {
     // Throws 404 when absent or unauthorized — indistinguishable, by design.
     await this.childAccess.assertCanAccess(actor, childId);
@@ -396,4 +437,21 @@ export class ChildrenService {
       metadata: { change },
     });
   }
+}
+
+/**
+ * Completed months between a birth date and now; null when unusable.
+ *
+ * Mirrors the web's `formatAge`: the month only counts once its day has passed,
+ * so a child two days from their birthday is not yet a year older.
+ */
+function monthsBetween(dateOfBirth: Date | null | undefined, now: Date): number | null {
+  if (!dateOfBirth) return null;
+
+  let months =
+    (now.getFullYear() - dateOfBirth.getFullYear()) * 12 +
+    (now.getMonth() - dateOfBirth.getMonth());
+  if (now.getDate() < dateOfBirth.getDate()) months -= 1;
+
+  return months < 0 ? null : months;
 }

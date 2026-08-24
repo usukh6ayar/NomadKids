@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { z } from "zod";
-import { groupListItemSchema, paginated, uuidSchema } from "@kinder/contracts";
+import { groupListItemSchema, paginated, SEX_LABEL, uuidSchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
@@ -101,10 +101,10 @@ function NewChild() {
   const groupItems = groups.data?.items ?? [];
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-7">
+    <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader title="Хүүхэд бүртгэх" lede="Бүлэгт нэмбэл багш нар шууд харна." />
 
-      <Card className="px-4 py-4 sm:px-5">
+      <Card pad="roomy">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -157,8 +157,8 @@ function NewChild() {
                   onChange={(e) => setSex(e.target.value)}
                 >
                   <option value="">Сонгоно уу</option>
-                  <option value="MALE">Хүү</option>
-                  <option value="FEMALE">Охин</option>
+                  <option value="MALE">{SEX_LABEL.MALE}</option>
+                  <option value="FEMALE">{SEX_LABEL.FEMALE}</option>
                 </Select>
               )}
             </Field>

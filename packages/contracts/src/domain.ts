@@ -38,6 +38,18 @@ export const guardianRelationSchema = z.enum([
   "OTHER",
 ]);
 
+/**
+ * "Хүү" / "Охин", not "Эрэгтэй" / "Эмэгтэй".
+ *
+ * The words a kindergarten uses about a four-year-old. Both registration forms
+ * already spelled them inline; they live here now so the child's profile, the
+ * roster and the forms cannot drift into three vocabularies for one field.
+ */
+export const SEX_LABEL: Record<string, string> = {
+  MALE: "Хүү",
+  FEMALE: "Охин",
+};
+
 /** Relation labels, so a list does not show a raw enum to a parent. */
 export const GUARDIAN_RELATION_LABEL: Record<string, string> = {
   MOTHER: "Ээж",
@@ -107,6 +119,19 @@ export const enrollmentSummarySchema = z.object({
   id: uuidSchema.nullish(),
   group: groupRefSchema.nullish(),
   schoolYear: namedRefSchema.nullish(),
+  /**
+   * ★ The API already sends these; the schema simply did not declare them, and
+   * Zod strips what it is not told about.
+   *
+   * `children.repository.ts` includes the enrollment without a `select`, so
+   * every scalar comes back — and it orders `startedOn: "desc"`. Without
+   * `status` a screen has to infer "current" from being first in the list,
+   * which is wrong for any child who has left: their most recent enrollment is
+   * an ENDED one. Nullish because `/children/mine` returns a slimmer row.
+   */
+  status: enrollmentStatusSchema.nullish(),
+  startedOn: z.string().nullish(),
+  endedOn: z.string().nullish(),
 });
 
 export const childSummarySchema = z.object({
@@ -568,6 +593,32 @@ export const teacherDashboardSchema = z.object({
       }),
     ),
   }),
+  /**
+   * This term's observations per configured type — counts, never a rate.
+   *
+   * There is no target in the schema to divide by, so a "биелэлт" percentage
+   * would need an invented denominator. The share of the total is a fact; a
+   * completion score against a number nobody set is not.
+   */
+  observationsByType: z
+    .array(z.object({ type: namedRefSchema, count: z.number() }))
+    .default([]),
+  /** RFP §12.1 — children whose birthday is today. */
+  birthdaysToday: z
+    .array(
+      z.object({
+        id: uuidSchema,
+        lastName: z.string(),
+        firstName: z.string(),
+        dateOfBirth: z.string().nullish(),
+        photoMediaFileId: uuidSchema.nullish(),
+      }),
+    )
+    .default([]),
+  /** RFP §12.1 — how many of the roster have been assessed this term. */
+  termProgress: z
+    .object({ assessed: z.number(), total: z.number() })
+    .default({ assessed: 0, total: 0 }),
   recentObservations: z.array(feedObservationSchema).default([]),
 });
 export type TeacherDashboard = z.infer<typeof teacherDashboardSchema>;
@@ -686,3 +737,77 @@ export const createdKindergartenSchema = z.object({
   }),
   invitationToken: z.string(),
 });
+
+/**
+ * The radar — RFP §12.1, one child's standing across the five domains.
+ *
+ * ★ Every axis is present whether or not it has been assessed.
+ *
+ * A radar drawn from only the domains that have a score is a different *shape*
+ * each time, and shape is the whole signal — a four-sided figure and a
+ * five-sided one are not comparable at a glance. `score: null` is an axis at
+ * the origin and a gap the reader can see, which is the honest rendering of
+ * "not assessed yet".
+ *
+ * Scores are the `AssessmentLevel.value`, 1–4, not a percentage. The levels are
+ * an ordinal scale a kindergarten can rename, so the axis is labelled with the
+ * level's own words and the number is only what positions the point.
+ */
+export const radarAxisSchema = z.object({
+  domain: domainSchema,
+  /** 1–4, or null where this domain has no assessment for the term. */
+  score: z.number().nullable(),
+  level: levelSchema.nullish(),
+});
+
+/**
+ * The cohort line, and the reason it is nullable.
+ *
+ * ★★ An average over a small group *is* an individual score.
+ *
+ * A parent who knows their own child's score and the mean of a group of two can
+ * compute the other child's exactly: `other = mean × 2 − own`. At three it is a
+ * narrow range. This product's entire authorization design exists to stop one
+ * family reading another child's record, and an aggregate is the ordinary way
+ * that protection is lost.
+ *
+ * So the comparison is withheld from guardians until the cohort is large enough
+ * for the mean to describe a group rather than a person. Staff are not
+ * suppressed: a teacher already opens every child in their group individually,
+ * so hiding the average from them protects nobody and costs the feature.
+ *
+ * `sampleSize` is published so the UI can say what the line is an average *of* —
+ * "18 хүүхдийн дундаж" is a fact about the comparison; an unlabelled second
+ * line is an invitation to over-read it.
+ */
+export const radarCohortSchema = z.object({
+  group: namedRefSchema,
+  /** Children with at least one assessment this term, including this one. */
+  sampleSize: z.number(),
+  /** Mean level value per domain id. Domains nobody has been assessed on are absent. */
+  averageByDomain: z.record(uuidSchema, z.number()),
+});
+
+export const assessmentRadarSchema = z.object({
+  term: z.object({ id: uuidSchema, number: z.number(), name: z.string() }),
+  axes: z.array(radarAxisSchema),
+  /** Null when there is no group, or when the cohort is too small to disclose. */
+  cohort: radarCohortSchema.nullable(),
+});
+export type AssessmentRadar = z.infer<typeof assessmentRadarSchema>;
+export type RadarAxis = z.infer<typeof radarAxisSchema>;
+
+/**
+ * The roster's headline numbers — RFP §12.1.
+ *
+ * `averageAgeMonths` is months rather than years because a kindergarten's
+ * roster spans about 2 to 5 years old: rounded to whole years the mean reads
+ * "3" for most of a school year and stops carrying information. Null when no
+ * child has a usable birth date — "0 нас" would be a claim rather than an
+ * absence.
+ */
+export const rosterSummarySchema = z.object({
+  total: z.number(),
+  averageAgeMonths: z.number().nullable(),
+});
+export type RosterSummary = z.infer<typeof rosterSummarySchema>;

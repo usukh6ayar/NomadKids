@@ -82,6 +82,117 @@ export class DashboardRepository {
     });
   }
 
+  /**
+   * Children in these groups whose birthday is today — RFP §12.1.
+   *
+   * ★ Matched on month and day in SQL, not in JavaScript.
+   *
+   * Loading the roster and filtering it in the service works at 35 children and
+   * quietly becomes a transfer of every child's record at 3,000. Prisma has no
+   * month/day helper, so the match is a raw query — scoped to this teacher's
+   * own groups inside the SQL, never widened to the kindergarten and then
+   * narrowed afterwards.
+   *
+   * A child born on 29 February simply has no birthday in a common year, which
+   * is the same answer a person would give.
+   */
+  async birthdaysToday(groupIds: string[], on: Date) {
+    if (groupIds.length === 0) return [];
+
+    return this.prisma.$queryRaw<
+      {
+        id: string;
+        lastName: string;
+        firstName: string;
+        dateOfBirth: Date;
+        photoMediaFileId: string | null;
+      }[]
+    >`
+      SELECT DISTINCT c.id, c."lastName", c."firstName", c."dateOfBirth", c."photoMediaFileId"
+      FROM children c
+      JOIN enrollments e ON e."childId" = c.id
+      WHERE c."deletedAt" IS NULL
+        AND c.status = 'ACTIVE'
+        AND e."deletedAt" IS NULL
+        AND e.status = 'ACTIVE'
+        AND e."groupId" = ANY(${groupIds}::uuid[])
+        AND EXTRACT(MONTH FROM c."dateOfBirth") = ${on.getMonth() + 1}
+        AND EXTRACT(DAY FROM c."dateOfBirth") = ${on.getDate()}
+      ORDER BY c."lastName", c."firstName"
+      LIMIT 10
+    `;
+  }
+
+  /**
+   * How far this term's assessment has got — RFP §12.1 "улирлын үнэлгээний явц".
+   *
+   * Two counts, not a per-child list: the roster size and how many of them have
+   * at least one assessment this term. The list of who is missing is already
+   * returned separately by `childrenMissingAssessment`, and returning both
+   * shapes of the same fact would let them disagree.
+   */
+  async termAssessmentProgress(groupIds: string[], termId: string) {
+    if (groupIds.length === 0) return { assessed: 0 };
+
+    const assessed = await this.prisma.child.count({
+      where: {
+        deletedAt: null,
+        status: "ACTIVE",
+        enrollments: { some: { groupId: { in: groupIds }, status: "ACTIVE", deletedAt: null } },
+        assessments: { some: { termId, deletedAt: null } },
+      },
+    });
+
+    return { assessed };
+  }
+
+  /**
+   * How this term's observations are distributed across the configured types.
+   *
+   * ★ Counts, and deliberately not a completion percentage.
+   *
+   * The wireframe asked for "биелэлт" — a fulfilment rate — and there is no
+   * target anywhere in the schema to divide by. A percentage would need a
+   * denominator somebody invented, which is the shape of number that makes a
+   * dashboard lie. What exists is how many of each kind were written, so that
+   * is what this returns; the UI shows each type's share of the total, which is
+   * a fact rather than a score.
+   *
+   * ★★ Driven by `ObservationType`, which is a table an administrator edits
+   * (CLAUDE.md §2.3), so this reports whatever a kindergarten has configured
+   * rather than three names hard-coded from a drawing. Types with no
+   * observations are absent here and filled in by the service, so a
+   * newly-configured type reads as "0" rather than vanishing.
+   *
+   * One `groupBy`, not one query per type.
+   */
+  async observationCountsByType(groupIds: string[], from: Date, to: Date) {
+    if (groupIds.length === 0) return [];
+
+    return this.prisma.observation.groupBy({
+      by: ["typeId"],
+      where: {
+        deletedAt: null,
+        observedOn: { gte: from, lte: to },
+        child: { enrollments: { some: { groupId: { in: groupIds }, deletedAt: null } } },
+      },
+      _count: { _all: true },
+    });
+  }
+
+  /** The kindergarten's observation types, in configured order. */
+  async listObservationTypes(kindergartenIds: string[]) {
+    return this.prisma.observationType.findMany({
+      where: {
+        deletedAt: null,
+        isActive: true,
+        OR: [{ kindergartenId: null }, { kindergartenId: { in: kindergartenIds } }],
+      },
+      select: { id: true, name: true, order: true },
+      orderBy: { order: "asc" },
+    });
+  }
+
   async activeChildCount(groupIds: string[]): Promise<number> {
     if (groupIds.length === 0) return 0;
     return this.prisma.child.count({

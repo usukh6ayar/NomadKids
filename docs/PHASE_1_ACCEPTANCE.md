@@ -184,13 +184,33 @@ Verified in the restored database: row counts identical
 foreign keys** present, argon2id password hashes intact, and the Prisma
 migration history preserved. Procedure documented in `PRODUCTION_READINESS.md`.
 
-### 15. Approved Phase 1 UI direction — **PASS**
+### 15. Approved Phase 1 UI direction — **SUPERSEDED, needs re-approval**
 
-Palette, radii and sizing floors implemented as CSS tokens and asserted by
-`SUITE` (web): `#F8F7F4` canvas, `#6C63FF` primary, `#26242B` ink, `#77737D`
-muted, `#E9E6E0` border, 12px control radius, 16px card radius, 48px controls,
-44px tap targets. No charts, no hero sections, no dense tables. 18 routes, no
-dead navigation.
+**Verified 2026-08-20 as PASS**, against the palette approved for Phase 1:
+`#F8F7F4` canvas, `#6C63FF` primary, `#26242B` ink, `#77737D` muted, `#E9E6E0`
+border, 12px control radius, 16px card radius, 48px controls, 44px tap targets.
+No charts, no hero sections, no dense tables. 18 routes, no dead navigation.
+
+> ### ★ Repainted 2026-08-22 — this item no longer describes what ships
+>
+> The client instructed a change to a white ground with a soft sky-blue accent.
+> The tokens in `globals.css` are now `#f8fafc` canvas, `#0ea5e9` primary
+> (`#0369a1` where it is coloured text, because sky-500 on white is 3.0:1 and
+> fails as a link), `#0f172a` ink, `#64748b` muted, `#e2e8f0` border. The two
+> radial background washes were removed rather than recoloured — the new brief
+> asks for pure white and ample whitespace, and a tinted corner is the first
+> thing that reads as decoration in a layout whose argument is restraint.
+>
+> **What did not change:** the sizing floors (48px controls, 44px tap targets),
+> the radii, "no charts", and the token structure itself — every screen reads
+> the tokens, so the repaint was one file rather than 27.
+> `responsive.test.tsx` was updated to assert the new values.
+>
+> **This item is therefore no longer a PASS against a client-approved design.**
+> Acceptance criterion 15 of the RFP is "Захиалагчийн баталсан дизайн болон
+> хэрэглэгчийн урсгалтай тохирч байх" — the palette that was approved is not the
+> palette that ships. It needs re-approving before sign-off, and that is a
+> conversation, not a code change.
 
 ---
 
@@ -212,9 +232,9 @@ dead navigation.
 | 12  | Mobile/tablet/desktop           | **PASS** (contract) · **BLOCKED** (device rendering) |
 | 13  | Private file access             | **PASS**                                             |
 | 14  | Backup/restore                  | **PASS**                                             |
-| 15  | Phase 1 UI direction            | **PASS**                                             |
+| 15  | Phase 1 UI direction            | **SUPERSEDED** — repainted 2026-08-22, re-approve    |
 
-**14 PASS · 1 partially BLOCKED · 0 FAIL.**
+**13 PASS · 1 partially BLOCKED · 1 SUPERSEDED · 0 FAIL.**
 
 The single blocked item is device rendering, which needs a browser this
 environment does not have. It blocks sign-off, not deployment, and

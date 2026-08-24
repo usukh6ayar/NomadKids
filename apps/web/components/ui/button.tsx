@@ -13,12 +13,18 @@ import { cn } from "@/lib/utils";
  * `sm` is 44px, not 36px. It is "less wide", not "less tappable".
  */
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 rounded-[12px] font-medium " +
+  "inline-flex items-center justify-center gap-2 rounded-control font-medium " +
     "transition-colors disabled:pointer-events-none disabled:opacity-50 " +
     "[&_svg]:size-[18px] [&_svg]:shrink-0",
   {
     variants: {
       variant: {
+        // ★ blue-700 under a white label — 6.70:1, and it hovers *darker* to
+        // blue-800 (8.72:1). The sky palette could do neither: it needed a dark
+        // label and a lightening hover to stay legible. See globals.css.
+        //
+        // `font-medium` is on the shared base above, so the label weight is the
+        // same on every variant.
         primary: "bg-primary text-primary-ink hover:bg-primary-hover",
         secondary: "bg-surface text-ink border border-border hover:bg-canvas",
         ghost: "text-ink hover:bg-canvas",
@@ -28,9 +34,9 @@ const buttonVariants = cva(
       size: {
         // 48px — the height of a primary action, matching text inputs so a
         // form's controls line up.
-        md: "h-[48px] px-5 text-[15px]",
-        sm: "h-[44px] px-4 text-sm",
-        lg: "h-[52px] px-6 text-base",
+        md: "h-[48px] px-5 text-lead",
+        sm: "h-[44px] px-4 text-body",
+        lg: "h-[52px] px-6 text-lead",
         // Square icon button. Still 44px.
         icon: "h-[44px] w-[44px] p-0",
       },
