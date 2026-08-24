@@ -87,6 +87,19 @@ export class ChildAssessmentController {
     return this.service.listForChild(actor, params.id, query.termId);
   }
 
+  /**
+   * The radar. `termId` is required: a radar without a term is an average of
+   * everything, which describes no moment in a child's development.
+   */
+  @Get("assessment-radar")
+  async radar(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(requiredTermSchema)) query: { termId: string },
+  ) {
+    return this.service.radarForChild(actor, params.id, query.termId);
+  }
+
   @Put("assessments")
   @Roles("TEACHER", "ADMIN")
   async save(

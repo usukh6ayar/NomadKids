@@ -2,13 +2,14 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
-import { assessmentSchema } from "@kinder/contracts";
+import { assessmentRadarSchema, assessmentSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Badge } from "@/components/ui/badge";
 import { Card, SectionHeader } from "@/components/ui/card";
-import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
+import { EmptyState, ErrorState, LoadingState, Skeleton } from "@/components/ui/states";
+import { DevelopmentRadar } from "@/components/assessment/development-radar";
 
 const assessmentsSchema = z.array(assessmentSchema);
 
@@ -22,9 +23,19 @@ const assessmentsSchema = z.array(assessmentSchema);
  * nothing on screen says why — the term is the thing that makes two rows for
  * "Хэл яриа" different rather than contradictory.
  *
- * ★★ No radar chart. Charts are outside the MVP (CLAUDE.md §7), and a radar of
- * one term's levels needs a charting dependency to say what a labelled row says
- * more precisely and reads out loud correctly.
+ * ★★ The radar leads each term, and the rows stay underneath it.
+ *
+ * The note here used to argue against a chart on two grounds: that it was
+ * outside the MVP, and that a radar needs a charting dependency "to say what a
+ * labelled row says more precisely and reads out loud correctly". The client
+ * pulled it into scope on 2026-08-24. The second objection was answered rather
+ * than overruled — `DevelopmentRadar` is hand-drawn SVG with no dependency, and
+ * it carries the same numbers in a real `<table>`, so nothing that was readable
+ * before became a picture.
+ *
+ * The rows are not redundant beside it. A radar shows standing across five
+ * domains at a glance and cannot show a teacher's comment; the list is where
+ * the words are.
  */
 export function ChildAssessments({ childId, isStaff }: { childId: string; isStaff: boolean }) {
   // Mounted only when its tab is open — Radix unmounts inactive panels. See the
@@ -66,6 +77,14 @@ export function ChildAssessments({ childId, isStaff }: { childId: string; isStaf
       {[...byTerm.entries()].map(([key, term]) => (
         <section key={key} aria-label={term.name}>
           <SectionHeader as="h3" title={term.name} />
+
+          {/*
+            Only for a real term. `no-term` is the bucket for assessments whose
+            term the API could not resolve, and a radar of those would be a
+            chart of an unnamed period.
+          */}
+          {key === "no-term" ? null : <TermRadar childId={childId} termId={key} />}
+
           <Card className="divide-y divide-border">
             {term.rows.map((assessment) => (
               <div
@@ -89,5 +108,38 @@ export function ChildAssessments({ childId, isStaff }: { childId: string; isStaf
         </section>
       ))}
     </div>
+  );
+}
+
+/**
+ * The radar for one term.
+ *
+ * ★ Its own query, and its own failure.
+ *
+ * Folding it into the assessment request would mean one endpoint serving two
+ * shapes, and — worse — a radar that fails taking the list down with it. The
+ * list is the thing a teacher came for; the chart is context. So this renders
+ * nothing at all when the request fails or the term has no assessments, rather
+ * than putting an error block above readable data.
+ */
+function TermRadar({ childId, termId }: { childId: string; termId: string }) {
+  const radar = useQuery({
+    queryKey: qk.assessmentRadar(childId, termId),
+    queryFn: () =>
+      get(`/children/${childId}/assessment-radar?termId=${termId}`, assessmentRadarSchema),
+    retry: false,
+  });
+
+  if (radar.isPending) return <Skeleton className="mb-4 h-[220px] w-full" />;
+  if (radar.isError || !radar.data) return null;
+
+  // Every axis empty means nothing has been assessed for this term — the
+  // outline would be a dot at the centre, which says less than the rows below.
+  if (radar.data.axes.every((axis) => axis.score === null)) return null;
+
+  return (
+    <Card pad="roomy" className="mb-4">
+      <DevelopmentRadar radar={radar.data} />
+    </Card>
   );
 }

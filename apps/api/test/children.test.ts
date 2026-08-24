@@ -893,3 +893,90 @@ describe("POST /children/:id/guardian-invitations", () => {
     expect(guardianship).toBeNull();
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The roster summary — RFP §12.1
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("roster summary", () => {
+  /**
+   * ★ Over the whole filtered roster, not the page on screen.
+   *
+   * The list is paginated at 25. An average computed on the client would be the
+   * mean age of whichever children happened to be visible, changing when you
+   * press "next" — a number that describes nothing.
+   */
+  it("counts and averages every child the caller may see, past page one", async () => {
+    const now = new Date();
+    // Thirty children, comfortably past the page size, all exactly two years old.
+    for (let i = 0; i < 30; i += 1) {
+      const child = await createChild(a.kindergarten.id, {
+        dateOfBirth: new Date(now.getFullYear() - 2, now.getMonth(), 1),
+      });
+      await enrollChild(a.kindergarten.id, child.id, a.group.id, a.schoolYear.id);
+    }
+
+    const res = await request(server())
+      .get("/v1/children/summary")
+      .set("Cookie", teacherA.cookies);
+
+    expect(res.status).toBe(200);
+    // The scenario's own child is in there too.
+    expect(res.body.total).toBeGreaterThanOrEqual(30);
+    expect(res.body.averageAgeMonths).toBeGreaterThan(12);
+  });
+
+  /**
+   * ★★ The summary and the list share one filter.
+   *
+   * A total assembled from a second, hand-copied `where` is how a header ends
+   * up reporting a number the rows beneath it contradict — or counts children
+   * the caller may not see. `childWhere` is extracted for exactly this.
+   */
+  it("agrees with the list it heads, under the same query", async () => {
+    const [summary, list] = await Promise.all([
+      request(server()).get("/v1/children/summary").set("Cookie", teacherA.cookies),
+      request(server()).get("/v1/children?page=1&pageSize=25").set("Cookie", teacherA.cookies),
+    ]);
+
+    expect(summary.body.total).toBe(list.body.total);
+  });
+
+  it("narrows with the same search term", async () => {
+    const res = await request(server())
+      .get("/v1/children/summary")
+      .query({ q: "нэгэнтzzz-байхгүй" })
+      .set("Cookie", teacherA.cookies);
+
+    expect(res.body.total).toBe(0);
+    // No countable birthday means no average — "0 нас" would be a claim.
+    expect(res.body.averageAgeMonths).toBeNull();
+  });
+
+  /**
+   * ★★★ `children/summary` is declared before `children/:id`.
+   *
+   * Nest matches in declaration order, so a `:id` route registered first would
+   * hand "summary" to the child lookup, which answers 404 — the same status an
+   * unauthorized child gets. The bug would read as a permissions problem.
+   */
+  it("is a route of its own, not swallowed by the :id lookup", async () => {
+    const res = await request(server())
+      .get("/v1/children/summary")
+      .set("Cookie", teacherA.cookies);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("total");
+  });
+
+  it("★ does not count another kindergarten's children", async () => {
+    const teacherB = await login(app, b.teacherUser.username);
+
+    const res = await request(server())
+      .get("/v1/children/summary")
+      .set("Cookie", teacherB.cookies);
+
+    // Scenario B has exactly one child of its own.
+    expect(res.body.total).toBe(1);
+  });
+});

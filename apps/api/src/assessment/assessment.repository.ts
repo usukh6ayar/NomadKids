@@ -170,6 +170,49 @@ export class AssessmentRepository {
     return { enrollments, assessments };
   }
 
+  /**
+   * The cohort a radar compares against: every assessment in one group, one term.
+   *
+   * ★ One query, whatever the group size — the same rule `loadGroupColumn`
+   * documents. A radar wants five domains rather than one, so this selects the
+   * level value alongside the domain and lets the service do the arithmetic;
+   * `groupBy` cannot aggregate `level.value` across the relation, and a query
+   * per domain would be five where one does.
+   *
+   * ★★ `visibleToParents` is deliberately NOT filtered here.
+   *
+   * That flag governs whether a family may read *their own* child's assessment,
+   * and applying it to the cohort would make the comparison line mean "the
+   * average of the children whose teacher has published" — a different and
+   * unstable statistic that moves as colleagues publish. Who may see this
+   * aggregate at all is decided once, in the service, by cohort size.
+   *
+   * `childId` is returned so the service can count distinct children without a
+   * second round trip.
+   */
+  async loadCohortAssessments(groupId: string, schoolYearId: string, termId: string) {
+    const enrollments = await this.prisma.enrollment.findMany({
+      where: { groupId, schoolYearId, status: "ACTIVE", deletedAt: null },
+      select: { childId: true },
+    });
+
+    const childIds = enrollments.map((e) => e.childId);
+    if (childIds.length === 0) return [];
+
+    return this.prisma.assessment.findMany({
+      where: { childId: { in: childIds }, termId, deletedAt: null },
+      select: { childId: true, domainId: true, level: { select: { value: true } } },
+    });
+  }
+
+  /** The group a child sits in for a given school year, for the cohort lookup. */
+  async groupForChildInYear(childId: string, schoolYearId: string) {
+    return this.prisma.enrollment.findFirst({
+      where: { childId, schoolYearId, status: "ACTIVE", deletedAt: null },
+      select: { group: { select: { id: true, name: true } } },
+    });
+  }
+
   async findAssessment(childId: string, termId: string, domainId: string) {
     return this.prisma.assessment.findFirst({
       where: { childId, termId, domainId, deletedAt: null },

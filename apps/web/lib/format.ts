@@ -109,6 +109,30 @@ function monthsSinceBirth(dateOfBirth: string | Date | null | undefined): number
   return months < 0 ? null : months;
 }
 
+/**
+ * A duration in months, worded as an age.
+ *
+ * ★ Always carries the months, where `formatAge` drops them above two years.
+ *
+ * That difference is deliberate rather than an oversight. `formatAge` describes
+ * one child, and "4 нас" is how anyone would say it aloud. This describes a
+ * *mean* over a roster spanning roughly 2 to 5 years old: rounded to whole
+ * years it reads "3" for most of a school year and stops moving, so the one
+ * number on the card that should respond to the roster changing does not.
+ *
+ * Separate from `formatAge` because the input differs too — that takes a birth
+ * date and asks how old someone is now; this takes a span already computed,
+ * which may belong to nobody.
+ */
+export function formatAgeFromMonths(months: number | null | undefined): string {
+  if (months === null || months === undefined || months < 0) return "—";
+
+  const years = Math.floor(months / 12);
+  const rest = months % 12;
+
+  return rest === 0 ? `${years} нас` : `${years} нас ${rest} сар`;
+}
+
 /** `Ганболд Батбаяр` — surname first, as Mongolian names are written. */
 export function fullName(
   person: { lastName?: string | null; firstName?: string | null } | null | undefined,

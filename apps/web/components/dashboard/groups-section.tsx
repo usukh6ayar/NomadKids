@@ -5,6 +5,8 @@ import Link from "next/link";
 import { groupSchema, paginated } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
+import { ClipboardList } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 
 const groupsSchema = paginated(groupSchema);
@@ -36,6 +38,41 @@ export function GroupsSection() {
   // A failure here is not worth an error block on the dashboard: the section is
   // a shortcut, and the same screens are reachable from Хүүхдүүд.
   if (isLoading || isError || !data || data.items.length === 0) return null;
+
+  /*
+   * ★ One group is not a list.
+   *
+   * A teacher here is responsible for a single group, so this section rendered
+   * a heading, a supporting line and one row — three lines of chrome around one
+   * link, naming a group the teacher already knows they teach. The name is not
+   * the information; "go and assess them" is.
+   *
+   * So a single group collapses to the action itself. The list survives for the
+   * cases that are genuinely lists: an admin sees every group in the
+   * kindergarten, and `TeacherAssignment` permits a teacher covering two. The
+   * shape follows the data rather than an assumption about it — hard-coding
+   * "always one" would hide a second group from whoever is covering it.
+   */
+  if (data.items.length === 1) {
+    const group = data.items[0]!;
+
+    return (
+      <section aria-label="Улирлын үнэлгээ">
+        <Card pad="roomy" className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate font-medium text-ink">{group.name}</p>
+            <p className="text-body text-muted">Улирлын үнэлгээ хийх.</p>
+          </div>
+          <Button asChild variant="secondary" size="sm">
+            <Link href={`/groups/${group.id}/assessment`}>
+              <ClipboardList size={18} />
+              Үнэлгээ
+            </Link>
+          </Button>
+        </Card>
+      </section>
+    );
+  }
 
   return (
     <section aria-label="Бүлгүүд">

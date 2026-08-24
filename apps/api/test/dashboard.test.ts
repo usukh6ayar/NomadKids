@@ -516,3 +516,78 @@ describe("teacher dashboard — §12.1 tiles", () => {
     expect(res.body.termProgress.assessed).toBeLessThanOrEqual(res.body.termProgress.total);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The observation mix
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("observations by type", () => {
+  /**
+   * ★ Every configured type, including the ones at zero.
+   *
+   * `groupBy` returns only the types that have rows, so a type nobody has used
+   * would simply be missing from the response — and a chart that silently drops
+   * its empty categories reads as "we do not do that here" rather than "none
+   * yet". The service fills them back in from the configuration table.
+   */
+  it("reports every active type, not only the ones with observations", async () => {
+    await observe(true);
+
+    const res = await request(server())
+      .get("/v1/dashboard/teacher")
+      .set("Cookie", teacherA.cookies);
+
+    const configured = await db.observationType.count({
+      where: { kindergartenId: null, isActive: true, deletedAt: null },
+    });
+    expect(res.body.observationsByType).toHaveLength(configured);
+
+    const daily = res.body.observationsByType.find(
+      (row: { type: { id: string } }) => row.type.id === typeId,
+    );
+    expect(daily.count).toBe(1);
+    expect(res.body.observationsByType.filter((r: { count: number }) => r.count === 0).length).toBe(
+      configured - 1,
+    );
+  });
+
+  /**
+   * ★★ Counts, never a rate.
+   *
+   * The wireframe asked for a "биелэлт" percentage and there is no target in
+   * the schema to divide by. A completion score against a denominator nobody
+   * set is the kind of number that makes a dashboard lie, so the endpoint
+   * publishes what was actually written and the UI shows share of total.
+   */
+  it("publishes counts and no invented completion rate", async () => {
+    const res = await request(server())
+      .get("/v1/dashboard/teacher")
+      .set("Cookie", teacherA.cookies);
+
+    for (const row of res.body.observationsByType) {
+      expect(typeof row.count).toBe("number");
+      expect(row).not.toHaveProperty("percent");
+      expect(row).not.toHaveProperty("target");
+      expect(row).not.toHaveProperty("rate");
+    }
+  });
+
+  it("★ does not count another kindergarten's observations", async () => {
+    const teacherB = await login(app, b.teacherUser.username);
+    const typeB = (await db.observationType.findFirstOrThrow({ where: { code: "daily" } })).id;
+    await authed(
+      request(server()).post(`/v1/children/${b.child.id}/observations`),
+      teacherB,
+    ).send({ typeId: typeB, observedOn: "2026-02-10", situation: "Бусад цэцэрлэг" });
+
+    const res = await request(server())
+      .get("/v1/dashboard/teacher")
+      .set("Cookie", teacherA.cookies);
+
+    const total = res.body.observationsByType.reduce(
+      (sum: number, r: { count: number }) => sum + r.count,
+      0,
+    );
+    expect(total).toBe(0);
+  });
+});
