@@ -294,22 +294,33 @@ export default function ParentHomePage() {
  * inside it (video div first, content div second) is what keeps the video
  * behind the cards — no z-index needed.
  *
- * ★★ `inset-0`, matching the content sibling's own height, not a fixed
- * banner height. A fixed height (an earlier `h-56`, then `h-96`) cuts off
- * mid-page regardless of how much the query returns — for a family with two
- * children, or several recent moments, the cutoff landed inside a section
- * (behind "Ангийн самбар"'s heading, un-faded) instead of between two of
- * them, which read as a layout bug rather than a banner edge. Sizing to the
- * sibling instead means the backdrop always ends exactly where the page does,
+ * ★★ Sized to the content sibling's own height, not a fixed banner height.
+ * A fixed height (an earlier `h-56`, then `h-96`) cuts off mid-page
+ * regardless of how much the query returns — for a family with two children,
+ * or several recent moments, the cutoff landed inside a section (behind
+ * "Ангийн самбар"'s heading, un-faded) instead of between two of them, which
+ * read as a layout bug rather than a banner edge. Sizing to the sibling
+ * instead means the backdrop always ends exactly where the page does,
  * however long that is.
  *
+ * ★★★ Bled past this wrapper's own box with negative insets, not `inset-0`.
+ * `<main>` in `AppShell` (app-shell.tsx) pads its content — `px-4 sm:px-6
+ * lg:pl-8 lg:pr-8`, `pt-[22px] lg:pt-10` — so a plain `inset-0` here left the
+ * backdrop sitting inside that padding: a band of bare canvas on both sides
+ * and above, with the video's own rounded corners visible inside it. The
+ * negative offsets below are `main`'s padding values themselves, so the
+ * backdrop's top/left/right edges land exactly on `main`'s own border box —
+ * flush against the sidebar on a desktop, edge-to-edge on a phone — with
+ * nothing left over to round a corner against. If `main`'s padding scale
+ * changes, these must change with it.
+ *
  * The fade is a percentage gradient for the same reason: fixed pixel stops
- * only fade correctly for one content length. `from-transparent` through the
- * first half keeps the clip's own top — clouds fading toward white, sampled
- * at `rgb(211,241,251)` down to `rgb(255,255,255)` — reading as intended
- * behind the header and the selected-child card; `to-canvas` by three
- * quarters down clears the video before a long feed's tail end, on a short
- * page and a long one alike.
+ * only fade correctly for one content length. The video stays visible behind
+ * nearly the whole page — every section sits on its own opaque `Card`, so
+ * there is no legibility cost to the backdrop behind them staying video
+ * rather than clearing to canvas early. Only the last stretch, `to-canvas`
+ * from 92% to 100%, fades it out — a hard cut at the very bottom would read
+ * as the clip being cropped rather than the page ending.
  *
  * Paused under `prefers-reduced-motion`: autoplay is otherwise unconditional,
  * and a looping background video is exactly the motion that preference exists
@@ -332,7 +343,7 @@ function HomeBackdrop({ children }: { children: ReactNode }) {
   return (
     <div className="relative">
       <div
-        className="pointer-events-none absolute inset-0 overflow-hidden rounded-t-card"
+        className="pointer-events-none absolute -left-4 -right-4 -top-5.5 bottom-0 overflow-hidden sm:-left-6 sm:-right-6 lg:-left-8 lg:-right-8 lg:-top-10"
         aria-hidden="true"
       >
         <video
@@ -344,8 +355,8 @@ function HomeBackdrop({ children }: { children: ReactNode }) {
           muted
           playsInline
         />
-        <div className="absolute inset-0 bg-canvas/20" />
-        <div className="absolute inset-0 bg-linear-to-b from-transparent from-35% to-canvas to-75%" />
+        <div className="absolute inset-0 bg-canvas/5" />
+        <div className="absolute inset-0 bg-linear-to-b from-transparent from-92% to-canvas to-100%" />
       </div>
       <div className="relative flex flex-col gap-6">{children}</div>
     </div>
