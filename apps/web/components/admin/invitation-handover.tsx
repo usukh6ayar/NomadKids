@@ -48,21 +48,21 @@ export function InvitationHandover({
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h2 className="text-[1.05rem] font-semibold text-ink">{title}</h2>
-        <p className="mt-0.5 text-sm text-muted">{subtitle}</p>
+        <h2 className="text-title font-semibold text-ink">{title}</h2>
+        <p className="mt-0.5 text-body text-muted">{subtitle}</p>
       </div>
 
-      <div className="grid place-items-center rounded-[14px] border border-border bg-canvas p-4">
+      <div className="grid place-items-center rounded-row border border-border bg-canvas p-4">
         <canvas ref={canvasRef} aria-label="Урилгын QR код" role="img" />
-        <p className="mt-2 text-center text-xs text-muted">
+        <p className="mt-2 text-center text-caption text-muted">
           Утсаараа уншуулна уу. Урилга 7 хоног хүчинтэй.
         </p>
       </div>
 
       <div className="flex flex-col gap-2">
-        <p className="text-xs font-medium text-muted">Эсвэл холбоосыг дамжуулна уу:</p>
+        <p className="text-caption font-medium text-muted">Эсвэл холбоосыг дамжуулна уу:</p>
         <div className="flex items-center gap-2">
-          <code className="min-w-0 flex-1 truncate rounded-[10px] bg-canvas px-3 py-2 text-xs text-ink">
+          <code className="min-w-0 flex-1 truncate rounded-control bg-canvas px-3 py-2 text-caption text-ink">
             {url}
           </code>
           <Button
@@ -82,7 +82,7 @@ export function InvitationHandover({
         </div>
       </div>
 
-      <p className="rounded-[12px] bg-sun px-3 py-2 text-xs leading-relaxed text-sun-ink">
+      <p className="rounded-control bg-sun px-3 py-2 text-caption leading-relaxed text-sun-ink">
         Энэ QR-ыг дахин харуулах боломжгүй. Хаасны дараа шаардлагатай бол шинэ урилга үүсгэнэ үү.
       </p>
 

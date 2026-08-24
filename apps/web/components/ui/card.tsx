@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 export function Card({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
-      className={cn("rounded-[18px] border border-border bg-surface shadow-sm", className)}
+      className={cn("rounded-card border border-border bg-surface shadow-sm", className)}
       {...props}
     />
   );
@@ -40,7 +40,7 @@ export function RowCard({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
       className={cn(
-        "rounded-[14px] border border-border bg-surface px-4 py-3 transition-colors",
+        "rounded-row border border-border bg-surface px-4 py-3 transition-colors",
         className,
       )}
       {...props}
@@ -103,10 +103,10 @@ export function SectionHeader({
       className={cn("mb-3 flex flex-wrap items-start justify-between gap-x-3 gap-y-2", className)}
     >
       <div className="min-w-0">
-        <Tag id={id} className="text-[1.05rem] font-semibold leading-[1.35] text-ink">
+        <Tag id={id} className="text-title font-semibold leading-[1.35] text-ink">
           {title}
         </Tag>
-        {lede ? <p className="mt-0.5 text-sm text-muted">{lede}</p> : null}
+        {lede ? <p className="mt-0.5 text-body text-muted">{lede}</p> : null}
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
     </div>

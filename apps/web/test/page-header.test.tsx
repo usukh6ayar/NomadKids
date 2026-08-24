@@ -73,7 +73,7 @@ describe("heading hierarchy", () => {
     const failed = renderWithProviders(<DashboardPage />);
     await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
     const whenFailed = failed.container.querySelector("h1")!.className;
-    expect(whenFailed).toContain("text-[1.5rem]");
+    expect(whenFailed).toContain("text-display");
     expect(whenFailed).toContain("font-semibold");
     failed.unmount();
 
@@ -83,9 +83,7 @@ describe("heading hierarchy", () => {
     ]);
 
     const loaded = renderWithProviders(<DashboardPage />);
-    await waitFor(() =>
-      expect(screen.getByText(/улирал тохируулаагүй/i)).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText(/улирал тохируулаагүй/i)).toBeInTheDocument());
 
     expect(loaded.container.querySelector("h1")!.className).toBe(whenFailed);
   });

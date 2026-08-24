@@ -204,7 +204,7 @@ function ReportBody({
   if (isFinal) {
     return (
       <div className="flex flex-col gap-4">
-        <p role="status" className="rounded-[12px] bg-mint px-3.5 py-2.5 text-sm text-mint-ink">
+        <p role="status" className="rounded-control bg-mint px-3.5 py-2.5 text-body text-mint-ink">
           Энэ тайлан баталгаажсан тул засах боломжгүй. Эцэг эх үүнийг харж байна.
         </p>
         <ReadOnlyReport report={report.data!} />
@@ -226,7 +226,10 @@ function ReportBody({
         <FormError message={finalize.isError ? errorMessage(finalize.error) : null} />
 
         {save.isSuccess ? (
-          <p role="status" className="rounded-[12px] bg-mint px-3.5 py-2.5 text-sm text-mint-ink">
+          <p
+            role="status"
+            className="rounded-control bg-mint px-3.5 py-2.5 text-body text-mint-ink"
+          >
             Ноорог хадгалагдлаа.
           </p>
         ) : null}
@@ -281,7 +284,9 @@ function ReportBody({
         </div>
 
         {!report.data?.exists ? (
-          <p className="text-xs text-muted">Баталгаажуулахын өмнө ноорогоо нэг удаа хадгална уу.</p>
+          <p className="text-caption text-muted">
+            Баталгаажуулахын өмнө ноорогоо нэг удаа хадгална уу.
+          </p>
         ) : null}
       </form>
     </Card>
@@ -342,7 +347,7 @@ function ReadOnlyReport({ report }: { report: z.infer<typeof termReportSchema> }
           <SectionHeader title={section.title} as="h3" />
           <Card className="px-4 py-3.5">
             {/* Preserves the line breaks a teacher typed. */}
-            <p className="whitespace-pre-wrap text-sm text-ink">{section.body}</p>
+            <p className="whitespace-pre-wrap text-body text-ink">{section.body}</p>
           </Card>
         </section>
       ))}

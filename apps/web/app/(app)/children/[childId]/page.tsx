@@ -3,32 +3,27 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { BookOpen, ClipboardList, FileText, Pencil, Plus, UserPlus } from "lucide-react";
-import { z } from "zod";
-import {
-  assessmentSchema,
-  childDetailSchema,
-  observationSchema,
-  paginated,
-  GUARDIAN_RELATION_LABEL,
-} from "@kinder/contracts";
+import { BookOpen, ClipboardList, FileText, Pencil, Plus } from "lucide-react";
+import { childDetailSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, SectionHeader } from "@/components/ui/card";
-import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { ChildHeader } from "@/components/child/child-header";
-import { GuardianAccessButton } from "@/components/child/guardian-access-button";
-import { InviteGuardianDialog } from "@/components/child/invite-guardian-dialog";
+import { ErrorState, LoadingState } from "@/components/ui/states";
+import { ChildAssessments } from "@/components/child/child-assessments";
+import { ChildGeneralInfo } from "@/components/child/child-general-info";
+import { ChildHeroProfile } from "@/components/child/child-hero-profile";
+import { ChildTabs } from "@/components/child/child-tabs";
+import { ChildObservations } from "@/components/child/child-observations";
+import { ChildGallery } from "@/components/media/child-gallery";
 import { ReportDialog } from "@/components/reports/report-dialog";
-import { ObservationRow } from "@/components/observations/observation-row";
-import { excerpt, fullName } from "@/lib/format";
+import { fullName } from "@/lib/format";
 
-const observationsSchema = paginated(observationSchema);
-const assessmentsSchema = z.array(assessmentSchema);
+const GENERAL = "general";
+const OBSERVATIONS = "observations";
+const ASSESSMENTS = "assessments";
+const GALLERY = "gallery";
 
 /**
  * The child hub.
@@ -39,14 +34,23 @@ const assessmentsSchema = z.array(assessmentSchema);
  * teaching notes. What differs is the affordances: a teacher gets "record an
  * observation" and the review state; a parent gets the portfolio and the PDF.
  *
- * Not tabs. On a phone a tab bar hides two thirds of the screen behind taps,
- * and this page is short enough to scroll — recent observations and the current
- * assessment are what someone came for, in that order.
+ * ★★ Tabs since 2026-08-23, on the client's instruction.
+ *
+ * This page previously scrolled, deliberately — the note that was here argued
+ * that a tab bar hides most of a record behind taps on a phone, and that is
+ * still true. The client asked for tabs and that is their decision; what this
+ * implementation does about the cost is put the tab in the URL and load each
+ * panel only when it is opened. See `child-tabs.tsx`.
+ *
+ * ★★★ This file assembles; it does not render. The hero, each panel and the tab
+ * strip are their own components under `components/child/`, and the only things
+ * that belong to the page are the identity request every panel depends on and
+ * the decision about who is looking.
  */
 export default function ChildDetailPage() {
   const params = useParams<{ childId: string }>();
   const childId = params.childId;
-  const { hasRole } = useSession();
+  const { hasRole, session } = useSession();
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
 
   const child = useQuery({
@@ -54,19 +58,7 @@ export default function ChildDetailPage() {
     queryFn: () => get(`/children/${childId}`, childDetailSchema),
   });
 
-  const observations = useQuery({
-    queryKey: qk.childObservations(childId, { pageSize: 5 }),
-    queryFn: () => get(`/children/${childId}/observations?page=1&pageSize=5`, observationsSchema),
-    enabled: child.isSuccess,
-  });
-
-  const assessments = useQuery({
-    queryKey: qk.childAssessments(childId),
-    queryFn: () => get(`/children/${childId}/assessments`, assessmentsSchema),
-    enabled: child.isSuccess,
-  });
-
-  if (child.isLoading) {
+  if (child.isPending) {
     return (
       <div className="flex flex-col gap-4 py-2">
         <LoadingState rows={4} />
@@ -95,30 +87,53 @@ export default function ChildDetailPage() {
     );
   }
 
-  const data = child.data!;
+  const data = child.data;
+
+  // Relationship, not role: a parent who is also a teacher elsewhere is still
+  // this child's guardian, and a revoked guardianship is not one.
+  const isGuardian = data.guardianships.some(
+    (g) => g.guardian?.id === session?.user.id && g.canView !== false,
+  );
+
+  /*
+   * ★ Each panel fetches only once its tab is open, and nothing here arranges
+   * that.
+   *
+   * Radix unmounts an inactive `Tabs.Content`, so a panel's component — and its
+   * query — does not exist until someone opens it. The page used to fire the
+   * observation and assessment requests on mount, which was right when
+   * everything was on one scroll; behind tabs it would be three requests to
+   * render one panel, on a phone, on a connection this product is explicitly
+   * built for.
+   *
+   * An earlier version of this file passed each panel an `enabled` prop derived
+   * from `?tab=` here. It was redundant — and worse than redundant: the tab
+   * strip derives the same fact from the same parameter, and two independent
+   * derivations of one truth are two things that can disagree. `flows.test.tsx`
+   * pins the behaviour so that adding `forceMount` later fails loudly instead
+   * of quietly making every tab fetch on mount.
+   */
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <ChildHeader
+      <ChildHeroProfile
         child={data}
+        showHealthAlert={isStaff}
         actions={
           <>
-            {isStaff ? (
-              <Button asChild size="sm">
-                <Link href={`/children/${childId}/observations/new`}>
-                  <Plus size={18} />
-                  Ажиглалт
-                </Link>
-              </Button>
-            ) : (
-              <Button asChild size="sm">
-                <Link href={`/children/${childId}/observations/new`}>
-                  <Plus size={18} />
-                  Хуваалцах
-                </Link>
-              </Button>
-            )}
+            <Button asChild size="sm">
+              <Link href={`/children/${childId}/observations/new`}>
+                <Plus size={18} />
+                {isStaff ? "Ажиглалт" : "Хуваалцах"}
+              </Link>
+            </Button>
 
+            {/*
+              The gallery is a tab now, but `/portfolio` is not a duplicate of
+              it: that screen also carries "Миний тухай", the age profiles and
+              the birthday notes, which the tab does not. It stays, and this
+              button keeps pointing at it.
+            */}
             <Button asChild variant="secondary" size="sm">
               <Link href={`/children/${childId}/portfolio`}>
                 <BookOpen size={18} />
@@ -160,158 +175,44 @@ export default function ChildDetailPage() {
         }
       />
 
-      {/* ── Development summary ─────────────────────────────────────────── */}
-      <section aria-labelledby="assessment-heading">
-        <SectionHeader title="Хөгжлийн үнэлгээ" />
-
-        {assessments.isLoading ? (
-          <LoadingState rows={1} />
-        ) : assessments.isError ? (
-          <ErrorState description={errorMessage(assessments.error)} />
-        ) : (assessments.data?.length ?? 0) === 0 ? (
-          <EmptyState
-            title="Үнэлгээ хараахан алга"
-            description={
-              isStaff
-                ? "Бүлгийн үнэлгээний дэлгэцээс энэ улирлын үнэлгээг оруулна уу."
-                : "Багш үнэлгээг нийтлэхэд энд харагдана."
-            }
-          />
-        ) : (
-          <Card className="divide-y divide-border">
-            {assessments.data!.map((assessment) => (
-              <div
-                key={assessment.id}
-                className="flex min-h-[56px] flex-wrap items-center justify-between gap-2 px-4 py-3"
-              >
-                <div className="min-w-0">
-                  <p className="truncate font-medium text-ink">{assessment.domain?.name ?? "—"}</p>
-                  {assessment.term ? (
-                    <p className="text-xs text-muted">{assessment.term.name}</p>
-                  ) : null}
-                </div>
-                {/*
-                  The level's label always shows. Its colour is a hint on top of
-                  the words, never the only way to read the value.
-                */}
-                <Badge tone="sky">{assessment.level?.label ?? "—"}</Badge>
-              </div>
-            ))}
-          </Card>
-        )}
-      </section>
-
-      {/* ── Recent observations ─────────────────────────────────────────── */}
-      <section aria-labelledby="observations-heading">
-        <SectionHeader title={isStaff ? "Сүүлийн ажиглалт" : "Сүүлийн мөчүүд"} />
-
-        {observations.isLoading ? (
-          <LoadingState rows={3} />
-        ) : observations.isError ? (
-          <ErrorState description={errorMessage(observations.error)} />
-        ) : (observations.data?.items.length ?? 0) === 0 ? (
-          <EmptyState
-            title={isStaff ? "Ажиглалт бичигдээгүй байна" : "Одоогоор мөч хуваалцаагүй байна"}
-            description={
-              isStaff
-                ? "Энэ хүүхдийн талаар анхны ажиглалтаа бичнэ үү."
-                : "Багшийн хуваалцсан ажиглалт энд харагдана."
-            }
-            action={
-              <Button asChild>
-                <Link href={`/children/${childId}/observations/new`}>
-                  {isStaff ? "Ажиглалт бичих" : "Мөч хуваалцах"}
-                </Link>
-              </Button>
-            }
-          />
-        ) : (
-          <Card className="divide-y divide-border">
-            {observations.data!.items.map((observation) => (
-              <ObservationRow
-                key={observation.id}
-                observation={observation}
-                showVisibility={isStaff}
-              />
-            ))}
-          </Card>
-        )}
-      </section>
-
-      {/* ── Guardians — staff only ──────────────────────────────────────── */}
-      {isStaff && data.guardianships.length > 0 ? (
-        <section aria-labelledby="guardians-heading">
-          <SectionHeader
-            title="Асран хамгаалагч"
-            action={
-              isStaff ? (
-                <InviteGuardianDialog
+      <ChildTabs
+        tabs={[
+          {
+            value: GENERAL,
+            label: "Ерөнхий",
+            content: <ChildGeneralInfo child={data} childId={childId} isStaff={isStaff} />,
+          },
+          {
+            value: OBSERVATIONS,
+            label: "Ажиглалт",
+            content: <ChildObservations childId={childId} isStaff={isStaff} />,
+          },
+          {
+            value: ASSESSMENTS,
+            label: "Үнэлгээ",
+            content: <ChildAssessments childId={childId} isStaff={isStaff} />,
+          },
+          {
+            value: GALLERY,
+            label: "Цомог",
+            content:
+              (
+                /*
+                 * `canEdit` is a relationship, not a role: a guardian may add to
+                 * their own child's album, and a revoked one may not. The same
+                 * derivation as `/portfolio`, which is the other way into this
+                 * grid.
+                 */
+                <ChildGallery
                   childId={childId}
                   childName={fullName(data)}
-                  trigger={
-                    <Button variant="secondary" size="sm">
-                      <UserPlus size={18} />
-                      Урих
-                    </Button>
-                  }
+                  canEdit={isStaff || isGuardian}
+                  photoMediaFileId={data.photoMediaFileId}
                 />
-              ) : null
-            }
-          />
-          {/*
-            Revoked guardians stay on the list rather than disappearing from it.
-            Hiding them made a revocation look like a deletion and left staff no
-            way back when a situation reversed — and no way to see that the
-            reason a parent cannot open the child is a decision someone made.
-          */}
-          <Card className="divide-y divide-border">
-            {data.guardianships.map((guardianship) => {
-              const revoked = guardianship.canView === false;
-              return (
-                <div
-                  key={guardianship.id}
-                  className="flex min-h-[56px] items-center gap-3 px-4 py-3"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p
-                      className={`truncate font-medium ${revoked ? "text-muted line-through" : "text-ink"}`}
-                    >
-                      {fullName(guardianship.guardian)}
-                    </p>
-                    <p className="truncate text-sm text-muted">
-                      {[
-                        GUARDIAN_RELATION_LABEL[guardianship.relation] ?? guardianship.relation,
-                        guardianship.guardian?.phone,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
-                  </div>
-                  {revoked ? <Badge tone="neutral">Хураасан</Badge> : null}
-                  {guardianship.isPrimary && !revoked ? <Badge tone="primary">Үндсэн</Badge> : null}
-                  <GuardianAccessButton
-                    guardianshipId={guardianship.id}
-                    childId={childId}
-                    guardianName={fullName(guardianship.guardian)}
-                    canView={!revoked}
-                  />
-                </div>
-              );
-            })}
-          </Card>
-        </section>
-      ) : null}
-
-      {/* Health notes are staff-only and deliberately last: important, but not
-          what anyone opens this page for. */}
-      {isStaff && data.healthNotes ? (
-        <section aria-labelledby="health-heading">
-          <SectionHeader title="Эрүүл мэндийн тэмдэглэл" />
-          <Card className="px-4 py-3.5">
-            <p className="whitespace-pre-wrap text-sm text-ink">{excerpt(data.healthNotes, 500)}</p>
-          </Card>
-        </section>
-      ) : null}
+              ),
+          },
+        ]}
+      />
     </div>
   );
 }

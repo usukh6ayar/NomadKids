@@ -12,12 +12,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
-import {
-  AppShell,
-  type NavItem,
-  type NavSection,
-  type NavShortcut,
-} from "@/components/shell/app-shell";
+import { AppShell, type NavItem, type NavSection } from "@/components/shell/app-shell";
 import { LoadingState } from "@/components/ui/states";
 import { useSession } from "@/lib/auth/session";
 
@@ -67,7 +62,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     <AppShell
       nav={nav}
       sections={isStaff ? staffSections(hasRole("ADMIN")) : undefined}
-      shortcuts={isStaff ? STAFF_SHORTCUTS : undefined}
       variant={isStaff ? "teacher" : "parent"}
     >
       {children}
@@ -76,18 +70,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 }
 
 const iconProps = { size: 20, strokeWidth: 2, "aria-hidden": true } as const;
-
-/**
- * The quick-links box. Three destinations a teacher reaches every day.
- *
- * The reference's third is Ирц, which is Phase 2 here; the review queue takes
- * that slot because it is the teacher's actual daily task in the MVP.
- */
-const STAFF_SHORTCUTS: NavShortcut[] = [
-  { href: "/children", label: "Хүүхдүүд", icon: <Users size={18} aria-hidden /> },
-  { href: "/observations/review", label: "Хянах", icon: <ClipboardList size={18} aria-hidden /> },
-  { href: "/notifications", label: "Самбар", icon: <Bell size={18} aria-hidden /> },
-];
 
 /**
  * Staff navigation.

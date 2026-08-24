@@ -77,9 +77,7 @@ describe("header search → children list", () => {
 
     // …and the request actually asked for it.
     await waitFor(() =>
-      expect(
-        calls.some((c) => c.url.startsWith("/children?") && c.url.includes("q=")),
-      ).toBe(true),
+      expect(calls.some((c) => c.url.startsWith("/children?") && c.url.includes("q="))).toBe(true),
     );
     const request = calls.find((c) => c.url.startsWith("/children?"))!;
     expect(decodeURIComponent(request.url)).toContain("q=Ганболд");

@@ -187,7 +187,7 @@ export function PhotoUpload({
         which two and why; the server already said, so it is repeated here.
       */}
       {refused.length ? (
-        <ul role="status" className="flex flex-col gap-1 text-xs text-peach-ink">
+        <ul role="status" className="flex flex-col gap-1 text-caption text-peach-ink">
           {refused.map((file) => (
             <li key={file.name}>
               <span className="font-medium">{file.name}</span> — {file.reason}
@@ -197,7 +197,7 @@ export function PhotoUpload({
       ) : null}
 
       {hint === null ? null : (
-        <p className="text-xs text-muted">
+        <p className="text-caption text-muted">
           {hint ?? `JPEG, PNG эсвэл WebP. Нэг зураг дээд тал нь ${MAX_MB} MB.`}
         </p>
       )}

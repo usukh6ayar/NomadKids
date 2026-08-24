@@ -77,7 +77,7 @@ export function ChildAvatar({
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold",
+        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-pill font-semibold",
         showPhoto ? "bg-primary-soft text-primary" : tintFor(name),
         className,
       )}
@@ -115,7 +115,7 @@ export function MediaThumb({
     return (
       <div
         className={cn(
-          "flex aspect-square items-center justify-center rounded-[12px] border border-border bg-canvas p-2 text-center text-xs text-muted",
+          "flex aspect-square items-center justify-center rounded-control border border-border bg-canvas p-2 text-center text-caption text-muted",
           className,
         )}
       >
@@ -129,7 +129,7 @@ export function MediaThumb({
       src={mediaUrl(mediaId)}
       alt={caption || "Ажиглалтын зураг"}
       loading="lazy"
-      className={cn("aspect-square w-full rounded-[12px] object-cover", className)}
+      className={cn("aspect-square w-full rounded-control object-cover", className)}
       onError={() => setFailed(true)}
     />
   );

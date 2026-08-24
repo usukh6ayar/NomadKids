@@ -175,7 +175,7 @@ export default function PortfolioPage() {
                   href={`#age-${age}`}
                   aria-label={`${age} нас — ${filled ? "мэдээлэлтэй" : "хоосон"}`}
                   className={cn(
-                    "flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-[14px] border px-2 py-2 text-sm font-semibold transition-colors",
+                    "flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-row border px-2 py-2 text-body font-semibold transition-colors",
                     AGE_TONE[age],
                   )}
                 >
@@ -183,7 +183,7 @@ export default function PortfolioPage() {
                   <span
                     aria-hidden="true"
                     className={cn(
-                      "size-1.5 rounded-full",
+                      "size-1.5 rounded-pill",
                       filled ? "bg-current opacity-80" : "bg-current opacity-25",
                     )}
                   />
@@ -239,7 +239,7 @@ function SectionLink({ href, label }: { href: string; label: string }) {
   return (
     <a
       href={href}
-      className="inline-flex min-h-[44px] items-center rounded-[999px] border border-border bg-surface px-3.5 text-sm font-medium text-muted hover:bg-canvas hover:text-ink"
+      className="inline-flex min-h-[44px] items-center rounded-pill border border-border bg-surface px-3.5 text-body font-medium text-muted hover:bg-canvas hover:text-ink"
     >
       {label}
     </a>
@@ -350,7 +350,7 @@ function AboutMeSection({
 
       <Card className="px-4 py-4 sm:px-5">
         {isLoading ? <LoadingState rows={2} /> : null}
-        {error ? <p className="text-sm text-danger">{errorMessage(error)}</p> : null}
+        {error ? <p className="text-body text-danger">{errorMessage(error)}</p> : null}
 
         {!isLoading && !editing ? (
           filled || data?.heightCm || data?.weightKg ? (
@@ -359,14 +359,14 @@ function AboutMeSection({
               {data?.heightCm || data?.weightKg ? (
                 <div className="flex flex-wrap gap-2">
                   {data?.heightCm ? (
-                    <span className="inline-flex items-center gap-2 rounded-[12px] bg-canvas px-3 py-2 text-sm">
+                    <span className="inline-flex items-center gap-2 rounded-control bg-canvas px-3 py-2 text-body">
                       <Ruler size={16} aria-hidden="true" className="text-muted" />
                       <span className="text-muted">Өндөр</span>
                       <strong className="font-semibold text-ink">{String(data.heightCm)} см</strong>
                     </span>
                   ) : null}
                   {data?.weightKg ? (
-                    <span className="inline-flex items-center gap-2 rounded-[12px] bg-canvas px-3 py-2 text-sm">
+                    <span className="inline-flex items-center gap-2 rounded-control bg-canvas px-3 py-2 text-body">
                       <Weight size={16} aria-hidden="true" className="text-muted" />
                       <span className="text-muted">Жин</span>
                       <strong className="font-semibold text-ink">{String(data.weightKg)} кг</strong>
@@ -380,14 +380,14 @@ function AboutMeSection({
                   <article
                     key={field.key}
                     className={cn(
-                      "rounded-[14px] border border-border bg-canvas px-4 py-3.5",
+                      "rounded-row border border-border bg-canvas px-4 py-3.5",
                       field.long && "sm:col-span-2",
                     )}
                   >
-                    <h3 className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-ink">
+                    <h3 className="mb-1.5 flex items-center gap-2 text-caption font-semibold text-ink">
                       <span
                         className={cn(
-                          "flex size-6 items-center justify-center rounded-[8px]",
+                          "flex size-6 items-center justify-center rounded-control",
                           STORY_TONE[field.tone],
                         )}
                       >
@@ -395,7 +395,7 @@ function AboutMeSection({
                       </span>
                       {field.label}
                     </h3>
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink">
+                    <p className="whitespace-pre-wrap text-body leading-relaxed text-ink">
                       {String(data?.[field.key])}
                     </p>
                   </article>
@@ -403,7 +403,7 @@ function AboutMeSection({
               </div>
             </div>
           ) : (
-            <p className="text-sm text-muted">
+            <p className="text-body text-muted">
               Хараахан бөглөөгүй байна. «Засах» дарж эхлүүлнэ үү.
             </p>
           )
@@ -603,8 +603,8 @@ function AgeSection({
               <dl className="grid gap-3 sm:grid-cols-2">
                 {AGE_FIELDS.filter((f) => profile?.[f.key]).map((field) => (
                   <div key={field.key} className={field.long ? "sm:col-span-2" : undefined}>
-                    <dt className="text-xs font-medium text-muted">{field.label}</dt>
-                    <dd className="mt-0.5 whitespace-pre-wrap text-sm text-ink">
+                    <dt className="text-caption font-medium text-muted">{field.label}</dt>
+                    <dd className="mt-0.5 whitespace-pre-wrap text-body text-ink">
                       {String(profile?.[field.key])}
                     </dd>
                   </div>
@@ -625,7 +625,7 @@ function AgeSection({
             </div>
           ) : (
             // Says what to do next, not only what is absent — CLAUDE.md §5.
-            <p className="text-sm text-muted">
+            <p className="text-body text-muted">
               Энэ насны тэмдэглэл хоосон байна. «Засах» дарж бөглөнө үү.
             </p>
           )
@@ -724,10 +724,13 @@ function AgeSection({
 function NoteBlock({ label, text, tone }: { label: string; text: string; tone: "own" | "other" }) {
   return (
     <div
-      className={cn("rounded-[12px] px-3.5 py-3", tone === "own" ? "bg-primary-soft" : "bg-canvas")}
+      className={cn(
+        "rounded-control px-3.5 py-3",
+        tone === "own" ? "bg-primary-soft" : "bg-canvas",
+      )}
     >
-      <p className="text-xs font-medium text-muted">{label}</p>
-      <p className="mt-0.5 whitespace-pre-wrap text-sm text-ink">{text}</p>
+      <p className="text-caption font-medium text-muted">{label}</p>
+      <p className="mt-0.5 whitespace-pre-wrap text-body text-ink">{text}</p>
     </div>
   );
 }
@@ -848,10 +851,10 @@ function BirthdaySection({
                         </div>
                       </form>
                     ) : note?.note ? (
-                      <p className="whitespace-pre-wrap text-sm text-ink">{note.note}</p>
+                      <p className="whitespace-pre-wrap text-body text-ink">{note.note}</p>
                     ) : (
                       // Says what to do next, not only what is absent.
-                      <p className="text-sm text-muted">
+                      <p className="text-body text-muted">
                         Тэмдэглэл бичээгүй. «Засах» дарж нэмнэ үү.
                       </p>
                     )}

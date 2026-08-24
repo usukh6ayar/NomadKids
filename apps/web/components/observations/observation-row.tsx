@@ -31,7 +31,7 @@ export function ObservationRow({
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium text-ink">{observation.type?.name ?? "Ажиглалт"}</span>
-          <span className="text-xs text-muted">{formatDate(observation.observedOn)}</span>
+          <span className="text-caption text-muted">{formatDate(observation.observedOn)}</span>
 
           {observation.source === "PARENT" ? <Badge tone="sky">Эцэг эхээс</Badge> : null}
 
@@ -54,9 +54,9 @@ export function ObservationRow({
           {observation.reviewStatus === "RETURNED" ? <Badge tone="peach">Буцаагдсан</Badge> : null}
         </div>
 
-        {body ? <p className="text-sm text-muted">{excerpt(body, 140)}</p> : null}
+        {body ? <p className="text-body text-muted">{excerpt(body, 140)}</p> : null}
 
-        <div className="flex items-center gap-3 text-xs text-muted">
+        <div className="flex items-center gap-3 text-caption text-muted">
           {observation.author ? <span>{fullName(observation.author)}</span> : null}
           {observation.media.length > 0 ? (
             <span className="inline-flex items-center gap-1">

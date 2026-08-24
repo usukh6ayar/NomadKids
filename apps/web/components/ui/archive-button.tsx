@@ -83,7 +83,7 @@ export function ArchiveButton({
         message is the instruction — it must not disappear after four seconds.
       */}
       {archive.isError ? (
-        <span role="alert" className="max-w-[280px] text-right text-xs text-danger">
+        <span role="alert" className="max-w-[280px] text-right text-caption text-danger">
           {errorMessage(archive.error)}
         </span>
       ) : null}

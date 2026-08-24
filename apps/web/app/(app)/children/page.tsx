@@ -99,7 +99,7 @@ function StaffChildren() {
         actions={
           <div className="flex items-center gap-3">
             {data ? (
-              <p className="text-sm text-muted" aria-live="polite">
+              <p className="text-body text-muted" aria-live="polite">
                 Нийт {data.total}
               </p>
             ) : null}
@@ -186,7 +186,7 @@ function StaffChildren() {
               >
                 Өмнөх
               </Button>
-              <span className="text-sm text-muted" aria-live="polite">
+              <span className="text-body text-muted" aria-live="polite">
                 {data.page} / {data.totalPages}
               </span>
               <Button
@@ -233,14 +233,14 @@ function ChildRow({
       // The whole row is one card and one link. `hover:border-primary` is the
       // reference's `.kidrow:hover` — the affordance is the border moving to
       // the brand colour, not a background wash.
-      className="flex min-h-[64px] items-center gap-3 rounded-[14px] border border-border bg-surface px-4 py-3 transition-colors hover:border-primary"
+      className="flex min-h-[64px] items-center gap-3 rounded-row border border-border bg-surface px-4 py-3 transition-colors hover:border-primary"
     >
       <ChildAvatar child={child} size={44} />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[.94rem] font-semibold leading-[1.35] text-ink">
+        <span className="block truncate text-lead font-semibold leading-[1.35] text-ink">
           {fullName(child)}
         </span>
-        <span className="mt-px block truncate text-[.78rem] text-muted">
+        <span className="mt-px block truncate text-compact text-muted">
           {[group, formatAge(child.dateOfBirth)].filter(Boolean).join(" · ")}
         </span>
       </span>
@@ -258,7 +258,7 @@ function MyChildren() {
 
   return (
     <div className="flex flex-col gap-5 lg:gap-7">
-      <h1 className="text-xl font-semibold text-ink">Хөгжлийн хавтас</h1>
+      <h1 className="text-heading font-semibold text-ink">Хөгжлийн хавтас</h1>
 
       {isLoading ? <LoadingState rows={2} /> : null}
 
@@ -288,7 +288,7 @@ function MyChildren() {
                 <ChildAvatar child={child} size={56} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium text-ink">{fullName(child)}</span>
-                  <span className="block text-sm text-muted">{formatAge(child.dateOfBirth)}</span>
+                  <span className="block text-body text-muted">{formatAge(child.dateOfBirth)}</span>
                 </span>
               </Card>
             </Link>

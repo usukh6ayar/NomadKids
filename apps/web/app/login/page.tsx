@@ -101,7 +101,7 @@ function LoginForm() {
 
   return (
     <AuthShell>
-      <h2 className="mb-1.5 text-[1.35rem] font-bold tracking-[-.01em] text-ink">Нэвтрэх</h2>
+      <h2 className="mb-1.5 text-heading font-semibold tracking-[-.01em] text-ink">Нэвтрэх</h2>
 
       {/*
         The tabs only change the label below. See `LOGIN_TABS` for why that is
@@ -160,7 +160,7 @@ function LoginForm() {
       <p className="mt-[22px] border-t border-border pt-4">
         <Link
           href="/forgot-password"
-          className="inline-flex min-h-[44px] items-center text-sm font-semibold text-primary hover:underline"
+          className="inline-flex min-h-[44px] items-center text-body font-semibold text-primary hover:underline"
         >
           Нууц үгээ мартсан уу?
         </Link>

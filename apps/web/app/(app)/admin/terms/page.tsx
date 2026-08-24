@@ -113,7 +113,7 @@ function AdminTerms() {
                 <span className="block truncate font-medium text-ink">
                   {term.number}. {term.name}
                 </span>
-                <span className="block truncate text-xs text-muted">
+                <span className="block truncate text-caption text-muted">
                   {formatDate(term.startsOn)} – {formatDate(term.endsOn)}
                   {term.schoolYear ? ` · ${term.schoolYear.name}` : ""}
                 </span>
@@ -185,7 +185,7 @@ function CreateTermDialog({
       aria-label="Улирал нэмэх"
       className="fixed inset-0 z-50 grid place-items-center bg-ink/50 p-4"
     >
-      <div className="w-full max-w-[420px] rounded-[18px] border border-border bg-surface p-5">
+      <div className="w-full max-w-[420px] rounded-card border border-border bg-surface p-5">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -194,7 +194,7 @@ function CreateTermDialog({
           className="flex flex-col gap-4"
           noValidate
         >
-          <h2 className="text-[1.05rem] font-semibold text-ink">Улирал нэмэх</h2>
+          <h2 className="text-title font-semibold text-ink">Улирал нэмэх</h2>
 
           <FormError message={create.isError ? errorMessage(create.error) : null} />
 
@@ -341,7 +341,7 @@ function EditTermDialog({
       aria-label="Улирал засах"
       className="fixed inset-0 z-50 grid place-items-center bg-ink/50 p-4"
     >
-      <div className="w-full max-w-[420px] rounded-[18px] border border-border bg-surface p-5">
+      <div className="w-full max-w-[420px] rounded-card border border-border bg-surface p-5">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -350,7 +350,7 @@ function EditTermDialog({
           className="flex flex-col gap-4"
           noValidate
         >
-          <h2 className="text-[1.05rem] font-semibold text-ink">{term.number}-р улирал засах</h2>
+          <h2 className="text-title font-semibold text-ink">{term.number}-р улирал засах</h2>
 
           <FormError message={save.isError ? errorMessage(save.error) : null} />
 

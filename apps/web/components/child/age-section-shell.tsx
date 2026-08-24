@@ -122,7 +122,7 @@ export function AgeSectionShell({
             "[&::-webkit-details-marker]:hidden",
           )}
         >
-          <h2 id={headingId} className="text-[1.05rem] font-semibold leading-[1.35] text-ink">
+          <h2 id={headingId} className="text-title font-semibold leading-[1.35] text-ink">
             {age} нас
           </h2>
           {/* The label carries the state; the tint only reinforces it. */}

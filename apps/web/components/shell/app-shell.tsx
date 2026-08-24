@@ -113,10 +113,10 @@ export function PageHeader({
           heading in the product sets its weight explicitly; this was the one
           that did not.
         */}
-        <h1 className="text-[1.5rem] font-semibold leading-[1.35] tracking-[-.01em] text-ink">
+        <h1 className="text-display font-semibold leading-[1.35] tracking-[-.01em] text-ink">
           {title}
         </h1>
-        {lede ? <p className="mt-0.5 text-sm text-muted">{lede}</p> : null}
+        {lede ? <p className="mt-0.5 text-body text-muted">{lede}</p> : null}
       </div>
 
       {/*
@@ -135,15 +135,15 @@ export function PageHeader({
         <NotificationBell />
 
         {hasSidebar ? null : (
-          <span className="hidden items-center gap-2.5 rounded-full border border-border bg-surface py-1.5 pl-1.5 pr-3.5 lg:flex">
-            <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary-soft text-xs font-semibold text-primary">
+          <span className="hidden items-center gap-2.5 rounded-pill border border-border bg-surface py-1.5 pl-1.5 pr-3.5 lg:flex">
+            <span className="grid size-8 shrink-0 place-items-center rounded-pill bg-primary-soft text-caption font-semibold text-primary">
               {initials(session?.user)}
             </span>
             <span className="min-w-0">
-              <span className="block max-w-[180px] truncate text-[.87rem] font-semibold leading-[1.2] text-ink">
+              <span className="block max-w-[180px] truncate text-body font-semibold leading-[1.2] text-ink">
                 {fullName(session?.user)}
               </span>
-              <span className="block text-[.75rem] text-muted">Эцэг эх</span>
+              <span className="block text-caption text-muted">Эцэг эх</span>
             </span>
           </span>
         )}
@@ -206,7 +206,18 @@ function HeaderSearch({ className }: { className?: string }) {
           value={term}
           onChange={(event) => setTerm(event.target.value)}
           placeholder="Хүүхдийн нэрээр хайх…"
-          className="h-[44px] w-full rounded-pill border border-border bg-surface pl-10 pr-3.5 text-sm text-ink transition-colors placeholder:text-muted focus:border-primary focus:outline-none"
+          /*
+            ★ No font-size class, deliberately.
+
+            It carried `text-sm`, and a class beats the `input { font-size:
+            16px }` rule in globals.css — so this field rendered at 14px, which
+            is under the threshold where iOS zooms a focused input and does not
+            zoom back out. The user was left on a horizontally scrolled page
+            with no way back, which is the exact failure that rule exists to
+            prevent. Every other control in the product inherits the 16px
+            because none of them names a size either.
+          */
+          className="h-[44px] w-full rounded-pill border border-border bg-surface pl-10 pr-3.5 text-ink transition-colors placeholder:text-muted focus:border-primary focus:outline-none"
         />
       </div>
     </form>
@@ -240,13 +251,13 @@ function NotificationBell() {
     <Link
       href="/notifications"
       aria-label={count > 0 ? `Мэдэгдэл, ${count} уншаагүй` : "Мэдэгдэл"}
-      className="relative hidden size-11 shrink-0 place-items-center rounded-[12px] text-muted transition-colors hover:bg-canvas hover:text-ink lg:grid"
+      className="relative hidden size-11 shrink-0 place-items-center rounded-control text-muted transition-colors hover:bg-canvas hover:text-ink lg:grid"
     >
       <Bell size={20} strokeWidth={2} aria-hidden="true" />
       {count > 0 ? (
         <span
           aria-hidden="true"
-          className="absolute right-1 top-1 flex min-w-[18px] items-center justify-center rounded-full bg-danger px-1 text-[11px] font-bold leading-[18px] text-white"
+          className="absolute right-1 top-1 flex min-w-[18px] items-center justify-center rounded-pill bg-danger px-1 text-caption font-bold leading-[18px] text-white"
         >
           {count > 99 ? "99+" : count}
         </span>
@@ -338,7 +349,7 @@ export function AppShell({
 function Brand({ subtitle }: { subtitle: string }) {
   return (
     <Link href="/" className="flex min-h-[44px] items-center gap-[11px]">
-      <span className="grid size-10 shrink-0 place-items-center rounded-[12px] bg-[#f1efff] p-0.5">
+      <span className="grid size-10 shrink-0 place-items-center rounded-control bg-[#f1efff] p-0.5">
         <Image
           src="/mark-96.png"
           alt="Бяцхан нүүдэлчид"
@@ -349,12 +360,12 @@ function Brand({ subtitle }: { subtitle: string }) {
         />
       </span>
       <span className="min-w-0">
-        <span className="block text-[.9rem] font-semibold leading-[1.25] text-ink">
+        <span className="block text-body font-semibold leading-[1.25] text-ink">
           Хүүхдийн хөгжлийн
           <br />
           цахим хувийн хавтас
         </span>
-        <span className="block text-[.75rem] text-muted">{subtitle}</span>
+        <span className="block text-caption text-muted">{subtitle}</span>
       </span>
     </Link>
   );
@@ -371,21 +382,21 @@ function WhoAmI({ subtitle }: { subtitle: string }) {
   const logout = useLogout();
 
   return (
-    <div className="flex min-h-[44px] shrink-0 items-center gap-2 rounded-[14px] bg-canvas px-3 py-2">
-      <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary-soft text-[.7rem] font-bold text-primary">
+    <div className="flex min-h-[44px] shrink-0 items-center gap-2 rounded-row bg-canvas px-3 py-2">
+      <span className="grid size-7 shrink-0 place-items-center rounded-pill bg-primary-soft text-caption font-bold text-primary">
         {initials(session?.user)}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-[.78rem] font-semibold leading-[1.2] text-ink [overflow-wrap:anywhere]">
+        <span className="block text-compact font-semibold leading-[1.2] text-ink [overflow-wrap:anywhere]">
           {fullName(session?.user)}
         </span>
-        <span className="block text-[.75rem] text-muted">{subtitle}</span>
+        <span className="block text-caption text-muted">{subtitle}</span>
       </span>
       <button
         type="button"
         onClick={() => void logout()}
         aria-label="Гарах"
-        className="grid size-11 shrink-0 place-items-center rounded-[12px] text-muted hover:bg-surface hover:text-primary"
+        className="grid size-11 shrink-0 place-items-center rounded-control text-muted hover:bg-surface hover:text-primary"
       >
         <LogoutIcon />
       </button>
@@ -469,7 +480,7 @@ function Sidebar({
 function NavGroup({ section, pathname }: { section: NavSection; pathname: string }) {
   return (
     <details open className="border-b border-border py-0.5 [&[open]>summary>svg]:rotate-180">
-      <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between px-2.5 py-2 text-[.8rem] font-semibold text-ink [&::-webkit-details-marker]:hidden">
+      <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between px-2.5 py-2 text-compact font-semibold text-ink [&::-webkit-details-marker]:hidden">
         {section.title}
         <ChevronIcon />
       </summary>
@@ -482,7 +493,7 @@ function NavGroup({ section, pathname }: { section: NavSection; pathname: string
             href={entry.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "relative ml-3 flex min-h-[44px] items-center rounded-lg px-2.5 py-1.5 text-[.8rem] transition-colors",
+              "relative ml-3 flex min-h-[44px] items-center rounded-control px-2.5 py-1.5 text-compact transition-colors",
               active
                 ? // The blue-700 rule is the active marker; the tint and the
                   // weight are what make it readable. Three signals, because
@@ -540,7 +551,7 @@ function MobileHeader({ variant, subtitle }: { variant: "teacher" | "parent"; su
       )}
     >
       <Link href="/" className="flex min-h-[44px] items-center gap-3">
-        <span className="grid size-[34px] shrink-0 place-items-center rounded-[10px] bg-[#f1efff] p-0.5">
+        <span className="grid size-[34px] shrink-0 place-items-center rounded-control bg-[#f1efff] p-0.5">
           <Image
             src="/mark-96.png"
             alt="Бяцхан нүүдэлчид"
@@ -551,10 +562,10 @@ function MobileHeader({ variant, subtitle }: { variant: "teacher" | "parent"; su
           />
         </span>
         <span className="min-w-0">
-          <span className="block truncate text-[.87rem] font-semibold leading-[1.2] text-ink">
+          <span className="block truncate text-body font-semibold leading-[1.2] text-ink">
             Хүүхдийн хавтас
           </span>
-          <span className="block text-[.75rem] text-muted">{subtitle}</span>
+          <span className="block text-caption text-muted">{subtitle}</span>
         </span>
       </Link>
 
@@ -562,9 +573,9 @@ function MobileHeader({ variant, subtitle }: { variant: "teacher" | "parent"; su
         <Link
           href="/settings"
           aria-label="Миний бүртгэл"
-          className="grid size-11 place-items-center rounded-[12px] hover:bg-canvas"
+          className="grid size-11 place-items-center rounded-control hover:bg-canvas"
         >
-          <span className="grid size-8 place-items-center rounded-full bg-primary-soft text-xs font-semibold text-primary">
+          <span className="grid size-8 place-items-center rounded-pill bg-primary-soft text-caption font-semibold text-primary">
             {initials(session?.user)}
           </span>
         </Link>
@@ -572,7 +583,7 @@ function MobileHeader({ variant, subtitle }: { variant: "teacher" | "parent"; su
           type="button"
           onClick={() => void logout()}
           aria-label="Гарах"
-          className="grid size-11 place-items-center rounded-[12px] text-muted hover:bg-canvas hover:text-ink"
+          className="grid size-11 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
         >
           <LogoutIcon />
         </button>
@@ -644,10 +655,10 @@ function NavLink({
       // screen reader which page you are on, which colour alone cannot.
       aria-current={active ? "page" : undefined}
       className={cn(
-        "relative flex items-center gap-2.5 rounded-[12px] font-medium transition-colors",
+        "relative flex items-center gap-2.5 rounded-control font-medium transition-colors",
         orientation === "vertical"
-          ? "min-h-[44px] gap-[11px] px-3 py-2.5 text-[.92rem]"
-          : "min-h-[56px] flex-1 flex-col justify-center gap-1 px-1 py-2 text-[11px]",
+          ? "min-h-[44px] gap-[11px] px-3 py-2.5 text-lead"
+          : "min-h-[56px] flex-1 flex-col justify-center gap-1 px-1 py-2 text-caption",
         active ? "bg-primary-soft text-primary" : "text-muted hover:bg-canvas hover:text-ink",
         // A blue-700 rule marks the current destination: down the left edge in
         // the sidebar, across the top of a tab in the phone's bottom bar.
@@ -707,7 +718,7 @@ function UnreadDot() {
   return (
     // 11px: a number read at a glance from a phone in someone's hand, and
     // 10px was the smallest visible type anywhere in the product.
-    <span className="absolute -right-2.5 -top-1.5 flex min-w-[18px] items-center justify-center rounded-full bg-danger px-1 text-[11px] font-bold leading-[18px] text-white">
+    <span className="absolute -right-2.5 -top-1.5 flex min-w-[18px] items-center justify-center rounded-pill bg-danger px-1 text-caption font-bold leading-[18px] text-white">
       <span aria-hidden="true">{count > 99 ? "99+" : count}</span>
       <span className="sr-only">{count} уншаагүй мэдэгдэл</span>
     </span>

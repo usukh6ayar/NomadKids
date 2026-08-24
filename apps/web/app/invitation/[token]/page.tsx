@@ -73,16 +73,16 @@ export default function AcceptInvitationPage() {
   if (accept.isSuccess) {
     return (
       <AuthShell>
-        <h2 className="mb-1.5 text-[1.35rem] font-bold tracking-[-.01em] text-ink">
+        <h2 className="mb-1.5 text-heading font-semibold tracking-[-.01em] text-ink">
           Бүртгэл идэвхжлээ
         </h2>
-        <p role="status" className="text-sm text-muted">
+        <p role="status" className="text-body text-muted">
           Нэвтрэх хуудас руу шилжиж байна…
         </p>
         <p>
           <Link
             href="/login"
-            className="inline-flex min-h-[44px] items-center text-sm font-semibold text-primary hover:underline"
+            className="inline-flex min-h-[44px] items-center text-body font-semibold text-primary hover:underline"
           >
             Нэвтрэх
           </Link>
@@ -93,12 +93,12 @@ export default function AcceptInvitationPage() {
 
   return (
     <AuthShell>
-      <h2 className="mb-1.5 text-[1.35rem] font-bold tracking-[-.01em] text-ink">Тавтай морил</h2>
-      <p className="mb-4 text-sm leading-relaxed text-muted">
+      <h2 className="mb-1.5 text-heading font-semibold tracking-[-.01em] text-ink">Тавтай морил</h2>
+      <p className="mb-4 text-body leading-relaxed text-muted">
         Бүртгэлээ идэвхжүүлэхийн тулд нууц үгээ сонгоно уу.
       </p>
 
-      <ul className="mb-4 list-disc space-y-1 pl-5 text-sm text-muted">
+      <ul className="mb-4 list-disc space-y-1 pl-5 text-body text-muted">
         <li>{MIN_LENGTH}-аас доошгүй тэмдэгт</li>
       </ul>
 
@@ -138,7 +138,7 @@ export default function AcceptInvitationPage() {
         </Button>
       </form>
 
-      <p className="mt-[22px] border-t border-border pt-4 text-sm leading-relaxed text-muted">
+      <p className="mt-[22px] border-t border-border pt-4 text-body leading-relaxed text-muted">
         Урилга хүчингүй болсон бол цэцэрлэгийн багш, администратортаа хандаж шинээр авна уу.
       </p>
     </AuthShell>

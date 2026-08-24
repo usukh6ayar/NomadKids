@@ -122,7 +122,7 @@ function InviteDialog({
       aria-label={`${childName} — эцэг эх урих`}
       className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4"
     >
-      <div className="w-full max-w-[480px] rounded-[18px] border border-border bg-surface p-5">
+      <div className="w-full max-w-[480px] rounded-card border border-border bg-surface p-5">
         {invite.isSuccess ? (
           <InvitationHandover
             token={invite.data.invitationToken}
@@ -140,8 +140,8 @@ function InviteDialog({
             noValidate
           >
             <div>
-              <h2 className="text-[1.05rem] font-semibold text-ink">Эцэг эх урих</h2>
-              <p className="mt-0.5 text-sm text-muted">
+              <h2 className="text-title font-semibold text-ink">Эцэг эх урих</h2>
+              <p className="mt-0.5 text-body text-muted">
                 {childName}-ийн хавтас руу. Урилга 7 хоног хүчинтэй.
               </p>
             </div>

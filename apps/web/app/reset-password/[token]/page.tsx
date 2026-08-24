@@ -64,16 +64,16 @@ export default function ResetPasswordPage() {
   if (reset.isSuccess) {
     return (
       <AuthShell>
-        <h2 className="mb-1.5 text-[1.35rem] font-bold tracking-[-.01em] text-ink">
+        <h2 className="mb-1.5 text-heading font-semibold tracking-[-.01em] text-ink">
           Нууц үг шинэчлэгдлээ
         </h2>
-        <p role="status" className="text-sm text-muted">
+        <p role="status" className="text-body text-muted">
           Нэвтрэх хуудас руу шилжиж байна…
         </p>
         <p>
           <Link
             href="/login"
-            className="inline-flex min-h-[44px] items-center text-sm font-semibold text-primary hover:underline"
+            className="inline-flex min-h-[44px] items-center text-body font-semibold text-primary hover:underline"
           >
             Нэвтрэх
           </Link>
@@ -84,7 +84,7 @@ export default function ResetPasswordPage() {
 
   return (
     <AuthShell>
-      <h2 className="mb-2.5 text-[1.35rem] font-bold tracking-[-.01em] text-ink">Шинэ нууц үг</h2>
+      <h2 className="mb-2.5 text-heading font-semibold tracking-[-.01em] text-ink">Шинэ нууц үг</h2>
 
       {/*
         ★ One rule, because one rule is enforced.
@@ -93,7 +93,7 @@ export default function ResetPasswordPage() {
         length alone. Copying the list would announce requirements that do not
         exist and reject nothing, which teaches users the messages are noise.
       */}
-      <ul className="mb-4 list-disc space-y-1 pl-5 text-sm text-muted">
+      <ul className="mb-4 list-disc space-y-1 pl-5 text-body text-muted">
         <li>{MIN_LENGTH}-аас доошгүй тэмдэгт</li>
       </ul>
 

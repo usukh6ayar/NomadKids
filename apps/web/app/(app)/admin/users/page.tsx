@@ -130,17 +130,17 @@ function AdminUsers() {
           {items.map((user) => (
             <div
               key={user.id}
-              className="flex min-h-[64px] flex-wrap items-center gap-3 rounded-[14px] border border-border bg-surface px-4 py-3"
+              className="flex min-h-[64px] flex-wrap items-center gap-3 rounded-row border border-border bg-surface px-4 py-3"
             >
-              <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary-soft text-sm font-semibold text-primary">
+              <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-primary-soft text-body font-semibold text-primary">
                 {initials(user)}
               </span>
 
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[.94rem] font-semibold text-ink">
+                <span className="block truncate text-lead font-semibold text-ink">
                   {fullName(user)}
                 </span>
-                <span className="mt-px block truncate text-[.78rem] text-muted">
+                <span className="mt-px block truncate text-compact text-muted">
                   {[user.username, user.email, user.phone].filter(Boolean).join(" · ") || "—"}
                 </span>
               </span>
@@ -224,7 +224,7 @@ function InviteUserDialog({
       aria-label="Хэрэглэгч нэмэх"
       className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4"
     >
-      <div className="w-full max-w-[480px] rounded-[18px] border border-border bg-surface p-5">
+      <div className="w-full max-w-[480px] rounded-card border border-border bg-surface p-5">
         {invite.isSuccess ? (
           <InvitationHandover
             token={invite.data.invitationToken}
@@ -242,8 +242,8 @@ function InviteUserDialog({
             noValidate
           >
             <div>
-              <h2 className="text-[1.05rem] font-semibold text-ink">Хэрэглэгч нэмэх</h2>
-              <p className="mt-0.5 text-sm text-muted">
+              <h2 className="text-title font-semibold text-ink">Хэрэглэгч нэмэх</h2>
+              <p className="mt-0.5 text-body text-muted">
                 Нууц үгээ тэр хүн өөрөө сонгоно. Урилга 7 хоног хүчинтэй.
               </p>
             </div>
@@ -326,7 +326,7 @@ function InviteUserDialog({
             </Field>
 
             {role === "PARENT" ? (
-              <p className="rounded-[12px] bg-sun px-3 py-2 text-xs leading-relaxed text-sun-ink">
+              <p className="rounded-control bg-sun px-3 py-2 text-caption leading-relaxed text-sun-ink">
                 Эцэг эхийг ихэвчлэн хүүхдийн хуудаснаас урина — тэгвэл хүүхэдтэй нь шууд холбогдоно.
                 Эндээс үүсгэвэл хүүхэдгүй бүртгэл үүснэ.
               </p>
@@ -395,7 +395,7 @@ function RevokeMembershipButton({ membershipId, label }: { membershipId: string;
           revoke.mutate();
         }
       }}
-      className="grid size-[28px] place-items-center rounded-full text-muted transition-colors hover:bg-danger-soft hover:text-danger disabled:opacity-50"
+      className="grid size-[28px] place-items-center rounded-pill text-muted transition-colors hover:bg-danger-soft hover:text-danger disabled:opacity-50"
     >
       <X size={14} aria-hidden />
       <span className="sr-only">{label} эрхийг хураах</span>

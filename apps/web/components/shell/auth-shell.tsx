@@ -27,7 +27,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
           and without it a single unbroken word pushes the card wider than its
           column and the inputs run off the right edge.
         */}
-        <main className="w-full max-w-[440px] rounded-[18px] border border-border bg-surface px-7 py-8 [overflow-wrap:anywhere] min-[900px]:shadow-[0_1px_2px_rgba(37,35,42,.04),0_6px_16px_rgba(37,35,42,.045)]">
+        <main className="w-full max-w-[440px] rounded-card border border-border bg-surface px-7 py-8 [overflow-wrap:anywhere] min-[900px]:shadow-sm">
           <div className="mb-[22px] flex items-center gap-3.5">
             <Image
               src="/logo-160.png"
@@ -39,12 +39,12 @@ export function AuthShell({ children }: { children: ReactNode }) {
               priority
             />
             <div>
-              <h1 className="text-[1.05rem] font-bold uppercase leading-[1.3] tracking-[.01em] text-ink">
+              <h1 className="text-title font-semibold uppercase leading-[1.3] tracking-[.01em] text-ink">
                 Хүүхдийн хөгжлийн
                 <br />
                 цахим хувийн хавтас
               </h1>
-              <p className="mt-1 text-[.82rem] leading-snug text-muted">
+              <p className="mt-1 text-compact leading-snug text-muted">
                 Багш, эцэг эх, администраторт зориулсан аюулгүй нэвтрэх систем.
               </p>
             </div>
@@ -52,7 +52,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
 
           {children}
 
-          <div className="mt-[22px] flex flex-wrap justify-center gap-x-3.5 gap-y-1.5 border-t border-border pt-4 text-[.78rem] text-muted">
+          <div className="mt-[22px] flex flex-wrap justify-center gap-x-3.5 gap-y-1.5 border-t border-border pt-4 text-compact text-muted">
             <span>Аюулгүй нэвтрэлт</span>
             <span aria-hidden="true">·</span>
             <span>HTTPS</span>
@@ -80,8 +80,8 @@ export function AuthShell({ children }: { children: ReactNode }) {
             className="mx-auto w-[210px] max-w-full"
             style={{ height: "auto" }}
           />
-          <p className="mt-6 text-[1.05rem] font-bold text-ink">Хүүхэд бүрийн хөгжлийн түүх</p>
-          <p className="mx-auto mt-2.5 max-w-[34ch] text-[.9rem] leading-relaxed text-muted">
+          <p className="mt-6 text-title font-semibold text-ink">Хүүхэд бүрийн хөгжлийн түүх</p>
+          <p className="mx-auto mt-2.5 max-w-[34ch] text-body leading-relaxed text-muted">
             Багшийн ажиглалт, эцэг эхийн оролцоо, улирлын үнэлгээ — бүгд нэг дор, хүүхэд тус бүрийн
             цахим хувийн хавтаст.
           </p>
@@ -135,7 +135,7 @@ export function LoginTabs({
     <div
       role="group"
       aria-label="Хэрэглэгчийн төрөл"
-      className="mb-4 grid grid-cols-3 gap-1 rounded-[14px] bg-canvas p-1"
+      className="mb-4 grid grid-cols-3 gap-1 rounded-row bg-canvas p-1"
     >
       {LOGIN_TABS.map((tab) => {
         const active = tab.key === value;
@@ -146,7 +146,7 @@ export function LoginTabs({
             aria-pressed={active}
             onClick={() => onChange(tab.key)}
             className={
-              "min-h-[44px] rounded-[12px] px-2 text-sm font-semibold transition-colors " +
+              "min-h-[44px] rounded-control px-2 text-body font-semibold transition-colors " +
               (active
                 ? "bg-primary text-primary-ink"
                 : "text-muted hover:bg-surface hover:text-ink")

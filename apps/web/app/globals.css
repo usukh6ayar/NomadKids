@@ -3,15 +3,21 @@
 /*
  * Design tokens.
  *
- * ★ REPAINTED 2026-08-22, on the client's instruction: white ground, soft sky
- * blue accent. The previous direction (warm #F8F7F4 canvas, violet #6C63FF)
- * was the approved Phase 1 palette recorded in PHASE_1_ACCEPTANCE item 15 —
- * **that approval no longer describes what ships and needs re-confirming.**
+ * ★ REPAINTED TWICE. 2026-08-22: warm violet → white ground, soft sky blue.
+ * 2026-08-23: sky blue → the E-Mongolia deep blue (blue-700) with slate
+ * typography, on the client's instruction that the sky read as too playful for
+ * a government-facing system.
  *
- * The values changed; the structure did not, deliberately. Every screen reads
- * these tokens, so the repaint is one file rather than 27, and a page written
- * against raw `slate-100` / `sky-500` utilities would be the one page that
- * stops following the next change. The sizing floors below are untouched.
+ * The approved Phase 1 palette recorded in PHASE_1_ACCEPTANCE item 15 is now
+ * two directions behind — **that approval does not describe what ships and
+ * needs re-confirming before sign-off.**
+ *
+ * The values changed; the structure did not, either time. Every screen reads
+ * these tokens, so a repaint is one file rather than 27 — and this second one
+ * proved the point: the dashboard, the whole reason for the change, needed no
+ * edit at all. A page written against raw `slate-100` / `blue-700` utilities
+ * would be the one page that stops following the next change. The sizing floors
+ * below are untouched.
  *
  * The palette stays deliberately narrow: one primary, one surface, one
  * background, and four soft accents used only to carry meaning.
@@ -42,7 +48,13 @@
   --color-border-soft: #f1f5f9;
 
   /* Text */
-  --color-ink: #0f172a;
+  /* slate-800, not slate-900 and never #000. 14.63:1 on white — the step down
+     from #0f172a costs nothing in legibility and takes the hard edge off a
+     screen that is mostly text on white. */
+  --color-ink: #1e293b;
+  /* slate-500. 4.76:1 on white — the floor is 4.5:1, so this is secondary text
+     and not a third heading colour. ★ It is 4.34:1 on `--color-track`
+     (slate-100) and must not be used on it. */
   --color-muted: #64748b;
   /* The third step — for text that is present but not being offered, such as a
      menu entry naming a part of the product that is not built yet.
@@ -50,34 +62,52 @@
   --color-faint: #94a3b8;
 
   /*
-   * Primary — the sky-blue family, in three steps, and the split is not
-   * decorative.
+   * Primary — the E-Mongolia blue, in three steps.
    *
-   * ★ White text on sky-500 (#0ea5e9) is **2.77:1**. WCAG AA wants 4.5:1 for
-   * body-sized text and 3:1 even for large text, so a filled sky-500 button
-   * with a white label fails both — measured, not assumed. sky-600 is 4.1:1 and
-   * still fails. sky-700 is 5.93:1 and passes.
+   * ★ REPAINTED 2026-08-23 (second time that day). The sky blue read as
+   * playful; a system parents use to read about their child is meant to look
+   * institutional. blue-700 is that register.
    *
-   * So the brief's "soft sky blue" survives where it is a *surface* and steps
-   * darker wherever it sits behind or beside text:
+   *   --color-primary         #1d4ed8  blue-700. Filled buttons, progress
+   *                                    fills, active indicators, focus rings,
+   *                                    links. Carries WHITE text at 6.70:1.
+   *   --color-primary-strong  #1e40af  blue-800. Coloured text on white
+   *                                    (8.72:1) and the button's hover.
+   *   --color-primary-soft    #eff6ff  blue-50. Tinted backs for avatars,
+   *                                    active menu rows, informational chips.
    *
-   *   --color-primary-bright  #0ea5e9  progress fills, indicators, tint edges.
-   *                                    NEVER behind text.
-   *   --color-primary         #0369a1  filled buttons (5.93:1 with white),
-   *                                    focus rings, links.
-   *   --color-primary-strong  #075985  coloured text on white (7.56:1).
+   * ★★ There is no longer a separate "bright" step, and its absence is the
+   * point.
    *
-   * RFP §13 lists "өнгөний хангалттай ялгарал" as a requirement, so this is a
-   * conformance question rather than a taste one. The visible brand hue is
-   * still sky-500 — it is what the eye lands on in a progress bar and an active
-   * nav indicator — but no label is ever asked to be legible on it.
+   * The sky palette needed one: sky-500 was the visible brand colour but could
+   * not carry a white label (2.77:1), so surfaces and text-bearing fills had to
+   * be different values. blue-700 carries white text and reads as the brand at
+   * the same time, so the two collapse into one token. Two names holding one
+   * value is how a palette starts drifting — the next person changes one of
+   * them.
+   *
+   * `--color-primary-soft` is the one pairing to watch: `--color-primary` on it
+   * is 6.16:1, which passes, but nothing darker than `--color-primary` should
+   * ever sit on a white card expecting to be read as a link.
+   *
+   * RFP §13 lists "өнгөний хангалттай ялгарал" as a requirement, so these are
+   * measured rather than chosen. `responsive.test.tsx` pins them.
    */
-  --color-primary-bright: #0ea5e9;
-  --color-primary: #0369a1;
-  --color-primary-strong: #075985;
-  --color-primary-hover: #075985;
-  --color-primary-soft: #f0f9ff;
+  --color-primary: #1d4ed8;
+  --color-primary-strong: #1e40af;
+  --color-primary-hover: #1e40af;
+  --color-primary-soft: #eff6ff;
   --color-primary-ink: #ffffff;
+
+  /*
+   * The unfilled part of a progress bar — slate-100.
+   *
+   * Its own token rather than `--color-border-soft`, which happens to hold the
+   * same value: that one is documented as a hairline, and a fill borrowing a
+   * border's colour is the kind of coincidence that survives until somebody
+   * darkens borders and repaints every progress track by accident.
+   */
+  --color-track: #f1f5f9;
 
   /*
    * Accents. Restrained on purpose — each one means something (mint = done,
@@ -128,15 +158,62 @@
   --radius-pill: 999px;
 
   /*
-   * The reference's `--shadow`: two very soft layers, not elevation. It is what
-   * separates a white card from a warm canvas that is only four steps away from
-   * white — a border alone reads as flat at this contrast.
+   * ★ Removed 2026-08-23. Cards use Tailwind's `shadow-sm`.
+   *
+   * `--shadow-card` was defined here and used by nothing: `card.tsx` and
+   * `auth-shell.tsx` each inlined their own `shadow-[…]` instead, and the two
+   * did not match. A token nobody reads is worse than no token — it looks like
+   * the single source of truth while two other values are what actually ship.
+   * The design system names `shadow-sm`, so that is what both spell now.
    */
-  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.03);
 
   /* Sizing floors */
   --size-control: 48px;
   --size-tap: 44px;
+
+  /*
+   * ★ The type scale. Seven steps, and nothing between them.
+   *
+   * There were twenty distinct sizes before this, arbitrary values interleaved
+   * with Tailwind's own scale: `.78rem`, `.8rem`, `.82rem` and `text-xs` all
+   * appeared, which is four sizes inside a 1.1px band. Nobody can see the
+   * difference; everybody editing had to pick one anyway, and picked whichever
+   * was nearest in the file they were looking at.
+   *
+   * Named by role rather than by size, so a call site says what it is rather
+   * than how big it is — `text-caption` survives the scale being retuned and
+   * `text-[.78rem]` does not.
+   *
+   *   caption  12px  badges, meta lines, counters, field hints
+   *   compact  13px  secondary text in dense rows and the sidebar
+   *   body     14px  the workhorse — over half of all text in the product
+   *   lead     15px  row titles, button labels, emphasised body
+   *   title    17px  SectionHeader, the child hero's name
+   *   heading  22px  screen headings, the auth card's title
+   *   display  24px  PageHeader's h1, and statistic numerals
+   *
+   * ★★ These are not the sizing floors above, and the difference matters.
+   *
+   * `--size-control` and `--size-tap` are safety limits: a control below them
+   * is unusable with a thumb, so `responsive.test.tsx` asserts them. These are
+   * a vocabulary. `tokens.test.tsx` holds the line differently — it fails on any
+   * *arbitrary* font size or radius appearing in `app/` or `components/`, which
+   * is the mistake that produced twenty of them, rather than on any one value.
+   *
+   * ★★★ Text controls are deliberately absent from this scale.
+   *
+   * `input`, `textarea` and `select` are pinned to 16px below, because iOS zooms
+   * a focused field whose text is smaller and does not zoom back out. A class
+   * from this scale on a control would beat that element rule — which is
+   * exactly how the header's search field ended up at 14px.
+   */
+  --text-caption: 0.75rem;
+  --text-compact: 0.8125rem;
+  --text-body: 0.875rem;
+  --text-lead: 0.9375rem;
+  --text-title: 1.0625rem;
+  --text-heading: 1.35rem;
+  --text-display: 1.5rem;
 
   /*
    * Heading line-height, deliberately looser than the 1.2 a Latin-only design
@@ -174,7 +251,7 @@ body {
  * mistake in a different hue.
  *
  * What separates a card from the page now is one step of tint plus a hairline,
- * which is why `--shadow-card` could get lighter at the same time.
+ * which is why the card shadow could drop to `shadow-sm` at the same time.
  */
 body {
   background: var(--color-canvas);

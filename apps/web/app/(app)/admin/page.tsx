@@ -41,7 +41,7 @@ function AdminDashboard() {
   if (isLoading) {
     return (
       <div className="flex flex-col gap-5 py-2">
-        <h1 className="text-xl font-semibold text-ink">Удирдлага</h1>
+        <h1 className="text-heading font-semibold text-ink">Удирдлага</h1>
         <LoadingState rows={4} />
       </div>
     );
@@ -50,7 +50,7 @@ function AdminDashboard() {
   if (isError) {
     return (
       <div className="py-2">
-        <h1 className="mb-4 text-xl font-semibold text-ink">Удирдлага</h1>
+        <h1 className="mb-4 text-heading font-semibold text-ink">Удирдлага</h1>
         <ErrorState
           description={errorMessage(error)}
           action={
@@ -68,8 +68,8 @@ function AdminDashboard() {
   return (
     <div className="flex flex-col gap-6 py-2">
       <header>
-        <h1 className="text-xl font-semibold text-ink">Удирдлага</h1>
-        <p className="mt-0.5 text-sm text-muted">
+        <h1 className="text-heading font-semibold text-ink">Удирдлага</h1>
+        <p className="mt-0.5 text-body text-muted">
           {currentTerm ? `${currentTerm.name} · идэвхтэй улирал` : "Идэвхтэй улирал тохируулаагүй"}
         </p>
       </header>
@@ -132,7 +132,7 @@ function AdminDashboard() {
                     "in progress".
                   */}
                   <span
-                    className={`shrink-0 rounded-[999px] px-2.5 py-1 text-xs font-medium ${
+                    className={`shrink-0 rounded-pill px-2.5 py-1 text-caption font-medium ${
                       complete ? "bg-mint text-mint-ink" : "bg-sun text-sun-ink"
                     }`}
                   >
@@ -158,15 +158,17 @@ function AdminDashboard() {
                 className="flex min-h-[52px] items-center justify-between gap-3 px-4 py-2.5"
               >
                 <span className="min-w-0">
-                  <span className="block truncate text-sm text-ink">
+                  <span className="block truncate text-body text-ink">
                     {AUDIT_ACTION_LABEL[entry.action] ?? entry.action}
                     {entry.objectType ? ` · ${entry.objectType}` : ""}
                   </span>
                   {entry.actorLabel ? (
-                    <span className="block truncate text-xs text-muted">{entry.actorLabel}</span>
+                    <span className="block truncate text-caption text-muted">
+                      {entry.actorLabel}
+                    </span>
                   ) : null}
                 </span>
-                <span className="shrink-0 whitespace-nowrap text-xs text-muted">
+                <span className="shrink-0 whitespace-nowrap text-caption text-muted">
                   {formatRelative(entry.createdAt)}
                 </span>
               </div>
@@ -181,8 +183,8 @@ function AdminDashboard() {
 function Stat({ label, value }: { label: string; value: number }) {
   return (
     <Card className="px-4 py-3.5">
-      <p className="text-sm text-muted">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums text-ink">{value}</p>
+      <p className="text-body text-muted">{label}</p>
+      <p className="mt-1 text-display font-semibold tabular-nums text-ink">{value}</p>
     </Card>
   );
 }
@@ -192,10 +194,10 @@ function AdminLink({ href, title, note }: { href: string; title: string; note: s
   return (
     <Link
       href={href}
-      className="flex min-h-[64px] flex-col justify-center rounded-[14px] border border-border bg-surface px-4 py-3 transition-colors hover:border-primary"
+      className="flex min-h-[64px] flex-col justify-center rounded-row border border-border bg-surface px-4 py-3 transition-colors hover:border-primary"
     >
-      <span className="text-[.94rem] font-semibold text-ink">{title}</span>
-      <span className="mt-px text-[.78rem] text-muted">{note}</span>
+      <span className="text-lead font-semibold text-ink">{title}</span>
+      <span className="mt-px text-compact text-muted">{note}</span>
     </Link>
   );
 }

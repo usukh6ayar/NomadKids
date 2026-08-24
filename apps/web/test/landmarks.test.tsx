@@ -76,9 +76,9 @@ describe("landmark naming", () => {
     expect(referenced.length).toBeGreaterThan(10);
 
     const dangling = referenced.filter((r) => !defined.has(r.id));
-    expect(
-      dangling.map((r) => `${r.file} → aria-labelledby="${r.id}" has no matching id`),
-    ).toEqual([]);
+    expect(dangling.map((r) => `${r.file} → aria-labelledby="${r.id}" has no matching id`)).toEqual(
+      [],
+    );
   });
 });
 

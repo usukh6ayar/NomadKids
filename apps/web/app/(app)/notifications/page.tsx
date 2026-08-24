@@ -117,7 +117,7 @@ export default function NotificationsPage() {
               </Button>
             ) : null}
 
-            <div className="flex gap-1 rounded-[12px] border border-border bg-surface p-1">
+            <div className="flex gap-1 rounded-control border border-border bg-surface p-1">
               <FilterButton active={!showUnreadOnly} onClick={() => setShowUnreadOnly(false)}>
                 Бүгд
               </FilterButton>
@@ -165,13 +165,13 @@ export default function NotificationsPage() {
       <div ref={sentinel} aria-hidden="true" className="h-px" />
 
       {isFetchingNextPage ? (
-        <p role="status" className="py-2 text-center text-sm text-muted">
+        <p role="status" className="py-2 text-center text-body text-muted">
           Ачаалж байна…
         </p>
       ) : null}
 
       {!hasNextPage && items.length > 0 ? (
-        <p className="py-2 text-center text-sm text-muted">Бүх мэдэгдлийг үзлээ.</p>
+        <p className="py-2 text-center text-body text-muted">Бүх мэдэгдлийг үзлээ.</p>
       ) : null}
     </div>
   );
@@ -193,7 +193,7 @@ function FilterButton({
       onClick={onClick}
       className={cn(
         // 44px, not 40: this is the tap floor the rest of the product holds to.
-        "min-h-[44px] rounded-[10px] px-3 text-sm font-medium",
+        "min-h-[44px] rounded-control px-3 text-body font-medium",
         active ? "bg-primary-soft text-primary" : "text-muted hover:text-ink",
       )}
     >
@@ -225,7 +225,7 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
       }}
       // Its own card, per `.kidrow`. The border moving to the brand colour is
       // the reference's hover affordance for a row that is a link.
-      className="flex min-h-[72px] items-start gap-3 rounded-[14px] border border-border bg-surface px-4 py-3 transition-colors hover:border-primary"
+      className="flex min-h-[72px] items-start gap-3 rounded-row border border-border bg-surface px-4 py-3 transition-colors hover:border-primary"
     >
       {/*
         Unread is signalled three ways — a dot, a bolder title, and an sr-only
@@ -235,7 +235,7 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
       <span
         aria-hidden="true"
         className={cn(
-          "mt-2 size-2 shrink-0 rounded-full",
+          "mt-2 size-2 shrink-0 rounded-pill",
           isUnread ? "bg-primary" : "bg-transparent",
         )}
       />
@@ -249,7 +249,7 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
           {notification.isImportant ? <Badge tone="peach">Чухал</Badge> : null}
         </span>
 
-        <span className="mt-0.5 block text-sm text-muted">{excerpt(notification.body, 110)}</span>
+        <span className="mt-0.5 block text-body text-muted">{excerpt(notification.body, 110)}</span>
 
         {/*
           Photos, as a feed shows them: one fills the width, several become a
@@ -260,7 +260,7 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
         {notification.media.length > 0 ? (
           <span
             className={cn(
-              "mt-2 grid gap-1.5 overflow-hidden rounded-[12px]",
+              "mt-2 grid gap-1.5 overflow-hidden rounded-control",
               notification.media.length === 1 ? "grid-cols-1" : "grid-cols-2 sm:grid-cols-3",
             )}
           >
@@ -276,7 +276,7 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
         ) : null}
 
         <span className="mt-1 flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs text-muted">
+          <span className="text-caption text-muted">
             {[
               fullName(notification.author),
               formatRelative(notification.publishedAt ?? notification.createdAt),

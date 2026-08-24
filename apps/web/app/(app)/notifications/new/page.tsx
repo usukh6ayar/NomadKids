@@ -84,7 +84,7 @@ function ComposeNotice() {
     return (
       <div>
         <PageHeader title="Шинэ мэдэгдэл" />
-        <Card className="px-4 py-6 text-sm text-muted">
+        <Card className="px-4 py-6 text-body text-muted">
           Та ямар нэг цэцэрлэгт бүртгэлгүй байна.
         </Card>
       </div>

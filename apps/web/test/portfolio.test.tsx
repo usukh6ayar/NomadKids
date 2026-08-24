@@ -48,7 +48,10 @@ function stubPortfolio(dateOfBirth: string, ageProfiles: unknown[] = []) {
     },
     { path: `/children/${CHILD_ID}/age-profiles`, body: ageProfiles },
     { path: `/children/${CHILD_ID}/birthday-notes`, body: [] },
-    { path: `/children/${CHILD_ID}/media`, body: { items: [], page: 1, pageSize: 25, total: 0, totalPages: 0 } },
+    {
+      path: `/children/${CHILD_ID}/media`,
+      body: { items: [], page: 1, pageSize: 25, total: 0, totalPages: 0 },
+    },
     {
       path: `/children/${CHILD_ID}`,
       body: {

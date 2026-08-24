@@ -124,7 +124,10 @@ function AdminKindergarten() {
           />
 
           {save.isSuccess ? (
-            <p role="status" className="rounded-[12px] bg-mint px-3.5 py-2.5 text-sm text-mint-ink">
+            <p
+              role="status"
+              className="rounded-control bg-mint px-3.5 py-2.5 text-body text-mint-ink"
+            >
               Хадгалагдлаа.
             </p>
           ) : null}

@@ -144,7 +144,10 @@ function DetailsForm({
           />
 
           {save.isSuccess ? (
-            <p role="status" className="rounded-[12px] bg-mint px-3.5 py-2.5 text-sm text-mint-ink">
+            <p
+              role="status"
+              className="rounded-control bg-mint px-3.5 py-2.5 text-body text-mint-ink"
+            >
               Хадгалагдлаа.
             </p>
           ) : null}
@@ -295,7 +298,8 @@ function TransferCard({ childId }: { childId: string }) {
 
   return (
     <section aria-labelledby="transfer-heading">
-      <SectionHeader id="transfer-heading"
+      <SectionHeader
+        id="transfer-heading"
         title="Бүлэг шилжүүлэх"
         lede="Одоогийн бүртгэл автоматаар хаагдаж, шинэ бүлэгт нээгдэнэ."
       />
@@ -312,7 +316,10 @@ function TransferCard({ childId }: { childId: string }) {
           <FormError message={move.isError ? errorMessage(move.error) : null} />
 
           {move.isSuccess ? (
-            <p role="status" className="rounded-[12px] bg-mint px-3.5 py-2.5 text-sm text-mint-ink">
+            <p
+              role="status"
+              className="rounded-control bg-mint px-3.5 py-2.5 text-body text-mint-ink"
+            >
               Шилжүүллээ.
             </p>
           ) : null}
@@ -362,13 +369,14 @@ function ArchiveCard({ childId, childName }: { childId: string; childName: strin
 
   return (
     <section aria-labelledby="archive-heading">
-      <SectionHeader id="archive-heading"
+      <SectionHeader
+        id="archive-heading"
         title="Архивлах"
         lede="Хүүхэд жагсаалтад харагдахаа болино. Бүртгэл нь устахгүй."
       />
 
       <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
-        <p className="text-sm text-muted">
+        <p className="text-body text-muted">
           Цэцэрлэгээс гарсан хүүхдийг архивлана. Ажиглалт, үнэлгээ нь хадгалагдана.
         </p>
         <ArchiveButton

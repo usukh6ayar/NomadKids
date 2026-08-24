@@ -1,13 +1,34 @@
 # NomadKids — UI/UX audit
 
-> **Status, 2026-08-24.** Findings **0.1–0.4 are fixed** and covered by
-> regression tests (`test/search.test.tsx`, `test/landmarks.test.tsx`,
-> `test/page-header.test.tsx` — 9 tests; suite 121 passing). Each was confirmed
-> to fail with its fix reverted.
+> **Status, 2026-08-24.** Fixed and covered by regression tests:
 >
-> **Open:** 0.5 (`role="tablist"` on the parent's child chips — a verified defect,
-> not yet scheduled), 1.1 (portfolio `<details>` collapse), 4.1/4.2 (radius tokens
-> and type scale), and the judgement items in Parts 1–3.
+> | Finding | Where | Tests |
+> |---|---|---|
+> | 0.1 header search discarded `?q=` | `children/page.tsx` | `test/search.test.tsx` |
+> | 0.2 17 landmarks with dangling `aria-labelledby` | `ui/card.tsx` + 8 sites | `test/landmarks.test.tsx` |
+> | 0.3 `<h1>` lighter than its section headings | `app-shell.tsx`, `dashboard` | `test/page-header.test.tsx` |
+> | 0.4 identity rendered twice on staff desktop | `app-shell.tsx` | `test/page-header.test.tsx` |
+> | 0.5 child chips claimed `role="tablist"` | `home/page.tsx` | `test/landmarks.test.tsx` |
+> | 1.1 portfolio opened nine empty boxes | `age-section-shell.tsx` | `test/portfolio.test.tsx` |
+> | 4.1 radius tokens bypassed | 53 files | `test/tokens.test.tsx` |
+> | 4.2 no type scale (20 sizes) | 53 files | `test/tokens.test.tsx` |
+>
+> Suite 135 passing. Each defect fix was confirmed to fail with its fix reverted.
+>
+> **Two bugs surfaced by the work itself**, neither in the audit:
+> - The header's search `<input>` carried `text-sm`, which beats the
+>   `input { font-size: 16px }` rule in `globals.css` and triggers the iOS
+>   focus-zoom that rule exists to prevent. Fixed; `tokens.test.tsx` now bans a
+>   font-size class on any text control.
+> - Naming the scale `text-caption` … `text-display` collided with
+>   tailwind-merge, which treats an unrecognised `text-*` as a **colour** and so
+>   silently dropped `text-primary-ink` from every filled button. Fixed by
+>   registering the steps as a `font-size` group in `lib/utils.ts`.
+>
+> **Open:** the judgement items in Parts 1–3 — 1.2 (login tabs), 1.3/1.4
+> (duplicate dashboard tiles), 1.5 (two icon systems), 2.1 (five-button hero
+> row), 2.2/2.3 (portfolio navigation and the age row's inverted signal),
+> 2.5–2.7, 3.1 (five meanings of "Хавтас"), 3.2–3.4, 4.3, 4.4.
 
 **Scope.** Teacher dashboard, child detail, portfolio, parent home, children list,
 login, and the shared design system (`globals.css`, `ui/*`, `shell/*`).

@@ -78,7 +78,7 @@ export default function NotificationDetailPage() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Link
           href="/notifications"
-          className="inline-flex min-h-[44px] items-center text-sm text-primary underline underline-offset-4"
+          className="inline-flex min-h-[44px] items-center text-body text-primary underline underline-offset-4"
         >
           ← Мэдэгдэл
         </Link>
@@ -101,11 +101,11 @@ export default function NotificationDetailPage() {
 
       <Card className="px-4 py-5 sm:px-6">
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <h1 className="text-lg font-semibold text-ink">{notification.title}</h1>
+          <h1 className="text-title font-semibold text-ink">{notification.title}</h1>
           {notification.isImportant ? <Badge tone="peach">Чухал</Badge> : null}
         </div>
 
-        <p className="mt-1 text-sm text-muted">
+        <p className="mt-1 text-body text-muted">
           {[
             fullName(notification.author),
             formatLongDate(notification.publishedAt ?? notification.createdAt),
@@ -129,7 +129,7 @@ export default function NotificationDetailPage() {
           typed. An announcement about a school trip is a list of times, and
           collapsing it into a paragraph makes it unreadable.
         */}
-        <div className="mt-5 whitespace-pre-wrap text-[15px] leading-relaxed text-ink">
+        <div className="mt-5 whitespace-pre-wrap text-lead leading-relaxed text-ink">
           {notification.body}
         </div>
 
@@ -144,7 +144,9 @@ export default function NotificationDetailPage() {
                   // opened to look at the picture.
                   className="aspect-auto max-h-[70vh] w-full object-contain"
                 />
-                {photo.caption ? <p className="mt-1 text-xs text-muted">{photo.caption}</p> : null}
+                {photo.caption ? (
+                  <p className="mt-1 text-caption text-muted">{photo.caption}</p>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -161,7 +163,7 @@ export default function NotificationDetailPage() {
             likedByMe={notification.likedByMe}
           />
           {notification.likeCount > 0 ? (
-            <span className="text-sm text-muted">{notification.likeCount} хүн таалав</span>
+            <span className="text-body text-muted">{notification.likeCount} хүн таалав</span>
           ) : null}
         </div>
       </Card>

@@ -45,7 +45,7 @@ export default function ParentHomePage() {
   if (isLoading) {
     return (
       <div className="flex flex-col gap-5 py-2">
-        <h1 className="text-xl font-semibold text-ink">Нүүр</h1>
+        <h1 className="text-heading font-semibold text-ink">Нүүр</h1>
         <LoadingState rows={3} />
       </div>
     );
@@ -54,7 +54,7 @@ export default function ParentHomePage() {
   if (isError) {
     return (
       <div className="py-2">
-        <h1 className="mb-4 text-xl font-semibold text-ink">Нүүр</h1>
+        <h1 className="mb-4 text-heading font-semibold text-ink">Нүүр</h1>
         <ErrorState
           description={errorMessage(error)}
           action={
@@ -72,7 +72,7 @@ export default function ParentHomePage() {
   if (children.length === 0) {
     return (
       <div className="flex flex-col gap-5 py-2">
-        <h1 className="text-xl font-semibold text-ink">Нүүр</h1>
+        <h1 className="text-heading font-semibold text-ink">Нүүр</h1>
         <EmptyState
           title="Хүүхэд холбогдоогүй байна"
           description="Танд холбогдсон хүүхэд байхгүй байна. Цэцэрлэгийн багштайгаа холбогдоно уу."
@@ -85,7 +85,7 @@ export default function ParentHomePage() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <h1 className="text-xl font-semibold text-ink">Нүүр</h1>
+      <h1 className="text-heading font-semibold text-ink">Нүүр</h1>
 
       {/*
         ★ A group of toggles, not a tab set.
@@ -118,7 +118,7 @@ export default function ParentHomePage() {
                 aria-pressed={active}
                 onClick={() => setSelectedId(child.id)}
                 className={cn(
-                  "flex min-h-[44px] shrink-0 items-center gap-2 rounded-[999px] border px-3 py-2 text-sm font-medium",
+                  "flex min-h-[44px] shrink-0 items-center gap-2 rounded-pill border px-3 py-2 text-body font-medium",
                   active
                     ? "border-primary bg-primary-soft text-primary"
                     : "border-border bg-surface text-muted",
@@ -135,8 +135,8 @@ export default function ParentHomePage() {
       <Card className="flex flex-wrap items-center gap-4 px-4 py-4 sm:px-5">
         <ChildAvatar child={selected} size={56} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-lg font-semibold text-ink">{fullName(selected)}</p>
-          <p className="text-sm text-muted">
+          <p className="truncate text-title font-semibold text-ink">{fullName(selected)}</p>
+          <p className="text-body text-muted">
             {[formatAge(selected.dateOfBirth), selected.group?.name].filter(Boolean).join(" · ")}
           </p>
         </div>
@@ -158,7 +158,8 @@ export default function ParentHomePage() {
 
       {selected.assessments.length > 0 ? (
         <section aria-labelledby="development-heading">
-          <SectionHeader id="development-heading"
+          <SectionHeader
+            id="development-heading"
             title={currentTerm ? `${currentTerm.name} — хөгжлийн үнэлгээ` : "Хөгжлийн үнэлгээ"}
           />
           <Card className="flex flex-wrap gap-2 px-4 py-4">
@@ -199,14 +200,16 @@ export default function ParentHomePage() {
                       <Badge tone="peach">Буцаагдсан</Badge>
                     ) : null}
                   </span>
-                  <span className="mt-0.5 block text-sm text-muted">
+                  <span className="mt-0.5 block text-body text-muted">
                     {excerpt(item.situation, 100) || "Тайлбаргүй"}
                   </span>
                   {children.length > 1 && item.child ? (
-                    <span className="mt-0.5 block text-xs text-muted">{fullName(item.child)}</span>
+                    <span className="mt-0.5 block text-caption text-muted">
+                      {fullName(item.child)}
+                    </span>
                   ) : null}
                 </span>
-                <span className="shrink-0 whitespace-nowrap text-xs text-muted">
+                <span className="shrink-0 whitespace-nowrap text-caption text-muted">
                   {formatRelative(item.observedOn)}
                 </span>
               </Link>
