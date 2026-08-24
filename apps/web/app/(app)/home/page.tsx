@@ -2,9 +2,9 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { BookOpen, Plus } from "lucide-react";
+import { Bell, BookOpen, ChevronRight, Plus, TrendingUp } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { parentDashboardSchema } from "@kinder/contracts";
+import { parentDashboardSchema, unreadCountSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
@@ -16,7 +16,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
 import { useSession } from "@/lib/auth/session";
 import { excerpt, formatAge, formatRelative, fullName } from "@/lib/format";
-import { PORTFOLIO } from "@/lib/vocabulary";
+import { GALLERY, PORTFOLIO } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
 
 /**
@@ -35,6 +35,16 @@ export default function ParentHomePage() {
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: qk.dashboard.parent(),
     queryFn: () => get("/dashboard/parent", parentDashboardSchema),
+  });
+
+  // Powers the "Ангийн самбар" preview row below — the same count the header
+  // bell and the bottom bar's badge show, reused here as a share reason to
+  // open /notifications rather than a bare number.
+  const { data: unread } = useQuery({
+    queryKey: qk.unreadCount(),
+    queryFn: () => get("/notifications/unread-count", unreadCountSchema),
+    staleTime: 60_000,
+    retry: false,
   });
 
   /**
@@ -177,6 +187,67 @@ export default function ParentHomePage() {
           </Button>
         </div>
       </Card>
+
+      {/*
+        ★ Two entry points, restyled to the reference's icon-circle row —
+        `RowCard`'s own radius and border, applied straight to the `Link` since
+        the whole row is the click target, matching `ChildRow` elsewhere.
+        Every reference card that named an out-of-MVP feature (Ирц, Хоол ба
+        цэс, Санхүү, Чат, Судалгаа — CLAUDE.md §7) is left out rather than
+        dimmed or marked "удахгүй": the sidebar's own rule already forbids a
+        menu entry that goes nowhere, and the same reasoning holds here.
+      */}
+      <section aria-labelledby="board-heading">
+        <SectionHeader id="board-heading" title="Ангийн самбар" />
+        <Link
+          href="/notifications"
+          className="flex min-h-16 items-center gap-3 rounded-row border border-border bg-surface px-4 py-3 transition-colors hover:border-primary"
+        >
+          <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-sky text-sky-ink">
+            <Bell size={20} aria-hidden />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-semibold text-ink">
+              {unread && unread.count > 0 ? `${unread.count} шинэ мэдээ байна` : "Шинэ мэдээ алга"}
+            </span>
+            <span className="block text-body text-muted">Ангийн сүүлийн мэдээллийг харах</span>
+          </span>
+          <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden />
+        </Link>
+      </section>
+
+      <section aria-labelledby="highlights-heading">
+        <SectionHeader id="highlights-heading" title="Оюун-ийн мэдээлэл" />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Link
+            href={`/children/${selected.id}/portfolio`}
+            className="flex items-center gap-3 rounded-row border border-border bg-surface px-4 py-4 transition-colors hover:border-primary"
+          >
+            <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-primary-soft text-primary">
+              <BookOpen size={20} aria-hidden />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold text-ink">{PORTFOLIO}</span>
+              <span className="block text-body text-muted">{GALLERY}, "Миний тухай", хөгжлийн түүх</span>
+            </span>
+            <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden />
+          </Link>
+
+          <Link
+            href={`/children/${selected.id}`}
+            className="flex items-center gap-3 rounded-row border border-border bg-surface px-4 py-4 transition-colors hover:border-primary"
+          >
+            <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-mint text-mint-ink">
+              <TrendingUp size={20} aria-hidden />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold text-ink">Хөгжил ба цэцэрлэгтээ</span>
+              <span className="block text-body text-muted">Ажиглалт, хөгжлийн ахиц</span>
+            </span>
+            <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden />
+          </Link>
+        </div>
+      </section>
 
       {selected.assessments.length > 0 ? (
         <section aria-labelledby="development-heading">
