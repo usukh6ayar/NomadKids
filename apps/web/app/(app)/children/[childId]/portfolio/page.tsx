@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
-import { ChildHeader } from "@/components/child/child-header";
+import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { ChildGallery } from "@/components/media/child-gallery";
 import { fullName } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -130,7 +130,7 @@ export default function PortfolioPage() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <ChildHeader child={data} />
+      <ChildHeroProfile child={data} />
 
       <nav aria-label="Хавтасны хэсгүүд" className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-2">
@@ -315,7 +315,7 @@ function AboutMeSection({
 
   return (
     <section id="about-me" aria-labelledby="about-me-heading" className="scroll-mt-20">
-      <SectionHeader
+      <SectionHeader id="about-me-heading"
         title="Миний тухай"
         action={
           !editing ? (
@@ -551,6 +551,7 @@ function AgeSection({
   return (
     <section id={`age-${age}`} aria-labelledby={`age-${age}-heading`} className="scroll-mt-20">
       <SectionHeader
+        id={`age-${age}-heading`}
         title={`${age} нас`}
         action={
           !editing ? (
@@ -726,7 +727,7 @@ function BirthdaySection({
 
   return (
     <section id="birthdays" aria-labelledby="birthdays-heading" className="scroll-mt-20">
-      <SectionHeader title="Төрсөн өдрийн тэмдэглэл" />
+      <SectionHeader id="birthdays-heading" title="Төрсөн өдрийн тэмдэглэл" />
 
       {isLoading ? (
         <LoadingState rows={1} />

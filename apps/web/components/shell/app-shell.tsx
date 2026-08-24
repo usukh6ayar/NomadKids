@@ -2,9 +2,10 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import { Bell, Search } from "lucide-react";
+import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { unreadCountSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -36,61 +37,221 @@ export interface NavSection {
   entries: { label: string; href: string }[];
 }
 
-/** The tinted quick-links box above the sections — the reference's `.nav-shortcuts`. */
-export interface NavShortcut {
-  href: string;
-  label: string;
-  icon: ReactNode;
-}
-
 /**
  * The page header: a title, an optional supporting line, and who is signed in.
  *
  * ★ Ported from the reference's `.topbar`, which every one of its screens uses.
- * The identity pill sits at the right on a desktop and disappears below 900px,
- * where the phone header already carries it — the reference's own resolution of
- * the same duplication, and the reason the pill is `hidden lg:flex` here.
+ * The identity pill sits at the right and disappears below 900px, where the
+ * phone header already carries it — the reference's own resolution of that
+ * duplication, and the reason the pill is `hidden lg:flex` here. It also
+ * disappears for staff at every width, because their sidebar carries it; see
+ * `hasSidebar` below.
  *
  * The lede is what makes a screen explain itself: "Хариуцсан бүлгийн хүүхдүүд"
  * under "Хүүхдүүд". Optional, because a few screens genuinely have nothing to
  * add and a placeholder sentence is worse than none.
+ *
+ * ★★ The bell and the search box are opt-in, and neither is decoration.
+ *
+ * `search` renders a real field: `/children` already accepts `?q=` and the API
+ * already filters on it, so submitting navigates into the existing search
+ * rather than into a box that swallows what you type. It is off by default —
+ * a search field on a settings screen searches nothing.
+ *
+ * The bell shows from `lg` up, beside the identity pill. It duplicates the
+ * sidebar's Мэдэгдэл entry on purpose — the sidebar answers "where do I go",
+ * the bell answers "is there anything new", and both read the same query — but
+ * only where the phone's bottom bar is not already answering the second
+ * question three inches below. See `NotificationBell`.
  */
 export function PageHeader({
   title,
   lede,
   actions,
+  search = false,
 }: {
   title: string;
   lede?: string;
   /** Trailing controls — a count, a filter, a primary action. */
   actions?: ReactNode;
+  /** Shows the header search field. Screens with something to search set it. */
+  search?: boolean;
 }) {
-  const { session, roles } = useSession();
-  const roleLabel = roles.has("TEACHER") ? "Багш" : roles.has("ADMIN") ? "Админ" : "Эцэг эх";
+  const { session, hasRole } = useSession();
+
+  /*
+   * ★ The identity pill is for the audiences that have no sidebar.
+   *
+   * It used to render for everyone from `lg` up — which is exactly the width
+   * where a teacher's sidebar is showing `WhoAmI` with the same name three
+   * inches to the left, and describing the same person differently: "Багш" in
+   * the pill, "Багшийн хэсэг" at the foot of the sidebar. One person, twice, two
+   * descriptions, on the same screen.
+   *
+   * The condition matches `AppLayout`'s `isStaff`, which is what picks
+   * `variant="teacher"` and therefore what decides the sidebar exists. Reading
+   * roles here rather than taking a prop keeps `PageHeader` usable from any
+   * screen without every screen having to know which shell wraps it — and the
+   * two derivations cannot drift apart, because there is only one rule: staff
+   * have a sidebar, and a sidebar already says who you are.
+   */
+  const hasSidebar = hasRole("TEACHER") || hasRole("ADMIN");
 
   return (
-    <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      {/* No `flex-1`: the search below centres itself with auto margins, and a
+          title that grew to fill the row would leave those margins nothing to
+          absorb. `min-w-0` still lets a long title shrink rather than push. */}
       <div className="min-w-0">
-        <h1 className="text-[1.5rem] leading-[1.35] tracking-[-.01em] text-ink">{title}</h1>
+        {/*
+          ★ `font-semibold` is not decoration here.
+
+          Tailwind's preflight resets heading weight to `inherit`, so without it
+          this `<h1>` rendered at 400 while `SectionHeader`'s `<h2>` renders at
+          600 — every section heading on every screen was bolder than the page
+          title above it, which is the hierarchy exactly inverted. Every other
+          heading in the product sets its weight explicitly; this was the one
+          that did not.
+        */}
+        <h1 className="text-[1.5rem] font-semibold leading-[1.35] tracking-[-.01em] text-ink">
+          {title}
+        </h1>
         {lede ? <p className="mt-0.5 text-sm text-muted">{lede}</p> : null}
       </div>
 
-      <div className="flex shrink-0 items-center gap-3">
+      {/*
+        Centred between the title and the identity cluster from `lg` up, and a
+        full-width row of its own below it — at 375px a field sharing a line
+        with a title is about 90px wide, which fits neither a name nor a
+        placeholder.
+      */}
+      {search ? (
+        <HeaderSearch className="order-last basis-full lg:order-none lg:basis-auto" />
+      ) : null}
+
+      <div className="flex shrink-0 items-center gap-2">
         {actions}
 
-        <span className="hidden items-center gap-2.5 rounded-full border border-border bg-surface py-1.5 pl-1.5 pr-3.5 lg:flex">
-          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary-soft text-xs font-semibold text-primary">
-            {initials(session?.user)}
-          </span>
-          <span className="min-w-0">
-            <span className="block max-w-[180px] truncate text-[.87rem] font-semibold leading-[1.2] text-ink">
-              {fullName(session?.user)}
+        <NotificationBell />
+
+        {hasSidebar ? null : (
+          <span className="hidden items-center gap-2.5 rounded-full border border-border bg-surface py-1.5 pl-1.5 pr-3.5 lg:flex">
+            <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary-soft text-xs font-semibold text-primary">
+              {initials(session?.user)}
             </span>
-            <span className="block text-[.75rem] text-muted">{roleLabel}</span>
+            <span className="min-w-0">
+              <span className="block max-w-[180px] truncate text-[.87rem] font-semibold leading-[1.2] text-ink">
+                {fullName(session?.user)}
+              </span>
+              <span className="block text-[.75rem] text-muted">Эцэг эх</span>
+            </span>
           </span>
-        </span>
+        )}
       </div>
     </div>
+  );
+}
+
+/**
+ * The header search field.
+ *
+ * ★ A form that submits, not a box that filters as you type.
+ *
+ * `/children` has its own debounced live search, and that is the right
+ * behaviour *on* a list you are looking at. From a header the same behaviour
+ * would push a route on every keystroke, so this submits once — Enter, or the
+ * button — and lands on `/children?q=…`, where the list picks the term up from
+ * the URL and takes over.
+ *
+ * The label is `sr-only` rather than absent. A placeholder is not a label
+ * (CLAUDE.md §5): it disappears the moment someone types, and a screen reader
+ * reaching a bare text field announces "edit text" and nothing else.
+ *
+ * The id comes from `useId()`, as every other control in the product does. A
+ * literal would be unique only while exactly one screen opts in — the second
+ * one, or a transition that briefly mounts two headers, gives two elements the
+ * same id and the label silently binds to whichever rendered first.
+ */
+function HeaderSearch({ className }: { className?: string }) {
+  const router = useRouter();
+  const [term, setTerm] = useState("");
+  const id = useId();
+
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const q = term.trim();
+    // An empty submit opens the unfiltered list rather than doing nothing —
+    // pressing Enter and getting no response reads as a broken control.
+    router.push(q ? `/children?q=${encodeURIComponent(q)}` : "/children");
+  };
+
+  return (
+    <form
+      role="search"
+      onSubmit={onSubmit}
+      className={cn("min-w-0 lg:mx-auto lg:w-[min(420px,32vw)]", className)}
+    >
+      <label htmlFor={id} className="sr-only">
+        Хүүхэд хайх
+      </label>
+      <div className="relative">
+        <Search
+          size={18}
+          aria-hidden="true"
+          className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
+        />
+        <input
+          id={id}
+          type="search"
+          value={term}
+          onChange={(event) => setTerm(event.target.value)}
+          placeholder="Хүүхдийн нэрээр хайх…"
+          className="h-[44px] w-full rounded-pill border border-border bg-surface pl-10 pr-3.5 text-sm text-ink transition-colors placeholder:text-muted focus:border-primary focus:outline-none"
+        />
+      </div>
+    </form>
+  );
+}
+
+/**
+ * The notification bell.
+ *
+ * The badge is red — `--color-danger`, which carries white text at 5.44:1 —
+ * rather than the brand blue it used to be. On a screen whose primary action is
+ * that same blue, a blue count beside a blue button stopped reading as
+ * "unresolved".
+ *
+ * ★ The number is inside the badge and repeated in the link's accessible name.
+ * A dot alone says "something changed" to everyone who can see it and nothing
+ * at all to anyone who cannot.
+ *
+ * ★★ Desktop only, like the identity pill beside it.
+ *
+ * `PageHeader` is shared with the parent's screens, and below `lg` every
+ * audience already has Мэдэгдэл in the bottom bar carrying the same count. The
+ * bell earns its place where that bar is gone or the menu is a column of
+ * destinations rather than a live count — not next to a copy of itself on a
+ * 375px screen.
+ */
+function NotificationBell() {
+  const count = useUnreadCount();
+
+  return (
+    <Link
+      href="/notifications"
+      aria-label={count > 0 ? `Мэдэгдэл, ${count} уншаагүй` : "Мэдэгдэл"}
+      className="relative hidden size-11 shrink-0 place-items-center rounded-[12px] text-muted transition-colors hover:bg-canvas hover:text-ink lg:grid"
+    >
+      <Bell size={20} strokeWidth={2} aria-hidden="true" />
+      {count > 0 ? (
+        <span
+          aria-hidden="true"
+          className="absolute right-1 top-1 flex min-w-[18px] items-center justify-center rounded-full bg-danger px-1 text-[11px] font-bold leading-[18px] text-white"
+        >
+          {count > 99 ? "99+" : count}
+        </span>
+      ) : null}
+    </Link>
   );
 }
 
@@ -112,14 +273,12 @@ export function PageHeader({
 export function AppShell({
   nav,
   sections,
-  shortcuts,
   children,
   variant = "teacher",
 }: {
   nav: NavItem[];
   /** Desktop sidebar sections. Without them the sidebar renders `nav` flat. */
   sections?: NavSection[];
-  shortcuts?: NavShortcut[];
   children: ReactNode;
   variant?: "teacher" | "parent";
 }) {
@@ -128,9 +287,7 @@ export function AppShell({
 
   return (
     <div className="min-h-dvh bg-canvas">
-      {desktopSidebar ? (
-        <Sidebar nav={nav} sections={sections} shortcuts={shortcuts} subtitle={subtitle} />
-      ) : null}
+      {desktopSidebar ? <Sidebar nav={nav} sections={sections} subtitle={subtitle} /> : null}
 
       <MobileHeader variant={variant} subtitle={subtitle} />
 
@@ -192,7 +349,7 @@ function Brand({ subtitle }: { subtitle: string }) {
         />
       </span>
       <span className="min-w-0">
-        <span className="block text-[.9rem] font-bold leading-[1.25] text-ink">
+        <span className="block text-[.9rem] font-semibold leading-[1.25] text-ink">
           Хүүхдийн хөгжлийн
           <br />
           цахим хувийн хавтас
@@ -239,19 +396,17 @@ function WhoAmI({ subtitle }: { subtitle: string }) {
 function Sidebar({
   nav,
   sections,
-  shortcuts,
   subtitle,
 }: {
   nav: NavItem[];
   sections?: NavSection[];
-  shortcuts?: NavShortcut[];
   subtitle: string;
 }) {
   const pathname = usePathname();
 
-  // The first item stays a top-level link above the shortcuts box, as
-  // "Хяналтын самбар" does in the reference. The rest are reachable from the
-  // sections below and from the bottom bar on a phone.
+  // The first item stays a top-level link above the sections, as "Хяналтын
+  // самбар" does in the reference. The rest are reachable from the sections
+  // below and from the bottom bar on a phone.
   const [primary] = nav;
 
   return (
@@ -275,8 +430,6 @@ function Sidebar({
       <div className="-mr-1.5 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1.5">
         {primary ? <NavLink item={primary} pathname={pathname} orientation="vertical" /> : null}
 
-        {shortcuts?.length ? <NavShortcuts shortcuts={shortcuts} /> : null}
-
         {sections?.length
           ? sections.map((section) => (
               <NavGroup key={section.title} section={section} pathname={pathname} />
@@ -293,47 +446,17 @@ function Sidebar({
   );
 }
 
-/**
- * The quick-links box.
+/*
+ * ★ The quick-links box ("Түргэн холбоос") was removed on 2026-08-23.
  *
- * ★ Warm, where the reference is cool blue.
- *
- * The reference tints this `#f7fbff` on a `#dbe9f3` border — the one cool
- * element in an otherwise warm product, and it reads as a widget bolted onto
- * the menu rather than part of it. The job it does is separation, and the warm
- * canvas does that just as well against the white sidebar.
- *
- * What carries "these are different" now is the label and the layout, not a
- * second colour temperature. One less decorative surface, per the platform
- * direction this product is being held to.
+ * Its three icons were Хүүхдүүд, Хянах and Самбар — all three already one line
+ * below in the sections, and all three already in the bottom bar on a phone. A
+ * tinted grid repeating what the menu underneath it says is the widget that
+ * makes a sidebar look like an admin template, and removing it is what lets the
+ * remaining sections read as the whole menu rather than as the part below the
+ * shortcuts. The `NavShortcut` type and `shortcuts` prop went with it: a prop
+ * nothing passes is the next person's puzzle.
  */
-function NavShortcuts({ shortcuts }: { shortcuts: NavShortcut[] }) {
-  return (
-    <section
-      aria-label="Түргэн холбоос"
-      className="my-2 grid grid-cols-3 gap-1 rounded-[12px] border border-border bg-canvas p-2.5"
-    >
-      {/*
-        11px, not the reference's .64rem (10.2px). An all-caps eyebrow at 10px
-        is the smallest type in the product and the hardest to read — the extra
-        pixel costs no layout and the letter-spacing still carries the style.
-      */}
-      <span className="col-span-full px-1 pb-1 pt-px text-[11px] font-extrabold tracking-[.08em] text-muted">
-        ТҮРГЭН ХОЛБООС
-      </span>
-      {shortcuts.map((s) => (
-        <Link
-          key={s.href}
-          href={s.href}
-          className="flex min-h-[44px] flex-col items-center justify-center gap-1 rounded-lg px-1 py-2 text-[.7rem] font-bold text-ink transition-colors hover:bg-surface hover:text-primary [&_svg]:text-primary"
-        >
-          {s.icon}
-          <span className="text-center leading-tight">{s.label}</span>
-        </Link>
-      ))}
-    </section>
-  );
-}
 
 /**
  * A collapsible section.
@@ -346,7 +469,7 @@ function NavShortcuts({ shortcuts }: { shortcuts: NavShortcut[] }) {
 function NavGroup({ section, pathname }: { section: NavSection; pathname: string }) {
   return (
     <details open className="border-b border-border py-0.5 [&[open]>summary>svg]:rotate-180">
-      <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between px-2.5 py-2 text-[.8rem] font-[750] text-ink [&::-webkit-details-marker]:hidden">
+      <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between px-2.5 py-2 text-[.8rem] font-semibold text-ink [&::-webkit-details-marker]:hidden">
         {section.title}
         <ChevronIcon />
       </summary>
@@ -359,9 +482,12 @@ function NavGroup({ section, pathname }: { section: NavSection; pathname: string
             href={entry.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "ml-3 flex min-h-[44px] items-center rounded-lg px-2.5 py-1.5 text-[.8rem] transition-colors",
+              "relative ml-3 flex min-h-[44px] items-center rounded-lg px-2.5 py-1.5 text-[.8rem] transition-colors",
               active
-                ? "bg-primary-soft font-semibold text-primary"
+                ? // The blue-700 rule is the active marker; the tint and the
+                  // weight are what make it readable. Three signals, because
+                  // colour alone must not carry the state.
+                  "bg-primary-soft font-semibold text-primary before:absolute before:-left-2 before:top-1/2 before:h-5 before:w-[3px] before:-translate-y-1/2 before:rounded-pill before:bg-primary"
                 : "text-muted hover:bg-canvas hover:text-ink",
             )}
           >
@@ -523,6 +649,12 @@ function NavLink({
           ? "min-h-[44px] gap-[11px] px-3 py-2.5 text-[.92rem]"
           : "min-h-[56px] flex-1 flex-col justify-center gap-1 px-1 py-2 text-[11px]",
         active ? "bg-primary-soft text-primary" : "text-muted hover:bg-canvas hover:text-ink",
+        // A blue-700 rule marks the current destination: down the left edge in
+        // the sidebar, across the top of a tab in the phone's bottom bar.
+        active &&
+          (orientation === "vertical"
+            ? "before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-pill before:bg-primary"
+            : "before:absolute before:inset-x-5 before:top-0 before:h-[3px] before:rounded-pill before:bg-primary"),
       )}
     >
       <span className="relative flex items-center justify-center">
@@ -537,17 +669,17 @@ function NavLink({
 }
 
 /**
- * The unread indicator.
+ * The unread count.
  *
  * Polled through the normal query cache with a short stale time —
  * `refetchOnWindowFocus` means returning to the tab updates it, which is the
  * MVP's stand-in for realtime (docs/ARCHITECTURE.md §7).
  *
- * The number is inside the dot, not conveyed by the dot's presence alone, and
- * it carries an `sr-only` phrase so it is announced as "3 уншаагүй мэдэгдэл"
- * rather than as a bare digit.
+ * ★ One hook, two call sites. The bell in the header and the badge on the nav
+ * item read the same query key, so they cannot disagree — and they share a
+ * single request, which is the whole point of the cache key being stable.
  */
-function UnreadDot() {
+function useUnreadCount(): number {
   const { data } = useQuery({
     queryKey: qk.unreadCount(),
     queryFn: () => get("/notifications/unread-count", unreadCountSchema),
@@ -555,13 +687,27 @@ function UnreadDot() {
     retry: false,
   });
 
-  const count = data?.count ?? 0;
+  return data?.count ?? 0;
+}
+
+/**
+ * The unread indicator on a navigation item.
+ *
+ * The number is inside the dot, not conveyed by the dot's presence alone, and
+ * it carries an `sr-only` phrase so it is announced as "3 уншаагүй мэдэгдэл"
+ * rather than as a bare digit.
+ *
+ * Red rather than the brand blue, matching the header bell — see
+ * `NotificationBell`.
+ */
+function UnreadDot() {
+  const count = useUnreadCount();
   if (count === 0) return null;
 
   return (
     // 11px: a number read at a glance from a phone in someone's hand, and
     // 10px was the smallest visible type anywhere in the product.
-    <span className="absolute -right-2.5 -top-1.5 flex min-w-[18px] items-center justify-center rounded-full bg-primary px-1 text-[11px] font-bold leading-[18px] text-primary-ink">
+    <span className="absolute -right-2.5 -top-1.5 flex min-w-[18px] items-center justify-center rounded-full bg-danger px-1 text-[11px] font-bold leading-[18px] text-white">
       <span aria-hidden="true">{count > 99 ? "99+" : count}</span>
       <span className="sr-only">{count} уншаагүй мэдэгдэл</span>
     </span>

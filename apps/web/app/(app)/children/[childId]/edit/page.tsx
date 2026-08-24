@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { z } from "zod";
-import { childDetailSchema, groupListItemSchema, paginated } from "@kinder/contracts";
+import { childDetailSchema, groupListItemSchema, paginated, SEX_LABEL } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
@@ -126,7 +126,7 @@ function DetailsForm({
 
   return (
     <section aria-labelledby="details-heading">
-      <SectionHeader title="Хувийн мэдээлэл" />
+      <SectionHeader id="details-heading" title="Хувийн мэдээлэл" />
 
       <Card className="px-4 py-4 sm:px-5">
         <form
@@ -185,8 +185,8 @@ function DetailsForm({
                   value={sex}
                   onChange={(e) => setSex(e.target.value)}
                 >
-                  <option value="MALE">Хүү</option>
-                  <option value="FEMALE">Охин</option>
+                  <option value="MALE">{SEX_LABEL.MALE}</option>
+                  <option value="FEMALE">{SEX_LABEL.FEMALE}</option>
                 </Select>
               )}
             </Field>
@@ -295,7 +295,7 @@ function TransferCard({ childId }: { childId: string }) {
 
   return (
     <section aria-labelledby="transfer-heading">
-      <SectionHeader
+      <SectionHeader id="transfer-heading"
         title="Бүлэг шилжүүлэх"
         lede="Одоогийн бүртгэл автоматаар хаагдаж, шинэ бүлэгт нээгдэнэ."
       />
@@ -362,7 +362,7 @@ function ArchiveCard({ childId, childName }: { childId: string; childName: strin
 
   return (
     <section aria-labelledby="archive-heading">
-      <SectionHeader
+      <SectionHeader id="archive-heading"
         title="Архивлах"
         lede="Хүүхэд жагсаалтад харагдахаа болино. Бүртгэл нь устахгүй."
       />

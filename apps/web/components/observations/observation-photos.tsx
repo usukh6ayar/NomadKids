@@ -51,7 +51,7 @@ export function ObservationPhotos({
 
   return (
     <section aria-labelledby="photos-heading">
-      <SectionHeader title="Зураг" as="h2" />
+      <SectionHeader id="photos-heading" title="Зураг" as="h2" />
 
       <Card className="flex flex-col gap-4 px-4 py-4 sm:px-5">
         {attached.length > 0 ? (

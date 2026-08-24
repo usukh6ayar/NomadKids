@@ -90,7 +90,7 @@ function ProfileForm() {
 
   return (
     <section aria-labelledby="profile-heading">
-      <SectionHeader title="Хувийн мэдээлэл" />
+      <SectionHeader id="profile-heading" title="Хувийн мэдээлэл" />
 
       <Card className="px-4 py-4 sm:px-5">
         <form
@@ -214,7 +214,7 @@ function PasswordForm() {
 
   return (
     <section aria-labelledby="password-heading">
-      <SectionHeader title="Нууц үг солих" />
+      <SectionHeader id="password-heading" title="Нууц үг солих" />
 
       <Card className="px-4 py-4 sm:px-5">
         <form

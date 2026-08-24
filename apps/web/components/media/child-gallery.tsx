@@ -90,7 +90,7 @@ export function ChildGallery({
 
   return (
     <section id="gallery" aria-labelledby="gallery-heading" className="scroll-mt-20">
-      <SectionHeader
+      <SectionHeader id="gallery-heading"
         title="Зураг, бүтээл"
         lede="Ажиглалтад хавсаргасан болон тусад нь нэмсэн бүх зураг."
         as="h2"

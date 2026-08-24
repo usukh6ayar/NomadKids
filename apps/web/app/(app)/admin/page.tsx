@@ -104,7 +104,7 @@ function AdminDashboard() {
       </section>
 
       <section aria-labelledby="coverage-heading">
-        <SectionHeader title="Улирлын үнэлгээний явц" />
+        <SectionHeader id="coverage-heading" title="Улирлын үнэлгээний явц" />
 
         {assessmentCoverage.length === 0 ? (
           <EmptyState
@@ -146,7 +146,7 @@ function AdminDashboard() {
       </section>
 
       <section aria-labelledby="activity-heading">
-        <SectionHeader title="Сүүлийн үйлдэл" />
+        <SectionHeader id="activity-heading" title="Сүүлийн үйлдэл" />
 
         {recentActivity.length === 0 ? (
           <EmptyState title="Үйлдэл бүртгэгдээгүй байна" />

@@ -87,9 +87,23 @@ export default function ParentHomePage() {
     <div className="flex flex-col gap-6 py-2">
       <h1 className="text-xl font-semibold text-ink">Нүүр</h1>
 
+      {/*
+        ★ A group of toggles, not a tab set.
+
+        These carried `role="tablist"` and `role="tab"` with `aria-selected`, and
+        none of what those roles promise was here: no `tabpanel`, no
+        `aria-controls`, no roving tabindex, no arrow-key movement. A screen
+        reader announced "tab, 1 of 3" and then the arrow keys did nothing, and a
+        keyboard user had to Tab past every child instead of one stop for the
+        group. Claiming a pattern is worse than not claiming one — it tells
+        somebody a structure exists and then withholds it.
+
+        `aria-pressed` is what these actually are: buttons that stay in. It is
+        also what `LoginTabs` uses, for the same reason and with the same note.
+      */}
       {children.length > 1 ? (
         <div
-          role="tablist"
+          role="group"
           aria-label="Хүүхэд сонгох"
           // Scrolls inside itself rather than widening the page — four children
           // with long names would otherwise push the layout sideways at 375px.
@@ -101,8 +115,7 @@ export default function ParentHomePage() {
               <button
                 key={child.id}
                 type="button"
-                role="tab"
-                aria-selected={active}
+                aria-pressed={active}
                 onClick={() => setSelectedId(child.id)}
                 className={cn(
                   "flex min-h-[44px] shrink-0 items-center gap-2 rounded-[999px] border px-3 py-2 text-sm font-medium",
@@ -145,7 +158,7 @@ export default function ParentHomePage() {
 
       {selected.assessments.length > 0 ? (
         <section aria-labelledby="development-heading">
-          <SectionHeader
+          <SectionHeader id="development-heading"
             title={currentTerm ? `${currentTerm.name} — хөгжлийн үнэлгээ` : "Хөгжлийн үнэлгээ"}
           />
           <Card className="flex flex-wrap gap-2 px-4 py-4">
@@ -159,7 +172,7 @@ export default function ParentHomePage() {
       ) : null}
 
       <section aria-labelledby="recent-heading">
-        <SectionHeader title="Сүүлийн мөчүүд" />
+        <SectionHeader id="recent-heading" title="Сүүлийн мөчүүд" />
 
         {recent.length === 0 ? (
           <EmptyState

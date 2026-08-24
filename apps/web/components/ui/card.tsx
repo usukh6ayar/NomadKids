@@ -2,12 +2,16 @@ import type { ComponentProps, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * A surface.
+ * A surface. White, a slate-200 hairline, and `shadow-sm`.
  *
- * Border plus the reference's `--shadow`, which is two very soft layers rather
- * than elevation. The canvas is a warm off-white four steps from the card's
- * white, and at that contrast a border alone reads as flat — the shadow is what
- * makes a card look placed on the page instead of cut out of it.
+ * ★ The shadow is Tailwind's own `shadow-sm`, not a hand-rolled pair of layers.
+ *
+ * It used to be a custom two-layer shadow inlined here — and inlined again in
+ * `auth-shell.tsx`, which is how two surfaces in one product end up a few
+ * percent apart. `shadow-sm` is a name both can spell, it is what the design
+ * system specifies, and it is barely visible by design: the separation comes
+ * from the border and the off-white canvas, with the shadow only lifting the
+ * card off it.
  *
  * 18px, matching `--radius` in the reference. It was 16px here, which made
  * every card in the product 2px tighter than the design.
@@ -15,10 +19,7 @@ import { cn } from "@/lib/utils";
 export function Card({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
-      className={cn(
-        "rounded-[18px] border border-border bg-surface shadow-[0_1px_2px_rgba(37,35,42,.04),0_6px_16px_rgba(37,35,42,.045)]",
-        className,
-      )}
+      className={cn("rounded-[18px] border border-border bg-surface shadow-sm", className)}
       {...props}
     />
   );
@@ -65,18 +66,36 @@ export function RowList({ className, ...props }: ComponentProps<"div">) {
  * `as` defaults to `h2`: the heading level is a document-structure decision the
  * calling screen makes, and getting it wrong makes a screen reader's outline
  * nonsense. It is a prop rather than a fixed tag for exactly that reason.
+ *
+ * ★ `id` lands on the heading, so a wrapping `<section aria-labelledby>` names
+ * itself with the heading it already renders.
+ *
+ * It exists because the alternative failed silently and at scale. Fourteen
+ * sections across seven files carried `aria-labelledby="…-heading"` pointing at
+ * ids that were never rendered — this component had no way to emit one — and a
+ * dangling `aria-labelledby` does not fall back to the content, it *erases* the
+ * accessible name. Seventeen landmarks announced as unnamed regions, every one
+ * of them looking correct in the markup.
+ *
+ * The other repair is `aria-label` on the section, which two dashboard
+ * components already use and document. That duplicates the string: the day a
+ * heading is reworded, the accessible name keeps the old wording and nothing
+ * fails. Passing an id keeps one string doing both jobs.
  */
 export function SectionHeader({
   title,
   lede,
   action,
   as: Tag = "h2",
+  id,
   className,
 }: {
   title: string;
   lede?: string;
   action?: ReactNode;
   as?: "h1" | "h2" | "h3";
+  /** Set it when a wrapping `<section>` points `aria-labelledby` at this heading. */
+  id?: string;
   className?: string;
 }) {
   return (
@@ -84,7 +103,9 @@ export function SectionHeader({
       className={cn("mb-3 flex flex-wrap items-start justify-between gap-x-3 gap-y-2", className)}
     >
       <div className="min-w-0">
-        <Tag className="text-[1.05rem] font-semibold leading-[1.35] text-ink">{title}</Tag>
+        <Tag id={id} className="text-[1.05rem] font-semibold leading-[1.35] text-ink">
+          {title}
+        </Tag>
         {lede ? <p className="mt-0.5 text-sm text-muted">{lede}</p> : null}
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}

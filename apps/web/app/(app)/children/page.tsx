@@ -2,8 +2,9 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Plus, Search } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { childSummarySchema, paginated } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
@@ -43,10 +44,37 @@ export default function ChildrenPage() {
 
 // ── Staff ────────────────────────────────────────────────────────────────────
 
+/**
+ * ★ `?q=` seeds the box, and changing it re-seeds the box.
+ *
+ * `PageHeader`'s search submits to `/children?q=…` from any screen. Its docblock
+ * has always said "the list picks the term up from the URL and takes over" —
+ * this is the half that was missing. Without it the header field navigated here
+ * and landed on a complete, unfiltered roster with an empty search box, which
+ * reads as "no results for a name I can see on the list".
+ *
+ * ★★ The URL seeds the state; it is not the state.
+ *
+ * Typing here stays local and debounced. Writing every keystroke back to the URL
+ * is precisely what `HeaderSearch` avoids doing — it would push a history entry
+ * per character — and it is not needed, because the only thing that has to
+ * survive a navigation is the term someone arrived with.
+ */
 function StaffChildren() {
-  const [query, setQuery] = useState("");
+  const searchParams = useSearchParams();
+  const urlQuery = searchParams.get("q") ?? "";
+
+  const [query, setQuery] = useState(urlQuery);
   const [page, setPage] = useState(1);
   const search = useDebounced(query.trim());
+
+  // Only when `?q=` itself changes — arriving from the header, or Back to an
+  // earlier search. Local typing does not touch `urlQuery`, so this does not
+  // fight the input on every keystroke.
+  useEffect(() => {
+    setQuery(urlQuery);
+    setPage(1);
+  }, [urlQuery]);
 
   const filters = { q: search || undefined, page, pageSize: 25 };
 
