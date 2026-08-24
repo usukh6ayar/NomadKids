@@ -1,6 +1,5 @@
 import { Body, Controller, Get, Param, Post, Put, Query } from "@nestjs/common";
 import { idParamSchema, paginationQuerySchema } from "@kinder/contracts";
-import { z } from "zod";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
@@ -109,8 +108,6 @@ export class AttendanceRequestController {
   }
 }
 
-const groupIdParamSchema = z.object({ id: z.uuid() });
-
 /** The group day sheet — every enrolled child, one day. */
 @Controller("groups/:id/attendance")
 export class GroupAttendanceController {
@@ -120,7 +117,7 @@ export class GroupAttendanceController {
   @Roles("TEACHER", "ADMIN")
   async daySheet(
     @CurrentActor() actor: Actor,
-    @Param(new ZodValidationPipe(groupIdParamSchema)) params: { id: string },
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
     @Query(new ZodValidationPipe(groupDaySheetQuerySchema)) query: GroupDaySheetQuery,
   ) {
     return this.service.groupDaySheet(actor, params.id, query.date);

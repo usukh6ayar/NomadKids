@@ -226,8 +226,9 @@ describe("attendance requests", () => {
       parentA,
     ).send({ decision: "APPROVED" });
 
-    // A logged-in parent hits the coarse @Roles("TEACHER", "ADMIN") gate.
-    expect(res.status).toBe(403);
+    // The coarse @Roles("TEACHER", "ADMIN") gate is 404 too — RolesGuard is
+    // uniformly 404, never 403, same reasoning as ChildAccessService.
+    expect(res.status).toBe(404);
   });
 });
 
