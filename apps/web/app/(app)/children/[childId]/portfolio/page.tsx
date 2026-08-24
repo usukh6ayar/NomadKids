@@ -5,7 +5,17 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { z } from "zod";
-import { BookOpen, Heart, MessageCircle, Pencil, Ruler, Sparkles, Sun, Weight } from "lucide-react";
+import {
+  BookOpen,
+  ChevronDown,
+  Heart,
+  MessageCircle,
+  Pencil,
+  Ruler,
+  Sparkles,
+  Sun,
+  Weight,
+} from "lucide-react";
 import {
   aboutMeSchema,
   ageProfileSchema,
@@ -16,13 +26,15 @@ import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors, isNotFound } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { AgeSectionShell } from "@/components/child/age-section-shell";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { ChildGallery } from "@/components/media/child-gallery";
-import { fullName } from "@/lib/format";
+import { ageInYears, fullName } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const PORTFOLIO_AGES = [2, 3, 4, 5] as const;
@@ -128,6 +140,12 @@ export default function PortfolioPage() {
     (g) => g.guardian?.id === session?.user.id && g.canView !== false,
   );
 
+  /*
+   * ★ Which years are already lived, so the sections for the rest arrive
+   * collapsed. RFP §4.3 keeps all four; only their default state changes.
+   */
+  const currentAge = ageInYears(data.dateOfBirth);
+
   return (
     <div className="flex flex-col gap-6 py-2">
       <ChildHeroProfile child={data} />
@@ -191,6 +209,7 @@ export default function PortfolioPage() {
           profile={ageProfiles.data?.find((p) => p.age === age)}
           isLoading={ageProfiles.isLoading}
           isGuardian={isGuardian}
+          currentAge={currentAge}
         />
       ))}
 
@@ -210,6 +229,7 @@ export default function PortfolioPage() {
         childId={childId}
         notes={birthdays.data ?? []}
         isLoading={birthdays.isLoading}
+        currentAge={currentAge}
       />
     </div>
   );
@@ -315,7 +335,8 @@ function AboutMeSection({
 
   return (
     <section id="about-me" aria-labelledby="about-me-heading" className="scroll-mt-20">
-      <SectionHeader id="about-me-heading"
+      <SectionHeader
+        id="about-me-heading"
         title="Миний тухай"
         action={
           !editing ? (
@@ -498,12 +519,15 @@ function AgeSection({
   profile,
   isLoading,
   isGuardian,
+  currentAge,
 }: {
   childId: string;
   age: number;
   profile?: z.infer<typeof ageProfileSchema>;
   isLoading: boolean;
   isGuardian: boolean;
+  /** Decides which years open by default. See `AgeSectionShell`. */
+  currentAge: number | null;
 }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -549,21 +573,28 @@ function AgeSection({
     Boolean(otherNote);
 
   return (
-    <section id={`age-${age}`} aria-labelledby={`age-${age}-heading`} className="scroll-mt-20">
-      <SectionHeader
-        id={`age-${age}-heading`}
-        title={`${age} нас`}
-        action={
-          !editing ? (
-            <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
-              <Pencil size={16} />
-              Засах
-            </Button>
-          ) : null
-        }
-      />
-
-      <Card className={cn("px-4 py-4 sm:px-5", !hasContent && !editing && "border-dashed")}>
+    <AgeSectionShell
+      age={age}
+      anchor={`age-${age}`}
+      headingId={`age-${age}-heading`}
+      filled={hasContent}
+      currentAge={currentAge}
+      /*
+        The edit control moved out of the section heading and into the panel.
+        A `<summary>` may not usefully contain a button — clicking it toggles
+        the disclosure instead — and "open the year, then edit it" is the right
+        order anyway.
+      */
+      action={
+        !editing ? (
+          <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
+            <Pencil size={16} />
+            Засах
+          </Button>
+        ) : null
+      }
+    >
+      <>
         {isLoading ? <LoadingState rows={1} /> : null}
 
         {!isLoading && !editing ? (
@@ -593,7 +624,10 @@ function AgeSection({
               ) : null}
             </div>
           ) : (
-            <p className="text-sm text-muted">Энэ насны мэдээлэл хараахан бөглөөгүй байна.</p>
+            // Says what to do next, not only what is absent — CLAUDE.md §5.
+            <p className="text-sm text-muted">
+              Энэ насны тэмдэглэл хоосон байна. «Засах» дарж бөглөнө үү.
+            </p>
           )
         ) : null}
 
@@ -682,8 +716,8 @@ function AgeSection({
             </div>
           </form>
         ) : null}
-      </Card>
-    </section>
+      </>
+    </AgeSectionShell>
   );
 }
 
@@ -704,10 +738,13 @@ function BirthdaySection({
   childId,
   notes,
   isLoading,
+  currentAge,
 }: {
   childId: string;
   notes: z.infer<typeof birthdayNotesSchema>;
   isLoading: boolean;
+  /** Birthdays not yet had arrive collapsed, as the age sections do. */
+  currentAge: number | null;
 }) {
   const queryClient = useQueryClient();
   const [editingAge, setEditingAge] = useState<number | null>(null);
@@ -737,60 +774,89 @@ function BirthdaySection({
             const note = notes.find((n) => n.age === age);
             const isEditing = editingAge === age;
 
-            return (
-              <Card key={age} className="flex flex-col gap-2 px-4 py-4">
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="font-medium text-ink">{age} нас</h3>
-                  {!isEditing ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setEditingAge(age);
-                        setText(note?.note ?? "");
-                        save.reset();
-                      }}
-                    >
-                      <Pencil size={16} />
-                      Засах
-                    </Button>
-                  ) : null}
-                </div>
+            /*
+             * ★ A birthday that has not happened arrives closed.
+             *
+             * The four cards rendered open regardless, so a two-year-old's
+             * portfolio ended with three "Тэмдэглэл бичээгүй байна." boxes for
+             * birthdays up to three years away, each offering to write the note
+             * early. An existing note opens the card whatever the age — see
+             * `AgeSectionShell` for why content outranks the date.
+             */
+            const reached = currentAge === null || age <= currentAge;
 
-                {isEditing ? (
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      if (!save.isPending) save.mutate(age);
-                    }}
-                    className="flex flex-col gap-3"
-                  >
-                    <FormError message={save.isError ? errorMessage(save.error) : null} />
-                    <Field label={`${age} насны төрсөн өдрийн тэмдэглэл`}>
-                      {({ id, describedBy }) => (
-                        <Textarea
-                          id={id}
-                          aria-describedby={describedBy}
-                          value={text}
-                          onChange={(e) => setText(e.target.value)}
-                          autoFocus
-                        />
-                      )}
-                    </Field>
-                    <div className="flex gap-2">
-                      <Button type="submit" size="sm" disabled={save.isPending}>
-                        {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
+            return (
+              <Card key={age} className="px-4 py-4">
+                <details
+                  open={Boolean(note?.note) || reached}
+                  className="flex flex-col gap-2 [&[open]_svg.chevron]:rotate-180"
+                >
+                  <summary className="flex min-h-[44px] cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+                    <h3 className="font-medium text-ink">{age} нас</h3>
+                    {!reached && !note?.note ? <Badge tone="neutral">Ирээдүйд</Badge> : null}
+                    <ChevronDown
+                      size={18}
+                      aria-hidden="true"
+                      className="chevron ml-auto shrink-0 text-faint transition-transform"
+                    />
+                  </summary>
+
+                  <div className="mt-2 flex flex-col gap-2">
+                    {!isEditing ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="self-start"
+                        onClick={() => {
+                          setEditingAge(age);
+                          setText(note?.note ?? "");
+                          save.reset();
+                        }}
+                      >
+                        <Pencil size={16} />
+                        Засах
                       </Button>
-                      <Button variant="secondary" size="sm" onClick={() => setEditingAge(null)}>
-                        Цуцлах
-                      </Button>
-                    </div>
-                  </form>
-                ) : note?.note ? (
-                  <p className="whitespace-pre-wrap text-sm text-ink">{note.note}</p>
-                ) : (
-                  <p className="text-sm text-muted">Тэмдэглэл бичээгүй байна.</p>
-                )}
+                    ) : null}
+
+                    {isEditing ? (
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          if (!save.isPending) save.mutate(age);
+                        }}
+                        className="flex flex-col gap-3"
+                      >
+                        <FormError message={save.isError ? errorMessage(save.error) : null} />
+                        <Field label={`${age} насны төрсөн өдрийн тэмдэглэл`}>
+                          {({ id, describedBy }) => (
+                            <Textarea
+                              id={id}
+                              aria-describedby={describedBy}
+                              value={text}
+                              onChange={(e) => setText(e.target.value)}
+                              autoFocus
+                            />
+                          )}
+                        </Field>
+                        <div className="flex gap-2">
+                          <Button type="submit" size="sm" disabled={save.isPending}>
+                            {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
+                          </Button>
+                          <Button variant="secondary" size="sm" onClick={() => setEditingAge(null)}>
+                            Цуцлах
+                          </Button>
+                        </div>
+                      </form>
+                    ) : note?.note ? (
+                      <p className="whitespace-pre-wrap text-sm text-ink">{note.note}</p>
+                    ) : (
+                      // Says what to do next, not only what is absent.
+                      <p className="text-sm text-muted">
+                        Тэмдэглэл бичээгүй. «Засах» дарж нэмнэ үү.
+                      </p>
+                    )}
+                  </div>
+                </details>
               </Card>
             );
           })}
