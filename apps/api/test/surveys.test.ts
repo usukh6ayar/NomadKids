@@ -69,10 +69,9 @@ describe("management — staff only", () => {
     expect(created.status).toBe(201);
     expect(created.body.status).toBe("DRAFT");
 
-    await authed(
-      request(server()).put(`/v1/surveys/${created.body.id}/questions`),
-      teacherA,
-    ).send({ questions: [{ order: 0, type: "YES_NO", prompt: "Сэтгэл ханамжтай байна уу?" }] });
+    await authed(request(server()).put(`/v1/surveys/${created.body.id}/questions`), teacherA).send({
+      questions: [{ order: 0, type: "YES_NO", prompt: "Сэтгэл ханамжтай байна уу?" }],
+    });
 
     const published = await authed(
       request(server()).post(`/v1/surveys/${created.body.id}/publish`),
@@ -120,7 +119,10 @@ describe("management — staff only", () => {
   it("refuses to change questions once published", async () => {
     const { surveyId } = await publishedChildSurvey();
 
-    const res = await authed(request(server()).put(`/v1/surveys/${surveyId}/questions`), teacherA).send({
+    const res = await authed(
+      request(server()).put(`/v1/surveys/${surveyId}/questions`),
+      teacherA,
+    ).send({
       questions: [{ order: 0, type: "TEXT", prompt: "Өөр асуулт" }],
     });
 
@@ -142,9 +144,10 @@ describe("responding — CHILD scope", () => {
   it("a guardian submits a response for their own child", async () => {
     const { surveyId, questionId } = await publishedChildSurvey();
 
-    const res = await authed(request(server()).post(`/v1/surveys/${surveyId}/responses`), parentA).send(
-      { childId: a.child.id, answers: [{ questionId, value: 4 }] },
-    );
+    const res = await authed(
+      request(server()).post(`/v1/surveys/${surveyId}/responses`),
+      parentA,
+    ).send({ childId: a.child.id, answers: [{ questionId, value: 4 }] });
 
     expect(res.status).toBe(201);
 
@@ -160,7 +163,10 @@ describe("responding — CHILD scope", () => {
       answers: [{ questionId, value: 4 }],
     });
 
-    const res = await authed(request(server()).post(`/v1/surveys/${surveyId}/responses`), parentA).send({
+    const res = await authed(
+      request(server()).post(`/v1/surveys/${surveyId}/responses`),
+      parentA,
+    ).send({
       childId: a.child.id,
       answers: [{ questionId, value: 5 }],
     });
@@ -171,9 +177,10 @@ describe("responding — CHILD scope", () => {
   it("a guardian of another child gets 404", async () => {
     const { surveyId, questionId } = await publishedChildSurvey();
 
-    const res = await authed(request(server()).post(`/v1/surveys/${surveyId}/responses`), parentB).send(
-      { childId: a.child.id, answers: [{ questionId, value: 3 }] },
-    );
+    const res = await authed(
+      request(server()).post(`/v1/surveys/${surveyId}/responses`),
+      parentB,
+    ).send({ childId: a.child.id, answers: [{ questionId, value: 3 }] });
 
     expect(res.status).toBe(404);
   });
@@ -181,9 +188,10 @@ describe("responding — CHILD scope", () => {
   it("requires a childId for a CHILD-scope survey", async () => {
     const { surveyId, questionId } = await publishedChildSurvey();
 
-    const res = await authed(request(server()).post(`/v1/surveys/${surveyId}/responses`), parentA).send(
-      { answers: [{ questionId, value: 3 }] },
-    );
+    const res = await authed(
+      request(server()).post(`/v1/surveys/${surveyId}/responses`),
+      parentA,
+    ).send({ answers: [{ questionId, value: 3 }] });
 
     expect(res.status).toBe(400);
   });
@@ -253,7 +261,10 @@ describe("the child-facing list", () => {
       answers: [{ questionId, value: 5 }],
     });
 
-    const after = await authed(request(server()).get(`/v1/children/${a.child.id}/surveys`), parentA);
+    const after = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/surveys`),
+      parentA,
+    );
     expect(after.body[0].respondedByMe).toBe(true);
   });
 

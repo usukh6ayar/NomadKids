@@ -158,9 +158,7 @@ describe("the icon set", () => {
    * paintable from a class.
    */
   it("has no hand-written <svg> markup", () => {
-    const inline = offences(/<svg[\s>]/g).filter(
-      (hit) => !hit.includes("data:image/svg+xml"),
-    );
+    const inline = offences(/<svg[\s>]/g).filter((hit) => !hit.includes("data:image/svg+xml"));
 
     // The scan reports `file:line → match`, so filter on the source line.
     const handRolled = inline.filter((hit) => {

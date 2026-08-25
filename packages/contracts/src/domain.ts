@@ -743,9 +743,7 @@ export const teacherDashboardSchema = z.object({
    * would need an invented denominator. The share of the total is a fact; a
    * completion score against a number nobody set is not.
    */
-  observationsByType: z
-    .array(z.object({ type: namedRefSchema, count: z.number() }))
-    .default([]),
+  observationsByType: z.array(z.object({ type: namedRefSchema, count: z.number() })).default([]),
   /** Every birthday in the current month, day-ordered — what a teacher plans against. */
   birthdaysThisMonth: z
     .array(

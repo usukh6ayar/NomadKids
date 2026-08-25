@@ -78,6 +78,14 @@ there is no dead navigation — `SUITE` (web) asserts the admin shell links only
 to implemented routes. Administration is done through the API and the seed
 tooling in this phase.
 
+> **Superseded 2026-08-25.** The admin screens exist now — `/admin/school-years`,
+> `/admin/groups`, `/admin/users`, `/admin/terms` and `/admin/kindergarten`, all
+> linked from `/admin` (`admin/page.tsx:94–99`). The PARTIAL above records what
+> was true at acceptance; this item now reads **PASS** on both halves. What is
+> still unlinked is the assessment-configuration CRUD (domains, levels,
+> observation types) — API complete, no screen — and that is tracked as its own
+> item in the Phase III build.
+
 ### 6. Observations — **PASS**
 
 Create, read, update, review. Teacher and parent submission paths are separate

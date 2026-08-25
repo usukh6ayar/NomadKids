@@ -916,9 +916,7 @@ describe("roster summary", () => {
       await enrollChild(a.kindergarten.id, child.id, a.group.id, a.schoolYear.id);
     }
 
-    const res = await request(server())
-      .get("/v1/children/summary")
-      .set("Cookie", teacherA.cookies);
+    const res = await request(server()).get("/v1/children/summary").set("Cookie", teacherA.cookies);
 
     expect(res.status).toBe(200);
     // The scenario's own child is in there too.
@@ -961,9 +959,7 @@ describe("roster summary", () => {
    * unauthorized child gets. The bug would read as a permissions problem.
    */
   it("is a route of its own, not swallowed by the :id lookup", async () => {
-    const res = await request(server())
-      .get("/v1/children/summary")
-      .set("Cookie", teacherA.cookies);
+    const res = await request(server()).get("/v1/children/summary").set("Cookie", teacherA.cookies);
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("total");
@@ -972,9 +968,7 @@ describe("roster summary", () => {
   it("★ does not count another kindergarten's children", async () => {
     const teacherB = await login(app, b.teacherUser.username);
 
-    const res = await request(server())
-      .get("/v1/children/summary")
-      .set("Cookie", teacherB.cookies);
+    const res = await request(server()).get("/v1/children/summary").set("Cookie", teacherB.cookies);
 
     // Scenario B has exactly one child of its own.
     expect(res.body.total).toBe(1);
@@ -995,9 +989,7 @@ describe("the roster's sex split", () => {
       await enrollChild(a.kindergarten.id, child.id, a.group.id, a.schoolYear.id);
     }
 
-    const res = await request(server())
-      .get("/v1/children/summary")
-      .set("Cookie", teacherA.cookies);
+    const res = await request(server()).get("/v1/children/summary").set("Cookie", teacherA.cookies);
 
     expect(res.status).toBe(200);
     expect(res.body.girls).toBe(2);

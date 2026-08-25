@@ -223,7 +223,9 @@ export default function ParentHomePage() {
             </span>
             <span className="min-w-0 flex-1">
               <span className="block font-semibold text-ink">
-                {unread && unread.count > 0 ? `${unread.count} шинэ мэдээ байна` : "Шинэ мэдээ алга"}
+                {unread && unread.count > 0
+                  ? `${unread.count} шинэ мэдээ байна`
+                  : "Шинэ мэдээ алга"}
               </span>
               <span className="block text-body text-muted">Ангийн сүүлийн мэдээллийг харах</span>
             </span>
@@ -246,7 +248,9 @@ export default function ParentHomePage() {
             </span>
             <span className="min-w-0 flex-1">
               <span className="block font-semibold text-ink">{PORTFOLIO}</span>
-              <span className="block text-body text-muted">{GALLERY}, "Миний тухай", хөгжлийн түүх</span>
+              <span className="block text-body text-muted">
+                {GALLERY}, "Миний тухай", хөгжлийн түүх
+              </span>
             </span>
             <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden />
           </Link>

@@ -788,14 +788,18 @@ describe("the radar", () => {
   it("returns every domain as an axis, assessed or not", async () => {
     await assessOwnChild(domainId, 3);
 
-    const res = await authed(request(server()).get(`/v1/children/${a.child.id}/assessment-radar`), teacherA)
-      .query({ termId });
+    const res = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/assessment-radar`),
+      teacherA,
+    ).query({ termId });
 
     expect(res.status).toBe(200);
     const domains = await db.developmentDomain.count({ where: { kindergartenId: null } });
     expect(res.body.axes).toHaveLength(domains);
 
-    const assessed = res.body.axes.find((ax: { domain: { id: string } }) => ax.domain.id === domainId);
+    const assessed = res.body.axes.find(
+      (ax: { domain: { id: string } }) => ax.domain.id === domainId,
+    );
     expect(assessed.score).toBe(4);
     const untouched = res.body.axes.find(
       (ax: { domain: { id: string } }) => ax.domain.id === otherDomainId,

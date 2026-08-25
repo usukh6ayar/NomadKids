@@ -290,10 +290,7 @@ function parentSections(myChildren: ChildSummary[] | undefined): NavSection[] {
     },
     {
       title: "Харилцаа холбоо",
-      entries: [
-        { label: "Ангийн самбар / Мэдээ", href: "/notifications" },
-        { label: "Чат" },
-      ],
+      entries: [{ label: "Ангийн самбар / Мэдээ", href: "/notifications" }, { label: "Чат" }],
     },
     {
       title: "Санхүү ба бүртгэл",

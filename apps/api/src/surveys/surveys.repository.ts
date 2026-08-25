@@ -10,7 +10,13 @@ export class SurveysRepository {
 
   // ── Management (staff) ───────────────────────────────────────────────────
 
-  async create(data: { kindergartenId: string; title: string; description: string | null; scope: SurveyScope; createdById: string }) {
+  async create(data: {
+    kindergartenId: string;
+    title: string;
+    description: string | null;
+    scope: SurveyScope;
+    createdById: string;
+  }) {
     return this.prisma.survey.create({ data });
   }
 

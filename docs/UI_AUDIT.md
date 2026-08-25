@@ -2,20 +2,21 @@
 
 > **Status, 2026-08-24.** Fixed and covered by regression tests:
 >
-> | Finding | Where | Tests |
-> |---|---|---|
-> | 0.1 header search discarded `?q=` | `children/page.tsx` | `test/search.test.tsx` |
-> | 0.2 17 landmarks with dangling `aria-labelledby` | `ui/card.tsx` + 8 sites | `test/landmarks.test.tsx` |
-> | 0.3 `<h1>` lighter than its section headings | `app-shell.tsx`, `dashboard` | `test/page-header.test.tsx` |
-> | 0.4 identity rendered twice on staff desktop | `app-shell.tsx` | `test/page-header.test.tsx` |
-> | 0.5 child chips claimed `role="tablist"` | `home/page.tsx` | `test/landmarks.test.tsx` |
-> | 1.1 portfolio opened nine empty boxes | `age-section-shell.tsx` | `test/portfolio.test.tsx` |
-> | 4.1 radius tokens bypassed | 53 files | `test/tokens.test.tsx` |
-> | 4.2 no type scale (20 sizes) | 53 files | `test/tokens.test.tsx` |
+> | Finding                                          | Where                        | Tests                       |
+> | ------------------------------------------------ | ---------------------------- | --------------------------- |
+> | 0.1 header search discarded `?q=`                | `children/page.tsx`          | `test/search.test.tsx`      |
+> | 0.2 17 landmarks with dangling `aria-labelledby` | `ui/card.tsx` + 8 sites      | `test/landmarks.test.tsx`   |
+> | 0.3 `<h1>` lighter than its section headings     | `app-shell.tsx`, `dashboard` | `test/page-header.test.tsx` |
+> | 0.4 identity rendered twice on staff desktop     | `app-shell.tsx`              | `test/page-header.test.tsx` |
+> | 0.5 child chips claimed `role="tablist"`         | `home/page.tsx`              | `test/landmarks.test.tsx`   |
+> | 1.1 portfolio opened nine empty boxes            | `age-section-shell.tsx`      | `test/portfolio.test.tsx`   |
+> | 4.1 radius tokens bypassed                       | 53 files                     | `test/tokens.test.tsx`      |
+> | 4.2 no type scale (20 sizes)                     | 53 files                     | `test/tokens.test.tsx`      |
 >
 > Suite 135 passing. Each defect fix was confirmed to fail with its fix reverted.
 >
 > **Two bugs surfaced by the work itself**, neither in the audit:
+>
 > - The header's search `<input>` carried `text-sm`, which beats the
 >   `input { font-size: 16px }` rule in `globals.css` and triggers the iOS
 >   focus-zoom that rule exists to prevent. Fixed; `tokens.test.tsx` now bans a
@@ -27,12 +28,12 @@
 >
 > **Judgement calls resolved 2026-08-24**, pinned by `test/vocabulary.test.tsx`:
 >
-> | Finding | Resolution |
-> |---|---|
+> | Finding                       | Resolution                                                                                             |
+> | ----------------------------- | ------------------------------------------------------------------------------------------------------ |
 > | 3.1 five meanings of "Хавтас" | `lib/vocabulary.ts` — `BRAND` / `PORTFOLIO` / `GALLERY` / `MY_CHILDREN`. The word now names one thing. |
-> | 2.1 five-button hero row | Primary + portfolio + overflow menu. PDF moved to the portfolio, whose record it exports. |
-> | 1.3 / 1.4 duplicate tiles | "Улирлын явц" and "Хянах" removed; both facts are stated once, by the elements that can act on them. |
-> | 1.2 login tabs | Deleted. One field: "Нэвтрэх нэр, утас эсвэл и-мэйл". |
+> | 2.1 five-button hero row      | Primary + portfolio + overflow menu. PDF moved to the portfolio, whose record it exports.              |
+> | 1.3 / 1.4 duplicate tiles     | "Улирлын явц" and "Хянах" removed; both facts are stated once, by the elements that can act on them.   |
+> | 1.2 login tabs                | Deleted. One field: "Нэвтрэх нэр, утас эсвэл и-мэйл".                                                  |
 >
 > The RFP decided two of these against my first instinct: §4 titles the record
 > "Хүүхдийн цахим хувийн хавтас" and §4.4 names the album "Зургийн цомог", so the
@@ -41,21 +42,21 @@
 > **Closed 2026-08-24 (final batch).** Every finding in this audit is now
 > resolved:
 >
-> | Finding | Resolution |
-> |---|---|
-> | 1.5 two icon systems | `ChevronIcon`/`LogoutIcon` → lucide. `tokens.test.tsx` bans hand-written `<svg>`. |
-> | 1.6 lede restating its title | Removed. |
-> | 2.2 portfolio double navigation | Three jump pills deleted; the age row stays, as the only links that *reveal* rather than scroll. |
-> | 2.3 age row's inverted signal | One tint for the set (`mint` = done) + a check; empty years are a plain surface. |
-> | 2.4 stat number in a pill | Already gone with the tiles it belonged to. |
-> | 2.5 home built from different parts | Uses `PageHeader`; greets the reader by name. |
-> | 2.6 two search fields | The header uses the shared `Input`. |
-> | 2.7 portfolio's hero was a stripped copy | Health badge and a way back restored. |
-> | 3.2 verb-only labels | "Сүүлийн ажиглалтууд", "Өнөөдрийн тойм", named back-links. |
-> | 3.3 empty states | Two become `EmptyState`; the third documents why it cannot. |
-> | 3.4 inconsistent back-links | Each names its destination. |
-> | 4.3 contrast | The 25%-opacity age dot was the only real failure; it went with 2.3. |
-> | 4.4 spacing rhythm | `Card` takes `pad="compact" \| "roomy"` (23 sites); page roots unify on `gap-6 lg:gap-8`. |
+> | Finding                                  | Resolution                                                                                       |
+> | ---------------------------------------- | ------------------------------------------------------------------------------------------------ |
+> | 1.5 two icon systems                     | `ChevronIcon`/`LogoutIcon` → lucide. `tokens.test.tsx` bans hand-written `<svg>`.                |
+> | 1.6 lede restating its title             | Removed.                                                                                         |
+> | 2.2 portfolio double navigation          | Three jump pills deleted; the age row stays, as the only links that _reveal_ rather than scroll. |
+> | 2.3 age row's inverted signal            | One tint for the set (`mint` = done) + a check; empty years are a plain surface.                 |
+> | 2.4 stat number in a pill                | Already gone with the tiles it belonged to.                                                      |
+> | 2.5 home built from different parts      | Uses `PageHeader`; greets the reader by name.                                                    |
+> | 2.6 two search fields                    | The header uses the shared `Input`.                                                              |
+> | 2.7 portfolio's hero was a stripped copy | Health badge and a way back restored.                                                            |
+> | 3.2 verb-only labels                     | "Сүүлийн ажиглалтууд", "Өнөөдрийн тойм", named back-links.                                       |
+> | 3.3 empty states                         | Two become `EmptyState`; the third documents why it cannot.                                      |
+> | 3.4 inconsistent back-links              | Each names its destination.                                                                      |
+> | 4.3 contrast                             | The 25%-opacity age dot was the only real failure; it went with 2.3.                             |
+> | 4.4 spacing rhythm                       | `Card` takes `pad="compact" \| "roomy"` (23 sites); page roots unify on `gap-6 lg:gap-8`.        |
 >
 > Suite 145 passing across 14 files.
 
@@ -67,13 +68,13 @@ Asked for on **2026-08-22, 2026-08-23 and 2026-08-24**, and held each time under
 CLAUDE.md §7. The client confirmed the hold on 2026-08-24. Recorded here and in
 `dashboard/page.tsx` so the next person does not re-derive it.
 
-| Requested | Status | What it would take |
-|---|---|---|
-| Radar chart of the 5 development domains, child vs class average | **Scope decision, not a data problem.** `DevelopmentDomain`, `AssessmentLevel` (1–4) and `Assessment` already carry the axes. | A class-average aggregate endpoint + a charting dependency. §7 excludes "radar charts" and "analytics". |
-| Attendance KPIs (30/35, 86%, monthly mean) | **Data problem.** No model, no migration, no endpoint. RFP Module 2. | A real feature: schema, tenant scoping, soft delete, authorization tests, then UI. Any KPI before that is an invented number. |
-| Per-type completion (Ажиглалт / Ярилцлага / Бүтээл) | Closer than it looks — `ObservationType` is a real configuration table. | An aggregate endpoint. No schema change. |
-| Upcoming birthdays | **Shipped.** | — |
-| Task board / ажлын самбар | Not in the MVP. | — |
+| Requested                                                        | Status                                                                                                                        | What it would take                                                                                                            |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Radar chart of the 5 development domains, child vs class average | **Scope decision, not a data problem.** `DevelopmentDomain`, `AssessmentLevel` (1–4) and `Assessment` already carry the axes. | A class-average aggregate endpoint + a charting dependency. §7 excludes "radar charts" and "analytics".                       |
+| Attendance KPIs (30/35, 86%, monthly mean)                       | **Data problem.** No model, no migration, no endpoint. RFP Module 2.                                                          | A real feature: schema, tenant scoping, soft delete, authorization tests, then UI. Any KPI before that is an invented number. |
+| Per-type completion (Ажиглалт / Ярилцлага / Бүтээл)              | Closer than it looks — `ObservationType` is a real configuration table.                                                       | An aggregate endpoint. No schema change.                                                                                      |
+| Upcoming birthdays                                               | **Shipped.**                                                                                                                  | —                                                                                                                             |
+| Task board / ажлын самбар                                        | Not in the MVP.                                                                                                               | —                                                                                                                             |
 
 The birthdays and the term-progress bar already on the dashboard are the parts of
 that design that had data behind them.
@@ -94,7 +95,7 @@ moves with it.
 
 `responsive.test.tsx` asserts literal height classes (`h-[48px]`, `min-h-[44px]`)
 and the palette hex values. It does **not** assert on radius or font-size, so §4.1
-and §4.2 are unpinned. Token-ifying *heights* would break it; token-ifying radius
+and §4.2 are unpinned. Token-ifying _heights_ would break it; token-ifying radius
 and type would not.
 
 **A note on method.** This codebase argues for its own choices in prose, at
@@ -112,8 +113,8 @@ These five are verified. I'd fix them before touching anything cosmetic.
 ### 0.1 The header search does nothing. ★ Highest severity
 
 `HeaderSearch` submits to `/children?q=…` (`shell/app-shell.tsx:152`). Its own
-docblock says: *"lands on `/children?q=…`, where the list picks the term up from
-the URL and takes over."*
+docblock says: _"lands on `/children?q=…`, where the list picks the term up from
+the URL and takes over."_
 
 It does not. `StaffChildren` initialises its term from `useState("")`
 (`children/page.tsx:47`) and never reads `useSearchParams`. Grepping the file for
@@ -142,12 +143,12 @@ list has to be the thing that reads the parameter, exactly as the docblock claim
 with a broken name**. Four `id=` attributes exist in the entire app, and **not one
 of them matches**:
 
-| Referenced | Actually exists |
-|---|---|
-| `about-me-heading` | `about-me` (the scroll anchor) |
-| `gallery-heading` | `gallery` |
-| `birthdays-heading` | `birthdays` |
-| `development-heading`, `recent-heading`, `profile-heading`, `password-heading`, `coverage-heading`, `activity-heading`, `details-heading`, `transfer-heading`, `archive-heading`, `photos-heading`, `age-{2..5}-heading` | *nothing* |
+| Referenced                                                                                                                                                                                                               | Actually exists                |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------ |
+| `about-me-heading`                                                                                                                                                                                                       | `about-me` (the scroll anchor) |
+| `gallery-heading`                                                                                                                                                                                                        | `gallery`                      |
+| `birthdays-heading`                                                                                                                                                                                                      | `birthdays`                    |
+| `development-heading`, `recent-heading`, `profile-heading`, `password-heading`, `coverage-heading`, `activity-heading`, `details-heading`, `transfer-heading`, `archive-heading`, `photos-heading`, `age-{2..5}-heading` | _nothing_                      |
 
 A dangling `aria-labelledby` does not fall back to the content — it **erases** the
 accessible name. Seventeen `<section>` landmarks are announced as unnamed regions.
@@ -155,9 +156,9 @@ Every one of them looks correct in the markup, which is why this survived.
 
 The sharpest part: `dashboard/recent-observations.tsx:33` and
 `needs-attention-alerts.tsx:43` both carry a comment explaining precisely why
-`aria-label` is used instead — *"`SectionHeader` renders the heading and does not
+`aria-label` is used instead — _"`SectionHeader` renders the heading and does not
 take an id, so pointing at one would name this section after an element that does
-not exist."* The rest of the app does the thing those comments warn against.
+not exist."_ The rest of the app does the thing those comments warn against.
 
 **Fix — one of two, applied everywhere.** Either give `SectionHeader` an
 `id` prop and pass it, or convert all 16 to `aria-label`. I'd take the `id` prop:
@@ -203,12 +204,12 @@ On a teacher's desktop, both of these are visible at once:
 
 - `WhoAmI` at the sidebar foot (`app-shell.tsx:336`) — name + **"Багшийн хэсэг"**
 - The `PageHeader` identity pill (`app-shell.tsx:106`, `hidden … lg:flex`) — name
-  + **"Багш"**
+  - **"Багш"**
 
 Same person, twice, ~200px apart, described two different ways. The pill's
 docblock explains carefully why it hides below 900px — the phone header already
 carries it — and never addresses the sidebar sitting beside it at exactly the
-width where the pill *is* shown.
+width where the pill _is_ shown.
 
 **Fix.** Delete the pill for `variant="teacher"`. Keep it for the parent shell,
 which has no sidebar. That also frees the header's right side for actions, which
@@ -234,9 +235,9 @@ why. Copy that.
 
 ### 1.1 Nine empty boxes and nine "Засах" buttons on a two-year-old's portfolio
 
-> **★ Corrected against the RFP.** My first draft said *delete* the age sections
-> that don't apply yet. **RFP §4.3 forbids that**: *"2, 3, 4, 5 нас тус бүрд
-> тусдаа мэдээллийн хуудастай байна"* — each of ages 2–5 shall have its own
+> **★ Corrected against the RFP.** My first draft said _delete_ the age sections
+> that don't apply yet. **RFP §4.3 forbids that**: _"2, 3, 4, 5 нас тус бүрд
+> тусдаа мэдээллийн хуудастай байна"_ — each of ages 2–5 shall have its own
 > separate information page. The four sections must exist. What follows is the
 > version that survives the RFP: collapse, don't delete.
 
@@ -246,9 +247,9 @@ unconditionally.
 
 Open the portfolio of a newly-registered two-year-old and count what is on screen:
 
-- 1 about-me card: *"Хараахан бөглөөгүй байна…"*
-- 4 age cards, 3 of them dashed and empty: *"Энэ насны мэдээлэл хараахан бөглөөгүй байна."*
-- 4 birthday cards, all empty: *"Тэмдэглэл бичээгүй байна."*
+- 1 about-me card: _"Хараахан бөглөөгүй байна…"_
+- 4 age cards, 3 of them dashed and empty: _"Энэ насны мэдээлэл хараахан бөглөөгүй байна."_
+- 4 birthday cards, all empty: _"Тэмдэглэл бичээгүй байна."_
 - **9 "Засах" buttons**
 
 Nine invitations to fill in years that have not happened. The child is two; the
@@ -261,7 +262,9 @@ its anchor, satisfying §4.3. Ages the child has not reached render **collapsed*
 
 ```tsx
 <details open={age <= currentAge}>
-  <summary>{age} нас — {filled ? "бөглөсөн" : "хоосон"}</summary>
+  <summary>
+    {age} нас — {filled ? "бөглөсөн" : "хоосон"}
+  </summary>
   …
 </details>
 ```
@@ -294,11 +297,11 @@ takes `identifier` + `password`. A user who picks the wrong one signs in fine.
 So the first control every user in the system touches asks a question, ignores the
 answer, and in two of three cases doesn't even change the label. That is a false
 affordance in the most consequential position in the product, and a support call
-waiting to happen: *"Би багш дээр дарах ёстой юу?"*
+waiting to happen: _"Би багш дээр дарах ёстой юу?"_
 
-**RFP check — it does not require this.** §3.1 says *"Систем нь хэрэглэгчийн эрхэд
-суурилсан нэвтрэх системтэй байна"* (a **role-based access** system) and line 800
-lists *"Администратор, багш, эцэг эхийн нэвтрэх систем"* (all three roles can sign
+**RFP check — it does not require this.** §3.1 says _"Систем нь хэрэглэгчийн эрхэд
+суурилсан нэвтрэх системтэй байна"_ (a **role-based access** system) and line 800
+lists _"Администратор, багш, эцэг эхийн нэвтрэх систем"_ (all three roles can sign
 in). Neither asks the user to declare their role at the door. The finding stands.
 
 **Fix.** Delete the segmented control. One field:
@@ -306,9 +309,9 @@ in). Neither asks the user to declare their role at the door. The finding stands
 > **Нэвтрэх нэр, утас эсвэл и-мэйл**
 
 The counter-argument in the docblock is fidelity to the reference project. That is
-a reason to match a *working* control, not to reproduce one that ignores its own
+a reason to match a _working_ control, not to reproduce one that ignores its own
 input. If the client wants the three tabs kept for familiarity, the conservative
-version is to make them *differ* — distinct placeholder, distinct autocomplete,
+version is to make them _differ_ — distinct placeholder, distinct autocomplete,
 distinct `inputMode="tel"` for Эцэг эх — so the control at least earns the tap.
 
 **Tests.** No test asserts on `LOGIN_TABS`; `flows.test.tsx:1025` and `:151` match
@@ -323,14 +326,14 @@ The dashboard shows term progress twice, ~300px apart:
   (`dashboard/page.tsx:110`)
 
 The code argues the tile is "the summary" and the bar "the detail". But the tile
-carries *both* numbers already — it is not a summary of the section, it is the
+carries _both_ numbers already — it is not a summary of the section, it is the
 section minus the bar.
 
-**The code's own justification decides this.** `term-progress.tsx` says: *"only one
-of the two is a `progressbar` an assistive technology can report."* Correct — and
+**The code's own justification decides this.** `term-progress.tsx` says: _"only one
+of the two is a `progressbar` an assistive technology can report."_ Correct — and
 that is an argument for deleting the tile, not for keeping it. Delete the tile;
 the stat row drops to three and stops being the loudest thing on a screen whose
-docblock opens with *"Not statistics."*
+docblock opens with _"Not statistics."_
 
 ### 1.4 The "Хянах" stat tile
 
@@ -413,7 +416,7 @@ Gestalt similarity says a set of peers should look alike, and difference should
 encode a variable. Here it is backwards: the loudest signal (four colours) encodes
 the label, which the text already gives you, and the variable that actually
 matters — done vs. empty — is the faintest mark on the page. Four saturated
-buttons also read as four different *kinds* of thing rather than one timeline.
+buttons also read as four different _kinds_ of thing rather than one timeline.
 
 The `aria-label` is correct, so this is not a colour-alone failure. It is a
 misallocated signal.
@@ -429,7 +432,7 @@ with a tinted background on two of four tiles. So inside one row: two plain
 numbers and two numbers in coloured chips, at the same size. The chip reads as a
 badge, i.e. as a status, and `47%` is not a status.
 
-**Fix.** Tint the *text*, not a box behind it. `text-sky-ink` on the percentage
+**Fix.** Tint the _text_, not a box behind it. `text-sky-ink` on the percentage
 gives the same emphasis without inventing a second component.
 
 ### 2.5 The parent's home and the teacher's dashboard are built from different parts
@@ -445,8 +448,8 @@ free.
 ### 2.6 The two search fields don't match
 
 Header search (`app-shell.tsx:176`): `h-[44px] rounded-pill`, placeholder
-*"Хүүхдийн нэрээр хайх…"*. List search (`children/page.tsx:104`): the shared
-`Input` (48px, `rounded-control`), placeholder *"Нэр эсвэл овгоор хайх"*.
+_"Хүүхдийн нэрээр хайх…"_. List search (`children/page.tsx:104`): the shared
+`Input` (48px, `rounded-control`), placeholder _"Нэр эсвэл овгоор хайх"_.
 
 Two shapes, two heights, two placeholders, one job — and 0.1 means using the first
 one drops you next to the second one, empty. Fix 0.1, then make the header field
@@ -457,8 +460,8 @@ use `Input`.
 `portfolio/page.tsx:133` renders `<ChildHeroProfile child={data} />` — no
 `actions`, no `showHealthAlert`. So a teacher who navigates from the child record
 to the portfolio loses the health-note badge and every action, and the page has no
-way back to the record. The identity block whose whole stated purpose is *"a
-teacher moving between screens never loses track of whose record is open"* changes
+way back to the record. The identity block whose whole stated purpose is _"a
+teacher moving between screens never loses track of whose record is open"_ changes
 shape between those screens.
 
 **Fix.** Pass `showHealthAlert={isStaff}` and at minimum a "← Хүүхдийн бүртгэл"
@@ -470,31 +473,31 @@ action.
 
 ### 3.1 "Хавтас" means five different things
 
-| Where | String | Points at |
-|---|---|---|
-| Sidebar brand | Хүүхдийн хөгжлийн цахим хувийн хавтас | product |
-| Mobile brand | Хүүхдийн хавтас | product |
-| Parent nav item | Хавтас | `/children` |
-| Parent list `<h1>` | Хөгжлийн хавтас | `/children` |
-| Child hero button | Хавтас | `/children/:id/portfolio` |
+| Where              | String                                | Points at                 |
+| ------------------ | ------------------------------------- | ------------------------- |
+| Sidebar brand      | Хүүхдийн хөгжлийн цахим хувийн хавтас | product                   |
+| Mobile brand       | Хүүхдийн хавтас                       | product                   |
+| Parent nav item    | Хавтас                                | `/children`               |
+| Parent list `<h1>` | Хөгжлийн хавтас                       | `/children`               |
+| Child hero button  | Хавтас                                | `/children/:id/portfolio` |
 
 A parent taps **Хавтас** in the bottom bar, lands on a page titled **Хөгжлийн
 хавтас**, opens a child, and finds a button also called **Хавтас** that goes
 somewhere else. Nielsen's consistency heuristic, four ways.
 
-Worse, the *same component* — `ChildGallery` — is labelled **"Цомог"** as a tab
+Worse, the _same component_ — `ChildGallery` — is labelled **"Цомог"** as a tab
 (`children/[childId]/page.tsx:196`) and **"Зураг, бүтээл"** in the portfolio
 (`portfolio/page.tsx:138`).
 
 **Fix — one noun per thing, taken from the RFP where the RFP names it:**
 
-| Thing | String | Source |
-|---|---|---|
-| The product | **Хүүхдийн хөгжлийн хавтас** (full, no short variant) | RFP line 11 |
-| The §4.1–4.3 document | **Хөгжлийн хавтас** | |
-| `ChildGallery`, both places | **Зургийн цомог** | **RFP §4.4** |
-| Parent nav → `/children` | **Миний хүүхдүүд** | |
-| Hero button → portfolio | **Хөгжлийн хавтас** | |
+| Thing                       | String                                                | Source       |
+| --------------------------- | ----------------------------------------------------- | ------------ |
+| The product                 | **Хүүхдийн хөгжлийн хавтас** (full, no short variant) | RFP line 11  |
+| The §4.1–4.3 document       | **Хөгжлийн хавтас**                                   |              |
+| `ChildGallery`, both places | **Зургийн цомог**                                     | **RFP §4.4** |
+| Parent nav → `/children`    | **Миний хүүхдүүд**                                    |              |
+| Hero button → portfolio     | **Хөгжлийн хавтас**                                   |              |
 
 Note the gallery: my instinct was "Зураг", but **RFP §4.4 names it "Зургийн
 цомог"**, so the existing tab label "Цомог" is the closer of the two and the
@@ -506,31 +509,31 @@ requires updating the assertion. Nothing asserts on "Цомог".
 
 ### 3.2 Labels that are verbs with no object
 
-| Current | Problem | Suggested |
-|---|---|---|
-| `Хянах` (stat tile) | "Review" — review *what*? | **Хүлээгдэж буй** / detail: `Эцэг эхийн ажиглалт` |
-| `Сүүлийн үйл явдал` | "Recent events" — they are observations | **Сүүлийн ажиглалтууд** |
-| `Нүүр` (parent `<h1>`) | A nav label used as a page title; says nothing | **Сайн байна уу, {firstName}** |
-| `Товч мэдээлэл` (aria) | "Brief information" — of what? | **Өнөөдрийн тойм** |
-| `PDF` (button) | Format as a label | **PDF татах** |
+| Current                | Problem                                        | Suggested                                         |
+| ---------------------- | ---------------------------------------------- | ------------------------------------------------- |
+| `Хянах` (stat tile)    | "Review" — review _what_?                      | **Хүлээгдэж буй** / detail: `Эцэг эхийн ажиглалт` |
+| `Сүүлийн үйл явдал`    | "Recent events" — they are observations        | **Сүүлийн ажиглалтууд**                           |
+| `Нүүр` (parent `<h1>`) | A nav label used as a page title; says nothing | **Сайн байна уу, {firstName}**                    |
+| `Товч мэдээлэл` (aria) | "Brief information" — of what?                 | **Өнөөдрийн тойм**                                |
+| `PDF` (button)         | Format as a label                              | **PDF татах**                                     |
 
 **Tests that move with this.** `flows.test.tsx:1335` finds the feed by accessible
 name — `findByRole("region", { name: "Сүүлийн үйл явдал" })` — so renaming that
 section means updating that line. **`Хянах` is subtler:** `roles.test.tsx:42, 63,
 99` assert on it as a **navigation item**, which must keep its name. Only the
-dashboard *stat tile* label changes; the nav entry and `/observations/review` stay
+dashboard _stat tile_ label changes; the nav entry and `/observations/review` stay
 "Хянах". Renaming both would break three assertions and, more importantly, the
 nav item is a destination where the verb is correct.
 
 ### 3.3 Two empty states say what is missing instead of what to do
 
-CLAUDE.md §5: *"Empty states say what to do next."* `about-me` gets this right —
-*"Хараахан бөглөөгүй байна. «Засах» дарж эхлүүлнэ үү."* The other two do not:
+CLAUDE.md §5: _"Empty states say what to do next."_ `about-me` gets this right —
+_"Хараахан бөглөөгүй байна. «Засах» дарж эхлүүлнэ үү."_ The other two do not:
 
-| Current | Suggested |
-|---|---|
+| Current                                        | Suggested                                                      |
+| ---------------------------------------------- | -------------------------------------------------------------- |
 | `Энэ насны мэдээлэл хараахан бөглөөгүй байна.` | **Энэ насны тэмдэглэл хоосон байна. «Засах» дарж бөглөнө үү.** |
-| `Тэмдэглэл бичээгүй байна.` | **Төрсөн өдрийн тэмдэглэл бичээгүй. «Засах» дарж нэмнэ үү.** |
+| `Тэмдэглэл бичээгүй байна.`                    | **Төрсөн өдрийн тэмдэглэл бичээгүй. «Засах» дарж нэмнэ үү.**   |
 
 All three are also bare `<p className="text-sm text-muted">` rather than the
 `EmptyState` component that exists for exactly this. Use it — it is the thing that
@@ -571,8 +574,8 @@ third of the usages.
 `rounded-[999px]` (`badge.tsx:14`). `RowCard` hard-codes `rounded-[14px]`.
 
 `globals.css:161-168` removed `--shadow-card` for precisely this reason, in
-writing: *"A token nobody reads is worse than no token — it looks like the single
-source of truth while two other values are what actually ship."* That sentence
+writing: _"A token nobody reads is worse than no token — it looks like the single
+source of truth while two other values are what actually ship."_ That sentence
 describes the radius tokens today. And `rounded-[10px]` / `[8px]` / `[16px]` are
 the drift already starting.
 
@@ -595,26 +598,26 @@ four sizes inside a 1.1px band — differences nobody can perceive but every fut
 edit has to choose between. Arbitrary values are interleaved with the Tailwind
 scale, so there is no way to tell which is "correct" at a call site.
 
-Note the same file that pins `--size-control` and `--size-tap` as tokens *because
-a component might quietly ship the wrong value* leaves every type size to be
+Note the same file that pins `--size-control` and `--size-tap` as tokens _because
+a component might quietly ship the wrong value_ leaves every type size to be
 guessed at the call site.
 
 **Fix.** Six steps as `@theme` tokens, mapped from what is already there:
 
 ```css
---text-caption: 0.75rem;   /* 11px, .7rem, .75rem, text-xs        */
+--text-caption: 0.75rem; /* 11px, .7rem, .75rem, text-xs        */
 --text-body-sm: 0.8125rem; /* .78rem, .8rem, .82rem               */
---text-body:    0.875rem;  /* text-sm — the workhorse             */
+--text-body: 0.875rem; /* text-sm — the workhorse             */
 --text-body-lg: 0.9375rem; /* .9rem, .92rem, .94rem, 15px, base   */
---text-title:   1.0625rem; /* 1.05rem, text-lg — SectionHeader    */
---text-page:    1.5rem;    /* 1.35rem, text-xl, 2xl — PageHeader  */
+--text-title: 1.0625rem; /* 1.05rem, text-lg — SectionHeader    */
+--text-page: 1.5rem; /* 1.35rem, text-xl, 2xl — PageHeader  */
 ```
 
 Verified unpinned: `responsive.test.tsx` asserts heights (`:66` `h-[48px]`, `:75`,
 `:80` `min-h-[44px]`, `:166` `min-h-[112px]`) and palette hex values (`:178-185`),
 never a radius or a font-size. §4.1 and §4.2 are additive. Note the corollary —
 those height assertions match **literal class strings**, so a future refactor that
-token-ifies `h-[48px]` into `h-control` *would* break the suite. Radius and type
+token-ifies `h-[48px]` into `h-control` _would_ break the suite. Radius and type
 are the safe ones to start with.
 
 ### 4.3 Contrast — one real issue, and it is not where you'd look
@@ -646,17 +649,17 @@ per-call-site class strings.
 
 ## Priority
 
-| # | Finding | Cost | Why first |
-|---|---|---|---|
-| 1 | 0.1 Header search ignores `?q=` | ~5 lines | A control that lies, on the busiest screen |
-| 2 | 0.2 16 dangling `aria-labelledby` | ~20 lines | 14 unnamed landmarks; RFP §13 |
-| 3 | 1.1 Collapse unreached age + birthday cards | ~30 lines | Halves the parent-facing centrepiece; RFP-safe |
-| 4 | 0.3 `<h1>` weight + load-time shift | 3 lines | Inverted hierarchy on every screen |
-| 5 | 2.1 Five-button hero row | ~25 lines | Biggest hierarchy failure per screen |
-| 6 | 0.4 Duplicate identity | ~5 lines | Deletion, unblocks header crowding |
-| 7 | 1.2 Login tabs | ~15 lines | False affordance, first control users meet |
-| 8 | 3.1 "Хавтас" ×5 | copy only | Cheapest clarity win available |
-| 9 | 4.1 / 4.2 Tokens + type scale | mechanical | Stops the drift the codebase predicted |
+| #   | Finding                                     | Cost       | Why first                                      |
+| --- | ------------------------------------------- | ---------- | ---------------------------------------------- |
+| 1   | 0.1 Header search ignores `?q=`             | ~5 lines   | A control that lies, on the busiest screen     |
+| 2   | 0.2 16 dangling `aria-labelledby`           | ~20 lines  | 14 unnamed landmarks; RFP §13                  |
+| 3   | 1.1 Collapse unreached age + birthday cards | ~30 lines  | Halves the parent-facing centrepiece; RFP-safe |
+| 4   | 0.3 `<h1>` weight + load-time shift         | 3 lines    | Inverted hierarchy on every screen             |
+| 5   | 2.1 Five-button hero row                    | ~25 lines  | Biggest hierarchy failure per screen           |
+| 6   | 0.4 Duplicate identity                      | ~5 lines   | Deletion, unblocks header crowding             |
+| 7   | 1.2 Login tabs                              | ~15 lines  | False affordance, first control users meet     |
+| 8   | 3.1 "Хавтас" ×5                             | copy only  | Cheapest clarity win available                 |
+| 9   | 4.1 / 4.2 Tokens + type scale               | mechanical | Stops the drift the codebase predicted         |
 
 1–4 are roughly an hour and are all defects.
 
@@ -676,11 +679,11 @@ per-call-site class strings.
 Not UX findings, but they change how much room the layouts need, so they belong in
 the same conversation as 1.1:
 
-| RFP | Specified | Implemented |
-|---|---|---|
-| §4.1 Миний тухай | 10 fields | 5 + height/weight. Missing: анхны гарын үсэг/сараачсан зураг, нэмэлт зураг, оруулсан огноо |
-| §4.2 Төрсөн өдрийн мэдээлэл | Орд, Монгол жилийн амьтан, төрсөн өдрийн зураг, тэмдэглэл | the note only |
-| §4.3 Нас бүрд | 17 fields | 8 + the two notes. Missing: дуртай үлгэр, кино, хувцас; сэтгэл хөдлөлийн онцлог; гэр бүлийн гишүүд; суралцах сонирхол; тухайн насны зураг |
+| RFP                         | Specified                                                 | Implemented                                                                                                                               |
+| --------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| §4.1 Миний тухай            | 10 fields                                                 | 5 + height/weight. Missing: анхны гарын үсэг/сараачсан зураг, нэмэлт зураг, оруулсан огноо                                                |
+| §4.2 Төрсөн өдрийн мэдээлэл | Орд, Монгол жилийн амьтан, төрсөн өдрийн зураг, тэмдэглэл | the note only                                                                                                                             |
+| §4.3 Нас бүрд               | 17 fields                                                 | 8 + the two notes. Missing: дуртай үлгэр, кино, хувцас; сэтгэл хөдлөлийн онцлог; гэр бүлийн гишүүд; суралцах сонирхол; тухайн насны зураг |
 
 I have not checked these against `docs/MIGRATION_PLAN.md`, so some may be
 deliberate MVP trims rather than gaps. Worth confirming before sign-off, since

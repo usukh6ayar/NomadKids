@@ -912,7 +912,6 @@ model Attendance {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
-  deletedById String? @db.Uuid
 
   kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
@@ -949,7 +948,6 @@ model AttendanceRequest {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
-  deletedById String? @db.Uuid
 
   kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
@@ -986,7 +984,6 @@ model MenuDay {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
-  deletedById String? @db.Uuid
 
   kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   createdBy    User?        @relation("MenuDayCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -1038,7 +1035,6 @@ model Survey {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
-  deletedById String? @db.Uuid
 
   kindergarten Kindergarten     @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   createdBy    User?            @relation("SurveyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -1084,7 +1080,6 @@ model SurveyResponse {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
-  deletedById String? @db.Uuid
 
   kindergarten Kindergarten   @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   survey       Survey         @relation(fields: [surveyId], references: [id], onDelete: Cascade)

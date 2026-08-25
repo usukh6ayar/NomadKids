@@ -9,7 +9,7 @@ is to build the model properly rather than fake the number.
 The business rules below are **not invented**. `../ByatshanNuudelchid/apps/attendance`
 is a complete, tested implementation, and CLAUDE.md names the Django project the
 source of truth for business rules, validation and authorization. This plan ports
-its *reasoning*; it does not port its structure.
+its _reasoning_; it does not port its structure.
 
 ---
 
@@ -22,15 +22,15 @@ reverse:
 
 > A child who transfers in January has two enrollments, and their March
 > attendance belongs to whichever kindergarten they actually attended. Pointing
-> at `Child` would attribute the whole year to wherever the child is *now*.
+> at `Child` would attribute the whole year to wherever the child is _now_.
 
 `Child.kindergartenId` is a denormalised "currently attending" pointer —
 CLAUDE.md §1.2 already forbids using it for authorization, and this is the same
 hazard with a date attached. A transfer would silently rewrite history.
 
 `childId` is still stored, denormalised, so "this child's month" is a range scan
-rather than a join. The enrollment stays the authority for *which kindergarten a
-day belongs to*; the child column is for lookup and display only.
+rather than a join. The enrollment stays the authority for _which kindergarten a
+day belongs to_; the child column is for lookup and display only.
 
 ---
 
@@ -142,7 +142,7 @@ beginning; scoping a new table surfaced it.
 the next writer, an append-only row cannot. The schema stays clean and thirty
 tables stop silently violating a mandatory instruction.
 
-The `recordedById` column above is separate and is *not* soft-delete metadata:
+The `recordedById` column above is separate and is _not_ soft-delete metadata:
 it answers "whose register is this", which the teacher's screen shows.
 
 ---
@@ -153,24 +153,24 @@ Every read and write goes through `apps/api/src/authz/` (CLAUDE.md §1.1). No ne
 authorization concepts — attendance reuses `canAccessChild` via the enrollment's
 child.
 
-| Actor | May |
-|---|---|
-| Teacher assigned to the group | Read and write that group's attendance |
-| Teacher not assigned | **404** — not 403 |
-| Admin of the kindergarten | Read and write |
-| Guardian | Read **their own child only** — never write |
-| Any other kindergarten | **404** |
+| Actor                         | May                                         |
+| ----------------------------- | ------------------------------------------- |
+| Teacher assigned to the group | Read and write that group's attendance      |
+| Teacher not assigned          | **404** — not 403                           |
+| Admin of the kindergarten     | Read and write                              |
+| Guardian                      | Read **their own child only** — never write |
+| Any other kindergarten        | **404**                                     |
 
 Two rules carried directly from the reference:
 
 **Enrollment ids are resolved against the group, never trusted from the body.**
 The group-day endpoint receives a map of enrollment id → status. Each id is
-looked up *within the authorized group*; anything not in it is ignored rather
+looked up _within the authorized group_; anything not in it is ignored rather
 than written. A POST body is written by whoever sends it, and the alternative
 writes attendance for another kindergarten's child.
 
 **Guardians read, and only their own child.** Decided 2026-08-25: a family
-tracking sick days is the point of the feature. Access is a *relationship*, not
+tracking sick days is the point of the feature. Access is a _relationship_, not
 a role — `canAccessChild` via the enrollment's child, the same derivation the
 portfolio and observations already use, so a revoked guardianship loses it
 automatically. Guardians reach `GET /children/:id/attendance` only; the group
@@ -192,20 +192,20 @@ guardian requesting another child's range  → 404
 
 ## 6. Business rules
 
-**No future dates.** The reference refuses them, with the reason: *"Recording the
+**No future dates.** The reference refuses them, with the reason: _"Recording the
 future is how a month's funding gets claimed before the children have attended
-it."* A `400` with a Mongolian message.
+it."_ A `400` with a Mongolian message.
 
 **Writing is idempotent per day.** Re-submitting the register corrects the
 existing rows rather than adding a second set. One transaction for a whole group
-— *"a sheet that saved eleven of twelve children would leave the twelfth silently
-unfunded, and the teacher would have no way to tell."*
+— _"a sheet that saved eleven of twelve children would leave the twelfth silently
+unfunded, and the teacher would have no way to tell."_
 
 **A no-op writes no audit row.** If status and note are unchanged, return early.
 Otherwise every re-save of the sheet buries the real corrections under a pile of
 identical entries.
 
-**A correction records what it changed *from*.** RFP §14 asks for
+**A correction records what it changed _from_.** RFP §14 asks for
 `Хэн → Хэзээ → Юу → Өмнөх утга → Шинэ утга`. Creating is an ordinary `CREATE`
 audit row; amending carries `previousStatus` and `newStatus` in the audit
 metadata. This is the entry a later reconciliation has to be able to explain.
@@ -218,12 +218,12 @@ to report from.
 
 Two consequences, both real and both accepted:
 
-* **A day missed for more than a week can never be recorded.** A teacher off sick
+- **A day missed for more than a week can never be recorded.** A teacher off sick
   for a fortnight returns to a permanently empty register. There is no back door
   by design — an admin override would reopen exactly the hole the rule closes.
   If that proves too strict in practice, the honest fix is a widened window or an
   explicit, audited `reopen` action, not a quiet exception.
-* **The lock is computed from the attendance date, not from when the row was
+- **The lock is computed from the attendance date, not from when the row was
   written.** Otherwise a row created late would carry its own fresh 7 days and
   the window would be trivially defeated by never recording on time.
 
@@ -231,7 +231,7 @@ The boundary is evaluated server-side against the request date. It is not a UI
 concern: the register may grey out a locked day, but the service is what refuses
 the write.
 
-**Funding value is deliberately absent.** What a given status is *worth* to a
+**Funding value is deliberately absent.** What a given status is _worth_ to a
 subsidy claim is policy that varies by rule and by year — the reference keeps
 that number out of the model for exactly that reason, and Phase 3 owns it.
 Nothing in this plan computes money. (It is also why `HALF_DAY` costs nothing to
@@ -275,12 +275,12 @@ anything.
 
 ## 9. Decisions taken — 2026-08-25
 
-| Question | Decision |
-|---|---|
-| `deletedById` | Dropped. Rely on `AuditLog`; CLAUDE.md §3.2 amended in this PR. |
-| Guardian visibility | **Yes** — their own child's range only, read-only. Group sheet stays staff-only. |
-| Correction lock | **7 days**, rolling from the attendance date, then permanent. No override. |
-| Statuses | `HALF_DAY` dropped. **Five**: `PRESENT` · `ABSENT` · `SICK` · `EXCUSED` · `OTHER`. |
+| Question            | Decision                                                                           |
+| ------------------- | ---------------------------------------------------------------------------------- |
+| `deletedById`       | Dropped. Rely on `AuditLog`; CLAUDE.md §3.2 amended in this PR.                    |
+| Guardian visibility | **Yes** — their own child's range only, read-only. Group sheet stays staff-only.   |
+| Correction lock     | **7 days**, rolling from the attendance date, then permanent. No override.         |
+| Statuses            | `HALF_DAY` dropped. **Five**: `PRESENT` · `ABSENT` · `SICK` · `EXCUSED` · `OTHER`. |
 
 `OTHER` was dropped and reinstated within the day. The argument that settled it:
 a closed vocabulary does not make an unusual day disappear, it makes that day get

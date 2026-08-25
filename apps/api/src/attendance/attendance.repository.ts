@@ -140,11 +140,7 @@ export class AttendanceRepository {
     });
   }
 
-  async decideRequest(
-    id: string,
-    reviewStatus: AttendanceRequestStatus,
-    reviewedById: string,
-  ) {
+  async decideRequest(id: string, reviewStatus: AttendanceRequestStatus, reviewedById: string) {
     return this.prisma.attendanceRequest.update({
       where: { id },
       data: { reviewStatus, reviewedById, reviewedAt: new Date() },

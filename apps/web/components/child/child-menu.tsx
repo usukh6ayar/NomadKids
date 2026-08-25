@@ -65,15 +65,16 @@ export function ChildMenu({
 
   const menu = useQuery({
     queryKey: ["kindergarten", kindergartenId, "menu", from, to],
-    queryFn: () =>
-      get(`/kindergartens/${kindergartenId}/menu?from=${from}&to=${to}`, menuSchema),
+    queryFn: () => get(`/kindergartens/${kindergartenId}/menu?from=${from}&to=${to}`, menuSchema),
   });
 
   if (menu.isPending) return <LoadingState rows={3} />;
   if (menu.isError) return <ErrorState description={errorMessage(menu.error)} />;
 
   const byDate = new Map(menu.data.map((day) => [day.date, day]));
-  const days = Array.from({ length: 7 }, (_, i) => toIso(new Date(monday.getTime() + i * 86_400_000)));
+  const days = Array.from({ length: 7 }, (_, i) =>
+    toIso(new Date(monday.getTime() + i * 86_400_000)),
+  );
   const hasAnyDish = menu.data.some((day) => day.dishes.length > 0);
 
   return (

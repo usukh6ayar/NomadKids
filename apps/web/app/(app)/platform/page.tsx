@@ -3,7 +3,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Building2, Plus } from "lucide-react";
-import { createdKindergartenSchema, paginated, platformKindergartenSchema } from "@kinder/contracts";
+import {
+  createdKindergartenSchema,
+  paginated,
+  platformKindergartenSchema,
+} from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
@@ -103,9 +107,7 @@ function Platform() {
               </span>
 
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-lead font-semibold text-ink">
-                  {kg.name}
-                </span>
+                <span className="block truncate text-lead font-semibold text-ink">{kg.name}</span>
                 <span className="mt-px block truncate text-compact text-muted">
                   {[kg.address, kg.phone, kg.email].filter(Boolean).join(" · ") || "—"}
                   {" · "}
