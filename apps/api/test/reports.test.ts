@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
+import sharp from "sharp";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestApp } from "./support/app";
 import { resetData, testDb, uniq } from "./support/db";
@@ -36,6 +37,7 @@ const db = testDb();
 
 let a: Scenario;
 let b: Scenario;
+let adminA: AuthSession;
 let teacherA: AuthSession;
 let parentA: AuthSession;
 let parentB: AuthSession;
@@ -69,6 +71,7 @@ beforeEach(async () => {
   a = await createScenario("a");
   b = await createScenario("b");
 
+  adminA = await login(app, a.adminUser.username);
   teacherA = await login(app, a.teacherUser.username);
   parentA = await login(app, a.parentUser.username);
   parentB = await login(app, b.parentUser.username);
@@ -120,12 +123,42 @@ async function createJob(session: AuthSession, childId: string) {
   return response.body.id as string;
 }
 
+/**
+ * A logo, as distinct from `photoBytes` elsewhere: PNG, and square-ish, because
+ * that is what a kindergarten actually uploads and what `object-fit: contain`
+ * exists to preserve.
+ */
+async function logoBytes(): Promise<Buffer> {
+  return sharp({ create: { width: 64, height: 64, channels: 3, background: "navy" } })
+    .png()
+    .toBuffer();
+}
+
 /** Extracts the text layer with poppler. */
 function extractText(pdf: Buffer): string {
   const dir = mkdtempSync(join(tmpdir(), "kinder-pdf-"));
   const path = join(dir, "report.pdf");
   writeFileSync(path, pdf);
   return execFileSync("pdftotext", ["-enc", "UTF-8", path, "-"], { encoding: "utf8" });
+}
+
+/**
+ * Counts the raster images embedded in a PDF, with poppler.
+ *
+ * ★ The text layer cannot answer "is the logo on the page".
+ *
+ * A logo is a picture: `pdftotext` returns nothing for it whether it rendered,
+ * failed to decode, or was never embedded at all. Counting the image XObjects
+ * is what distinguishes those, and it is the same reasoning as `PDF_SPIKE.md`
+ * §4 — assert on the artefact, not on the intent.
+ */
+function countImages(pdf: Buffer): number {
+  const dir = mkdtempSync(join(tmpdir(), "kinder-pdf-"));
+  const path = join(dir, "report.pdf");
+  writeFileSync(path, pdf);
+  const listing = execFileSync("pdfimages", ["-list", path], { encoding: "utf8" });
+  // Two header lines, then one row per image.
+  return listing.trim().split("\n").slice(2).filter(Boolean).length;
 }
 
 function pdftotextAvailable(): boolean {
@@ -353,6 +386,33 @@ describe("portfolio generation", () => {
     expect(text).toContain("Монгол жил");
     expect(text).toContain("Үхэр");
   }, 120_000);
+
+  /**
+   * RFP §10.3 — "Цэцэрлэгийн лого, нэртэй" on every generated report.
+   *
+   * ★ Measured by counting embedded images before and after, because the name
+   * was already printed and the logo never was. A test that only looked for the
+   * kindergarten's name in the text layer would have passed for months against
+   * a PDF that had no logo in it — which is exactly the state this closes.
+   */
+  it("embeds the kindergarten's logo once it has one", async () => {
+    if (!pdftotextAvailable()) throw new Error("pdftotext (poppler) is required");
+
+    const before = countImages(await generatedPdf(await createJob(teacherA, a.child.id)));
+
+    const logo = await authed(
+      request(app.getHttpServer()).post(`/v1/kindergartens/${a.kindergarten.id}/logo`),
+      adminA,
+    ).attach("file", await logoBytes(), "лого.png");
+    expect(logo.status).toBe(201);
+
+    const after = countImages(await generatedPdf(await createJob(teacherA, a.child.id)));
+    expect(after).toBe(before + 1);
+
+    // The name is still there — the logo is an addition, not a replacement.
+    const text = extractText(await generatedPdf(await createJob(teacherA, a.child.id)));
+    expect(text).toContain(a.kindergarten.name);
+  }, 180_000);
 
   it("records page count and file size on the job", async () => {
     await seedObservations(a);

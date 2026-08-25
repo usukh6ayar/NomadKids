@@ -717,6 +717,8 @@ export const groupListItemSchema = groupSchema.extend({
   status: z.string().nullish(),
   schoolYear: schoolYearSchema.nullish(),
   _count: z.object({ enrollments: z.number() }).nullish(),
+  /** RFP §3.2 — ангийн зураг, so the assignment dialog can preview it. */
+  photoMediaFileId: uuidSchema.nullish(),
 });
 
 /** A single group, from `GET /groups/:id` — this one carries the assignments. */
@@ -746,6 +748,7 @@ export const userProfileSchema = z.object({
   email: z.string().nullish(),
   phone: z.string().nullish(),
   bio: z.string().nullish(),
+  photoMediaFileId: uuidSchema.nullish(),
 });
 
 // ── Dashboards ───────────────────────────────────────────────────────────────

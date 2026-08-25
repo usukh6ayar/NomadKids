@@ -163,6 +163,67 @@ export class NotificationMediaController {
   }
 }
 
+/**
+ * Images that belong to a kindergarten rather than to a child — RFP §3.2's
+ * лого and ангийн зураг, and §3.3's профайл зураг.
+ *
+ * ★ Three routes on three paths, not one `POST /images?owner=…`.
+ *
+ * They authorize differently — the logo is an administrator's, the portrait is
+ * the account holder's own, the class photo is any staff member's — and the
+ * parameterised version would put those three decisions inside one method
+ * behind a switch, which is exactly the shape CLAUDE.md §1.1 exists to prevent.
+ * The paths also read as what they are in a route list.
+ */
+@Controller()
+@UseGuards(RateLimitGuard)
+export class TenantImageController {
+  constructor(private readonly service: MediaService) {}
+
+  @Post("kindergartens/:id/logo")
+  @Roles("ADMIN")
+  @RateLimit({ limit: 20, windowMs: 60 * 60 * 1000, byUser: true })
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } }))
+  async uploadLogo(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @UploadedFile() file: { buffer: Buffer; originalname: string } | undefined,
+  ) {
+    if (!file) throw new BadRequestException("Файл хавсаргаагүй байна");
+    return this.service.uploadKindergartenLogo(actor, params.id, file);
+  }
+
+  /*
+   * No `@Roles`: a guardian has a profile too, and the service refuses any
+   * `userId` that is not the caller's own. A role guard here would be the
+   * wrong check in the right place — see `uploadUserPhoto`.
+   */
+  @Post("users/:id/photo")
+  @RateLimit({ limit: 20, windowMs: 60 * 60 * 1000, byUser: true })
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } }))
+  async uploadUserPhoto(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @UploadedFile() file: { buffer: Buffer; originalname: string } | undefined,
+  ) {
+    if (!file) throw new BadRequestException("Файл хавсаргаагүй байна");
+    return this.service.uploadUserPhoto(actor, params.id, file);
+  }
+
+  @Post("groups/:id/photo")
+  @Roles("TEACHER", "ADMIN")
+  @RateLimit({ limit: 20, windowMs: 60 * 60 * 1000, byUser: true })
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } }))
+  async uploadGroupPhoto(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @UploadedFile() file: { buffer: Buffer; originalname: string } | undefined,
+  ) {
+    if (!file) throw new BadRequestException("Файл хавсаргаагүй байна");
+    return this.service.uploadGroupPhoto(actor, params.id, file);
+  }
+}
+
 @Controller("media")
 export class MediaController {
   constructor(private readonly service: MediaService) {}

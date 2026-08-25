@@ -1,5 +1,5 @@
 import { ageInYears, birthFacts } from "@kinder/contracts";
-import { baseCss, esc, formatDate, paragraphs, reportChrome } from "./template-utils";
+import { baseCss, esc, formatDate, masthead, paragraphs, reportChrome } from "./template-utils";
 
 /**
  * The child portfolio PDF — RFP §10.3.
@@ -20,7 +20,7 @@ export interface PortfolioData {
     sex: string;
     photoDataUri?: string | null;
   };
-  kindergarten: { name: string };
+  kindergarten: { name: string; logoDataUri?: string | null };
   group?: { name: string } | null;
   schoolYear?: { name: string } | null;
   aboutMe?: {
@@ -179,6 +179,10 @@ export function renderPortfolioHtml(data: PortfolioData): string {
 <style>
 ${baseCss()}
 
+  /* The cover's own masthead is centred, and carries the logo alone. */
+  .cover .masthead { justify-content: center; margin-bottom: 10mm; }
+  .cover .masthead img { width: 30mm; height: 30mm; border-radius: 0; }
+
   .cover { text-align: center; padding-top: 30mm; }
   .cover img { width: 55mm; height: 55mm; object-fit: cover; border-radius: 50%; }
   .cover .name { font-size: 26pt; font-weight: 700; margin-top: 8mm; }
@@ -194,6 +198,7 @@ ${baseCss()}
 <body>
 
 <section class="cover">
+  ${masthead(data.kindergarten, { withName: false })}
   ${data.child.photoDataUri ? `<img src="${data.child.photoDataUri}" alt="Хүүхдийн зураг">` : ""}
   <div class="name">${esc(fullName)}</div>
   <p class="meta">

@@ -125,6 +125,10 @@ export class ReportGeneratorService {
 
     const budget = new ImageBudget();
     const childPhoto = await this.embed(budget, data.child.photo);
+    // RFP §10.3. Embedded before the observation photographs so a portfolio with
+    // a full album still has the identity mark: `ImageBudget` refuses images
+    // once the total is spent, and the first caller wins.
+    const logo = await this.embed(budget, data.child.kindergarten.logo);
 
     const observations: PortfolioData["observations"] = [];
     for (const obs of data.observations) {
@@ -155,7 +159,7 @@ export class ReportGeneratorService {
         sex: data.child.sex,
         photoDataUri: childPhoto,
       },
-      kindergarten: { name: data.child.kindergarten.name },
+      kindergarten: { name: data.child.kindergarten.name, logoDataUri: logo },
       group: enrollment?.group ?? null,
       schoolYear: enrollment?.schoolYear ?? null,
       aboutMe: data.aboutMe
@@ -206,6 +210,7 @@ export class ReportGeneratorService {
 
     const budget = new ImageBudget();
     const childPhoto = await this.embed(budget, data.child.photo);
+    const logo = await this.embed(budget, data.child.kindergarten.logo);
     const enrollment = data.child.enrollments[0];
 
     const payload: TermReportData = {
@@ -215,7 +220,7 @@ export class ReportGeneratorService {
         dateOfBirth: data.child.dateOfBirth,
         photoDataUri: childPhoto,
       },
-      kindergarten: { name: data.child.kindergarten.name },
+      kindergarten: { name: data.child.kindergarten.name, logoDataUri: logo },
       group: enrollment?.group ?? null,
       schoolYear: enrollment?.schoolYear ?? null,
       term: {

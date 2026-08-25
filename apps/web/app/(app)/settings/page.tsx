@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { SingleImageUpload } from "@/components/media/single-image-upload";
 
 const profileSchema = userProfileSchema.extend({
   specialization: z.string().nullish(),
@@ -91,6 +92,26 @@ function ProfileForm() {
   return (
     <section aria-labelledby="profile-heading">
       <SectionHeader id="profile-heading" title="Хувийн мэдээлэл" />
+
+      {/*
+        RFP §3.3 — профайл зураг. Outside the form and above it: the upload
+        saves on selection, so putting it inside a form with its own Save button
+        would leave somebody choosing a picture and then wondering why the
+        button stayed greyed out.
+
+        Only ever the signed-in user's own — the API refuses any other id, and
+        this component has no way to name one.
+      */}
+      <Card pad="roomy" className="mb-4">
+        <SingleImageUpload
+          endpoint={`/users/${data?.id}/photo`}
+          currentMediaId={data?.photoMediaFileId}
+          label="Зураг нэмэх"
+          alt="Таны профайл зураг"
+          shape="round"
+          invalidateKeys={[qk.profile(), qk.session()]}
+        />
+      </Card>
 
       <Card pad="roomy">
         <form

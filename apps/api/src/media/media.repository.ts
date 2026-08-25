@@ -252,6 +252,138 @@ export class MediaRepository {
     });
   }
 
+  // ── Tenant images: logo, teacher portrait, class photo ─────────────────────
+
+  /**
+   * Attaches a new tenant image and returns the row it replaced, in one
+   * transaction.
+   *
+   * ★ The three columns are `@unique`, which is the reason this is written once
+   * rather than three times inline.
+   *
+   * `Kindergarten.logoMediaFileId`, `User.photoMediaFileId` and
+   * `Group.photoMediaFileId` each hold at most one row, so a second upload does
+   * not add a picture — it *displaces* one, and the displaced row is left
+   * pointing at bytes in R2 that nothing will ever serve or clean up. Returning
+   * the previous id is what lets the caller soft-delete it in the same breath.
+   *
+   * The `create` and the owner's `update` are in one transaction because a
+   * committed MediaFile whose owner never got the pointer is an orphan of the
+   * same kind, arrived at from the other direction.
+   */
+  async attachTenantImage(input: {
+    owner: "kindergarten" | "user" | "group";
+    ownerId: string;
+    kindergartenId: string;
+    purpose: MediaPurpose;
+    storageKey: string;
+    originalName: string;
+    mimeType: string;
+    sizeBytes: number;
+    width: number | null;
+    height: number | null;
+    uploadedById: string;
+  }) {
+    return this.prisma.$transaction(async (tx) => {
+      const previousId = await (async () => {
+        if (input.owner === "kindergarten") {
+          const row = await tx.kindergarten.findUnique({
+            where: { id: input.ownerId },
+            select: { logoMediaFileId: true },
+          });
+          return row?.logoMediaFileId ?? null;
+        }
+        if (input.owner === "user") {
+          const row = await tx.user.findUnique({
+            where: { id: input.ownerId },
+            select: { photoMediaFileId: true },
+          });
+          return row?.photoMediaFileId ?? null;
+        }
+        const row = await tx.group.findUnique({
+          where: { id: input.ownerId },
+          select: { photoMediaFileId: true },
+        });
+        return row?.photoMediaFileId ?? null;
+      })();
+
+      // Released before the new row claims the column: both are `@unique`, so
+      // pointing two owners at one MediaFile is a constraint violation, and
+      // clearing the pointer first is what makes replacement possible at all.
+      if (previousId) {
+        await tx.mediaFile.update({
+          where: { id: previousId },
+          data: { deletedAt: new Date() },
+        });
+      }
+
+      const media = await tx.mediaFile.create({
+        data: {
+          kindergartenId: input.kindergartenId,
+          purpose: input.purpose,
+          storageKey: input.storageKey,
+          originalName: input.originalName,
+          mimeType: input.mimeType,
+          sizeBytes: input.sizeBytes,
+          width: input.width,
+          height: input.height,
+          uploadedById: input.uploadedById,
+        },
+      });
+
+      if (input.owner === "kindergarten") {
+        await tx.kindergarten.update({
+          where: { id: input.ownerId },
+          data: { logoMediaFileId: media.id },
+        });
+      } else if (input.owner === "user") {
+        await tx.user.update({
+          where: { id: input.ownerId },
+          data: { photoMediaFileId: media.id },
+        });
+      } else {
+        await tx.group.update({
+          where: { id: input.ownerId },
+          data: { photoMediaFileId: media.id },
+        });
+      }
+
+      return { media, previousId };
+    });
+  }
+
+  /** The group a class photo is being attached to, with its tenant. */
+  async findGroupForImage(groupId: string) {
+    return this.prisma.group.findFirst({
+      where: { id: groupId, deletedAt: null },
+      select: { id: true, kindergartenId: true },
+    });
+  }
+
+  /**
+   * The kindergartens a user holds an active membership in.
+   *
+   * A portrait is stored against one kindergarten even though the account may
+   * span several — the file needs a tenant to be scoped by, and `MediaFile`
+   * has exactly one `kindergartenId`. The caller picks from this set, which is
+   * also what proves the actor may write to this user at all.
+   */
+  async findUserMembershipKindergartens(userId: string) {
+    const rows = await this.prisma.membership.findMany({
+      where: { userId, isActive: true, deletedAt: null },
+      select: { kindergartenId: true, role: true },
+    });
+    return rows;
+  }
+
+  /** The kindergarten a logo is being attached to. */
+  async findKindergartenForImage(kindergartenId: string) {
+    return this.prisma.kindergarten.findFirst({
+      where: { id: kindergartenId, deletedAt: null },
+      select: { id: true },
+    });
+  }
+
   /**
    * The observation a photograph is being attached to.
    *

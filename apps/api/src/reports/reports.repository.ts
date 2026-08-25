@@ -329,7 +329,16 @@ export class ReportsRepository {
         firstName: true,
         dateOfBirth: true,
         sex: true,
-        kindergarten: { select: { id: true, name: true } },
+        kindergarten: {
+          select: {
+            id: true,
+            name: true,
+            // RFP §10.3 — "Цэцэрлэгийн лого, нэртэй". The name was always
+            // here; the logo is the half the requirement asked for and the
+            // report never carried.
+            logo: { select: { storageKey: true, deletedAt: true } },
+          },
+        },
         photo: { select: { storageKey: true, deletedAt: true } },
         enrollments: {
           where: { status: "ACTIVE", deletedAt: null },

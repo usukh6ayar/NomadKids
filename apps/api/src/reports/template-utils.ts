@@ -107,7 +107,51 @@ export function baseCss(): string {
   dt { font-weight: 700; }
   dd { margin: 0; }
 
-  .empty { color: #9ca3af; font-style: italic; }`;
+  .empty { color: #9ca3af; font-style: italic; }
+
+  /*
+   * The issuing kindergarten's mark — RFP §10.3, "Цэцэрлэгийн лого, нэртэй".
+   *
+   * object-fit is contain, not cover, and that is the whole reason the block has
+   * its own class. Every other image in these reports is a photograph, where
+   * cover is right; a logo is artwork with a fixed aspect ratio, and cover crops
+   * it — §10.3 also says "зураг суналт, гажилтгүй" in the same breath.
+   *
+   * (No backticks in this comment: it lives inside a template literal, and one
+   * would end the stylesheet here.)
+   */
+  .masthead { display: flex; align-items: center; gap: 4mm; margin-bottom: 6mm; }
+  .masthead img { width: 20mm; height: 20mm; object-fit: contain; }
+  .masthead .kg-name { font-weight: 700; font-size: 12pt; }`;
+}
+
+/**
+ * The issuing kindergarten's logo and name, above everything else in a report.
+ *
+ * Written once and used by both templates so they cannot drift on the one
+ * element every generated document is required to carry. Degrades to the name
+ * alone: a kindergarten that has not uploaded a logo still gets an identified
+ * report rather than a gap where the block would be.
+ */
+export function masthead(
+  kindergarten: { name: string; logoDataUri?: string | null },
+  /**
+   * The portfolio's cover already prints the kindergarten's name under the
+   * child's, so repeating it here would put it on the page twice. The logo
+   * still belongs at the top.
+   */
+  options: { withName?: boolean } = {},
+) {
+  const withName = options.withName ?? true;
+
+  return `<div class="masthead">
+    ${
+      kindergarten.logoDataUri
+        ? `<img src="${kindergarten.logoDataUri}" alt="${esc(kindergarten.name)}-ийн лого">`
+        : ""
+    }
+    ${withName ? `<span class="kg-name">${esc(kindergarten.name)}</span>` : ""}
+  </div>`;
 }
 
 /**

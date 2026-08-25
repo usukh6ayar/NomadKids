@@ -269,10 +269,32 @@ editing a caption cannot blank the date.
 **Tenant images** — `KINDERGARTEN_LOGO`, `USER_PHOTO`, `GROUP_PHOTO` — are
 served by `GET /media/:id` too, authorised by membership of the file's own
 kindergarten rather than through a child. They are still never public: CLAUDE.md
-§1.4 admits no exception for a logo. **There are no upload routes for them
-yet**, so `Kindergarten.logoMediaFileId`, `User.photoMediaFileId` and
-`Group.photoMediaFileId` exist and serve correctly but nothing can populate
-them.
+§1.4 admits no exception for a logo.
+
+| Route                          | Who                             | Sets                           |
+| ------------------------------ | ------------------------------- | ------------------------------ |
+| `POST /kindergartens/:id/logo` | administrator of that tenant    | `Kindergarten.logoMediaFileId` |
+| `POST /users/:id/photo`        | **that account only**, any role | `User.photoMediaFileId`        |
+| `POST /groups/:id/photo`       | teacher or admin of that tenant | `Group.photoMediaFileId`       |
+
+★ **Three paths, not one `POST /images?owner=…`.** The three authorization
+answers genuinely differ, and the parameterised version puts all three inside
+one method behind a switch — the shape CLAUDE.md §1.1 exists to prevent.
+
+★ **An administrator cannot set someone else's portrait.** They may create and
+deactivate the account; replacing its face is not administration. RFP §3.3 puts
+the profile photo under what a teacher does with their _own_ profile, and a
+portrait anyone else can set stops being evidence that the person put it there.
+
+Each column is `@unique`, so an upload **displaces** rather than adds: the
+previous `MediaFile` is soft-deleted in the same transaction that attaches the
+new one, and the audit row records `replacedMediaFileId`. Without that the old
+row survives pointing at bytes nothing serves, and — because the column is
+unique — the new row cannot claim the pointer at all.
+
+The logo is embedded in both PDF templates (RFP §10.3), asserted by counting
+embedded images before and after an upload rather than by searching the text
+layer, which cannot see a picture.
 
 **Upload takes a batch.** One request carries up to six repeated `file` parts
 and answers `{ items: MediaFile[], failed: [{ name, reason }] }`. Six because

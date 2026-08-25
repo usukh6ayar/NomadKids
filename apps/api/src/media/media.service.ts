@@ -35,10 +35,8 @@ const MAX_PHOTOS_PER_NOTIFICATION = 12;
  * authority. Adding a purpose here widens who may read it — do not extend this
  * set without reading §7 of docs/SECURITY.md.
  *
- * There are no upload endpoints for these yet: the columns
- * (`Kindergarten.logoMediaFileId`, `User.photoMediaFileId`,
- * `Group.photoMediaFileId`) and this serve path exist, and the routes that
- * write them are the next piece of work.
+ * The routes that write them are `uploadKindergartenLogo`, `uploadUserPhoto`
+ * and `uploadGroupPhoto` below.
  */
 const TENANT_IMAGE_PURPOSES: ReadonlySet<MediaPurpose> = new Set<MediaPurpose>([
   "KINDERGARTEN_LOGO",
@@ -509,6 +507,154 @@ export class MediaService {
 
     await this.repo.setChildPhoto(childId, mediaId);
     return { childId, photoMediaFileId: mediaId };
+  }
+
+  // ── Tenant images — RFP §3.2 (лого, ангийн зураг), §3.3 (профайл зураг) ────
+
+  /**
+   * The kindergarten's logo. RFP §3.2, and §10.3 wants it on every PDF.
+   *
+   * Administrator only. A logo is the kindergarten's identity on every report
+   * it issues, which is a different thing from a class photo a teacher takes.
+   */
+  async uploadKindergartenLogo(
+    actor: Actor,
+    kindergartenId: string,
+    file: { buffer: Buffer; originalname: string },
+  ) {
+    this.tenants.assertAdmin(actor, kindergartenId);
+
+    const kindergarten = await this.repo.findKindergartenForImage(kindergartenId);
+    if (!kindergarten) throw new NotFoundException();
+
+    return this.storeTenantImage(actor, {
+      owner: "kindergarten",
+      ownerId: kindergartenId,
+      kindergartenId,
+      purpose: "KINDERGARTEN_LOGO",
+      prefix: "logos",
+      file,
+    });
+  }
+
+  /**
+   * A staff portrait — RFP §3.3.
+   *
+   * ★ Own account only, whatever the role.
+   *
+   * An administrator may create and deactivate users, but replacing somebody's
+   * face is not administration, and the RFP puts the profile photo under "Багш
+   * дараах боломжуудтай: өөрийн профайлыг харах, засах". Letting an admin write
+   * it would also make the picture unattributable — a portrait would no longer
+   * be evidence that the person themselves put it there.
+   *
+   * The file is scoped to one of the account's kindergartens because
+   * `MediaFile` has exactly one tenant. An account with no active membership
+   * has no tenant to store it under and gets a 404.
+   */
+  async uploadUserPhoto(
+    actor: Actor,
+    userId: string,
+    file: { buffer: Buffer; originalname: string },
+  ) {
+    if (userId !== actor.userId) throw new NotFoundException();
+
+    const memberships = await this.repo.findUserMembershipKindergartens(userId);
+    const first = memberships[0];
+    if (!first) throw new NotFoundException();
+
+    return this.storeTenantImage(actor, {
+      owner: "user",
+      ownerId: userId,
+      kindergartenId: first.kindergartenId,
+      purpose: "USER_PHOTO",
+      prefix: "portraits",
+      file,
+    });
+  }
+
+  /** The class photo — RFP §3.2 "ангийн зураг". Teachers and admins. */
+  async uploadGroupPhoto(
+    actor: Actor,
+    groupId: string,
+    file: { buffer: Buffer; originalname: string },
+  ) {
+    const group = await this.repo.findGroupForImage(groupId);
+    if (!group) throw new NotFoundException();
+    this.tenants.assertStaff(actor, group.kindergartenId);
+
+    return this.storeTenantImage(actor, {
+      owner: "group",
+      ownerId: groupId,
+      kindergartenId: group.kindergartenId,
+      purpose: "GROUP_PHOTO",
+      prefix: "groups",
+      file,
+    });
+  }
+
+  /**
+   * Validate, store, attach — the half the three routes above share.
+   *
+   * Authorization is deliberately *not* here. Each caller decides it first,
+   * because the three answers genuinely differ (admin, self, staff) and a
+   * single method taking a "who may do this" parameter is how one of them
+   * quietly becomes wrong.
+   */
+  private async storeTenantImage(
+    actor: Actor,
+    input: {
+      owner: "kindergarten" | "user" | "group";
+      ownerId: string;
+      kindergartenId: string;
+      purpose: MediaPurpose;
+      prefix: string;
+      file: { buffer: Buffer; originalname: string };
+    },
+  ) {
+    let validated;
+    try {
+      validated = await validateImageUpload(input.file.buffer);
+    } catch (error) {
+      if (error instanceof UploadRejected) throw new BadRequestException(error.reason);
+      throw error;
+    }
+
+    const storageKey = this.storage.buildKindergartenKey(input.kindergartenId, input.prefix);
+    await this.storage.put(storageKey, validated.buffer, validated.mimeType);
+
+    const { media, previousId } = await this.repo.attachTenantImage({
+      owner: input.owner,
+      ownerId: input.ownerId,
+      kindergartenId: input.kindergartenId,
+      purpose: input.purpose,
+      storageKey,
+      originalName: sanitiseFilename(input.file.originalname),
+      mimeType: validated.mimeType,
+      sizeBytes: validated.sizeBytes,
+      width: validated.width,
+      height: validated.height,
+      uploadedById: actor.userId,
+    });
+
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId: input.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "MediaFile",
+      objectId: media.id,
+      metadata: {
+        purpose: media.purpose,
+        sizeBytes: media.sizeBytes,
+        owner: input.owner,
+        ownerId: input.ownerId,
+        // The row this one displaced, so "where did the old logo go" has an
+        // answer that outlives the soft-deleted record.
+        replacedMediaFileId: previousId,
+      },
+    });
+
+    return this.toPublicShape(media);
   }
 
   /**

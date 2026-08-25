@@ -150,6 +150,9 @@ export class UsersRepository {
         specialization: true,
         education: true,
         bio: true,
+        // RFP §3.3 — профайл зураг. The settings screen previews it, so the id
+        // has to come back with the rest of the profile.
+        photoMediaFileId: true,
       },
     });
   }
