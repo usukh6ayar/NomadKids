@@ -41,6 +41,7 @@ import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui
 import { AgeSectionShell } from "@/components/child/age-section-shell";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { ChildGallery } from "@/components/media/child-gallery";
+import { ChildMilestones } from "@/components/child/child-milestones";
 import { ReportDialog } from "@/components/reports/report-dialog";
 import { ageInYears, formatDate, fullName } from "@/lib/format";
 import { PORTFOLIO } from "@/lib/vocabulary";
@@ -285,6 +286,13 @@ export default function PortfolioPage() {
         canEdit={isStaff || isGuardian}
         photoMediaFileId={data.photoMediaFileId}
       />
+
+      {/*
+        RFP §4.5 sits inside §4 — the child's portfolio — so the section lives
+        here rather than on the child hub, next to the birthday notes it reads
+        like. The hub is a teacher's working screen; this is the family's.
+      */}
+      <ChildMilestones childId={childId} isStaff={isStaff} />
 
       <BirthdaySection
         childId={childId}

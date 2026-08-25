@@ -4,6 +4,7 @@ import { AuthModule } from "./auth/auth.module";
 import { AssessmentModule } from "./assessment/assessment.module";
 import { AttendanceModule } from "./attendance/attendance.module";
 import { GrowthModule } from "./growth/growth.module";
+import { MilestonesModule } from "./milestones/milestones.module";
 import { AuthzModule } from "./authz/authz.module";
 import { CatalogModule } from "./catalog/catalog.module";
 import { ChildrenModule } from "./children/children.module";
@@ -54,6 +55,7 @@ import { UsersModule } from "./users/users.module";
     AssessmentModule,
     AttendanceModule,
     GrowthModule,
+    MilestonesModule,
     MealsModule,
     CatalogModule,
     NotificationsModule,

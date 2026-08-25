@@ -213,6 +213,30 @@ relationship record survives.
 
 ---
 
+## 5.1b Milestones — RFP §4.5
+
+| Method | Route                      | Role | Ownership             | Response               |
+| ------ | -------------------------- | ---- | --------------------- | ---------------------- |
+| GET    | `/children/:id/milestones` | any  | child                 | timeline, newest first |
+| POST   | `/children/:id/milestones` | any  | child (guardians too) | the milestone          |
+| PATCH  | `/milestones/:id`          | any  | own entry, or staff   | the milestone          |
+| DELETE | `/milestones/:id`          | any  | own entry, or staff   | `{ id }`               |
+
+`kind` is one of `MILESTONE_KINDS` (seven named firsts plus `CUSTOM`), a
+suggested vocabulary rather than a closed set — §4.5 explicitly asks for a
+family-invented event. A `CUSTOM` entry **must** carry a `title`.
+
+★ **A guardian may edit only their own entry.** Either parent could otherwise
+rewrite what the other wrote. 404, not 403.
+
+★★ **Photographs attach through the ordinary child-media upload**, with
+`milestoneId` instead of `observationId` (sending both is a 400). Unlike an
+observation there is no author check: a milestone belongs to the family, so
+either guardian may illustrate it. Milestone photos are visible to guardians
+unconditionally — there is no review state to gate on.
+
+---
+
 ## 5.2 Growth — RFP §7
 
 | Method | Route                        | Role | Ownership             | Request                          | Response                |

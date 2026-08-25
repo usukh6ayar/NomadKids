@@ -504,6 +504,53 @@ export const birthdaySectionSchema = z.object({
 });
 export type BirthdaySection = z.infer<typeof birthdaySectionSchema>;
 
+// ── Milestones — RFP §4.5 ────────────────────────────────────────────────────
+
+/**
+ * The seven firsts the RFP names, plus the escape hatch it also asks for.
+ *
+ * ★ A suggested vocabulary, not a closed set. RFP §4.5 lists these and then
+ * says "хэрэглэгчийн өөрөө үүсгэсэн үйл явдал" — a family inventing their own.
+ * `CUSTOM` is that: the API stores the family's `title` verbatim, and this list
+ * exists so the form's chips and the API's labels cannot drift.
+ */
+export const MILESTONE_KINDS = [
+  "FIRST_STEP",
+  "FIRST_WORD",
+  "FIRST_DAY_AT_KINDERGARTEN",
+  "DRESSED_ALONE",
+  "RODE_A_BICYCLE",
+  "RECITED_A_POEM",
+  "FIRST_TIME_ON_STAGE",
+  "CUSTOM",
+] as const;
+
+export const milestoneKindSchema = z.enum(MILESTONE_KINDS);
+export type MilestoneKind = z.infer<typeof milestoneKindSchema>;
+
+export const MILESTONE_KIND_LABEL: Record<string, string> = {
+  FIRST_STEP: "Анхны алхам",
+  FIRST_WORD: "Анхны үг",
+  FIRST_DAY_AT_KINDERGARTEN: "Анх цэцэрлэгт орсон өдөр",
+  DRESSED_ALONE: "Анх өөрөө хувцасласан",
+  RODE_A_BICYCLE: "Анх дугуй унасан",
+  RECITED_A_POEM: "Анх шүлэг уншсан",
+  FIRST_TIME_ON_STAGE: "Анх тайзан дээр гарсан",
+  CUSTOM: "Өөрийн үйл явдал",
+};
+
+export const milestoneSchema = z.object({
+  id: uuidSchema,
+  kind: z.string(),
+  /** The family's own words; overrides the suggested label when set. */
+  title: z.string().nullish(),
+  occurredOn: z.string(),
+  description: z.string().nullish(),
+  recordedBy: personRefSchema.nullish(),
+  media: z.array(observationMediaSchema).default([]),
+});
+export type Milestone = z.infer<typeof milestoneSchema>;
+
 // ── Growth — RFP §7 ──────────────────────────────────────────────────────────
 
 export const growthPointSchema = z.object({

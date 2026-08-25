@@ -43,10 +43,18 @@ import { MAX_UPLOAD_BYTES } from "./upload-validation";
  */
 const MAX_FILES_PER_UPLOAD = 6;
 
-const uploadOptionsSchema = uploadMetadataSchema.extend({
-  observationId: z.uuid().optional(),
-  purpose: z.enum(["CHILD_PHOTO", "OBSERVATION"]).optional(),
-});
+const uploadOptionsSchema = uploadMetadataSchema
+  .extend({
+    observationId: z.uuid().optional(),
+    milestoneId: z.uuid().optional(),
+    purpose: z.enum(["CHILD_PHOTO", "OBSERVATION", "MILESTONE"]).optional(),
+  })
+  .refine((body) => !(body.observationId && body.milestoneId), {
+    // A photograph belongs to one thing. Accepting both would silently pick
+    // whichever branch the service checked first.
+    message: "Ажиглалт болон онцгой үйл явдал хоёуланд нь хавсаргах боломжгүй",
+    path: ["milestoneId"],
+  });
 type UploadOptionsDto = z.infer<typeof uploadOptionsSchema>;
 
 @Controller("children/:id/media")
@@ -90,6 +98,7 @@ export class ChildMediaController {
 
     const result = await this.service.uploadMany(actor, params.id, files, {
       observationId: body.observationId,
+      milestoneId: body.milestoneId,
       caption: body.caption ?? null,
       purpose: body.purpose,
       // ★ Forwarded, not dropped. The schema accepted these before this line

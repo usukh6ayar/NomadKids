@@ -63,6 +63,7 @@ export function PhotoUpload({
   childId,
   purpose,
   observationId,
+  milestoneId,
   multiple = true,
   label = "Зураг нэмэх",
   hint,
@@ -71,9 +72,11 @@ export function PhotoUpload({
   children,
 }: {
   childId: string;
-  purpose?: "CHILD_PHOTO" | "OBSERVATION";
+  purpose?: "CHILD_PHOTO" | "OBSERVATION" | "MILESTONE";
   /** Attaches the upload to an observation. */
   observationId?: string;
+  /** Attaches the upload to a remembered first — RFP §4.5. */
+  milestoneId?: string;
   multiple?: boolean;
   label?: string;
   /** Replaces the default "JPEG, PNG or WebP…" line. Pass `null` for none. */
@@ -102,6 +105,7 @@ export function PhotoUpload({
       // with twenty photographs spent a third of a teacher's daily budget.
       for (const file of files) form.append("file", file);
       if (observationId) form.append("observationId", observationId);
+      if (milestoneId) form.append("milestoneId", milestoneId);
       if (purpose) form.append("purpose", purpose);
       // No Content-Type is set: the browser must add the multipart boundary.
       return mutate(`/children/${childId}/media`, uploadResultSchema, {

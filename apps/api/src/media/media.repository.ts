@@ -28,6 +28,7 @@ const GALLERY_SELECT = {
   height: true,
   uploadedAt: true,
   observationId: true,
+  milestoneId: true,
   purpose: true,
   takenAt: true,
   age: true,
@@ -40,6 +41,7 @@ const GALLERY_SELECT = {
 export interface MediaFilters {
   purpose?: MediaPurpose;
   observationId?: string;
+  milestoneId?: string;
   category?: string;
   age?: number;
 }
@@ -87,6 +89,7 @@ export class MediaRepository {
     return {
       ...(filters.purpose ? { purpose: filters.purpose } : {}),
       ...(filters.observationId ? { observationId: filters.observationId } : {}),
+      ...(filters.milestoneId ? { milestoneId: filters.milestoneId } : {}),
       ...(filters.category ? { category: filters.category } : {}),
       ...(filters.age === undefined ? {} : { age: filters.age }),
     };
@@ -115,6 +118,18 @@ export class MediaRepository {
       OR: [
         // Profile photos and gallery images not tied to an observation.
         { observationId: null, purpose: "CHILD_PHOTO" },
+        /*
+         * ★ Milestone photographs — RFP §4.5.
+         *
+         * Added with the milestone feature, and the omission would have been
+         * silent: a MILESTONE row has `observationId: null` but is not
+         * `CHILD_PHOTO`, so neither existing branch matched it. A family would
+         * have uploaded a photograph of their child's first steps, got a 201,
+         * and never seen it again — while staff saw it fine. There is nothing
+         * to gate on: a milestone is the family's own record, with no review
+         * state and no visibility flag.
+         */
+        { purpose: "MILESTONE" },
         // Attached to an observation the guardian may read.
         {
           observation: {
@@ -352,6 +367,24 @@ export class MediaRepository {
     });
   }
 
+  /**
+   * The milestone a photograph is being attached to — RFP §4.5.
+   *
+   * Selects `childId` only: unlike an observation there is no author or source
+   * to weigh, because a milestone belongs to the family rather than to whoever
+   * typed it. See the note in `MediaService.upload`.
+   */
+  async findMilestoneForAttachment(milestoneId: string) {
+    return this.prisma.milestone.findFirst({
+      where: { id: milestoneId, deletedAt: null },
+      select: { id: true, childId: true },
+    });
+  }
+
+  async countForMilestone(milestoneId: string) {
+    return this.prisma.mediaFile.count({ where: { milestoneId, deletedAt: null } });
+  }
+
   /** The group a class photo is being attached to, with its tenant. */
   async findGroupForImage(groupId: string) {
     return this.prisma.group.findFirst({
@@ -436,6 +469,8 @@ export interface CreateMediaData {
   childId?: string | null;
   observationId?: string | null;
   notificationId?: string | null;
+  /** RFP §4.5 — the photograph on a remembered first. */
+  milestoneId?: string | null;
   purpose: MediaPurpose;
   storageKey: string;
   originalName: string;

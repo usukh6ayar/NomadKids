@@ -16,6 +16,8 @@ import type { ListMediaQuery, UpdateMediaDto } from "./media.dto";
 export interface UploadOptions {
   purpose?: MediaPurpose;
   observationId?: string;
+  /** RFP §4.5 — a photograph of a remembered first. */
+  milestoneId?: string;
   caption?: string | null;
   takenAt?: Date | null;
   age?: number | null;
@@ -26,6 +28,8 @@ export interface UploadOptions {
 /** A generous ceiling; the UI shows far fewer per observation. */
 const MAX_PHOTOS_PER_OBSERVATION = 12;
 const MAX_PHOTOS_PER_NOTIFICATION = 12;
+/** RFP §4.5 asks for "Зураг" — one memory does not need a dozen. */
+const MAX_PHOTOS_PER_MILESTONE = 6;
 
 /**
  * Media that belongs to a kindergarten rather than to a child.
@@ -119,6 +123,35 @@ export class MediaService {
       observationId = observation.id;
     }
 
+    let milestoneId: string | null = null;
+    if (options.milestoneId) {
+      const milestone = await this.repo.findMilestoneForAttachment(options.milestoneId);
+      // Must be about THIS child, for the same reason the observation branch
+      // checks: a valid id from elsewhere would attach a photograph to another
+      // family's record.
+      if (!milestone || milestone.childId !== childId) {
+        throw new BadRequestException("Онцгой үйл явдал олдсонгүй");
+      }
+
+      /*
+       * ★ No author check here, unlike an observation, and the asymmetry is the
+       * point.
+       *
+       * A teacher's observation is a professional record a family may not
+       * illustrate. A milestone is the family's own memory: either guardian may
+       * add a photograph to "анхны алхам" whoever typed the date, and a teacher
+       * who was there may too. `assertCanContributeMedia` above has already
+       * established that this person belongs to this child.
+       */
+      const existing = await this.repo.countForMilestone(options.milestoneId);
+      if (existing >= MAX_PHOTOS_PER_MILESTONE) {
+        throw new BadRequestException(
+          `Нэг үйл явдалд дээд тал нь ${MAX_PHOTOS_PER_MILESTONE} зураг хавсаргана`,
+        );
+      }
+      milestoneId = milestone.id;
+    }
+
     // ★ Random key. Never derived from the child, the observation or the
     // uploaded filename — the real name lives only in `originalName`, for
     // display, and is never used to build a path.
@@ -133,7 +166,10 @@ export class MediaService {
       kindergartenId: facts.childKindergartenId,
       childId,
       observationId,
-      purpose: options.purpose ?? (observationId ? "OBSERVATION" : "CHILD_PHOTO"),
+      milestoneId,
+      purpose:
+        options.purpose ??
+        (milestoneId ? "MILESTONE" : observationId ? "OBSERVATION" : "CHILD_PHOTO"),
       storageKey,
       originalName: sanitiseFilename(file.originalname),
       mimeType: validated.mimeType,
@@ -141,7 +177,11 @@ export class MediaService {
       width: validated.width,
       height: validated.height,
       caption: options.caption ?? null,
-      order: observationId ? await this.repo.countForObservation(observationId) : 0,
+      order: observationId
+        ? await this.repo.countForObservation(observationId)
+        : milestoneId
+          ? await this.repo.countForMilestone(milestoneId)
+          : 0,
       // ★ Who sent the bytes. Recorded from the authenticated actor, never from
       // the request body — a client-supplied uploader is an attribution anyone
       // could forge.

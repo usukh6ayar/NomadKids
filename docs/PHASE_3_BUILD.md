@@ -89,7 +89,7 @@ re-broken by the next one. Production is stale but stable in the meantime.
 | 5   | §12.2, §2.1             | Storage size, report statistics, audit browser            | ⬜         |
 | 6   | §6.1, §6.2              | Assessment configuration admin UI                         | ⬜         |
 | 7   | §7                      | Growth measurements and charts                            | ✅         |
-| 8   | §4.5                    | Milestones                                                | ⬜         |
+| 8   | §4.5                    | Milestones                                                | ✅         |
 | 9   | Module 2                | Allergies, medication, vaccination                        | ⬜         |
 | 10  | Module 2.1              | Safety incident log                                       | ⬜         |
 | 11  | Module 2                | Menu-versus-allergy cross-check                           | ⬜         |
@@ -261,3 +261,39 @@ as HTML beneath the figure, which is what `DevelopmentRadar` already does and is
 better for a screen reader — and `eqeqeq` rejected `!= null`, which is now a
 named `isPresent` helper. A measurement of `0` is absurd and a _missing_ one is
 ordinary, so `value ? …` would have been the wrong test.
+
+---
+
+## 8 — Milestones ✅
+
+RFP §4.5's "Онцгой үйл явдал": the seven named firsts, plus the family's own.
+
+**Its own table, not an `Observation` with a special type.** An observation
+carries a development domain, an assessment level, a review status and a
+next-steps plan, and stays invisible to a family until a teacher approves it. A
+milestone is a memory, usually written by that family, which needs none of that
+and must never wait for review to appear in the child's own portfolio.
+
+**`kind` is a free string with a suggested vocabulary.** §4.5 names seven and
+then asks for "хэрэглэгчийн өөрөө үүсгэсэн үйл явдал". An enum cannot hold the
+eighth without a migration; a configuration table would put an administrator in
+charge of curating one family's memory. CLAUDE.md §2.3 binds on what an
+_administrator_ edits, which this is not. A `CUSTOM` row must carry a title —
+without one it renders as the generic label and tells the family nothing.
+
+**A guardian may edit only what they wrote; staff may edit anything.** Without
+the author check either parent could silently rewrite the other's entry, which
+is the sort of thing that surfaces during a custody dispute. 404, not 403.
+
+**★ The photograph branch was a real bug, caught by writing the test.** A
+`MILESTONE` media row has `observationId: null` but is not `CHILD_PHOTO`, so
+neither existing branch of `guardianVisibleWhere` matched it: a family would
+have uploaded a photograph of their child's first steps, received a 201, and
+never seen it again — while staff saw it fine. The predicate now admits
+`purpose: "MILESTONE"` outright, since a milestone has no review state to gate
+on, and the test asserts the _serve_ path rather than only the list.
+
+```
+api  test/milestones.test.ts   20 passed
+web  169 passed
+```
