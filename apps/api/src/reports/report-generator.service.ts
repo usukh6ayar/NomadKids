@@ -151,6 +151,24 @@ export class ReportGeneratorService {
 
     const enrollment = data.child.enrollments[0];
 
+    /*
+     * RFP §5.3 — each comparison embeds two images, and both go through the
+     * same `ImageBudget` as everything else. Embedded after the observations so
+     * a portfolio that is already at its ceiling loses the comparison's
+     * *pictures* rather than an observation's: the conclusion still prints, and
+     * the template renders a pair with a missing image as a labelled gap.
+     */
+    const comparisons: PortfolioData["artworkComparisons"] = [];
+    for (const comparison of data.artworkComparisons) {
+      comparisons.push({
+        conclusion: comparison.conclusion,
+        earlierDataUri: await this.embed(budget, comparison.earlierMedia),
+        laterDataUri: await this.embed(budget, comparison.laterMedia),
+        earlierTakenAt: comparison.earlierMedia?.takenAt ?? null,
+        laterTakenAt: comparison.laterMedia?.takenAt ?? null,
+      });
+    }
+
     const payload: PortfolioData = {
       child: {
         lastName: data.child.lastName,
@@ -175,6 +193,8 @@ export class ReportGeneratorService {
         : null,
       ageProfiles: data.ageProfiles,
       birthdayNotes: data.birthdayNotes,
+      milestones: data.milestones,
+      artworkComparisons: comparisons,
       observations,
       assessments: data.assessments.map((a) => ({
         termName: a.term.name,

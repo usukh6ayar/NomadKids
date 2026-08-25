@@ -414,6 +414,56 @@ describe("portfolio generation", () => {
     expect(text).toContain(a.kindergarten.name);
   }, 180_000);
 
+  /**
+   * RFP §5.3's last bullet — "Харьцуулалтыг PDF тайланд оруулах" — and §4.5's
+   * milestones, which belong in the portfolio they are part of.
+   *
+   * ★ The conclusion is asserted on extracted text and the pair on the image
+   * count, because the two fail differently: a comparison whose images were
+   * dropped by the budget still prints its sentence, and that is deliberate.
+   */
+  it("prints artwork comparisons and milestones", async () => {
+    if (!pdftotextAvailable()) throw new Error("pdftotext (poppler) is required");
+
+    const before = countImages(await generatedPdf(await createJob(teacherA, a.child.id)));
+
+    // Two works, six months apart, and the teacher's reading of the change.
+    const uploads: string[] = [];
+    for (const takenAt of ["2025-01-10", "2025-06-10"]) {
+      const res = await authed(
+        request(app.getHttpServer()).post(`/v1/children/${a.child.id}/media`),
+        teacherA,
+      )
+        .field("category", "ARTWORK")
+        .field("takenAt", takenAt)
+        .attach("file", await logoBytes(), "бүтээл.png");
+      expect(res.status).toBe(201);
+      uploads.push(res.body.items[0].id as string);
+    }
+
+    const CONCLUSION = "Хожим нь хүнийг зурахдаа гар, хөлийг тусад нь зурсан.";
+    await authed(
+      request(app.getHttpServer()).post(`/v1/children/${a.child.id}/artwork/comparisons`),
+      teacherA,
+    ).send({ mediaIdA: uploads[0], mediaIdB: uploads[1], conclusion: CONCLUSION });
+
+    await authed(
+      request(app.getHttpServer()).post(`/v1/children/${a.child.id}/milestones`),
+      teacherA,
+    ).send({ kind: "FIRST_STEP", occurredOn: "2024-03-15", description: "Гурван алхам." });
+
+    const pdf = await generatedPdf(await createJob(teacherA, a.child.id));
+    const text = extractText(pdf);
+
+    expect(text).toContain("Бүтээлийн хөгжлийн харьцуулалт");
+    expect(text).toContain(CONCLUSION);
+    expect(text).toContain("Онцгой үйл явдал");
+    expect(text).toContain("Анхны алхам");
+
+    // Both works of the pair are embedded, not just referenced.
+    expect(countImages(pdf)).toBe(before + 2);
+  }, 180_000);
+
   it("records page count and file size on the job", async () => {
     await seedObservations(a);
     const jobId = await createJob(teacherA, a.child.id);

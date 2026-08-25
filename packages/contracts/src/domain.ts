@@ -504,6 +504,34 @@ export const birthdaySectionSchema = z.object({
 });
 export type BirthdaySection = z.infer<typeof birthdaySectionSchema>;
 
+// ── Artwork comparison — RFP §5.3 ────────────────────────────────────────────
+
+const comparisonMediaSchema = z.object({
+  id: uuidSchema,
+  caption: z.string().nullish(),
+  takenAt: z.string().nullish(),
+  uploadedAt: z.string().nullish(),
+  originalName: z.string().nullish(),
+});
+
+export const artworkComparisonSchema = z.object({
+  id: uuidSchema,
+  conclusion: z.string(),
+  /** Always the earlier work — the API sorts the pair by when it was made. */
+  earlierMedia: comparisonMediaSchema,
+  laterMedia: comparisonMediaSchema,
+  author: personRefSchema.nullish(),
+  createdAt: z.string().nullish(),
+});
+export type ArtworkComparison = z.infer<typeof artworkComparisonSchema>;
+
+export const artworkTimelineSchema = z.object({
+  /** Oldest first, by when the work was made — RFP §5.3's time order. */
+  artwork: z.array(comparisonMediaSchema.extend({ observationId: uuidSchema.nullish() })),
+  comparisons: z.array(artworkComparisonSchema),
+});
+export type ArtworkTimeline = z.infer<typeof artworkTimelineSchema>;
+
 // ── Safety incidents — RFP Module 2.1 ────────────────────────────────────────
 
 export const INCIDENT_KINDS = [

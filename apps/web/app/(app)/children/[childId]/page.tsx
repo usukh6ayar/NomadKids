@@ -17,6 +17,7 @@ import { ChildAttendance } from "@/components/child/child-attendance";
 import { ChildGrowth } from "@/components/child/child-growth";
 import { ChildHealth } from "@/components/child/child-health";
 import { ChildIncidents } from "@/components/child/child-incidents";
+import { ChildArtwork } from "@/components/child/child-artwork";
 import { ChildGeneralInfo } from "@/components/child/child-general-info";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { ChildMenu } from "@/components/child/child-menu";
@@ -34,6 +35,7 @@ const MENU = "menu";
 const GROWTH = "growth";
 const HEALTH = "health";
 const INCIDENTS = "incidents";
+const ARTWORK = "artwork";
 const GALLERY = "gallery";
 
 /**
@@ -169,6 +171,11 @@ export default function ChildDetailPage() {
             value: INCIDENTS,
             label: "Аюулгүй байдал",
             content: <ChildIncidents childId={childId} isStaff={isStaff} />,
+          },
+          {
+            value: ARTWORK,
+            label: "Бүтээл",
+            content: <ChildArtwork childId={childId} isStaff={isStaff} />,
           },
           {
             value: MENU,

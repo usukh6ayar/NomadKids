@@ -258,6 +258,7 @@ model User {
   medicationsAuthorised MedicationAuthorisation[] @relation("MedicationAuthorisedBy")
   vaccinationsRecorded  VaccinationRecord[]       @relation("VaccinationRecordedBy")
   incidentsRecorded     SafetyIncident[]          @relation("IncidentRecordedBy")
+  artworkComparisons    ArtworkComparison[]       @relation("ComparisonAuthor")
 
   @@index([deletedAt])
   @@map("users")
@@ -423,6 +424,7 @@ model Kindergarten {
   medications           MedicationAuthorisation[]
   vaccinations          VaccinationRecord[]
   safetyIncidents       SafetyIncident[]
+  artworkComparisons    ArtworkComparison[]
 
   @@index([deletedAt])
   @@map("kindergartens")
@@ -568,6 +570,7 @@ model Child {
   medications         MedicationAuthorisation[]
   vaccinations        VaccinationRecord[]
   safetyIncidents     SafetyIncident[]
+  artworkComparisons  ArtworkComparison[]
 
   @@unique([kindergartenId, nationalId])
   @@index([kindergartenId, status])
@@ -1028,6 +1031,60 @@ model SafetyIncident {
   /// The unreported queue: high-priority first, still awaiting a family.
   @@index([kindergartenId, isHighPriority, reportedAt])
   @@map("safety_incidents")
+}
+
+/// Two works, side by side, with what changed between them — RFP §5.3.
+///
+/// ★ Only the *conclusion* is new. Everything else §5.3 asks for already
+/// exists: several artwork photographs per observation (`MediaFile.
+/// observationId`, capped at twelve), a date on each (`takenAt`), a caption on
+/// each, and the whole set orderable in time. What the schema could not hold
+/// was the sentence a teacher writes about the change — "долоо хоногийн дараа
+/// хүн зурахдаа гар, хөлийг тусад нь зурсан" — and that sentence is the
+/// feature. So this table is a pair of pointers and a paragraph, not a copy of
+/// the images.
+///
+/// ★★ Two works, not N.
+///
+/// §5.3 says "өмнөх болон дараагийн бүтээлийг зэрэгцүүлэн харах" — the previous
+/// and the next, side by side. A set of arbitrary size would need an ordering
+/// table and an answer to "what does a conclusion about five drawings mean",
+/// and neither is asked for. A teacher comparing three works makes two
+/// comparisons, which is also how they would say it out loud.
+model ArtworkComparison {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  childId        String @db.Uuid
+
+  /// ★★★ Ordered by the service, not by the caller.
+  ///
+  /// A teacher who picks the two works in the wrong order would otherwise get a
+  /// comparison that reads as development running backwards. The service sorts
+  /// them by when the work was made before storing, so `earlier` is always
+  /// earlier — see `ArtworkService.compare`.
+  earlierMediaId String @db.Uuid
+  laterMediaId   String @db.Uuid
+
+  /// "Хөгжлийн өөрчлөлтийн дүгнэлт" — the reason the row exists.
+  conclusion String
+
+  /// The teacher whose judgement this is. A comparison is a professional
+  /// reading of a child's development, so it carries an author the way an
+  /// observation does.
+  authorId String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  earlierMedia MediaFile    @relation("ComparisonEarlier", fields: [earlierMediaId], references: [id], onDelete: Cascade)
+  laterMedia   MediaFile    @relation("ComparisonLater", fields: [laterMediaId], references: [id], onDelete: Cascade)
+  author       User?        @relation("ComparisonAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([childId, createdAt(sort: Desc)])
+  @@map("artwork_comparisons")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1681,18 +1738,20 @@ model MediaFile {
   updatedAt  DateTime  @updatedAt
   deletedAt  DateTime?
 
-  kindergarten       Kindergarten  @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
-  child              Child?        @relation("ChildMedia", fields: [childId], references: [id], onDelete: Cascade)
-  observation        Observation?  @relation("ObservationMedia", fields: [observationId], references: [id], onDelete: Cascade)
-  notification       Notification? @relation("NotificationMedia", fields: [notificationId], references: [id], onDelete: Cascade)
-  milestone          Milestone?      @relation("MilestoneMedia", fields: [milestoneId], references: [id], onDelete: Cascade)
-  incident           SafetyIncident? @relation("IncidentMedia", fields: [incidentId], references: [id], onDelete: Cascade)
-  uploadedBy         User?         @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
-  childPhotoOf       Child?        @relation("ChildPhoto")
-  reportJob          ReportJob?    @relation("ReportOutput")
-  kindergartenLogoOf Kindergarten? @relation("KindergartenLogo")
-  userPhotoOf        User?         @relation("UserPhoto")
-  groupPhotoOf       Group?        @relation("GroupPhoto")
+  kindergarten       Kindergarten        @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child              Child?              @relation("ChildMedia", fields: [childId], references: [id], onDelete: Cascade)
+  observation        Observation?        @relation("ObservationMedia", fields: [observationId], references: [id], onDelete: Cascade)
+  notification       Notification?       @relation("NotificationMedia", fields: [notificationId], references: [id], onDelete: Cascade)
+  milestone          Milestone?          @relation("MilestoneMedia", fields: [milestoneId], references: [id], onDelete: Cascade)
+  incident           SafetyIncident?     @relation("IncidentMedia", fields: [incidentId], references: [id], onDelete: Cascade)
+  uploadedBy         User?               @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  childPhotoOf       Child?              @relation("ChildPhoto")
+  comparisonEarlier  ArtworkComparison[] @relation("ComparisonEarlier")
+  comparisonLater    ArtworkComparison[] @relation("ComparisonLater")
+  reportJob          ReportJob?          @relation("ReportOutput")
+  kindergartenLogoOf Kindergarten?       @relation("KindergartenLogo")
+  userPhotoOf        User?               @relation("UserPhoto")
+  groupPhotoOf       Group?              @relation("GroupPhoto")
 
   @@index([childId, purpose, uploadedAt(sort: Desc)])
   @@index([kindergartenId, uploadedAt(sort: Desc)])

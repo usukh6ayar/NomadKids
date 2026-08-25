@@ -1,4 +1,4 @@
-import { ageInYears, birthFacts } from "@kinder/contracts";
+import { ageInYears, birthFacts, MILESTONE_KIND_LABEL } from "@kinder/contracts";
 import { baseCss, esc, formatDate, masthead, paragraphs, reportChrome } from "./template-utils";
 
 /**
@@ -46,6 +46,21 @@ export interface PortfolioData {
     teacherNote?: string | null;
   }[];
   birthdayNotes: { age: number; note?: string | null }[];
+  /** RFP §4.5 — the firsts a family recorded. */
+  milestones: {
+    kind: string;
+    title?: string | null;
+    occurredOn: Date | string;
+    description?: string | null;
+  }[];
+  /** RFP §5.3 — two works side by side, with what changed. */
+  artworkComparisons: {
+    conclusion: string;
+    earlierDataUri?: string | null;
+    laterDataUri?: string | null;
+    earlierTakenAt?: Date | string | null;
+    laterTakenAt?: Date | string | null;
+  }[];
   observations: {
     observedOn: Date | string;
     typeName: string;
@@ -146,6 +161,53 @@ export function renderPortfolioHtml(data: PortfolioData): string {
     )
     .join("");
 
+  /*
+   * RFP §5.3 — "Харьцуулалтыг PDF тайланд оруулах".
+   *
+   * ★ A pair renders even when one image could not be embedded.
+   *
+   * `ImageBudget` refuses images once the report's total is spent, so a long
+   * portfolio can reach a comparison with room for one picture or none. The
+   * conclusion is the part a family reads and the part a teacher wrote; dropping
+   * the whole block because a photograph did not fit would throw away the
+   * sentence to save the illustration.
+   */
+  const comparisonBlocks = data.artworkComparisons
+    .map(
+      (c) => `
+      <div class="comparison">
+        <div class="pair">
+          ${
+            c.earlierDataUri
+              ? `<figure><img src="${c.earlierDataUri}" alt="Өмнөх бүтээл">
+                   <figcaption>${c.earlierTakenAt ? formatDate(c.earlierTakenAt) : "Огноогүй"}</figcaption>
+                 </figure>`
+              : `<figure class="missing"><figcaption>Зураг хавсаргаагүй</figcaption></figure>`
+          }
+          ${
+            c.laterDataUri
+              ? `<figure><img src="${c.laterDataUri}" alt="Дараагийн бүтээл">
+                   <figcaption>${c.laterTakenAt ? formatDate(c.laterTakenAt) : "Огноогүй"}</figcaption>
+                 </figure>`
+              : `<figure class="missing"><figcaption>Зураг хавсаргаагүй</figcaption></figure>`
+          }
+        </div>
+        ${paragraphs(c.conclusion)}
+      </div>`,
+    )
+    .join("");
+
+  const milestoneBlocks = data.milestones
+    .map(
+      (m) => `
+      <div class="milestone">
+        <h4>${esc(m.title?.trim() || MILESTONE_KIND_LABEL[m.kind] || m.kind)}</h4>
+        <p class="meta">${formatDate(m.occurredOn)}</p>
+        ${paragraphs(m.description)}
+      </div>`,
+    )
+    .join("");
+
   const birthdayBlocks = data.birthdayNotes
     .filter((n) => n.note)
     .map((n) => `<div class="birthday"><h4>${n.age} нас</h4>${paragraphs(n.note)}</div>`)
@@ -193,6 +255,18 @@ ${baseCss()}
 
   .age { break-inside: avoid; margin-bottom: 6mm; }
   .birthday { break-inside: avoid; margin-bottom: 4mm; }
+  .milestone { break-inside: avoid; margin-bottom: 4mm; }
+
+  /* RFP §5.3 — the two works sit side by side, which is the whole point. */
+  .comparison { break-inside: avoid; margin-bottom: 7mm; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; margin-bottom: 2mm; }
+  .pair figure { margin: 0; }
+  .pair img { width: 100%; max-height: 65mm; object-fit: contain; border-radius: 2mm; }
+  .pair figcaption { font-size: 8.5pt; color: #6b7280; margin-top: 1mm; }
+  .pair .missing {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 30mm; border: 1px dashed #d1d5db; border-radius: 2mm;
+  }
 </style>
 </head>
 <body>
@@ -243,8 +317,20 @@ ${
 </section>
 
 ${
+  milestoneBlocks
+    ? `<section class="page-break"><h2>Онцгой үйл явдал</h2>${milestoneBlocks}</section>`
+    : ""
+}
+
+${
   observationBlocks
     ? `<section class="page-break"><h2>Багшийн ажиглалт</h2>${observationBlocks}</section>`
+    : ""
+}
+
+${
+  comparisonBlocks
+    ? `<section class="page-break"><h2>Бүтээлийн хөгжлийн харьцуулалт</h2>${comparisonBlocks}</section>`
     : ""
 }
 
