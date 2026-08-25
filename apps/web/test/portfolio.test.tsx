@@ -184,3 +184,95 @@ describe("portfolio age sections", () => {
     await waitFor(() => expect(ageDisclosure(4).open).toBe(true));
   });
 });
+
+describe("RFP §4.1 and §4.3 completeness", () => {
+  /**
+   * ★ The gap this closes was real storage with no interface.
+   *
+   * `ChildAgeProfile` has carried `favoriteStory`, `emotionalTraits`,
+   * `familyMembers` and `learningInterest` since the schema was written, the
+   * API validates and persists all four, and the Zod contract declares them —
+   * only the web's field list was short. So the fields were writable by any
+   * other client and invisible here, and a teacher could not enter them at all.
+   *
+   * That is the mirror image of the mock-data problem this project keeps
+   * refusing. Both leave the screen disagreeing with the database, and this one
+   * is quieter: nothing fails, the data is simply never seen.
+   */
+  it("offers every stored age-profile field to a teacher", async () => {
+    const user = userEvent.setup();
+    stubPortfolio(bornYearsAgo(3));
+
+    renderWithProviders(<PortfolioPage />);
+    await waitFor(() => expect(ageDisclosure(3)).toBeInTheDocument());
+
+    const panel = ageDisclosure(3);
+    await user.click(within(panel).getByRole("button", { name: /Засах/ }));
+
+    // The four that were missing, by their RFP wording.
+    for (const label of [
+      "Дуртай үлгэр",
+      "Гэр бүлийн гишүүд",
+      "Сэтгэл хөдлөлийн онцлог",
+      "Суралцах сонирхол",
+    ]) {
+      expect(within(panel).getByLabelText(label)).toBeInTheDocument();
+    }
+  });
+
+  it("renders a stored value for a field the UI used to drop", async () => {
+    stubPortfolio(bornYearsAgo(3), [
+      { age: 3, favoriteStory: "Алтан загасны үлгэр", learningInterest: "Тоо тоолох" },
+    ]);
+
+    renderWithProviders(<PortfolioPage />);
+
+    await waitFor(() => expect(ageDisclosure(3)).toBeInTheDocument());
+    expect(screen.getByText("Алтан загасны үлгэр")).toBeInTheDocument();
+    expect(screen.getByText("Тоо тоолох")).toBeInTheDocument();
+  });
+
+  /**
+   * ★★ `recordedOn` was stored and accepted, and the *contract* dropped it.
+   *
+   * Zod strips what it is not told about, so a measurement's date could be
+   * written through `PATCH /about-me` and never read back. A height with no date
+   * is a number about a growing child that nobody can place in time.
+   */
+  it("shows when a height and weight were measured", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: `/children/${CHILD_ID}/about-me`,
+        body: { exists: true, heightCm: "98.5", weightKg: "15.2", recordedOn: "2026-03-14" },
+      },
+      { path: `/children/${CHILD_ID}/age-profiles`, body: [] },
+      { path: `/children/${CHILD_ID}/birthday-notes`, body: [] },
+      {
+        path: `/children/${CHILD_ID}/media`,
+        body: { items: [], page: 1, pageSize: 25, total: 0, totalPages: 0 },
+      },
+      {
+        path: `/children/${CHILD_ID}`,
+        body: {
+          id: CHILD_ID,
+          lastName: "Ганболд",
+          firstName: "Батбаяр",
+          sex: "MALE",
+          dateOfBirth: bornYearsAgo(3),
+          status: "ACTIVE",
+          photoMediaFileId: null,
+          enrollments: [],
+          guardianships: [],
+          kindergarten: { id: "33333333-3333-4333-8333-333333333333", name: "Цэцэрлэг" },
+          healthNotes: null,
+        },
+      },
+    ]);
+
+    renderWithProviders(<PortfolioPage />);
+
+    expect(await screen.findByText("98.5 см")).toBeInTheDocument();
+    expect(screen.getByText("2026.03.14")).toBeInTheDocument();
+  });
+});
