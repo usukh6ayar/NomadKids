@@ -1,7 +1,18 @@
 "use client";
 
 import * as LabelPrimitive from "@radix-ui/react-label";
-import { useId, type ComponentProps, type ReactNode } from "react";
+import * as SelectPrimitive from "@radix-ui/react-select";
+import { Check, ChevronDown } from "lucide-react";
+import {
+  Children,
+  isValidElement,
+  useId,
+  type ChangeEvent,
+  type ComponentProps,
+  type OptionHTMLAttributes,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -110,34 +121,130 @@ export function Textarea({
 }
 
 /**
- * A native `<select>`, deliberately.
+ * A `<select>`-shaped listbox, built on Radix so the open popup is a styled
+ * part of the product rather than the OS's own list — the closed control is
+ * the only part CSS can reach on a native `<select>`.
  *
- * A custom listbox would need focus management, type-ahead and virtual
- * scrolling to match what the platform already gives free — and on a phone the
- * native control is the OS picker, which is the one every parent already knows.
+ * ★ The call-site contract is unchanged from the native version this
+ * replaced: pass `<option value="…">Label</option>` children, `value` and
+ * `onChange` exactly as before. Every existing `<Select>` call site keeps
+ * working without edits — this reads those `<option>` elements and drives
+ * Radix's `Root`/`Item` API from them, rather than every screen learning a
+ * second, Radix-flavoured API. `""` is a common placeholder value here
+ * ("Сонгоно уу", "Бүх эрх" …) but Radix's `Select.Item` rejects an empty
+ * string outright, so it is swapped for `EMPTY_SENTINEL` at the Radix
+ * boundary only — `value`/`onChange` on the outside still see `""`.
  */
+
+const EMPTY_SENTINEL = "__EMPTY__";
+const toRadixValue = (value: string) => (value === "" ? EMPTY_SENTINEL : value);
+const fromRadixValue = (value: string) => (value === EMPTY_SENTINEL ? "" : value);
+
+function isOptionElement(
+  node: ReactNode,
+): node is ReactElement<OptionHTMLAttributes<HTMLOptionElement>> {
+  return isValidElement(node) && node.type === "option";
+}
+
 export function Select({
   className,
   invalid,
   children,
-  ...props
+  value,
+  defaultValue,
+  onChange,
+  disabled,
+  name,
+  id,
+  required,
+  "aria-label": ariaLabel,
+  "aria-describedby": ariaDescribedBy,
 }: ComponentProps<"select"> & { invalid?: boolean }) {
+  const options = Children.toArray(children).filter(isOptionElement);
+
   return (
-    <select
-      aria-invalid={invalid || undefined}
-      className={cn(
-        controlBase,
-        "h-[48px] appearance-none bg-[length:16px] bg-[right_14px_center] bg-no-repeat pr-10",
-        // Inline chevron: an SVG data URI avoids a network request and a
-        // wrapper element that would complicate the label association.
-        "bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%2377737D%22 stroke-width=%222%22 stroke-linecap=%22round%22><path d=%22M6 9l6 6 6-6%22/></svg>')]",
-        invalid ? "border-danger" : "border-border focus:border-primary",
-        className,
-      )}
-      {...props}
+    <SelectPrimitive.Root
+      value={value !== null && value !== undefined ? toRadixValue(String(value)) : undefined}
+      defaultValue={
+        defaultValue !== null && defaultValue !== undefined
+          ? toRadixValue(String(defaultValue))
+          : undefined
+      }
+      onValueChange={(next) => {
+        onChange?.({
+          target: { value: fromRadixValue(next) },
+        } as unknown as ChangeEvent<HTMLSelectElement>);
+      }}
+      disabled={disabled}
+      name={name}
+      required={required}
     >
-      {children}
-    </select>
+      <SelectPrimitive.Trigger
+        id={id}
+        type="button"
+        aria-invalid={invalid || undefined}
+        aria-label={ariaLabel}
+        aria-describedby={ariaDescribedBy}
+        className={cn(
+          controlBase,
+          "flex h-[48px] items-center justify-between gap-2 outline-none",
+          "data-[placeholder]:text-muted",
+          invalid ? "border-danger" : "border-border data-[state=open]:border-primary",
+          className,
+        )}
+      >
+        <SelectPrimitive.Value className="truncate" />
+        <SelectPrimitive.Icon className="shrink-0 text-muted">
+          <ChevronDown size={16} aria-hidden />
+        </SelectPrimitive.Icon>
+      </SelectPrimitive.Trigger>
+
+      <SelectPrimitive.Portal>
+        <SelectPrimitive.Content
+          position="popper"
+          sideOffset={6}
+          className={cn(
+            "z-[100] overflow-hidden rounded-row border border-border bg-surface py-1",
+            "shadow-[0_8px_28px_rgba(15,23,42,.12)]",
+            "w-[var(--radix-select-trigger-width)] max-h-[var(--radix-select-content-available-height)]",
+          )}
+        >
+          <SelectPrimitive.ScrollUpButton className="flex h-6 items-center justify-center text-muted">
+            <ChevronDown size={14} className="rotate-180" aria-hidden />
+          </SelectPrimitive.ScrollUpButton>
+
+          <SelectPrimitive.Viewport className="p-1">
+            {options.map((option, index) => {
+              const raw = option.props.value;
+              const itemValue =
+                raw === null || raw === undefined ? String(option.props.children) : String(raw);
+              return (
+                <SelectPrimitive.Item
+                  key={itemValue || index}
+                  value={toRadixValue(itemValue)}
+                  disabled={option.props.disabled}
+                  className={cn(
+                    "flex min-h-[44px] cursor-pointer select-none items-center justify-between gap-2",
+                    "rounded-control px-3 py-2 text-body text-ink outline-none",
+                    "data-[highlighted]:bg-canvas data-[state=checked]:font-medium",
+                    "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+                  )}
+                >
+                  <SelectPrimitive.ItemText>{option.props.children}</SelectPrimitive.ItemText>
+                  <SelectPrimitive.ItemIndicator className="shrink-0 text-primary">
+                    <Check size={16} aria-hidden />
+                  </SelectPrimitive.ItemIndicator>
+                </SelectPrimitive.Item>
+              );
+            })}
+          </SelectPrimitive.Viewport>
+
+          <SelectPrimitive.ScrollDownButton className="flex h-6 items-center justify-center text-muted">
+            <ChevronDown size={14} aria-hidden />
+          </SelectPrimitive.ScrollDownButton>
+        </SelectPrimitive.Content>
+      </SelectPrimitive.Portal>
+    </SelectPrimitive.Root>
   );
 }
 

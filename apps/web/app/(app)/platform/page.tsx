@@ -1,21 +1,36 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useState } from "react";
 import { Building2, Plus } from "lucide-react";
-import { createdKindergartenSchema, paginated, platformKindergartenSchema } from "@kinder/contracts";
+import {
+  createdKindergartenSchema,
+  paginated,
+  platformKindergartenSchema,
+  platformStatsSchema,
+} from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RowList } from "@/components/ui/card";
-import { Field, Input } from "@/components/ui/field";
+import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireSuperAdmin } from "@/components/shell/require-role";
 import { InvitationHandover } from "@/components/admin/invitation-handover";
+import { Stat } from "@/components/admin/dashboard-sections";
+import { ToggleActiveButton } from "@/components/admin/toggle-kindergarten-active";
 import { formatRelative } from "@/lib/format";
+
+/** "" = no filter (Бүгд); the API's `isActive` param is a `z.stringbool()`. */
+const STATUS_OPTIONS = [
+  { value: "", label: "Бүгд" },
+  { value: "true", label: "Идэвхтэй" },
+  { value: "false", label: "Идэвхгүй" },
+] as const;
 
 const listSchema = paginated(platformKindergartenSchema);
 
@@ -42,13 +57,20 @@ export default function PlatformPage() {
 
 function Platform() {
   const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("");
   const [creating, setCreating] = useState(false);
 
+  const stats = useQuery({
+    queryKey: qk.platformStats(),
+    queryFn: () => get("/platform/stats", platformStatsSchema),
+  });
+
   const kindergartens = useQuery({
-    queryKey: qk.platformKindergartens({ q: query }),
+    queryKey: qk.platformKindergartens({ q: query, isActive: status }),
     queryFn: () => {
       const params = new URLSearchParams({ page: "1", pageSize: "50" });
       if (query.trim()) params.set("q", query.trim());
+      if (status) params.set("isActive", status);
       return get(`/platform/kindergartens?${params}`, listSchema);
     },
   });
@@ -68,6 +90,16 @@ function Platform() {
         }
       />
 
+      {stats.data ? (
+        <section aria-label="Системийн товч мэдээлэл" className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          <Stat label="Нийт цэцэрлэг" value={stats.data.kindergartens} />
+          <Stat label="Нийт бүлэг" value={stats.data.groups} />
+          <Stat label="Нийт хүүхэд" value={stats.data.children} />
+          <Stat label="Багш, ажилтан" value={stats.data.staff} />
+          <Stat label="Идэвхтэй эцэг эх" value={stats.data.guardians} />
+        </section>
+      ) : null}
+
       <div className="flex flex-wrap gap-2">
         <Input
           type="search"
@@ -77,6 +109,18 @@ function Platform() {
           onChange={(e) => setQuery(e.target.value)}
           className="max-w-[320px] flex-1"
         />
+        <Select
+          aria-label="Төлөвөөр шүүх"
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          className="max-w-[160px]"
+        >
+          {STATUS_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
       </div>
 
       {kindergartens.isLoading ? <LoadingState rows={5} /> : null}
@@ -87,7 +131,7 @@ function Platform() {
       {kindergartens.data && items.length === 0 ? (
         <EmptyState
           title="Цэцэрлэг олдсонгүй"
-          description={query ? "Хайлтаа өөрчилж үзнэ үү." : "Эхний цэцэрлэгээ бүртгээрэй."}
+          description={query || status ? "Хайлт, шүүлтээ өөрчилж үзнэ үү." : "Эхний цэцэрлэгээ бүртгээрэй."}
         />
       ) : null}
 
@@ -96,22 +140,27 @@ function Platform() {
           {items.map((kg) => (
             <div
               key={kg.id}
-              className="flex min-h-[64px] flex-wrap items-center gap-3 rounded-row border border-border bg-surface px-4 py-3"
+              className="flex min-h-[64px] flex-wrap items-center gap-3 rounded-row border border-border bg-surface px-4 py-3 transition-colors has-[a:hover]:border-primary"
             >
-              <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-primary-soft text-primary">
-                <Building2 size={18} aria-hidden />
-              </span>
+              <Link
+                href={`/platform/${kg.id}`}
+                className="flex min-w-0 flex-1 items-center gap-3"
+              >
+                <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-primary-soft text-primary">
+                  <Building2 size={18} aria-hidden />
+                </span>
 
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-lead font-semibold text-ink">
-                  {kg.name}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-lead font-semibold text-ink">
+                    {kg.name}
+                  </span>
+                  <span className="mt-px block truncate text-compact text-muted">
+                    {[kg.address, kg.phone, kg.email].filter(Boolean).join(" · ") || "—"}
+                    {" · "}
+                    {formatRelative(kg.createdAt)}
+                  </span>
                 </span>
-                <span className="mt-px block truncate text-compact text-muted">
-                  {[kg.address, kg.phone, kg.email].filter(Boolean).join(" · ") || "—"}
-                  {" · "}
-                  {formatRelative(kg.createdAt)}
-                </span>
-              </span>
+              </Link>
 
               <span className="flex items-center gap-1">
                 <Badge tone={kg.isActive ? "mint" : "neutral"}>
@@ -126,49 +175,6 @@ function Platform() {
 
       {creating ? <CreateKindergartenDialog onClose={() => setCreating(false)} /> : null}
     </div>
-  );
-}
-
-/**
- * Suspending or reinstating a tenant.
- *
- * A platform decision, not the kindergarten's own admin's — CLAUDE.md §3.2,
- * §2.3. Deactivating does not delete anything; every record stays, and
- * flipping it back is a second click, not a support ticket.
- */
-function ToggleActiveButton({
-  kindergarten,
-}: {
-  kindergarten: { id: string; name: string; isActive: boolean };
-}) {
-  const queryClient = useQueryClient();
-
-  const toggle = useMutation({
-    mutationFn: () =>
-      mutate(`/platform/kindergartens/${kindergarten.id}`, platformKindergartenSchema, {
-        method: "PATCH",
-        body: { isActive: !kindergarten.isActive },
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["platform", "kindergartens"] });
-    },
-  });
-
-  return (
-    <Button
-      type="button"
-      variant="secondary"
-      size="sm"
-      disabled={toggle.isPending}
-      onClick={() => {
-        const message = kindergarten.isActive
-          ? `${kindergarten.name}-г идэвхгүй болгох уу?\n\nБагш, эцэг эх нэвтрэх боломжгүй болно. Дараа нь дахин идэвхжүүлж болно.`
-          : `${kindergarten.name}-г идэвхжүүлэх үү?`;
-        if (window.confirm(message)) toggle.mutate();
-      }}
-    >
-      {kindergarten.isActive ? "Идэвхгүй болгох" : "Идэвхжүүлэх"}
-    </Button>
   );
 }
 
@@ -204,6 +210,10 @@ function CreateKindergartenDialog({ onClose }: { onClose: () => void }) {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["platform", "kindergartens"] });
+      // Registering a kindergarten adds one to the total and its director to
+      // the staff count — the toggle button doesn't touch either, so only this
+      // mutation needs to invalidate the totals.
+      void queryClient.invalidateQueries({ queryKey: qk.platformStats() });
     },
   });
 

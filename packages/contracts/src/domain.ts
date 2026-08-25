@@ -884,6 +884,19 @@ export const primaryDashboardSchema = z.object({
 
 // ── Platform (superadmin) ───────────────────────────────────────────────────
 
+/**
+ * `GET /platform/stats` — system-wide totals, RFP §12.2's "Администраторын
+ * хяналтын самбар": нийт цэцэрлэг/бүлэг/хүүхэд/багш/идэвхтэй эцэг эх.
+ */
+export const platformStatsSchema = z.object({
+  kindergartens: z.number(),
+  groups: z.number(),
+  children: z.number(),
+  staff: z.number(),
+  guardians: z.number(),
+});
+export type PlatformStats = z.infer<typeof platformStatsSchema>;
+
 /** A kindergarten as the platform operator's list returns it. */
 export const platformKindergartenSchema = z.object({
   id: uuidSchema,
@@ -895,6 +908,40 @@ export const platformKindergartenSchema = z.object({
   createdAt: z.string(),
 });
 export type PlatformKindergarten = z.infer<typeof platformKindergartenSchema>;
+
+/**
+ * `GET /platform/kindergartens/:id` — the list row plus the same
+ * counts/coverage/activity shape `adminDashboardSchema` gives a kindergarten's
+ * own admin, scoped by the API to just this one kindergarten.
+ */
+export const platformKindergartenDetailSchema = platformKindergartenSchema.extend({
+  description: z.string().nullish(),
+  counts: z.object({
+    children: z.number(),
+    groups: z.number(),
+    staff: z.number(),
+    guardians: z.number(),
+  }),
+  currentTerm: z.object({ id: uuidSchema, number: z.number(), name: z.string() }).nullable(),
+  assessmentCoverage: z.array(
+    z.object({
+      groupId: uuidSchema,
+      name: z.string(),
+      children: z.number(),
+      assessed: z.number(),
+    }),
+  ),
+  recentActivity: z.array(
+    z.object({
+      id: uuidSchema,
+      action: z.string(),
+      actorLabel: z.string().nullish(),
+      objectType: z.string().nullish(),
+      createdAt: z.string(),
+    }),
+  ),
+});
+export type PlatformKindergartenDetail = z.infer<typeof platformKindergartenDetailSchema>;
 
 /** `POST /platform/kindergartens` — the tenant, its first admin, and the invite. */
 export const createdKindergartenSchema = z.object({

@@ -43,8 +43,14 @@ apps/web/app/
     ├── notifications/[notificationId]
     ├── settings
     ├── admin                    admin
+    ├── platform                 superadmin — §5a
+    ├── platform/[id]            superadmin — §5a
     └── no-access
 ```
+
+This map predates several routes that shipped since (`admin/*` sub-routes,
+`attendance-requests/review`, `surveys`, `platform*`); treat it as the shape of
+the product, not an exhaustive file listing.
 
 ### ★ Why one route group and not three (corrected 2026-08-20)
 
@@ -174,6 +180,11 @@ Five screens, one shared CRUD pattern (list → drawer form → optimistic save)
 This replaces 16 Django ModelAdmin classes and is the largest single build cost
 in the MVP; keeping the pattern uniform is what keeps it affordable.
 
+**★ This section is stale relative to what's actually built** (routes ended up
+as `admin`, `admin/kindergarten`, `admin/users`, `admin/groups`,
+`admin/school-years`, `admin/terms`, list/form rather than list/drawer, no
+`/config/*` screens) — noted here rather than silently, pending its own pass.
+
 | Route                       | Job                                                                                  |
 | --------------------------- | ------------------------------------------------------------------------------------ |
 | `/users`                    | Create staff and guardians, assign roles, deactivate. Invitations are sent from here |
@@ -189,6 +200,31 @@ icon with an "Өөрийн болгох" action, rather than a form that fails o
 
 Admins reach children through the teacher screens; there is no separate admin
 child list.
+
+---
+
+## 5a. Platform (superadmin)
+
+The platform operator — `isSuperAdmin`, not a kindergarten `Membership` — is a
+fourth persona, distinct from admin/teacher/parent. RFP §2.1 grants it: register
+kindergartens, view usage statistics, and view the audit log. §12.2 additionally
+asks for system-wide totals, not just per-kindergarten ones.
+
+### `/platform` — _register and oversee kindergartens_
+
+Total kindergartens/groups/children/staff/active-guardians across the whole
+system (RFP §12.2), a search + active/inactive filter, the list, and "register a
+kindergarten" — which always creates that kindergarten's first `ADMIN` and hands
+back an invitation link, the same handover pattern `/admin/users` uses.
+
+### `/platform/[id]` — _one kindergarten's numbers_
+
+Read-only apart from the active/inactive toggle. Same counts/coverage/activity
+shape `/admin`'s dashboard shows a kindergarten's own admin — children/groups/
+staff/guardians, this term's assessment coverage, recent audit activity — scoped
+by the API to just this one tenant. The operator's job stops here: everything
+else (that kindergarten's teachers, groups, children) belongs to its own admin,
+per §7.
 
 ---
 
@@ -227,7 +263,7 @@ shadcn/ui; the 3,115 lines of hand-written CSS are not ported.
 | Enrollment management screen            | Edited within the child                              |
 | Guardianship screen                     | Edited within the child                              |
 | Media library                           | Photos are reached through a child or an observation |
-| Audit log viewer                        | API only in the MVP; a screen is Phase 2             |
+| Standalone audit log viewer (filter, search, paginate across all entries) | `/admin` and `/platform/[id]` each show a recent-activity summary (last 10) instead — a dedicated searchable log is Phase 2 |
 | Attendance, meals, finance, invoices    | Phase 2                                              |
 | Chat, surveys, analytics, growth charts | Phase 2/3                                            |
 | Separate admin child list               | Admins use the teacher screens                       |

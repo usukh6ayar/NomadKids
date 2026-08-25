@@ -36,6 +36,11 @@ export class PlatformController {
     return this.service.create(actor, body);
   }
 
+  @Get("stats")
+  async stats(@CurrentActor() actor: Actor) {
+    return this.service.stats(actor);
+  }
+
   @Get("kindergartens")
   async list(
     @CurrentActor() actor: Actor,

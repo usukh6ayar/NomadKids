@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render as rtlRender, type RenderResult } from "@testing-library/react";
+import { render as rtlRender, screen, type RenderResult } from "@testing-library/react";
+import type { UserEvent } from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 import { vi } from "vitest";
 import { SessionProvider } from "@/lib/auth/session";
@@ -149,6 +150,24 @@ export function sessionFor(roles: Role[], userId = "11111111-1111-4111-8111-1111
     })),
     csrfToken: "test-csrf",
   };
+}
+
+/**
+ * Drives `components/ui/field.tsx`'s `Select` — a Radix listbox, not a native
+ * `<select>`. Radix only mounts `role="option"` elements while the popup is
+ * open, so — unlike `userEvent.selectOptions` on a native select — this has
+ * to open the trigger first and wait for the option to appear before clicking
+ * it, rather than setting the value directly.
+ */
+export async function selectOption(
+  user: UserEvent,
+  label: RegExp | string,
+  optionName: RegExp | string,
+): Promise<void> {
+  // `findBy`, not `getBy`: the trigger itself may not exist yet — the form
+  // it belongs to can still be behind a loading skeleton.
+  await user.click(await screen.findByLabelText(label));
+  await user.click(await screen.findByRole("option", { name: optionName }));
 }
 
 export function renderWithProviders(ui: ReactElement): RenderResult {

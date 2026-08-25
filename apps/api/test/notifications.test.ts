@@ -312,6 +312,31 @@ describe("read tracking", () => {
     expect(res.body.count).toBe(2);
   });
 
+  /**
+   * ★ A superadmin holds no `Membership` at all (CLAUDE.md §1.1), so
+   * `audienceFilter` falls through to its "matches nothing" case. That case
+   * used to be `{ id: "__none__" }` — not a valid UUID, and `Notification.id`
+   * is `@db.Uuid` — so Postgres rejected the query outright instead of
+   * returning zero rows. Both routes that build a where clause even with no
+   * audience must survive an actor with none.
+   */
+  it("a superadmin gets zero, not a 500", async () => {
+    const operator = await createUser({ username: uniq("super"), isSuperAdmin: true });
+    const operatorSession = await login(app, operator.username);
+
+    const count = await request(server())
+      .get("/v1/notifications/unread-count")
+      .set("Cookie", operatorSession.cookies);
+    expect(count.status).toBe(200);
+    expect(count.body.count).toBe(0);
+
+    const list = await request(server())
+      .get("/v1/notifications")
+      .set("Cookie", operatorSession.cookies);
+    expect(list.status).toBe(200);
+    expect(list.body.items).toEqual([]);
+  });
+
   it("marking read decrements the count", async () => {
     const id = await notify([]);
     await authed(request(server()).post(`/v1/notifications/${id}/read`), parentA);
