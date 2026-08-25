@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { z } from "zod";
 import { attendanceRecordSchema, attendanceRequestSchema } from "@kinder/contracts";
@@ -85,6 +86,7 @@ export function ChildAttendance({ childId, isStaff }: { childId: string; isStaff
 
         {records.data.length === 0 ? (
           <EmptyState
+            icon={<Image src="/background/mascot-girl-teal-a.webp" alt="" width={96} height={96} />}
             title="Одоогоор бүртгэл алга"
             description={
               isStaff
@@ -134,6 +136,7 @@ export function ChildAttendance({ childId, isStaff }: { childId: string; isStaff
 
           {requests.data && requests.data.length === 0 ? (
             <EmptyState
+              icon={<Image src="/background/mascot-girl-teal-b.webp" alt="" width={96} height={96} />}
               title="Хүсэлт алга"
               description="Хүүхэд чөлөөтэй байх өдрөө урьдчилан мэдэгдэхийг хүсвэл энд бичнэ үү."
             />

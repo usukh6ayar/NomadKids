@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Image from "next/image";
 import { useState } from "react";
 import { z } from "zod";
 import { menuDaySchema, type MenuDish } from "@kinder/contracts";
@@ -96,6 +97,7 @@ export function ChildMenu({
         */}
         {!isStaff && !hasAnyDish ? (
           <EmptyState
+            icon={<Image src="/background/mascot-boy-orange.webp" alt="" width={96} height={96} />}
             title="Цэс оруулаагүй байна"
             description="Багш цэс оруулсны дараа энд харагдана."
           />

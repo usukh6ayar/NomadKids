@@ -1,6 +1,7 @@
 "use client";
 
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
@@ -17,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RowList } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { excerpt, formatRelative, fullName } from "@/lib/format";
+import { excerpt, fullName, groupByDay } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const listSchema = paginated(notificationSchema);
@@ -144,6 +145,7 @@ export default function NotificationsPage() {
 
       {data && items.length === 0 ? (
         <EmptyState
+          icon={<Image src="/background/mascot-teacher.webp" alt="" width={96} height={96} />}
           title={showUnreadOnly ? "Уншаагүй мэдэгдэл алга" : "Мэдэгдэл алга"}
           description={
             showUnreadOnly
@@ -154,11 +156,36 @@ export default function NotificationsPage() {
       ) : null}
 
       {items.length > 0 ? (
-        <RowList>
-          {items.map((notification) => (
-            <NotificationRow key={notification.id} notification={notification} />
+        /*
+         * ★ Day-grouped, matching the home feed's own rail.
+         *
+         * A class board is exactly the same shape of content as "Сүүлийн
+         * мөчүүд" — a chronological record — so it reads with the same
+         * device rather than inventing a second one. Each row used to carry
+         * its own relative timestamp; grouped by day, that fact belongs to
+         * the day once, so `NotificationRow` drops it in favour of the
+         * group's own label.
+         */
+        <div className="flex flex-col">
+          {groupByDay(items, (n) => n.publishedAt ?? n.createdAt).map((group, index, all) => (
+            <div key={group.key} className="flex gap-3">
+              <div className="flex w-5 shrink-0 flex-col items-center" aria-hidden="true">
+                <span className="mt-2 size-2.5 shrink-0 rounded-pill bg-primary ring-4 ring-primary-soft" />
+                {index < all.length - 1 ? <span className="mt-1 w-px flex-1 bg-border" /> : null}
+              </div>
+              <div className={cn("min-w-0 flex-1", index < all.length - 1 && "pb-5")}>
+                <h3 className="mb-2 text-caption font-semibold uppercase tracking-wide text-muted">
+                  {group.label}
+                </h3>
+                <RowList>
+                  {group.items.map((notification) => (
+                    <NotificationRow key={notification.id} notification={notification} />
+                  ))}
+                </RowList>
+              </div>
+            </div>
           ))}
-        </RowList>
+        </div>
       ) : null}
 
       {/* Height, so it can intersect at all — a zero-height div never does. */}
@@ -276,14 +303,7 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
         ) : null}
 
         <span className="mt-1 flex flex-wrap items-center justify-between gap-2">
-          <span className="text-caption text-muted">
-            {[
-              fullName(notification.author),
-              formatRelative(notification.publishedAt ?? notification.createdAt),
-            ]
-              .filter((v) => v !== "—")
-              .join(" · ")}
-          </span>
+          <span className="text-caption text-muted">{fullName(notification.author)}</span>
 
           {/* Inside the row, which is a link — the button stops the click. */}
           <LikeButton

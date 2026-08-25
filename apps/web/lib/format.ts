@@ -172,6 +172,37 @@ export function formatFileSize(bytes: number | null | undefined): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+/**
+ * Buckets a recency-ordered feed into calendar-day groups, each labelled with
+ * `formatRelative`'s own vocabulary (Өнөөдөр / Өчигдөр / an absolute date).
+ *
+ * ★ Assumes `items` already arrives newest-first — a same-day run stays
+ * contiguous without this re-sorting whatever order the caller committed to.
+ * Shared by the home feed and the notification board: both are the same
+ * shape of content (a chronological record), so they read with the same
+ * device rather than each inventing its own.
+ */
+export function groupByDay<T>(
+  items: T[],
+  dateOf: (item: T) => string | Date | null | undefined,
+): { key: string; label: string; items: T[] }[] {
+  const groups: { key: string; label: string; items: T[] }[] = [];
+
+  for (const item of items) {
+    const date = toDate(dateOf(item));
+    const key = date ? `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}` : "—";
+    const current = groups.at(-1);
+
+    if (current?.key === key) {
+      current.items.push(item);
+    } else {
+      groups.push({ key, label: formatRelative(dateOf(item)), items: [item] });
+    }
+  }
+
+  return groups;
+}
+
 /** Truncates on a word boundary so a preview does not end mid-word. */
 export function excerpt(text: string | null | undefined, max = 120): string {
   if (!text) return "";
