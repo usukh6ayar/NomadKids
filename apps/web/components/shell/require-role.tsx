@@ -59,3 +59,40 @@ export function RequireRole({ roles, children }: { roles: Role[]; children: Reac
 
   return <>{children}</>;
 }
+
+/**
+ * Renders children only for the platform operator.
+ *
+ * A separate guard from `RequireRole` rather than `roles={["ADMIN"]}` with an
+ * extra flag: `isSuperAdmin` is not a `Role` at all — CLAUDE.md §1.1 keeps
+ * platform routes outside the tenant-scoped role system on purpose, and a
+ * kindergarten `ADMIN` must not pass this check.
+ */
+export function RequireSuperAdmin({ children }: { children: ReactNode }) {
+  const { session, isLoading, isSuperAdmin } = useSession();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (isLoading) return;
+
+    if (!session) {
+      const from = encodeURIComponent(window.location.pathname + window.location.search);
+      router.replace(`/login?from=${from}`);
+      return;
+    }
+
+    if (!isSuperAdmin) router.replace("/");
+  }, [isLoading, session, isSuperAdmin, router]);
+
+  if (isLoading) {
+    return (
+      <div className="mx-auto w-full max-w-[1200px] px-4 py-8">
+        <LoadingState label="Ачаалж байна…" />
+      </div>
+    );
+  }
+
+  if (!session || !isSuperAdmin) return null;
+
+  return <>{children}</>;
+}

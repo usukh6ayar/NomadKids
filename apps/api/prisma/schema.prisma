@@ -89,30 +89,6 @@ enum EnrollmentStatus {
   TRANSFERRED
 }
 
-/// Ирцийн төлөв — нэмэлт.md §1, via the Django reference.
-///
-/// ★ A closed vocabulary set by the requirement, not administrator
-/// configuration. CLAUDE.md §2.3 makes anything an administrator edits a table
-/// — `DevelopmentDomain`, `AssessmentLevel`, `ObservationType` are tables for
-/// exactly that reason. These five are not editable: they are the states the
-/// requirement names, so an enum is right here.
-///
-/// `OTHER` is the escape hatch, and it is load-bearing. Without it an unusual
-/// day does not vanish — it gets counted under a status that misstates it, and
-/// `note` cannot undo that because a note explains one row and never reaches an
-/// aggregate. It was dropped and reinstated on 2026-08-25; see
-/// docs/ATTENDANCE_PLAN.md §2.
-///
-/// `HALF_DAY` from the reference is deliberately absent: its only purpose was a
-/// funding fraction, and nothing in this phase computes money.
-enum AttendanceStatus {
-  PRESENT // Ирсэн
-  ABSENT // Тасалсан
-  SICK // Өвчтэй
-  EXCUSED // Чөлөөтэй
-  OTHER // Бусад
-}
-
 enum ObservationSource {
   TEACHER
   PARENT
@@ -248,22 +224,27 @@ model User {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  photo         MediaFile?             @relation("UserPhoto", fields: [photoMediaFileId], references: [id], onDelete: SetNull)
-  uploadedMedia MediaFile[]            @relation("MediaUploader")
-  memberships   Membership[]
-  guardianships Guardianship[]
-  authTokens    AuthToken[]
-  sessions      Session[]
-  auditLogs     AuditLog[]
-  observations  Observation[]          @relation("ObservationAuthor")
-  reviewed      Observation[]          @relation("ObservationReviewer")
-  assessments   Assessment[]           @relation("AssessmentAuthor")
-  termReports   TermReport[]           @relation("TermReportAuthor")
-  notifications Notification[]         @relation("NotificationAuthor")
-  reads         NotificationRead[]
-  reactions     NotificationReaction[]
-  reportJobs    ReportJob[]
-  attendances   Attendance[]           @relation("AttendanceRecorder")
+  photo          MediaFile?     @relation("UserPhoto", fields: [photoMediaFileId], references: [id], onDelete: SetNull)
+  uploadedMedia  MediaFile[]    @relation("MediaUploader")
+  memberships    Membership[]
+  guardianships  Guardianship[]
+  authTokens     AuthToken[]
+  sessions       Session[]
+  auditLogs      AuditLog[]
+  observations   Observation[]  @relation("ObservationAuthor")
+  reviewed       Observation[]  @relation("ObservationReviewer")
+  assessments    Assessment[]   @relation("AssessmentAuthor")
+  termReports    TermReport[]   @relation("TermReportAuthor")
+  notifications  Notification[] @relation("NotificationAuthor")
+  reads          NotificationRead[]
+  reactions      NotificationReaction[]
+  reportJobs     ReportJob[]
+  attendanceRecorded Attendance[]        @relation("AttendanceRecordedBy")
+  attendanceRequested AttendanceRequest[] @relation("AttendanceRequestedBy")
+  attendanceReviewed AttendanceRequest[]  @relation("AttendanceReviewedBy")
+  menuDaysCreated    MenuDay[]            @relation("MenuDayCreatedBy")
+  surveysCreated     Survey[]             @relation("SurveyCreatedBy")
+  surveyResponses    SurveyResponse[]     @relation("SurveyRespondent")
 
   @@index([deletedAt])
   @@map("users")
@@ -414,9 +395,15 @@ model Kindergarten {
   notifications         Notification[]
   notificationTargets   NotificationTarget[]
   notificationReactions NotificationReaction[]
-  attendances           Attendance[]
-  reportJobs            ReportJob[]
-  auditLogs             AuditLog[]
+  reportJobs         ReportJob[]
+  auditLogs          AuditLog[]
+  attendanceRecords  Attendance[]
+  attendanceRequests AttendanceRequest[]
+  menuDays           MenuDay[]
+  surveys            Survey[]
+  surveyQuestions    SurveyQuestion[]
+  surveyResponses    SurveyResponse[]
+  surveyAnswers      SurveyAnswer[]
 
   @@index([deletedAt])
   @@map("kindergartens")
@@ -553,7 +540,9 @@ model Child {
   notificationTargets NotificationTarget[]
   reportJobs          ReportJob[]
   auditLogs           AuditLog[]
-  attendances         Attendance[]
+  attendanceRecords   Attendance[]
+  attendanceRequests  AttendanceRequest[]
+  surveyResponses     SurveyResponse[]
 
   @@unique([kindergartenId, nationalId])
   @@index([kindergartenId, status])
@@ -612,70 +601,17 @@ model Enrollment {
   child        Child         @relation(fields: [childId], references: [id], onDelete: Cascade)
   group        Group         @relation(fields: [groupId], references: [id], onDelete: Restrict)
   schoolYear   SchoolYear    @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
-  observations Observation[]
-  assessments  Assessment[]
-  termReports  TermReport[]
-  attendances  Attendance[]
+  observations       Observation[]
+  assessments        Assessment[]
+  termReports        TermReport[]
+  attendanceRecords  Attendance[]
+  attendanceRequests AttendanceRequest[]
 
   @@index([groupId, status])
   @@index([schoolYearId, status])
   @@index([childId, schoolYearId])
   @@index([childId, status])
   @@map("enrollments")
-}
-
-/// One child, one day, one status — нэмэлт.md §1, ported from the Django
-/// reference's `apps/attendance`.
-///
-/// ★ It hangs off `Enrollment`, never off `Child`.
-///
-/// A child who transfers in January has two enrollments, and their March
-/// attendance belongs to whichever kindergarten they actually attended.
-/// Anchoring to `Child` would attribute the whole year to wherever the child is
-/// *now* — CLAUDE.md §1.2 already forbids `Child.kindergartenId` for
-/// authorization, and this is the same hazard with a date attached. A transfer
-/// would silently rewrite history.
-///
-/// `childId` is denormalised alongside it so "this child's month" is a range
-/// scan rather than a join. The enrollment stays the authority for *which
-/// kindergarten a day belongs to*; the child column is for lookup and display.
-///
-/// ★★ One row per enrollment per day, enforced by the database.
-///
-/// The `@@unique` below is emitted by Prisma as a plain constraint, and the
-/// migration replaces it with a **partial** index over `deletedAt IS NULL`.
-/// Postgres treats NULLs as distinct, so the plain form would let a
-/// soft-deleted day block its own re-recording forever. Prisma has no
-/// partial-unique syntax; see the migration's SQL and docs/ATTENDANCE_PLAN.md §7.
-model Attendance {
-  id             String           @id @default(uuid()) @db.Uuid
-  kindergartenId String           @db.Uuid
-  enrollmentId   String           @db.Uuid
-  childId        String           @db.Uuid
-  date           DateTime         @db.Date
-  status         AttendanceStatus
-  note           String?
-
-  /// Who last wrote this day. Not soft-delete metadata — CLAUDE.md §3.2 keeps
-  /// the deleting actor in `AuditLog`, which is append-only and cannot be
-  /// overwritten by the next writer.
-  recordedById String? @db.Uuid
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-
-  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
-  enrollment   Enrollment   @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
-  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
-  recordedBy   User?        @relation("AttendanceRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
-
-  @@unique([enrollmentId, date])
-  /// The group day sheet: every child in this group on this date.
-  @@index([kindergartenId, date])
-  /// The monthly view: always a range scan over one child.
-  @@index([childId, date])
-  @@map("attendance")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -920,6 +856,265 @@ model ObservationDomain {
   @@unique([observationId, domainId])
   @@index([domainId])
   @@map("observation_domains")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Attendance
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Ирсэн/Хагас өдөр/Чөлөөтэй are confirmed against the reference system;
+/// SICK and ABSENT are this project's own addition to round out an ordinary
+/// attendance set and are not yet confirmed against the client's full list —
+/// see docs/reference for the open question.
+enum AttendanceStatus {
+  PRESENT // Ирсэн
+  HALF_DAY // Хагас өдөр
+  EXCUSED // Чөлөөтэй
+  SICK // Өвчтэй
+  ABSENT // Тасалсан
+}
+
+enum AttendanceRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// One row per enrollment per day — never per bare `childId`, so a transfer
+/// mid-year does not rewrite which kindergarten a day of attendance belongs
+/// to (this feeds funding claims later, RFP appendix).
+///
+/// ★ `@@unique([enrollmentId, date])` below is emitted by Prisma as a plain
+/// index; the migration `20260825120000_partial_unique_attendance_day`
+/// replaces it with a **partial** one over `deletedAt IS NULL`. Postgres
+/// treats NULLs as distinct, so the plain form counts a soft-deleted row as
+/// still occupying the day — a day deleted once could never be recorded
+/// again, surfacing as a unique violation on a row nobody can see. Prisma has
+/// no partial-unique syntax, so this cannot be expressed here; see the
+/// migration's SQL and `test/schema.test.ts`'s
+/// "allows the day to be recorded again after the first row is soft-deleted".
+model Attendance {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  childId        String @db.Uuid
+  enrollmentId   String @db.Uuid
+
+  date   DateTime         @db.Date
+  status AttendanceStatus
+  /// Medication instructions when SICK — RFP: "эмийн зааварчилгаа, тун
+  /// болон цагийн санамж".
+  note   String?
+
+  /// The staff member who recorded it. Matches `Observation.authorId` —
+  /// `User.id`, not `Membership.id`, so it reads across a role change.
+  recordedById String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  deletedById String? @db.Uuid
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  enrollment   Enrollment   @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
+  recordedBy   User?        @relation("AttendanceRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@unique([enrollmentId, date])
+  @@index([childId, date(sort: Desc)])
+  @@index([kindergartenId, date(sort: Desc)])
+  @@map("attendance_records")
+}
+
+/// A guardian's advance notice ("my child will be excused tomorrow"), not
+/// itself an attendance record. Approving one writes the actual `Attendance`
+/// rows for the covered range — staff stays the sole author of `Attendance`,
+/// matching the decision that parents may request but not record directly.
+model AttendanceRequest {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  childId        String @db.Uuid
+  enrollmentId   String @db.Uuid
+
+  /// User.id of the guardian who asked — a guardian has no Membership.
+  requestedById   String                  @db.Uuid
+  dateFrom        DateTime                @db.Date
+  dateTo          DateTime                @db.Date
+  requestedStatus AttendanceStatus
+  reason          String?
+  reviewStatus    AttendanceRequestStatus @default(PENDING)
+  /// The staff member who reviewed it — `User.id`, matching `recordedById`.
+  reviewedById    String?                 @db.Uuid
+  reviewedAt      DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  deletedById String? @db.Uuid
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  enrollment   Enrollment   @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
+  requestedBy  User         @relation("AttendanceRequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+  reviewedBy   User?        @relation("AttendanceReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([childId, dateFrom(sort: Desc)])
+  @@index([kindergartenId, reviewStatus])
+  @@map("attendance_requests")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Meals — the weekly menu, RFP §989. Kindergarten-wide, not per-child: a
+// per-child "did they eat" record is not in the RFP and is not built here.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// One row per kindergarten per day. "Weekly" is a query range over these,
+/// not its own entity — there is nothing a week needs beyond seven days.
+///
+/// `dishes` is `Json`, an array of `{ name: string, allergenTags: string[] }`.
+/// Allergen tags are admin-typed free strings, not a lookup table: the
+/// cross-check against a child's freeform `healthNotes` is a best-effort
+/// substring match done in the UI, not a structured allergy system (that is
+/// its own, separately excluded MVP feature — CLAUDE.md §7).
+model MenuDay {
+  id             String   @id @default(uuid()) @db.Uuid
+  kindergartenId String   @db.Uuid
+  date           DateTime @db.Date
+  dishes         Json
+
+  createdById String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  deletedById String? @db.Uuid
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  createdBy    User?        @relation("MenuDayCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([kindergartenId, date])
+  @@index([kindergartenId, date(sort: Desc)])
+  @@map("menu_days")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Surveys — RFP "Модуль 1: Судалгаа, Асуулга". This ships the RFP's core
+// mechanism only: create, publish, respond, see aggregate results. The
+// September-vs-May term comparison, the 5-sheet Excel export, and folding
+// survey data into the development radar are each their own future pass —
+// deliberately not built here, not silently dropped.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum SurveyScope {
+  /// Answered by a guardian, about their own child.
+  CHILD
+  /// Answered once by any member of the kindergarten — no child attached.
+  KINDERGARTEN
+}
+
+enum SurveyStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+}
+
+enum SurveyQuestionType {
+  RATING // 1-5
+  YES_NO
+  TEXT
+  CHECKBOX // multi-select; `options` holds the choices
+}
+
+model Survey {
+  id             String       @id @default(uuid()) @db.Uuid
+  kindergartenId String       @db.Uuid
+  title          String
+  description    String?
+  scope          SurveyScope
+  status         SurveyStatus @default(DRAFT)
+  createdById    String?      @db.Uuid
+  publishedAt    DateTime?
+  closedAt       DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  deletedById String? @db.Uuid
+
+  kindergarten Kindergarten     @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  createdBy    User?            @relation("SurveyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  questions    SurveyQuestion[]
+  responses    SurveyResponse[]
+
+  @@index([kindergartenId, status])
+  @@map("surveys")
+}
+
+model SurveyQuestion {
+  id             String             @id @default(uuid()) @db.Uuid
+  kindergartenId String             @db.Uuid
+  surveyId       String             @db.Uuid
+  order          Int
+  type           SurveyQuestionType
+  prompt         String
+  /// CHECKBOX's choices, as a string array. Unused by the other three types.
+  options        Json?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten   @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  survey       Survey         @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  answers      SurveyAnswer[]
+
+  @@index([surveyId, order])
+  @@map("survey_questions")
+}
+
+/// One guardian's (or, for a KINDERGARTEN-scope survey, one member's) full
+/// submission. `childId` is set only for a CHILD-scope survey.
+model SurveyResponse {
+  id             String   @id @default(uuid()) @db.Uuid
+  kindergartenId String   @db.Uuid
+  surveyId       String   @db.Uuid
+  childId        String?  @db.Uuid
+  respondentId   String   @db.Uuid
+  submittedAt    DateTime @default(now())
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  deletedById String? @db.Uuid
+
+  kindergarten Kindergarten   @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  survey       Survey         @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  child        Child?         @relation(fields: [childId], references: [id], onDelete: Cascade)
+  respondent   User           @relation("SurveyRespondent", fields: [respondentId], references: [id], onDelete: Cascade)
+  answers      SurveyAnswer[]
+
+  @@index([surveyId, childId])
+  @@index([surveyId, respondentId])
+  @@map("survey_responses")
+}
+
+model SurveyAnswer {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  responseId     String @db.Uuid
+  questionId     String @db.Uuid
+  /// A number (RATING), a boolean (YES_NO), a string (TEXT) or a string
+  /// array (CHECKBOX) — the shape `SurveyQuestion.type` says it should be.
+  value          Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  kindergarten Kindergarten   @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  response     SurveyResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  question     SurveyQuestion @relation(fields: [questionId], references: [id], onDelete: Restrict)
+
+  @@unique([responseId, questionId])
+  @@map("survey_answers")
 }
 
 model Term {

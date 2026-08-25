@@ -216,8 +216,15 @@ export class DashboardService {
    * rather than one per client. A user with several roles gets the most
    * capable — an admin who is also a parent lands on the admin screen and can
    * navigate to their child.
+   *
+   * ★ The platform operator is checked first and does not fall through to
+   * `actor.memberships` at all — a superadmin holds none by design (CLAUDE.md
+   * §1.1), so without this branch they read exactly like a revoked user and
+   * land on the no-access screen instead of the platform console.
    */
-  primaryDashboard(actor: Actor): "admin" | "teacher" | "parent" | null {
+  primaryDashboard(actor: Actor): "platform" | "admin" | "teacher" | "parent" | null {
+    if (actor.isSuperAdmin) return "platform";
+
     const roles = new Set(actor.memberships.map((m) => m.role));
     if (roles.has(Role.ADMIN)) return "admin";
     if (roles.has(Role.TEACHER)) return "teacher";

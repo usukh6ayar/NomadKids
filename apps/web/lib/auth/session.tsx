@@ -35,6 +35,12 @@ interface SessionValue {
   isLoading: boolean;
   roles: Set<Role>;
   hasRole: (role: Role) => boolean;
+  /**
+   * Platform operator — not one of `roles`, since a superadmin holds no
+   * kindergarten membership at all. UX only, as `roles` is: it picks a nav and
+   * a landing page, and the API re-derives the real authority itself.
+   */
+  isSuperAdmin: boolean;
   /** Kindergartens where this user holds any membership. */
   kindergartenIds: string[];
   /** The first kindergarten — most staff belong to exactly one. */
@@ -112,6 +118,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       isLoading,
       roles,
       hasRole: (role) => roles.has(role),
+      isSuperAdmin: session?.user.isSuperAdmin ?? false,
       kindergartenIds,
       primaryKindergartenId: kindergartenIds[0] ?? null,
       csrfToken: session?.csrfToken ?? null,

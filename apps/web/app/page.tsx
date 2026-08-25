@@ -17,7 +17,7 @@ import { LoadingState } from "@/components/ui/states";
  * their child from there.
  */
 export default function RootPage() {
-  const { session, isLoading, hasRole } = useSession();
+  const { session, isLoading, hasRole, isSuperAdmin } = useSession();
   const router = useRouter();
 
   useEffect(() => {
@@ -28,13 +28,18 @@ export default function RootPage() {
       return;
     }
 
-    if (hasRole("ADMIN")) router.replace("/admin");
+    // Checked first, and not folded into the role chain below: the platform
+    // operator holds no kindergarten membership at all (CLAUDE.md §1.1), so
+    // `hasRole` is false for all three and this would otherwise fall through
+    // to "no membership" — the same screen a revoked user gets.
+    if (isSuperAdmin) router.replace("/platform");
+    else if (hasRole("ADMIN")) router.replace("/admin");
     else if (hasRole("TEACHER")) router.replace("/dashboard");
     else if (hasRole("PARENT")) router.replace("/home");
     // Signed in with no membership — a real state after a revocation, and one
     // that must not redirect in a loop.
     else router.replace("/no-access");
-  }, [isLoading, session, hasRole, router]);
+  }, [isLoading, session, hasRole, isSuperAdmin, router]);
 
   return (
     <main className="mx-auto w-full max-w-[1200px] px-4 py-10">

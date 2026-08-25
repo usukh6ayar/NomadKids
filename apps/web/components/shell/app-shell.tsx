@@ -16,11 +16,21 @@ import { BRAND } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
 
 export interface NavItem {
-  href: string;
+  /**
+   * Either this or `onSelect` — never neither, never both.
+   *
+   * Omitted for a tab that opens something in place rather than navigating,
+   * e.g. the parent bottom bar's child picker. Such a tab is rendered as a
+   * `<button>`, never claims the "current page" active state, and cannot be
+   * `key`ed by `href` — see the `key={item.label}` call sites.
+   */
+  href?: string;
   label: string;
   icon: ReactNode;
   /** Shows the unread-notification count. Only one item ever sets this. */
   badge?: "unread";
+  /** Runs instead of navigating. See `href`. */
+  onSelect?: () => void;
 }
 
 /**
@@ -28,15 +38,20 @@ export interface NavItem {
  *
  * ★ Ported from the reference's `<details class="nav-group">`.
  *
- * Every entry is a link. There is no placeholder variant, deliberately: a menu
- * entry that goes nowhere teaches users the system is broken, and the version
- * of this sidebar that had eight of them proved the point. A section names the
- * parts of the product that are built, and gains a line on the day another one
- * ships.
+ * Every entry is a link *or* a plain, non-interactive label — never a link to
+ * nowhere. `staffSections` below uses only links: a teacher's whole product
+ * fits on one screen, so a dead entry there would only ever have been
+ * decoration. An `entry` with no `href` renders as inert text with a small
+ * "удахгүй" tag — the reference's own device for naming a feature that exists
+ * in the product but not yet in this build (`app.css`'s `.nav a.soon`,
+ * rendered there as a `<span>`, never an `<a>`). The distinction that matters
+ * is exactly the one the reference draws: a `<span>` cannot be clicked and so
+ * cannot disappoint a click, where an `<a href="/chat">` that 404s teaches
+ * someone the product is broken.
  */
 export interface NavSection {
   title: string;
-  entries: { label: string; href: string }[];
+  entries: { label: string; href?: string }[];
 }
 
 /**
@@ -79,25 +94,23 @@ export function PageHeader({
   /** Shows the header search field. Screens with something to search set it. */
   search?: boolean;
 }) {
-  const { session, hasRole } = useSession();
+  const { session } = useSession();
 
   /*
-   * ★ The identity pill is for the audiences that have no sidebar.
+   * ★ The identity pill would duplicate the sidebar.
    *
    * It used to render for everyone from `lg` up — which is exactly the width
-   * where a teacher's sidebar is showing `WhoAmI` with the same name three
-   * inches to the left, and describing the same person differently: "Багш" in
-   * the pill, "Багшийн хэсэг" at the foot of the sidebar. One person, twice, two
-   * descriptions, on the same screen.
-   *
-   * The condition matches `AppLayout`'s `isStaff`, which is what picks
-   * `variant="teacher"` and therefore what decides the sidebar exists. Reading
-   * roles here rather than taking a prop keeps `PageHeader` usable from any
-   * screen without every screen having to know which shell wraps it — and the
-   * two derivations cannot drift apart, because there is only one rule: staff
-   * have a sidebar, and a sidebar already says who you are.
+   * where the sidebar is showing `WhoAmI` with the same name three inches to
+   * the left, describing the same person a second time. `AppShell` now gives
+   * every audience — teacher, parent, admin, platform operator — a desktop
+   * sidebar (`docs/ARCHITECTURE.md`'s three-shell split gave way to one route
+   * tree with a sidebar for all of them, see `(app)/layout.tsx`), so the
+   * condition that used to pick out staff only is unconditionally true at the
+   * width this pill can even appear. `hasSidebar` stays as a named constant
+   * rather than deleting the block below it — removing the now-dead pill is a
+   * follow-up cleanup this merge should not make unasked.
    */
-  const hasSidebar = hasRole("TEACHER") || hasRole("ADMIN");
+  const hasSidebar = true;
 
   return (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -301,16 +314,23 @@ export function AppShell({
   /** Desktop sidebar sections. Without them the sidebar renders `nav` flat. */
   sections?: NavSection[];
   children: ReactNode;
-  variant?: "teacher" | "parent";
+  variant?: "teacher" | "parent" | "platform";
 }) {
-  const desktopSidebar = variant === "teacher";
-  const subtitle = variant === "teacher" ? "Багшийн хэсэг" : "Эцэг эхийн хэсэг";
+  // Every role gets the sidebar from `lg` up; only the bottom bar is
+  // role-dependent (mobile-only, all three variants).
+  const desktopSidebar = true;
+  const subtitle =
+    variant === "teacher"
+      ? "Багшийн хэсэг"
+      : variant === "platform"
+        ? "Платформын удирдлага"
+        : "Эцэг эхийн хэсэг";
 
   return (
     <div className="min-h-dvh bg-canvas">
       {desktopSidebar ? <Sidebar nav={nav} sections={sections} subtitle={subtitle} /> : null}
 
-      <MobileHeader variant={variant} subtitle={subtitle} />
+      <MobileHeader subtitle={subtitle} />
 
       {/*
         `pb-24` on mobile clears the fixed bottom bar. Without it the last row
@@ -380,8 +400,7 @@ function Brand({ subtitle }: { subtitle: string }) {
 /**
  * Who is signed in, and the way out — at the foot of the sidebar.
  *
- * `mt-auto` pins it to the bottom however short the navigation is. Ported from
- * `.whoami`; the logout control is a 44px square, as it is there.
+ * Ported from `.whoami`; the logout control is a 44px square, as it is there.
  */
 function WhoAmI({ subtitle }: { subtitle: string }) {
   const { session } = useSession();
@@ -433,12 +452,10 @@ function Sidebar({
        * ★ Only the menu scrolls.
        *
        * The sidebar can be taller than a laptop viewport, and when the whole
-       * panel scrolled, `whoami`'s `mt-auto` put it at the foot of the
-       * *content* rather than the panel — so it overlapped the last section
-       * and the way out scrolled off the screen. The brand and the identity
-       * are fixed now, and the nav between them takes the overflow. Trimming
-       * the menu to built screens made this comfortable rather than moot: it
-       * has to keep holding as sections come back.
+       * panel scrolled, `WhoAmI`'s row sat at the foot of the *content* rather
+       * than the panel — so it overlapped the last section and the way out
+       * scrolled off the screen. The brand and the identity are fixed now, and
+       * the nav between them takes the overflow.
        */
       className="fixed inset-y-0 left-0 z-20 hidden w-[244px] flex-col gap-5 overflow-hidden border-r border-border bg-surface px-3.5 py-[18px] lg:flex"
     >
@@ -454,7 +471,7 @@ function Sidebar({
           : nav
               .slice(1)
               .map((item) => (
-                <NavLink key={item.href} item={item} pathname={pathname} orientation="vertical" />
+                <NavLink key={item.label} item={item} pathname={pathname} orientation="vertical" />
               ))}
       </div>
 
@@ -496,6 +513,18 @@ function NavGroup({ section, pathname }: { section: NavSection; pathname: string
       </summary>
 
       {section.entries.map((entry) => {
+        if (!entry.href) {
+          return (
+            <span
+              key={entry.label}
+              className="ml-3 flex min-h-[44px] items-center gap-1.5 px-2.5 py-1.5 text-compact text-faint"
+            >
+              {entry.label}
+              <span className="text-caption">(удахгүй)</span>
+            </span>
+          );
+        }
+
         const active = pathname === entry.href || pathname.startsWith(`${entry.href}/`);
         return (
           <Link
@@ -528,19 +557,18 @@ function NavGroup({ section, pathname }: { section: NavSection; pathname: string
  * entirely — this plus the bottom navigation is a deliberate mobile layout
  * rather than a folded desktop one.
  *
- * Hidden on the teacher's desktop, where the sidebar already carries all three
- * facts (brand, identity, logout). Showing them twice is what crowded the page
- * title in the reference, which solved it the same way.
+ * Hidden from `lg` up on every variant, where the sidebar already carries all
+ * three facts (brand, identity, logout). Showing them twice is what crowded
+ * the page title in the reference, which solved it the same way.
  */
-function MobileHeader({ variant, subtitle }: { variant: "teacher" | "parent"; subtitle: string }) {
+function MobileHeader({ subtitle }: { subtitle: string }) {
   const { session } = useSession();
   const logout = useLogout();
 
   return (
     <header
       className={cn(
-        "sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-surface px-4 py-3",
-        variant === "teacher" && "lg:hidden",
+        "sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-surface px-4 py-3 lg:hidden",
       )}
     >
       <Link href="/" className="flex min-h-[44px] items-center gap-3">
@@ -600,7 +628,7 @@ function BottomBar({ nav, hideOnDesktop }: { nav: NavItem[]; hideOnDesktop: bool
       )}
     >
       {nav.map((item) => (
-        <NavLink key={item.href} item={item} pathname={pathname} orientation="horizontal" />
+        <NavLink key={item.label} item={item} pathname={pathname} orientation="horizontal" />
       ))}
     </nav>
   );
@@ -616,32 +644,30 @@ function NavLink({
   orientation: "vertical" | "horizontal";
 }) {
   // Prefix match so `/children/abc` keeps "Хүүхдүүд" lit. Exact match for the
-  // root of a section, or every item would match `/`.
-  const active =
-    item.href === "/"
+  // root of a section, or every item would match `/`. A button-style item
+  // (no `href`) opens something in place — it is never the current page.
+  const active = !item.href
+    ? false
+    : item.href === "/"
       ? pathname === "/"
       : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
-  return (
-    <Link
-      href={item.href}
-      // The single most useful ARIA attribute in a navigation: it tells a
-      // screen reader which page you are on, which colour alone cannot.
-      aria-current={active ? "page" : undefined}
-      className={cn(
-        "relative flex items-center gap-2.5 rounded-control font-medium transition-colors",
-        orientation === "vertical"
-          ? "min-h-[44px] gap-[11px] px-3 py-2.5 text-lead"
-          : "min-h-[56px] flex-1 flex-col justify-center gap-1 px-1 py-2 text-caption",
-        active ? "bg-primary-soft text-primary" : "text-muted hover:bg-canvas hover:text-ink",
-        // A blue-700 rule marks the current destination: down the left edge in
-        // the sidebar, across the top of a tab in the phone's bottom bar.
-        active &&
-          (orientation === "vertical"
-            ? "before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-pill before:bg-primary"
-            : "before:absolute before:inset-x-5 before:top-0 before:h-[3px] before:rounded-pill before:bg-primary"),
-      )}
-    >
+  const className = cn(
+    "relative flex items-center gap-2.5 rounded-control font-medium transition-colors",
+    orientation === "vertical"
+      ? "min-h-[44px] gap-[11px] px-3 py-2.5 text-lead"
+      : "min-h-[56px] flex-1 flex-col justify-center gap-1 px-1 py-2 text-caption",
+    active ? "bg-primary-soft text-primary" : "text-muted hover:bg-canvas hover:text-ink",
+    // A blue-700 rule marks the current destination: down the left edge in
+    // the sidebar, across the top of a tab in the phone's bottom bar.
+    active &&
+      (orientation === "vertical"
+        ? "before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-pill before:bg-primary"
+        : "before:absolute before:inset-x-5 before:top-0 before:h-[3px] before:rounded-pill before:bg-primary"),
+  );
+
+  const content = (
+    <>
       <span className="relative flex items-center justify-center">
         {item.icon}
         {item.badge === "unread" ? <UnreadDot /> : null}
@@ -649,6 +675,26 @@ function NavLink({
       <span className={orientation === "horizontal" ? "leading-none" : undefined}>
         {item.label}
       </span>
+    </>
+  );
+
+  if (!item.href) {
+    return (
+      <button type="button" onClick={item.onSelect} className={className}>
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <Link
+      href={item.href}
+      // The single most useful ARIA attribute in a navigation: it tells a
+      // screen reader which page you are on, which colour alone cannot.
+      aria-current={active ? "page" : undefined}
+      className={className}
+    >
+      {content}
     </Link>
   );
 }

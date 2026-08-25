@@ -5,10 +5,13 @@
 # is written once. That indirection is also what makes D13 (data residency,
 # docs/SECURITY.md §14.1) a deployment change rather than a rewrite.
 #
-# Host ports are offset by one from the defaults (5433, 6380, 9002/9003) so this
+# Host ports are offset by one from the defaults (5434, 6380, 9002/9003) so this
 # project and the Django reference system can run side by side. The reference
 # system holds the standard ports, and comparing behaviour between the two is
 # exactly what it is kept for.
+#
+# db uses 5434 rather than 5433 because another unrelated local project (fitnex)
+# already binds 5433 on this machine.
 
 services:
   db:
@@ -18,7 +21,7 @@ services:
       POSTGRES_PASSWORD: kinder
       POSTGRES_DB: kinder
     ports:
-      - "5433:5432"
+      - "5434:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

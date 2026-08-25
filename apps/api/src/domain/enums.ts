@@ -17,6 +17,8 @@
 
 export {
   AgeBand,
+  AttendanceRequestStatus,
+  AttendanceStatus,
   AuditAction,
   AuthTokenPurpose,
   ChildStatus,
@@ -33,6 +35,9 @@ export {
   ReviewStatus,
   Role,
   Sex,
+  SurveyQuestionType,
+  SurveyScope,
+  SurveyStatus,
   TeacherRole,
   TermReportStatus,
 } from "../generated/prisma/enums";

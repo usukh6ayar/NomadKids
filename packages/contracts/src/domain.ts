@@ -87,6 +87,14 @@ export const currentUserSchema = z.object({
   firstName: z.string(),
   email: z.string().nullish(),
   phone: z.string().nullish(),
+  /**
+   * Platform operator, not a kindergarten role — CLAUDE.md §1.3. Absent from
+   * older responses, so `.default(false)` rather than a required field: this is
+   * UX only (it picks a nav and a landing page), and the API re-derives the
+   * real authority from `User.isSuperAdmin` on every request regardless of what
+   * this says.
+   */
+  isSuperAdmin: z.boolean().default(false),
 });
 
 export const sessionSchema = z.object({
@@ -199,6 +207,139 @@ export const observationTypeSchema = z.object({
   name: z.string(),
   code: z.string().nullish(),
 });
+
+// ── Attendance ───────────────────────────────────────────────────────────────
+
+export const attendanceStatusSchema = z.enum(["PRESENT", "HALF_DAY", "EXCUSED", "SICK", "ABSENT"]);
+export type AttendanceStatus = z.infer<typeof attendanceStatusSchema>;
+
+export const attendanceRequestStatusSchema = z.enum(["PENDING", "APPROVED", "REJECTED"]);
+export type AttendanceRequestStatus = z.infer<typeof attendanceRequestStatusSchema>;
+
+export const attendanceRecordSchema = z.object({
+  id: uuidSchema,
+  childId: uuidSchema,
+  date: z.string(),
+  status: attendanceStatusSchema,
+  note: z.string().nullish(),
+  recordedBy: personRefSchema.nullish(),
+});
+export type AttendanceRecord = z.infer<typeof attendanceRecordSchema>;
+
+/** Per-status counts for a month — never a collapsed "funding day" figure. */
+export const attendanceSummarySchema = z.record(attendanceStatusSchema, z.number());
+export type AttendanceSummary = z.infer<typeof attendanceSummarySchema>;
+
+/** One row of a group's day sheet — a child, reconciled against whatever has
+ * already been marked. `record` is `null` for a child nobody has marked yet. */
+export const groupAttendanceRowSchema = z.object({
+  child: personRefSchema,
+  enrollmentId: uuidSchema,
+  record: z
+    .object({ id: uuidSchema, status: attendanceStatusSchema, note: z.string().nullish() })
+    .nullish(),
+});
+export type GroupAttendanceRow = z.infer<typeof groupAttendanceRowSchema>;
+
+export const attendanceRequestSchema = z.object({
+  id: uuidSchema,
+  childId: uuidSchema,
+  dateFrom: z.string(),
+  dateTo: z.string(),
+  requestedStatus: attendanceStatusSchema,
+  reason: z.string().nullish(),
+  reviewStatus: attendanceRequestStatusSchema,
+  reviewedBy: personRefSchema.nullish(),
+  reviewedAt: z.string().nullish(),
+  requestedBy: personRefSchema.nullish(),
+  createdAt: z.string(),
+});
+export type AttendanceRequest = z.infer<typeof attendanceRequestSchema>;
+
+// ── Meals ────────────────────────────────────────────────────────────────────
+
+export const menuDishSchema = z.object({
+  name: z.string(),
+  allergenTags: z.array(z.string()).default([]),
+});
+export type MenuDish = z.infer<typeof menuDishSchema>;
+
+export const menuDaySchema = z.object({
+  id: uuidSchema,
+  date: z.string(),
+  dishes: z.array(menuDishSchema),
+});
+export type MenuDay = z.infer<typeof menuDaySchema>;
+
+// ── Surveys ──────────────────────────────────────────────────────────────────
+
+export const surveyScopeSchema = z.enum(["CHILD", "KINDERGARTEN"]);
+export type SurveyScope = z.infer<typeof surveyScopeSchema>;
+
+export const surveyStatusSchema = z.enum(["DRAFT", "PUBLISHED", "CLOSED"]);
+export type SurveyStatus = z.infer<typeof surveyStatusSchema>;
+
+export const surveyQuestionTypeSchema = z.enum(["RATING", "YES_NO", "TEXT", "CHECKBOX"]);
+export type SurveyQuestionType = z.infer<typeof surveyQuestionTypeSchema>;
+
+export const surveyQuestionSchema = z.object({
+  id: uuidSchema,
+  order: z.number(),
+  type: surveyQuestionTypeSchema,
+  prompt: z.string(),
+  /** CHECKBOX's choices. Empty for the other three types. */
+  options: z.array(z.string()).nullish(),
+});
+export type SurveyQuestion = z.infer<typeof surveyQuestionSchema>;
+
+export const surveySchema = z.object({
+  id: uuidSchema,
+  title: z.string(),
+  description: z.string().nullish(),
+  scope: surveyScopeSchema,
+  status: surveyStatusSchema,
+  publishedAt: z.string().nullish(),
+  closedAt: z.string().nullish(),
+  createdAt: z.string(),
+  questions: z.array(surveyQuestionSchema).default([]),
+  /** Set only on the child-facing list — has this guardian already answered
+   * for this child (or, for a KINDERGARTEN-scope survey, at all)? */
+  respondedByMe: z.boolean().nullish(),
+});
+export type Survey = z.infer<typeof surveySchema>;
+
+/** A single answer's value: a number (RATING), a boolean (YES_NO), a string
+ * (TEXT), or a string array (CHECKBOX). */
+export const surveyAnswerValueSchema = z.union([
+  z.number(),
+  z.boolean(),
+  z.string(),
+  z.array(z.string()),
+]);
+export type SurveyAnswerValue = z.infer<typeof surveyAnswerValueSchema>;
+
+export const surveyAnswerSchema = z.object({
+  questionId: uuidSchema,
+  value: surveyAnswerValueSchema,
+});
+export type SurveyAnswer = z.infer<typeof surveyAnswerSchema>;
+
+/** One question's aggregated results — shape depends on the question type:
+ * RATING/YES_NO carry `counts` keyed by value; TEXT carries raw `responses`. */
+export const surveyQuestionResultSchema = z.object({
+  question: surveyQuestionSchema,
+  responseCount: z.number(),
+  counts: z.record(z.string(), z.number()).nullish(),
+  responses: z.array(z.string()).nullish(),
+});
+export type SurveyQuestionResult = z.infer<typeof surveyQuestionResultSchema>;
+
+export const surveyResultsSchema = z.object({
+  survey: surveySchema,
+  totalResponses: z.number(),
+  questions: z.array(surveyQuestionResultSchema),
+});
+export type SurveyResults = z.infer<typeof surveyResultsSchema>;
 
 // ── Assessment ───────────────────────────────────────────────────────────────
 
@@ -731,9 +872,42 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
  * `null` means the account holds no membership at all — a real state (an
  * invited user whose membership was revoked), and the UI has to say something
  * rather than redirect in a loop.
+ *
+ * `"platform"` is the superadmin, checked ahead of every membership role: they
+ * hold none by design (CLAUDE.md §1.1 — platform routes stay outside tenant
+ * scoping), so without this branch they fall through to the same `null` a
+ * revoked user gets.
  */
 export const primaryDashboardSchema = z.object({
-  dashboard: z.enum(["admin", "teacher", "parent"]).nullable(),
+  dashboard: z.enum(["platform", "admin", "teacher", "parent"]).nullable(),
+});
+
+// ── Platform (superadmin) ───────────────────────────────────────────────────
+
+/** A kindergarten as the platform operator's list returns it. */
+export const platformKindergartenSchema = z.object({
+  id: uuidSchema,
+  name: z.string(),
+  address: z.string().nullish(),
+  phone: z.string().nullish(),
+  email: z.string().nullish(),
+  isActive: z.boolean(),
+  createdAt: z.string(),
+});
+export type PlatformKindergarten = z.infer<typeof platformKindergartenSchema>;
+
+/** `POST /platform/kindergartens` — the tenant, its first admin, and the invite. */
+export const createdKindergartenSchema = z.object({
+  kindergarten: platformKindergartenSchema.pick({ id: true, name: true }),
+  admin: z.object({
+    id: uuidSchema,
+    username: z.string(),
+    email: z.string().nullish(),
+    phone: z.string().nullish(),
+    lastName: z.string(),
+    firstName: z.string(),
+  }),
+  invitationToken: z.string(),
 });
 
 /**

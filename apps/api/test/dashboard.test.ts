@@ -385,6 +385,17 @@ describe("primary dashboard", () => {
     const res = await request(server()).get("/v1/dashboard/primary").set("Cookie", session.cookies);
     expect(res.body.dashboard).toBeNull();
   });
+
+  it("★ sends the platform operator to the platform screen even though they hold no membership", async () => {
+    // A superadmin is deliberately a member of nothing (CLAUDE.md §1.1) — this
+    // is the case that regressed to `null`, the same result a revoked user
+    // gets, before `primaryDashboard` checked `isSuperAdmin` first.
+    const operator = await createUser({ username: uniq("operator"), isSuperAdmin: true });
+    const session = await login(app, operator.username);
+
+    const res = await request(server()).get("/v1/dashboard/primary").set("Cookie", session.cookies);
+    expect(res.body.dashboard).toBe("platform");
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
