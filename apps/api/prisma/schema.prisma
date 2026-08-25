@@ -89,6 +89,30 @@ enum EnrollmentStatus {
   TRANSFERRED
 }
 
+/// Ирцийн төлөв — нэмэлт.md §1, via the Django reference.
+///
+/// ★ A closed vocabulary set by the requirement, not administrator
+/// configuration. CLAUDE.md §2.3 makes anything an administrator edits a table
+/// — `DevelopmentDomain`, `AssessmentLevel`, `ObservationType` are tables for
+/// exactly that reason. These five are not editable: they are the states the
+/// requirement names, so an enum is right here.
+///
+/// `OTHER` is the escape hatch, and it is load-bearing. Without it an unusual
+/// day does not vanish — it gets counted under a status that misstates it, and
+/// `note` cannot undo that because a note explains one row and never reaches an
+/// aggregate. It was dropped and reinstated on 2026-08-25; see
+/// docs/ATTENDANCE_PLAN.md §2.
+///
+/// `HALF_DAY` from the reference is deliberately absent: its only purpose was a
+/// funding fraction, and nothing in this phase computes money.
+enum AttendanceStatus {
+  PRESENT // Ирсэн
+  ABSENT // Тасалсан
+  SICK // Өвчтэй
+  EXCUSED // Чөлөөтэй
+  OTHER // Бусад
+}
+
 enum ObservationSource {
   TEACHER
   PARENT
@@ -224,21 +248,22 @@ model User {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  photo          MediaFile?     @relation("UserPhoto", fields: [photoMediaFileId], references: [id], onDelete: SetNull)
-  uploadedMedia  MediaFile[]    @relation("MediaUploader")
-  memberships    Membership[]
-  guardianships  Guardianship[]
-  authTokens     AuthToken[]
-  sessions       Session[]
-  auditLogs      AuditLog[]
-  observations   Observation[]  @relation("ObservationAuthor")
-  reviewed       Observation[]  @relation("ObservationReviewer")
-  assessments    Assessment[]   @relation("AssessmentAuthor")
-  termReports    TermReport[]   @relation("TermReportAuthor")
-  notifications  Notification[] @relation("NotificationAuthor")
-  reads          NotificationRead[]
-  reactions      NotificationReaction[]
-  reportJobs     ReportJob[]
+  photo         MediaFile?             @relation("UserPhoto", fields: [photoMediaFileId], references: [id], onDelete: SetNull)
+  uploadedMedia MediaFile[]            @relation("MediaUploader")
+  memberships   Membership[]
+  guardianships Guardianship[]
+  authTokens    AuthToken[]
+  sessions      Session[]
+  auditLogs     AuditLog[]
+  observations  Observation[]          @relation("ObservationAuthor")
+  reviewed      Observation[]          @relation("ObservationReviewer")
+  assessments   Assessment[]           @relation("AssessmentAuthor")
+  termReports   TermReport[]           @relation("TermReportAuthor")
+  notifications Notification[]         @relation("NotificationAuthor")
+  reads         NotificationRead[]
+  reactions     NotificationReaction[]
+  reportJobs    ReportJob[]
+  attendances   Attendance[]           @relation("AttendanceRecorder")
 
   @@index([deletedAt])
   @@map("users")
@@ -262,8 +287,8 @@ model Membership {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  kindergarten Kindergarten  @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kindergarten Kindergarten   @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   assignments  GroupTeacher[]
 
   @@unique([userId, kindergartenId, role])
@@ -301,11 +326,11 @@ model Session {
 /// Single-use tokens for password reset and invitation. Merged from two
 /// reference tables that had identical mechanics (D6).
 model AuthToken {
-  id      String           @id @default(uuid()) @db.Uuid
-  userId  String           @db.Uuid
-  purpose AuthTokenPurpose
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @db.Uuid
+  purpose   AuthTokenPurpose
   /// SHA-256 of the token. The token itself exists only in the email.
-  tokenHash String         @unique
+  tokenHash String           @unique
 
   expiresAt   DateTime
   usedAt      DateTime?
@@ -366,31 +391,32 @@ model Kindergarten {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  logo               MediaFile?          @relation("KindergartenLogo", fields: [logoMediaFileId], references: [id], onDelete: SetNull)
-  memberships        Membership[]
-  schoolYears        SchoolYear[]
-  groups             Group[]
-  groupTeachers      GroupTeacher[]
-  children           Child[]
-  guardianships      Guardianship[]
-  enrollments        Enrollment[]
-  childProfiles      ChildProfile[]
-  childAgeProfiles   ChildAgeProfile[]
-  birthdayNotes      BirthdayNote[]
-  developmentDomains DevelopmentDomain[]
-  assessmentLevels   AssessmentLevel[]
-  observationTypes   ObservationType[]
-  terms              Term[]
-  observations       Observation[]
-  observationDomains ObservationDomain[]
-  assessments        Assessment[]
-  termReports        TermReport[]
-  mediaFiles         MediaFile[]
-  notifications      Notification[]
-  notificationTargets NotificationTarget[]
+  logo                  MediaFile?             @relation("KindergartenLogo", fields: [logoMediaFileId], references: [id], onDelete: SetNull)
+  memberships           Membership[]
+  schoolYears           SchoolYear[]
+  groups                Group[]
+  groupTeachers         GroupTeacher[]
+  children              Child[]
+  guardianships         Guardianship[]
+  enrollments           Enrollment[]
+  childProfiles         ChildProfile[]
+  childAgeProfiles      ChildAgeProfile[]
+  birthdayNotes         BirthdayNote[]
+  developmentDomains    DevelopmentDomain[]
+  assessmentLevels      AssessmentLevel[]
+  observationTypes      ObservationType[]
+  terms                 Term[]
+  observations          Observation[]
+  observationDomains    ObservationDomain[]
+  assessments           Assessment[]
+  termReports           TermReport[]
+  mediaFiles            MediaFile[]
+  notifications         Notification[]
+  notificationTargets   NotificationTarget[]
   notificationReactions NotificationReaction[]
-  reportJobs         ReportJob[]
-  auditLogs          AuditLog[]
+  attendances           Attendance[]
+  reportJobs            ReportJob[]
+  auditLogs             AuditLog[]
 
   @@index([deletedAt])
   @@map("kindergartens")
@@ -527,6 +553,7 @@ model Child {
   notificationTargets NotificationTarget[]
   reportJobs          ReportJob[]
   auditLogs           AuditLog[]
+  attendances         Attendance[]
 
   @@unique([kindergartenId, nationalId])
   @@index([kindergartenId, status])
@@ -588,12 +615,67 @@ model Enrollment {
   observations Observation[]
   assessments  Assessment[]
   termReports  TermReport[]
+  attendances  Attendance[]
 
   @@index([groupId, status])
   @@index([schoolYearId, status])
   @@index([childId, schoolYearId])
   @@index([childId, status])
   @@map("enrollments")
+}
+
+/// One child, one day, one status — нэмэлт.md §1, ported from the Django
+/// reference's `apps/attendance`.
+///
+/// ★ It hangs off `Enrollment`, never off `Child`.
+///
+/// A child who transfers in January has two enrollments, and their March
+/// attendance belongs to whichever kindergarten they actually attended.
+/// Anchoring to `Child` would attribute the whole year to wherever the child is
+/// *now* — CLAUDE.md §1.2 already forbids `Child.kindergartenId` for
+/// authorization, and this is the same hazard with a date attached. A transfer
+/// would silently rewrite history.
+///
+/// `childId` is denormalised alongside it so "this child's month" is a range
+/// scan rather than a join. The enrollment stays the authority for *which
+/// kindergarten a day belongs to*; the child column is for lookup and display.
+///
+/// ★★ One row per enrollment per day, enforced by the database.
+///
+/// The `@@unique` below is emitted by Prisma as a plain constraint, and the
+/// migration replaces it with a **partial** index over `deletedAt IS NULL`.
+/// Postgres treats NULLs as distinct, so the plain form would let a
+/// soft-deleted day block its own re-recording forever. Prisma has no
+/// partial-unique syntax; see the migration's SQL and docs/ATTENDANCE_PLAN.md §7.
+model Attendance {
+  id             String           @id @default(uuid()) @db.Uuid
+  kindergartenId String           @db.Uuid
+  enrollmentId   String           @db.Uuid
+  childId        String           @db.Uuid
+  date           DateTime         @db.Date
+  status         AttendanceStatus
+  note           String?
+
+  /// Who last wrote this day. Not soft-delete metadata — CLAUDE.md §3.2 keeps
+  /// the deleting actor in `AuditLog`, which is append-only and cannot be
+  /// overwritten by the next writer.
+  recordedById String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  enrollment   Enrollment   @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  recordedBy   User?        @relation("AttendanceRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@unique([enrollmentId, date])
+  /// The group day sheet: every child in this group on this date.
+  @@index([kindergartenId, date])
+  /// The monthly view: always a range scan over one child.
+  @@index([childId, date])
+  @@map("attendance")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -606,11 +688,11 @@ model ChildProfile {
   kindergartenId String @db.Uuid
   childId        String @unique @db.Uuid
 
-  introduction          String?
-  nameMeaning           String?
-  memorableSayings      String?
-  dream                 String?
-  distinguishingTraits  String?
+  introduction         String?
+  nameMeaning          String?
+  memorableSayings     String?
+  dream                String?
+  distinguishingTraits String?
 
   heightCm   Decimal?  @db.Decimal(5, 1)
   weightKg   Decimal?  @db.Decimal(5, 2)
@@ -790,7 +872,7 @@ model Observation {
   /// Domain authorship, not audit data. Needed at query time: a guardian may
   /// edit their own submission before it is approved, and always sees their own
   /// pending note — otherwise they cannot tell whether it saved.
-  authorId     String?      @db.Uuid
+  authorId String? @db.Uuid
 
   reviewStatus ReviewStatus @default(APPROVED)
   reviewedById String?      @db.Uuid
@@ -953,7 +1035,7 @@ model MediaFile {
 
   purpose MediaPurpose
 
-  storageKey   String @unique
+  storageKey   String  @unique
   originalName String
   /// Detected from CONTENT, never from the extension.
   mimeType     String
@@ -1001,18 +1083,18 @@ model MediaFile {
   /// outlives the row.
   uploadedById String? @db.Uuid
 
-  uploadedAt DateTime @default(now())
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  uploadedAt DateTime  @default(now())
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
   deletedAt  DateTime?
 
-  kindergarten     Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
-  child            Child?       @relation("ChildMedia", fields: [childId], references: [id], onDelete: Cascade)
-  observation      Observation? @relation("ObservationMedia", fields: [observationId], references: [id], onDelete: Cascade)
-  notification     Notification? @relation("NotificationMedia", fields: [notificationId], references: [id], onDelete: Cascade)
-  uploadedBy       User?        @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
-  childPhotoOf     Child?       @relation("ChildPhoto")
-  reportJob        ReportJob?   @relation("ReportOutput")
+  kindergarten       Kindergarten  @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child              Child?        @relation("ChildMedia", fields: [childId], references: [id], onDelete: Cascade)
+  observation        Observation?  @relation("ObservationMedia", fields: [observationId], references: [id], onDelete: Cascade)
+  notification       Notification? @relation("NotificationMedia", fields: [notificationId], references: [id], onDelete: Cascade)
+  uploadedBy         User?         @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  childPhotoOf       Child?        @relation("ChildPhoto")
+  reportJob          ReportJob?    @relation("ReportOutput")
   kindergartenLogoOf Kindergarten? @relation("KindergartenLogo")
   userPhotoOf        User?         @relation("UserPhoto")
   groupPhotoOf       Group?        @relation("GroupPhoto")
@@ -1055,8 +1137,8 @@ model Notification {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  kindergarten Kindergarten         @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
-  author       User?                @relation("NotificationAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  kindergarten Kindergarten           @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  author       User?                  @relation("NotificationAuthor", fields: [authorId], references: [id], onDelete: SetNull)
   targets      NotificationTarget[]
   reads        NotificationRead[]
   reactions    NotificationReaction[]

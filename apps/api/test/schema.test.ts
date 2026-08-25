@@ -364,6 +364,108 @@ describe("uniqueness", () => {
   });
 });
 
+describe("attendance — one row per enrollment per day", () => {
+  /**
+   * ★ The index behind this is hand-written, so it is exactly the kind of
+   * guarantee that vanishes silently.
+   *
+   * `@@unique([enrollmentId, date])` in schema.prisma emits a *plain* unique
+   * index; the migration replaces it with a partial one over
+   * `WHERE "deletedAt" IS NULL`. A future `migrate dev` that regenerates the
+   * file without the hand edit would restore the plain form, nothing would
+   * fail to compile, and the damage would surface much later as a day nobody
+   * can re-record.
+   */
+  async function enrolledChild() {
+    const { kg, year, group } = await makeKindergarten();
+    const child = await db.child.create({
+      data: {
+        kindergartenId: kg.id,
+        lastName: "Ганболд",
+        firstName: "Батбаяр",
+        sex: "MALE",
+        dateOfBirth: new Date("2021-04-12"),
+      },
+    });
+    const enrollment = await db.enrollment.create({
+      data: {
+        kindergartenId: kg.id,
+        childId: child.id,
+        groupId: group.id,
+        schoolYearId: year.id,
+        startedOn: new Date("2025-09-01"),
+      },
+    });
+    return { kg, child, enrollment };
+  }
+
+  const day = new Date("2026-02-10");
+
+  function row(kg: string, enrollmentId: string, childId: string, status: "PRESENT" | "SICK") {
+    return { kindergartenId: kg, enrollmentId, childId, date: day, status };
+  }
+
+  it("refuses a second row for the same enrollment and day", async () => {
+    const { kg, child, enrollment } = await enrolledChild();
+    await db.attendance.create({ data: row(kg.id, enrollment.id, child.id, "PRESENT") });
+
+    // A register submitted twice, or a form resent on a slow connection.
+    await expect(
+      db.attendance.create({ data: row(kg.id, enrollment.id, child.id, "SICK") }),
+    ).rejects.toThrow();
+  });
+
+  /**
+   * ★★ The reason the index is partial rather than plain.
+   *
+   * Postgres treats NULLs as distinct, so a plain unique index counts a
+   * soft-deleted row as still occupying the day — and a day deleted once could
+   * never be recorded again. The failure would read as a unique violation on a
+   * row the user cannot see.
+   */
+  it("allows the day to be recorded again after the first row is soft-deleted", async () => {
+    const { kg, child, enrollment } = await enrolledChild();
+    const first = await db.attendance.create({
+      data: row(kg.id, enrollment.id, child.id, "PRESENT"),
+    });
+
+    await db.attendance.update({
+      where: { id: first.id },
+      data: { deletedAt: new Date() },
+    });
+
+    const second = await db.attendance.create({
+      data: row(kg.id, enrollment.id, child.id, "SICK"),
+    });
+    expect(second.id).not.toBe(first.id);
+
+    const live = await db.attendance.count({
+      where: { enrollmentId: enrollment.id, date: day, deletedAt: null },
+    });
+    expect(live, "exactly one live row for the day").toBe(1);
+  });
+
+  /**
+   * The same child on two days, and two children on one day, are both ordinary
+   * — the constraint is on the pair, not on either column.
+   */
+  it("allows the same enrollment on a different day", async () => {
+    const { kg, child, enrollment } = await enrolledChild();
+    await db.attendance.create({ data: row(kg.id, enrollment.id, child.id, "PRESENT") });
+
+    const next = await db.attendance.create({
+      data: {
+        kindergartenId: kg.id,
+        enrollmentId: enrollment.id,
+        childId: child.id,
+        date: new Date("2026-02-11"),
+        status: "PRESENT",
+      },
+    });
+    expect(next.date.toISOString().slice(0, 10)).toBe("2026-02-11");
+  });
+});
+
 describe("defaults that carry security weight", () => {
   it("creates observations invisible to parents", async () => {
     // A teacher's working note is private until deliberately shared. If this
