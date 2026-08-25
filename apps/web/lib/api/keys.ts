@@ -92,4 +92,6 @@ export const qk = {
 
   platformKindergartens: (filters: Record<string, unknown> = {}) =>
     ["platform", "kindergartens", filters] as const,
+  platformKindergarten: (id: string) => ["platform", "kindergartens", "detail", id] as const,
+  platformStats: () => ["platform", "stats"] as const,
 } as const;

@@ -154,6 +154,32 @@ describe("POST /platform/kindergartens", () => {
   });
 });
 
+describe("GET /platform/stats", () => {
+  it("totals across every kindergarten, not just one", async () => {
+    const res = await request(app.getHttpServer())
+      .get("/v1/platform/stats")
+      .set("Cookie", superadmin.cookies);
+
+    expect(res.status).toBe(200);
+    // resetData() truncates everything, so this is exactly the two
+    // createScenario() fixtures: one child, one group, one admin + one
+    // teacher, one parent, each.
+    expect(res.body).toEqual({ kindergartens: 2, groups: 2, children: 2, staff: 4, guardians: 2 });
+  });
+
+  it.each([
+    ["a kindergarten admin", () => adminA],
+    ["a teacher", () => teacherA],
+    ["a parent", () => parentA],
+  ])("refuses %s with 404", async (_label, session) => {
+    const res = await request(app.getHttpServer())
+      .get("/v1/platform/stats")
+      .set("Cookie", session().cookies);
+
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("GET /platform/kindergartens", () => {
   it("lists every kindergarten, not just the operator's", async () => {
     const res = await request(app.getHttpServer())
@@ -212,9 +238,11 @@ describe("GET /platform/kindergartens/:id", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.id).toBe(a.kindergarten.id);
-    // createScenario builds one group, one active enrollment and three
-    // memberships (admin, teacher, parent).
-    expect(res.body._count).toEqual({ groups: 1, enrollments: 1, memberships: 3 });
+    // createScenario builds one child in one group (admin + teacher = staff,
+    // one parent = guardian).
+    expect(res.body.counts).toEqual({ children: 1, groups: 1, staff: 2, guardians: 1 });
+    expect(Array.isArray(res.body.assessmentCoverage)).toBe(true);
+    expect(Array.isArray(res.body.recentActivity)).toBe(true);
   });
 
   it("returns 404 for an unknown id", async () => {

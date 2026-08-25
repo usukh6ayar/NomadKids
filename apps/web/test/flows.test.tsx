@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   renderWithProviders,
   ROUTER,
+  selectOption,
   sessionFor,
   setParams,
   setSearchParams,
@@ -177,10 +178,10 @@ describe("recording an observation", () => {
 
     renderWithProviders(<NewObservationPage />);
 
-    // The <option> arrives with the types query, which resolves after the
-    // select itself renders — selecting before then finds an empty list.
-    await waitFor(() => expect(screen.getByRole("option", { name: "Чөлөөт" })).toBeInTheDocument());
-    await user.selectOptions(screen.getByLabelText(/Ажиглалтын төрөл/), TYPE_ID);
+    // The option arrives with the types query, which resolves after the
+    // select itself renders — `selectOption`'s own wait is what makes this
+    // deterministic rather than the types list happening to be there in time.
+    await selectOption(user, /Ажиглалтын төрөл/, "Чөлөөт");
     await user.type(screen.getByLabelText(/Нөхцөл байдал/), "Тоглоомын талбайд");
     await user.click(screen.getByLabelText(/Эцэг эх харах боломжтой/));
     await user.click(screen.getByRole("button", { name: "Хадгалах" }));
@@ -294,9 +295,10 @@ describe("group assessment", () => {
 
     await waitFor(() => expect(screen.getByLabelText(/Хөгжлийн чиглэл/)).toBeInTheDocument());
 
-    // Exactly one domain selector, and it is a single-select.
-    const domainSelect = screen.getByLabelText(/Хөгжлийн чиглэл/) as HTMLSelectElement;
-    expect(domainSelect.multiple).toBe(false);
+    // Exactly one domain selector. It's Radix's `Select`, which has no
+    // multi-value mode to begin with — the component itself rules out the
+    // grid this test used to have to check for.
+    expect(screen.getAllByLabelText(/Хөгжлийн чиглэл/)).toHaveLength(1);
 
     // One radiogroup per child — the level choice — not one per domain.
     expect(screen.getAllByRole("radiogroup")).toHaveLength(1);
@@ -432,12 +434,12 @@ describe("registering a child", () => {
 
     await user.type(await screen.findByLabelText(/Овог/), "Ганболд");
     await user.type(screen.getByLabelText(/^Нэр/), "Батбаяр");
-    await user.selectOptions(screen.getByLabelText(/Хүйс/), "MALE");
+    await selectOption(user, /Хүйс/, "Хүү");
     await user.type(screen.getByLabelText(/Төрсөн огноо/), "2022-03-15");
-    // The select is disabled while the group list loads, so waiting for the
-    // option is what makes this deterministic rather than lucky.
-    await screen.findByRole("option", { name: "Дунд бүлэг" });
-    await user.selectOptions(screen.getByLabelText(/Бүлэг/), GROUP_ID);
+    // The select is disabled while the group list loads, so waiting for it to
+    // become enabled is what makes this deterministic rather than lucky.
+    await waitFor(() => expect(screen.getByLabelText(/Бүлэг/)).not.toBeDisabled());
+    await selectOption(user, /Бүлэг/, "Дунд бүлэг");
 
     await user.click(screen.getByRole("button", { name: "Бүртгэх" }));
 
@@ -471,7 +473,7 @@ describe("registering a child", () => {
 
     await user.type(await screen.findByLabelText(/Овог/), "Ганболд");
     await user.type(screen.getByLabelText(/^Нэр/), "Батбаяр");
-    await user.selectOptions(screen.getByLabelText(/Хүйс/), "FEMALE");
+    await selectOption(user, /Хүйс/, "Охин");
     await user.type(screen.getByLabelText(/Төрсөн огноо/), "2022-03-15");
 
     await user.click(screen.getByRole("button", { name: "Бүртгэх" }));
@@ -518,6 +520,7 @@ describe("editing a child", () => {
   });
 
   it("shows the group transfer to an admin", async () => {
+    const user = userEvent.setup();
     setParams({ childId: CHILD_ID });
     stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
@@ -537,6 +540,9 @@ describe("editing a child", () => {
     renderWithProviders(<EditChildPage />);
 
     expect(await screen.findByText("Бүлэг шилжүүлэх")).toBeInTheDocument();
+    // Radix only mounts `role="option"` once its listbox opens, unlike a
+    // native `<select>`'s always-present `<option>`s.
+    await user.click(screen.getByLabelText("Шинэ бүлэг"));
     expect(await screen.findByRole("option", { name: "Ахлах бүлэг" })).toBeInTheDocument();
   });
 
