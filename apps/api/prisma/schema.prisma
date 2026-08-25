@@ -442,6 +442,8 @@ model Kindergarten {
   documentBookmarks     DocumentBookmark[]
   consents              ConsentRecord[]
   mealRecords           MealRecord[]
+  fundingRules          FundingRule[]
+  fundingCalculations   FundingCalculation[]
 
   @@index([deletedAt])
   @@map("kindergartens")
@@ -590,6 +592,7 @@ model Child {
   artworkComparisons  ArtworkComparison[]
   consents            ConsentRecord[]
   mealRecords         MealRecord[]
+  fundingCalculations FundingCalculation[]
 
   @@unique([kindergartenId, nationalId])
   @@index([kindergartenId, status])
@@ -1294,6 +1297,124 @@ model MealRecord {
   /// A child's month, and the "days eaten" count a cost calculation needs.
   @@index([childId, date])
   @@map("meal_records")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Funding and food cost — нэмэлт.md §3, §4, §5
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Where the money comes from — нэмэлт.md §3's "эх үүсвэрээр салгаж харуулна".
+enum FundingSource {
+  STATE // Улсын санхүүжилт
+  PARENT // Эцэг эхийн төлбөр
+  KINDERGARTEN // Цэцэрлэгийн санхүүжилт
+  OTHER // Бусад эх үүсвэр
+}
+
+/// A tariff and the conditions it applies under — нэмэлт.md §5.
+///
+/// ★ §4 is explicit: "Санхүүжилтийн тариф болон дүрмийг source code-д тогтмол
+/// бичихгүй. Администратор тохиргоогоор өөрчлөх боломжтой байна." So this is a
+/// table, like `DevelopmentDomain` and `AssessmentLevel`, and for a sharper
+/// reason than either: a rate hard-coded in TypeScript would need a deployment
+/// to follow a government circular, and the wrong rate applied for a month is a
+/// reconciliation nobody can undo cleanly.
+///
+/// ★★ Rules are **superseded, never edited**, once they have been used.
+///
+/// A month's calculation is evidence — "this is the rate we billed under" — and
+/// editing the rate that produced it rewrites the past. `effectiveFrom` and
+/// `effectiveTo` bound each one; a new rate is a new row starting the day the
+/// old one ends. That is why the calculation stores its own `dailyRate` too.
+model FundingRule {
+  id             String        @id @default(uuid()) @db.Uuid
+  kindergartenId String        @db.Uuid
+  name           String
+  source         FundingSource
+
+  effectiveFrom DateTime  @db.Date
+  /// Null means "still in force". A rule is closed by setting this, not deleted.
+  effectiveTo   DateTime? @db.Date
+
+  /// Which children it applies to. Null means every age.
+  ageBand AgeBand?
+
+  /// The money, in **tögrög**, as `Decimal` — never a float.
+  ///
+  /// A binary float cannot hold 0.1 exactly, and a month's funding is a sum of
+  /// thousands of these; the error is small per row and visible in a total that
+  /// has to reconcile against a bank statement.
+  dailyRate   Decimal? @db.Decimal(12, 2)
+  monthlyRate Decimal? @db.Decimal(12, 2)
+
+  /// §5's "Ирцээс хамаарах эсэх" and "Хоолны хэрэглээнээс хамаарах эсэх".
+  ///
+  /// These decide which counter the daily rate multiplies: days attended, days
+  /// fed, or neither (a flat monthly charge). Both false with a `monthlyRate`
+  /// is the flat case.
+  dependsOnAttendance Boolean @default(true)
+  dependsOnMeals      Boolean @default(false)
+
+  note String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten        Kindergarten         @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  fundingCalculations FundingCalculation[]
+
+  /// "Which rules were in force in March" — the calculation's own lookup.
+  @@index([kindergartenId, source, effectiveFrom])
+  @@map("funding_rules")
+}
+
+/// What a child's funding worked out to for one month — нэмэлт.md §6.
+///
+/// ★ The inputs are stored alongside the result, not just referenced.
+///
+/// `daysAttended`, `daysFed` and `dailyRate` are copied onto the row at
+/// calculation time. Recomputing them later from the live tables would answer a
+/// different question the moment an attendance correction lands — and §6's
+/// state machine (Draft → Submitted → Approved → Paid → Reconciled) exists
+/// precisely because an approved figure must stay the figure that was approved.
+model FundingCalculation {
+  id             String        @id @default(uuid()) @db.Uuid
+  kindergartenId String        @db.Uuid
+  childId        String        @db.Uuid
+  source         FundingSource
+  /// The month this covers, as its first day.
+  month          DateTime      @db.Date
+
+  daysAttended  Int
+  daysFed       Int
+  /// The rate actually applied — see the note above.
+  dailyRate     Decimal? @db.Decimal(12, 2)
+  /// The rule that produced it, for tracing. Nullable so a deleted rule does
+  /// not take the calculation with it.
+  fundingRuleId String?  @db.Uuid
+
+  /// Тооцсон дүн — what the rule computes.
+  calculatedAmount Decimal  @db.Decimal(12, 2)
+  /// Баталгаажсан дүн — what was approved, once it is.
+  approvedAmount   Decimal? @db.Decimal(12, 2)
+  /// Хүлээн авсан дүн — what actually arrived.
+  receivedAmount   Decimal? @db.Decimal(12, 2)
+
+  note String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  fundingRule  FundingRule? @relation(fields: [fundingRuleId], references: [id], onDelete: SetNull)
+
+  /// One calculation per child per month per source, among live rows.
+  @@unique([childId, month, source])
+  @@index([kindergartenId, month])
+  @@map("funding_calculations")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

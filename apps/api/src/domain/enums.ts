@@ -24,6 +24,7 @@ export {
   ChildStatus,
   ConsentKind,
   EnrollmentStatus,
+  FundingSource,
   GroupStatus,
   GuardianRelation,
   MealKind,
