@@ -230,6 +230,31 @@ describe("attendance requests", () => {
     // uniformly 404, never 403, same reasoning as ChildAccessService.
     expect(res.status).toBe(404);
   });
+
+  /**
+   * The full `Paginated<T>` shape, not just `items`/`total`.
+   *
+   * The web client's `paginated()` Zod schema requires `page`, `pageSize` and
+   * `totalPages` too — a response missing them fails client-side validation
+   * silently (the query settles into neither a loading, error nor empty
+   * state), so the review queue rendered as a blank screen for every teacher
+   * until this was caught.
+   */
+  it("the review queue returns the full paginated shape", async () => {
+    await authed(
+      request(server()).post(`/v1/children/${a.child.id}/attendance-requests`),
+      parentA,
+    ).send({ dateFrom: "2026-03-02", dateTo: "2026-03-02", requestedStatus: "SICK" });
+
+    const res = await authed(
+      request(server()).get("/v1/attendance-requests/review-queue?page=1&pageSize=25"),
+      teacherA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ page: 1, pageSize: 25, total: 1, totalPages: 1 });
+    expect(res.body.items).toHaveLength(1);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

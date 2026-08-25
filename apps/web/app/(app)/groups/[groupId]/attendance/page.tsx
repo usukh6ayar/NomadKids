@@ -6,6 +6,7 @@ import { useState } from "react";
 import { z } from "zod";
 import { attendanceRecordSchema, groupAttendanceRowSchema, groupSchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
+import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { RequireRole } from "@/components/shell/require-role";
@@ -74,16 +75,19 @@ function GroupAttendance() {
   });
 
   return (
-    <div className="flex flex-col gap-5 py-2">
-      <header>
-        <h1 className="text-heading font-semibold text-ink">Ирц</h1>
-        <p className="mt-0.5 text-body text-muted">{group.data?.name}</p>
-      </header>
+    <div className="flex flex-col gap-6 lg:gap-8">
+      <PageHeader title="Ирц" lede={group.data?.name} />
 
       <Card className="px-4 py-4 sm:px-5">
         <Field label="Огноо">
           {({ id }) => (
-            <Input id={id} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <Input
+              id={id}
+              type="date"
+              max={today()}
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
           )}
         </Field>
       </Card>

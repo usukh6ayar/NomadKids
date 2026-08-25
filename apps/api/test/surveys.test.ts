@@ -96,6 +96,27 @@ describe("management — staff only", () => {
     expect(res.status).toBe(400);
   });
 
+  /**
+   * A CHECKBOX question with no options has no control a guardian can answer
+   * it with, and `unanswered` on the response screen gates the *whole*
+   * survey's submit button on every question having a value — so one
+   * unanswerable question silently blocks every family from submitting
+   * anything at all, with no error explaining why.
+   */
+  it("refuses a CHECKBOX question with no options", async () => {
+    const created = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
+      teacherA,
+    ).send({ title: "Судалгаа", scope: "KINDERGARTEN" });
+
+    const res = await authed(
+      request(server()).put(`/v1/surveys/${created.body.id}/questions`),
+      teacherA,
+    ).send({ questions: [{ order: 0, type: "CHECKBOX", prompt: "Аль нь тохирох вэ?" }] });
+
+    expect(res.status).toBe(400);
+  });
+
   it("refuses to change questions once published", async () => {
     const { surveyId } = await publishedChildSurvey();
 

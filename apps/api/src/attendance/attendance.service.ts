@@ -5,6 +5,7 @@ import { ChildAccessService } from "../authz/child-access.service";
 import { TenantAccessService } from "../authz/tenant-access.service";
 import { isGuardianOf } from "../authz/child-access";
 import type { Actor } from "../authz/actor";
+import { paginate } from "../common/pagination";
 import { isFutureDate, isValidRange } from "./attendance-rules";
 import { AttendanceRepository } from "./attendance.repository";
 import type {
@@ -199,7 +200,8 @@ export class AttendanceService {
   /** Pending requests across the teacher's own groups. */
   async reviewQueue(actor: Actor, page: { page: number; pageSize: number }) {
     const groupIds = await this.authz.loadActiveTeachingGroupIds(actor);
-    return this.repo.listPendingForGroups(groupIds, page);
+    const { items, total } = await this.repo.listPendingForGroups(groupIds, page);
+    return paginate(items, total, page);
   }
 }
 
