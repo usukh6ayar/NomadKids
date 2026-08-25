@@ -39,11 +39,14 @@ export const createFundingRuleSchema = z
     path: ["effectiveTo"],
   })
   .refine(
-    (v) =>
+    (v) => {
       // A rule that depends on nothing needs a monthly rate; one that depends
       // on a counter needs a daily one. Neither is a rule that computes zero
       // for every child and looks configured.
-      (!v.dependsOnAttendance && !v.dependsOnMeals ? v.monthlyRate : v.dailyRate) != null,
+      const required =
+        !v.dependsOnAttendance && !v.dependsOnMeals ? v.monthlyRate : v.dailyRate;
+      return required !== null && required !== undefined;
+    },
     {
       message: "Ирц/хоолноос хамаарах дүрэмд өдрийн тариф, бусад тохиолдолд сарын тариф хэрэгтэй",
       path: ["dailyRate"],

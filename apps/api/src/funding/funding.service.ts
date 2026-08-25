@@ -2,7 +2,6 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { AuditRepository } from "../audit/audit.repository";
 import { TenantAccessService } from "../authz/tenant-access.service";
 import type { Actor } from "../authz/actor";
-import type { FundingSource } from "../domain/enums";
 import { FundingRepository } from "./funding.repository";
 import { calculateFunding, ruleAppliesOn, type RuleInput } from "./funding-rules";
 import type {
