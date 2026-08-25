@@ -50,6 +50,7 @@ export class ReportsService {
       audience: isGuardian ? "GUARDIAN" : "STAFF",
       audienceUserId: actor.userId,
       ...(dto.termId ? { termId: dto.termId } : {}),
+      ...(dto.schoolYearId ? { schoolYearId: dto.schoolYearId } : {}),
     };
 
     const job = await this.repo.createJob({

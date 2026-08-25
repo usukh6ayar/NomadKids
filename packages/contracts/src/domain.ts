@@ -61,7 +61,13 @@ export const GUARDIAN_RELATION_LABEL: Record<string, string> = {
 export const observationSourceSchema = z.enum(["TEACHER", "PARENT"]);
 export const reviewStatusSchema = z.enum(["PENDING", "APPROVED", "RETURNED"]);
 export const reportStatusSchema = z.enum(["QUEUED", "RUNNING", "DONE", "FAILED"]);
-export const reportTypeSchema = z.enum(["CHILD_PORTFOLIO", "TERM_REPORT"]);
+export const reportTypeSchema = z.enum(["CHILD_PORTFOLIO", "TERM_REPORT", "ANNUAL_REPORT"]);
+
+export const REPORT_TYPE_LABEL: Record<string, string> = {
+  CHILD_PORTFOLIO: "Хувийн хавтас",
+  TERM_REPORT: "Улирлын тайлан",
+  ANNUAL_REPORT: "Жилийн нэгдсэн тайлан",
+};
 
 /** A person's name as every list renders it. */
 export const personRefSchema = z.object({

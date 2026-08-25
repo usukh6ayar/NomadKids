@@ -24,16 +24,35 @@ import { PORTFOLIO } from "@/lib/vocabulary";
  * channel in the MVP, and polling a single job for the seconds it takes is
  * exactly the case where that decision costs nothing.
  */
-export function ReportDialog({ childId, trigger }: { childId: string; trigger: React.ReactNode }) {
+export function ReportDialog({
+  childId,
+  trigger,
+  /**
+   * The child's current school year, if the page knows it.
+   *
+   * ★ Without it the annual option is not offered at all, rather than offered
+   * and refused: RFP §6.5 compares one year's four terms, so the API requires a
+   * `schoolYearId` and answers 400 without one. A button that always fails
+   * teaches people the feature is broken.
+   */
+  schoolYearId,
+}: {
+  childId: string;
+  trigger: React.ReactNode;
+  schoolYearId?: string | null;
+}) {
   const [open, setOpen] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const create = useMutation({
-    mutationFn: () =>
+    mutationFn: (type: "CHILD_PORTFOLIO" | "ANNUAL_REPORT") =>
       mutate("/reports", reportJobSchema, {
         method: "POST",
-        body: { childId, type: "CHILD_PORTFOLIO" },
+        body:
+          type === "ANNUAL_REPORT"
+            ? { childId, type, schoolYearId }
+            : { childId, type: "CHILD_PORTFOLIO" },
       }),
     onSuccess: (job) => {
       setJobId(job.id);
@@ -81,7 +100,7 @@ export function ReportDialog({ childId, trigger }: { childId: string; trigger: R
                 id="report-dialog-description"
                 className="mt-1 text-body text-muted"
               >
-                Хүүхдийн хавтсыг PDF болгон бэлтгэнэ. Хэдэн секунд болно.
+                {PORTFOLIO} эсвэл жилийн тайланг PDF болгон бэлтгэнэ. Хэдэн секунд болно.
               </Dialog.Description>
             </div>
             <Dialog.Close asChild>
@@ -95,12 +114,33 @@ export function ReportDialog({ childId, trigger }: { childId: string; trigger: R
 
           <div className="mt-3">
             {!jobId ? (
-              <Button block size="lg" disabled={create.isPending} onClick={() => create.mutate()}>
-                <FileText size={18} />
-                {create.isPending ? "Илгээж байна…" : "PDF бэлтгэх"}
-              </Button>
+              <div className="flex flex-col gap-2">
+                <Button
+                  block
+                  size="lg"
+                  disabled={create.isPending}
+                  onClick={() => create.mutate("CHILD_PORTFOLIO")}
+                >
+                  <FileText size={18} />
+                  {create.isPending ? "Илгээж байна…" : PORTFOLIO}
+                </Button>
+
+                {/* RFP §6.5 — offered only when the year is known. See above. */}
+                {schoolYearId ? (
+                  <Button
+                    block
+                    variant="secondary"
+                    size="lg"
+                    disabled={create.isPending}
+                    onClick={() => create.mutate("ANNUAL_REPORT")}
+                  >
+                    <FileText size={18} />
+                    Жилийн нэгдсэн тайлан
+                  </Button>
+                ) : null}
+              </div>
             ) : (
-              <ReportProgress job={job} onRetry={() => create.mutate()} />
+              <ReportProgress job={job} onRetry={() => create.mutate("CHILD_PORTFOLIO")} />
             )}
           </div>
         </Dialog.Content>

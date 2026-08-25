@@ -29,6 +29,8 @@ export interface ReportJobParams {
   audienceUserId: string;
   /** Required for `TERM_REPORT`, absent for `CHILD_PORTFOLIO`. */
   termId?: string;
+  /** Required for `ANNUAL_REPORT` — RFP §6.5. */
+  schoolYearId?: string;
 }
 
 /**

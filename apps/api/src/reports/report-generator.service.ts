@@ -9,6 +9,11 @@ import {
   termReportChrome,
   type TermReportData,
 } from "./term-report-template";
+import {
+  annualReportChrome,
+  renderAnnualReportHtml,
+  type AnnualReportData,
+} from "./annual-report-template";
 import { reportAudience, type ReportJobParams } from "./report-params";
 
 /** How long a generated file stays downloadable before the sweep removes it. */
@@ -78,7 +83,9 @@ export class ReportGeneratorService {
       const { html, chrome, filename } =
         job.type === "TERM_REPORT"
           ? await this.buildTermReport(job.childId, params)
-          : await this.buildPortfolio(job.childId, params);
+          : job.type === "ANNUAL_REPORT"
+            ? await this.buildAnnualReport(job.childId, params)
+            : await this.buildPortfolio(job.childId, params);
 
       const pdf = await this.renderer.render(html, chrome);
 
@@ -284,6 +291,110 @@ export class ReportGeneratorService {
   }
 
   /**
+   * The annual consolidated report — RFP §6.5.
+   *
+   * ★ Every term of the year gets a column, including the ones with no
+   * assessment.
+   *
+   * The point of an annual comparison is the *shape* of the progress, and
+   * dropping an empty column turns "we did not assess in the winter" into
+   * "there was no winter". `terms` comes from the school year, not from the
+   * assessments, and the grid is filled against it.
+   */
+  private async buildAnnualReport(childId: string, params: ReportJobParams) {
+    if (!params.schoolYearId) throw new Error("Annual report requires a schoolYearId");
+
+    const viewer = reportAudience(params);
+    const data = await this.repo.loadAnnualReportData(childId, params.schoolYearId, viewer);
+    if (!data.child) throw new Error("Child not found");
+    if (!data.schoolYear) throw new Error("School year not found");
+
+    const budget = new ImageBudget();
+    const childPhoto = await this.embed(budget, data.child.photo);
+    const logo = await this.embed(budget, data.child.kindergarten.logo);
+
+    const termIndex = new Map(data.terms.map((term, index) => [term.id, index]));
+
+    /*
+     * One row per domain, one cell per term.
+     *
+     * Keyed by domain id rather than name: two domains may share a display name
+     * across a system default and a kindergarten's own override, and merging
+     * them would silently average two different criteria into one row.
+     */
+    const byDomain = new Map<
+      string,
+      { name: string; order: number; levels: (AnnualLevel | null)[] }
+    >();
+
+    for (const assessment of data.assessments) {
+      const row = byDomain.get(assessment.domain.id) ?? {
+        name: assessment.domain.name,
+        order: assessment.domain.order,
+        levels: Array.from({ length: data.terms.length }, () => null),
+      };
+
+      const index = termIndex.get(assessment.term.id);
+      if (index !== undefined) {
+        row.levels[index] = {
+          value: assessment.level.value,
+          label: assessment.level.label,
+          color: assessment.level.color ?? "#6b7280",
+        };
+      }
+
+      byDomain.set(assessment.domain.id, row);
+    }
+
+    const domains = [...byDomain.values()]
+      .sort((x, y) => x.order - y.order)
+      .map((row) => ({
+        name: row.name,
+        levels: row.levels,
+        // First assessed term to last. Null when fewer than two terms carry a
+        // level: "±0" for a child assessed once states a result nobody measured.
+        change: levelChange(row.levels),
+      }));
+
+    const fullName = `${data.child.lastName} ${data.child.firstName}`;
+    const enrollment = data.child.enrollments[0];
+
+    const payload: AnnualReportData = {
+      child: {
+        lastName: data.child.lastName,
+        firstName: data.child.firstName,
+        dateOfBirth: data.child.dateOfBirth,
+        photoDataUri: childPhoto,
+      },
+      kindergarten: { name: data.child.kindergarten.name, logoDataUri: logo },
+      group: enrollment?.group ?? null,
+      schoolYear: {
+        name: data.schoolYear.name,
+        startsOn: data.schoolYear.startsOn,
+        endsOn: data.schoolYear.endsOn,
+      },
+      terms: data.terms,
+      domains,
+      termReports: data.termReports.map((report) => ({
+        termName: report.term.name,
+        strengths: report.strengths,
+        needsSupport: report.needsSupport,
+        nextGoals: report.nextGoals,
+        adviceForParents: report.adviceForParents,
+        authorName: report.author ? `${report.author.lastName} ${report.author.firstName}` : null,
+      })),
+      generatedAt: new Date(),
+      filteredForGuardian: viewer.isGuardian,
+    };
+
+    return {
+      html: renderAnnualReportHtml(payload),
+      chrome: annualReportChrome(fullName, data.child.kindergarten.name, data.schoolYear.name),
+      filename: `${fullName} — ${data.schoolYear.name}.pdf`,
+    };
+  }
+
+  /**
    * Fetches one object and hands it to the budget.
    *
    * A missing or unreadable object yields `null` rather than throwing. Storage
@@ -317,4 +428,24 @@ export class ReportGeneratorService {
 function countPages(pdf: Buffer): number {
   const matches = pdf.toString("latin1").match(/\/Type\s*\/Page[^s]/g);
   return matches ? matches.length : 0;
+}
+
+/** One term's level for one domain, as the annual grid holds it. */
+interface AnnualLevel {
+  value: number;
+  label: string;
+  color: string;
+}
+
+/**
+ * The movement from the first assessed term to the last.
+ *
+ * Null when fewer than two terms carry a level. A child assessed once has no
+ * change to report, and printing "±0" would state a comparison that was never
+ * made — the same distinction the template draws between "—" and a number.
+ */
+function levelChange(levels: (AnnualLevel | null)[]): number | null {
+  const assessed = levels.filter((level): level is AnnualLevel => level !== null);
+  if (assessed.length < 2) return null;
+  return assessed[assessed.length - 1]!.value - assessed[0]!.value;
 }

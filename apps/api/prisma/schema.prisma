@@ -163,6 +163,11 @@ enum TermReportStatus {
 enum ReportType {
   CHILD_PORTFOLIO
   TERM_REPORT
+  /// RFP §6.5 — the year's four terms compared, with per-domain progress and
+  /// the teacher's closing judgement. §10.2 names seven report types; this is
+  /// the third, and the one RFP §21.7 makes an acceptance criterion
+  /// ("Улирлын болон нэгдсэн PDF тайлан зөв үүсдэг байх").
+  ANNUAL_REPORT
 }
 
 enum ReportStatus {

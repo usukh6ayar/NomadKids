@@ -202,6 +202,11 @@ export default function PortfolioPage() {
         actions={
           <ReportDialog
             childId={childId}
+            // The current enrolment's year — what the annual report compares.
+            schoolYearId={
+              data.enrollments?.find((e) => e.status === "ACTIVE")?.schoolYear?.id ??
+              data.enrollments?.[0]?.schoolYear?.id
+            }
             trigger={
               <Button variant="secondary" size="sm">
                 <FileText size={18} />

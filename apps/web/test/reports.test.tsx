@@ -13,6 +13,16 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+/*
+ * ★ The trigger was "PDF бэлтгэх" until 2026-08-25. It is now the `PORTFOLIO`
+ * vocabulary token, because the dialog offers a second document — RFP §6.5's
+ * annual report — and one button labelled "prepare a PDF" cannot say which.
+ *
+ * The first attempt spelled it "Хүүхдийн хавтас" inline and `vocabulary.test`
+ * failed it: that noun is retired, and the guard exists so the product does not
+ * drift into three words for one thing. The behaviour these tests cover is
+ * unchanged; only the label they reach for is.
+ */
 describe("requesting a report", () => {
   it("creates a job and shows a running state", async () => {
     const user = userEvent.setup();
@@ -33,7 +43,7 @@ describe("requesting a report", () => {
     renderWithProviders(<ReportDialog childId={CHILD_ID} trigger={<Button>PDF</Button>} />);
 
     await user.click(screen.getByRole("button", { name: "PDF" }));
-    await user.click(await screen.findByRole("button", { name: /PDF бэлтгэх/ }));
+    await user.click(await screen.findByRole("button", { name: /Цахим хувийн хавтас/ }));
 
     // A progress state, not a frozen button — generation takes seconds and
     // silence is indistinguishable from a failure.
@@ -70,7 +80,7 @@ describe("requesting a report", () => {
     renderWithProviders(<ReportDialog childId={CHILD_ID} trigger={<Button>PDF</Button>} />);
 
     await user.click(screen.getByRole("button", { name: "PDF" }));
-    await user.click(await screen.findByRole("button", { name: /PDF бэлтгэх/ }));
+    await user.click(await screen.findByRole("button", { name: /Цахим хувийн хавтас/ }));
 
     await waitFor(() => {
       const post = calls.find((c) => c.method === "POST" && c.url.startsWith("/reports"));
@@ -114,7 +124,7 @@ describe("requesting a report", () => {
     renderWithProviders(<ReportDialog childId={CHILD_ID} trigger={<Button>PDF</Button>} />);
 
     await user.click(screen.getByRole("button", { name: "PDF" }));
-    await user.click(await screen.findByRole("button", { name: /PDF бэлтгэх/ }));
+    await user.click(await screen.findByRole("button", { name: /Цахим хувийн хавтас/ }));
 
     // The size and page count give the user something to expect before they
     // commit to a download on a phone connection.
@@ -160,7 +170,7 @@ describe("requesting a report", () => {
     renderWithProviders(<ReportDialog childId={CHILD_ID} trigger={<Button>PDF</Button>} />);
 
     await user.click(screen.getByRole("button", { name: "PDF" }));
-    await user.click(await screen.findByRole("button", { name: /PDF бэлтгэх/ }));
+    await user.click(await screen.findByRole("button", { name: /Цахим хувийн хавтас/ }));
 
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/алдаа гарлаа/));
     expect(screen.getByRole("button", { name: "Дахин оролдох" })).toBeInTheDocument();

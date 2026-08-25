@@ -464,6 +464,81 @@ describe("portfolio generation", () => {
     expect(countImages(pdf)).toBe(before + 2);
   }, 180_000);
 
+  /**
+   * RFP §6.5 — the annual consolidated report, and §21.7's acceptance criterion
+   * ("Улирлын болон нэгдсэн PDF тайлан зөв үүсдэг байх").
+   *
+   * Asserted on extracted text: the four-term comparison table and the year's
+   * closing text are the document, and a blank render passes every other check.
+   */
+  it("generates the annual report with a term comparison", async () => {
+    if (!pdftotextAvailable()) throw new Error("pdftotext (poppler) is required");
+
+    const term = await db.term.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        schoolYearId: a.schoolYear.id,
+        name: "I улирал",
+        number: 1,
+        startsOn: new Date("2025-09-01"),
+        endsOn: new Date("2025-11-30"),
+      },
+    });
+
+    const domain = await db.developmentDomain.findFirstOrThrow({ where: { kindergartenId: null } });
+    const level = await db.assessmentLevel.findFirstOrThrow({
+      where: { kindergartenId: null, value: 3 },
+    });
+
+    await db.assessment.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        childId: a.child.id,
+        enrollmentId: a.enrollment.id,
+        termId: term.id,
+        domainId: domain.id,
+        levelId: level.id,
+        visibleToParents: true,
+        assessedById: a.teacherUser.id,
+      },
+    });
+
+    await db.termReport.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        childId: a.child.id,
+        enrollmentId: a.enrollment.id,
+        termId: term.id,
+        status: "FINAL",
+        strengths: "Найзуудтайгаа сайн харилцдаг",
+        authorId: a.teacherUser.id,
+      },
+    });
+
+    const created = await authed(request(app.getHttpServer()).post("/v1/reports"), teacherA).send({
+      childId: a.child.id,
+      type: "ANNUAL_REPORT",
+      schoolYearId: a.schoolYear.id,
+    });
+    expect(created.status).toBe(201);
+
+    const text = extractText(await generatedPdf(created.body.id as string));
+
+    expect(text).toContain("жилийн нэгдсэн тайлан");
+    expect(text).toContain("Улирлын харьцуулалт");
+    expect(text).toContain("I улирал");
+    expect(text).toContain(domain.name);
+    expect(text).toContain("Найзуудтайгаа сайн харилцдаг");
+  }, 180_000);
+
+  it("refuses an annual report with no school year", async () => {
+    const res = await authed(request(app.getHttpServer()).post("/v1/reports"), teacherA).send({
+      childId: a.child.id,
+      type: "ANNUAL_REPORT",
+    });
+    expect(res.status).toBe(400);
+  });
+
   it("records page count and file size on the job", async () => {
     await seedObservations(a);
     const jobId = await createJob(teacherA, a.child.id);

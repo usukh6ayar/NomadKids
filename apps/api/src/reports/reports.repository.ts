@@ -373,6 +373,71 @@ export class ReportsRepository {
     return { child, termReport, assessments };
   }
 
+  /**
+   * The year's four terms, compared — RFP §6.5.
+   *
+   * ★ Every term of the school year, not only the ones with assessments.
+   *
+   * A year with a blank third term is a fact the report must show: the point of
+   * an annual comparison is the shape of the progress, and silently omitting an
+   * empty column turns "we did not assess in the winter" into "there was no
+   * winter". The service fills the gaps.
+   *
+   * The guardian filter is the same `visibleToParents` predicate the term
+   * report uses. A family's annual copy shows what they were already told, term
+   * by term — an unpublished assessment does not become visible because a year
+   * ended.
+   */
+  async loadAnnualReportData(
+    childId: string,
+    schoolYearId: string,
+    viewer: { isGuardian: boolean; userId: string },
+  ) {
+    const [child, schoolYear, terms, assessments, termReports] = await Promise.all([
+      this.loadChild(childId),
+      this.prisma.schoolYear.findFirst({
+        where: { id: schoolYearId, deletedAt: null },
+        select: { id: true, name: true, startsOn: true, endsOn: true },
+      }),
+      this.prisma.term.findMany({
+        where: { schoolYearId, deletedAt: null },
+        orderBy: { number: "asc" },
+        select: { id: true, name: true, number: true },
+      }),
+      this.prisma.assessment.findMany({
+        where: {
+          childId,
+          deletedAt: null,
+          term: { schoolYearId, deletedAt: null },
+          ...(viewer.isGuardian ? { visibleToParents: true } : {}),
+        },
+        orderBy: [{ term: { number: "asc" } }, { domain: { order: "asc" } }],
+        include: {
+          term: { select: { id: true, number: true } },
+          domain: { select: { id: true, name: true, order: true } },
+          level: { select: { value: true, label: true, color: true } },
+        },
+      }),
+      // The teacher's written closing text, per term. A guardian sees only
+      // FINAL ones, exactly as on the term report itself.
+      this.prisma.termReport.findMany({
+        where: {
+          childId,
+          deletedAt: null,
+          term: { schoolYearId, deletedAt: null },
+          ...(viewer.isGuardian ? { status: "FINAL" as const } : {}),
+        },
+        orderBy: { term: { number: "asc" } },
+        include: {
+          term: { select: { id: true, number: true, name: true } },
+          author: { select: { lastName: true, firstName: true } },
+        },
+      }),
+    ]);
+
+    return { child, schoolYear, terms, assessments, termReports };
+  }
+
   private async loadChild(childId: string) {
     return this.prisma.child.findFirst({
       where: { id: childId, deletedAt: null },
