@@ -906,6 +906,51 @@ export const downloadUrlSchema = z.object({
   expiresIn: z.number().nullish(),
 });
 
+// ── Assessment configuration — RFP §6.1, §6.2 ────────────────────────────────
+
+/**
+ * ★ `isSystem` is the whole reason this schema exists separately.
+ *
+ * A row with `kindergartenId = null` is a shared default every kindergarten
+ * inherits. An administrator may create and edit their *own* rows and may not
+ * touch a system one — they create an override instead. The API computes the
+ * flag; the UI uses it to decide whether to render an edit control at all,
+ * rather than offering one that 404s.
+ */
+export const developmentDomainSchema = z.object({
+  id: uuidSchema,
+  name: z.string(),
+  code: z.string(),
+  color: z.string().nullish(),
+  description: z.string().nullish(),
+  order: z.number().nullish(),
+  isActive: z.boolean().nullish(),
+  isSystem: z.boolean().default(false),
+});
+export type DevelopmentDomainConfig = z.infer<typeof developmentDomainSchema>;
+
+export const assessmentLevelSchema = z.object({
+  id: uuidSchema,
+  value: z.number(),
+  label: z.string(),
+  color: z.string().nullish(),
+  description: z.string().nullish(),
+  order: z.number().nullish(),
+  isActive: z.boolean().nullish(),
+  isSystem: z.boolean().default(false),
+});
+export type AssessmentLevelConfig = z.infer<typeof assessmentLevelSchema>;
+
+export const observationTypeConfigSchema = z.object({
+  id: uuidSchema,
+  name: z.string(),
+  code: z.string(),
+  order: z.number().nullish(),
+  isActive: z.boolean().nullish(),
+  isSystem: z.boolean().default(false),
+});
+export type ObservationTypeConfig = z.infer<typeof observationTypeConfigSchema>;
+
 // ── Tenancy ──────────────────────────────────────────────────────────────────
 
 export const kindergartenSchema = z.object({

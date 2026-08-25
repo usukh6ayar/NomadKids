@@ -20,9 +20,13 @@ import { formatRelative } from "@/lib/format";
  * The brief is explicit about no dead navigation, and the temptation on an
  * admin screen is to lay out the whole eventual product — user management,
  * kindergarten settings, domain and level configuration — and wire the links
- * later. Every link here goes somewhere that exists today. The configuration
- * tables (domains, levels, observation types) have read endpoints but no admin
- * UI, so they are not linked at all rather than linked and empty.
+ * later. Every link here goes somewhere that exists today.
+ *
+ * ★ The configuration tables were the one exception until 2026-08-25: they had
+ * a complete, tested CRUD API and no screen, so they were left unlinked rather
+ * than linked and empty. `/admin/assessment-config` is that screen, and RFP
+ * §6.1 and §6.2 are the reason CLAUDE.md §2.3 made them tables in the first
+ * place — an administrator who cannot edit them is the requirement unmet.
  */
 export default function AdminPage() {
   return (
@@ -95,6 +99,11 @@ function AdminDashboard() {
           <AdminLink href="/admin/groups" title="Бүлгүүд" note="Багш хуваарилах" />
           <AdminLink href="/admin/users" title="Хэрэглэгчид" note="Багш, админ урих" />
           <AdminLink href="/admin/terms" title="Улирал" note="Үнэлгээний хугацаа" />
+          <AdminLink
+            href="/admin/assessment-config"
+            title="Үнэлгээний тохиргоо"
+            note="Чиглэл, түвшин, ажиглалтын төрөл"
+          />
           <AdminLink
             href="/admin/kindergarten"
             title="Цэцэрлэгийн мэдээлэл"
