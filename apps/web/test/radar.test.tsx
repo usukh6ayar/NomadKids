@@ -1,5 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
 import type { AssessmentRadar } from "@kinder/contracts";
 import { DevelopmentRadar } from "@/components/assessment/development-radar";
 import { DashboardStats } from "@/components/dashboard/dashboard-stats";
@@ -167,6 +168,11 @@ describe("the roster summary", () => {
 });
 
 describe("the dashboard's grid", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setSearchParams("");
+  });
+
   /**
    * ★ Why a layout test exists at all, when most do not.
    *
@@ -181,10 +187,14 @@ describe("the dashboard's grid", () => {
    * exact spans — those are taste, they will change, and a test that locks them
    * makes every future adjustment a test edit.
    */
-  it("keeps the counts to half a row rather than the full width", () => {
-    render(<DashboardStats counts={{ children: 5, groups: 1, pendingReviews: 0 }} />);
+  it("keeps the counts to half a row rather than the full width", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: "/children/summary", body: { total: 5, averageAgeMonths: 41 } },
+    ]);
+    renderWithProviders(<DashboardStats counts={{ children: 5, groups: 1, pendingReviews: 0 }} />);
 
-    const region = screen.getByRole("region", { name: "Өнөөдрийн тойм" });
+    const region = await screen.findByRole("region", { name: "Өнөөдрийн тойм" });
     expect(region.className).toMatch(/lg:col-span-6/);
     expect(region.className).not.toMatch(/lg:col-span-12/);
   });
@@ -199,11 +209,48 @@ describe("the dashboard's grid", () => {
    * tree. Two bare numbers announced with no name is the regression this
    * catches.
    */
-  it("still names the counts for a screen reader", () => {
-    render(<DashboardStats counts={{ children: 5, groups: 1, pendingReviews: 0 }} />);
+  it("still names the counts for a screen reader", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: "/children/summary", body: { total: 5, averageAgeMonths: 41 } },
+    ]);
+    renderWithProviders(<DashboardStats counts={{ children: 5, groups: 1, pendingReviews: 0 }} />);
 
-    const region = screen.getByRole("region", { name: "Өнөөдрийн тойм" });
+    const region = await screen.findByRole("region", { name: "Өнөөдрийн тойм" });
     expect(within(region).getByText("Хүүхэд")).toBeInTheDocument();
     expect(within(region).getByText("Бүлэг")).toBeInTheDocument();
+  });
+
+  /**
+   * ★ The mean age is read from `/children/summary`, not from the dashboard
+   * endpoint — which does not carry it, and should not be widened to serve one
+   * card. Worded as an age: 41 months is "3 нас 5 сар", where "3" alone would be
+   * true of most of a school year and stop moving.
+   */
+  it("shows the roster's mean age, worded", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: "/children/summary", body: { total: 5, averageAgeMonths: 41 } },
+    ]);
+    renderWithProviders(<DashboardStats counts={{ children: 5, groups: 1, pendingReviews: 0 }} />);
+
+    expect(await screen.findByText("3 нас 5 сар")).toBeInTheDocument();
+    expect(screen.getByText("Дундаж нас")).toBeInTheDocument();
+  });
+
+  /**
+   * ★★ A card reading "0 нас" for a beat is a claim about the roster; an empty
+   * slot is only a slower card. The other two must not move when it arrives.
+   */
+  it("leaves the age blank rather than zero when the request fails", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: "/children/summary", status: 500, body: { title: "Алдаа", status: 500 } },
+    ]);
+    renderWithProviders(<DashboardStats counts={{ children: 5, groups: 1, pendingReviews: 0 }} />);
+
+    const region = await screen.findByRole("region", { name: "Өнөөдрийн тойм" });
+    expect(within(region).getByText("Хүүхэд")).toBeInTheDocument();
+    expect(within(region).queryByText("0 нас")).toBeNull();
   });
 });

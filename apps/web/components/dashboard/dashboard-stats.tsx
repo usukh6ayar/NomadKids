@@ -1,4 +1,10 @@
-import type { TeacherDashboard } from "@kinder/contracts";
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { rosterSummarySchema, type TeacherDashboard } from "@kinder/contracts";
+import { get } from "@/lib/api/browser";
+import { qk } from "@/lib/api/keys";
+import { formatAgeFromMonths } from "@/lib/format";
 import { Card } from "@/components/ui/card";
 
 /**
@@ -37,9 +43,9 @@ import { Card } from "@/components/ui/card";
  * removed as duplicates of the sections below them, and nothing revisited the
  * columns the survivors sat in.
  *
- * It is one cell of the page's twelve-column grid now, spanning six, with the
- * two counts sharing it. So the numbers end up a quarter of the width each and
- * the group's assessment card takes the other half of the row.
+ * It is one cell of the page's twelve-column grid now, spanning six, with three
+ * counts sharing it — so each is an eighth of the width and the group's
+ * assessment card takes the other half of the row.
  *
  * ★★★★ The `<section>` stays a real element rather than becoming a fragment or
  * a `display: contents` wrapper. Both would let the cards sit directly in the
@@ -49,13 +55,50 @@ import { Card } from "@/components/ui/card";
  * outcome than a column span this component has to know about.
  */
 export function DashboardStats({ counts }: { counts: TeacherDashboard["counts"] }) {
+  /*
+   * ★ The mean age comes from `/children/summary`, not from this endpoint.
+   *
+   * `GET /dashboard/teacher` does not carry it, and widening that response to
+   * serve one card would couple the dashboard endpoint to this component's
+   * layout — the same coupling `GroupsSection` declines for the same reason.
+   * The summary endpoint already exists for the roster, computes the mean over
+   * the whole visible set rather than a page, and shares its `where` with the
+   * children list. A second reader costs one request and no new server code.
+   *
+   * Unfiltered here: the roster screen passes its search term so its header
+   * matches its rows, but a dashboard describes everyone this teacher has.
+   * `qk.rosterSummary({})` is therefore a different cache key from the roster's,
+   * which is correct — they are answers to different questions.
+   */
+  const roster = useQuery({
+    queryKey: qk.rosterSummary({}),
+    queryFn: () => get("/children/summary", rosterSummarySchema),
+    // Context, not the point of the screen: a failure drops the card rather
+    // than the dashboard.
+    retry: false,
+  });
+
+  const averageAge = roster.data?.averageAgeMonths;
+
   return (
     <section
       aria-label="Өнөөдрийн тойм"
-      className="grid grid-cols-2 gap-4 sm:col-span-2 lg:col-span-6 lg:gap-5"
+      className="grid grid-cols-2 gap-4 sm:col-span-2 lg:col-span-6 lg:grid-cols-3 lg:gap-5"
     >
       <Stat label="Хүүхэд" value={counts.children} />
       <Stat label="Бүлэг" value={counts.groups} />
+      {/*
+        ★★ Absent rather than zero while it loads or if it fails.
+        A card reading "0 нас" for a beat is a claim about the roster; an empty
+        slot is only a slower card. The other two do not move when it arrives —
+        the grid reserves three columns whatever this renders.
+      */}
+      <Stat
+        label="Дундаж нас"
+        value={
+          averageAge === null || averageAge === undefined ? "—" : formatAgeFromMonths(averageAge)
+        }
+      />
     </section>
   );
 }
@@ -68,7 +111,14 @@ export function DashboardStats({ counts }: { counts: TeacherDashboard["counts"] 
  * disambiguated a bare number. A count of children needs neither, and a prop
  * nothing passes is the next person's puzzle.
  */
-function Stat({ label, value }: { label: string; value: number }) {
+/**
+ * One tile.
+ *
+ * `value` takes a string as well as a number because the age is worded — "3 нас
+ * 5 сар", not 41. `tabular-nums` still applies: it aligns the digits inside
+ * that phrase and costs nothing where there are none.
+ */
+function Stat({ label, value }: { label: string; value: number | string }) {
   return (
     <Card pad="compact">
       <p className="text-body text-muted">{label}</p>
