@@ -3,7 +3,18 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { BookOpen, ClipboardList, MoreHorizontal, Pencil, Plus } from "lucide-react";
+import {
+  BookOpen,
+  ClipboardList,
+  HeartPulse,
+  MoreHorizontal,
+  Palette,
+  Pencil,
+  Plus,
+  Ruler,
+  ShieldAlert,
+  UtensilsCrossed,
+} from "lucide-react";
 import { childDetailSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -160,26 +171,41 @@ export default function ChildDetailPage() {
           {
             value: GROWTH,
             label: "Өсөлт",
+            secondary: true,
+            note: "Өндөр, жин",
+            icon: <Ruler size={24} aria-hidden />,
             content: <ChildGrowth childId={childId} isStaff={isStaff} />,
           },
           {
             value: HEALTH,
             label: "Эрүүл мэнд",
+            secondary: true,
+            note: "Харшил, эм, вакцин",
+            icon: <HeartPulse size={24} aria-hidden />,
             content: <ChildHealth childId={childId} isStaff={isStaff} />,
           },
           {
             value: INCIDENTS,
             label: "Аюулгүй байдал",
+            secondary: true,
+            note: "Тохиолдлын бүртгэл",
+            icon: <ShieldAlert size={24} aria-hidden />,
             content: <ChildIncidents childId={childId} isStaff={isStaff} />,
           },
           {
             value: ARTWORK,
             label: "Бүтээл",
+            secondary: true,
+            note: "Хөгжлийн харьцуулалт",
+            icon: <Palette size={24} aria-hidden />,
             content: <ChildArtwork childId={childId} isStaff={isStaff} />,
           },
           {
             value: MENU,
             label: "Хоол ба цэс",
+            secondary: true,
+            note: "Долоо хоногийн цэс",
+            icon: <UtensilsCrossed size={24} aria-hidden />,
             content: (
               <ChildMenu
                 kindergartenId={data.kindergarten?.id ?? ""}

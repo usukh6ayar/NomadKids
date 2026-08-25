@@ -1019,10 +1019,19 @@ describe("the child profile tabs", () => {
     expect(screen.queryByText("Эрүүл мэндийн тэмдэглэлтэй")).not.toBeInTheDocument();
     expect(screen.queryByText("Харшилтай")).not.toBeInTheDocument();
 
-    // …while the tab, which is theirs, is present. Asserted rather than left
-    // implicit, so a future tightening of the badge rule cannot quietly take
-    // the medication form away from the people RFP Module 2 gives it to.
-    expect(screen.getByRole("tab", { name: "Эрүүл мэнд" })).toBeInTheDocument();
+    /*
+     * …while the section, which is theirs, is still reachable. Asserted rather
+     * than left implicit, so a future tightening of the badge rule cannot
+     * quietly take the medication form away from the people RFP Module 2 gives
+     * it to.
+     *
+     * ★ It moved behind "Бусад" on 2026-08-25 — the strip had grown to ten
+     * tabs, which on a 375px screen means the last five are off the right edge
+     * with nothing to say they exist. `?tab=health` still opens it directly,
+     * which is what keeps the section addressable; what this now asserts is
+     * that the pane holding it is there.
+     */
+    expect(screen.getByRole("tab", { name: "Бусад" })).toBeInTheDocument();
   });
 });
 
