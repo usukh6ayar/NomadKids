@@ -159,3 +159,39 @@ If a migration is genuinely wrong after it has shipped, the fix is a **new**
 migration that corrects it — as
 `20260825120000_partial_unique_attendance_day` and
 `20260825170000_drop_vestigial_deleted_by` both do.
+
+---
+
+## 5. The development database had the same fault — repaired 2026-08-25
+
+A running dev API returned **500** on
+`GET /v1/attendance-requests/review-queue`, and the cause was this same
+incident rather than a bug in that route: `localhost:5433/kinder` still had
+`20260825054800_add_attendance` applied and none of the eight migrations after
+it, so the code queried `attendance_requests`, a table that did not exist.
+
+It was repaired **without dropping the schema**, because unlike production it
+held real demo data — 10 children, 36 observations, 50 assessments:
+
+```sql
+BEGIN;
+DROP TABLE IF EXISTS attendance;            -- 0 rows, checked first
+DROP TYPE  IF EXISTS "AttendanceStatus";    -- used only by that table
+DELETE FROM _prisma_migrations
+  WHERE migration_name = '20260825054800_add_attendance';
+COMMIT;
+```
+
+then `prisma migrate deploy`, which replayed the real history from
+`20260824132405_add_attendance` onwards. Result: 47 tables, the demo data
+untouched, `AttendanceStatus` now the correct
+`PRESENT HALF_DAY EXCUSED SICK ABSENT`, and the endpoint answering **401**
+(unauthenticated) instead of 500.
+
+★ **This is the repair production cannot use.** It works only because the old
+`attendance` table was empty. Production's is too, so the same three statements
+would work there — but the schema reset in §3 is still the better choice there,
+since production's remaining data is four seed accounts and one demo child,
+and a clean replay of the whole history is easier to trust than a hand-patched
+one. A backup was taken either way:
+`~/nomadkids-dev-backup-20260825-200704.sql`.

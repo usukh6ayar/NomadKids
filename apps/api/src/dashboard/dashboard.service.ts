@@ -147,10 +147,12 @@ export class DashboardService {
     const kindergartenIds = this.tenants.adminKindergartenIds(actor);
     const term = await this.repo.currentTerm(kindergartenIds, new Date());
 
-    const [counts, coverage, recentActivity] = await Promise.all([
+    const [counts, coverage, recentActivity, storage] = await Promise.all([
       this.repo.kindergartenCounts(kindergartenIds),
       term ? this.repo.assessmentCoverage(kindergartenIds, term.id) : Promise.resolve([]),
       this.repo.recentAuditEntries(kindergartenIds),
+      // RFP §12.2 — "Хадгалалтын хэмжээ" and "Тайлангийн статистик".
+      this.repo.storageAndReportStats(kindergartenIds),
     ]);
 
     return {
@@ -158,6 +160,7 @@ export class DashboardService {
       counts,
       assessmentCoverage: coverage,
       recentActivity,
+      storage,
     };
   }
 
