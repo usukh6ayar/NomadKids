@@ -36,8 +36,16 @@ export interface YearAnimal {
  * Ordered by start date within the year, beginning at Матар (Capricorn) so that
  * a simple "last boundary at or before this date" scan works without wrapping.
  */
+/**
+ * Матар is named separately because it is both the first and the last boundary:
+ * the sign spans the new year. Having it as a value rather than as
+ * `ZODIAC_BOUNDARIES[0]` is also what lets the scan below start from something
+ * the compiler knows is defined.
+ */
+const CAPRICORN = { code: "capricorn", name: "Матар" };
+
 const ZODIAC_BOUNDARIES: { month: number; day: number; code: string; name: string }[] = [
-  { month: 1, day: 1, code: "capricorn", name: "Матар" },
+  { month: 1, day: 1, ...CAPRICORN },
   { month: 1, day: 20, code: "aquarius", name: "Хумх" },
   { month: 2, day: 19, code: "pisces", name: "Загас" },
   { month: 3, day: 21, code: "aries", name: "Хонь" },
@@ -49,7 +57,7 @@ const ZODIAC_BOUNDARIES: { month: number; day: number; code: string; name: strin
   { month: 9, day: 23, code: "libra", name: "Дэнс" },
   { month: 10, day: 23, code: "scorpio", name: "Хилэнц" },
   { month: 11, day: 22, code: "sagittarius", name: "Нумч" },
-  { month: 12, day: 22, code: "capricorn", name: "Матар" },
+  { month: 12, day: 22, ...CAPRICORN },
 ];
 
 /**
@@ -98,13 +106,13 @@ function parts(dateOfBirth: Date | string): { year: number; month: number; day: 
 export function westernZodiac(dateOfBirth: Date | string): ZodiacSign {
   const { month, day } = parts(dateOfBirth);
 
-  let found = ZODIAC_BOUNDARIES[0];
+  let found: ZodiacSign = CAPRICORN;
   for (const boundary of ZODIAC_BOUNDARIES) {
     if (month > boundary.month || (month === boundary.month && day >= boundary.day)) {
-      found = boundary;
+      found = { code: boundary.code, name: boundary.name };
     }
   }
-  return { code: found.code, name: found.name };
+  return found;
 }
 
 /**
@@ -130,12 +138,40 @@ export function mongolianYearAnimal(dateOfBirth: Date | string): YearAnimal {
   // ((year - 2020) % 12 + 12) % 12 keeps years before 2020 in range: JavaScript's
   // % returns a negative remainder for a negative left operand.
   const index = (((year - 2020) % 12) + 12) % 12;
+
+  // The expression above cannot leave 0..11. The check is here so that fact is
+  // proved to the compiler rather than asserted away with `!` — this package is
+  // built with `noUncheckedIndexedAccess`, and turning that off for one line is
+  // a worse trade than three lines that can never run.
   const animal = YEAR_ANIMALS[index];
+  if (!animal) throw new RangeError(`No year animal at index ${index}`);
 
   return {
     ...animal,
     beforeLunarNewYear: month < 3 || (month === 3 && day <= 15),
   };
+}
+
+/**
+ * Нас — completed years, the way an age is said out loud.
+ *
+ * ★ Compared on (month, day) rather than by dividing a millisecond difference.
+ * The arithmetic version is out by a day for a child born on 29 February, and
+ * out by a whole year for anyone whose birthday is today: 365.25 days per year
+ * accumulates enough drift by age five to round the wrong way.
+ *
+ * `on` is a parameter so a test can pin the day, and so a report generated for
+ * a past term can ask "how old were they then".
+ */
+export function ageInYears(dateOfBirth: Date | string, on: Date | string = new Date()): number {
+  const born = parts(dateOfBirth);
+  const today = parts(typeof on === "string" ? on : new Date(on.toISOString()));
+
+  let age = today.year - born.year;
+  if (today.month < born.month || (today.month === born.month && today.day < born.day)) {
+    age -= 1;
+  }
+  return Math.max(age, 0);
 }
 
 /** Both facts together — what the portfolio and the PDF each ask for. */

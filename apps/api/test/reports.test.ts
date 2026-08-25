@@ -331,6 +331,29 @@ describe("portfolio generation", () => {
     expect(text).toContain(SHARED_NOTE);
   }, 120_000);
 
+  /**
+   * RFP §4.2 in the artefact the family keeps.
+   *
+   * ★ Asserted on extracted text, not on the template string, and that is the
+   * whole point of the test. The birthday section used to render only when a
+   * note existed, so this content could be computed correctly and still never
+   * reach a page — a unit test on `birthFacts` would have passed throughout.
+   *
+   * The scenario child is born 2021-04-12: Хонь, and an Үхэр year.
+   */
+  it("prints the zodiac sign and the year animal in the birthday section", async () => {
+    if (!pdftotextAvailable()) throw new Error("pdftotext (poppler) is required");
+
+    const jobId = await createJob(teacherA, a.child.id);
+    const text = extractText(await generatedPdf(jobId));
+
+    expect(text).toContain("Төрсөн өдрийн мэдээлэл");
+    expect(text).toContain("Өрнийн орд");
+    expect(text).toContain("Хонь");
+    expect(text).toContain("Монгол жил");
+    expect(text).toContain("Үхэр");
+  }, 120_000);
+
   it("records page count and file size on the job", async () => {
     await seedObservations(a);
     const jobId = await createJob(teacherA, a.child.id);

@@ -8,6 +8,7 @@ import { z } from "zod";
 import {
   BookOpen,
   ArrowLeft,
+  Cake,
   CalendarDays,
   Check,
   ChevronDown,
@@ -17,6 +18,7 @@ import {
   Pencil,
   Ruler,
   Sparkles,
+  Star,
   Sun,
   Weight,
 } from "lucide-react";
@@ -24,6 +26,7 @@ import {
   aboutMeSchema,
   ageProfileSchema,
   birthdayNoteSchema,
+  birthdaySectionSchema,
   childDetailSchema,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
@@ -77,7 +80,6 @@ function hasAgeContent(profile?: z.infer<typeof ageProfileSchema>): boolean {
 // `/about-me` answers with `{ exists: false }` when nothing is written yet.
 const aboutMeResponseSchema = aboutMeSchema.extend({ exists: z.boolean().nullish() });
 const ageProfilesSchema = z.array(ageProfileSchema);
-const birthdayNotesSchema = z.array(birthdayNoteSchema);
 
 /**
  * The portfolio — RFP §4.3.
@@ -124,7 +126,7 @@ export default function PortfolioPage() {
 
   const birthdays = useQuery({
     queryKey: qk.birthdayNotes(childId),
-    queryFn: () => get(`/children/${childId}/birthday-notes`, birthdayNotesSchema),
+    queryFn: () => get(`/children/${childId}/birthday-notes`, birthdaySectionSchema),
     enabled: child.isSuccess,
   });
 
@@ -286,7 +288,7 @@ export default function PortfolioPage() {
 
       <BirthdaySection
         childId={childId}
-        notes={birthdays.data ?? []}
+        section={birthdays.data ?? null}
         isLoading={birthdays.isLoading}
         currentAge={currentAge}
       />
@@ -845,12 +847,12 @@ function NoteBlock({ label, text, tone }: { label: string; text: string; tone: "
 
 function BirthdaySection({
   childId,
-  notes,
+  section,
   isLoading,
   currentAge,
 }: {
   childId: string;
-  notes: z.infer<typeof birthdayNotesSchema>;
+  section: z.infer<typeof birthdaySectionSchema> | null;
   isLoading: boolean;
   /** Birthdays not yet had arrive collapsed, as the age sections do. */
   currentAge: number | null;
@@ -858,6 +860,7 @@ function BirthdaySection({
   const queryClient = useQueryClient();
   const [editingAge, setEditingAge] = useState<number | null>(null);
   const [text, setText] = useState("");
+  const notes = section?.notes ?? [];
 
   const save = useMutation({
     mutationFn: (age: number) =>
@@ -878,102 +881,155 @@ function BirthdaySection({
       {isLoading ? (
         <LoadingState rows={1} />
       ) : (
-        <div className="grid gap-3 md:grid-cols-2">
-          {PORTFOLIO_AGES.map((age) => {
-            const note = notes.find((n) => n.age === age);
-            const isEditing = editingAge === age;
+        <>
+          {section ? <BirthFacts section={section} /> : null}
 
-            /*
-             * ★ A birthday that has not happened arrives closed.
-             *
-             * The four cards rendered open regardless, so a two-year-old's
-             * portfolio ended with three "Тэмдэглэл бичээгүй байна." boxes for
-             * birthdays up to three years away, each offering to write the note
-             * early. An existing note opens the card whatever the age — see
-             * `AgeSectionShell` for why content outranks the date.
-             */
-            const reached = currentAge === null || age <= currentAge;
+          <div className="grid gap-3 md:grid-cols-2">
+            {PORTFOLIO_AGES.map((age) => {
+              const note = notes.find((n) => n.age === age);
+              const isEditing = editingAge === age;
 
-            return (
-              <Card key={age} pad="roomy">
-                <details
-                  open={Boolean(note?.note) || reached}
-                  className="flex flex-col gap-2 [&[open]_svg.chevron]:rotate-180"
-                >
-                  <summary className="flex min-h-[44px] cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
-                    <h3 className="font-medium text-ink">{age} нас</h3>
-                    {!reached && !note?.note ? <Badge tone="neutral">Ирээдүйд</Badge> : null}
-                    <ChevronDown
-                      size={18}
-                      aria-hidden="true"
-                      className="chevron ml-auto shrink-0 text-faint transition-transform"
-                    />
-                  </summary>
+              /*
+               * ★ A birthday that has not happened arrives closed.
+               *
+               * The four cards rendered open regardless, so a two-year-old's
+               * portfolio ended with three "Тэмдэглэл бичээгүй байна." boxes for
+               * birthdays up to three years away, each offering to write the note
+               * early. An existing note opens the card whatever the age — see
+               * `AgeSectionShell` for why content outranks the date.
+               */
+              const reached = currentAge === null || age <= currentAge;
 
-                  <div className="mt-2 flex flex-col gap-2">
-                    {!isEditing ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="self-start"
-                        onClick={() => {
-                          setEditingAge(age);
-                          setText(note?.note ?? "");
-                          save.reset();
-                        }}
-                      >
-                        <Pencil size={16} />
-                        Засах
-                      </Button>
-                    ) : null}
+              return (
+                <Card key={age} pad="roomy">
+                  <details
+                    open={Boolean(note?.note) || reached}
+                    className="flex flex-col gap-2 [&[open]_svg.chevron]:rotate-180"
+                  >
+                    <summary className="flex min-h-[44px] cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+                      <h3 className="font-medium text-ink">{age} нас</h3>
+                      {!reached && !note?.note ? <Badge tone="neutral">Ирээдүйд</Badge> : null}
+                      <ChevronDown
+                        size={18}
+                        aria-hidden="true"
+                        className="chevron ml-auto shrink-0 text-faint transition-transform"
+                      />
+                    </summary>
 
-                    {isEditing ? (
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          if (!save.isPending) save.mutate(age);
-                        }}
-                        className="flex flex-col gap-3"
-                      >
-                        <FormError message={save.isError ? errorMessage(save.error) : null} />
-                        <Field label={`${age} насны төрсөн өдрийн тэмдэглэл`}>
-                          {({ id, describedBy }) => (
-                            <Textarea
-                              id={id}
-                              aria-describedby={describedBy}
-                              value={text}
-                              onChange={(e) => setText(e.target.value)}
-                              autoFocus
-                            />
-                          )}
-                        </Field>
-                        <div className="flex gap-2">
-                          <Button type="submit" size="sm" disabled={save.isPending}>
-                            {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
-                          </Button>
-                          <Button variant="secondary" size="sm" onClick={() => setEditingAge(null)}>
-                            Цуцлах
-                          </Button>
-                        </div>
-                      </form>
-                    ) : note?.note ? (
-                      <p className="whitespace-pre-wrap text-body text-ink">{note.note}</p>
-                    ) : (
-                      // Says what to do next, not only what is absent.
-                      // Not `EmptyState`: it renders a `Card`, and this sits
-                      // inside one already. A card nested in a card reads as a
-                      // rendering mistake rather than as an empty state.
-                      <p className="text-body text-muted">
-                        Тэмдэглэл бичээгүй. «Засах» дарж нэмнэ үү.
-                      </p>
-                    )}
-                  </div>
-                </details>
-              </Card>
-            );
-          })}
-        </div>
+                    <div className="mt-2 flex flex-col gap-2">
+                      {!isEditing ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="self-start"
+                          onClick={() => {
+                            setEditingAge(age);
+                            setText(note?.note ?? "");
+                            save.reset();
+                          }}
+                        >
+                          <Pencil size={16} />
+                          Засах
+                        </Button>
+                      ) : null}
+
+                      {isEditing ? (
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            if (!save.isPending) save.mutate(age);
+                          }}
+                          className="flex flex-col gap-3"
+                        >
+                          <FormError message={save.isError ? errorMessage(save.error) : null} />
+                          <Field label={`${age} насны төрсөн өдрийн тэмдэглэл`}>
+                            {({ id, describedBy }) => (
+                              <Textarea
+                                id={id}
+                                aria-describedby={describedBy}
+                                value={text}
+                                onChange={(e) => setText(e.target.value)}
+                                autoFocus
+                              />
+                            )}
+                          </Field>
+                          <div className="flex gap-2">
+                            <Button type="submit" size="sm" disabled={save.isPending}>
+                              {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => setEditingAge(null)}
+                            >
+                              Цуцлах
+                            </Button>
+                          </div>
+                        </form>
+                      ) : note?.note ? (
+                        <p className="whitespace-pre-wrap text-body text-ink">{note.note}</p>
+                      ) : (
+                        // Says what to do next, not only what is absent.
+                        // Not `EmptyState`: it renders a `Card`, and this sits
+                        // inside one already. A card nested in a card reads as a
+                        // rendering mistake rather than as an empty state.
+                        <p className="text-body text-muted">
+                          Тэмдэглэл бичээгүй. «Засах» дарж нэмнэ үү.
+                        </p>
+                      )}
+                    </div>
+                  </details>
+                </Card>
+              );
+            })}
+          </div>
+        </>
       )}
     </section>
+  );
+}
+
+/**
+ * The four facts RFP §4.2 asks for above the notes: the birth date, the age,
+ * the өрнийн орд and the монгол жилийн амьтан.
+ *
+ * ★ The lunar-new-year caveat is rendered, not hidden.
+ *
+ * The animal year turns at Цагаан сар, which falls between late January and
+ * early March and moves every year. For a child born inside that window the API
+ * sets `beforeLunarNewYear`, and this note is the honest version of that: a
+ * printed portfolio asserting the wrong animal is worse than one that says
+ * which two it lies between. Five births in six are outside the window and get
+ * no note at all.
+ */
+function BirthFacts({ section }: { section: z.infer<typeof birthdaySectionSchema> }) {
+  const facts = [
+    { icon: Cake, label: "Төрсөн огноо", value: formatDate(section.dateOfBirth) },
+    { icon: Sun, label: "Нас", value: `${section.ageYears} нас` },
+    { icon: Sparkles, label: "Өрнийн орд", value: section.zodiac.name },
+    { icon: Star, label: "Монгол жил", value: `${section.yearAnimal.name} жил` },
+  ];
+
+  return (
+    <Card pad="roomy" className="mb-3">
+      <dl className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        {facts.map(({ icon: Icon, label, value }) => (
+          <div key={label} className="flex flex-col gap-1">
+            <dt className="flex items-center gap-1.5 text-caption text-muted">
+              <Icon size={14} aria-hidden="true" className="shrink-0" />
+              {label}
+            </dt>
+            <dd className="text-body font-medium text-ink">{value}</dd>
+          </div>
+        ))}
+      </dl>
+
+      {section.yearAnimal.beforeLunarNewYear ? (
+        <p className="mt-3 text-caption text-muted">
+          Цагаан сараас өмнө төрсөн тул монгол жил нь өмнөх жилийнх байж болно. Нягтлан
+          баталгаажуулна уу.
+        </p>
+      ) : null}
+    </Card>
   );
 }

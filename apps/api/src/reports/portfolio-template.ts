@@ -1,3 +1,4 @@
+import { ageInYears, birthFacts } from "@kinder/contracts";
 import { baseCss, esc, formatDate, paragraphs, reportChrome } from "./template-utils";
 
 /**
@@ -150,6 +151,26 @@ export function renderPortfolioHtml(data: PortfolioData): string {
     .map((n) => `<div class="birthday"><h4>${n.age} нас</h4>${paragraphs(n.note)}</div>`)
     .join("");
 
+  /*
+   * RFP §4.2 — өрнийн орд and монгол жилийн амьтан, from the same functions the
+   * portfolio screen uses. Rendered unconditionally: unlike the notes, these are
+   * derived from the birth date, so there is no "not filled in yet" state that
+   * would justify hiding the section.
+   */
+  const { zodiac, yearAnimal } = birthFacts(data.child.dateOfBirth);
+  const birthdayHeader = `
+    <dl class="birth-facts">
+      <dt>Төрсөн огноо</dt><dd>${formatDate(data.child.dateOfBirth)}</dd>
+      <dt>Нас</dt><dd>${ageInYears(data.child.dateOfBirth)} нас</dd>
+      <dt>Өрнийн орд</dt><dd>${esc(zodiac.name)}</dd>
+      <dt>Монгол жил</dt><dd>${esc(yearAnimal.name)} жил</dd>
+    </dl>
+    ${
+      yearAnimal.beforeLunarNewYear
+        ? `<p class="meta">Цагаан сараас өмнө төрсөн тул монгол жил нь өмнөх жилийнх байж болно.</p>`
+        : ""
+    }`;
+
   return `<!doctype html>
 <html lang="mn">
 <head>
@@ -200,10 +221,21 @@ ${
 }
 
 ${
-  birthdayBlocks
-    ? `<section class="page-break"><h2>Төрсөн өдрийн тэмдэглэл</h2>${birthdayBlocks}</section>`
-    : ""
+  /*
+   * ★ The section no longer depends on a note existing.
+   *
+   * It used to render only when somebody had written one, so a portfolio for a
+   * two-year-old printed no birthday section at all — and RFP §4.2's four facts
+   * were absent from every PDF regardless, because they were never computed
+   * here. The header is always worth printing; the notes are what may be empty.
+   */
+  ""
 }
+<section class="page-break">
+  <h2>Төрсөн өдрийн мэдээлэл</h2>
+  ${birthdayHeader}
+  ${birthdayBlocks}
+</section>
 
 ${
   observationBlocks

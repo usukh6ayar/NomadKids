@@ -1,5 +1,26 @@
 import { describe, expect, test } from "vitest";
-import { birthFacts, mongolianYearAnimal, westernZodiac } from "./birth-facts";
+import { ageInYears, birthFacts, mongolianYearAnimal, westernZodiac } from "./birth-facts";
+
+describe("ageInYears", () => {
+  test("counts completed years", () => {
+    expect(ageInYears("2021-06-01", "2026-06-01")).toBe(5);
+    expect(ageInYears("2021-06-01", "2026-05-31")).toBe(4);
+    expect(ageInYears("2021-06-01", "2026-06-02")).toBe(5);
+  });
+
+  /**
+   * The case a millisecond division gets wrong. 365.25 days per year is 0.75
+   * days short over five years, so a child turning five today reads as four.
+   */
+  test("a child is their new age on the birthday itself", () => {
+    expect(ageInYears("2020-02-29", "2025-02-28")).toBe(4);
+    expect(ageInYears("2020-02-29", "2025-03-01")).toBe(5);
+  });
+
+  test("never returns a negative age for a mistyped future date", () => {
+    expect(ageInYears("2030-01-01", "2026-08-25")).toBe(0);
+  });
+});
 
 describe("westernZodiac", () => {
   test("names the sign in Mongolian", () => {

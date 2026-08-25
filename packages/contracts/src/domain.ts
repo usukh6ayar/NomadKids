@@ -473,6 +473,37 @@ export const birthdayNoteSchema = z.object({
   celebratedOn: z.string().nullish(),
 });
 
+export const zodiacSignSchema = z.object({ code: z.string(), name: z.string() });
+
+export const yearAnimalSchema = z.object({
+  code: z.string(),
+  name: z.string(),
+  /** See `mongolianYearAnimal` — the animal year turns at Цагаан сар, not on 1 January. */
+  beforeLunarNewYear: z.boolean(),
+});
+
+/**
+ * The whole of RFP §4.2 in one response: the birth date, the age, the western
+ * zodiac sign, the Mongolian year animal and the per-year notes.
+ *
+ * ★ Not a second endpoint beside `birthday-notes`. That route returned the
+ * notes alone, which was half a section — the screen had the birth date only
+ * because the page above it happened to hold the child. Two fetches for one
+ * card, and the PDF, which has no page above it, had neither.
+ *
+ * Photographs are deliberately absent: the album already filters by
+ * `category=BIRTHDAY&age=N`, and duplicating rows into this response would give
+ * the gallery and the birthday card two different orderings to disagree about.
+ */
+export const birthdaySectionSchema = z.object({
+  dateOfBirth: z.string(),
+  ageYears: z.number(),
+  zodiac: zodiacSignSchema,
+  yearAnimal: yearAnimalSchema,
+  notes: z.array(birthdayNoteSchema),
+});
+export type BirthdaySection = z.infer<typeof birthdaySectionSchema>;
+
 // ── Notifications ────────────────────────────────────────────────────────────
 
 export const notificationSchema = z.object({
@@ -547,7 +578,20 @@ export const MEDIA_ATTRIBUTION_LABEL: Record<string, string> = {
  * the client asks for administrator-editable categories these values become the
  * seed rows of a new table. See the note on `MediaFile.category`.
  */
-export const MEDIA_CATEGORIES = ["ARTWORK", "ACTIVITY", "EVENT", "DAILY", "PORTRAIT"] as const;
+export const MEDIA_CATEGORIES = [
+  "ARTWORK",
+  "ACTIVITY",
+  "EVENT",
+  "DAILY",
+  "PORTRAIT",
+  /**
+   * ★ RFP §4.2 asks for a "төрсөн өдрийн зураг" in the birthday section, and
+   * `EVENT` cannot answer it: a query for this year's birthday photograph would
+   * return every concert and Цагаан сар as well. With `age` already on the row,
+   * `category=BIRTHDAY&age=4` is the whole birthday section's photograph.
+   */
+  "BIRTHDAY",
+] as const;
 
 export const mediaCategorySchema = z.enum(MEDIA_CATEGORIES);
 
@@ -557,6 +601,7 @@ export const MEDIA_CATEGORY_LABEL: Record<string, string> = {
   EVENT: "Баяр ёслол",
   DAILY: "Өдөр тутам",
   PORTRAIT: "Хөрөг",
+  BIRTHDAY: "Төрсөн өдөр",
 };
 
 export const mediaSchema = z.object({

@@ -445,8 +445,39 @@ describe("birthday notes", () => {
       .get(`/v1/children/${a.child.id}/birthday-notes`)
       .set("Cookie", teacherA.cookies);
 
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0].note).toBe("Дөрвөн настай");
+    expect(res.body.notes).toHaveLength(1);
+    expect(res.body.notes[0].note).toBe("Дөрвөн настай");
+  });
+
+  /**
+   * RFP §4.2 asks the birthday section to show the birth date, the age, the
+   * өрнийн орд and the монгол жилийн амьтан alongside the notes.
+   *
+   * The scenario child is born 2021-04-12 — Хонь by the western zodiac, and an
+   * Үхэр year. Asserting the values rather than "the keys exist" is the point:
+   * a section that returns `{ zodiac: null }` passes a shape check and prints
+   * an empty box in the portfolio.
+   */
+  it("carries the derived birth facts, not only the notes", async () => {
+    const res = await request(server())
+      .get(`/v1/children/${a.child.id}/birthday-notes`)
+      .set("Cookie", teacherA.cookies);
+
+    expect(res.status).toBe(200);
+    expect(res.body.dateOfBirth).toBe("2021-04-12");
+    expect(res.body.zodiac).toEqual({ code: "aries", name: "Хонь" });
+    expect(res.body.yearAnimal).toMatchObject({ code: "ox", name: "Үхэр" });
+    expect(typeof res.body.ageYears).toBe("number");
+  });
+
+  it("returns the section with an empty note list before anything is written", async () => {
+    const res = await request(server())
+      .get(`/v1/children/${a.child.id}/birthday-notes`)
+      .set("Cookie", teacherA.cookies);
+
+    expect(res.status).toBe(200);
+    expect(res.body.notes).toEqual([]);
+    expect(res.body.zodiac.name).toBe("Хонь");
   });
 
   it("updates rather than duplicating", async () => {
