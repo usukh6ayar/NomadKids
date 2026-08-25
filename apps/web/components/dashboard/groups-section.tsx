@@ -82,7 +82,7 @@ export function GroupsSection() {
           <Link
             key={group.id}
             href={`/groups/${group.id}/assessment`}
-            className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-canvas"
+            className="flex min-h-[56px] items-center justify-between gap-3 px-3 py-2.5 transition-colors hover:bg-canvas md:px-4 md:py-3"
           >
             <span className="min-w-0 truncate font-medium text-ink">{group.name}</span>
             <span className="shrink-0 text-body text-primary-strong">Үнэлгээ →</span>

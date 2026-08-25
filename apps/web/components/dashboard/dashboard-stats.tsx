@@ -47,6 +47,15 @@ import { Card } from "@/components/ui/card";
  * counts sharing it — so each is an eighth of the width and the group's
  * assessment card takes the other half of the row.
  *
+ * ★★★ Three across on a phone too, rather than collapsing to one.
+ *
+ * The rule for this screen is that grids fall to a single column on mobile, and
+ * these are the exception: three short numbers, where stacking spends three
+ * full-width cards and roughly 240px of height to say "5 · 1 · 3 нас 5 сар". A
+ * single column would *cost* screen real estate where it is scarcest, which is
+ * the opposite of the intent. At 375px each tile is about 110px — enough once
+ * its type steps down with the breakpoint.
+ *
  * ★★★★ The `<section>` stays a real element rather than becoming a fragment or
  * a `display: contents` wrapper. Both would let the cards sit directly in the
  * page grid, and both would cost the landmark: a fragment has nowhere to hang
@@ -83,7 +92,7 @@ export function DashboardStats({ counts }: { counts: TeacherDashboard["counts"] 
   return (
     <section
       aria-label="Өнөөдрийн тойм"
-      className="grid grid-cols-2 gap-4 sm:col-span-2 lg:col-span-6 lg:grid-cols-3 lg:gap-5"
+      className="grid grid-cols-3 gap-2 md:col-span-2 md:gap-3 lg:col-span-6 lg:gap-5"
     >
       <Stat label="Хүүхэд" value={counts.children} />
       <Stat label="Бүлэг" value={counts.groups} />
@@ -121,8 +130,19 @@ export function DashboardStats({ counts }: { counts: TeacherDashboard["counts"] 
 function Stat({ label, value }: { label: string; value: number | string }) {
   return (
     <Card pad="compact">
-      <p className="text-body text-muted">{label}</p>
-      <p className="mt-1 text-display font-semibold tabular-nums text-ink">{value}</p>
+      {/*
+        The label wraps rather than truncating: "Дундаж нас" does not fit 110px
+        on one line, and a clipped label is a worse failure than a two-line one.
+      */}
+      <p className="text-caption leading-tight text-muted md:text-body">{label}</p>
+      {/*
+        `text-title` on a phone — at 24px "3 нас 5 сар" takes three lines in a
+        110px tile. `[overflow-wrap:anywhere]` guards a longer value than any
+        that exists today: nothing in this row may push the grid wide.
+      */}
+      <p className="mt-0.5 text-title font-semibold leading-tight tabular-nums text-ink [overflow-wrap:anywhere] md:mt-1 md:text-display">
+        {value}
+      </p>
     </Card>
   );
 }

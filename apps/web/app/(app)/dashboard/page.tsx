@@ -149,7 +149,7 @@ function TeacherDashboard() {
   } = dashboard;
 
   return (
-    <div className="flex flex-col gap-4 lg:gap-5">
+    <div className="flex flex-col gap-3 md:gap-4 lg:gap-5">
       {header(
         currentTerm ? `${currentTerm.name} · идэвхтэй улирал` : "Идэвхтэй улирал тохируулаагүй",
       )}
@@ -187,8 +187,13 @@ function TeacherDashboard() {
         `items-start` matters: without it grid stretches every cell in a row to
         the tallest, so a two-line card grows to match a six-row list and the
         white space moves inside the card instead of beside it.
+
+        The second column arrives at `md`, not `sm`. At 640px two charts side by
+        side are about 300px each — narrower than the radar wants, and enough to
+        wrap every bar label. That breakpoint was a two-column default rather
+        than a measurement against this content.
       */}
-      <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 lg:grid-cols-12 lg:gap-5">
+      <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 md:gap-4 lg:grid-cols-12 lg:gap-5">
         <DashboardStats counts={counts} />
 
         {/*
@@ -197,15 +202,15 @@ function TeacherDashboard() {
           how many groups the teacher has — so it takes a span rather than
           assuming a height.
         */}
-        <div className="sm:col-span-2 lg:col-span-6">
+        <div className="md:col-span-2 lg:col-span-6">
           <GroupsSection />
         </div>
 
-        <div className="sm:col-span-2 lg:col-span-6">
+        <div className="md:col-span-2 lg:col-span-6">
           {currentTerm ? <TermProgress term={currentTerm.name} progress={termProgress} /> : null}
         </div>
 
-        <div className="sm:col-span-2 lg:col-span-6">
+        <div className="md:col-span-2 lg:col-span-6">
           <ObservationMix
             observationsByType={observationsByType}
             term={currentTerm?.name ?? null}
@@ -217,7 +222,7 @@ function TeacherDashboard() {
           full width at the foot rather than stretching one column to twice the
           height of its neighbour.
         */}
-        <div className="sm:col-span-2 lg:col-span-12">
+        <div className="md:col-span-2 lg:col-span-12">
           <RecentObservations observations={recentObservations} />
         </div>
       </div>
