@@ -66,7 +66,7 @@ export function EmptyState({
 }) {
   return (
     <Card className="flex flex-col items-center gap-2 px-6 py-10 text-center">
-      {icon ? <div className="mb-1 text-muted">{icon}</div> : null}
+      {icon ? <div className="mb-2 text-muted">{icon}</div> : null}
       <p className="font-medium text-ink">{title}</p>
       {description ? <p className="max-w-sm text-body text-muted">{description}</p> : null}
       {action ? <div className="mt-3">{action}</div> : null}
