@@ -41,25 +41,27 @@ day belongs to*; the child column is for lookup and display only.
 /// `DevelopmentDomain`, which is a table because a kindergarten invents its
 /// own — CLAUDE.md §2.3 permits an enum exactly here.
 ///
-/// ★ Four, decided 2026-08-25. The reference carries six; `HALF_DAY` and
-/// `OTHER` are dropped for the MVP.
+/// ★ Five, settled 2026-08-25. The reference carries six; only `HALF_DAY`
+/// is dropped.
 ///
-/// Dropping `HALF_DAY` costs nothing — its only purpose was a funding
+/// `HALF_DAY` costs nothing to lose — its only purpose was a funding
 /// fraction, and nothing here computes money.
 ///
-/// Dropping `OTHER` has a cost worth recording, because it is not visible
-/// until later. The reference kept it as "the escape hatch that keeps a
-/// teacher from having to force an unusual day into a wrong category", and
-/// without it every unusual day becomes one of these four whether or not it
-/// was. `note` is the mitigation: an odd day can be marked with the nearest
-/// status and explained in text. That is a weaker instrument — a note cannot
-/// be aggregated — so if a monthly report later shows an implausible
-/// `ABSENT` count, this is the first place to look.
+/// `OTHER` was briefly dropped and reinstated the same day, which is worth
+/// recording because the reasoning generalises. It is the escape hatch that
+/// keeps a teacher from forcing an unusual day into a category that is
+/// wrong; without it every odd day still gets counted, just under a status
+/// that misstates it. `note` cannot rescue that — a note explains one row
+/// and cannot be aggregated, so the error survives into every monthly total
+/// silently. A vocabulary with no escape does not produce cleaner data, it
+/// produces confidently wrong data.
 enum AttendanceStatus {
   PRESENT  // Ирсэн
   ABSENT   // Тасалсан
   SICK     // Өвчтэй
   EXCUSED  // Чөлөөтэй
+  OTHER    // Бусад — the escape hatch. Pairs with `note`, which is where the
+           // teacher says what actually happened.
 }
 
 model Attendance {
@@ -232,8 +234,8 @@ the write.
 **Funding value is deliberately absent.** What a given status is *worth* to a
 subsidy claim is policy that varies by rule and by year — the reference keeps
 that number out of the model for exactly that reason, and Phase 3 owns it.
-Nothing in this plan computes money. (It is also why dropping `HALF_DAY` costs
-nothing today: a half-day only ever meant a funding fraction.)
+Nothing in this plan computes money. (It is also why `HALF_DAY` costs nothing to
+drop: a half-day only ever meant a funding fraction.)
 
 ---
 
@@ -278,12 +280,13 @@ anything.
 | `deletedById` | Dropped. Rely on `AuditLog`; CLAUDE.md §3.2 amended in this PR. |
 | Guardian visibility | **Yes** — their own child's range only, read-only. Group sheet stays staff-only. |
 | Correction lock | **7 days**, rolling from the attendance date, then permanent. No override. |
-| `HALF_DAY` | Dropped, with `OTHER`. Four statuses: `PRESENT` · `ABSENT` · `SICK` · `EXCUSED`. |
+| Statuses | `HALF_DAY` dropped. **Five**: `PRESENT` · `ABSENT` · `SICK` · `EXCUSED` · `OTHER`. |
 
-One consequence to keep in view, recorded in §2: without `OTHER`, an unusual day
-must be filed under one of the four whether or not it belongs there. `note`
-carries the explanation but cannot be counted, so an implausible `ABSENT` total
-in a later report is the symptom to look for.
+`OTHER` was dropped and reinstated within the day. The argument that settled it:
+a closed vocabulary does not make an unusual day disappear, it makes that day get
+counted under a status which misstates it — and a `note` cannot undo this,
+because a note explains one row and never reaches an aggregate. A vocabulary with
+no escape hatch yields confidently wrong totals rather than clean ones.
 
 ## 10. Explicitly out of scope
 
