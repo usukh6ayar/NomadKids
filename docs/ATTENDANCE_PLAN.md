@@ -1,6 +1,6 @@
 # Attendance — technical scoping
 
-**Status: proposal for review. No code written.**
+**Status: decisions taken 2026-08-25. Cleared to build.** No code written yet.
 
 Pulled forward from RFP Module 2 on 2026-08-25, after the dashboard KPI was
 requested five times and declined five times for want of a model. The decision
@@ -37,17 +37,29 @@ day belongs to*; the child column is for lookup and display only.
 ## 2. Proposed schema
 
 ```prisma
-/// The six states are a closed vocabulary from the requirement, not
-/// configuration. Contrast `DevelopmentDomain`, which is a table because a
-/// kindergarten invents its own — CLAUDE.md §2.3 permits an enum exactly here.
+/// A closed vocabulary from the requirement, not configuration. Contrast
+/// `DevelopmentDomain`, which is a table because a kindergarten invents its
+/// own — CLAUDE.md §2.3 permits an enum exactly here.
+///
+/// ★ Four, decided 2026-08-25. The reference carries six; `HALF_DAY` and
+/// `OTHER` are dropped for the MVP.
+///
+/// Dropping `HALF_DAY` costs nothing — its only purpose was a funding
+/// fraction, and nothing here computes money.
+///
+/// Dropping `OTHER` has a cost worth recording, because it is not visible
+/// until later. The reference kept it as "the escape hatch that keeps a
+/// teacher from having to force an unusual day into a wrong category", and
+/// without it every unusual day becomes one of these four whether or not it
+/// was. `note` is the mitigation: an odd day can be marked with the nearest
+/// status and explained in text. That is a weaker instrument — a note cannot
+/// be aggregated — so if a monthly report later shows an implausible
+/// `ABSENT` count, this is the first place to look.
 enum AttendanceStatus {
-  PRESENT   // Ирсэн
-  EXCUSED   // Чөлөөтэй
-  SICK      // Өвчтэй
-  ABSENT    // Тасалсан
-  HALF_DAY  // Хагас өдөр
-  OTHER     // Бусад — the escape hatch, so an unusual day is not forced
-            // into a wrong category
+  PRESENT  // Ирсэн
+  ABSENT   // Тасалсан
+  SICK     // Өвчтэй
+  EXCUSED  // Чөлөөтэй
 }
 
 model Attendance {
@@ -115,27 +127,18 @@ request body. A body-supplied tenant id is how a row ends up with a
 
 ---
 
-## 4. Soft delete — and a rule the schema does not currently keep
+## 4. Soft delete — resolved
 
-CLAUDE.md §3.2: *"Set `deletedAt` and `deletedById`."*
+CLAUDE.md §3.2 asked for `deletedAt` **and** `deletedById`, and no model in the
+schema had ever carried one. The rule and the code had disagreed from the
+beginning; scoping a new table surfaced it.
 
-**No model in this schema has `deletedById`. Zero of them.** The rule and the
-code have disagreed since the beginning, and a new table forces the question.
+**Decided: rely on `AuditLog`, and amend the rule.** Done in this PR.
 
-Three options, and I recommend the third:
-
-| | Approach | Cost |
-|---|---|---|
-| A | Add `deletedById` to `Attendance` only | One table follows the rule, thirty do not — the inconsistency becomes deliberate rather than historical |
-| B | Add it everywhere | A migration across every table, for a fact already recorded elsewhere |
-| C | **Rely on `AuditLog`, and correct §3.2** | `AuditLog` already stores `actorUserId` + `action: DELETE` + `objectId`, append-only, and is the *better* home — a mutable column can be overwritten, an audit row cannot |
-
-**Recommendation: C.** The deletion actor is already captured, more durably than
-a column would capture it. What is wrong is the rule's wording, not the schema.
-I would amend CLAUDE.md §3.2 in the same PR rather than leave a mandatory rule
-that nothing obeys — that is how rules stop being read.
-
-**This needs your decision before I write the migration.**
+`AuditLog` already stores `actorUserId` against a `DELETE` action and an
+`objectId`. It is the better home than a column: a column can be overwritten by
+the next writer, an append-only row cannot. The schema stays clean and thirty
+tables stop silently violating a mandatory instruction.
 
 The `recordedById` column above is separate and is *not* soft-delete metadata:
 it answers "whose register is this", which the teacher's screen shows.
@@ -153,7 +156,7 @@ child.
 | Teacher assigned to the group | Read and write that group's attendance |
 | Teacher not assigned | **404** — not 403 |
 | Admin of the kindergarten | Read and write |
-| Guardian | *Open question — see §9* |
+| Guardian | Read **their own child only** — never write |
 | Any other kindergarten | **404** |
 
 Two rules carried directly from the reference:
@@ -164,6 +167,13 @@ looked up *within the authorized group*; anything not in it is ignored rather
 than written. A POST body is written by whoever sends it, and the alternative
 writes attendance for another kindergarten's child.
 
+**Guardians read, and only their own child.** Decided 2026-08-25: a family
+tracking sick days is the point of the feature. Access is a *relationship*, not
+a role — `canAccessChild` via the enrollment's child, the same derivation the
+portfolio and observations already use, so a revoked guardianship loses it
+automatically. Guardians reach `GET /children/:id/attendance` only; the group
+day sheet is staff-only, because it names every other child in the group.
+
 **404, never 403** (CLAUDE.md §1.7), including for a group in another
 kindergarten. The mandatory three tests from §4.1 apply, plus a fourth:
 
@@ -172,6 +182,8 @@ teacher from another kindergarten          → 404
 teacher assigned to no group containing it → 404
 guardian of another child                  → 404
 enrollment id from another group in body   → ignored, not written
+guardian requesting the group day sheet    → 404
+guardian requesting another child's range  → 404
 ```
 
 ---
@@ -196,9 +208,32 @@ identical entries.
 audit row; amending carries `previousStatus` and `newStatus` in the audit
 metadata. This is the entry a later reconciliation has to be able to explain.
 
-**Funding value is deliberately absent.** What "Хагас өдөр" is *worth* is policy
-that varies by rule and by year. The reference keeps it out of this model for
-that reason, and Phase 3 owns it. Nothing in this plan computes money.
+**A day locks 7 days after it happened.** Decided 2026-08-25. Inside the
+window a teacher may correct freely; outside it the day is permanently closed and
+a write returns `409` with a Mongolian message. The rule exists to stop
+retrospective tampering, and it is what makes a recorded month trustworthy enough
+to report from.
+
+Two consequences, both real and both accepted:
+
+* **A day missed for more than a week can never be recorded.** A teacher off sick
+  for a fortnight returns to a permanently empty register. There is no back door
+  by design — an admin override would reopen exactly the hole the rule closes.
+  If that proves too strict in practice, the honest fix is a widened window or an
+  explicit, audited `reopen` action, not a quiet exception.
+* **The lock is computed from the attendance date, not from when the row was
+  written.** Otherwise a row created late would carry its own fresh 7 days and
+  the window would be trivially defeated by never recording on time.
+
+The boundary is evaluated server-side against the request date. It is not a UI
+concern: the register may grey out a locked day, but the service is what refuses
+the write.
+
+**Funding value is deliberately absent.** What a given status is *worth* to a
+subsidy claim is policy that varies by rule and by year — the reference keeps
+that number out of the model for exactly that reason, and Phase 3 owns it.
+Nothing in this plan computes money. (It is also why dropping `HALF_DAY` costs
+nothing today: a half-day only ever meant a funding fraction.)
 
 ---
 
@@ -236,23 +271,19 @@ anything.
 
 ---
 
-## 9. Open questions — I need answers before building
+## 9. Decisions taken — 2026-08-25
 
-1. **`deletedById` (§4).** Option C, and amend CLAUDE.md? This is the only one
-   that blocks the migration.
-2. **Do guardians see their own child's attendance?** The reference's screens are
-   teacher-only. It is plausible and cheap, but it is a product decision with a
-   privacy edge — a parent seeing "Тасалсан" against a day they thought was
-   excused will generate a phone call. Default if you have no preference: **no**,
-   staff only, revisit later.
-3. **Is there a lock window?** The reference allows correcting any past day
-   indefinitely. Once attendance feeds funding, most systems freeze a month after
-   it is claimed. Not needed for the MVP; worth knowing whether to leave room.
-4. **Half-day semantics.** `HALF_DAY` exists in the vocabulary. Does the
-   kindergarten actually use it, or is it vestigial? It costs nothing to include
-   and is confusing to show if unused.
+| Question | Decision |
+|---|---|
+| `deletedById` | Dropped. Rely on `AuditLog`; CLAUDE.md §3.2 amended in this PR. |
+| Guardian visibility | **Yes** — their own child's range only, read-only. Group sheet stays staff-only. |
+| Correction lock | **7 days**, rolling from the attendance date, then permanent. No override. |
+| `HALF_DAY` | Dropped, with `OTHER`. Four statuses: `PRESENT` · `ABSENT` · `SICK` · `EXCUSED`. |
 
----
+One consequence to keep in view, recorded in §2: without `OTHER`, an unusual day
+must be filed under one of the four whether or not it belongs there. `note`
+carries the explanation but cannot be counted, so an implausible `ABSENT` total
+in a later report is the symptom to look for.
 
 ## 10. Explicitly out of scope
 

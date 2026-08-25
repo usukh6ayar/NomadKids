@@ -133,8 +133,17 @@ isolation.
 
 ### 3.2 No hard deletes
 
-Set `deletedAt` and `deletedById`. `AuditLog` is the single exception: append-only,
-never updated, never deleted — its repository exposes only `append()`.
+Set `deletedAt`. `AuditLog` is the single exception: append-only, never updated,
+never deleted — its repository exposes only `append()`.
+
+**Who deleted it lives in `AuditLog`, not in a column.** This rule asked for a
+`deletedById` beside `deletedAt` until 2026-08-25, and no table ever carried
+one — the instruction and the schema had disagreed from the beginning, which
+was found while scoping `Attendance` (`docs/ATTENDANCE_PLAN.md` §4). `AuditLog`
+already records `actorUserId` against a `DELETE` action and an `objectId`, and
+it is the better home: a column can be overwritten by the next writer, an
+append-only row cannot. A mandatory rule that nothing obeys stops being read,
+so the rule moved to match the design rather than the reverse.
 
 ### 3.3 Review migrations by hand
 
