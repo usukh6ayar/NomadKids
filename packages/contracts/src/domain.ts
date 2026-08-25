@@ -294,6 +294,16 @@ export const aboutMeSchema = z.object({
   // Prisma Decimal serialises as a string.
   heightCm: z.union([z.string(), z.number()]).nullish(),
   weightKg: z.union([z.string(), z.number()]).nullish(),
+  /**
+   * ★ RFP §4.1 "тухайн мэдээллийг оруулсан огноо".
+   *
+   * `ChildProfile.recordedOn` has always existed and `PATCH /about-me` has
+   * always accepted it — the schema simply never declared it, and Zod strips
+   * what it is not told about. So a measurement's date could be written and
+   * then never read back, which is worse than not storing it: a height with no
+   * date is a number about a growing child that nobody can place in time.
+   */
+  recordedOn: z.string().nullish(),
 });
 export type AboutMe = z.infer<typeof aboutMeSchema>;
 
