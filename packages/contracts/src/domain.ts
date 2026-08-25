@@ -504,6 +504,82 @@ export const birthdaySectionSchema = z.object({
 });
 export type BirthdaySection = z.infer<typeof birthdaySectionSchema>;
 
+// ── Health — RFP Module 2 ────────────────────────────────────────────────────
+
+export const allergySeveritySchema = z.enum(["MILD", "MODERATE", "SEVERE"]);
+export const allergyKindSchema = z.enum(["FOOD", "MEDICATION", "ENVIRONMENTAL", "OTHER"]);
+
+export const ALLERGY_SEVERITY_LABEL: Record<string, string> = {
+  MILD: "Хөнгөн",
+  MODERATE: "Дунд",
+  SEVERE: "Ноцтой",
+};
+
+export const ALLERGY_KIND_LABEL: Record<string, string> = {
+  FOOD: "Хоол хүнс",
+  MEDICATION: "Эм",
+  ENVIRONMENTAL: "Хүрээлэн буй орчин",
+  OTHER: "Бусад",
+};
+
+export const allergySchema = z.object({
+  id: uuidSchema,
+  kind: allergyKindSchema,
+  severity: allergySeveritySchema,
+  allergen: z.string(),
+  reaction: z.string().nullish(),
+  treatment: z.string().nullish(),
+  notedOn: z.string(),
+  /** Ended rather than deleted — a child who outgrows one still had it. */
+  endedOn: z.string().nullish(),
+  recordedBy: personRefSchema.nullish(),
+});
+export type Allergy = z.infer<typeof allergySchema>;
+
+export const medicationSchema = z.object({
+  id: uuidSchema,
+  medicineName: z.string(),
+  dosage: z.string(),
+  /** `HH:MM` strings — when a teacher should be reminded. */
+  timesOfDay: z.array(z.string()).default([]),
+  instructions: z.string().nullish(),
+  startsOn: z.string(),
+  /** Required: an open-ended authorisation to medicate a child is not a thing. */
+  endsOn: z.string(),
+  authorisedBy: personRefSchema.nullish(),
+  /** Computed by the API against today, so every reader agrees on it. */
+  isActive: z.boolean().default(false),
+});
+export type Medication = z.infer<typeof medicationSchema>;
+
+export const vaccinationSchema = z.object({
+  id: uuidSchema,
+  vaccineName: z.string(),
+  administeredOn: z.string(),
+  doseLabel: z.string().nullish(),
+  provider: z.string().nullish(),
+  note: z.string().nullish(),
+  recordedBy: personRefSchema.nullish(),
+});
+export type Vaccination = z.infer<typeof vaccinationSchema>;
+
+/**
+ * Everything a teacher needs before a meal or a nap, in one response.
+ *
+ * ★ One request, not three. The child's header renders a red badge from
+ * `allergies` and a reminder from `medications`, and a screen that fetched them
+ * separately would show the badge a beat before or after the record it belongs
+ * to — on a slow connection, long enough to serve the wrong lunch.
+ */
+export const childHealthSchema = z.object({
+  allergies: z.array(allergySchema),
+  medications: z.array(medicationSchema),
+  vaccinations: z.array(vaccinationSchema),
+  /** RFP §3.4's free-text note, carried here so one screen shows all of it. */
+  healthNotes: z.string().nullish(),
+});
+export type ChildHealth = z.infer<typeof childHealthSchema>;
+
 // ── Milestones — RFP §4.5 ────────────────────────────────────────────────────
 
 /**

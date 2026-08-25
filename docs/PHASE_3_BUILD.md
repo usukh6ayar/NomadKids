@@ -90,9 +90,9 @@ re-broken by the next one. Production is stale but stable in the meantime.
 | 6   | §6.1, §6.2              | Assessment configuration admin UI                         | ⬜         |
 | 7   | §7                      | Growth measurements and charts                            | ✅         |
 | 8   | §4.5                    | Milestones                                                | ✅         |
-| 9   | Module 2                | Allergies, medication, vaccination                        | ⬜         |
+| 9   | Module 2                | Allergies, medication, vaccination                        | ✅         |
 | 10  | Module 2.1              | Safety incident log                                       | ⬜         |
-| 11  | Module 2                | Menu-versus-allergy cross-check                           | ⬜         |
+| 11  | Module 2                | Menu-versus-allergy cross-check                           | ✅         |
 | 12  | §5.3                    | Artwork development comparison                            | ⬜         |
 | 13  | Module 1.1, 1.2         | Matrix questions, begin-to-end comparison                 | ⬜         |
 | 14  | §9                      | Document library                                          | ⬜         |
@@ -297,3 +297,64 @@ on, and the test asserts the _serve_ path rather than only the list.
 api  test/milestones.test.ts   20 passed
 web  169 passed
 ```
+
+---
+
+## 9 and 11 — Health records, and the menu cross-check ✅
+
+Shipped together because the cross-check is the reason the allergy table is
+queryable at all.
+
+**Three tables, not one "health record" with a `type` column.** They answer
+different questions, are written by different people, and have different
+lifetimes: an allergy is standing information a teacher reads before every meal,
+a medication authorisation is a dated instruction that expires, a vaccination is
+a historical fact. One table with a discriminator gives all three the union of
+their columns and none of their constraints.
+
+**`Child.healthNotes` stays.** It is RFP §3.4's free-text "анхаарах шаардлагатай
+товч мэдээлэл" and remains right for anything that is not one of the three. What
+it cannot do is be _queried_ — which is exactly what the cross-check needs.
+
+Who writes what, and why it differs:
+
+| Record      | Author       | Reason                                                                                                                    |
+| ----------- | ------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| Allergy     | staff        | It is an instruction other people act on — it changes what a kitchen cooks. RFP Module 2 puts it "багшийн систем дээр".   |
+| Medication  | **guardian** | The row _is_ the consent. Module 2: "Эцэг эхчүүд … баталгаажуулан үлдээх". `authorisedById` is the actor, never the body. |
+| Vaccination | staff        | The kindergarten's immunisation register.                                                                                 |
+
+`isActive` on a medication is computed by the API, not by each screen: it
+decides whether a teacher gives a child medicine, and two clients deriving it
+from two date comparisons is two chances to get the boundary wrong.
+
+### ★ The matching rule was wrong, and the test found it
+
+The obvious cross-check is "either string contains the other". It was written
+first, and failed on the case the feature exists for: **самар** (nut) becomes
+**самрын** in the genitive and the second _а_ elides, so `"самрын тос"` does not
+contain `"самар"`. Mongolian is agglutinative and suffixation routinely changes
+the stem — this is the ordinary case, not an edge one, and it would have failed
+silently: the warning simply would not appear.
+
+`allergenMatches` now also accepts a shared three-character stem, which catches
+самар/самрын, сүү/сүүтэй, загас/загасны. It errs towards warning on purpose —
+a stem match also fires on сүү/сүүж, milk against hip — and there is a test
+asserting that false positive so nobody "fixes" it later. A false positive costs
+ten seconds of reading; a false negative feeds a child something that stops
+their breathing.
+
+**The warnings are a separate, staff-only route.** They name other people's
+children and what they react to, which is medical information about another
+family. The plain menu stays open to everyone.
+
+```
+api  test/health-records.test.ts        27 passed
+api  src/meals/allergen-match.test.ts   12 passed
+```
+
+The child hero's health-badge comment was also corrected: it said structured
+allergies did not exist. They do now, and the badge is _still_ the free-text
+note, because "⚠ Эрүүл мэнд" meaning either "read the note" or "this child stops
+breathing near nuts" is a chip that means nothing. The structured alert lives
+where it can name the allergen.

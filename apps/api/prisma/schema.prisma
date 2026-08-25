@@ -228,29 +228,32 @@ model User {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  photo               MediaFile?             @relation("UserPhoto", fields: [photoMediaFileId], references: [id], onDelete: SetNull)
-  uploadedMedia       MediaFile[]            @relation("MediaUploader")
-  memberships         Membership[]
-  guardianships       Guardianship[]
-  authTokens          AuthToken[]
-  sessions            Session[]
-  auditLogs           AuditLog[]
-  observations        Observation[]          @relation("ObservationAuthor")
-  reviewed            Observation[]          @relation("ObservationReviewer")
-  assessments         Assessment[]           @relation("AssessmentAuthor")
-  termReports         TermReport[]           @relation("TermReportAuthor")
-  notifications       Notification[]         @relation("NotificationAuthor")
-  reads               NotificationRead[]
-  reactions           NotificationReaction[]
-  reportJobs          ReportJob[]
-  attendanceRecorded  Attendance[]           @relation("AttendanceRecordedBy")
-  attendanceRequested AttendanceRequest[]    @relation("AttendanceRequestedBy")
-  attendanceReviewed  AttendanceRequest[]    @relation("AttendanceReviewedBy")
-  menuDaysCreated     MenuDay[]              @relation("MenuDayCreatedBy")
-  surveysCreated      Survey[]               @relation("SurveyCreatedBy")
-  surveyResponses     SurveyResponse[]       @relation("SurveyRespondent")
-  growthRecorded      GrowthMeasurement[]    @relation("GrowthRecordedBy")
-  milestonesRecorded  Milestone[]            @relation("MilestoneRecordedBy")
+  photo                 MediaFile?                @relation("UserPhoto", fields: [photoMediaFileId], references: [id], onDelete: SetNull)
+  uploadedMedia         MediaFile[]               @relation("MediaUploader")
+  memberships           Membership[]
+  guardianships         Guardianship[]
+  authTokens            AuthToken[]
+  sessions              Session[]
+  auditLogs             AuditLog[]
+  observations          Observation[]             @relation("ObservationAuthor")
+  reviewed              Observation[]             @relation("ObservationReviewer")
+  assessments           Assessment[]              @relation("AssessmentAuthor")
+  termReports           TermReport[]              @relation("TermReportAuthor")
+  notifications         Notification[]            @relation("NotificationAuthor")
+  reads                 NotificationRead[]
+  reactions             NotificationReaction[]
+  reportJobs            ReportJob[]
+  attendanceRecorded    Attendance[]              @relation("AttendanceRecordedBy")
+  attendanceRequested   AttendanceRequest[]       @relation("AttendanceRequestedBy")
+  attendanceReviewed    AttendanceRequest[]       @relation("AttendanceReviewedBy")
+  menuDaysCreated       MenuDay[]                 @relation("MenuDayCreatedBy")
+  surveysCreated        Survey[]                  @relation("SurveyCreatedBy")
+  surveyResponses       SurveyResponse[]          @relation("SurveyRespondent")
+  growthRecorded        GrowthMeasurement[]       @relation("GrowthRecordedBy")
+  milestonesRecorded    Milestone[]               @relation("MilestoneRecordedBy")
+  allergiesRecorded     AllergyRecord[]           @relation("AllergyRecordedBy")
+  medicationsAuthorised MedicationAuthorisation[] @relation("MedicationAuthorisedBy")
+  vaccinationsRecorded  VaccinationRecord[]       @relation("VaccinationRecordedBy")
 
   @@index([deletedAt])
   @@map("users")
@@ -378,7 +381,7 @@ model Kindergarten {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  logo                  MediaFile?             @relation("KindergartenLogo", fields: [logoMediaFileId], references: [id], onDelete: SetNull)
+  logo                  MediaFile?                @relation("KindergartenLogo", fields: [logoMediaFileId], references: [id], onDelete: SetNull)
   memberships           Membership[]
   schoolYears           SchoolYear[]
   groups                Group[]
@@ -412,6 +415,9 @@ model Kindergarten {
   surveyAnswers         SurveyAnswer[]
   growthMeasurements    GrowthMeasurement[]
   milestones            Milestone[]
+  allergies             AllergyRecord[]
+  medications           MedicationAuthorisation[]
+  vaccinations          VaccinationRecord[]
 
   @@index([deletedAt])
   @@map("kindergartens")
@@ -534,8 +540,8 @@ model Child {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  kindergarten        Kindergarten         @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
-  photo               MediaFile?           @relation("ChildPhoto", fields: [photoMediaFileId], references: [id], onDelete: SetNull)
+  kindergarten        Kindergarten              @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  photo               MediaFile?                @relation("ChildPhoto", fields: [photoMediaFileId], references: [id], onDelete: SetNull)
   guardianships       Guardianship[]
   enrollments         Enrollment[]
   profile             ChildProfile?
@@ -544,7 +550,7 @@ model Child {
   observations        Observation[]
   assessments         Assessment[]
   termReports         TermReport[]
-  mediaFiles          MediaFile[]          @relation("ChildMedia")
+  mediaFiles          MediaFile[]               @relation("ChildMedia")
   notificationTargets NotificationTarget[]
   reportJobs          ReportJob[]
   auditLogs           AuditLog[]
@@ -553,6 +559,9 @@ model Child {
   surveyResponses     SurveyResponse[]
   growthMeasurements  GrowthMeasurement[]
   milestones          Milestone[]
+  allergies           AllergyRecord[]
+  medications         MedicationAuthorisation[]
+  vaccinations        VaccinationRecord[]
 
   @@unique([kindergartenId, nationalId])
   @@index([kindergartenId, status])
@@ -763,6 +772,171 @@ model Milestone {
   @@index([childId, occurredOn(sort: Desc)])
   @@index([kindergartenId, occurredOn(sort: Desc)])
   @@map("milestones")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Health — RFP Module 2: allergies, medication, vaccination
+//
+// ★ Three tables, not one "health record" with a `type` column.
+//
+// They answer different questions, are written by different people, and have
+// different lifetimes. An allergy is standing information a teacher must see
+// before every meal; a medication authorisation is a dated instruction that
+// expires; a vaccination is a historical fact that never changes. A single
+// table with a discriminator would give all three the union of their columns
+// and none of their constraints — `dosage` meaningless on a vaccination,
+// `severity` meaningless on a dose of antibiotics.
+//
+// ★★ `Child.healthNotes` stays. It is RFP §3.4's free-text "анхаарах
+// шаардлагатай товч мэдээлэл" and remains the right home for anything that is
+// not one of these three. What it cannot do is be *queried* — which is what
+// the menu cross-check needs, and why AllergyRecord exists.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// How badly a child reacts — RFP Module 2 asks for a "Red Flag / Badge".
+///
+/// A system-level enum rather than a configuration table: this drives an alert
+/// a teacher must read the same way in every kindergarten, and a director
+/// renaming SEVERE to something reassuring is not a customisation anybody
+/// should be offered. CLAUDE.md §2.3's carve-out for "record states".
+enum AllergySeverity {
+  MILD
+  MODERATE
+  /// Anaphylaxis risk. The badge is red and the menu check refuses to be quiet.
+  SEVERE
+}
+
+enum AllergyKind {
+  FOOD
+  MEDICATION
+  ENVIRONMENTAL
+  OTHER
+}
+
+/// One allergy — RFP Module 2, "Харшил ба Хоолны онцлог".
+model AllergyRecord {
+  id             String          @id @default(uuid()) @db.Uuid
+  kindergartenId String          @db.Uuid
+  childId        String          @db.Uuid
+  kind           AllergyKind
+  severity       AllergySeverity
+
+  /// What the child reacts to, as staff would say it: "самар", "сүү", "өндөг".
+  ///
+  /// ★ Free text, and matched case-insensitively against a menu dish's
+  /// `allergenTags`. Not a lookup table: the RFP gives no vocabulary, kitchens
+  /// name ingredients in their own words, and a closed list would make a
+  /// teacher unable to record the one allergy their child actually has.
+  allergen String
+
+  /// What happens, and what to do about it. Both free text — this is clinical
+  /// information transcribed from a family, not something to model.
+  reaction  String?
+  treatment String?
+
+  /// Ended rather than deleted: a child who outgrows a milk allergy still has
+  /// the record of having had one, and a teacher reading the history needs it.
+  notedOn DateTime  @db.Date
+  endedOn DateTime? @db.Date
+
+  recordedById String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  recordedBy   User?        @relation("AllergyRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  /// The badge query: every live allergy for one child.
+  @@index([childId, endedOn])
+  /// The menu cross-check: every live allergy in one kindergarten, at once.
+  @@index([kindergartenId, endedOn])
+  @@map("allergy_records")
+}
+
+/// A guardian's instruction to give medicine — RFP Module 2, "Эм хэрэглээний
+/// зөвшөөрөл".
+///
+/// ★ An authorisation, not an administration log.
+///
+/// The RFP asks that a parent leaves a form "цаг, тунг тэмдэглэж
+/// баталгаажуулан" and that the teacher is reminded at the time. That is a
+/// standing instruction with a date range, which is what this models. Recording
+/// each individual dose as it is given is a separate feature the RFP does not
+/// ask for, and inventing it would put a nurse's medication chart inside a
+/// portfolio system.
+model MedicationAuthorisation {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  childId        String @db.Uuid
+
+  medicineName String
+  /// "1 шахмал", "5 мл" — the family's own words, transcribed.
+  dosage       String
+  /// Times of day as `HH:MM` strings, e.g. `["12:00", "16:30"]`.
+  ///
+  /// ★ Json rather than a `MedicationTime` child table. The RFP wants a
+  /// reminder at each time; nothing queries "every child due at 12:00 across
+  /// the kindergarten", and a table for an array of two strings is a join for
+  /// no reader.
+  timesOfDay   Json
+  instructions String?
+
+  startsOn DateTime @db.Date
+  /// ★ Required, unlike an allergy's `endedOn`.
+  ///
+  /// An open-ended authorisation to medicate a child is not something a system
+  /// should be able to express. A family renews it; it does not run for ever
+  /// because somebody forgot to close it.
+  endsOn   DateTime @db.Date
+
+  /// The guardian who left the instruction — this is the consent record.
+  authorisedById String @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  authorisedBy User         @relation("MedicationAuthorisedBy", fields: [authorisedById], references: [id], onDelete: Restrict)
+
+  /// "What is due today" — a range scan over the active window.
+  @@index([kindergartenId, startsOn, endsOn])
+  @@index([childId, endsOn(sort: Desc)])
+  @@map("medication_authorisations")
+}
+
+/// A vaccination or vitamin — RFP Module 2, "Вакцинжуулалт болон Амин дэмийн
+/// бүртгэл".
+model VaccinationRecord {
+  id             String   @id @default(uuid()) @db.Uuid
+  kindergartenId String   @db.Uuid
+  childId        String   @db.Uuid
+  /// Free text: the national schedule changes, and a kindergarten also records
+  /// vitamins the RFP names in the same breath.
+  vaccineName    String
+  administeredOn DateTime @db.Date
+  /// "2-р тун" — optional, because a single-dose vitamin has none.
+  doseLabel      String?
+  /// Where it was given: a clinic name, or the kindergarten itself.
+  provider       String?
+  note           String?
+
+  recordedById String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  recordedBy   User?        @relation("VaccinationRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@index([childId, administeredOn(sort: Desc)])
+  @@map("vaccination_records")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

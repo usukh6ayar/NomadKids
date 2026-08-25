@@ -46,6 +46,7 @@ export const qk = {
   attendanceRequests: (childId: string) => ["child", childId, "attendance-requests"] as const,
   growth: (childId: string) => ["child", childId, "growth"] as const,
   milestones: (childId: string) => ["child", childId, "milestones"] as const,
+  health: (childId: string) => ["child", childId, "health"] as const,
   groupAttendance: (groupId: string, date: string) =>
     ["group", groupId, "attendance", date] as const,
   attendanceReviewQueue: (filters: Record<string, unknown> = {}) =>

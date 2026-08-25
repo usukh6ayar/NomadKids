@@ -988,10 +988,20 @@ describe("the child profile tabs", () => {
   /**
    * The hero's health badge says "there is a note to read", and it is staff
    * only — the notes section it points at is. A chip a family cannot open is
-   * worse than none, and this is a health field, which §7 keeps out of the
-   * parent-facing product entirely.
+   * worse than none.
+   *
+   * ★ Updated 2026-08-25. This assertion used to be `queryByText(/Эрүүл мэнд/)`
+   * and its comment said health was kept out of the parent-facing product
+   * entirely. Both were true when written and neither is now: RFP Module 2 is
+   * in scope, and a guardian gets an **Эрүүл мэнд** tab — it is where they
+   * authorise medication, which Module 2 has the family doing in as many words.
+   *
+   * So the loose regex started matching the new tab, and the honest fix is to
+   * assert on what the badge actually renders rather than on any occurrence of
+   * the phrase. The rule under test never changed: the staff note, and the chip
+   * pointing at it, stay staff-only.
    */
-  it("never shows the health badge to a guardian", async () => {
+  it("never shows the staff health-note badge to a guardian", async () => {
     setParams({ childId: CHILD_ID });
     setSearchParams("");
     stubApi([
@@ -1004,8 +1014,15 @@ describe("the child profile tabs", () => {
     renderWithProviders(<ChildDetailPage />);
 
     expect(await screen.findByRole("tab", { name: "Ерөнхий" })).toBeInTheDocument();
-    expect(screen.queryByText(/Эрүүл мэнд/)).not.toBeInTheDocument();
+
+    // The badge, and the note it points at — neither reaches a family.
+    expect(screen.queryByText("Эрүүл мэндийн тэмдэглэлтэй")).not.toBeInTheDocument();
     expect(screen.queryByText("Харшилтай")).not.toBeInTheDocument();
+
+    // …while the tab, which is theirs, is present. Asserted rather than left
+    // implicit, so a future tightening of the badge rule cannot quietly take
+    // the medication form away from the people RFP Module 2 gives it to.
+    expect(screen.getByRole("tab", { name: "Эрүүл мэнд" })).toBeInTheDocument();
   });
 });
 
