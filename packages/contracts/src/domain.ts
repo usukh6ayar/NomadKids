@@ -504,6 +504,65 @@ export const birthdaySectionSchema = z.object({
 });
 export type BirthdaySection = z.infer<typeof birthdaySectionSchema>;
 
+// ── Growth — RFP §7 ──────────────────────────────────────────────────────────
+
+export const growthPointSchema = z.object({
+  id: uuidSchema,
+  measuredOn: z.string(),
+  ageYears: z.number(),
+  heightCm: z.number().nullish(),
+  weightKg: z.number().nullish(),
+  headCircumferenceCm: z.number().nullish(),
+  note: z.string().nullish(),
+  recordedBy: personRefSchema.nullish(),
+  /**
+   * The change since the previous measurement in the series — RFP §7.2's
+   * "өмнөх хэмжилттэй харьцуулах". Null on the first point, and null when the
+   * earlier row did not carry this quantity: a delta against a measurement
+   * nobody took would be a fabricated fact.
+   */
+  heightChangeCm: z.number().nullish(),
+  weightChangeKg: z.number().nullish(),
+});
+export type GrowthPoint = z.infer<typeof growthPointSchema>;
+
+export const referenceBandSchema = z.object({
+  age: z.number(),
+  median: z.number(),
+  /** −2 SD and +2 SD — a band, deliberately not a percentile curve. */
+  low: z.number(),
+  high: z.number(),
+});
+export type ReferenceBand = z.infer<typeof referenceBandSchema>;
+
+/**
+ * ★ The source and the disclaimer are inside the reference object, not beside
+ * it.
+ *
+ * RFP §7.2 requires that the source, its version and its date are shown, and
+ * that the system states it gives no medical diagnosis. Nesting them here means
+ * a screen cannot render the band without them — the requirement is structural
+ * rather than a note somebody has to remember.
+ */
+export const growthReferenceSchema = z.object({
+  height: z.array(referenceBandSchema),
+  weight: z.array(referenceBandSchema),
+  source: z.object({
+    name: z.string(),
+    version: z.string(),
+    publishedOn: z.string(),
+    url: z.string(),
+    disclaimer: z.string(),
+  }),
+});
+
+export const growthChartSchema = z.object({
+  points: z.array(growthPointSchema),
+  /** Null when the child's sex is unknown — a wrong band is worse than none. */
+  reference: growthReferenceSchema.nullish(),
+});
+export type GrowthChart = z.infer<typeof growthChartSchema>;
+
 // ── Notifications ────────────────────────────────────────────────────────────
 
 export const notificationSchema = z.object({

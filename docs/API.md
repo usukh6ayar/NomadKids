@@ -213,6 +213,47 @@ relationship record survives.
 
 ---
 
+## 5.2 Growth — RFP §7
+
+| Method | Route                        | Role | Ownership             | Request                          | Response                |
+| ------ | ---------------------------- | ---- | --------------------- | -------------------------------- | ----------------------- |
+| GET    | `/children/:id/growth`       | any  | child                 | `?from&to`                       | points + reference band |
+| PUT    | `/children/:id/growth/:date` | any  | child (guardians too) | height, weight, head circ., note | the measurement         |
+| DELETE | `/growth-measurements/:id`   | any  | child:write           | —                                | `{ id }`                |
+
+★ **`PUT :date`, not `POST`.** One measurement per child per day is enforced by
+a partial unique index, so the day _is_ the record's identity. A re-measurement
+after a bad reading corrects that day rather than adding a second point — a
+chart with two points on one date has no defined order.
+
+★★ **Guardians may write and may not delete.** RFP §2.3 lists "Өсөлтийн
+мэдээлэл оруулах" among what a parent does, so the write uses the same predicate
+as the photo album rather than the staff-only `canRecordForChild`. Deleting
+edits the record the kindergarten keeps; a wrong value is corrected by writing
+the same day again. Same shape as the album.
+
+★★★ **The reference band ships with its source and disclaimer, nested.** RFP
+§7.2 requires the source, its version and its date to be shown, and requires the
+system to state it gives no medical diagnosis. They live _inside_ the
+`reference` object, so a screen cannot render the band without them — the
+requirement is structural rather than a note somebody must remember.
+
+`reference` is **null** when the child's sex is unknown. The WHO bands differ by
+more than a centimetre at five years old, and a chart with the wrong band is
+worse than one with none.
+
+The band is **median ±2 SD, never a percentile**. "Your child is on the 12th
+percentile" is a sentence that sends a family to a clinic; the question a
+kindergarten has is whether a measurement sits inside the range most children of
+that age fall in.
+
+`heightChangeCm` and `weightChangeKg` are the change since the previous
+measurement in the series — null on the first point, and null when the earlier
+row did not carry that quantity, because a delta against a measurement nobody
+took is a fabricated fact.
+
+---
+
 ## 6. Portfolio
 
 | Method | Route                               | Role           | Ownership   | Request                               | Response                                                   |

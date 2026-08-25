@@ -224,27 +224,28 @@ model User {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  photo          MediaFile?     @relation("UserPhoto", fields: [photoMediaFileId], references: [id], onDelete: SetNull)
-  uploadedMedia  MediaFile[]    @relation("MediaUploader")
-  memberships    Membership[]
-  guardianships  Guardianship[]
-  authTokens     AuthToken[]
-  sessions       Session[]
-  auditLogs      AuditLog[]
-  observations   Observation[]  @relation("ObservationAuthor")
-  reviewed       Observation[]  @relation("ObservationReviewer")
-  assessments    Assessment[]   @relation("AssessmentAuthor")
-  termReports    TermReport[]   @relation("TermReportAuthor")
-  notifications  Notification[] @relation("NotificationAuthor")
-  reads          NotificationRead[]
-  reactions      NotificationReaction[]
-  reportJobs     ReportJob[]
-  attendanceRecorded Attendance[]        @relation("AttendanceRecordedBy")
-  attendanceRequested AttendanceRequest[] @relation("AttendanceRequestedBy")
-  attendanceReviewed AttendanceRequest[]  @relation("AttendanceReviewedBy")
-  menuDaysCreated    MenuDay[]            @relation("MenuDayCreatedBy")
-  surveysCreated     Survey[]             @relation("SurveyCreatedBy")
-  surveyResponses    SurveyResponse[]     @relation("SurveyRespondent")
+  photo               MediaFile?             @relation("UserPhoto", fields: [photoMediaFileId], references: [id], onDelete: SetNull)
+  uploadedMedia       MediaFile[]            @relation("MediaUploader")
+  memberships         Membership[]
+  guardianships       Guardianship[]
+  authTokens          AuthToken[]
+  sessions            Session[]
+  auditLogs           AuditLog[]
+  observations        Observation[]          @relation("ObservationAuthor")
+  reviewed            Observation[]          @relation("ObservationReviewer")
+  assessments         Assessment[]           @relation("AssessmentAuthor")
+  termReports         TermReport[]           @relation("TermReportAuthor")
+  notifications       Notification[]         @relation("NotificationAuthor")
+  reads               NotificationRead[]
+  reactions           NotificationReaction[]
+  reportJobs          ReportJob[]
+  attendanceRecorded  Attendance[]           @relation("AttendanceRecordedBy")
+  attendanceRequested AttendanceRequest[]    @relation("AttendanceRequestedBy")
+  attendanceReviewed  AttendanceRequest[]    @relation("AttendanceReviewedBy")
+  menuDaysCreated     MenuDay[]              @relation("MenuDayCreatedBy")
+  surveysCreated      Survey[]               @relation("SurveyCreatedBy")
+  surveyResponses     SurveyResponse[]       @relation("SurveyRespondent")
+  growthRecorded      GrowthMeasurement[]    @relation("GrowthRecordedBy")
 
   @@index([deletedAt])
   @@map("users")
@@ -395,15 +396,16 @@ model Kindergarten {
   notifications         Notification[]
   notificationTargets   NotificationTarget[]
   notificationReactions NotificationReaction[]
-  reportJobs         ReportJob[]
-  auditLogs          AuditLog[]
-  attendanceRecords  Attendance[]
-  attendanceRequests AttendanceRequest[]
-  menuDays           MenuDay[]
-  surveys            Survey[]
-  surveyQuestions    SurveyQuestion[]
-  surveyResponses    SurveyResponse[]
-  surveyAnswers      SurveyAnswer[]
+  reportJobs            ReportJob[]
+  auditLogs             AuditLog[]
+  attendanceRecords     Attendance[]
+  attendanceRequests    AttendanceRequest[]
+  menuDays              MenuDay[]
+  surveys               Survey[]
+  surveyQuestions       SurveyQuestion[]
+  surveyResponses       SurveyResponse[]
+  surveyAnswers         SurveyAnswer[]
+  growthMeasurements    GrowthMeasurement[]
 
   @@index([deletedAt])
   @@map("kindergartens")
@@ -543,6 +545,7 @@ model Child {
   attendanceRecords   Attendance[]
   attendanceRequests  AttendanceRequest[]
   surveyResponses     SurveyResponse[]
+  growthMeasurements  GrowthMeasurement[]
 
   @@unique([kindergartenId, nationalId])
   @@index([kindergartenId, status])
@@ -597,10 +600,10 @@ model Enrollment {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  kindergarten Kindergarten  @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
-  child        Child         @relation(fields: [childId], references: [id], onDelete: Cascade)
-  group        Group         @relation(fields: [groupId], references: [id], onDelete: Restrict)
-  schoolYear   SchoolYear    @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
+  kindergarten       Kindergarten        @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child              Child               @relation(fields: [childId], references: [id], onDelete: Cascade)
+  group              Group               @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  schoolYear         SchoolYear          @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
   observations       Observation[]
   assessments        Assessment[]
   termReports        TermReport[]
@@ -699,6 +702,74 @@ model BirthdayNote {
 
   @@unique([childId, age])
   @@map("birthday_notes")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Growth — RFP §7
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// One height/weight measurement — RFP §7.1.
+///
+/// ★ A time series, and `ChildProfile.heightCm` stays where it is.
+///
+/// Those two columns answer RFP §4.1: the height and weight printed in "Миний
+/// тухай", one pair, edited in place, part of a portfolio page. This table
+/// answers §7.2, which asks for a chart over time and a comparison with the
+/// previous measurement — questions a single overwritten pair cannot answer at
+/// all. Folding §4.1 into this table would delete the portfolio's own field;
+/// folding this into §4.1 would delete every measurement but the last.
+///
+/// ★★ Anchored to `Child`, not to `Enrollment`.
+///
+/// Attendance hangs off an enrollment because a day of attendance belongs to
+/// whichever kindergarten the child attended that day. A child's height belongs
+/// to the child: it is the same body before and after a transfer, and a growth
+/// chart that reset on moving kindergarten would be worse than useless. The
+/// kindergarten column is the denormalised tenant scope every table carries
+/// (CLAUDE.md §3.1), recording who took the measurement, not who owns the fact.
+model GrowthMeasurement {
+  id             String   @id @default(uuid()) @db.Uuid
+  kindergartenId String   @db.Uuid
+  childId        String   @db.Uuid
+  measuredOn     DateTime @db.Date
+
+  /// 30..200 cm, validated in the service. `Decimal(5,1)` matches
+  /// `ChildProfile.heightCm` — one shape for one quantity.
+  heightCm Decimal? @db.Decimal(5, 1)
+  /// 2..100 kg, matching `ChildProfile.weightKg`.
+  weightKg Decimal? @db.Decimal(5, 2)
+
+  /// RFP §7.1 — "толгойн тойрог шаардлагатай бол". Optional in the RFP's own
+  /// words, and rarely taken after infancy.
+  headCircumferenceCm Decimal? @db.Decimal(4, 1)
+
+  note String?
+
+  /// Who took it. `User.id` rather than `Membership.id`, matching
+  /// `Observation.authorId` — it reads correctly across a role change.
+  recordedById String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  recordedBy   User?        @relation("GrowthRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  /// ★ One measurement per child per day, enforced by a **partial** unique
+  /// index in the migration — the same treatment `Attendance` gets, for the
+  /// same reason: Postgres treats NULLs as distinct, so a plain constraint
+  /// would let a soft-deleted row block its own date for ever.
+  ///
+  /// One a day is the right grain: a nurse re-measuring after a bad reading is
+  /// correcting the same measurement, not adding a second one, and a chart with
+  /// two points on one date has no defined order.
+  @@unique([childId, measuredOn])
+  /// The chart: always a range scan over one child, newest first.
+  @@index([childId, measuredOn(sort: Desc)])
+  @@index([kindergartenId, measuredOn(sort: Desc)])
+  @@map("growth_measurements")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

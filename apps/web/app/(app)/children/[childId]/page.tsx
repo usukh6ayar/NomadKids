@@ -14,6 +14,7 @@ import { Menu, type MenuItem } from "@/components/ui/menu";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAssessments } from "@/components/child/child-assessments";
 import { ChildAttendance } from "@/components/child/child-attendance";
+import { ChildGrowth } from "@/components/child/child-growth";
 import { ChildGeneralInfo } from "@/components/child/child-general-info";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { ChildMenu } from "@/components/child/child-menu";
@@ -28,6 +29,7 @@ const OBSERVATIONS = "observations";
 const ASSESSMENTS = "assessments";
 const ATTENDANCE = "attendance";
 const MENU = "menu";
+const GROWTH = "growth";
 const GALLERY = "gallery";
 
 /**
@@ -148,6 +150,11 @@ export default function ChildDetailPage() {
             value: ATTENDANCE,
             label: "Ирц",
             content: <ChildAttendance childId={childId} isStaff={isStaff} />,
+          },
+          {
+            value: GROWTH,
+            label: "Өсөлт",
+            content: <ChildGrowth childId={childId} isStaff={isStaff} />,
           },
           {
             value: MENU,

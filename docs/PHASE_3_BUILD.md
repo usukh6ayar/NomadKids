@@ -88,7 +88,7 @@ re-broken by the next one. Production is stale but stable in the meantime.
 | 4   | §11                     | Age and sex filters, sort control                         | ✅         |
 | 5   | §12.2, §2.1             | Storage size, report statistics, audit browser            | ⬜         |
 | 6   | §6.1, §6.2              | Assessment configuration admin UI                         | ⬜         |
-| 7   | §7                      | Growth measurements and charts                            | ⬜         |
+| 7   | §7                      | Growth measurements and charts                            | ✅         |
 | 8   | §4.5                    | Milestones                                                | ⬜         |
 | 9   | Module 2                | Allergies, medication, vaccination                        | ⬜         |
 | 10  | Module 2.1              | Safety incident log                                       | ⬜         |
@@ -209,3 +209,55 @@ summary.
 api  children + query-counts + authz-consistency   104 passed
 web  169 passed
 ```
+
+---
+
+## 7 — Growth measurements and charts ✅
+
+A `GrowthMeasurement` time series, a chart, and the reference comparison §7.2
+asks for.
+
+**`ChildProfile.heightCm` stays where it is.** Those two columns answer §4.1 —
+the height and weight printed in "Миний тухай", one pair, edited in place. This
+table answers §7.2, which wants a chart over time and a comparison with the
+previous measurement. Folding either into the other deletes a requirement.
+
+**Anchored to `Child`, not `Enrollment`.** Attendance hangs off an enrollment
+because a day of attendance belongs to whichever kindergarten the child attended
+that day. A child's height belongs to the child: it is the same body before and
+after a transfer, and a growth chart that reset on moving kindergarten would be
+worse than useless.
+
+**A partial unique index, like `Attendance`.** `WHERE "deletedAt" IS NULL`,
+hand-written because Prisma cannot express it. Without it a soft-deleted
+measurement occupies its date for ever and the day can never be recorded again —
+a unique violation against a row nobody can see. Asserted directly.
+
+**Guardians write, staff delete.** RFP §2.3 lists "Өсөлтийн мэдээлэл оруулах"
+under what a parent does, so the write uses the album's predicate rather than
+the staff-only check. Deleting edits the kindergarten's record; a wrong value is
+corrected by writing the same day again.
+
+**The reference band is median ±2 SD and never a percentile**, and its source,
+version, date and "not a medical diagnosis" notice are nested _inside_ the
+reference object so no screen can draw the band without them. It is null when
+the child's sex is unknown — the WHO bands differ by more than a centimetre at
+five, and a wrong band is worse than none.
+
+**The delta is against the previous measurement in the series**, not the
+previous month: measurements are irregular, and a rate divided by an assumed
+interval reports something nobody measured. It is null when the earlier row
+lacked that quantity — never zero, which would claim a comparison nobody made.
+
+```
+api  test/growth.test.ts   21 passed  (first run)
+api  test/schema.test.ts   25 passed
+web  169 passed
+```
+
+Two guards fired during this work and both were right: the design-token test
+rejected a `text-[9px]` invented for the SVG axis labels — the scale now renders
+as HTML beneath the figure, which is what `DevelopmentRadar` already does and is
+better for a screen reader — and `eqeqeq` rejected `!= null`, which is now a
+named `isPresent` helper. A measurement of `0` is absurd and a _missing_ one is
+ordinary, so `value ? …` would have been the wrong test.

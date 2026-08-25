@@ -33,3 +33,21 @@ const twMerge = extendTailwindMerge({
 export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
 }
+
+/**
+ * "This value is present" — not null, not undefined, but zero and "" count.
+ *
+ * ★ Named rather than written as `!= null` at each call site.
+ *
+ * The loose comparison is the idiomatic way to catch both absent cases at once,
+ * and this project's `eqeqeq` rule refuses it. Writing
+ * `x !== null && x !== undefined` inline four times inside JSX is unreadable,
+ * and disabling the rule for a file trades a real guarantee for a keystroke.
+ *
+ * The distinction matters for measurements specifically: a weight of `0` is
+ * absurd and a *missing* weight is ordinary, so `heightCm ? …` would be the
+ * wrong test — it treats the two the same.
+ */
+export function isPresent<T>(value: T | null | undefined): value is T {
+  return value !== null && value !== undefined;
+}
