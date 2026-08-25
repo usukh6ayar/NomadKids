@@ -8,6 +8,7 @@ import { HealthRecordsModule } from "./health-records/health-records.module";
 import { IncidentsModule } from "./incidents/incidents.module";
 import { ArtworkModule } from "./artwork/artwork.module";
 import { DocumentsModule } from "./documents/documents.module";
+import { ConsentModule } from "./consent/consent.module";
 import { MilestonesModule } from "./milestones/milestones.module";
 import { AuthzModule } from "./authz/authz.module";
 import { CatalogModule } from "./catalog/catalog.module";
@@ -64,6 +65,7 @@ import { UsersModule } from "./users/users.module";
     IncidentsModule,
     ArtworkModule,
     DocumentsModule,
+    ConsentModule,
     MealsModule,
     CatalogModule,
     NotificationsModule,

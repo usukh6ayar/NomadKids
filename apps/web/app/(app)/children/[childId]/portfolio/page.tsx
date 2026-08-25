@@ -42,6 +42,7 @@ import { AgeSectionShell } from "@/components/child/age-section-shell";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { ChildGallery } from "@/components/media/child-gallery";
 import { ChildMilestones } from "@/components/child/child-milestones";
+import { ChildConsent } from "@/components/child/child-consent";
 import { ReportDialog } from "@/components/reports/report-dialog";
 import { ageInYears, formatDate, fullName } from "@/lib/format";
 import { PORTFOLIO } from "@/lib/vocabulary";
@@ -298,6 +299,12 @@ export default function PortfolioPage() {
         like. The hub is a teacher's working screen; this is the family's.
       */}
       <ChildMilestones childId={childId} isStaff={isStaff} />
+
+      {/*
+        RFP §16. On the portfolio rather than the child hub: it is the family's
+        decision about the family's record, and this is the family's screen.
+      */}
+      <ChildConsent childId={childId} isGuardian={isGuardian} />
 
       <BirthdaySection
         childId={childId}

@@ -974,6 +974,46 @@ export const documentSchema = z.object({
 });
 export type LibraryDocument = z.infer<typeof documentSchema>;
 
+// ── Consent — RFP §16 ────────────────────────────────────────────────────────
+
+export const consentKindSchema = z.enum(["DATA_PROCESSING", "PHOTO_PUBLISHING"]);
+
+export const CONSENT_KIND_LABEL: Record<string, string> = {
+  DATA_PROCESSING: "Мэдээлэл ашиглах зөвшөөрөл",
+  PHOTO_PUBLISHING: "Зураг нийтлэх зөвшөөрөл",
+};
+
+export const consentDecisionSchema = z.object({
+  granted: z.boolean(),
+  decidedAt: z.string().nullish(),
+  /**
+   * Whether the family has been asked at all.
+   *
+   * ★ Distinct from `granted: false`. "Refused" and "never asked" are different
+   * facts, and only the second one has an action attached — the kindergarten
+   * still needs to ask.
+   */
+  asked: z.boolean(),
+});
+
+export const consentRecordSchema = z.object({
+  id: uuidSchema,
+  kind: consentKindSchema,
+  granted: z.boolean(),
+  decidedAt: z.string(),
+  note: z.string().nullish(),
+  decidedBy: personRefSchema.nullish(),
+});
+
+export const childConsentSchema = z.object({
+  current: z.object({
+    dataProcessing: consentDecisionSchema,
+    photoPublishing: consentDecisionSchema,
+  }),
+  history: z.array(consentRecordSchema),
+});
+export type ChildConsent = z.infer<typeof childConsentSchema>;
+
 // ── Tenancy ──────────────────────────────────────────────────────────────────
 
 export const kindergartenSchema = z.object({

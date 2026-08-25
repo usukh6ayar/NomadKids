@@ -270,6 +270,7 @@ model User {
   artworkComparisons    ArtworkComparison[]       @relation("ComparisonAuthor")
   documentsPublished    Document[]                @relation("DocumentPublishedBy")
   documentBookmarks     DocumentBookmark[]        @relation("DocumentBookmarkUser")
+  consentsDecided       ConsentRecord[]           @relation("ConsentDecidedBy")
 
   @@index([deletedAt])
   @@map("users")
@@ -438,6 +439,7 @@ model Kindergarten {
   artworkComparisons    ArtworkComparison[]
   documents             Document[]
   documentBookmarks     DocumentBookmark[]
+  consents              ConsentRecord[]
 
   @@index([deletedAt])
   @@map("kindergartens")
@@ -584,6 +586,7 @@ model Child {
   vaccinations        VaccinationRecord[]
   safetyIncidents     SafetyIncident[]
   artworkComparisons  ArtworkComparison[]
+  consents            ConsentRecord[]
 
   @@unique([kindergartenId, nationalId])
   @@index([kindergartenId, status])
@@ -1172,6 +1175,58 @@ model DocumentBookmark {
   @@unique([documentId, userId])
   @@index([userId, createdAt(sort: Desc)])
   @@map("document_bookmarks")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Consent — RFP §16
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// What a family is being asked to agree to — RFP §16.
+///
+/// ★ Two kinds, because §16 asks for two separate things: "Эцэг эхээс мэдээлэл
+/// ашиглах зөвшөөрөл авах" and, in its own sentence, "Зураг нийтлэх зөвшөөрлийг
+/// тусад нь бүртгэх" — photo publishing recorded *separately*. A single
+/// "consented: true" would make refusing photographs mean refusing the system.
+enum ConsentKind {
+  /// Using the child's information in the system at all.
+  DATA_PROCESSING
+  /// Publishing the child's photographs beyond the family — RFP §16.
+  PHOTO_PUBLISHING
+}
+
+/// One guardian's decision, with the date it was made.
+///
+/// ★ Rows are never updated to reverse a decision — a new row supersedes.
+///
+/// Consent is a legal record: "we had permission on the day we published" is
+/// the question it exists to answer, and an `UPDATE` that flipped a boolean
+/// would destroy exactly that. `decidedAt` orders them and the latest wins.
+model ConsentRecord {
+  id             String      @id @default(uuid()) @db.Uuid
+  kindergartenId String      @db.Uuid
+  childId        String      @db.Uuid
+  kind           ConsentKind
+  granted        Boolean
+
+  /// The guardian who decided. Not nullable: an unattributed consent record is
+  /// not evidence of anything.
+  decidedById String   @db.Uuid
+  decidedAt   DateTime @default(now())
+  /// What they were shown, so a later dispute can establish what was agreed.
+  note        String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  decidedBy    User         @relation("ConsentDecidedBy", fields: [decidedById], references: [id], onDelete: Restrict)
+
+  /// The current answer: latest row per child per kind.
+  @@index([childId, kind, decidedAt(sort: Desc)])
+  @@index([kindergartenId, kind])
+  @@map("consent_records")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

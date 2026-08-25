@@ -49,6 +49,7 @@ export const qk = {
   health: (childId: string) => ["child", childId, "health"] as const,
   incidents: (childId: string) => ["child", childId, "incidents"] as const,
   artwork: (childId: string) => ["child", childId, "artwork"] as const,
+  consent: (childId: string) => ["child", childId, "consent"] as const,
   configDomains: (kindergartenId: string) =>
     ["admin", "config", "domains", kindergartenId] as const,
   configLevels: (kindergartenId: string) => ["admin", "config", "levels", kindergartenId] as const,
