@@ -14,6 +14,9 @@ import { ErrorState, LoadingState } from "@/components/ui/states";
 import { DashboardStats } from "@/components/dashboard/dashboard-stats";
 import { GroupsSection } from "@/components/dashboard/groups-section";
 import { NeedsAttentionAlerts } from "@/components/dashboard/needs-attention-alerts";
+import { ClassBoardNotice } from "@/components/dashboard/class-board-notice";
+import { GenderRatio } from "@/components/dashboard/gender-ratio";
+import { MonthBirthdays } from "@/components/dashboard/month-birthdays";
 import { ObservationMix } from "@/components/dashboard/observation-mix";
 import { RecentObservations } from "@/components/dashboard/recent-observations";
 import { TermProgress } from "@/components/dashboard/term-progress";
@@ -144,6 +147,8 @@ function TeacherDashboard() {
     recentObservations,
     currentTerm,
     birthdaysToday,
+    birthdaysThisMonth,
+    boardNotice,
     termProgress,
     observationsByType,
   } = dashboard;
@@ -195,6 +200,30 @@ function TeacherDashboard() {
       */}
       <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 md:gap-4 lg:grid-cols-12 lg:gap-5">
         <DashboardStats counts={counts} />
+
+        {/*
+          The roster's shape, beside its size. Both read `/children/summary`
+          under one query key, so the pair costs a single request.
+        */}
+        <div className="md:col-span-2 lg:col-span-6">
+          <GenderRatio />
+        </div>
+
+        {/*
+          ★ The class board takes the wide half.
+
+          It is the only widget here carrying a body of text rather than a
+          number, and the sketch gives it the largest panel for that reason —
+          a paragraph in a quarter-width column wraps to a column of two-word
+          lines.
+        */}
+        <div className="md:col-span-2 lg:col-span-7">
+          <ClassBoardNotice notice={boardNotice} />
+        </div>
+
+        <div className="md:col-span-2 lg:col-span-5">
+          <MonthBirthdays birthdays={birthdaysThisMonth} />
+        </div>
 
         {/*
           Six columns on a desktop, its own row on a phone. `GroupsSection`

@@ -190,7 +190,13 @@ describe("the dashboard's grid", () => {
   it("keeps the counts to half a row rather than the full width", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      { path: "/children/summary", body: { total: 5, averageAgeMonths: 41 } },
+      {
+        path: "/children/summary",
+        // `boys`/`girls` are required since the sex-split widget shipped. A
+        // fixture missing them fails Zod, the query errors, and the card
+        // renders nothing — which is the contract working, not a flake.
+        body: { total: 5, averageAgeMonths: 41, boys: 3, girls: 2 },
+      },
     ]);
     renderWithProviders(<DashboardStats counts={{ children: 5, groups: 1, pendingReviews: 0 }} />);
 
@@ -212,7 +218,13 @@ describe("the dashboard's grid", () => {
   it("still names the counts for a screen reader", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      { path: "/children/summary", body: { total: 5, averageAgeMonths: 41 } },
+      {
+        path: "/children/summary",
+        // `boys`/`girls` are required since the sex-split widget shipped. A
+        // fixture missing them fails Zod, the query errors, and the card
+        // renders nothing — which is the contract working, not a flake.
+        body: { total: 5, averageAgeMonths: 41, boys: 3, girls: 2 },
+      },
     ]);
     renderWithProviders(<DashboardStats counts={{ children: 5, groups: 1, pendingReviews: 0 }} />);
 
@@ -230,7 +242,13 @@ describe("the dashboard's grid", () => {
   it("shows the roster's mean age, worded", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      { path: "/children/summary", body: { total: 5, averageAgeMonths: 41 } },
+      {
+        path: "/children/summary",
+        // `boys`/`girls` are required since the sex-split widget shipped. A
+        // fixture missing them fails Zod, the query errors, and the card
+        // renders nothing — which is the contract working, not a flake.
+        body: { total: 5, averageAgeMonths: 41, boys: 3, girls: 2 },
+      },
     ]);
     renderWithProviders(<DashboardStats counts={{ children: 5, groups: 1, pendingReviews: 0 }} />);
 

@@ -45,6 +45,8 @@ export class DashboardService {
       progress,
       observationTypes,
       observationCounts,
+      birthdaysThisMonth,
+      boardNotice,
     ] = await Promise.all([
         this.repo.pendingReviewCount(groupIds),
         this.repo.recentObservations(groupIds),
@@ -62,6 +64,8 @@ export class DashboardService {
         term && term.startsOn && term.endsOn
           ? this.repo.observationCountsByType(groupIds, term.startsOn, term.endsOn)
           : Promise.resolve([]),
+        this.repo.birthdaysThisMonth(groupIds, today),
+        this.repo.latestBoardNotice(kindergartenIds),
       ]);
 
     return {
@@ -90,6 +94,37 @@ export class DashboardService {
           group: c.enrollments[0]?.group ?? null,
         })),
       },
+      /**
+       * ★ This month's birthdays, alongside today's.
+       *
+       * Two lists rather than one filtered on the client: `birthdaysToday` is
+       * what the alert block reacts to, and a card that only ever lights up on
+       * the day itself is invisible for twenty-nine days a month. This one is
+       * what a teacher plans against.
+       */
+      birthdaysThisMonth: birthdaysThisMonth.map((c) => ({
+        id: c.id,
+        lastName: c.lastName,
+        firstName: c.firstName,
+        dateOfBirth: c.dateOfBirth.toISOString(),
+        photoMediaFileId: c.photoMediaFileId,
+      })),
+      /**
+       * The class board's most recent notice, with its read count.
+       *
+       * Null when nothing has been published — the widget then renders nothing
+       * rather than an empty frame, the same rule `ObservationMix` follows.
+       */
+      boardNotice: boardNotice
+        ? {
+            id: boardNotice.id,
+            title: boardNotice.title,
+            body: boardNotice.body,
+            publishedAt: boardNotice.publishedAt?.toISOString() ?? null,
+            isImportant: boardNotice.isImportant,
+            readCount: boardNotice._count.reads,
+          }
+        : null,
       /** RFP §12.1 — "тухайн өдөр төрсөн өдөртэй хүүхэд". */
       birthdaysToday: birthdays.map((c) => ({
         id: c.id,

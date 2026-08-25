@@ -78,7 +78,7 @@ export class ChildrenService {
    */
   async rosterSummary(actor: Actor, query: ListChildrenQuery) {
     const visible = await this.authz.visibleChildrenWhere(actor);
-    const rows = await this.repo.rosterAges(visible, {
+    const rows = await this.repo.rosterFacts(visible, {
       q: query.q,
       status: query.status,
       groupId: query.groupId,
@@ -92,6 +92,17 @@ export class ChildrenService {
 
     return {
       total: rows.length,
+      /*
+       * ★ Counted, not derived from one another.
+       *
+       * `Sex` is a two-value enum today, so `girls = total - boys` would be
+       * correct — and would silently start counting children with no recorded
+       * sex as girls the day the column becomes nullable or gains a third
+       * value. Two counts that can disagree with `total` are more honest than
+       * one that cannot.
+       */
+      boys: rows.filter((row) => row.sex === "MALE").length,
+      girls: rows.filter((row) => row.sex === "FEMALE").length,
       // Null rather than 0 where nothing is countable: a roster of children
       // with no recorded birthday has no average age, and "0 нас" is a claim.
       averageAgeMonths:

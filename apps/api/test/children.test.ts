@@ -980,3 +980,29 @@ describe("roster summary", () => {
     expect(res.body.total).toBe(1);
   });
 });
+
+describe("the roster's sex split", () => {
+  /**
+   * ★ Counted independently rather than subtracted.
+   *
+   * `Sex` is a two-value enum today, so `girls = total - boys` would agree —
+   * and would silently file every child under the remaining label the day the
+   * column becomes nullable or gains a third value.
+   */
+  it("counts boys and girls separately", async () => {
+    for (const sex of ["FEMALE", "FEMALE", "MALE"] as const) {
+      const child = await createChild(a.kindergarten.id, { sex });
+      await enrollChild(a.kindergarten.id, child.id, a.group.id, a.schoolYear.id);
+    }
+
+    const res = await request(server())
+      .get("/v1/children/summary")
+      .set("Cookie", teacherA.cookies);
+
+    expect(res.status).toBe(200);
+    expect(res.body.girls).toBe(2);
+    // Two boys: the scenario's own child plus the one created above.
+    expect(res.body.boys).toBe(2);
+    expect(res.body.boys + res.body.girls).toBe(res.body.total);
+  });
+});
