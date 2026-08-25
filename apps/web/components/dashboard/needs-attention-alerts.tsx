@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import type { TeacherDashboard } from "@kinder/contracts";
 import { ChildAvatar } from "@/components/media/media-image";
 import { Button } from "@/components/ui/button";
-import { Card, SectionHeader } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { fullName } from "@/lib/format";
 
 /**
@@ -44,17 +44,20 @@ export function NeedsAttentionAlerts({
   // on the day, so an id pinned to one of them would resolve to nothing on a day
   // that card is absent — a silent accessibility failure, since the section
   // still looks right.
+  /*
+   * ★ No heading of its own any more.
+   *
+   * "Анхаарах зүйлс" sat above these cards as a full `SectionHeader`, and with
+   * one birthday to report the block occupied a third of the screen to say so.
+   * The heading was also the third thing naming the same idea: the section's
+   * `aria-label`, the heading, and then each card's own title.
+   *
+   * These read as inline notifications now — the row is what it is without a
+   * label announcing that a notification is a notification. The landmark keeps
+   * the name for a screen reader.
+   */
   return (
-    <section aria-label="Анхаарах зүйлс" className="flex flex-col gap-3">
-      <SectionHeader
-        as="h2"
-        title="Анхаарах зүйлс"
-        // No lede: it read "Өнөөдөр таны хариу үйлдэл шаардаж буй зүйлс", which
-        // is the title in more words. This section renders only when it has
-        // something to say, so its presence is already the message.
-        className="mb-0"
-      />
-
+    <section aria-label="Анхаарах зүйлс" className="flex flex-col gap-2">
       {birthdaysToday.length > 0 ? (
         <AlertCard
           tone="sun"
@@ -166,9 +169,10 @@ function AlertCard({
   const rule = tone === "sun" ? "border-l-sun" : "border-l-peach";
 
   return (
-    <Card className={`border-l-4 px-4 py-4 ${rule}`}>
-      <div className="flex flex-wrap items-start gap-3">
-        <span className={`grid size-10 shrink-0 place-items-center rounded-control ${tint}`}>
+    <Card pad="compact" className={`border-l-4 ${rule}`}>
+      <div className="flex flex-wrap items-center gap-3">
+        {/* 32px, not 40px: this labels a line of text, it is not a feature. */}
+        <span className={`grid size-8 shrink-0 place-items-center rounded-control ${tint}`}>
           {icon}
         </span>
         <div className="min-w-0 flex-1">
@@ -178,7 +182,7 @@ function AlertCard({
         {action ? <div className="shrink-0">{action}</div> : null}
       </div>
 
-      {children ? <div className="mt-3">{children}</div> : null}
+      {children ? <div className="mt-2.5">{children}</div> : null}
     </Card>
   );
 }
