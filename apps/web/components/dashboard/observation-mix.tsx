@@ -44,7 +44,7 @@ export function ObservationMix({
         lede={term ? `${term} — нийт ${total} ажиглалт` : `Нийт ${total} ажиглалт`}
       />
 
-      <Card pad="roomy" className="flex flex-col gap-3">
+      <Card pad="roomy" className="flex flex-col gap-2.5 md:gap-3">
         {observationsByType.map((row) => {
           const share = Math.round((row.count / total) * 100);
 

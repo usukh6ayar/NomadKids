@@ -236,7 +236,7 @@ function ChildRow({
       // The whole row is one card and one link. `hover:border-primary` is the
       // reference's `.kidrow:hover` — the affordance is the border moving to
       // the brand colour, not a background wash.
-      className="flex min-h-[64px] items-center gap-3 rounded-row border border-border bg-surface px-4 py-3 transition-colors hover:border-primary"
+      className="flex min-h-[64px] items-center gap-2.5 rounded-row border border-border bg-surface px-3 py-2.5 transition-colors hover:border-primary md:gap-3 md:px-4 md:py-3"
     >
       <ChildAvatar child={child} size={44} />
       <span className="min-w-0 flex-1">
@@ -289,7 +289,7 @@ function RosterSummary({ search }: { search: string }) {
   if (!data) return null;
 
   return (
-    <section aria-label="Товч тоо" className="grid grid-cols-2 gap-3">
+    <section aria-label="Товч тоо" className="grid grid-cols-2 gap-2 md:gap-3">
       <Card pad="compact">
         <p className="text-body text-muted">Нийт хүүхэд</p>
         <p className="mt-1 text-display font-semibold tabular-nums text-ink">{data.total}</p>
@@ -342,10 +342,13 @@ function MyChildren() {
       ) : null}
 
       {data && data.length > 0 ? (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-2">
           {data.map((child) => (
             <Link key={child.id} href={`/children/${child.id}`} className="block">
-              <Card className="flex min-h-[88px] items-center gap-4 px-4 py-4 hover:bg-canvas">
+              <Card
+                pad="roomy"
+                className="flex min-h-[88px] items-center gap-3 hover:bg-canvas md:gap-4"
+              >
                 <ChildAvatar child={child} size={56} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium text-ink">{fullName(child)}</span>

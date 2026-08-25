@@ -69,7 +69,7 @@ export function NeedsAttentionAlerts({
               <li key={child.id}>
                 <Link
                   href={`/children/${child.id}`}
-                  className="flex min-h-[44px] items-center gap-2 rounded-control border border-border bg-surface px-3 py-1.5 hover:bg-canvas"
+                  className="flex min-h-[44px] items-center gap-2 rounded-control border border-border bg-surface px-2.5 py-1.5 hover:bg-canvas md:px-3"
                 >
                   <ChildAvatar child={child} size={28} />
                   <span className="truncate font-medium text-ink">{fullName(child)}</span>
@@ -99,7 +99,7 @@ export function NeedsAttentionAlerts({
               <li key={child.id}>
                 <Link
                   href={`/children/${child.id}`}
-                  className="flex min-h-[52px] items-center gap-3 rounded-control border border-border bg-surface px-3 py-2 hover:bg-canvas"
+                  className="flex min-h-[52px] items-center gap-2.5 rounded-control border border-border bg-surface px-2.5 py-2 hover:bg-canvas md:gap-3 md:px-3"
                 >
                   <ChildAvatar child={child} size={36} />
                   <span className="min-w-0 flex-1">
@@ -176,7 +176,7 @@ function AlertCard({
           {icon}
         </span>
         <div className="min-w-0 flex-1">
-          <h3 className="font-semibold text-ink">{title}</h3>
+          <h3 className="text-body font-semibold leading-tight text-ink md:text-lead">{title}</h3>
           {lede ? <p className="mt-0.5 text-body text-muted">{lede}</p> : null}
         </div>
         {action ? <div className="shrink-0">{action}</div> : null}

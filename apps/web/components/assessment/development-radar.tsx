@@ -25,7 +25,16 @@ import { cn } from "@/lib/utils";
  * revealed, because "show me the numbers" is a request sighted people make of
  * charts too.
  *
- * ★★★ Scores are levels, not percentages.
+ * ★★★ The figure never sets the page's minimum width.
+ *
+ * It is capped at 200px on a phone rather than 260px, and the `viewBox` scales
+ * the drawing rather than clipping it — an SVG with a `viewBox` and no fixed
+ * width cannot overflow its container. The score table beside it is the part
+ * that can, so it keeps its own `overflow-x-auto`: a table scrolls inside
+ * itself rather than pushing the page sideways, which is the rule `globals.css`
+ * states for every wide element in this product.
+ *
+ * ★★★★ Scores are levels, not percentages.
  *
  * `AssessmentLevel` is an ordinal 1–4 scale a kindergarten may rename, so the
  * value only positions the point and every label the reader sees is the level's
@@ -81,7 +90,7 @@ export function DevelopmentRadar({
   const average = cohort ? axes.map((a) => cohort.averageByDomain[a.domain.id] ?? null) : null;
 
   return (
-    <div className={cn("flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-6", className)}>
+    <div className={cn("flex flex-col gap-3 md:flex-row md:items-center md:gap-6", className)}>
       {/*
         `aria-hidden`: everything this draws is in the table below, and a
         screen reader walking a polygon's coordinates learns nothing.
@@ -90,7 +99,7 @@ export function DevelopmentRadar({
         viewBox={`0 0 ${SIZE} ${SIZE}`}
         aria-hidden="true"
         focusable="false"
-        className="mx-auto w-full max-w-[260px] shrink-0"
+        className="mx-auto w-full max-w-[200px] shrink-0 md:max-w-[260px]"
       >
         {/* The rings, one per level, so the grid itself is the scale. */}
         {Array.from({ length: MAX_LEVEL }, (_, ring) => (

@@ -232,7 +232,7 @@ export default function PortfolioPage() {
                   href={`#age-${age}`}
                   aria-label={`${age} нас — ${filled ? "мэдээлэлтэй" : "хоосон"}`}
                   className={cn(
-                    "flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-row border px-2 py-2 text-body font-semibold transition-colors",
+                    "flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-row border px-1.5 py-2 text-caption font-semibold transition-colors md:min-h-[64px] md:px-2 md:text-body",
                     filled
                       ? "border-mint bg-mint text-mint-ink hover:opacity-90"
                       : "border-border bg-surface text-muted hover:border-primary hover:text-ink",
@@ -410,14 +410,14 @@ function AboutMeSection({
               {data?.heightCm || data?.weightKg || data?.recordedOn ? (
                 <div className="flex flex-wrap gap-2">
                   {data?.heightCm ? (
-                    <span className="inline-flex items-center gap-2 rounded-control bg-canvas px-3 py-2 text-body">
+                    <span className="inline-flex items-center gap-2 rounded-control bg-canvas px-2.5 py-1.5 text-caption md:px-3 md:py-2 md:text-body">
                       <Ruler size={16} aria-hidden="true" className="text-muted" />
                       <span className="text-muted">Өндөр</span>
                       <strong className="font-semibold text-ink">{String(data.heightCm)} см</strong>
                     </span>
                   ) : null}
                   {data?.weightKg ? (
-                    <span className="inline-flex items-center gap-2 rounded-control bg-canvas px-3 py-2 text-body">
+                    <span className="inline-flex items-center gap-2 rounded-control bg-canvas px-2.5 py-1.5 text-caption md:px-3 md:py-2 md:text-body">
                       <Weight size={16} aria-hidden="true" className="text-muted" />
                       <span className="text-muted">Жин</span>
                       <strong className="font-semibold text-ink">{String(data.weightKg)} кг</strong>
@@ -429,7 +429,7 @@ function AboutMeSection({
                     measurement of a growing child that nobody can place in time.
                   */}
                   {data?.recordedOn ? (
-                    <span className="inline-flex items-center gap-2 rounded-control bg-canvas px-3 py-2 text-body">
+                    <span className="inline-flex items-center gap-2 rounded-control bg-canvas px-2.5 py-1.5 text-caption md:px-3 md:py-2 md:text-body">
                       <CalendarDays size={16} aria-hidden="true" className="text-muted" />
                       <span className="text-muted">Хэмжсэн</span>
                       <strong className="font-semibold text-ink">
@@ -440,13 +440,13 @@ function AboutMeSection({
                 </div>
               ) : null}
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 md:grid-cols-2">
                 {ABOUT_FIELDS.filter((f) => data?.[f.key]).map((field) => (
                   <article
                     key={field.key}
                     className={cn(
-                      "rounded-row border border-border bg-canvas px-4 py-3.5",
-                      field.long && "sm:col-span-2",
+                      "rounded-row border border-border bg-canvas px-3 py-3 md:px-4 md:py-3.5",
+                      field.long && "md:col-span-2",
                     )}
                   >
                     <h3 className="mb-1.5 flex items-center gap-2 text-caption font-semibold text-ink">
@@ -515,7 +515,7 @@ function AboutMeSection({
               </Field>
             ))}
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2">
               <Field label="Өндөр (см)" error={errors.heightCm}>
                 {({ id, describedBy, invalid }) => (
                   <Input
@@ -705,9 +705,9 @@ function AgeSection({
         {!isLoading && !editing ? (
           hasContent ? (
             <div className="flex flex-col gap-3">
-              <dl className="grid gap-3 sm:grid-cols-2">
+              <dl className="grid gap-3 md:grid-cols-2">
                 {AGE_FIELDS.filter((f) => profile?.[f.key]).map((field) => (
-                  <div key={field.key} className={field.long ? "sm:col-span-2" : undefined}>
+                  <div key={field.key} className={field.long ? "md:col-span-2" : undefined}>
                     <dt className="text-caption font-medium text-muted">{field.label}</dt>
                     <dd className="mt-0.5 whitespace-pre-wrap text-body text-ink">
                       {String(profile?.[field.key])}
@@ -752,13 +752,13 @@ function AgeSection({
               }
             />
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2">
               {AGE_FIELDS.map((field) => (
                 <Field
                   key={field.key}
                   label={field.label}
                   error={errors[field.key]}
-                  className={field.long ? "sm:col-span-2" : undefined}
+                  className={field.long ? "md:col-span-2" : undefined}
                 >
                   {({ id, describedBy, invalid }) =>
                     field.long ? (
@@ -878,7 +878,7 @@ function BirthdaySection({
       {isLoading ? (
         <LoadingState rows={1} />
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-2">
           {PORTFOLIO_AGES.map((age) => {
             const note = notes.find((n) => n.age === age);
             const isEditing = editingAge === age;
@@ -895,7 +895,7 @@ function BirthdaySection({
             const reached = currentAge === null || age <= currentAge;
 
             return (
-              <Card key={age} className="px-4 py-4">
+              <Card key={age} pad="roomy">
                 <details
                   open={Boolean(note?.note) || reached}
                   className="flex flex-col gap-2 [&[open]_svg.chevron]:rotate-180"

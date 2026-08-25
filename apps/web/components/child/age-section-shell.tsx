@@ -118,11 +118,14 @@ export function AgeSectionShell({
         */}
         <summary
           className={cn(
-            "flex min-h-[44px] cursor-pointer list-none items-center gap-3 px-4 py-3.5 sm:px-5",
+            "flex min-h-[44px] cursor-pointer list-none items-center gap-2.5 px-3 py-3 md:gap-3 md:px-5 md:py-3.5",
             "[&::-webkit-details-marker]:hidden",
           )}
         >
-          <h2 id={headingId} className="text-title font-semibold leading-[1.35] text-ink">
+          <h2
+            id={headingId}
+            className="min-w-0 truncate text-lead font-semibold leading-tight text-ink md:text-title"
+          >
             {age} нас
           </h2>
           {/* The label carries the state; the tint only reinforces it. */}
@@ -134,7 +137,7 @@ export function AgeSectionShell({
           />
         </summary>
 
-        <div className="border-t border-border-soft px-4 py-4 sm:px-5">
+        <div className="border-t border-border-soft px-3 py-3 md:px-5 md:py-4">
           {children}
           {action ? <div className="mt-4 flex flex-wrap gap-2">{action}</div> : null}
         </div>
