@@ -1236,6 +1236,20 @@ export const adminDashboardSchema = z.object({
     guardians: z.number(),
   }),
   /**
+   * RFP §12.2 — "Хадгалалтын хэмжээ" and "Тайлангийн статистик".
+   *
+   * `totalBytes` is the size of the files this system has rows for, not of the
+   * bucket: an object orphaned by a crash between the upload and the row is
+   * invisible to it. The label says "stored files" for that reason.
+   */
+  storage: z
+    .object({
+      totalBytes: z.number(),
+      fileCount: z.number(),
+      reports: z.object({ total: z.number(), done: z.number(), failed: z.number() }),
+    })
+    .nullish(),
+  /**
    * Assessment progress per group.
    *
    * A ratio, not a chart. "12 of 18 assessed" tells an administrator which
@@ -1261,6 +1275,26 @@ export const adminDashboardSchema = z.object({
   ),
 });
 export type AdminDashboard = z.infer<typeof adminDashboardSchema>;
+
+/**
+ * One audit row, as the browser screen reads it — RFP §2.1.
+ *
+ * `metadata` is `unknown`: it is a free-form JSON column whose shape differs by
+ * action, and typing it would be a promise this schema cannot keep. The screen
+ * renders it as formatted JSON for the cases where an administrator needs to
+ * see what actually changed.
+ */
+export const auditEntrySchema = z.object({
+  id: uuidSchema,
+  action: z.string(),
+  objectType: z.string().nullish(),
+  objectId: uuidSchema.nullish(),
+  childId: uuidSchema.nullish(),
+  actorUserId: uuidSchema.nullish(),
+  createdAt: z.string(),
+  metadata: z.unknown().nullish(),
+});
+export type AuditEntry = z.infer<typeof auditEntrySchema>;
 
 /** Audit actions, in Mongolian. A raw enum is meaningless to an administrator. */
 export const AUDIT_ACTION_LABEL: Record<string, string> = {

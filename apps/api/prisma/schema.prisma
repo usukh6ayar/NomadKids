@@ -271,6 +271,7 @@ model User {
   documentsPublished    Document[]                @relation("DocumentPublishedBy")
   documentBookmarks     DocumentBookmark[]        @relation("DocumentBookmarkUser")
   consentsDecided       ConsentRecord[]           @relation("ConsentDecidedBy")
+  mealsRecorded         MealRecord[]              @relation("MealRecordedBy")
 
   @@index([deletedAt])
   @@map("users")
@@ -440,6 +441,7 @@ model Kindergarten {
   documents             Document[]
   documentBookmarks     DocumentBookmark[]
   consents              ConsentRecord[]
+  mealRecords           MealRecord[]
 
   @@index([deletedAt])
   @@map("kindergartens")
@@ -587,6 +589,7 @@ model Child {
   safetyIncidents     SafetyIncident[]
   artworkComparisons  ArtworkComparison[]
   consents            ConsentRecord[]
+  mealRecords         MealRecord[]
 
   @@unique([kindergartenId, nationalId])
   @@index([kindergartenId, status])
@@ -650,6 +653,7 @@ model Enrollment {
   termReports        TermReport[]
   attendanceRecords  Attendance[]
   attendanceRequests AttendanceRequest[]
+  mealRecords        MealRecord[]
 
   @@index([groupId, status])
   @@index([schoolYearId, status])
@@ -1229,6 +1233,69 @@ model ConsentRecord {
   @@map("consent_records")
 }
 
+/// Which sitting — `нэмэлт.md` §2.
+enum MealKind {
+  BREAKFAST // Өглөөний цай
+  LUNCH // Үдийн хоол
+  AFTERNOON_SNACK // Үдээс хойших цай
+  EXTRA // Нэмэлт хоол
+}
+
+/// Whether the child ate — `нэмэлт.md` §2.
+enum MealStatus {
+  TAKEN // Авсан
+  NOT_TAKEN // Аваагүй
+  PARTIAL // Хэсэгчлэн
+  SPECIAL // Тусгай хоол
+}
+
+/// One child, one day, one sitting — `нэмэлт.md` §2.
+///
+/// ★ Separate from `Attendance`, and that separation is the point.
+///
+/// §17 states the governing principle: a fact is recorded once and reused. It
+/// would be tempting to infer "ate lunch" from "was present", and §3 shows why
+/// that fails — the food cost is computed from **hooллосон өдөр**, days the
+/// child actually ate, which is not the same as days they attended. A child
+/// present on a half day, or collected before lunch, attended and did not eat.
+/// Deriving one from the other would make the cost calculation silently wrong.
+///
+/// ★★ Anchored to `Enrollment` like `Attendance`, for the same reason: a meal
+/// served in January belongs to whichever kindergarten served it, and a
+/// transfer must not rewrite that.
+model MealRecord {
+  id             String     @id @default(uuid()) @db.Uuid
+  kindergartenId String     @db.Uuid
+  childId        String     @db.Uuid
+  enrollmentId   String     @db.Uuid
+  date           DateTime   @db.Date
+  kind           MealKind
+  status         MealStatus
+  note           String?
+
+  recordedById String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  enrollment   Enrollment   @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
+  recordedBy   User?        @relation("MealRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  /// One row per enrollment per day per sitting. Replaced by a **partial**
+  /// unique index in the migration — same reasoning as `Attendance`: Postgres
+  /// treats NULLs as distinct, so the plain form would let a soft-deleted row
+  /// block its own sitting for ever.
+  @@unique([enrollmentId, date, kind])
+  /// The group's day sheet: every child, one date.
+  @@index([kindergartenId, date])
+  /// A child's month, and the "days eaten" count a cost calculation needs.
+  @@index([childId, date])
+  @@map("meal_records")
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Growth — RFP §7
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1468,6 +1535,14 @@ enum AttendanceStatus {
   EXCUSED // Чөлөөтэй
   SICK // Өвчтэй
   ABSENT // Тасалсан
+  /// ★ Restored 2026-08-25. `нэмэлт.md` §1 lists six statuses and this is the
+  /// sixth; it existed in the first attendance migration and was dropped when
+  /// that migration was rewritten, which nothing recorded as a decision.
+  ///
+  /// It is the escape hatch every enum in this schema keeps: a day that is none
+  /// of the five is otherwise recorded as the nearest wrong one, and an
+  /// attendance figure that feeds a funding calculation cannot afford that.
+  OTHER // Бусад
 }
 
 enum AttendanceRequestStatus {

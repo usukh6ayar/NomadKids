@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import { FileText, GraduationCap, HardDrive, Heart, School, Users } from "lucide-react";
 import { adminDashboardSchema, AUDIT_ACTION_LABEL } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -10,7 +11,8 @@ import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { formatRelative } from "@/lib/format";
+import { formatFileSize, formatRelative } from "@/lib/format";
+import { StatCard } from "@/components/ui/stat-card";
 
 /**
  * Administration.
@@ -67,7 +69,7 @@ function AdminDashboard() {
     );
   }
 
-  const { counts, assessmentCoverage, recentActivity, currentTerm } = data!;
+  const { counts, assessmentCoverage, recentActivity, currentTerm, storage } = data!;
 
   return (
     <div className="flex flex-col gap-6 py-2">
@@ -78,11 +80,75 @@ function AdminDashboard() {
         </p>
       </header>
 
-      <section aria-label="Товч мэдээлэл" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="Хүүхэд" value={counts.children} />
-        <Stat label="Бүлэг" value={counts.groups} />
-        <Stat label="Багш, ажилтан" value={counts.staff} />
-        <Stat label="Эцэг эх" value={counts.guardians} />
+      {/*
+        ★ RFP §12.2, and the one screen in this product where a big figure is
+        the content rather than context.
+
+        The teacher's dashboard deliberately keeps its counts small — its own
+        note argues that "a dashboard whose largest elements are four numbers
+        teaches a teacher to read numbers rather than to act", and that is right
+        for someone whose next action is with a child. An administrator's job
+        *is* the aggregate: how many children, how much storage, how many
+        reports. So the figures are large here and nowhere else.
+
+        `art` is a slot. These are lucide glyphs until the illustrated icons
+        arrive; swapping them is a change at this call site.
+      */}
+      <section aria-label="Товч мэдээлэл" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <StatCard
+          label="Нийт хүүхэд"
+          value={counts.children}
+          unit="хүүхэд"
+          size="wide"
+          tone="cornflower"
+          art={<Users size={40} aria-hidden />}
+        />
+        <StatCard
+          label="Бүлэг"
+          value={counts.groups}
+          tone="mint"
+          art={<School size={28} aria-hidden />}
+        />
+        <StatCard
+          label="Багш, ажилтан"
+          value={counts.staff}
+          tone="sky"
+          art={<GraduationCap size={28} aria-hidden />}
+        />
+        <StatCard
+          label="Эцэг эх"
+          value={counts.guardians}
+          tone="peach"
+          art={<Heart size={28} aria-hidden />}
+        />
+
+        {/*
+          Absent rather than zero when the API has not sent it: an older
+          response has no `storage` key, and "0 MB" would be a claim about the
+          bucket rather than a slower card.
+        */}
+        {storage ? (
+          <>
+            <StatCard
+              label="Хадгалсан файл"
+              value={formatFileSize(storage.totalBytes)}
+              unit={`${storage.fileCount} файл`}
+              tone="teal"
+              art={<HardDrive size={28} aria-hidden />}
+            />
+            <StatCard
+              label="Тайлан"
+              value={storage.reports.done}
+              unit={
+                storage.reports.failed > 0
+                  ? `${storage.reports.total} нийт · ${storage.reports.failed} амжилтгүй`
+                  : `${storage.reports.total} нийт`
+              }
+              tone="sun"
+              art={<FileText size={28} aria-hidden />}
+            />
+          </>
+        ) : null}
       </section>
       {/*
         The admin's actual work lives on these screens; this page is the read-only
@@ -104,6 +170,7 @@ function AdminDashboard() {
             title="Үнэлгээний тохиргоо"
             note="Чиглэл, түвшин, ажиглалтын төрөл"
           />
+          <AdminLink href="/admin/audit" title="Үйлдлийн түүх" note="Хэн, хэзээ, юу хийсэн" />
           <AdminLink
             href="/admin/kindergarten"
             title="Цэцэрлэгийн мэдээлэл"
@@ -186,15 +253,6 @@ function AdminDashboard() {
         )}
       </section>
     </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <Card pad="compact">
-      <p className="text-body text-muted">{label}</p>
-      <p className="mt-1 text-display font-semibold tabular-nums text-ink">{value}</p>
-    </Card>
   );
 }
 

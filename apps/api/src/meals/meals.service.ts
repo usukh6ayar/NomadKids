@@ -1,10 +1,14 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { AuditRepository } from "../audit/audit.repository";
+import { AuthzRepository } from "../authz/authz.repository";
+import { ChildAccessService } from "../authz/child-access.service";
 import { TenantAccessService } from "../authz/tenant-access.service";
 import type { Actor } from "../authz/actor";
+import type { MealKind } from "../domain/enums";
 import { HealthRecordsRepository } from "../health-records/health-records.repository";
 import { MealsRepository } from "./meals.repository";
 import { findAllergenWarnings, type DishLike } from "./allergen-match";
-import type { SaveMenuDayDto } from "./meals.dto";
+import type { RecordGroupMealsDto, SaveMenuDayDto } from "./meals.dto";
 
 @Injectable()
 export class MealsService {
@@ -12,6 +16,9 @@ export class MealsService {
     private readonly repo: MealsRepository,
     private readonly tenants: TenantAccessService,
     private readonly health: HealthRecordsRepository,
+    private readonly childAccess: ChildAccessService,
+    private readonly authz: AuthzRepository,
+    private readonly audit: AuditRepository,
   ) {}
 
   /** Every role reads this — a parent's screen shows the same menu a
@@ -68,6 +75,126 @@ export class MealsService {
     const date = new Date(`${dateIso}T00:00:00.000Z`);
     return this.repo.upsertDay(kindergartenId, date, dto.dishes, actor.userId);
   }
+
+  // ── The meal register — нэмэлт.md §2 ───────────────────────────────────────
+
+  /**
+   * A group's sitting for one day — everyone enrolled, marked or not.
+   *
+   * ★ Staff only, and a group a teacher is actually assigned to. Membership of
+   * the kindergarten is not enough — the same check the attendance day sheet
+   * makes, for the same reason.
+   */
+  async groupMealSheet(actor: Actor, groupId: string, dateIso: string, kind: MealKind) {
+    const group = await this.repo.findGroupForMeals(
+      groupId,
+      this.tenants.memberKindergartenIds(actor),
+    );
+    if (!group) throw new NotFoundException();
+    this.tenants.assertStaff(actor, group.kindergartenId);
+
+    if (!this.tenants.isAdmin(actor, group.kindergartenId)) {
+      const assigned = await this.authz.loadActiveTeachingGroupIds(actor);
+      if (!assigned.includes(groupId)) throw new NotFoundException();
+    }
+
+    const date = toDate(dateIso);
+    const { enrollments, records } = await this.repo.groupMealSheet(groupId, date, kind);
+    const byEnrollment = new Map(records.map((r) => [r.enrollmentId, r]));
+
+    return enrollments.map((enrollment) => ({
+      child: enrollment.child,
+      enrollmentId: enrollment.id,
+      record: byEnrollment.get(enrollment.id) ?? null,
+    }));
+  }
+
+  /**
+   * Records a whole sitting — §2's fast one-screen entry.
+   *
+   * ★ A child not enrolled in this group is dropped, not an error.
+   *
+   * The client sends the roster it was given; between the sheet loading and the
+   * teacher pressing save, a child may have transferred. Failing the whole
+   * batch for one stale row would lose nineteen correct marks — and silently
+   * writing the row would attribute a meal to the wrong group's register, which
+   * §3 then bills to the wrong kindergarten.
+   */
+  async recordGroupMeals(actor: Actor, groupId: string, dto: RecordGroupMealsDto) {
+    const group = await this.repo.findGroupForMeals(
+      groupId,
+      this.tenants.memberKindergartenIds(actor),
+    );
+    if (!group) throw new NotFoundException();
+    this.tenants.assertStaff(actor, group.kindergartenId);
+
+    const date = toDate(dto.date);
+    if (date.getTime() > Date.now()) {
+      throw new BadRequestException("Хоолны огноо ирээдүйд байж болохгүй");
+    }
+
+    const { enrollments } = await this.repo.groupMealSheet(groupId, date, dto.kind);
+    const byChild = new Map(enrollments.map((e) => [e.childId, e.id]));
+
+    const rows = dto.entries.flatMap((entry) => {
+      const enrollmentId = byChild.get(entry.childId);
+      if (!enrollmentId) return [];
+
+      return [
+        {
+          kindergartenId: group.kindergartenId,
+          childId: entry.childId,
+          enrollmentId,
+          date,
+          kind: dto.kind,
+          status: entry.status,
+          note: entry.note ?? null,
+          recordedById: actor.userId,
+        },
+      ];
+    });
+
+    if (rows.length === 0) throw new BadRequestException("Бүртгэх хүүхэд олдсонгүй");
+
+    const saved = await this.repo.recordGroupMeals(rows);
+
+    // §14 asks for a financial audit trail, and the meal register feeds the
+    // food-cost calculation — one row for the sitting rather than one per
+    // child, which is the act a teacher actually performed.
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId: group.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "MealRecord",
+      objectId: groupId,
+      metadata: { date: dto.date, kind: dto.kind, count: saved.length },
+    });
+
+    return saved;
+  }
+
+  /** A child's month, by sitting and status — the input to нэмэлт.md §3. */
+  async childMealSummary(actor: Actor, childId: string, month: string) {
+    await this.childAccess.assertCanAccess(actor, childId);
+
+    const [year, monthNum] = month.split("-").map(Number) as [number, number];
+    const from = new Date(Date.UTC(year, monthNum - 1, 1));
+    const to = new Date(Date.UTC(year, monthNum, 0));
+
+    const counts = await this.repo.monthlyMealCounts(childId, from, to);
+
+    return {
+      month,
+      counts,
+      /*
+       * The figure §3 multiplies. `PARTIAL` and `SPECIAL` count as days the
+       * child was fed — the kitchen cooked and served — while `NOT_TAKEN` does
+       * not. A tariff that prices them differently reads `counts` instead; this
+       * is the plain "how many days did we feed this child".
+       */
+      daysFed: counts.filter((c) => c.status !== "NOT_TAKEN").reduce((sum, c) => sum + c.count, 0),
+    };
+  }
 }
 
 /** Defensive read of a `Json` column: anything unexpected becomes no dishes. */
@@ -88,4 +215,8 @@ function asDishes(value: unknown): DishLike[] {
       },
     ];
   });
+}
+/** `YYYY-MM-DD` to the UTC midnight `@db.Date` stores. */
+function toDate(iso: string): Date {
+  return new Date(`${iso}T00:00:00.000Z`);
 }

@@ -8,7 +8,9 @@ import {
   CalendarCheck,
   ChevronRight,
   ClipboardCheck,
+  HeartPulse,
   Plus,
+  Ruler,
   TrendingUp,
   UtensilsCrossed,
 } from "lucide-react";
@@ -22,6 +24,7 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
+import { NavTile, TileGrid } from "@/components/ui/tile";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
 import { useSession } from "@/lib/auth/session";
@@ -236,74 +239,66 @@ export default function ParentHomePage() {
         </div>
       </section>
 
+      {/*
+        ★ An icon grid, not a column of rows — 2026-08-25.
+        
+        This was five full-width rows, each an icon, a title, a subtitle and a
+        chevron. On a phone that is five screenfuls of scrolling to reach the
+        fifth destination, and the subtitles were doing the work a label should
+        do on its own. The grid puts every destination one thumb-reach away and
+        makes the set scannable as a shape rather than read as a list.
+
+        `NavTile`'s `icon` is a slot: these are lucide glyphs until the
+        illustrated icons arrive, and swapping them is a change here rather than
+        in the component.
+      */}
       <section aria-labelledby="highlights-heading">
-        <SectionHeader id="highlights-heading" title="Оюун-ийн мэдээлэл" />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Link
+        <SectionHeader id="highlights-heading" title={`${selected.firstName}-ийн мэдээлэл`} />
+
+        <TileGrid>
+          <NavTile
             href={`/children/${selected.id}/portfolio`}
-            className="flex items-center gap-3 rounded-row border border-border bg-surface px-4 py-4 transition-colors hover:border-primary"
-          >
-            <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-primary-soft text-primary">
-              <BookOpen size={20} aria-hidden />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block font-semibold text-ink">{PORTFOLIO}</span>
-              <span className="block text-body text-muted">
-                {GALLERY}, "Миний тухай", хөгжлийн түүх
-              </span>
-            </span>
-            <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden />
-          </Link>
-
-          <Link
+            label={PORTFOLIO}
+            note={GALLERY}
+            tone="cornflower"
+            icon={<BookOpen size={24} aria-hidden />}
+          />
+          <NavTile
             href={`/children/${selected.id}`}
-            className="flex items-center gap-3 rounded-row border border-border bg-surface px-4 py-4 transition-colors hover:border-primary"
-          >
-            <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-mint text-mint-ink">
-              <TrendingUp size={20} aria-hidden />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block font-semibold text-ink">Хөгжил ба цэцэрлэгтээ</span>
-              <span className="block text-body text-muted">Ажиглалт, хөгжлийн ахиц</span>
-            </span>
-            <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden />
-          </Link>
-
-          {/*
-            Ирц shipped 2026-08-24, pulled forward by explicit client request —
-            see `(app)/layout.tsx`'s `staffSections` comment. The other four
-            reference cards (Хоол ба цэс, Санхүү, Чат, Судалгаа) stay out until
-            each one is real, same reasoning as the sidebar's no-dead-entry rule.
-          */}
-          <Link
+            label="Хөгжил"
+            note="Ажиглалт, ахиц"
+            tone="mint"
+            icon={<TrendingUp size={24} aria-hidden />}
+          />
+          <NavTile
             href={`/children/${selected.id}?tab=attendance`}
-            className="flex items-center gap-3 rounded-row border border-border bg-surface px-4 py-4 transition-colors hover:border-primary"
-          >
-            <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-sun text-sun-ink">
-              <CalendarCheck size={20} aria-hidden />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block font-semibold text-ink">Ирц</span>
-              <span className="block text-body text-muted">Өдөр тутмын ирц, чөлөөний хүсэлт</span>
-            </span>
-            <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden />
-          </Link>
-
-          {/* Хоол ба цэс shipped 2026-08-24, same round as Ирц. */}
-          <Link
+            label="Ирц"
+            note="Өдөр тутам"
+            tone="sun"
+            icon={<CalendarCheck size={24} aria-hidden />}
+          />
+          <NavTile
             href={`/children/${selected.id}?tab=menu`}
-            className="flex items-center gap-3 rounded-row border border-border bg-surface px-4 py-4 transition-colors hover:border-primary"
-          >
-            <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-peach text-peach-ink">
-              <UtensilsCrossed size={20} aria-hidden />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block font-semibold text-ink">Хоол ба цэс</span>
-              <span className="block text-body text-muted">Долоо хоногийн цэс</span>
-            </span>
-            <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden />
-          </Link>
-        </div>
+            label="Хоол ба цэс"
+            note="Долоо хоног"
+            tone="peach"
+            icon={<UtensilsCrossed size={24} aria-hidden />}
+          />
+          <NavTile
+            href={`/children/${selected.id}?tab=health`}
+            label="Эрүүл мэнд"
+            note="Харшил, эм"
+            tone="teal"
+            icon={<HeartPulse size={24} aria-hidden />}
+          />
+          <NavTile
+            href={`/children/${selected.id}?tab=growth`}
+            label="Өсөлт"
+            note="Өндөр, жин"
+            tone="sky"
+            icon={<Ruler size={24} aria-hidden />}
+          />
+        </TileGrid>
       </section>
 
       {selected.assessments.length > 0 ? (

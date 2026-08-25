@@ -26,6 +26,8 @@ export {
   EnrollmentStatus,
   GroupStatus,
   GuardianRelation,
+  MealKind,
+  MealStatus,
   MediaAttribution,
   MediaPurpose,
   MediaStatus,

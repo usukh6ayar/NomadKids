@@ -7,10 +7,16 @@ import type { Actor } from "../authz/actor";
 import { MealsService } from "./meals.service";
 import {
   dateParamSchema,
+  groupMealSheetQuerySchema,
   listMenuQuerySchema,
+  mealSummaryQuerySchema,
+  recordGroupMealsSchema,
   saveMenuDaySchema,
   type DateParam,
+  type GroupMealSheetQuery,
   type ListMenuQuery,
+  type MealSummaryQuery,
+  type RecordGroupMealsDto,
   type SaveMenuDayDto,
 } from "./meals.dto";
 
@@ -56,5 +62,50 @@ export class MealsController {
     @Body(new ZodValidationPipe(saveMenuDaySchema)) body: SaveMenuDayDto,
   ) {
     return this.service.saveDay(actor, params.id, params.date, body);
+  }
+}
+
+/**
+ * The meal register — нэмэлт.md §2.
+ *
+ * ★ Group-scoped, like the attendance day sheet, because that is the screen: a
+ * teacher marks a whole group at a serving hatch, not one child at a time.
+ */
+@Controller("groups/:id/meals")
+@Roles("TEACHER", "ADMIN")
+export class GroupMealsController {
+  constructor(private readonly service: MealsService) {}
+
+  @Get()
+  async sheet(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(groupMealSheetQuerySchema)) query: GroupMealSheetQuery,
+  ) {
+    return this.service.groupMealSheet(actor, params.id, query.date, query.kind);
+  }
+
+  @Put()
+  async record(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(recordGroupMealsSchema)) body: RecordGroupMealsDto,
+  ) {
+    return this.service.recordGroupMeals(actor, params.id, body);
+  }
+}
+
+/** A child's month — the "days fed" a food-cost calculation needs (§3). */
+@Controller("children/:id/meals")
+export class ChildMealsController {
+  constructor(private readonly service: MealsService) {}
+
+  @Get("summary")
+  async summary(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(mealSummaryQuerySchema)) query: MealSummaryQuery,
+  ) {
+    return this.service.childMealSummary(actor, params.id, query.month);
   }
 }

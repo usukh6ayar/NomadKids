@@ -259,11 +259,30 @@ growth measurements and charts · milestones · allergies · medication ·
 vaccination · safety incidents · document library · artwork comparison ·
 annual, group and batch reports · Excel import and export · photo consent
 
-**Still out** — RFP §20 Phase IV. Say which phase it belongs to and ask:
+★ **The client added a second document on 2026-08-25: `нэмэлт.md`**, a finance
+and funding module — state funding rules and monthly reconciliation, food-cost
+calculation, parent invoices, online payment, an accountant role, a financial
+dashboard, financial audit trails and nine financial reports.
+
+That contradicts the line below, which had payments, invoices, QPay and the
+accountant role as Phase IV. **It is now requested work**, so the line moves —
+same reason §7 moved the first time: a rule the codebase is about to contradict
+teaches everyone to stop reading the file.
+
+What has been built from `нэмэлт.md` so far is only its foundation, and the
+distinction matters when reading this rule:
+
+- §1's sixth attendance status (`OTHER`) — **done**, it had been dropped
+- §2 the meal register, §12's dish fields — **done**
+- §11 the allergy cross-check — **done** (it was already RFP Module 2)
+- §3–§10, §13, §14, §16 — the finance module proper — **not started**
+
+**Still out** — RFP §20 Phase IV, minus what `нэмэлт.md` pulled forward. Say
+which phase it belongs to and ask:
 
 native mobile apps · chat · SMS · push notification · QR pick-up ·
-electronic signature · payments, invoices, QPay and the accountant role ·
-multi-language · AI observation suggestions · voice-to-text
+electronic signature · multi-language · AI observation suggestions ·
+voice-to-text
 
 Pulling work forward silently is still how a three-week delivery becomes six.
 The difference is that the client has now asked for this much, once, explicitly.
