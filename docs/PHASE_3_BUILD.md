@@ -91,7 +91,7 @@ re-broken by the next one. Production is stale but stable in the meantime.
 | 7   | §7                      | Growth measurements and charts                            | ✅         |
 | 8   | §4.5                    | Milestones                                                | ✅         |
 | 9   | Module 2                | Allergies, medication, vaccination                        | ✅         |
-| 10  | Module 2.1              | Safety incident log                                       | ⬜         |
+| 10  | Module 2.1              | Safety incident log                                       | ✅         |
 | 11  | Module 2                | Menu-versus-allergy cross-check                           | ✅         |
 | 12  | §5.3                    | Artwork development comparison                            | ⬜         |
 | 13  | Module 1.1, 1.2         | Matrix questions, begin-to-end comparison                 | ⬜         |
@@ -358,3 +358,50 @@ allergies did not exist. They do now, and the badge is _still_ the free-text
 note, because "⚠ Эрүүл мэнд" meaning either "read the note" or "this child stops
 breathing near nuts" is a chip that means nothing. The structured alert lives
 where it can name the allergen.
+
+---
+
+## 10 — Safety incidents ✅
+
+RFP Module 2.1's "Аюулгүй байдлын тэмдэглэл": what happened, when, where, to
+which part of the body, what was done about it, and whether the family has been
+told.
+
+**Not an `Observation` and not a `Notification`.** An observation is a
+developmental note built up over a term; this is an event with a time, a body
+part and a first-aid response that a family must hear about today. A
+notification is the _delivery_, and one is created from an incident when it is
+reported — but a notification has no `bodyPart`, no follow-up and no priority,
+so folding the record into the message would lose the record the moment the
+message was read.
+
+**`reportedAt` is a workflow state, not a permission.** A family reads their own
+child's incidents whether or not the notice has gone out. A parent opening the
+app before the teacher finishes writing must not find their child's injury
+hidden from them — Module 2.1 is about telling families quickly, not about
+staging what they may know. Asserted directly.
+
+**High priority is a flag, not a scale.** Module 2.1 asks for one thing: mark
+the serious ones and alert management and the family. A three-level scale invites
+a middle value meaning "somewhat urgent", which nobody acts on.
+
+**Reporting reuses the notice machinery**, which already owns delivery, read
+receipts and the unread badge — and Module 2.1 asks for "Илгээлтийн бүртгэл …
+эцэг эх хэзээ уншсан" in the same breath. Two decisions are pinned by tests:
+
+- The notice is **targeted at that child alone**, never the class board. Naming
+  a child's injury to the whole group is the leak most of this system's rules
+  exist to prevent.
+- It is **published immediately**, and **reporting twice is refused**.
+  `reportedAt` records that the family was told and by which notice; overwriting
+  it would orphan the first notice and lose the time that matters. A correction
+  is a new notice, which is a deliberate act.
+
+Incident photographs are staff-only to _add_ and family-readable — the evidence
+of an injury is the kindergarten's record, but a parent may see it. That is the
+mirror of milestones, where the family adds and staff read.
+
+```
+api  test/incidents.test.ts   20 passed
+web  169 passed
+```

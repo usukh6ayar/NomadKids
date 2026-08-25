@@ -18,6 +18,8 @@ export interface UploadOptions {
   observationId?: string;
   /** RFP §4.5 — a photograph of a remembered first. */
   milestoneId?: string;
+  /** RFP Module 2.1 — "фото зураг хавсаргах" on a safety incident. */
+  incidentId?: string;
   caption?: string | null;
   takenAt?: Date | null;
   age?: number | null;
@@ -30,6 +32,8 @@ const MAX_PHOTOS_PER_OBSERVATION = 12;
 const MAX_PHOTOS_PER_NOTIFICATION = 12;
 /** RFP §4.5 asks for "Зураг" — one memory does not need a dozen. */
 const MAX_PHOTOS_PER_MILESTONE = 6;
+/** RFP Module 2.1 — a few photographs of an injury, not an album. */
+const MAX_PHOTOS_PER_INCIDENT = 6;
 
 /**
  * Media that belongs to a kindergarten rather than to a child.
@@ -152,6 +156,32 @@ export class MediaService {
       milestoneId = milestone.id;
     }
 
+    let incidentId: string | null = null;
+    if (options.incidentId) {
+      const incident = await this.repo.findIncidentForAttachment(options.incidentId);
+      if (!incident || incident.childId !== childId) {
+        throw new BadRequestException("Тохиолдол олдсонгүй");
+      }
+
+      /*
+       * ★ Staff only, unlike a milestone photograph.
+       *
+       * An incident is the kindergarten's account of what happened, and its
+       * photographs are evidence of an injury. A family may read them; adding
+       * to them is not theirs, for the same reason they may not write the
+       * record itself.
+       */
+      if (isGuardian) throw new BadRequestException("Тохиолдол олдсонгүй");
+
+      const existing = await this.repo.countForIncident(options.incidentId);
+      if (existing >= MAX_PHOTOS_PER_INCIDENT) {
+        throw new BadRequestException(
+          `Нэг тохиолдолд дээд тал нь ${MAX_PHOTOS_PER_INCIDENT} зураг хавсаргана`,
+        );
+      }
+      incidentId = incident.id;
+    }
+
     // ★ Random key. Never derived from the child, the observation or the
     // uploaded filename — the real name lives only in `originalName`, for
     // display, and is never used to build a path.
@@ -167,9 +197,16 @@ export class MediaService {
       childId,
       observationId,
       milestoneId,
+      incidentId,
       purpose:
         options.purpose ??
-        (milestoneId ? "MILESTONE" : observationId ? "OBSERVATION" : "CHILD_PHOTO"),
+        (incidentId
+          ? "INCIDENT"
+          : milestoneId
+            ? "MILESTONE"
+            : observationId
+              ? "OBSERVATION"
+              : "CHILD_PHOTO"),
       storageKey,
       originalName: sanitiseFilename(file.originalname),
       mimeType: validated.mimeType,
@@ -181,7 +218,9 @@ export class MediaService {
         ? await this.repo.countForObservation(observationId)
         : milestoneId
           ? await this.repo.countForMilestone(milestoneId)
-          : 0,
+          : incidentId
+            ? await this.repo.countForIncident(incidentId)
+            : 0,
       // ★ Who sent the bytes. Recorded from the authenticated actor, never from
       // the request body — a client-supplied uploader is an attribution anyone
       // could forge.

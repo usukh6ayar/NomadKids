@@ -121,6 +121,9 @@ enum MediaPurpose {
   KINDERGARTEN_LOGO
   USER_PHOTO
   GROUP_PHOTO
+  /// A photograph on a safety incident — RFP Module 2.1. Child data carrying
+  /// `childId`, so `canAccessChild` governs it like an album photo.
+  INCIDENT
   /// A photograph of a remembered first — RFP §4.5. Child data, so it is
   /// authorised through `canAccessChild` exactly like an album photo, and it
   /// deliberately does NOT join the tenant-image set above.
@@ -254,6 +257,7 @@ model User {
   allergiesRecorded     AllergyRecord[]           @relation("AllergyRecordedBy")
   medicationsAuthorised MedicationAuthorisation[] @relation("MedicationAuthorisedBy")
   vaccinationsRecorded  VaccinationRecord[]       @relation("VaccinationRecordedBy")
+  incidentsRecorded     SafetyIncident[]          @relation("IncidentRecordedBy")
 
   @@index([deletedAt])
   @@map("users")
@@ -418,6 +422,7 @@ model Kindergarten {
   allergies             AllergyRecord[]
   medications           MedicationAuthorisation[]
   vaccinations          VaccinationRecord[]
+  safetyIncidents       SafetyIncident[]
 
   @@index([deletedAt])
   @@map("kindergartens")
@@ -562,6 +567,7 @@ model Child {
   allergies           AllergyRecord[]
   medications         MedicationAuthorisation[]
   vaccinations        VaccinationRecord[]
+  safetyIncidents     SafetyIncident[]
 
   @@unique([kindergartenId, nationalId])
   @@index([kindergartenId, status])
@@ -937,6 +943,91 @@ model VaccinationRecord {
 
   @@index([childId, administeredOn(sort: Desc)])
   @@map("vaccination_records")
+}
+
+/// What happened — RFP Module 2.1's "Тохиолдлын төрөл".
+///
+/// An enum rather than a configuration table: this is a fixed clinical
+/// vocabulary a kindergarten reports against, not a preference. `OTHER` carries
+/// what the list does not, with the description doing the work — the same
+/// escape hatch `AttendanceStatus` keeps.
+enum IncidentKind {
+  INJURY // Гэмтэл
+  FALL // Уналт
+  BRUISE // Хөхрөлт
+  SCRATCH // Маажилт
+  BITE // Хазуулсан
+  ALLERGIC_REACTION // Харшлын шинж
+  FEVER // Халууралт
+  ILLNESS // Толгой/хэвлий өвдөх
+  OTHER
+}
+
+/// A safety or health incident — RFP Module 2.1, "Аюулгүй байдлын тэмдэглэл".
+///
+/// ★ Not an `Observation`, and not a `Notification`.
+///
+/// An observation is a developmental note a teacher writes to build a picture
+/// over a term; this is an event with a time, a body part and a first-aid
+/// response, which a family must be told about today. A notification is the
+/// delivery mechanism, and one is created *from* an incident when it is
+/// reported — but a notification has no `bodyPart`, no follow-up and no
+/// priority, and folding the record into the message would lose the record the
+/// moment the message was read.
+model SafetyIncident {
+  id             String       @id @default(uuid()) @db.Uuid
+  kindergartenId String       @db.Uuid
+  childId        String       @db.Uuid
+  kind           IncidentKind
+
+  /// ★ A timestamp, not a date. Module 2.1 asks for "Огноо, цаг" together, and
+  /// "which of the two falls this afternoon" is a question a parent asks.
+  occurredAt DateTime
+
+  /// Where in the kindergarten — "тоглоомын талбай", "хоолны өрөө".
+  location    String?
+  /// Which part of the body. Free text: a closed list of anatomy is a medical
+  /// system, and staff write what they saw.
+  bodyPart    String?
+  description String
+  /// "Авсан анхан шатны арга хэмжээ" — what was done at the time.
+  firstAid    String?
+  /// "Дараагийн хяналт" — what still needs watching.
+  followUp    String?
+
+  /// ★★ High priority is a flag, not a severity scale.
+  ///
+  /// Module 2.1 asks for one thing: mark the serious ones **High Priority** and
+  /// alert management and the family immediately. A three-level scale would
+  /// invite a middle value meaning "somewhat urgent", which nobody acts on.
+  isHighPriority Boolean @default(false)
+
+  /// The staff member who recorded it. Nullable so the row survives the account
+  /// being deleted, which is the same trade `Observation.authorId` makes.
+  recordedById String? @db.Uuid
+
+  /// Set when the family has been told, and by which notice. Null means
+  /// recorded and **not yet reported** — the state the review screen exists to
+  /// surface.
+  reportedAt     DateTime?
+  notificationId String?   @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten  @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child         @relation(fields: [childId], references: [id], onDelete: Cascade)
+  recordedBy   User?         @relation("IncidentRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  notification Notification? @relation("IncidentNotification", fields: [notificationId], references: [id], onDelete: SetNull)
+  media        MediaFile[]   @relation("IncidentMedia")
+
+  @@index([childId, occurredAt(sort: Desc)])
+  /// The kindergarten's incident log.
+  @@index([kindergartenId, occurredAt(sort: Desc)])
+  /// The unreported queue: high-priority first, still awaiting a family.
+  @@index([kindergartenId, isHighPriority, reportedAt])
+  @@map("safety_incidents")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1530,6 +1621,9 @@ model MediaFile {
   /// Set for `MILESTONE` media — RFP §4.5's "Зураг". Carries `childId` too, so
   /// the ordinary child-media authorization applies without a special case.
   milestoneId    String? @db.Uuid
+  /// Set for `INCIDENT` media — Module 2.1's "фото зураг хавсаргах". Also
+  /// carries `childId`, so the ordinary child-media authorization applies.
+  incidentId     String? @db.Uuid
   order          Int     @default(0)
 
   purpose MediaPurpose
@@ -1591,7 +1685,8 @@ model MediaFile {
   child              Child?        @relation("ChildMedia", fields: [childId], references: [id], onDelete: Cascade)
   observation        Observation?  @relation("ObservationMedia", fields: [observationId], references: [id], onDelete: Cascade)
   notification       Notification? @relation("NotificationMedia", fields: [notificationId], references: [id], onDelete: Cascade)
-  milestone          Milestone?    @relation("MilestoneMedia", fields: [milestoneId], references: [id], onDelete: Cascade)
+  milestone          Milestone?      @relation("MilestoneMedia", fields: [milestoneId], references: [id], onDelete: Cascade)
+  incident           SafetyIncident? @relation("IncidentMedia", fields: [incidentId], references: [id], onDelete: Cascade)
   uploadedBy         User?         @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
   childPhotoOf       Child?        @relation("ChildPhoto")
   reportJob          ReportJob?    @relation("ReportOutput")
@@ -1604,6 +1699,7 @@ model MediaFile {
   @@index([observationId, order])
   @@index([notificationId, order])
   @@index([milestoneId, order])
+  @@index([incidentId, order])
   @@index([status, deletedAt])
   /// ★ This does NOT serve the gallery's default sort, and the comment that
   /// claimed it did was wrong.
@@ -1641,6 +1737,10 @@ model Notification {
   kindergarten Kindergarten           @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   author       User?                  @relation("NotificationAuthor", fields: [authorId], references: [id], onDelete: SetNull)
   targets      NotificationTarget[]
+  /// The incidents this notice reported — RFP Module 2.1. Plural because one
+  /// notice may cover several children in the same event (a scuffle), and the
+  /// record on each child must still point at how the family was told.
+  incidents    SafetyIncident[]       @relation("IncidentNotification")
   reads        NotificationRead[]
   reactions    NotificationReaction[]
   media        MediaFile[]            @relation("NotificationMedia")

@@ -504,6 +504,55 @@ export const birthdaySectionSchema = z.object({
 });
 export type BirthdaySection = z.infer<typeof birthdaySectionSchema>;
 
+// ── Safety incidents — RFP Module 2.1 ────────────────────────────────────────
+
+export const INCIDENT_KINDS = [
+  "INJURY",
+  "FALL",
+  "BRUISE",
+  "SCRATCH",
+  "BITE",
+  "ALLERGIC_REACTION",
+  "FEVER",
+  "ILLNESS",
+  "OTHER",
+] as const;
+
+export const INCIDENT_KIND_LABEL: Record<string, string> = {
+  INJURY: "Гэмтэл",
+  FALL: "Уналт",
+  BRUISE: "Хөхрөлт",
+  SCRATCH: "Маажилт",
+  BITE: "Хазуулсан",
+  ALLERGIC_REACTION: "Харшлын шинж",
+  FEVER: "Халууралт",
+  ILLNESS: "Толгой/хэвлий өвдөх",
+  OTHER: "Бусад",
+};
+
+export const incidentSchema = z.object({
+  id: uuidSchema,
+  kind: z.string(),
+  occurredAt: z.string(),
+  location: z.string().nullish(),
+  bodyPart: z.string().nullish(),
+  description: z.string(),
+  firstAid: z.string().nullish(),
+  followUp: z.string().nullish(),
+  isHighPriority: z.boolean().default(false),
+  /**
+   * When the family was told, and by which notice. Null means recorded and not
+   * yet reported — which is a workflow state, **not** a visibility one: a
+   * family reads their own child's incidents either way.
+   */
+  reportedAt: z.string().nullish(),
+  notificationId: uuidSchema.nullish(),
+  recordedBy: personRefSchema.nullish(),
+  child: personRefSchema.nullish(),
+  media: z.array(observationMediaSchema).default([]),
+});
+export type Incident = z.infer<typeof incidentSchema>;
+
 // ── Health — RFP Module 2 ────────────────────────────────────────────────────
 
 export const allergySeveritySchema = z.enum(["MILD", "MODERATE", "SEVERE"]);

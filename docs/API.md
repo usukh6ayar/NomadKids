@@ -237,6 +237,32 @@ unconditionally — there is no review state to gate on.
 
 ---
 
+## 5.1c Safety incidents — RFP Module 2.1
+
+| Method | Route                          | Role           | Ownership   | Response                                          |
+| ------ | ------------------------------ | -------------- | ----------- | ------------------------------------------------- |
+| GET    | `/children/:id/incidents`      | any            | child       | timeline, newest first                            |
+| POST   | `/children/:id/incidents`      | teacher, admin | child:write | the incident                                      |
+| GET    | `/kindergartens/:id/incidents` | teacher, admin | kg          | paginated log; `?unreportedOnly&highPriorityOnly` |
+| PATCH  | `/incidents/:id`               | teacher, admin | child:write | the incident                                      |
+| POST   | `/incidents/:id/report`        | teacher, admin | child:write | the incident, now reported                        |
+| DELETE | `/incidents/:id`               | teacher, admin | child:write | `{ id }`                                          |
+
+★ **The child list has no role gate.** A family reads their own child's
+incidents, including ones not yet reported: `reportedAt` records whether a notice
+was _sent_, not whether the record is visible.
+
+★★ **`report` creates a published, important notice targeted at that child
+alone** and links it to the incident. Never the class board — naming a child's
+injury to the whole group is the leak these rules exist to prevent. Reporting a
+second time is a **400**: `reportedAt` is the record that the family was told and
+by which notice, and overwriting it would orphan the first.
+
+The kindergarten log orders high-priority first within recency, and is paginated
+like every other list.
+
+---
+
 ## 5.2 Growth — RFP §7
 
 | Method | Route                        | Role | Ownership             | Request                          | Response                |

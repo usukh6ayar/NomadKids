@@ -5,6 +5,7 @@ import { AssessmentModule } from "./assessment/assessment.module";
 import { AttendanceModule } from "./attendance/attendance.module";
 import { GrowthModule } from "./growth/growth.module";
 import { HealthRecordsModule } from "./health-records/health-records.module";
+import { IncidentsModule } from "./incidents/incidents.module";
 import { MilestonesModule } from "./milestones/milestones.module";
 import { AuthzModule } from "./authz/authz.module";
 import { CatalogModule } from "./catalog/catalog.module";
@@ -58,6 +59,7 @@ import { UsersModule } from "./users/users.module";
     GrowthModule,
     MilestonesModule,
     HealthRecordsModule,
+    IncidentsModule,
     MealsModule,
     CatalogModule,
     NotificationsModule,
