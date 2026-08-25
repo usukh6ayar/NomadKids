@@ -133,6 +133,20 @@ export function formatAgeFromMonths(months: number | null | undefined): string {
   return rest === 0 ? `${years} нас` : `${years} нас ${rest} сар`;
 }
 
+/**
+ * `8/01` — month and day, no year.
+ *
+ * ★ For a date already known to be inside the current month, the year is noise
+ * and `formatDate`'s `2026.08.01` buries the only digit that varies. The
+ * month is kept rather than showing a bare day so the card still reads
+ * correctly if it is ever reused for a range that crosses one.
+ */
+export function formatDayMonth(value: string | Date | null | undefined): string {
+  const date = toDate(value);
+  if (!date) return "—";
+  return `${date.getMonth() + 1}/${String(date.getDate()).padStart(2, "0")}`;
+}
+
 /** `Ганболд Батбаяр` — surname first, as Mongolian names are written. */
 export function fullName(
   person: { lastName?: string | null; firstName?: string | null } | null | undefined,

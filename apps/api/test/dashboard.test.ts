@@ -591,3 +591,155 @@ describe("observations by type", () => {
     expect(total).toBe(0);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// This month's birthdays, and the class board
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("this month's birthdays", () => {
+  /**
+   * ★ Two lists, not one filtered on the client.
+   *
+   * `birthdaysToday` is what the alert block reacts to. A card driven by it
+   * alone is invisible for twenty-nine days a month, which is why the wireframe
+   * asks for the month — a teacher ordering a cake is planning, not reacting.
+   */
+  it("lists every birthday in the current month, whatever the day", async () => {
+    const now = new Date();
+    /*
+     * ★ `Date.UTC`, not `new Date(y, m, d)`.
+     *
+     * `dateOfBirth` is `@db.Date`, and the local-time constructor makes midnight
+     * in the *runner's* zone — which in any positive offset is the previous day
+     * in UTC, so the 1st of a month lands in the one before and drops out of
+     * this filter. It fails only east of Greenwich, which is where this system
+     * runs and where a test that used it would look flaky rather than wrong.
+     *
+     * Production never takes that path: `z.coerce.date()` parses "2021-04-12" as
+     * UTC midnight, so this matches how a real record is written.
+     */
+    for (const day of [1, 28]) {
+      const child = await createChild(a.kindergarten.id, {
+        firstName: `Төрсөн${day}`,
+        dateOfBirth: new Date(Date.UTC(now.getFullYear() - 3, now.getMonth(), day)),
+      });
+      await enrollChild(a.kindergarten.id, child.id, a.group.id, a.schoolYear.id);
+    }
+    // …and one next month, which must not appear.
+    const other = await createChild(a.kindergarten.id, {
+      firstName: "Дараа",
+      dateOfBirth: new Date(Date.UTC(now.getFullYear() - 3, now.getMonth() + 1, 15)),
+    });
+    await enrollChild(a.kindergarten.id, other.id, a.group.id, a.schoolYear.id);
+
+    const res = await request(server())
+      .get("/v1/dashboard/teacher")
+      .set("Cookie", teacherA.cookies);
+
+    const names = res.body.birthdaysThisMonth.map((c: { firstName: string }) => c.firstName);
+    expect(names).toContain("Төрсөн1");
+    expect(names).toContain("Төрсөн28");
+    expect(names).not.toContain("Дараа");
+  });
+
+  it("★ does not reach another kindergarten's children", async () => {
+    const now = new Date();
+    const child = await createChild(b.kindergarten.id, {
+      firstName: "Бусад",
+      dateOfBirth: new Date(Date.UTC(now.getFullYear() - 3, now.getMonth(), 5)),
+    });
+    await enrollChild(b.kindergarten.id, child.id, b.group.id, b.schoolYear.id);
+
+    const res = await request(server())
+      .get("/v1/dashboard/teacher")
+      .set("Cookie", teacherA.cookies);
+
+    const names = res.body.birthdaysThisMonth.map((c: { firstName: string }) => c.firstName);
+    expect(names).not.toContain("Бусад");
+  });
+});
+
+describe("the class board notice", () => {
+  async function publish(title: string) {
+    const notice = await db.notification.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        title,
+        body: "Ангийн хурал болно.",
+        status: "PUBLISHED",
+        publishedAt: new Date(),
+        authorId: a.teacherUser.id,
+      },
+    });
+    return notice.id;
+  }
+
+  it("shows the most recent published notice with how many opened it", async () => {
+    await publish("Хуучин");
+    const latest = await publish("Ангийн хурал");
+
+    // Two people opened the latest one.
+    await db.notificationRead.createMany({
+      data: [
+        { notificationId: latest, userId: a.parentUser.id },
+        { notificationId: latest, userId: a.adminUser.id },
+      ],
+    });
+
+    const res = await request(server())
+      .get("/v1/dashboard/teacher")
+      .set("Cookie", teacherA.cookies);
+
+    expect(res.body.boardNotice.title).toBe("Ангийн хурал");
+    expect(res.body.boardNotice.readCount).toBe(2);
+  });
+
+  /**
+   * ★ A count, never the list.
+   *
+   * `notifications.repository.ts` already refuses to expose who reacted — "a
+   * parent should not learn which other families are reading the board" — and
+   * reads are the same fact. The teacher needs to know it landed; nobody needs
+   * to know which named family opened it.
+   */
+  it("publishes no reader identities", async () => {
+    const id = await publish("Ангийн хурал");
+    await db.notificationRead.create({
+      data: { notificationId: id, userId: a.parentUser.id },
+    });
+
+    const res = await request(server())
+      .get("/v1/dashboard/teacher")
+      .set("Cookie", teacherA.cookies);
+
+    expect(res.body.boardNotice.readCount).toBe(1);
+    expect(res.body.boardNotice).not.toHaveProperty("reads");
+    expect(JSON.stringify(res.body.boardNotice)).not.toContain(a.parentUser.id);
+  });
+
+  it("is null when nothing has been published", async () => {
+    const res = await request(server())
+      .get("/v1/dashboard/teacher")
+      .set("Cookie", teacherA.cookies);
+
+    expect(res.body.boardNotice).toBeNull();
+  });
+
+  it("★ does not surface another kindergarten's board", async () => {
+    await db.notification.create({
+      data: {
+        kindergartenId: b.kindergarten.id,
+        title: "Бусад цэцэрлэг",
+        body: "…",
+        status: "PUBLISHED",
+        publishedAt: new Date(),
+      },
+    });
+
+    const res = await request(server())
+      .get("/v1/dashboard/teacher")
+      .set("Cookie", teacherA.cookies);
+
+    expect(res.body.boardNotice).toBeNull();
+  });
+});

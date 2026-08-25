@@ -182,7 +182,8 @@ export class ChildrenRepository {
 
   /** Lists a guardian's children — the parent's own view. */
   /**
-   * The roster's size and mean age, over the *same* filter the list uses.
+   * The roster's size, mean age and sex split — over the *same* filter the list
+   * uses.
    *
    * ★ It takes the caller's `visible` filter and `filters` rather than
    * rebuilding a query. Authorization lives in one module (CLAUDE.md §1.1), and
@@ -199,10 +200,10 @@ export class ChildrenRepository {
    * column over a kindergarten's roster — hundreds of rows at most, none of
    * which leaves the server — so the cost is a rounding error against the risk.
    */
-  async rosterAges(visible: VisibleChildrenFilter, filters: ChildFilters) {
+  async rosterFacts(visible: VisibleChildrenFilter, filters: ChildFilters) {
     return this.prisma.child.findMany({
       where: this.childWhere(visible, filters),
-      select: { dateOfBirth: true },
+      select: { dateOfBirth: true, sex: true },
     });
   }
 
