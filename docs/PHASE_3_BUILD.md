@@ -72,9 +72,18 @@ Consequences, all verified rather than assumed:
 original.** Every environment that had is now stuck, which is both local
 databases and production.
 
-Recovery is deliberately deferred to the end of this build rather than done
-first: each feature below adds migrations, and a database repaired now would be
-re-broken by the next one. Production is stale but stable in the meantime.
+★ **The original note here said recovery was deferred because each new feature
+would "re-break" a repaired database. That reasoning was wrong.** Every
+migration added since has a fresh name production has never seen, so they apply
+cleanly on top of a repaired schema — there was nothing to re-break. Corrected
+rather than quietly deleted, because the wrong reason had already been used to
+postpone the work once.
+
+Recovery is now prepared in full at `docs/PROD_RECOVERY.md`, including the
+measured contents (four seed users, one demo child, all dated 2026-08-19) and a
+durable backup. The one destructive command is left for a human to run: it
+drops the production schema, and Claude Code's classifier refuses it, which is
+the right answer for a decision that is not an assistant's to make.
 
 ---
 
@@ -87,15 +96,15 @@ re-broken by the next one. Production is stale but stable in the meantime.
 | 3   | §3.2, §3.3, §10.3       | Logo, teacher photo, group photo uploads; logo in the PDF | ✅         |
 | 4   | §11                     | Age and sex filters, sort control                         | ✅         |
 | 5   | §12.2, §2.1             | Storage size, report statistics, audit browser            | ⬜         |
-| 6   | §6.1, §6.2              | Assessment configuration admin UI                         | ⬜         |
+| 6   | §6.1, §6.2              | Assessment configuration admin UI                         | ✅         |
 | 7   | §7                      | Growth measurements and charts                            | ✅         |
 | 8   | §4.5                    | Milestones                                                | ✅         |
 | 9   | Module 2                | Allergies, medication, vaccination                        | ✅         |
 | 10  | Module 2.1              | Safety incident log                                       | ✅         |
 | 11  | Module 2                | Menu-versus-allergy cross-check                           | ✅         |
-| 12  | §5.3                    | Artwork development comparison                            | ⬜         |
+| 12  | §5.3                    | Artwork development comparison                            | ✅         |
 | 13  | Module 1.1, 1.2         | Matrix questions, begin-to-end comparison                 | ⬜         |
-| 14  | §9                      | Document library                                          | ⬜         |
+| 14  | §9                      | Document library                                          | ✅         |
 | 15  | §6.5, §10.2             | The remaining five report types                           | ⬜         |
 | 16  | §3.4, §12.3, Module 1.3 | Excel import and export                                   | ⬜         |
 | 17  | §16                     | Photo publishing consent                                  | ⬜         |
@@ -403,5 +412,47 @@ mirror of milestones, where the family adds and staff read.
 
 ```
 api  test/incidents.test.ts   20 passed
+web  169 passed
+```
+
+---
+
+## 6, 12, 14 — Configuration UI, artwork comparison, document library ✅
+
+**6 — Assessment configuration (§6.1, §6.2).** The CRUD API shipped complete
+and tested in the Phase 2 catalog work and nothing linked to it. CLAUDE.md §2.3
+made these three tables rather than TypeScript enums precisely so an
+administrator could edit them; until this screen they could not. System rows
+are listed, marked and carry no controls — hiding them would show two domains
+where the assessment grid shows seven, and the API refuses the write anyway.
+
+**12 — Artwork comparison (§5.3).** Only the conclusion was new: several
+artwork photos per observation, dates and captions already existed. The pair is
+**ordered by the service** from when each work was made, because a teacher who
+picked them backwards would store a comparison that reads as development
+running in reverse. Comparisons and milestones now both print in the portfolio
+PDF, each embedding two images through the same `ImageBudget` — a report at its
+ceiling loses the comparison's pictures rather than an observation's, and the
+template renders a missing image as a labelled gap so the conclusion still
+prints.
+
+**14 — Document library (§9).** A whole RFP section with nothing built.
+
+★ The security decision worth recording: documents are **staff-only on
+reading**, which meant a new `STAFF_ONLY_TENANT_PURPOSES` set in
+`MediaService` rather than adding them to `TENANT_IMAGE_PURPOSES`. That set
+authorises by `assertMember` — correct for a logo, which appears on every
+report a family receives, and a leak for a curriculum. §9 opens with "Багшид
+зориулсан", and the test asserts a guardian gets 404 on the file through
+`/media/:id`, not merely on the list.
+
+★★ PDFs get their own content validator. There is no re-encode (a PDF cannot be
+normalised without a renderer, and running one over untrusted input is a larger
+surface than it closes), so the check is the signature at **offset zero** —
+a header preceded by junk is refused, because accepting it means accepting a
+polyglot.
+
+```
+api  1016 passed | 1 skipped   (was 979)
 web  169 passed
 ```

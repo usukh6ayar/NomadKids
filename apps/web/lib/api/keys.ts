@@ -53,6 +53,10 @@ export const qk = {
     ["admin", "config", "domains", kindergartenId] as const,
   configLevels: (kindergartenId: string) => ["admin", "config", "levels", kindergartenId] as const,
   configTypes: (kindergartenId: string) => ["admin", "config", "types", kindergartenId] as const,
+  documents: (kindergartenId: string, filters: Record<string, unknown> = {}) =>
+    ["documents", kindergartenId, filters] as const,
+  documentCategories: (kindergartenId: string) =>
+    ["documents", kindergartenId, "categories"] as const,
   groupAttendance: (groupId: string, date: string) =>
     ["group", groupId, "attendance", date] as const,
   attendanceReviewQueue: (filters: Record<string, unknown> = {}) =>

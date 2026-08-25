@@ -52,6 +52,23 @@ const TENANT_IMAGE_PURPOSES: ReadonlySet<MediaPurpose> = new Set<MediaPurpose>([
   "GROUP_PHOTO",
 ]);
 
+/**
+ * Tenant files only **staff** may read — RFP §9's document library.
+ *
+ * ★ A separate set from the images above, and the difference is the check.
+ *
+ * A logo is readable by anyone in the kindergarten, families included: it is on
+ * the letterhead of every report they receive. §9 opens with "Багшид зориулсан
+ * PDF баримт бичгийн сан" — a library *for teachers*, holding curricula,
+ * methodology and regulations. Folding it into `TENANT_IMAGE_PURPOSES` would
+ * widen `assertMember` over material no family was meant to open, which is the
+ * quietest way this endpoint could leak.
+ */
+const STAFF_ONLY_TENANT_PURPOSES: ReadonlySet<MediaPurpose> = new Set<MediaPurpose>([
+  "DOCUMENT",
+  "DOCUMENT_COVER",
+]);
+
 @Injectable()
 export class MediaService {
   constructor(
@@ -364,6 +381,20 @@ export class MediaService {
      * §1.4 admits no exception for "harmless" files, and a bucket that is
      * private except for one prefix is a bucket somebody will widen.
      */
+    if (STAFF_ONLY_TENANT_PURPOSES.has(media.purpose)) {
+      this.tenants.assertStaff(actor, media.kindergartenId);
+
+      await this.audit.append({
+        action: "DOWNLOAD",
+        kindergartenId: media.kindergartenId,
+        actorUserId: actor.userId,
+        objectType: "MediaFile",
+        objectId: mediaId,
+      });
+
+      return this.storage.presignedGetUrl(media.storageKey, media.originalName);
+    }
+
     if (TENANT_IMAGE_PURPOSES.has(media.purpose)) {
       this.tenants.assertMember(actor, media.kindergartenId);
 

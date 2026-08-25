@@ -951,6 +951,23 @@ export const observationTypeConfigSchema = z.object({
 });
 export type ObservationTypeConfig = z.infer<typeof observationTypeConfigSchema>;
 
+// ── Document library — RFP §9 ────────────────────────────────────────────────
+
+export const documentSchema = z.object({
+  id: uuidSchema,
+  title: z.string(),
+  category: z.string().nullish(),
+  description: z.string().nullish(),
+  version: z.string().nullish(),
+  fileMediaFileId: uuidSchema,
+  coverMediaFileId: uuidSchema.nullish(),
+  publishedAt: z.string().nullish(),
+  publishedBy: personRefSchema.nullish(),
+  /** This reader's own bookmark, flattened from the join — RFP §9. */
+  isBookmarked: z.boolean().default(false),
+});
+export type LibraryDocument = z.infer<typeof documentSchema>;
+
 // ── Tenancy ──────────────────────────────────────────────────────────────────
 
 export const kindergartenSchema = z.object({

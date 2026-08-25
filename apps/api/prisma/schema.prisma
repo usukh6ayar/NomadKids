@@ -121,6 +121,10 @@ enum MediaPurpose {
   KINDERGARTEN_LOGO
   USER_PHOTO
   GROUP_PHOTO
+  /// A PDF in the document library, and its cover image — RFP §9. Tenant
+  /// material, not child data, so membership authorises them.
+  DOCUMENT
+  DOCUMENT_COVER
   /// A photograph on a safety incident — RFP Module 2.1. Child data carrying
   /// `childId`, so `canAccessChild` governs it like an album photo.
   INCIDENT
@@ -259,6 +263,8 @@ model User {
   vaccinationsRecorded  VaccinationRecord[]       @relation("VaccinationRecordedBy")
   incidentsRecorded     SafetyIncident[]          @relation("IncidentRecordedBy")
   artworkComparisons    ArtworkComparison[]       @relation("ComparisonAuthor")
+  documentsPublished    Document[]                @relation("DocumentPublishedBy")
+  documentBookmarks     DocumentBookmark[]        @relation("DocumentBookmarkUser")
 
   @@index([deletedAt])
   @@map("users")
@@ -425,6 +431,8 @@ model Kindergarten {
   vaccinations          VaccinationRecord[]
   safetyIncidents       SafetyIncident[]
   artworkComparisons    ArtworkComparison[]
+  documents             Document[]
+  documentBookmarks     DocumentBookmark[]
 
   @@index([deletedAt])
   @@map("kindergartens")
@@ -1088,6 +1096,80 @@ model ArtworkComparison {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Document library — RFP §9
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A PDF in the kindergarten's library — RFP §9.
+///
+/// ★ Kindergarten-scoped, not child data. It is staff reference material —
+/// curricula, methodology, regulations — so `MediaService` authorises the file
+/// by membership, exactly as it does a logo, and `canAccessChild` never runs.
+///
+/// ★★ `version` replaces rather than accumulates.
+///
+/// §9 asks for "Баримт шинэ хувилбараар солих" — replace with a new version —
+/// and a `version` string on one row is what that means. A separate
+/// `DocumentVersion` table would be the right model for "show me last year's
+/// curriculum", which §9 does not ask for and which nobody has requested.
+model Document {
+  id             String  @id @default(uuid()) @db.Uuid
+  kindergartenId String  @db.Uuid
+  title          String
+  /// Free text — §9 says "Ангилал" and gives no vocabulary, and a kindergarten
+  /// files by its own headings. Filtered on exactly, not fuzzily.
+  category       String?
+  description    String?
+  /// "Хувилбар" — e.g. "2026.1". A label, not an ordering key.
+  version        String?
+
+  /// The PDF itself. Required: a library entry with no document is a title.
+  fileMediaFileId  String  @unique @db.Uuid
+  /// "Нүүр зураг" — optional cover image.
+  coverMediaFileId String? @unique @db.Uuid
+
+  publishedAt   DateTime @default(now())
+  publishedById String?  @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten       @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  file         MediaFile          @relation("DocumentFile", fields: [fileMediaFileId], references: [id], onDelete: Restrict)
+  cover        MediaFile?         @relation("DocumentCover", fields: [coverMediaFileId], references: [id], onDelete: SetNull)
+  publishedBy  User?              @relation("DocumentPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+  bookmarks    DocumentBookmark[]
+
+  @@index([kindergartenId, category])
+  @@index([kindergartenId, publishedAt(sort: Desc)])
+  @@map("documents")
+}
+
+/// One person's bookmark — RFP §9's "Bookmark хийсэн эсэх".
+///
+/// ★ A join table rather than a boolean on `Document`, because the flag is
+/// per-*reader*: a column would make one teacher's bookmark appear on every
+/// colleague's list, which is the opposite of what a bookmark is.
+model DocumentBookmark {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  documentId     String @db.Uuid
+  userId         String @db.Uuid
+
+  createdAt DateTime @default(now())
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  document     Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user         User         @relation("DocumentBookmarkUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// One bookmark per person per document. No soft delete: un-bookmarking is
+  /// not a fact anybody needs to recover.
+  @@unique([documentId, userId])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("document_bookmarks")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Growth — RFP §7
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1747,6 +1829,8 @@ model MediaFile {
   uploadedBy         User?               @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
   childPhotoOf       Child?              @relation("ChildPhoto")
   comparisonEarlier  ArtworkComparison[] @relation("ComparisonEarlier")
+  documentFileOf     Document?           @relation("DocumentFile")
+  documentCoverOf    Document?           @relation("DocumentCover")
   comparisonLater    ArtworkComparison[] @relation("ComparisonLater")
   reportJob          ReportJob?          @relation("ReportOutput")
   kindergartenLogoOf Kindergarten?       @relation("KindergartenLogo")
