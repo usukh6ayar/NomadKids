@@ -165,23 +165,44 @@ never logged.
 
 There is no DELETE. Deactivation is `PATCH { isActive: false }` — CLAUDE.md §3.2.
 
+### 5.1 Roster filters and sorting — RFP §11
+
+`?sex`, `?ageMin` and `?ageMax` (whole years, inclusive at both ends), plus
+`?sort=name|dateOfBirth|age|updatedAt` and `?order=asc|desc`.
+
+★ **`age` is `dateOfBirth` with the direction reversed.** A younger child has a
+later birth date, so ascending _age_ is descending _date_. The flip happens once,
+in `childOrderBy`, rather than at each call site — where it would be got right
+twice and backwards once.
+
+★★ **The age range is exclusive at the bottom: `ageMax + 1`.** "At most 4" means
+every child who has not yet turned five, including one who is four years and 364
+days old. An inclusive `today − 4 years` bound matches only children who are
+exactly four _to the day_, which is nearly nobody — an empty roster that reads as
+"no such children" rather than as a bug.
+
+An inverted range (`ageMin > ageMax`) is a **400**, not a silent swap.
+
+`GET /children/summary` takes the same filters and shares one builder with the
+list, so the header cannot report a total the rows beneath it contradict.
+
 ---
 
 ## 5. Children, guardianships, enrollment
 
-| Method | Route                       | Role           | Ownership           | Request                               | Response                              |
-| ------ | --------------------------- | -------------- | ------------------- | ------------------------------------- | ------------------------------------- |
-| GET    | `/children`                 | any            | actor's visible set | `?q&groupId&schoolYearId&status&page` | paginated summaries                   |
-| POST   | `/children`                 | admin, teacher | kg                  | names, sex, dateOfBirth, groupId      | created child + first enrollment      |
-| GET    | `/children/:id`             | any            | child               | —                                     | detail + current group + guardians    |
-| PATCH  | `/children/:id`             | admin, teacher | child:write         | names, dob, health notes, status      | updated                               |
-| POST   | `/children/:id/photo`       | admin, teacher | child:write         | multipart image                       | MediaFile ref                         |
-| GET    | `/children/:id/guardians`   | any            | child               | —                                     | guardians + relation                  |
-| POST   | `/children/:id/guardians`   | admin          | kg:admin            | userId or new-user fields, relation   | guardianship                          |
-| PATCH  | `/guardianships/:id`        | admin          | kg:admin            | relation, isPrimary, **canView**      | updated                               |
-| GET    | `/children/:id/enrollments` | any            | child               | —                                     | full history, newest first            |
-| POST   | `/children/:id/enrollments` | admin          | kg:admin            | groupId, schoolYearId, startedOn      | created; ends the previous active one |
-| PATCH  | `/enrollments/:id`          | admin          | kg:admin            | endedOn, status                       | updated                               |
+| Method | Route                       | Role           | Ownership           | Request                                                            | Response                              |
+| ------ | --------------------------- | -------------- | ------------------- | ------------------------------------------------------------------ | ------------------------------------- |
+| GET    | `/children`                 | any            | actor's visible set | `?q&groupId&schoolYearId&status&sex&ageMin&ageMax&sort&order&page` | paginated summaries                   |
+| POST   | `/children`                 | admin, teacher | kg                  | names, sex, dateOfBirth, groupId                                   | created child + first enrollment      |
+| GET    | `/children/:id`             | any            | child               | —                                                                  | detail + current group + guardians    |
+| PATCH  | `/children/:id`             | admin, teacher | child:write         | names, dob, health notes, status                                   | updated                               |
+| POST   | `/children/:id/photo`       | admin, teacher | child:write         | multipart image                                                    | MediaFile ref                         |
+| GET    | `/children/:id/guardians`   | any            | child               | —                                                                  | guardians + relation                  |
+| POST   | `/children/:id/guardians`   | admin          | kg:admin            | userId or new-user fields, relation                                | guardianship                          |
+| PATCH  | `/guardianships/:id`        | admin          | kg:admin            | relation, isPrimary, **canView**                                   | updated                               |
+| GET    | `/children/:id/enrollments` | any            | child               | —                                                                  | full history, newest first            |
+| POST   | `/children/:id/enrollments` | admin          | kg:admin            | groupId, schoolYearId, startedOn                                   | created; ends the previous active one |
+| PATCH  | `/enrollments/:id`          | admin          | kg:admin            | endedOn, status                                                    | updated                               |
 
 `GET /children` returns the actor's visible set — a parent sees only their own
 children, a teacher only their groups' children, an admin their kindergartens'.

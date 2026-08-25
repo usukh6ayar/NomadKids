@@ -83,9 +83,9 @@ re-broken by the next one. Production is stale but stable in the meantime.
 | #   | RFP                     | Item                                                      | State      |
 | --- | ----------------------- | --------------------------------------------------------- | ---------- |
 | 1   | —                       | Rules and stale docs reconciled with the new scope        | ✅         |
-| 2   | §4.2                    | Zodiac sign and Mongolian year animal                     | ⬜         |
-| 3   | §3.2, §3.3, §10.3       | Logo, teacher photo, group photo uploads; logo in the PDF | ⬜         |
-| 4   | §11                     | Age and sex filters, sort control                         | ⬜         |
+| 2   | §4.2                    | Zodiac sign and Mongolian year animal                     | ✅         |
+| 3   | §3.2, §3.3, §10.3       | Logo, teacher photo, group photo uploads; logo in the PDF | ✅         |
+| 4   | §11                     | Age and sex filters, sort control                         | ✅         |
 | 5   | §12.2, §2.1             | Storage size, report statistics, audit browser            | ⬜         |
 | 6   | §6.1, §6.2              | Assessment configuration admin UI                         | ⬜         |
 | 7   | §7                      | Growth measurements and charts                            | ⬜         |
@@ -124,3 +124,88 @@ the reason on the record.
   built. They exist and are linked; marked superseded, with the one genuinely
   unlinked area (assessment configuration) carried forward as item 6 above.
 - `pnpm format` over the 18 files CI was failing on.
+
+---
+
+## 2 — Birth facts ✅
+
+RFP §4.2 wants the birth date, the age, the өрнийн орд and the монгол жилийн
+амьтан. `GET /children/:id/birthday-notes` returned notes alone, so the screen
+had a birth date only because the page above it held the child, and the PDF —
+which has no page above it — had neither.
+
+The derived facts live in `@kinder/contracts` because two consumers need the
+same answer: the API response and the report templates.
+
+- **The lunar boundary is reported, not guessed.** Цагаан сар moves every year
+  and diverges from the Chinese calendar by a whole month in some years. A table
+  that cannot be checked here would put a wrong animal in a permanent record
+  with no sign it was wrong, so `beforeLunarNewYear` marks the window and the UI
+  qualifies it. Five births in six are unambiguous.
+- **Dates are parsed by hand.** `new Date("2024-03-21")` is UTC midnight; read
+  with local getters that is the 20th anywhere west of UTC, which moves a child
+  across a zodiac boundary about once every twelve births.
+- **The PDF section no longer depends on a note existing** — a two-year-old's
+  portfolio printed no birthday section at all.
+
+```
+api  portfolio + reports   72 passed
+contracts                  32 passed
+```
+
+---
+
+## 3 — Tenant images, and the logo in the PDF ✅
+
+Three columns had existed since the tenant-image migration with no route able to
+write them; `media.service.ts` said so in a comment.
+
+| Route                          | Who                                      |
+| ------------------------------ | ---------------------------------------- |
+| `POST /kindergartens/:id/logo` | administrator of that tenant             |
+| `POST /users/:id/photo`        | **that account only**, whatever the role |
+| `POST /groups/:id/photo`       | teacher or admin of that tenant          |
+
+- **An administrator cannot set someone else's portrait.** RFP §3.3 puts the
+  profile photo under what a teacher does with their own profile, and a portrait
+  somebody else can set stops being evidence the person put it there.
+- **Each column is `@unique`, so an upload displaces rather than adds.** The
+  previous file is soft-deleted in the same transaction; otherwise it survives
+  pointing at bytes nothing serves, and the new row cannot claim the pointer.
+- **The PDF logo is measured by counting embedded images**, before and after an
+  upload. The text layer cannot see a picture, and the kindergarten's _name_ was
+  always printed — so a text-based assertion would have passed for months
+  against a PDF with no logo in it.
+
+```
+api   871 passed | 1 skipped   (was 854)
+web   169 passed
+```
+
+The web design-token guard caught two raw Tailwind radii in the new component
+before it landed, which is the second time that test has paid for itself.
+
+---
+
+## 4 — Roster filters and sorting ✅
+
+RFP §11's sex filter, age range and sort control, on `GET /children` and its
+summary.
+
+- **`sort=age` is `dateOfBirth` reversed**, in one place. Ascending age is
+  youngest first, which is the _latest_ birth date. The first draft of the test
+  asserted this backwards — which is the mistake the single mapping exists to
+  prevent at the call sites.
+- **The age range is exclusive at the bottom (`ageMax + 1`).** "At most 4" has
+  to include a child of four years and 364 days; an inclusive `today − 4 years`
+  bound matches only children who are exactly four to the day, and the roster
+  comes back empty in a way that reads as data rather than as a bug.
+- **The list and the summary share one filter builder**, on both sides of the
+  wire — `childFilters` in the service, `rosterParams` in the web app. They each
+  had a hand-copied literal, which is how a header comes to report twelve
+  children above a list showing four.
+
+```
+api  children + query-counts + authz-consistency   104 passed
+web  169 passed
+```
