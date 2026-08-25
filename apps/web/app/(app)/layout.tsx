@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import {
   BookOpen,
   Building2,
@@ -10,13 +11,23 @@ import {
   Settings,
   ShieldCheck,
   Users,
+  X,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { childSummarySchema, type ChildSummary } from "@kinder/contracts";
+import { z } from "zod";
 import { AppShell, type NavItem, type NavSection } from "@/components/shell/app-shell";
+import { get } from "@/lib/api/browser";
+import { qk } from "@/lib/api/keys";
+import { ChildAvatar } from "@/components/media/media-image";
 import { LoadingState } from "@/components/ui/states";
 import { useSession } from "@/lib/auth/session";
+import { formatAge, fullName } from "@/lib/format";
 import { MY_CHILDREN } from "@/lib/vocabulary";
+
+const ownChildrenSchema = z.array(childSummarySchema);
 
 /**
  * The authenticated shell.
@@ -42,12 +53,32 @@ import { MY_CHILDREN } from "@/lib/vocabulary";
 export default function AppLayout({ children }: { children: ReactNode }) {
   const { session, isLoading, hasRole, isSuperAdmin } = useSession();
   const router = useRouter();
+  const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
+  const [childPickerOpen, setChildPickerOpen] = useState(false);
 
   useEffect(() => {
     if (isLoading || session) return;
     const from = encodeURIComponent(window.location.pathname + window.location.search);
     router.replace(`/login?from=${from}`);
   }, [isLoading, session, router]);
+
+  /*
+   * ★ Powers both the desktop sidebar's "Хүүхдийн мэдээлэл" section and the
+   * phone bottom bar's child-picker modal, not this page.
+   *
+   * Same query key as `/children`'s own fetch (`ChildrenPage`), so a parent
+   * who has already opened that screen this session sees both resolve from
+   * cache rather than firing a second request.
+   *
+   * Called unconditionally (hooks must not follow the early returns below) and
+   * gated by role with `enabled` instead.
+   */
+  const myChildren = useQuery({
+    queryKey: qk.myChildren(),
+    queryFn: () => get("/children/mine", ownChildrenSchema),
+    enabled: Boolean(session) && !isSuperAdmin && !isStaff,
+    staleTime: 60_000,
+  });
 
   if (isLoading || !session) {
     return (
@@ -70,17 +101,22 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
-  const nav = isStaff ? staffNav(hasRole("ADMIN")) : parentNav();
+  const nav = isStaff ? staffNav(hasRole("ADMIN")) : parentNav(() => setChildPickerOpen(true));
 
   return (
-    <AppShell
-      nav={nav}
-      sections={isStaff ? staffSections(hasRole("ADMIN")) : undefined}
-      variant={isStaff ? "teacher" : "parent"}
-    >
-      {children}
-    </AppShell>
+    <>
+      <AppShell
+        nav={nav}
+        sections={isStaff ? staffSections(hasRole("ADMIN")) : parentSections(myChildren.data)}
+        variant={isStaff ? "teacher" : "parent"}
+      >
+        {children}
+      </AppShell>
+
+      {!isStaff && childPickerOpen ? (
+        <ChildPickerModal myChildren={myChildren.data} onClose={() => setChildPickerOpen(false)} />
+      ) : null}
+    </>
   );
 }
 
@@ -186,12 +222,175 @@ function platformNav(): NavItem[] {
   ];
 }
 
-/** Parent navigation — four items, the brief's Нүүр / Хавтас / Мэдэгдэл plus profile. */
-function parentNav(): NavItem[] {
+/**
+ * Parent navigation — four items, the brief's original Нүүр / Хавтас /
+ * Мэдэгдэл / Профайл.
+ *
+ * ★ "Хавтас" opens the child picker in place rather than navigating.
+ *
+ * "Ирц" and "Хоол ба цэс" briefly had their own bottom-bar tabs, each
+ * resolving to a `?tab=` deep link on a confirmed single child or to
+ * `/children` otherwise. For any family that isn't exactly one child, that
+ * put three of the six tabs — this one included — on the same destination:
+ * a wasted tab, and on that landing page, three simultaneous "current page"
+ * highlights. Removed; a parent reaches both from their child's own page,
+ * same as every other per-child screen (Ажиглалт, Үнэлгээ, Зураг).
+ *
+ * The picker needs `onOpenChildPicker` from `AppLayout`, which owns both the
+ * modal's open state and the `myChildren` query behind it — this function has
+ * no hooks of its own to fetch with.
+ */
+function parentNav(onOpenChildPicker: () => void): NavItem[] {
   return [
     { href: "/home", label: "Нүүр", icon: <Home {...iconProps} /> },
-    { href: "/children", label: MY_CHILDREN, icon: <BookOpen {...iconProps} /> },
+    { label: MY_CHILDREN, icon: <BookOpen {...iconProps} />, onSelect: onOpenChildPicker },
     { href: "/notifications", label: "Мэдэгдэл", icon: <Bell {...iconProps} />, badge: "unread" },
     { href: "/settings", label: "Профайл", icon: <Settings {...iconProps} /> },
   ];
+}
+
+/**
+ * The desktop sidebar's grouped sections — parent side.
+ *
+ * Same shape as `staffSections` and the same rule for anything actually
+ * built: every real entry is a link, duplicated here from `parentNav` for
+ * the same reason the staff sidebar duplicates its own (see the comment
+ * above `NavSection`) — a desktop reader sees the whole menu in one place
+ * rather than a partial one that sends them hunting in the bottom bar.
+ *
+ * Чат and Санхүү are the one deliberate exception. CLAUDE.md §7 puts both in
+ * a later phase — chat and finance are not built, and pulling either forward
+ * was not asked for here. Naming them anyway, as inert "удахгүй" labels
+ * rather than links, was a specific choice for this sidebar: it is the
+ * reference's own device (see `NavSection`'s doc comment), not the "eight
+ * dead links" version this codebase already tried once and removed.
+ *
+ * ★ "Хүүхдийн мэдээлэл" names the children, not the features.
+ *
+ * The first version of this listed "Миний хүүхдүүд" / "Ирц" / "Хоол ба цэс" as
+ * three separate rows, all pointing at the same `/children` list for any
+ * family that isn't exactly one child — see `parentNav`'s doc comment for why
+ * that fallback existed and was then removed entirely. A parent has one or
+ * two children, never a menu of features to browse; naming the children
+ * directly, straight into each one's own page, is one tap to the thing a
+ * parent actually wants instead of a route to a list they then pick from
+ * anyway.
+ */
+function parentSections(myChildren: ChildSummary[] | undefined): NavSection[] {
+  return [
+    {
+      title: "Хүүхдийн мэдээлэл",
+      entries:
+        myChildren && myChildren.length > 0
+          ? myChildren.map((child) => ({
+              label: fullName(child),
+              href: `/children/${child.id}`,
+            }))
+          : [{ label: "Холбогдсон хүүхэд алга" }],
+    },
+    {
+      title: "Харилцаа холбоо",
+      entries: [
+        { label: "Ангийн самбар / Мэдээ", href: "/notifications" },
+        { label: "Чат" },
+      ],
+    },
+    {
+      title: "Санхүү ба бүртгэл",
+      entries: [{ label: "Санхүү" }, { label: "Миний бүртгэл", href: "/settings" }],
+    },
+  ];
+}
+
+/**
+ * The phone bottom bar's "Миний хүүхдүүд" tab — a sheet over the current
+ * screen rather than a navigation to `/children`.
+ *
+ * ★ Picking a child closes the sheet as well as navigating.
+ *
+ * `AppLayout` does not unmount on a route change — it is the shared layout
+ * every route renders inside — so `childPickerOpen` would otherwise still be
+ * `true` on the child's own page, ready to reopen the instant something else
+ * calls `setChildPickerOpen(true)` from stale state. Each row's `onClick`
+ * closes it explicitly rather than relying on navigation to do that for free.
+ *
+ * Same dialog recipe as `RequestDialog` (`components/child/child-attendance.tsx`)
+ * and `CreateSurveyDialog` (`app/(app)/surveys/page.tsx`): a fixed overlay,
+ * Escape to close, body scroll locked while open. Not a shared component
+ * because the other two are forms and this is a list — the only thing in
+ * common is the shell, and three call sites do not justify extracting it.
+ */
+function ChildPickerModal({
+  myChildren,
+  onClose,
+}: {
+  myChildren: ChildSummary[] | undefined;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previous;
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={MY_CHILDREN}
+      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/50 p-0 sm:items-center sm:p-4"
+      onClick={onClose}
+    >
+      {/* `stopPropagation` — a tap on the sheet itself must not bubble to the
+          overlay's own close handler. */}
+      <div
+        className="max-h-[80dvh] w-full overflow-y-auto rounded-t-card border border-border bg-surface p-4 sm:max-w-[420px] sm:rounded-card sm:p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="text-title font-semibold text-ink">{MY_CHILDREN}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Хаах"
+            className="grid size-11 shrink-0 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
+          >
+            <X size={20} aria-hidden="true" />
+          </button>
+        </div>
+
+        {!myChildren ? (
+          <LoadingState rows={2} />
+        ) : myChildren.length === 0 ? (
+          <p className="px-1 py-6 text-center text-body text-muted">
+            Танд холбогдсон хүүхэд байхгүй байна.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {myChildren.map((child) => (
+              <Link
+                key={child.id}
+                href={`/children/${child.id}`}
+                onClick={onClose}
+                className="flex min-h-[64px] items-center gap-3 rounded-row border border-border bg-surface px-3 py-2 transition-colors hover:border-primary"
+              >
+                <ChildAvatar child={child} size={44} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium text-ink">{fullName(child)}</span>
+                  <span className="block text-body text-muted">{formatAge(child.dateOfBirth)}</span>
+                </span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }

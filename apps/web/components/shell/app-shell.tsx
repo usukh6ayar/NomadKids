@@ -16,11 +16,21 @@ import { BRAND } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
 
 export interface NavItem {
-  href: string;
+  /**
+   * Either this or `onSelect` — never neither, never both.
+   *
+   * Omitted for a tab that opens something in place rather than navigating,
+   * e.g. the parent bottom bar's child picker. Such a tab is rendered as a
+   * `<button>`, never claims the "current page" active state, and cannot be
+   * `key`ed by `href` — see the `key={item.label}` call sites.
+   */
+  href?: string;
   label: string;
   icon: ReactNode;
   /** Shows the unread-notification count. Only one item ever sets this. */
   badge?: "unread";
+  /** Runs instead of navigating. See `href`. */
+  onSelect?: () => void;
 }
 
 /**
@@ -28,15 +38,20 @@ export interface NavItem {
  *
  * ★ Ported from the reference's `<details class="nav-group">`.
  *
- * Every entry is a link. There is no placeholder variant, deliberately: a menu
- * entry that goes nowhere teaches users the system is broken, and the version
- * of this sidebar that had eight of them proved the point. A section names the
- * parts of the product that are built, and gains a line on the day another one
- * ships.
+ * Every entry is a link *or* a plain, non-interactive label — never a link to
+ * nowhere. `staffSections` below uses only links: a teacher's whole product
+ * fits on one screen, so a dead entry there would only ever have been
+ * decoration. An `entry` with no `href` renders as inert text with a small
+ * "удахгүй" tag — the reference's own device for naming a feature that exists
+ * in the product but not yet in this build (`app.css`'s `.nav a.soon`,
+ * rendered there as a `<span>`, never an `<a>`). The distinction that matters
+ * is exactly the one the reference draws: a `<span>` cannot be clicked and so
+ * cannot disappoint a click, where an `<a href="/chat">` that 404s teaches
+ * someone the product is broken.
  */
 export interface NavSection {
   title: string;
-  entries: { label: string; href: string }[];
+  entries: { label: string; href?: string }[];
 }
 
 /**
@@ -450,7 +465,7 @@ function Sidebar({
           : nav
               .slice(1)
               .map((item) => (
-                <NavLink key={item.href} item={item} pathname={pathname} orientation="vertical" />
+                <NavLink key={item.label} item={item} pathname={pathname} orientation="vertical" />
               ))}
       </div>
 
@@ -492,6 +507,18 @@ function NavGroup({ section, pathname }: { section: NavSection; pathname: string
       </summary>
 
       {section.entries.map((entry) => {
+        if (!entry.href) {
+          return (
+            <span
+              key={entry.label}
+              className="ml-3 flex min-h-[44px] items-center gap-1.5 px-2.5 py-1.5 text-compact text-faint"
+            >
+              {entry.label}
+              <span className="text-caption">(удахгүй)</span>
+            </span>
+          );
+        }
+
         const active = pathname === entry.href || pathname.startsWith(`${entry.href}/`);
         return (
           <Link
@@ -595,7 +622,7 @@ function BottomBar({ nav, hideOnDesktop }: { nav: NavItem[]; hideOnDesktop: bool
       )}
     >
       {nav.map((item) => (
-        <NavLink key={item.href} item={item} pathname={pathname} orientation="horizontal" />
+        <NavLink key={item.label} item={item} pathname={pathname} orientation="horizontal" />
       ))}
     </nav>
   );
@@ -611,32 +638,30 @@ function NavLink({
   orientation: "vertical" | "horizontal";
 }) {
   // Prefix match so `/children/abc` keeps "Хүүхдүүд" lit. Exact match for the
-  // root of a section, or every item would match `/`.
-  const active =
-    item.href === "/"
+  // root of a section, or every item would match `/`. A button-style item
+  // (no `href`) opens something in place — it is never the current page.
+  const active = !item.href
+    ? false
+    : item.href === "/"
       ? pathname === "/"
       : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
-  return (
-    <Link
-      href={item.href}
-      // The single most useful ARIA attribute in a navigation: it tells a
-      // screen reader which page you are on, which colour alone cannot.
-      aria-current={active ? "page" : undefined}
-      className={cn(
-        "relative flex items-center gap-2.5 rounded-control font-medium transition-colors",
-        orientation === "vertical"
-          ? "min-h-[44px] gap-[11px] px-3 py-2.5 text-lead"
-          : "min-h-[56px] flex-1 flex-col justify-center gap-1 px-1 py-2 text-caption",
-        active ? "bg-primary-soft text-primary" : "text-muted hover:bg-canvas hover:text-ink",
-        // A blue-700 rule marks the current destination: down the left edge in
-        // the sidebar, across the top of a tab in the phone's bottom bar.
-        active &&
-          (orientation === "vertical"
-            ? "before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-pill before:bg-primary"
-            : "before:absolute before:inset-x-5 before:top-0 before:h-[3px] before:rounded-pill before:bg-primary"),
-      )}
-    >
+  const className = cn(
+    "relative flex items-center gap-2.5 rounded-control font-medium transition-colors",
+    orientation === "vertical"
+      ? "min-h-[44px] gap-[11px] px-3 py-2.5 text-lead"
+      : "min-h-[56px] flex-1 flex-col justify-center gap-1 px-1 py-2 text-caption",
+    active ? "bg-primary-soft text-primary" : "text-muted hover:bg-canvas hover:text-ink",
+    // A blue-700 rule marks the current destination: down the left edge in
+    // the sidebar, across the top of a tab in the phone's bottom bar.
+    active &&
+      (orientation === "vertical"
+        ? "before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-pill before:bg-primary"
+        : "before:absolute before:inset-x-5 before:top-0 before:h-[3px] before:rounded-pill before:bg-primary"),
+  );
+
+  const content = (
+    <>
       <span className="relative flex items-center justify-center">
         {item.icon}
         {item.badge === "unread" ? <UnreadDot /> : null}
@@ -644,6 +669,26 @@ function NavLink({
       <span className={orientation === "horizontal" ? "leading-none" : undefined}>
         {item.label}
       </span>
+    </>
+  );
+
+  if (!item.href) {
+    return (
+      <button type="button" onClick={item.onSelect} className={className}>
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <Link
+      href={item.href}
+      // The single most useful ARIA attribute in a navigation: it tells a
+      // screen reader which page you are on, which colour alone cannot.
+      aria-current={active ? "page" : undefined}
+      className={className}
+    >
+      {content}
     </Link>
   );
 }
