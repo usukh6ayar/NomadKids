@@ -1,7 +1,9 @@
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
 import type { AssessmentRadar } from "@kinder/contracts";
 import { DevelopmentRadar } from "@/components/assessment/development-radar";
+import { DashboardStats } from "@/components/dashboard/dashboard-stats";
 import { ObservationMix } from "@/components/dashboard/observation-mix";
 import { formatAgeFromMonths } from "@/lib/format";
 
@@ -162,5 +164,111 @@ describe("the roster summary", () => {
     expect(formatAgeFromMonths(41)).toBe("3 нас 5 сар");
     expect(formatAgeFromMonths(48)).toBe("4 нас");
     expect(formatAgeFromMonths(null)).toBe("—");
+  });
+});
+
+describe("the dashboard's grid", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setSearchParams("");
+  });
+
+  /**
+   * ★ Why a layout test exists at all, when most do not.
+   *
+   * The stretched stat row was not a styling slip — it was a *stale* decision.
+   * The row held four tiles, two were removed as duplicates of the sections
+   * beneath them, and `grid-cols-2` stayed behind, so two short numbers spread
+   * across the full width of a desktop with nothing beside them. Nothing failed;
+   * the screen simply looked wrong to whoever opened it next, which took days.
+   *
+   * So this asserts the one thing that made it wrong: the counts occupy part of
+   * a row rather than all of it. It deliberately does not pin gaps, paddings or
+   * exact spans — those are taste, they will change, and a test that locks them
+   * makes every future adjustment a test edit.
+   */
+  it("keeps the counts to half a row rather than the full width", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: "/children/summary",
+        // `boys`/`girls` are required since the sex-split widget shipped. A
+        // fixture missing them fails Zod, the query errors, and the card
+        // renders nothing — which is the contract working, not a flake.
+        body: { total: 5, averageAgeMonths: 41, boys: 3, girls: 2 },
+      },
+    ]);
+    renderWithProviders(<DashboardStats counts={{ children: 5, groups: 1, pendingReviews: 0 }} />);
+
+    const region = await screen.findByRole("region", { name: "Өнөөдрийн тойм" });
+    expect(region.className).toMatch(/lg:col-span-6/);
+    expect(region.className).not.toMatch(/lg:col-span-12/);
+  });
+
+  /**
+   * ★★ The landmark survives being a grid cell.
+   *
+   * The first attempt made this a fragment so the cards could sit directly in
+   * the page grid — which worked visually and silently dropped the region, since
+   * a fragment has nowhere to hang `aria-label`. `display: contents` would have
+   * done the same on browsers that drop such elements from the accessibility
+   * tree. Two bare numbers announced with no name is the regression this
+   * catches.
+   */
+  it("still names the counts for a screen reader", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: "/children/summary",
+        // `boys`/`girls` are required since the sex-split widget shipped. A
+        // fixture missing them fails Zod, the query errors, and the card
+        // renders nothing — which is the contract working, not a flake.
+        body: { total: 5, averageAgeMonths: 41, boys: 3, girls: 2 },
+      },
+    ]);
+    renderWithProviders(<DashboardStats counts={{ children: 5, groups: 1, pendingReviews: 0 }} />);
+
+    const region = await screen.findByRole("region", { name: "Өнөөдрийн тойм" });
+    expect(within(region).getByText("Хүүхэд")).toBeInTheDocument();
+    expect(within(region).getByText("Бүлэг")).toBeInTheDocument();
+  });
+
+  /**
+   * ★ The mean age is read from `/children/summary`, not from the dashboard
+   * endpoint — which does not carry it, and should not be widened to serve one
+   * card. Worded as an age: 41 months is "3 нас 5 сар", where "3" alone would be
+   * true of most of a school year and stop moving.
+   */
+  it("shows the roster's mean age, worded", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: "/children/summary",
+        // `boys`/`girls` are required since the sex-split widget shipped. A
+        // fixture missing them fails Zod, the query errors, and the card
+        // renders nothing — which is the contract working, not a flake.
+        body: { total: 5, averageAgeMonths: 41, boys: 3, girls: 2 },
+      },
+    ]);
+    renderWithProviders(<DashboardStats counts={{ children: 5, groups: 1, pendingReviews: 0 }} />);
+
+    expect(await screen.findByText("3 нас 5 сар")).toBeInTheDocument();
+    expect(screen.getByText("Дундаж нас")).toBeInTheDocument();
+  });
+
+  /**
+   * ★★ A card reading "0 нас" for a beat is a claim about the roster; an empty
+   * slot is only a slower card. The other two must not move when it arrives.
+   */
+  it("leaves the age blank rather than zero when the request fails", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: "/children/summary", status: 500, body: { title: "Алдаа", status: 500 } },
+    ]);
+    renderWithProviders(<DashboardStats counts={{ children: 5, groups: 1, pendingReviews: 0 }} />);
+
+    const region = await screen.findByRole("region", { name: "Өнөөдрийн тойм" });
+    expect(within(region).getByText("Хүүхэд")).toBeInTheDocument();
+    expect(within(region).queryByText("0 нас")).toBeNull();
   });
 });

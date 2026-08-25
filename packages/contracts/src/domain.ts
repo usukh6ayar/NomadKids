@@ -435,6 +435,16 @@ export const aboutMeSchema = z.object({
   // Prisma Decimal serialises as a string.
   heightCm: z.union([z.string(), z.number()]).nullish(),
   weightKg: z.union([z.string(), z.number()]).nullish(),
+  /**
+   * ★ RFP §4.1 "тухайн мэдээллийг оруулсан огноо".
+   *
+   * `ChildProfile.recordedOn` has always existed and `PATCH /about-me` has
+   * always accepted it — the schema simply never declared it, and Zod strips
+   * what it is not told about. So a measurement's date could be written and
+   * then never read back, which is worse than not storing it: a height with no
+   * date is a number about a growing child that nobody can place in time.
+   */
+  recordedOn: z.string().nullish(),
 });
 export type AboutMe = z.infer<typeof aboutMeSchema>;
 
@@ -736,6 +746,35 @@ export const teacherDashboardSchema = z.object({
   observationsByType: z
     .array(z.object({ type: namedRefSchema, count: z.number() }))
     .default([]),
+  /** Every birthday in the current month, day-ordered — what a teacher plans against. */
+  birthdaysThisMonth: z
+    .array(
+      z.object({
+        id: uuidSchema,
+        lastName: z.string(),
+        firstName: z.string(),
+        dateOfBirth: z.string().nullish(),
+        photoMediaFileId: uuidSchema.nullish(),
+      }),
+    )
+    .default([]),
+  /**
+   * The class board's latest published notice.
+   *
+   * `readCount` is how many people opened it — a count, never the list. The
+   * notifications repository draws the same line for reactions and says why.
+   */
+  boardNotice: z
+    .object({
+      id: uuidSchema,
+      title: z.string(),
+      body: z.string(),
+      publishedAt: z.string().nullable(),
+      isImportant: z.boolean(),
+      readCount: z.number(),
+    })
+    .nullable()
+    .default(null),
   /** RFP §12.1 — children whose birthday is today. */
   birthdaysToday: z
     .array(
@@ -942,5 +981,12 @@ export type RadarAxis = z.infer<typeof radarAxisSchema>;
 export const rosterSummarySchema = z.object({
   total: z.number(),
   averageAgeMonths: z.number().nullable(),
+  /**
+   * Counted independently, so neither is derived from `total`. `Sex` is a
+   * two-value enum today; the day it gains a third or becomes nullable, a
+   * subtraction would silently file those children under the remaining label.
+   */
+  boys: z.number(),
+  girls: z.number(),
 });
 export type RosterSummary = z.infer<typeof rosterSummarySchema>;

@@ -73,16 +73,36 @@ export class AttendanceRepository {
     return { enrollments, records };
   }
 
-  /** Create-or-update, keyed by the `(enrollmentId, date)` uniqueness. */
+  /**
+   * Create-or-update, keyed by `(enrollmentId, date)` among *live* rows.
+   *
+   * ★ Not `prisma.attendance.upsert()`, deliberately.
+   *
+   * The uniqueness this keys off is a **partial** index — `WHERE "deletedAt"
+   * IS NULL` — so that re-recording a day whose row was soft-deleted does not
+   * fail on a "duplicate" only the database still remembers (see the doc
+   * comment on `model Attendance` in schema.prisma). Postgres's `ON CONFLICT`,
+   * which is what `upsert()` compiles to, needs a *plain* unique index or
+   * constraint as its arbiter and will not match a partial one — so upsert
+   * fails outright on every call once the index is partial, not merely on the
+   * re-recording case it was written to fix. A transaction with an explicit
+   * find-then-write does not need an arbiter and works with either index
+   * shape.
+   */
   async upsertForChild(data: RecordAttendanceData) {
-    return this.prisma.attendance.upsert({
-      where: { enrollmentId_date: { enrollmentId: data.enrollmentId, date: data.date } },
-      create: data,
-      update: {
-        status: data.status,
-        note: data.note,
-        recordedById: data.recordedById,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.attendance.findFirst({
+        where: { enrollmentId: data.enrollmentId, date: data.date, deletedAt: null },
+      });
+
+      if (existing) {
+        return tx.attendance.update({
+          where: { id: existing.id },
+          data: { status: data.status, note: data.note, recordedById: data.recordedById },
+        });
+      }
+
+      return tx.attendance.create({ data });
     });
   }
 

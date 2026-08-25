@@ -1,4 +1,10 @@
-import type { TeacherDashboard } from "@kinder/contracts";
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { rosterSummarySchema, type TeacherDashboard } from "@kinder/contracts";
+import { get } from "@/lib/api/browser";
+import { qk } from "@/lib/api/keys";
+import { formatAgeFromMonths } from "@/lib/format";
 import { Card } from "@/components/ui/card";
 
 /**
@@ -27,11 +33,81 @@ import { Card } from "@/components/ui/card";
  * numbers teaches a teacher to read numbers rather than to act". Four tiles were
  * arguing with that sentence. Two agree with it.
  */
+/**
+ * ★★★ Half a row, holding two cards — not a full-width grid of its own.
+ *
+ * This rendered `<section className="grid grid-cols-2">` at the page's full
+ * width, which stretched two short numbers across the whole viewport: "Хүүхэд
+ * 5" filling 600px of a 1200px screen with nothing beside it. That was a
+ * leftover rather than a decision — the row held four tiles until two were
+ * removed as duplicates of the sections below them, and nothing revisited the
+ * columns the survivors sat in.
+ *
+ * It is one cell of the page's twelve-column grid now, spanning six, with three
+ * counts sharing it — so each is an eighth of the width and the group's
+ * assessment card takes the other half of the row.
+ *
+ * ★★★ Three across on a phone too, rather than collapsing to one.
+ *
+ * The rule for this screen is that grids fall to a single column on mobile, and
+ * these are the exception: three short numbers, where stacking spends three
+ * full-width cards and roughly 240px of height to say "5 · 1 · 3 нас 5 сар". A
+ * single column would *cost* screen real estate where it is scarcest, which is
+ * the opposite of the intent. At 375px each tile is about 110px — enough once
+ * its type steps down with the breakpoint.
+ *
+ * ★★★★ The `<section>` stays a real element rather than becoming a fragment or
+ * a `display: contents` wrapper. Both would let the cards sit directly in the
+ * page grid, and both would cost the landmark: a fragment has nowhere to hang
+ * `aria-label`, and `display: contents` has a history of dropping elements out
+ * of the accessibility tree. Two bare numbers announced with no name is a worse
+ * outcome than a column span this component has to know about.
+ */
 export function DashboardStats({ counts }: { counts: TeacherDashboard["counts"] }) {
+  /*
+   * ★ The mean age comes from `/children/summary`, not from this endpoint.
+   *
+   * `GET /dashboard/teacher` does not carry it, and widening that response to
+   * serve one card would couple the dashboard endpoint to this component's
+   * layout — the same coupling `GroupsSection` declines for the same reason.
+   * The summary endpoint already exists for the roster, computes the mean over
+   * the whole visible set rather than a page, and shares its `where` with the
+   * children list. A second reader costs one request and no new server code.
+   *
+   * Unfiltered here: the roster screen passes its search term so its header
+   * matches its rows, but a dashboard describes everyone this teacher has.
+   * `qk.rosterSummary({})` is therefore a different cache key from the roster's,
+   * which is correct — they are answers to different questions.
+   */
+  const roster = useQuery({
+    queryKey: qk.rosterSummary({}),
+    queryFn: () => get("/children/summary", rosterSummarySchema),
+    // Context, not the point of the screen: a failure drops the card rather
+    // than the dashboard.
+    retry: false,
+  });
+
+  const averageAge = roster.data?.averageAgeMonths;
+
   return (
-    <section aria-label="Өнөөдрийн тойм" className="grid grid-cols-2 gap-3">
+    <section
+      aria-label="Өнөөдрийн тойм"
+      className="grid grid-cols-3 gap-2 md:col-span-2 md:gap-3 lg:col-span-6 lg:gap-5"
+    >
       <Stat label="Хүүхэд" value={counts.children} />
       <Stat label="Бүлэг" value={counts.groups} />
+      {/*
+        ★★ Absent rather than zero while it loads or if it fails.
+        A card reading "0 нас" for a beat is a claim about the roster; an empty
+        slot is only a slower card. The other two do not move when it arrives —
+        the grid reserves three columns whatever this renders.
+      */}
+      <Stat
+        label="Дундаж нас"
+        value={
+          averageAge === null || averageAge === undefined ? "—" : formatAgeFromMonths(averageAge)
+        }
+      />
     </section>
   );
 }
@@ -44,11 +120,29 @@ export function DashboardStats({ counts }: { counts: TeacherDashboard["counts"] 
  * disambiguated a bare number. A count of children needs neither, and a prop
  * nothing passes is the next person's puzzle.
  */
-function Stat({ label, value }: { label: string; value: number }) {
+/**
+ * One tile.
+ *
+ * `value` takes a string as well as a number because the age is worded — "3 нас
+ * 5 сар", not 41. `tabular-nums` still applies: it aligns the digits inside
+ * that phrase and costs nothing where there are none.
+ */
+function Stat({ label, value }: { label: string; value: number | string }) {
   return (
     <Card pad="compact">
-      <p className="text-body text-muted">{label}</p>
-      <p className="mt-1 text-display font-semibold tabular-nums text-ink">{value}</p>
+      {/*
+        The label wraps rather than truncating: "Дундаж нас" does not fit 110px
+        on one line, and a clipped label is a worse failure than a two-line one.
+      */}
+      <p className="text-caption leading-tight text-muted md:text-body">{label}</p>
+      {/*
+        `text-title` on a phone — at 24px "3 нас 5 сар" takes three lines in a
+        110px tile. `[overflow-wrap:anywhere]` guards a longer value than any
+        that exists today: nothing in this row may push the grid wide.
+      */}
+      <p className="mt-0.5 text-title font-semibold leading-tight tabular-nums text-ink [overflow-wrap:anywhere] md:mt-1 md:text-display">
+        {value}
+      </p>
     </Card>
   );
 }

@@ -268,8 +268,8 @@ model Membership {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  kindergarten Kindergarten  @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kindergarten Kindergarten   @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   assignments  GroupTeacher[]
 
   @@unique([userId, kindergartenId, role])
@@ -307,11 +307,11 @@ model Session {
 /// Single-use tokens for password reset and invitation. Merged from two
 /// reference tables that had identical mechanics (D6).
 model AuthToken {
-  id      String           @id @default(uuid()) @db.Uuid
-  userId  String           @db.Uuid
-  purpose AuthTokenPurpose
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @db.Uuid
+  purpose   AuthTokenPurpose
   /// SHA-256 of the token. The token itself exists only in the email.
-  tokenHash String         @unique
+  tokenHash String           @unique
 
   expiresAt   DateTime
   usedAt      DateTime?
@@ -372,28 +372,28 @@ model Kindergarten {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  logo               MediaFile?          @relation("KindergartenLogo", fields: [logoMediaFileId], references: [id], onDelete: SetNull)
-  memberships        Membership[]
-  schoolYears        SchoolYear[]
-  groups             Group[]
-  groupTeachers      GroupTeacher[]
-  children           Child[]
-  guardianships      Guardianship[]
-  enrollments        Enrollment[]
-  childProfiles      ChildProfile[]
-  childAgeProfiles   ChildAgeProfile[]
-  birthdayNotes      BirthdayNote[]
-  developmentDomains DevelopmentDomain[]
-  assessmentLevels   AssessmentLevel[]
-  observationTypes   ObservationType[]
-  terms              Term[]
-  observations       Observation[]
-  observationDomains ObservationDomain[]
-  assessments        Assessment[]
-  termReports        TermReport[]
-  mediaFiles         MediaFile[]
-  notifications      Notification[]
-  notificationTargets NotificationTarget[]
+  logo                  MediaFile?             @relation("KindergartenLogo", fields: [logoMediaFileId], references: [id], onDelete: SetNull)
+  memberships           Membership[]
+  schoolYears           SchoolYear[]
+  groups                Group[]
+  groupTeachers         GroupTeacher[]
+  children              Child[]
+  guardianships         Guardianship[]
+  enrollments           Enrollment[]
+  childProfiles         ChildProfile[]
+  childAgeProfiles      ChildAgeProfile[]
+  birthdayNotes         BirthdayNote[]
+  developmentDomains    DevelopmentDomain[]
+  assessmentLevels      AssessmentLevel[]
+  observationTypes      ObservationType[]
+  terms                 Term[]
+  observations          Observation[]
+  observationDomains    ObservationDomain[]
+  assessments           Assessment[]
+  termReports           TermReport[]
+  mediaFiles            MediaFile[]
+  notifications         Notification[]
+  notificationTargets   NotificationTarget[]
   notificationReactions NotificationReaction[]
   reportJobs         ReportJob[]
   auditLogs          AuditLog[]
@@ -624,11 +624,11 @@ model ChildProfile {
   kindergartenId String @db.Uuid
   childId        String @unique @db.Uuid
 
-  introduction          String?
-  nameMeaning           String?
-  memorableSayings      String?
-  dream                 String?
-  distinguishingTraits  String?
+  introduction         String?
+  nameMeaning          String?
+  memorableSayings     String?
+  dream                String?
+  distinguishingTraits String?
 
   heightCm   Decimal?  @db.Decimal(5, 1)
   weightKg   Decimal?  @db.Decimal(5, 2)
@@ -808,7 +808,7 @@ model Observation {
   /// Domain authorship, not audit data. Needed at query time: a guardian may
   /// edit their own submission before it is approved, and always sees their own
   /// pending note — otherwise they cannot tell whether it saved.
-  authorId     String?      @db.Uuid
+  authorId String? @db.Uuid
 
   reviewStatus ReviewStatus @default(APPROVED)
   reviewedById String?      @db.Uuid
@@ -883,6 +883,16 @@ enum AttendanceRequestStatus {
 /// One row per enrollment per day — never per bare `childId`, so a transfer
 /// mid-year does not rewrite which kindergarten a day of attendance belongs
 /// to (this feeds funding claims later, RFP appendix).
+///
+/// ★ `@@unique([enrollmentId, date])` below is emitted by Prisma as a plain
+/// index; the migration `20260825120000_partial_unique_attendance_day`
+/// replaces it with a **partial** one over `deletedAt IS NULL`. Postgres
+/// treats NULLs as distinct, so the plain form counts a soft-deleted row as
+/// still occupying the day — a day deleted once could never be recorded
+/// again, surfacing as a unique violation on a row nobody can see. Prisma has
+/// no partial-unique syntax, so this cannot be expressed here; see the
+/// migration's SQL and `test/schema.test.ts`'s
+/// "allows the day to be recorded again after the first row is soft-deleted".
 model Attendance {
   id             String @id @default(uuid()) @db.Uuid
   kindergartenId String @db.Uuid
@@ -1220,7 +1230,7 @@ model MediaFile {
 
   purpose MediaPurpose
 
-  storageKey   String @unique
+  storageKey   String  @unique
   originalName String
   /// Detected from CONTENT, never from the extension.
   mimeType     String
@@ -1268,18 +1278,18 @@ model MediaFile {
   /// outlives the row.
   uploadedById String? @db.Uuid
 
-  uploadedAt DateTime @default(now())
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  uploadedAt DateTime  @default(now())
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
   deletedAt  DateTime?
 
-  kindergarten     Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
-  child            Child?       @relation("ChildMedia", fields: [childId], references: [id], onDelete: Cascade)
-  observation      Observation? @relation("ObservationMedia", fields: [observationId], references: [id], onDelete: Cascade)
-  notification     Notification? @relation("NotificationMedia", fields: [notificationId], references: [id], onDelete: Cascade)
-  uploadedBy       User?        @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
-  childPhotoOf     Child?       @relation("ChildPhoto")
-  reportJob        ReportJob?   @relation("ReportOutput")
+  kindergarten       Kindergarten  @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child              Child?        @relation("ChildMedia", fields: [childId], references: [id], onDelete: Cascade)
+  observation        Observation?  @relation("ObservationMedia", fields: [observationId], references: [id], onDelete: Cascade)
+  notification       Notification? @relation("NotificationMedia", fields: [notificationId], references: [id], onDelete: Cascade)
+  uploadedBy         User?         @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  childPhotoOf       Child?        @relation("ChildPhoto")
+  reportJob          ReportJob?    @relation("ReportOutput")
   kindergartenLogoOf Kindergarten? @relation("KindergartenLogo")
   userPhotoOf        User?         @relation("UserPhoto")
   groupPhotoOf       Group?        @relation("GroupPhoto")
@@ -1322,8 +1332,8 @@ model Notification {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  kindergarten Kindergarten         @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
-  author       User?                @relation("NotificationAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  kindergarten Kindergarten           @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  author       User?                  @relation("NotificationAuthor", fields: [authorId], references: [id], onDelete: SetNull)
   targets      NotificationTarget[]
   reads        NotificationRead[]
   reactions    NotificationReaction[]

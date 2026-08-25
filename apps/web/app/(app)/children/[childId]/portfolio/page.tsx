@@ -8,6 +8,7 @@ import { z } from "zod";
 import {
   BookOpen,
   ArrowLeft,
+  CalendarDays,
   Check,
   ChevronDown,
   FileText,
@@ -38,7 +39,7 @@ import { AgeSectionShell } from "@/components/child/age-section-shell";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { ChildGallery } from "@/components/media/child-gallery";
 import { ReportDialog } from "@/components/reports/report-dialog";
-import { ageInYears, fullName } from "@/lib/format";
+import { ageInYears, formatDate, fullName } from "@/lib/format";
 import { PORTFOLIO } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
 
@@ -231,7 +232,7 @@ export default function PortfolioPage() {
                   href={`#age-${age}`}
                   aria-label={`${age} нас — ${filled ? "мэдээлэлтэй" : "хоосон"}`}
                   className={cn(
-                    "flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-row border px-2 py-2 text-body font-semibold transition-colors",
+                    "flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-row border px-1.5 py-2 text-caption font-semibold transition-colors md:min-h-[64px] md:px-2 md:text-body",
                     filled
                       ? "border-mint bg-mint text-mint-ink hover:opacity-90"
                       : "border-border bg-surface text-muted hover:border-primary hover:text-ink",
@@ -352,6 +353,8 @@ function AboutMeSection({
       memorableSayings: data.memorableSayings ?? "",
       heightCm: data.heightCm === null || data.heightCm === undefined ? "" : String(data.heightCm),
       weightKg: data.weightKg === null || data.weightKg === undefined ? "" : String(data.weightKg),
+      // `<input type="date">` wants `YYYY-MM-DD`; the API sends an ISO stamp.
+      recordedOn: data.recordedOn ? String(data.recordedOn).slice(0, 10) : "",
     });
   }, [data]);
 
@@ -369,6 +372,7 @@ function AboutMeSection({
           // would fail the numeric coercion.
           heightCm: form.heightCm?.trim() ? Number(form.heightCm) : null,
           weightKg: form.weightKg?.trim() ? Number(form.weightKg) : null,
+          recordedOn: form.recordedOn?.trim() || null,
         },
       }),
     onSuccess: () => {
@@ -400,35 +404,49 @@ function AboutMeSection({
         {error ? <p className="text-body text-danger">{errorMessage(error)}</p> : null}
 
         {!isLoading && !editing ? (
-          filled || data?.heightCm || data?.weightKg ? (
+          filled || data?.heightCm || data?.weightKg || data?.recordedOn ? (
             <div className="flex flex-col gap-4">
               {/* Height and weight are measurements, so they stay compact facts. */}
-              {data?.heightCm || data?.weightKg ? (
+              {data?.heightCm || data?.weightKg || data?.recordedOn ? (
                 <div className="flex flex-wrap gap-2">
                   {data?.heightCm ? (
-                    <span className="inline-flex items-center gap-2 rounded-control bg-canvas px-3 py-2 text-body">
+                    <span className="inline-flex items-center gap-2 rounded-control bg-canvas px-2.5 py-1.5 text-caption md:px-3 md:py-2 md:text-body">
                       <Ruler size={16} aria-hidden="true" className="text-muted" />
                       <span className="text-muted">Өндөр</span>
                       <strong className="font-semibold text-ink">{String(data.heightCm)} см</strong>
                     </span>
                   ) : null}
                   {data?.weightKg ? (
-                    <span className="inline-flex items-center gap-2 rounded-control bg-canvas px-3 py-2 text-body">
+                    <span className="inline-flex items-center gap-2 rounded-control bg-canvas px-2.5 py-1.5 text-caption md:px-3 md:py-2 md:text-body">
                       <Weight size={16} aria-hidden="true" className="text-muted" />
                       <span className="text-muted">Жин</span>
                       <strong className="font-semibold text-ink">{String(data.weightKg)} кг</strong>
                     </span>
                   ) : null}
+                  {/*
+                    RFP §4.1's "оруулсан огноо", beside the numbers it dates
+                    rather than in a row of its own — a height with no date is a
+                    measurement of a growing child that nobody can place in time.
+                  */}
+                  {data?.recordedOn ? (
+                    <span className="inline-flex items-center gap-2 rounded-control bg-canvas px-2.5 py-1.5 text-caption md:px-3 md:py-2 md:text-body">
+                      <CalendarDays size={16} aria-hidden="true" className="text-muted" />
+                      <span className="text-muted">Хэмжсэн</span>
+                      <strong className="font-semibold text-ink">
+                        {formatDate(data.recordedOn)}
+                      </strong>
+                    </span>
+                  ) : null}
                 </div>
               ) : null}
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 md:grid-cols-2">
                 {ABOUT_FIELDS.filter((f) => data?.[f.key]).map((field) => (
                   <article
                     key={field.key}
                     className={cn(
-                      "rounded-row border border-border bg-canvas px-4 py-3.5",
-                      field.long && "sm:col-span-2",
+                      "rounded-row border border-border bg-canvas px-3 py-3 md:px-4 md:py-3.5",
+                      field.long && "md:col-span-2",
                     )}
                   >
                     <h3 className="mb-1.5 flex items-center gap-2 text-caption font-semibold text-ink">
@@ -497,7 +515,7 @@ function AboutMeSection({
               </Field>
             ))}
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2">
               <Field label="Өндөр (см)" error={errors.heightCm}>
                 {({ id, describedBy, invalid }) => (
                   <Input
@@ -512,6 +530,19 @@ function AboutMeSection({
                   />
                 )}
               </Field>
+              <Field label="Хэмжсэн огноо" error={errors.recordedOn}>
+                {({ id, describedBy, invalid }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    type="date"
+                    value={form.recordedOn ?? ""}
+                    onChange={(e) => setForm((f) => ({ ...f, recordedOn: e.target.value }))}
+                  />
+                )}
+              </Field>
+
               <Field label="Жин (кг)" error={errors.weightKg}>
                 {({ id, describedBy, invalid }) => (
                   <Input
@@ -551,14 +582,39 @@ function AboutMeSection({
 
 // ── Ages 2–5 ────────────────────────────────────────────────────────────────
 
+/**
+ * RFP §4.3's fields, in the RFP's own order.
+ *
+ * ★ Four of these were stored, accepted and never shown.
+ *
+ * `ChildAgeProfile` has carried `favoriteStory`, `emotionalTraits`,
+ * `familyMembers` and `learningInterest` since the schema was written;
+ * `PATCH /age-profiles/:age` validates and persists all of them; the Zod
+ * contract declares them. Only this array was short, so four RFP-mandated
+ * fields could be written by any other client and were invisible here — and a
+ * teacher had no way to enter them at all.
+ *
+ * That is the mirror image of the mock-data problem this project keeps
+ * refusing: real storage with no interface, rather than an interface with no
+ * storage. Both leave the screen disagreeing with the database.
+ *
+ * ★★ Still short of the RFP by two: дуртай кино/хүүхэлдэйн кино and дуртай
+ * хувцас have no column, so adding them is a migration rather than a list edit
+ * — deliberately left out of a frontend change. "Тухайн насны зураг" is the
+ * gallery, which is already on the page.
+ */
 const AGE_FIELDS = [
   { key: "favoriteColor", label: "Дуртай өнгө", long: false },
   { key: "favoriteFood", label: "Дуртай хоол", long: false },
   { key: "favoriteToy", label: "Дуртай тоглоом", long: false },
   { key: "favoriteBook", label: "Дуртай ном", long: false },
   { key: "favoriteSong", label: "Дуртай дуу", long: false },
+  { key: "favoriteStory", label: "Дуртай үлгэр", long: false },
   { key: "favoriteActivity", label: "Дуртай үйл ажиллагаа", long: false },
+  { key: "familyMembers", label: "Гэр бүлийн гишүүд", long: true },
   { key: "personality", label: "Зан чанар", long: true },
+  { key: "emotionalTraits", label: "Сэтгэл хөдлөлийн онцлог", long: true },
+  { key: "learningInterest", label: "Суралцах сонирхол", long: true },
   { key: "newSkills", label: "Шинээр эзэмшсэн чадвар", long: true },
 ] as const;
 
@@ -649,9 +705,9 @@ function AgeSection({
         {!isLoading && !editing ? (
           hasContent ? (
             <div className="flex flex-col gap-3">
-              <dl className="grid gap-3 sm:grid-cols-2">
+              <dl className="grid gap-3 md:grid-cols-2">
                 {AGE_FIELDS.filter((f) => profile?.[f.key]).map((field) => (
-                  <div key={field.key} className={field.long ? "sm:col-span-2" : undefined}>
+                  <div key={field.key} className={field.long ? "md:col-span-2" : undefined}>
                     <dt className="text-caption font-medium text-muted">{field.label}</dt>
                     <dd className="mt-0.5 whitespace-pre-wrap text-body text-ink">
                       {String(profile?.[field.key])}
@@ -696,13 +752,13 @@ function AgeSection({
               }
             />
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2">
               {AGE_FIELDS.map((field) => (
                 <Field
                   key={field.key}
                   label={field.label}
                   error={errors[field.key]}
-                  className={field.long ? "sm:col-span-2" : undefined}
+                  className={field.long ? "md:col-span-2" : undefined}
                 >
                   {({ id, describedBy, invalid }) =>
                     field.long ? (
@@ -822,7 +878,7 @@ function BirthdaySection({
       {isLoading ? (
         <LoadingState rows={1} />
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-2">
           {PORTFOLIO_AGES.map((age) => {
             const note = notes.find((n) => n.age === age);
             const isEditing = editingAge === age;
@@ -839,7 +895,7 @@ function BirthdaySection({
             const reached = currentAge === null || age <= currentAge;
 
             return (
-              <Card key={age} className="px-4 py-4">
+              <Card key={age} pad="roomy">
                 <details
                   open={Boolean(note?.note) || reached}
                   className="flex flex-col gap-2 [&[open]_svg.chevron]:rotate-180"

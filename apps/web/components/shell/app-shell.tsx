@@ -128,7 +128,7 @@ export function PageHeader({
           heading in the product sets its weight explicitly; this was the one
           that did not.
         */}
-        <h1 className="text-display font-semibold leading-[1.35] tracking-[-.01em] text-ink">
+        <h1 className="text-heading font-semibold leading-[1.3] tracking-[-.01em] text-ink md:text-display md:leading-[1.35]">
           {title}
         </h1>
         {lede ? <p className="mt-0.5 text-body text-muted">{lede}</p> : null}
@@ -204,7 +204,13 @@ function HeaderSearch({ className }: { className?: string }) {
     <form
       role="search"
       onSubmit={onSubmit}
-      className={cn("min-w-0 lg:mx-auto lg:w-[min(420px,32vw)]", className)}
+      /*
+        280px, not 420px. It sat at `min(420px,32vw)` — a third of the header on
+        a laptop, for a field that takes a child's name. A search box wider than
+        its longest realistic query reads as the page's main event rather than
+        as a way past the list.
+      */
+      className={cn("min-w-0 lg:mx-auto lg:w-[min(280px,24vw)]", className)}
     >
       <label htmlFor={id} className="sr-only">
         Хүүхэд хайх
@@ -344,7 +350,7 @@ export function AppShell({
            * phone keeps 16px and the space appears where there is space to
            * give: 32px of side padding and 40px of lead-in from `lg` up.
            */
-          "mx-auto w-full max-w-[1200px] px-4 pb-24 pt-[22px] sm:px-6 lg:pt-10 lg:pb-16 lg:pl-8 lg:pr-8",
+          "mx-auto w-full max-w-[1200px] px-4 pb-24 pt-4 sm:px-6 lg:pt-10 lg:pb-16 lg:pl-8 lg:pr-8",
           // The sidebar is `fixed`, so the column is offset by a margin and its
           // cap reduced by the same amount. Capping at a flat 1200px instead
           // overflows by exactly the sidebar's overhang — measured at 1440.

@@ -33,11 +33,17 @@ import { cn } from "@/lib/utils";
  *
  * The genuine one-offs — the empty state's `px-6 py-10`, the dialog's — keep
  * passing a `className`. A variant per exception is how a scale becomes a list.
+ *
+ * ★★★ Both steps are mobile-first: the smaller value is unprefixed and `md:`
+ * raises it. On a 375px screen 20px of horizontal padding inside a card that
+ * already sits 16px from the edge spends a fifth of the width on nothing, and
+ * the content — a Mongolian compound that wraps at almost every width — is what
+ * has to give. Desktop keeps the roomier value, where the space exists.
  */
 const PADDING = {
   none: "",
-  compact: "px-4 py-3.5",
-  roomy: "px-4 py-4 sm:px-5",
+  compact: "p-3 md:px-4 md:py-3.5",
+  roomy: "p-4 md:px-5 md:py-5",
 } as const;
 
 export function Card({
@@ -132,13 +138,19 @@ export function SectionHeader({
 }) {
   return (
     <div
-      className={cn("mb-3 flex flex-wrap items-start justify-between gap-x-3 gap-y-2", className)}
+      className={cn(
+        "mb-2.5 flex flex-wrap items-start justify-between gap-x-3 gap-y-2 md:mb-3",
+        className,
+      )}
     >
       <div className="min-w-0">
-        <Tag id={id} className="text-title font-semibold leading-[1.35] text-ink">
+        <Tag
+          id={id}
+          className="text-lead font-semibold leading-[1.3] text-ink md:text-title md:leading-[1.35]"
+        >
           {title}
         </Tag>
-        {lede ? <p className="mt-0.5 text-body text-muted">{lede}</p> : null}
+        {lede ? <p className="mt-0.5 text-caption text-muted md:text-body">{lede}</p> : null}
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
     </div>

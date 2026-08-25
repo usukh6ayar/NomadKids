@@ -124,6 +124,90 @@ export class DashboardRepository {
   }
 
   /**
+   * Whose birthday falls anywhere in the current month — RFP §12.1's list, at
+   * the granularity a teacher plans around.
+   *
+   * ★ Month only, so the day is the sort key rather than a filter. `birthdaysToday`
+   * answers "who do we sing to this morning"; this answers "what is coming", and
+   * a teacher ordering a cake needs the second one. Both exist because a card
+   * that only ever lights up on the day itself is invisible for 29 days a month.
+   *
+   * Raw SQL for the same reason `birthdaysToday` uses it: Prisma cannot express
+   * `EXTRACT(MONTH FROM …)` in a `where`. The group filter is the authorization
+   * scope and is parameterised — never interpolated.
+   */
+  async birthdaysThisMonth(groupIds: string[], on: Date) {
+    if (groupIds.length === 0) return [];
+
+    /*
+     * ★ The day is selected, not only ordered by.
+     *
+     * Under `SELECT DISTINCT` Postgres requires every `ORDER BY` expression to
+     * appear in the select list (42P10) — it cannot order rows by something it
+     * did not project. Ordering by `dateOfBirth` instead would be wrong rather
+     * than merely different: children in one group span three birth years, so a
+     * full-date sort groups them by age and scatters the days.
+     */
+    return this.prisma.$queryRaw<
+      {
+        id: string;
+        lastName: string;
+        firstName: string;
+        dateOfBirth: Date;
+        photoMediaFileId: string | null;
+        birthDay: number;
+      }[]
+    >`
+      SELECT DISTINCT
+        c.id, c."lastName", c."firstName", c."dateOfBirth", c."photoMediaFileId",
+        EXTRACT(DAY FROM c."dateOfBirth")::int AS "birthDay"
+      FROM children c
+      JOIN enrollments e ON e."childId" = c.id
+      WHERE c."deletedAt" IS NULL
+        AND c.status = 'ACTIVE'
+        AND e."deletedAt" IS NULL
+        AND e.status = 'ACTIVE'
+        AND e."groupId" = ANY(${groupIds}::uuid[])
+        AND EXTRACT(MONTH FROM c."dateOfBirth") = ${on.getMonth() + 1}
+      ORDER BY "birthDay", c."lastName"
+      LIMIT 20
+    `;
+  }
+
+  /**
+   * The most recent published notice, with how many people have opened it.
+   *
+   * ★ A count, never the list of who read it.
+   *
+   * `notifications.repository.ts` already draws this line for reactions — "never
+   * the list of who liked it. A parent should not learn which other families are
+   * reading the board" — and the same reasoning governs reads. The teacher who
+   * wrote the notice has a legitimate interest in whether it landed; nobody has
+   * one in which named family opened it.
+   *
+   * Worth being straight about the edge: when the count reaches the number of
+   * recipients, "everyone" is by definition every individual. That is inherent
+   * to publishing a delivery statistic at all, it is identical to the reaction
+   * count already shipped, and it is the author's own announcement.
+   */
+  async latestBoardNotice(kindergartenIds: string[]) {
+    if (kindergartenIds.length === 0) return null;
+
+    return this.prisma.notification.findFirst({
+      where: { deletedAt: null, status: "PUBLISHED", kindergartenId: { in: kindergartenIds } },
+      orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+      select: {
+        id: true,
+        title: true,
+        body: true,
+        publishedAt: true,
+        isImportant: true,
+        _count: { select: { reads: true } },
+      },
+    });
+  }
+
+  /**
    * How far this term's assessment has got — RFP §12.1 "улирлын үнэлгээний явц".
    *
    * Two counts, not a per-child list: the roster size and how many of them have
