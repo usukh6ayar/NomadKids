@@ -191,7 +191,13 @@ function HeaderSearch({ className }: { className?: string }) {
     <form
       role="search"
       onSubmit={onSubmit}
-      className={cn("min-w-0 lg:mx-auto lg:w-[min(420px,32vw)]", className)}
+      /*
+        280px, not 420px. It sat at `min(420px,32vw)` — a third of the header on
+        a laptop, for a field that takes a child's name. A search box wider than
+        its longest realistic query reads as the page's main event rather than
+        as a way past the list.
+      */
+      className={cn("min-w-0 lg:mx-auto lg:w-[min(280px,24vw)]", className)}
     >
       <label htmlFor={id} className="sr-only">
         Хүүхэд хайх

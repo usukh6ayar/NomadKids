@@ -27,9 +27,33 @@ import { Card } from "@/components/ui/card";
  * numbers teaches a teacher to read numbers rather than to act". Four tiles were
  * arguing with that sentence. Two agree with it.
  */
+/**
+ * ★★★ Half a row, holding two cards — not a full-width grid of its own.
+ *
+ * This rendered `<section className="grid grid-cols-2">` at the page's full
+ * width, which stretched two short numbers across the whole viewport: "Хүүхэд
+ * 5" filling 600px of a 1200px screen with nothing beside it. That was a
+ * leftover rather than a decision — the row held four tiles until two were
+ * removed as duplicates of the sections below them, and nothing revisited the
+ * columns the survivors sat in.
+ *
+ * It is one cell of the page's twelve-column grid now, spanning six, with the
+ * two counts sharing it. So the numbers end up a quarter of the width each and
+ * the group's assessment card takes the other half of the row.
+ *
+ * ★★★★ The `<section>` stays a real element rather than becoming a fragment or
+ * a `display: contents` wrapper. Both would let the cards sit directly in the
+ * page grid, and both would cost the landmark: a fragment has nowhere to hang
+ * `aria-label`, and `display: contents` has a history of dropping elements out
+ * of the accessibility tree. Two bare numbers announced with no name is a worse
+ * outcome than a column span this component has to know about.
+ */
 export function DashboardStats({ counts }: { counts: TeacherDashboard["counts"] }) {
   return (
-    <section aria-label="Өнөөдрийн тойм" className="grid grid-cols-2 gap-3">
+    <section
+      aria-label="Өнөөдрийн тойм"
+      className="grid grid-cols-2 gap-4 sm:col-span-2 lg:col-span-6 lg:gap-5"
+    >
       <Stat label="Хүүхэд" value={counts.children} />
       <Stat label="Бүлэг" value={counts.groups} />
     </section>

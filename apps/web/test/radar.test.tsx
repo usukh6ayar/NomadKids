@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { AssessmentRadar } from "@kinder/contracts";
 import { DevelopmentRadar } from "@/components/assessment/development-radar";
+import { DashboardStats } from "@/components/dashboard/dashboard-stats";
 import { ObservationMix } from "@/components/dashboard/observation-mix";
 import { formatAgeFromMonths } from "@/lib/format";
 
@@ -162,5 +163,47 @@ describe("the roster summary", () => {
     expect(formatAgeFromMonths(41)).toBe("3 нас 5 сар");
     expect(formatAgeFromMonths(48)).toBe("4 нас");
     expect(formatAgeFromMonths(null)).toBe("—");
+  });
+});
+
+describe("the dashboard's grid", () => {
+  /**
+   * ★ Why a layout test exists at all, when most do not.
+   *
+   * The stretched stat row was not a styling slip — it was a *stale* decision.
+   * The row held four tiles, two were removed as duplicates of the sections
+   * beneath them, and `grid-cols-2` stayed behind, so two short numbers spread
+   * across the full width of a desktop with nothing beside them. Nothing failed;
+   * the screen simply looked wrong to whoever opened it next, which took days.
+   *
+   * So this asserts the one thing that made it wrong: the counts occupy part of
+   * a row rather than all of it. It deliberately does not pin gaps, paddings or
+   * exact spans — those are taste, they will change, and a test that locks them
+   * makes every future adjustment a test edit.
+   */
+  it("keeps the counts to half a row rather than the full width", () => {
+    render(<DashboardStats counts={{ children: 5, groups: 1, pendingReviews: 0 }} />);
+
+    const region = screen.getByRole("region", { name: "Өнөөдрийн тойм" });
+    expect(region.className).toMatch(/lg:col-span-6/);
+    expect(region.className).not.toMatch(/lg:col-span-12/);
+  });
+
+  /**
+   * ★★ The landmark survives being a grid cell.
+   *
+   * The first attempt made this a fragment so the cards could sit directly in
+   * the page grid — which worked visually and silently dropped the region, since
+   * a fragment has nowhere to hang `aria-label`. `display: contents` would have
+   * done the same on browsers that drop such elements from the accessibility
+   * tree. Two bare numbers announced with no name is the regression this
+   * catches.
+   */
+  it("still names the counts for a screen reader", () => {
+    render(<DashboardStats counts={{ children: 5, groups: 1, pendingReviews: 0 }} />);
+
+    const region = screen.getByRole("region", { name: "Өнөөдрийн тойм" });
+    expect(within(region).getByText("Хүүхэд")).toBeInTheDocument();
+    expect(within(region).getByText("Бүлэг")).toBeInTheDocument();
   });
 });

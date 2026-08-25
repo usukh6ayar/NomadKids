@@ -149,50 +149,75 @@ function TeacherDashboard() {
   } = dashboard;
 
   return (
-    <div className="flex flex-col gap-6 lg:gap-8">
+    <div className="flex flex-col gap-4 lg:gap-5">
       {header(
         currentTerm ? `${currentTerm.name} · идэвхтэй улирал` : "Идэвхтэй улирал тохируулаагүй",
       )}
 
-      <DashboardStats counts={counts} />
-
       {/*
-        ★ What needs doing stays full width, above the grid.
+        ★ The alert first, and compact.
 
-        The wireframe lays this screen out as a grid of equal cards, and most of
-        it can be — but not this. `NeedsAttentionAlerts` renders only when it
-        has something to say, so its *presence* is the signal; put it in a
-        column beside a progress bar and it becomes one card among several,
-        which is the exact "wall of equally-weighted cards" this dashboard's
-        own note argues against. It is the first thing a teacher reads at 8am.
+        `NeedsAttentionAlerts` renders only when it has something to say, so its
+        presence is the signal — that argument still holds and it stays out of
+        the grid. What was wrong was its weight: a full section heading over
+        cards with a size-10 icon, occupying a third of the screen to report
+        three birthdays. It reads as an inline notification now.
       */}
       <NeedsAttentionAlerts birthdaysToday={birthdaysToday} needsAttention={needsAttention} />
 
       {/*
-        ★★ Two columns from `lg`, one below it.
+        ★★ One twelve-column grid, not a stack of full-width blocks.
 
-        These four sections are reference rather than instruction — how far the
-        term has got, what the observations are made of, which groups exist,
-        what was written lately. Side by side they fit a laptop without
-        scrolling; stacked on a phone they keep the reading order the markup
-        already has, because `grid` reflows without reordering.
+        The previous layout put two stat cards in `grid-cols-2` — which stretched
+        each to half the viewport, so "Хүүхэд 5" occupied 600px of a 1200px
+        screen and the rest was white. That is a leftover: the row held four
+        tiles until two of them were removed as duplicates of the sections
+        below, and nothing revisited the columns they sat in.
 
-        Not `columns-2`: CSS multi-column would break a single section across
-        the fold, and a progress bar split down the middle is unreadable.
+        Twelve columns let the pieces size to their content instead:
+
+          Хүүхэд 3 · Бүлэг 3 · the group's assessment 6   — one dense row
+          Улирлын явц 6 · Ажиглалтын төрлүүд 6            — equal halves
+          Сүүлийн ажиглалтууд 12                          — the long feed
+
+        The group card sharing the counts' row is what fixes it sitting alone
+        with dead space beside it, and pairing a number with the action it
+        motivates reads better than either alone.
+
+        `items-start` matters: without it grid stretches every cell in a row to
+        the tallest, so a two-line card grows to match a six-row list and the
+        white space moves inside the card instead of beside it.
       */}
-      <div className="grid gap-6 lg:grid-cols-2 lg:gap-8">
-        {currentTerm ? <TermProgress term={currentTerm.name} progress={termProgress} /> : null}
-
-        <ObservationMix observationsByType={observationsByType} term={currentTerm?.name ?? null} />
-
-        <GroupsSection />
+      <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 lg:grid-cols-12 lg:gap-5">
+        <DashboardStats counts={counts} />
 
         {/*
-          The feed is the longest section and the least urgent, so it takes the
+          Six columns on a desktop, its own row on a phone. `GroupsSection`
+          renders a single action card, a list, or nothing at all depending on
+          how many groups the teacher has — so it takes a span rather than
+          assuming a height.
+        */}
+        <div className="sm:col-span-2 lg:col-span-6">
+          <GroupsSection />
+        </div>
+
+        <div className="sm:col-span-2 lg:col-span-6">
+          {currentTerm ? <TermProgress term={currentTerm.name} progress={termProgress} /> : null}
+        </div>
+
+        <div className="sm:col-span-2 lg:col-span-6">
+          <ObservationMix
+            observationsByType={observationsByType}
+            term={currentTerm?.name ?? null}
+          />
+        </div>
+
+        {/*
+          The feed is the longest section and the least urgent, so it spans the
           full width at the foot rather than stretching one column to twice the
           height of its neighbour.
         */}
-        <div className="lg:col-span-2">
+        <div className="sm:col-span-2 lg:col-span-12">
           <RecentObservations observations={recentObservations} />
         </div>
       </div>
