@@ -66,21 +66,58 @@ else in the bucket is referenced by a row that survives.
 
 ## 3. The recovery — run these yourself
 
-The first command destroys the production schema. Claude Code's classifier
-refuses it, which is correct: it is a production data-losing operation and the
-decision is yours. Everything before and after it is prepared.
+The first command changes production irreversibly. Claude Code's classifier
+refuses it, which is correct: the decision is yours. Everything before and after
+it is prepared.
 
 Paste each line into the Claude Code prompt with a leading `!`, or run them in a
 terminal from the repository root.
 
-### 3.1 Reset the schema
+### 3.1 Clear the rewritten migration
+
+★ **Chosen 2026-08-26 over the schema reset below**, once production was
+measured rather than assumed. Everything the rewritten migration left behind is
+empty, so §5's surgical repair works here too and keeps the `media_files` row
+whose R2 object a reset would orphan.
+
+Measured before choosing, on production:
+
+```
+attendance                 →  0 rows
+"AttendanceStatus"         →  used by that table and nothing else
+attendance_requests, menu_days, surveys, "AttendanceRequestStatus"
+                           →  do not exist — the failed migration created nothing
+```
+
+```
+! railway ssh --service Postgres "psql -U postgres -d railway -c \"BEGIN; DROP TABLE IF EXISTS attendance; DROP TYPE IF EXISTS \\\"AttendanceStatus\\\"; DELETE FROM _prisma_migrations WHERE migration_name IN ('20260824132405_add_attendance','20260825054800_add_attendance'); COMMIT;\""
+```
+
+★★ **Two migration names, where §5's dev repair deletes one.** Development had
+the old `20260825054800` applied and had never attempted the new one, so it had
+no failed row. Production attempted it and failed, so it holds both: the applied
+old name and the failed new one. Deleting only the first leaves the P3009 that
+stops every deploy; deleting both lets `migrate deploy` replay the real history
+from `20260824132405_add_attendance` onwards.
+
+The table really is called `attendance` here — that is the _old_ migration's
+name for it. The current one creates `attendance_records`, which is why the
+`DROP` above would silently no-op on a database that had never run the old
+migration.
+
+<details>
+<summary>The schema reset, if the surgical repair is ever the wrong call</summary>
 
 ```
 ! railway ssh --service Postgres "psql -U postgres -d railway -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO postgres; GRANT ALL ON SCHEMA public TO public;'"
 ```
 
 This clears the failed migration row along with everything else, which is why
-no `prisma migrate resolve` is needed.
+no `prisma migrate resolve` is needed. It also destroys the four seed accounts,
+the demo child, and the reference from the surviving `media_files` row to its
+object in R2.
+
+</details>
 
 ### 3.2 Redeploy
 
@@ -89,7 +126,8 @@ no `prisma migrate resolve` is needed.
 ```
 
 `apps/api/docker-entrypoint.sh` runs `prisma migrate deploy` before starting the
-app, so the redeploy applies all migrations to the empty schema. Watch it with:
+app, so the redeploy applies the migrations the cleared history no longer
+claims. Watch it with:
 
 ```
 ! railway logs --service api
@@ -116,12 +154,53 @@ that is being replaced, which would have made the platform routes unreachable
 for it. `seed.ts` repairs that flag on an existing account and sets it correctly
 on a new one, so the reseed fixes it either way.
 
+★★★ `tsx` and `dotenv` were devDependencies until 2026-08-26, so
+`pnpm prune --prod` deleted them from the image and **the command above could
+not have run** — it would have failed with `tsx: not found`, during a recovery,
+which is the only time anybody reads this file. Both are runtime dependencies
+now; see the note in `apps/api/Dockerfile`. Confirm before trusting it:
+
+```
+! railway ssh --service api "ls /app/apps/api/node_modules/.bin/tsx && ls /app/apps/api/prisma"
+```
+
+### 3.3b Demo data, for a client walkthrough
+
+Optional, and separate from §3.3 on purpose: that one creates the superadmin who
+registers a real kindergarten, this one creates a **demo** kindergarten with
+enough rows that the screens are not empty states — ten children, four weeks of
+attendance, the weekly menu and meal register, surveys with answers, growth
+measurements, milestones, health records, incidents, consent and the funding
+calculations from `нэмэлт.md`.
+
+```
+! railway ssh --service api "cd /app/apps/api && SEED_DEMO_PASSWORD='<12+ chars>' node_modules/.bin/tsx prisma/seed-showcase.ts"
+```
+
+Accounts, all with that one password: `zahiral` (ADMIN), `bagsh1` and `bagsh2`
+(TEACHER), `etseg1`… (PARENT — `etseg1` has two children, which is the case the
+child switcher exists for).
+
+★ `seed-showcase.ts` applies the system configuration itself, so it does not
+need §3.3 to have run first. It is still not a substitute for it: only §3.3
+creates the superadmin, and only the superadmin reaches `/platform`.
+
+★★ These are demo accounts with a shared password on a real deployment. Remove
+the kindergarten, or rotate the password, once the walkthrough is over.
+
 ### 3.4 Verify
 
 ```
-! curl -s -o /dev/null -w '%{http_code}\n' https://nomadkids.up.railway.app/v1/health
-! curl -s -o /dev/null -w '%{http_code}\n' https://nomadkids.up.railway.app/v1/children/00000000-0000-0000-0000-000000000000/growth
+! curl -s -o /dev/null -w '%{http_code}\n' https://api.nomadkids.mn/v1/health
+! curl -s -o /dev/null -w '%{http_code}\n' https://api.nomadkids.mn/v1/children/00000000-0000-0000-0000-000000000000/growth
 ```
+
+★ `api.nomadkids.mn` rather than the Railway hostname: DNS was published on
+2026-08-26 and both origins now answer, so the checks below should exercise the
+name the browser actually uses. `www.nomadkids.mn` gets
+`access-control-allow-origin: https://www.nomadkids.mn` back from the API,
+verified the same day — the cookie topology `docs/DEPLOYMENT.md` §1 depends on
+is in place.
 
 The first must be **200**. The second must be **401** — unauthenticated, which
 proves the route _exists_. A **404** there means the deploy is still serving the
