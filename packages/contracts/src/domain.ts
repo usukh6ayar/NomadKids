@@ -285,16 +285,45 @@ export type SurveyScope = z.infer<typeof surveyScopeSchema>;
 export const surveyStatusSchema = z.enum(["DRAFT", "PUBLISHED", "CLOSED"]);
 export type SurveyStatus = z.infer<typeof surveyStatusSchema>;
 
-export const surveyQuestionTypeSchema = z.enum(["RATING", "YES_NO", "TEXT", "CHECKBOX"]);
+/** RFP Module 1.1's archival classification, and Module 1.2's pairing key. */
+export const surveyPeriodSchema = z.enum(["BASELINE", "MIDLINE", "ENDLINE"]);
+export type SurveyPeriod = z.infer<typeof surveyPeriodSchema>;
+
+export const SURVEY_PERIOD_LABEL: Record<SurveyPeriod, string> = {
+  BASELINE: "Эхний үнэлгээ",
+  MIDLINE: "Завсрын үнэлгээ",
+  ENDLINE: "Жилийн эцсийн үнэлгээ",
+};
+
+export const surveyQuestionTypeSchema = z.enum([
+  "RATING",
+  "YES_NO",
+  "TEXT",
+  "CHECKBOX",
+  /** RFP Module 1.1 — several indicators on one shared scale. */
+  "MATRIX",
+]);
 export type SurveyQuestionType = z.infer<typeof surveyQuestionTypeSchema>;
+
+/** A MATRIX question's shape — RFP Module 1.1. */
+export const matrixOptionsSchema = z.object({
+  rows: z.array(z.object({ key: z.string(), label: z.string() })),
+  columns: z.array(z.object({ value: z.number(), label: z.string() })),
+});
+export type MatrixOptions = z.infer<typeof matrixOptionsSchema>;
 
 export const surveyQuestionSchema = z.object({
   id: uuidSchema,
   order: z.number(),
   type: surveyQuestionTypeSchema,
   prompt: z.string(),
-  /** CHECKBOX's choices. Empty for the other three types. */
-  options: z.array(z.string()).nullish(),
+  /** CHECKBOX's choices, or a MATRIX's rows and columns. */
+  options: z.union([z.array(z.string()), matrixOptionsSchema]).nullish(),
+  /**
+   * What this question measures, stable across waves — RFP Module 1.2.
+   * Null means "not comparable", which is honest for a one-off poll.
+   */
+  indicatorKey: z.string().nullish(),
 });
 export type SurveyQuestion = z.infer<typeof surveyQuestionSchema>;
 
@@ -307,6 +336,11 @@ export const surveySchema = z.object({
   publishedAt: z.string().nullish(),
   closedAt: z.string().nullish(),
   createdAt: z.string(),
+  /** "2025-2026" — a school year spans two calendar years. */
+  schoolYear: z.string().nullish(),
+  /** Which wave: RFP Module 1.1's эхний/завсрын/жилийн эцсийн үнэлгээ. */
+  period: surveyPeriodSchema.nullish(),
+  clonedFromSurveyId: uuidSchema.nullish(),
   questions: z.array(surveyQuestionSchema).default([]),
   /** Set only on the child-facing list — has this guardian already answered
    * for this child (or, for a KINDERGARTEN-scope survey, at all)? */
@@ -314,13 +348,50 @@ export const surveySchema = z.object({
 });
 export type Survey = z.infer<typeof surveySchema>;
 
-/** A single answer's value: a number (RATING), a boolean (YES_NO), a string
- * (TEXT), or a string array (CHECKBOX). */
+/** One indicator's begin-to-end movement — RFP Module 1.2. */
+export const indicatorComparisonSchema = z.object({
+  indicatorKey: z.string(),
+  rowKey: z.string().nullish(),
+  label: z.string(),
+  baselineMean: z.number().nullish(),
+  endlineMean: z.number().nullish(),
+  maxScore: z.number().nullish(),
+  delta: z.number().nullish(),
+  /** Progress as a share of the scale, not of the baseline. */
+  deltaPercent: z.number().nullish(),
+  baselineCount: z.number(),
+  endlineCount: z.number(),
+});
+export type IndicatorComparison = z.infer<typeof indicatorComparisonSchema>;
+
+export const surveyComparisonSchema = z.object({
+  baseline: z
+    .object({ id: uuidSchema, title: z.string(), period: surveyPeriodSchema.nullish() })
+    .nullable(),
+  indicators: z.array(indicatorComparisonSchema),
+  children: z.array(
+    z.object({ childId: uuidSchema, indicators: z.array(indicatorComparisonSchema) }),
+  ),
+  /** Why there is nothing to compare, when there is nothing to compare. */
+  note: z.string().nullable(),
+});
+export type SurveyComparison = z.infer<typeof surveyComparisonSchema>;
+
+/**
+ * A single answer's value: a number (RATING), a boolean (YES_NO), a string
+ * (TEXT), a string array (CHECKBOX), or one score per row (MATRIX).
+ *
+ * The matrix case is a record keyed by the question's own row keys, so it
+ * cannot be given a fixed shape here. The API checks each key and value against
+ * the question's `options` before storing, so an answer naming a row that does
+ * not exist is refused rather than saved as data nothing can score.
+ */
 export const surveyAnswerValueSchema = z.union([
   z.number(),
   z.boolean(),
   z.string(),
   z.array(z.string()),
+  z.record(z.string(), z.number()),
 ]);
 export type SurveyAnswerValue = z.infer<typeof surveyAnswerValueSchema>;
 

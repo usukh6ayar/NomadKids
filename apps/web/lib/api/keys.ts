@@ -51,6 +51,7 @@ export const qk = {
   artwork: (childId: string) => ["child", childId, "artwork"] as const,
   consent: (childId: string) => ["child", childId, "consent"] as const,
   audit: (filters: Record<string, unknown> = {}) => ["admin", "audit", filters] as const,
+  surveyComparison: (surveyId: string) => ["survey", surveyId, "comparison"] as const,
   configDomains: (kindergartenId: string) =>
     ["admin", "config", "domains", kindergartenId] as const,
   configLevels: (kindergartenId: string) => ["admin", "config", "levels", kindergartenId] as const,

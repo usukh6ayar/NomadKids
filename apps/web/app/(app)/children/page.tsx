@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Plus, Search } from "lucide-react";
+import { Download, Plus, Search, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
 import { childSummarySchema, paginated, rosterSummarySchema, SEX_LABEL } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
+import { downloadUrl } from "@/lib/api/client";
 import { useDebounced } from "@/lib/use-debounced";
 import { Button } from "@/components/ui/button";
 import { Card, RowList } from "@/components/ui/card";
@@ -63,6 +64,7 @@ export default function ChildrenPage() {
  * survive a navigation is the term someone arrived with.
  */
 function StaffChildren() {
+  const { primaryKindergartenId } = useSession();
   const searchParams = useSearchParams();
   const urlQuery = searchParams.get("q") ?? "";
 
@@ -80,6 +82,11 @@ function StaffChildren() {
   }, [urlQuery]);
 
   const filters = { q: search || undefined, ...facets, page, pageSize: 25 };
+
+  // The same filters the list is showing, minus pagination — the export is
+  // "what I am looking at", not "page one of it".
+  const exportParams = rosterParams(search, facets).toString();
+  const exportQuery = exportParams ? `?${exportParams}` : "";
 
   const { data, isLoading, isError, error, refetch, isPlaceholderData } = useQuery({
     queryKey: qk.children(filters),
@@ -111,6 +118,32 @@ function StaffChildren() {
               No role check: guardians never reach this component — the page
               routes them to `MyChildren`, which has nothing to register.
             */}
+            {/*
+              Export and import — RFP §3.4, §12.3.
+
+              ★ The export carries the filters currently on screen, so "export
+              what I am looking at" is what happens. It is a link rather than a
+              fetch: the session cookie rides along on a navigation and the
+              browser saves the file itself.
+            */}
+            {primaryKindergartenId ? (
+              <>
+                <Button asChild size="sm" variant="secondary">
+                  <a
+                    href={downloadUrl(
+                      `/kindergartens/${primaryKindergartenId}/children/export${exportQuery}`,
+                    )}
+                  >
+                    <Download size={16} aria-hidden /> Excel
+                  </a>
+                </Button>
+                <Button asChild size="sm" variant="secondary">
+                  <Link href="/children/import">
+                    <Upload size={16} aria-hidden /> Импорт
+                  </Link>
+                </Button>
+              </>
+            ) : null}
             <Button asChild size="sm">
               <Link href="/children/new">
                 <Plus size={16} aria-hidden /> Хүүхэд бүртгэх
