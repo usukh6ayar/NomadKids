@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import Image from "next/image";
 import Link from "next/link";
 import { observationSchema, paginated } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
@@ -51,6 +52,7 @@ export function ChildObservations({ childId, isStaff }: { childId: string; isSta
   if (items.length === 0) {
     return (
       <EmptyState
+        icon={<Image src="/background/mascot-robot.webp" alt="" width={96} height={96} />}
         title={isStaff ? "Ажиглалт бичигдээгүй байна" : "Одоогоор мөч хуваалцаагүй байна"}
         description={
           isStaff

@@ -1,19 +1,9 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import Image from "next/image";
 import Link from "next/link";
-import {
-  Bell,
-  BookOpen,
-  CalendarCheck,
-  ChevronRight,
-  ClipboardCheck,
-  HeartPulse,
-  Plus,
-  Ruler,
-  TrendingUp,
-  UtensilsCrossed,
-} from "lucide-react";
+import { BookOpen, ChevronRight, HeartPulse, Plus, Ruler } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { z } from "zod";
 import { parentDashboardSchema, surveySchema, unreadCountSchema } from "@kinder/contracts";
@@ -28,7 +18,7 @@ import { NavTile, TileGrid } from "@/components/ui/tile";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
 import { useSession } from "@/lib/auth/session";
-import { excerpt, formatAge, formatRelative, fullName } from "@/lib/format";
+import { excerpt, formatAge, fullName, groupByDay } from "@/lib/format";
 import { GALLERY, PORTFOLIO } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
 
@@ -221,9 +211,13 @@ export default function ParentHomePage() {
             href="/notifications"
             className="flex min-h-16 items-center gap-3 rounded-row border border-border bg-surface px-4 py-3 transition-colors hover:border-primary"
           >
-            <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-sky text-sky-ink">
-              <Bell size={20} aria-hidden />
-            </span>
+            <Image
+              src="/icons/icon-notice.webp"
+              alt=""
+              width={40}
+              height={40}
+              className="size-10 shrink-0"
+            />
             <span className="min-w-0 flex-1">
               <span className="block font-semibold text-ink">
                 {unread && unread.count > 0
@@ -248,9 +242,10 @@ export default function ParentHomePage() {
         do on its own. The grid puts every destination one thumb-reach away and
         makes the set scannable as a shape rather than read as a list.
 
-        `NavTile`'s `icon` is a slot: these are lucide glyphs until the
-        illustrated icons arrive, and swapping them is a change here rather than
-        in the component.
+        `NavTile`'s `icon` is a slot, which is what let the illustrations land
+        here without touching the component: four of the six now carry the
+        artwork from `public/icons/`, and the two with no illustration yet keep
+        a lucide glyph. See the note on those two below.
       */}
       <section aria-labelledby="highlights-heading">
         <SectionHeader id="highlights-heading" title={`${selected.firstName}-ийн мэдээлэл`} />
@@ -259,31 +254,40 @@ export default function ParentHomePage() {
           <NavTile
             href={`/children/${selected.id}/portfolio`}
             label={PORTFOLIO}
-            note={GALLERY}
+            note={`${GALLERY}, "Миний тухай"`}
             tone="cornflower"
-            icon={<BookOpen size={24} aria-hidden />}
+            icon={<Image src="/icons/icon-portfolio.webp" alt="" width={48} height={48} />}
           />
           <NavTile
             href={`/children/${selected.id}`}
             label="Хөгжил"
             note="Ажиглалт, ахиц"
             tone="mint"
-            icon={<TrendingUp size={24} aria-hidden />}
+            icon={<Image src="/icons/icon-progress.webp" alt="" width={48} height={48} />}
           />
           <NavTile
             href={`/children/${selected.id}?tab=attendance`}
             label="Ирц"
-            note="Өдөр тутам"
+            note="Өдөр тутам, чөлөөний хүсэлт"
             tone="sun"
-            icon={<CalendarCheck size={24} aria-hidden />}
+            icon={<Image src="/icons/icon-attendance.webp" alt="" width={48} height={48} />}
           />
           <NavTile
             href={`/children/${selected.id}?tab=menu`}
             label="Хоол ба цэс"
             note="Долоо хоног"
             tone="peach"
-            icon={<UtensilsCrossed size={24} aria-hidden />}
+            icon={<Image src="/icons/icon-menu.webp" alt="" width={48} height={48} />}
           />
+          {/*
+            ★ These two still carry lucide glyphs while the four above carry the
+            illustrations, and the mix is deliberate rather than unfinished
+            work: `public/icons/` has no health or growth illustration yet.
+            Substituting a near-enough one — `icon-checklist` for Эрүүл мэнд —
+            would teach a parent the wrong symbol and be harder to correct later
+            than an obviously provisional glyph. `NavTile.icon` is a slot for
+            exactly this reason; swapping them is a change at this call site.
+          */}
           <NavTile
             href={`/children/${selected.id}?tab=health`}
             label="Эрүүл мэнд"
@@ -326,40 +330,69 @@ export default function ParentHomePage() {
             description="Багш ажиглалт хуваалцахад энд харагдана."
           />
         ) : (
-          <Card className="divide-y divide-border">
-            {recent.map((item) => (
-              <Link
-                key={item.id}
-                href={item.child ? `/children/${item.child.id}` : "/children"}
-                className="flex min-h-[64px] items-start gap-3 px-4 py-3 hover:bg-canvas"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium text-ink">{item.type?.name ?? "Ажиглалт"}</span>
-                    {/* A family's own submission, so they can tell it apart. */}
-                    {item.source === "PARENT" ? <Badge tone="sky">Таны хуваалцсан</Badge> : null}
-                    {item.reviewStatus === "PENDING" ? (
-                      <Badge tone="sun">Хүлээгдэж буй</Badge>
-                    ) : null}
-                    {item.reviewStatus === "RETURNED" ? (
-                      <Badge tone="peach">Буцаагдсан</Badge>
-                    ) : null}
-                  </span>
-                  <span className="mt-0.5 block text-body text-muted">
-                    {excerpt(item.situation, 100) || "Тайлбаргүй"}
-                  </span>
-                  {children.length > 1 && item.child ? (
-                    <span className="mt-0.5 block text-caption text-muted">
-                      {fullName(item.child)}
-                    </span>
-                  ) : null}
-                </span>
-                <span className="shrink-0 whitespace-nowrap text-caption text-muted">
-                  {formatRelative(item.observedOn)}
-                </span>
-              </Link>
+          /*
+           * ★ A day-grouped rail, not a flat list.
+           *
+           * The question this whole page exists to answer is "what happened
+           * with my child today" — recency ordered by day, not by row, is
+           * the actual shape of that answer. Each entry used to carry its own
+           * relative timestamp ("3 хоногийн өмнө") on every row; grouped by
+           * day, that fact belongs to the day once, not to each row inside
+           * it, so the rail's label replaces it rather than duplicating it.
+           * `formatRelative` already returns exactly this vocabulary —
+           * Өнөөдөр / Өчигдөр / an absolute date past a fortnight — reused
+           * here as the group's label instead of a per-row stamp.
+           */
+          <div className="flex flex-col">
+            {groupByDay(recent, (item) => item.observedOn).map((group, index, all) => (
+              <div key={group.key} className="flex gap-3">
+                <div className="flex w-5 shrink-0 flex-col items-center" aria-hidden="true">
+                  <span className="mt-2 size-2.5 shrink-0 rounded-pill bg-primary ring-4 ring-primary-soft" />
+                  {index < all.length - 1 ? <span className="mt-1 w-px flex-1 bg-border" /> : null}
+                </div>
+                <div className={cn("min-w-0 flex-1", index < all.length - 1 && "pb-5")}>
+                  <h3 className="mb-2 text-caption font-semibold uppercase tracking-wide text-muted">
+                    {group.label}
+                  </h3>
+                  <Card className="divide-y divide-border">
+                    {group.items.map((item) => (
+                      <Link
+                        key={item.id}
+                        href={item.child ? `/children/${item.child.id}` : "/children"}
+                        className="flex min-h-[64px] items-start gap-3 px-4 py-3 hover:bg-canvas"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="flex flex-wrap items-center gap-2">
+                            <span className="font-medium text-ink">
+                              {item.type?.name ?? "Ажиглалт"}
+                            </span>
+                            {/* A family's own submission, so they can tell it apart. */}
+                            {item.source === "PARENT" ? (
+                              <Badge tone="sky">Таны хуваалцсан</Badge>
+                            ) : null}
+                            {item.reviewStatus === "PENDING" ? (
+                              <Badge tone="sun">Хүлээгдэж буй</Badge>
+                            ) : null}
+                            {item.reviewStatus === "RETURNED" ? (
+                              <Badge tone="peach">Буцаагдсан</Badge>
+                            ) : null}
+                          </span>
+                          <span className="mt-0.5 block text-body text-muted">
+                            {excerpt(item.situation, 100) || "Тайлбаргүй"}
+                          </span>
+                          {children.length > 1 && item.child ? (
+                            <span className="mt-0.5 block text-caption text-muted">
+                              {fullName(item.child)}
+                            </span>
+                          ) : null}
+                        </span>
+                      </Link>
+                    ))}
+                  </Card>
+                </div>
+              </div>
             ))}
-          </Card>
+          </div>
         )}
       </section>
     </HomeBackdrop>
@@ -443,9 +476,13 @@ function SurveyPrompt({ childId }: { childId: string }) {
       href={`/children/${childId}/surveys/${pending.id}`}
       className="flex items-center gap-3 rounded-row border border-border bg-surface px-4 py-4 transition-colors hover:border-primary"
     >
-      <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-sun text-sun-ink">
-        <ClipboardCheck size={20} aria-hidden />
-      </span>
+      <Image
+        src="/icons/icon-survey.webp"
+        alt=""
+        width={40}
+        height={40}
+        className="size-10 shrink-0"
+      />
       <span className="min-w-0 flex-1">
         <span className="block font-semibold text-ink">Бөглөх судалгаа</span>
         <span className="block truncate text-body text-muted">{pending.title}</span>

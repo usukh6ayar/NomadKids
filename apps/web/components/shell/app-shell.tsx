@@ -51,7 +51,18 @@ export interface NavItem {
  */
 export interface NavSection {
   title: string;
-  entries: { label: string; href?: string }[];
+  entries: {
+    label: string;
+    href?: string;
+    /**
+     * A small mark before the label — a lucide icon at the same weight as
+     * `parentNav`'s own, or (for `parentSections`' one child per entry) a
+     * 24px `ChildAvatar`. Optional: a section this small doesn't need one on
+     * every row to stay scannable, and forcing one everywhere is how a
+     * plain-text row ends up with a `null` nobody chose on purpose.
+     */
+    icon?: ReactNode;
+  }[];
 }
 
 /**
@@ -532,7 +543,7 @@ function NavGroup({ section, pathname }: { section: NavSection; pathname: string
             href={entry.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "relative ml-3 flex min-h-[44px] items-center rounded-control px-2.5 py-1.5 text-compact transition-colors",
+              "relative ml-3 flex min-h-[44px] items-center gap-2 rounded-control px-2.5 py-1.5 text-compact transition-colors",
               active
                 ? // The blue-700 rule is the active marker; the tint and the
                   // weight are what make it readable. Three signals, because
@@ -541,7 +552,8 @@ function NavGroup({ section, pathname }: { section: NavSection; pathname: string
                 : "text-muted hover:bg-canvas hover:text-ink",
             )}
           >
-            {entry.label}
+            {entry.icon}
+            <span className="truncate">{entry.label}</span>
           </Link>
         );
       })}

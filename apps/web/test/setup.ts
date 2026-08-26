@@ -37,3 +37,23 @@ if (!globalThis.ResizeObserver) {
     disconnect() {}
   } as unknown as typeof ResizeObserver;
 }
+
+// jsdom implements no part of the Pointer Events capture API. Radix's Select
+// calls `hasPointerCapture` while tracking a pointer across its trigger and
+// listbox, which throws — not "returns false" — when the method is entirely
+// absent.
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = () => false;
+}
+if (!Element.prototype.setPointerCapture) {
+  Element.prototype.setPointerCapture = () => {};
+}
+if (!Element.prototype.releasePointerCapture) {
+  Element.prototype.releasePointerCapture = () => {};
+}
+
+// jsdom has no layout engine and never implements this either — Radix's
+// Select calls it to keep the highlighted item in view as it changes.
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}

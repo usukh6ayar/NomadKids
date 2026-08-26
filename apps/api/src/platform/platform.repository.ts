@@ -105,24 +105,42 @@ export class PlatformRepository {
     return { items, total };
   }
 
-  /** Counts are filtered relation counts — one query, no N+1. §3.4 */
+  /**
+   * The base row only. Live counts, coverage and activity for the detail view
+   * come from `DashboardRepository`'s per-kindergarten queries, not from here
+   * — §3.4, one query per concern rather than an ad-hoc `_count` growing a
+   * field at a time.
+   */
   async findById(id: string) {
-    return this.prisma.kindergarten.findFirst({
-      where: { id, deletedAt: null },
-      include: {
-        _count: {
-          select: {
-            groups: { where: { deletedAt: null, status: "ACTIVE" } },
-            enrollments: { where: { deletedAt: null, status: "ACTIVE" } },
-            memberships: { where: { deletedAt: null, isActive: true } },
-          },
-        },
-      },
-    });
+    return this.prisma.kindergarten.findFirst({ where: { id, deletedAt: null } });
   }
 
   async update(id: string, data: KindergartenUpdate) {
     return this.prisma.kindergarten.update({ where: { id }, data });
+  }
+
+  /**
+   * System-wide totals — RFP §12.2's "Администраторын хяналтын самбар": нийт
+   * цэцэрлэг/бүлэг/хүүхэд/багш/идэвхтэй эцэг эх.
+   *
+   * Same shape as `DashboardRepository.kindergartenCounts`, minus its
+   * `kindergartenId: { in: [...] }` filter — this repository is the one place
+   * in the system that legitimately counts across every tenant at once.
+   */
+  async platformTotals() {
+    const [kindergartens, groups, children, staff, guardians] = await Promise.all([
+      this.prisma.kindergarten.count({ where: { deletedAt: null } }),
+      this.prisma.group.count({ where: { deletedAt: null, status: "ACTIVE" } }),
+      this.prisma.child.count({ where: { deletedAt: null, status: "ACTIVE" } }),
+      this.prisma.membership.count({
+        where: { deletedAt: null, isActive: true, role: { in: ["TEACHER", "ADMIN"] } },
+      }),
+      this.prisma.membership.count({
+        where: { deletedAt: null, isActive: true, role: "PARENT" },
+      }),
+    ]);
+
+    return { kindergartens, groups, children, staff, guardians };
   }
 }
 

@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   BookOpen,
   Building2,
+  ChevronRight,
   ClipboardList,
   Home,
   LayoutGrid,
@@ -261,14 +262,19 @@ function parentNav(onOpenChildPicker: () => void): NavItem[] {
  * built: every real entry is a link, duplicated here from `parentNav` for
  * the same reason the staff sidebar duplicates its own (see the comment
  * above `NavSection`) — a desktop reader sees the whole menu in one place
- * rather than a partial one that sends them hunting in the bottom bar.
+ * rather than a partial one that sends them hunting in the bottom bar. Each
+ * duplicated entry carries the same icon `parentNav` gave its bottom-bar
+ * tab, so the two surfaces read as one menu rather than two that happen to
+ * agree.
  *
- * Чат and Санхүү are the one deliberate exception. CLAUDE.md §7 puts both in
- * a later phase — chat and finance are not built, and pulling either forward
- * was not asked for here. Naming them anyway, as inert "удахгүй" labels
- * rather than links, was a specific choice for this sidebar: it is the
- * reference's own device (see `NavSection`'s doc comment), not the "eight
- * dead links" version this codebase already tried once and removed.
+ * Санхүү is the one deliberate exception, named without a link. CLAUDE.md §7
+ * puts finance in a later phase — it is not built, and pulling it forward was
+ * not asked for here. Naming it anyway, as inert "удахгүй" text rather than a
+ * link, was a specific choice for this sidebar: it is the reference's own
+ * device (see `NavSection`'s doc comment), not the "eight dead links" version
+ * this codebase already tried once and removed. Чат was the same kind of
+ * entry and is gone entirely instead — removed on direct instruction, not a
+ * decision made here.
  *
  * ★ "Хүүхдийн мэдээлэл" names the children, not the features.
  *
@@ -290,16 +296,34 @@ function parentSections(myChildren: ChildSummary[] | undefined): NavSection[] {
           ? myChildren.map((child) => ({
               label: fullName(child),
               href: `/children/${child.id}`,
+              icon: <ChildAvatar child={child} size={24} />,
             }))
           : [{ label: "Холбогдсон хүүхэд алга" }],
     },
     {
       title: "Харилцаа холбоо",
-      entries: [{ label: "Ангийн самбар / Мэдээ", href: "/notifications" }, { label: "Чат" }],
+      entries: [
+        {
+          label: "Ангийн самбар / Мэдээ",
+          href: "/notifications",
+          icon: <Bell size={18} aria-hidden="true" />,
+        },
+        // No `href`: chat is RFP Phase IV. It renders as a disabled row, the
+        // same treatment "Санхүү" below gets, so the menu describes the product
+        // the client was shown without offering a link into nothing.
+        { label: "Чат" },
+      ],
     },
     {
       title: "Санхүү ба бүртгэл",
-      entries: [{ label: "Санхүү" }, { label: "Миний бүртгэл", href: "/settings" }],
+      entries: [
+        { label: "Санхүү" },
+        {
+          label: "Миний бүртгэл",
+          href: "/settings",
+          icon: <Settings size={18} aria-hidden="true" />,
+        },
+      ],
     },
   ];
 }
@@ -388,6 +412,11 @@ function ChildPickerModal({
                   <span className="block truncate font-medium text-ink">{fullName(child)}</span>
                   <span className="block text-body text-muted">{formatAge(child.dateOfBirth)}</span>
                 </span>
+                {/* Same chevron every other "this row opens something else" row
+                    in the product carries — the picker takes you to that
+                    child's own page, unlike the pills on /home, which stay
+                    put and just change what the cards below them show. */}
+                <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden="true" />
               </Link>
             ))}
           </div>

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { z } from "zod";
 import { userProfileSchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
+import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useLogout } from "@/lib/auth/session";
@@ -30,8 +31,8 @@ const MIN_PASSWORD_LENGTH = 8;
  */
 export default function SettingsPage() {
   return (
-    <div className="flex flex-col gap-6 py-2">
-      <h1 className="text-heading font-semibold text-ink">Профайл</h1>
+    <div className="flex flex-col gap-6 lg:gap-8">
+      <PageHeader title="Профайл" lede="Хувийн мэдээлэл, нэвтрэх нууц үг." />
       <ProfileForm />
       <PasswordForm />
       <SignOutCard />

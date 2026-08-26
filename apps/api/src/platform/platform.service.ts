@@ -6,6 +6,7 @@ import { TokenService } from "../auth/token.service";
 import { PlatformAccessService } from "../authz/platform-access.service";
 import type { Actor } from "../authz/actor";
 import { paginate, type PageParams } from "../common/pagination";
+import { DashboardRepository } from "../dashboard/dashboard.repository";
 import { UsersRepository } from "../users/users.repository";
 import type { UpdateKindergartenDto } from "../tenants/tenants.dto";
 import { PlatformRepository } from "./platform.repository";
@@ -30,6 +31,7 @@ export class PlatformService {
     private readonly passwords: PasswordService,
     private readonly tokens: TokenService,
     private readonly audit: AuditRepository,
+    private readonly dashboard: DashboardRepository,
   ) {}
 
   async create(actor: Actor, dto: CreateKindergartenDto) {
@@ -91,6 +93,12 @@ export class PlatformService {
     return { ...created, invitationToken: token };
   }
 
+  /** RFP §12.2 — system-wide totals for the platform operator's dashboard. */
+  async stats(actor: Actor) {
+    this.platform.assertSuperAdmin(actor);
+    return this.repo.platformTotals();
+  }
+
   async list(actor: Actor, query: ListPlatformKindergartensQuery) {
     this.platform.assertSuperAdmin(actor);
 
@@ -99,12 +107,33 @@ export class PlatformService {
     return paginate(items, total, page);
   }
 
+  /**
+   * The detail view: the kindergarten row plus the same shape
+   * `DashboardService.admin()` gives that kindergarten's own admin — counts,
+   * this term's assessment coverage and recent audit activity — scoped to
+   * just this one kindergarten rather than the caller's memberships, since a
+   * superadmin holds none. CLAUDE.md §1.1.
+   */
   async get(actor: Actor, id: string) {
     this.platform.assertSuperAdmin(actor);
 
     const kindergarten = await this.repo.findById(id);
     if (!kindergarten) throw new NotFoundException();
-    return kindergarten;
+
+    const term = await this.dashboard.currentTerm([id], new Date());
+    const [counts, assessmentCoverage, recentActivity] = await Promise.all([
+      this.dashboard.kindergartenCounts([id]),
+      term ? this.dashboard.assessmentCoverage([id], term.id) : Promise.resolve([]),
+      this.dashboard.recentAuditEntries([id]),
+    ]);
+
+    return {
+      ...kindergarten,
+      counts,
+      currentTerm: term ? { id: term.id, number: term.number, name: term.name } : null,
+      assessmentCoverage,
+      recentActivity,
+    };
   }
 
   async update(actor: Actor, id: string, dto: UpdateKindergartenDto) {

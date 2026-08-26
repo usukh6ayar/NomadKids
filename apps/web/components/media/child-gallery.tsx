@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Image from "next/image";
 import { Star, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { z } from "zod";
@@ -105,6 +106,7 @@ export function ChildGallery({
 
         {photos.data && items.length === 0 ? (
           <EmptyState
+            icon={<Image src="/background/mascot-girl-purple.webp" alt="" width={96} height={96} />}
             title="Зураг алга"
             description={
               canEdit

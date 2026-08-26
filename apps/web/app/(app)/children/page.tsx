@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Plus, Search } from "lucide-react";
@@ -529,7 +530,7 @@ function MyChildren() {
 
   return (
     <div className="flex flex-col gap-6 lg:gap-8">
-      <h1 className="text-heading font-semibold text-ink">{MY_CHILDREN}</h1>
+      <PageHeader title={MY_CHILDREN} lede="Таны бүртгэлтэй хүүхдүүд." />
 
       {isLoading ? <LoadingState rows={2} /> : null}
 
@@ -546,6 +547,7 @@ function MyChildren() {
 
       {data && data.length === 0 ? (
         <EmptyState
+          icon={<Image src="/background/mascot-family.webp" alt="" width={96} height={96} />}
           title="Хүүхэд холбогдоогүй байна"
           description="Танд холбогдсон хүүхэд байхгүй байна. Цэцэрлэгийн багштайгаа холбогдоно уу."
         />
