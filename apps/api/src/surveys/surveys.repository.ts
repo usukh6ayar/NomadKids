@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import type { SurveyQuestionType, SurveyScope, SurveyStatus } from "../domain/enums";
+import type { SurveyPeriod, SurveyQuestionType, SurveyScope, SurveyStatus } from "../domain/enums";
 
 const questionOrder = { order: "asc" as const };
 
@@ -16,6 +16,9 @@ export class SurveysRepository {
     description: string | null;
     scope: SurveyScope;
     createdById: string;
+    schoolYear?: string | null;
+    period?: SurveyPeriod | null;
+    clonedFromSurveyId?: string | null;
   }) {
     return this.prisma.survey.create({ data });
   }
@@ -54,6 +57,7 @@ export class SurveysRepository {
       type: SurveyQuestionType;
       prompt: string;
       options?: unknown;
+      indicatorKey?: string | null;
     }[],
   ) {
     return this.prisma.$transaction(async (tx) => {
@@ -66,6 +70,10 @@ export class SurveysRepository {
           type: q.type,
           prompt: q.prompt,
           options: (q.options ?? undefined) as object | undefined,
+          // Round-tripped from the client so an edit does not break the
+          // pairing — this delete-and-recreate is exactly why the key is a
+          // value rather than a foreign key. See the schema's note.
+          indicatorKey: q.indicatorKey ?? null,
         })),
       });
     });
@@ -146,5 +154,145 @@ export class SurveysRepository {
       where: { response: { surveyId, deletedAt: null } },
       select: { questionId: true, value: true },
     });
+  }
+
+  // ── Comparison and export — RFP Module 1.2, 1.3 ───────────────────────────
+
+  /**
+   * A whole wave: its questions, every answer, and who submitted each.
+   *
+   * ★ Three joins in one query rather than a query per response.
+   *
+   * The workbook needs the respondent's name and role on every raw-data row.
+   * Fetching those per answer would be four thousand round trips for a
+   * three-hundred-child survey — the N+1 CLAUDE.md §3.4 forbids, in a request
+   * an administrator is waiting on.
+   */
+  async loadWave(surveyId: string) {
+    return this.prisma.survey.findFirst({
+      where: { id: surveyId, deletedAt: null },
+      include: {
+        questions: { orderBy: questionOrder, where: { deletedAt: null } },
+        responses: {
+          where: { deletedAt: null },
+          include: {
+            respondent: { select: { id: true, lastName: true, firstName: true } },
+            answers: { select: { questionId: true, value: true, responseId: true } },
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * The wave this one should be compared against.
+   *
+   * Prefers the survey it was cloned from, since that is an explicit statement
+   * of "these two are the same questionnaire". Falls back to the same school
+   * year's BASELINE, which is what Module 1.2 describes when nobody used the
+   * clone action.
+   */
+  async findBaselineFor(survey: {
+    id: string;
+    kindergartenId: string;
+    schoolYear: string | null;
+    clonedFromSurveyId: string | null;
+  }) {
+    if (survey.clonedFromSurveyId) {
+      const source = await this.prisma.survey.findFirst({
+        where: { id: survey.clonedFromSurveyId, deletedAt: null },
+        select: { id: true },
+      });
+      if (source) return source;
+    }
+
+    if (!survey.schoolYear) return null;
+
+    return this.prisma.survey.findFirst({
+      where: {
+        kindergartenId: survey.kindergartenId,
+        schoolYear: survey.schoolYear,
+        period: "BASELINE",
+        deletedAt: null,
+        id: { not: survey.id },
+      },
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    });
+  }
+
+  /** Earlier school years' final waves — Sheet 5's year-over-year columns. */
+  async findPriorYearWaves(kindergartenId: string, beforeSchoolYear: string) {
+    return this.prisma.survey.findMany({
+      where: {
+        kindergartenId,
+        deletedAt: null,
+        period: "ENDLINE",
+        schoolYear: { lt: beforeSchoolYear },
+      },
+      orderBy: { schoolYear: "desc" },
+      // Two prior years is what Module 1.2's example spans ("2024-2025,
+      // 2025-2026 гэх мэт"); an unbounded walk would make the sheet grow
+      // without limit as the kindergarten accumulates history.
+      take: 3,
+      select: { id: true },
+    });
+  }
+
+  /** The children a workbook names, with the group each is enrolled in. */
+  async childrenForExport(kindergartenId: string, childIds: string[]) {
+    if (childIds.length === 0) return [];
+
+    return this.prisma.child.findMany({
+      where: { id: { in: childIds }, kindergartenId, deletedAt: null },
+      select: {
+        id: true,
+        lastName: true,
+        firstName: true,
+        dateOfBirth: true,
+        sex: true,
+        enrollments: {
+          where: { status: "ACTIVE", deletedAt: null },
+          take: 1,
+          select: { group: { select: { name: true } } },
+        },
+      },
+    });
+  }
+
+  /** The kindergarten's name, for the workbook's Summary sheet. */
+  async kindergartenName(kindergartenId: string) {
+    const row = await this.prisma.kindergarten.findFirst({
+      where: { id: kindergartenId, deletedAt: null },
+      select: { name: true },
+    });
+
+    return row?.name ?? "";
+  }
+
+  /** Copies a survey's questions onto a new survey, order and keys intact. */
+  async cloneQuestions(fromSurveyId: string, toSurveyId: string, kindergartenId: string) {
+    const questions = await this.prisma.surveyQuestion.findMany({
+      where: { surveyId: fromSurveyId, deletedAt: null },
+      orderBy: questionOrder,
+    });
+
+    if (questions.length === 0) return 0;
+
+    await this.prisma.surveyQuestion.createMany({
+      data: questions.map((q) => ({
+        kindergartenId,
+        surveyId: toSurveyId,
+        order: q.order,
+        type: q.type,
+        prompt: q.prompt,
+        options: q.options as object | undefined,
+        // The whole point of the clone: the key travels, so the two waves'
+        // questions pair even after the copy is edited.
+        indicatorKey: q.indicatorKey,
+      })),
+    });
+
+    return questions.length;
   }
 }

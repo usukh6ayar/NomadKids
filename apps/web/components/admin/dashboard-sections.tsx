@@ -123,9 +123,7 @@ export function RecentActivitySection({ entries }: { entries: AdminDashboard["re
                   {entry.objectType ? ` · ${entry.objectType}` : ""}
                 </span>
                 {entry.actorLabel ? (
-                  <span className="block truncate text-caption text-muted">
-                    {entry.actorLabel}
-                  </span>
+                  <span className="block truncate text-caption text-muted">{entry.actorLabel}</span>
                 ) : null}
               </span>
               <span className="shrink-0 whitespace-nowrap text-caption text-muted">

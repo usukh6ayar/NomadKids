@@ -1811,6 +1811,26 @@ enum SurveyQuestionType {
   YES_NO
   TEXT
   CHECKBOX // multi-select; `options` holds the choices
+  /// RFP Module 1.1 — "Matrix (олон үзүүлэлтийн хүснэгт)".
+  ///
+  /// One question carrying several indicators scored on a shared scale, which
+  /// is how a development questionnaire is actually written: "rate each of
+  /// these seven areas 1–5". `options` holds `{ rows, columns }` and the answer
+  /// is `{ [rowKey]: number }` — see `survey-scoring.ts`.
+  MATRIX
+}
+
+/// Where in the school year a survey sits — RFP Module 1.1's "эхний/завсрын/
+/// жилийн эцсийн үнэлгээгээр ... ангилан архивлана".
+///
+/// ★ This is what makes Module 1.2's automatic comparison possible at all.
+/// Without it nothing distinguishes September's wave from May's, and "compare
+/// the same questionnaire at the start and the end of the year" has no way to
+/// tell which is which.
+enum SurveyPeriod {
+  BASELINE // Эхний үнэлгээ — есдүгээр сар
+  MIDLINE // Завсрын үнэлгээ
+  ENDLINE // Жилийн эцсийн үнэлгээ — тавдугаар сар
 }
 
 model Survey {
@@ -1824,6 +1844,22 @@ model Survey {
   publishedAt    DateTime?
   closedAt       DateTime?
 
+  /// "2025-2026". A string, not a year number: a school year spans two.
+  schoolYear String?
+  /// Which wave — RFP Module 1.1's archival classification, and the field
+  /// Module 1.2's begin-to-end comparison pairs on.
+  period     SurveyPeriod?
+
+  /// The survey this one was cloned from — RFP Module 1.2's lineage.
+  ///
+  /// ★ Kept for provenance and for Sheet 5's year-over-year walk, but it is
+  /// **not** what the comparison pairs questions on. Questions are matched by
+  /// `SurveyQuestion.indicatorKey`, because a cloned survey starts as a DRAFT
+  /// whose questions may still be edited — and editing them deletes and
+  /// recreates every row, which would destroy any id-based lineage. See the
+  /// note on `indicatorKey`.
+  clonedFromSurveyId String? @db.Uuid
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -1832,8 +1868,12 @@ model Survey {
   createdBy    User?            @relation("SurveyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   questions    SurveyQuestion[]
   responses    SurveyResponse[]
+  clonedFrom   Survey?          @relation("SurveyClone", fields: [clonedFromSurveyId], references: [id], onDelete: SetNull)
+  clones       Survey[]         @relation("SurveyClone")
 
   @@index([kindergartenId, status])
+  /// "This year's waves, in order" — what Module 1.2 asks for.
+  @@index([kindergartenId, schoolYear, period])
   @@map("surveys")
 }
 
@@ -1844,8 +1884,27 @@ model SurveyQuestion {
   order          Int
   type           SurveyQuestionType
   prompt         String
-  /// CHECKBOX's choices, as a string array. Unused by the other three types.
+  /// CHECKBOX's choices, as a string array; MATRIX's `{ rows, columns }`.
+  /// Unused by RATING, YES_NO and TEXT.
   options        Json?
+
+  /// What this question *measures*, stable across waves and years.
+  ///
+  /// ★ This, not the row id, is what Module 1.2 pairs September against May on.
+  ///
+  /// A cloned survey starts as a DRAFT, and editing a DRAFT's questions runs
+  /// `replaceQuestions`, which deletes every row and creates new ones. Any
+  /// pairing built on `SurveyQuestion.id` — or on a `clonedFromQuestionId`
+  /// pointing at one — is destroyed by a teacher reordering two questions
+  /// before publishing. Pairing on `order` fails differently and worse: insert
+  /// one question in May and every indicator after it silently compares against
+  /// the wrong September question, reporting a progress figure that is not
+  /// wrong-looking, just wrong.
+  ///
+  /// The key round-trips through the edit endpoint and is copied by the clone,
+  /// so it survives both. Null means "not comparable", which is honest for a
+  /// one-off poll.
+  indicatorKey String?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1856,6 +1915,8 @@ model SurveyQuestion {
   answers      SurveyAnswer[]
 
   @@index([surveyId, order])
+  /// The comparison's lookup: "every wave's version of this indicator".
+  @@index([kindergartenId, indicatorKey])
   @@map("survey_questions")
 }
 

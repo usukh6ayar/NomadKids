@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Post, Put } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Put, Query, Res } from "@nestjs/common";
+import type { Response } from "express";
 import { idParamSchema } from "@kinder/contracts";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
@@ -6,9 +7,13 @@ import { Roles } from "../auth/decorators/roles.decorator";
 import type { Actor } from "../authz/actor";
 import { SurveysService } from "./surveys.service";
 import {
+  cloneSurveySchema,
+  compareSurveyQuerySchema,
   createSurveySchema,
   saveQuestionsSchema,
   submitResponseSchema,
+  type CloneSurveyDto,
+  type CompareSurveyQuery,
   type CreateSurveyDto,
   type SaveQuestionsDto,
   type SubmitResponseDto,
@@ -66,6 +71,57 @@ export class SurveysController {
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
   ) {
     return this.service.getOne(actor, params.id);
+  }
+
+  /** Copies a survey into the next wave — RFP Module 1.2. */
+  @Post(":id/clone")
+  @Roles("TEACHER", "ADMIN")
+  async clone(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(cloneSurveySchema)) body: CloneSurveyDto,
+  ) {
+    return this.service.clone(actor, params.id, body);
+  }
+
+  /** Begin-to-end progress per indicator and per child — RFP Module 1.2. */
+  @Get(":id/comparison")
+  @Roles("TEACHER", "ADMIN")
+  async comparison(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(compareSurveyQuerySchema)) query: CompareSurveyQuery,
+  ) {
+    return this.service.compare(actor, params.id, query.baselineId);
+  }
+
+  /**
+   * The five-sheet workbook — RFP Module 1.3.
+   *
+   * ★ Streams the bytes rather than returning JSON, so a browser saves a file
+   * instead of rendering base64. `@Res` opts this handler out of Nest's
+   * serializer, which is why it sets its own headers.
+   */
+  @Get(":id/export")
+  @Roles("TEACHER", "ADMIN")
+  async exportWorkbook(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.service.exportWorkbook(actor, params.id);
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    // RFC 5987 `filename*` because the title is Mongolian — a bare `filename=`
+    // with Cyrillic bytes is mangled by every browser.
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="survey.xlsx"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    );
+    res.send(buffer);
   }
 
   @Put(":id/questions")

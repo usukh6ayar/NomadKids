@@ -136,7 +136,9 @@ export function ChildAttendance({ childId, isStaff }: { childId: string; isStaff
 
           {requests.data && requests.data.length === 0 ? (
             <EmptyState
-              icon={<Image src="/background/mascot-girl-teal-b.webp" alt="" width={96} height={96} />}
+              icon={
+                <Image src="/background/mascot-girl-teal-b.webp" alt="" width={96} height={96} />
+              }
               title="Хүсэлт алга"
               description="Хүүхэд чөлөөтэй байх өдрөө урьдчилан мэдэгдэхийг хүсвэл энд бичнэ үү."
             />
