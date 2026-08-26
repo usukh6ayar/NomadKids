@@ -115,6 +115,14 @@ COPY --from=build /app/apps/api/package.json apps/api/package.json
 #
 # The alternative — migrating by hand from a laptop against the production URL —
 # is a step somebody eventually forgets, on the deploy where it matters.
+#
+# ★★ `tsx` and `dotenv` are runtime dependencies for the third reason in the
+# same family: the seed scripts run *here*, through
+# `railway ssh --service api "… node_modules/.bin/tsx prisma/seed.ts"`, which is
+# how `docs/PROD_RECOVERY.md` §3.3 creates the superadmin on a fresh database.
+# Both were devDependencies, so `pnpm prune --prod` deleted them and that
+# documented command failed with a bare "tsx: not found" — a recovery step that
+# is only ever read during a recovery, and only fails then.
 COPY --from=build /app/apps/api/prisma.config.ts apps/api/prisma.config.ts
 
 # Migrations run at container start — see the script for why not pre-deploy.

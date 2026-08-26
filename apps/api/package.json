@@ -16,6 +16,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "seed": "tsx prisma/seed.ts",
     "seed:demo": "tsx prisma/seed-demo.ts",
+    "seed:showcase": "tsx prisma/seed-showcase.ts",
     "reset-password": "tsx scripts/reset-password.ts",
     "db:reset": "prisma migrate reset --force && pnpm seed"
   },
@@ -31,6 +32,7 @@
     "argon2": "^0.45.1",
     "bullmq": "^6.1.2",
     "cookie-parser": "^1.4.7",
+    "dotenv": "^17.4.2",
     "file-type": "^22.0.2",
     "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
@@ -42,6 +44,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "sharp": "^0.35.3",
+    "tsx": "^4.23.12",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -57,10 +60,8 @@
     "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.23.1",
     "@types/supertest": "^6.0.2",
-    "dotenv": "^17.4.2",
     "eslint": "^9.39.0",
     "supertest": "^7.1.1",
-    "tsx": "^4.23.12",
     "typescript": "5.9.3",
     "unplugin-swc": "^1.5.7",
     "vitest": "^4.1.11"
