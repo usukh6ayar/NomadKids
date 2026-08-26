@@ -3,6 +3,7 @@ import { Injectable } from "@nestjs/common";
 // precisely so a query shape can be typed at the layer that builds queries.
 import type { Prisma } from "../generated/prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { childKey } from "./child-import";
 import { toSkipTake, type PageParams } from "../common/pagination";
 import type { VisibleChildrenFilter } from "../authz/authz.repository";
 import type { ChildStatus, EnrollmentStatus, GuardianRelation, Sex } from "../domain/enums";
@@ -397,6 +398,155 @@ export class ChildrenRepository {
       where: { id: groupId, kindergartenId, deletedAt: null },
       include: { schoolYear: { select: { id: true } } },
     });
+  }
+
+  // ── Excel import — RFP §3.4 ────────────────────────────────────────────────
+
+  /**
+   * Every visible child, for the export — no pagination.
+   *
+   * ★ The one deliberate exception to CLAUDE.md §3.4's "every list is
+   * paginated", and it is bounded in a different way: a hard cap, and the same
+   * `visibleChildrenWhere` filter the paginated list uses.
+   *
+   * A roster export that stopped at page one would be worse than none — the
+   * administrator would not notice, and would upload a truncated file back.
+   * The cap is what keeps it from becoming an unbounded query; a kindergarten
+   * past it has outgrown a single spreadsheet anyway.
+   *
+   * ★ 2000 here against the importer's 500 per upload is deliberate. The export
+   * is for reading and for archiving, and truncating a roster silently is the
+   * one thing it must not do; the import's lower cap is about how much work one
+   * transaction should carry, and re-importing a large export is a rarer case
+   * than exporting one. The importer says so explicitly when a file is too
+   * long, rather than dropping the tail.
+   */
+  async listChildrenForExport(visible: VisibleChildrenFilter, filters: ChildFilters) {
+    return this.prisma.child.findMany({
+      where: this.childWhere(visible, filters),
+      orderBy: childOrderBy({ sort: "name", order: "asc" }),
+      take: 2000,
+      select: {
+        lastName: true,
+        firstName: true,
+        sex: true,
+        dateOfBirth: true,
+        nationalId: true,
+        healthNotes: true,
+        status: true,
+        enrollments: {
+          where: { status: "ACTIVE", deletedAt: null },
+          select: { group: { select: { name: true } } },
+          take: 1,
+        },
+      },
+    });
+  }
+
+  /** The kindergarten's name, for the exported file's provenance sheet. */
+  async kindergartenName(kindergartenId: string) {
+    const row = await this.prisma.kindergarten.findFirst({
+      where: { id: kindergartenId, deletedAt: null },
+      select: { name: true },
+    });
+
+    return row?.name ?? "";
+  }
+
+  /** The kindergarten's groups, for resolving a spreadsheet's group names. */
+  async groupsForImport(kindergartenId: string) {
+    return this.prisma.group.findMany({
+      where: { kindergartenId, deletedAt: null },
+      select: { id: true, name: true, schoolYear: { select: { id: true } } },
+    });
+  }
+
+  /**
+   * The kindergarten's existing children, as the import's two identity keys.
+   *
+   * ★ One query for the whole file, not one per row — the N+1 CLAUDE.md §3.4
+   * forbids, in a request an administrator is watching a spinner for.
+   *
+   * ★★ Returns name-and-birth-date as well as national ids, because a register
+   * column is often empty in the files §3.4 describes. Matching on the id alone
+   * meant exporting a roster and uploading it back duplicated every
+   * register-less child. See `childKey`.
+   */
+  async existingChildKeys(kindergartenId: string) {
+    const rows = await this.prisma.child.findMany({
+      where: { kindergartenId, deletedAt: null },
+      select: { lastName: true, firstName: true, dateOfBirth: true, nationalId: true },
+    });
+
+    const nationalIds = new Set<string>();
+    const nameAndDate = new Set<string>();
+
+    for (const row of rows) {
+      if (row.nationalId) nationalIds.add(row.nationalId);
+
+      if (row.dateOfBirth) {
+        nameAndDate.add(
+          childKey(row.lastName, row.firstName, row.dateOfBirth.toISOString().slice(0, 10)),
+        );
+      }
+    }
+
+    return { nationalIds, nameAndDate };
+  }
+
+  /**
+   * Writes a whole import — every child, or none of them.
+   *
+   * ★ One transaction, deliberately.
+   *
+   * A roster half-loaded is worse than one not loaded at all: the
+   * administrator cannot tell which rows landed, and re-uploading the file
+   * collides with the half that did. All-or-nothing means the fix is always
+   * "correct the spreadsheet and upload it again".
+   *
+   * ★★ Enrollment happens inside the same transaction rather than through
+   * `enrollChild`, whose own transaction would nest. The interactive timeout is
+   * raised because five hundred children is five hundred inserts plus their
+   * enrollments, and the default 5 s is not generous for that on a cold
+   * connection.
+   */
+  async importChildren(
+    rows: {
+      child: CreateChildData;
+      groupId: string | null;
+      schoolYearId: string | null;
+    }[],
+  ) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const created: { id: string; lastName: string; firstName: string }[] = [];
+
+        for (const row of rows) {
+          const child = await tx.child.create({
+            data: row.child,
+            select: { id: true, lastName: true, firstName: true },
+          });
+
+          if (row.groupId && row.schoolYearId) {
+            await tx.enrollment.create({
+              data: {
+                kindergartenId: row.child.kindergartenId,
+                childId: child.id,
+                groupId: row.groupId,
+                schoolYearId: row.schoolYearId,
+                startedOn: new Date(),
+                status: "ACTIVE",
+              },
+            });
+          }
+
+          created.push(child);
+        }
+
+        return created;
+      },
+      { timeout: 30_000 },
+    );
   }
 }
 

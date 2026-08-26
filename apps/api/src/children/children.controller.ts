@@ -1,4 +1,20 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Res,
+  UploadedFile,
+  UseInterceptors,
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
+import type { Response } from "express";
+import { MAX_SPREADSHEET_BYTES } from "../media/upload-validation";
 import { idParamSchema } from "@kinder/contracts";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
@@ -80,6 +96,62 @@ export class ChildrenController {
     @Body(new ZodValidationPipe(createChildSchema)) body: CreateChildDto,
   ) {
     return this.service.create(actor, params.id, body);
+  }
+
+  /**
+   * The roster as a spreadsheet — RFP §12.3.
+   *
+   * Takes the same query as the list, so "export what I am looking at" works:
+   * the filters an administrator has already set on screen apply to the file.
+   */
+  @Get("kindergartens/:id/children/export")
+  @Roles("ADMIN", "TEACHER")
+  async exportRoster(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(listChildrenQuerySchema)) query: ListChildrenQuery,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.service.exportRoster(actor, params.id, query);
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(buffer);
+  }
+
+  /**
+   * Imports a roster from a spreadsheet — RFP §3.4.
+   *
+   * ★ `?dryRun=true` validates and reports without writing, which is the whole
+   * point: an administrator sees exactly which rows will land and which will
+   * not before anything is created.
+   *
+   * ★★ The multer limit is a *second* ceiling, in front of the one
+   * `validateSpreadsheetUpload` enforces. This one stops the bytes ever
+   * reaching the process; that one is what the parser trusts. Neither is
+   * redundant — a body-size guard cannot know a `.xlsx` from an executable,
+   * and a content check that runs after 900 MB is already in memory is too
+   * late.
+   */
+  @Post("kindergartens/:id/children/import")
+  @Roles("ADMIN", "TEACHER")
+  @UseInterceptors(
+    FileInterceptor("file", { limits: { fileSize: MAX_SPREADSHEET_BYTES, files: 1 } }),
+  )
+  async importChildren(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @UploadedFile() file: { buffer: Buffer } | undefined,
+    @Query("dryRun") dryRun?: string,
+  ) {
+    if (!file) throw new BadRequestException("Файл сонгоно уу");
+
+    // Defaults to a dry run. An import that writes by default is one misplaced
+    // click away from five hundred children nobody meant to create.
+    return this.service.importFromWorkbook(actor, params.id, file.buffer, dryRun !== "false");
   }
 
   @Patch("children/:id")

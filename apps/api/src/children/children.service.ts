@@ -11,7 +11,10 @@ import { TenantAccessService } from "../authz/tenant-access.service";
 import type { Actor } from "../authz/actor";
 import { paginate, type PageParams } from "../common/pagination";
 import { UsersService } from "../users/users.service";
-import { ChildrenRepository } from "./children.repository";
+import { ChildrenRepository, type CreateChildData } from "./children.repository";
+import { childKey, parseChildWorkbook } from "./child-import";
+import { buildChildWorkbook } from "./child-export";
+import { UploadRejected, validateSpreadsheetUpload } from "../media/upload-validation";
 import type {
   AddGuardianDto,
   CreateChildDto,
@@ -436,6 +439,235 @@ export class ChildrenService {
       childId,
       metadata: { change },
     });
+  }
+
+  /**
+   * The roster as a spreadsheet — RFP §12.3.
+   *
+   * ★ Scoped by `visibleChildrenWhere`, exactly like the paginated list.
+   *
+   * This is the whole authorization story and it must stay that way: a teacher
+   * exports the children they can see, not the kindergarten's. Reusing the
+   * filter rather than writing a second one is what stops the two answers
+   * drifting apart — an export that showed more than the screen would be a
+   * silent leak nobody would think to look for.
+   */
+  async exportRoster(actor: Actor, kindergartenId: string, query: ListChildrenQuery) {
+    this.tenants.assertStaff(actor, kindergartenId);
+
+    const visible = await this.authz.visibleChildrenWhere(actor);
+    const children = await this.repo.listChildrenForExport(visible, childFilters(query));
+    const kindergartenName = await this.repo.kindergartenName(kindergartenId);
+
+    const buffer = await buildChildWorkbook(
+      children.map((child) => ({
+        lastName: child.lastName,
+        firstName: child.firstName,
+        sex: child.sex,
+        dateOfBirth: child.dateOfBirth ? child.dateOfBirth.toISOString() : null,
+        nationalId: child.nationalId,
+        groupName: child.enrollments[0]?.group?.name ?? null,
+        healthNotes: child.healthNotes,
+        status: child.status,
+      })),
+      kindergartenName,
+    );
+
+    // A file with every child's name, national id and health notes in it. RFP
+    // §2.1 wants that on the record, and this is the same `DOWNLOAD` action the
+    // survey export and the report download already use.
+    await this.audit.append({
+      action: "DOWNLOAD",
+      kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "ChildExport",
+      objectId: kindergartenId,
+      metadata: { format: "xlsx", children: children.length },
+    });
+
+    return { buffer, filename: "khuukhduud.xlsx" };
+  }
+
+  // ── Excel import — RFP §3.4 ───────────────────────────────────────────────
+
+  /**
+   * Imports a roster from a spreadsheet.
+   *
+   * ★ Two passes over one parser: `dryRun` reports what *would* happen and
+   * writes nothing. The commit runs the identical validation and then writes.
+   *
+   * An import that only tells you what went wrong after it has half-written
+   * the file is the failure mode this shape exists to prevent — and sharing the
+   * parser is what stops the preview from disagreeing with the result.
+   *
+   * ★★ The kindergarten comes from the route and the actor's membership, never
+   * from the file. A "kindergarten" column would let whoever edits the
+   * spreadsheet choose which tenant a child lands in.
+   */
+  async importFromWorkbook(actor: Actor, kindergartenId: string, file: Buffer, dryRun: boolean) {
+    this.tenants.assertStaff(actor, kindergartenId);
+
+    /*
+     * `UploadRejected` is a plain `Error`, not an HTTP exception — every caller
+     * translates it, so that `upload-validation.ts` stays free of Nest. Without
+     * this catch a file that is not a spreadsheet answers 500, which reads as
+     * "the server is broken" rather than "this is the wrong file".
+     */
+    try {
+      validateSpreadsheetUpload(file);
+    } catch (error) {
+      if (error instanceof UploadRejected) throw new BadRequestException(error.reason);
+      throw error;
+    }
+
+    const { rows, problems } = await parseChildWorkbook(file);
+
+    const groups = await this.repo.groupsForImport(kindergartenId);
+    const groupByName = new Map(groups.map((group) => [group.name.trim().toLowerCase(), group]));
+
+    const existing = await this.repo.existingChildKeys(kindergartenId);
+
+    const accepted: {
+      child: CreateChildData;
+      groupId: string | null;
+      schoolYearId: string | null;
+      rowNumber: number;
+      label: string;
+    }[] = [];
+
+    const allProblems = [...problems];
+
+    for (const row of rows) {
+      /*
+       * A child already registered here is skipped, not overwritten.
+       *
+       * ★ An import must never silently edit an existing record. The
+       * spreadsheet is very often last year's file re-uploaded, and a stale
+       * cell in it would quietly rewrite a health note or a date of birth that
+       * somebody has since corrected in the system.
+       */
+      if (row.nationalId !== null && existing.nationalIds.has(row.nationalId)) {
+        allProblems.push({
+          rowNumber: row.rowNumber,
+          message: "Энэ регистрийн дугаартай хүүхэд аль хэдийн бүртгэлтэй — алгасав",
+        });
+        continue;
+      }
+
+      /*
+       * A register-less row matching a child already here.
+       *
+       * ★ Skipped, and this is the case that makes the export/import pair
+       * usable. A file from the ministry — or this system's own export —
+       * routinely has an empty register column, and matching on the id alone
+       * meant re-uploading it created every one of those children a second
+       * time.
+       *
+       * Skipping rather than merging keeps the wrong answer cheap: a genuinely
+       * new child who collides costs one manual entry, where an overwrite would
+       * silently rewrite a record somebody has since corrected.
+       */
+      if (
+        row.nationalId === null &&
+        existing.nameAndDate.has(childKey(row.lastName, row.firstName, row.dateOfBirth))
+      ) {
+        allProblems.push({
+          rowNumber: row.rowNumber,
+          message: "Ижил нэр, төрсөн огноотой хүүхэд бүртгэлтэй байна — алгасав",
+        });
+        continue;
+      }
+
+      let groupId: string | null = null;
+      let schoolYearId: string | null = null;
+
+      if (row.groupName) {
+        const group = groupByName.get(row.groupName.trim().toLowerCase());
+        if (!group) {
+          // Refused rather than imported group-less: a roster whose group names
+          // are wrong is a roster somebody needs to look at, and a child
+          // silently left unassigned is invisible on every group screen.
+          allProblems.push({
+            rowNumber: row.rowNumber,
+            message: `"${row.groupName}" нэртэй бүлэг олдсонгүй`,
+          });
+          continue;
+        }
+
+        groupId = group.id;
+        schoolYearId = group.schoolYear.id;
+      }
+
+      accepted.push({
+        rowNumber: row.rowNumber,
+        label: `${row.lastName} ${row.firstName}`,
+        groupId,
+        schoolYearId,
+        child: {
+          kindergartenId,
+          lastName: row.lastName,
+          firstName: row.firstName,
+          nationalId: row.nationalId,
+          sex: row.sex,
+          // The parser hands back `YYYY-MM-DD`; the column is a `@db.Date`.
+          // Parsed as UTC midnight so the stored day is the one that was
+          // typed, whatever timezone the server happens to run in.
+          dateOfBirth: new Date(`${row.dateOfBirth}T00:00:00.000Z`),
+          healthNotes: row.healthNotes,
+        },
+      });
+    }
+
+    const summary = {
+      dryRun,
+      willImport: accepted.length,
+      skipped: allProblems.length,
+      problems: allProblems.sort((a, b) => a.rowNumber - b.rowNumber),
+      preview: accepted.slice(0, 20).map((row) => ({
+        rowNumber: row.rowNumber,
+        name: row.label,
+        group: row.groupId ? (groups.find((g) => g.id === row.groupId)?.name ?? null) : null,
+      })),
+    };
+
+    if (dryRun) return { ...summary, imported: [] };
+
+    if (accepted.length === 0) throw new BadRequestException("Оруулах мөр олдсонгүй");
+
+    const imported = await this.repo.importChildren(
+      accepted.map(({ child, groupId, schoolYearId }) => ({ child, groupId, schoolYearId })),
+    );
+
+    /*
+     * One audit row for the import, plus one per child.
+     *
+     * The per-child rows are what make a child's own history complete — "where
+     * did this record come from" is answerable from the child's page. The
+     * summary row is what an administrator scanning the audit browser sees.
+     * нэмэлт.md §15 asks for exactly this provenance on imported data.
+     */
+    await this.audit.append({
+      action: "CREATE",
+      kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "ChildImport",
+      objectId: kindergartenId,
+      metadata: { imported: imported.length, skipped: allProblems.length, source: "xlsx" },
+    });
+
+    for (const child of imported) {
+      await this.audit.append({
+        action: "CREATE",
+        kindergartenId,
+        actorUserId: actor.userId,
+        objectType: "Child",
+        objectId: child.id,
+        childId: child.id,
+        metadata: { source: "xlsx" },
+      });
+    }
+
+    return { ...summary, willImport: imported.length, imported };
   }
 }
 
