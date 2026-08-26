@@ -2,8 +2,9 @@
 
 Recovering the production database from the rewritten-migration incident.
 
-**Status: prepared, not executed.** The destructive step needs a human to run
-it — see §3.
+**Status: executed 2026-08-26.** §3.1's surgical repair ran (`DELETE 2`), the
+redeploy applied all 21 migrations, and the API answers **401** — not 404 — on
+attendance, meals, growth, milestones and health. §6 records what it cost.
 
 ---
 
@@ -267,10 +268,40 @@ untouched, `AttendanceStatus` now the correct
 `PRESENT HALF_DAY EXCUSED SICK ABSENT`, and the endpoint answering **401**
 (unauthenticated) instead of 500.
 
-★ **This is the repair production cannot use.** It works only because the old
-`attendance` table was empty. Production's is too, so the same three statements
-would work there — but the schema reset in §3 is still the better choice there,
-since production's remaining data is four seed accounts and one demo child,
-and a clean replay of the whole history is easier to trust than a hand-patched
-one. A backup was taken either way:
+★ **This was written as "the repair production cannot use."** It works only
+because the old `attendance` table was empty — and when production was finally
+measured rather than reasoned about, its table was empty too. §3.1 is now this
+same repair, with one extra migration name; the schema reset is the folded-away
+alternative. A backup was taken either way:
 `~/nomadkids-dev-backup-20260825-200704.sql`.
+
+---
+
+## 6. What it cost, 2026-08-26
+
+The recovery ran. Three findings, in the order they bit, all of them in the
+image rather than the database:
+
+1. **`tsx` and `dotenv` were pruned from the image**, so §3.3's command — the
+   one this file has documented since it was written — could not have run at
+   all. Both are runtime dependencies now.
+2. **`src/generated` was not copied into the image**, so with `tsx` present the
+   scripts got one step further and died on
+   `Cannot find module '../src/generated/prisma/client'`. The runtime stage now
+   copies it.
+3. The repair itself was **one statement and no data loss**: `DROP TABLE`,
+   `DROP TYPE`, `DELETE 2`, `COMMIT`. The migrations then applied on the first
+   redeploy.
+
+Each of the first two cost a build-and-deploy cycle, in the middle of a
+recovery, because the seed path had never been executed anywhere but a laptop —
+where `node_modules` is the dev tree and `src/` is right there. **A command that
+only runs during an incident is only tested during an incident.** If a fourth
+thing in this file has never been run against the real image, it is the next one
+to fail.
+
+Verified afterwards, over HTTPS against `api.nomadkids.mn` with a real session:
+`/children`, `/dashboard/teacher`, `/dashboard/parent`, the weekly menu,
+`/children/:id/growth`, `/children/:id/health`,
+`/children/:id/attendance?month=…`, `/kindergartens/:id/surveys` and
+`/kindergartens/:id/funding?month=…` all answer **200** with the seeded rows.
