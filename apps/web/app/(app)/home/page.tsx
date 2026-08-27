@@ -127,7 +127,7 @@ export default function ParentHomePage() {
       {/*
         ★ A 3-column icon grid matching the parent's own mock-up: Ангийн
         самбар, Ирц, Хоол, Үнэлгээ, Судалгаа, Санхүү. The icon assets
-        (icon-notice.webp, icon-attendance.webp, …) already carry their own
+        (icon-notice.png, icon-attendance.png, …) already carry their own
         colour per tile, so the grid reads as varied as the reference's
         icon-square grid without inventing a new colour system for it.
         `PORTFOLIO` is not a tile here — it is a button on the hero card
@@ -155,27 +155,27 @@ export default function ParentHomePage() {
             href="/notifications"
             label="Ангийн самбар"
             badge={unread && unread.count > 0 ? unread.count : undefined}
-            icon={<Image src="/icons/icon-notice.webp" alt="" width={44} height={44} className="size-11" />}
+            icon={<Image src="/icons/icon-notice.png" alt="" width={44} height={44} className="size-11" />}
           />
           <QuickTile
             href={`/children/${selected.id}/attendance`}
             label="Ирц"
-            icon={<Image src="/icons/icon-attendance.webp" alt="" width={44} height={44} className="size-11" />}
+            icon={<Image src="/icons/icon-attendance.png" alt="" width={44} height={44} className="size-11" />}
           />
           <QuickTile
             href={`/children/${selected.id}/menu`}
             label="Хоол"
-            icon={<Image src="/icons/icon-menu.webp" alt="" width={44} height={44} className="size-11" />}
+            icon={<Image src="/icons/icon-menu.png" alt="" width={44} height={44} className="size-11" />}
           />
           <QuickTile
             href={`/children/${selected.id}/assessments`}
             label="Үнэлгээ"
-            icon={<Image src="/icons/icon-progress.webp" alt="" width={44} height={44} className="size-11" />}
+            icon={<Image src="/icons/icon-progress.png" alt="" width={44} height={44} className="size-11" />}
           />
           <SurveyTile childId={selected.id} />
           <ComingSoonTile
             label="Санхүү"
-            icon={<Image src="/icons/icon-finance.webp" alt="" width={44} height={44} className="size-11" />}
+            icon={<Image src="/icons/icon-finance.png" alt="" width={44} height={44} className="size-11" />}
           />
         </div>
       </section>
@@ -260,7 +260,7 @@ function SurveyTile({ childId }: { childId: string }) {
       href={`/children/${childId}/surveys`}
       label="Судалгаа"
       badge={pendingCount > 0 ? pendingCount : undefined}
-      icon={<Image src="/icons/icon-survey.webp" alt="" width={44} height={44} className="size-11" />}
+      icon={<Image src="/icons/icon-survey.png" alt="" width={44} height={44} className="size-11" />}
     />
   );
 }
