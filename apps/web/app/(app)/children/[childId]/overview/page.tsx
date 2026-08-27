@@ -10,9 +10,7 @@ import { ChildOverviewContent } from "@/components/child/child-overview-content"
  * The child overview — the standalone route.
  *
  * ★ Just a frame around `ChildOverviewContent` — the back button, which only
- * makes sense when this is the whole screen. The child hub's own "Зургийн
- * цомог" tab (`children/[childId]/page.tsx`) renders the same content inline,
- * as a tab panel rather than a route.
+ * makes sense when this is the whole screen.
  */
 export default function ChildOverviewPage() {
   const params = useParams<{ childId: string }>();
@@ -21,7 +19,7 @@ export default function ChildOverviewPage() {
   return (
     <div className="flex flex-col gap-6 py-2">
       <Button asChild variant="ghost" size="sm" className="-ml-2 self-start">
-        <Link href={`/children/${childId}`}>
+        <Link href={`/children/${childId}/general`}>
           <ArrowLeft size={18} />
           Хүүхдийн бүртгэл
         </Link>

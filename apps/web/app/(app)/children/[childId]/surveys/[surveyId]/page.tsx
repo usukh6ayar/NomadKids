@@ -46,7 +46,7 @@ export default function SurveyResponsePage() {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.childSurveys(childId) });
-      router.replace(`/children/${childId}`);
+      router.replace(`/children/${childId}/general`);
     },
   });
 

@@ -653,7 +653,7 @@ function NavGroup({ section, pathname }: { section: NavSection; pathname: string
         const active = pathname === entry.href || pathname.startsWith(`${entry.href}/`);
         return (
           <Link
-            key={entry.label}
+            key={entry.href}
             href={entry.href}
             aria-current={active ? "page" : undefined}
             className={cn(

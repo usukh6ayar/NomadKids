@@ -243,7 +243,7 @@ function DetailsForm({
             <Button
               type="button"
               variant="secondary"
-              onClick={() => router.push(`/children/${childId}`)}
+              onClick={() => router.push(`/children/${childId}/general`)}
             >
               Буцах
             </Button>

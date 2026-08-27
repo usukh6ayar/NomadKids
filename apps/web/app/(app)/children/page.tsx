@@ -440,7 +440,7 @@ function ChildRow({
 
   return (
     <Link
-      href={`/children/${child.id}`}
+      href={`/children/${child.id}/general`}
       // The whole row is one card and one link. `hover:border-primary` is the
       // reference's `.kidrow:hover` — the affordance is the border moving to
       // the brand colour, not a background wash.
@@ -556,7 +556,7 @@ function MyChildren() {
       {data && data.length > 0 ? (
         <div className="grid gap-3 md:grid-cols-2">
           {data.map((child) => (
-            <Link key={child.id} href={`/children/${child.id}`} className="block">
+            <Link key={child.id} href={`/children/${child.id}/general`} className="block">
               <Card
                 pad="roomy"
                 className="flex min-h-[88px] items-center gap-3 hover:bg-canvas md:gap-4"

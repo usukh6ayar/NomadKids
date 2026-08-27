@@ -123,7 +123,7 @@ function ReviewCard({ observation }: { observation: z.infer<typeof queueItemSche
         <div className="min-w-0">
           {observation.child ? (
             <Link
-              href={`/children/${observation.child.id}`}
+              href={`/children/${observation.child.id}/observations`}
               // Inline in a sentence, so the box is grown rather than the text:
               // measured at 18px, which is not a target a thumb finds.
               className="inline-flex min-h-[44px] items-center font-medium text-ink underline-offset-4 hover:underline"

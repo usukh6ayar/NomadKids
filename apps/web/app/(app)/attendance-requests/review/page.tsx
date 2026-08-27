@@ -112,7 +112,7 @@ function RequestCard({ request }: { request: z.infer<typeof queueItemSchema> }) 
         <div className="min-w-0">
           {request.child ? (
             <Link
-              href={`/children/${request.child.id}`}
+              href={`/children/${request.child.id}/attendance`}
               className="inline-flex min-h-[44px] items-center font-medium text-ink underline-offset-4 hover:underline"
             >
               {fullName(request.child)}
