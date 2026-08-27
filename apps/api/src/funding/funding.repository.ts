@@ -101,20 +101,56 @@ export class FundingRepository {
         },
         _count: { _all: true },
       }),
+      /*
+       * ★ Grouped by `childId` **and `date`**, so one group is one fed day.
+       *
+       * This read used to group by `childId` alone and count rows, which is
+       * wrong by a factor of however many sittings a kindergarten serves:
+       * `MealRecord` is unique on `(enrollmentId, date, kind)`, so a child fed
+       * breakfast, lunch and a snack has three rows for one day. Multiplying a
+       * per-day tariff — §5's "Нэг өдрийн тариф" — by a count of sittings
+       * overstated a claim against state funding threefold.
+       *
+       * `нэмэлт.md` says "хооллосон **өдөр**" throughout, and §6 reports it
+       * beside "ирсэн **өдөр**": both are day counts. `demo-data.ts` has always
+       * built the figure this way — one increment per date on which the child
+       * ate anything — and this now agrees with it.
+       *
+       * Grouping by the pair yields exactly the distinct `(child, date)` pairs
+       * that have at least one qualifying row, which is the definition. The
+       * caller counts the groups per child.
+       */
       this.prisma.mealRecord.groupBy({
-        by: ["childId"],
+        by: ["childId", "date"],
         where: {
           kindergartenId,
           deletedAt: null,
           date: { gte: from, lte: to },
-          // Anything but NOT_TAKEN: the kitchen cooked and served.
+          // Anything but NOT_TAKEN: the kitchen cooked and served. Which
+          // statuses qualify is unchanged — only the unit is.
           status: { in: ["TAKEN", "PARTIAL", "SPECIAL"] },
         },
-        _count: { _all: true },
       }),
     ]);
 
-    return { enrollments, attendance, meals };
+    /*
+     * Fed days per child.
+     *
+     * Reduced here rather than returned raw so the caller cannot repeat the
+     * original mistake: the shape it receives is already "days", not rows.
+     * `attendance` needs no such treatment — `Attendance` is unique on
+     * `(enrollmentId, date)`, so there one row *is* one day.
+     */
+    const fedDays = new Map<string, number>();
+    for (const group of meals) {
+      fedDays.set(group.childId, (fedDays.get(group.childId) ?? 0) + 1);
+    }
+
+    return {
+      enrollments,
+      attendance,
+      meals: [...fedDays].map(([childId, daysFed]) => ({ childId, daysFed })),
+    };
   }
 
   async listCalculations(kindergartenId: string, month: Date, source?: FundingSource) {

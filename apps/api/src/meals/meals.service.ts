@@ -181,18 +181,27 @@ export class MealsService {
     const from = new Date(Date.UTC(year, monthNum - 1, 1));
     const to = new Date(Date.UTC(year, monthNum, 0));
 
-    const counts = await this.repo.monthlyMealCounts(childId, from, to);
+    const { counts, daysFed } = await this.repo.monthlyMealCounts(childId, from, to);
 
     return {
       month,
       counts,
       /*
-       * The figure §3 multiplies. `PARTIAL` and `SPECIAL` count as days the
-       * child was fed — the kitchen cooked and served — while `NOT_TAKEN` does
-       * not. A tariff that prices them differently reads `counts` instead; this
-       * is the plain "how many days did we feed this child".
+       * The figure §3 multiplies — distinct dates on which the child ate
+       * something, never a count of sittings.
+       *
+       * ★ This used to sum `counts`, which was wrong by however many meals a
+       * kindergarten serves: `MealRecord` is one row per sitting, so a child
+       * fed breakfast, lunch and a snack scored three "days" for one day.
+       * `нэмэлт.md` says "хооллосон **өдөр**" and §6 reports it beside "ирсэн
+       * **өдөр**"; both are days. The repository now counts distinct dates.
+       *
+       * `PARTIAL` and `SPECIAL` still count as fed and `NOT_TAKEN` still does
+       * not — the status meanings are unchanged, only the unit. A tariff that
+       * prices them differently reads `counts`, which is why that breakdown
+       * stays.
        */
-      daysFed: counts.filter((c) => c.status !== "NOT_TAKEN").reduce((sum, c) => sum + c.count, 0),
+      daysFed,
     };
   }
 }

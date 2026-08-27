@@ -116,13 +116,42 @@ export class MealsRepository {
    * already merged them could not tell anyone how many there were.
    */
   async monthlyMealCounts(childId: string, from: Date, to: Date) {
-    const rows = await this.prisma.mealRecord.groupBy({
-      by: ["kind", "status"],
-      where: { childId, deletedAt: null, date: { gte: from, lte: to } },
-      _count: { _all: true },
-    });
+    const [rows, fedDates] = await Promise.all([
+      // The per-(kind, status) breakdown, unchanged: §6 reports it, and a
+      // tariff that prices PARTIAL differently would read it.
+      this.prisma.mealRecord.groupBy({
+        by: ["kind", "status"],
+        where: { childId, deletedAt: null, date: { gte: from, lte: to } },
+        _count: { _all: true },
+      }),
+      /*
+       * ★ Fed days, counted as distinct dates — not as rows.
+       *
+       * A separate query rather than a derivation from `rows` above, because
+       * that breakdown has already collapsed the dates away: three sittings on
+       * one day and one sitting on three days are indistinguishable in it.
+       * Summing it was the original defect, and it is not recoverable from
+       * that shape at all.
+       *
+       * Grouping by `date` yields one group per date carrying at least one
+       * qualifying row, which is the definition of "хооллосон өдөр".
+       */
+      this.prisma.mealRecord.groupBy({
+        by: ["date"],
+        where: {
+          childId,
+          deletedAt: null,
+          date: { gte: from, lte: to },
+          // Same statuses as before — the unit changed, the meanings did not.
+          status: { in: ["TAKEN", "PARTIAL", "SPECIAL"] },
+        },
+      }),
+    ]);
 
-    return rows.map((row) => ({ kind: row.kind, status: row.status, count: row._count._all }));
+    return {
+      counts: rows.map((row) => ({ kind: row.kind, status: row.status, count: row._count._all })),
+      daysFed: fedDates.length,
+    };
   }
 
   /** The group a register is being written for, with its tenant. */
