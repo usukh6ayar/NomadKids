@@ -7,9 +7,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Bell, ChevronDown, LogOut, Search, X } from "lucide-react";
 import { useId, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
-import { unreadCountSchema } from "@kinder/contracts";
+import { unreadCountSchema, type ChildSummary } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
-import { Input } from "@/components/ui/field";
+import { Input, Select } from "@/components/ui/field";
 import { qk } from "@/lib/api/keys";
 import { useLogout, useSession } from "@/lib/auth/session";
 import { fullName, initials } from "@/lib/format";
@@ -64,6 +64,18 @@ export interface NavSection {
      */
     icon?: ReactNode;
   }[];
+}
+
+/**
+ * The sidebar's child picker — parent-only, and only when it has something to
+ * pick between. `(app)/layout.tsx`'s `AuthenticatedShell` builds this from
+ * `SelectedChildProvider`, so the rest of the shell never touches
+ * `localStorage` directly.
+ */
+export interface ChildSwitcher {
+  children: ChildSummary[];
+  selectedId: string;
+  onSelect: (id: string) => void;
 }
 
 /**
@@ -326,12 +338,15 @@ export function AppShell({
   sections,
   children,
   variant = "teacher",
+  childSwitcher,
 }: {
   nav: NavItem[];
   /** Desktop sidebar sections. Without them the sidebar renders `nav` flat. */
   sections?: NavSection[];
   children: ReactNode;
   variant?: "teacher" | "parent" | "platform";
+  /** A parent with more than one child — see `ChildSwitcher`. */
+  childSwitcher?: ChildSwitcher;
 }) {
   // Every role gets the sidebar from `lg` up; only the bottom bar is
   // role-dependent (mobile-only, all three variants).
@@ -360,7 +375,9 @@ export function AppShell({
 
   return (
     <div className="min-h-dvh bg-canvas">
-      {desktopSidebar ? <Sidebar nav={nav} sections={sections} subtitle={subtitle} /> : null}
+      {desktopSidebar ? (
+        <Sidebar nav={nav} sections={sections} subtitle={subtitle} childSwitcher={childSwitcher} />
+      ) : null}
 
       <MobileHeader subtitle={subtitle} />
 
@@ -400,6 +417,7 @@ export function AppShell({
         nav={nav}
         sections={sections}
         subtitle={subtitle}
+        childSwitcher={childSwitcher}
       />
     </div>
   );
@@ -485,10 +503,12 @@ function SidebarContent({
   nav,
   sections,
   subtitle,
+  childSwitcher,
 }: {
   nav: NavItem[];
   sections?: NavSection[];
   subtitle: string;
+  childSwitcher?: ChildSwitcher;
 }) {
   const pathname = usePathname();
 
@@ -500,6 +520,8 @@ function SidebarContent({
   return (
     <>
       <Brand subtitle={subtitle} />
+
+      {childSwitcher ? <ChildSwitcherControl switcher={childSwitcher} /> : null}
 
       <div className="-mr-1.5 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1.5">
         {primary ? <NavLink item={primary} pathname={pathname} orientation="vertical" /> : null}
@@ -524,10 +546,12 @@ function Sidebar({
   nav,
   sections,
   subtitle,
+  childSwitcher,
 }: {
   nav: NavItem[];
   sections?: NavSection[];
   subtitle: string;
+  childSwitcher?: ChildSwitcher;
 }) {
   return (
     <nav
@@ -543,8 +567,37 @@ function Sidebar({
        */
       className="fixed inset-y-0 left-0 z-20 hidden w-[244px] flex-col gap-5 overflow-hidden border-r border-border bg-surface px-3.5 py-[18px] lg:flex"
     >
-      <SidebarContent nav={nav} sections={sections} subtitle={subtitle} />
+      <SidebarContent nav={nav} sections={sections} subtitle={subtitle} childSwitcher={childSwitcher} />
     </nav>
+  );
+}
+
+/**
+ * The parent's own child picker, above the sidebar's nav — the only place a
+ * family with more than one child chooses which is "current" for the
+ * sections below and for Home's tiles. Uses the same `Select` every form in
+ * this product uses (`components/ui/field.tsx`) rather than a bespoke
+ * control, so it does not have to teach a second interaction pattern for one
+ * dropdown.
+ */
+function ChildSwitcherControl({ switcher }: { switcher: ChildSwitcher }) {
+  return (
+    <div>
+      <label htmlFor="child-switcher" className="sr-only">
+        Хүүхэд сонгох
+      </label>
+      <Select
+        id="child-switcher"
+        value={switcher.selectedId}
+        onChange={(event) => switcher.onSelect(event.target.value)}
+      >
+        {switcher.children.map((child) => (
+          <option key={child.id} value={child.id}>
+            {fullName(child)}
+          </option>
+        ))}
+      </Select>
+    </div>
   );
 }
 
@@ -569,12 +622,14 @@ function MobileMenuDrawer({
   nav,
   sections,
   subtitle,
+  childSwitcher,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   nav: NavItem[];
   sections?: NavSection[];
   subtitle: string;
+  childSwitcher?: ChildSwitcher;
 }) {
   const closeOnLinkClick = (event: MouseEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest("a")) onOpenChange(false);
@@ -597,7 +652,7 @@ function MobileMenuDrawer({
           </Dialog.Close>
 
           <div onClick={closeOnLinkClick} className="contents">
-            <SidebarContent nav={nav} sections={sections} subtitle={subtitle} />
+            <SidebarContent nav={nav} sections={sections} subtitle={subtitle} childSwitcher={childSwitcher} />
           </div>
         </Dialog.Content>
       </Dialog.Portal>

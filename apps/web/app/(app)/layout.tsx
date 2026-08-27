@@ -18,12 +18,13 @@ import { useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 import { childSummarySchema, type ChildSummary } from "@kinder/contracts";
 import { z } from "zod";
-import { AppShell, type NavItem, type NavSection } from "@/components/shell/app-shell";
+import { AppShell, type ChildSwitcher, type NavItem, type NavSection } from "@/components/shell/app-shell";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { ChildAvatar } from "@/components/media/media-image";
 import { LoadingState } from "@/components/ui/states";
 import { useSession } from "@/lib/auth/session";
+import { SelectedChildProvider, useSelectedChild } from "@/lib/selected-child";
 import { fullName } from "@/lib/format";
 
 const ownChildrenSchema = z.array(childSummarySchema);
@@ -99,13 +100,52 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  const nav = isStaff ? staffNav(hasRole("ADMIN")) : parentNav(myChildren.data);
+  return (
+    <SelectedChildProvider myChildIds={myChildren.data?.map((child) => child.id)}>
+      <AuthenticatedShell isStaff={isStaff} isAdmin={hasRole("ADMIN")} myChildren={myChildren.data}>
+        {children}
+      </AuthenticatedShell>
+    </SelectedChildProvider>
+  );
+}
+
+/**
+ * Split out of `AppLayout` so it can read `useSelectedChild()` — that hook
+ * only works below `SelectedChildProvider`, and the provider itself needs
+ * `myChildren` from the component above it.
+ */
+function AuthenticatedShell({
+  isStaff,
+  isAdmin,
+  myChildren,
+  children,
+}: {
+  isStaff: boolean;
+  isAdmin: boolean;
+  myChildren: ChildSummary[] | undefined;
+  children: ReactNode;
+}) {
+  const { selectedChildId, setSelectedChildId } = useSelectedChild();
+
+  const nav = isStaff ? staffNav(isAdmin) : parentNav(myChildren, selectedChildId);
+
+  // Below two children there is nothing to switch between — the sidebar
+  // already names the one child directly, same as before this existed.
+  const childSwitcher: ChildSwitcher | undefined =
+    !isStaff && myChildren && myChildren.length > 1 && selectedChildId
+      ? {
+          children: myChildren,
+          selectedId: selectedChildId,
+          onSelect: setSelectedChildId,
+        }
+      : undefined;
 
   return (
     <AppShell
       nav={nav}
-      sections={isStaff ? staffSections(hasRole("ADMIN")) : parentSections(myChildren.data)}
+      sections={isStaff ? staffSections(isAdmin) : parentSections(myChildren, selectedChildId)}
       variant={isStaff ? "teacher" : "parent"}
+      childSwitcher={childSwitcher}
     >
       {children}
     </AppShell>
@@ -231,17 +271,11 @@ function platformNav(): NavItem[] {
  * "/settings"` regardless of label, so this tab's own name differing from
  * `staffNav`'s "Профайл" costs nothing there.
  *
- * ★★ "Зураг" is a plain link, no popup. It goes straight to the first
- * child's `/overview` — the same "first child, most families only ever
- * have one" default `/home`'s own switcher and `selected` use. A family with
- * more than one child still gets exactly this behaviour rather than being
- * asked which child first: the tab always resolves to *a* real page, and once
- * there, that child's own switcher (or the sidebar's "Хүүхдийн мэдээлэл" list
- * on desktop) is how they reach a different one — the same pattern every
- * other per-child destination in this product already follows, rather than a
- * picker unique to this one tab. Before `myChildren` has loaded (or for a
- * family connected to none), it falls back to `/children` — a real list,
- * never a dead link and never a modal.
+ * ★★ "Зураг" is a plain link, no popup — it goes straight to the *selected*
+ * child's `/overview` (2026-08-28: was always the first child before the
+ * switcher existed — see `SelectedChildProvider`). Before `myChildren` has
+ * loaded (or for a family connected to none), it falls back to `/children` —
+ * a real list, never a dead link.
  *
  * "Ирц" and "Хоол ба цэс" briefly had their own bottom-bar tabs, each
  * resolving to a `?tab=` deep link on a confirmed single child or to
@@ -253,8 +287,12 @@ function platformNav(): NavItem[] {
  * `myChildren` comes from `AppLayout`, which owns the query — this function
  * has no hooks of its own to fetch with.
  */
-function parentNav(myChildren: ChildSummary[] | undefined): NavItem[] {
-  const zuragHref = myChildren?.[0] ? `/children/${myChildren[0].id}/overview` : "/children";
+function parentNav(
+  myChildren: ChildSummary[] | undefined,
+  selectedChildId: string | undefined,
+): NavItem[] {
+  const activeId = selectedChildId ?? myChildren?.[0]?.id;
+  const zuragHref = activeId ? `/children/${activeId}/overview` : "/children";
 
   return [
     { href: "/home", label: "Нүүр", icon: <Home {...iconProps} /> },
@@ -296,34 +334,44 @@ function parentNav(myChildren: ChildSummary[] | undefined): NavItem[] {
  * parent actually wants instead of a route to a list they then pick from
  * anyway.
  *
- * ★★ Two rows per child, not one, since the child hub was deleted
- * (2026-08-28). It used to carry Ерөнхий and Ажиглалт as tabs on one page;
- * without that page a desktop reader needs both named here directly, the
- * same way `parentNav`'s own "Зураг" tab already links straight to a specific
- * child's page rather than to a list. `/general`'s icon is the child's own
- * avatar, matching every other per-child row this menu has ever shown; the
- * Ажиглалт row underneath it carries a plain glyph instead, so a family with
- * two children reads two two-row groups rather than four look-alike rows.
+ * ★★ Two rows for the *selected* child, not one, since the child hub was
+ * deleted (2026-08-28) — it used to carry Ерөнхий and Ажиглалт as tabs on one
+ * page, and without that page a desktop reader needs both named here
+ * directly. `/general`'s icon is the child's own avatar, matching every
+ * per-child row this menu has ever shown; the Ажиглалт row underneath it
+ * carries a plain glyph instead.
+ *
+ * ★★★ One child, not every child — 2026-08-28's second change the same day.
+ * This mapped every one of a family's children in, which put two identical
+ * "Ажиглалт" rows on the menu for any family with two — the same label twice
+ * with nothing beside it to say whose. `SelectedChildProvider` (the
+ * switcher `app-shell.tsx` renders above this section) is what disambiguates
+ * now: one child is "current" at a time, same as `parentNav`'s "Зураг" tab,
+ * and this section follows it rather than listing everyone at once.
  */
-function parentSections(myChildren: ChildSummary[] | undefined): NavSection[] {
+function parentSections(
+  myChildren: ChildSummary[] | undefined,
+  selectedChildId: string | undefined,
+): NavSection[] {
+  const selected = myChildren?.find((child) => child.id === selectedChildId) ?? myChildren?.[0];
+
   return [
     {
       title: "Хүүхдийн мэдээлэл",
-      entries:
-        myChildren && myChildren.length > 0
-          ? myChildren.flatMap((child) => [
-              {
-                label: fullName(child),
-                href: `/children/${child.id}/general`,
-                icon: <ChildAvatar child={child} size={24} />,
-              },
-              {
-                label: "Ажиглалт",
-                href: `/children/${child.id}/observations`,
-                icon: <NotebookPen size={18} aria-hidden="true" />,
-              },
-            ])
-          : [{ label: "Холбогдсон хүүхэд алга" }],
+      entries: selected
+        ? [
+            {
+              label: fullName(selected),
+              href: `/children/${selected.id}/general`,
+              icon: <ChildAvatar child={selected} size={24} />,
+            },
+            {
+              label: "Ажиглалт",
+              href: `/children/${selected.id}/observations`,
+              icon: <NotebookPen size={18} aria-hidden="true" />,
+            },
+          ]
+        : [{ label: "Холбогдсон хүүхэд алга" }],
     },
     {
       title: "Харилцаа холбоо",

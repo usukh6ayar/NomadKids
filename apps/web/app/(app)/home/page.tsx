@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
+import { useSelectedChild } from "@/lib/selected-child";
 import { formatAge, fullName } from "@/lib/format";
 import { PORTFOLIO } from "@/lib/vocabulary";
 
@@ -29,6 +30,8 @@ import { PORTFOLIO } from "@/lib/vocabulary";
  * — but nothing here destructures or renders them.
  */
 export default function ParentHomePage() {
+  const { selectedChildId } = useSelectedChild();
+
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: qk.dashboard.parent(),
     queryFn: () => get("/dashboard/parent", parentDashboardSchema),
@@ -80,7 +83,12 @@ export default function ParentHomePage() {
     );
   }
 
-  const selected = children[0]!;
+  // Falls back to the first child until `SelectedChildProvider` has read
+  // `localStorage` (or for an id it no longer resolves to a real child, say
+  // after an unenrollment) — never "wait for it", since that would leave this
+  // screen's own loading state blocked on a value that only ever matters for
+  // *which* child renders, not whether the page can render at all.
+  const selected = children.find((child) => child.id === selectedChildId) ?? children[0]!;
 
   return (
     <HomeBackdrop>
