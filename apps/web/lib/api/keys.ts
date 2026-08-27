@@ -62,6 +62,26 @@ export const qk = {
     ["documents", kindergartenId, "categories"] as const,
   groupAttendance: (groupId: string, date: string) =>
     ["group", groupId, "attendance", date] as const,
+  /**
+   * One sitting of one group on one day — the meal register's unit of work.
+   *
+   * ★ `kind` is part of the key, not a filter applied after the fetch. The API
+   * requires it on the query and answers with that sitting alone, so breakfast
+   * and lunch are different responses; sharing a key would let a cached
+   * breakfast sheet satisfy a request for lunch and show the wrong marks.
+   */
+  groupMeals: (groupId: string, date: string, kind: string) =>
+    ["group", groupId, "meals", date, kind] as const,
+  /**
+   * The staff menu — dishes plus the allergy cross-check.
+   *
+   * ★ A different key from the plain menu `child-menu.tsx` reads, deliberately.
+   * The two routes answer with different bodies for different audiences, and
+   * sharing a key would let a parent's cached menu satisfy a teacher's query
+   * for the warnings — or worse, the reverse.
+   */
+  menuWithWarnings: (kindergartenId: string, from: string, to: string) =>
+    ["kindergarten", kindergartenId, "menu", "with-warnings", from, to] as const,
   attendanceReviewQueue: (filters: Record<string, unknown> = {}) =>
     ["attendance-requests", "review-queue", filters] as const,
 

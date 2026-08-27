@@ -225,6 +225,202 @@ describe("school years", () => {
 
     expect(res.status).toBe(404);
   });
+
+  it("refuses a second year with the same name, with a message rather than a 500", async () => {
+    // `@@unique([kindergartenId, name])`. Prisma's P2002 reaches the problem
+    // filter as an unrecognised exception unless the service turns it into an
+    // HttpException first, and a bare 500 tells the administrator who typed the
+    // year twice that the product is broken.
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/school-years`),
+      adminA,
+    ).send({ name: a.schoolYear.name, startsOn: "2026-09-01", endsOn: "2027-06-01" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.detail).toMatch(/аль хэдийн/);
+  });
+});
+
+/**
+ * Editing an existing school year.
+ *
+ * ★ The route had no test of any kind before this, and the frontend had no
+ * caller — so every rule below was reachable only by hand.
+ */
+describe("PATCH /school-years/:id", () => {
+  it("renames a year", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/school-years/${a.schoolYear.id}`),
+      adminA,
+    ).send({ name: "2030-2031" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe("2030-2031");
+  });
+
+  it("moves the dates", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/school-years/${a.schoolYear.id}`),
+      adminA,
+    ).send({ startsOn: "2025-09-15", endsOn: "2026-06-15" });
+
+    expect(res.status).toBe(200);
+
+    const stored = await db.schoolYear.findUnique({ where: { id: a.schoolYear.id } });
+    expect(stored?.startsOn.toISOString().slice(0, 10)).toBe("2025-09-15");
+    expect(stored?.endsOn.toISOString().slice(0, 10)).toBe("2026-06-15");
+  });
+
+  /**
+   * ★ The rule this whole file most needs pinned.
+   *
+   * `updateSchoolYearSchema` leaves `isCurrent` optional with **no** default,
+   * unlike the create schema's `.default(false)`. So a rename arrives with the
+   * field `undefined`, the repository skips its demotion and Prisma skips the
+   * column. Give the two DTOs the same default and every corrected typo would
+   * quietly leave the kindergarten with no current year — a change that breaks
+   * `/admin/terms` and `/admin/groups` and looks nothing like a rename.
+   */
+  it("a rename does not disturb the current-year flag", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/school-years/${a.schoolYear.id}`),
+      adminA,
+    ).send({ name: "Шинэ нэр" });
+
+    expect(res.status).toBe(200);
+
+    const current = await db.schoolYear.findMany({
+      where: { kindergartenId: a.kindergarten.id, isCurrent: true },
+    });
+    expect(current).toHaveLength(1);
+    expect(current[0]!.id).toBe(a.schoolYear.id);
+  });
+
+  it("moves `isCurrent` to another year, leaving exactly one", async () => {
+    const other = await createSchoolYear(a.kindergarten.id, false);
+
+    const res = await authed(request(server()).patch(`/v1/school-years/${other.id}`), adminA).send({
+      isCurrent: true,
+    });
+
+    expect(res.status).toBe(200);
+
+    const current = await db.schoolYear.findMany({
+      where: { kindergartenId: a.kindergarten.id, isCurrent: true },
+    });
+    expect(current).toHaveLength(1);
+    expect(current[0]!.id).toBe(other.id);
+  });
+
+  /** The demotion is scoped to the kindergarten — B's current year is untouched. */
+  it("promoting a year in A leaves B's current year alone", async () => {
+    const other = await createSchoolYear(a.kindergarten.id, false);
+    await authed(request(server()).patch(`/v1/school-years/${other.id}`), adminA).send({
+      isCurrent: true,
+    });
+
+    const stillCurrent = await db.schoolYear.findUnique({ where: { id: b.schoolYear.id } });
+    expect(stillCurrent?.isCurrent).toBe(true);
+  });
+
+  it("refuses a year that ends before it starts", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/school-years/${a.schoolYear.id}`),
+      adminA,
+    ).send({ startsOn: "2027-06-01", endsOn: "2026-09-01" });
+
+    expect(res.status).toBe(400);
+    // Attached to the field, so the web form can put it under the input.
+    expect(res.body.errors?.endsOn?.[0]).toMatch(/хойш байх ёстой/);
+  });
+
+  it("refuses renaming onto another year's name", async () => {
+    const other = await createSchoolYear(a.kindergarten.id, false);
+
+    const res = await authed(request(server()).patch(`/v1/school-years/${other.id}`), adminA).send({
+      name: a.schoolYear.name,
+    });
+
+    expect(res.status).toBe(409);
+  });
+
+  it("refuses a teacher", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/school-years/${a.schoolYear.id}`),
+      teacherA,
+    ).send({ name: "Багшийн оролдлого" });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("refuses a parent", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/school-years/${a.schoolYear.id}`),
+      parentA,
+    ).send({ name: "Эцэг эхийн оролдлого" });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("refuses a director of another kindergarten", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/school-years/${b.schoolYear.id}`),
+      adminA,
+    ).send({ name: "Хулгай" });
+
+    expect(res.status).toBe(404);
+
+    const untouched = await db.schoolYear.findUnique({ where: { id: b.schoolYear.id } });
+    expect(untouched?.name).toBe(b.schoolYear.name);
+  });
+
+  it("returns 404 for an id that does not exist", async () => {
+    const res = await authed(
+      request(server()).patch("/v1/school-years/00000000-0000-4000-8000-000000000000"),
+      adminA,
+    ).send({ name: "Хоосон" });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 400 for a malformed id", async () => {
+    const res = await authed(request(server()).patch("/v1/school-years/not-a-uuid"), adminA).send({
+      name: "Буруу",
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("writes an audit entry", async () => {
+    await authed(request(server()).patch(`/v1/school-years/${a.schoolYear.id}`), adminA).send({
+      name: "Аудиттай жил",
+    });
+
+    const entry = await db.auditLog.findFirst({
+      where: { objectType: "SchoolYear", action: "UPDATE" },
+    });
+    expect(entry?.actorUserId).toBe(a.adminUser.id);
+    expect(entry?.objectId).toBe(a.schoolYear.id);
+  });
+
+  /**
+   * ★ A group belonging to the year is not a constraint on editing it.
+   *
+   * Nothing in the DTO can move a year between kindergartens, so a rename or a
+   * date change cannot orphan a group — and unlike `archiveGroup`, there is no
+   * enrolment guard to trip, because there is no delete route to guard.
+   */
+  it("edits a year that already has groups and enrolled children", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/school-years/${a.schoolYear.id}`),
+      adminA,
+    ).send({ name: "Хүүхэдтэй жил" });
+
+    expect(res.status).toBe(200);
+
+    const group = await db.group.findUnique({ where: { id: a.group.id } });
+    expect(group?.schoolYearId).toBe(a.schoolYear.id);
+  });
 });
 
 describe("GET /groups", () => {
@@ -367,6 +563,99 @@ describe("POST /kindergartens/:id/groups", () => {
     ).send({ schoolYearId: a.schoolYear.id, name: "Буруу", ageBand: "NOT_A_BAND" });
 
     expect(res.status).toBe(400);
+  });
+});
+
+/**
+ * `PATCH /groups/:id` — rename, re-band, and the reversible archive.
+ *
+ * ★ The status round trip is the one that matters most here.
+ *
+ * The product has two operations that both read as "archive" and behave
+ * completely differently: `status: ARCHIVED` is a flag the row keeps and can
+ * flip back, while `DELETE` sets `deletedAt` and `baseWhere` then hides the row
+ * from every query with no endpoint to restore it. The admin screen presents
+ * them as a reversible toggle and a confirmed one-way delete respectively, and
+ * that presentation is only honest if `status` really does go both ways —
+ * which nothing asserted until now.
+ */
+describe("PATCH /groups/:id", () => {
+  it("renames a group", async () => {
+    const res = await authed(request(server()).patch(`/v1/groups/${a.group.id}`), adminA).send({
+      name: "Шинэ нэр",
+    });
+
+    expect(res.status).toBe(200);
+    const row = await db.group.findUniqueOrThrow({ where: { id: a.group.id } });
+    expect(row.name).toBe("Шинэ нэр");
+  });
+
+  it("changes the age band", async () => {
+    const res = await authed(request(server()).patch(`/v1/groups/${a.group.id}`), adminA).send({
+      ageBand: "SENIOR",
+    });
+
+    expect(res.status).toBe(200);
+    const row = await db.group.findUniqueOrThrow({ where: { id: a.group.id } });
+    expect(row.ageBand).toBe("SENIOR");
+  });
+
+  it("archives and restores through status, leaving the row visible", async () => {
+    const archived = await authed(request(server()).patch(`/v1/groups/${a.group.id}`), adminA).send(
+      { status: "ARCHIVED" },
+    );
+    expect(archived.status).toBe(200);
+
+    let row = await db.group.findUniqueOrThrow({ where: { id: a.group.id } });
+    expect(row.status).toBe("ARCHIVED");
+    // Unlike DELETE, this leaves the row reachable — which is what makes the
+    // restore below possible at all.
+    expect(row.deletedAt).toBeNull();
+
+    const listed = await authed(request(server()).get("/v1/groups"), adminA);
+    expect(listed.body.items.map((g: { id: string }) => g.id)).toContain(a.group.id);
+
+    const restored = await authed(request(server()).patch(`/v1/groups/${a.group.id}`), adminA).send(
+      { status: "ACTIVE" },
+    );
+    expect(restored.status).toBe(200);
+
+    row = await db.group.findUniqueOrThrow({ where: { id: a.group.id } });
+    expect(row.status).toBe("ACTIVE");
+  });
+
+  /** Unlike DELETE, archiving by status has no enrolment guard — the children
+   *  stay where they are and the group is still there to hold them. */
+  it("archives by status even while children are enrolled", async () => {
+    const res = await authed(request(server()).patch(`/v1/groups/${a.group.id}`), adminA).send({
+      status: "ARCHIVED",
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("refuses an empty name", async () => {
+    const res = await authed(request(server()).patch(`/v1/groups/${a.group.id}`), adminA).send({
+      name: "",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  /** `schoolYearId` is absent from `updateGroupSchema`, and Zod strips unknown
+   *  keys — so a client sending one would appear to succeed and change nothing.
+   *  The edit form does not offer it for this reason. */
+  it("ignores a school year in the body rather than moving the group", async () => {
+    const before = await db.group.findUniqueOrThrow({ where: { id: a.group.id } });
+    const otherYear = await createSchoolYear(a.kindergarten.id, false);
+
+    const res = await authed(request(server()).patch(`/v1/groups/${a.group.id}`), adminA).send({
+      schoolYearId: otherYear.id,
+      name: "Хэвээр",
+    });
+
+    expect(res.status).toBe(200);
+    const after = await db.group.findUniqueOrThrow({ where: { id: a.group.id } });
+    expect(after.schoolYearId).toBe(before.schoolYearId);
+    expect(after.name).toBe("Хэвээр");
   });
 });
 
@@ -562,9 +851,12 @@ describe("isolation holds in BOTH directions", () => {
       authed(request(server()).post(`/v1/groups/${a.group.id}/teachers`), adminB).send({
         membershipId: b.teacherMembership.id,
       }),
+      authed(request(server()).patch(`/v1/school-years/${a.schoolYear.id}`), adminB).send({
+        isCurrent: true,
+      }),
     ]);
 
-    expect(results.map((r) => r.status)).toEqual([404, 404, 404, 404, 404, 404]);
+    expect(results.map((r) => r.status)).toEqual([404, 404, 404, 404, 404, 404, 404]);
   });
 
   it("admin B's group list contains only B's groups", async () => {

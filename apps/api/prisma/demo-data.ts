@@ -46,11 +46,35 @@ export interface DemoSeedOptions {
   password: string;
   /** Defaults to `DEMO_KINDERGARTEN_NAME`. */
   kindergartenName?: string;
+  /**
+   * Appended to every seeded username — `bagsh1` becomes `bagsh1-uzuulen`.
+   *
+   * ★ Required whenever a second kindergarten is seeded into a database that
+   * already holds one, and the reason is the whole point of this option.
+   *
+   * `User.username` is globally unique; a kindergarten is per-run. Without a
+   * suffix the second run finds the existing `bagsh1` and adds a **second
+   * membership** to them, so one teacher ends up staffing two kindergartens.
+   * That contradicts the product's own model — one teacher, one group — and it
+   * breaks anything that resolves a single tenant from an actor, which is how
+   * the teacher dashboard came to read the wrong kindergarten's weekly menu:
+   * `useSession().primaryKindergartenId` takes the first membership, and the
+   * first membership was the older kindergarten.
+   *
+   * Left unset the seeder keeps the plain names and **refuses** to attach an
+   * existing account to a new kindergarten — see `makeUser`.
+   */
+  accountSuffix?: string;
 }
 
 export interface DemoSeedSummary {
   kindergartenId: string;
   kindergartenName: string;
+  /**
+   * What was appended to every username, so `printSummary` reports the
+   * credentials that actually exist rather than the default ones.
+   */
+  accountSuffix: string;
   groups: number;
   children: number;
   observations: number;
@@ -279,9 +303,22 @@ export async function seedDemoKindergarten(
 ): Promise<DemoSeedSummary> {
   const { password } = options;
   const kindergartenName = options.kindergartenName ?? DEMO_KINDERGARTEN_NAME;
+  const suffix = options.accountSuffix ?? "";
 
   const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
 
+  /**
+   * Finds or creates a demo account, and refuses to make it multi-tenant.
+   *
+   * ★ Reuse is correct *within* one seeding run — the parent of two children is
+   * one account — and wrong *across* kindergartens.
+   *
+   * The check is deliberately loud rather than clever. It would be easy to
+   * silently append a suffix here, but then two databases seeded by the same
+   * command would hold different usernames and the printed credentials would
+   * stop matching the documentation. An operator seeding a second kindergarten
+   * has to say which accounts it gets.
+   */
   async function makeUser(input: {
     username: string;
     lastName: string;
@@ -289,12 +326,32 @@ export async function seedDemoKindergarten(
     email?: string;
     phone?: string;
   }) {
-    const existing = await prisma.user.findUnique({ where: { username: input.username } });
-    if (existing) return existing;
+    const username = `${input.username}${suffix}`;
+
+    const existing = await prisma.user.findUnique({
+      where: { username },
+      include: { memberships: { where: { deletedAt: null }, select: { kindergartenId: true } } },
+    });
+
+    if (existing) {
+      const elsewhere = existing.memberships.some((m) => m.kindergartenId !== kg.id);
+      if (elsewhere) {
+        throw new Error(
+          `"${username}" already staffs another kindergarten.\n` +
+            "Seeding this one would give the account a second membership, and a teacher\n" +
+            "who belongs to two kindergartens is not a case this product models — the\n" +
+            "dashboard resolves a single tenant from the first membership.\n\n" +
+            "Set an account suffix so this kindergarten gets its own accounts:\n" +
+            "  SEED_SHOWCASE_ACCOUNT_SUFFIX=-uzuulen pnpm --filter @kinder/api seed:showcase\n" +
+            "or drop the existing kindergarten first.",
+        );
+      }
+      return existing;
+    }
 
     return prisma.user.create({
       data: {
-        username: input.username,
+        username,
         lastName: input.lastName,
         firstName: input.firstName,
         email: input.email ?? null,
@@ -1377,6 +1434,7 @@ export async function seedDemoKindergarten(
   return {
     kindergartenId: kg.id,
     kindergartenName,
+    accountSuffix: suffix,
     groups: groups.length,
     children: children.length,
     observations: observationCount,
@@ -1425,8 +1483,12 @@ export function printSummary(summary: DemoSeedSummary, password: string | null):
   console.log(`  funding calculations: ${summary.fundingCalculations}`);
 
   console.log("\n  Accounts:");
+  // The suffix is part of the username that exists, so it is part of what is
+  // printed. Reporting `bagsh1` for an account created as `bagsh1-uzuulen` is
+  // how an operator ends up certain the seed failed.
   for (const a of DEMO_ACCOUNTS) {
-    console.log(`    ${a.username.padEnd(10)} ${a.role.padEnd(8)} ${a.note}`);
+    const username = `${a.username}${summary.accountSuffix}`;
+    console.log(`    ${username.padEnd(18)} ${a.role.padEnd(8)} ${a.note}`);
   }
   if (password) {
     console.log(`\n  Password: ${password}`);

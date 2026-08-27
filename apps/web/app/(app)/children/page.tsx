@@ -108,7 +108,19 @@ function StaffChildren() {
         title="Хүүхдүүд"
         lede="Хариуцсан бүлгийн хүүхдүүд."
         actions={
-          <div className="flex items-center gap-3">
+          /*
+            ★ `flex-wrap`, and `gap-2` until there is room for `gap-3`.
+
+            Four controls — the count and three buttons — do not fit one line at
+            390px, and this row was the widest thing on the page. Wrapping is
+            the honest answer: every action stays visible and tappable, and the
+            primary "Хүүхэд бүртгэх" is last so it lands on the second line
+            rather than being the one that falls off the edge.
+
+            `justify-end` matches the header's own alignment, so on a desktop —
+            where all four still share a line — nothing moves.
+          */
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
             {data ? (
               <p className="text-body text-muted" aria-live="polite">
                 Нийт {data.total}

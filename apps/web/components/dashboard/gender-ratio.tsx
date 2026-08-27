@@ -1,31 +1,49 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { Users } from "lucide-react";
 import { rosterSummarySchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
-import { Card, SectionHeader } from "@/components/ui/card";
+import { TileShell } from "./tile-shell";
+import { Donut } from "@/components/ui/chart/donut";
 
 /**
  * Эр эм харьцаа — the roster's sex split.
  *
- * ★ One bar, not two figures and a pie.
+ * ★ A `Donut` now, where this was a single split bar — and the earlier
+ * reasoning is worth keeping visible, because it was not wrong.
  *
- * The wireframe draws two stick figures with counts and percentages beside
- * them. A single split bar says the same thing in less space and reads at a
- * glance, which a pair of icons does not — the eye compares lengths far faster
- * than it compares two numbers. It also survives a phone, where two illustrated
- * columns would each be about 80px.
+ * The bar was chosen over "two stick figures with counts" on the grounds that
+ * the eye compares lengths faster than it compares numerals, and that a pair of
+ * illustrated columns dies at 375px. Both still hold. What changed is the
+ * tile's job: it no longer sits in a four-across row where a 10px rule was the
+ * only shape that fit, but in the narrower column of the "today" band beside
+ * the roster counts, where there is room for a chart to actually be one.
  *
- * ★★ Counts lead, percentages follow — the rule `ObservationMix` established.
+ * A donut compares two lengths as well as a bar does — they are the same
+ * measurement bent round — and it does the one thing the bar could not, which
+ * is carry the roster's size in the middle of it. The counts and the shares
+ * stay exactly where they were, in the legend, so nothing a reader could act on
+ * moved. `Donut` is the shared primitive (§16), so the stroke weight and the
+ * hole are decided once for every chart in the product rather than here.
  *
- * "14" is what a teacher acts on; "43%" is how they compare it to the other
- * number. Neither is a target, and nothing here is a score.
+ * ★★ The segments take the accents' **ink** values, which is what `TONE_VAR`
+ * hands a chart, and that reverses a note this file used to carry.
  *
- * ★★★ It reads `/children/summary`, which the counts tile already fetches.
+ * The bar was filled with the pale tints because the ink pair read as "dark
+ * navy and rust" across a 10px rule. A donut's arc is drawn against
+ * `--color-track` (slate-100) rather than against white, and `--color-sky` and
+ * `--color-cornflower` are within a few percent of that grey — the pastel arc
+ * would have been an invisible chart. The legend dots take the same ink, so
+ * the mapping between the chart and the numbers is exact.
  *
- * Same query key, so React Query serves both from one request rather than
- * asking twice — `DashboardStats` and this widget are two views of one answer.
+ * ★★★ Nothing here implies progress. There is no target, no whole to reach and
+ * no order between the two segments; the label says "N хүү, N охин" and the
+ * centre says how many children the two add up to.
+ *
+ * ★★★★ It reads `/children/summary`, which the counts tile already fetches.
+ * Same query key, so React Query serves both from one request.
  */
 export function GenderRatio() {
   const { data } = useQuery({
@@ -39,50 +57,94 @@ export function GenderRatio() {
 
   const counted = data.boys + data.girls;
   // Not `data.total`: a child with no recorded sex is in the roster and in
-  // neither bar, so dividing by the roster would draw a gap that means nothing.
+  // neither segment, so dividing by the roster would draw a gap that means
+  // nothing.
   if (counted === 0) return null;
 
   const boyShare = Math.round((data.boys / counted) * 100);
 
   return (
-    <section aria-labelledby="gender-ratio-heading">
-      <SectionHeader id="gender-ratio-heading" title="Эр эм харьцаа" />
+    <TileShell
+      icon={<Users size={18} aria-hidden="true" />}
+      tone="cornflower"
+      label="Эр эм харьцаа"
+    >
+      <div className="flex items-center gap-4">
+        <Donut
+          size={92}
+          segments={[
+            { label: "Хүү", value: data.boys, tone: "cornflower" },
+            { label: "Охин", value: data.girls, tone: "peach" },
+          ]}
+          /*
+            ★ The same sentence the split bar carried, kept verbatim.
 
-      <Card pad="roomy" className="flex flex-col gap-3">
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="text-body text-ink">
-            Хүү{" "}
-            <strong className="text-title font-semibold tabular-nums md:text-lead">
-              {data.boys}
-            </strong>
-          </span>
-          <span className="text-body text-ink">
-            <strong className="text-title font-semibold tabular-nums md:text-lead">
-              {data.girls}
-            </strong>{" "}
-            Охин
-          </span>
-        </div>
+            A chart's proportions are the one thing its shape conveys and the
+            one thing a screen reader cannot see, so both counts are the name.
+            It is unchanged from the bar deliberately: the accessible
+            experience of this tile should not have moved because its drawing
+            did, and `dashboard-widgets.test.tsx` pins the phrase.
+          */
+          label={`${data.boys} хүү, ${data.girls} охин`}
+          centre={
+            <span className="text-center leading-tight">
+              <span className="block text-lead font-semibold tabular-nums text-ink">{counted}</span>
+              <span className="block text-caption text-muted">хүүхэд</span>
+            </span>
+          }
+        />
 
         {/*
-          One track, two segments. `aria-label` carries both counts because the
-          bar's proportions are the only thing the shape conveys, and a screen
-          reader cannot see proportions.
+          The legend is the tile's content, not a caption under a picture: the
+          counts are what a teacher reads and the arcs are how they compare
+          them. `min-w-0` so a narrow column shrinks the text rather than the
+          chart, which stops being readable below about 80px.
         */}
-        <div
-          className="flex h-2 w-full overflow-hidden rounded-pill bg-track"
-          role="img"
-          aria-label={`${data.boys} хүү, ${data.girls} охин`}
-        >
-          <div className="h-full bg-primary" style={{ width: `${boyShare}%` }} />
-          <div className="h-full flex-1 bg-peach" />
-        </div>
+        <ul className="flex min-w-0 flex-1 flex-col gap-2.5">
+          <Legend tone="cornflower" label="Хүү" value={data.boys} share={boyShare} />
+          <Legend tone="peach" label="Охин" value={data.girls} share={100 - boyShare} />
+        </ul>
+      </div>
+    </TileShell>
+  );
+}
 
-        <div className="flex items-baseline justify-between gap-3 text-caption text-muted">
-          <span className="tabular-nums">{boyShare}%</span>
-          <span className="tabular-nums">{100 - boyShare}%</span>
-        </div>
-      </Card>
-    </section>
+/**
+ * One side of the split: the count, the share, and a dot tying both to an arc.
+ *
+ * ★ The dot is the tone's **ink**, matching the arc rather than the tint.
+ *
+ * A legend whose swatch is a lighter version of the segment it names is a
+ * legend a reader has to guess at. These are `size-2.5 rounded-pill`, the same
+ * shape the attendance breakdown uses, so the two cards in this band read as
+ * one system.
+ */
+function Legend({
+  tone,
+  label,
+  value,
+  share,
+}: {
+  tone: "cornflower" | "peach";
+  label: string;
+  value: number;
+  share: number;
+}) {
+  return (
+    <li className="flex items-baseline justify-between gap-2">
+      <span className="flex min-w-0 items-center gap-2 text-body text-muted">
+        <span
+          aria-hidden="true"
+          className={`size-2.5 shrink-0 rounded-pill ${
+            tone === "cornflower" ? "bg-cornflower-ink" : "bg-peach-ink"
+          }`}
+        />
+        <span className="truncate">{label}</span>
+      </span>
+      <span className="shrink-0 tabular-nums">
+        <span className="text-lead font-semibold text-ink">{value}</span>
+        <span className="ml-1.5 text-caption text-muted">{share}%</span>
+      </span>
+    </li>
   );
 }

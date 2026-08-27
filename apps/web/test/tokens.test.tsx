@@ -142,6 +142,31 @@ describe("the radius scale", () => {
   });
 });
 
+/**
+ * Where an `<svg>` may be written by hand.
+ *
+ * ★ `components/ui/chart/` is the sanctioned home, and that is the whole point
+ * of the rule rather than an exception to it.
+ *
+ * The ban was never "no vector graphics" — it is that stroke weight, viewBox
+ * and scale must not be a per-file decision. A directory whose entire job is to
+ * own those three things satisfies the intent; a chart drawn inline in a screen
+ * component does not.
+ *
+ * ★★ The two files below are **debt, not permission.**
+ *
+ * They predate the primitives and each carries its own viewBox and stroke —
+ * exactly what this rule exists to prevent. They are listed so the tightened
+ * pattern above can ship today without a redesign of a radar and a line chart
+ * riding along with it, and they come off this list when those screens are
+ * rebuilt. Nothing new belongs here.
+ */
+const EXEMPT_FROM_SVG_BAN = [
+  "components/ui/chart/",
+  "components/child/growth-chart.tsx",
+  "components/assessment/development-radar.tsx",
+];
+
 describe("the icon set", () => {
   /**
    * ★ One icon library, so stroke weight is not a per-file decision.
@@ -157,15 +182,27 @@ describe("the icon set", () => {
    * background cannot be a React component, and the select's chevron has to be
    * paintable from a class.
    */
-  it("has no hand-written <svg> markup", () => {
-    const inline = offences(/<svg[\s>]/g).filter((hit) => !hit.includes("data:image/svg+xml"));
+  it("has no hand-written <svg> markup outside the chart primitives", () => {
+    /*
+     * ★ `[\s>]` was `[\s>]` and matched nothing at the end of a line.
+     *
+     * JSX wraps a tag with several attributes, so `growth-chart.tsx` and
+     * `development-radar.tsx` both open with a bare `<svg` and put the
+     * attributes on the lines below — and the old pattern required a character
+     * *after* `<svg` on the same line. Two charts sat inside that gap for as
+     * long as the rule existed. `(?![a-zA-Z])` catches both forms and still
+     * refuses to match `<svgSomething>`.
+     */
+    const inline = offences(/<svg(?![a-zA-Z])/g);
 
     // The scan reports `file:line → match`, so filter on the source line.
     const handRolled = inline.filter((hit) => {
       const [location] = hit.split(" → ");
       const [file, line] = location!.split(":");
       const source = readFileSync(join(WEB_ROOT, file!), "utf8").split("\n")[Number(line) - 1]!;
-      return !source.includes("data:image/svg+xml");
+      if (source.includes("data:image/svg+xml")) return false;
+
+      return !EXEMPT_FROM_SVG_BAN.some((prefix) => file!.startsWith(prefix));
     });
 
     expect(handRolled).toEqual([]);

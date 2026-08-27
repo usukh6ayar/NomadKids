@@ -277,6 +277,63 @@ export const menuDaySchema = z.object({
 });
 export type MenuDay = z.infer<typeof menuDaySchema>;
 
+/**
+ * The meal register — `нэмэлт.md` §2. A different resource from the menu above.
+ *
+ * ★ `MenuDay` is what the kitchen planned to cook, kindergarten-wide;
+ * `MealRecord` is what one child actually ate at one sitting. They share the
+ * `MealKind` vocabulary and nothing else — no foreign key, no join. §3 computes
+ * the food cost from **хооллосон өдөр**, days eaten, which is why this cannot
+ * be inferred from `Attendance` either: a child collected before lunch attended
+ * and did not eat.
+ */
+export const mealKindSchema = z.enum(["BREAKFAST", "LUNCH", "AFTERNOON_SNACK", "EXTRA"]);
+export type MealKind = z.infer<typeof mealKindSchema>;
+
+export const mealStatusSchema = z.enum(["TAKEN", "NOT_TAKEN", "PARTIAL", "SPECIAL"]);
+export type MealStatus = z.infer<typeof mealStatusSchema>;
+
+/**
+ * One saved record, as `PUT /groups/:id/meals` returns them.
+ *
+ * ★ The API answers with the whole Prisma row; this names the fields the
+ * product uses and zod drops the rest. Adding `kindergartenId` or
+ * `recordedById` here would put ids on the wire that no screen reads.
+ */
+export const mealRecordSchema = z.object({
+  id: uuidSchema,
+  childId: uuidSchema,
+  date: z.string(),
+  kind: mealKindSchema,
+  status: mealStatusSchema,
+  note: z.string().nullish(),
+});
+export type MealRecord = z.infer<typeof mealRecordSchema>;
+
+/**
+ * One row of a group's sitting — a child, reconciled against whatever has been
+ * marked. `record` is `null` for a child nobody has marked yet, and that is the
+ * point of a register rather than a list of what happened.
+ *
+ * The same shape as `groupAttendanceRowSchema`, because the API builds both the
+ * same way: the roster comes from `Enrollment`, never from the records.
+ */
+export const groupMealRowSchema = z.object({
+  child: personRefSchema,
+  enrollmentId: uuidSchema,
+  record: mealRecordSchema.nullish(),
+});
+export type GroupMealRow = z.infer<typeof groupMealRowSchema>;
+
+/*
+ * ★ The staff menu — `menuDayWithWarningsSchema` — is NOT here.
+ *
+ * It carries allergy severities, so it needs `allergySeveritySchema`, which the
+ * health section declares further down this file. A `const` is not hoisted:
+ * referencing it from here would throw on module evaluation, not at build.
+ * It lives at the end of the health section instead.
+ */
+
 // ── Surveys ──────────────────────────────────────────────────────────────────
 
 export const surveyScopeSchema = z.enum(["CHILD", "KINDERGARTEN"]);
@@ -733,6 +790,45 @@ export const childHealthSchema = z.object({
   healthNotes: z.string().nullish(),
 });
 export type ChildHealth = z.infer<typeof childHealthSchema>;
+
+/**
+ * One dish on the menu matched against one child's active allergy — the shape
+ * `findAllergenWarnings` emits, in the order it emits it (severe first).
+ *
+ * ★ Declared in the health section, not beside the menu, because it needs
+ * `allergySeveritySchema` above. A `const` is not hoisted, so referencing it
+ * from the meals section would throw on module evaluation rather than fail at
+ * build — the kind of break that only shows up when the bundle first runs.
+ *
+ * ★★ This names another family's child and what they react to, so it is staff
+ * data. `GET /kindergartens/:id/menu/with-warnings` is `@Roles("TEACHER",
+ * "ADMIN")` for that reason, and is a separate route from the plain menu rather
+ * than a flag on it — a parent reads the menu and never this. Anything built on
+ * this schema inherits that constraint and must not reach a parent surface.
+ */
+export const allergenWarningSchema = z.object({
+  childId: uuidSchema,
+  childName: z.string(),
+  dishName: z.string(),
+  /** What the menu was tagged with. */
+  allergenTag: z.string(),
+  /** What the child's record calls it — the two match loosely, never by equality. */
+  allergen: z.string(),
+  severity: allergySeveritySchema,
+});
+export type AllergenWarning = z.infer<typeof allergenWarningSchema>;
+
+/**
+ * A menu day as the staff route returns it — RFP Module 2's cross-check.
+ *
+ * Extends `menuDaySchema` rather than restating it: the API spreads the same
+ * Prisma row into both responses and adds `warnings` to this one, so the day's
+ * own fields must not be able to drift between the two schemas.
+ */
+export const menuDayWithWarningsSchema = menuDaySchema.extend({
+  warnings: z.array(allergenWarningSchema).default([]),
+});
+export type MenuDayWithWarnings = z.infer<typeof menuDayWithWarningsSchema>;
 
 // ── Milestones — RFP §4.5 ────────────────────────────────────────────────────
 

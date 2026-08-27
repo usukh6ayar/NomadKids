@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { useToast } from "@/components/ui/toast";
 import { SingleImageUpload } from "@/components/media/single-image-upload";
 
 const profileSchema = userProfileSchema.extend({
@@ -42,6 +43,7 @@ export default function SettingsPage() {
 
 function ProfileForm() {
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: qk.profile(),
@@ -82,6 +84,7 @@ function ProfileForm() {
       void queryClient.invalidateQueries({ queryKey: qk.profile() });
       // The shell shows the name, so the session has to be refreshed too.
       void queryClient.invalidateQueries({ queryKey: qk.session() });
+      toast.success("Хувийн мэдээлэл хадгалагдлаа.");
     },
   });
 
@@ -129,14 +132,15 @@ function ProfileForm() {
             }
           />
 
-          {save.isSuccess ? (
-            <p
-              role="status"
-              className="rounded-control bg-mint px-3.5 py-2.5 text-body text-mint-ink"
-            >
-              Хадгалагдлаа.
-            </p>
-          ) : null}
+          {/*
+            ★ The inline "Хадгалагдлаа." block that sat here is now a toast.
+
+            This form is long enough to scroll, and the submit button is at its
+            foot — so a confirmation rendered at the top was frequently off
+            screen at the moment it appeared, which is the failure mode
+            CLAUDE.md §5's "toast after save" exists to prevent. The error above
+            stays inline: it is attached to the fields the user has to fix.
+          */}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Овог" error={errors.lastName} required>

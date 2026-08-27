@@ -14,6 +14,10 @@ import { useLogout, useSession } from "@/lib/auth/session";
 import { fullName, initials } from "@/lib/format";
 import { BRAND } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
+import { useMyGroup } from "@/components/dashboard/use-my-group";
+
+/** Which audience this shell is rendering for. */
+export type Variant = "teacher" | "parent" | "platform";
 
 export interface NavItem {
   /**
@@ -97,6 +101,8 @@ export function PageHeader({
   lede,
   actions,
   search = false,
+  icon,
+  meta,
 }: {
   title: string;
   lede?: string;
@@ -104,6 +110,29 @@ export function PageHeader({
   actions?: ReactNode;
   /** Shows the header search field. Screens with something to search set it. */
   search?: boolean;
+  /**
+   * A visual identity for the screen — an `IconChip`, usually.
+   *
+   * ★ Optional, and most screens should stay without one.
+   *
+   * A header that opens every screen identically is the thing this fixes, but
+   * the fix is *some* screens carrying a face, not all 34 growing one. A chip
+   * on every list in the product is the same flatness with more colour in it.
+   * Reserve it for screens a person navigates to on purpose — a dashboard, a
+   * child's profile — rather than for every table.
+   *
+   * ★★ It is a slot, not an icon name. A lucide glyph today and an illustrated
+   * `.webp` later occupy it without this signature changing.
+   */
+  icon?: ReactNode;
+  /**
+   * A chip row under the title — counts, status, the term being viewed.
+   *
+   * Sits below the lede rather than beside the title: Mongolian compounds wrap
+   * at almost every width (`--leading-heading` exists for exactly that), and a
+   * chip sharing the title's line is the first thing to be pushed off it.
+   */
+  meta?: ReactNode;
 }) {
   const { session } = useSession();
 
@@ -128,8 +157,16 @@ export function PageHeader({
       {/* No `flex-1`: the search below centres itself with auto margins, and a
           title that grew to fill the row would leave those margins nothing to
           absorb. `min-w-0` still lets a long title shrink rather than push. */}
-      <div className="min-w-0">
-        {/*
+      {/*
+        The identity block: chip and titles on one row, so a wrapping title
+        stays beside its icon rather than under it. `items-start` keeps the
+        chip aligned to the first line of a two-line heading.
+      */}
+      <div className="flex min-w-0 items-start gap-3">
+        {icon ? <div className="mt-0.5 shrink-0">{icon}</div> : null}
+
+        <div className="min-w-0">
+          {/*
           ★ `font-semibold` is not decoration here.
 
           Tailwind's preflight resets heading weight to `inherit`, so without it
@@ -139,10 +176,17 @@ export function PageHeader({
           heading in the product sets its weight explicitly; this was the one
           that did not.
         */}
-        <h1 className="text-heading font-semibold leading-[1.3] tracking-[-.01em] text-ink md:text-display md:leading-[1.35]">
-          {title}
-        </h1>
-        {lede ? <p className="mt-0.5 text-body text-muted">{lede}</p> : null}
+          <h1 className="text-heading font-semibold leading-[1.3] tracking-[-.01em] text-ink md:text-display md:leading-[1.35]">
+            {title}
+          </h1>
+          {lede ? <p className="mt-0.5 text-body text-muted">{lede}</p> : null}
+
+          {/*
+          `flex-wrap`, because a row of chips at 375px is the width that
+          decides how many fit — not a number chosen here.
+        */}
+          {meta ? <div className="mt-2 flex flex-wrap items-center gap-1.5">{meta}</div> : null}
+        </div>
       </div>
 
       {/*
@@ -155,7 +199,27 @@ export function PageHeader({
         <HeaderSearch className="order-last basis-full lg:order-none lg:basis-auto" />
       ) : null}
 
-      <div className="flex shrink-0 items-center gap-2">
+      {/*
+        ★ `max-w-full`, added because `shrink-0` alone overflowed the page.
+
+        `shrink-0` is right for the common case: a header action must not be
+        squeezed into an unreadable sliver by a long title. But it pins the
+        block at its *max-content* width, and max-content ignores any wrapping
+        its children could do. On `/children` that block is a count plus three
+        44px buttons — about 430px — so at 390px it ran off the screen and cut
+        "Хүүхэд бүртгэх" in half. Measured: `scrollWidth` 469 against a
+        `clientWidth` of 390.
+
+        `max-w-full` caps it at the row's width without letting a title squeeze
+        it, which is what turns the children's own `flex-wrap` into an actual
+        second line. `justify-end` keeps the wrapped rows right-aligned under
+        the title instead of drifting left.
+
+        `html { overflow-x: hidden }` in `globals.css` was hiding the symptom —
+        the button was clipped rather than reachable by scrolling, which is the
+        worse of the two failures and the reason this went unnoticed.
+      */}
+      <div className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">
         {actions}
 
         <NotificationBell />
@@ -320,12 +384,22 @@ export function AppShell({
   sections,
   children,
   variant = "teacher",
+  isAdmin = false,
 }: {
   nav: NavItem[];
   /** Desktop sidebar sections. Without them the sidebar renders `nav` flat. */
   sections?: NavSection[];
   children: ReactNode;
-  variant?: "teacher" | "parent" | "platform";
+  variant?: Variant;
+  /**
+   * Whether this person administers the kindergarten.
+   *
+   * Only the footer reads it, to decide between naming a teacher's group and
+   * naming a role — an admin sees every group, so the first of them is not
+   * "theirs". Passed rather than derived here so the shell keeps taking its
+   * role decisions from one place, `(app)/layout.tsx`.
+   */
+  isAdmin?: boolean;
 }) {
   // Every role gets the sidebar from `lg` up; only the bottom bar is
   // role-dependent (mobile-only, all three variants).
@@ -339,7 +413,15 @@ export function AppShell({
 
   return (
     <div className="min-h-dvh bg-canvas">
-      {desktopSidebar ? <Sidebar nav={nav} sections={sections} subtitle={subtitle} /> : null}
+      {desktopSidebar ? (
+        <Sidebar
+          nav={nav}
+          sections={sections}
+          subtitle={subtitle}
+          variant={variant}
+          isAdmin={isAdmin}
+        />
+      ) : null}
 
       <MobileHeader subtitle={subtitle} />
 
@@ -390,7 +472,15 @@ export function AppShell({
 function Brand({ subtitle }: { subtitle: string }) {
   return (
     <Link href="/" className="flex min-h-[44px] items-center gap-[11px]">
-      <span className="grid size-10 shrink-0 place-items-center rounded-control bg-[#f1efff] p-0.5">
+      {/*
+        ★ `bg-primary-soft`, not the `#f1efff` this carried until 2026-08-28.
+        That literal was left over from the violet palette two repaints ago —
+        `globals.css` records both — so the one tinted square in the sidebar was
+        the only surface in the product that did not move when the brand
+        colour did. It is also the arbitrary-colour mistake the token system
+        exists to prevent, sitting in the shell.
+      */}
+      <span className="grid size-10 shrink-0 place-items-center rounded-control bg-primary-soft p-0.5">
         <Image
           src="/mark-96.png"
           alt="Бяцхан нүүдэлчид"
@@ -413,21 +503,78 @@ function Brand({ subtitle }: { subtitle: string }) {
  *
  * Ported from `.whoami`; the logout control is a 44px square, as it is there.
  */
-function WhoAmI({ subtitle }: { subtitle: string }) {
+/**
+ * The sidebar's foot: who is signed in, where they are, and the way out.
+ *
+ * ★ The second line names the person's **context**, not the section they are
+ * looking at.
+ *
+ * It used to repeat the sidebar's own subtitle — "Багшийн хэсэг" under a
+ * teacher's name, on the teacher's sidebar. A label that restates the panel it
+ * sits in tells a reader nothing. A teacher now sees the group they are
+ * responsible for, and everyone else sees their role.
+ *
+ * ★★ The group appears only when there is exactly one, and only for a teacher
+ * who is not an admin.
+ *
+ * `GET /groups` returns every group in the kindergarten to an admin, so
+ * showing the first would tell them they run "Дэлбээ" when they run all of it —
+ * and `TeacherAssignment` permits a second group, where naming one of two is a
+ * silent lie. Both fall back to the role. There is deliberately no picker: the
+ * product gives a teacher one group, and a switcher would invent a choice that
+ * does not exist.
+ */
+function WhoAmI({ variant, isAdmin }: { variant: Variant; isAdmin: boolean }) {
   const { session } = useSession();
   const logout = useLogout();
+
+  const isTeacher = variant === "teacher" && !isAdmin;
+  const { group, count } = useMyGroup({ enabled: isTeacher });
+
+  const context =
+    isTeacher && count === 1 && group
+      ? group.name
+      : variant === "teacher"
+        ? isAdmin
+          ? "Админ"
+          : "Багш"
+        : variant === "platform"
+          ? "Платформын удирдлага"
+          : "Эцэг эх";
 
   return (
     <div className="flex min-h-[44px] shrink-0 items-center gap-2 rounded-row bg-canvas px-3 py-2">
       <span className="grid size-7 shrink-0 place-items-center rounded-pill bg-primary-soft text-caption font-bold text-primary">
         {initials(session?.user)}
       </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-compact font-semibold leading-[1.2] text-ink [overflow-wrap:anywhere]">
+
+      {/*
+        `min-w-0` on the growing column and `truncate` on both lines: a
+        Mongolian full name and a group name are each long enough to push the
+        two buttons off the 244px panel, and the name is what has to give.
+      */}
+      {/*
+        ★ The identity *is* the settings link, rather than a third control
+        beside the other two.
+
+        A separate 44px settings button is the obvious reading of "settings in
+        the footer", and it does not fit: the panel is 244px, and an avatar plus
+        two tap targets plus padding leaves about 96px for the name — which
+        truncates a Mongolian full name to a few characters. Tapping your own
+        name to reach your own account is the conventional affordance anyway,
+        and it costs no width, so the column keeps ~140px.
+      */}
+      <Link
+        href="/settings"
+        className="min-w-0 flex-1 rounded-control hover:opacity-80"
+        aria-label={`${fullName(session?.user)} — тохиргоо`}
+      >
+        <span className="block truncate text-compact font-semibold leading-[1.2] text-ink">
           {fullName(session?.user)}
         </span>
-        <span className="block text-caption text-muted">{subtitle}</span>
-      </span>
+        <span className="block truncate text-caption text-muted">{context}</span>
+      </Link>
+
       <button
         type="button"
         onClick={() => void logout()}
@@ -444,10 +591,16 @@ function Sidebar({
   nav,
   sections,
   subtitle,
+  variant,
+  isAdmin,
 }: {
   nav: NavItem[];
   sections?: NavSection[];
+  /** The brand's second line — which part of the product this is. */
   subtitle: string;
+  variant: Variant;
+  /** Whether the signed-in person administers this kindergarten. */
+  isAdmin: boolean;
 }) {
   const pathname = usePathname();
 
@@ -486,7 +639,7 @@ function Sidebar({
               ))}
       </div>
 
-      <WhoAmI subtitle={subtitle} />
+      <WhoAmI variant={variant} isAdmin={isAdmin} />
     </nav>
   );
 }
@@ -584,7 +737,7 @@ function MobileHeader({ subtitle }: { subtitle: string }) {
       )}
     >
       <Link href="/" className="flex min-h-[44px] items-center gap-3">
-        <span className="grid size-[34px] shrink-0 place-items-center rounded-control bg-[#f1efff] p-0.5">
+        <span className="grid size-[34px] shrink-0 place-items-center rounded-control bg-primary-soft p-0.5">
           <Image
             src="/mark-96.png"
             alt="Бяцхан нүүдэлчид"
@@ -630,7 +783,15 @@ function BottomBar({ nav, hideOnDesktop }: { nav: NavItem[]; hideOnDesktop: bool
 
   return (
     <nav
-      aria-label="Үндсэн цэс"
+      /*
+       * ★ A distinct name from the sidebar's, which is also "Үндсэн цэс".
+       *
+       * Both landmarks shipped with the same label, so a screen reader's list
+       * of navigation regions read "Үндсэн цэс, Үндсэн цэс" and neither entry
+       * said which was which. They are both real — the sidebar from `lg` up,
+       * this from below it — so the fix is two names, not one landmark.
+       */
+      aria-label="Доод цэс"
       className={cn(
         "fixed inset-x-0 bottom-0 z-20 flex items-stretch justify-around border-t border-border bg-surface",
         // `env(safe-area-inset-bottom)` keeps the tabs above the iPhone home

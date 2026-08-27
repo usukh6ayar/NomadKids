@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { AlertTriangle, Pill, Syringe } from "lucide-react";
+import { AlertTriangle, Pill, Syringe, Trash2 } from "lucide-react";
 import { z } from "zod";
 import {
   ALLERGY_KIND_LABEL,
@@ -19,6 +19,9 @@ import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
+import { useSession } from "@/lib/auth/session";
 
 /**
  * A child's health record — RFP Module 2.
@@ -32,6 +35,17 @@ import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui
  * teaches people the app is broken.
  */
 export function ChildHealth({ childId, isStaff }: { childId: string; isStaff: boolean }) {
+  /*
+   * ★ Only for the medication rule.
+   *
+   * `removeMedication` 404s a guardian who did not authorise the row, so the
+   * screen needs to know which parent is looking in order not to offer a
+   * control that always fails. Nothing else here branches on identity — the
+   * other two sections branch on `isStaff`.
+   */
+  const { session } = useSession();
+  const userId = session?.user.id ?? null;
+
   const health = useQuery({
     queryKey: qk.health(childId),
     queryFn: () => get(`/children/${childId}/health`, childHealthSchema),
@@ -92,7 +106,16 @@ export function ChildHealth({ childId, isStaff }: { childId: string; isStaff: bo
                     key={allergy.id}
                     childId={childId}
                     allergy={allergy}
-                    canEdit={false}
+                    /*
+                      ★ Was `false`, which pre-dated there being anything to do
+                      here but end an allergy — and an ended one cannot be ended
+                      again. Now that delete exists it has to reach this list:
+                      a record entered by mistake is often ended before anyone
+                      works out it was wrong, and ending it a second time is not
+                      the repair. `AllergyRow` still hides "Дуусгах" whenever
+                      `endedOn` is set, so this only exposes the delete.
+                    */
+                    canEdit={isStaff}
                   />
                 ))}
             </ul>
@@ -137,6 +160,27 @@ export function ChildHealth({ childId, isStaff }: { childId: string; isStaff: bo
                     ) : (
                       <Badge tone="neutral">Идэвхгүй</Badge>
                     )}
+
+                    {/*
+                      ★ Staff, or the guardian who authorised this one.
+
+                      `removeMedication` 404s a guardian who did not sign it —
+                      "one guardian may not withdraw another's consent" — so
+                      offering the button to the other parent would be offering
+                      a control that always fails. The row *is* the consent, so
+                      withdrawing it is the family's to do.
+                    */}
+                    {isStaff || (userId && medication.authorisedBy?.id === userId) ? (
+                      <span className="ml-auto">
+                        <DeleteHealthRecord
+                          childId={childId}
+                          path={`/medications/${medication.id}`}
+                          recordLabel={medication.medicineName}
+                          title="Эмийн зөвшөөрлийг устгах"
+                          description={`"${medication.medicineName}" — зөвшөөрлийг устгаснаар багш энэ эмийг уулгахаа болино.`}
+                        />
+                      </span>
+                    ) : null}
                   </div>
                   <p className="text-caption text-muted">
                     {medication.timesOfDay.join(", ")} · {formatDate(medication.startsOn)} –{" "}
@@ -170,6 +214,23 @@ export function ChildHealth({ childId, isStaff }: { childId: string; isStaff: bo
                   <span className="text-caption text-muted">
                     {formatDate(vaccination.administeredOn)}
                   </span>
+
+                  {/*
+                    Staff only — `@Roles("TEACHER", "ADMIN")`, and the register
+                    is the kindergarten's, not the family's. A guardian cannot
+                    record one either.
+                  */}
+                  {isStaff ? (
+                    <span className="ml-auto">
+                      <DeleteHealthRecord
+                        childId={childId}
+                        path={`/vaccinations/${vaccination.id}`}
+                        recordLabel={vaccination.vaccineName}
+                        title="Вакцины бүртгэлийг устгах"
+                        description={`"${vaccination.vaccineName}" — буруу бүртгэсэн бол устгана.`}
+                      />
+                    </span>
+                  ) : null}
                 </Card>
               </li>
             ))}
@@ -177,6 +238,95 @@ export function ChildHealth({ childId, isStaff }: { childId: string; isStaff: bo
         )}
       </section>
     </div>
+  );
+}
+
+/**
+ * Removing a health record that should never have existed.
+ *
+ * ★ Deleting is not the same as ending, and on this screen both exist.
+ *
+ * An allergy already has "Дуусгах" — `PATCH { endedOn }` — for a child who
+ * outgrew one. The API test that guards it says why: *"Ended, not deleted — a
+ * child who outgrows one still had it."* That record is true history and the
+ * menu cross-check stops firing on it.
+ *
+ * This is the other case: the record is **wrong**. Somebody typed the wrong
+ * child, the wrong allergen, or a duplicate — and a wrong allergy is the one
+ * that matters, because `menu/with-warnings` turns it into an instruction a
+ * kitchen acts on. Ending it would assert the child once had an allergy they
+ * never had; only a delete says it was never true.
+ *
+ * The copy passed in at each call site keeps those two apart, because a teacher
+ * choosing between them from the button labels alone is the failure mode.
+ *
+ * ★★ It is a soft delete, like everything in this product — the service sets
+ * `deletedAt` and appends a `DELETE` audit row naming the actor (CLAUDE.md
+ * §3.2). Nothing is destroyed; it stops being served.
+ */
+function DeleteHealthRecord({
+  childId,
+  path,
+  recordLabel,
+  title,
+  description,
+}: {
+  childId: string;
+  /** API path without `/v1` — `/allergies/:id`, `/medications/:id`, … */
+  path: string;
+  /** Names the row in the success toast. */
+  recordLabel: string;
+  title: string;
+  description: string;
+}) {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+
+  const remove = useMutation({
+    mutationFn: () => mutate(path, z.unknown(), { method: "DELETE" }),
+    onSuccess: () => {
+      // The row disappears on refetch — `qk.health` is what the whole tab
+      // reads, and the child's header badge reads the same key.
+      void queryClient.invalidateQueries({ queryKey: qk.health(childId) });
+      toast.success(`${recordLabel} — устгагдлаа.`);
+    },
+  });
+
+  return (
+    <span className="inline-flex flex-col items-end gap-1">
+      <ConfirmDialog
+        title={title}
+        description={description}
+        confirmLabel="Устгах"
+        pendingLabel="Устгаж байна…"
+        tone="danger"
+        pending={remove.isPending}
+        onConfirm={() => remove.mutate()}
+        trigger={
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={remove.isPending}
+            aria-label={`${recordLabel} — устгах`}
+            className="text-muted hover:bg-danger-soft hover:text-danger"
+          >
+            <Trash2 size={16} aria-hidden="true" />
+          </Button>
+        }
+      />
+
+      {/*
+        Inline, not a toast — the same rule `archive-button.tsx` follows. The
+        likely failure here is a 404 for a record somebody else already removed,
+        and that message explains a row that is about to vanish anyway; it must
+        not disappear on a timer before it is read.
+      */}
+      {remove.isError ? (
+        <span role="alert" className="max-w-[260px] text-right text-caption text-danger">
+          {errorMessage(remove.error)}
+        </span>
+      ) : null}
+    </span>
   );
 }
 
@@ -230,23 +380,43 @@ function AllergyRow({
 
           {allergy.endedOn ? (
             <span className="text-caption text-muted">Дууссан: {formatDate(allergy.endedOn)}</span>
-          ) : canEdit ? (
-            <span className="ml-auto">
-              {confirming ? (
-                <span className="flex items-center gap-2">
-                  <span className="text-caption text-muted">Дуусгах уу?</span>
-                  <Button size="sm" disabled={end.isPending} onClick={() => end.mutate()}>
-                    Тийм
+          ) : null}
+
+          {/*
+            ★ "Дуусгах" and "Устгах" sit side by side, and the delete stays
+            available after an allergy has ended.
+
+            A record entered by mistake can be ended before anyone notices it
+            was wrong, and at that point ending it again is not the repair. The
+            end control hides once `endedOn` is set; the delete does not.
+          */}
+          {canEdit ? (
+            <span className="ml-auto flex items-center gap-1">
+              {!allergy.endedOn ? (
+                confirming ? (
+                  <span className="flex items-center gap-2">
+                    <span className="text-caption text-muted">Дуусгах уу?</span>
+                    <Button size="sm" disabled={end.isPending} onClick={() => end.mutate()}>
+                      Тийм
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={() => setConfirming(false)}>
+                      Үгүй
+                    </Button>
+                  </span>
+                ) : (
+                  <Button variant="ghost" size="sm" onClick={() => setConfirming(true)}>
+                    Дуусгах
                   </Button>
-                  <Button variant="secondary" size="sm" onClick={() => setConfirming(false)}>
-                    Үгүй
-                  </Button>
-                </span>
-              ) : (
-                <Button variant="ghost" size="sm" onClick={() => setConfirming(true)}>
-                  Дуусгах
-                </Button>
-              )}
+                )
+              ) : null}
+
+              <DeleteHealthRecord
+                childId={childId}
+                path={`/allergies/${allergy.id}`}
+                recordLabel={allergy.allergen}
+                title="Харшлын бүртгэлийг устгах"
+                description={`"${allergy.allergen}" — буруу бүртгэсэн бол устгана. Хүүхэд энэ харшилтай байгаад эдгэрсэн бол устгахын оронд "Дуусгах"-ыг сонгоно уу.`}
+              />
             </span>
           ) : null}
         </div>

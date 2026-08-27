@@ -128,6 +128,28 @@ export class MealsService {
     if (!group) throw new NotFoundException();
     this.tenants.assertStaff(actor, group.kindergartenId);
 
+    /*
+      ★ The same assignment check `groupMealSheet` makes, and it was missing
+      here until 2026-08-27.
+
+      The read was guarded and the write was not, so a teacher assigned to one
+      group could record meals for any other group in their kindergarten —
+      rows that §3 turns into that group's food cost. A write is strictly more
+      privileged than the read beside it, so this was an omission rather than a
+      decision: `AssessmentService.saveGroupColumn`, the closest sibling and the
+      same shape of group-scoped batch write, has carried it on both paths from
+      the start.
+
+      It sits *before* the date validation deliberately. Validating first would
+      answer an unassigned teacher with 400 for a future date and 404 otherwise,
+      which is exactly the oracle CLAUDE.md §1.7 closes — the response must not
+      reveal that the group exists.
+    */
+    if (!this.tenants.isAdmin(actor, group.kindergartenId)) {
+      const assigned = await this.authz.loadActiveTeachingGroupIds(actor);
+      if (!assigned.includes(groupId)) throw new NotFoundException();
+    }
+
     const date = toDate(dto.date);
     if (date.getTime() > Date.now()) {
       throw new BadRequestException("Хоолны огноо ирээдүйд байж болохгүй");

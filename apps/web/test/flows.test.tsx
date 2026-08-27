@@ -778,8 +778,6 @@ describe("revoking a guardian's access", () => {
     const user = userEvent.setup();
     setParams({ childId: CHILD_ID });
 
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
-
     const { calls } = stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
       {
@@ -793,12 +791,15 @@ describe("revoking a guardian's access", () => {
 
     renderWithProviders(<ChildDetailPage />);
 
+    // ★ Was `vi.spyOn(window, "confirm")`. The native prompt is gone; this now
+    // opens the shared `ConfirmDialog` and presses its confirm, which is the
+    // path a person takes.
     await user.click(await screen.findByRole("button", { name: /харах эрхийг хураах/ }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Эрхийг хураах" }));
 
     await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true));
     expect(calls.find((c) => c.method === "PATCH")!.body).toMatchObject({ canView: false });
-
-    confirmSpy.mockRestore();
   });
 });
 
@@ -1083,7 +1084,6 @@ describe("archiving", () => {
   it("archives with DELETE and returns to the list", async () => {
     const user = userEvent.setup();
     setParams({ notificationId: NOTICE_ID });
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
 
     const { calls } = stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
@@ -1093,19 +1093,24 @@ describe("archiving", () => {
 
     renderWithProviders(<NotificationDetailPage />);
 
+    // ★ Was `vi.spyOn(window, "confirm")`. `ArchiveButton` now opens the shared
+    // `ConfirmDialog`, so the trigger and the confirm are two separate presses.
     await user.click(await screen.findByRole("button", { name: /Архивлах/ }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /Архивлах/ }));
 
     await waitFor(() => expect(calls.some((c) => c.method === "DELETE")).toBe(true));
     await waitFor(() => expect(ROUTER.push).toHaveBeenCalledWith("/notifications"));
 
-    confirmSpy.mockRestore();
+    // "Toast after save": the row is gone and often the page with it, so the
+    // confirmation has nowhere to live except the toast.
+    expect(await screen.findByText(/архивлагдлаа/i)).toBeInTheDocument();
   });
 
   /** Nothing happens if the confirmation is declined — it is a soft delete, not a free one. */
   it("does nothing when the confirmation is declined", async () => {
     const user = userEvent.setup();
     setParams({ notificationId: NOTICE_ID });
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
 
     const { calls } = stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
@@ -1114,10 +1119,20 @@ describe("archiving", () => {
 
     renderWithProviders(<NotificationDetailPage />);
 
-    await user.click(await screen.findByRole("button", { name: /Архивлах/ }));
+    /*
+      ★ This now cancels the dialog explicitly.
 
+      With `window.confirm` mocked to `false` the old version asserted a real
+      decline. Against the new dialog the same code would pass without ever
+      declining anything — opening the dialog sends no request either — so the
+      assertion has to press "Болих" for the test to still mean what it says.
+    */
+    await user.click(await screen.findByRole("button", { name: /Архивлах/ }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Болих" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(calls.some((c) => c.method === "DELETE")).toBe(false);
-    confirmSpy.mockRestore();
   });
 });
 

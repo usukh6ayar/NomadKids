@@ -257,6 +257,111 @@ describe("POST /kindergartens/:id/users", () => {
   });
 });
 
+/**
+ * `PATCH /users/:id` — the admin edit the users screen now calls.
+ *
+ * ★ The cross-tenant refusal is covered below ("admin B cannot see, edit or
+ * revoke anything belonging to A"). What was missing is everything the form
+ * depends on: that the fields it sends are accepted, that the two conflicts it
+ * has to display really are 409s, and that the field it must NOT offer is not
+ * silently honoured.
+ */
+describe("PATCH /users/:id", () => {
+  it("an admin edits a user in their own kindergarten", async () => {
+    const res = await authed(request(server()).patch(`/v1/users/${a.teacherUser.id}`), adminA).send(
+      { lastName: "Шинэ", firstName: "Нэр", email: "shine@nomadkids.mn", phone: "99001122" },
+    );
+
+    expect(res.status).toBe(200);
+    const row = await db.user.findUniqueOrThrow({ where: { id: a.teacherUser.id } });
+    expect(row.lastName).toBe("Шинэ");
+    expect(row.phone).toBe("99001122");
+  });
+
+  it("clears an optional field when it is sent as null", async () => {
+    await authed(request(server()).patch(`/v1/users/${a.teacherUser.id}`), adminA).send({
+      email: "temp@nomadkids.mn",
+    });
+
+    const res = await authed(request(server()).patch(`/v1/users/${a.teacherUser.id}`), adminA).send(
+      { email: null },
+    );
+
+    expect(res.status).toBe(200);
+    const row = await db.user.findUniqueOrThrow({ where: { id: a.teacherUser.id } });
+    expect(row.email).toBeNull();
+  });
+
+  it("deactivates without removing the account or its roles", async () => {
+    const res = await authed(request(server()).patch(`/v1/users/${a.teacherUser.id}`), adminA).send(
+      { isActive: false },
+    );
+
+    expect(res.status).toBe(200);
+    const row = await db.user.findUniqueOrThrow({ where: { id: a.teacherUser.id } });
+    expect(row.isActive).toBe(false);
+    expect(row.deletedAt).toBeNull();
+
+    const memberships = await db.membership.findMany({ where: { userId: a.teacherUser.id } });
+    expect(memberships.length).toBeGreaterThan(0);
+  });
+
+  /** The 409 the edit dialog renders above its form. */
+  it("refuses an email another account already holds", async () => {
+    await authed(request(server()).patch(`/v1/users/${a.parentUser.id}`), adminA).send({
+      email: "taken@nomadkids.mn",
+    });
+
+    const res = await authed(request(server()).patch(`/v1/users/${a.teacherUser.id}`), adminA).send(
+      { email: "taken@nomadkids.mn" },
+    );
+
+    expect(res.status).toBe(409);
+  });
+
+  it("refuses a phone another account already holds", async () => {
+    await authed(request(server()).patch(`/v1/users/${a.parentUser.id}`), adminA).send({
+      phone: "99887766",
+    });
+
+    const res = await authed(request(server()).patch(`/v1/users/${a.teacherUser.id}`), adminA).send(
+      { phone: "99887766" },
+    );
+
+    expect(res.status).toBe(409);
+  });
+
+  /**
+   * ★★ The reason the dialog shows the login name read-only.
+   *
+   * `updateUserSchema` has no `username`, and Zod strips unknown keys rather
+   * than rejecting them — so a form that offered the field would appear to
+   * work and change nothing. This pins that it really is ignored, which is
+   * what makes read-only the honest presentation.
+   */
+  it("ignores a username in the body rather than renaming the account", async () => {
+    const before = await db.user.findUniqueOrThrow({ where: { id: a.teacherUser.id } });
+
+    const res = await authed(request(server()).patch(`/v1/users/${a.teacherUser.id}`), adminA).send(
+      { username: "hijacked", lastName: "Хэвээр" },
+    );
+
+    expect(res.status).toBe(200);
+    const after = await db.user.findUniqueOrThrow({ where: { id: a.teacherUser.id } });
+    expect(after.username).toBe(before.username);
+    expect(after.lastName).toBe("Хэвээр");
+  });
+
+  it("refuses a phone that is not eight digits", async () => {
+    const res = await authed(request(server()).patch(`/v1/users/${a.teacherUser.id}`), adminA).send(
+      { phone: "+97699000008" },
+    );
+
+    expect(res.status).toBe(400);
+    expect(res.body.errors?.phone).toBeDefined();
+  });
+});
+
 describe("memberships", () => {
   it("grants a role", async () => {
     const user = await createUser({ username: uniq("u") });

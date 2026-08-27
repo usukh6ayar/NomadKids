@@ -94,32 +94,52 @@ export function NeedsAttentionAlerts({
            */
           lede={`${missing.length} хүүхэд. Улирал хаагдахаас өмнө үнэлгээ шаардлагатай.`}
         >
-          <ul className="flex flex-col gap-1.5">
+          {/*
+            ★ Chips, not rows — and the same chips the birthday alert above
+            uses.
+
+            Six full-width rows at 52px each is 312px, which put this one
+            notification above the fold and pushed today's attendance and the
+            menu below it. On a 900px laptop the alerts owned half the first
+            screen to report a task with no deadline today.
+
+            A chip carries the same link to the same child and keeps the group
+            name. The group is *not* redundant here even though a teacher has
+            only one: this screen is `RequireRole ["TEACHER", "ADMIN"]`, and an
+            administrator sees children from every group in the kindergarten,
+            which is why the contract carries `group` on each row at all.
+
+            What it drops is the "Үнэлэх →" affordance, which repeated what
+            tapping the row already did.
+          */}
+          <ul className="flex flex-wrap items-center gap-2">
             {missing.slice(0, VISIBLE_MISSING).map((child) => (
               <li key={child.id}>
                 <Link
                   href={`/children/${child.id}`}
-                  className="flex min-h-[52px] items-center gap-2.5 rounded-control border border-border bg-surface px-2.5 py-2 hover:bg-canvas md:gap-3 md:px-3"
+                  className="flex min-h-[44px] items-center gap-2 rounded-control border border-border bg-surface px-2.5 py-1.5 transition-colors hover:border-peach-ink/40 hover:bg-canvas md:px-3"
                 >
-                  <ChildAvatar child={child} size={36} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium text-ink">{fullName(child)}</span>
+                  <ChildAvatar child={child} size={28} />
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium leading-tight text-ink">
+                      {fullName(child)}
+                    </span>
                     {child.group ? (
-                      <span className="block truncate text-body text-muted">
+                      <span className="block truncate text-caption leading-tight text-muted">
                         {child.group.name}
                       </span>
                     ) : null}
                   </span>
-                  <span className="shrink-0 text-body text-primary-strong">Үнэлэх →</span>
                 </Link>
               </li>
             ))}
+
+            {missing.length > VISIBLE_MISSING ? (
+              <li className="text-body text-peach-ink">
+                +{missing.length - VISIBLE_MISSING} хүүхэд
+              </li>
+            ) : null}
           </ul>
-          {missing.length > VISIBLE_MISSING ? (
-            <p className="mt-2 text-body text-peach-ink">
-              Бусад {missing.length - VISIBLE_MISSING} хүүхэд…
-            </p>
-          ) : null}
         </AlertCard>
       ) : null}
 
@@ -140,8 +160,13 @@ export function NeedsAttentionAlerts({
   );
 }
 
-/** Beyond this the card stops being a list and starts being a page. */
-const VISIBLE_MISSING = 6;
+/**
+ * Beyond this the card stops being a notification and starts being a page.
+ *
+ * Was 6, as full rows. Five chips wrap to two lines at worst and the count
+ * carries the rest — the roster screen is where the whole list belongs.
+ */
+const VISIBLE_MISSING = 5;
 
 /**
  * One alert.

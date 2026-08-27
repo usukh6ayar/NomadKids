@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { TONE_SURFACE, type Tone } from "@/components/ui/tone";
 
 /**
  * The home screen's icon grid — the shape a phone user expects.
@@ -48,7 +49,7 @@ export function NavTile({
   icon: ReactNode;
   /** One short line under the label — a count, or what the screen is for. */
   note?: string;
-  tone?: "sky" | "mint" | "sun" | "peach" | "cornflower" | "teal";
+  tone?: Tone;
   className?: string;
 }) {
   return (
@@ -69,7 +70,7 @@ export function NavTile({
         aria-hidden="true"
         className={cn(
           "grid size-12 shrink-0 place-items-center rounded-control [&>img]:size-full [&>img]:rounded-control [&>img]:object-cover",
-          TONE_CLASS[tone],
+          TONE_SURFACE[tone],
         )}
       >
         {icon}
@@ -90,11 +91,3 @@ export function NavTile({
  * wells come from the same palette, and an arbitrary hex at a call site is how
  * a screen ends up with nine unrelated colours.
  */
-const TONE_CLASS = {
-  sky: "bg-sky text-sky-ink",
-  mint: "bg-mint text-mint-ink",
-  sun: "bg-sun text-sun-ink",
-  peach: "bg-peach text-peach-ink",
-  cornflower: "bg-cornflower text-cornflower-ink",
-  teal: "bg-teal text-teal-ink",
-} as const;

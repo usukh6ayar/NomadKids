@@ -4,15 +4,19 @@ import { useQuery } from "@tanstack/react-query";
 import {
   BookOpen,
   Building2,
+  CalendarCheck,
   ChevronRight,
   ClipboardList,
+  FileText,
   Home,
   LayoutGrid,
+  ListChecks,
   Bell,
   Settings,
   ShieldCheck,
   Users,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -110,6 +114,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         nav={nav}
         sections={isStaff ? staffSections(hasRole("ADMIN")) : parentSections(myChildren.data)}
         variant={isStaff ? "teacher" : "parent"}
+        isAdmin={hasRole("ADMIN")}
       >
         {children}
       </AppShell>
@@ -122,6 +127,55 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 }
 
 const iconProps = { size: 20, strokeWidth: 2, "aria-hidden": true } as const;
+
+/**
+ * Section entries sit one level in, so their icons are one step down.
+ *
+ * 18px against the top level's 20px: the indent already says "child of the
+ * row above", and matching the parent's size would make the sub-level compete
+ * with it. `parentSections` had been spelling `size={18}` inline on each entry,
+ * which is the same number three times and no name for it.
+ */
+const sectionIconProps = { size: 18, strokeWidth: 2, "aria-hidden": true } as const;
+
+/**
+ * One icon per destination, chosen once.
+ *
+ * ★ Keyed by `href`, and that is the point rather than a convenience.
+ *
+ * Several routes appear in more than one menu — `/notifications` is in the
+ * staff sections, the parent sections and both bottom bars; `/settings` is in
+ * three. Each call site used to pick its own glyph, and they had already
+ * drifted: the same route was `Bell` in one list and nothing at all in
+ * another. A map keyed by the destination makes "the same feature, two icons"
+ * unrepresentable instead of merely discouraged.
+ *
+ * ★★ Existing choices are kept, not re-picked. `/children` was already `Users`
+ * and `/observations/review` already `ClipboardList` in the top-level nav; both
+ * stay, so the phone's bottom bar and the desktop sidebar keep agreeing. Only
+ * the four routes that had no icon anywhere are new decisions.
+ */
+const ROUTE_ICON: Record<string, LucideIcon> = {
+  "/dashboard": LayoutGrid,
+  "/home": Home,
+  "/children": Users,
+  "/observations/review": ClipboardList,
+  "/attendance-requests/review": CalendarCheck,
+  "/notifications": Bell,
+  "/surveys": ListChecks,
+  "/documents": FileText,
+  "/settings": Settings,
+  "/admin": ShieldCheck,
+  "/platform": Building2,
+};
+
+/** The section-level icon for a route, or nothing if it has no destination. */
+function routeIcon(href: string | undefined) {
+  if (!href) return undefined;
+  const Icon = ROUTE_ICON[href];
+
+  return Icon ? <Icon {...sectionIconProps} /> : undefined;
+}
 
 /**
  * Staff navigation.
@@ -184,30 +238,38 @@ function staffNav(isAdmin: boolean): NavItem[] {
  * never going to arrive for that account.
  */
 function staffSections(isAdmin: boolean): NavSection[] {
+  /*
+   * ★ Every entry takes its icon from `ROUTE_ICON` rather than naming one.
+   *
+   * All eight of these shipped with no icon at all — the `icon` field existed
+   * on `NavSection` and this builder passed it for none of them, so the desktop
+   * sidebar was three headings over eight bare text links while the bottom bar
+   * beside it was fully illustrated. Resolving by route also means an entry
+   * added here cannot disagree with the same destination in the top-level nav.
+   */
+  const entry = (label: string, href: string) => ({ label, href, icon: routeIcon(href) });
+
   return [
     {
       title: "Хүүхдийн хөгжил ба үнэлгээ",
       entries: [
-        { label: "Хүүхдүүд", href: "/children" },
-        { label: "Ажиглалт хянах", href: "/observations/review" },
-        { label: "Чөлөөний хүсэлт хянах", href: "/attendance-requests/review" },
+        entry("Хүүхдүүд", "/children"),
+        entry("Ажиглалт хянах", "/observations/review"),
+        entry("Чөлөөний хүсэлт хянах", "/attendance-requests/review"),
       ],
     },
     {
       title: "Харилцаа холбоо",
-      entries: [
-        { label: "Ангийн самбар / Мэдээ", href: "/notifications" },
-        { label: "Судалгаа", href: "/surveys" },
-      ],
+      entries: [entry("Ангийн самбар / Мэдээ", "/notifications"), entry("Судалгаа", "/surveys")],
     },
     {
       title: "Багш ба байгууллага",
       entries: [
         // RFP §9 — "Багшид зориулсан PDF баримт бичгийн сан". Staff only, so it
         // lives here and never in `parentSections`.
-        { label: "Баримт бичгийн сан", href: "/documents" },
-        { label: "Багшийн мэдээлэл", href: "/settings" },
-        ...(isAdmin ? [{ label: "Бүлэг, цэцэрлэгийн мэдээлэл", href: "/admin" }] : []),
+        entry("Баримт бичгийн сан", "/documents"),
+        entry("Багшийн мэдээлэл", "/settings"),
+        ...(isAdmin ? [entry("Бүлэг, цэцэрлэгийн мэдээлэл", "/admin")] : []),
       ],
     },
   ];
@@ -306,7 +368,7 @@ function parentSections(myChildren: ChildSummary[] | undefined): NavSection[] {
         {
           label: "Ангийн самбар / Мэдээ",
           href: "/notifications",
-          icon: <Bell size={18} aria-hidden="true" />,
+          icon: routeIcon("/notifications"),
         },
         // No `href`: chat is RFP Phase IV. It renders as a disabled row, the
         // same treatment "Санхүү" below gets, so the menu describes the product
@@ -318,11 +380,7 @@ function parentSections(myChildren: ChildSummary[] | undefined): NavSection[] {
       title: "Санхүү ба бүртгэл",
       entries: [
         { label: "Санхүү" },
-        {
-          label: "Миний бүртгэл",
-          href: "/settings",
-          icon: <Settings size={18} aria-hidden="true" />,
-        },
+        { label: "Миний бүртгэл", href: "/settings", icon: routeIcon("/settings") },
       ],
     },
   ];

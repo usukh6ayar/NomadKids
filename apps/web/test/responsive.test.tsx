@@ -22,6 +22,14 @@ import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field"
  */
 
 const GLOBALS_CSS = readFileSync(join(__dirname, "..", "app", "globals.css"), "utf8");
+const APP_SHELL = readFileSync(
+  join(__dirname, "..", "components", "shell", "app-shell.tsx"),
+  "utf8",
+);
+const CHILDREN_PAGE = readFileSync(
+  join(__dirname, "..", "app", "(app)", "children", "page.tsx"),
+  "utf8",
+);
 
 /**
  * WCAG 2.1 relative luminance and contrast ratio.
@@ -106,6 +114,40 @@ describe("horizontal overflow", () => {
    */
   it("long words wrap rather than widening the layout", () => {
     expect(GLOBALS_CSS).toMatch(/overflow-wrap:\s*break-word/);
+  });
+
+  /**
+   * ★ The regression this pair exists for, measured before it was fixed:
+   * `/children` at 390px reported `scrollWidth` 469 against a `clientWidth` of
+   * 390, and the primary "Хүүхэд бүртгэх" was the part hanging off the edge.
+   *
+   * Two constraints compounded. `PageHeader` wrapped its actions in
+   * `shrink-0`, which pins the block at its max-content width — and max-content
+   * ignores any wrapping the children could do. The children, in turn, sat in a
+   * plain `flex` that never wrapped. Either one alone is fine; together they
+   * made a row that could not give.
+   *
+   * ★★ Why this asserts on source rather than on a rendered width.
+   *
+   * jsdom has no layout engine — `FINAL_DEVICE_QA.md` says so at length —
+   * so every element measures 0 × 0 here and a `getBoundingClientRect` check
+   * would pass at any viewport while asserting nothing. The real widths are
+   * measured in a headless browser; these two pin the *constraints* that
+   * produced them, which is the part a future edit would quietly remove.
+   */
+  it("a header action block is allowed to wrap rather than pin the page wide", () => {
+    // `max-w-full` is what caps `shrink-0` at the row's width.
+    expect(APP_SHELL).toMatch(/flex max-w-full shrink-0 flex-wrap items-center justify-end/);
+  });
+
+  it("the children screen's action row wraps", () => {
+    // From the `actions` prop onward. Bounded by length rather than by the
+    // button's label — the label also appears in the comment above the div,
+    // which made the first version of this slice stop short of the class.
+    const start = CHILDREN_PAGE.indexOf("actions={");
+    const actions = CHILDREN_PAGE.slice(start, start + 2000);
+    // The container that holds the count, Excel, Импорт and the primary action.
+    expect(actions).toMatch(/className="flex flex-wrap items-center justify-end gap-2/);
   });
 });
 
