@@ -56,10 +56,13 @@ describe("navigation is built from the session's roles", () => {
       </AppLayout>,
     );
 
-    // "Хавтас", briefly renamed to "Зураг", now `MY_CHILDREN` ("Миний
-    // хүүхдүүд") — the bottom-bar tab that opens the child-picker modal
-    // (`(app)/layout.tsx`'s `parentNav`, `ChildPickerModal`).
-    await waitFor(() => expect(screen.getAllByText("Миний хүүхдүүд").length).toBeGreaterThan(0));
+    // "Хавтас", then briefly `MY_CHILDREN` ("Миний хүүхдүүд"), renamed again
+    // to "Зураг" to match the parent's own mock-up (`(app)/layout.tsx`'s
+    // `parentNav`). The label renders regardless of where the tab's href
+    // points — no `/children/mine` stub here, so `myChildren` never resolves
+    // and `zuragHref` falls back to `/children`, but that only changes the
+    // destination, not the text this assertion reads.
+    await waitFor(() => expect(screen.getAllByText("Зураг").length).toBeGreaterThan(0));
 
     // ★ The review queue is a teacher's job. Offering it to a family would be a
     // menu item that only ever 404s.
