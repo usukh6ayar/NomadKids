@@ -93,41 +93,46 @@ export default function ParentHomePage() {
   return (
     <HomeBackdrop>
       {/*
-        ★ A plain card, and two actions — both buttons, neither a link styled
+        ★ A tinted card, and two actions — both buttons, neither a link styled
         to look like one. `PORTFOLIO` moved back in from the grid below: it
         still leads that grid *and* has the bottom bar's "Зураг" tab, but this
         card is where a parent's eye already is, so the single most important
         destination in the product earns a third, closest path rather than
         making them look away from the child they just confirmed. `Хуваалцах`
         (submitting an observation from home) has no tile or tab of its own,
-        so it keeps its round button — `size-12` rather than the switcher's
-        `size-11`, since it is the one thing on this card meant to be
+        so it keeps its round button, sized a step above the switcher's own
+        44px control since it is the one thing on this card meant to be
         pressed, not read.
+
+        ★★ `bg-sky` rather than the plain `bg-surface` every other card in the
+        product uses — the one deliberately decorative surface on this screen,
+        matching the sky-and-clouds video behind it (`HomeBackdrop`) instead of
+        sitting flatly on top of it.
       */}
-      <Card pad="roomy" className="flex flex-col gap-3.5 sm:flex-row sm:items-center">
-        <div className="flex min-w-0 items-center gap-3.5">
-          <ChildAvatar child={selected} size={64} className="shrink-0" />
+      <Card pad="roomy" className="flex flex-col gap-4 border-none bg-sky sm:flex-row sm:items-center">
+        <div className="flex min-w-0 items-center gap-4">
+          <ChildAvatar child={selected} size={72} className="shrink-0" />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-title font-semibold text-ink">{fullName(selected)}</p>
-            <p className="text-body text-muted">
+            <p className="truncate text-heading font-semibold text-ink">{fullName(selected)}</p>
+            <p className="text-lead text-muted">
               {[formatAge(selected.dateOfBirth), selected.group?.name].filter(Boolean).join(" · ")}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 sm:ml-auto sm:shrink-0">
-          <Button asChild size="sm" className="flex-1 sm:flex-none">
+        <div className="flex items-center gap-2.5 sm:ml-auto sm:shrink-0">
+          <Button asChild className="flex-1 sm:flex-none">
             <Link href={`/children/${selected.id}/portfolio`}>
-              <BookOpen size={18} aria-hidden="true" />
+              <BookOpen size={20} aria-hidden="true" />
               {PORTFOLIO}
             </Link>
           </Button>
           <Link
             href={`/children/${selected.id}/observations/new`}
             aria-label="Ажиглалт хуваалцах"
-            className="grid size-12 shrink-0 place-items-center rounded-pill bg-primary text-primary-ink shadow-md transition-colors hover:bg-primary-hover"
+            className="grid size-13 shrink-0 place-items-center rounded-pill bg-primary text-primary-ink shadow-md transition-colors hover:bg-primary-hover"
           >
-            <Plus size={24} aria-hidden="true" />
+            <Plus size={26} aria-hidden="true" />
           </Link>
         </div>
       </Card>
@@ -163,27 +168,27 @@ export default function ParentHomePage() {
             href="/notifications"
             label="Ангийн самбар"
             badge={unread && unread.count > 0 ? unread.count : undefined}
-            icon={<Image src="/icons/icon-notice.png" alt="" width={44} height={44} className="size-11" />}
+            icon={<Image src="/icons/icon-notice.png" alt="" width={48} height={48} className="size-12" />}
           />
           <QuickTile
             href={`/children/${selected.id}/attendance`}
             label="Ирц"
-            icon={<Image src="/icons/icon-attendance.png" alt="" width={44} height={44} className="size-11" />}
+            icon={<Image src="/icons/icon-attendance.png" alt="" width={48} height={48} className="size-12" />}
           />
           <QuickTile
             href={`/children/${selected.id}/menu`}
             label="Хоол"
-            icon={<Image src="/icons/icon-menu.png" alt="" width={44} height={44} className="size-11" />}
+            icon={<Image src="/icons/icon-menu.png" alt="" width={48} height={48} className="size-12" />}
           />
           <QuickTile
             href={`/children/${selected.id}/assessments`}
             label="Үнэлгээ"
-            icon={<Image src="/icons/icon-progress.png" alt="" width={44} height={44} className="size-11" />}
+            icon={<Image src="/icons/icon-progress.png" alt="" width={48} height={48} className="size-12" />}
           />
           <SurveyTile childId={selected.id} />
           <ComingSoonTile
             label="Санхүү"
-            icon={<Image src="/icons/icon-finance.png" alt="" width={44} height={44} className="size-11" />}
+            icon={<Image src="/icons/icon-finance.png" alt="" width={48} height={48} className="size-12" />}
           />
         </div>
       </section>
@@ -268,7 +273,7 @@ function SurveyTile({ childId }: { childId: string }) {
       href={`/children/${childId}/surveys`}
       label="Судалгаа"
       badge={pendingCount > 0 ? pendingCount : undefined}
-      icon={<Image src="/icons/icon-survey.png" alt="" width={44} height={44} className="size-11" />}
+      icon={<Image src="/icons/icon-survey.png" alt="" width={48} height={48} className="size-12" />}
     />
   );
 }
@@ -276,11 +281,14 @@ function SurveyTile({ childId }: { childId: string }) {
 /**
  * One tile of the home grid — icon, label, nothing else.
  *
- * ★ `size-11` icon over `text-compact`, centred and two lines deep at most.
+ * ★ `size-12` icon over `text-compact`, centred and two lines deep at most.
  * Three columns at 375px leaves each tile roughly 110px wide, which fits a
  * compound Mongolian label ("Хоол ба цэс" shortened to "Хоол" here) only if
  * it can wrap — `leading-tight` and no `truncate` let it, rather than
- * clipping the one thing the tile exists to say.
+ * clipping the one thing the tile exists to say. `py-3.5` rather than the
+ * roomier `py-4` every other card-shaped surface uses: this screen locks
+ * body scroll (`HomeBackdrop`), so the icon bump this tile got has to come
+ * out of its own padding rather than the page growing past one viewport.
  *
  * `badge` mirrors `UnreadDot` (`app-shell.tsx`) at a smaller scale: a red
  * pill with the count, not a bare dot, for the same reason — a screen reader
@@ -301,7 +309,7 @@ function QuickTile({
     <Link
       href={href}
       aria-label={badge ? `${label}, ${badge} шинэ` : label}
-      className="flex flex-col items-center gap-2 rounded-card border border-border bg-surface px-2 py-4 text-center transition-colors hover:border-primary hover:shadow-sm"
+      className="flex flex-col items-center gap-2 rounded-card border border-border bg-surface px-2 py-3.5 text-center transition-colors hover:border-primary hover:shadow-sm"
     >
       <span className="relative" aria-hidden="true">
         {icon}
@@ -331,7 +339,7 @@ function ComingSoonTile({ label, icon }: { label: string; icon: ReactNode }) {
   return (
     <div
       aria-disabled="true"
-      className="flex flex-col items-center gap-2 rounded-card border border-dashed border-border bg-canvas px-2 py-4 text-center opacity-60"
+      className="flex flex-col items-center gap-2 rounded-card border border-dashed border-border bg-canvas px-2 py-3.5 text-center opacity-60"
     >
       <span aria-hidden="true">{icon}</span>
       <span className="text-compact font-semibold leading-tight text-ink">{label}</span>
@@ -395,7 +403,7 @@ function HomeBackdrop({ children }: { children: ReactNode }) {
         <div className="absolute inset-0 bg-canvas/5" />
         <div className="absolute inset-0 bg-linear-to-b from-transparent from-92% to-canvas to-100%" />
       </div>
-      <div className="relative flex flex-col gap-6 py-2 lg:gap-8">{children}</div>
+      <div className="relative flex flex-col gap-4 py-1 lg:gap-8 lg:py-2">{children}</div>
     </div>
   );
 }
