@@ -1,7 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { toSkipTake, type PageParams } from "../common/pagination";
-import type { AttendanceRequestStatus, AttendanceStatus } from "../domain/enums";
+import type { AttendanceCompanion, AttendanceRequestStatus, AttendanceStatus } from "../domain/enums";
 
 /**
  * Attendance records and the guardian requests that precede them.
@@ -98,11 +98,57 @@ export class AttendanceRepository {
       if (existing) {
         return tx.attendance.update({
           where: { id: existing.id },
-          data: { status: data.status, note: data.note, recordedById: data.recordedById },
+          data: {
+            status: data.status,
+            note: data.note,
+            recordedById: data.recordedById,
+            // ★ Only overwritten when the caller actually sent one — a plain
+            // `{ status: "ABSENT" }` call (the group day-sheet, most of
+            // `TodayRecorder`'s buttons) must not erase a drop-off already
+            // recorded earlier the same day. Same guard for pickup: an
+            // approved arrival claim (`reviewRequest`) must not blank out a
+            // pickup a later approval, or staff's own `PATCH .../pickup`,
+            // already wrote.
+            ...(data.arrivedWith !== undefined ? { arrivedWith: data.arrivedWith } : {}),
+            ...(data.arrivedWithName !== undefined ? { arrivedWithName: data.arrivedWithName } : {}),
+            ...(data.arrivedAt !== undefined ? { arrivedAt: data.arrivedAt } : {}),
+            ...(data.pickedUpWith !== undefined ? { pickedUpWith: data.pickedUpWith } : {}),
+            ...(data.pickedUpWithName !== undefined
+              ? { pickedUpWithName: data.pickedUpWithName }
+              : {}),
+            ...(data.pickedUpAt !== undefined ? { pickedUpAt: data.pickedUpAt } : {}),
+          },
         });
       }
 
       return tx.attendance.create({ data });
+    });
+  }
+
+  /**
+   * Pickup, independent of `upsertForChild` — a child must already have a
+   * record for the day (you cannot pick up who was never checked in), so
+   * this updates rather than creates, and returns `null` when there is
+   * nothing to update. Whether `null` is a 404 is the service's call, not
+   * this layer's.
+   */
+  async recordPickup(
+    enrollmentId: string,
+    date: Date,
+    data: { pickedUpWith: AttendanceCompanion; pickedUpWithName: string | null; pickedUpAt: Date },
+  ) {
+    const existing = await this.prisma.attendance.findFirst({
+      where: { enrollmentId, date, deletedAt: null },
+    });
+    if (!existing) return null;
+
+    return this.prisma.attendance.update({
+      where: { id: existing.id },
+      data: {
+        pickedUpWith: data.pickedUpWith,
+        pickedUpWithName: data.pickedUpWithName,
+        pickedUpAt: data.pickedUpAt,
+      },
     });
   }
 
@@ -136,6 +182,12 @@ export class AttendanceRepository {
         dateTo: true,
         requestedStatus: true,
         reviewStatus: true,
+        arrivedWith: true,
+        arrivedWithName: true,
+        arrivedAt: true,
+        pickedUpWith: true,
+        pickedUpWithName: true,
+        pickedUpAt: true,
       },
     });
   }
@@ -207,6 +259,12 @@ export interface RecordAttendanceData {
   status: AttendanceStatus;
   note: string | null;
   recordedById: string;
+  arrivedWith?: AttendanceCompanion | null;
+  arrivedWithName?: string | null;
+  arrivedAt?: Date | null;
+  pickedUpWith?: AttendanceCompanion | null;
+  pickedUpWithName?: string | null;
+  pickedUpAt?: Date | null;
 }
 
 export interface CreateAttendanceRequestData {
@@ -218,4 +276,10 @@ export interface CreateAttendanceRequestData {
   dateTo: Date;
   requestedStatus: AttendanceStatus;
   reason: string | null;
+  arrivedWith?: AttendanceCompanion | null;
+  arrivedWithName?: string | null;
+  arrivedAt?: Date | null;
+  pickedUpWith?: AttendanceCompanion | null;
+  pickedUpWithName?: string | null;
+  pickedUpAt?: Date | null;
 }

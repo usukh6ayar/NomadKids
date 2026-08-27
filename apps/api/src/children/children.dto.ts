@@ -3,7 +3,7 @@ import { paginationQuerySchema, uuidSchema } from "@kinder/contracts";
 
 export const sexSchema = z.enum(["MALE", "FEMALE"]);
 export const childStatusSchema = z.enum(["ACTIVE", "ARCHIVED"]);
-export const enrollmentStatusSchema = z.enum(["ACTIVE", "ENDED", "TRANSFERRED"]);
+export const enrollmentStatusSchema = z.enum(["ACTIVE", "ENDED", "TRANSFERRED", "GRADUATED"]);
 export const guardianRelationSchema = z.enum([
   "MOTHER",
   "FATHER",
@@ -113,6 +113,6 @@ export const enrollSchema = z.object({
 export type EnrollDto = z.infer<typeof enrollSchema>;
 
 export const endEnrollmentSchema = z.object({
-  status: z.enum(["ENDED", "TRANSFERRED"]).default("ENDED"),
+  status: z.enum(["ENDED", "TRANSFERRED", "GRADUATED"]).default("ENDED"),
 });
 export type EndEnrollmentDto = z.infer<typeof endEnrollmentSchema>;

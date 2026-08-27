@@ -17,6 +17,7 @@
 
 export {
   AgeBand,
+  AttendanceCompanion,
   AttendanceRequestStatus,
   AttendanceStatus,
   AuditAction,

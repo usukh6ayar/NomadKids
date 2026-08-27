@@ -29,7 +29,7 @@ export type Role = z.infer<typeof roleSchema>;
 
 export const sexSchema = z.enum(["MALE", "FEMALE"]);
 export const childStatusSchema = z.enum(["ACTIVE", "ARCHIVED"]);
-export const enrollmentStatusSchema = z.enum(["ACTIVE", "ENDED", "TRANSFERRED"]);
+export const enrollmentStatusSchema = z.enum(["ACTIVE", "ENDED", "TRANSFERRED", "GRADUATED"]);
 export const guardianRelationSchema = z.enum([
   "MOTHER",
   "FATHER",
@@ -216,6 +216,12 @@ export type AttendanceStatus = z.infer<typeof attendanceStatusSchema>;
 export const attendanceRequestStatusSchema = z.enum(["PENDING", "APPROVED", "REJECTED"]);
 export type AttendanceRequestStatus = z.infer<typeof attendanceRequestStatusSchema>;
 
+/** Who handed the child over — at drop-off and, separately, at pickup. See
+ * the `AttendanceCompanion` doc comment in schema.prisma for why this is not
+ * `GuardianRelation`. */
+export const attendanceCompanionSchema = z.enum(["MOTHER", "FATHER", "OTHER"]);
+export type AttendanceCompanion = z.infer<typeof attendanceCompanionSchema>;
+
 export const attendanceRecordSchema = z.object({
   id: uuidSchema,
   childId: uuidSchema,
@@ -223,6 +229,14 @@ export const attendanceRecordSchema = z.object({
   status: attendanceStatusSchema,
   note: z.string().nullish(),
   recordedBy: personRefSchema.nullish(),
+  arrivedWith: attendanceCompanionSchema.nullish(),
+  /** Set only when `arrivedWith` is OTHER — a category alone cannot carry a name. */
+  arrivedWithName: z.string().nullish(),
+  arrivedAt: z.string().nullish(),
+  pickedUpWith: attendanceCompanionSchema.nullish(),
+  /** Same, for `pickedUpWith` OTHER. */
+  pickedUpWithName: z.string().nullish(),
+  pickedUpAt: z.string().nullish(),
 });
 export type AttendanceRecord = z.infer<typeof attendanceRecordSchema>;
 
@@ -253,6 +267,17 @@ export const attendanceRequestSchema = z.object({
   reviewedAt: z.string().nullish(),
   requestedBy: personRefSchema.nullish(),
   createdAt: z.string(),
+  /** A guardian's own arrival claim — set only when `requestedStatus` is
+   * PRESENT ("Ирц мэдэгдэх"), not a leave notice. */
+  arrivedWith: attendanceCompanionSchema.nullish(),
+  arrivedWithName: z.string().nullish(),
+  arrivedAt: z.string().nullish(),
+  /** The same guardian's second, later request the same day — "Гарсныг
+   * мэдэгдэх" at pickup. Always its own row; see schema.prisma's own note
+   * on `AttendanceRequest.pickedUpWith`. */
+  pickedUpWith: attendanceCompanionSchema.nullish(),
+  pickedUpWithName: z.string().nullish(),
+  pickedUpAt: z.string().nullish(),
 });
 export type AttendanceRequest = z.infer<typeof attendanceRequestSchema>;
 
@@ -268,6 +293,7 @@ export const menuDaySchema = z.object({
   id: uuidSchema,
   date: z.string(),
   dishes: z.array(menuDishSchema),
+  totalCalories: z.number().int().nullish(),
 });
 export type MenuDay = z.infer<typeof menuDaySchema>;
 

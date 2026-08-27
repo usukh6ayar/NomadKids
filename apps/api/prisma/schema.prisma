@@ -87,6 +87,11 @@ enum EnrollmentStatus {
   ACTIVE
   ENDED
   TRANSFERRED
+  /** A distinct outcome from ENDED/TRANSFERRED — the child completed the
+   * programme rather than leaving mid-way or moving elsewhere. Added so a
+   * parent-facing "Цэцэрлэгээс төгссөн" date can be real data instead of a
+   * misleading reuse of the generic "this enrollment period ended". */
+  GRADUATED
 }
 
 enum ObservationSource {
@@ -880,6 +885,19 @@ enum AttendanceRequestStatus {
   REJECTED
 }
 
+/// Who physically handed the child over — at drop-off (`arrivedWith`) and,
+/// separately, at pickup (`pickedUpWith`). A category, not a link to a
+/// specific `Guardianship` row: staff record "mom" or "dad" at a glance, not
+/// which named guardian. `OTHER` is anyone not on the guardian list — a
+/// driver, a relative. No `ALONE`: dropped 2026-08-25, client request — a
+/// kindergarten this young never receives a child unaccompanied, so the
+/// option had no real case to cover.
+enum AttendanceCompanion {
+  MOTHER // Ээж
+  FATHER // Аав
+  OTHER // Бусад
+}
+
 /// One row per enrollment per day — never per bare `childId`, so a transfer
 /// mid-year does not rewrite which kindergarten a day of attendance belongs
 /// to (this feeds funding claims later, RFP appendix).
@@ -904,6 +922,25 @@ model Attendance {
   /// Medication instructions when SICK — RFP: "эмийн зааварчилгаа, тун
   /// болон цагийн санамж".
   note   String?
+
+  /// Drop-off. Both null until staff actually record who brought the child
+  /// and when — never defaulted, so an unrecorded arrival stays visibly
+  /// unrecorded rather than reading as "someone, at midnight".
+  arrivedWith     AttendanceCompanion?
+  /// Who, when `arrivedWith` is OTHER — a name a category alone cannot
+  /// carry ("Бусад" says "not a parent", not who). Null for MOTHER/FATHER:
+  /// the category already names them.
+  arrivedWithName String?
+  arrivedAt       DateTime?
+
+  /// Pickup — recorded later the same day, independently of drop-off, so it
+  /// cannot require re-sending `status`/`arrivedWith` to write. Custody
+  /// accountability: a kindergarten needs to know *someone* collected the
+  /// child, which this pair is the record of.
+  pickedUpWith     AttendanceCompanion?
+  /// Same reasoning as `arrivedWithName`, for the OTHER case at pickup.
+  pickedUpWithName String?
+  pickedUpAt       DateTime?
 
   /// The staff member who recorded it. Matches `Observation.authorId` —
   /// `User.id`, not `Membership.id`, so it reads across a role change.
@@ -942,6 +979,25 @@ model AttendanceRequest {
   requestedStatus AttendanceStatus
   reason          String?
   reviewStatus    AttendanceRequestStatus @default(PENDING)
+
+  /// Set only when `requestedStatus` is PRESENT — a guardian reporting the
+  /// morning's drop-off ("Ирц мэдэгдэх"), not a leave notice. Copied onto the
+  /// `Attendance` row `reviewRequest` writes only on APPROVED, same as every
+  /// other field here: a rejected or still-pending claim leaves no trace on
+  /// the actual record.
+  arrivedWith     AttendanceCompanion?
+  /// Who, when `arrivedWith` is OTHER — see `Attendance.arrivedWithName`.
+  arrivedWithName String?
+  arrivedAt       DateTime?
+
+  /// The same guardian's *second* request the same day — "Гарсныг мэдэгдэх"
+  /// at pickup, once the child is already checked in. A separate row rather
+  /// than fields added to the arrival request: the guardian does not know
+  /// who is collecting the child at drop-off time, so the two are always
+  /// two submissions, hours apart, each reviewed on its own.
+  pickedUpWith     AttendanceCompanion?
+  pickedUpWithName String?
+  pickedUpAt       DateTime?
   /// The staff member who reviewed it — `User.id`, matching `recordedById`.
   reviewedById    String?                 @db.Uuid
   reviewedAt      DateTime?
@@ -980,6 +1036,11 @@ model MenuDay {
   kindergartenId String   @db.Uuid
   date           DateTime @db.Date
   dishes         Json
+  /// Кcal for the whole day, typed in by staff — not summed from `dishes`,
+  /// which carries no per-dish figure of its own. Optional: most days will
+  /// never get one, and a blank value must read as "not entered" rather than
+  /// "zero calories".
+  totalCalories  Int?
 
   createdById String? @db.Uuid
 

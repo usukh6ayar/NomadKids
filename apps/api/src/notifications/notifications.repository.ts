@@ -60,10 +60,24 @@ export class NotificationsRepository {
     userId: string,
     page: PageParams,
     unreadOnly: boolean,
+    q?: string,
   ) {
     const { skip, take } = toSkipTake(page);
 
-    const finalWhere = unreadOnly ? { AND: [where, { reads: { none: { userId } } }] } : where;
+    // Same composition `unreadOnly` already used: extra conditions folded into
+    // one `AND` alongside the audience filter, never replacing it — a search
+    // term must narrow what this actor may see, not widen it.
+    const extra: Record<string, unknown>[] = [];
+    if (unreadOnly) extra.push({ reads: { none: { userId } } });
+    if (q) {
+      extra.push({
+        OR: [
+          { title: { contains: q, mode: "insensitive" as const } },
+          { body: { contains: q, mode: "insensitive" as const } },
+        ],
+      });
+    }
+    const finalWhere = extra.length > 0 ? { AND: [where, ...extra] } : where;
 
     const [items, total] = await Promise.all([
       this.prisma.notification.findMany({

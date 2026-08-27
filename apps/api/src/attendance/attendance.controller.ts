@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, Query } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Put, Query } from "@nestjs/common";
 import { idParamSchema, paginationQuerySchema } from "@kinder/contracts";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
@@ -11,12 +11,14 @@ import {
   groupDaySheetQuerySchema,
   listAttendanceQuerySchema,
   recordAttendanceSchema,
+  recordPickupSchema,
   reviewAttendanceRequestSchema,
   type CreateAttendanceRequestDto,
   type DateParam,
   type GroupDaySheetQuery,
   type ListAttendanceQuery,
   type RecordAttendanceDto,
+  type RecordPickupDto,
   type ReviewAttendanceRequestDto,
 } from "./attendance.dto";
 
@@ -56,6 +58,16 @@ export class ChildAttendanceController {
     @Body(new ZodValidationPipe(recordAttendanceSchema)) body: RecordAttendanceDto,
   ) {
     return this.service.record(actor, params.id, params.date, body);
+  }
+
+  /** Independent of `record()` — see `RecordPickupDto`'s own note. */
+  @Patch(":date/pickup")
+  async pickup(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(childDateParamsSchema)) params: { id: string } & DateParam,
+    @Body(new ZodValidationPipe(recordPickupSchema)) body: RecordPickupDto,
+  ) {
+    return this.service.recordPickup(actor, params.id, params.date, body);
   }
 }
 
