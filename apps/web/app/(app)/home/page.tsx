@@ -93,23 +93,18 @@ export default function ParentHomePage() {
   return (
     <HomeBackdrop>
       {/*
-        ★ A tinted card, and two actions — both buttons, neither a link styled
-        to look like one. `PORTFOLIO` moved back in from the grid below: it
-        still leads that grid *and* has the bottom bar's "Зураг" tab, but this
-        card is where a parent's eye already is, so the single most important
-        destination in the product earns a third, closest path rather than
-        making them look away from the child they just confirmed. `Хуваалцах`
-        (submitting an observation from home) has no tile or tab of its own,
-        so it keeps its round button, sized a step above the switcher's own
-        44px control since it is the one thing on this card meant to be
-        pressed, not read.
-
-        ★★ `bg-sky` rather than the plain `bg-surface` every other card in the
-        product uses — the one deliberately decorative surface on this screen,
-        matching the sky-and-clouds video behind it (`HomeBackdrop`) instead of
-        sitting flatly on top of it.
+        ★ A plain white card, and two actions — both buttons, neither a link
+        styled to look like one. `PORTFOLIO` moved back in from the grid
+        below: it still leads that grid *and* has the bottom bar's "Зураг"
+        tab, but this card is where a parent's eye already is, so the single
+        most important destination in the product earns a third, closest
+        path rather than making them look away from the child they just
+        confirmed. `Хуваалцах` (submitting an observation from home) has no
+        tile or tab of its own, so it keeps its round button, sized a step
+        above the switcher's own 44px control since it is the one thing on
+        this card meant to be pressed, not read.
       */}
-      <Card pad="roomy" className="flex flex-col gap-4 border-none bg-sky sm:flex-row sm:items-center">
+      <Card pad="roomy" className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <div className="flex min-w-0 items-center gap-4">
           <ChildAvatar child={selected} size={72} className="shrink-0" />
           <div className="min-w-0 flex-1">
@@ -168,27 +163,27 @@ export default function ParentHomePage() {
             href="/notifications"
             label="Ангийн самбар"
             badge={unread && unread.count > 0 ? unread.count : undefined}
-            icon={<Image src="/icons/icon-notice.png" alt="" width={48} height={48} className="size-12" />}
+            icon={<Image src="/icons/icon-notice.png" alt="" width={56} height={56} className="size-14" />}
           />
           <QuickTile
             href={`/children/${selected.id}/attendance`}
             label="Ирц"
-            icon={<Image src="/icons/icon-attendance.png" alt="" width={48} height={48} className="size-12" />}
+            icon={<Image src="/icons/icon-attendance.png" alt="" width={56} height={56} className="size-14" />}
           />
           <QuickTile
             href={`/children/${selected.id}/menu`}
             label="Хоол"
-            icon={<Image src="/icons/icon-menu.png" alt="" width={48} height={48} className="size-12" />}
+            icon={<Image src="/icons/icon-menu.png" alt="" width={56} height={56} className="size-14" />}
           />
           <QuickTile
             href={`/children/${selected.id}/assessments`}
             label="Үнэлгээ"
-            icon={<Image src="/icons/icon-progress.png" alt="" width={48} height={48} className="size-12" />}
+            icon={<Image src="/icons/icon-progress.png" alt="" width={56} height={56} className="size-14" />}
           />
           <SurveyTile childId={selected.id} />
           <ComingSoonTile
             label="Санхүү"
-            icon={<Image src="/icons/icon-finance.png" alt="" width={48} height={48} className="size-12" />}
+            icon={<Image src="/icons/icon-finance.png" alt="" width={56} height={56} className="size-14" />}
           />
         </div>
       </section>
@@ -273,7 +268,7 @@ function SurveyTile({ childId }: { childId: string }) {
       href={`/children/${childId}/surveys`}
       label="Судалгаа"
       badge={pendingCount > 0 ? pendingCount : undefined}
-      icon={<Image src="/icons/icon-survey.png" alt="" width={48} height={48} className="size-12" />}
+      icon={<Image src="/icons/icon-survey.png" alt="" width={56} height={56} className="size-14" />}
     />
   );
 }
@@ -281,14 +276,17 @@ function SurveyTile({ childId }: { childId: string }) {
 /**
  * One tile of the home grid — icon, label, nothing else.
  *
- * ★ `size-12` icon over `text-compact`, centred and two lines deep at most.
+ * ★ `size-14` icon over `text-compact`, centred and two lines deep at most.
  * Three columns at 375px leaves each tile roughly 110px wide, which fits a
  * compound Mongolian label ("Хоол ба цэс" shortened to "Хоол" here) only if
  * it can wrap — `leading-tight` and no `truncate` let it, rather than
- * clipping the one thing the tile exists to say. `py-3.5` rather than the
+ * clipping the one thing the tile exists to say. `py-3` rather than the
  * roomier `py-4` every other card-shaped surface uses: this screen locks
  * body scroll (`HomeBackdrop`), so the icon bump this tile got has to come
  * out of its own padding rather than the page growing past one viewport.
+ * `border-border-soft` rather than the darker `border-border` most cards
+ * use, with `shadow-sm` doing the definition instead — a crisper white than
+ * a visible gray edge gives.
  *
  * `badge` mirrors `UnreadDot` (`app-shell.tsx`) at a smaller scale: a red
  * pill with the count, not a bare dot, for the same reason — a screen reader
@@ -309,7 +307,7 @@ function QuickTile({
     <Link
       href={href}
       aria-label={badge ? `${label}, ${badge} шинэ` : label}
-      className="flex flex-col items-center gap-2 rounded-card border border-border bg-surface px-2 py-3.5 text-center transition-colors hover:border-primary hover:shadow-sm"
+      className="flex flex-col items-center gap-1.5 rounded-card border border-border-soft bg-surface px-2 py-3 text-center shadow-sm transition-colors hover:border-primary hover:shadow-md"
     >
       <span className="relative" aria-hidden="true">
         {icon}
@@ -339,7 +337,7 @@ function ComingSoonTile({ label, icon }: { label: string; icon: ReactNode }) {
   return (
     <div
       aria-disabled="true"
-      className="flex flex-col items-center gap-2 rounded-card border border-dashed border-border bg-canvas px-2 py-3.5 text-center opacity-60"
+      className="flex flex-col items-center gap-1.5 rounded-card border border-dashed border-border bg-canvas px-2 py-3 text-center opacity-60"
     >
       <span aria-hidden="true">{icon}</span>
       <span className="text-compact font-semibold leading-tight text-ink">{label}</span>
@@ -403,7 +401,7 @@ function HomeBackdrop({ children }: { children: ReactNode }) {
         <div className="absolute inset-0 bg-canvas/5" />
         <div className="absolute inset-0 bg-linear-to-b from-transparent from-92% to-canvas to-100%" />
       </div>
-      <div className="relative flex flex-col gap-4 py-1 lg:gap-8 lg:py-2">{children}</div>
+      <div className="relative flex flex-col gap-3 py-1 lg:gap-8 lg:py-2">{children}</div>
     </div>
   );
 }
