@@ -56,13 +56,10 @@ describe("navigation is built from the session's roles", () => {
       </AppLayout>,
     );
 
-    // "Хавтас", then briefly `MY_CHILDREN` ("Миний хүүхдүүд"), renamed again to
-    // "Зураг" to match the parent's own mock-up (`(app)/layout.tsx`'s
-    // `parentNav`). No `/children/mine` stub here, so `myChildren` never
-    // resolves to exactly one child and the tab falls back to its
-    // picker-opening form — the literal label a family with an unstubbed or
-    // still-loading child list actually sees.
-    await waitFor(() => expect(screen.getAllByText("Зураг").length).toBeGreaterThan(0));
+    // "Хавтас", briefly renamed to "Зураг", now `MY_CHILDREN` ("Миний
+    // хүүхдүүд") — the bottom-bar tab that opens the child-picker modal
+    // (`(app)/layout.tsx`'s `parentNav`, `ChildPickerModal`).
+    await waitFor(() => expect(screen.getAllByText("Миний хүүхдүүд").length).toBeGreaterThan(0));
 
     // ★ The review queue is a teacher's job. Offering it to a family would be a
     // menu item that only ever 404s.

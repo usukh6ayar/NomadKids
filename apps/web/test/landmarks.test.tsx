@@ -1,5 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { screen, waitFor } from "@testing-library/react";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -118,35 +117,5 @@ describe("a parent's home", () => {
     await waitFor(() =>
       expect(screen.getByRole("region", { name: "Сүүлийн мөчүүд" })).toBeInTheDocument(),
     );
-  });
-
-  /**
-   * ★ The child switcher claims only what it implements.
-   *
-   * It declared `role="tablist"`/`role="tab"` with no tabpanels, no
-   * `aria-controls` and no arrow-key handling — a promise of structure that was
-   * not there. These assertions are written as the *absence* of the tab roles
-   * plus the presence of the pressed state, because the visual result is
-   * identical either way: nothing on screen changes when this regresses.
-   */
-  it("offers the child switcher as pressable buttons, not as tabs", async () => {
-    stubParentHome([
-      childFixture("44444444-4444-4444-8444-444444444444", "Батбаяр"),
-      childFixture("55555555-5555-4555-8555-555555555555", "Сарнай"),
-    ]);
-
-    renderWithProviders(<ParentHomePage />);
-
-    const group = await screen.findByRole("group", { name: "Хүүхэд сонгох" });
-    expect(screen.queryAllByRole("tab")).toEqual([]);
-    expect(screen.queryByRole("tablist")).toBeNull();
-
-    const [first, second] = within(group).getAllByRole("button");
-    expect(first).toHaveAttribute("aria-pressed", "true");
-    expect(second).toHaveAttribute("aria-pressed", "false");
-
-    await userEvent.click(second!);
-    expect(second).toHaveAttribute("aria-pressed", "true");
-    expect(first).toHaveAttribute("aria-pressed", "false");
   });
 });

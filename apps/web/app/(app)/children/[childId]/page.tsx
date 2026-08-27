@@ -159,9 +159,7 @@ export default function ChildDetailPage() {
           {
             value: ATTENDANCE,
             label: "Ирц",
-            content: (
-              <ChildAttendance childId={childId} isStaff={isStaff} childFirstName={data?.firstName} />
-            ),
+            content: <ChildAttendance childId={childId} isStaff={isStaff} />,
           },
           {
             value: GROWTH,
@@ -213,9 +211,10 @@ export default function ChildDetailPage() {
             value: GALLERY,
             label: GALLERY_LABEL,
             // The same body `/overview` renders standalone (`ChildOverviewContent`)
-            // — inline here, like every other tab on this page, rather than a
-            // route or a dialog on top of it. `showHero={false}`: this page's
-            // own `ChildHeroProfile` is right above the tab strip already.
+            // — inline here, like every other tab on this page, rather than the
+            // photo grid this tab showed before the gallery moved to /overview.
+            // `showHero={false}`: this page's own `ChildHeroProfile` is right
+            // above the tab strip already.
             content: <ChildOverviewContent childId={childId} showHero={false} />,
           },
         ]}
