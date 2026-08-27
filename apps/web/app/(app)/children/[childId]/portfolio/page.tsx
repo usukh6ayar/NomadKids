@@ -14,10 +14,12 @@ import {
   ChevronDown,
   FileText,
   Heart,
+  Images,
   MessageCircle,
   Pencil,
   Ruler,
   Sparkles,
+  Sprout,
   Sun,
   Weight,
 } from "lucide-react";
@@ -31,6 +33,7 @@ import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors, isNotFound } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
+import { PageHeader } from "@/components/shell/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
@@ -38,13 +41,33 @@ import { Field, Input, Textarea } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { AgeSectionShell } from "@/components/child/age-section-shell";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
-import { ChildGallery } from "@/components/media/child-gallery";
 import { ReportDialog } from "@/components/reports/report-dialog";
-import { ageInYears, formatDate, fullName } from "@/lib/format";
+import { ageInYears, formatDate } from "@/lib/format";
 import { PORTFOLIO } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
 
 const PORTFOLIO_AGES = [2, 3, 4, 5] as const;
+
+/**
+ * The tiles at the top of the page — a table of contents for this record
+ * (`STORY_TONE` supplies the colour, defined further down with
+ * `ABOUT_FIELDS`; both are looked up by key at render time, so the
+ * declaration order here does not matter).
+ *
+ * "Миний тухай" and "Хөгжил" are in-page anchors — `#about-me`,
+ * `#development` (the age row below, wrapped so it has one landing point).
+ * "Зургийн цомог" is a real route, not an anchor: the gallery itself moved to
+ * `/overview` (the same page the bottom bar's own "Зураг" tab opens) so that
+ * every "show me the photos" entry point in the product lands on one screen
+ * instead of three that happened to each grow their own copy.
+ */
+function portfolioTiles(childId: string) {
+  return [
+    { href: "#about-me", label: "Миний тухай", Icon: BookOpen, tone: "sky" },
+    { href: "#development", label: "Хөгжил", Icon: Sprout, tone: "mint" },
+    { href: `/children/${childId}/overview`, label: "Зургийн цомог", Icon: Images, tone: "primary" },
+  ] as const;
+}
 
 /*
  * ★ `AGE_TONE` was removed on 2026-08-24, and so was `SectionLink`.
@@ -176,6 +199,8 @@ export default function PortfolioPage() {
         </Link>
       </Button>
 
+      <PageHeader title={PORTFOLIO} />
+
       {/*
         ★ The PDF lives here now, not on the child hub.
 
@@ -211,46 +236,35 @@ export default function PortfolioPage() {
       />
 
       {/*
-        ★ One navigation, not two.
-
-        A row of three jump pills (Миний тухай / Зургийн цомог / Төрсөн өдөр) sat
-        above this, so the screen opened with seven links to content that was
-        directly below them — a full phone screen of navigation for a page you
-        were about to scroll anyway. "Миний тухай" was the first thing under its
-        own pill.
-
-        The age row earns its place where the pills did not: the four years are
-        the one part of this record that is *collapsed*, so these are the only
-        links that reveal something rather than scrolling to it.
+        ★ The sections this record actually has, as tiles — the same
+        icon-grid language `/home` uses (`QuickTile` there), reused here so
+        the two screens read as one product rather than two styles that
+        happen to sit one tap apart. See `portfolioTiles` above for which of
+        these jump in-page and which navigate.
       */}
-      <nav aria-label="Насны хэсгүүд рүү шилжих">
-        <ul className="grid grid-cols-4 gap-2">
-          {PORTFOLIO_AGES.map((age) => {
-            const filled = hasAgeContent(ageProfiles.data?.find((p) => p.age === age));
-            return (
-              <li key={age}>
-                <a
-                  href={`#age-${age}`}
-                  aria-label={`${age} нас — ${filled ? "мэдээлэлтэй" : "хоосон"}`}
+      <nav aria-label="Хэсгүүд рүү шилжих">
+        <ul className="grid grid-cols-3 gap-2.5">
+          {portfolioTiles(childId).map((tile) => (
+            <li key={tile.href}>
+              <Link
+                href={tile.href}
+                className="flex flex-col items-center gap-2 rounded-card border border-border bg-surface px-2 py-4 text-center transition-colors hover:border-primary hover:shadow-sm"
+              >
+                <span
                   className={cn(
-                    "flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-row border px-1.5 py-2 text-caption font-semibold transition-colors md:min-h-[64px] md:px-2 md:text-body",
-                    filled
-                      ? "border-mint bg-mint text-mint-ink hover:opacity-90"
-                      : "border-border bg-surface text-muted hover:border-primary hover:text-ink",
+                    "grid size-11 shrink-0 place-items-center rounded-control",
+                    STORY_TONE[tile.tone],
                   )}
+                  aria-hidden="true"
                 >
-                  <span>{age} нас</span>
-                  {filled ? (
-                    <Check size={14} aria-hidden="true" />
-                  ) : (
-                    // Holds the line's height so the four buttons stay the same
-                    // size whether or not they are filled.
-                    <span aria-hidden="true" className="block h-[14px]" />
-                  )}
-                </a>
-              </li>
-            );
-          })}
+                  <tile.Icon size={22} aria-hidden="true" />
+                </span>
+                <span className="text-compact font-semibold leading-tight text-ink">
+                  {tile.label}
+                </span>
+              </Link>
+            </li>
+          ))}
         </ul>
       </nav>
 
@@ -261,29 +275,62 @@ export default function PortfolioPage() {
         error={aboutMe.error}
       />
 
-      {PORTFOLIO_AGES.map((age) => (
-        <AgeSection
-          key={age}
-          childId={childId}
-          age={age}
-          profile={ageProfiles.data?.find((p) => p.age === age)}
-          isLoading={ageProfiles.isLoading}
-          isGuardian={isGuardian}
-          currentAge={currentAge}
-        />
-      ))}
-
       {/*
-        Photographs and work, between the age timeline and the birthday notes.
-        A guardian may add to it — the API decides that, through
-        `assertCanRecord`; this only decides whether to offer the control.
+        ★ One navigation, not two, inside this wrapper.
+
+        A row of three jump pills (Миний тухай / Зургийн цомог / Төрсөн өдөр) sat
+        above this, so the screen opened with seven links to content that was
+        directly below them — a full phone screen of navigation for a page you
+        were about to scroll anyway. "Миний тухай" was the first thing under its
+        own pill. `PORTFOLIO_TILES`'s "Хөгжил" tile replaces that row at the top
+        of the page; the age row below still earns its place, because the four
+        years are the one part of this record that is *collapsed*, so these are
+        the only links that reveal something rather than scrolling to it.
       */}
-      <ChildGallery
-        childId={childId}
-        childName={fullName(data)}
-        canEdit={isStaff || isGuardian}
-        photoMediaFileId={data.photoMediaFileId}
-      />
+      <div id="development" className="flex scroll-mt-20 flex-col gap-6">
+        <nav aria-label="Насны хэсгүүд рүү шилжих">
+          <ul className="grid grid-cols-4 gap-2">
+            {PORTFOLIO_AGES.map((age) => {
+              const filled = hasAgeContent(ageProfiles.data?.find((p) => p.age === age));
+              return (
+                <li key={age}>
+                  <a
+                    href={`#age-${age}`}
+                    aria-label={`${age} нас — ${filled ? "мэдээлэлтэй" : "хоосон"}`}
+                    className={cn(
+                      "flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-row border px-1.5 py-2 text-caption font-semibold transition-colors md:min-h-[64px] md:px-2 md:text-body",
+                      filled
+                        ? "border-mint bg-mint text-mint-ink hover:opacity-90"
+                        : "border-border bg-surface text-muted hover:border-primary hover:text-ink",
+                    )}
+                  >
+                    <span>{age} нас</span>
+                    {filled ? (
+                      <Check size={14} aria-hidden="true" />
+                    ) : (
+                      // Holds the line's height so the four buttons stay the
+                      // same size whether or not they are filled.
+                      <span aria-hidden="true" className="block h-[14px]" />
+                    )}
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+
+        {PORTFOLIO_AGES.map((age) => (
+          <AgeSection
+            key={age}
+            childId={childId}
+            age={age}
+            profile={ageProfiles.data?.find((p) => p.age === age)}
+            isLoading={ageProfiles.isLoading}
+            isGuardian={isGuardian}
+            currentAge={currentAge}
+          />
+        ))}
+      </div>
 
       <BirthdaySection
         childId={childId}
@@ -325,6 +372,7 @@ const STORY_TONE: Record<string, string> = {
   sky: "bg-sky text-sky-ink",
   sun: "bg-sun text-sun-ink",
   peach: "bg-peach text-peach-ink",
+  primary: "bg-primary-soft text-primary",
 };
 
 function AboutMeSection({

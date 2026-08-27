@@ -17,10 +17,9 @@ import { ChildAttendance } from "@/components/child/child-attendance";
 import { ChildGeneralInfo } from "@/components/child/child-general-info";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { ChildMenu } from "@/components/child/child-menu";
+import { ChildOverviewContent } from "@/components/child/child-overview-content";
 import { ChildTabs } from "@/components/child/child-tabs";
 import { ChildObservations } from "@/components/child/child-observations";
-import { ChildGallery } from "@/components/media/child-gallery";
-import { fullName } from "@/lib/format";
 import { GALLERY as GALLERY_LABEL, PORTFOLIO } from "@/lib/vocabulary";
 
 const GENERAL = "general";
@@ -55,7 +54,7 @@ const GALLERY = "gallery";
 export default function ChildDetailPage() {
   const params = useParams<{ childId: string }>();
   const childId = params.childId;
-  const { hasRole, session } = useSession();
+  const { hasRole } = useSession();
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
 
   const child = useQuery({
@@ -93,12 +92,6 @@ export default function ChildDetailPage() {
   }
 
   const data = child.data;
-
-  // Relationship, not role: a parent who is also a teacher elsewhere is still
-  // this child's guardian, and a revoked guardianship is not one.
-  const isGuardian = data.guardianships.some(
-    (g) => g.guardian?.id === session?.user.id && g.canView !== false,
-  );
 
   /*
    * ★ Each panel fetches only once its tab is open, and nothing here arranges
@@ -147,7 +140,9 @@ export default function ChildDetailPage() {
           {
             value: ATTENDANCE,
             label: "Ирц",
-            content: <ChildAttendance childId={childId} isStaff={isStaff} />,
+            content: (
+              <ChildAttendance childId={childId} isStaff={isStaff} childFirstName={data?.firstName} />
+            ),
           },
           {
             value: MENU,
@@ -163,21 +158,11 @@ export default function ChildDetailPage() {
           {
             value: GALLERY,
             label: GALLERY_LABEL,
-            content:
-              (
-                /*
-                 * `canEdit` is a relationship, not a role: a guardian may add to
-                 * their own child's album, and a revoked one may not. The same
-                 * derivation as `/portfolio`, which is the other way into this
-                 * grid.
-                 */
-                <ChildGallery
-                  childId={childId}
-                  childName={fullName(data)}
-                  canEdit={isStaff || isGuardian}
-                  photoMediaFileId={data.photoMediaFileId}
-                />
-              ),
+            // The same body `/overview` renders standalone (`ChildOverviewContent`)
+            // — inline here, like every other tab on this page, rather than a
+            // route or a dialog on top of it. `showHero={false}`: this page's
+            // own `ChildHeroProfile` is right above the tab strip already.
+            content: <ChildOverviewContent childId={childId} showHero={false} />,
           },
         ]}
       />
