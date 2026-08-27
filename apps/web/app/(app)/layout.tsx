@@ -12,6 +12,7 @@ import {
   NotebookPen,
   Settings,
   ShieldCheck,
+  UtensilsCrossed,
   Users,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -260,7 +261,7 @@ function platformNav(): NavItem[] {
 }
 
 /**
- * Parent navigation — four items: Нүүр / Мэдээ / Зураг / Цэс.
+ * Parent navigation — five items: Нүүр / Мэдээ / Зураг / Хоол / Цэс.
  *
  * ★ Renamed from the brief's original Нүүр / Хавтас / Мэдэгдэл / Профайл to
  * match the parent's own mock-up. "Мэдээ" is `Мэдэгдэл` renamed; the route
@@ -271,18 +272,20 @@ function platformNav(): NavItem[] {
  * "/settings"` regardless of label, so this tab's own name differing from
  * `staffNav`'s "Профайл" costs nothing there.
  *
- * ★★ "Зураг" is a plain link, no popup — it goes straight to the *selected*
- * child's `/overview` (2026-08-28: was always the first child before the
- * switcher existed — see `SelectedChildProvider`). Before `myChildren` has
- * loaded (or for a family connected to none), it falls back to `/children` —
- * a real list, never a dead link.
+ * ★★ "Зураг" and "Хоол" are plain links, no popup — each goes straight to
+ * the *selected* child's `/overview` or `/menu` (2026-08-28: was always the
+ * first child before the switcher existed — see `SelectedChildProvider`).
+ * Before `myChildren` has loaded (or for a family connected to none), both
+ * fall back to `/children` — a real list, never a dead link.
  *
  * "Ирц" and "Хоол ба цэс" briefly had their own bottom-bar tabs, each
  * resolving to a `?tab=` deep link on a confirmed single child or to
- * `/children` otherwise. For any family that isn't exactly one child, that
- * put three of the six tabs on the same destination: a wasted tab, and on
- * that landing page, three simultaneous "current page" highlights. A parent
- * reaches both from their child's own page, or from the home grid.
+ * `/children` otherwise — removed for exactly the reason "Хоол" now avoids:
+ * for any family that isn't exactly one child, that put multiple tabs on the
+ * same `/children` destination with nothing to say which child they meant.
+ * `SelectedChildProvider` is what makes bringing "Хоол" back honest — the
+ * tab now always resolves to one specific child's menu, the same one every
+ * other selected-child destination in the shell already points at.
  *
  * `myChildren` comes from `AppLayout`, which owns the query — this function
  * has no hooks of its own to fetch with.
@@ -293,11 +296,13 @@ function parentNav(
 ): NavItem[] {
   const activeId = selectedChildId ?? myChildren?.[0]?.id;
   const zuragHref = activeId ? `/children/${activeId}/overview` : "/children";
+  const hoolHref = activeId ? `/children/${activeId}/menu` : "/children";
 
   return [
     { href: "/home", label: "Нүүр", icon: <Home {...iconProps} /> },
     { href: "/notifications", label: "Мэдээ", icon: <Bell {...iconProps} />, badge: "unread" },
     { href: zuragHref, label: "Зураг", icon: <Images {...iconProps} /> },
+    { href: hoolHref, label: "Хоол", icon: <UtensilsCrossed {...iconProps} /> },
     { href: "/settings", label: "Цэс", icon: <Menu {...iconProps} /> },
   ];
 }
@@ -334,20 +339,22 @@ function parentNav(
  * parent actually wants instead of a route to a list they then pick from
  * anyway.
  *
- * ★★ Two rows for the *selected* child, not one, since the child hub was
+ * ★★ Three rows for the *selected* child, not one, since the child hub was
  * deleted (2026-08-28) — it used to carry Ерөнхий and Ажиглалт as tabs on one
  * page, and without that page a desktop reader needs both named here
  * directly. `/general`'s icon is the child's own avatar, matching every
- * per-child row this menu has ever shown; the Ажиглалт row underneath it
- * carries a plain glyph instead.
+ * per-child row this menu has ever shown; Ажиглалт and Хоол underneath it
+ * carry a plain glyph instead.
  *
  * ★★★ One child, not every child — 2026-08-28's second change the same day.
  * This mapped every one of a family's children in, which put two identical
  * "Ажиглалт" rows on the menu for any family with two — the same label twice
  * with nothing beside it to say whose. `SelectedChildProvider` (the
  * switcher `app-shell.tsx` renders above this section) is what disambiguates
- * now: one child is "current" at a time, same as `parentNav`'s "Зураг" tab,
- * and this section follows it rather than listing everyone at once.
+ * now: one child is "current" at a time, same as `parentNav`'s "Зураг" and
+ * "Хоол" tabs, and this section follows it rather than listing everyone at
+ * once. "Хоол" joined the same day, mirroring `parentNav`'s own addition —
+ * both surfaces name the same three destinations for the same reason.
  */
 function parentSections(
   myChildren: ChildSummary[] | undefined,
@@ -369,6 +376,11 @@ function parentSections(
               label: "Ажиглалт",
               href: `/children/${selected.id}/observations`,
               icon: <NotebookPen size={18} aria-hidden="true" />,
+            },
+            {
+              label: "Хоол",
+              href: `/children/${selected.id}/menu`,
+              icon: <UtensilsCrossed size={18} aria-hidden="true" />,
             },
           ]
         : [{ label: "Холбогдсон хүүхэд алга" }],

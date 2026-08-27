@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
 import ParentHomePage from "@/app/(app)/home/page";
-import { SelectedChildProvider } from "@/lib/selected-child";
 
 /**
  * Every labelled landmark actually has a name.
@@ -108,14 +107,9 @@ describe("a parent's home", () => {
   });
 
   it("names its sections so a screen reader can announce them", async () => {
-    const childId = "44444444-4444-4444-8444-444444444444";
-    stubParentHome([childFixture(childId, "Батбаяр")]);
+    stubParentHome([childFixture("44444444-4444-4444-8444-444444444444", "Батбаяр")]);
 
-    renderWithProviders(
-      <SelectedChildProvider myChildIds={[childId]}>
-        <ParentHomePage />
-      </SelectedChildProvider>,
-    );
+    renderWithProviders(<ParentHomePage />);
 
     // The name comes from the heading the section already renders — which is
     // the whole point of passing an id rather than repeating the string in an

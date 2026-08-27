@@ -4,6 +4,7 @@ import type { UserEvent } from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 import { vi } from "vitest";
 import { SessionProvider } from "@/lib/auth/session";
+import { SelectedChildProvider } from "@/lib/selected-child";
 import type { Role } from "@kinder/contracts";
 
 /**
@@ -183,7 +184,18 @@ export function renderWithProviders(ui: ReactElement): RenderResult {
   function Wrapper({ children }: { children: ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
-        <SessionProvider>{children}</SessionProvider>
+        <SessionProvider>
+          {/*
+            Always present in production — `AppLayout` mounts it unconditionally
+            for every authenticated route, before any page-level component ever
+            renders (`SelectedChildProvider`, `(app)/layout.tsx`). `myChildIds`
+            is `undefined` here rather than a real list: no test asserts on the
+            switcher through this generic wrapper, and a page that does
+            (`landmarks.test.tsx`, `roles.test.tsx`) wraps itself explicitly with
+            real ids where the assertion needs them.
+          */}
+          <SelectedChildProvider myChildIds={undefined}>{children}</SelectedChildProvider>
+        </SessionProvider>
       </QueryClientProvider>
     );
   }
