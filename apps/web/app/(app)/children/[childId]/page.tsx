@@ -13,7 +13,6 @@ import {
   Plus,
   Ruler,
   ShieldAlert,
-  UtensilsCrossed,
 } from "lucide-react";
 import { childDetailSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
@@ -23,15 +22,12 @@ import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
 import { Menu, type MenuItem } from "@/components/ui/menu";
 import { ErrorState, LoadingState } from "@/components/ui/states";
-import { ChildAssessments } from "@/components/child/child-assessments";
-import { ChildAttendance } from "@/components/child/child-attendance";
 import { ChildGrowth } from "@/components/child/child-growth";
 import { ChildHealth } from "@/components/child/child-health";
 import { ChildIncidents } from "@/components/child/child-incidents";
 import { ChildArtwork } from "@/components/child/child-artwork";
 import { ChildGeneralInfo } from "@/components/child/child-general-info";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
-import { ChildMenu } from "@/components/child/child-menu";
 import { ChildOverviewContent } from "@/components/child/child-overview-content";
 import { ChildTabs } from "@/components/child/child-tabs";
 import { ChildObservations } from "@/components/child/child-observations";
@@ -39,9 +35,6 @@ import { GALLERY as GALLERY_LABEL, PORTFOLIO } from "@/lib/vocabulary";
 
 const GENERAL = "general";
 const OBSERVATIONS = "observations";
-const ASSESSMENTS = "assessments";
-const ATTENDANCE = "attendance";
-const MENU = "menu";
 const GROWTH = "growth";
 const HEALTH = "health";
 const INCIDENTS = "incidents";
@@ -152,16 +145,6 @@ export default function ChildDetailPage() {
             content: <ChildObservations childId={childId} isStaff={isStaff} />,
           },
           {
-            value: ASSESSMENTS,
-            label: "Үнэлгээ",
-            content: <ChildAssessments childId={childId} isStaff={isStaff} />,
-          },
-          {
-            value: ATTENDANCE,
-            label: "Ирц",
-            content: <ChildAttendance childId={childId} isStaff={isStaff} />,
-          },
-          {
             value: GROWTH,
             label: "Өсөлт",
             secondary: true,
@@ -192,20 +175,6 @@ export default function ChildDetailPage() {
             note: "Хөгжлийн харьцуулалт",
             icon: <Palette size={24} aria-hidden />,
             content: <ChildArtwork childId={childId} isStaff={isStaff} />,
-          },
-          {
-            value: MENU,
-            label: "Хоол ба цэс",
-            secondary: true,
-            note: "Долоо хоногийн цэс",
-            icon: <UtensilsCrossed size={24} aria-hidden />,
-            content: (
-              <ChildMenu
-                kindergartenId={data.kindergarten?.id ?? ""}
-                healthNotes={data.healthNotes}
-                isStaff={isStaff}
-              />
-            ),
           },
           {
             value: GALLERY,

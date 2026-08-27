@@ -137,6 +137,11 @@ export default function ParentHomePage() {
         Судалгаа has its own permanent tile — `SurveyTile` below — landing on
         `/children/:id/surveys`, the list this grid's Судалгаа entry could
         not honestly point to before that page existed.
+        Ирц, Хоол and Үнэлгээ each land on their own standalone route now
+        (`/children/:id/attendance`, `/menu`, `/assessments`) rather than a
+        `?tab=` deep link into the child hub — the hub dropped those same
+        three tabs, so a deep link into them would no longer have opened
+        anything.
         Санхүү is a `ComingSoonTile`, not a link: CLAUDE.md §7 keeps finance
         a later phase, and this screen does not get to pull it forward on
         its own — `(app)/layout.tsx`'s sidebar makes the same call there,
@@ -153,17 +158,17 @@ export default function ParentHomePage() {
             icon={<Image src="/icons/icon-notice.webp" alt="" width={44} height={44} className="size-11" />}
           />
           <QuickTile
-            href={`/children/${selected.id}?tab=attendance`}
+            href={`/children/${selected.id}/attendance`}
             label="Ирц"
             icon={<Image src="/icons/icon-attendance.webp" alt="" width={44} height={44} className="size-11" />}
           />
           <QuickTile
-            href={`/children/${selected.id}?tab=menu`}
+            href={`/children/${selected.id}/menu`}
             label="Хоол"
             icon={<Image src="/icons/icon-menu.webp" alt="" width={44} height={44} className="size-11" />}
           />
           <QuickTile
-            href={`/children/${selected.id}`}
+            href={`/children/${selected.id}/assessments`}
             label="Үнэлгээ"
             icon={<Image src="/icons/icon-progress.webp" alt="" width={44} height={44} className="size-11" />}
           />
