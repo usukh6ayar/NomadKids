@@ -3,22 +3,20 @@
 import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
-import { BookOpen, ChevronRight, Plus } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { BookOpen, Plus } from "lucide-react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { z } from "zod";
 import { parentDashboardSchema, surveySchema, unreadCountSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
-import { PageHeader } from "@/components/shell/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
-import { useSession } from "@/lib/auth/session";
 import { excerpt, formatAge, fullName, groupByDay } from "@/lib/format";
-import { GALLERY, PORTFOLIO } from "@/lib/vocabulary";
+import { PORTFOLIO } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
 
 /**
@@ -33,7 +31,6 @@ import { cn } from "@/lib/utils";
  * filtering of its own, which is what keeps the rule in one place.
  */
 export default function ParentHomePage() {
-  const { session } = useSession();
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: qk.dashboard.parent(),
     queryFn: () => get("/dashboard/parent", parentDashboardSchema),
@@ -49,38 +46,9 @@ export default function ParentHomePage() {
     retry: false,
   });
 
-  /**
-   * Which child's summary is expanded.
-   *
-   * `null` means "the first one". A family with one child — most of them —
-   * never sees a switcher at all; with two or more it becomes a row of chips,
-   * which is one tap and no menu.
-   */
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  /*
-   * ★ `PageHeader`, and a title that says something.
-   *
-   * Four branches of this component each hand-rolled `<h1>Нүүр</h1>` — a
-   * navigation label used as a page title, which tells a parent nothing they
-   * did not already know from tapping it, in typography that matched neither
-   * `PageHeader` nor the other branches.
-   *
-   * `AppLayout` holds the whole tree behind a loading state until the session
-   * resolves, so the name is present on the first render here and the greeting
-   * does not appear a beat late.
-   */
-  const header = (
-    <PageHeader
-      title={session?.user.firstName ? `Сайн байна уу, ${session.user.firstName}` : "Сайн байна уу"}
-      lede="Хүүхдийнхээ сүүлийн мэдээллийг эндээс харна."
-    />
-  );
-
   if (isLoading) {
     return (
       <HomeBackdrop>
-        {header}
         <LoadingState rows={3} />
       </HomeBackdrop>
     );
@@ -89,7 +57,6 @@ export default function ParentHomePage() {
   if (isError) {
     return (
       <HomeBackdrop>
-        {header}
         <ErrorState
           description={errorMessage(error)}
           action={
@@ -107,7 +74,6 @@ export default function ParentHomePage() {
   if (children.length === 0) {
     return (
       <HomeBackdrop>
-        {header}
         <EmptyState
           title="Хүүхэд холбогдоогүй байна"
           description="Танд холбогдсон хүүхэд байхгүй байна. Цэцэрлэгийн багштайгаа холбогдоно уу."
@@ -116,171 +82,98 @@ export default function ParentHomePage() {
     );
   }
 
-  const selected = children.find((c) => c.id === selectedId) ?? children[0]!;
+  const selected = children[0]!;
 
   return (
     <HomeBackdrop>
-      {header}
-
       {/*
-        ★ A group of toggles, not a tab set.
-
-        These carried `role="tablist"` and `role="tab"` with `aria-selected`, and
-        none of what those roles promise was here: no `tabpanel`, no
-        `aria-controls`, no roving tabindex, no arrow-key movement. A screen
-        reader announced "tab, 1 of 3" and then the arrow keys did nothing, and a
-        keyboard user had to Tab past every child instead of one stop for the
-        group. Claiming a pattern is worse than not claiming one — it tells
-        somebody a structure exists and then withholds it.
-
-        `aria-pressed` is what these actually are: buttons that stay in.
+        ★ A plain card, and two actions — both buttons, neither a link styled
+        to look like one. `PORTFOLIO` moved back in from the grid below: it
+        still leads that grid *and* has the bottom bar's "Зураг" tab, but this
+        card is where a parent's eye already is, so the single most important
+        destination in the product earns a third, closest path rather than
+        making them look away from the child they just confirmed. `Хуваалцах`
+        (submitting an observation from home) has no tile or tab of its own,
+        so it keeps its round button — `size-12` rather than the switcher's
+        `size-11`, since it is the one thing on this card meant to be
+        pressed, not read.
       */}
-      {children.length > 1 ? (
-        <div
-          role="group"
-          aria-label="Хүүхэд сонгох"
-          // Scrolls inside itself rather than widening the page — four children
-          // with long names would otherwise push the layout sideways at 375px.
-          className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0"
-        >
-          {children.map((child) => {
-            const active = child.id === selected.id;
-            return (
-              <button
-                key={child.id}
-                type="button"
-                aria-pressed={active}
-                onClick={() => setSelectedId(child.id)}
-                className={cn(
-                  "flex min-h-[44px] shrink-0 items-center gap-2 rounded-pill border px-3 py-2 text-body font-medium",
-                  active
-                    ? "border-primary bg-primary-soft text-primary"
-                    : "border-border bg-surface text-muted",
-                )}
-              >
-                <ChildAvatar child={child} size={28} />
-                <span className="max-w-[140px] truncate">{child.firstName}</span>
-              </button>
-            );
-          })}
+      <Card pad="roomy" className="flex flex-col gap-3.5 sm:flex-row sm:items-center">
+        <div className="flex min-w-0 items-center gap-3.5">
+          <ChildAvatar child={selected} size={64} className="shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-title font-semibold text-ink">{fullName(selected)}</p>
+            <p className="text-body text-muted">
+              {[formatAge(selected.dateOfBirth), selected.group?.name].filter(Boolean).join(" · ")}
+            </p>
+          </div>
         </div>
-      ) : null}
 
-      <Card pad="roomy" className="flex flex-wrap items-center gap-4">
-        <ChildAvatar child={selected} size={56} />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-title font-semibold text-ink">{fullName(selected)}</p>
-          <p className="text-body text-muted">
-            {[formatAge(selected.dateOfBirth), selected.group?.name].filter(Boolean).join(" · ")}
-          </p>
-        </div>
-        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-          <Button asChild size="sm">
+        <div className="flex items-center gap-2 sm:ml-auto sm:shrink-0">
+          <Button asChild size="sm" className="flex-1 sm:flex-none">
             <Link href={`/children/${selected.id}/portfolio`}>
-              <BookOpen size={18} />
+              <BookOpen size={18} aria-hidden="true" />
               {PORTFOLIO}
             </Link>
           </Button>
-          <Button asChild variant="secondary" size="sm">
-            <Link href={`/children/${selected.id}/observations/new`}>
-              <Plus size={18} />
-              Хуваалцах
-            </Link>
-          </Button>
+          <Link
+            href={`/children/${selected.id}/observations/new`}
+            aria-label="Ажиглалт хуваалцах"
+            className="grid size-12 shrink-0 place-items-center rounded-pill bg-primary text-primary-ink shadow-md transition-colors hover:bg-primary-hover"
+          >
+            <Plus size={24} aria-hidden="true" />
+          </Link>
         </div>
       </Card>
 
       {/*
-        ★ Entry points, restyled to the reference's icon-circle row —
-        `RowCard`'s own radius and border, applied straight to the `Link` since
-        the whole row is the click target, matching `ChildRow` elsewhere.
-        Every reference card that names an out-of-MVP feature (Санхүү, Чат —
-        CLAUDE.md §7) is left out rather than dimmed or marked "удахгүй": the
-        sidebar's own rule already forbids a menu entry that goes nowhere, and
-        the same reasoning holds here. Ирц and Хоол ба цэс are no longer
-        among them — both shipped 2026-08-24. Судалгаа shipped the same day
-        too, but earns no permanent slot here at all — see `SurveyPrompt`
-        below, which renders only while an unanswered one actually exists,
-        matching the reference's own "Бөглөх судалгаа" card.
+        ★ A 3-column icon grid matching the parent's own mock-up: Ангийн
+        самбар, Ирц, Хоол, Үнэлгээ, Судалгаа, Санхүү. The icon assets
+        (icon-notice.webp, icon-attendance.webp, …) already carry their own
+        colour per tile, so the grid reads as varied as the reference's
+        icon-square grid without inventing a new colour system for it.
+        `PORTFOLIO` is not a tile here — it is a button on the hero card
+        above and the bottom bar's "Зураг" tab (`(app)/layout.tsx`'s
+        `parentNav`); a third entry point on this grid would be the same
+        destination three times on one screen.
+        Судалгаа has its own permanent tile — `SurveyTile` below — landing on
+        `/children/:id/surveys`, the list this grid's Судалгаа entry could
+        not honestly point to before that page existed.
+        Санхүү is a `ComingSoonTile`, not a link: CLAUDE.md §7 keeps finance
+        a later phase, and this screen does not get to pull it forward on
+        its own — `(app)/layout.tsx`'s sidebar makes the same call there,
+        naming it without a link rather than leaving it out entirely, which
+        is the mock-up's own request for this tile specifically.
       */}
       <section aria-labelledby="board-heading">
-        <SectionHeader id="board-heading" title="Ангийн самбар" />
-        <div className="flex flex-col gap-2">
-          <Link
+        <SectionHeader id="board-heading" title="Түргэн холбоос" />
+        <div className="grid grid-cols-3 gap-2.5">
+          <QuickTile
             href="/notifications"
-            className="flex min-h-16 items-center gap-3 rounded-row border border-border bg-surface px-4 py-3 transition-colors hover:border-primary"
-          >
-            <Image src="/icons/icon-notice.webp" alt="" width={40} height={40} className="size-10 shrink-0" />
-            <span className="min-w-0 flex-1">
-              <span className="block font-semibold text-ink">
-                {unread && unread.count > 0 ? `${unread.count} шинэ мэдээ байна` : "Шинэ мэдээ алга"}
-              </span>
-              <span className="block text-body text-muted">Ангийн сүүлийн мэдээллийг харах</span>
-            </span>
-            <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden />
-          </Link>
-
-          <SurveyPrompt childId={selected.id} />
-        </div>
-      </section>
-
-      <section aria-labelledby="highlights-heading">
-        <SectionHeader id="highlights-heading" title="Оюун-ийн мэдээлэл" />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Link
-            href={`/children/${selected.id}/portfolio`}
-            className="flex items-center gap-3 rounded-row border border-border bg-surface px-4 py-4 transition-colors hover:border-primary"
-          >
-            <Image src="/icons/icon-portfolio.webp" alt="" width={40} height={40} className="size-10 shrink-0" />
-            <span className="min-w-0 flex-1">
-              <span className="block font-semibold text-ink">{PORTFOLIO}</span>
-              <span className="block text-body text-muted">{GALLERY}, "Миний тухай", хөгжлийн түүх</span>
-            </span>
-            <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden />
-          </Link>
-
-          <Link
-            href={`/children/${selected.id}`}
-            className="flex items-center gap-3 rounded-row border border-border bg-surface px-4 py-4 transition-colors hover:border-primary"
-          >
-            <Image src="/icons/icon-progress.webp" alt="" width={40} height={40} className="size-10 shrink-0" />
-            <span className="min-w-0 flex-1">
-              <span className="block font-semibold text-ink">Хөгжил ба цэцэрлэгтээ</span>
-              <span className="block text-body text-muted">Ажиглалт, хөгжлийн ахиц</span>
-            </span>
-            <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden />
-          </Link>
-
-          {/*
-            Ирц shipped 2026-08-24, pulled forward by explicit client request —
-            see `(app)/layout.tsx`'s `staffSections` comment. The other four
-            reference cards (Хоол ба цэс, Санхүү, Чат, Судалгаа) stay out until
-            each one is real, same reasoning as the sidebar's no-dead-entry rule.
-          */}
-          <Link
+            label="Ангийн самбар"
+            badge={unread && unread.count > 0 ? unread.count : undefined}
+            icon={<Image src="/icons/icon-notice.webp" alt="" width={44} height={44} className="size-11" />}
+          />
+          <QuickTile
             href={`/children/${selected.id}?tab=attendance`}
-            className="flex items-center gap-3 rounded-row border border-border bg-surface px-4 py-4 transition-colors hover:border-primary"
-          >
-            <Image src="/icons/icon-attendance.webp" alt="" width={40} height={40} className="size-10 shrink-0" />
-            <span className="min-w-0 flex-1">
-              <span className="block font-semibold text-ink">Ирц</span>
-              <span className="block text-body text-muted">Өдөр тутмын ирц, чөлөөний хүсэлт</span>
-            </span>
-            <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden />
-          </Link>
-
-          {/* Хоол ба цэс shipped 2026-08-24, same round as Ирц. */}
-          <Link
+            label="Ирц"
+            icon={<Image src="/icons/icon-attendance.webp" alt="" width={44} height={44} className="size-11" />}
+          />
+          <QuickTile
             href={`/children/${selected.id}?tab=menu`}
-            className="flex items-center gap-3 rounded-row border border-border bg-surface px-4 py-4 transition-colors hover:border-primary"
-          >
-            <Image src="/icons/icon-menu.webp" alt="" width={40} height={40} className="size-10 shrink-0" />
-            <span className="min-w-0 flex-1">
-              <span className="block font-semibold text-ink">Хоол ба цэс</span>
-              <span className="block text-body text-muted">Долоо хоногийн цэс</span>
-            </span>
-            <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden />
-          </Link>
+            label="Хоол"
+            icon={<Image src="/icons/icon-menu.webp" alt="" width={44} height={44} className="size-11" />}
+          />
+          <QuickTile
+            href={`/children/${selected.id}`}
+            label="Үнэлгээ"
+            icon={<Image src="/icons/icon-progress.webp" alt="" width={44} height={44} className="size-11" />}
+          />
+          <SurveyTile childId={selected.id} />
+          <ComingSoonTile
+            label="Санхүү"
+            icon={<Image src="/icons/icon-finance.webp" alt="" width={44} height={44} className="size-11" />}
+          />
         </div>
       </section>
 
@@ -432,14 +325,15 @@ export default function ParentHomePage() {
 const activeSurveysSchema = z.array(surveySchema);
 
 /**
- * "Бөглөх судалгаа" — present only while it is true.
+ * "Судалгаа" — a permanent tile, unlike the card it replaces.
  *
- * ★ Renders nothing (not a disabled or greyed row) when there is no
- * unanswered survey for the selected child. A permanent card here would be
- * exactly the dead menu entry `(app)/layout.tsx`'s sidebar rule forbids;
- * this is the same rule applied to a card instead of a nav item.
+ * ★ Always a real link now: `/children/:id/surveys` lists every survey for
+ * this child, answered or not, so — unlike the old single-pending-survey
+ * card — this tile is never one this family cannot act on. The badge counts
+ * only the unanswered ones, the same "a number, not a dot" rule `UnreadDot`
+ * and `QuickTile`'s own `badge` prop already follow.
  */
-function SurveyPrompt({ childId }: { childId: string }) {
+function SurveyTile({ childId }: { childId: string }) {
   const { data } = useQuery({
     queryKey: qk.childSurveys(childId),
     queryFn: () => get(`/children/${childId}/surveys`, activeSurveysSchema),
@@ -447,21 +341,82 @@ function SurveyPrompt({ childId }: { childId: string }) {
     retry: false,
   });
 
-  const pending = data?.find((survey) => !survey.respondedByMe);
-  if (!pending) return null;
+  const pendingCount = data?.filter((survey) => !survey.respondedByMe).length ?? 0;
 
   return (
+    <QuickTile
+      href={`/children/${childId}/surveys`}
+      label="Судалгаа"
+      badge={pendingCount > 0 ? pendingCount : undefined}
+      icon={<Image src="/icons/icon-survey.webp" alt="" width={44} height={44} className="size-11" />}
+    />
+  );
+}
+
+/**
+ * One tile of the home grid — icon, label, nothing else.
+ *
+ * ★ `size-11` icon over `text-compact`, centred and two lines deep at most.
+ * Three columns at 375px leaves each tile roughly 110px wide, which fits a
+ * compound Mongolian label ("Хоол ба цэс" shortened to "Хоол" here) only if
+ * it can wrap — `leading-tight` and no `truncate` let it, rather than
+ * clipping the one thing the tile exists to say.
+ *
+ * `badge` mirrors `UnreadDot` (`app-shell.tsx`) at a smaller scale: a red
+ * pill with the count, not a bare dot, for the same reason — a screen reader
+ * gets "3", not "something changed".
+ */
+function QuickTile({
+  href,
+  label,
+  icon,
+  badge,
+}: {
+  href: string;
+  label: string;
+  icon: ReactNode;
+  badge?: number;
+}) {
+  return (
     <Link
-      href={`/children/${childId}/surveys/${pending.id}`}
-      className="flex items-center gap-3 rounded-row border border-border bg-surface px-4 py-4 transition-colors hover:border-primary"
+      href={href}
+      aria-label={badge ? `${label}, ${badge} шинэ` : label}
+      className="flex flex-col items-center gap-2 rounded-card border border-border bg-surface px-2 py-4 text-center transition-colors hover:border-primary hover:shadow-sm"
     >
-      <Image src="/icons/icon-survey.webp" alt="" width={40} height={40} className="size-10 shrink-0" />
-      <span className="min-w-0 flex-1">
-        <span className="block font-semibold text-ink">Бөглөх судалгаа</span>
-        <span className="block truncate text-body text-muted">{pending.title}</span>
+      <span className="relative" aria-hidden="true">
+        {icon}
+        {badge ? (
+          <span className="absolute -right-1.5 -top-1.5 flex min-w-[18px] items-center justify-center rounded-pill bg-danger px-1 text-caption font-bold leading-[18px] text-white">
+            {badge > 99 ? "99+" : badge}
+          </span>
+        ) : null}
       </span>
-      <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden />
+      <span className="text-compact font-semibold leading-tight text-ink">{label}</span>
     </Link>
+  );
+}
+
+/**
+ * A tile that names a feature without linking to it — Санхүү, currently.
+ *
+ * ★ The sidebar's own device (`(app)/layout.tsx`'s `parentSections` doc
+ * comment), applied to a grid tile instead of a menu row: CLAUDE.md §7 keeps
+ * finance a later phase, and there is no `/finance` screen for this tile to
+ * open. A `<div>`, not a `<Link>` — a route that 404s teaches someone the
+ * product is broken, same reasoning as every other no-dead-link spot in this
+ * codebase. Muted and non-interactive (`aria-disabled`, no hover state) so it
+ * reads as "not yet" rather than as a tile that failed to respond to a tap.
+ */
+function ComingSoonTile({ label, icon }: { label: string; icon: ReactNode }) {
+  return (
+    <div
+      aria-disabled="true"
+      className="flex flex-col items-center gap-2 rounded-card border border-dashed border-border bg-canvas px-2 py-4 text-center opacity-60"
+    >
+      <span aria-hidden="true">{icon}</span>
+      <span className="text-compact font-semibold leading-tight text-ink">{label}</span>
+      <span className="text-caption text-muted">Удахгүй</span>
+    </div>
   );
 }
 
