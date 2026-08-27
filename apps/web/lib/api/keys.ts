@@ -44,6 +44,21 @@ export const qk = {
   attendanceSummary: (childId: string, month: string) =>
     ["child", childId, "attendance", "summary", month] as const,
   attendanceRequests: (childId: string) => ["child", childId, "attendance-requests"] as const,
+  growth: (childId: string) => ["child", childId, "growth"] as const,
+  milestones: (childId: string) => ["child", childId, "milestones"] as const,
+  health: (childId: string) => ["child", childId, "health"] as const,
+  incidents: (childId: string) => ["child", childId, "incidents"] as const,
+  artwork: (childId: string) => ["child", childId, "artwork"] as const,
+  consent: (childId: string) => ["child", childId, "consent"] as const,
+  audit: (filters: Record<string, unknown> = {}) => ["admin", "audit", filters] as const,
+  configDomains: (kindergartenId: string) =>
+    ["admin", "config", "domains", kindergartenId] as const,
+  configLevels: (kindergartenId: string) => ["admin", "config", "levels", kindergartenId] as const,
+  configTypes: (kindergartenId: string) => ["admin", "config", "types", kindergartenId] as const,
+  documents: (kindergartenId: string, filters: Record<string, unknown> = {}) =>
+    ["documents", kindergartenId, filters] as const,
+  documentCategories: (kindergartenId: string) =>
+    ["documents", kindergartenId, "categories"] as const,
   groupAttendance: (groupId: string, date: string) =>
     ["group", groupId, "attendance", date] as const,
   attendanceReviewQueue: (filters: Record<string, unknown> = {}) =>
@@ -92,4 +107,6 @@ export const qk = {
 
   platformKindergartens: (filters: Record<string, unknown> = {}) =>
     ["platform", "kindergartens", filters] as const,
+  platformKindergarten: (id: string) => ["platform", "kindergartens", "detail", id] as const,
+  platformStats: () => ["platform", "stats"] as const,
 } as const;

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Plus, Search } from "lucide-react";
 import { useEffect, useState } from "react";
-import { childSummarySchema, paginated, rosterSummarySchema } from "@kinder/contracts";
+import { childSummarySchema, paginated, rosterSummarySchema, SEX_LABEL } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
@@ -15,7 +15,7 @@ import { useSession } from "@/lib/auth/session";
 import { useDebounced } from "@/lib/use-debounced";
 import { Button } from "@/components/ui/button";
 import { Card, RowList } from "@/components/ui/card";
-import { Input } from "@/components/ui/field";
+import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
 import { formatAge, formatAgeFromMonths, fullName } from "@/lib/format";
@@ -68,6 +68,7 @@ function StaffChildren() {
 
   const [query, setQuery] = useState(urlQuery);
   const [page, setPage] = useState(1);
+  const [facets, setFacets] = useState<RosterFacets>(NO_FACETS);
   const search = useDebounced(query.trim());
 
   // Only when `?q=` itself changes — arriving from the header, or Back to an
@@ -78,13 +79,14 @@ function StaffChildren() {
     setPage(1);
   }, [urlQuery]);
 
-  const filters = { q: search || undefined, page, pageSize: 25 };
+  const filters = { q: search || undefined, ...facets, page, pageSize: 25 };
 
   const { data, isLoading, isError, error, refetch, isPlaceholderData } = useQuery({
     queryKey: qk.children(filters),
     queryFn: () => {
-      const params = new URLSearchParams({ page: String(page), pageSize: "25" });
-      if (search) params.set("q", search);
+      const params = rosterParams(search, facets);
+      params.set("page", String(page));
+      params.set("pageSize", "25");
       return get(`/children?${params}`, listSchema);
     },
     // Keeps the previous page visible while the next loads, so the list does
@@ -118,7 +120,17 @@ function StaffChildren() {
         }
       />
 
-      <RosterSummary search={search} />
+      <RosterSummary search={search} facets={facets} />
+
+      <RosterFilters
+        facets={facets}
+        onChange={(next) => {
+          setFacets(next);
+          // A narrowed roster starts at page 1 — otherwise filtering from page
+          // three shows an empty result that reads as "no such children".
+          setPage(1);
+        }}
+      />
 
       <div className="relative">
         <Search
@@ -209,6 +221,201 @@ function StaffChildren() {
   );
 }
 
+// ── Filters and sorting — RFP §11 ───────────────────────────────────────────
+
+/**
+ * Everything the roster query carries besides the search term and the page.
+ *
+ * One object rather than five `useState`s so that "narrowing changed, go back
+ * to page one" is a single call, and so the list and its summary are passed
+ * literally the same value.
+ */
+export interface RosterFacets {
+  sex?: "MALE" | "FEMALE";
+  ageMin?: number;
+  ageMax?: number;
+  sort: "name" | "dateOfBirth" | "age" | "updatedAt";
+  order: "asc" | "desc";
+}
+
+const NO_FACETS: RosterFacets = { sort: "name", order: "asc" };
+
+/**
+ * The query string for both roster requests.
+ *
+ * ★ Written once because the two must not diverge.
+ *
+ * `RosterSummary` heads the list with a total and a mean age, over the *same*
+ * filter. It built its own params from `search` alone; adding sex and an age
+ * range to the list only would make the header report twelve children above a
+ * list showing four. The API extracted `childFilters` one layer down for the
+ * same reason.
+ *
+ * `includeSort` is false for the summary: an order changes nothing about a
+ * count, and sending it would put a meaningless key in the query cache.
+ */
+function rosterParams(
+  search: string,
+  facets: RosterFacets,
+  options: { includeSort?: boolean } = {},
+): URLSearchParams {
+  const params = new URLSearchParams();
+  if (search) params.set("q", search);
+  if (facets.sex) params.set("sex", facets.sex);
+  if (facets.ageMin !== undefined) params.set("ageMin", String(facets.ageMin));
+  if (facets.ageMax !== undefined) params.set("ageMax", String(facets.ageMax));
+
+  if (options.includeSort ?? true) {
+    params.set("sort", facets.sort);
+    params.set("order", facets.order);
+  }
+  return params;
+}
+
+/** The sort options, as one control: the field and its direction together. */
+const SORT_CHOICES: {
+  value: string;
+  label: string;
+  sort: RosterFacets["sort"];
+  order: RosterFacets["order"];
+}[] = [
+  { value: "name:asc", label: "Нэр (А–Я)", sort: "name", order: "asc" },
+  { value: "name:desc", label: "Нэр (Я–А)", sort: "name", order: "desc" },
+  { value: "age:asc", label: "Нас (багаас их)", sort: "age", order: "asc" },
+  { value: "age:desc", label: "Нас (ихээс бага)", sort: "age", order: "desc" },
+  { value: "dateOfBirth:asc", label: "Төрсөн огноо (эртнээс)", sort: "dateOfBirth", order: "asc" },
+  { value: "updatedAt:desc", label: "Сүүлд шинэчлэгдсэн", sort: "updatedAt", order: "desc" },
+];
+
+/**
+ * Sex, an age range and an order — RFP §11.
+ *
+ * ★ One row of selects, not a filter drawer. Three controls do not earn a modal,
+ * and on a phone a drawer hides the fact that a filter is active — which is how
+ * a teacher concludes that half their group has vanished.
+ *
+ * The age bounds go to 7 rather than stopping at the portfolio's 2–5: a roster
+ * holds children who arrived before their second birthday and others who have
+ * not yet left at six, and a control that cannot express them hides real rows.
+ */
+function RosterFilters({
+  facets,
+  onChange,
+}: {
+  facets: RosterFacets;
+  onChange: (next: RosterFacets) => void;
+}) {
+  const active =
+    facets.sex !== undefined || facets.ageMin !== undefined || facets.ageMax !== undefined;
+
+  return (
+    <section aria-label="Шүүлт, эрэмбэ" className="flex flex-wrap items-end gap-3">
+      <Field label="Хүйс" className="min-w-[140px] flex-1">
+        {({ id, describedBy }) => (
+          <Select
+            id={id}
+            aria-describedby={describedBy}
+            value={facets.sex ?? ""}
+            onChange={(e) =>
+              onChange({
+                ...facets,
+                sex: e.target.value ? (e.target.value as "MALE" | "FEMALE") : undefined,
+              })
+            }
+          >
+            <option value="">Бүгд</option>
+            <option value="MALE">{SEX_LABEL.MALE}</option>
+            <option value="FEMALE">{SEX_LABEL.FEMALE}</option>
+          </Select>
+        )}
+      </Field>
+
+      <Field label="Хамгийн бага нас" className="min-w-[120px] flex-1">
+        {({ id, describedBy }) => (
+          <Select
+            id={id}
+            aria-describedby={describedBy}
+            value={facets.ageMin ?? ""}
+            onChange={(e) =>
+              onChange({
+                ...facets,
+                ageMin: e.target.value ? Number(e.target.value) : undefined,
+              })
+            }
+          >
+            <option value="">Хязгааргүй</option>
+            {AGE_CHOICES.map((age) => (
+              <option key={age} value={age}>
+                {age} нас
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
+
+      <Field label="Хамгийн их нас" className="min-w-[120px] flex-1">
+        {({ id, describedBy }) => (
+          <Select
+            id={id}
+            aria-describedby={describedBy}
+            value={facets.ageMax ?? ""}
+            onChange={(e) =>
+              onChange({
+                ...facets,
+                ageMax: e.target.value ? Number(e.target.value) : undefined,
+              })
+            }
+          >
+            <option value="">Хязгааргүй</option>
+            {AGE_CHOICES.map((age) => (
+              <option key={age} value={age}>
+                {age} нас
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
+
+      <Field label="Эрэмбэ" className="min-w-[180px] flex-1">
+        {({ id, describedBy }) => (
+          <Select
+            id={id}
+            aria-describedby={describedBy}
+            value={`${facets.sort}:${facets.order}`}
+            onChange={(e) => {
+              const choice = SORT_CHOICES.find((c) => c.value === e.target.value);
+              if (choice) onChange({ ...facets, sort: choice.sort, order: choice.order });
+            }}
+          >
+            {SORT_CHOICES.map((choice) => (
+              <option key={choice.value} value={choice.value}>
+                {choice.label}
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
+
+      {/*
+        Only when something is actually narrowed. A permanently visible "clear"
+        beside untouched controls is noise, and its absence is how you can tell
+        at a glance that the list is showing everyone.
+      */}
+      {active ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onChange({ ...NO_FACETS, sort: facets.sort, order: facets.order })}
+        >
+          Шүүлт цэвэрлэх
+        </Button>
+      ) : null}
+    </section>
+  );
+}
+
+const AGE_CHOICES = [1, 2, 3, 4, 5, 6, 7] as const;
+
 /**
  * One child.
  *
@@ -271,14 +478,17 @@ function ChildRow({
  * answers both over the whole filtered roster, and the endpoint shares its
  * `where` with the list so the header cannot contradict the rows.
  */
-function RosterSummary({ search }: { search: string }) {
-  const filters = { q: search || undefined };
+function RosterSummary({ search, facets }: { search: string; facets: RosterFacets }) {
+  const filters = { q: search || undefined, ...facets };
 
   const { data } = useQuery({
     queryKey: qk.rosterSummary(filters),
     queryFn: () => {
-      const params = new URLSearchParams();
-      if (search) params.set("q", search);
+      // ★ The same builder the list uses. Sorting is dropped by `rosterParams`
+      // for this call — it changes an order and means nothing to a total — but
+      // every filter is shared, so the header cannot narrow differently from
+      // the rows beneath it.
+      const params = rosterParams(search, facets, { includeSort: false });
       const query = params.toString();
       return get(`/children/summary${query ? `?${query}` : ""}`, rosterSummarySchema);
     },

@@ -255,3 +255,47 @@ function decodeMultipartFilename(name: string): string {
     return name;
   }
 }
+
+// ── PDF — RFP §9's document library ──────────────────────────────────────────
+
+/** A document may be larger than a photograph; a curriculum runs to megabytes. */
+export const MAX_PDF_BYTES = 25 * 1024 * 1024;
+
+/**
+ * Validates a PDF **by content**, never by extension — CLAUDE.md §1.6.
+ *
+ * ★ There is no re-encode, and that is the difference from an image.
+ *
+ * `validateImageUpload` passes every photograph through sharp, which is what
+ * strips EXIF. A PDF cannot be normalised that way without a renderer, and
+ * running one over untrusted input to sanitise it would be a larger attack
+ * surface than the one it closes. So this checks the signature and the size and
+ * stores the bytes as they arrived — which is safe because of what happens
+ * next: the object goes to a private bucket, and `/media/:id` serves it behind
+ * an authorization check with `Content-Type` and `Content-Disposition` set by
+ * us, never by the uploader.
+ *
+ * ★★ `%PDF-` may be preceded by junk in the wild, and this refuses that.
+ *
+ * The specification allows a header offset; readers tolerate it. Accepting it
+ * here would mean accepting a file that is *also* a valid something else — a
+ * polyglot — and a document library is not the place to be generous about what
+ * a file might additionally be.
+ */
+export async function validatePdfUpload(
+  input: Buffer,
+): Promise<{ buffer: Buffer; mimeType: "application/pdf"; sizeBytes: number }> {
+  if (input.length > MAX_PDF_BYTES) {
+    throw new UploadRejected(
+      `Файл хэт том байна. Дээд хэмжээ ${Math.floor(MAX_PDF_BYTES / 1024 / 1024)} MB`,
+    );
+  }
+
+  // "%PDF-" at offset zero, and nothing before it.
+  const header = input.subarray(0, 5).toString("latin1");
+  if (header !== "%PDF-") {
+    throw new UploadRejected("Зөвхөн PDF файл оруулна уу");
+  }
+
+  return { buffer: input, mimeType: "application/pdf", sizeBytes: input.length };
+}

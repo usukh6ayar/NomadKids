@@ -890,3 +890,189 @@ describe("a guardian contributing to the album", () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Tenant images — RFP §3.2 (лого, ангийн зураг), §3.3 (профайл зураг)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * These three carry no `childId`, so `canAccessChild` decides nothing about
+ * them and membership of the file's own kindergarten is the only thing
+ * protecting them. That makes the cross-tenant cases below load-bearing rather
+ * than ceremonial.
+ */
+describe("kindergarten logo", () => {
+  it("an administrator uploads one, and the kindergarten points at it", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/logo`),
+      adminA,
+    ).attach("file", await photoBytes("blue"), "лого.jpg");
+
+    expect(res.status).toBe(201);
+    expect(res.body.purpose).toBe("KINDERGARTEN_LOGO");
+    // Never in a response body — the bucket is private and a URL must only ever
+    // come from `/media/:id`.
+    expect(res.body.storageKey).toBeUndefined();
+
+    const kindergarten = await db.kindergarten.findUniqueOrThrow({
+      where: { id: a.kindergarten.id },
+    });
+    expect(kindergarten.logoMediaFileId).toBe(res.body.id);
+  });
+
+  /**
+   * ★ The column is `@unique`, so a replacement displaces rather than adds.
+   *
+   * Without the soft delete the old row would survive pointing at bytes in R2
+   * that nothing serves and no sweep collects — and because both columns are
+   * unique, a second row claiming the pointer is a constraint violation rather
+   * than a silent leak. Asserted on both halves.
+   */
+  it("replacing the logo retires the previous file", async () => {
+    const first = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/logo`),
+      adminA,
+    ).attach("file", await photoBytes("blue"), "хуучин.jpg");
+
+    const second = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/logo`),
+      adminA,
+    ).attach("file", await photoBytes("green"), "шинэ.jpg");
+
+    expect(second.status).toBe(201);
+
+    const previous = await db.mediaFile.findUniqueOrThrow({ where: { id: first.body.id } });
+    expect(previous.deletedAt).not.toBeNull();
+
+    const kindergarten = await db.kindergarten.findUniqueOrThrow({
+      where: { id: a.kindergarten.id },
+    });
+    expect(kindergarten.logoMediaFileId).toBe(second.body.id);
+  });
+
+  it("a teacher cannot upload one", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/logo`),
+      teacherA,
+    ).attach("file", await photoBytes(), "лого.jpg");
+    expect(res.status).toBe(404);
+  });
+
+  it("an administrator of another kindergarten gets 404", async () => {
+    const adminB = await login(app, b.adminUser.username);
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/logo`),
+      adminB,
+    ).attach("file", await photoBytes(), "лого.jpg");
+
+    expect(res.status).toBe(404);
+    const kindergarten = await db.kindergarten.findUniqueOrThrow({
+      where: { id: a.kindergarten.id },
+    });
+    expect(kindergarten.logoMediaFileId).toBeNull();
+  });
+
+  it("rejects a renamed executable, like every other upload path", async () => {
+    const machO = Buffer.from([0xcf, 0xfa, 0xed, 0xfe, ...Array(64).fill(0)]);
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/logo`),
+      adminA,
+    ).attach("file", machO, "лого.jpg");
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("staff portrait", () => {
+  it("a teacher uploads their own", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/users/${a.teacherUser.id}/photo`),
+      teacherA,
+    ).attach("file", await photoBytes(), "би.jpg");
+
+    expect(res.status).toBe(201);
+    const user = await db.user.findUniqueOrThrow({ where: { id: a.teacherUser.id } });
+    expect(user.photoMediaFileId).toBe(res.body.id);
+  });
+
+  /**
+   * ★ An administrator may create and deactivate this account and still may not
+   * replace its face. The RFP puts the profile photo under what a teacher does
+   * with their *own* profile, and a portrait somebody else can set is no longer
+   * evidence that the person put it there.
+   */
+  it("an administrator cannot upload it for someone else", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/users/${a.teacherUser.id}/photo`),
+      adminA,
+    ).attach("file", await photoBytes(), "багшийн зураг.jpg");
+
+    expect(res.status).toBe(404);
+    const user = await db.user.findUniqueOrThrow({ where: { id: a.teacherUser.id } });
+    expect(user.photoMediaFileId).toBeNull();
+  });
+
+  it("a guardian has a profile photo too", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/users/${a.parentUser.id}/photo`),
+      parentA,
+    ).attach("file", await photoBytes(), "ээж.jpg");
+    expect(res.status).toBe(201);
+  });
+
+  it("a user in another kindergarten cannot upload for this one", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/users/${a.teacherUser.id}/photo`),
+      parentB,
+    ).attach("file", await photoBytes(), "хэн нэгэн.jpg");
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("class photo", () => {
+  it("a teacher uploads one for their group", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/groups/${a.group.id}/photo`),
+      teacherA,
+    ).attach("file", await photoBytes(), "анги.jpg");
+
+    expect(res.status).toBe(201);
+    const group = await db.group.findUniqueOrThrow({ where: { id: a.group.id } });
+    expect(group.photoMediaFileId).toBe(res.body.id);
+  });
+
+  it("a guardian cannot", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/groups/${a.group.id}/photo`),
+      parentA,
+    ).attach("file", await photoBytes(), "анги.jpg");
+    expect(res.status).toBe(404);
+  });
+
+  it("a teacher from another kindergarten gets 404", async () => {
+    const teacherB = await login(app, b.teacherUser.username);
+    const res = await authed(
+      request(server()).post(`/v1/groups/${a.group.id}/photo`),
+      teacherB,
+    ).attach("file", await photoBytes(), "анги.jpg");
+
+    expect(res.status).toBe(404);
+    const group = await db.group.findUniqueOrThrow({ where: { id: a.group.id } });
+    expect(group.photoMediaFileId).toBeNull();
+  });
+
+  it("is served through /media/:id to a guardian of the group's kindergarten", async () => {
+    const uploaded = await authed(
+      request(server()).post(`/v1/groups/${a.group.id}/photo`),
+      teacherA,
+    ).attach("file", await photoBytes(), "анги.jpg");
+
+    // A tenant image is readable by any member — it is not child data. The
+    // 302 is to a presigned URL, never to a public object.
+    const res = await authed(request(server()).get(`/v1/media/${uploaded.body.id}`), parentA);
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain("X-Amz-Signature");
+
+    const other = await authed(request(server()).get(`/v1/media/${uploaded.body.id}`), parentB);
+    expect(other.status).toBe(404);
+  });
+});

@@ -1,8 +1,85 @@
 import { Injectable } from "@nestjs/common";
+// Types only, and only reachable here: CLAUDE.md §2.2 exempts `*.repository.ts`
+// precisely so a query shape can be typed at the layer that builds queries.
+import type { Prisma } from "../generated/prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { toSkipTake, type PageParams } from "../common/pagination";
 import type { VisibleChildrenFilter } from "../authz/authz.repository";
 import type { ChildStatus, EnrollmentStatus, GuardianRelation, Sex } from "../domain/enums";
+
+/**
+ * An age range, as a birth-date range — RFP §11's "нас … шүүх".
+ *
+ * ★ The bounds are inverted, and that is not a slip.
+ *
+ * A *higher* age means an *earlier* birth date, so `ageMin` produces the upper
+ * bound on the date and `ageMax` the lower one. Written out because this reads
+ * wrong at a glance and every future reader will want to swap it back:
+ *
+ *   at least 3 years old  →  born on or before today − 3 years
+ *   at most  4 years old  →  born after         today − 5 years
+ *
+ * ★★ The lower bound is `ageMax + 1` and it is **exclusive**.
+ *
+ * "At most 4" means every child who has not yet turned 5 — including one who is
+ * 4 years and 364 days. Using `today − 4 years` as an inclusive lower bound
+ * would return only children who are *exactly* 4 to the day, which is almost
+ * nobody. This is the off-by-one that makes an age filter quietly return an
+ * empty roster.
+ *
+ * Computed in UTC to match `@db.Date`, which Prisma stores as UTC midnight.
+ */
+export function ageRangeWhere(ageMin?: number, ageMax?: number) {
+  if (ageMin === undefined && ageMax === undefined) return {};
+
+  const today = new Date();
+  const shiftYears = (years: number) =>
+    new Date(
+      Date.UTC(today.getUTCFullYear() - years, today.getUTCMonth(), today.getUTCDate(), 0, 0, 0, 0),
+    );
+
+  return {
+    dateOfBirth: {
+      ...(ageMin !== undefined ? { lte: shiftYears(ageMin) } : {}),
+      ...(ageMax !== undefined ? { gt: shiftYears(ageMax + 1) } : {}),
+    },
+  };
+}
+
+/**
+ * The roster's sort order — RFP §11.
+ *
+ * ★ `age` maps to `dateOfBirth` with the direction reversed, in one place.
+ *
+ * Age decreases as the birth date increases, so "youngest first" is
+ * `dateOfBirth desc`. Doing that flip here rather than at the call site is what
+ * stops the list and its summary from disagreeing about which end is which.
+ *
+ * Every order falls back to the name, so a page boundary is stable: two
+ * children born on the same day would otherwise be returned in whatever order
+ * Postgres happened to produce, and one of them could appear on both page one
+ * and page two.
+ */
+export function childOrderBy(sorting: ChildSorting): Prisma.ChildOrderByWithRelationInput[] {
+  const order: Prisma.SortOrder = sorting.order;
+  const flipped: Prisma.SortOrder = order === "asc" ? "desc" : "asc";
+  const byName: Prisma.ChildOrderByWithRelationInput[] = [
+    { lastName: order },
+    { firstName: order },
+  ];
+
+  switch (sorting.sort) {
+    case "dateOfBirth":
+      return [{ dateOfBirth: order }, ...byName];
+    case "age":
+      return [{ dateOfBirth: flipped }, ...byName];
+    case "updatedAt":
+      return [{ updatedAt: order }, ...byName];
+    case "name":
+    default:
+      return [...byName];
+  }
+}
 
 /**
  * Children, guardianships and enrollment history.
@@ -35,6 +112,8 @@ export class ChildrenRepository {
         visible,
         {
           ...(filters.status ? { status: filters.status } : {}),
+          ...(filters.sex ? { sex: filters.sex } : {}),
+          ...ageRangeWhere(filters.ageMin, filters.ageMax),
           ...(filters.q
             ? {
                 OR: [
@@ -62,14 +141,19 @@ export class ChildrenRepository {
     };
   }
 
-  async listChildren(visible: VisibleChildrenFilter, filters: ChildFilters, page: PageParams) {
+  async listChildren(
+    visible: VisibleChildrenFilter,
+    filters: ChildFilters,
+    page: PageParams,
+    sorting: ChildSorting = { sort: "name", order: "asc" },
+  ) {
     const { skip, take } = toSkipTake(page);
     const where = this.childWhere(visible, filters);
 
     const [items, total] = await Promise.all([
       this.prisma.child.findMany({
         where,
-        orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+        orderBy: childOrderBy(sorting),
         skip,
         take,
         select: {
@@ -322,6 +406,15 @@ export interface ChildFilters {
   schoolYearId?: string;
   enrollmentStatus?: EnrollmentStatus;
   q?: string;
+  sex?: Sex;
+  /** Whole years, inclusive at both ends — RFP §11. */
+  ageMin?: number;
+  ageMax?: number;
+}
+
+export interface ChildSorting {
+  sort: "name" | "dateOfBirth" | "age" | "updatedAt";
+  order: "asc" | "desc";
 }
 
 export interface CreateChildData {

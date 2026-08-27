@@ -216,6 +216,20 @@
   --text-display: 1.5rem;
 
   /*
+   * ★ The one step above `display`, for a statistic that *is* the content.
+   *
+   * A dashboard tile reading "245 нийт хүүхэд" is a number with a caption, not
+   * a sentence with a number in it — the figure has to be legible at arm's
+   * length on a phone propped on a desk. `display` is 1.5rem and reads as a
+   * heading beside its own label rather than as the thing being reported.
+   *
+   * Deliberately the last step: anything larger stops being typography and
+   * starts being an illustration, and this scale has to survive a Mongolian
+   * caption wrapping underneath it.
+   */
+  --text-figure: 2.25rem;
+
+  /*
    * Heading line-height, deliberately looser than the 1.2 a Latin-only design
    * would use. Mongolian compounds are long — "Хөгжлийн үнэлгээний явц",
    * "Бүртгэлийн дугаар" — and wrap onto two lines at almost every width, so a

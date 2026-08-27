@@ -22,6 +22,7 @@ import { RowList } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
+import { SingleImageUpload } from "@/components/media/single-image-upload";
 import { RequireRole } from "@/components/shell/require-role";
 
 const groupsSchema = paginated(groupListItemSchema);
@@ -247,6 +248,20 @@ function ManageTeachersDialog({
           />
 
           {group.isLoading ? <LoadingState rows={1} /> : null}
+
+          {/*
+            RFP §3.2 — ангийн зураг. It lives in this dialog rather than on the
+            list because the list is a roster of names and a column of class
+            photographs would push the group names off a phone screen. This is
+            already the place a teacher opens to change who teaches the group.
+          */}
+          <SingleImageUpload
+            endpoint={`/groups/${groupId}/photo`}
+            currentMediaId={group.data?.photoMediaFileId}
+            label="Ангийн зураг нэмэх"
+            alt={`${groupName} бүлгийн зураг`}
+            invalidateKeys={[["admin", "groups"]]}
+          />
 
           <div className="flex flex-wrap items-center gap-2">
             {assigned.length === 0 && !group.isLoading ? (

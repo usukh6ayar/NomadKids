@@ -23,12 +23,22 @@ actually verified, not what was intended.
 | 9     | Notifications                             | ✅ complete |
 | 9b    | Dashboards + audit read API               | ✅ complete |
 | 10    | Reports + PDF                             | ✅ complete |
-| 11    | Web UI                                    | ⬜ pending  |
-| 12    | QA + security                             | ⬜ pending  |
-| 13    | Production readiness                      | ⬜ pending  |
+| 11    | Web UI                                    | ✅ complete |
+| 12    | QA + security                             | ✅ complete |
+| 13    | Production readiness                      | ✅ complete |
+| 14    | RFP Phase II–III build                    | 🔄 running  |
 
-**Git:** no commits. Working tree holds the whole build, uncommitted by
-instruction.
+**Two corrections, 2026-08-25.** This table said 11–13 were pending while the
+sections below them said complete, and the line under it said there were no
+commits. Both were true when written and neither was updated: there are 60-odd
+commits, and phases 11–13 have their own ✅ sections further down. A status
+document that contradicts itself gets read as decoration, so the summary now
+matches the body.
+
+**Phase 14** is the RFP Phase II–III scope the client asked for on 2026-08-25 —
+see CLAUDE.md §7 for what is in and what is still out. Progress lives in
+`docs/PHASE_3_BUILD.md`, not here; this file stops at the MVP it was written to
+track.
 
 ---
 

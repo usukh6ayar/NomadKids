@@ -43,10 +43,22 @@ import { MAX_UPLOAD_BYTES } from "./upload-validation";
  */
 const MAX_FILES_PER_UPLOAD = 6;
 
-const uploadOptionsSchema = uploadMetadataSchema.extend({
-  observationId: z.uuid().optional(),
-  purpose: z.enum(["CHILD_PHOTO", "OBSERVATION"]).optional(),
-});
+const uploadOptionsSchema = uploadMetadataSchema
+  .extend({
+    observationId: z.uuid().optional(),
+    milestoneId: z.uuid().optional(),
+    incidentId: z.uuid().optional(),
+    purpose: z.enum(["CHILD_PHOTO", "OBSERVATION", "MILESTONE", "INCIDENT"]).optional(),
+  })
+  .refine(
+    (body) => [body.observationId, body.milestoneId, body.incidentId].filter(Boolean).length <= 1,
+    {
+      // A photograph belongs to one thing. Accepting both would silently pick
+      // whichever branch the service checked first.
+      message: "Зургийг зөвхөн нэг зүйлд хавсаргана",
+      path: ["milestoneId"],
+    },
+  );
 type UploadOptionsDto = z.infer<typeof uploadOptionsSchema>;
 
 @Controller("children/:id/media")
@@ -90,6 +102,8 @@ export class ChildMediaController {
 
     const result = await this.service.uploadMany(actor, params.id, files, {
       observationId: body.observationId,
+      milestoneId: body.milestoneId,
+      incidentId: body.incidentId,
       caption: body.caption ?? null,
       purpose: body.purpose,
       // ★ Forwarded, not dropped. The schema accepted these before this line
@@ -160,6 +174,67 @@ export class NotificationMediaController {
     if (!file) throw new BadRequestException("Файл хавсаргаагүй байна");
 
     return this.service.uploadForNotification(actor, params.id, file, body.caption ?? null);
+  }
+}
+
+/**
+ * Images that belong to a kindergarten rather than to a child — RFP §3.2's
+ * лого and ангийн зураг, and §3.3's профайл зураг.
+ *
+ * ★ Three routes on three paths, not one `POST /images?owner=…`.
+ *
+ * They authorize differently — the logo is an administrator's, the portrait is
+ * the account holder's own, the class photo is any staff member's — and the
+ * parameterised version would put those three decisions inside one method
+ * behind a switch, which is exactly the shape CLAUDE.md §1.1 exists to prevent.
+ * The paths also read as what they are in a route list.
+ */
+@Controller()
+@UseGuards(RateLimitGuard)
+export class TenantImageController {
+  constructor(private readonly service: MediaService) {}
+
+  @Post("kindergartens/:id/logo")
+  @Roles("ADMIN")
+  @RateLimit({ limit: 20, windowMs: 60 * 60 * 1000, byUser: true })
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } }))
+  async uploadLogo(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @UploadedFile() file: { buffer: Buffer; originalname: string } | undefined,
+  ) {
+    if (!file) throw new BadRequestException("Файл хавсаргаагүй байна");
+    return this.service.uploadKindergartenLogo(actor, params.id, file);
+  }
+
+  /*
+   * No `@Roles`: a guardian has a profile too, and the service refuses any
+   * `userId` that is not the caller's own. A role guard here would be the
+   * wrong check in the right place — see `uploadUserPhoto`.
+   */
+  @Post("users/:id/photo")
+  @RateLimit({ limit: 20, windowMs: 60 * 60 * 1000, byUser: true })
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } }))
+  async uploadUserPhoto(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @UploadedFile() file: { buffer: Buffer; originalname: string } | undefined,
+  ) {
+    if (!file) throw new BadRequestException("Файл хавсаргаагүй байна");
+    return this.service.uploadUserPhoto(actor, params.id, file);
+  }
+
+  @Post("groups/:id/photo")
+  @Roles("TEACHER", "ADMIN")
+  @RateLimit({ limit: 20, windowMs: 60 * 60 * 1000, byUser: true })
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } }))
+  async uploadGroupPhoto(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @UploadedFile() file: { buffer: Buffer; originalname: string } | undefined,
+  ) {
+    if (!file) throw new BadRequestException("Файл хавсаргаагүй байна");
+    return this.service.uploadGroupPhoto(actor, params.id, file);
   }
 }
 

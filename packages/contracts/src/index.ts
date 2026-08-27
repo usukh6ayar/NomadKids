@@ -8,6 +8,7 @@
  *    Phase 11, once the API had settled them; writing these before the features
  *    existed would have been guessing.
  */
+export * from "./birth-facts";
 export * from "./domain";
 export * from "./ids";
 export * from "./pagination";

@@ -78,6 +78,26 @@ export class PortfolioRepository {
     });
   }
 
+  /**
+   * The birthday section — RFP §4.2.
+   *
+   * One round trip for the notes and the birth date they are about. Two queries
+   * would be the more obvious code and the wrong shape: the zodiac sign and the
+   * year animal are both functions of `dateOfBirth`, so a response without it
+   * cannot be assembled at all.
+   */
+  async loadBirthdaySection(childId: string) {
+    const [child, notes] = await Promise.all([
+      this.prisma.child.findFirst({
+        where: { id: childId, deletedAt: null },
+        select: { dateOfBirth: true },
+      }),
+      this.listBirthdayNotes(childId),
+    ]);
+
+    return { child, notes };
+  }
+
   async upsertBirthdayNote(
     childId: string,
     kindergartenId: string,

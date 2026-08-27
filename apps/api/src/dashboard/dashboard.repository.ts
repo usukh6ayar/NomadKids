@@ -305,6 +305,56 @@ export class DashboardRepository {
 
   // ── Admin ─────────────────────────────────────────────────────────────────
 
+  /**
+   * Stored bytes and report activity — RFP §12.2's "Хадгалалтын хэмжээ" and
+   * "Тайлангийн статистик".
+   *
+   * ★ `sizeBytes` is summed from `MediaFile`, which is what this system knows.
+   *
+   * It is the size of the rows it has, not the size of the bucket: an object
+   * orphaned by a crash between `put` and `create` is invisible here, and so is
+   * anything another system put in R2. Reporting it as "storage used" would be
+   * a number that quietly disagrees with the invoice, so the UI labels it as
+   * the size of stored files.
+   *
+   * Soft-deleted rows are excluded. They still occupy bytes until the retention
+   * sweep runs, and counting them would make the figure jump around as
+   * deletions land — but a director reading "how much are we storing" means the
+   * live album, and the sweep's backlog is not their question.
+   */
+  async storageAndReportStats(kindergartenIds: string[]) {
+    if (kindergartenIds.length === 0) {
+      return { totalBytes: 0, fileCount: 0, reports: { total: 0, done: 0, failed: 0 } };
+    }
+
+    const where = { kindergartenId: { in: kindergartenIds }, deletedAt: null };
+
+    const [media, reportsByStatus] = await Promise.all([
+      this.prisma.mediaFile.aggregate({
+        where,
+        _sum: { sizeBytes: true },
+        _count: { _all: true },
+      }),
+      this.prisma.reportJob.groupBy({
+        by: ["status"],
+        where,
+        _count: { _all: true },
+      }),
+    ]);
+
+    const byStatus = new Map(reportsByStatus.map((r) => [r.status, r._count._all]));
+
+    return {
+      totalBytes: media._sum.sizeBytes ?? 0,
+      fileCount: media._count._all,
+      reports: {
+        total: reportsByStatus.reduce((sum, r) => sum + r._count._all, 0),
+        done: byStatus.get("DONE") ?? 0,
+        failed: byStatus.get("FAILED") ?? 0,
+      },
+    };
+  }
+
   async kindergartenCounts(kindergartenIds: string[]) {
     if (kindergartenIds.length === 0) {
       return { children: 0, groups: 0, staff: 0, guardians: 0 };

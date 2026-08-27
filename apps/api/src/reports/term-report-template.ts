@@ -1,4 +1,4 @@
-import { baseCss, esc, formatDate, paragraphs, reportChrome } from "./template-utils";
+import { baseCss, esc, formatDate, masthead, paragraphs, reportChrome } from "./template-utils";
 
 /**
  * The term report PDF — RFP §6.4.
@@ -20,7 +20,7 @@ export interface TermReportData {
     dateOfBirth: Date | string;
     photoDataUri?: string | null;
   };
-  kindergarten: { name: string };
+  kindergarten: { name: string; logoDataUri?: string | null };
   group?: { name: string } | null;
   schoolYear?: { name: string } | null;
   term: { name: string; number: number; startsOn: Date | string; endsOn: Date | string };
@@ -121,6 +121,8 @@ ${
     ? `<div class="draft">ТӨСӨЛ — баталгаажаагүй. Эцэг эхэд өгөх баримт биш.</div>`
     : ""
 }
+
+${masthead(data.kindergarten)}
 
 <div class="head">
   ${data.child.photoDataUri ? `<img src="${data.child.photoDataUri}" alt="Хүүхдийн зураг">` : ""}

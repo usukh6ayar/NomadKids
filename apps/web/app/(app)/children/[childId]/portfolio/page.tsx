@@ -9,17 +9,17 @@ import { z } from "zod";
 import {
   BookOpen,
   ArrowLeft,
+  Cake,
   CalendarDays,
   Check,
   ChevronDown,
   FileText,
   Heart,
-  Images,
   MessageCircle,
   Pencil,
   Ruler,
   Sparkles,
-  Sprout,
+  Star,
   Sun,
   Weight,
 } from "lucide-react";
@@ -27,13 +27,13 @@ import {
   aboutMeSchema,
   ageProfileSchema,
   birthdayNoteSchema,
+  birthdaySectionSchema,
   childDetailSchema,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors, isNotFound } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
-import { PageHeader } from "@/components/shell/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
@@ -41,33 +41,15 @@ import { Field, Input, Textarea } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { AgeSectionShell } from "@/components/child/age-section-shell";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
+import { ChildGallery } from "@/components/media/child-gallery";
+import { ChildMilestones } from "@/components/child/child-milestones";
+import { ChildConsent } from "@/components/child/child-consent";
 import { ReportDialog } from "@/components/reports/report-dialog";
-import { ageInYears, formatDate } from "@/lib/format";
+import { ageInYears, formatDate, fullName } from "@/lib/format";
 import { PORTFOLIO } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
 
 const PORTFOLIO_AGES = [2, 3, 4, 5] as const;
-
-/**
- * The tiles at the top of the page — a table of contents for this record
- * (`STORY_TONE` supplies the colour, defined further down with
- * `ABOUT_FIELDS`; both are looked up by key at render time, so the
- * declaration order here does not matter).
- *
- * "Миний тухай" and "Хөгжил" are in-page anchors — `#about-me`,
- * `#development` (the age row below, wrapped so it has one landing point).
- * "Зургийн цомог" is a real route, not an anchor: the gallery itself moved to
- * `/overview` (the same page the bottom bar's own "Зураг" tab opens) so that
- * every "show me the photos" entry point in the product lands on one screen
- * instead of three that happened to each grow their own copy.
- */
-function portfolioTiles(childId: string) {
-  return [
-    { href: "#about-me", label: "Миний тухай", Icon: BookOpen, tone: "sky" },
-    { href: "#development", label: "Хөгжил", Icon: Sprout, tone: "mint" },
-    { href: `/children/${childId}/overview`, label: "Зургийн цомог", Icon: Images, tone: "primary" },
-  ] as const;
-}
 
 /*
  * ★ `AGE_TONE` was removed on 2026-08-24, and so was `SectionLink`.
@@ -101,7 +83,6 @@ function hasAgeContent(profile?: z.infer<typeof ageProfileSchema>): boolean {
 // `/about-me` answers with `{ exists: false }` when nothing is written yet.
 const aboutMeResponseSchema = aboutMeSchema.extend({ exists: z.boolean().nullish() });
 const ageProfilesSchema = z.array(ageProfileSchema);
-const birthdayNotesSchema = z.array(birthdayNoteSchema);
 
 /**
  * The portfolio — RFP §4.3.
@@ -148,7 +129,7 @@ export default function PortfolioPage() {
 
   const birthdays = useQuery({
     queryKey: qk.birthdayNotes(childId),
-    queryFn: () => get(`/children/${childId}/birthday-notes`, birthdayNotesSchema),
+    queryFn: () => get(`/children/${childId}/birthday-notes`, birthdaySectionSchema),
     enabled: child.isSuccess,
   });
 
@@ -199,8 +180,6 @@ export default function PortfolioPage() {
         </Link>
       </Button>
 
-      <PageHeader title={PORTFOLIO} />
-
       {/*
         ★ The PDF lives here now, not on the child hub.
 
@@ -225,6 +204,11 @@ export default function PortfolioPage() {
         actions={
           <ReportDialog
             childId={childId}
+            // The current enrolment's year — what the annual report compares.
+            schoolYearId={
+              data.enrollments?.find((e) => e.status === "ACTIVE")?.schoolYear?.id ??
+              data.enrollments?.[0]?.schoolYear?.id
+            }
             trigger={
               <Button variant="secondary" size="sm">
                 <FileText size={18} />
@@ -236,35 +220,46 @@ export default function PortfolioPage() {
       />
 
       {/*
-        ★ The sections this record actually has, as tiles — the same
-        icon-grid language `/home` uses (`QuickTile` there), reused here so
-        the two screens read as one product rather than two styles that
-        happen to sit one tap apart. See `portfolioTiles` above for which of
-        these jump in-page and which navigate.
+        ★ One navigation, not two.
+
+        A row of three jump pills (Миний тухай / Зургийн цомог / Төрсөн өдөр) sat
+        above this, so the screen opened with seven links to content that was
+        directly below them — a full phone screen of navigation for a page you
+        were about to scroll anyway. "Миний тухай" was the first thing under its
+        own pill.
+
+        The age row earns its place where the pills did not: the four years are
+        the one part of this record that is *collapsed*, so these are the only
+        links that reveal something rather than scrolling to it.
       */}
-      <nav aria-label="Хэсгүүд рүү шилжих">
-        <ul className="grid grid-cols-3 gap-2.5">
-          {portfolioTiles(childId).map((tile) => (
-            <li key={tile.href}>
-              <Link
-                href={tile.href}
-                className="flex flex-col items-center gap-2 rounded-card border border-border bg-surface px-2 py-4 text-center transition-colors hover:border-primary hover:shadow-sm"
-              >
-                <span
+      <nav aria-label="Насны хэсгүүд рүү шилжих">
+        <ul className="grid grid-cols-4 gap-2">
+          {PORTFOLIO_AGES.map((age) => {
+            const filled = hasAgeContent(ageProfiles.data?.find((p) => p.age === age));
+            return (
+              <li key={age}>
+                <a
+                  href={`#age-${age}`}
+                  aria-label={`${age} нас — ${filled ? "мэдээлэлтэй" : "хоосон"}`}
                   className={cn(
-                    "grid size-11 shrink-0 place-items-center rounded-control",
-                    STORY_TONE[tile.tone],
+                    "flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-row border px-1.5 py-2 text-caption font-semibold transition-colors md:min-h-[64px] md:px-2 md:text-body",
+                    filled
+                      ? "border-mint bg-mint text-mint-ink hover:opacity-90"
+                      : "border-border bg-surface text-muted hover:border-primary hover:text-ink",
                   )}
-                  aria-hidden="true"
                 >
-                  <tile.Icon size={22} aria-hidden="true" />
-                </span>
-                <span className="text-compact font-semibold leading-tight text-ink">
-                  {tile.label}
-                </span>
-              </Link>
-            </li>
-          ))}
+                  <span>{age} нас</span>
+                  {filled ? (
+                    <Check size={14} aria-hidden="true" />
+                  ) : (
+                    // Holds the line's height so the four buttons stay the same
+                    // size whether or not they are filled.
+                    <span aria-hidden="true" className="block h-[14px]" />
+                  )}
+                </a>
+              </li>
+            );
+          })}
         </ul>
       </nav>
 
@@ -275,66 +270,46 @@ export default function PortfolioPage() {
         error={aboutMe.error}
       />
 
+      {PORTFOLIO_AGES.map((age) => (
+        <AgeSection
+          key={age}
+          childId={childId}
+          age={age}
+          profile={ageProfiles.data?.find((p) => p.age === age)}
+          isLoading={ageProfiles.isLoading}
+          isGuardian={isGuardian}
+          currentAge={currentAge}
+        />
+      ))}
+
       {/*
-        ★ One navigation, not two, inside this wrapper.
-
-        A row of three jump pills (Миний тухай / Зургийн цомог / Төрсөн өдөр) sat
-        above this, so the screen opened with seven links to content that was
-        directly below them — a full phone screen of navigation for a page you
-        were about to scroll anyway. "Миний тухай" was the first thing under its
-        own pill. `PORTFOLIO_TILES`'s "Хөгжил" tile replaces that row at the top
-        of the page; the age row below still earns its place, because the four
-        years are the one part of this record that is *collapsed*, so these are
-        the only links that reveal something rather than scrolling to it.
+        Photographs and work, between the age timeline and the birthday notes.
+        A guardian may add to it — the API decides that, through
+        `assertCanRecord`; this only decides whether to offer the control.
       */}
-      <div id="development" className="flex scroll-mt-20 flex-col gap-6">
-        <nav aria-label="Насны хэсгүүд рүү шилжих">
-          <ul className="grid grid-cols-4 gap-2">
-            {PORTFOLIO_AGES.map((age) => {
-              const filled = hasAgeContent(ageProfiles.data?.find((p) => p.age === age));
-              return (
-                <li key={age}>
-                  <a
-                    href={`#age-${age}`}
-                    aria-label={`${age} нас — ${filled ? "мэдээлэлтэй" : "хоосон"}`}
-                    className={cn(
-                      "flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-row border px-1.5 py-2 text-caption font-semibold transition-colors md:min-h-[64px] md:px-2 md:text-body",
-                      filled
-                        ? "border-mint bg-mint text-mint-ink hover:opacity-90"
-                        : "border-border bg-surface text-muted hover:border-primary hover:text-ink",
-                    )}
-                  >
-                    <span>{age} нас</span>
-                    {filled ? (
-                      <Check size={14} aria-hidden="true" />
-                    ) : (
-                      // Holds the line's height so the four buttons stay the
-                      // same size whether or not they are filled.
-                      <span aria-hidden="true" className="block h-[14px]" />
-                    )}
-                  </a>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
+      <ChildGallery
+        childId={childId}
+        childName={fullName(data)}
+        canEdit={isStaff || isGuardian}
+        photoMediaFileId={data.photoMediaFileId}
+      />
 
-        {PORTFOLIO_AGES.map((age) => (
-          <AgeSection
-            key={age}
-            childId={childId}
-            age={age}
-            profile={ageProfiles.data?.find((p) => p.age === age)}
-            isLoading={ageProfiles.isLoading}
-            isGuardian={isGuardian}
-            currentAge={currentAge}
-          />
-        ))}
-      </div>
+      {/*
+        RFP §4.5 sits inside §4 — the child's portfolio — so the section lives
+        here rather than on the child hub, next to the birthday notes it reads
+        like. The hub is a teacher's working screen; this is the family's.
+      */}
+      <ChildMilestones childId={childId} isStaff={isStaff} />
+
+      {/*
+        RFP §16. On the portfolio rather than the child hub: it is the family's
+        decision about the family's record, and this is the family's screen.
+      */}
+      <ChildConsent childId={childId} isGuardian={isGuardian} />
 
       <BirthdaySection
         childId={childId}
-        notes={birthdays.data ?? []}
+        section={birthdays.data ?? null}
         isLoading={birthdays.isLoading}
         currentAge={currentAge}
       />
@@ -372,7 +347,6 @@ const STORY_TONE: Record<string, string> = {
   sky: "bg-sky text-sky-ink",
   sun: "bg-sun text-sun-ink",
   peach: "bg-peach text-peach-ink",
-  primary: "bg-primary-soft text-primary",
 };
 
 function AboutMeSection({
@@ -895,12 +869,12 @@ function NoteBlock({ label, text, tone }: { label: string; text: string; tone: "
 
 function BirthdaySection({
   childId,
-  notes,
+  section,
   isLoading,
   currentAge,
 }: {
   childId: string;
-  notes: z.infer<typeof birthdayNotesSchema>;
+  section: z.infer<typeof birthdaySectionSchema> | null;
   isLoading: boolean;
   /** Birthdays not yet had arrive collapsed, as the age sections do. */
   currentAge: number | null;
@@ -908,6 +882,7 @@ function BirthdaySection({
   const queryClient = useQueryClient();
   const [editingAge, setEditingAge] = useState<number | null>(null);
   const [text, setText] = useState("");
+  const notes = section?.notes ?? [];
 
   const save = useMutation({
     mutationFn: (age: number) =>
@@ -928,102 +903,155 @@ function BirthdaySection({
       {isLoading ? (
         <LoadingState rows={1} />
       ) : (
-        <div className="grid gap-3 md:grid-cols-2">
-          {PORTFOLIO_AGES.map((age) => {
-            const note = notes.find((n) => n.age === age);
-            const isEditing = editingAge === age;
+        <>
+          {section ? <BirthFacts section={section} /> : null}
 
-            /*
-             * ★ A birthday that has not happened arrives closed.
-             *
-             * The four cards rendered open regardless, so a two-year-old's
-             * portfolio ended with three "Тэмдэглэл бичээгүй байна." boxes for
-             * birthdays up to three years away, each offering to write the note
-             * early. An existing note opens the card whatever the age — see
-             * `AgeSectionShell` for why content outranks the date.
-             */
-            const reached = currentAge === null || age <= currentAge;
+          <div className="grid gap-3 md:grid-cols-2">
+            {PORTFOLIO_AGES.map((age) => {
+              const note = notes.find((n) => n.age === age);
+              const isEditing = editingAge === age;
 
-            return (
-              <Card key={age} pad="roomy">
-                <details
-                  open={Boolean(note?.note) || reached}
-                  className="flex flex-col gap-2 [&[open]_svg.chevron]:rotate-180"
-                >
-                  <summary className="flex min-h-[44px] cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
-                    <h3 className="font-medium text-ink">{age} нас</h3>
-                    {!reached && !note?.note ? <Badge tone="neutral">Ирээдүйд</Badge> : null}
-                    <ChevronDown
-                      size={18}
-                      aria-hidden="true"
-                      className="chevron ml-auto shrink-0 text-faint transition-transform"
-                    />
-                  </summary>
+              /*
+               * ★ A birthday that has not happened arrives closed.
+               *
+               * The four cards rendered open regardless, so a two-year-old's
+               * portfolio ended with three "Тэмдэглэл бичээгүй байна." boxes for
+               * birthdays up to three years away, each offering to write the note
+               * early. An existing note opens the card whatever the age — see
+               * `AgeSectionShell` for why content outranks the date.
+               */
+              const reached = currentAge === null || age <= currentAge;
 
-                  <div className="mt-2 flex flex-col gap-2">
-                    {!isEditing ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="self-start"
-                        onClick={() => {
-                          setEditingAge(age);
-                          setText(note?.note ?? "");
-                          save.reset();
-                        }}
-                      >
-                        <Pencil size={16} />
-                        Засах
-                      </Button>
-                    ) : null}
+              return (
+                <Card key={age} pad="roomy">
+                  <details
+                    open={Boolean(note?.note) || reached}
+                    className="flex flex-col gap-2 [&[open]_svg.chevron]:rotate-180"
+                  >
+                    <summary className="flex min-h-[44px] cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+                      <h3 className="font-medium text-ink">{age} нас</h3>
+                      {!reached && !note?.note ? <Badge tone="neutral">Ирээдүйд</Badge> : null}
+                      <ChevronDown
+                        size={18}
+                        aria-hidden="true"
+                        className="chevron ml-auto shrink-0 text-faint transition-transform"
+                      />
+                    </summary>
 
-                    {isEditing ? (
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          if (!save.isPending) save.mutate(age);
-                        }}
-                        className="flex flex-col gap-3"
-                      >
-                        <FormError message={save.isError ? errorMessage(save.error) : null} />
-                        <Field label={`${age} насны төрсөн өдрийн тэмдэглэл`}>
-                          {({ id, describedBy }) => (
-                            <Textarea
-                              id={id}
-                              aria-describedby={describedBy}
-                              value={text}
-                              onChange={(e) => setText(e.target.value)}
-                              autoFocus
-                            />
-                          )}
-                        </Field>
-                        <div className="flex gap-2">
-                          <Button type="submit" size="sm" disabled={save.isPending}>
-                            {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
-                          </Button>
-                          <Button variant="secondary" size="sm" onClick={() => setEditingAge(null)}>
-                            Цуцлах
-                          </Button>
-                        </div>
-                      </form>
-                    ) : note?.note ? (
-                      <p className="whitespace-pre-wrap text-body text-ink">{note.note}</p>
-                    ) : (
-                      // Says what to do next, not only what is absent.
-                      // Not `EmptyState`: it renders a `Card`, and this sits
-                      // inside one already. A card nested in a card reads as a
-                      // rendering mistake rather than as an empty state.
-                      <p className="text-body text-muted">
-                        Тэмдэглэл бичээгүй. «Засах» дарж нэмнэ үү.
-                      </p>
-                    )}
-                  </div>
-                </details>
-              </Card>
-            );
-          })}
-        </div>
+                    <div className="mt-2 flex flex-col gap-2">
+                      {!isEditing ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="self-start"
+                          onClick={() => {
+                            setEditingAge(age);
+                            setText(note?.note ?? "");
+                            save.reset();
+                          }}
+                        >
+                          <Pencil size={16} />
+                          Засах
+                        </Button>
+                      ) : null}
+
+                      {isEditing ? (
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            if (!save.isPending) save.mutate(age);
+                          }}
+                          className="flex flex-col gap-3"
+                        >
+                          <FormError message={save.isError ? errorMessage(save.error) : null} />
+                          <Field label={`${age} насны төрсөн өдрийн тэмдэглэл`}>
+                            {({ id, describedBy }) => (
+                              <Textarea
+                                id={id}
+                                aria-describedby={describedBy}
+                                value={text}
+                                onChange={(e) => setText(e.target.value)}
+                                autoFocus
+                              />
+                            )}
+                          </Field>
+                          <div className="flex gap-2">
+                            <Button type="submit" size="sm" disabled={save.isPending}>
+                              {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => setEditingAge(null)}
+                            >
+                              Цуцлах
+                            </Button>
+                          </div>
+                        </form>
+                      ) : note?.note ? (
+                        <p className="whitespace-pre-wrap text-body text-ink">{note.note}</p>
+                      ) : (
+                        // Says what to do next, not only what is absent.
+                        // Not `EmptyState`: it renders a `Card`, and this sits
+                        // inside one already. A card nested in a card reads as a
+                        // rendering mistake rather than as an empty state.
+                        <p className="text-body text-muted">
+                          Тэмдэглэл бичээгүй. «Засах» дарж нэмнэ үү.
+                        </p>
+                      )}
+                    </div>
+                  </details>
+                </Card>
+              );
+            })}
+          </div>
+        </>
       )}
     </section>
+  );
+}
+
+/**
+ * The four facts RFP §4.2 asks for above the notes: the birth date, the age,
+ * the өрнийн орд and the монгол жилийн амьтан.
+ *
+ * ★ The lunar-new-year caveat is rendered, not hidden.
+ *
+ * The animal year turns at Цагаан сар, which falls between late January and
+ * early March and moves every year. For a child born inside that window the API
+ * sets `beforeLunarNewYear`, and this note is the honest version of that: a
+ * printed portfolio asserting the wrong animal is worse than one that says
+ * which two it lies between. Five births in six are outside the window and get
+ * no note at all.
+ */
+function BirthFacts({ section }: { section: z.infer<typeof birthdaySectionSchema> }) {
+  const facts = [
+    { icon: Cake, label: "Төрсөн огноо", value: formatDate(section.dateOfBirth) },
+    { icon: Sun, label: "Нас", value: `${section.ageYears} нас` },
+    { icon: Sparkles, label: "Өрнийн орд", value: section.zodiac.name },
+    { icon: Star, label: "Монгол жил", value: `${section.yearAnimal.name} жил` },
+  ];
+
+  return (
+    <Card pad="roomy" className="mb-3">
+      <dl className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        {facts.map(({ icon: Icon, label, value }) => (
+          <div key={label} className="flex flex-col gap-1">
+            <dt className="flex items-center gap-1.5 text-caption text-muted">
+              <Icon size={14} aria-hidden="true" className="shrink-0" />
+              {label}
+            </dt>
+            <dd className="text-body font-medium text-ink">{value}</dd>
+          </div>
+        ))}
+      </dl>
+
+      {section.yearAnimal.beforeLunarNewYear ? (
+        <p className="mt-3 text-caption text-muted">
+          Цагаан сараас өмнө төрсөн тул монгол жил нь өмнөх жилийнх байж болно. Нягтлан
+          баталгаажуулна уу.
+        </p>
+      ) : null}
+    </Card>
   );
 }

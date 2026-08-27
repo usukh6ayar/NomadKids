@@ -29,11 +29,21 @@ import { formatAge, formatDate, fullName } from "@/lib/format";
  *
  * `healthNotes` is a free-text staff field. It says "there is something to read
  * here", which is worth surfacing at the top rather than at the bottom of a tab
- * — a teacher taking a child outside should not have to go looking. It is NOT a
- * structured allergy or medication alert: those are `health · allergies ·
- * medication` in CLAUDE.md §7 and no such field exists on the schema. Inventing
- * one that renders from nothing is how a badge ends up promising a check the
- * system never made.
+ * — a teacher taking a child outside should not have to go looking.
+ *
+ * ★★★ It is still not the allergy alert, and the reason changed on 2026-08-25.
+ *
+ * This note used to say structured allergies did not exist, and that inventing
+ * a badge from nothing is how one ends up promising a check the system never
+ * made. They exist now — `AllergyRecord`, RFP Module 2 — and the badge is
+ * *still* the presence of the free-text note, because the two answer different
+ * questions and a chip cannot answer both. "⚠ Эрүүл мэнд" meaning either "read
+ * the note" or "this child stops breathing near nuts" is a chip that means
+ * nothing.
+ *
+ * The structured alert lives on the Эрүүл мэнд tab, where it can name the
+ * allergen and its severity, and in the menu cross-check, where it can name the
+ * dish. Both are places a teacher can act on it.
  *
  * A family never sees it. The notes section on the page is `isStaff`-gated and
  * this badge inherits the same gate through `showHealthAlert` — a "⚠ Эрүүл

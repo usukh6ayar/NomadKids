@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { ageInYears, birthFacts } from "@kinder/contracts";
 import { AuditRepository } from "../audit/audit.repository";
 import { ChildAccessService } from "../authz/child-access.service";
 import { isGuardianOf } from "../authz/child-access";
@@ -175,9 +176,28 @@ export class PortfolioService {
 
   // ── Birthday notes ────────────────────────────────────────────────────────
 
+  /**
+   * The birthday section — RFP §4.2: the birth date, the age, the өрнийн орд,
+   * the монгол жилийн амьтан and the per-year notes.
+   *
+   * The two derived facts come from `@kinder/contracts`, which is also what the
+   * PDF templates read. Computing them here and only here would leave the
+   * printed portfolio — the artefact the family keeps — without the section.
+   */
   async listBirthdayNotes(actor: Actor, childId: string) {
     await this.childAccess.assertCanAccess(actor, childId);
-    return this.repo.listBirthdayNotes(childId);
+
+    const { child, notes } = await this.repo.loadBirthdaySection(childId);
+    if (!child) throw new NotFoundException();
+
+    return {
+      ...birthFacts(child.dateOfBirth),
+      // Prisma's `@db.Date` is UTC midnight, so slicing the ISO string is the
+      // date that was recorded — not a timezone-shifted neighbour of it.
+      dateOfBirth: child.dateOfBirth.toISOString().slice(0, 10),
+      ageYears: ageInYears(child.dateOfBirth),
+      notes,
+    };
   }
 
   async updateBirthdayNote(actor: Actor, childId: string, age: number, dto: UpdateBirthdayNoteDto) {

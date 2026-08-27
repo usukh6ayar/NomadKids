@@ -126,6 +126,17 @@ enum MediaPurpose {
   KINDERGARTEN_LOGO
   USER_PHOTO
   GROUP_PHOTO
+  /// A PDF in the document library, and its cover image — RFP §9. Tenant
+  /// material, not child data, so membership authorises them.
+  DOCUMENT
+  DOCUMENT_COVER
+  /// A photograph on a safety incident — RFP Module 2.1. Child data carrying
+  /// `childId`, so `canAccessChild` governs it like an album photo.
+  INCIDENT
+  /// A photograph of a remembered first — RFP §4.5. Child data, so it is
+  /// authorised through `canAccessChild` exactly like an album photo, and it
+  /// deliberately does NOT join the tenant-image set above.
+  MILESTONE
 }
 
 /// Who a photograph came from — RFP §4.4, "багшийн, эцэг эхийн эсвэл хамтын".
@@ -157,6 +168,11 @@ enum TermReportStatus {
 enum ReportType {
   CHILD_PORTFOLIO
   TERM_REPORT
+  /// RFP §6.5 — the year's four terms compared, with per-domain progress and
+  /// the teacher's closing judgement. §10.2 names seven report types; this is
+  /// the third, and the one RFP §21.7 makes an acceptance criterion
+  /// ("Улирлын болон нэгдсэн PDF тайлан зөв үүсдэг байх").
+  ANNUAL_REPORT
 }
 
 enum ReportStatus {
@@ -229,27 +245,38 @@ model User {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  photo          MediaFile?     @relation("UserPhoto", fields: [photoMediaFileId], references: [id], onDelete: SetNull)
-  uploadedMedia  MediaFile[]    @relation("MediaUploader")
-  memberships    Membership[]
-  guardianships  Guardianship[]
-  authTokens     AuthToken[]
-  sessions       Session[]
-  auditLogs      AuditLog[]
-  observations   Observation[]  @relation("ObservationAuthor")
-  reviewed       Observation[]  @relation("ObservationReviewer")
-  assessments    Assessment[]   @relation("AssessmentAuthor")
-  termReports    TermReport[]   @relation("TermReportAuthor")
-  notifications  Notification[] @relation("NotificationAuthor")
-  reads          NotificationRead[]
-  reactions      NotificationReaction[]
-  reportJobs     ReportJob[]
-  attendanceRecorded Attendance[]        @relation("AttendanceRecordedBy")
-  attendanceRequested AttendanceRequest[] @relation("AttendanceRequestedBy")
-  attendanceReviewed AttendanceRequest[]  @relation("AttendanceReviewedBy")
-  menuDaysCreated    MenuDay[]            @relation("MenuDayCreatedBy")
-  surveysCreated     Survey[]             @relation("SurveyCreatedBy")
-  surveyResponses    SurveyResponse[]     @relation("SurveyRespondent")
+  photo                 MediaFile?                @relation("UserPhoto", fields: [photoMediaFileId], references: [id], onDelete: SetNull)
+  uploadedMedia         MediaFile[]               @relation("MediaUploader")
+  memberships           Membership[]
+  guardianships         Guardianship[]
+  authTokens            AuthToken[]
+  sessions              Session[]
+  auditLogs             AuditLog[]
+  observations          Observation[]             @relation("ObservationAuthor")
+  reviewed              Observation[]             @relation("ObservationReviewer")
+  assessments           Assessment[]              @relation("AssessmentAuthor")
+  termReports           TermReport[]              @relation("TermReportAuthor")
+  notifications         Notification[]            @relation("NotificationAuthor")
+  reads                 NotificationRead[]
+  reactions             NotificationReaction[]
+  reportJobs            ReportJob[]
+  attendanceRecorded    Attendance[]              @relation("AttendanceRecordedBy")
+  attendanceRequested   AttendanceRequest[]       @relation("AttendanceRequestedBy")
+  attendanceReviewed    AttendanceRequest[]       @relation("AttendanceReviewedBy")
+  menuDaysCreated       MenuDay[]                 @relation("MenuDayCreatedBy")
+  surveysCreated        Survey[]                  @relation("SurveyCreatedBy")
+  surveyResponses       SurveyResponse[]          @relation("SurveyRespondent")
+  growthRecorded        GrowthMeasurement[]       @relation("GrowthRecordedBy")
+  milestonesRecorded    Milestone[]               @relation("MilestoneRecordedBy")
+  allergiesRecorded     AllergyRecord[]           @relation("AllergyRecordedBy")
+  medicationsAuthorised MedicationAuthorisation[] @relation("MedicationAuthorisedBy")
+  vaccinationsRecorded  VaccinationRecord[]       @relation("VaccinationRecordedBy")
+  incidentsRecorded     SafetyIncident[]          @relation("IncidentRecordedBy")
+  artworkComparisons    ArtworkComparison[]       @relation("ComparisonAuthor")
+  documentsPublished    Document[]                @relation("DocumentPublishedBy")
+  documentBookmarks     DocumentBookmark[]        @relation("DocumentBookmarkUser")
+  consentsDecided       ConsentRecord[]           @relation("ConsentDecidedBy")
+  mealsRecorded         MealRecord[]              @relation("MealRecordedBy")
 
   @@index([deletedAt])
   @@map("users")
@@ -377,7 +404,7 @@ model Kindergarten {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  logo                  MediaFile?             @relation("KindergartenLogo", fields: [logoMediaFileId], references: [id], onDelete: SetNull)
+  logo                  MediaFile?                @relation("KindergartenLogo", fields: [logoMediaFileId], references: [id], onDelete: SetNull)
   memberships           Membership[]
   schoolYears           SchoolYear[]
   groups                Group[]
@@ -400,15 +427,28 @@ model Kindergarten {
   notifications         Notification[]
   notificationTargets   NotificationTarget[]
   notificationReactions NotificationReaction[]
-  reportJobs         ReportJob[]
-  auditLogs          AuditLog[]
-  attendanceRecords  Attendance[]
-  attendanceRequests AttendanceRequest[]
-  menuDays           MenuDay[]
-  surveys            Survey[]
-  surveyQuestions    SurveyQuestion[]
-  surveyResponses    SurveyResponse[]
-  surveyAnswers      SurveyAnswer[]
+  reportJobs            ReportJob[]
+  auditLogs             AuditLog[]
+  attendanceRecords     Attendance[]
+  attendanceRequests    AttendanceRequest[]
+  menuDays              MenuDay[]
+  surveys               Survey[]
+  surveyQuestions       SurveyQuestion[]
+  surveyResponses       SurveyResponse[]
+  surveyAnswers         SurveyAnswer[]
+  growthMeasurements    GrowthMeasurement[]
+  milestones            Milestone[]
+  allergies             AllergyRecord[]
+  medications           MedicationAuthorisation[]
+  vaccinations          VaccinationRecord[]
+  safetyIncidents       SafetyIncident[]
+  artworkComparisons    ArtworkComparison[]
+  documents             Document[]
+  documentBookmarks     DocumentBookmark[]
+  consents              ConsentRecord[]
+  mealRecords           MealRecord[]
+  fundingRules          FundingRule[]
+  fundingCalculations   FundingCalculation[]
 
   @@index([deletedAt])
   @@map("kindergartens")
@@ -531,8 +571,8 @@ model Child {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  kindergarten        Kindergarten         @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
-  photo               MediaFile?           @relation("ChildPhoto", fields: [photoMediaFileId], references: [id], onDelete: SetNull)
+  kindergarten        Kindergarten              @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  photo               MediaFile?                @relation("ChildPhoto", fields: [photoMediaFileId], references: [id], onDelete: SetNull)
   guardianships       Guardianship[]
   enrollments         Enrollment[]
   profile             ChildProfile?
@@ -541,13 +581,23 @@ model Child {
   observations        Observation[]
   assessments         Assessment[]
   termReports         TermReport[]
-  mediaFiles          MediaFile[]          @relation("ChildMedia")
+  mediaFiles          MediaFile[]               @relation("ChildMedia")
   notificationTargets NotificationTarget[]
   reportJobs          ReportJob[]
   auditLogs           AuditLog[]
   attendanceRecords   Attendance[]
   attendanceRequests  AttendanceRequest[]
   surveyResponses     SurveyResponse[]
+  growthMeasurements  GrowthMeasurement[]
+  milestones          Milestone[]
+  allergies           AllergyRecord[]
+  medications         MedicationAuthorisation[]
+  vaccinations        VaccinationRecord[]
+  safetyIncidents     SafetyIncident[]
+  artworkComparisons  ArtworkComparison[]
+  consents            ConsentRecord[]
+  mealRecords         MealRecord[]
+  fundingCalculations FundingCalculation[]
 
   @@unique([kindergartenId, nationalId])
   @@index([kindergartenId, status])
@@ -602,15 +652,16 @@ model Enrollment {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  kindergarten Kindergarten  @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
-  child        Child         @relation(fields: [childId], references: [id], onDelete: Cascade)
-  group        Group         @relation(fields: [groupId], references: [id], onDelete: Restrict)
-  schoolYear   SchoolYear    @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
+  kindergarten       Kindergarten        @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child              Child               @relation(fields: [childId], references: [id], onDelete: Cascade)
+  group              Group               @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  schoolYear         SchoolYear          @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
   observations       Observation[]
   assessments        Assessment[]
   termReports        TermReport[]
   attendanceRecords  Attendance[]
   attendanceRequests AttendanceRequest[]
+  mealRecords        MealRecord[]
 
   @@index([groupId, status])
   @@index([schoolYearId, status])
@@ -704,6 +755,739 @@ model BirthdayNote {
 
   @@unique([childId, age])
   @@map("birthday_notes")
+}
+
+/// A remembered first — RFP §4.5, "Онцгой үйл явдал".
+///
+/// ★ `kind` is a free string with a suggested vocabulary, not an enum and not a
+/// configuration table.
+///
+/// The RFP names seven (анхны алхам, анхны үг, анх цэцэрлэгт орсон өдөр …) and
+/// then explicitly asks for "хэрэглэгчийн өөрөө үүсгэсэн үйл явдал" — a family
+/// inventing their own. An enum cannot hold the eighth without a migration; a
+/// configuration table would make an administrator curate a list that belongs
+/// to one family's memory. CLAUDE.md §2.3 binds on what an *administrator*
+/// edits, and this is not that. The suggestions live in `packages/contracts` so
+/// the form and the API label them identically, and a custom value stores the
+/// family's own words.
+///
+/// ★★ Deliberately NOT an `Observation` with a special type.
+///
+/// An observation is a teacher's professional record: it carries a development
+/// domain, an assessment level, a review status and a next-steps plan, and it
+/// stays invisible to a family until approved. A milestone is a memory, usually
+/// written by that family, which needs none of that and must never wait for
+/// review to appear in the child's own portfolio.
+model Milestone {
+  id             String   @id @default(uuid()) @db.Uuid
+  kindergartenId String   @db.Uuid
+  childId        String   @db.Uuid
+  /// One of `MILESTONE_KINDS`, or `CUSTOM` when the family named their own.
+  kind           String
+  /// The family's own words. Required for CUSTOM; elsewhere it overrides the
+  /// suggested label.
+  title          String?
+  occurredOn     DateTime @db.Date
+  description    String?
+
+  /// Who recorded it — usually a guardian. `User.id`, matching
+  /// `Observation.authorId`, so it reads correctly across a role change.
+  recordedById String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  recordedBy   User?        @relation("MilestoneRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  media        MediaFile[]  @relation("MilestoneMedia")
+
+  /// ★ No unique constraint on (childId, kind), deliberately: a child has one
+  /// first step, but "анх тайзан дээр гарсан" happens again every year and a
+  /// family may want both. The timeline is the ordering that matters.
+  @@index([childId, occurredOn(sort: Desc)])
+  @@index([kindergartenId, occurredOn(sort: Desc)])
+  @@map("milestones")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Health — RFP Module 2: allergies, medication, vaccination
+//
+// ★ Three tables, not one "health record" with a `type` column.
+//
+// They answer different questions, are written by different people, and have
+// different lifetimes. An allergy is standing information a teacher must see
+// before every meal; a medication authorisation is a dated instruction that
+// expires; a vaccination is a historical fact that never changes. A single
+// table with a discriminator would give all three the union of their columns
+// and none of their constraints — `dosage` meaningless on a vaccination,
+// `severity` meaningless on a dose of antibiotics.
+//
+// ★★ `Child.healthNotes` stays. It is RFP §3.4's free-text "анхаарах
+// шаардлагатай товч мэдээлэл" and remains the right home for anything that is
+// not one of these three. What it cannot do is be *queried* — which is what
+// the menu cross-check needs, and why AllergyRecord exists.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// How badly a child reacts — RFP Module 2 asks for a "Red Flag / Badge".
+///
+/// A system-level enum rather than a configuration table: this drives an alert
+/// a teacher must read the same way in every kindergarten, and a director
+/// renaming SEVERE to something reassuring is not a customisation anybody
+/// should be offered. CLAUDE.md §2.3's carve-out for "record states".
+enum AllergySeverity {
+  MILD
+  MODERATE
+  /// Anaphylaxis risk. The badge is red and the menu check refuses to be quiet.
+  SEVERE
+}
+
+enum AllergyKind {
+  FOOD
+  MEDICATION
+  ENVIRONMENTAL
+  OTHER
+}
+
+/// One allergy — RFP Module 2, "Харшил ба Хоолны онцлог".
+model AllergyRecord {
+  id             String          @id @default(uuid()) @db.Uuid
+  kindergartenId String          @db.Uuid
+  childId        String          @db.Uuid
+  kind           AllergyKind
+  severity       AllergySeverity
+
+  /// What the child reacts to, as staff would say it: "самар", "сүү", "өндөг".
+  ///
+  /// ★ Free text, and matched case-insensitively against a menu dish's
+  /// `allergenTags`. Not a lookup table: the RFP gives no vocabulary, kitchens
+  /// name ingredients in their own words, and a closed list would make a
+  /// teacher unable to record the one allergy their child actually has.
+  allergen String
+
+  /// What happens, and what to do about it. Both free text — this is clinical
+  /// information transcribed from a family, not something to model.
+  reaction  String?
+  treatment String?
+
+  /// Ended rather than deleted: a child who outgrows a milk allergy still has
+  /// the record of having had one, and a teacher reading the history needs it.
+  notedOn DateTime  @db.Date
+  endedOn DateTime? @db.Date
+
+  recordedById String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  recordedBy   User?        @relation("AllergyRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  /// The badge query: every live allergy for one child.
+  @@index([childId, endedOn])
+  /// The menu cross-check: every live allergy in one kindergarten, at once.
+  @@index([kindergartenId, endedOn])
+  @@map("allergy_records")
+}
+
+/// A guardian's instruction to give medicine — RFP Module 2, "Эм хэрэглээний
+/// зөвшөөрөл".
+///
+/// ★ An authorisation, not an administration log.
+///
+/// The RFP asks that a parent leaves a form "цаг, тунг тэмдэглэж
+/// баталгаажуулан" and that the teacher is reminded at the time. That is a
+/// standing instruction with a date range, which is what this models. Recording
+/// each individual dose as it is given is a separate feature the RFP does not
+/// ask for, and inventing it would put a nurse's medication chart inside a
+/// portfolio system.
+model MedicationAuthorisation {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  childId        String @db.Uuid
+
+  medicineName String
+  /// "1 шахмал", "5 мл" — the family's own words, transcribed.
+  dosage       String
+  /// Times of day as `HH:MM` strings, e.g. `["12:00", "16:30"]`.
+  ///
+  /// ★ Json rather than a `MedicationTime` child table. The RFP wants a
+  /// reminder at each time; nothing queries "every child due at 12:00 across
+  /// the kindergarten", and a table for an array of two strings is a join for
+  /// no reader.
+  timesOfDay   Json
+  instructions String?
+
+  startsOn DateTime @db.Date
+  /// ★ Required, unlike an allergy's `endedOn`.
+  ///
+  /// An open-ended authorisation to medicate a child is not something a system
+  /// should be able to express. A family renews it; it does not run for ever
+  /// because somebody forgot to close it.
+  endsOn   DateTime @db.Date
+
+  /// The guardian who left the instruction — this is the consent record.
+  authorisedById String @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  authorisedBy User         @relation("MedicationAuthorisedBy", fields: [authorisedById], references: [id], onDelete: Restrict)
+
+  /// "What is due today" — a range scan over the active window.
+  @@index([kindergartenId, startsOn, endsOn])
+  @@index([childId, endsOn(sort: Desc)])
+  @@map("medication_authorisations")
+}
+
+/// A vaccination or vitamin — RFP Module 2, "Вакцинжуулалт болон Амин дэмийн
+/// бүртгэл".
+model VaccinationRecord {
+  id             String   @id @default(uuid()) @db.Uuid
+  kindergartenId String   @db.Uuid
+  childId        String   @db.Uuid
+  /// Free text: the national schedule changes, and a kindergarten also records
+  /// vitamins the RFP names in the same breath.
+  vaccineName    String
+  administeredOn DateTime @db.Date
+  /// "2-р тун" — optional, because a single-dose vitamin has none.
+  doseLabel      String?
+  /// Where it was given: a clinic name, or the kindergarten itself.
+  provider       String?
+  note           String?
+
+  recordedById String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  recordedBy   User?        @relation("VaccinationRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@index([childId, administeredOn(sort: Desc)])
+  @@map("vaccination_records")
+}
+
+/// What happened — RFP Module 2.1's "Тохиолдлын төрөл".
+///
+/// An enum rather than a configuration table: this is a fixed clinical
+/// vocabulary a kindergarten reports against, not a preference. `OTHER` carries
+/// what the list does not, with the description doing the work — the same
+/// escape hatch `AttendanceStatus` keeps.
+enum IncidentKind {
+  INJURY // Гэмтэл
+  FALL // Уналт
+  BRUISE // Хөхрөлт
+  SCRATCH // Маажилт
+  BITE // Хазуулсан
+  ALLERGIC_REACTION // Харшлын шинж
+  FEVER // Халууралт
+  ILLNESS // Толгой/хэвлий өвдөх
+  OTHER
+}
+
+/// A safety or health incident — RFP Module 2.1, "Аюулгүй байдлын тэмдэглэл".
+///
+/// ★ Not an `Observation`, and not a `Notification`.
+///
+/// An observation is a developmental note a teacher writes to build a picture
+/// over a term; this is an event with a time, a body part and a first-aid
+/// response, which a family must be told about today. A notification is the
+/// delivery mechanism, and one is created *from* an incident when it is
+/// reported — but a notification has no `bodyPart`, no follow-up and no
+/// priority, and folding the record into the message would lose the record the
+/// moment the message was read.
+model SafetyIncident {
+  id             String       @id @default(uuid()) @db.Uuid
+  kindergartenId String       @db.Uuid
+  childId        String       @db.Uuid
+  kind           IncidentKind
+
+  /// ★ A timestamp, not a date. Module 2.1 asks for "Огноо, цаг" together, and
+  /// "which of the two falls this afternoon" is a question a parent asks.
+  occurredAt DateTime
+
+  /// Where in the kindergarten — "тоглоомын талбай", "хоолны өрөө".
+  location    String?
+  /// Which part of the body. Free text: a closed list of anatomy is a medical
+  /// system, and staff write what they saw.
+  bodyPart    String?
+  description String
+  /// "Авсан анхан шатны арга хэмжээ" — what was done at the time.
+  firstAid    String?
+  /// "Дараагийн хяналт" — what still needs watching.
+  followUp    String?
+
+  /// ★★ High priority is a flag, not a severity scale.
+  ///
+  /// Module 2.1 asks for one thing: mark the serious ones **High Priority** and
+  /// alert management and the family immediately. A three-level scale would
+  /// invite a middle value meaning "somewhat urgent", which nobody acts on.
+  isHighPriority Boolean @default(false)
+
+  /// The staff member who recorded it. Nullable so the row survives the account
+  /// being deleted, which is the same trade `Observation.authorId` makes.
+  recordedById String? @db.Uuid
+
+  /// Set when the family has been told, and by which notice. Null means
+  /// recorded and **not yet reported** — the state the review screen exists to
+  /// surface.
+  reportedAt     DateTime?
+  notificationId String?   @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten  @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child         @relation(fields: [childId], references: [id], onDelete: Cascade)
+  recordedBy   User?         @relation("IncidentRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  notification Notification? @relation("IncidentNotification", fields: [notificationId], references: [id], onDelete: SetNull)
+  media        MediaFile[]   @relation("IncidentMedia")
+
+  @@index([childId, occurredAt(sort: Desc)])
+  /// The kindergarten's incident log.
+  @@index([kindergartenId, occurredAt(sort: Desc)])
+  /// The unreported queue: high-priority first, still awaiting a family.
+  @@index([kindergartenId, isHighPriority, reportedAt])
+  @@map("safety_incidents")
+}
+
+/// Two works, side by side, with what changed between them — RFP §5.3.
+///
+/// ★ Only the *conclusion* is new. Everything else §5.3 asks for already
+/// exists: several artwork photographs per observation (`MediaFile.
+/// observationId`, capped at twelve), a date on each (`takenAt`), a caption on
+/// each, and the whole set orderable in time. What the schema could not hold
+/// was the sentence a teacher writes about the change — "долоо хоногийн дараа
+/// хүн зурахдаа гар, хөлийг тусад нь зурсан" — and that sentence is the
+/// feature. So this table is a pair of pointers and a paragraph, not a copy of
+/// the images.
+///
+/// ★★ Two works, not N.
+///
+/// §5.3 says "өмнөх болон дараагийн бүтээлийг зэрэгцүүлэн харах" — the previous
+/// and the next, side by side. A set of arbitrary size would need an ordering
+/// table and an answer to "what does a conclusion about five drawings mean",
+/// and neither is asked for. A teacher comparing three works makes two
+/// comparisons, which is also how they would say it out loud.
+model ArtworkComparison {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  childId        String @db.Uuid
+
+  /// ★★★ Ordered by the service, not by the caller.
+  ///
+  /// A teacher who picks the two works in the wrong order would otherwise get a
+  /// comparison that reads as development running backwards. The service sorts
+  /// them by when the work was made before storing, so `earlier` is always
+  /// earlier — see `ArtworkService.compare`.
+  earlierMediaId String @db.Uuid
+  laterMediaId   String @db.Uuid
+
+  /// "Хөгжлийн өөрчлөлтийн дүгнэлт" — the reason the row exists.
+  conclusion String
+
+  /// The teacher whose judgement this is. A comparison is a professional
+  /// reading of a child's development, so it carries an author the way an
+  /// observation does.
+  authorId String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  earlierMedia MediaFile    @relation("ComparisonEarlier", fields: [earlierMediaId], references: [id], onDelete: Cascade)
+  laterMedia   MediaFile    @relation("ComparisonLater", fields: [laterMediaId], references: [id], onDelete: Cascade)
+  author       User?        @relation("ComparisonAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([childId, createdAt(sort: Desc)])
+  @@map("artwork_comparisons")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Document library — RFP §9
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A PDF in the kindergarten's library — RFP §9.
+///
+/// ★ Kindergarten-scoped, not child data. It is staff reference material —
+/// curricula, methodology, regulations — so `MediaService` authorises the file
+/// by membership, exactly as it does a logo, and `canAccessChild` never runs.
+///
+/// ★★ `version` replaces rather than accumulates.
+///
+/// §9 asks for "Баримт шинэ хувилбараар солих" — replace with a new version —
+/// and a `version` string on one row is what that means. A separate
+/// `DocumentVersion` table would be the right model for "show me last year's
+/// curriculum", which §9 does not ask for and which nobody has requested.
+model Document {
+  id             String  @id @default(uuid()) @db.Uuid
+  kindergartenId String  @db.Uuid
+  title          String
+  /// Free text — §9 says "Ангилал" and gives no vocabulary, and a kindergarten
+  /// files by its own headings. Filtered on exactly, not fuzzily.
+  category       String?
+  description    String?
+  /// "Хувилбар" — e.g. "2026.1". A label, not an ordering key.
+  version        String?
+
+  /// The PDF itself. Required: a library entry with no document is a title.
+  fileMediaFileId  String  @unique @db.Uuid
+  /// "Нүүр зураг" — optional cover image.
+  coverMediaFileId String? @unique @db.Uuid
+
+  publishedAt   DateTime @default(now())
+  publishedById String?  @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten       @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  file         MediaFile          @relation("DocumentFile", fields: [fileMediaFileId], references: [id], onDelete: Restrict)
+  cover        MediaFile?         @relation("DocumentCover", fields: [coverMediaFileId], references: [id], onDelete: SetNull)
+  publishedBy  User?              @relation("DocumentPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+  bookmarks    DocumentBookmark[]
+
+  @@index([kindergartenId, category])
+  @@index([kindergartenId, publishedAt(sort: Desc)])
+  @@map("documents")
+}
+
+/// One person's bookmark — RFP §9's "Bookmark хийсэн эсэх".
+///
+/// ★ A join table rather than a boolean on `Document`, because the flag is
+/// per-*reader*: a column would make one teacher's bookmark appear on every
+/// colleague's list, which is the opposite of what a bookmark is.
+model DocumentBookmark {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  documentId     String @db.Uuid
+  userId         String @db.Uuid
+
+  createdAt DateTime @default(now())
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  document     Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user         User         @relation("DocumentBookmarkUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// One bookmark per person per document. No soft delete: un-bookmarking is
+  /// not a fact anybody needs to recover.
+  @@unique([documentId, userId])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("document_bookmarks")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Consent — RFP §16
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// What a family is being asked to agree to — RFP §16.
+///
+/// ★ Two kinds, because §16 asks for two separate things: "Эцэг эхээс мэдээлэл
+/// ашиглах зөвшөөрөл авах" and, in its own sentence, "Зураг нийтлэх зөвшөөрлийг
+/// тусад нь бүртгэх" — photo publishing recorded *separately*. A single
+/// "consented: true" would make refusing photographs mean refusing the system.
+enum ConsentKind {
+  /// Using the child's information in the system at all.
+  DATA_PROCESSING
+  /// Publishing the child's photographs beyond the family — RFP §16.
+  PHOTO_PUBLISHING
+}
+
+/// One guardian's decision, with the date it was made.
+///
+/// ★ Rows are never updated to reverse a decision — a new row supersedes.
+///
+/// Consent is a legal record: "we had permission on the day we published" is
+/// the question it exists to answer, and an `UPDATE` that flipped a boolean
+/// would destroy exactly that. `decidedAt` orders them and the latest wins.
+model ConsentRecord {
+  id             String      @id @default(uuid()) @db.Uuid
+  kindergartenId String      @db.Uuid
+  childId        String      @db.Uuid
+  kind           ConsentKind
+  granted        Boolean
+
+  /// The guardian who decided. Not nullable: an unattributed consent record is
+  /// not evidence of anything.
+  decidedById String   @db.Uuid
+  decidedAt   DateTime @default(now())
+  /// What they were shown, so a later dispute can establish what was agreed.
+  note        String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  decidedBy    User         @relation("ConsentDecidedBy", fields: [decidedById], references: [id], onDelete: Restrict)
+
+  /// The current answer: latest row per child per kind.
+  @@index([childId, kind, decidedAt(sort: Desc)])
+  @@index([kindergartenId, kind])
+  @@map("consent_records")
+}
+
+/// Which sitting — `нэмэлт.md` §2.
+enum MealKind {
+  BREAKFAST // Өглөөний цай
+  LUNCH // Үдийн хоол
+  AFTERNOON_SNACK // Үдээс хойших цай
+  EXTRA // Нэмэлт хоол
+}
+
+/// Whether the child ate — `нэмэлт.md` §2.
+enum MealStatus {
+  TAKEN // Авсан
+  NOT_TAKEN // Аваагүй
+  PARTIAL // Хэсэгчлэн
+  SPECIAL // Тусгай хоол
+}
+
+/// One child, one day, one sitting — `нэмэлт.md` §2.
+///
+/// ★ Separate from `Attendance`, and that separation is the point.
+///
+/// §17 states the governing principle: a fact is recorded once and reused. It
+/// would be tempting to infer "ate lunch" from "was present", and §3 shows why
+/// that fails — the food cost is computed from **hooллосон өдөр**, days the
+/// child actually ate, which is not the same as days they attended. A child
+/// present on a half day, or collected before lunch, attended and did not eat.
+/// Deriving one from the other would make the cost calculation silently wrong.
+///
+/// ★★ Anchored to `Enrollment` like `Attendance`, for the same reason: a meal
+/// served in January belongs to whichever kindergarten served it, and a
+/// transfer must not rewrite that.
+model MealRecord {
+  id             String     @id @default(uuid()) @db.Uuid
+  kindergartenId String     @db.Uuid
+  childId        String     @db.Uuid
+  enrollmentId   String     @db.Uuid
+  date           DateTime   @db.Date
+  kind           MealKind
+  status         MealStatus
+  note           String?
+
+  recordedById String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  enrollment   Enrollment   @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
+  recordedBy   User?        @relation("MealRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  /// One row per enrollment per day per sitting. Replaced by a **partial**
+  /// unique index in the migration — same reasoning as `Attendance`: Postgres
+  /// treats NULLs as distinct, so the plain form would let a soft-deleted row
+  /// block its own sitting for ever.
+  @@unique([enrollmentId, date, kind])
+  /// The group's day sheet: every child, one date.
+  @@index([kindergartenId, date])
+  /// A child's month, and the "days eaten" count a cost calculation needs.
+  @@index([childId, date])
+  @@map("meal_records")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Funding and food cost — нэмэлт.md §3, §4, §5
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Where the money comes from — нэмэлт.md §3's "эх үүсвэрээр салгаж харуулна".
+enum FundingSource {
+  STATE // Улсын санхүүжилт
+  PARENT // Эцэг эхийн төлбөр
+  KINDERGARTEN // Цэцэрлэгийн санхүүжилт
+  OTHER // Бусад эх үүсвэр
+}
+
+/// A tariff and the conditions it applies under — нэмэлт.md §5.
+///
+/// ★ §4 is explicit: "Санхүүжилтийн тариф болон дүрмийг source code-д тогтмол
+/// бичихгүй. Администратор тохиргоогоор өөрчлөх боломжтой байна." So this is a
+/// table, like `DevelopmentDomain` and `AssessmentLevel`, and for a sharper
+/// reason than either: a rate hard-coded in TypeScript would need a deployment
+/// to follow a government circular, and the wrong rate applied for a month is a
+/// reconciliation nobody can undo cleanly.
+///
+/// ★★ Rules are **superseded, never edited**, once they have been used.
+///
+/// A month's calculation is evidence — "this is the rate we billed under" — and
+/// editing the rate that produced it rewrites the past. `effectiveFrom` and
+/// `effectiveTo` bound each one; a new rate is a new row starting the day the
+/// old one ends. That is why the calculation stores its own `dailyRate` too.
+model FundingRule {
+  id             String        @id @default(uuid()) @db.Uuid
+  kindergartenId String        @db.Uuid
+  name           String
+  source         FundingSource
+
+  effectiveFrom DateTime  @db.Date
+  /// Null means "still in force". A rule is closed by setting this, not deleted.
+  effectiveTo   DateTime? @db.Date
+
+  /// Which children it applies to. Null means every age.
+  ageBand AgeBand?
+
+  /// The money, in **tögrög**, as `Decimal` — never a float.
+  ///
+  /// A binary float cannot hold 0.1 exactly, and a month's funding is a sum of
+  /// thousands of these; the error is small per row and visible in a total that
+  /// has to reconcile against a bank statement.
+  dailyRate   Decimal? @db.Decimal(12, 2)
+  monthlyRate Decimal? @db.Decimal(12, 2)
+
+  /// §5's "Ирцээс хамаарах эсэх" and "Хоолны хэрэглээнээс хамаарах эсэх".
+  ///
+  /// These decide which counter the daily rate multiplies: days attended, days
+  /// fed, or neither (a flat monthly charge). Both false with a `monthlyRate`
+  /// is the flat case.
+  dependsOnAttendance Boolean @default(true)
+  dependsOnMeals      Boolean @default(false)
+
+  note String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten        Kindergarten         @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  fundingCalculations FundingCalculation[]
+
+  /// "Which rules were in force in March" — the calculation's own lookup.
+  @@index([kindergartenId, source, effectiveFrom])
+  @@map("funding_rules")
+}
+
+/// What a child's funding worked out to for one month — нэмэлт.md §6.
+///
+/// ★ The inputs are stored alongside the result, not just referenced.
+///
+/// `daysAttended`, `daysFed` and `dailyRate` are copied onto the row at
+/// calculation time. Recomputing them later from the live tables would answer a
+/// different question the moment an attendance correction lands — and §6's
+/// state machine (Draft → Submitted → Approved → Paid → Reconciled) exists
+/// precisely because an approved figure must stay the figure that was approved.
+model FundingCalculation {
+  id             String        @id @default(uuid()) @db.Uuid
+  kindergartenId String        @db.Uuid
+  childId        String        @db.Uuid
+  source         FundingSource
+  /// The month this covers, as its first day.
+  month          DateTime      @db.Date
+
+  daysAttended  Int
+  daysFed       Int
+  /// The rate actually applied — see the note above.
+  dailyRate     Decimal? @db.Decimal(12, 2)
+  /// The rule that produced it, for tracing. Nullable so a deleted rule does
+  /// not take the calculation with it.
+  fundingRuleId String?  @db.Uuid
+
+  /// Тооцсон дүн — what the rule computes.
+  calculatedAmount Decimal  @db.Decimal(12, 2)
+  /// Баталгаажсан дүн — what was approved, once it is.
+  approvedAmount   Decimal? @db.Decimal(12, 2)
+  /// Хүлээн авсан дүн — what actually arrived.
+  receivedAmount   Decimal? @db.Decimal(12, 2)
+
+  note String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  fundingRule  FundingRule? @relation(fields: [fundingRuleId], references: [id], onDelete: SetNull)
+
+  /// One calculation per child per month per source, among live rows.
+  @@unique([childId, month, source])
+  @@index([kindergartenId, month])
+  @@map("funding_calculations")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Growth — RFP §7
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// One height/weight measurement — RFP §7.1.
+///
+/// ★ A time series, and `ChildProfile.heightCm` stays where it is.
+///
+/// Those two columns answer RFP §4.1: the height and weight printed in "Миний
+/// тухай", one pair, edited in place, part of a portfolio page. This table
+/// answers §7.2, which asks for a chart over time and a comparison with the
+/// previous measurement — questions a single overwritten pair cannot answer at
+/// all. Folding §4.1 into this table would delete the portfolio's own field;
+/// folding this into §4.1 would delete every measurement but the last.
+///
+/// ★★ Anchored to `Child`, not to `Enrollment`.
+///
+/// Attendance hangs off an enrollment because a day of attendance belongs to
+/// whichever kindergarten the child attended that day. A child's height belongs
+/// to the child: it is the same body before and after a transfer, and a growth
+/// chart that reset on moving kindergarten would be worse than useless. The
+/// kindergarten column is the denormalised tenant scope every table carries
+/// (CLAUDE.md §3.1), recording who took the measurement, not who owns the fact.
+model GrowthMeasurement {
+  id             String   @id @default(uuid()) @db.Uuid
+  kindergartenId String   @db.Uuid
+  childId        String   @db.Uuid
+  measuredOn     DateTime @db.Date
+
+  /// 30..200 cm, validated in the service. `Decimal(5,1)` matches
+  /// `ChildProfile.heightCm` — one shape for one quantity.
+  heightCm Decimal? @db.Decimal(5, 1)
+  /// 2..100 kg, matching `ChildProfile.weightKg`.
+  weightKg Decimal? @db.Decimal(5, 2)
+
+  /// RFP §7.1 — "толгойн тойрог шаардлагатай бол". Optional in the RFP's own
+  /// words, and rarely taken after infancy.
+  headCircumferenceCm Decimal? @db.Decimal(4, 1)
+
+  note String?
+
+  /// Who took it. `User.id` rather than `Membership.id`, matching
+  /// `Observation.authorId` — it reads correctly across a role change.
+  recordedById String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  recordedBy   User?        @relation("GrowthRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  /// ★ One measurement per child per day, enforced by a **partial** unique
+  /// index in the migration — the same treatment `Attendance` gets, for the
+  /// same reason: Postgres treats NULLs as distinct, so a plain constraint
+  /// would let a soft-deleted row block its own date for ever.
+  ///
+  /// One a day is the right grain: a nurse re-measuring after a bad reading is
+  /// correcting the same measurement, not adding a second one, and a chart with
+  /// two points on one date has no defined order.
+  @@unique([childId, measuredOn])
+  /// The chart: always a range scan over one child, newest first.
+  @@index([childId, measuredOn(sort: Desc)])
+  @@index([kindergartenId, measuredOn(sort: Desc)])
+  @@map("growth_measurements")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -877,6 +1661,14 @@ enum AttendanceStatus {
   EXCUSED // Чөлөөтэй
   SICK // Өвчтэй
   ABSENT // Тасалсан
+  /// ★ Restored 2026-08-25. `нэмэлт.md` §1 lists six statuses and this is the
+  /// sixth; it existed in the first attendance migration and was dropped when
+  /// that migration was rewritten, which nothing recorded as a decision.
+  ///
+  /// It is the escape hatch every enum in this schema keeps: a day that is none
+  /// of the five is otherwise recorded as the nearest wrong one, and an
+  /// attendance figure that feeds a funding calculation cannot afford that.
+  OTHER // Бусад
 }
 
 enum AttendanceRequestStatus {
@@ -949,7 +1741,6 @@ model Attendance {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
-  deletedById String? @db.Uuid
 
   kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
@@ -1005,7 +1796,6 @@ model AttendanceRequest {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
-  deletedById String? @db.Uuid
 
   kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
@@ -1047,7 +1837,6 @@ model MenuDay {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
-  deletedById String? @db.Uuid
 
   kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   createdBy    User?        @relation("MenuDayCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -1099,7 +1888,6 @@ model Survey {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
-  deletedById String? @db.Uuid
 
   kindergarten Kindergarten     @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   createdBy    User?            @relation("SurveyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -1145,7 +1933,6 @@ model SurveyResponse {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
-  deletedById String? @db.Uuid
 
   kindergarten Kindergarten   @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   survey       Survey         @relation(fields: [surveyId], references: [id], onDelete: Cascade)
@@ -1287,6 +2074,12 @@ model MediaFile {
   /// Set for `NOTIFICATION` media. Mutually exclusive with `childId` in
   /// practice: a class announcement is addressed to a group, not a child.
   notificationId String? @db.Uuid
+  /// Set for `MILESTONE` media — RFP §4.5's "Зураг". Carries `childId` too, so
+  /// the ordinary child-media authorization applies without a special case.
+  milestoneId    String? @db.Uuid
+  /// Set for `INCIDENT` media — Module 2.1's "фото зураг хавсаргах". Also
+  /// carries `childId`, so the ordinary child-media authorization applies.
+  incidentId     String? @db.Uuid
   order          Int     @default(0)
 
   purpose MediaPurpose
@@ -1344,21 +2137,29 @@ model MediaFile {
   updatedAt  DateTime  @updatedAt
   deletedAt  DateTime?
 
-  kindergarten       Kindergarten  @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
-  child              Child?        @relation("ChildMedia", fields: [childId], references: [id], onDelete: Cascade)
-  observation        Observation?  @relation("ObservationMedia", fields: [observationId], references: [id], onDelete: Cascade)
-  notification       Notification? @relation("NotificationMedia", fields: [notificationId], references: [id], onDelete: Cascade)
-  uploadedBy         User?         @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
-  childPhotoOf       Child?        @relation("ChildPhoto")
-  reportJob          ReportJob?    @relation("ReportOutput")
-  kindergartenLogoOf Kindergarten? @relation("KindergartenLogo")
-  userPhotoOf        User?         @relation("UserPhoto")
-  groupPhotoOf       Group?        @relation("GroupPhoto")
+  kindergarten       Kindergarten        @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child              Child?              @relation("ChildMedia", fields: [childId], references: [id], onDelete: Cascade)
+  observation        Observation?        @relation("ObservationMedia", fields: [observationId], references: [id], onDelete: Cascade)
+  notification       Notification?       @relation("NotificationMedia", fields: [notificationId], references: [id], onDelete: Cascade)
+  milestone          Milestone?          @relation("MilestoneMedia", fields: [milestoneId], references: [id], onDelete: Cascade)
+  incident           SafetyIncident?     @relation("IncidentMedia", fields: [incidentId], references: [id], onDelete: Cascade)
+  uploadedBy         User?               @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  childPhotoOf       Child?              @relation("ChildPhoto")
+  comparisonEarlier  ArtworkComparison[] @relation("ComparisonEarlier")
+  documentFileOf     Document?           @relation("DocumentFile")
+  documentCoverOf    Document?           @relation("DocumentCover")
+  comparisonLater    ArtworkComparison[] @relation("ComparisonLater")
+  reportJob          ReportJob?          @relation("ReportOutput")
+  kindergartenLogoOf Kindergarten?       @relation("KindergartenLogo")
+  userPhotoOf        User?               @relation("UserPhoto")
+  groupPhotoOf       Group?              @relation("GroupPhoto")
 
   @@index([childId, purpose, uploadedAt(sort: Desc)])
   @@index([kindergartenId, uploadedAt(sort: Desc)])
   @@index([observationId, order])
   @@index([notificationId, order])
+  @@index([milestoneId, order])
+  @@index([incidentId, order])
   @@index([status, deletedAt])
   /// ★ This does NOT serve the gallery's default sort, and the comment that
   /// claimed it did was wrong.
@@ -1396,6 +2197,10 @@ model Notification {
   kindergarten Kindergarten           @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   author       User?                  @relation("NotificationAuthor", fields: [authorId], references: [id], onDelete: SetNull)
   targets      NotificationTarget[]
+  /// The incidents this notice reported — RFP Module 2.1. Plural because one
+  /// notice may cover several children in the same event (a scuffle), and the
+  /// record on each child must still point at how the family was told.
+  incidents    SafetyIncident[]       @relation("IncidentNotification")
   reads        NotificationRead[]
   reactions    NotificationReaction[]
   media        MediaFile[]            @relation("NotificationMedia")

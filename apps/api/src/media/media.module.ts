@@ -3,6 +3,7 @@ import {
   ChildMediaController,
   MediaController,
   NotificationMediaController,
+  TenantImageController,
 } from "./media.controller";
 import { MediaRepository } from "./media.repository";
 import { MediaService } from "./media.service";
@@ -13,7 +14,12 @@ import { NotificationsModule } from "../notifications/notifications.module";
   // For `NotificationsService.isReadable` — a class-board photo is readable
   // exactly when its notice is, and that rule lives there.
   imports: [StorageModule, NotificationsModule],
-  controllers: [ChildMediaController, MediaController, NotificationMediaController],
+  controllers: [
+    ChildMediaController,
+    MediaController,
+    NotificationMediaController,
+    TenantImageController,
+  ],
   providers: [MediaService, MediaRepository],
   exports: [MediaService, MediaRepository],
 })

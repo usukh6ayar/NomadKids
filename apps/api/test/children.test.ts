@@ -928,9 +928,7 @@ describe("roster summary", () => {
       await enrollChild(a.kindergarten.id, child.id, a.group.id, a.schoolYear.id);
     }
 
-    const res = await request(server())
-      .get("/v1/children/summary")
-      .set("Cookie", teacherA.cookies);
+    const res = await request(server()).get("/v1/children/summary").set("Cookie", teacherA.cookies);
 
     expect(res.status).toBe(200);
     // The scenario's own child is in there too.
@@ -973,9 +971,7 @@ describe("roster summary", () => {
    * unauthorized child gets. The bug would read as a permissions problem.
    */
   it("is a route of its own, not swallowed by the :id lookup", async () => {
-    const res = await request(server())
-      .get("/v1/children/summary")
-      .set("Cookie", teacherA.cookies);
+    const res = await request(server()).get("/v1/children/summary").set("Cookie", teacherA.cookies);
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("total");
@@ -984,9 +980,7 @@ describe("roster summary", () => {
   it("★ does not count another kindergarten's children", async () => {
     const teacherB = await login(app, b.teacherUser.username);
 
-    const res = await request(server())
-      .get("/v1/children/summary")
-      .set("Cookie", teacherB.cookies);
+    const res = await request(server()).get("/v1/children/summary").set("Cookie", teacherB.cookies);
 
     // Scenario B has exactly one child of its own.
     expect(res.body.total).toBe(1);
@@ -1007,14 +1001,172 @@ describe("the roster's sex split", () => {
       await enrollChild(a.kindergarten.id, child.id, a.group.id, a.schoolYear.id);
     }
 
-    const res = await request(server())
-      .get("/v1/children/summary")
-      .set("Cookie", teacherA.cookies);
+    const res = await request(server()).get("/v1/children/summary").set("Cookie", teacherA.cookies);
 
     expect(res.status).toBe(200);
     expect(res.body.girls).toBe(2);
     // Two boys: the scenario's own child plus the one created above.
     expect(res.body.boys).toBe(2);
     expect(res.body.boys + res.body.girls).toBe(res.body.total);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Search, filter and sort — RFP §11
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("roster filters", () => {
+  /**
+   * Ages relative to today, so the assertions do not rot: a fixture with a
+   * literal 2021 birth date silently becomes a different age every year, and
+   * the test that depended on "is three" starts failing for a reason that has
+   * nothing to do with the code.
+   */
+  async function childAged(years: number, days = 0, overrides: Record<string, unknown> = {}) {
+    const now = new Date();
+    const dob = new Date(
+      Date.UTC(now.getUTCFullYear() - years, now.getUTCMonth(), now.getUTCDate() - days),
+    );
+    const child = await createChild(a.kindergarten.id, { dateOfBirth: dob, ...overrides });
+    await enrollChild(a.kindergarten.id, child.id, a.group.id, a.schoolYear.id);
+    return child;
+  }
+
+  async function ids(query: string) {
+    const res = await request(server())
+      .get(`/v1/children?pageSize=100&${query}`)
+      .set("Cookie", teacherA.cookies);
+    expect(res.status).toBe(200);
+    return (res.body.items as { id: string }[]).map((c) => c.id);
+  }
+
+  it("filters by sex", async () => {
+    const girl = await childAged(3, 0, { sex: "FEMALE", firstName: "Сараа" });
+    const boy = await childAged(3, 0, { sex: "MALE", firstName: "Болд" });
+
+    const found = await ids("sex=FEMALE");
+    expect(found).toContain(girl.id);
+    expect(found).not.toContain(boy.id);
+  });
+
+  /**
+   * ★ The off-by-one that makes an age filter return nothing.
+   *
+   * "At most 4" has to mean every child who has not yet turned five, including
+   * one who is 4 years and 364 days old. An inclusive `today − 4 years` lower
+   * bound matches only children who are exactly four **to the day** — which is
+   * almost nobody, and looks like an empty roster rather than a bug.
+   */
+  it("includes a child on the last day of the range", async () => {
+    const almostFive = await childAged(5, -1); // one day short of five
+    const justFive = await childAged(5, 1); // one day past five
+
+    const found = await ids("ageMin=2&ageMax=4");
+    expect(found).toContain(almostFive.id);
+    expect(found).not.toContain(justFive.id);
+  });
+
+  it("includes a child on their birthday, at the bottom of the range", async () => {
+    const exactlyThree = await childAged(3);
+    expect(await ids("ageMin=3")).toContain(exactlyThree.id);
+    expect(await ids("ageMin=4")).not.toContain(exactlyThree.id);
+  });
+
+  it("rejects an inverted range rather than quietly swapping it", async () => {
+    const res = await request(server())
+      .get("/v1/children?ageMin=5&ageMax=2")
+      .set("Cookie", teacherA.cookies);
+    expect(res.status).toBe(400);
+  });
+
+  /**
+   * ★★ The summary heads the list, so it must narrow with it.
+   *
+   * The two used to build their filter object separately. Adding `sex` and the
+   * age range to one and not the other is how a header comes to say "12
+   * children" over a list showing four.
+   */
+  it("the summary narrows with the same filters as the list", async () => {
+    await childAged(3, 0, { sex: "FEMALE" });
+    await childAged(3, 0, { sex: "FEMALE" });
+    await childAged(6, 0, { sex: "MALE" });
+
+    const query = "sex=FEMALE&ageMin=2&ageMax=4";
+    const [summary, list] = await Promise.all([
+      request(server()).get(`/v1/children/summary?${query}`).set("Cookie", teacherA.cookies),
+      request(server()).get(`/v1/children?pageSize=100&${query}`).set("Cookie", teacherA.cookies),
+    ]);
+
+    expect(summary.body.total).toBe(list.body.total);
+    expect(summary.body.total).toBe(2);
+  });
+});
+
+describe("roster sorting", () => {
+  async function named(lastName: string, firstName: string, dateOfBirth: Date) {
+    const child = await createChild(a.kindergarten.id, { lastName, firstName, dateOfBirth });
+    await enrollChild(a.kindergarten.id, child.id, a.group.id, a.schoolYear.id);
+    return child;
+  }
+
+  it("orders by name by default, and reverses on request", async () => {
+    await named("Аюуш", "Аз", new Date("2022-01-01"));
+    await named("Ямаа", "Яруу", new Date("2022-01-01"));
+
+    const asc = await request(server())
+      .get("/v1/children?pageSize=100")
+      .set("Cookie", teacherA.cookies);
+    const desc = await request(server())
+      .get("/v1/children?pageSize=100&order=desc")
+      .set("Cookie", teacherA.cookies);
+
+    expect(asc.body.items[0].lastName).toBe("Аюуш");
+    expect(desc.body.items[0].lastName).toBe("Ямаа");
+  });
+
+  /**
+   * ★ `sort=age` is `dateOfBirth` with the direction flipped, and this pins
+   * which way round.
+   *
+   * Ascending **age** is youngest first, and a younger child has a *later*
+   * birth date — so `age asc` and `dateOfBirth asc` return opposite orders.
+   * That inversion is the whole reason `childOrderBy` does the flip in one
+   * place; the first draft of this test asserted it backwards, which is
+   * exactly the mistake the mapping exists to make impossible at the call
+   * sites.
+   */
+  it("sorts by age ascending — youngest first, which is the latest birth date", async () => {
+    const older = await named("Хэрэглэгч", "Ахмад", new Date("2020-01-01"));
+    const younger = await named("Хэрэглэгч", "Бага", new Date("2023-01-01"));
+
+    const byAge = await request(server())
+      .get("/v1/children?pageSize=100&sort=age&order=asc")
+      .set("Cookie", teacherA.cookies);
+    const byDate = await request(server())
+      .get("/v1/children?pageSize=100&sort=dateOfBirth&order=asc")
+      .set("Cookie", teacherA.cookies);
+
+    const ageOrder = (byAge.body.items as { id: string }[]).map((c) => c.id);
+    const dateOrder = (byDate.body.items as { id: string }[]).map((c) => c.id);
+
+    // Youngest first.
+    expect(ageOrder.indexOf(younger.id)).toBeLessThan(ageOrder.indexOf(older.id));
+    // The same two children under the same `order`, in the opposite sequence:
+    // earliest birth date is the oldest child.
+    expect(dateOrder.indexOf(older.id)).toBeLessThan(dateOrder.indexOf(younger.id));
+
+    // And descending age puts the oldest first.
+    const oldestFirst = await request(server())
+      .get("/v1/children?pageSize=100&sort=age&order=desc")
+      .set("Cookie", teacherA.cookies);
+    const descOrder = (oldestFirst.body.items as { id: string }[]).map((c) => c.id);
+    expect(descOrder.indexOf(older.id)).toBeLessThan(descOrder.indexOf(younger.id));
+  });
+
+  it("refuses a sort field that is not offered", async () => {
+    const res = await request(server())
+      .get("/v1/children?sort=healthNotes")
+      .set("Cookie", teacherA.cookies);
+    expect(res.status).toBe(400);
   });
 });

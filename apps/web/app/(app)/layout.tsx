@@ -146,7 +146,7 @@ function staffNav(isAdmin: boolean): NavItem[] {
  * eight of its thirteen entries as dead labels. Two failure modes came out of
  * that, and the second is the worse one:
  *
- *  - **Чат · Санхүү · Баримт бичиг** are Phase 2 and Phase 3 (CLAUDE.md §7). A
+ *  - **Чат · Санхүү** are a later phase (CLAUDE.md §7). A
  *    teacher opening the menu every day and reading six things they cannot do
  *    learns that most of this product is broken. They are gone until the
  *    screen behind them exists; adding a line back is a one-line change on
@@ -158,7 +158,9 @@ function staffNav(isAdmin: boolean): NavItem[] {
  *    attendance — it has no group to start from. Хоол ба цэс shipped the
  *    same day too, reached from the child page rather than the sidebar,
  *    since there is nothing kindergarten-wide to manage from here — only
- *    per-day content that belongs where a family reads it.
+ *    per-day content that belongs where a family reads it. **Баримт бичгийн
+ *    сан** joined them on 2026-08-25 as RFP §9 shipped — staff only, so it
+ *    appears here and never in `parentSections`.
  *
  *  - **Явцын үнэлгээ** and **Тайлан** were marked `soon` while both are fully
  *    built. Assessment begins from a group and a report from a child, so
@@ -191,6 +193,9 @@ function staffSections(isAdmin: boolean): NavSection[] {
     {
       title: "Багш ба байгууллага",
       entries: [
+        // RFP §9 — "Багшид зориулсан PDF баримт бичгийн сан". Staff only, so it
+        // lives here and never in `parentSections`.
+        { label: "Баримт бичгийн сан", href: "/documents" },
         { label: "Багшийн мэдээлэл", href: "/settings" },
         ...(isAdmin ? [{ label: "Бүлэг, цэцэрлэгийн мэдээлэл", href: "/admin" }] : []),
       ],
@@ -308,6 +313,10 @@ function parentSections(myChildren: ChildSummary[] | undefined): NavSection[] {
           href: "/notifications",
           icon: <Bell size={18} aria-hidden="true" />,
         },
+        // No `href`: chat is RFP Phase IV. It renders as a disabled row, the
+        // same treatment "Санхүү" below gets, so the menu describes the product
+        // the client was shown without offering a link into nothing.
+        { label: "Чат" },
       ],
     },
     {

@@ -3,6 +3,14 @@ import { AuditModule } from "./audit/audit.module";
 import { AuthModule } from "./auth/auth.module";
 import { AssessmentModule } from "./assessment/assessment.module";
 import { AttendanceModule } from "./attendance/attendance.module";
+import { GrowthModule } from "./growth/growth.module";
+import { HealthRecordsModule } from "./health-records/health-records.module";
+import { IncidentsModule } from "./incidents/incidents.module";
+import { ArtworkModule } from "./artwork/artwork.module";
+import { DocumentsModule } from "./documents/documents.module";
+import { ConsentModule } from "./consent/consent.module";
+import { FundingModule } from "./funding/funding.module";
+import { MilestonesModule } from "./milestones/milestones.module";
 import { AuthzModule } from "./authz/authz.module";
 import { CatalogModule } from "./catalog/catalog.module";
 import { ChildrenModule } from "./children/children.module";
@@ -52,6 +60,14 @@ import { UsersModule } from "./users/users.module";
     MediaModule,
     AssessmentModule,
     AttendanceModule,
+    GrowthModule,
+    MilestonesModule,
+    HealthRecordsModule,
+    IncidentsModule,
+    ArtworkModule,
+    DocumentsModule,
+    ConsentModule,
+    FundingModule,
     MealsModule,
     CatalogModule,
     NotificationsModule,

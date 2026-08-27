@@ -1,4 +1,5 @@
-import { baseCss, esc, formatDate, paragraphs, reportChrome } from "./template-utils";
+import { ageInYears, birthFacts, MILESTONE_KIND_LABEL } from "@kinder/contracts";
+import { baseCss, esc, formatDate, masthead, paragraphs, reportChrome } from "./template-utils";
 
 /**
  * The child portfolio PDF — RFP §10.3.
@@ -19,7 +20,7 @@ export interface PortfolioData {
     sex: string;
     photoDataUri?: string | null;
   };
-  kindergarten: { name: string };
+  kindergarten: { name: string; logoDataUri?: string | null };
   group?: { name: string } | null;
   schoolYear?: { name: string } | null;
   aboutMe?: {
@@ -45,6 +46,21 @@ export interface PortfolioData {
     teacherNote?: string | null;
   }[];
   birthdayNotes: { age: number; note?: string | null }[];
+  /** RFP §4.5 — the firsts a family recorded. */
+  milestones: {
+    kind: string;
+    title?: string | null;
+    occurredOn: Date | string;
+    description?: string | null;
+  }[];
+  /** RFP §5.3 — two works side by side, with what changed. */
+  artworkComparisons: {
+    conclusion: string;
+    earlierDataUri?: string | null;
+    laterDataUri?: string | null;
+    earlierTakenAt?: Date | string | null;
+    laterTakenAt?: Date | string | null;
+  }[];
   observations: {
     observedOn: Date | string;
     typeName: string;
@@ -145,10 +161,77 @@ export function renderPortfolioHtml(data: PortfolioData): string {
     )
     .join("");
 
+  /*
+   * RFP §5.3 — "Харьцуулалтыг PDF тайланд оруулах".
+   *
+   * ★ A pair renders even when one image could not be embedded.
+   *
+   * `ImageBudget` refuses images once the report's total is spent, so a long
+   * portfolio can reach a comparison with room for one picture or none. The
+   * conclusion is the part a family reads and the part a teacher wrote; dropping
+   * the whole block because a photograph did not fit would throw away the
+   * sentence to save the illustration.
+   */
+  const comparisonBlocks = data.artworkComparisons
+    .map(
+      (c) => `
+      <div class="comparison">
+        <div class="pair">
+          ${
+            c.earlierDataUri
+              ? `<figure><img src="${c.earlierDataUri}" alt="Өмнөх бүтээл">
+                   <figcaption>${c.earlierTakenAt ? formatDate(c.earlierTakenAt) : "Огноогүй"}</figcaption>
+                 </figure>`
+              : `<figure class="missing"><figcaption>Зураг хавсаргаагүй</figcaption></figure>`
+          }
+          ${
+            c.laterDataUri
+              ? `<figure><img src="${c.laterDataUri}" alt="Дараагийн бүтээл">
+                   <figcaption>${c.laterTakenAt ? formatDate(c.laterTakenAt) : "Огноогүй"}</figcaption>
+                 </figure>`
+              : `<figure class="missing"><figcaption>Зураг хавсаргаагүй</figcaption></figure>`
+          }
+        </div>
+        ${paragraphs(c.conclusion)}
+      </div>`,
+    )
+    .join("");
+
+  const milestoneBlocks = data.milestones
+    .map(
+      (m) => `
+      <div class="milestone">
+        <h4>${esc(m.title?.trim() || MILESTONE_KIND_LABEL[m.kind] || m.kind)}</h4>
+        <p class="meta">${formatDate(m.occurredOn)}</p>
+        ${paragraphs(m.description)}
+      </div>`,
+    )
+    .join("");
+
   const birthdayBlocks = data.birthdayNotes
     .filter((n) => n.note)
     .map((n) => `<div class="birthday"><h4>${n.age} нас</h4>${paragraphs(n.note)}</div>`)
     .join("");
+
+  /*
+   * RFP §4.2 — өрнийн орд and монгол жилийн амьтан, from the same functions the
+   * portfolio screen uses. Rendered unconditionally: unlike the notes, these are
+   * derived from the birth date, so there is no "not filled in yet" state that
+   * would justify hiding the section.
+   */
+  const { zodiac, yearAnimal } = birthFacts(data.child.dateOfBirth);
+  const birthdayHeader = `
+    <dl class="birth-facts">
+      <dt>Төрсөн огноо</dt><dd>${formatDate(data.child.dateOfBirth)}</dd>
+      <dt>Нас</dt><dd>${ageInYears(data.child.dateOfBirth)} нас</dd>
+      <dt>Өрнийн орд</dt><dd>${esc(zodiac.name)}</dd>
+      <dt>Монгол жил</dt><dd>${esc(yearAnimal.name)} жил</dd>
+    </dl>
+    ${
+      yearAnimal.beforeLunarNewYear
+        ? `<p class="meta">Цагаан сараас өмнө төрсөн тул монгол жил нь өмнөх жилийнх байж болно.</p>`
+        : ""
+    }`;
 
   return `<!doctype html>
 <html lang="mn">
@@ -157,6 +240,10 @@ export function renderPortfolioHtml(data: PortfolioData): string {
 <title>${esc(fullName)} — хөгжлийн хавтас</title>
 <style>
 ${baseCss()}
+
+  /* The cover's own masthead is centred, and carries the logo alone. */
+  .cover .masthead { justify-content: center; margin-bottom: 10mm; }
+  .cover .masthead img { width: 30mm; height: 30mm; border-radius: 0; }
 
   .cover { text-align: center; padding-top: 30mm; }
   .cover img { width: 55mm; height: 55mm; object-fit: cover; border-radius: 50%; }
@@ -168,11 +255,24 @@ ${baseCss()}
 
   .age { break-inside: avoid; margin-bottom: 6mm; }
   .birthday { break-inside: avoid; margin-bottom: 4mm; }
+  .milestone { break-inside: avoid; margin-bottom: 4mm; }
+
+  /* RFP §5.3 — the two works sit side by side, which is the whole point. */
+  .comparison { break-inside: avoid; margin-bottom: 7mm; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; margin-bottom: 2mm; }
+  .pair figure { margin: 0; }
+  .pair img { width: 100%; max-height: 65mm; object-fit: contain; border-radius: 2mm; }
+  .pair figcaption { font-size: 8.5pt; color: #6b7280; margin-top: 1mm; }
+  .pair .missing {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 30mm; border: 1px dashed #d1d5db; border-radius: 2mm;
+  }
 </style>
 </head>
 <body>
 
 <section class="cover">
+  ${masthead(data.kindergarten, { withName: false })}
   ${data.child.photoDataUri ? `<img src="${data.child.photoDataUri}" alt="Хүүхдийн зураг">` : ""}
   <div class="name">${esc(fullName)}</div>
   <p class="meta">
@@ -200,14 +300,37 @@ ${
 }
 
 ${
-  birthdayBlocks
-    ? `<section class="page-break"><h2>Төрсөн өдрийн тэмдэглэл</h2>${birthdayBlocks}</section>`
+  /*
+   * ★ The section no longer depends on a note existing.
+   *
+   * It used to render only when somebody had written one, so a portfolio for a
+   * two-year-old printed no birthday section at all — and RFP §4.2's four facts
+   * were absent from every PDF regardless, because they were never computed
+   * here. The header is always worth printing; the notes are what may be empty.
+   */
+  ""
+}
+<section class="page-break">
+  <h2>Төрсөн өдрийн мэдээлэл</h2>
+  ${birthdayHeader}
+  ${birthdayBlocks}
+</section>
+
+${
+  milestoneBlocks
+    ? `<section class="page-break"><h2>Онцгой үйл явдал</h2>${milestoneBlocks}</section>`
     : ""
 }
 
 ${
   observationBlocks
     ? `<section class="page-break"><h2>Багшийн ажиглалт</h2>${observationBlocks}</section>`
+    : ""
+}
+
+${
+  comparisonBlocks
+    ? `<section class="page-break"><h2>Бүтээлийн хөгжлийн харьцуулалт</h2>${comparisonBlocks}</section>`
     : ""
 }
 

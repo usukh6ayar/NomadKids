@@ -7,6 +7,9 @@ import { AuditReadService } from "./audit-read.service";
 @Module({
   controllers: [DashboardController, AuditController],
   providers: [DashboardService, DashboardRepository, AuditReadService],
-  exports: [DashboardService],
+  // DashboardRepository is exported so PlatformModule can reuse the same
+  // per-kindergarten aggregation queries for the superadmin detail view,
+  // instead of duplicating them.
+  exports: [DashboardService, DashboardRepository],
 })
 export class DashboardModule {}

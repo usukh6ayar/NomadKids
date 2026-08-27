@@ -165,23 +165,44 @@ never logged.
 
 There is no DELETE. Deactivation is `PATCH { isActive: false }` — CLAUDE.md §3.2.
 
+### 5.1 Roster filters and sorting — RFP §11
+
+`?sex`, `?ageMin` and `?ageMax` (whole years, inclusive at both ends), plus
+`?sort=name|dateOfBirth|age|updatedAt` and `?order=asc|desc`.
+
+★ **`age` is `dateOfBirth` with the direction reversed.** A younger child has a
+later birth date, so ascending _age_ is descending _date_. The flip happens once,
+in `childOrderBy`, rather than at each call site — where it would be got right
+twice and backwards once.
+
+★★ **The age range is exclusive at the bottom: `ageMax + 1`.** "At most 4" means
+every child who has not yet turned five, including one who is four years and 364
+days old. An inclusive `today − 4 years` bound matches only children who are
+exactly four _to the day_, which is nearly nobody — an empty roster that reads as
+"no such children" rather than as a bug.
+
+An inverted range (`ageMin > ageMax`) is a **400**, not a silent swap.
+
+`GET /children/summary` takes the same filters and shares one builder with the
+list, so the header cannot report a total the rows beneath it contradict.
+
 ---
 
 ## 5. Children, guardianships, enrollment
 
-| Method | Route                       | Role           | Ownership           | Request                               | Response                              |
-| ------ | --------------------------- | -------------- | ------------------- | ------------------------------------- | ------------------------------------- |
-| GET    | `/children`                 | any            | actor's visible set | `?q&groupId&schoolYearId&status&page` | paginated summaries                   |
-| POST   | `/children`                 | admin, teacher | kg                  | names, sex, dateOfBirth, groupId      | created child + first enrollment      |
-| GET    | `/children/:id`             | any            | child               | —                                     | detail + current group + guardians    |
-| PATCH  | `/children/:id`             | admin, teacher | child:write         | names, dob, health notes, status      | updated                               |
-| POST   | `/children/:id/photo`       | admin, teacher | child:write         | multipart image                       | MediaFile ref                         |
-| GET    | `/children/:id/guardians`   | any            | child               | —                                     | guardians + relation                  |
-| POST   | `/children/:id/guardians`   | admin          | kg:admin            | userId or new-user fields, relation   | guardianship                          |
-| PATCH  | `/guardianships/:id`        | admin          | kg:admin            | relation, isPrimary, **canView**      | updated                               |
-| GET    | `/children/:id/enrollments` | any            | child               | —                                     | full history, newest first            |
-| POST   | `/children/:id/enrollments` | admin          | kg:admin            | groupId, schoolYearId, startedOn      | created; ends the previous active one |
-| PATCH  | `/enrollments/:id`          | admin          | kg:admin            | endedOn, status                       | updated                               |
+| Method | Route                       | Role           | Ownership           | Request                                                            | Response                              |
+| ------ | --------------------------- | -------------- | ------------------- | ------------------------------------------------------------------ | ------------------------------------- |
+| GET    | `/children`                 | any            | actor's visible set | `?q&groupId&schoolYearId&status&sex&ageMin&ageMax&sort&order&page` | paginated summaries                   |
+| POST   | `/children`                 | admin, teacher | kg                  | names, sex, dateOfBirth, groupId                                   | created child + first enrollment      |
+| GET    | `/children/:id`             | any            | child               | —                                                                  | detail + current group + guardians    |
+| PATCH  | `/children/:id`             | admin, teacher | child:write         | names, dob, health notes, status                                   | updated                               |
+| POST   | `/children/:id/photo`       | admin, teacher | child:write         | multipart image                                                    | MediaFile ref                         |
+| GET    | `/children/:id/guardians`   | any            | child               | —                                                                  | guardians + relation                  |
+| POST   | `/children/:id/guardians`   | admin          | kg:admin            | userId or new-user fields, relation                                | guardianship                          |
+| PATCH  | `/guardianships/:id`        | admin          | kg:admin            | relation, isPrimary, **canView**                                   | updated                               |
+| GET    | `/children/:id/enrollments` | any            | child               | —                                                                  | full history, newest first            |
+| POST   | `/children/:id/enrollments` | admin          | kg:admin            | groupId, schoolYearId, startedOn                                   | created; ends the previous active one |
+| PATCH  | `/enrollments/:id`          | admin          | kg:admin            | endedOn, status                                                    | updated                               |
 
 `GET /children` returns the actor's visible set — a parent sees only their own
 children, a teacher only their groups' children, an admin their kindergartens'.
@@ -189,6 +210,97 @@ It is never filtered by a client-supplied `kindergartenId`.
 
 `PATCH /guardianships/:id` with `canView: false` is the revocation path. The
 relationship record survives.
+
+---
+
+## 5.1b Milestones — RFP §4.5
+
+| Method | Route                      | Role | Ownership             | Response               |
+| ------ | -------------------------- | ---- | --------------------- | ---------------------- |
+| GET    | `/children/:id/milestones` | any  | child                 | timeline, newest first |
+| POST   | `/children/:id/milestones` | any  | child (guardians too) | the milestone          |
+| PATCH  | `/milestones/:id`          | any  | own entry, or staff   | the milestone          |
+| DELETE | `/milestones/:id`          | any  | own entry, or staff   | `{ id }`               |
+
+`kind` is one of `MILESTONE_KINDS` (seven named firsts plus `CUSTOM`), a
+suggested vocabulary rather than a closed set — §4.5 explicitly asks for a
+family-invented event. A `CUSTOM` entry **must** carry a `title`.
+
+★ **A guardian may edit only their own entry.** Either parent could otherwise
+rewrite what the other wrote. 404, not 403.
+
+★★ **Photographs attach through the ordinary child-media upload**, with
+`milestoneId` instead of `observationId` (sending both is a 400). Unlike an
+observation there is no author check: a milestone belongs to the family, so
+either guardian may illustrate it. Milestone photos are visible to guardians
+unconditionally — there is no review state to gate on.
+
+---
+
+## 5.1c Safety incidents — RFP Module 2.1
+
+| Method | Route                          | Role           | Ownership   | Response                                          |
+| ------ | ------------------------------ | -------------- | ----------- | ------------------------------------------------- |
+| GET    | `/children/:id/incidents`      | any            | child       | timeline, newest first                            |
+| POST   | `/children/:id/incidents`      | teacher, admin | child:write | the incident                                      |
+| GET    | `/kindergartens/:id/incidents` | teacher, admin | kg          | paginated log; `?unreportedOnly&highPriorityOnly` |
+| PATCH  | `/incidents/:id`               | teacher, admin | child:write | the incident                                      |
+| POST   | `/incidents/:id/report`        | teacher, admin | child:write | the incident, now reported                        |
+| DELETE | `/incidents/:id`               | teacher, admin | child:write | `{ id }`                                          |
+
+★ **The child list has no role gate.** A family reads their own child's
+incidents, including ones not yet reported: `reportedAt` records whether a notice
+was _sent_, not whether the record is visible.
+
+★★ **`report` creates a published, important notice targeted at that child
+alone** and links it to the incident. Never the class board — naming a child's
+injury to the whole group is the leak these rules exist to prevent. Reporting a
+second time is a **400**: `reportedAt` is the record that the family was told and
+by which notice, and overwriting it would orphan the first.
+
+The kindergarten log orders high-priority first within recency, and is paginated
+like every other list.
+
+---
+
+## 5.2 Growth — RFP §7
+
+| Method | Route                        | Role | Ownership             | Request                          | Response                |
+| ------ | ---------------------------- | ---- | --------------------- | -------------------------------- | ----------------------- |
+| GET    | `/children/:id/growth`       | any  | child                 | `?from&to`                       | points + reference band |
+| PUT    | `/children/:id/growth/:date` | any  | child (guardians too) | height, weight, head circ., note | the measurement         |
+| DELETE | `/growth-measurements/:id`   | any  | child:write           | —                                | `{ id }`                |
+
+★ **`PUT :date`, not `POST`.** One measurement per child per day is enforced by
+a partial unique index, so the day _is_ the record's identity. A re-measurement
+after a bad reading corrects that day rather than adding a second point — a
+chart with two points on one date has no defined order.
+
+★★ **Guardians may write and may not delete.** RFP §2.3 lists "Өсөлтийн
+мэдээлэл оруулах" among what a parent does, so the write uses the same predicate
+as the photo album rather than the staff-only `canRecordForChild`. Deleting
+edits the record the kindergarten keeps; a wrong value is corrected by writing
+the same day again. Same shape as the album.
+
+★★★ **The reference band ships with its source and disclaimer, nested.** RFP
+§7.2 requires the source, its version and its date to be shown, and requires the
+system to state it gives no medical diagnosis. They live _inside_ the
+`reference` object, so a screen cannot render the band without them — the
+requirement is structural rather than a note somebody must remember.
+
+`reference` is **null** when the child's sex is unknown. The WHO bands differ by
+more than a centimetre at five years old, and a chart with the wrong band is
+worse than one with none.
+
+The band is **median ±2 SD, never a percentile**. "Your child is on the 12th
+percentile" is a sentence that sends a family to a clinic; the question a
+kindergarten has is whether a measurement sits inside the range most children of
+that age fall in.
+
+`heightChangeCm` and `weightChangeKg` are the change since the previous
+measurement in the series — null on the first point, and null when the earlier
+row did not carry that quantity, because a delta against a measurement nobody
+took is a fabricated fact.
 
 ---
 
@@ -269,10 +381,32 @@ editing a caption cannot blank the date.
 **Tenant images** — `KINDERGARTEN_LOGO`, `USER_PHOTO`, `GROUP_PHOTO` — are
 served by `GET /media/:id` too, authorised by membership of the file's own
 kindergarten rather than through a child. They are still never public: CLAUDE.md
-§1.4 admits no exception for a logo. **There are no upload routes for them
-yet**, so `Kindergarten.logoMediaFileId`, `User.photoMediaFileId` and
-`Group.photoMediaFileId` exist and serve correctly but nothing can populate
-them.
+§1.4 admits no exception for a logo.
+
+| Route                          | Who                             | Sets                           |
+| ------------------------------ | ------------------------------- | ------------------------------ |
+| `POST /kindergartens/:id/logo` | administrator of that tenant    | `Kindergarten.logoMediaFileId` |
+| `POST /users/:id/photo`        | **that account only**, any role | `User.photoMediaFileId`        |
+| `POST /groups/:id/photo`       | teacher or admin of that tenant | `Group.photoMediaFileId`       |
+
+★ **Three paths, not one `POST /images?owner=…`.** The three authorization
+answers genuinely differ, and the parameterised version puts all three inside
+one method behind a switch — the shape CLAUDE.md §1.1 exists to prevent.
+
+★ **An administrator cannot set someone else's portrait.** They may create and
+deactivate the account; replacing its face is not administration. RFP §3.3 puts
+the profile photo under what a teacher does with their _own_ profile, and a
+portrait anyone else can set stops being evidence that the person put it there.
+
+Each column is `@unique`, so an upload **displaces** rather than adds: the
+previous `MediaFile` is soft-deleted in the same transaction that attaches the
+new one, and the audit row records `replacedMediaFileId`. Without that the old
+row survives pointing at bytes nothing serves, and — because the column is
+unique — the new row cannot claim the pointer at all.
+
+The logo is embedded in both PDF templates (RFP §10.3), asserted by counting
+embedded images before and after an upload rather than by searching the text
+layer, which cannot see a picture.
 
 **Upload takes a batch.** One request carries up to six repeated `file` parts
 and answers `{ items: MediaFile[], failed: [{ name, reason }] }`. Six because

@@ -56,12 +56,50 @@ export const updateChildSchema = z.object({
 });
 export type UpdateChildDto = z.infer<typeof updateChildSchema>;
 
-export const listChildrenQuerySchema = paginationQuerySchema.extend({
-  q: z.string().max(100).optional(),
-  status: childStatusSchema.optional(),
-  groupId: uuidSchema.optional(),
-  schoolYearId: uuidSchema.optional(),
-});
+/**
+ * How the roster may be ordered — RFP §11's "нэр, огноо, нас, сүүлд
+ * шинэчлэгдсэн".
+ *
+ * ★ `age` is not a column, and it is deliberately not a separate branch.
+ *
+ * Age is a function of `dateOfBirth`, monotonically decreasing: the oldest
+ * child has the earliest birth date. So sorting by age ascending *is* sorting
+ * by `dateOfBirth` descending — and the flip happens once, in the repository,
+ * rather than at each of the three call sites that would otherwise get it
+ * right twice and backwards once.
+ */
+export const childSortSchema = z.enum(["name", "dateOfBirth", "age", "updatedAt"]);
+export type ChildSort = z.infer<typeof childSortSchema>;
+
+/**
+ * Age in whole years, as a filter — RFP §11 "нас, хүйсээр шүүх".
+ *
+ * Bounded at 1 and 7 rather than the portfolio's 2–5: the portfolio has pages
+ * for exactly those four ages, but a roster contains children who arrived
+ * before their second birthday and others who have not yet left at six. A
+ * filter that could not express them would quietly hide real rows.
+ */
+const ageBoundSchema = z.coerce.number().int().min(1).max(7);
+
+export const listChildrenQuerySchema = paginationQuerySchema
+  .extend({
+    q: z.string().max(100).optional(),
+    status: childStatusSchema.optional(),
+    groupId: uuidSchema.optional(),
+    schoolYearId: uuidSchema.optional(),
+    sex: sexSchema.optional(),
+    ageMin: ageBoundSchema.optional(),
+    ageMax: ageBoundSchema.optional(),
+    sort: childSortSchema.default("name"),
+    order: z.enum(["asc", "desc"]).default("asc"),
+  })
+  .refine((q) => q.ageMin === undefined || q.ageMax === undefined || q.ageMin <= q.ageMax, {
+    // Silently swapping them would answer a question nobody asked. An inverted
+    // range is a mistake in the caller, and it returns nothing, which reads as
+    // "no such children" rather than as a bug.
+    message: "Насны доод хязгаар дээд хязгаараас их байна",
+    path: ["ageMin"],
+  });
 export type ListChildrenQuery = z.infer<typeof listChildrenQuerySchema>;
 
 export const addGuardianSchema = z.object({

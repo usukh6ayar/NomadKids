@@ -9,11 +9,12 @@ import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
+import { SingleImageUpload } from "@/components/media/single-image-upload";
 
 /**
  * The kindergarten's own details, for its director.
@@ -38,6 +39,7 @@ const detailSchema = z.object({
   phone: z.string().nullish(),
   email: z.string().nullish(),
   description: z.string().nullish(),
+  logoMediaFileId: uuidSchema.nullish(),
 });
 
 type Detail = z.infer<typeof detailSchema>;
@@ -107,6 +109,29 @@ function AdminKindergarten() {
         title="Цэцэрлэгийн мэдээлэл"
         lede="Эцэг эхэд харагдах нэр, хаяг, холбоо барих мэдээлэл."
       />
+
+      {/*
+        RFP §3.2 asks for the logo, and §10.3 puts it on every generated PDF —
+        which is the reason it sits at the top of this form rather than at the
+        bottom. It is not decoration on a profile page; it is the mark on every
+        report the kindergarten issues.
+
+        Its own card, outside the form: it saves on selection, and a file input
+        inside a form whose Save button does not apply to it is a reliable way
+        to have somebody upload a logo and then wonder why "Хадгалах" is
+        greyed out.
+      */}
+      <Card pad="roomy">
+        <SectionHeader title="Лого" />
+        <SingleImageUpload
+          endpoint={`/kindergartens/${primaryKindergartenId}/logo`}
+          currentMediaId={data?.logoMediaFileId}
+          label="Лого нэмэх"
+          alt={`${data?.name ?? "Цэцэрлэг"}-ийн лого`}
+          hint="Тайлан, PDF бүрд хэвлэгдэнэ. JPEG, PNG эсвэл WebP."
+          invalidateKeys={[qk.adminKindergarten(primaryKindergartenId ?? ""), qk.session()]}
+        />
+      </Card>
 
       <Card pad="roomy">
         <form

@@ -70,9 +70,7 @@ function SurveyDetail() {
         <QuestionEditor
           surveyId={surveyId}
           initialQuestions={data.questions}
-          onSaved={() =>
-            void queryClient.invalidateQueries({ queryKey: qk.survey(surveyId) })
-          }
+          onSaved={() => void queryClient.invalidateQueries({ queryKey: qk.survey(surveyId) })}
         />
       ) : (
         <Results surveyId={surveyId} />
@@ -108,12 +106,7 @@ function CloseButton({ surveyId }: { surveyId: string }) {
   });
 
   return (
-    <Button
-      size="sm"
-      variant="secondary"
-      disabled={close.isPending}
-      onClick={() => close.mutate()}
-    >
+    <Button size="sm" variant="secondary" disabled={close.isPending} onClick={() => close.mutate()}>
       {close.isPending ? "Хааж байна…" : "Хаах"}
     </Button>
   );
@@ -125,7 +118,12 @@ function QuestionEditor({
   onSaved,
 }: {
   surveyId: string;
-  initialQuestions: { order: number; type: SurveyQuestionType; prompt: string; options?: string[] | null }[];
+  initialQuestions: {
+    order: number;
+    type: SurveyQuestionType;
+    prompt: string;
+    options?: string[] | null;
+  }[];
   onSaved: () => void;
 }) {
   const [questions, setQuestions] = useState<DraftQuestion[]>(() =>

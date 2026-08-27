@@ -46,16 +46,10 @@ export class ChildrenService {
     const visible = await this.authz.visibleChildrenWhere(actor);
     const page: PageParams = { page: query.page, pageSize: query.pageSize };
 
-    const { items, total } = await this.repo.listChildren(
-      visible,
-      {
-        q: query.q,
-        status: query.status,
-        groupId: query.groupId,
-        schoolYearId: query.schoolYearId,
-      },
-      page,
-    );
+    const { items, total } = await this.repo.listChildren(visible, childFilters(query), page, {
+      sort: query.sort,
+      order: query.order,
+    });
 
     return paginate(items, total, page);
   }
@@ -78,12 +72,7 @@ export class ChildrenService {
    */
   async rosterSummary(actor: Actor, query: ListChildrenQuery) {
     const visible = await this.authz.visibleChildrenWhere(actor);
-    const rows = await this.repo.rosterFacts(visible, {
-      q: query.q,
-      status: query.status,
-      groupId: query.groupId,
-      schoolYearId: query.schoolYearId,
-    });
+    const rows = await this.repo.rosterFacts(visible, childFilters(query));
 
     const now = new Date();
     const months = rows
@@ -465,4 +454,30 @@ function monthsBetween(dateOfBirth: Date | null | undefined, now: Date): number 
   if (now.getDate() < dateOfBirth.getDate()) months -= 1;
 
   return months < 0 ? null : months;
+}
+
+/**
+ * The query's filter half, shared by the list and its summary.
+ *
+ * ★ Written once because these two must agree.
+ *
+ * `rosterSummary` reports the total and the mean age *of the filtered roster*,
+ * and it did so from a second hand-copied object literal. Adding `sex` and the
+ * age range to one and not the other is how a header comes to say "12 children"
+ * over a list showing 4 — and the repository already extracted `childWhere` to
+ * prevent exactly this, one layer down.
+ *
+ * Sorting is deliberately not here: it changes the order of a list and means
+ * nothing to an aggregate.
+ */
+function childFilters(query: ListChildrenQuery) {
+  return {
+    q: query.q,
+    status: query.status,
+    groupId: query.groupId,
+    schoolYearId: query.schoolYearId,
+    sex: query.sex,
+    ageMin: query.ageMin,
+    ageMax: query.ageMax,
+  };
 }

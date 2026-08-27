@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
-import { BookOpen, Plus } from "lucide-react";
+import { BookOpen, ChevronRight, HeartPulse, Plus, Ruler } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 import { z } from "zod";
 import { parentDashboardSchema, surveySchema, unreadCountSchema } from "@kinder/contracts";
@@ -13,10 +13,11 @@ import { errorMessage } from "@/lib/api/errors";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
+import { NavTile, TileGrid } from "@/components/ui/tile";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
 import { excerpt, formatAge, fullName, groupByDay } from "@/lib/format";
-import { PORTFOLIO } from "@/lib/vocabulary";
+import { GALLERY, PORTFOLIO } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
 
 /**
@@ -86,95 +87,142 @@ export default function ParentHomePage() {
 
   return (
     <HomeBackdrop>
-      {/*
-        ★ A plain card, and two actions — both buttons, neither a link styled
-        to look like one. `PORTFOLIO` moved back in from the grid below: it
-        still leads that grid *and* has the bottom bar's "Зураг" tab, but this
-        card is where a parent's eye already is, so the single most important
-        destination in the product earns a third, closest path rather than
-        making them look away from the child they just confirmed. `Хуваалцах`
-        (submitting an observation from home) has no tile or tab of its own,
-        so it keeps its round button — `size-12` rather than the switcher's
-        `size-11`, since it is the one thing on this card meant to be
-        pressed, not read.
-      */}
-      <Card pad="roomy" className="flex flex-col gap-3.5 sm:flex-row sm:items-center">
-        <div className="flex min-w-0 items-center gap-3.5">
-          <ChildAvatar child={selected} size={64} className="shrink-0" />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-title font-semibold text-ink">{fullName(selected)}</p>
-            <p className="text-body text-muted">
-              {[formatAge(selected.dateOfBirth), selected.group?.name].filter(Boolean).join(" · ")}
-            </p>
-          </div>
+      <Card pad="roomy" className="flex flex-wrap items-center gap-4">
+        <ChildAvatar child={selected} size={56} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-title font-semibold text-ink">{fullName(selected)}</p>
+          <p className="text-body text-muted">
+            {[formatAge(selected.dateOfBirth), selected.group?.name].filter(Boolean).join(" · ")}
+          </p>
         </div>
-
-        <div className="flex items-center gap-2 sm:ml-auto sm:shrink-0">
-          <Button asChild size="sm" className="flex-1 sm:flex-none">
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+          <Button asChild size="sm">
             <Link href={`/children/${selected.id}/portfolio`}>
-              <BookOpen size={18} aria-hidden="true" />
+              <BookOpen size={18} />
               {PORTFOLIO}
             </Link>
           </Button>
-          <Link
-            href={`/children/${selected.id}/observations/new`}
-            aria-label="Ажиглалт хуваалцах"
-            className="grid size-12 shrink-0 place-items-center rounded-pill bg-primary text-primary-ink shadow-md transition-colors hover:bg-primary-hover"
-          >
-            <Plus size={24} aria-hidden="true" />
-          </Link>
+          <Button asChild variant="secondary" size="sm">
+            <Link href={`/children/${selected.id}/observations/new`}>
+              <Plus size={18} />
+              Хуваалцах
+            </Link>
+          </Button>
         </div>
       </Card>
 
       {/*
-        ★ A 3-column icon grid matching the parent's own mock-up: Ангийн
-        самбар, Ирц, Хоол, Үнэлгээ, Судалгаа, Санхүү. The icon assets
-        (icon-notice.webp, icon-attendance.webp, …) already carry their own
-        colour per tile, so the grid reads as varied as the reference's
-        icon-square grid without inventing a new colour system for it.
-        `PORTFOLIO` is not a tile here — it is a button on the hero card
-        above and the bottom bar's "Зураг" tab (`(app)/layout.tsx`'s
-        `parentNav`); a third entry point on this grid would be the same
-        destination three times on one screen.
-        Судалгаа has its own permanent tile — `SurveyTile` below — landing on
-        `/children/:id/surveys`, the list this grid's Судалгаа entry could
-        not honestly point to before that page existed.
-        Санхүү is a `ComingSoonTile`, not a link: CLAUDE.md §7 keeps finance
-        a later phase, and this screen does not get to pull it forward on
-        its own — `(app)/layout.tsx`'s sidebar makes the same call there,
-        naming it without a link rather than leaving it out entirely, which
-        is the mock-up's own request for this tile specifically.
+        ★ Entry points, restyled to the reference's icon-circle row —
+        `RowCard`'s own radius and border, applied straight to the `Link` since
+        the whole row is the click target, matching `ChildRow` elsewhere.
+        Every reference card that names an out-of-MVP feature (Санхүү, Чат —
+        CLAUDE.md §7) is left out rather than dimmed or marked "удахгүй": the
+        sidebar's own rule already forbids a menu entry that goes nowhere, and
+        the same reasoning holds here. Ирц and Хоол ба цэс are no longer
+        among them — both shipped 2026-08-24. Судалгаа shipped the same day
+        too, but earns no permanent slot here at all — see `SurveyPrompt`
+        below, which renders only while an unanswered one actually exists,
+        matching the reference's own "Бөглөх судалгаа" card.
       */}
       <section aria-labelledby="board-heading">
-        <SectionHeader id="board-heading" title="Түргэн холбоос" />
-        <div className="grid grid-cols-3 gap-2.5">
-          <QuickTile
+        <SectionHeader id="board-heading" title="Ангийн самбар" />
+        <div className="flex flex-col gap-2">
+          <Link
             href="/notifications"
-            label="Ангийн самбар"
-            badge={unread && unread.count > 0 ? unread.count : undefined}
-            icon={<Image src="/icons/icon-notice.webp" alt="" width={44} height={44} className="size-11" />}
+            className="flex min-h-16 items-center gap-3 rounded-row border border-border bg-surface px-4 py-3 transition-colors hover:border-primary"
+          >
+            <Image
+              src="/icons/icon-notice.webp"
+              alt=""
+              width={40}
+              height={40}
+              className="size-10 shrink-0"
+            />
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold text-ink">
+                {unread && unread.count > 0
+                  ? `${unread.count} шинэ мэдээ байна`
+                  : "Шинэ мэдээ алга"}
+              </span>
+              <span className="block text-body text-muted">Ангийн сүүлийн мэдээллийг харах</span>
+            </span>
+            <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden />
+          </Link>
+
+          <SurveyPrompt childId={selected.id} />
+        </div>
+      </section>
+
+      {/*
+        ★ An icon grid, not a column of rows — 2026-08-25.
+
+        This was five full-width rows, each an icon, a title, a subtitle and a
+        chevron. On a phone that is five screenfuls of scrolling to reach the
+        fifth destination, and the subtitles were doing the work a label should
+        do on its own. The grid puts every destination one thumb-reach away and
+        makes the set scannable as a shape rather than read as a list.
+
+        `NavTile`'s `icon` is a slot, which is what let the illustrations land
+        here without touching the component: four of the six now carry the
+        artwork from `public/icons/`, and the two with no illustration yet keep
+        a lucide glyph. See the note on those two below.
+      */}
+      <section aria-labelledby="highlights-heading">
+        <SectionHeader id="highlights-heading" title={`${selected.firstName}-ийн мэдээлэл`} />
+
+        <TileGrid>
+          <NavTile
+            href={`/children/${selected.id}/portfolio`}
+            label={PORTFOLIO}
+            note={`${GALLERY}, "Миний тухай"`}
+            tone="cornflower"
+            icon={<Image src="/icons/icon-portfolio.webp" alt="" width={48} height={48} />}
           />
-          <QuickTile
+          <NavTile
+            href={`/children/${selected.id}`}
+            label="Хөгжил"
+            note="Ажиглалт, ахиц"
+            tone="mint"
+            icon={<Image src="/icons/icon-progress.webp" alt="" width={48} height={48} />}
+          />
+          <NavTile
             href={`/children/${selected.id}?tab=attendance`}
             label="Ирц"
-            icon={<Image src="/icons/icon-attendance.webp" alt="" width={44} height={44} className="size-11" />}
+            note="Өдөр тутам, чөлөөний хүсэлт"
+            tone="sun"
+            icon={<Image src="/icons/icon-attendance.webp" alt="" width={48} height={48} />}
           />
-          <QuickTile
+          <NavTile
             href={`/children/${selected.id}?tab=menu`}
-            label="Хоол"
-            icon={<Image src="/icons/icon-menu.webp" alt="" width={44} height={44} className="size-11" />}
+            label="Хоол ба цэс"
+            note="Долоо хоног"
+            tone="peach"
+            icon={<Image src="/icons/icon-menu.webp" alt="" width={48} height={48} />}
           />
-          <QuickTile
-            href={`/children/${selected.id}`}
-            label="Үнэлгээ"
-            icon={<Image src="/icons/icon-progress.webp" alt="" width={44} height={44} className="size-11" />}
+          {/*
+            ★ These two still carry lucide glyphs while the four above carry the
+            illustrations, and the mix is deliberate rather than unfinished
+            work: `public/icons/` has no health or growth illustration yet.
+            Substituting a near-enough one — `icon-checklist` for Эрүүл мэнд —
+            would teach a parent the wrong symbol and be harder to correct later
+            than an obviously provisional glyph. `NavTile.icon` is a slot for
+            exactly this reason; swapping them is a change at this call site.
+          */}
+          <NavTile
+            href={`/children/${selected.id}?tab=health`}
+            label="Эрүүл мэнд"
+            note="Харшил, эм"
+            tone="teal"
+            icon={<HeartPulse size={24} aria-hidden />}
           />
-          <SurveyTile childId={selected.id} />
-          <ComingSoonTile
-            label="Санхүү"
-            icon={<Image src="/icons/icon-finance.webp" alt="" width={44} height={44} className="size-11" />}
+          <NavTile
+            href={`/children/${selected.id}?tab=growth`}
+            label="Өсөлт"
+            note="Өндөр, жин"
+            tone="sky"
+            icon={<Ruler size={24} aria-hidden />}
           />
-        </div>
+        </TileGrid>
       </section>
 
       {selected.assessments.length > 0 ? (
@@ -325,15 +373,14 @@ export default function ParentHomePage() {
 const activeSurveysSchema = z.array(surveySchema);
 
 /**
- * "Судалгаа" — a permanent tile, unlike the card it replaces.
+ * "Бөглөх судалгаа" — present only while it is true.
  *
- * ★ Always a real link now: `/children/:id/surveys` lists every survey for
- * this child, answered or not, so — unlike the old single-pending-survey
- * card — this tile is never one this family cannot act on. The badge counts
- * only the unanswered ones, the same "a number, not a dot" rule `UnreadDot`
- * and `QuickTile`'s own `badge` prop already follow.
+ * ★ Renders nothing (not a disabled or greyed row) when there is no
+ * unanswered survey for the selected child. A permanent card here would be
+ * exactly the dead menu entry `(app)/layout.tsx`'s sidebar rule forbids;
+ * this is the same rule applied to a card instead of a nav item.
  */
-function SurveyTile({ childId }: { childId: string }) {
+function SurveyPrompt({ childId }: { childId: string }) {
   const { data } = useQuery({
     queryKey: qk.childSurveys(childId),
     queryFn: () => get(`/children/${childId}/surveys`, activeSurveysSchema),
@@ -341,82 +388,27 @@ function SurveyTile({ childId }: { childId: string }) {
     retry: false,
   });
 
-  const pendingCount = data?.filter((survey) => !survey.respondedByMe).length ?? 0;
+  const pending = data?.find((survey) => !survey.respondedByMe);
+  if (!pending) return null;
 
-  return (
-    <QuickTile
-      href={`/children/${childId}/surveys`}
-      label="Судалгаа"
-      badge={pendingCount > 0 ? pendingCount : undefined}
-      icon={<Image src="/icons/icon-survey.webp" alt="" width={44} height={44} className="size-11" />}
-    />
-  );
-}
-
-/**
- * One tile of the home grid — icon, label, nothing else.
- *
- * ★ `size-11` icon over `text-compact`, centred and two lines deep at most.
- * Three columns at 375px leaves each tile roughly 110px wide, which fits a
- * compound Mongolian label ("Хоол ба цэс" shortened to "Хоол" here) only if
- * it can wrap — `leading-tight` and no `truncate` let it, rather than
- * clipping the one thing the tile exists to say.
- *
- * `badge` mirrors `UnreadDot` (`app-shell.tsx`) at a smaller scale: a red
- * pill with the count, not a bare dot, for the same reason — a screen reader
- * gets "3", not "something changed".
- */
-function QuickTile({
-  href,
-  label,
-  icon,
-  badge,
-}: {
-  href: string;
-  label: string;
-  icon: ReactNode;
-  badge?: number;
-}) {
   return (
     <Link
-      href={href}
-      aria-label={badge ? `${label}, ${badge} шинэ` : label}
-      className="flex flex-col items-center gap-2 rounded-card border border-border bg-surface px-2 py-4 text-center transition-colors hover:border-primary hover:shadow-sm"
+      href={`/children/${childId}/surveys/${pending.id}`}
+      className="flex items-center gap-3 rounded-row border border-border bg-surface px-4 py-4 transition-colors hover:border-primary"
     >
-      <span className="relative" aria-hidden="true">
-        {icon}
-        {badge ? (
-          <span className="absolute -right-1.5 -top-1.5 flex min-w-[18px] items-center justify-center rounded-pill bg-danger px-1 text-caption font-bold leading-[18px] text-white">
-            {badge > 99 ? "99+" : badge}
-          </span>
-        ) : null}
+      <Image
+        src="/icons/icon-survey.webp"
+        alt=""
+        width={40}
+        height={40}
+        className="size-10 shrink-0"
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block font-semibold text-ink">Бөглөх судалгаа</span>
+        <span className="block truncate text-body text-muted">{pending.title}</span>
       </span>
-      <span className="text-compact font-semibold leading-tight text-ink">{label}</span>
+      <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden />
     </Link>
-  );
-}
-
-/**
- * A tile that names a feature without linking to it — Санхүү, currently.
- *
- * ★ The sidebar's own device (`(app)/layout.tsx`'s `parentSections` doc
- * comment), applied to a grid tile instead of a menu row: CLAUDE.md §7 keeps
- * finance a later phase, and there is no `/finance` screen for this tile to
- * open. A `<div>`, not a `<Link>` — a route that 404s teaches someone the
- * product is broken, same reasoning as every other no-dead-link spot in this
- * codebase. Muted and non-interactive (`aria-disabled`, no hover state) so it
- * reads as "not yet" rather than as a tile that failed to respond to a tap.
- */
-function ComingSoonTile({ label, icon }: { label: string; icon: ReactNode }) {
-  return (
-    <div
-      aria-disabled="true"
-      className="flex flex-col items-center gap-2 rounded-card border border-dashed border-border bg-canvas px-2 py-4 text-center opacity-60"
-    >
-      <span aria-hidden="true">{icon}</span>
-      <span className="text-compact font-semibold leading-tight text-ink">{label}</span>
-      <span className="text-caption text-muted">Удахгүй</span>
-    </div>
   );
 }
 

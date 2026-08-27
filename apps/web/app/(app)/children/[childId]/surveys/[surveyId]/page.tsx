@@ -143,9 +143,7 @@ export default function SurveyResponsePage() {
                     id={id}
                     aria-describedby={describedBy}
                     value={(answers[question.id] as string) ?? ""}
-                    onChange={(e) =>
-                      setAnswers((a) => ({ ...a, [question.id]: e.target.value }))
-                    }
+                    onChange={(e) => setAnswers((a) => ({ ...a, [question.id]: e.target.value }))}
                   />
                 )}
               </Field>

@@ -586,10 +586,11 @@ describe("observations by type", () => {
   it("★ does not count another kindergarten's observations", async () => {
     const teacherB = await login(app, b.teacherUser.username);
     const typeB = (await db.observationType.findFirstOrThrow({ where: { code: "daily" } })).id;
-    await authed(
-      request(server()).post(`/v1/children/${b.child.id}/observations`),
-      teacherB,
-    ).send({ typeId: typeB, observedOn: "2026-02-10", situation: "Бусад цэцэрлэг" });
+    await authed(request(server()).post(`/v1/children/${b.child.id}/observations`), teacherB).send({
+      typeId: typeB,
+      observedOn: "2026-02-10",
+      situation: "Бусад цэцэрлэг",
+    });
 
     const res = await request(server())
       .get("/v1/dashboard/teacher")

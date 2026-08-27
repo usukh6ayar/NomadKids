@@ -16,6 +16,10 @@ import type { ListMediaQuery, UpdateMediaDto } from "./media.dto";
 export interface UploadOptions {
   purpose?: MediaPurpose;
   observationId?: string;
+  /** RFP §4.5 — a photograph of a remembered first. */
+  milestoneId?: string;
+  /** RFP Module 2.1 — "фото зураг хавсаргах" on a safety incident. */
+  incidentId?: string;
   caption?: string | null;
   takenAt?: Date | null;
   age?: number | null;
@@ -26,6 +30,10 @@ export interface UploadOptions {
 /** A generous ceiling; the UI shows far fewer per observation. */
 const MAX_PHOTOS_PER_OBSERVATION = 12;
 const MAX_PHOTOS_PER_NOTIFICATION = 12;
+/** RFP §4.5 asks for "Зураг" — one memory does not need a dozen. */
+const MAX_PHOTOS_PER_MILESTONE = 6;
+/** RFP Module 2.1 — a few photographs of an injury, not an album. */
+const MAX_PHOTOS_PER_INCIDENT = 6;
 
 /**
  * Media that belongs to a kindergarten rather than to a child.
@@ -35,15 +43,30 @@ const MAX_PHOTOS_PER_NOTIFICATION = 12;
  * authority. Adding a purpose here widens who may read it — do not extend this
  * set without reading §7 of docs/SECURITY.md.
  *
- * There are no upload endpoints for these yet: the columns
- * (`Kindergarten.logoMediaFileId`, `User.photoMediaFileId`,
- * `Group.photoMediaFileId`) and this serve path exist, and the routes that
- * write them are the next piece of work.
+ * The routes that write them are `uploadKindergartenLogo`, `uploadUserPhoto`
+ * and `uploadGroupPhoto` below.
  */
 const TENANT_IMAGE_PURPOSES: ReadonlySet<MediaPurpose> = new Set<MediaPurpose>([
   "KINDERGARTEN_LOGO",
   "USER_PHOTO",
   "GROUP_PHOTO",
+]);
+
+/**
+ * Tenant files only **staff** may read — RFP §9's document library.
+ *
+ * ★ A separate set from the images above, and the difference is the check.
+ *
+ * A logo is readable by anyone in the kindergarten, families included: it is on
+ * the letterhead of every report they receive. §9 opens with "Багшид зориулсан
+ * PDF баримт бичгийн сан" — a library *for teachers*, holding curricula,
+ * methodology and regulations. Folding it into `TENANT_IMAGE_PURPOSES` would
+ * widen `assertMember` over material no family was meant to open, which is the
+ * quietest way this endpoint could leak.
+ */
+const STAFF_ONLY_TENANT_PURPOSES: ReadonlySet<MediaPurpose> = new Set<MediaPurpose>([
+  "DOCUMENT",
+  "DOCUMENT_COVER",
 ]);
 
 @Injectable()
@@ -121,6 +144,61 @@ export class MediaService {
       observationId = observation.id;
     }
 
+    let milestoneId: string | null = null;
+    if (options.milestoneId) {
+      const milestone = await this.repo.findMilestoneForAttachment(options.milestoneId);
+      // Must be about THIS child, for the same reason the observation branch
+      // checks: a valid id from elsewhere would attach a photograph to another
+      // family's record.
+      if (!milestone || milestone.childId !== childId) {
+        throw new BadRequestException("Онцгой үйл явдал олдсонгүй");
+      }
+
+      /*
+       * ★ No author check here, unlike an observation, and the asymmetry is the
+       * point.
+       *
+       * A teacher's observation is a professional record a family may not
+       * illustrate. A milestone is the family's own memory: either guardian may
+       * add a photograph to "анхны алхам" whoever typed the date, and a teacher
+       * who was there may too. `assertCanContributeMedia` above has already
+       * established that this person belongs to this child.
+       */
+      const existing = await this.repo.countForMilestone(options.milestoneId);
+      if (existing >= MAX_PHOTOS_PER_MILESTONE) {
+        throw new BadRequestException(
+          `Нэг үйл явдалд дээд тал нь ${MAX_PHOTOS_PER_MILESTONE} зураг хавсаргана`,
+        );
+      }
+      milestoneId = milestone.id;
+    }
+
+    let incidentId: string | null = null;
+    if (options.incidentId) {
+      const incident = await this.repo.findIncidentForAttachment(options.incidentId);
+      if (!incident || incident.childId !== childId) {
+        throw new BadRequestException("Тохиолдол олдсонгүй");
+      }
+
+      /*
+       * ★ Staff only, unlike a milestone photograph.
+       *
+       * An incident is the kindergarten's account of what happened, and its
+       * photographs are evidence of an injury. A family may read them; adding
+       * to them is not theirs, for the same reason they may not write the
+       * record itself.
+       */
+      if (isGuardian) throw new BadRequestException("Тохиолдол олдсонгүй");
+
+      const existing = await this.repo.countForIncident(options.incidentId);
+      if (existing >= MAX_PHOTOS_PER_INCIDENT) {
+        throw new BadRequestException(
+          `Нэг тохиолдолд дээд тал нь ${MAX_PHOTOS_PER_INCIDENT} зураг хавсаргана`,
+        );
+      }
+      incidentId = incident.id;
+    }
+
     // ★ Random key. Never derived from the child, the observation or the
     // uploaded filename — the real name lives only in `originalName`, for
     // display, and is never used to build a path.
@@ -135,7 +213,17 @@ export class MediaService {
       kindergartenId: facts.childKindergartenId,
       childId,
       observationId,
-      purpose: options.purpose ?? (observationId ? "OBSERVATION" : "CHILD_PHOTO"),
+      milestoneId,
+      incidentId,
+      purpose:
+        options.purpose ??
+        (incidentId
+          ? "INCIDENT"
+          : milestoneId
+            ? "MILESTONE"
+            : observationId
+              ? "OBSERVATION"
+              : "CHILD_PHOTO"),
       storageKey,
       originalName: sanitiseFilename(file.originalname),
       mimeType: validated.mimeType,
@@ -143,7 +231,13 @@ export class MediaService {
       width: validated.width,
       height: validated.height,
       caption: options.caption ?? null,
-      order: observationId ? await this.repo.countForObservation(observationId) : 0,
+      order: observationId
+        ? await this.repo.countForObservation(observationId)
+        : milestoneId
+          ? await this.repo.countForMilestone(milestoneId)
+          : incidentId
+            ? await this.repo.countForIncident(incidentId)
+            : 0,
       // ★ Who sent the bytes. Recorded from the authenticated actor, never from
       // the request body — a client-supplied uploader is an attribution anyone
       // could forge.
@@ -287,6 +381,20 @@ export class MediaService {
      * §1.4 admits no exception for "harmless" files, and a bucket that is
      * private except for one prefix is a bucket somebody will widen.
      */
+    if (STAFF_ONLY_TENANT_PURPOSES.has(media.purpose)) {
+      this.tenants.assertStaff(actor, media.kindergartenId);
+
+      await this.audit.append({
+        action: "DOWNLOAD",
+        kindergartenId: media.kindergartenId,
+        actorUserId: actor.userId,
+        objectType: "MediaFile",
+        objectId: mediaId,
+      });
+
+      return this.storage.presignedGetUrl(media.storageKey, media.originalName);
+    }
+
     if (TENANT_IMAGE_PURPOSES.has(media.purpose)) {
       this.tenants.assertMember(actor, media.kindergartenId);
 
@@ -509,6 +617,154 @@ export class MediaService {
 
     await this.repo.setChildPhoto(childId, mediaId);
     return { childId, photoMediaFileId: mediaId };
+  }
+
+  // ── Tenant images — RFP §3.2 (лого, ангийн зураг), §3.3 (профайл зураг) ────
+
+  /**
+   * The kindergarten's logo. RFP §3.2, and §10.3 wants it on every PDF.
+   *
+   * Administrator only. A logo is the kindergarten's identity on every report
+   * it issues, which is a different thing from a class photo a teacher takes.
+   */
+  async uploadKindergartenLogo(
+    actor: Actor,
+    kindergartenId: string,
+    file: { buffer: Buffer; originalname: string },
+  ) {
+    this.tenants.assertAdmin(actor, kindergartenId);
+
+    const kindergarten = await this.repo.findKindergartenForImage(kindergartenId);
+    if (!kindergarten) throw new NotFoundException();
+
+    return this.storeTenantImage(actor, {
+      owner: "kindergarten",
+      ownerId: kindergartenId,
+      kindergartenId,
+      purpose: "KINDERGARTEN_LOGO",
+      prefix: "logos",
+      file,
+    });
+  }
+
+  /**
+   * A staff portrait — RFP §3.3.
+   *
+   * ★ Own account only, whatever the role.
+   *
+   * An administrator may create and deactivate users, but replacing somebody's
+   * face is not administration, and the RFP puts the profile photo under "Багш
+   * дараах боломжуудтай: өөрийн профайлыг харах, засах". Letting an admin write
+   * it would also make the picture unattributable — a portrait would no longer
+   * be evidence that the person themselves put it there.
+   *
+   * The file is scoped to one of the account's kindergartens because
+   * `MediaFile` has exactly one tenant. An account with no active membership
+   * has no tenant to store it under and gets a 404.
+   */
+  async uploadUserPhoto(
+    actor: Actor,
+    userId: string,
+    file: { buffer: Buffer; originalname: string },
+  ) {
+    if (userId !== actor.userId) throw new NotFoundException();
+
+    const memberships = await this.repo.findUserMembershipKindergartens(userId);
+    const first = memberships[0];
+    if (!first) throw new NotFoundException();
+
+    return this.storeTenantImage(actor, {
+      owner: "user",
+      ownerId: userId,
+      kindergartenId: first.kindergartenId,
+      purpose: "USER_PHOTO",
+      prefix: "portraits",
+      file,
+    });
+  }
+
+  /** The class photo — RFP §3.2 "ангийн зураг". Teachers and admins. */
+  async uploadGroupPhoto(
+    actor: Actor,
+    groupId: string,
+    file: { buffer: Buffer; originalname: string },
+  ) {
+    const group = await this.repo.findGroupForImage(groupId);
+    if (!group) throw new NotFoundException();
+    this.tenants.assertStaff(actor, group.kindergartenId);
+
+    return this.storeTenantImage(actor, {
+      owner: "group",
+      ownerId: groupId,
+      kindergartenId: group.kindergartenId,
+      purpose: "GROUP_PHOTO",
+      prefix: "groups",
+      file,
+    });
+  }
+
+  /**
+   * Validate, store, attach — the half the three routes above share.
+   *
+   * Authorization is deliberately *not* here. Each caller decides it first,
+   * because the three answers genuinely differ (admin, self, staff) and a
+   * single method taking a "who may do this" parameter is how one of them
+   * quietly becomes wrong.
+   */
+  private async storeTenantImage(
+    actor: Actor,
+    input: {
+      owner: "kindergarten" | "user" | "group";
+      ownerId: string;
+      kindergartenId: string;
+      purpose: MediaPurpose;
+      prefix: string;
+      file: { buffer: Buffer; originalname: string };
+    },
+  ) {
+    let validated;
+    try {
+      validated = await validateImageUpload(input.file.buffer);
+    } catch (error) {
+      if (error instanceof UploadRejected) throw new BadRequestException(error.reason);
+      throw error;
+    }
+
+    const storageKey = this.storage.buildKindergartenKey(input.kindergartenId, input.prefix);
+    await this.storage.put(storageKey, validated.buffer, validated.mimeType);
+
+    const { media, previousId } = await this.repo.attachTenantImage({
+      owner: input.owner,
+      ownerId: input.ownerId,
+      kindergartenId: input.kindergartenId,
+      purpose: input.purpose,
+      storageKey,
+      originalName: sanitiseFilename(input.file.originalname),
+      mimeType: validated.mimeType,
+      sizeBytes: validated.sizeBytes,
+      width: validated.width,
+      height: validated.height,
+      uploadedById: actor.userId,
+    });
+
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId: input.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "MediaFile",
+      objectId: media.id,
+      metadata: {
+        purpose: media.purpose,
+        sizeBytes: media.sizeBytes,
+        owner: input.owner,
+        ownerId: input.ownerId,
+        // The row this one displaced, so "where did the old logo go" has an
+        // answer that outlives the soft-deleted record.
+        replacedMediaFileId: previousId,
+      },
+    });
+
+    return this.toPublicShape(media);
   }
 
   /**

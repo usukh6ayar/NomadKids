@@ -61,7 +61,13 @@ export const GUARDIAN_RELATION_LABEL: Record<string, string> = {
 export const observationSourceSchema = z.enum(["TEACHER", "PARENT"]);
 export const reviewStatusSchema = z.enum(["PENDING", "APPROVED", "RETURNED"]);
 export const reportStatusSchema = z.enum(["QUEUED", "RUNNING", "DONE", "FAILED"]);
-export const reportTypeSchema = z.enum(["CHILD_PORTFOLIO", "TERM_REPORT"]);
+export const reportTypeSchema = z.enum(["CHILD_PORTFOLIO", "TERM_REPORT", "ANNUAL_REPORT"]);
+
+export const REPORT_TYPE_LABEL: Record<string, string> = {
+  CHILD_PORTFOLIO: "Хувийн хавтас",
+  TERM_REPORT: "Улирлын тайлан",
+  ANNUAL_REPORT: "Жилийн нэгдсэн тайлан",
+};
 
 /** A person's name as every list renders it. */
 export const personRefSchema = z.object({
@@ -499,6 +505,296 @@ export const birthdayNoteSchema = z.object({
   celebratedOn: z.string().nullish(),
 });
 
+export const zodiacSignSchema = z.object({ code: z.string(), name: z.string() });
+
+export const yearAnimalSchema = z.object({
+  code: z.string(),
+  name: z.string(),
+  /** See `mongolianYearAnimal` — the animal year turns at Цагаан сар, not on 1 January. */
+  beforeLunarNewYear: z.boolean(),
+});
+
+/**
+ * The whole of RFP §4.2 in one response: the birth date, the age, the western
+ * zodiac sign, the Mongolian year animal and the per-year notes.
+ *
+ * ★ Not a second endpoint beside `birthday-notes`. That route returned the
+ * notes alone, which was half a section — the screen had the birth date only
+ * because the page above it happened to hold the child. Two fetches for one
+ * card, and the PDF, which has no page above it, had neither.
+ *
+ * Photographs are deliberately absent: the album already filters by
+ * `category=BIRTHDAY&age=N`, and duplicating rows into this response would give
+ * the gallery and the birthday card two different orderings to disagree about.
+ */
+export const birthdaySectionSchema = z.object({
+  dateOfBirth: z.string(),
+  ageYears: z.number(),
+  zodiac: zodiacSignSchema,
+  yearAnimal: yearAnimalSchema,
+  notes: z.array(birthdayNoteSchema),
+});
+export type BirthdaySection = z.infer<typeof birthdaySectionSchema>;
+
+// ── Artwork comparison — RFP §5.3 ────────────────────────────────────────────
+
+const comparisonMediaSchema = z.object({
+  id: uuidSchema,
+  caption: z.string().nullish(),
+  takenAt: z.string().nullish(),
+  uploadedAt: z.string().nullish(),
+  originalName: z.string().nullish(),
+});
+
+export const artworkComparisonSchema = z.object({
+  id: uuidSchema,
+  conclusion: z.string(),
+  /** Always the earlier work — the API sorts the pair by when it was made. */
+  earlierMedia: comparisonMediaSchema,
+  laterMedia: comparisonMediaSchema,
+  author: personRefSchema.nullish(),
+  createdAt: z.string().nullish(),
+});
+export type ArtworkComparison = z.infer<typeof artworkComparisonSchema>;
+
+export const artworkTimelineSchema = z.object({
+  /** Oldest first, by when the work was made — RFP §5.3's time order. */
+  artwork: z.array(comparisonMediaSchema.extend({ observationId: uuidSchema.nullish() })),
+  comparisons: z.array(artworkComparisonSchema),
+});
+export type ArtworkTimeline = z.infer<typeof artworkTimelineSchema>;
+
+// ── Safety incidents — RFP Module 2.1 ────────────────────────────────────────
+
+export const INCIDENT_KINDS = [
+  "INJURY",
+  "FALL",
+  "BRUISE",
+  "SCRATCH",
+  "BITE",
+  "ALLERGIC_REACTION",
+  "FEVER",
+  "ILLNESS",
+  "OTHER",
+] as const;
+
+export const INCIDENT_KIND_LABEL: Record<string, string> = {
+  INJURY: "Гэмтэл",
+  FALL: "Уналт",
+  BRUISE: "Хөхрөлт",
+  SCRATCH: "Маажилт",
+  BITE: "Хазуулсан",
+  ALLERGIC_REACTION: "Харшлын шинж",
+  FEVER: "Халууралт",
+  ILLNESS: "Толгой/хэвлий өвдөх",
+  OTHER: "Бусад",
+};
+
+export const incidentSchema = z.object({
+  id: uuidSchema,
+  kind: z.string(),
+  occurredAt: z.string(),
+  location: z.string().nullish(),
+  bodyPart: z.string().nullish(),
+  description: z.string(),
+  firstAid: z.string().nullish(),
+  followUp: z.string().nullish(),
+  isHighPriority: z.boolean().default(false),
+  /**
+   * When the family was told, and by which notice. Null means recorded and not
+   * yet reported — which is a workflow state, **not** a visibility one: a
+   * family reads their own child's incidents either way.
+   */
+  reportedAt: z.string().nullish(),
+  notificationId: uuidSchema.nullish(),
+  recordedBy: personRefSchema.nullish(),
+  child: personRefSchema.nullish(),
+  media: z.array(observationMediaSchema).default([]),
+});
+export type Incident = z.infer<typeof incidentSchema>;
+
+// ── Health — RFP Module 2 ────────────────────────────────────────────────────
+
+export const allergySeveritySchema = z.enum(["MILD", "MODERATE", "SEVERE"]);
+export const allergyKindSchema = z.enum(["FOOD", "MEDICATION", "ENVIRONMENTAL", "OTHER"]);
+
+export const ALLERGY_SEVERITY_LABEL: Record<string, string> = {
+  MILD: "Хөнгөн",
+  MODERATE: "Дунд",
+  SEVERE: "Ноцтой",
+};
+
+export const ALLERGY_KIND_LABEL: Record<string, string> = {
+  FOOD: "Хоол хүнс",
+  MEDICATION: "Эм",
+  ENVIRONMENTAL: "Хүрээлэн буй орчин",
+  OTHER: "Бусад",
+};
+
+export const allergySchema = z.object({
+  id: uuidSchema,
+  kind: allergyKindSchema,
+  severity: allergySeveritySchema,
+  allergen: z.string(),
+  reaction: z.string().nullish(),
+  treatment: z.string().nullish(),
+  notedOn: z.string(),
+  /** Ended rather than deleted — a child who outgrows one still had it. */
+  endedOn: z.string().nullish(),
+  recordedBy: personRefSchema.nullish(),
+});
+export type Allergy = z.infer<typeof allergySchema>;
+
+export const medicationSchema = z.object({
+  id: uuidSchema,
+  medicineName: z.string(),
+  dosage: z.string(),
+  /** `HH:MM` strings — when a teacher should be reminded. */
+  timesOfDay: z.array(z.string()).default([]),
+  instructions: z.string().nullish(),
+  startsOn: z.string(),
+  /** Required: an open-ended authorisation to medicate a child is not a thing. */
+  endsOn: z.string(),
+  authorisedBy: personRefSchema.nullish(),
+  /** Computed by the API against today, so every reader agrees on it. */
+  isActive: z.boolean().default(false),
+});
+export type Medication = z.infer<typeof medicationSchema>;
+
+export const vaccinationSchema = z.object({
+  id: uuidSchema,
+  vaccineName: z.string(),
+  administeredOn: z.string(),
+  doseLabel: z.string().nullish(),
+  provider: z.string().nullish(),
+  note: z.string().nullish(),
+  recordedBy: personRefSchema.nullish(),
+});
+export type Vaccination = z.infer<typeof vaccinationSchema>;
+
+/**
+ * Everything a teacher needs before a meal or a nap, in one response.
+ *
+ * ★ One request, not three. The child's header renders a red badge from
+ * `allergies` and a reminder from `medications`, and a screen that fetched them
+ * separately would show the badge a beat before or after the record it belongs
+ * to — on a slow connection, long enough to serve the wrong lunch.
+ */
+export const childHealthSchema = z.object({
+  allergies: z.array(allergySchema),
+  medications: z.array(medicationSchema),
+  vaccinations: z.array(vaccinationSchema),
+  /** RFP §3.4's free-text note, carried here so one screen shows all of it. */
+  healthNotes: z.string().nullish(),
+});
+export type ChildHealth = z.infer<typeof childHealthSchema>;
+
+// ── Milestones — RFP §4.5 ────────────────────────────────────────────────────
+
+/**
+ * The seven firsts the RFP names, plus the escape hatch it also asks for.
+ *
+ * ★ A suggested vocabulary, not a closed set. RFP §4.5 lists these and then
+ * says "хэрэглэгчийн өөрөө үүсгэсэн үйл явдал" — a family inventing their own.
+ * `CUSTOM` is that: the API stores the family's `title` verbatim, and this list
+ * exists so the form's chips and the API's labels cannot drift.
+ */
+export const MILESTONE_KINDS = [
+  "FIRST_STEP",
+  "FIRST_WORD",
+  "FIRST_DAY_AT_KINDERGARTEN",
+  "DRESSED_ALONE",
+  "RODE_A_BICYCLE",
+  "RECITED_A_POEM",
+  "FIRST_TIME_ON_STAGE",
+  "CUSTOM",
+] as const;
+
+export const milestoneKindSchema = z.enum(MILESTONE_KINDS);
+export type MilestoneKind = z.infer<typeof milestoneKindSchema>;
+
+export const MILESTONE_KIND_LABEL: Record<string, string> = {
+  FIRST_STEP: "Анхны алхам",
+  FIRST_WORD: "Анхны үг",
+  FIRST_DAY_AT_KINDERGARTEN: "Анх цэцэрлэгт орсон өдөр",
+  DRESSED_ALONE: "Анх өөрөө хувцасласан",
+  RODE_A_BICYCLE: "Анх дугуй унасан",
+  RECITED_A_POEM: "Анх шүлэг уншсан",
+  FIRST_TIME_ON_STAGE: "Анх тайзан дээр гарсан",
+  CUSTOM: "Өөрийн үйл явдал",
+};
+
+export const milestoneSchema = z.object({
+  id: uuidSchema,
+  kind: z.string(),
+  /** The family's own words; overrides the suggested label when set. */
+  title: z.string().nullish(),
+  occurredOn: z.string(),
+  description: z.string().nullish(),
+  recordedBy: personRefSchema.nullish(),
+  media: z.array(observationMediaSchema).default([]),
+});
+export type Milestone = z.infer<typeof milestoneSchema>;
+
+// ── Growth — RFP §7 ──────────────────────────────────────────────────────────
+
+export const growthPointSchema = z.object({
+  id: uuidSchema,
+  measuredOn: z.string(),
+  ageYears: z.number(),
+  heightCm: z.number().nullish(),
+  weightKg: z.number().nullish(),
+  headCircumferenceCm: z.number().nullish(),
+  note: z.string().nullish(),
+  recordedBy: personRefSchema.nullish(),
+  /**
+   * The change since the previous measurement in the series — RFP §7.2's
+   * "өмнөх хэмжилттэй харьцуулах". Null on the first point, and null when the
+   * earlier row did not carry this quantity: a delta against a measurement
+   * nobody took would be a fabricated fact.
+   */
+  heightChangeCm: z.number().nullish(),
+  weightChangeKg: z.number().nullish(),
+});
+export type GrowthPoint = z.infer<typeof growthPointSchema>;
+
+export const referenceBandSchema = z.object({
+  age: z.number(),
+  median: z.number(),
+  /** −2 SD and +2 SD — a band, deliberately not a percentile curve. */
+  low: z.number(),
+  high: z.number(),
+});
+export type ReferenceBand = z.infer<typeof referenceBandSchema>;
+
+/**
+ * ★ The source and the disclaimer are inside the reference object, not beside
+ * it.
+ *
+ * RFP §7.2 requires that the source, its version and its date are shown, and
+ * that the system states it gives no medical diagnosis. Nesting them here means
+ * a screen cannot render the band without them — the requirement is structural
+ * rather than a note somebody has to remember.
+ */
+export const growthReferenceSchema = z.object({
+  height: z.array(referenceBandSchema),
+  weight: z.array(referenceBandSchema),
+  source: z.object({
+    name: z.string(),
+    version: z.string(),
+    publishedOn: z.string(),
+    url: z.string(),
+    disclaimer: z.string(),
+  }),
+});
+
+export const growthChartSchema = z.object({
+  points: z.array(growthPointSchema),
+  /** Null when the child's sex is unknown — a wrong band is worse than none. */
+  reference: growthReferenceSchema.nullish(),
+});
+export type GrowthChart = z.infer<typeof growthChartSchema>;
+
 // ── Notifications ────────────────────────────────────────────────────────────
 
 export const notificationSchema = z.object({
@@ -573,7 +869,20 @@ export const MEDIA_ATTRIBUTION_LABEL: Record<string, string> = {
  * the client asks for administrator-editable categories these values become the
  * seed rows of a new table. See the note on `MediaFile.category`.
  */
-export const MEDIA_CATEGORIES = ["ARTWORK", "ACTIVITY", "EVENT", "DAILY", "PORTRAIT"] as const;
+export const MEDIA_CATEGORIES = [
+  "ARTWORK",
+  "ACTIVITY",
+  "EVENT",
+  "DAILY",
+  "PORTRAIT",
+  /**
+   * ★ RFP §4.2 asks for a "төрсөн өдрийн зураг" in the birthday section, and
+   * `EVENT` cannot answer it: a query for this year's birthday photograph would
+   * return every concert and Цагаан сар as well. With `age` already on the row,
+   * `category=BIRTHDAY&age=4` is the whole birthday section's photograph.
+   */
+  "BIRTHDAY",
+] as const;
 
 export const mediaCategorySchema = z.enum(MEDIA_CATEGORIES);
 
@@ -583,6 +892,7 @@ export const MEDIA_CATEGORY_LABEL: Record<string, string> = {
   EVENT: "Баяр ёслол",
   DAILY: "Өдөр тутам",
   PORTRAIT: "Хөрөг",
+  BIRTHDAY: "Төрсөн өдөр",
 };
 
 export const mediaSchema = z.object({
@@ -627,6 +937,108 @@ export const downloadUrlSchema = z.object({
   url: z.string(),
   expiresIn: z.number().nullish(),
 });
+
+// ── Assessment configuration — RFP §6.1, §6.2 ────────────────────────────────
+
+/**
+ * ★ `isSystem` is the whole reason this schema exists separately.
+ *
+ * A row with `kindergartenId = null` is a shared default every kindergarten
+ * inherits. An administrator may create and edit their *own* rows and may not
+ * touch a system one — they create an override instead. The API computes the
+ * flag; the UI uses it to decide whether to render an edit control at all,
+ * rather than offering one that 404s.
+ */
+export const developmentDomainSchema = z.object({
+  id: uuidSchema,
+  name: z.string(),
+  code: z.string(),
+  color: z.string().nullish(),
+  description: z.string().nullish(),
+  order: z.number().nullish(),
+  isActive: z.boolean().nullish(),
+  isSystem: z.boolean().default(false),
+});
+export type DevelopmentDomainConfig = z.infer<typeof developmentDomainSchema>;
+
+export const assessmentLevelSchema = z.object({
+  id: uuidSchema,
+  value: z.number(),
+  label: z.string(),
+  color: z.string().nullish(),
+  description: z.string().nullish(),
+  order: z.number().nullish(),
+  isActive: z.boolean().nullish(),
+  isSystem: z.boolean().default(false),
+});
+export type AssessmentLevelConfig = z.infer<typeof assessmentLevelSchema>;
+
+export const observationTypeConfigSchema = z.object({
+  id: uuidSchema,
+  name: z.string(),
+  code: z.string(),
+  order: z.number().nullish(),
+  isActive: z.boolean().nullish(),
+  isSystem: z.boolean().default(false),
+});
+export type ObservationTypeConfig = z.infer<typeof observationTypeConfigSchema>;
+
+// ── Document library — RFP §9 ────────────────────────────────────────────────
+
+export const documentSchema = z.object({
+  id: uuidSchema,
+  title: z.string(),
+  category: z.string().nullish(),
+  description: z.string().nullish(),
+  version: z.string().nullish(),
+  fileMediaFileId: uuidSchema,
+  coverMediaFileId: uuidSchema.nullish(),
+  publishedAt: z.string().nullish(),
+  publishedBy: personRefSchema.nullish(),
+  /** This reader's own bookmark, flattened from the join — RFP §9. */
+  isBookmarked: z.boolean().default(false),
+});
+export type LibraryDocument = z.infer<typeof documentSchema>;
+
+// ── Consent — RFP §16 ────────────────────────────────────────────────────────
+
+export const consentKindSchema = z.enum(["DATA_PROCESSING", "PHOTO_PUBLISHING"]);
+
+export const CONSENT_KIND_LABEL: Record<string, string> = {
+  DATA_PROCESSING: "Мэдээлэл ашиглах зөвшөөрөл",
+  PHOTO_PUBLISHING: "Зураг нийтлэх зөвшөөрөл",
+};
+
+export const consentDecisionSchema = z.object({
+  granted: z.boolean(),
+  decidedAt: z.string().nullish(),
+  /**
+   * Whether the family has been asked at all.
+   *
+   * ★ Distinct from `granted: false`. "Refused" and "never asked" are different
+   * facts, and only the second one has an action attached — the kindergarten
+   * still needs to ask.
+   */
+  asked: z.boolean(),
+});
+
+export const consentRecordSchema = z.object({
+  id: uuidSchema,
+  kind: consentKindSchema,
+  granted: z.boolean(),
+  decidedAt: z.string(),
+  note: z.string().nullish(),
+  decidedBy: personRefSchema.nullish(),
+});
+
+export const childConsentSchema = z.object({
+  current: z.object({
+    dataProcessing: consentDecisionSchema,
+    photoPublishing: consentDecisionSchema,
+  }),
+  history: z.array(consentRecordSchema),
+});
+export type ChildConsent = z.infer<typeof childConsentSchema>;
 
 // ── Tenancy ──────────────────────────────────────────────────────────────────
 
@@ -698,6 +1110,8 @@ export const groupListItemSchema = groupSchema.extend({
   status: z.string().nullish(),
   schoolYear: schoolYearSchema.nullish(),
   _count: z.object({ enrollments: z.number() }).nullish(),
+  /** RFP §3.2 — ангийн зураг, so the assignment dialog can preview it. */
+  photoMediaFileId: uuidSchema.nullish(),
 });
 
 /** A single group, from `GET /groups/:id` — this one carries the assignments. */
@@ -727,6 +1141,7 @@ export const userProfileSchema = z.object({
   email: z.string().nullish(),
   phone: z.string().nullish(),
   bio: z.string().nullish(),
+  photoMediaFileId: uuidSchema.nullish(),
 });
 
 // ── Dashboards ───────────────────────────────────────────────────────────────
@@ -769,9 +1184,7 @@ export const teacherDashboardSchema = z.object({
    * would need an invented denominator. The share of the total is a fact; a
    * completion score against a number nobody set is not.
    */
-  observationsByType: z
-    .array(z.object({ type: namedRefSchema, count: z.number() }))
-    .default([]),
+  observationsByType: z.array(z.object({ type: namedRefSchema, count: z.number() })).default([]),
   /** Every birthday in the current month, day-ordered — what a teacher plans against. */
   birthdaysThisMonth: z
     .array(
@@ -849,6 +1262,20 @@ export const adminDashboardSchema = z.object({
     guardians: z.number(),
   }),
   /**
+   * RFP §12.2 — "Хадгалалтын хэмжээ" and "Тайлангийн статистик".
+   *
+   * `totalBytes` is the size of the files this system has rows for, not of the
+   * bucket: an object orphaned by a crash between the upload and the row is
+   * invisible to it. The label says "stored files" for that reason.
+   */
+  storage: z
+    .object({
+      totalBytes: z.number(),
+      fileCount: z.number(),
+      reports: z.object({ total: z.number(), done: z.number(), failed: z.number() }),
+    })
+    .nullish(),
+  /**
    * Assessment progress per group.
    *
    * A ratio, not a chart. "12 of 18 assessed" tells an administrator which
@@ -874,6 +1301,26 @@ export const adminDashboardSchema = z.object({
   ),
 });
 export type AdminDashboard = z.infer<typeof adminDashboardSchema>;
+
+/**
+ * One audit row, as the browser screen reads it — RFP §2.1.
+ *
+ * `metadata` is `unknown`: it is a free-form JSON column whose shape differs by
+ * action, and typing it would be a promise this schema cannot keep. The screen
+ * renders it as formatted JSON for the cases where an administrator needs to
+ * see what actually changed.
+ */
+export const auditEntrySchema = z.object({
+  id: uuidSchema,
+  action: z.string(),
+  objectType: z.string().nullish(),
+  objectId: uuidSchema.nullish(),
+  childId: uuidSchema.nullish(),
+  actorUserId: uuidSchema.nullish(),
+  createdAt: z.string(),
+  metadata: z.unknown().nullish(),
+});
+export type AuditEntry = z.infer<typeof auditEntrySchema>;
 
 /** Audit actions, in Mongolian. A raw enum is meaningless to an administrator. */
 export const AUDIT_ACTION_LABEL: Record<string, string> = {
@@ -910,6 +1357,19 @@ export const primaryDashboardSchema = z.object({
 
 // ── Platform (superadmin) ───────────────────────────────────────────────────
 
+/**
+ * `GET /platform/stats` — system-wide totals, RFP §12.2's "Администраторын
+ * хяналтын самбар": нийт цэцэрлэг/бүлэг/хүүхэд/багш/идэвхтэй эцэг эх.
+ */
+export const platformStatsSchema = z.object({
+  kindergartens: z.number(),
+  groups: z.number(),
+  children: z.number(),
+  staff: z.number(),
+  guardians: z.number(),
+});
+export type PlatformStats = z.infer<typeof platformStatsSchema>;
+
 /** A kindergarten as the platform operator's list returns it. */
 export const platformKindergartenSchema = z.object({
   id: uuidSchema,
@@ -921,6 +1381,40 @@ export const platformKindergartenSchema = z.object({
   createdAt: z.string(),
 });
 export type PlatformKindergarten = z.infer<typeof platformKindergartenSchema>;
+
+/**
+ * `GET /platform/kindergartens/:id` — the list row plus the same
+ * counts/coverage/activity shape `adminDashboardSchema` gives a kindergarten's
+ * own admin, scoped by the API to just this one kindergarten.
+ */
+export const platformKindergartenDetailSchema = platformKindergartenSchema.extend({
+  description: z.string().nullish(),
+  counts: z.object({
+    children: z.number(),
+    groups: z.number(),
+    staff: z.number(),
+    guardians: z.number(),
+  }),
+  currentTerm: z.object({ id: uuidSchema, number: z.number(), name: z.string() }).nullable(),
+  assessmentCoverage: z.array(
+    z.object({
+      groupId: uuidSchema,
+      name: z.string(),
+      children: z.number(),
+      assessed: z.number(),
+    }),
+  ),
+  recentActivity: z.array(
+    z.object({
+      id: uuidSchema,
+      action: z.string(),
+      actorLabel: z.string().nullish(),
+      objectType: z.string().nullish(),
+      createdAt: z.string(),
+    }),
+  ),
+});
+export type PlatformKindergartenDetail = z.infer<typeof platformKindergartenDetailSchema>;
 
 /** `POST /platform/kindergartens` — the tenant, its first admin, and the invite. */
 export const createdKindergartenSchema = z.object({

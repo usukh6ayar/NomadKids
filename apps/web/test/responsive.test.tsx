@@ -67,12 +67,14 @@ describe("touch targets", () => {
   });
 
   it("a select is 48px", () => {
-    const { container } = render(
+    render(
       <Select aria-label="Тест">
         <option>А</option>
       </Select>,
     );
-    expect(container.querySelector("select")!.className).toContain("h-[48px]");
+    // Radix's Select trigger is a button (`role="combobox"`), not a native
+    // `<select>` — that's the element the height class actually lands on.
+    expect(screen.getByRole("combobox", { name: "Тест" }).className).toContain("h-[48px]");
   });
 
   it("a checkbox row is at least 44px tall, so the label is part of the target", () => {

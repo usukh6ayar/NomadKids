@@ -145,6 +145,15 @@ it is the better home: a column can be overwritten by the next writer, an
 append-only row cannot. A mandatory rule that nothing obeys stops being read,
 so the rule moved to match the design rather than the reverse.
 
+★ Then five tables shipped the column anyway — `Attendance`,
+`AttendanceRequest`, `MenuDay`, `Survey`, `SurveyResponse` — the same day the
+rule was written, on a branch that predated it. Nothing ever wrote to them:
+`grep deletedById apps/api/src` returns one comment and no assignment. They are
+dropped in `20260825170000_drop_vestigial_deleted_by`, which is safe precisely
+_because_ nothing wrote them — every value was NULL. The alternative, wiring six
+services to fill a column `AuditLog` already answers better, is the version of
+this rule that was deleted for being unread.
+
 ### 3.3 Review migrations by hand
 
 After `prisma migrate dev`, **read** the generated SQL. Check for accidental
@@ -232,15 +241,51 @@ system-wide**. It cannot run on Vercel.
 
 ## 7. Scope
 
-**MVP = Phase 1 only.** Not in the MVP:
+**Scope runs through RFP Phase III.** Changed 2026-08-25 by the client, in
+writing, after the Phase 1 MVP was delivered and accepted
+(`PHASE_1_ACCEPTANCE.md`: 14 PASS, 1 blocked).
 
-attendance · meals · finance · funding · invoices · payments · QPay ·
-accountant role · health · allergies · medication · chat · realtime ·
-WebSocket · push · SMS · surveys · Excel import/export · analytics ·
-radar charts · growth percentiles · AI · voice-to-text · native mobile apps
+This rule used to say "MVP = Phase 1 only" and list attendance, meals, surveys,
+health, allergies, medication, Excel and growth percentiles as forbidden. All of
+them are now in scope, and three had already landed before the rule was
+updated — which is the reason it is being updated rather than quietly ignored.
+A mandatory rule that the codebase contradicts teaches everyone to stop reading
+the file.
 
-If asked for one: say which phase it belongs to and ask whether to pull it
-forward. Pulling work forward silently is how a three-week delivery becomes six.
+**In scope** — RFP §20 Phase II and Phase III, plus the appended modules:
+
+attendance · meals and the weekly menu · surveys and their analytics ·
+growth measurements and charts · milestones · allergies · medication ·
+vaccination · safety incidents · document library · artwork comparison ·
+annual, group and batch reports · Excel import and export · photo consent
+
+★ **The client added a second document on 2026-08-25: `нэмэлт.md`**, a finance
+and funding module — state funding rules and monthly reconciliation, food-cost
+calculation, parent invoices, online payment, an accountant role, a financial
+dashboard, financial audit trails and nine financial reports.
+
+That contradicts the line below, which had payments, invoices, QPay and the
+accountant role as Phase IV. **It is now requested work**, so the line moves —
+same reason §7 moved the first time: a rule the codebase is about to contradict
+teaches everyone to stop reading the file.
+
+What has been built from `нэмэлт.md` so far is only its foundation, and the
+distinction matters when reading this rule:
+
+- §1's sixth attendance status (`OTHER`) — **done**, it had been dropped
+- §2 the meal register, §12's dish fields — **done**
+- §11 the allergy cross-check — **done** (it was already RFP Module 2)
+- §3–§10, §13, §14, §16 — the finance module proper — **not started**
+
+**Still out** — RFP §20 Phase IV, minus what `нэмэлт.md` pulled forward. Say
+which phase it belongs to and ask:
+
+native mobile apps · chat · SMS · push notification · QR pick-up ·
+electronic signature · multi-language · AI observation suggestions ·
+voice-to-text
+
+Pulling work forward silently is still how a three-week delivery becomes six.
+The difference is that the client has now asked for this much, once, explicitly.
 
 ---
 

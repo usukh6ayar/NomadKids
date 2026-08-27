@@ -102,6 +102,23 @@ COPY --from=build /app/apps/api/dist apps/api/dist
 COPY --from=build /app/apps/api/prisma apps/api/prisma
 COPY --from=build /app/apps/api/package.json apps/api/package.json
 
+# ★ The generated Prisma client, as TypeScript source — not only as the compiled
+# copy inside `dist`.
+#
+# The application imports it through `dist`, so this looks redundant, and it was
+# until a seed script had to run in here. `prisma/seed.ts` and its siblings
+# import `../src/generated/prisma/client`, which is the path that exists on a
+# developer machine; in this image only `dist/generated` did, and the documented
+# recovery command died on `Cannot find module '../src/generated/prisma/client'`.
+#
+# Found 2026-08-26, during an actual recovery, one command after the previous
+# note in this file had already been written about the same class of failure.
+# Copying the source is the honest fix: it keeps one import path that is correct
+# in both places, rather than a second path the scripts would have to guess
+# between at runtime. `tsx` transpiles what it actually loads, so the cost is
+# image size — about 7 MB — and nothing at boot.
+COPY --from=build /app/apps/api/src/generated apps/api/src/generated
+
 # ★ Migrations run INSIDE the container, as the platform's pre-deploy step.
 #
 # That needs two things this image did not originally have, and neither failure
@@ -115,6 +132,14 @@ COPY --from=build /app/apps/api/package.json apps/api/package.json
 #
 # The alternative — migrating by hand from a laptop against the production URL —
 # is a step somebody eventually forgets, on the deploy where it matters.
+#
+# ★★ `tsx` and `dotenv` are runtime dependencies for the third reason in the
+# same family: the seed scripts run *here*, through
+# `railway ssh --service api "… node_modules/.bin/tsx prisma/seed.ts"`, which is
+# how `docs/PROD_RECOVERY.md` §3.3 creates the superadmin on a fresh database.
+# Both were devDependencies, so `pnpm prune --prod` deleted them and that
+# documented command failed with a bare "tsx: not found" — a recovery step that
+# is only ever read during a recovery, and only fails then.
 COPY --from=build /app/apps/api/prisma.config.ts apps/api/prisma.config.ts
 
 # Migrations run at container start — see the script for why not pre-deploy.

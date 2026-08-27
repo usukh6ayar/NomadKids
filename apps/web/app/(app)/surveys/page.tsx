@@ -74,9 +74,7 @@ function SurveysList() {
         <EmptyState
           title="Судалгаа алга"
           description="Эхний судалгаагаа үүсгэж эхэлнэ үү."
-          action={
-            <Button onClick={() => setCreating(true)}>Шинэ судалгаа</Button>
-          }
+          action={<Button onClick={() => setCreating(true)}>Шинэ судалгаа</Button>}
         />
       ) : null}
 

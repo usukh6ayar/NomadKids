@@ -14,6 +14,19 @@ import type { ReportType } from "../domain/enums";
  */
 const MAX_OBSERVATIONS_PER_REPORT = 60;
 
+/**
+ * Artwork comparisons in one report — RFP §5.3.
+ *
+ * Each one embeds **two** images, so this number doubles against `ImageBudget`.
+ * Twelve is a page or two of side-by-side pairs, which is what a family reads;
+ * beyond that the budget would start silently dropping observation photographs
+ * to make room.
+ */
+const MAX_COMPARISONS_PER_REPORT = 12;
+
+/** Milestones in one report — RFP §4.5. Text only, so the bound is generous. */
+const MAX_MILESTONES_PER_REPORT = 40;
+
 @Injectable()
 export class ReportsRepository {
   constructor(
@@ -225,55 +238,95 @@ export class ReportsRepository {
    * re-derived at download time.
    */
   async loadPortfolioData(childId: string, viewer: { isGuardian: boolean; userId: string }) {
-    const [child, aboutMe, ageProfiles, birthdayNotes, observations, assessments] =
-      await Promise.all([
-        this.loadChild(childId),
-        this.prisma.childProfile.findFirst({ where: { childId, deletedAt: null } }),
-        this.prisma.childAgeProfile.findMany({
-          where: { childId, deletedAt: null },
-          orderBy: { age: "asc" },
-        }),
-        this.prisma.birthdayNote.findMany({
-          where: { childId, deletedAt: null },
-          orderBy: { age: "asc" },
-        }),
-        this.prisma.observation.findMany({
-          where: {
-            AND: [this.observations.readableWhere(childId, viewer), { includeInReport: true }],
+    const [
+      child,
+      aboutMe,
+      ageProfiles,
+      birthdayNotes,
+      observations,
+      assessments,
+      artworkComparisons,
+      milestones,
+    ] = await Promise.all([
+      this.loadChild(childId),
+      this.prisma.childProfile.findFirst({ where: { childId, deletedAt: null } }),
+      this.prisma.childAgeProfile.findMany({
+        where: { childId, deletedAt: null },
+        orderBy: { age: "asc" },
+      }),
+      this.prisma.birthdayNote.findMany({
+        where: { childId, deletedAt: null },
+        orderBy: { age: "asc" },
+      }),
+      this.prisma.observation.findMany({
+        where: {
+          AND: [this.observations.readableWhere(childId, viewer), { includeInReport: true }],
+        },
+        orderBy: { observedOn: "desc" },
+        take: MAX_OBSERVATIONS_PER_REPORT,
+        include: {
+          type: { select: { name: true } },
+          media: {
+            where: { deletedAt: null, status: "READY" },
+            select: { id: true, storageKey: true },
+            orderBy: { order: "asc" },
+            // Per observation. The report-wide ceiling is `ImageBudget`.
+            take: 3,
           },
-          orderBy: { observedOn: "desc" },
-          take: MAX_OBSERVATIONS_PER_REPORT,
-          include: {
-            type: { select: { name: true } },
-            media: {
-              where: { deletedAt: null, status: "READY" },
-              select: { id: true, storageKey: true },
-              orderBy: { order: "asc" },
-              // Per observation. The report-wide ceiling is `ImageBudget`.
-              take: 3,
-            },
-          },
-        }),
-        this.prisma.assessment.findMany({
-          where: {
-            childId,
-            deletedAt: null,
-            ...(viewer.isGuardian ? { visibleToParents: true } : {}),
-          },
-          orderBy: [{ term: { number: "asc" } }, { domain: { order: "asc" } }],
-          include: {
-            term: { select: { name: true } },
-            domain: { select: { name: true } },
-            level: { select: { label: true, color: true } },
-          },
-        }),
-      ]);
+        },
+      }),
+      this.prisma.assessment.findMany({
+        where: {
+          childId,
+          deletedAt: null,
+          ...(viewer.isGuardian ? { visibleToParents: true } : {}),
+        },
+        orderBy: [{ term: { number: "asc" } }, { domain: { order: "asc" } }],
+        include: {
+          term: { select: { name: true } },
+          domain: { select: { name: true } },
+          level: { select: { label: true, color: true } },
+        },
+      }),
+      /*
+       * RFP §5.3's last bullet — "Харьцуулалтыг PDF тайланд оруулах".
+       *
+       * Readable by a guardian without a visibility filter: unlike an
+       * observation, a comparison has no private half. It is written about
+       * work the family can already see, and §5.3 exists so they can see the
+       * change in it.
+       */
+      this.prisma.artworkComparison.findMany({
+        where: { childId, deletedAt: null },
+        orderBy: { createdAt: "asc" },
+        take: MAX_COMPARISONS_PER_REPORT,
+        include: {
+          earlierMedia: { select: { id: true, storageKey: true, takenAt: true, deletedAt: true } },
+          laterMedia: { select: { id: true, storageKey: true, takenAt: true, deletedAt: true } },
+        },
+      }),
+      // RFP §4.5 — the firsts, in the portfolio they belong to.
+      this.prisma.milestone.findMany({
+        where: { childId, deletedAt: null },
+        orderBy: { occurredOn: "asc" },
+        take: MAX_MILESTONES_PER_REPORT,
+      }),
+    ]);
 
     // Read newest-first so the ceiling keeps the most recent, then present
     // oldest-first, which is how a portfolio reads.
     observations.reverse();
 
-    return { child, aboutMe, ageProfiles, birthdayNotes, observations, assessments };
+    return {
+      child,
+      aboutMe,
+      ageProfiles,
+      birthdayNotes,
+      observations,
+      assessments,
+      artworkComparisons,
+      milestones,
+    };
   }
 
   /**
@@ -320,6 +373,71 @@ export class ReportsRepository {
     return { child, termReport, assessments };
   }
 
+  /**
+   * The year's four terms, compared — RFP §6.5.
+   *
+   * ★ Every term of the school year, not only the ones with assessments.
+   *
+   * A year with a blank third term is a fact the report must show: the point of
+   * an annual comparison is the shape of the progress, and silently omitting an
+   * empty column turns "we did not assess in the winter" into "there was no
+   * winter". The service fills the gaps.
+   *
+   * The guardian filter is the same `visibleToParents` predicate the term
+   * report uses. A family's annual copy shows what they were already told, term
+   * by term — an unpublished assessment does not become visible because a year
+   * ended.
+   */
+  async loadAnnualReportData(
+    childId: string,
+    schoolYearId: string,
+    viewer: { isGuardian: boolean; userId: string },
+  ) {
+    const [child, schoolYear, terms, assessments, termReports] = await Promise.all([
+      this.loadChild(childId),
+      this.prisma.schoolYear.findFirst({
+        where: { id: schoolYearId, deletedAt: null },
+        select: { id: true, name: true, startsOn: true, endsOn: true },
+      }),
+      this.prisma.term.findMany({
+        where: { schoolYearId, deletedAt: null },
+        orderBy: { number: "asc" },
+        select: { id: true, name: true, number: true },
+      }),
+      this.prisma.assessment.findMany({
+        where: {
+          childId,
+          deletedAt: null,
+          term: { schoolYearId, deletedAt: null },
+          ...(viewer.isGuardian ? { visibleToParents: true } : {}),
+        },
+        orderBy: [{ term: { number: "asc" } }, { domain: { order: "asc" } }],
+        include: {
+          term: { select: { id: true, number: true } },
+          domain: { select: { id: true, name: true, order: true } },
+          level: { select: { value: true, label: true, color: true } },
+        },
+      }),
+      // The teacher's written closing text, per term. A guardian sees only
+      // FINAL ones, exactly as on the term report itself.
+      this.prisma.termReport.findMany({
+        where: {
+          childId,
+          deletedAt: null,
+          term: { schoolYearId, deletedAt: null },
+          ...(viewer.isGuardian ? { status: "FINAL" as const } : {}),
+        },
+        orderBy: { term: { number: "asc" } },
+        include: {
+          term: { select: { id: true, number: true, name: true } },
+          author: { select: { lastName: true, firstName: true } },
+        },
+      }),
+    ]);
+
+    return { child, schoolYear, terms, assessments, termReports };
+  }
+
   private async loadChild(childId: string) {
     return this.prisma.child.findFirst({
       where: { id: childId, deletedAt: null },
@@ -329,7 +447,16 @@ export class ReportsRepository {
         firstName: true,
         dateOfBirth: true,
         sex: true,
-        kindergarten: { select: { id: true, name: true } },
+        kindergarten: {
+          select: {
+            id: true,
+            name: true,
+            // RFP §10.3 — "Цэцэрлэгийн лого, нэртэй". The name was always
+            // here; the logo is the half the requirement asked for and the
+            // report never carried.
+            logo: { select: { storageKey: true, deletedAt: true } },
+          },
+        },
         photo: { select: { storageKey: true, deletedAt: true } },
         enrollments: {
           where: { status: "ACTIVE", deletedAt: null },

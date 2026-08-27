@@ -60,7 +60,11 @@ export class NotificationsService {
       filters.push(this.repo.guardianWhere(scope, now));
     }
 
-    if (filters.length === 0) return { id: "__none__" };
+    // An empty `in` matches nothing without needing the value to look like a
+    // UUID — `id: "__none__"` does, and `Notification.id` is `@db.Uuid`, so
+    // Postgres rejected it outright instead of just returning zero rows. Same
+    // trick `guardianWhere` already uses below for the same reason.
+    if (filters.length === 0) return { id: { in: [] } };
     return filters.length === 1 ? filters[0]! : { OR: filters };
   }
 
