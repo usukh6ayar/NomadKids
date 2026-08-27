@@ -1,11 +1,12 @@
 "use client";
 
+import * as Dialog from "@radix-ui/react-dialog";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Bell, ChevronDown, LogOut, Search } from "lucide-react";
-import { useId, useState, type FormEvent, type ReactNode } from "react";
+import { Bell, ChevronDown, LogOut, Search, X } from "lucide-react";
+import { useId, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { unreadCountSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { Input } from "@/components/ui/field";
@@ -311,9 +312,15 @@ function NotificationBell() {
  *  - **Parent** — mobile-first. A bottom tab bar on a phone, which is where
  *    they read it, in the evening, one-handed.
  *
- * Both collapse to the same bottom bar below `lg`. Nothing is hidden behind a
- * hamburger: with four or five destinations a drawer adds a tap and hides the
- * product's entire surface area.
+ * Both collapse to the same bottom bar below `lg`. Three or four of its tabs
+ * are still direct links — a drawer behind all of them would add a tap to
+ * everything. Only the one that used to point straight at `/settings`
+ * ("Цэс" for a parent, "Профайл" for staff) opens `MobileMenuDrawer`
+ * instead: below `lg` that tab was the only way to `/settings` itself *and*
+ * the only way to everything the desktop sidebar's sections carry (a specific
+ * child's own page, "Ангийн самбар", …), which a four-item bottom bar has no
+ * room to name individually. The drawer is that same sidebar content, reused
+ * rather than redesigned — see `SidebarContent`.
  */
 export function AppShell({
   nav,
@@ -336,6 +343,21 @@ export function AppShell({
       : variant === "platform"
         ? "Платформын удирдлага"
         : "Эцэг эхийн хэсэг";
+
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  /*
+   * ★ Identified by `href`, not by position or label.
+   *
+   * `parentNav`'s "Цэс" and `staffNav`'s "Профайл" are the same underlying
+   * tab — both point at `/settings` — so matching on that href (rather than,
+   * say, "the last item") is what keeps this working for either nav array
+   * without the shell needing to know which role it is rendering. Every
+   * other tab keeps its own `href` and still navigates normally.
+   */
+  const bottomNav = nav.map((item) =>
+    item.href === "/settings" ? { ...item, href: undefined, onSelect: () => setMenuOpen(true) } : item,
+  );
 
   return (
     <div className="min-h-dvh bg-canvas">
@@ -371,7 +393,15 @@ export function AppShell({
         {children}
       </main>
 
-      <BottomBar nav={nav} hideOnDesktop={desktopSidebar} />
+      <BottomBar nav={bottomNav} hideOnDesktop={desktopSidebar} />
+
+      <MobileMenuDrawer
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        nav={nav}
+        sections={sections}
+        subtitle={subtitle}
+      />
     </div>
   );
 }
@@ -440,7 +470,19 @@ function WhoAmI({ subtitle }: { subtitle: string }) {
   );
 }
 
-function Sidebar({
+/**
+ * The menu itself — brand, primary link, sections, identity — with no opinion
+ * on what frames it.
+ *
+ * ★ Split out of `Sidebar` so `MobileMenuDrawer` renders the exact same
+ * markup rather than a second copy that could drift from it. The only thing
+ * that differs between the two frames is layout (a fixed column vs. a Radix
+ * dialog panel) and, on mobile, that tapping a link should also close the
+ * drawer — handled by the drawer's own wrapper (`closeOnLinkClick`), not by
+ * this component, so neither `NavLink` nor `NavGroup` needs to know a drawer
+ * exists.
+ */
+function SidebarContent({
   nav,
   sections,
   subtitle,
@@ -457,19 +499,7 @@ function Sidebar({
   const [primary] = nav;
 
   return (
-    <nav
-      aria-label="Үндсэн цэс"
-      /*
-       * ★ Only the menu scrolls.
-       *
-       * The sidebar can be taller than a laptop viewport, and when the whole
-       * panel scrolled, `WhoAmI`'s row sat at the foot of the *content* rather
-       * than the panel — so it overlapped the last section and the way out
-       * scrolled off the screen. The brand and the identity are fixed now, and
-       * the nav between them takes the overflow.
-       */
-      className="fixed inset-y-0 left-0 z-20 hidden w-[244px] flex-col gap-5 overflow-hidden border-r border-border bg-surface px-3.5 py-[18px] lg:flex"
-    >
+    <>
       <Brand subtitle={subtitle} />
 
       <div className="-mr-1.5 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1.5">
@@ -487,7 +517,92 @@ function Sidebar({
       </div>
 
       <WhoAmI subtitle={subtitle} />
+    </>
+  );
+}
+
+function Sidebar({
+  nav,
+  sections,
+  subtitle,
+}: {
+  nav: NavItem[];
+  sections?: NavSection[];
+  subtitle: string;
+}) {
+  return (
+    <nav
+      aria-label="Үндсэн цэс"
+      /*
+       * ★ Only the menu scrolls.
+       *
+       * The sidebar can be taller than a laptop viewport, and when the whole
+       * panel scrolled, `WhoAmI`'s row sat at the foot of the *content* rather
+       * than the panel — so it overlapped the last section and the way out
+       * scrolled off the screen. The brand and the identity are fixed now, and
+       * the nav between them takes the overflow.
+       */
+      className="fixed inset-y-0 left-0 z-20 hidden w-[244px] flex-col gap-5 overflow-hidden border-r border-border bg-surface px-3.5 py-[18px] lg:flex"
+    >
+      <SidebarContent nav={nav} sections={sections} subtitle={subtitle} />
     </nav>
+  );
+}
+
+/**
+ * The same sidebar, off-canvas — how a phone reaches everything the desktop
+ * column shows for free.
+ *
+ * ★ A right-side sheet, not a centred dialog. It opens from the tab that
+ * triggered it (the bottom bar's rightmost item) and matches the desktop
+ * sidebar's own 244px width — one "how wide is a menu" answer for the
+ * product, not two.
+ *
+ * ★★ Closes itself on a link tap, via event delegation on the one wrapper
+ * rather than threading a callback through `NavLink` and `NavGroup`. Every
+ * real destination in this menu is an `<a>` — `WhoAmI`'s logout button is
+ * not, and does not need to close anything it is about to navigate away from
+ * regardless.
+ */
+function MobileMenuDrawer({
+  open,
+  onOpenChange,
+  nav,
+  sections,
+  subtitle,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  nav: NavItem[];
+  sections?: NavSection[];
+  subtitle: string;
+}) {
+  const closeOnLinkClick = (event: MouseEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest("a")) onOpenChange(false);
+  };
+
+  return (
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-ink/40 lg:hidden" />
+        <Dialog.Content
+          aria-describedby={undefined}
+          className="fixed inset-y-0 right-0 z-50 flex w-[244px] max-w-[85vw] flex-col gap-5 border-l border-border bg-surface px-3.5 py-[18px] shadow-xl lg:hidden"
+        >
+          <Dialog.Title className="sr-only">Цэс</Dialog.Title>
+          <Dialog.Close
+            aria-label="Хаах"
+            className="absolute right-3 top-3 grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
+          >
+            <X size={18} aria-hidden="true" />
+          </Dialog.Close>
+
+          <div onClick={closeOnLinkClick} className="contents">
+            <SidebarContent nav={nav} sections={sections} subtitle={subtitle} />
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
@@ -636,6 +751,16 @@ function BottomBar({ nav, hideOnDesktop }: { nav: NavItem[]; hideOnDesktop: bool
         // `env(safe-area-inset-bottom)` keeps the tabs above the iPhone home
         // indicator, which otherwise overlaps the last few pixels of the row.
         "pb-[env(safe-area-inset-bottom)]",
+        // ★ Forces its own compositor layer. A known iOS Safari quirk lets a
+        // plain `fixed` element miss a repaint for a frame during momentum
+        // scrolling — the address bar collapsing resizes the visual viewport
+        // mid-gesture, and without its own layer this element sometimes
+        // renders a beat late, reading as "disappeared". `translateZ(0)`
+        // promotes it ahead of time instead of leaving that to chance. Pure
+        // rendering hint, not a positioning change — `sticky` was tried
+        // instead and reverted (see git history) because it broke any page
+        // shorter than the viewport outright, which this does not risk.
+        "transform-[translateZ(0)] will-change-transform",
         hideOnDesktop && "lg:hidden",
       )}
     >
