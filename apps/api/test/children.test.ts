@@ -648,6 +648,18 @@ describe("enrollment history", () => {
     expect(row?.endedOn).not.toBeNull();
   });
 
+  it("★ can be marked GRADUATED, distinct from a plain ENDED/TRANSFERRED", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/enrollments/${a.enrollment.id}`),
+      adminA,
+    ).send({ status: "GRADUATED" });
+
+    expect(res.status).toBe(200);
+    const row = await db.enrollment.findUnique({ where: { id: a.enrollment.id } });
+    expect(row?.status).toBe("GRADUATED");
+    expect(row?.endedOn).not.toBeNull();
+  });
+
   it("refuses enrolling into another kindergarten's group", async () => {
     const res = await authed(
       request(server()).post(`/v1/children/${a.child.id}/enrollments`),

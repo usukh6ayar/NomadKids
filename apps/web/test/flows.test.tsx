@@ -853,16 +853,16 @@ describe("the child profile tabs", () => {
   /** A shared link must land on what the sender was looking at. */
   it("opens the tab named in the URL", async () => {
     setParams({ childId: CHILD_ID });
-    setSearchParams("tab=assessments");
+    setSearchParams("tab=observations");
     stubChild(enrolled());
 
     renderWithProviders(<ChildDetailPage />);
 
-    expect(await screen.findByRole("tab", { name: "Үнэлгээ" })).toHaveAttribute(
+    expect(await screen.findByRole("tab", { name: "Ажиглалт" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
-    expect(await screen.findByText("Үнэлгээ хараахан алга")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Ерөнхий" })).toHaveAttribute("aria-selected", "false");
   });
 
   /** A hand-edited or stale link opens the record rather than an empty page. */

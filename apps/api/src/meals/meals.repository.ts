@@ -15,11 +15,17 @@ export class MealsRepository {
   }
 
   /** Create-or-update, keyed by the `(kindergartenId, date)` uniqueness. */
-  async upsertDay(kindergartenId: string, date: Date, dishes: unknown, createdById: string) {
+  async upsertDay(
+    kindergartenId: string,
+    date: Date,
+    dishes: unknown,
+    totalCalories: number | null,
+    createdById: string,
+  ) {
     return this.prisma.menuDay.upsert({
       where: { kindergartenId_date: { kindergartenId, date } },
-      create: { kindergartenId, date, dishes: dishes as object, createdById },
-      update: { dishes: dishes as object, createdById },
+      create: { kindergartenId, date, dishes: dishes as object, totalCalories, createdById },
+      update: { dishes: dishes as object, totalCalories, createdById },
     });
   }
 

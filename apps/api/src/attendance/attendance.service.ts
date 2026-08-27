@@ -11,6 +11,7 @@ import { AttendanceRepository } from "./attendance.repository";
 import type {
   CreateAttendanceRequestDto,
   RecordAttendanceDto,
+  RecordPickupDto,
   ReviewAttendanceRequestDto,
 } from "./attendance.dto";
 
@@ -84,6 +85,24 @@ export class AttendanceService {
     const enrollment = await this.repo.activeEnrollment(childId);
     if (!enrollment) throw new BadRequestException("Хүүхэд бүлэгт бүртгэлтэй биш байна");
 
+    // `arrivedWith` sent with no `arrivedAt` means "just now" — the actual
+    // moment of this request, not a client-supplied clock.
+    const arrivedAt =
+      dto.arrivedWith !== undefined && dto.arrivedWith !== null
+        ? (dto.arrivedAt ?? new Date())
+        : dto.arrivedAt;
+    // Name travels with `arrivedWith`, not independently: `undefined` when
+    // `arrivedWith` itself is not being sent (so a status-only call leaves an
+    // existing name alone, same as `arrivedWith`), `null` when the companion
+    // is MOTHER/FATHER (a name would be stale for a category that already
+    // names them), and the sent name only for OTHER.
+    const arrivedWithName =
+      dto.arrivedWith !== undefined
+        ? dto.arrivedWith === "OTHER"
+          ? (dto.arrivedWithName ?? null)
+          : null
+        : undefined;
+
     const record = await this.repo.upsertForChild({
       kindergartenId: enrollment.kindergartenId,
       childId,
@@ -92,6 +111,9 @@ export class AttendanceService {
       status: dto.status,
       note: dto.note ?? null,
       recordedById: actor.userId,
+      arrivedWith: dto.arrivedWith,
+      arrivedWithName,
+      arrivedAt,
     });
 
     await this.audit.append({
@@ -101,7 +123,46 @@ export class AttendanceService {
       objectType: "Attendance",
       objectId: record.id,
       childId,
-      metadata: { status: dto.status, date: dateIso },
+      metadata: { status: dto.status, date: dateIso, arrivedWith: dto.arrivedWith ?? undefined },
+    });
+
+    return record;
+  }
+
+  /**
+   * Pickup — a separate call from `record()` on purpose (see the DTO's own
+   * note): staff check a child in in the morning and out in the afternoon,
+   * two different moments, and this one must not require re-sending that
+   * morning's `status`.
+   */
+  async recordPickup(actor: Actor, childId: string, dateIso: string, dto: RecordPickupDto) {
+    await this.childAccess.assertCanRecord(actor, childId);
+
+    const date = new Date(`${dateIso}T00:00:00.000Z`);
+    if (isFutureDate(date)) {
+      throw new BadRequestException("Ирээдүйн огноонд ирц бүртгэх боломжгүй");
+    }
+
+    const enrollment = await this.repo.activeEnrollment(childId);
+    if (!enrollment) throw new BadRequestException("Хүүхэд бүлэгт бүртгэлтэй биш байна");
+
+    const record = await this.repo.recordPickup(enrollment.id, date, {
+      pickedUpWith: dto.pickedUpWith,
+      pickedUpWithName: dto.pickedUpWith === "OTHER" ? (dto.pickedUpWithName ?? null) : null,
+      pickedUpAt: dto.pickedUpAt ?? new Date(),
+    });
+    // No record for the day to attach a pickup to — recording who picked up
+    // a child who was never checked in would be a fact about nothing.
+    if (!record) throw new NotFoundException("Энэ өдөр ирц бүртгэгдээгүй байна");
+
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId: enrollment.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "Attendance",
+      objectId: record.id,
+      childId,
+      metadata: { pickedUpWith: dto.pickedUpWith, date: dateIso },
     });
 
     return record;
@@ -124,6 +185,14 @@ export class AttendanceService {
     const enrollment = await this.repo.activeEnrollment(childId);
     if (!enrollment) throw new BadRequestException("Хүүхэд бүлэгт бүртгэлтэй биш байна");
 
+    // Same "companion with no time means now" default `record()` uses — only
+    // meaningful when this request is actually an arrival or pickup claim.
+    const isPresentClaim = dto.requestedStatus === "PRESENT";
+    const arrivedAt =
+      isPresentClaim && dto.arrivedWith ? (dto.arrivedAt ?? new Date()) : undefined;
+    const pickedUpAt =
+      isPresentClaim && dto.pickedUpWith ? (dto.pickedUpAt ?? new Date()) : undefined;
+
     const request = await this.repo.createRequest({
       kindergartenId: enrollment.kindergartenId,
       childId,
@@ -133,6 +202,14 @@ export class AttendanceService {
       dateTo,
       requestedStatus: dto.requestedStatus,
       reason: dto.reason ?? null,
+      arrivedWith: isPresentClaim ? dto.arrivedWith : undefined,
+      arrivedWithName:
+        isPresentClaim && dto.arrivedWith === "OTHER" ? (dto.arrivedWithName ?? null) : null,
+      arrivedAt,
+      pickedUpWith: isPresentClaim ? dto.pickedUpWith : undefined,
+      pickedUpWithName:
+        isPresentClaim && dto.pickedUpWith === "OTHER" ? (dto.pickedUpWithName ?? null) : null,
+      pickedUpAt,
     });
 
     await this.audit.append({
@@ -180,6 +257,23 @@ export class AttendanceService {
           status: row.requestedStatus,
           note: null,
           recordedById: actor.userId,
+          /*
+           * ★ `?? undefined`, not the raw `null` Prisma returns for an unset
+           * column — `upsertForChild`'s update branch only overwrites a
+           * field when it is `!== undefined` (so one PUT does not erase what
+           * an earlier one wrote, see that method's own comment). A pickup
+           * request row has `arrivedWith: null`; passing that literal `null`
+           * through would satisfy `!== undefined` and blank out an arrival
+           * an earlier, already-approved request wrote for the same day.
+           * Converting to `undefined` here is what keeps the two requests
+           * additive instead of each one clobbering the other's half.
+           */
+          arrivedWith: row.arrivedWith ?? undefined,
+          arrivedWithName: row.arrivedWith ? row.arrivedWithName : undefined,
+          arrivedAt: row.arrivedAt ?? undefined,
+          pickedUpWith: row.pickedUpWith ?? undefined,
+          pickedUpWithName: row.pickedUpWith ? row.pickedUpWithName : undefined,
+          pickedUpAt: row.pickedUpAt ?? undefined,
         });
       }
     }

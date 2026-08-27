@@ -31,6 +31,9 @@ const menuDishInputSchema = z.object({
 export const saveMenuDaySchema = z
   .object({
     dishes: z.array(menuDishInputSchema).max(20),
+    // A generous but real ceiling — catches a stray extra digit without
+    // rejecting anything a kindergarten's own day of meals could plausibly be.
+    totalCalories: z.number().int().min(0).max(5000).nullish(),
   })
   .strict();
 export type SaveMenuDayDto = z.infer<typeof saveMenuDaySchema>;

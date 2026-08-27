@@ -213,6 +213,8 @@ function Enrollments({ child }: { child: ChildDetail }) {
 
                 {active ? (
                   <Badge tone="mint">Одоогийн</Badge>
+                ) : enrollment.status === "GRADUATED" ? (
+                  <Badge tone="sky">Төгссөн</Badge>
                 ) : enrollment.status === "TRANSFERRED" ? (
                   <Badge tone="sun">Шилжсэн</Badge>
                 ) : (

@@ -74,6 +74,7 @@ function EditChild() {
 
       <DetailsForm childId={childId} child={child.data!} />
       <TransferCard childId={childId} />
+      <GraduateCard childId={childId} child={child.data!} />
       <ArchiveCard
         childId={childId}
         childName={`${child.data!.lastName} ${child.data!.firstName}`}
@@ -350,6 +351,95 @@ function TransferCard({ childId }: { childId: string }) {
             </Button>
           </div>
         </form>
+      </Card>
+    </section>
+  );
+}
+
+// ── Graduation ───────────────────────────────────────────────────────────────
+
+/**
+ * Recording that a child completed the programme.
+ *
+ * ★ `GRADUATED` is a status distinct from `ENDED`/`TRANSFERRED` — added so a
+ * parent-facing "Цэцэрлэгээс төгссөн" date (the portfolio-style overview page)
+ * can show a real fact instead of reusing the generic "this enrollment period
+ * is over", which would also read as true for a withdrawal or a move to
+ * another kindergarten. `PATCH /enrollments/:id` is the same endpoint
+ * `TransferCard`'s "Бүлэг шилжүүлэх" sits beside — ADMIN-only, and it stamps
+ * `endedOn` itself, so this screen sends only the status.
+ *
+ * Renders nothing once the child's current enrollment is already graduated,
+ * or when there is no ACTIVE enrollment to graduate — the same "no dead
+ * action" reasoning as `ArchiveButton` for an already-archived child.
+ */
+function GraduateCard({ childId, child }: { childId: string; child: z.infer<typeof childDetailSchema> }) {
+  const queryClient = useQueryClient();
+  const { hasRole } = useSession();
+  const [confirming, setConfirming] = useState(false);
+
+  const active = (child.enrollments ?? []).find((e) => e.status === "ACTIVE");
+
+  const graduate = useMutation({
+    mutationFn: () =>
+      mutate(`/enrollments/${active!.id}`, z.unknown(), {
+        method: "PATCH",
+        body: { status: "GRADUATED" },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: qk.child(childId) });
+      void queryClient.invalidateQueries({ queryKey: ["children"] });
+      setConfirming(false);
+    },
+  });
+
+  if (!hasRole("ADMIN") || !active) return null;
+
+  return (
+    <section aria-labelledby="graduate-heading">
+      <SectionHeader
+        id="graduate-heading"
+        title="Төгсөлт"
+        lede="Хүүхэд цэцэрлэгийн хөтөлбөрийг дүүргэж төгссөнийг тэмдэглэнэ."
+      />
+
+      <Card pad="roomy" className="flex flex-col gap-4">
+        <FormError message={graduate.isError ? errorMessage(graduate.error) : null} />
+
+        {graduate.isSuccess ? (
+          <p role="status" className="rounded-control bg-mint px-3.5 py-2.5 text-body text-mint-ink">
+            Төгссөнөөр тэмдэглэлээ.
+          </p>
+        ) : confirming ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-body text-ink">Одоогийн бүртгэлийг төгссөнөөр хаах уу?</p>
+            <div className="ml-auto flex gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setConfirming(false)}
+                disabled={graduate.isPending}
+              >
+                Болих
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => graduate.mutate()}
+                disabled={graduate.isPending}
+              >
+                {graduate.isPending ? "Тэмдэглэж байна…" : "Тийм, төгссөн"}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex justify-end">
+            <Button type="button" variant="secondary" onClick={() => setConfirming(true)}>
+              Төгссөнөөр тэмдэглэх
+            </Button>
+          </div>
+        )}
       </Card>
     </section>
   );
