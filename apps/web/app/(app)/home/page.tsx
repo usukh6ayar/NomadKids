@@ -341,6 +341,29 @@ function HomeBackdrop({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  /*
+   * ★ This screen no longer scrolls — the tile grid replaced a taller page
+   * (assessment badges, the day-grouped feed) that used to need it, and with
+   * those gone the remaining content fits one phone screen at a normal
+   * viewport height. Locking the body while this page is mounted removes the
+   * scroll gesture entirely rather than just resizing to fit it: a phone
+   * browser's address bar can still collapse on an attempted scroll or an
+   * overscroll bounce even when there is nothing left to reveal, and that
+   * transition is what was making the bottom bar appear to disappear.
+   * Nothing to scroll means nothing triggers that transition. Same recipe as
+   * `ChildPickerModal` and `PhotoViewer` (`(app)/layout.tsx`,
+   * `child-gallery.tsx`) lock the body while they are open; the cleanup
+   * restores normal scrolling the instant this page unmounts, so no other
+   * route inherits the lock.
+   */
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, []);
+
   return (
     <div className="relative">
       <div
