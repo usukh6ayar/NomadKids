@@ -10,6 +10,7 @@ import { ArtworkModule } from "./artwork/artwork.module";
 import { DocumentsModule } from "./documents/documents.module";
 import { ConsentModule } from "./consent/consent.module";
 import { FundingModule } from "./funding/funding.module";
+import { EsisModule } from "./integrations/esis/esis.module";
 import { MilestonesModule } from "./milestones/milestones.module";
 import { AuthzModule } from "./authz/authz.module";
 import { CatalogModule } from "./catalog/catalog.module";
@@ -68,6 +69,7 @@ import { UsersModule } from "./users/users.module";
     DocumentsModule,
     ConsentModule,
     FundingModule,
+    EsisModule,
     MealsModule,
     CatalogModule,
     NotificationsModule,

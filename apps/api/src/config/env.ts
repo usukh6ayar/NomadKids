@@ -86,6 +86,32 @@ export const envSchema = z.object({
   MAIL_FROM: z.string().default(""),
 
   /**
+   * ESIS — the ministry's education information system.
+   *
+   * ★ Optional as a set, exactly like SMTP above, and for the same reason: a
+   * deployment with no ESIS credentials is a legitimate state. Every existing
+   * feature works without it; only the integration boundary reports itself
+   * unconfigured, and it does so honestly rather than failing at the first
+   * call with `undefined` in a URL.
+   *
+   * ★★ `ESIS_TOKEN` is a **credential**. It is read here, held on the server,
+   * and never crosses into a response, a log line or a client bundle. It is
+   * deliberately not prefixed `NEXT_PUBLIC_`, and `apps/web` has no reason to
+   * name it — see `esis.client.ts` for the redaction that backs this up.
+   */
+  ESIS_BASE_URL: z.string().default(""),
+  ESIS_TOKEN: z.string().default(""),
+  ESIS_INSTITUTION_ID: z.string().default(""),
+  /**
+   * Milliseconds before an ESIS request is abandoned.
+   *
+   * A ministry endpoint that stops answering must not hold a request open
+   * until the platform's own proxy times out — that turns their outage into a
+   * pool of stuck connections here.
+   */
+  ESIS_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(15_000),
+
+  /**
    * Whether this instance consumes the report queue.
    *
    * On by default: one container is the right shape for a kindergarten's
@@ -157,6 +183,27 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     }
     if (env.WEB_ORIGIN.startsWith("http://")) {
       problems.push("WEB_ORIGIN is a plaintext http:// origin");
+    }
+    /*
+     * Half-configured ESIS, refused for the same reason as half-configured
+     * SMTP: it looks configured. `isConfigured` would report true on a base
+     * URL alone and every call would then fail unauthenticated, which reads as
+     * "the ministry is rejecting us" rather than "we never set the token".
+     */
+    const esis = [
+      ["ESIS_BASE_URL", env.ESIS_BASE_URL],
+      ["ESIS_TOKEN", env.ESIS_TOKEN],
+      ["ESIS_INSTITUTION_ID", env.ESIS_INSTITUTION_ID],
+    ] as const;
+    const esisSet = esis.filter(([, value]) => value !== "");
+
+    if (esisSet.length > 0 && esisSet.length < esis.length) {
+      const missing = esis.filter(([, value]) => value === "").map(([name]) => name);
+      // Names only. The values of the ones that *are* set include the token.
+      problems.push(`ESIS is partly configured — missing ${missing.join(", ")}`);
+    }
+    if (env.ESIS_BASE_URL && env.ESIS_BASE_URL.startsWith("http://")) {
+      problems.push("ESIS_BASE_URL is a plaintext http:// origin — the token would cross it");
     }
 
     if (problems.length > 0) {

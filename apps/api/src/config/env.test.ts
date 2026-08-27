@@ -44,6 +44,33 @@ describe("loadEnv", () => {
     expect(() => loadEnv(rest as NodeJS.ProcessEnv)).toThrow(/DATABASE_URL/);
   });
 
+  describe("ESIS", () => {
+    it("defaults to unconfigured, which is a legitimate deployment", () => {
+      const env = loadEnv(valid);
+      expect(env.ESIS_BASE_URL).toBe("");
+      expect(env.ESIS_TOKEN).toBe("");
+      expect(env.ESIS_INSTITUTION_ID).toBe("");
+      expect(env.ESIS_TIMEOUT_MS).toBe(15_000);
+    });
+
+    it("accepts a complete set", () => {
+      const env = loadEnv({
+        ...valid,
+        ESIS_BASE_URL: "https://esis.example.test",
+        ESIS_TOKEN: "t".repeat(20),
+        ESIS_INSTITUTION_ID: "INST-1",
+      } as NodeJS.ProcessEnv);
+
+      expect(env.ESIS_BASE_URL).toBe("https://esis.example.test");
+    });
+
+    it("refuses a timeout outside the sane range", () => {
+      expect(() =>
+        loadEnv({ ...valid, ESIS_TIMEOUT_MS: "50" } as unknown as NodeJS.ProcessEnv),
+      ).toThrow(/ESIS_TIMEOUT_MS/);
+    });
+  });
+
   describe("production invariants", () => {
     const prod = {
       ...valid,
@@ -57,6 +84,45 @@ describe("loadEnv", () => {
 
     it("accepts the real production environment", () => {
       expect(() => loadEnv(prod)).not.toThrow();
+    });
+
+    it("refuses a half-configured ESIS, naming only what is missing", () => {
+      try {
+        loadEnv({
+          ...prod,
+          ESIS_BASE_URL: "https://esis.example.test",
+          ESIS_TOKEN: "super-secret-value",
+        } as NodeJS.ProcessEnv);
+        expect.unreachable("should have thrown");
+      } catch (e) {
+        const message = (e as Error).message;
+        expect(message).toContain("ESIS_INSTITUTION_ID");
+        // ★ The message names the absent settings, never the value of a
+        // present one — the token is among them.
+        expect(message).not.toContain("super-secret-value");
+      }
+    });
+
+    it("refuses a plaintext ESIS base URL, because the token crosses it", () => {
+      expect(() =>
+        loadEnv({
+          ...prod,
+          ESIS_BASE_URL: "http://esis.example.test",
+          ESIS_TOKEN: "t".repeat(20),
+          ESIS_INSTITUTION_ID: "INST-1",
+        } as NodeJS.ProcessEnv),
+      ).toThrow(/ESIS_BASE_URL/);
+    });
+
+    it("accepts production with ESIS fully configured over https", () => {
+      expect(() =>
+        loadEnv({
+          ...prod,
+          ESIS_BASE_URL: "https://esis.example.test",
+          ESIS_TOKEN: "t".repeat(20),
+          ESIS_INSTITUTION_ID: "INST-1",
+        } as NodeJS.ProcessEnv),
+      ).not.toThrow();
     });
 
     it("refuses a plaintext WEB_ORIGIN in production", () => {
