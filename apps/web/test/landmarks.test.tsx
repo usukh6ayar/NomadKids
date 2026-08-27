@@ -115,7 +115,7 @@ describe("a parent's home", () => {
     // the whole point of passing an id rather than repeating the string in an
     // `aria-label` that can drift away from it.
     await waitFor(() =>
-      expect(screen.getByRole("region", { name: "Сүүлийн мөчүүд" })).toBeInTheDocument(),
+      expect(screen.getByRole("region", { name: "Түргэн холбоос" })).toBeInTheDocument(),
     );
   });
 });
