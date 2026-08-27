@@ -26,6 +26,12 @@ export class MealsService {
   async saveDay(actor: Actor, kindergartenId: string, dateIso: string, dto: SaveMenuDayDto) {
     this.tenants.assertStaff(actor, kindergartenId);
     const date = new Date(`${dateIso}T00:00:00.000Z`);
-    return this.repo.upsertDay(kindergartenId, date, dto.dishes, actor.userId);
+    return this.repo.upsertDay(
+      kindergartenId,
+      date,
+      dto.dishes,
+      dto.totalCalories ?? null,
+      actor.userId,
+    );
   }
 }
