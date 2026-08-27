@@ -68,7 +68,7 @@ export function NeedsAttentionAlerts({
             {birthdaysToday.map((child) => (
               <li key={child.id}>
                 <Link
-                  href={`/children/${child.id}`}
+                  href={`/children/${child.id}/general`}
                   className="flex min-h-[44px] items-center gap-2 rounded-control border border-border bg-surface px-2.5 py-1.5 hover:bg-canvas md:px-3"
                 >
                   <ChildAvatar child={child} size={28} />
@@ -98,7 +98,7 @@ export function NeedsAttentionAlerts({
             {missing.slice(0, VISIBLE_MISSING).map((child) => (
               <li key={child.id}>
                 <Link
-                  href={`/children/${child.id}`}
+                  href={`/children/${child.id}/assessments`}
                   className="flex min-h-[52px] items-center gap-2.5 rounded-control border border-border bg-surface px-2.5 py-2 hover:bg-canvas md:gap-3 md:px-3"
                 >
                   <ChildAvatar child={child} size={36} />

@@ -41,7 +41,7 @@ export function MonthBirthdays({
         {birthdays.map((child) => (
           <Link
             key={child.id}
-            href={`/children/${child.id}`}
+            href={`/children/${child.id}/general`}
             className="flex min-h-[56px] items-center gap-2.5 px-3 py-2.5 transition-colors hover:bg-canvas md:gap-3 md:px-4 md:py-3"
           >
             <ChildAvatar child={child} size={36} />

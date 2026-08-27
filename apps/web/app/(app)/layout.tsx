@@ -9,6 +9,7 @@ import {
   LayoutGrid,
   Bell,
   Menu,
+  NotebookPen,
   Settings,
   ShieldCheck,
   Users,
@@ -294,6 +295,15 @@ function parentNav(myChildren: ChildSummary[] | undefined): NavItem[] {
  * directly, straight into each one's own page, is one tap to the thing a
  * parent actually wants instead of a route to a list they then pick from
  * anyway.
+ *
+ * ★★ Two rows per child, not one, since the child hub was deleted
+ * (2026-08-28). It used to carry Ерөнхий and Ажиглалт as tabs on one page;
+ * without that page a desktop reader needs both named here directly, the
+ * same way `parentNav`'s own "Зураг" tab already links straight to a specific
+ * child's page rather than to a list. `/general`'s icon is the child's own
+ * avatar, matching every other per-child row this menu has ever shown; the
+ * Ажиглалт row underneath it carries a plain glyph instead, so a family with
+ * two children reads two two-row groups rather than four look-alike rows.
  */
 function parentSections(myChildren: ChildSummary[] | undefined): NavSection[] {
   return [
@@ -301,11 +311,18 @@ function parentSections(myChildren: ChildSummary[] | undefined): NavSection[] {
       title: "Хүүхдийн мэдээлэл",
       entries:
         myChildren && myChildren.length > 0
-          ? myChildren.map((child) => ({
-              label: fullName(child),
-              href: `/children/${child.id}`,
-              icon: <ChildAvatar child={child} size={24} />,
-            }))
+          ? myChildren.flatMap((child) => [
+              {
+                label: fullName(child),
+                href: `/children/${child.id}/general`,
+                icon: <ChildAvatar child={child} size={24} />,
+              },
+              {
+                label: "Ажиглалт",
+                href: `/children/${child.id}/observations`,
+                icon: <NotebookPen size={18} aria-hidden="true" />,
+              },
+            ])
           : [{ label: "Холбогдсон хүүхэд алга" }],
     },
     {

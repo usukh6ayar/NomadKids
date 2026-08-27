@@ -155,7 +155,7 @@ export default function NewObservationPage() {
         <ObservationPhotos childId={childId} observationId={savedId} />
 
         <div className="flex flex-wrap gap-2">
-          <Button onClick={() => router.push(`/children/${childId}`)}>Дуусгах</Button>
+          <Button onClick={() => router.push(`/children/${childId}/general`)}>Дуусгах</Button>
           <Button
             variant="secondary"
             onClick={() => {
@@ -182,7 +182,7 @@ export default function NewObservationPage() {
     <div className="flex flex-col gap-5 py-2">
       <header>
         <Link
-          href={`/children/${childId}`}
+          href={`/children/${childId}/general`}
           className="inline-flex min-h-[44px] items-center text-body text-primary underline underline-offset-4"
         >
           ← {fullName(child.data)}
@@ -368,7 +368,7 @@ export default function NewObservationPage() {
             {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
           </Button>
           <Button asChild variant="secondary" size="lg">
-            <Link href={`/children/${childId}`}>Цуцлах</Link>
+            <Link href={`/children/${childId}/general`}>Цуцлах</Link>
           </Button>
         </div>
       </form>

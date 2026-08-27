@@ -69,7 +69,7 @@ export function RecentObservations({
             return (
               <Link
                 key={obs.id}
-                href={obs.child ? `/children/${obs.child.id}` : "/children"}
+                href={obs.child ? `/children/${obs.child.id}/observations` : "/children"}
                 className="flex min-h-[64px] items-start gap-2.5 px-3 py-2.5 transition-colors hover:bg-canvas md:gap-3 md:px-4 md:py-3"
               >
                 <ChildAvatar child={obs.child ?? {}} size={40} />
