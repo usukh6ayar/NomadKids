@@ -62,7 +62,7 @@ export function TodayMenu() {
       {/*
         ★ The section carries the drawing, not each dish.
 
-        `icon-menu.webp` is the only food illustration the product owns, and
+        `icon-menu.png` is the only food illustration the product owns, and
         `/home` already uses it for the parent's menu tile — so it identifies
         the feature on both sides of the product. Repeating it on every dish
         card was the first attempt and it was wrong twice over: three copies of
@@ -76,7 +76,7 @@ export function TodayMenu() {
         lede="Өнөөдрийн хоол, харшлын шалгалттай"
         icon={
           <IconChip
-            icon={<Image src="/icons/icon-menu.webp" alt="" width={48} height={48} />}
+            icon={<Image src="/icons/icon-menu.png" alt="" width={48} height={48} />}
             tone="sun"
             size="lg"
           />

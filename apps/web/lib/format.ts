@@ -37,6 +37,13 @@ export function formatDate(value: string | Date | null | undefined): string {
   return `${date.getFullYear()}.${m}.${d}`;
 }
 
+/** `2026 оны 8-р сар` — a month, not a day, for a calendar heading. */
+export function formatMonthLabel(monthKey: string): string {
+  const [year, month] = monthKey.split("-").map(Number);
+  if (!year || !month || month < 1 || month > 12) return monthKey;
+  return `${year} оны ${MONTHS[month - 1]}`;
+}
+
 /** `2026 оны 8-р сарын 19` — for a heading, where the date is the subject. */
 export function formatLongDate(value: string | Date | null | undefined): string {
   const date = toDate(value);

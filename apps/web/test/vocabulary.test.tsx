@@ -10,7 +10,7 @@ import {
   setSearchParams,
   stubApi,
 } from "./support/render";
-import ChildDetailPage from "@/app/(app)/children/[childId]/page";
+import ChildGeneralPage from "@/app/(app)/children/[childId]/general/page";
 import LoginPage from "@/app/login/page";
 import { GALLERY, PORTFOLIO } from "@/lib/vocabulary";
 
@@ -137,7 +137,7 @@ describe("the child hero", () => {
    */
   it("offers one primary action and tucks the rest behind a menu", async () => {
     stubChild();
-    renderWithProviders(<ChildDetailPage />);
+    renderWithProviders(<ChildGeneralPage />);
 
     const heading = await screen.findByRole("heading", { name: /Ганболд/ });
     const hero = heading.closest("div.rounded-card")!;
@@ -154,7 +154,7 @@ describe("the child hero", () => {
   it("keeps the term report and editing reachable, one press deeper", async () => {
     const user = userEvent.setup();
     stubChild();
-    renderWithProviders(<ChildDetailPage />);
+    renderWithProviders(<ChildGeneralPage />);
 
     await screen.findByRole("heading", { name: /Ганболд/ });
     expect(screen.getByRole("link", { name: new RegExp(PORTFOLIO) })).toBeInTheDocument();

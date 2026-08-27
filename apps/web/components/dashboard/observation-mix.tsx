@@ -25,7 +25,7 @@ import { BarRow } from "@/components/ui/chart/bar-row";
  * taxonomy the database does not have. Configure those three and this renders
  * them; configure seven and it renders seven.
  *
- * ★★★ A `feature` tile with `icon-analytics.webp`, to match the assessment
+ * ★★★ A `feature` tile with `icon-analytics.png`, to match the assessment
  * progress it now shares a band with. Two cards side by side, one led by a
  * 48px drawing and the other by an 18px glyph, read as a tile and a section
  * rather than as a pair — and §14's rule against mixing the two kinds of art
@@ -66,7 +66,7 @@ export function ObservationMix({
     */
     <section aria-label="Ажиглалтын төрлүүд" className="h-full">
       <TileShell
-        icon={<Image src="/icons/icon-analytics.webp" alt="" width={48} height={48} />}
+        icon={<Image src="/icons/icon-analytics.png" alt="" width={48} height={48} />}
         tone="mint"
         size="feature"
         label="Ажиглалтын төрлүүд"

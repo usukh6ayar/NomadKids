@@ -115,6 +115,278 @@ describe("recording", () => {
 
     expect(res.status).toBe(404);
   });
+
+  it("★ records who dropped the child off, together with the arrival time", async () => {
+    const res = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/attendance/2026-02-10`),
+      teacherA,
+    ).send({ status: "PRESENT", arrivedWith: "MOTHER", arrivedAt: "2026-02-10T09:00:00.000Z" });
+
+    expect(res.status).toBe(200);
+    const row = await db.attendance.findFirstOrThrow({ where: { childId: a.child.id } });
+    expect(row.arrivedWith).toBe("MOTHER");
+    expect(row.arrivedAt?.toISOString()).toBe("2026-02-10T09:00:00.000Z");
+  });
+
+  it("a plain status-only PUT never erases an arrival already recorded", async () => {
+    await authed(
+      request(server()).put(`/v1/children/${a.child.id}/attendance/2026-02-10`),
+      teacherA,
+    ).send({ status: "PRESENT", arrivedWith: "FATHER", arrivedAt: "2026-02-10T08:30:00.000Z" });
+
+    // The group day-sheet's own tap-to-save call — status only.
+    const res = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/attendance/2026-02-10`),
+      teacherA,
+    ).send({ status: "PRESENT" });
+
+    expect(res.status).toBe(200);
+    const row = await db.attendance.findFirstOrThrow({ where: { childId: a.child.id } });
+    expect(row.arrivedWith).toBe("FATHER");
+    expect(row.arrivedAt).not.toBeNull();
+  });
+
+  it("★ OTHER carries a name; MOTHER/FATHER never does", async () => {
+    const res = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/attendance/2026-02-10`),
+      teacherA,
+    ).send({ status: "PRESENT", arrivedWith: "OTHER", arrivedWithName: "Авдрахаа эмээ" });
+
+    expect(res.status).toBe(200);
+    const row = await db.attendance.findFirstOrThrow({ where: { childId: a.child.id } });
+    expect(row.arrivedWith).toBe("OTHER");
+    expect(row.arrivedWithName).toBe("Авдрахаа эмээ");
+  });
+
+  it("a name sent for MOTHER/FATHER is discarded, not stored", async () => {
+    const res = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/attendance/2026-02-10`),
+      teacherA,
+    ).send({ status: "PRESENT", arrivedWith: "MOTHER", arrivedWithName: "ignored" });
+
+    expect(res.status).toBe(200);
+    const row = await db.attendance.findFirstOrThrow({ where: { childId: a.child.id } });
+    expect(row.arrivedWithName).toBeNull();
+  });
+
+  it("switching from OTHER back to MOTHER clears the stale name", async () => {
+    await authed(
+      request(server()).put(`/v1/children/${a.child.id}/attendance/2026-02-10`),
+      teacherA,
+    ).send({ status: "PRESENT", arrivedWith: "OTHER", arrivedWithName: "Жолооч" });
+
+    const res = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/attendance/2026-02-10`),
+      teacherA,
+    ).send({ status: "PRESENT", arrivedWith: "MOTHER" });
+
+    expect(res.status).toBe(200);
+    const row = await db.attendance.findFirstOrThrow({ where: { childId: a.child.id } });
+    expect(row.arrivedWith).toBe("MOTHER");
+    expect(row.arrivedWithName).toBeNull();
+  });
+
+  it("★ records pickup independently, without resending status", async () => {
+    await authed(
+      request(server()).put(`/v1/children/${a.child.id}/attendance/2026-02-10`),
+      teacherA,
+    ).send({ status: "PRESENT", arrivedWith: "MOTHER" });
+
+    const res = await authed(
+      request(server()).patch(`/v1/children/${a.child.id}/attendance/2026-02-10/pickup`),
+      teacherA,
+    ).send({ pickedUpWith: "OTHER", pickedUpAt: "2026-02-10T17:15:00.000Z" });
+
+    expect(res.status).toBe(200);
+    const row = await db.attendance.findFirstOrThrow({ where: { childId: a.child.id } });
+    expect(row.status).toBe("PRESENT");
+    expect(row.arrivedWith).toBe("MOTHER");
+    expect(row.pickedUpWith).toBe("OTHER");
+    expect(row.pickedUpAt?.toISOString()).toBe("2026-02-10T17:15:00.000Z");
+  });
+
+  it("pickup on a day with no attendance record 404s — nothing to attach it to", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/children/${a.child.id}/attendance/2026-02-10/pickup`),
+      teacherA,
+    ).send({ pickedUpWith: "MOTHER" });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("a parent cannot record a pickup", async () => {
+    await authed(
+      request(server()).put(`/v1/children/${a.child.id}/attendance/2026-02-10`),
+      teacherA,
+    ).send({ status: "PRESENT" });
+
+    const res = await authed(
+      request(server()).patch(`/v1/children/${a.child.id}/attendance/2026-02-10/pickup`),
+      parentA,
+    ).send({ pickedUpWith: "MOTHER" });
+
+    expect(res.status).toBe(404);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A guardian's own arrival claim — "Ирц мэдэгдэх"
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("arrival claims", () => {
+  it("★ a guardian's PRESENT request carries no Attendance row until approved", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/attendance-requests`),
+      parentA,
+    ).send({
+      dateFrom: "2026-02-11",
+      dateTo: "2026-02-11",
+      requestedStatus: "PRESENT",
+      arrivedWith: "MOTHER",
+      arrivedAt: "2026-02-11T09:05:00.000Z",
+    });
+
+    expect(res.status).toBe(201);
+    expect(await db.attendance.count({ where: { childId: a.child.id } })).toBe(0);
+  });
+
+  it("approving copies the companion and time onto the Attendance row", async () => {
+    const created = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/attendance-requests`),
+      parentA,
+    ).send({
+      dateFrom: "2026-02-11",
+      dateTo: "2026-02-11",
+      requestedStatus: "PRESENT",
+      arrivedWith: "FATHER",
+      arrivedAt: "2026-02-11T08:45:00.000Z",
+    });
+
+    await authed(
+      request(server()).post(`/v1/attendance-requests/${created.body.id}/review`),
+      teacherA,
+    ).send({ decision: "APPROVED" });
+
+    const row = await db.attendance.findFirstOrThrow({ where: { childId: a.child.id } });
+    expect(row.status).toBe("PRESENT");
+    expect(row.arrivedWith).toBe("FATHER");
+    expect(row.arrivedAt?.toISOString()).toBe("2026-02-11T08:45:00.000Z");
+    expect(row.recordedById).toBe(a.teacherUser.id);
+  });
+
+  it("★ a guardian's OTHER claim carries the name through to approval", async () => {
+    const created = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/attendance-requests`),
+      parentA,
+    ).send({
+      dateFrom: "2026-02-11",
+      dateTo: "2026-02-11",
+      requestedStatus: "PRESENT",
+      arrivedWith: "OTHER",
+      arrivedWithName: "Ахын найз",
+    });
+
+    await authed(
+      request(server()).post(`/v1/attendance-requests/${created.body.id}/review`),
+      teacherA,
+    ).send({ decision: "APPROVED" });
+
+    const row = await db.attendance.findFirstOrThrow({ where: { childId: a.child.id } });
+    expect(row.arrivedWith).toBe("OTHER");
+    expect(row.arrivedWithName).toBe("Ахын найз");
+  });
+
+  it("rejecting an arrival claim writes no Attendance row", async () => {
+    const created = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/attendance-requests`),
+      parentA,
+    ).send({
+      dateFrom: "2026-02-11",
+      dateTo: "2026-02-11",
+      requestedStatus: "PRESENT",
+      arrivedWith: "MOTHER",
+    });
+
+    await authed(
+      request(server()).post(`/v1/attendance-requests/${created.body.id}/review`),
+      teacherA,
+    ).send({ decision: "REJECTED" });
+
+    expect(await db.attendance.count({ where: { childId: a.child.id } })).toBe(0);
+  });
+
+  it("no arrivedAt sent means the request captures the moment it was made", async () => {
+    const before = new Date();
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/attendance-requests`),
+      parentA,
+    ).send({ dateFrom: "2026-02-11", dateTo: "2026-02-11", requestedStatus: "PRESENT", arrivedWith: "OTHER" });
+
+    const row = await db.attendanceRequest.findUniqueOrThrow({ where: { id: res.body.id } });
+    expect(row.arrivedAt).not.toBeNull();
+    expect(row.arrivedAt!.getTime()).toBeGreaterThanOrEqual(before.getTime());
+  });
+
+  it("a leave request (EXCUSED/SICK) never carries a companion", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/attendance-requests`),
+      parentA,
+    ).send({
+      dateFrom: "2026-02-11",
+      dateTo: "2026-02-11",
+      requestedStatus: "EXCUSED",
+      arrivedWith: "MOTHER",
+    });
+
+    const row = await db.attendanceRequest.findUniqueOrThrow({ where: { id: res.body.id } });
+    expect(row.arrivedWith).toBeNull();
+  });
+
+  it("★ a second, pickup-only request approves onto the same day without erasing the morning's arrival", async () => {
+    // First request of the day: drop-off.
+    const arrival = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/attendance-requests`),
+      parentA,
+    ).send({
+      dateFrom: "2026-02-11",
+      dateTo: "2026-02-11",
+      requestedStatus: "PRESENT",
+      arrivedWith: "MOTHER",
+      arrivedAt: "2026-02-11T09:00:00.000Z",
+    });
+    await authed(
+      request(server()).post(`/v1/attendance-requests/${arrival.body.id}/review`),
+      teacherA,
+    ).send({ decision: "APPROVED" });
+
+    // Second, later request the same day: pickup — no arrivedWith at all.
+    const pickup = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/attendance-requests`),
+      parentA,
+    ).send({
+      dateFrom: "2026-02-11",
+      dateTo: "2026-02-11",
+      requestedStatus: "PRESENT",
+      pickedUpWith: "FATHER",
+      pickedUpAt: "2026-02-11T17:30:00.000Z",
+    });
+
+    expect(pickup.status).toBe(201);
+
+    await authed(
+      request(server()).post(`/v1/attendance-requests/${pickup.body.id}/review`),
+      teacherA,
+    ).send({ decision: "APPROVED" });
+
+    const row = await db.attendance.findFirstOrThrow({
+      where: { childId: a.child.id, date: new Date("2026-02-11T00:00:00.000Z") },
+    });
+    // The point of the test: the morning's claim survives the afternoon's approval.
+    expect(row.arrivedWith).toBe("MOTHER");
+    expect(row.arrivedAt?.toISOString()).toBe("2026-02-11T09:00:00.000Z");
+    expect(row.pickedUpWith).toBe("FATHER");
+    expect(row.pickedUpAt?.toISOString()).toBe("2026-02-11T17:30:00.000Z");
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

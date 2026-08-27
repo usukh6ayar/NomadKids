@@ -14,7 +14,7 @@ import LoginPage from "@/app/login/page";
 import NewObservationPage from "@/app/(app)/children/[childId]/observations/new/page";
 import GroupAssessmentPage from "@/app/(app)/groups/[groupId]/assessment/page";
 import NotificationsPage from "@/app/(app)/notifications/page";
-import ChildDetailPage from "@/app/(app)/children/[childId]/page";
+import ChildGeneralPage from "@/app/(app)/children/[childId]/general/page";
 import NewChildPage from "@/app/(app)/children/new/page";
 import EditChildPage from "@/app/(app)/children/[childId]/edit/page";
 import { PhotoUpload } from "@/components/media/photo-upload";
@@ -402,7 +402,7 @@ describe("a child the viewer may not see", () => {
       { path: `/children/${CHILD_ID}`, status: 404 },
     ]);
 
-    renderWithProviders(<ChildDetailPage />);
+    renderWithProviders(<ChildGeneralPage />);
 
     await waitFor(() => expect(screen.getByText("Олдсонгүй")).toBeInTheDocument());
     expect(screen.queryByText(/эрх байхгүй/)).toBeNull();
@@ -443,7 +443,9 @@ describe("registering a child", () => {
 
     await user.click(screen.getByRole("button", { name: "Бүртгэх" }));
 
-    await waitFor(() => expect(ROUTER.push).toHaveBeenCalledWith(`/children/${CHILD_ID}`));
+    await waitFor(() =>
+      expect(ROUTER.push).toHaveBeenCalledWith(`/children/${CHILD_ID}/general`),
+    );
 
     const post = calls.find((c) => c.method === "POST")!;
     // ★ The group has to travel with the child. Registered without one, the
@@ -760,15 +762,10 @@ describe("revoking a guardian's access", () => {
     setParams({ childId: CHILD_ID });
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      {
-        path: `/children/${CHILD_ID}/observations`,
-        body: { items: [], total: 0, page: 1, pageSize: 5, totalPages: 0 },
-      },
-      { path: `/children/${CHILD_ID}/assessments`, body: [] },
       { path: `/children/${CHILD_ID}`, body: childWithGuardian(false) },
     ]);
 
-    renderWithProviders(<ChildDetailPage />);
+    renderWithProviders(<ChildGeneralPage />);
 
     expect(await screen.findByText("Хураасан")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Сэргээх/ })).toBeInTheDocument();
@@ -780,16 +777,11 @@ describe("revoking a guardian's access", () => {
 
     const { calls } = stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      {
-        path: `/children/${CHILD_ID}/observations`,
-        body: { items: [], total: 0, page: 1, pageSize: 5, totalPages: 0 },
-      },
-      { path: `/children/${CHILD_ID}/assessments`, body: [] },
       { path: `/guardianships/${GUARDIANSHIP_ID}`, method: "PATCH", body: {} },
       { path: `/children/${CHILD_ID}`, body: childWithGuardian(true) },
     ]);
 
-    renderWithProviders(<ChildDetailPage />);
+    renderWithProviders(<ChildGeneralPage />);
 
     // ★ Was `vi.spyOn(window, "confirm")`. The native prompt is gone; this now
     // opens the shared `ConfirmDialog` and presses its confirm, which is the
@@ -830,40 +822,58 @@ describe("the child profile tabs", () => {
     ...over,
   });
 
+  const emptyGrowth = { points: [] };
+
   function stubChild(body: unknown) {
     return stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      { path: `/children/${CHILD_ID}/observations`, body: emptyMediaPage },
-      { path: `/children/${CHILD_ID}/assessments`, body: [] },
+      { path: `/children/${CHILD_ID}/growth`, body: emptyGrowth },
       { path: `/children/${CHILD_ID}`, body },
     ]);
   }
 
+  /**
+   * ★ Only "Ерөнхий" is a primary tab since the child hub was deleted
+   * (2026-08-28) and Ажиглалт moved to its own route — Growth, health,
+   * incidents and artwork are what remain behind "Бусад".
+   */
   it("opens on Ерөнхий when the URL carries no tab", async () => {
     setParams({ childId: CHILD_ID });
     setSearchParams("");
     stubChild(enrolled());
 
-    renderWithProviders(<ChildDetailPage />);
+    renderWithProviders(<ChildGeneralPage />);
 
     const general = await screen.findByRole("tab", { name: "Ерөнхий" });
     expect(general).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tab", { name: "Ажиглалт" })).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("tab", { name: "Бусад" })).toHaveAttribute("aria-selected", "false");
   });
 
-  /** A shared link must land on what the sender was looking at. */
-  it("opens the tab named in the URL", async () => {
+  /**
+   * A link naming a secondary section lands on "Бусад", which is the pane
+   * that section lives in — `ChildTabs` mounts the overflow pane's own
+   * `Tabs.Content`, not the individual panel's, whenever the active value is
+   * one of its secondary tabs. This is `ChildTabs`' existing behaviour,
+   * unchanged from the hub; a link to `?tab=growth` and one to `?tab=health`
+   * still both land somewhere real rather than on the wrong tab or a blank
+   * strip.
+   */
+  it("opens the overflow pane for a secondary tab named in the URL", async () => {
     setParams({ childId: CHILD_ID });
-    setSearchParams("tab=assessments");
+    setSearchParams("tab=growth");
     stubChild(enrolled());
 
-    renderWithProviders(<ChildDetailPage />);
+    renderWithProviders(<ChildGeneralPage />);
 
-    expect(await screen.findByRole("tab", { name: "Үнэлгээ" })).toHaveAttribute(
+    expect(await screen.findByRole("tab", { name: "Бусад" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
-    expect(await screen.findByText("Үнэлгээ хараахан алга")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Ерөнхий" })).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("link", { name: /Өсөлт/ })).toHaveAttribute(
+      "href",
+      expect.stringContaining("tab=growth"),
+    );
   });
 
   /** A hand-edited or stale link opens the record rather than an empty page. */
@@ -872,7 +882,7 @@ describe("the child profile tabs", () => {
     setSearchParams("tab=meals");
     stubChild(enrolled());
 
-    renderWithProviders(<ChildDetailPage />);
+    renderWithProviders(<ChildGeneralPage />);
 
     expect(await screen.findByRole("tab", { name: "Ерөнхий" })).toHaveAttribute(
       "aria-selected",
@@ -880,18 +890,18 @@ describe("the child profile tabs", () => {
     );
   });
 
-  it("writes the chosen tab to the URL", async () => {
+  it("writes 'more' to the URL when the overflow pane is opened", async () => {
     const user = userEvent.setup();
     setParams({ childId: CHILD_ID });
     setSearchParams("");
     stubChild(enrolled());
 
-    renderWithProviders(<ChildDetailPage />);
+    renderWithProviders(<ChildGeneralPage />);
 
-    await user.click(await screen.findByRole("tab", { name: "Ажиглалт" }));
+    await user.click(await screen.findByRole("tab", { name: "Бусад" }));
 
     expect(ROUTER.replace).toHaveBeenCalledWith(
-      expect.stringContaining("tab=observations"),
+      expect.stringContaining("tab=more"),
       // `push` would make every tab press a history entry to unwind, and
       // re-anchoring to the top on each one is disorienting on a phone.
       expect.objectContaining({ scroll: false }),
@@ -902,18 +912,18 @@ describe("the child profile tabs", () => {
    * The canonical URL of a child is the bare path — going back to the default
    * tab must not leave `?tab=general` behind for someone to copy and share.
    *
-   * Rendered at `?tab=observations` rather than clicked into it: the test
-   * harness's `useSearchParams` is a static mock, so a click cannot change what
-   * the next render reads. Starting there is the honest way to exercise the
-   * clearing branch.
+   * Rendered at `?tab=growth` rather than clicked into it: the test harness's
+   * `useSearchParams` is a static mock, so a click cannot change what the next
+   * render reads. Starting there is the honest way to exercise the clearing
+   * branch.
    */
   it("clears the parameter when returning to the default tab", async () => {
     const user = userEvent.setup();
     setParams({ childId: CHILD_ID });
-    setSearchParams("tab=observations");
+    setSearchParams("tab=growth");
     stubChild(enrolled());
 
-    renderWithProviders(<ChildDetailPage />);
+    renderWithProviders(<ChildGeneralPage />);
 
     await user.click(await screen.findByRole("tab", { name: "Ерөнхий" }));
 
@@ -946,7 +956,7 @@ describe("the child profile tabs", () => {
       }),
     );
 
-    renderWithProviders(<ChildDetailPage />);
+    renderWithProviders(<ChildGeneralPage />);
 
     const history = await screen.findByRole("region", { name: "Бүртгэлийн түүх" });
     expect(within(history).getByText("Дууссан")).toBeInTheDocument();
@@ -962,34 +972,35 @@ describe("the child profile tabs", () => {
    * derivation of the same fact.
    *
    * Pinned here because the failure mode is silent and cheap to reintroduce:
-   * `forceMount` on the panels makes four requests happen on every visit to a
-   * child, and everything still renders correctly while it does.
+   * `forceMount` on the panels makes every secondary panel's request happen on
+   * every visit to a child, and everything still renders correctly while it
+   * does.
    */
   it("does not fetch a tab's data until the tab is opened", async () => {
     setParams({ childId: CHILD_ID });
     setSearchParams("");
     const { calls } = stubChild(enrolled());
 
-    renderWithProviders(<ChildDetailPage />);
+    renderWithProviders(<ChildGeneralPage />);
     await screen.findByRole("region", { name: "Бүртгэлийн түүх" });
 
-    expect(calls.some((c) => c.url.includes("/observations"))).toBe(false);
-    expect(calls.some((c) => c.url.includes("/assessments"))).toBe(false);
-    expect(calls.some((c) => c.url.includes("/media"))).toBe(false);
+    expect(calls.some((c) => c.url.includes("/growth"))).toBe(false);
     // Exactly one panel is in the DOM, which is what makes the above true.
     expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
   });
 
-  it("fetches the observations once that tab is the one in the URL", async () => {
+  it("does not fetch a secondary tab's data merely because the URL names it", async () => {
     setParams({ childId: CHILD_ID });
-    setSearchParams("tab=observations");
+    setSearchParams("tab=growth");
     const { calls } = stubChild(enrolled());
 
-    renderWithProviders(<ChildDetailPage />);
-    await screen.findByText("Ажиглалт бичигдээгүй байна");
+    renderWithProviders(<ChildGeneralPage />);
+    await screen.findByRole("tab", { name: "Бусад" });
 
-    expect(calls.some((c) => c.url.includes("/observations"))).toBe(true);
-    expect(calls.some((c) => c.url.includes("/assessments"))).toBe(false);
+    // Landing here opens the overflow pane, not `ChildGrowth` itself (see the
+    // test above) — so its query never fires from a URL alone, only once a
+    // tile is actually opened as a primary tab.
+    expect(calls.some((c) => c.url.includes("/growth"))).toBe(false);
   });
 
   /**
@@ -1013,12 +1024,10 @@ describe("the child profile tabs", () => {
     setSearchParams("");
     stubApi([
       { path: "/auth/me", body: sessionFor(["PARENT"]) },
-      { path: `/children/${CHILD_ID}/observations`, body: emptyMediaPage },
-      { path: `/children/${CHILD_ID}/assessments`, body: [] },
       { path: `/children/${CHILD_ID}`, body: enrolled({ healthNotes: "Харшилтай" }) },
     ]);
 
-    renderWithProviders(<ChildDetailPage />);
+    renderWithProviders(<ChildGeneralPage />);
 
     expect(await screen.findByRole("tab", { name: "Ерөнхий" })).toBeInTheDocument();
 
@@ -1361,7 +1370,7 @@ describe("teacher dashboard", () => {
     expect(within(alerts).getByText("Дунд бүлэг")).toBeInTheDocument();
     expect(within(alerts).getByRole("link", { name: /Сарнай/ })).toHaveAttribute(
       "href",
-      `/children/${BIRTHDAY_CHILD}`,
+      `/children/${BIRTHDAY_CHILD}/assessments`,
     );
   });
 

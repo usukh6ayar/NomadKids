@@ -174,7 +174,7 @@ export default function PortfolioPage() {
         the link sits above it rather than becoming a slot on that component.
       */}
       <Button asChild variant="ghost" size="sm" className="-ml-2 self-start">
-        <Link href={`/children/${childId}`}>
+        <Link href={`/children/${childId}/general`}>
           <ArrowLeft size={18} />
           Хүүхдийн бүртгэл
         </Link>

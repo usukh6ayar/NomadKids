@@ -48,5 +48,6 @@ export type UpdateNotificationDto = z.infer<typeof updateNotificationSchema>;
 
 export const listNotificationsQuerySchema = paginationQuerySchema.extend({
   unread: z.coerce.boolean().optional(),
+  q: z.string().max(100).optional(),
 });
 export type ListNotificationsQuery = z.infer<typeof listNotificationsQuerySchema>;

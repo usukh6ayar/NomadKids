@@ -83,6 +83,46 @@ describe("saving a day", () => {
     // The coarse @Roles("TEACHER", "ADMIN") gate — 404, never 403.
     expect(res.status).toBe(404);
   });
+
+  it("a teacher saves the day's total calories alongside the dishes", async () => {
+    const res = await authed(
+      request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-03-02`),
+      teacherA,
+    ).send({ dishes: [{ name: "Будаатай шөл", allergenTags: [] }], totalCalories: 620 });
+
+    expect(res.status).toBe(200);
+    const row = await db.menuDay.findFirstOrThrow({
+      where: { kindergartenId: a.kindergarten.id },
+    });
+    expect(row.totalCalories).toBe(620);
+  });
+
+  it("totalCalories is optional and stays null when omitted", async () => {
+    const res = await authed(
+      request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-03-02`),
+      teacherA,
+    ).send({ dishes: [{ name: "Будаатай шөл", allergenTags: [] }] });
+
+    expect(res.status).toBe(200);
+    const row = await db.menuDay.findFirstOrThrow({
+      where: { kindergartenId: a.kindergarten.id },
+    });
+    expect(row.totalCalories).toBeNull();
+  });
+
+  it("rejects a negative or implausibly large totalCalories", async () => {
+    const negative = await authed(
+      request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-03-02`),
+      teacherA,
+    ).send({ dishes: [], totalCalories: -10 });
+    expect(negative.status).toBe(400);
+
+    const tooLarge = await authed(
+      request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-03-02`),
+      teacherA,
+    ).send({ dishes: [], totalCalories: 50_000 });
+    expect(tooLarge.status).toBe(400);
+  });
 });
 
 describe("reading", () => {
@@ -102,6 +142,23 @@ describe("reading", () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
     expect(res.body[0].dishes[0].name).toBe("Будаатай шөл");
+  });
+
+  it("a parent reads the day's total calories too", async () => {
+    await authed(
+      request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-03-02`),
+      teacherA,
+    ).send({ dishes: [{ name: "Будаатай шөл", allergenTags: [] }], totalCalories: 450 });
+
+    const res = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/menu?from=2026-03-01&to=2026-03-07`,
+      ),
+      parentA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body[0].totalCalories).toBe(450);
   });
 });
 

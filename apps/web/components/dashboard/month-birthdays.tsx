@@ -79,8 +79,17 @@ export function MonthBirthdays({
               gets their own surface, which is the `RowCard` idea at tile scale:
               a list is a column of small cards, not text on a background.
             */}
+            {/*
+              ★ `/general`, not `/children/:id`.
+
+              The merge with `origin/main` deleted the child hub page and split
+              it into `general`, `observations`, `attendance` and the rest, so
+              the bare id is no longer a route — it 404s. The destination the
+              hub used to land on is the general tab, and that is what the name
+              on this row should open.
+            */}
             <Link
-              href={`/children/${child.id}`}
+              href={`/children/${child.id}/general`}
               className="flex items-center gap-2.5 rounded-row border border-border bg-surface px-2.5 py-2 transition-colors hover:border-sun-ink/40"
             >
               <ChildAvatar child={child} size={32} />

@@ -29,7 +29,7 @@ function todayIso(): string {
  * `alt=""` because the label beside it says "Өнөөдрийн ирц"; `IconChip` sizes
  * it to the chip and hides it from the accessibility tree.
  */
-const ATTENDANCE_ART = <Image src="/icons/icon-attendance.webp" alt="" width={48} height={48} />;
+const ATTENDANCE_ART = <Image src="/icons/icon-attendance.png" alt="" width={48} height={48} />;
 
 /**
  * Today's attendance — the sketch's bold top-left tile, "Өнөөдрийн ирц 30/35".
@@ -68,7 +68,7 @@ const ATTENDANCE_ART = <Image src="/icons/icon-attendance.webp" alt="" width={48
  * The four-across row gave the register the same 250px as the sex split, so the
  * one figure a teacher opens this screen for was the same size as a piece of
  * demographic context. It takes the wider half of the "today" band instead,
- * with a `lg` ring, `icon-attendance.webp` for its identity and the `sky` wash
+ * with a `lg` ring, `icon-attendance.png` for its identity and the `sky` wash
  * — three things that rank it above its neighbours without changing what it
  * says. The illustration is the reason the chip is `lg`: at 40px the drawing is
  * a smudge, and `IconChip` sizes a `.webp` to the chip.

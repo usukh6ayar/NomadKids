@@ -53,14 +53,14 @@ export function ClassBoardNotice({ notice }: { notice: TeacherDashboard["boardNo
         title="Ангийн самбар"
         lede={notice ? "Хамгийн сүүлд нийтэлсэн зарлал" : undefined}
         /*
-          `icon-notice.webp` — the same drawing the parent's home page puts on
+          `icon-notice.png` — the same drawing the parent's home page puts on
           its notice tile, so one feature has one face on both sides of the
           product. `IconChip` hides it from the accessibility tree; the heading
           is the name.
         */
         icon={
           <IconChip
-            icon={<Image src="/icons/icon-notice.webp" alt="" width={48} height={48} />}
+            icon={<Image src="/icons/icon-notice.png" alt="" width={48} height={48} />}
             tone="sky"
             size="lg"
           />
@@ -81,7 +81,7 @@ export function ClassBoardNotice({ notice }: { notice: TeacherDashboard["boardNo
             {/*
               ★ No icon chip beside the title any more.
 
-              The section header carries `icon-notice.webp` about forty pixels
+              The section header carries `icon-notice.png` about forty pixels
               above this line, so a 32px lucide megaphone under it was the same
               idea twice in two different visual languages — the mixing §14
               warns about, inside one small component. The heading has the

@@ -422,6 +422,35 @@ describe("read tracking", () => {
     expect(res.body.items).toHaveLength(1);
     expect(res.body.items[0].title).toBe("Уншаагүй");
   });
+
+  it("★ searches the title case-insensitively", async () => {
+    await notify([], { title: "Зуслангийн мэдээ" });
+    await notify([], { title: "Хавтгай тайлан" });
+
+    const res = await request(server())
+      .get("/v1/notifications")
+      .query({ q: "ЗУСЛАНГИЙН" })
+      .set("Cookie", parentA.cookies);
+
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0].title).toBe("Зуслангийн мэдээ");
+  });
+
+  it("a search term still respects the audience filter", async () => {
+    // Same title a matching search would otherwise surface, but targeted at
+    // a child parentA has no connection to — the search must narrow what
+    // parentA may see, never widen it past the audience filter.
+    const classmate = await createChild(a.kindergarten.id, { firstName: "Ангийнх" });
+    await enrollChild(a.kindergarten.id, classmate.id, a.group.id, a.schoolYear.id);
+    await notify([{ childId: classmate.id }], { title: "Зуслангийн мэдээ" });
+
+    const res = await request(server())
+      .get("/v1/notifications")
+      .query({ q: "Зуслангийн" })
+      .set("Cookie", parentA.cookies);
+
+    expect(res.body.items).toHaveLength(0);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -77,6 +77,7 @@ export class NotificationsService {
       actor.userId,
       page,
       query.unread === true,
+      query.q?.trim() || undefined,
     );
 
     return paginate(

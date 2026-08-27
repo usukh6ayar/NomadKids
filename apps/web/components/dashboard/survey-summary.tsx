@@ -17,7 +17,7 @@ import { formatDate } from "@/lib/format";
 /** The survey's face, shared with `/home`'s own survey tile. */
 const SURVEY_ART = (
   <IconChip
-    icon={<Image src="/icons/icon-survey.webp" alt="" width={48} height={48} />}
+    icon={<Image src="/icons/icon-survey.png" alt="" width={48} height={48} />}
     tone="teal"
     size="lg"
   />

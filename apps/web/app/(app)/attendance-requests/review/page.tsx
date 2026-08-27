@@ -14,18 +14,22 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import {
+  attendanceCompanionDisplay as companionDisplay,
+  ATTENDANCE_STATUS_LABEL as STATUS_LABEL,
+} from "@/lib/attendance-meta";
 import { formatDate, fullName } from "@/lib/format";
 
 const queueItemSchema = attendanceRequestSchema.extend({ child: personRefSchema.nullish() });
 const queueSchema = paginated(queueItemSchema);
 
-const STATUS_LABEL: Record<string, string> = {
-  PRESENT: "Ирсэн",
-  HALF_DAY: "Хагас өдөр",
-  EXCUSED: "Чөлөөтэй",
-  SICK: "Өвчтэй",
-  ABSENT: "Тасалсан",
-};
+/** `HH:MM`, in the viewer's own timezone — same reasoning as
+ * `child-attendance.tsx`'s own `toLocalTime`, not exported from there since
+ * that file is `"use client"` component code, not a shared utility module. */
+function toLocalTime(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
 
 /** Process guardians' advance notices. Approving writes the Attendance rows. */
 export default function AttendanceRequestReviewPage() {
@@ -45,8 +49,8 @@ function ReviewQueue() {
   return (
     <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
-        title="Чөлөөний хүсэлт — хянах"
-        lede="Эцэг эхийн урьдчилсан мэдэгдлийг хянаж, ирцэд бүртгэнэ."
+        title="Ирцийн мэдэгдэл — хянах"
+        lede="Эцэг эхийн ирцийн мэдэгдэл, чөлөөний хүсэлтийг хянаж, ирцэд бүртгэнэ."
         actions={
           data ? (
             <p className="text-body text-muted" aria-live="polite">
@@ -72,7 +76,7 @@ function ReviewQueue() {
       {data && data.items.length === 0 ? (
         <EmptyState
           title="Хянах зүйл алга"
-          description="Эцэг эхээс чөлөөний хүсэлт ирвэл энд харагдана."
+          description="Эцэг эхээс ирц мэдэгдэл, чөлөөний хүсэлт ирвэл энд харагдана."
         />
       ) : null}
 
@@ -108,7 +112,7 @@ function RequestCard({ request }: { request: z.infer<typeof queueItemSchema> }) 
         <div className="min-w-0">
           {request.child ? (
             <Link
-              href={`/children/${request.child.id}`}
+              href={`/children/${request.child.id}/attendance`}
               className="inline-flex min-h-[44px] items-center font-medium text-ink underline-offset-4 hover:underline"
             >
               {fullName(request.child)}
@@ -119,7 +123,19 @@ function RequestCard({ request }: { request: z.infer<typeof queueItemSchema> }) 
           <p className="text-body text-muted">
             {formatDate(request.dateFrom)}
             {request.dateFrom !== request.dateTo ? ` – ${formatDate(request.dateTo)}` : ""} ·{" "}
-            {STATUS_LABEL[request.requestedStatus]}
+            {request.pickedUpWith && !request.arrivedWith
+              ? "Явсан"
+              : STATUS_LABEL[request.requestedStatus]}
+            {request.arrivedWith
+              ? ` · ${companionDisplay(request.arrivedWith, request.arrivedWithName)}${
+                  request.arrivedAt ? `, ${toLocalTime(request.arrivedAt)}` : ""
+                }`
+              : ""}
+            {request.pickedUpWith
+              ? ` · ${companionDisplay(request.pickedUpWith, request.pickedUpWithName)}${
+                  request.pickedUpAt ? `, ${toLocalTime(request.pickedUpAt)}` : ""
+                }`
+              : ""}
           </p>
         </div>
         <Badge tone="sun">Хүлээгдэж буй</Badge>

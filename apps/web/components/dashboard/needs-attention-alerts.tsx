@@ -68,7 +68,7 @@ export function NeedsAttentionAlerts({
             {birthdaysToday.map((child) => (
               <li key={child.id}>
                 <Link
-                  href={`/children/${child.id}`}
+                  href={`/children/${child.id}/general`}
                   className="flex min-h-[44px] items-center gap-2 rounded-control border border-border bg-surface px-2.5 py-1.5 hover:bg-canvas md:px-3"
                 >
                   <ChildAvatar child={child} size={28} />
@@ -115,9 +115,25 @@ export function NeedsAttentionAlerts({
           <ul className="flex flex-wrap items-center gap-2">
             {missing.slice(0, VISIBLE_MISSING).map((child) => (
               <li key={child.id}>
+                {/*
+                  ★ Both sides of the merge were right about different things.
+
+                  `origin/main` split the child hub into tabs, so the bare
+                  `/children/:id` this used to open is no longer a route — and
+                  its replacement here is better than a straight substitution
+                  would have been: the alert says "this child has no assessment
+                  this term", so the assessment tab is where tapping it should
+                  land, not a general profile. Its 52px row also clears the
+                  44px tap floor more comfortably than the 44 it replaces.
+
+                  What is kept from this side is the tone-aware hover — the
+                  chip borders `peach` because the card it sits on is the
+                  "needs attention" one, which is the visual pass's rule that
+                  colour identifies rather than decorates.
+                */}
                 <Link
-                  href={`/children/${child.id}`}
-                  className="flex min-h-[44px] items-center gap-2 rounded-control border border-border bg-surface px-2.5 py-1.5 transition-colors hover:border-peach-ink/40 hover:bg-canvas md:px-3"
+                  href={`/children/${child.id}/assessments`}
+                  className="flex min-h-[52px] items-center gap-2.5 rounded-control border border-border bg-surface px-2.5 py-2 transition-colors hover:border-peach-ink/40 hover:bg-canvas md:gap-3 md:px-3"
                 >
                   <ChildAvatar child={child} size={28} />
                   <span className="min-w-0">

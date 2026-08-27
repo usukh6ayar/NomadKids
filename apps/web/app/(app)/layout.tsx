@@ -2,25 +2,28 @@
 
 import { useQuery } from "@tanstack/react-query";
 import {
-  BookOpen,
   Building2,
+  // `ChevronRight` left with the child-picker modal `origin/main` removed;
+  // `CalendarCheck` stays because the staff nav still labels Ирц with it.
   CalendarCheck,
-  ChevronRight,
   ClipboardList,
   FileText,
   Home,
+  Images,
   LayoutGrid,
   ListChecks,
   Bell,
+  Menu,
+  NotebookPen,
   Settings,
   ShieldCheck,
   Users,
-  X,
+  // `X` was the picker modal's close button and went with it. The type stays:
+  // `ICON_FOR` below is keyed by href and annotated with it.
   type LucideIcon,
 } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { childSummarySchema, type ChildSummary } from "@kinder/contracts";
 import { z } from "zod";
 import { AppShell, type NavItem, type NavSection } from "@/components/shell/app-shell";
@@ -29,8 +32,7 @@ import { qk } from "@/lib/api/keys";
 import { ChildAvatar } from "@/components/media/media-image";
 import { LoadingState } from "@/components/ui/states";
 import { useSession } from "@/lib/auth/session";
-import { formatAge, fullName } from "@/lib/format";
-import { MY_CHILDREN } from "@/lib/vocabulary";
+import { fullName } from "@/lib/format";
 
 const ownChildrenSchema = z.array(childSummarySchema);
 
@@ -59,7 +61,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const { session, isLoading, hasRole, isSuperAdmin } = useSession();
   const router = useRouter();
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
-  const [childPickerOpen, setChildPickerOpen] = useState(false);
 
   useEffect(() => {
     if (isLoading || session) return;
@@ -69,7 +70,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   /*
    * ★ Powers both the desktop sidebar's "Хүүхдийн мэдээлэл" section and the
-   * phone bottom bar's child-picker modal, not this page.
+   * phone bottom bar's "Зураг" tab, not this page.
    *
    * Same query key as `/children`'s own fetch (`ChildrenPage`), so a parent
    * who has already opened that screen this session sees both resolve from
@@ -106,23 +107,34 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  const nav = isStaff ? staffNav(hasRole("ADMIN")) : parentNav(() => setChildPickerOpen(true));
+  const nav = isStaff ? staffNav(hasRole("ADMIN")) : parentNav(myChildren.data);
 
   return (
-    <>
-      <AppShell
-        nav={nav}
-        sections={isStaff ? staffSections(hasRole("ADMIN")) : parentSections(myChildren.data)}
-        variant={isStaff ? "teacher" : "parent"}
-        isAdmin={hasRole("ADMIN")}
-      >
-        {children}
-      </AppShell>
-
-      {!isStaff && childPickerOpen ? (
-        <ChildPickerModal myChildren={myChildren.data} onClose={() => setChildPickerOpen(false)} />
-      ) : null}
-    </>
+    /*
+     * ★ The merge takes `origin/main`'s shape and this side's `isAdmin`, and
+     * neither half of that is arbitrary.
+     *
+     * This side wrapped the shell in a fragment to hang a `ChildPickerModal`
+     * off `childPickerOpen`. `origin/main` removed the parent child switcher
+     * outright — 6064be3, "drop the header greeting and child switcher from
+     * the parent home page" — so the state hook and the component it rendered
+     * are both gone. Keeping the fragment would have left three identifiers
+     * referenced and none of them defined: a build failure, not a conflict.
+     * The picker is upstream's deliberate removal and it stays removed.
+     *
+     * `isAdmin` goes the other way. It is a real prop on the merged `AppShell`
+     * (it drives `WhoAmI`'s role line), and `origin/main` simply predates it,
+     * so dropping it would silently mislabel every administrator as a teacher
+     * in their own sidebar.
+     */
+    <AppShell
+      nav={nav}
+      sections={isStaff ? staffSections(hasRole("ADMIN")) : parentSections(myChildren.data)}
+      variant={isStaff ? "teacher" : "parent"}
+      isAdmin={hasRole("ADMIN")}
+    >
+      {children}
+    </AppShell>
   );
 }
 
@@ -291,29 +303,47 @@ function platformNav(): NavItem[] {
 }
 
 /**
- * Parent navigation — four items, the brief's original Нүүр / Хавтас /
- * Мэдэгдэл / Профайл.
+ * Parent navigation — four items: Нүүр / Мэдээ / Зураг / Цэс.
  *
- * ★ "Хавтас" opens the child picker in place rather than navigating.
+ * ★ Renamed from the brief's original Нүүр / Хавтас / Мэдэгдэл / Профайл to
+ * match the parent's own mock-up. "Мэдээ" is `Мэдэгдэл` renamed; the route
+ * and the unread badge are the same query `NotificationBell` reads
+ * (`app-shell.tsx`). "Цэс" is `Профайл` renamed — still `/settings`, just
+ * under the label and icon the mock-up gives a fourth, catch-all tab. It
+ * opens `MobileMenuDrawer` (`app-shell.tsx`), which matches on `href ===
+ * "/settings"` regardless of label, so this tab's own name differing from
+ * `staffNav`'s "Профайл" costs nothing there.
+ *
+ * ★★ "Зураг" is a plain link, no popup. It goes straight to the first
+ * child's `/overview` — the same "first child, most families only ever
+ * have one" default `/home`'s own switcher and `selected` use. A family with
+ * more than one child still gets exactly this behaviour rather than being
+ * asked which child first: the tab always resolves to *a* real page, and once
+ * there, that child's own switcher (or the sidebar's "Хүүхдийн мэдээлэл" list
+ * on desktop) is how they reach a different one — the same pattern every
+ * other per-child destination in this product already follows, rather than a
+ * picker unique to this one tab. Before `myChildren` has loaded (or for a
+ * family connected to none), it falls back to `/children` — a real list,
+ * never a dead link and never a modal.
  *
  * "Ирц" and "Хоол ба цэс" briefly had their own bottom-bar tabs, each
  * resolving to a `?tab=` deep link on a confirmed single child or to
  * `/children` otherwise. For any family that isn't exactly one child, that
- * put three of the six tabs — this one included — on the same destination:
- * a wasted tab, and on that landing page, three simultaneous "current page"
- * highlights. Removed; a parent reaches both from their child's own page,
- * same as every other per-child screen (Ажиглалт, Үнэлгээ, Зураг).
+ * put three of the six tabs on the same destination: a wasted tab, and on
+ * that landing page, three simultaneous "current page" highlights. A parent
+ * reaches both from their child's own page, or from the home grid.
  *
- * The picker needs `onOpenChildPicker` from `AppLayout`, which owns both the
- * modal's open state and the `myChildren` query behind it — this function has
- * no hooks of its own to fetch with.
+ * `myChildren` comes from `AppLayout`, which owns the query — this function
+ * has no hooks of its own to fetch with.
  */
-function parentNav(onOpenChildPicker: () => void): NavItem[] {
+function parentNav(myChildren: ChildSummary[] | undefined): NavItem[] {
+  const zuragHref = myChildren?.[0] ? `/children/${myChildren[0].id}/overview` : "/children";
+
   return [
     { href: "/home", label: "Нүүр", icon: <Home {...iconProps} /> },
-    { label: MY_CHILDREN, icon: <BookOpen {...iconProps} />, onSelect: onOpenChildPicker },
-    { href: "/notifications", label: "Мэдэгдэл", icon: <Bell {...iconProps} />, badge: "unread" },
-    { href: "/settings", label: "Профайл", icon: <Settings {...iconProps} /> },
+    { href: "/notifications", label: "Мэдээ", icon: <Bell {...iconProps} />, badge: "unread" },
+    { href: zuragHref, label: "Зураг", icon: <Images {...iconProps} /> },
+    { href: "/settings", label: "Цэс", icon: <Menu {...iconProps} /> },
   ];
 }
 
@@ -348,6 +378,15 @@ function parentNav(onOpenChildPicker: () => void): NavItem[] {
  * directly, straight into each one's own page, is one tap to the thing a
  * parent actually wants instead of a route to a list they then pick from
  * anyway.
+ *
+ * ★★ Two rows per child, not one, since the child hub was deleted
+ * (2026-08-28). It used to carry Ерөнхий and Ажиглалт as tabs on one page;
+ * without that page a desktop reader needs both named here directly, the
+ * same way `parentNav`'s own "Зураг" tab already links straight to a specific
+ * child's page rather than to a list. `/general`'s icon is the child's own
+ * avatar, matching every other per-child row this menu has ever shown; the
+ * Ажиглалт row underneath it carries a plain glyph instead, so a family with
+ * two children reads two two-row groups rather than four look-alike rows.
  */
 function parentSections(myChildren: ChildSummary[] | undefined): NavSection[] {
   return [
@@ -355,11 +394,18 @@ function parentSections(myChildren: ChildSummary[] | undefined): NavSection[] {
       title: "Хүүхдийн мэдээлэл",
       entries:
         myChildren && myChildren.length > 0
-          ? myChildren.map((child) => ({
-              label: fullName(child),
-              href: `/children/${child.id}`,
-              icon: <ChildAvatar child={child} size={24} />,
-            }))
+          ? myChildren.flatMap((child) => [
+              {
+                label: fullName(child),
+                href: `/children/${child.id}/general`,
+                icon: <ChildAvatar child={child} size={24} />,
+              },
+              {
+                label: "Ажиглалт",
+                href: `/children/${child.id}/observations`,
+                icon: <NotebookPen size={18} aria-hidden="true" />,
+              },
+            ])
           : [{ label: "Холбогдсон хүүхэд алга" }],
     },
     {
@@ -384,102 +430,4 @@ function parentSections(myChildren: ChildSummary[] | undefined): NavSection[] {
       ],
     },
   ];
-}
-
-/**
- * The phone bottom bar's "Миний хүүхдүүд" tab — a sheet over the current
- * screen rather than a navigation to `/children`.
- *
- * ★ Picking a child closes the sheet as well as navigating.
- *
- * `AppLayout` does not unmount on a route change — it is the shared layout
- * every route renders inside — so `childPickerOpen` would otherwise still be
- * `true` on the child's own page, ready to reopen the instant something else
- * calls `setChildPickerOpen(true)` from stale state. Each row's `onClick`
- * closes it explicitly rather than relying on navigation to do that for free.
- *
- * Same dialog recipe as `RequestDialog` (`components/child/child-attendance.tsx`)
- * and `CreateSurveyDialog` (`app/(app)/surveys/page.tsx`): a fixed overlay,
- * Escape to close, body scroll locked while open. Not a shared component
- * because the other two are forms and this is a list — the only thing in
- * common is the shell, and three call sites do not justify extracting it.
- */
-function ChildPickerModal({
-  myChildren,
-  onClose,
-}: {
-  myChildren: ChildSummary[] | undefined;
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = previous;
-    };
-  }, [onClose]);
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={MY_CHILDREN}
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/50 p-0 sm:items-center sm:p-4"
-      onClick={onClose}
-    >
-      {/* `stopPropagation` — a tap on the sheet itself must not bubble to the
-          overlay's own close handler. */}
-      <div
-        className="max-h-[80dvh] w-full overflow-y-auto rounded-t-card border border-border bg-surface p-4 sm:max-w-[420px] sm:rounded-card sm:p-5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="text-title font-semibold text-ink">{MY_CHILDREN}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Хаах"
-            className="grid size-11 shrink-0 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
-          >
-            <X size={20} aria-hidden="true" />
-          </button>
-        </div>
-
-        {!myChildren ? (
-          <LoadingState rows={2} />
-        ) : myChildren.length === 0 ? (
-          <p className="px-1 py-6 text-center text-body text-muted">
-            Танд холбогдсон хүүхэд байхгүй байна.
-          </p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {myChildren.map((child) => (
-              <Link
-                key={child.id}
-                href={`/children/${child.id}`}
-                onClick={onClose}
-                className="flex min-h-[64px] items-center gap-3 rounded-row border border-border bg-surface px-3 py-2 transition-colors hover:border-primary"
-              >
-                <ChildAvatar child={child} size={44} />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium text-ink">{fullName(child)}</span>
-                  <span className="block text-body text-muted">{formatAge(child.dateOfBirth)}</span>
-                </span>
-                {/* Same chevron every other "this row opens something else" row
-                    in the product carries — the picker takes you to that
-                    child's own page, unlike the pills on /home, which stay
-                    put and just change what the cards below them show. */}
-                <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden="true" />
-              </Link>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
 }

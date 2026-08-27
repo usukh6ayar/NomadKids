@@ -93,7 +93,7 @@ function NewChild() {
       void queryClient.invalidateQueries({ queryKey: ["children"] });
       // Straight to the child, which is where the next thing always happens —
       // inviting the family, adding a photo, writing the first observation.
-      router.push(`/children/${child.id}`);
+      router.push(`/children/${child.id}/general`);
     },
   });
 
