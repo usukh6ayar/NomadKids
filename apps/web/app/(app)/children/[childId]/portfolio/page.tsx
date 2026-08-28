@@ -282,6 +282,20 @@ export default function PortfolioPage() {
         error={aboutMe.error}
       />
 
+      {/*
+        ★ Moved up from `BirthdaySection` at the foot of the page, 2026-08-28
+        — a reader who had just edited Овог/Нэр/Төрсөн өдөр/Хүйс in "Миний
+        тухай" above found "Монгол жил"/"Өрнийн орд" nowhere near it, several
+        screens down past the age sections, gallery, milestones and consent.
+        The reference build groups these with the rest of a child's identity
+        facts in one form; this keeps them auto-computed rather than
+        becoming pickers (still the right call — see `BirthFacts`'s own doc
+        comment history), but at least keeps them in the same *place* a
+        reader would look. `BirthdaySection` still owns the notes below —
+        only the always-true facts card moved.
+      */}
+      {!birthdays.isLoading && birthdays.data ? <BirthFacts section={birthdays.data} /> : null}
+
       {PORTFOLIO_AGES.map((age) => (
         <AgeSection
           key={age}
@@ -1120,8 +1134,6 @@ function BirthdaySection({
         <LoadingState rows={1} />
       ) : (
         <>
-          {section ? <BirthFacts section={section} /> : null}
-
           <div className="grid gap-3 md:grid-cols-2">
             {PORTFOLIO_AGES.map((age) => {
               const note = notes.find((n) => n.age === age);
