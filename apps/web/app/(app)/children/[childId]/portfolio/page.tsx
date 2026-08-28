@@ -34,6 +34,7 @@ import {
   birthdayNoteSchema,
   birthdaySectionSchema,
   childDetailSchema,
+  SEX_LABEL,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -42,7 +43,7 @@ import { useSession } from "@/lib/auth/session";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
-import { Field, Input, Textarea } from "@/components/ui/field";
+import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { AgeSectionShell } from "@/components/child/age-section-shell";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
@@ -277,6 +278,7 @@ export default function PortfolioPage() {
 
       <AboutMeSection
         childId={childId}
+        child={data}
         data={aboutMe.data}
         isLoading={aboutMe.isLoading}
         error={aboutMe.error}
@@ -374,11 +376,15 @@ const STORY_TONE: Record<string, string> = {
 
 function AboutMeSection({
   childId,
+  child,
   data,
   isLoading,
   error,
 }: {
   childId: string;
+  /** `PATCH /about-me` also writes `Child`'s own name/DOB/sex — see the
+   * form's own doc comment for why those four fields live here now. */
+  child: z.infer<typeof childDetailSchema>;
   data?: z.infer<typeof aboutMeResponseSchema>;
   isLoading: boolean;
   error: unknown;
@@ -389,9 +395,16 @@ function AboutMeSection({
 
   // Re-seeded whenever the server data changes, so opening the editor shows
   // what is actually stored rather than a stale copy from an earlier render.
+  // `lastName`/`firstName`/`dateOfBirth`/`sex` seed from `child`, not `data`
+  // — they live on `Child`, and `GET /about-me` only ever answers for
+  // `ChildProfile`.
   useEffect(() => {
     if (!data) return;
     setForm({
+      lastName: child.lastName ?? "",
+      firstName: child.firstName ?? "",
+      dateOfBirth: child.dateOfBirth ? String(child.dateOfBirth).slice(0, 10) : "",
+      sex: child.sex ?? "",
       introduction: data.introduction ?? "",
       nameMeaning: data.nameMeaning ?? "",
       dream: data.dream ?? "",
@@ -407,13 +420,20 @@ function AboutMeSection({
       // `<input type="date">` wants `YYYY-MM-DD`; the API sends an ISO stamp.
       recordedOn: data.recordedOn ? String(data.recordedOn).slice(0, 10) : "",
     });
-  }, [data]);
+  }, [data, child]);
 
   const save = useMutation({
     mutationFn: () =>
       mutate(`/children/${childId}/about-me`, aboutMeResponseSchema, {
         method: "PATCH",
         body: {
+          // Sent only when actually filled — `lastName`/`firstName` are
+          // required on `Child` and an empty string would fail there, not
+          // silently clear a name the way the optional fields below can.
+          lastName: form.lastName?.trim() || undefined,
+          firstName: form.firstName?.trim() || undefined,
+          dateOfBirth: form.dateOfBirth?.trim() || undefined,
+          sex: form.sex?.trim() || undefined,
           introduction: form.introduction?.trim() || null,
           nameMeaning: form.nameMeaning?.trim() || null,
           dream: form.dream?.trim() || null,
@@ -434,6 +454,10 @@ function AboutMeSection({
     onSuccess: () => {
       setEditing(false);
       void queryClient.invalidateQueries({ queryKey: qk.aboutMe(childId) });
+      // Also invalidates `Child` — `lastName`/`firstName`/`dateOfBirth`/`sex`
+      // may have changed, and `ChildHeroProfile` above this section reads
+      // the same query key.
+      void queryClient.invalidateQueries({ queryKey: qk.child(childId) });
     },
   });
 
@@ -546,6 +570,71 @@ function AboutMeSection({
                 save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null
               }
             />
+
+            {/*
+              ★ `Child`'s own columns, first — matching the reference build's
+              own field order (identity facts before the portfolio's story
+              fields). Saved through this same form, on the client's
+              instruction — see this component's own doc comment and
+              `PortfolioService.updateAboutMe`'s for the authorization change
+              that makes it possible for a guardian, not only staff.
+            */}
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Овог" error={errors.lastName}>
+                {({ id, describedBy, invalid }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    value={form.lastName ?? ""}
+                    onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
+                  />
+                )}
+              </Field>
+              <Field label="Нэр" error={errors.firstName}>
+                {({ id, describedBy, invalid }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    value={form.firstName ?? ""}
+                    onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
+                  />
+                )}
+              </Field>
+              <Field label="Төрсөн өдөр" error={errors.dateOfBirth}>
+                {({ id, describedBy, invalid }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    type="date"
+                    value={form.dateOfBirth ?? ""}
+                    onChange={(e) => setForm((f) => ({ ...f, dateOfBirth: e.target.value }))}
+                  />
+                )}
+              </Field>
+              <Field label="Хүйс" error={errors.sex}>
+                {({ id, describedBy, invalid }) => (
+                  <Select
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    value={form.sex ?? ""}
+                    onChange={(e) => setForm((f) => ({ ...f, sex: e.target.value }))}
+                  >
+                    <option value="" disabled>
+                      Сонгох…
+                    </option>
+                    {Object.entries(SEX_LABEL).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            </div>
 
             {ABOUT_FIELDS.map((field) => (
               <Field key={field.key} label={field.label} error={errors[field.key]}>

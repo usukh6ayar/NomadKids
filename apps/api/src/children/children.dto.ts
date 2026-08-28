@@ -27,8 +27,11 @@ const nationalIdSchema = z
  * A birth date must be in the past and within a plausible range. The upper
  * bound catches a mistyped year (2062 instead of 2026) that would otherwise
  * make the child's age negative on every screen.
+ *
+ * Exported so `portfolio.dto.ts` can reuse it rather than a second copy —
+ * `updateAboutMeSchema` validates the same field with the same rule.
  */
-const dateOfBirthSchema = z.coerce
+export const dateOfBirthSchema = z.coerce
   .date()
   .refine((d) => d < new Date(), { message: "Төрсөн огноо ирээдүйд байж болохгүй" })
   .refine((d) => d > new Date("2005-01-01"), { message: "Төрсөн огноо буруу байна" });

@@ -99,14 +99,30 @@ export class PortfolioService {
     );
   }
 
+  /**
+   * ★ `lastName`/`firstName`/`dateOfBirth`/`sex` are split out and written to
+   * `Child`, not `ChildProfile` — see `PortfolioRepository.upsertAboutMe`'s
+   * doc comment for why they travel together in one transaction anyway. Two
+   * audit rows, one per table actually written, rather than one row naming
+   * both: `AuditLog.objectType` names a single table by design, and a reader
+   * looking at `Child`'s history for this child should find the row that
+   * changed it there, not only inside a `ChildProfile` entry.
+   */
   async updateAboutMe(actor: Actor, childId: string, dto: UpdateAboutMeDto) {
     const facts = await this.childAccess.assertCanAccess(actor, childId);
 
     // Undefined keys mean "unchanged"; a Zod-parsed body would otherwise write
     // nulls over every field the form did not include.
-    const data = definedOnly(dto);
+    const { lastName, firstName, dateOfBirth, sex, ...profileDto } = dto;
+    const childIdentity = definedOnly({ lastName, firstName, dateOfBirth, sex });
+    const data = definedOnly(profileDto);
 
-    const saved = await this.repo.upsertAboutMe(childId, facts.childKindergartenId, data);
+    const saved = await this.repo.upsertAboutMe(
+      childId,
+      facts.childKindergartenId,
+      data,
+      childIdentity,
+    );
 
     await this.audit.append({
       action: "UPDATE",
@@ -117,6 +133,18 @@ export class PortfolioService {
       childId,
       metadata: { fields: Object.keys(data) },
     });
+
+    if (Object.keys(childIdentity).length > 0) {
+      await this.audit.append({
+        action: "UPDATE",
+        kindergartenId: facts.childKindergartenId,
+        actorUserId: actor.userId,
+        objectType: "Child",
+        objectId: childId,
+        childId,
+        metadata: { fields: Object.keys(childIdentity) },
+      });
+    }
 
     return saved;
   }

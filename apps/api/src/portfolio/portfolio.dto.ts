@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { dateOfBirthSchema, sexSchema } from "../children/children.dto";
 
 /**
  * Portfolio request schemas.
@@ -40,6 +41,22 @@ export const updateAboutMeSchema = z
     heightCm: z.coerce.number().min(30).max(200).nullable().optional(),
     weightKg: z.coerce.number().min(2).max(100).nullable().optional(),
     recordedOn: z.coerce.date().nullable().optional(),
+    /**
+     * ★ `Child`'s own columns, writable from this endpoint on top of
+     * `ChildProfile`'s — a deliberate, client-confirmed reversal of the rule
+     * `ChildrenService.update`'s own doc comment names: the reference suite's
+     * `test_a_guardian_cannot_edit_their_own_child` asserted a guardian may
+     * read but not edit these. That test governed `PATCH /children/:id`,
+     * which still enforces it unchanged (`assertCanRecord`, staff only) —
+     * this is a second, narrower path, added 2026-08-28, that reaches only
+     * these four fields rather than `nationalId`/`healthNotes`/`status`,
+     * and reuses `assertCanAccess` the same way every other about-me field
+     * already does.
+     */
+    lastName: z.string().min(1).max(100).optional(),
+    firstName: z.string().min(1).max(100).optional(),
+    dateOfBirth: dateOfBirthSchema.optional(),
+    sex: sexSchema.optional(),
   })
   .strict();
 export type UpdateAboutMeDto = z.infer<typeof updateAboutMeSchema>;

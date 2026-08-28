@@ -19,17 +19,36 @@ export class PortfolioRepository {
   }
 
   /**
-   * Upserts "Миний тухай".
+   * Upserts "Миний тухай", and — 2026-08-28, on the client's instruction —
+   * optionally `Child`'s own identity columns in the same transaction.
    *
    * `deletedAt: null` in the update revives a soft-deleted row rather than
    * leaving an invisible one behind that the unique constraint would then
    * collide with.
+   *
+   * ★ `childIdentity` writes `Child`, not `ChildProfile` — a second table
+   * from a repository named for the first, which is the one part of this
+   * that is not a normal upsert. It is here rather than in
+   * `ChildrenRepository` so the two writes share one transaction: a guardian
+   * renaming their child while also editing a portfolio fact should not be
+   * able to save one and fail the other silently.
    */
-  async upsertAboutMe(childId: string, kindergartenId: string, data: Record<string, unknown>) {
-    return this.prisma.childProfile.upsert({
-      where: { childId },
-      create: { childId, kindergartenId, ...data },
-      update: { ...data, deletedAt: null },
+  async upsertAboutMe(
+    childId: string,
+    kindergartenId: string,
+    data: Record<string, unknown>,
+    childIdentity: Record<string, unknown>,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      if (Object.keys(childIdentity).length > 0) {
+        await tx.child.update({ where: { id: childId }, data: childIdentity });
+      }
+
+      return tx.childProfile.upsert({
+        where: { childId },
+        create: { childId, kindergartenId, ...data },
+        update: { ...data, deletedAt: null },
+      });
     });
   }
 
