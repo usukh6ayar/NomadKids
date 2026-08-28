@@ -87,10 +87,12 @@ enum EnrollmentStatus {
   ACTIVE
   ENDED
   TRANSFERRED
-  /** A distinct outcome from ENDED/TRANSFERRED — the child completed the
+  /**
+   * A distinct outcome from ENDED/TRANSFERRED — the child completed the
    * programme rather than leaving mid-way or moving elsewhere. Added so a
    * parent-facing "Цэцэрлэгээс төгссөн" date can be real data instead of a
-   * misleading reuse of the generic "this enrollment period ended". */
+   * misleading reuse of the generic "this enrollment period ended".
+   */
   GRADUATED
 }
 
@@ -685,6 +687,14 @@ model ChildProfile {
   memorableSayings     String?
   dream                String?
   distinguishingTraits String?
+
+  /// Added 2026-08-28, on the client's instruction — not in RFP §4.1's own
+  /// field list, which stops at `distinguishingTraits` above.
+  clanName   String?
+  nickname   String?
+  birthplace String?
+  bloodType  String?
+  eyeColor   String?
 
   heightCm   Decimal?  @db.Decimal(5, 1)
   weightKg   Decimal?  @db.Decimal(5, 2)
@@ -1793,8 +1803,8 @@ model AttendanceRequest {
   pickedUpWithName String?
   pickedUpAt       DateTime?
   /// The staff member who reviewed it — `User.id`, matching `recordedById`.
-  reviewedById    String?                 @db.Uuid
-  reviewedAt      DateTime?
+  reviewedById     String?              @db.Uuid
+  reviewedAt       DateTime?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

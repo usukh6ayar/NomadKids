@@ -13,14 +13,19 @@ import {
   CalendarDays,
   Check,
   ChevronDown,
+  Droplet,
+  Eye,
   FileText,
   Heart,
+  MapPin,
   MessageCircle,
   Pencil,
   Ruler,
   Sparkles,
   Star,
   Sun,
+  Tag,
+  Users,
   Weight,
 } from "lucide-react";
 import {
@@ -46,31 +51,38 @@ import { ChildMilestones } from "@/components/child/child-milestones";
 import { ChildConsent } from "@/components/child/child-consent";
 import { ReportDialog } from "@/components/reports/report-dialog";
 import { ageInYears, formatDate, fullName } from "@/lib/format";
+import { GRADIENT_TONE_STYLE, type GradientTone } from "@/lib/gradient-tones";
 import { PORTFOLIO } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
 
 const PORTFOLIO_AGES = [2, 3, 4, 5] as const;
 
 /*
- * ★ `AGE_TONE` was removed on 2026-08-24, and so was `SectionLink`.
+ * ★ A per-age tint is back, 2026-08-28 — deliberately reversing the
+ * 2026-08-24 removal below, not reintroducing the bug it removed.
  *
- * The map gave each year its own saturated tint — mint, sky, sun, peach — while
- * whether the year had *any content* was carried by a 6px dot at 25% opacity of
- * that same colour. The signal was inverted: the loudest thing on the row
- * encoded the label, which the text already gave you, and the variable that
- * actually matters was the faintest mark on the page (about 1.5:1 against its
- * own tint — invisible, and only WCAG-safe because the `aria-label` carried the
- * state).
+ * The original `AGE_TONE` failed because the *only* place "has content"
+ * showed up was a 6px dot at 25% opacity — the meaningful variable was the
+ * faintest mark on the page, WCAG-safe only because `aria-label` carried the
+ * state a sighted user could not actually see. This version's fill signal is
+ * a real icon at full size and full contrast (`Check`, same as the
+ * mint-only version that replaced `AGE_TONE`), so removing the colour was
+ * never required to fix that — only making the *signal* loud enough was.
+ * Colour now does what Gestalt similarity says a set of peers doing the
+ * same job can do without lying: distinguish four things that are, in fact,
+ * four different ages, the same way `GRADIENT_TONE_STYLE`'s five tones
+ * distinguish five different destinations on `/home`'s own tile grid.
  *
- * Gestalt similarity says a set of peers should look alike and difference
- * should encode a variable. Four colours for four labels also read as four
- * different *kinds* of thing rather than as one timeline.
- *
- * Now: one tint for the set, and it means "done" — `mint`, which is what that
- * token is documented for — plus a check. Empty years are a plain surface. The
- * row reads as progress at a glance, which is what its own note always claimed
- * it was for.
+ * The tones themselves are the reference build's own (`GRADIENT_TONE_STYLE`'s
+ * doc comment has the source) — matching its 2/3/4 нас colours from
+ * `growing_up_index.html`, not independently chosen.
  */
+const AGE_TONE: Record<(typeof PORTFOLIO_AGES)[number], GradientTone> = {
+  2: "green",
+  3: "blue",
+  4: "orange",
+  5: "purple",
+};
 
 /** Whether an age section has anything in it yet — drives the filled dot. */
 function hasAgeContent(profile?: z.infer<typeof ageProfileSchema>): boolean {
@@ -236,16 +248,16 @@ export default function PortfolioPage() {
         <ul className="grid grid-cols-4 gap-2">
           {PORTFOLIO_AGES.map((age) => {
             const filled = hasAgeContent(ageProfiles.data?.find((p) => p.age === age));
+            const tone = GRADIENT_TONE_STYLE[AGE_TONE[age]];
             return (
               <li key={age}>
                 <a
                   href={`#age-${age}`}
                   aria-label={`${age} нас — ${filled ? "мэдээлэлтэй" : "хоосон"}`}
                   className={cn(
-                    "flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-row border px-1.5 py-2 text-caption font-semibold transition-colors md:min-h-[64px] md:px-2 md:text-body",
-                    filled
-                      ? "border-mint bg-mint text-mint-ink hover:opacity-90"
-                      : "border-border bg-surface text-muted hover:border-primary hover:text-ink",
+                    "flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-row border border-white/30 px-1.5 py-2 text-caption font-bold text-white transition-transform hover:scale-[1.02] md:min-h-[64px] md:px-2 md:text-body",
+                    tone.gradient,
+                    tone.shadow,
                   )}
                 >
                   <span>{age} нас</span>
@@ -327,6 +339,12 @@ export default function PortfolioPage() {
  * two-column definition list, which read as a form somebody had filled in; a
  * card with an icon and a heading reads as something written *about a child*.
  * The icon is decorative and paired with a visible label, never on its own.
+ *
+ * ★★ `clanName` through `eyeColor` added 2026-08-28, on the client's
+ * instruction — identity facts a reference build showed (`ChildProfile`'s
+ * own doc comment has the detail) that RFP §4.1 does not list. Short,
+ * one-line facts, so `long: false` throughout — unlike the five above, none
+ * of these is a sentence.
  */
 const ABOUT_FIELDS = [
   { key: "introduction", label: "Танилцуулга", long: true, Icon: BookOpen, tone: "sky" },
@@ -340,6 +358,11 @@ const ABOUT_FIELDS = [
     Icon: MessageCircle,
     tone: "sky",
   },
+  { key: "clanName", label: "Ургийн овог", long: false, Icon: Users, tone: "mint" },
+  { key: "nickname", label: "Өвөрддөг нэр", long: false, Icon: Tag, tone: "peach" },
+  { key: "birthplace", label: "Төрсөн газар", long: false, Icon: MapPin, tone: "sun" },
+  { key: "bloodType", label: "Цусны бүлэг", long: false, Icon: Droplet, tone: "sky" },
+  { key: "eyeColor", label: "Нүдний өнгө", long: false, Icon: Eye, tone: "mint" },
 ] as const;
 
 const STORY_TONE: Record<string, string> = {
@@ -374,6 +397,11 @@ function AboutMeSection({
       dream: data.dream ?? "",
       distinguishingTraits: data.distinguishingTraits ?? "",
       memorableSayings: data.memorableSayings ?? "",
+      clanName: data.clanName ?? "",
+      nickname: data.nickname ?? "",
+      birthplace: data.birthplace ?? "",
+      bloodType: data.bloodType ?? "",
+      eyeColor: data.eyeColor ?? "",
       heightCm: data.heightCm === null || data.heightCm === undefined ? "" : String(data.heightCm),
       weightKg: data.weightKg === null || data.weightKg === undefined ? "" : String(data.weightKg),
       // `<input type="date">` wants `YYYY-MM-DD`; the API sends an ISO stamp.
@@ -391,6 +419,11 @@ function AboutMeSection({
           dream: form.dream?.trim() || null,
           distinguishingTraits: form.distinguishingTraits?.trim() || null,
           memorableSayings: form.memorableSayings?.trim() || null,
+          clanName: form.clanName?.trim() || null,
+          nickname: form.nickname?.trim() || null,
+          birthplace: form.birthplace?.trim() || null,
+          bloodType: form.bloodType?.trim() || null,
+          eyeColor: form.eyeColor?.trim() || null,
           // Empty means "clear it", which the API models as null. Sending ""
           // would fail the numeric coercion.
           heightCm: form.heightCm?.trim() ? Number(form.heightCm) : null,

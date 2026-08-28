@@ -30,6 +30,12 @@ export const updateAboutMeSchema = z
     memorableSayings: text(2000),
     dream: text(1000),
     distinguishingTraits: text(2000),
+    // Added 2026-08-28, on the client's instruction — not in RFP §4.1.
+    clanName: text(200),
+    nickname: text(200),
+    birthplace: text(200),
+    bloodType: text(10),
+    eyeColor: text(50),
     /** Plausible ranges for a 2–5 year old, with room either side. */
     heightCm: z.coerce.number().min(30).max(200).nullable().optional(),
     weightKg: z.coerce.number().min(2).max(100).nullable().optional(),

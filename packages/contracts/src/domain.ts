@@ -534,6 +534,12 @@ export const aboutMeSchema = z.object({
   memorableSayings: z.string().nullish(),
   dream: z.string().nullish(),
   distinguishingTraits: z.string().nullish(),
+  // Added 2026-08-28, on the client's instruction — not in RFP §4.1.
+  clanName: z.string().nullish(),
+  nickname: z.string().nullish(),
+  birthplace: z.string().nullish(),
+  bloodType: z.string().nullish(),
+  eyeColor: z.string().nullish(),
   // Prisma Decimal serialises as a string.
   heightCm: z.union([z.string(), z.number()]).nullish(),
   weightKg: z.union([z.string(), z.number()]).nullish(),

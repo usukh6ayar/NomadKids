@@ -139,19 +139,19 @@ describe("portfolio age sections", () => {
   });
 
   /**
-   * ★ The row's colour has to encode the variable, not the label.
+   * ★ The row's colour is free to encode age again (2026-08-28) — a per-age
+   * tint is back, matching a reference build's own `growing_up_index.html` —
+   * because the thing that actually failed before was never "colour", it was
+   * "the only visible fill signal was a 6px dot at 25% opacity", about 1.5:1
+   * against its own background. That signal is a full-size `Check` icon now,
+   * the same one this replaced it with the first time, so colour is free to
+   * carry a different, honest variable: which age this is.
    *
-   * Each year used to get its own saturated tint — mint, sky, sun, peach — while
-   * "has anything been written here" was a 6px dot at 25% opacity of that same
-   * colour, about 1.5:1 against its own background. The loudest signal carried
-   * the label the text already gave you, and the fact that mattered was the
-   * faintest mark on the page.
-   *
-   * So this asserts the two states are *distinguishable from each other* rather
-   * than asserting a particular hue: four different tints would pass a test that
-   * only checked "filled has a class".
+   * So this asserts what the *fill* state is actually carried by — the
+   * accessible name and the icon — not by CSS class equality, which is what
+   * would break the moment a per-age tint came back for a legitimate reason.
    */
-  it("marks the years with content differently from the empty ones", async () => {
+  it("marks the filled year with an icon the accessible name also states", async () => {
     stubPortfolio(bornYearsAgo(3), [{ age: 2, favoriteFood: "Бууз" }]);
 
     renderWithProviders(<PortfolioPage />);
@@ -164,11 +164,10 @@ describe("portfolio age sections", () => {
     expect(link(2)).toHaveAccessibleName("2 нас — мэдээлэлтэй");
     expect(link(3)).toHaveAccessibleName("3 нас — хоосон");
 
-    // …and the empty years all look alike, which is what makes the filled one
-    // stand out. Four tints for four labels is the state this replaced.
-    const empty = [3, 4, 5].map((age) => link(age).className);
-    expect(new Set(empty).size, "empty years are one style, not four").toBe(1);
-    expect(link(2).className).not.toBe(empty[0]);
+    // …and the filled year's `Check` icon is the visible signal a sighted user
+    // actually sees, not a hue only the aria-label distinguishes.
+    expect(link(2).querySelector("svg")).toBeInTheDocument();
+    expect(link(3).querySelector("svg")).not.toBeInTheDocument();
   });
 
   it("opening a closed year reveals its edit control", async () => {
