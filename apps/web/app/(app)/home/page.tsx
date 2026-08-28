@@ -17,7 +17,6 @@ import { ChildAvatar } from "@/components/media/media-image";
 import { useSelectedChild } from "@/lib/selected-child";
 import { formatAge, fullName } from "@/lib/format";
 import { PORTFOLIO } from "@/lib/vocabulary";
-import { cn } from "@/lib/utils";
 
 /**
  * A parent's home.
@@ -135,7 +134,10 @@ export default function ParentHomePage() {
 
       {/*
         ★ A 3-column icon grid matching the parent's own mock-up: Ангийн
-        самбар, Ирц, Хоол, Үнэлгээ, Судалгаа, Санхүү.
+        самбар, Ирц, Хоол, Үнэлгээ, Судалгаа, Санхүү. The icon assets
+        (icon-notice.png, icon-attendance.png, …) already carry their own
+        colour per tile, so the grid reads as varied as the reference's
+        icon-square grid without inventing a new colour system for it.
         `PORTFOLIO` is not a tile here — it is a button on the hero card
         above and the bottom bar's "Зураг" tab (`(app)/layout.tsx`'s
         `parentNav`); a third entry point on this grid would be the same
@@ -153,17 +155,6 @@ export default function ParentHomePage() {
         its own — `(app)/layout.tsx`'s sidebar makes the same call there,
         naming it without a link rather than leaving it out entirely, which
         is the mock-up's own request for this tile specifically.
-
-        ★★ Each tile carries a `tone` — a saturated gradient, ported from a
-        parent-supplied reference build (a separate Flask/Jinja prototype,
-        `тухайн репо: huuhdiinmedeelel`, not part of this codebase) whose
-        whole parent dashboard uses exactly this treatment: a coloured
-        gradient fill, a white icon chip, bold white text, and a translucent
-        corner circle (`QuickTile`'s own doc comment has the exact values,
-        lifted from that project's `dashboard.css`). The five tones are
-        assigned for variety, not for any semantic mapping to the reference's
-        own five destinations, since this grid's six tiles do not correspond
-        to that one's.
       */}
       <section aria-labelledby="board-heading">
         <SectionHeader id="board-heading" title="Түргэн холбоос" />
@@ -171,32 +162,28 @@ export default function ParentHomePage() {
           <QuickTile
             href="/notifications"
             label="Ангийн самбар"
-            tone="blue"
             badge={unread && unread.count > 0 ? unread.count : undefined}
-            icon={<Image src="/icons/icon-notice.png" alt="" width={40} height={40} className="size-10" />}
+            icon={<Image src="/icons/icon-notice.png" alt="" width={56} height={56} className="size-14" />}
           />
           <QuickTile
             href={`/children/${selected.id}/attendance`}
             label="Ирц"
-            tone="green"
-            icon={<Image src="/icons/icon-attendance.png" alt="" width={40} height={40} className="size-10" />}
+            icon={<Image src="/icons/icon-attendance.png" alt="" width={56} height={56} className="size-14" />}
           />
           <QuickTile
             href={`/children/${selected.id}/menu`}
             label="Хоол"
-            tone="orange"
-            icon={<Image src="/icons/icon-menu.png" alt="" width={40} height={40} className="size-10" />}
+            icon={<Image src="/icons/icon-menu.png" alt="" width={56} height={56} className="size-14" />}
           />
           <QuickTile
             href={`/children/${selected.id}/assessments`}
             label="Үнэлгээ"
-            tone="purple"
-            icon={<Image src="/icons/icon-progress.png" alt="" width={40} height={40} className="size-10" />}
+            icon={<Image src="/icons/icon-progress.png" alt="" width={56} height={56} className="size-14" />}
           />
           <SurveyTile childId={selected.id} />
           <ComingSoonTile
             label="Санхүү"
-            icon={<Image src="/icons/icon-finance.png" alt="" width={40} height={40} className="size-10" />}
+            icon={<Image src="/icons/icon-finance.png" alt="" width={56} height={56} className="size-14" />}
           />
         </div>
       </section>
@@ -280,105 +267,57 @@ function SurveyTile({ childId }: { childId: string }) {
     <QuickTile
       href={`/children/${childId}/surveys`}
       label="Судалгаа"
-      tone="pink"
       badge={pendingCount > 0 ? pendingCount : undefined}
-      icon={<Image src="/icons/icon-survey.png" alt="" width={40} height={40} className="size-10" />}
+      icon={<Image src="/icons/icon-survey.png" alt="" width={56} height={56} className="size-14" />}
     />
   );
 }
 
-type TileTone = "blue" | "green" | "orange" | "purple" | "pink";
-
 /**
- * Five gradients, lifted verbatim from the reference build's
- * `dashboard.css` (`.parent-home-action.action-*`) — the exact `135deg`
- * stops and shadow colours it uses for its own five tiles, not a
- * repaint-by-eye approximation.
- */
-const TONE_STYLE: Record<TileTone, { gradient: string; shadow: string }> = {
-  blue: {
-    gradient: "bg-[linear-gradient(135deg,#60a5fa_0%,#3378e5_100%)]",
-    shadow: "shadow-[0_12px_24px_rgba(51,120,229,.30)]",
-  },
-  green: {
-    gradient: "bg-[linear-gradient(135deg,#34d399_0%,#16a96f_100%)]",
-    shadow: "shadow-[0_12px_24px_rgba(22,169,111,.30)]",
-  },
-  orange: {
-    gradient: "bg-[linear-gradient(135deg,#fbbf24_0%,#f59e0b_100%)]",
-    shadow: "shadow-[0_12px_24px_rgba(245,158,11,.30)]",
-  },
-  purple: {
-    gradient: "bg-[linear-gradient(135deg,#a78bfa_0%,#8b5cf6_100%)]",
-    shadow: "shadow-[0_12px_24px_rgba(139,92,246,.28)]",
-  },
-  pink: {
-    gradient: "bg-[linear-gradient(135deg,#fb7185_0%,#ec4899_100%)]",
-    shadow: "shadow-[0_12px_24px_rgba(236,72,153,.30)]",
-  },
-};
-
-/**
- * One tile of the home grid — a coloured card, an icon, a label.
+ * One tile of the home grid — icon, label, nothing else.
  *
- * ★ Restyled 2026-08-28 from a plain white card to the reference build's
- * gradient-tile treatment (see `TONE_STYLE`'s doc comment for where the
- * exact values came from). The icon itself stays this product's own
- * full-colour illustration rather than the reference's white line icon —
- * porting the *system* (gradient, corner circle, bold white text) rather
- * than the pixels, since a multi-colour illustration and a single-stroke
- * icon are not the same asset and a white line-icon treatment would just be
- * a blank chip here. Sitting the illustration on its own white-95% chip is
- * what keeps a busy PNG legible against a saturated gradient instead of the
- * two textures fighting each other.
- *
- * `min-h-[88px]`, the corner circle and the shadow colour-matched to the
- * gradient are the reference's own recipe, not independently chosen.
+ * ★ `size-14` icon over `text-compact`, centred and two lines deep at most.
+ * Three columns at 375px leaves each tile roughly 110px wide, which fits a
+ * compound Mongolian label ("Хоол ба цэс" shortened to "Хоол" here) only if
+ * it can wrap — `leading-tight` and no `truncate` let it, rather than
+ * clipping the one thing the tile exists to say. `py-3` rather than the
+ * roomier `py-4` every other card-shaped surface uses: this screen locks
+ * body scroll (`HomeBackdrop`), so the icon bump this tile got has to come
+ * out of its own padding rather than the page growing past one viewport.
+ * `border-border-soft` rather than the darker `border-border` most cards
+ * use, with `shadow-sm` doing the definition instead — a crisper white than
+ * a visible gray edge gives.
  *
  * `badge` mirrors `UnreadDot` (`app-shell.tsx`) at a smaller scale: a red
  * pill with the count, not a bare dot, for the same reason — a screen reader
- * gets "3", not "something changed". A white ring separates it from
- * whichever gradient it happens to sit on, where it used to rely on a plain
- * white card background for the same contrast.
+ * gets "3", not "something changed".
  */
 function QuickTile({
   href,
   label,
   icon,
   badge,
-  tone,
 }: {
   href: string;
   label: string;
   icon: ReactNode;
   badge?: number;
-  tone: TileTone;
 }) {
-  const style = TONE_STYLE[tone];
-
   return (
     <Link
       href={href}
       aria-label={badge ? `${label}, ${badge} шинэ` : label}
-      className={cn(
-        "relative flex min-h-[88px] flex-col items-center justify-center gap-1.5 overflow-hidden rounded-card border border-white/30 px-2 py-3 text-center text-white transition-transform hover:scale-[1.02]",
-        style.gradient,
-        style.shadow,
-      )}
+      className="flex flex-col items-center gap-1.5 rounded-card border border-border-soft bg-surface px-2 py-3 text-center shadow-sm transition-colors hover:border-primary hover:shadow-md"
     >
-      {/* The reference's own decorative touch: a translucent circle bleeding
-          off the tile's corner, behind the content. */}
-      <span aria-hidden="true" className="absolute -bottom-3.5 -right-3.5 size-13 rounded-pill bg-white/20" />
-
-      <span className="relative grid size-12 shrink-0 place-items-center rounded-control bg-white/95 shadow-sm">
+      <span className="relative" aria-hidden="true">
         {icon}
         {badge ? (
-          <span className="absolute -right-1.5 -top-1.5 flex min-w-[18px] items-center justify-center rounded-pill bg-danger px-1 text-caption font-bold leading-[18px] text-white ring-2 ring-white/60">
+          <span className="absolute -right-1.5 -top-1.5 flex min-w-[18px] items-center justify-center rounded-pill bg-danger px-1 text-caption font-bold leading-[18px] text-white">
             {badge > 99 ? "99+" : badge}
           </span>
         ) : null}
       </span>
-      <span className="relative text-compact font-bold leading-tight">{label}</span>
+      <span className="text-compact font-semibold leading-tight text-ink">{label}</span>
     </Link>
   );
 }
