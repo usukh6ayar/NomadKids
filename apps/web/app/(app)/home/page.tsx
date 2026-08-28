@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import Image from "next/image";
 import Link from "next/link";
 import { BookOpen, Plus } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
@@ -12,6 +11,7 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
+import { QuickTile, QuickTileGrid, TileIcon } from "@/components/ui/quick-tile";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
 import { formatAge, fullName } from "@/lib/format";
@@ -150,34 +150,31 @@ export default function ParentHomePage() {
       */}
       <section aria-labelledby="board-heading">
         <SectionHeader id="board-heading" title="Түргэн холбоос" />
-        <div className="grid grid-cols-3 gap-2.5">
+        <QuickTileGrid>
           <QuickTile
             href="/notifications"
             label="Ангийн самбар"
             badge={unread && unread.count > 0 ? unread.count : undefined}
-            icon={<Image src="/icons/icon-notice.png" alt="" width={44} height={44} className="size-11" />}
+            icon={<TileIcon src="/icons/icon-notice.png" />}
           />
           <QuickTile
             href={`/children/${selected.id}/attendance`}
             label="Ирц"
-            icon={<Image src="/icons/icon-attendance.png" alt="" width={44} height={44} className="size-11" />}
+            icon={<TileIcon src="/icons/icon-attendance.png" />}
           />
           <QuickTile
             href={`/children/${selected.id}/menu`}
             label="Хоол"
-            icon={<Image src="/icons/icon-menu.png" alt="" width={44} height={44} className="size-11" />}
+            icon={<TileIcon src="/icons/icon-menu.png" />}
           />
           <QuickTile
             href={`/children/${selected.id}/assessments`}
             label="Үнэлгээ"
-            icon={<Image src="/icons/icon-progress.png" alt="" width={44} height={44} className="size-11" />}
+            icon={<TileIcon src="/icons/icon-progress.png" />}
           />
           <SurveyTile childId={selected.id} />
-          <ComingSoonTile
-            label="Санхүү"
-            icon={<Image src="/icons/icon-finance.png" alt="" width={44} height={44} className="size-11" />}
-          />
-        </div>
+          <ComingSoonTile label="Санхүү" icon={<TileIcon src="/icons/icon-finance.png" />} />
+        </QuickTileGrid>
       </section>
     </HomeBackdrop>
   );
@@ -260,51 +257,8 @@ function SurveyTile({ childId }: { childId: string }) {
       href={`/children/${childId}/surveys`}
       label="Судалгаа"
       badge={pendingCount > 0 ? pendingCount : undefined}
-      icon={<Image src="/icons/icon-survey.png" alt="" width={44} height={44} className="size-11" />}
+      icon={<TileIcon src="/icons/icon-survey.png" />}
     />
-  );
-}
-
-/**
- * One tile of the home grid — icon, label, nothing else.
- *
- * ★ `size-11` icon over `text-compact`, centred and two lines deep at most.
- * Three columns at 375px leaves each tile roughly 110px wide, which fits a
- * compound Mongolian label ("Хоол ба цэс" shortened to "Хоол" here) only if
- * it can wrap — `leading-tight` and no `truncate` let it, rather than
- * clipping the one thing the tile exists to say.
- *
- * `badge` mirrors `UnreadDot` (`app-shell.tsx`) at a smaller scale: a red
- * pill with the count, not a bare dot, for the same reason — a screen reader
- * gets "3", not "something changed".
- */
-function QuickTile({
-  href,
-  label,
-  icon,
-  badge,
-}: {
-  href: string;
-  label: string;
-  icon: ReactNode;
-  badge?: number;
-}) {
-  return (
-    <Link
-      href={href}
-      aria-label={badge ? `${label}, ${badge} шинэ` : label}
-      className="flex flex-col items-center gap-2 rounded-card border border-border bg-surface px-2 py-4 text-center transition-colors hover:border-primary hover:shadow-sm"
-    >
-      <span className="relative" aria-hidden="true">
-        {icon}
-        {badge ? (
-          <span className="absolute -right-1.5 -top-1.5 flex min-w-[18px] items-center justify-center rounded-pill bg-danger px-1 text-caption font-bold leading-[18px] text-white">
-            {badge > 99 ? "99+" : badge}
-          </span>
-        ) : null}
-      </span>
-      <span className="text-compact font-semibold leading-tight text-ink">{label}</span>
-    </Link>
   );
 }
 
