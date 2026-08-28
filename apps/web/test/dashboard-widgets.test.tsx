@@ -775,7 +775,15 @@ describe("дүрслэл", () => {
     );
 
     const link = screen.getByRole("link", { name: /Мишээл/ });
-    expect(link).toHaveAttribute("href", "/children/44444444-4444-4444-8444-444444444444");
+    /*
+     * ★ `/general`, not the bare child id.
+     *
+     * `76a9cd4` deleted the child hub and split it into its own pages, so
+     * `children/[childId]/` has no `page.tsx` — this assertion was pinning a
+     * URL that 404s. The widget was already updated; the test was not, and it
+     * has been the suite's one red line since.
+     */
+    expect(link).toHaveAttribute("href", "/children/44444444-4444-4444-8444-444444444444/general");
     expect(link.textContent).toContain("8/01");
   });
 });

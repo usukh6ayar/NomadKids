@@ -481,19 +481,25 @@ describe("эрх", () => {
  * a long year name and its action cluster on a 390px screen: the name may
  * shrink and truncate, and the actions drop to their own line rather than
  * pinning the row at max-content width.
+ *
+ * ★ It reads `data-list.tsx`, not this screen.
+ *
+ * Both constraints used to be inline classes on this page, and were asserted
+ * against its source. They are now `DataRow`'s, which is what made them worth
+ * asserting once rather than per screen — the four administrative lists that
+ * each spelled their own version of this row are the reason the component
+ * exists. Pointing the assertion at the page after that move would pin the
+ * absence of a class the page is correct not to have.
  */
 describe("нарийвчилсан байрлал", () => {
-  const PAGE = readFileSync(
-    join(__dirname, "..", "app", "(app)", "admin", "school-years", "page.tsx"),
-    "utf8",
-  );
+  const ROW = readFileSync(join(__dirname, "..", "components", "ui", "data-list.tsx"), "utf8");
 
-  it("lets the year name shrink and truncate", () => {
-    expect(PAGE).toMatch(/min-w-0 truncate text-lead font-semibold text-ink/);
-    expect(PAGE).toMatch(/flex min-h-\[64px\] flex-wrap items-center/);
+  it("lets the row title shrink and truncate", () => {
+    expect(ROW).toMatch(/block truncate text-lead font-semibold text-ink/);
+    expect(ROW).toMatch(/flex min-h-\[64px\] flex-wrap items-center/);
   });
 
   it("wraps the action cluster onto its own line on a phone", () => {
-    expect(PAGE).toMatch(/flex basis-full flex-wrap items-center justify-end gap-2 sm:basis-auto/);
+    expect(ROW).toMatch(/flex basis-full items-center justify-end gap-1 md:basis-auto/);
   });
 });

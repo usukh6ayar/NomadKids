@@ -1507,6 +1507,66 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
 };
 
 /**
+ * Audited record types, in Mongolian.
+ *
+ * ★ The other half of the sentence `AUDIT_ACTION_LABEL` translates.
+ *
+ * An audit line reads "<action> · <objectType>", and only the action was ever
+ * translated — so a director's activity feed and their audit screen both said
+ * "Үзсэн · Child", "Засварласан · Membership", "Устгасан · Guardianship". The
+ * comment above that map is the whole argument, applied to one column and not
+ * the other: a raw enum is meaningless to an administrator, and an English one
+ * on a Mongolian screen is worse than meaningless — it reads as a fault.
+ *
+ * ★★ Keyed by the string the API writes to `AuditLog.objectType`, which is the
+ * Prisma model name. Every value written anywhere in `apps/api/src` is listed;
+ * a model added later that is not falls back to its own name at the call site
+ * rather than rendering blank.
+ */
+export const AUDIT_OBJECT_LABEL: Record<string, string> = {
+  AllergyRecord: "Харшил",
+  ArtworkComparison: "Уран бүтээлийн харьцуулалт",
+  Assessment: "Үнэлгээ",
+  AssessmentLevel: "Үнэлгээний түвшин",
+  Attendance: "Ирц",
+  AttendanceRequest: "Чөлөөний хүсэлт",
+  AuditLog: "Үйлдлийн бүртгэл",
+  BirthdayNote: "Төрсөн өдрийн мэндчилгээ",
+  Child: "Хүүхэд",
+  ChildAgeProfile: "Хүүхдийн насны мэдээлэл",
+  ChildExport: "Хүүхдийн жагсаалтын экспорт",
+  ChildImport: "Хүүхдийн импорт",
+  ChildProfile: "Хүүхдийн дэлгэрэнгүй",
+  ConsentRecord: "Зураг ашиглах зөвшөөрөл",
+  DevelopmentDomain: "Хөгжлийн чиглэл",
+  Document: "Баримт бичиг",
+  Enrollment: "Элсэлт",
+  FundingCalculation: "Санхүүжилтийн тооцоо",
+  FundingRule: "Санхүүжилтийн дүрэм",
+  Group: "Бүлэг",
+  GroupTeacher: "Бүлгийн багш",
+  GrowthMeasurement: "Өсөлтийн хэмжилт",
+  Guardianship: "Асран хамгаалагч",
+  Kindergarten: "Цэцэрлэг",
+  MealRecord: "Хоолны бүртгэл",
+  MediaFile: "Файл",
+  MedicationAuthorisation: "Эм хэрэглэх зөвшөөрөл",
+  Membership: "Эрх",
+  Milestone: "Онцлох ахиц",
+  Notification: "Мэдээ",
+  Observation: "Ажиглалт",
+  ObservationType: "Ажиглалтын төрөл",
+  ReportJob: "Тайлан",
+  SafetyIncident: "Ослын бүртгэл",
+  SchoolYear: "Хичээлийн жил",
+  Survey: "Судалгаа",
+  SurveyResponse: "Судалгааны хариулт",
+  Term: "Улирал",
+  TermReport: "Улирлын тайлан",
+  User: "Хэрэглэгч",
+};
+
+/**
  * Where the server says this user's session should land after login.
  *
  * `null` means the account holds no membership at all — a real state (an

@@ -18,7 +18,7 @@ import { useSession } from "@/lib/auth/session";
 import { fullName } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RowList } from "@/components/ui/card";
+import { DataList, DataRow } from "@/components/ui/data-list";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -40,6 +40,19 @@ const AGE_BANDS = [
 ] as const;
 
 const BAND_LABEL = Object.fromEntries(AGE_BANDS.map((b) => [b.value, b.label]));
+
+/**
+ * The list's columns.
+ *
+ * `Хүүхэд` is the narrowest and the one a director scans — it is the answer to
+ * "is this group full?" and it now sits in a column instead of at the end of a
+ * dot-joined sentence.
+ */
+const GROUP_COLUMNS = [
+  { key: "band", label: "Насны бүлэг", className: "md:w-[124px]" },
+  { key: "year", label: "Хичээлийн жил", className: "md:w-[120px]" },
+  { key: "children", label: "Хүүхэд", className: "md:w-[92px]" },
+];
 
 /**
  * Groups and the teachers assigned to them.
@@ -98,11 +111,11 @@ function AdminGroups() {
       ) : null}
 
       {items.length > 0 ? (
-        <RowList>
+        <DataList columns={GROUP_COLUMNS} leadWidth={null} actionsWidth="w-[352px]">
           {items.map((group) => (
             <GroupRow key={group.id} group={group} />
           ))}
-        </RowList>
+        </DataList>
       ) : null}
 
       {creating && primaryKindergartenId ? (
@@ -121,40 +134,59 @@ function GroupRow({ group }: { group: z.infer<typeof groupListItemSchema> }) {
   const isArchived = group.status === "ARCHIVED";
 
   return (
-    <div className="flex min-h-[64px] flex-wrap items-center gap-3 rounded-row border border-border bg-surface px-4 py-3">
-      <span className="min-w-0 flex-1">
-        <span className="flex flex-wrap items-center gap-2">
-          <span className="min-w-0 truncate text-lead font-semibold text-ink">{group.name}</span>
-          {/*
-            ★ The status had no representation at all before this.
+    <>
+      <DataRow
+        title={
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="min-w-0 truncate">{group.name}</span>
+            {/*
+              ★ The status had no representation at all before this.
 
-            `Group.status` has existed since the schema was written and the list
-            has always returned it, so an archived group was indistinguishable
-            from a live one — it simply sat in the list behaving normally.
-          */}
-          {isArchived ? <Badge tone="neutral">Архивласан</Badge> : null}
-        </span>
-        <span className="mt-px block text-compact text-muted">
-          {[
-            group.ageBand ? (BAND_LABEL[group.ageBand] ?? group.ageBand) : null,
-            group.schoolYear?.name,
-            `${children} хүүхэд`,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-        </span>
-      </span>
+              `Group.status` has existed since the schema was written and the
+              list has always returned it, so an archived group was
+              indistinguishable from a live one — it simply sat in the list
+              behaving normally.
+            */}
+            {isArchived ? <Badge tone="neutral">Архивласан</Badge> : null}
+          </span>
+        }
+        cells={{
+          /*
+            ★ Three facts that used to be one dot-joined line under the name.
 
-      <span className="flex basis-full flex-wrap items-center justify-end gap-2 sm:basis-auto">
-        <Button variant="secondary" size="sm" onClick={() => setManaging(true)}>
-          <UserPlus size={16} />
-          Багш
-        </Button>
+            "Дунд бүлэг · 2026-2027 · 5 хүүхэд" reads as a sentence and has to
+            be parsed as one: nothing lines up between rows, so comparing two
+            groups' enrolment means finding the third fragment of each. It also
+            put the age band immediately after a name that, for most
+            kindergartens, *is* the age band — the demo data renders "Дунд
+            бүлэг" twice on the same row.
+          */
+          band: group.ageBand ? (
+            <span className="text-body text-ink">{BAND_LABEL[group.ageBand] ?? group.ageBand}</span>
+          ) : null,
+          year: group.schoolYear?.name ? (
+            <span className="text-body text-muted">{group.schoolYear.name}</span>
+          ) : null,
+          children: (
+            <span className="text-body tabular-nums text-ink">
+              {children}
+              <span className="text-muted"> хүүхэд</span>
+            </span>
+          ),
+        }}
+        actions={
+          <>
+            <Button variant="secondary" size="sm" onClick={() => setManaging(true)}>
+              <UserPlus size={16} />
+              Багш
+            </Button>
 
-        <EditGroupButton group={group} />
-        <ArchiveToggleButton group={group} />
-        <DeleteGroupButton group={group} enrolled={children} />
-      </span>
+            <EditGroupButton group={group} />
+            <ArchiveToggleButton group={group} />
+            <DeleteGroupButton group={group} enrolled={children} />
+          </>
+        }
+      />
 
       {managing ? (
         <ManageTeachersDialog
@@ -163,7 +195,7 @@ function GroupRow({ group }: { group: z.infer<typeof groupListItemSchema> }) {
           onClose={() => setManaging(false)}
         />
       ) : null}
-    </div>
+    </>
   );
 }
 
