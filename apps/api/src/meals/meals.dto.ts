@@ -23,9 +23,14 @@ export type ListMenuQuery = z.infer<typeof listMenuQuerySchema>;
 const menuDishInputSchema = z.object({
   name: z.string().min(1).max(200),
   allergenTags: z.array(z.string().min(1).max(60)).max(20).default([]),
-  kind: z.enum(["BREAKFAST", "LUNCH", "AFTERNOON_SNACK", "EXTRA"]).optional(),
+  kind: z.enum(["BREAKFAST", "MID_MORNING_SNACK", "LUNCH", "AFTERNOON_SNACK", "EXTRA"]).optional(),
   ingredients: z.string().max(1000).nullable().optional(),
   note: z.string().max(1000).nullable().optional(),
+  // A generous but real ceiling, same reasoning as `totalCalories` below —
+  // one dish, not a whole day, so the cap is tighter.
+  calories: z.number().int().min(0).max(3000).nullable().optional(),
+  // Fractional servings are real ("half a portion"), so this is not `.int()`.
+  portions: z.number().min(0).max(10).nullable().optional(),
 });
 
 export const saveMenuDaySchema = z
@@ -40,7 +45,7 @@ export type SaveMenuDayDto = z.infer<typeof saveMenuDaySchema>;
 
 // ── The meal register — нэмэлт.md §2 ─────────────────────────────────────────
 
-export const mealKindSchema = z.enum(["BREAKFAST", "LUNCH", "AFTERNOON_SNACK", "EXTRA"]);
+export const mealKindSchema = z.enum(["BREAKFAST", "MID_MORNING_SNACK", "LUNCH", "AFTERNOON_SNACK", "EXTRA"]);
 export const mealStatusSchema = z.enum(["TAKEN", "NOT_TAKEN", "PARTIAL", "SPECIAL"]);
 
 /**

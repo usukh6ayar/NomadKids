@@ -61,6 +61,10 @@ export const qk = {
     ["documents", kindergartenId, "categories"] as const,
   groupAttendance: (groupId: string, date: string) =>
     ["group", groupId, "attendance", date] as const,
+  groupMealSheet: (groupId: string, date: string, kind: string) =>
+    ["group", groupId, "meals", date, kind] as const,
+  childMealSummary: (childId: string, month: string) =>
+    ["child", childId, "meals", "summary", month] as const,
   attendanceReviewQueue: (filters: Record<string, unknown> = {}) =>
     ["attendance-requests", "review-queue", filters] as const,
 

@@ -289,9 +289,45 @@ export type AttendanceRequest = z.infer<typeof attendanceRequestSchema>;
 
 // ── Meals ────────────────────────────────────────────────────────────────────
 
+export const mealKindSchema = z.enum([
+  "BREAKFAST",
+  "MID_MORNING_SNACK",
+  "LUNCH",
+  "AFTERNOON_SNACK",
+  "EXTRA",
+]);
+export type MealKind = z.infer<typeof mealKindSchema>;
+
+export const MEAL_KIND_LABEL: Record<string, string> = {
+  BREAKFAST: "Өглөөний цай",
+  MID_MORNING_SNACK: "2-р цай",
+  LUNCH: "Үдийн хоол",
+  AFTERNOON_SNACK: "Үдээс хойших цай",
+  EXTRA: "Нэмэлт хоол",
+};
+
+/** Whether a child ate — `нэмэлт.md` §2. */
+export const mealStatusSchema = z.enum(["TAKEN", "NOT_TAKEN", "PARTIAL", "SPECIAL"]);
+export type MealStatus = z.infer<typeof mealStatusSchema>;
+
+export const MEAL_STATUS_LABEL: Record<string, string> = {
+  TAKEN: "Авсан",
+  NOT_TAKEN: "Аваагүй",
+  PARTIAL: "Хэсэгчлэн",
+  SPECIAL: "Тусгай хоол",
+};
+
 export const menuDishSchema = z.object({
   name: z.string(),
   allergenTags: z.array(z.string()).default([]),
+  /** Which sitting this dish belongs to. Absent on rows written before this existed. */
+  kind: mealKindSchema.nullish(),
+  /** The cook's full recipe line — separate from `allergenTags`, which stays a
+   * short controlled list for the cross-check to match on. */
+  ingredients: z.string().nullish(),
+  note: z.string().nullish(),
+  calories: z.number().int().nullish(),
+  portions: z.number().nullish(),
 });
 export type MenuDish = z.infer<typeof menuDishSchema>;
 
@@ -302,6 +338,40 @@ export const menuDaySchema = z.object({
   totalCalories: z.number().int().nullish(),
 });
 export type MenuDay = z.infer<typeof menuDaySchema>;
+
+/** One child's meal-register row — `нэмэлт.md` §2. */
+export const mealRecordSchema = z.object({
+  id: uuidSchema,
+  childId: uuidSchema,
+  enrollmentId: uuidSchema,
+  date: z.string(),
+  kind: mealKindSchema,
+  status: mealStatusSchema,
+  note: z.string().nullish(),
+});
+export type MealRecord = z.infer<typeof mealRecordSchema>;
+
+/** A group's roster for one sitting, marked or not — `GET /groups/:id/meals`. */
+export const groupMealSheetEntrySchema = z.object({
+  child: z.object({
+    id: uuidSchema,
+    lastName: z.string(),
+    firstName: z.string(),
+  }),
+  enrollmentId: uuidSchema,
+  record: mealRecordSchema.nullable(),
+});
+export type GroupMealSheetEntry = z.infer<typeof groupMealSheetEntrySchema>;
+
+/** A child's month, by sitting and status — `GET /children/:id/meals/summary`. */
+export const mealSummarySchema = z.object({
+  month: z.string(),
+  counts: z.array(
+    z.object({ kind: mealKindSchema, status: mealStatusSchema, count: z.number() }),
+  ),
+  daysFed: z.number(),
+});
+export type MealSummary = z.infer<typeof mealSummarySchema>;
 
 // ── Surveys ──────────────────────────────────────────────────────────────────
 

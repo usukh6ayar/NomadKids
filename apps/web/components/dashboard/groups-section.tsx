@@ -5,22 +5,24 @@ import Link from "next/link";
 import { groupSchema, paginated } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
-import { CalendarCheck, ClipboardList } from "lucide-react";
+import { CalendarCheck, ClipboardList, UtensilsCrossed } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 
 const groupsSchema = paginated(groupSchema);
 
 /**
- * The way into assessment and the daily attendance sheet.
+ * The way into assessment, the meal register, and the daily attendance sheet.
  *
- * ★ Neither has a top-level menu item, because neither can start without a
- * group — a menu entry would open a screen whose first act is to ask "which
- * group?". So the groups a teacher actually teaches are listed here, and each
- * one is a direct link into its assessment column and its attendance sheet.
+ * ★ None of the three has a top-level menu item, because none can start
+ * without a group — a menu entry would open a screen whose first act is to
+ * ask "which group?". So the groups a teacher actually teaches are listed
+ * here, and each one is a direct link into its assessment column, its meal
+ * register and its attendance sheet.
  *
- * Without this `/groups/[groupId]/assessment` and `/groups/[groupId]/attendance`
- * would be unreachable through the UI, which is its own kind of dead route.
+ * Without this `/groups/[groupId]/assessment`, `/groups/[groupId]/meals` and
+ * `/groups/[groupId]/attendance` would be unreachable through the UI, which
+ * is its own kind of dead route.
  *
  * ★★ It fetches its own data, deliberately.
  *
@@ -45,8 +47,9 @@ export function GroupsSection() {
    * A teacher here is responsible for a single group, so this section rendered
    * a heading, a supporting line and one row — three lines of chrome around one
    * link, naming a group the teacher already knows they teach. The name is not
-   * the information; "go and act on them" is — now two actions, attendance and
-   * assessment, since both are real, daily-and-quarterly tasks that start here.
+   * the information; "go and act on them" is — now three actions, attendance,
+   * meals and assessment, since all three are real, recurring tasks that
+   * start here (daily, per sitting, and quarterly respectively).
    *
    * So a single group collapses to its actions. The list survives for the
    * cases that are genuinely lists: an admin sees every group in the
@@ -62,13 +65,19 @@ export function GroupsSection() {
         <Card pad="roomy" className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="truncate font-medium text-ink">{group.name}</p>
-            <p className="text-body text-muted">Ирц бүртгэх, улирлын үнэлгээ хийх.</p>
+            <p className="text-body text-muted">Ирц, хоол бүртгэх, улирлын үнэлгээ хийх.</p>
           </div>
           <div className="flex gap-2">
             <Button asChild variant="secondary" size="sm">
               <Link href={`/groups/${group.id}/attendance`}>
                 <CalendarCheck size={18} />
                 Ирц
+              </Link>
+            </Button>
+            <Button asChild variant="secondary" size="sm">
+              <Link href={`/groups/${group.id}/meals`}>
+                <UtensilsCrossed size={18} />
+                Хоол
               </Link>
             </Button>
             <Button asChild variant="secondary" size="sm">
@@ -93,12 +102,18 @@ export function GroupsSection() {
             className="flex min-h-[56px] flex-wrap items-center justify-between gap-3 px-4 py-3"
           >
             <span className="min-w-0 truncate font-medium text-ink">{group.name}</span>
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               <Link
                 href={`/groups/${group.id}/attendance`}
                 className="shrink-0 text-body text-primary-strong hover:underline"
               >
                 Ирц →
+              </Link>
+              <Link
+                href={`/groups/${group.id}/meals`}
+                className="shrink-0 text-body text-primary-strong hover:underline"
+              >
+                Хоол →
               </Link>
               <Link
                 href={`/groups/${group.id}/assessment`}
