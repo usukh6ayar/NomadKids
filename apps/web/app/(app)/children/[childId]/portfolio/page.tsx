@@ -14,7 +14,6 @@ import {
   Check,
   ChevronDown,
   Droplet,
-  Eye,
   FileText,
   Heart,
   MapPin,
@@ -22,7 +21,6 @@ import {
   Pencil,
   Ruler,
   Sparkles,
-  Star,
   Sun,
   Tag,
   Users,
@@ -364,7 +362,8 @@ const ABOUT_FIELDS = [
   { key: "nickname", label: "Өвөрддөг нэр", long: false, Icon: Tag, tone: "peach" },
   { key: "birthplace", label: "Төрсөн газар", long: false, Icon: MapPin, tone: "sun" },
   { key: "bloodType", label: "Цусны бүлэг", long: false, Icon: Droplet, tone: "sky" },
-  { key: "eyeColor", label: "Нүдний өнгө", long: false, Icon: Eye, tone: "mint" },
+  // `eyeColor` is not here — it gets its own swatch picker, `EYE_COLOR_OPTIONS`
+  // below, rather than this array's plain-text card.
 ] as const;
 
 const STORY_TONE: Record<string, string> = {
@@ -373,6 +372,23 @@ const STORY_TONE: Record<string, string> = {
   sun: "bg-sun text-sun-ink",
   peach: "bg-peach text-peach-ink",
 };
+
+/**
+ * A swatch stands in for a photo of the child's own eyes — 2026-08-28, on
+ * the client's instruction, with the swatch itself named as a placeholder
+ * for real art the client is supplying later. The label renders in the same
+ * hex the swatch does ("Бор" in brown, literally), which is the reason this
+ * is a fixed list rather than the free-text field it replaces: colouring
+ * arbitrary typed text would need to guess a colour from a word.
+ */
+const EYE_COLOR_OPTIONS = [
+  { label: "Хар", hex: "#2b2118" },
+  { label: "Бор", hex: "#6b3f1d" },
+  { label: "Хүрэн", hex: "#8b5a2b" },
+  { label: "Ногоон", hex: "#4a7c59" },
+  { label: "Цэнхэр", hex: "#4a7ba6" },
+  { label: "Саарал", hex: "#8a8f94" },
+] as const;
 
 function AboutMeSection({
   childId,
@@ -462,7 +478,7 @@ function AboutMeSection({
   });
 
   const errors = fieldErrors(save.error);
-  const filled = ABOUT_FIELDS.some((f) => data?.[f.key]);
+  const filled = ABOUT_FIELDS.some((f) => data?.[f.key]) || Boolean(data?.eyeColor);
 
   return (
     <section id="about-me" aria-labelledby="about-me-heading" className="scroll-mt-20">
@@ -545,6 +561,31 @@ function AboutMeSection({
                     </p>
                   </article>
                 ))}
+
+                {data?.eyeColor ? (
+                  <article className="rounded-row border border-border bg-canvas px-3 py-3 md:px-4 md:py-3.5">
+                    <h3 className="mb-1.5 flex items-center gap-2 text-caption font-semibold text-ink">
+                      <span
+                        aria-hidden="true"
+                        className="size-6 shrink-0 rounded-control border border-border/60"
+                        style={{
+                          backgroundColor:
+                            EYE_COLOR_OPTIONS.find((o) => o.label === data.eyeColor)?.hex ??
+                            "var(--color-border)",
+                        }}
+                      />
+                      Нүдний өнгө
+                    </h3>
+                    <p
+                      className="text-body font-medium"
+                      style={{
+                        color: EYE_COLOR_OPTIONS.find((o) => o.label === data.eyeColor)?.hex,
+                      }}
+                    >
+                      {data.eyeColor}
+                    </p>
+                  </article>
+                ) : null}
               </div>
             </div>
           ) : (
@@ -659,6 +700,59 @@ function AboutMeSection({
                 }
               </Field>
             ))}
+
+            {/*
+              ★ Swatches, not a select — the point is to show the colour, not
+              read a word. Each button is the placeholder image slot itself
+              (see `EYE_COLOR_OPTIONS`'s doc comment); the selected one's
+              label repeats below in the same hex, which is the literal
+              instruction this followed ("бор" written in brown).
+            */}
+            <Field label="Нүдний өнгө" error={errors.eyeColor}>
+              {() => (
+                <div
+                  role="radiogroup"
+                  aria-label="Нүдний өнгө"
+                  className="flex flex-wrap gap-2.5"
+                >
+                  {EYE_COLOR_OPTIONS.map((option) => {
+                    const selected = form.eyeColor === option.label;
+                    return (
+                      <button
+                        key={option.label}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        onClick={() =>
+                          setForm((f) => ({
+                            ...f,
+                            eyeColor: selected ? "" : option.label,
+                          }))
+                        }
+                        className={cn(
+                          "flex flex-col items-center gap-1 rounded-control border px-2 py-2 transition-colors",
+                          selected
+                            ? "border-primary bg-primary-soft"
+                            : "border-border bg-surface hover:border-primary",
+                        )}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="size-8 rounded-pill border border-border/60"
+                          style={{ backgroundColor: option.hex }}
+                        />
+                        <span
+                          className="text-caption font-medium"
+                          style={{ color: option.hex }}
+                        >
+                          {option.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </Field>
 
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Өндөр (см)" error={errors.heightCm}>
@@ -1146,21 +1240,67 @@ function BirthdaySection({
  * which two it lies between. Five births in six are outside the window and get
  * no note at all.
  */
+/**
+ * Placeholder art for the two computed facts below — 2026-08-28, on the
+ * client's instruction. Emoji rather than an image file: the client is
+ * supplying real illustrated icons later, and an emoji costs no asset and
+ * marks the *slot* precisely (one entry per `code` from `birth-facts.ts`,
+ * ready to become `<Image src=.../>` the day a real set exists) without
+ * blocking on art that does not exist yet.
+ */
+const YEAR_ANIMAL_ICON: Record<string, string> = {
+  rat: "🐭",
+  ox: "🐂",
+  tiger: "🐯",
+  rabbit: "🐰",
+  dragon: "🐉",
+  snake: "🐍",
+  horse: "🐴",
+  sheep: "🐑",
+  monkey: "🐵",
+  rooster: "🐔",
+  dog: "🐶",
+  pig: "🐷",
+};
+
+const ZODIAC_ICON: Record<string, string> = {
+  capricorn: "♑",
+  aquarius: "♒",
+  pisces: "♓",
+  aries: "♈",
+  taurus: "♉",
+  gemini: "♊",
+  cancer: "♋",
+  leo: "♌",
+  virgo: "♍",
+  libra: "♎",
+  scorpio: "♏",
+  sagittarius: "♐",
+};
+
 function BirthFacts({ section }: { section: z.infer<typeof birthdaySectionSchema> }) {
   const facts = [
-    { icon: Cake, label: "Төрсөн огноо", value: formatDate(section.dateOfBirth) },
-    { icon: Sun, label: "Нас", value: `${section.ageYears} нас` },
-    { icon: Sparkles, label: "Өрнийн орд", value: section.zodiac.name },
-    { icon: Star, label: "Монгол жил", value: `${section.yearAnimal.name} жил` },
+    { icon: <Cake size={14} aria-hidden="true" className="shrink-0" />, label: "Төрсөн огноо", value: formatDate(section.dateOfBirth) },
+    { icon: <Sun size={14} aria-hidden="true" className="shrink-0" />, label: "Нас", value: `${section.ageYears} нас` },
+    {
+      icon: <span aria-hidden="true">{ZODIAC_ICON[section.zodiac.code] ?? "✨"}</span>,
+      label: "Өрнийн орд",
+      value: section.zodiac.name,
+    },
+    {
+      icon: <span aria-hidden="true">{YEAR_ANIMAL_ICON[section.yearAnimal.code] ?? "⭐"}</span>,
+      label: "Монгол жил",
+      value: `${section.yearAnimal.name} жил`,
+    },
   ];
 
   return (
     <Card pad="roomy" className="mb-3">
       <dl className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        {facts.map(({ icon: Icon, label, value }) => (
+        {facts.map(({ icon, label, value }) => (
           <div key={label} className="flex flex-col gap-1">
             <dt className="flex items-center gap-1.5 text-caption text-muted">
-              <Icon size={14} aria-hidden="true" className="shrink-0" />
+              {icon}
               {label}
             </dt>
             <dd className="text-body font-medium text-ink">{value}</dd>
