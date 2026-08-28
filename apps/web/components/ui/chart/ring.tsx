@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { TONE_VAR, type Tone } from "@/components/ui/tone";
 import { clampPercent } from "./chart-tokens";
 
 /**
@@ -29,6 +30,7 @@ export function Ring({
   percent,
   size = "md",
   muted = false,
+  tone,
   label,
   children,
   className,
@@ -37,6 +39,18 @@ export function Ring({
   size?: keyof typeof SIZE;
   /** Nothing to show yet — draws a flat track and no fill. */
   muted?: boolean;
+  /**
+   * The colour of the filled arc. Defaults to `--color-primary`.
+   *
+   * ★ Added 2026-08-28 because the client's dashboard draws the attendance
+   * ring in green, and this component had the brand blue welded in.
+   *
+   * The arc is a **graphic fill, never text** — the percentage sits in the
+   * hole, on `--color-surface`, in `--color-ink`. So the floor that applies is
+   * WCAG's 3:1 for a non-text element, not 4.5:1, and every `TONE_VAR` value
+   * clears it against both white and `--color-track`.
+   */
+  tone?: Tone;
   /** An accessible name. Omit when the figure is already on screen as text. */
   label?: string;
   /** What sits in the hole. Defaults to the percentage. */
@@ -44,6 +58,7 @@ export function Ring({
   className?: string;
 }) {
   const value = clampPercent(percent);
+  const fill = tone ? TONE_VAR[tone] : "var(--color-primary)";
 
   return (
     <span
@@ -56,7 +71,7 @@ export function Ring({
       style={{
         background: muted
           ? "var(--color-track)"
-          : `conic-gradient(var(--color-primary) 0 ${value}%, var(--color-track) ${value}% 100%)`,
+          : `conic-gradient(${fill} 0 ${value}%, var(--color-track) ${value}% 100%)`,
       }}
     >
       <span className={cn("grid place-items-center rounded-pill bg-surface", SIZE[size].inner)}>

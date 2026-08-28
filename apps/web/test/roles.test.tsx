@@ -38,10 +38,16 @@ describe("navigation is built from the session's roles", () => {
       </AppLayout>,
     );
 
-    await waitFor(() => expect(screen.getAllByText("Хүүхдүүд").length).toBeGreaterThan(0));
-    expect(screen.getAllByText("Хянах").length).toBeGreaterThan(0);
+    // ★ The labels moved on 2026-08-28 when the client redrew the bottom bar
+    // as Самбар · Мэдээ · Явцын үнэлгээ · Судалгаа · Цэс. "Хүүхдүүд" and
+    // "Ажиглалт хянах" are still staff-only destinations — they are in the
+    // sidebar sections now (and behind the phone's Цэс tab) rather than being
+    // tabs of their own, which is what this is checking.
+    await waitFor(() => expect(screen.getAllByText("Самбар").length).toBeGreaterThan(0));
+    expect(screen.getAllByText("Хүүхдүүд").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Ажиглалт хянах").length).toBeGreaterThan(0);
     // Administration belongs to admins only.
-    expect(screen.queryByText("Удирдлага")).toBeNull();
+    expect(screen.queryByText("Бүлэг, цэцэрлэгийн мэдээлэл")).toBeNull();
   });
 
   it("a parent sees the parent navigation and no staff-only destinations", async () => {
@@ -82,7 +88,10 @@ describe("navigation is built from the session's roles", () => {
       </AppLayout>,
     );
 
-    await waitFor(() => expect(screen.getAllByText("Удирдлага").length).toBeGreaterThan(0));
+    // The admin entry is a sidebar section row now, not a bottom-bar tab.
+    await waitFor(() =>
+      expect(screen.getAllByText("Бүлэг, цэцэрлэгийн мэдээлэл").length).toBeGreaterThan(0),
+    );
   });
 
   /**
@@ -102,7 +111,7 @@ describe("navigation is built from the session's roles", () => {
       </AppLayout>,
     );
 
-    await waitFor(() => expect(screen.getAllByText("Хянах").length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText("Ажиглалт хянах").length).toBeGreaterThan(0));
   });
 });
 

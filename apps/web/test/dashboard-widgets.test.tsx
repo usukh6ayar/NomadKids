@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
 import { ClassBoardNotice } from "@/components/dashboard/class-board-notice";
@@ -8,6 +8,7 @@ import { AttendanceToday } from "@/components/dashboard/attendance-today";
 import { TodayMenu } from "@/components/dashboard/today-menu";
 import { ObservationMix } from "@/components/dashboard/observation-mix";
 import { TermProgress } from "@/components/dashboard/term-progress";
+import { QuickLinks } from "@/components/dashboard/quick-links";
 
 /**
  * The widgets from the client's sketch, against what the database actually
@@ -50,8 +51,8 @@ beforeEach(() => {
   setSearchParams("");
 });
 
-describe("эр эм харьцаа", () => {
-  it("states both counts and their shares", async () => {
+describe("бүлгийн хүүхдүүд", () => {
+  it("states both counts", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
       { path: "/children/summary", body: { total: 32, averageAgeMonths: 41, boys: 14, girls: 18 } },
@@ -61,8 +62,18 @@ describe("эр эм харьцаа", () => {
 
     expect(await screen.findByText("14")).toBeInTheDocument();
     expect(screen.getByText("18")).toBeInTheDocument();
-    expect(screen.getByText("44%")).toBeInTheDocument();
-    expect(screen.getByText("56%")).toBeInTheDocument();
+    expect(screen.getByText("Хөвгүүд")).toBeInTheDocument();
+    expect(screen.getByText("Охид")).toBeInTheDocument();
+    /*
+      ★ The shares went with the donut on 2026-08-28, and their absence is the
+      assertion now rather than an omission.
+
+      The client's dashboard shows two counts and no percentages. A demo group
+      is five children, and "44% / 56%" over two single-digit counts is
+      precision the numbers cannot carry — see `gender-ratio.tsx`.
+    */
+    expect(screen.queryByText("44%")).toBeNull();
+    expect(screen.queryByText("56%")).toBeNull();
   });
 
   /**
@@ -84,26 +95,47 @@ describe("эр эм харьцаа", () => {
    * ★★ The share is taken over the children who have a recorded sex, not over
    * the roster. A child with neither value belongs to no segment, and dividing
    * by the roster would draw a gap that stands for nothing a reader could name.
+   *
+   * ★★★ This asserted that the component rendered *nothing* until 2026-08-28.
+   * The tile is now the second of the dashboard's three top cards, which the
+   * client's brief requires to be present and level, so it states the case
+   * instead of vanishing — the same reversal `MonthBirthdays` and
+   * `ClassBoardNotice` each record. What has to stay true is the arithmetic:
+   * no chart is drawn, and no percentage is invented from a zero denominator.
    */
-  it("renders nothing when no child has a recorded sex", async () => {
-    const { calls } = stubApi([
+  it("says nobody's sex is recorded instead of vanishing", async () => {
+    stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
       { path: "/children/summary", body: { total: 5, averageAgeMonths: 41, boys: 0, girls: 0 } },
     ]);
 
+    renderWithProviders(<GenderRatio />);
+
+    expect(await screen.findByText("Хүйс бүртгэгдээгүй")).toBeInTheDocument();
+    // No donut, and no share computed against a denominator of zero.
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(screen.queryByText("0%")).toBeNull();
+    expect(screen.queryByText("NaN%")).toBeNull();
+  });
+
+  /**
+   * ★ The loading state is a tile, not a hole.
+   *
+   * `!data` was true for the whole of the roster request, so the top row used
+   * to render two cards and a gap and then reflow when the third arrived. The
+   * skeleton holds the footprint instead.
+   */
+  it("holds its place while the roster is still loading", () => {
+    stubApi([{ path: "/auth/me", body: sessionFor(["TEACHER"]) }]);
+
     const { container } = renderWithProviders(<GenderRatio />);
 
-    // Wait for the answer to land before asserting on its absence — checking
-    // immediately would pass while the query was still in flight, which is the
-    // one state where every version of this component renders nothing.
-    await waitFor(() =>
-      expect(calls.some((c) => c.url.startsWith("/children/summary"))).toBe(true),
-    );
-    expect(container.querySelector("section")).toBeNull();
+    expect(container.firstElementChild).not.toBeNull();
+    expect(container.textContent).not.toContain("Хөвгүүд");
   });
 });
 
-describe("энэ сард төрсөн хүүхдүүд", () => {
+describe("төрсөн өдөр", () => {
   const birthdays = [
     {
       id: "44444444-4444-4444-8444-444444444444",
@@ -131,16 +163,49 @@ describe("энэ сард төрсөн хүүхдүүд", () => {
   });
 
   /**
-   * An empty month is a real and common answer, not a failure — and a card that
-   * renders an empty frame to say so is one a teacher learns to skip.
+   * ★ This asserted `toBeEmptyDOMElement()` until 2026-08-28, and the change is
+   * deliberate rather than a relaxation — it is the same reversal, for the same
+   * reason, that `ClassBoardNotice` records two describes below.
+   *
+   * The old behaviour was right while this tile floated in a stacked column,
+   * where vanishing only made the column shorter. It is now the third card of
+   * the dashboard's top row, which the client's brief requires to be three
+   * cards of equal height — so returning `null` leaves a third of the most
+   * prominent band on the screen empty.
+   *
+   * What has to stay true is that the empty card is *compact*: a line of copy
+   * on the tile's own footprint, not the product's centred 96px mascot, which
+   * would make the card with nothing in it the tallest of the three.
    */
-  it("renders nothing when nobody has a birthday this month", () => {
-    const { container } = render(<MonthBirthdays birthdays={[]} />);
-    expect(container).toBeEmptyDOMElement();
+  it("says the month is empty instead of vanishing", () => {
+    render(<MonthBirthdays birthdays={[]} />);
+
+    expect(screen.getByText("Төрсөн өдөр")).toBeInTheDocument();
+    expect(screen.getByText("Энэ сард төрсөн өдөр алга")).toBeInTheDocument();
+    // Compact: no illustration, and no list where there are no children.
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(screen.queryByRole("list")).toBeNull();
   });
 });
 
-describe("ангийн самбар", () => {
+/**
+ * ★ "Сүүлийн нийтлэл", renamed from "Ангийн самбар" on 2026-08-28.
+ *
+ * The dashboard's own `<h1>` became "Ангийн самбар" in the same pass, at the
+ * client's request, and this card sits on that page — so the section and its
+ * page were about to carry one name while the sidebar's "Ангийн самбар / Мэдээ"
+ * pointed at a third thing. `lib/vocabulary.ts` exists because that exact
+ * failure ("Хавтас meant five things at once") shipped once already.
+ *
+ * ★★ `renderWithProviders`, not `render`. The component fetches the notice's
+ * photograph from `GET /notifications/:id` — `teacherDashboardSchema`'s
+ * `boardNotice` projection carries no media — so it needs a QueryClient. The
+ * request is deliberately left unstubbed in three of the four cases below: with
+ * `retry: false` it fails, `photo` stays null, and the card falls back to the
+ * feature's illustration. That fallback is the path most of these assertions
+ * are about, and it is the one a kindergarten with text-only notices sees.
+ */
+describe("сүүлийн нийтлэл", () => {
   const notice = {
     id: "66666666-6666-4666-8666-666666666666",
     title: "Ангийн хурал",
@@ -151,7 +216,7 @@ describe("ангийн самбар", () => {
   };
 
   it("says how many people opened the notice", () => {
-    render(<ClassBoardNotice notice={notice} />);
+    renderWithProviders(<ClassBoardNotice notice={notice} />);
 
     // The phrase carries the meaning: a bare number beside an eye icon is a
     // puzzle to anyone who cannot see the eye.
@@ -169,7 +234,7 @@ describe("ангийн самбар", () => {
    * the shape stays that way.
    */
   it("shows no reader identities", () => {
-    const { container } = render(<ClassBoardNotice notice={notice} />);
+    const { container } = renderWithProviders(<ClassBoardNotice notice={notice} />);
 
     expect(container.textContent).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}/);
     expect(screen.queryByRole("list")).toBeNull();
@@ -192,7 +257,7 @@ describe("ангийн самбар", () => {
    * card on the screen the tallest.
    */
   it("offers the way to post the first notice instead of vanishing", () => {
-    render(<ClassBoardNotice notice={null} />);
+    renderWithProviders(<ClassBoardNotice notice={null} />);
 
     expect(screen.getByText("Зарлал хараахан нийтлээгүй")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Зарлал нийтлэх/ })).toHaveAttribute(
@@ -206,7 +271,7 @@ describe("ангийн самбар", () => {
   });
 
   it("marks an important notice with a label, not only a tint", () => {
-    render(<ClassBoardNotice notice={{ ...notice, isImportant: true }} />);
+    renderWithProviders(<ClassBoardNotice notice={{ ...notice, isImportant: true }} />);
 
     const badge = screen.getByText("Чухал");
     expect(badge).toBeInTheDocument();
@@ -244,9 +309,11 @@ describe("өнөөдрийн ирц", () => {
 
     renderWithProviders(<AttendanceToday />);
 
-    // 3 of 5 attending — two present plus the half day.
+    // 3 of 5 attending — two present plus the half day. The separator is
+    // spaced now ("30 / 35", as the client's sketch writes it), so the
+    // denominator is matched on its own rather than as "/5".
     expect(await screen.findByText("3")).toBeInTheDocument();
-    expect(screen.getByText("/5")).toBeInTheDocument();
+    expect(screen.getByText(/\/\s*5/)).toBeInTheDocument();
     expect(screen.getByText("60%")).toBeInTheDocument();
   });
 
@@ -296,8 +363,12 @@ describe("өнөөдрийн ирц", () => {
 
     expect(await screen.findByText("Бүртгээгүй байна")).toBeInTheDocument();
     expect(screen.getByText("3 хүүхэд бүртгэхийг хүлээж байна")).toBeInTheDocument();
+    /*
+      The point of the case, and the part that has not moved: an unmarked
+      register reports its own state and never "0%", which would be a claim
+      that nobody came.
+    */
     expect(screen.queryByText("0%")).toBeNull();
-    expect(screen.getByRole("link", { name: /Ирц бүртгэх/ })).toBeInTheDocument();
   });
 
   /** An empty roster has nobody to be absent, so it is not 0% either. */
@@ -512,7 +583,17 @@ describe("хураангуй хайрцгууд", () => {
    * 9am it is the most useful control on the screen. Afterwards the same
    * destination is reference, not a task.
    */
-  it("promotes the attendance action while the register is empty", async () => {
+  /**
+   * ★ Rewritten 2026-08-28: this asserted a filled "Ирц бүртгэх" button in the
+   * card's footer, and the card has no footer any more.
+   *
+   * The client's dashboard is six white cards with no actions on them, so the
+   * register link left this component along with its illustration and its
+   * wash. It did not become unreachable — `app/(app)/layout.tsx` now carries
+   * "Бүлгийн бүртгэл" in the sidebar for exactly that reason, and the test
+   * below is what stops the link being dropped rather than moved.
+   */
+  it("carries no action of its own, since the sidebar now holds the register", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
       {
@@ -524,8 +605,8 @@ describe("хураангуй хайрцгууд", () => {
 
     renderWithProviders(<AttendanceToday />);
 
-    const action = await screen.findByRole("link", { name: /Ирц бүртгэх/ });
-    expect(action).toHaveAttribute("href", `/groups/${GROUP.id}/attendance`);
+    await screen.findByText("Бүртгээгүй байна");
+    expect(screen.queryByRole("link")).toBeNull();
   });
 });
 
@@ -552,7 +633,17 @@ describe("дүрслэл", () => {
    * the meaning did not — so this pins the sentence *and* the fact that the
    * chart is a single named image rather than two silent arcs.
    */
-  it("draws the sex split as one named chart, with the roster's size in it", async () => {
+  /**
+   * ★ The donut went on 2026-08-28 and the accessible name stayed.
+   *
+   * The chart was replaced by two plain counts at the client's request — the
+   * question their dashboard asks is "how many girls, how many boys", which is
+   * two numbers rather than a ratio. What must not change is how the pair is
+   * announced: "14 хүү, 18 охин", one name for the whole fact, not four
+   * disconnected strings. `gender-ratio.tsx` has argued that through three
+   * different drawings now.
+   */
+  it("announces the split as one named fact, whatever it is drawn as", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
       { path: "/children/summary", body: ROSTER },
@@ -560,13 +651,12 @@ describe("дүрслэл", () => {
 
     renderWithProviders(<GenderRatio />);
 
-    const chart = await screen.findByRole("img", { name: "14 хүү, 18 охин" });
-    // The hole carries the total the two segments add up to — the thing a bar
-    // had nowhere to put. Not `data.total`: a child with no recorded sex is in
-    // neither segment.
-    expect(chart.textContent).toContain("32");
-    // One image for the whole chart, not one per arc: six titles to tab
-    // through for a picture taken in at a glance.
+    const pair = await screen.findByRole("img", { name: "14 хүү, 18 охин" });
+    // Both counts are inside the named element, so the name and the visible
+    // figures cannot drift apart.
+    expect(pair.textContent).toContain("14");
+    expect(pair.textContent).toContain("18");
+    // One name for the whole fact, not one per side.
     expect(screen.getAllByRole("img")).toHaveLength(1);
   });
 
@@ -578,7 +668,16 @@ describe("дүрслэл", () => {
    * a screen reader say "attendance" twice — `IconChip` hides it, and this is
    * what catches a future `alt="Ирц"` that looks helpful and is not.
    */
-  it("gives the register an illustrated identity that is not announced", async () => {
+  /**
+   * ★ Rewritten 2026-08-28. This asserted `icon-attendance.png` in the card,
+   * and the client's redesign removed every illustration from this screen —
+   * six plain white cards, with the only colour in the data.
+   *
+   * The half of it that still matters is the half about the ring: it restates
+   * a figure already on the card as text, so it must stay decoration. A
+   * `role="img"` here would make a screen reader read the percentage twice.
+   */
+  it("keeps the ring decorative, since the figure is already on the card", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
       {
@@ -591,11 +690,9 @@ describe("дүрслэл", () => {
     const { container } = renderWithProviders(<AttendanceToday />);
     await screen.findByText("50%");
 
-    const art = container.querySelector('img[src*="icon-attendance"]');
-    expect(art).not.toBeNull();
-    expect(art!.getAttribute("alt")).toBe("");
-    // The ring restates the figure that is already on the card as text, so it
-    // is decoration: nothing on this tile may be exposed as an image.
+    // No illustration on this card any more — see the note above.
+    expect(container.querySelector('img[src*="icon-attendance"]')).toBeNull();
+    // Nothing on this card may be exposed as an image.
     expect(screen.queryByRole("img")).toBeNull();
   });
 
@@ -775,7 +872,101 @@ describe("дүрслэл", () => {
     );
 
     const link = screen.getByRole("link", { name: /Мишээл/ });
-    expect(link).toHaveAttribute("href", "/children/44444444-4444-4444-8444-444444444444");
+    // `/general`, not the bare id. The child hub page was deleted when it
+    // was split into general/observations/attendance, so `/children/:id` is
+    // no longer a route and 404s — `month-birthdays.tsx` carries the same
+    // note against the link this asserts on. The expectation was stale, not
+    // the component.
+    expect(link).toHaveAttribute("href", "/children/44444444-4444-4444-8444-444444444444/general");
     expect(link.textContent).toContain("8/01");
+  });
+});
+
+/**
+ * The launcher grid — the parent home's tiles, on the teacher's screen.
+ *
+ * ★ What is worth testing here is not that six links render. It is that the
+ * two group-scoped ones never render a link to a group that was not resolved:
+ * `/groups/undefined/attendance` is a 404 the reader would read as the product
+ * being broken, and it is exactly what a static href would have produced.
+ */
+describe("түргэн холбоос", () => {
+  const UNREAD = { path: "/notifications/unread-count", body: { count: 0 } };
+
+  it("points Ирц and Хоол at the teacher's own group", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: "/groups?",
+        body: { items: [GROUP], page: 1, pageSize: 20, total: 1, totalPages: 1 },
+      },
+      UNREAD,
+    ]);
+
+    renderWithProviders(<QuickLinks />);
+
+    expect(await screen.findByRole("link", { name: "Ирц" })).toHaveAttribute(
+      "href",
+      `/groups/${GROUP.id}/attendance`,
+    );
+    expect(screen.getByRole("link", { name: "Хоол" })).toHaveAttribute(
+      "href",
+      `/groups/${GROUP.id}/meals`,
+    );
+  });
+
+  /** A teacher with no group assigned gets four tiles, not two broken ones. */
+  it("omits the group tiles when no group is assigned", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: "/groups?", body: { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 } },
+      UNREAD,
+    ]);
+
+    renderWithProviders(<QuickLinks />);
+
+    expect(await screen.findByRole("link", { name: "Хүүхдүүд" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Ирц" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Хоол" })).not.toBeInTheDocument();
+  });
+
+  /**
+   * ★ The badge carries the number into the link's accessible name. A red dot
+   * a screen reader cannot count is "something changed"; "3 шинэ" is the fact.
+   */
+  it("counts the unread notices on Ангийн самбар", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: "/groups?",
+        body: { items: [GROUP], page: 1, pageSize: 20, total: 1, totalPages: 1 },
+      },
+      { path: "/notifications/unread-count", body: { count: 3 } },
+    ]);
+
+    renderWithProviders(<QuickLinks />);
+
+    expect(await screen.findByRole("link", { name: "Ангийн самбар, 3 шинэ" })).toHaveAttribute(
+      "href",
+      "/notifications",
+    );
+  });
+
+  /** No dead tiles on staff — `staffSections`' rule, applied to this grid. */
+  it("has no удахгүй placeholder", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: "/groups?",
+        body: { items: [GROUP], page: 1, pageSize: 20, total: 1, totalPages: 1 },
+      },
+      UNREAD,
+    ]);
+
+    renderWithProviders(<QuickLinks />);
+
+    await screen.findByRole("link", { name: "Судалгаа" });
+    expect(screen.queryByText("Удахгүй")).not.toBeInTheDocument();
+    expect(screen.queryByText("Санхүү")).not.toBeInTheDocument();
   });
 });

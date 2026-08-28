@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { Cake } from "lucide-react";
 import type { TeacherDashboard } from "@kinder/contracts";
-import { TileShell } from "./tile-shell";
-import { ChildAvatar } from "@/components/media/media-image";
-import { formatDayMonth, fullName } from "@/lib/format";
+import { BoardCard, BoardCardEmpty } from "./board-card";
+import { formatDayMonth } from "@/lib/format";
 
 /**
  * Энэ сард төрсөн хүүхдүүд — the month's birthdays, day-ordered.
@@ -20,30 +19,54 @@ import { formatDayMonth, fullName } from "@/lib/format";
  * sorting — `EXTRACT(DAY …)` — because children in one group span three birth
  * years and a full-date sort would group them by age instead.
  *
- * ★★★ It takes the `sun` wash, one of exactly two tinted tiles on the screen.
+ * ★★★ A plain white card since 2026-08-28, where it carried the `sun` wash.
  *
- * Every other card here reports work: a register to fill, an assessment to
- * finish, an allergy to avoid. This one reports that something nice is coming,
- * and a white card with a small cake on it says that no differently from a
- * white card with an overdue task on it. `tone.ts` files `sun` as "waiting,
- * upcoming", which is literally what a birthday later this month is.
+ * The wash was one of exactly two on the old screen and it was arguing
+ * something real: every other card there reported work — a register to fill, an
+ * assessment to finish — and this one reports that something nice is coming.
+ * The client's dashboard makes that argument unnecessary by removing the cards
+ * it was arguing against: six white cards, and the only colour in the data. The
+ * peach circle behind each cake is what is left of it, and it is enough.
  *
  * ★★★★ There is no birthday illustration in `public/`, and none was invented.
- *
- * The eight mascots are children and a teacher, and none of them is holding a
- * cake — dropping `mascot-girl-purple.webp` here would be a picture of *a*
- * child on a card that lists *these* children by name and face. Lucide's `Cake`
- * on the tone chip is the honest version, and the avatars are the real artwork:
- * they are the children's own photographs where a family has uploaded one.
+ * The eight mascots are children and a teacher, none of them holding a cake, so
+ * dropping one here would be a picture of *a* child on a card naming *these*
+ * children. Lucide's `Cake` is the honest version. The children's own avatars
+ * were shown here until 2026-08-28 and went with the layout change — see the
+ * note on the row below.
  */
 export function MonthBirthdays({
   birthdays,
 }: {
   birthdays: TeacherDashboard["birthdaysThisMonth"];
 }) {
-  // Nothing this month is a real and common answer, not a failure — and an
-  // empty frame saying so is a card a teacher learns to skip.
-  if (birthdays.length === 0) return null;
+  /*
+   * ★ An empty month renders, where it used to return `null` — and that
+   * reverses a decision this file argued for on 2026-08-28.
+   *
+   * The old note read "an empty frame saying so is a card a teacher learns to
+   * skip", and that was right while this tile floated in a stacked column where
+   * its absence only made the column shorter. It is now the third card of the
+   * dashboard's top row, which the client's brief (§5) requires to be three
+   * cards of equal height — so `null` leaves a third of the most prominent
+   * band on the screen empty. `ClassBoardNotice` reversed the identical
+   * decision for the identical reason and its docblock records it.
+   *
+   * The state is two lines on the tile's own footprint, not the product's
+   * centred 96px mascot: a full-page empty state here would make the card with
+   * nothing in it the tallest of the three.
+   */
+  if (birthdays.length === 0) {
+    return (
+      <BoardCard title="Төрсөн өдөр">
+        <BoardCardEmpty
+          icon={<Cake size={22} />}
+          title="Энэ сард төрсөн өдөр алга"
+          hint="Ирэх сарын төрсөн өдрүүд эндээс харагдана."
+        />
+      </BoardCard>
+    );
+  }
 
   /*
    * ★ Three names, then a count.
@@ -56,29 +79,35 @@ export function MonthBirthdays({
   const rest = birthdays.length - shown.length;
 
   return (
-    <TileShell
-      icon={<Cake size={18} aria-hidden="true" />}
-      tone="sun"
-      surface
-      label="Энэ сард төрсөн"
+    <BoardCard
+      title="Төрсөн өдөр"
       footer={
-        <p className="text-caption text-muted">
-          <span className="font-semibold tabular-nums text-ink">{birthdays.length}</span> хүүхэд
-          {rest > 0 ? ` · +${rest} нэр` : ""}
-        </p>
+        /*
+          Only when the list is folded. The sketch shows two names and nothing
+          under them; a "2 хүүхэд" line under a list of exactly two names is
+          the count restating what the reader just counted.
+        */
+        rest > 0 ? (
+          <p className="border-t border-border-soft pt-2.5 text-caption text-muted">
+            <span className="font-semibold tabular-nums text-ink">{birthdays.length}</span> хүүхэд ·
+            +{rest} нэр
+          </p>
+        ) : undefined
       }
     >
-      <ul className="flex flex-col gap-1.5">
+      {/*
+        ★ `divide-y`, not a column of bordered rows.
+
+        The sketch separates the names with one hairline between them and no
+        frame around either — which is what `divide-y` draws, and what the row
+        cards this used to render could not: each of those carried its own
+        border, so two names read as two objects rather than as one list. The
+        tile was tinted amber then and the rows needed their own surface to have
+        any shape at all; the card is white now, so they do not.
+      */}
+      <ul className="-my-1 divide-y divide-border-soft">
         {shown.map((child) => (
           <li key={child.id}>
-            {/*
-              ★ A white row on the wash, not a transparent one.
-
-              The tile is tinted now, so a row that only changed colour on hover
-              had no shape at rest — three names floating on amber. Each child
-              gets their own surface, which is the `RowCard` idea at tile scale:
-              a list is a column of small cards, not text on a background.
-            */}
             {/*
               ★ `/general`, not `/children/:id`.
 
@@ -90,28 +119,37 @@ export function MonthBirthdays({
             */}
             <Link
               href={`/children/${child.id}/general`}
-              className="flex items-center gap-2.5 rounded-row border border-border bg-surface px-2.5 py-2 transition-colors hover:border-sun-ink/40"
+              className="-mx-2 flex min-h-[44px] items-center gap-3 rounded-row px-2 py-2 transition-colors hover:bg-canvas"
             >
-              <ChildAvatar child={child} size={32} />
+              {/*
+                A tinted cake in a circle, as the sketch draws it — not the
+                child's avatar, which this used to show. Two photographs at
+                32px in a 168px card is most of the row spent on faces a
+                teacher already knows, and the sketch is explicit: the mark
+                says "birthday", the text says who.
+              */}
+              <span
+                aria-hidden="true"
+                className="grid size-9 shrink-0 place-items-center rounded-pill bg-peach text-peach-ink"
+              >
+                <Cake size={16} />
+              </span>
               <span className="min-w-0 flex-1 truncate text-body font-medium text-ink">
-                {fullName(child)}
+                {child.firstName}
               </span>
               {/*
                 The date, not "in 3 days": a relative phrase is re-read every
                 morning, and this list is scanned once when planning the month.
-
-                A tinted pill rather than a grey line — the sketch writes the
-                day beside each name as the point of the card, and this is the
-                one section on the dashboard that is meant to feel like good
-                news rather than a task.
+                Plain and tabular rather than a tinted pill — the cake beside
+                the name is already the card's colour.
               */}
-              <span className="shrink-0 rounded-pill bg-sun px-2 py-0.5 text-caption font-medium tabular-nums text-sun-ink">
+              <span className="shrink-0 text-body tabular-nums text-muted">
                 {formatDayMonth(child.dateOfBirth)}
               </span>
             </Link>
           </li>
         ))}
       </ul>
-    </TileShell>
+    </BoardCard>
   );
 }

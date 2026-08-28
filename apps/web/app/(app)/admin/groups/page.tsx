@@ -2,7 +2,19 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Archive, Pencil, Plus, RotateCcw, Trash2, UserMinus, UserPlus } from "lucide-react";
+import Link from "next/link";
+import {
+  Archive,
+  CalendarCheck,
+  ClipboardCheck,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Trash2,
+  UserMinus,
+  UserPlus,
+  UtensilsCrossed,
+} from "lucide-react";
 import { z } from "zod";
 import {
   adminUserSchema,
@@ -146,6 +158,50 @@ function GroupRow({ group }: { group: z.infer<typeof groupListItemSchema> }) {
       </span>
 
       <span className="flex basis-full flex-wrap items-center justify-end gap-2 sm:basis-auto">
+        {/*
+          ★ The group's three daily registers, added 2026-08-28 — and this row
+          is where they landed rather than a design choice made here.
+
+          `/groups/:id/attendance`, `/groups/:id/meals` and
+          `/groups/:id/assessment` have never had a top-level menu entry,
+          deliberately: none can start without a group, so a sidebar item would
+          open a screen whose first act is "which group?". They were reached
+          from the teacher dashboard's `GroupsSection`, which the client's
+          2026-08-28 redesign removed from that page.
+
+          A teacher gets them back in the sidebar, under "Бүлгийн бүртгэл",
+          resolved from the one group they are assigned (`app/(app)/layout.tsx`).
+          An **admin** cannot: `GET /groups` returns every group in the
+          kindergarten, so there is no single id to scope a menu entry to, and
+          naming one of several would tell them they run a group they oversee.
+          This list is the admin's own answer to "which group?", so the links
+          belong on its rows — which is exactly what `GroupsSection`'s
+          multi-group branch used to render.
+
+          `group-meals.test.tsx` warns about precisely this ("Someone tidying
+          that card must fail a test, not ship a feature nobody can open") but
+          renders `GroupsSection` in isolation, so it would have stayed green
+          while all three routes went dark for every administrator.
+        */}
+        <Button asChild variant="ghost" size="sm">
+          <Link href={`/groups/${group.id}/attendance`}>
+            <CalendarCheck size={16} />
+            Ирц
+          </Link>
+        </Button>
+        <Button asChild variant="ghost" size="sm">
+          <Link href={`/groups/${group.id}/meals`}>
+            <UtensilsCrossed size={16} />
+            Хоол
+          </Link>
+        </Button>
+        <Button asChild variant="ghost" size="sm">
+          <Link href={`/groups/${group.id}/assessment`}>
+            <ClipboardCheck size={16} />
+            Үнэлгээ
+          </Link>
+        </Button>
+
         <Button variant="secondary" size="sm" onClick={() => setManaging(true)}>
           <UserPlus size={16} />
           Багш

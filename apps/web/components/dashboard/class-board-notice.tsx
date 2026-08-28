@@ -1,14 +1,20 @@
+"use client";
+
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowRight, Eye, Megaphone } from "lucide-react";
-import type { TeacherDashboard } from "@kinder/contracts";
+import { notificationSchema, type TeacherDashboard } from "@kinder/contracts";
+import { useQuery } from "@tanstack/react-query";
+import { get } from "@/lib/api/browser";
+import { qk } from "@/lib/api/keys";
+import { MediaThumb } from "@/components/media/media-image";
 import { Badge } from "@/components/ui/badge";
-import { Card, SectionHeader } from "@/components/ui/card";
-import { IconChip } from "@/components/ui/icon-chip";
+import { BoardCard, BoardCardEmpty } from "./board-card";
 import { excerpt, formatDate } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 /**
- * Ангийн самбар — the latest notice, and whether it landed.
+ * Сүүлийн нийтлэл — the latest notice, and whether it landed.
  *
  * ★ The read count is the point of the widget.
  *
@@ -46,93 +52,155 @@ import { excerpt, formatDate } from "@/lib/format";
  * emptiest card on the screen the tallest.
  */
 export function ClassBoardNotice({ notice }: { notice: TeacherDashboard["boardNotice"] }) {
+  /*
+   * ★ One extra request, for the one thing `boardNotice` does not carry.
+   *
+   * `teacherDashboardSchema`'s projection is id, title, body, `publishedAt`,
+   * `isImportant` and `readCount` — no media. The client's sketch puts a large
+   * photograph on the right of this card, and the photographs exist: they are
+   * on `notificationSchema.media`, which `GET /notifications/:id` returns.
+   *
+   * So it is fetched rather than faked, and it costs less than it looks:
+   * `qk.notification(id)` is byte-identical to the key
+   * `/notifications/[notificationId]` registers, so opening the notice this
+   * card links to is a cache hit rather than a second round trip. `retry:
+   * false` and no error branch — a missing photograph falls back to the
+   * illustration below, which is not a reason to interrupt the dashboard.
+   */
+  const { data: full } = useQuery({
+    queryKey: qk.notification(notice?.id ?? ""),
+    queryFn: () => get(`/notifications/${notice!.id}`, notificationSchema),
+    enabled: Boolean(notice?.id),
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  const photo = full?.media[0] ?? null;
+
   return (
-    <section aria-labelledby="class-board-heading">
-      <SectionHeader
-        id="class-board-heading"
-        title="Ангийн самбар"
-        lede={notice ? "Хамгийн сүүлд нийтэлсэн зарлал" : undefined}
-        /*
-          `icon-notice.png` — the same drawing the parent's home page puts on
-          its notice tile, so one feature has one face on both sides of the
-          product. `IconChip` hides it from the accessibility tree; the heading
-          is the name.
-        */
-        icon={
-          <IconChip
-            icon={<Image src="/icons/icon-notice.png" alt="" width={48} height={48} />}
-            tone="sky"
-            size="lg"
-          />
-        }
-        action={
-          <Link
-            href="/notifications"
-            className="inline-flex min-h-[44px] items-center text-caption font-medium text-primary hover:underline"
-          >
-            Бүгдийг харах
-          </Link>
-        }
-      />
+    /*
+      ★ One card, titled inside it — no `SectionHeader` above, no icon chip, no
+      "Бүгдийг харах" beside the heading.
 
+      The sketch draws this as the screen's sixth white card: a small grey
+      "Сүүлийн нийтлэл" label, the post's title under it, the date, the picture,
+      and one row at the foot with the read count and an arrow. Everything the
+      old header carried is in that: the arrow *is* "go to the board", and a
+      second link three inches above it was two ways to the same place.
+    */
+    <BoardCard
+      title="Сүүлийн нийтлэл"
+      id="class-board-heading"
+      footer={
+        notice ? (
+          /*
+            ★ The read count is the point of the widget, and the arrow is the
+            way in — one row, as the sketch draws it.
+
+            A teacher who posts "ангийн хурал" wants to know it was seen, and
+            until this card existed the only way to find out was to open the
+            notice. Read as "N people have opened this": the eye is decorative
+            and the phrase carries it, because a bare number beside an icon is a
+            puzzle to anyone who cannot see the icon.
+
+            The arrow is a real link with a real accessible name — never a bare
+            "→", which a screen reader announces as "link, right arrow".
+          */
+          <div className="mt-3 flex items-center justify-between gap-2 border-t border-border-soft pt-3 text-caption text-muted">
+            <span className="inline-flex items-center gap-1.5">
+              <Eye size={14} aria-hidden="true" />
+              <span className="tabular-nums">{notice.readCount} хүн үзсэн</span>
+            </span>
+            <Link
+              href="/notifications"
+              aria-label="Бүх нийтлэлийг харах"
+              className="grid size-11 -my-3 place-items-center rounded-control text-primary transition-colors hover:bg-canvas"
+            >
+              <ArrowRight size={18} aria-hidden="true" />
+            </Link>
+          </div>
+        ) : (
+          <div className="mt-3 border-t border-border-soft pt-3">
+            <Link
+              href="/notifications/new"
+              className="inline-flex min-h-[44px] items-center gap-1.5 text-body font-medium text-primary hover:text-primary-strong"
+            >
+              Зарлал нийтлэх
+              <ArrowRight size={15} aria-hidden="true" />
+            </Link>
+          </div>
+        )
+      }
+    >
       {notice ? (
-        <Card pad="roomy">
-          <Link href={`/notifications/${notice.id}`} className="group flex flex-col gap-2.5">
-            {/*
-              ★ No icon chip beside the title any more.
+        <Link
+          href={`/notifications/${notice.id}`}
+          className="group flex flex-col gap-3 lg:flex-row lg:items-stretch lg:gap-6"
+        >
+          {/*
+            ★ Stacked on a phone, text beside the picture from `lg` up — the
+            desktop expansion the 2026-08-28 brief asked for, at 40 / 60 when
+            there is a photograph to give the larger share to.
 
-              The section header carries `icon-notice.png` about forty pixels
-              above this line, so a 32px lucide megaphone under it was the same
-              idea twice in two different visual languages — the mixing §14
-              warns about, inside one small component. The heading has the
-              face; the notice has the words.
-            */}
+            With no photograph the text takes the row and the panel drops to a
+            compact 200px square. Measured: at three fifths of a 1336px card the
+            16/9 fallback was 674 × 379px of tint around a 96px icon — the
+            emptiest element on the screen and the tallest card on the page, for
+            a post with nothing to show.
+          */}
+          <div className={cn("flex min-w-0 flex-col gap-1.5", photo ? "lg:w-2/5" : "lg:flex-1")}>
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="min-w-0 flex-1 truncate text-body font-semibold text-ink group-hover:underline md:text-lead">
+              <h3 className="min-w-0 flex-1 text-lead font-semibold leading-heading text-ink group-hover:underline">
                 {notice.title}
               </h3>
               {/* The label carries the state; the tint only reinforces it. */}
               {notice.isImportant ? <Badge tone="peach">Чухал</Badge> : null}
             </div>
 
-            <p className="whitespace-pre-wrap text-body text-muted">{excerpt(notice.body, 180)}</p>
+            <p className="text-caption tabular-nums text-muted">
+              {notice.publishedAt ? formatDate(notice.publishedAt) : "—"}
+            </p>
 
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border-soft pt-2.5 text-caption text-muted">
-              <span>{notice.publishedAt ? formatDate(notice.publishedAt) : "—"}</span>
-              {/*
-                Read as "N people have opened this". The icon is decorative —
-                the phrase carries it, because a bare number beside an eye is a
-                puzzle to anyone who cannot see the eye.
-
-                ★ A chip rather than a grey line: the read count is the one
-                piece of feedback this widget exists to deliver, and it was the
-                quietest text on the card.
-              */}
-              <span className="inline-flex items-center gap-1.5 rounded-pill bg-canvas px-2.5 py-1">
-                <Eye size={14} aria-hidden="true" />
-                <span className="tabular-nums">{notice.readCount} хүн үзсэн</span>
-              </span>
-            </div>
-          </Link>
-        </Card>
-      ) : (
-        <Card pad="roomy" className="flex flex-wrap items-center gap-3">
-          <IconChip icon={<Megaphone size={20} aria-hidden="true" />} tone="sky" size="md" />
-          <div className="min-w-0 flex-1">
-            <p className="text-body font-medium text-ink">Зарлал хараахан нийтлээгүй</p>
-            <p className="text-caption text-muted">
-              Ангийн самбарт бичсэн зарлал эцэг эхийн утсанд харагдана.
+            {/*
+              The excerpt is `lg`-only. On a phone the sketch shows a title, a
+              date and the picture — the body is what the post itself is for,
+              and three lines of it above a photograph is the card growing into
+              the feed it links to.
+            */}
+            <p className="hidden whitespace-pre-wrap text-body text-muted lg:block">
+              {excerpt(notice.body, 180)}
             </p>
           </div>
-          <Link
-            href="/notifications/new"
-            className="inline-flex min-h-[44px] shrink-0 items-center gap-1.5 text-body font-medium text-primary hover:text-primary-strong"
-          >
-            Зарлал нийтлэх
-            <ArrowRight size={15} aria-hidden="true" />
-          </Link>
-        </Card>
+
+          {photo ? (
+            <div className="lg:w-3/5">
+              <MediaThumb
+                mediaId={photo.id}
+                caption={photo.caption}
+                className="aspect-[16/9] w-full rounded-card"
+              />
+            </div>
+          ) : (
+            /*
+              No photograph: a tinted 16/9 frame on a phone, where the sketch
+              shows a picture and an empty gap would read as a failed image, and
+              the compact 200px square from `lg` — see the note above.
+            */
+            <div
+              aria-hidden="true"
+              className="grid aspect-[16/9] w-full place-items-center rounded-card bg-primary-soft lg:aspect-auto lg:w-[200px] lg:shrink-0 lg:p-6"
+            >
+              <Image src="/icons/icon-notice.png" alt="" width={88} height={88} />
+            </div>
+          )}
+        </Link>
+      ) : (
+        <BoardCardEmpty
+          icon={<Megaphone size={22} />}
+          title="Зарлал хараахан нийтлээгүй"
+          hint="Ангийн самбарт бичсэн зарлал эцэг эхийн утсанд харагдана."
+        />
       )}
-    </section>
+    </BoardCard>
   );
 }

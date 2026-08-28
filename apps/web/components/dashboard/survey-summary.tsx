@@ -2,26 +2,16 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import Image from "next/image";
 import { z } from "zod";
-import { surveySchema, surveyResultsSchema, SURVEY_PERIOD_LABEL } from "@kinder/contracts";
+import { ClipboardList } from "lucide-react";
+import { surveySchema, surveyResultsSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
-import { Card, SectionHeader } from "@/components/ui/card";
-import { IconChip } from "@/components/ui/icon-chip";
-import { BarRow } from "@/components/ui/chart/bar-row";
+import { Card } from "@/components/ui/card";
+import { BoardCard, BoardCardEmpty } from "./board-card";
+import { ColumnChart } from "@/components/ui/chart/columns";
 import { Skeleton } from "@/components/ui/states";
-import { formatDate } from "@/lib/format";
-
-/** The survey's face, shared with `/home`'s own survey tile. */
-const SURVEY_ART = (
-  <IconChip
-    icon={<Image src="/icons/icon-survey.png" alt="" width={48} height={48} />}
-    tone="teal"
-    size="lg"
-  />
-);
 
 const surveyListSchema = z.array(surveySchema);
 
@@ -67,186 +57,172 @@ export function SurveySummary() {
     enabled: Boolean(active?.id),
   });
 
-  if (listLoading) {
+  if (listLoading || (Boolean(active?.id) && resultsLoading)) return <SurveySkeleton />;
+
+  if (!active) {
     return (
-      <section aria-labelledby="survey-summary-heading">
-        <SectionHeader
-          id="survey-summary-heading"
-          title="Судалгаа"
-          lede="Идэвхтэй судалгаа"
-          icon={SURVEY_ART}
+      <BoardCard title="Судалгаа">
+        <BoardCardEmpty
+          icon={<ClipboardList size={22} />}
+          title="Идэвхтэй судалгаа алга"
+          hint="Судалгаа нийтэлснээр эцэг эхчүүд бөглөж эхэлнэ."
         />
-        <Card pad="roomy" className="flex flex-col gap-2">
-          <Skeleton className="h-4 w-48" />
-          <Skeleton className="h-2 w-full" />
-          <Skeleton className="h-2 w-full" />
-        </Card>
-      </section>
+      </BoardCard>
     );
   }
 
+  const columns = optionColumns(results?.questions[0]);
+
   return (
-    <section aria-labelledby="survey-summary-heading">
-      <SectionHeader
-        id="survey-summary-heading"
-        title="Судалгаа"
-        lede={active ? "Идэвхтэй судалгаа" : undefined}
-        icon={SURVEY_ART}
-        action={
-          <Link
-            href="/surveys"
-            className="text-body font-medium text-primary hover:text-primary-strong"
-          >
-            Бүгд →
-          </Link>
-        }
-      />
-
-      <Card pad="roomy">
-        {!active ? (
-          /*
-            ★ 64px, not the product's usual 96px empty-state mascot.
-
-            This card sits in the narrower half of a 7/5 row beside the class
-            board, and measured at 1440px the full-size illustration made the
-            empty survey ~290px tall against the board's ~150px — so the row
-            read as lopsided by accident rather than by weighting. The board is
-            meant to be the larger of the two; an empty state should not be
-            what overturns that.
-          */
-          /*
-            ★ `mascot-family`, not `mascot-teacher` — which this used to draw.
-
-            The hero at the top of the same screen now carries the teacher
-            mascot, and the same drawing twice on one page reads as a template
-            rather than as illustration. The family is also the better subject:
-            a survey is the kindergarten asking parents something, and this
-            state is offering to start that.
-          */
-          <div className="flex flex-col items-center gap-1.5 py-1 text-center">
-            <Image src="/background/mascot-family.webp" alt="" width={64} height={64} />
-            <p className="text-body font-medium text-ink">Идэвхтэй судалгаа алга</p>
-            <p className="text-caption text-muted">
-              Судалгаа үүсгээд нийтэлснээр эцэг эхчүүд бөглөж эхэлнэ.
-            </p>
-            <Link
-              href="/surveys"
-              className="mt-1 text-body font-medium text-primary hover:text-primary-strong"
-            >
-              Судалгаа үүсгэх →
-            </Link>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-              <div className="min-w-0">
-                <Link
-                  href={`/surveys/${active.id}`}
-                  className="text-lead font-semibold leading-heading text-ink hover:text-primary"
-                >
-                  {active.title}
-                </Link>
-                <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-caption text-muted">
-                  {active.period ? (
-                    <span className="rounded-pill bg-primary-soft px-2 py-0.5 font-medium text-primary">
-                      {SURVEY_PERIOD_LABEL[active.period]}
-                    </span>
-                  ) : null}
-                  {active.publishedAt ? (
-                    <span>{formatDate(active.publishedAt)}-нд нийтэлсэн</span>
-                  ) : null}
-                </p>
-              </div>
-
-              {/*
-                The headline number the sketch calls for. It waits for its own
-                query rather than rendering a zero that would later change —
-                a count that corrects itself upward reads as data loss.
-              */}
-              {/*
-                ★ A `div`, not a `p`. `Skeleton` renders a `<div>`, and a
-                `<div>` inside a `<p>` is invalid HTML: the browser closes the
-                paragraph early, so the server's tree and the client's differ
-                and React reports a hydration error. Found in the browser
-                console, not by any test — jsdom parses the nesting happily.
-              */}
-              <div className="shrink-0 text-right">
-                {resultsLoading ? (
-                  <Skeleton className="ml-auto h-7 w-12" />
-                ) : (
-                  <span className="block font-semibold tabular-nums leading-heading text-ink text-display">
-                    {results?.totalResponses ?? 0}
-                  </span>
-                )}
-                <span className="block text-caption text-muted">хариулт</span>
-              </div>
-            </div>
-
-            {results && results.questions.length > 0 ? (
-              <QuestionBars questions={results.questions} total={results.totalResponses} />
-            ) : !resultsLoading ? (
-              <p className="border-t border-border-soft pt-2.5 text-caption text-muted">
-                Хараахан хэн ч бөглөөгүй байна.
-              </p>
-            ) : null}
-          </div>
-        )}
-      </Card>
-    </section>
+    <BoardCard
+      title="Судалгаа"
+      /*
+        "23 хүн", where the sketch puts it. `totalResponses` is how many people
+        answered the survey — not how many answered the question the chart
+        draws, which is a different and less useful number.
+      */
+      figure={`${results?.totalResponses ?? 0} хүн`}
+      footer={
+        <Link
+          href={`/surveys/${active.id}`}
+          className="line-clamp-1 text-caption text-muted hover:text-primary"
+        >
+          {active.title}
+        </Link>
+      }
+    >
+      {columns ? (
+        /*
+          Turned labels only when they are sentences. A rating scale is five
+          single digits and a Тийм/Үгүй pair is two short words — both sit flat,
+          and turning them would cost 84px of card height to no purpose.
+        */
+        <ColumnChart
+          columns={columns}
+          tilted={columns.some((column) => column.label.length > 6)}
+          emptyLabel="хариулаагүй"
+          height={120}
+        />
+      ) : (
+        /*
+          A published survey nobody has answered, or a first question that has
+          no fixed choices to count — a free-text or matrix question, where
+          `counts` is null and a bar chart would be inventing categories. Both
+          are the same thing to a reader: there is nothing to draw yet.
+        */
+        <BoardCardEmpty
+          icon={<ClipboardList size={22} />}
+          title={
+            (results?.totalResponses ?? 0) === 0 ? "Хараахан хэн ч бөглөөгүй" : "Хариулт бэлэн"
+          }
+          hint={
+            (results?.totalResponses ?? 0) === 0
+              ? "Эцэг эхчүүд бөглөж эхэлмэгц энд харагдана."
+              : "Дэлгэрэнгүйг судалгааны хуудаснаас."
+          }
+        />
+      )}
+    </BoardCard>
   );
 }
 
 /**
- * One bar per question — how many of the total answered it.
+ * The first question's answers, as chart columns — the sketch's own bars.
  *
- * Capped at four rows. A twenty-question survey would turn a dashboard tile
- * into a scrolling report; the survey's own screen is where that belongs, and
- * the link above goes there.
+ * ★ Three question types can be charted and they name their buckets three
+ * different ways, which is why this is a function rather than a loop over
+ * `counts`.
  *
- * ★ `BarRow`, not the markup this file used to inline — the same move
- * `ObservationMix` made, and for the same reason: track height, radius and the
- * transition become one decision for every chart in the product instead of one
- * per screen.
+ * `surveys.service.ts` builds `counts` per type:
  *
- * ★★ It carries `role="img"` with a sentence, where this used to declare
- * `role="progressbar"` — and the change is a correction, not a side effect.
+ *   CHECKBOX  keyed by the choice text; `question.options` is the choice list
+ *   RATING    keyed by the stringified number — "1".."5"; no `options`
+ *   YES_NO    keyed by "true" / "false"; no `options`
+ *   TEXT      `counts: null` — free prose, nothing to count
  *
- * A progressbar is announced as a number out of a hundred, which asserts that
- * somebody set a target of "everyone answers every question". Nothing in
- * `surveyQuestionResultSchema` sets one. `ObservationMix` refused exactly this
- * framing in its visible text and then shipped it in its ARIA; this file was
- * doing the same thing. "Асуулт: 12 хариулт" is the fact.
+ * A CHECKBOX walks `options` rather than `counts`, because `counts` is a
+ * `Record` whose key order is whatever the server serialised and whose absent
+ * key is an unchosen answer. Iterating it would reorder the scale between
+ * renders and silently drop the choice nobody picked — and a satisfaction scale
+ * missing its bottom rung reads far better than it is. The other two walk their
+ * own fixed scale, for the same reason.
+ *
+ * ★★ The labels are the scale's, never a reading of it.
+ *
+ * The client's sketch labels the five rating columns "Маш сэтгэл ханамжтай"
+ * down to "Маш хангалтгүй". Those words are not in this product: a RATING
+ * question stores 1-5 and the screen a parent answers on
+ * (`/children/:id/surveys/:id`) shows exactly that, five numbered buttons. The
+ * prompt above them is free text and can ask anything, so naming 5 "very
+ * satisfied" would be right for a satisfaction poll and wrong for "how many
+ * days a week does your child read?". The columns carry the scale the question
+ * was actually answered on. Naming a rating scale is a product decision that
+ * belongs in the survey builder, beside the prompt, not guessed at here.
+ *
+ * ★★★ Percentages of the answered total, not raw counts. Five bars at 1, 2, 0,
+ * 1, 0 are unreadable at this height; the same five as shares are the shape the
+ * sketch draws. Returns `null` when there is nothing honest to draw, and the
+ * caller renders a state for that.
  */
-function QuestionBars({
-  questions,
-  total,
-}: {
-  questions: z.infer<typeof surveyResultsSchema>["questions"];
-  total: number;
-}) {
-  const shown = questions.slice(0, 4);
+function optionColumns(
+  first: z.infer<typeof surveyResultsSchema>["questions"][number] | undefined,
+) {
+  if (!first) return null;
 
+  const counts = first.counts;
+  if (!counts) return null;
+
+  const scale = bucketsFor(first.question);
+  if (!scale) return null;
+
+  const answered = scale.reduce((sum, bucket) => sum + (counts[bucket.key] ?? 0), 0);
+  if (answered === 0) return null;
+
+  return scale.map((bucket) => ({
+    label: bucket.label,
+    value: Math.round(((counts[bucket.key] ?? 0) / answered) * 100),
+    accessibleLabel: bucket.label,
+  }));
+}
+
+/**
+ * The buckets a question's answers fall into, in the question's own order.
+ *
+ * `null` for anything with no fixed scale — TEXT, and a MATRIX, whose `options`
+ * is rows *and* columns rather than one axis. `Array.isArray` is what narrows
+ * that union; without it a matrix renders `[object Object]`.
+ */
+function bucketsFor(
+  question: z.infer<typeof surveyResultsSchema>["questions"][number]["question"],
+): { key: string; label: string }[] | null {
+  if (question.type === "RATING") {
+    return [1, 2, 3, 4, 5].map((n) => ({ key: String(n), label: String(n) }));
+  }
+
+  if (question.type === "YES_NO") {
+    return [
+      { key: "true", label: "Тийм" },
+      { key: "false", label: "Үгүй" },
+    ];
+  }
+
+  if (question.type === "CHECKBOX" && Array.isArray(question.options)) {
+    return question.options.map((option) => ({ key: option, label: option }));
+  }
+
+  return null;
+}
+
+/** The card's footprint with nothing in it yet — title row, plot, footer. */
+function SurveySkeleton() {
   return (
-    <div className="flex flex-col gap-2.5 border-t border-border-soft pt-3">
-      {shown.map((row) => {
-        const answered = row.responseCount;
-        const share = total === 0 ? 0 : Math.round((answered / total) * 100);
-
-        return (
-          <BarRow
-            key={row.question.id}
-            label={row.question.prompt}
-            percent={share}
-            tone="teal"
-            value={answered}
-            accessibleLabel={`${row.question.prompt}: ${answered} хариулт`}
-          />
-        );
-      })}
-
-      {questions.length > shown.length ? (
-        <p className="text-caption text-muted">+{questions.length - shown.length} асуулт</p>
-      ) : null}
-    </div>
+    <Card pad="roomy" className="flex h-full flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <Skeleton className="h-4 w-20" />
+        <Skeleton className="h-4 w-14" />
+      </div>
+      <Skeleton className="h-[144px] w-full rounded-control" />
+      <Skeleton className="mt-auto h-3 w-40" />
+    </Card>
   );
 }
