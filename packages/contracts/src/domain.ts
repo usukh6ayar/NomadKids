@@ -1677,3 +1677,62 @@ export const rosterSummarySchema = z.object({
   girls: z.number(),
 });
 export type RosterSummary = z.infer<typeof rosterSummarySchema>;
+
+// ── Chat ─────────────────────────────────────────────────────────────────────
+
+/**
+ * A group message board — RFP Phase IV, in scope from 2026-08-29 (CLAUDE.md §7).
+ *
+ * ★ **No AI.** The client stated it three times and it is worth restating where
+ * the types live: there is no assistant, no generated reply, no model call.
+ * These are messages people typed, in rooms they already belong to.
+ */
+export const chatRoomKindSchema = z.enum(["GROUP", "STAFF"]);
+export type ChatRoomKind = z.infer<typeof chatRoomKindSchema>;
+
+/**
+ * One room in the actor's list.
+ *
+ * `key` is the room's identity — `group:<uuid>` or `staff:<kindergartenId>`.
+ * It is opaque to the client and authorizes nothing: the API resolves it
+ * against the caller's own rooms on every request (`ChatAccessService`).
+ */
+export const chatRoomSchema = z.object({
+  key: z.string(),
+  kind: chatRoomKindSchema,
+  kindergartenId: uuidSchema,
+  groupId: uuidSchema.nullable(),
+  name: z.string(),
+  /** How many people can see this room — the drawing's "24 гишүүн". */
+  memberCount: z.number(),
+  /** Newest message, for the list's preview line. Null in an empty room. */
+  lastMessage: z
+    .object({
+      id: uuidSchema,
+      body: z.string(),
+      createdAt: z.string(),
+      author: personRefSchema.nullish(),
+    })
+    .nullable()
+    .default(null),
+  /** Messages since this reader's `lastReadAt`. */
+  unreadCount: z.number().default(0),
+});
+export type ChatRoom = z.infer<typeof chatRoomSchema>;
+
+export const chatMessageSchema = z.object({
+  id: uuidSchema,
+  roomKey: z.string(),
+  body: z.string(),
+  createdAt: z.string(),
+  author: personRefSchema.nullish(),
+  /** Whether the signed-in reader wrote it — the client aligns their own right. */
+  mine: z.boolean().default(false),
+});
+export type ChatMessage = z.infer<typeof chatMessageSchema>;
+
+/** Bodies are bounded: a chat message is not a document. */
+export const sendChatMessageSchema = z.object({
+  body: z.string().trim().min(1, "Мессеж хоосон байна").max(2000),
+});
+export type SendChatMessageDto = z.infer<typeof sendChatMessageSchema>;

@@ -280,6 +280,8 @@ model User {
 
   @@index([deletedAt])
   @@map("users")
+  chatMessages         ChatMessage[] @relation("ChatAuthor")
+  chatReads            ChatRead[]    @relation("ChatReader")
 }
 
 /// ★ The only source of authority in the system.
@@ -452,6 +454,8 @@ model Kindergarten {
 
   @@index([deletedAt])
   @@map("kindergartens")
+  chatMessages   ChatMessage[]
+  chatReads      ChatRead[]
 }
 
 model SchoolYear {
@@ -504,6 +508,7 @@ model Group {
   schoolYear          SchoolYear           @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
   teachers            GroupTeacher[]
   enrollments         Enrollment[]
+  chatMessages        ChatMessage[]
   notificationTargets NotificationTarget[]
 
   @@unique([schoolYearId, name])
@@ -2411,4 +2416,84 @@ model AuditLog {
   @@index([kindergartenId, createdAt(sort: Desc)])
   @@index([action, createdAt(sort: Desc)])
   @@map("audit_logs")
+}
+
+// ── Chat ─────────────────────────────────────────────────────────────────────
+
+/// A group message board — RFP Phase IV, pulled into scope 2026-08-29 (see
+/// CLAUDE.md §7). **There is no AI anywhere in this feature.**
+///
+/// ★ There is no `ChatRoom` table, and no `ChatMember` table, and both
+/// absences are the design rather than a shortcut.
+///
+/// A room is not a thing somebody creates — it is a group that already exists,
+/// or the kindergarten's own staff room. Giving it a row would mean creating
+/// one for every group ever made (including the ones made before this shipped),
+/// keeping its name in step with the group's, and deciding what happens to it
+/// when the group is archived. `roomKey` identifies a room by what it already
+/// is instead: `group:<uuid>` or `staff:<kindergartenId>`.
+///
+/// Membership follows from the same facts authorization already reads —
+/// `Membership`, `GroupTeacher`, `Enrollment`, `Guardianship`. A `ChatMember`
+/// row would be a fourth copy of "who belongs where", and the day a teacher is
+/// unassigned from a group it would be the copy that still said yes. CLAUDE.md
+/// §1.3 makes the same argument about roles in a token.
+enum ChatRoomKind {
+  /// One kindergarten group: its assigned teachers and its families.
+  GROUP
+  /// Every teacher and admin of one kindergarten. No guardians.
+  STAFF
+}
+
+model ChatMessage {
+  id             String       @id @default(uuid()) @db.Uuid
+  kindergartenId String       @db.Uuid
+  kind           ChatRoomKind
+  /// The group whose room this is. NULL for a STAFF room.
+  groupId        String?      @db.Uuid
+  /// `group:<uuid>` or `staff:<kindergartenId>` — the room, canonically.
+  /// Denormalised so a room's history is one indexed lookup rather than a
+  /// three-way OR over nullable columns.
+  roomKey        String
+  authorId       String       @db.Uuid
+  body           String
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  group        Group?       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  author       User         @relation("ChatAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  /// The only access pattern: one room, newest first, paginated (§3.4).
+  @@index([roomKey, createdAt(sort: Desc)])
+  @@index([kindergartenId])
+  @@map("chat_messages")
+}
+
+/// How far one person has read in one room.
+///
+/// ★ A timestamp, not a join table of message ids. Unread is
+/// `count(messages where createdAt > lastReadAt)`, which is one indexed count
+/// per room rather than a row per person per message — the difference between
+/// a table that grows with members and one that grows with members × messages.
+model ChatRead {
+  id             String   @id @default(uuid()) @db.Uuid
+  kindergartenId String   @db.Uuid
+  userId         String   @db.Uuid
+  roomKey        String
+  lastReadAt     DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  user         User         @relation("ChatReader", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// `roomKey` is never null, which is what lets this be a real constraint —
+  /// a `(userId, groupId)` pair could not be, because Postgres treats NULLs as
+  /// distinct and every staff room row would slip past it.
+  @@unique([userId, roomKey])
+  @@map("chat_reads")
 }

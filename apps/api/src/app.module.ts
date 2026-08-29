@@ -22,6 +22,7 @@ import { MailModule } from "./mail/mail.module";
 import { MealsModule } from "./meals/meals.module";
 import { MediaModule } from "./media/media.module";
 import { ObservationsModule } from "./observations/observations.module";
+import { ChatModule } from "./chat/chat.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { PlatformModule } from "./platform/platform.module";
 import { PortfolioModule } from "./portfolio/portfolio.module";
@@ -72,6 +73,7 @@ import { UsersModule } from "./users/users.module";
     EsisModule,
     MealsModule,
     CatalogModule,
+    ChatModule,
     NotificationsModule,
     DashboardModule,
     ReportsModule,
