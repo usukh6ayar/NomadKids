@@ -230,7 +230,7 @@ const TONE_ICON: Record<ToastTone, typeof CheckCircle2> = {
  * ★★★ It clears the bottom navigation.
  *
  * `app-shell.tsx` fixes a nav bar to the bottom edge below `lg`, so a toast at
- * `bottom-4` would sit on top of it. 4.5rem clears the 44px rows plus their
+ * `bottom-4` would sit on top of it. `--size-bottom-nav` clears the rows plus their
  * padding, and the safe-area inset keeps both above the iPhone home indicator.
  */
 function ToastViewport({
@@ -247,7 +247,7 @@ function ToastViewport({
     <div
       className={cn(
         "pointer-events-none fixed inset-x-0 z-50 flex flex-col items-center gap-2 px-4",
-        "bottom-[calc(4.5rem+env(safe-area-inset-bottom))] lg:bottom-4 lg:items-end lg:px-6",
+        "bottom-[calc(var(--size-bottom-nav)+env(safe-area-inset-bottom))] lg:bottom-4 lg:items-end lg:px-6",
       )}
     >
       {/* Assertive: a failure interrupts. */}

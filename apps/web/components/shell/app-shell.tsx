@@ -18,6 +18,7 @@ import { formatRelative, fullName, initials } from "@/lib/format";
 import { BRAND } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
+import { ChatWidget } from "@/components/chat/chat-widget";
 
 /** The bell panel reads five rows; the feed reads fifteen and paginates. */
 const bellListSchema = paginated(notificationSchema);
@@ -637,6 +638,14 @@ export function AppShell({
       </div>
 
       <BottomBar nav={bottomNav} hideOnDesktop={desktopSidebar} />
+
+      {/*
+        ★ Mounted here, so it is on every authenticated screen and on none of
+        the unauthenticated ones — `AuthShell` wraps login and the invitation
+        pages and never renders this. One instance for the app, which is what
+        keeps the panel's open state from resetting on every navigation.
+      */}
+      <ChatWidget />
 
       <MobileMenuDrawer
         open={menuOpen}

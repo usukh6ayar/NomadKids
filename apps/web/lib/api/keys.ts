@@ -114,6 +114,15 @@ export const qk = {
   notification: (id: string) => ["notifications", "detail", id] as const,
   unreadCount: () => ["notifications", "unread-count"] as const,
 
+  /*
+   * Chat. Its own namespace rather than hanging off `notifications`: the two
+   * carry different unread counts and invalidating one must not clear the
+   * other's cache.
+   */
+  chatRooms: () => ["chat", "rooms"] as const,
+  chatMessages: (roomKey: string) => ["chat", "messages", roomKey] as const,
+  chatUnread: () => ["chat", "unread-count"] as const,
+
   childMedia: (childId: string) => ["child", childId, "media"] as const,
   childReports: (childId: string) => ["child", childId, "reports"] as const,
   report: (jobId: string) => ["report", jobId] as const,

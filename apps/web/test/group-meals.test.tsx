@@ -816,6 +816,8 @@ describe("хүрэх зам", () => {
  * three that keep a roster of four 44px controls usable on a 390px phone.
  */
 describe("нарийвчилсан байрлал", () => {
+  const GLOBALS_CSS = readFileSync(join(__dirname, "..", "app", "globals.css"), "utf8");
+
   const PAGE = readFileSync(
     join(__dirname, "..", "app", "(app)", "groups", "[groupId]", "meals", "page.tsx"),
     "utf8",
@@ -841,7 +843,23 @@ describe("нарийвчилсан байрлал", () => {
     expect((PAGE.match(/min-h-\[44px\]/g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
 
+  /**
+   * ★ The literal became a token on 2026-08-29, and the reason is the point.
+   *
+   * This asserted `bottom-[76px]`, and 76px was a guess at the height of the
+   * phone's bottom bar. Three other surfaces guessed it too — the toast
+   * viewport and the assessment save bar at `4.5rem`, the floating chat button
+   * at the same — and every one of them was wrong the moment the bar grew to
+   * 79px, which happened when the tabs went to `min-h-[60px]` to fit "Явцын
+   * үнэлгээ" on two lines. Measured in a browser: the chat button sat 7px
+   * *under* the navigation.
+   *
+   * Pinning the token rather than the number is what makes the next change to
+   * the bar's height one edit instead of four — and `globals.css` is where the
+   * measurement is written down.
+   */
   it("floats the save bar clear of the mobile navigation", () => {
-    expect(PAGE).toMatch(/sticky bottom-\[76px\] z-10 lg:bottom-4/);
+    expect(PAGE).toMatch(/sticky bottom-\[var\(--size-bottom-nav\)\] z-10 lg:bottom-4/);
+    expect(GLOBALS_CSS).toMatch(/--size-bottom-nav:\s*5rem/);
   });
 });

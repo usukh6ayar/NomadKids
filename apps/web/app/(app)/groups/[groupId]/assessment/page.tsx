@@ -289,7 +289,7 @@ function GroupAssessment() {
             from wherever the teacher just tapped.
           */}
           {pendingCount > 0 ? (
-            <div className="sticky bottom-[76px] z-10 lg:bottom-4">
+            <div className="sticky bottom-[var(--size-bottom-nav)] z-10 lg:bottom-4">
               <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 shadow-lg">
                 <p className="text-body text-ink" aria-live="polite">
                   {pendingCount} хүүхдийн үнэлгээ хадгалагдаагүй байна

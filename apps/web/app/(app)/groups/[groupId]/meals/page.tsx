@@ -270,10 +270,11 @@ function GroupMeals() {
             A sticky save bar, the same place the assessment column puts one:
             on a phone the roster is longer than the viewport, so a button at
             the foot of the page is a scroll away from the row just tapped.
-            `bottom-[76px]` clears the mobile navigation.
+            `--size-bottom-nav` clears the mobile navigation — see `globals.css`,
+            which records what it is measured from and why a literal went stale.
           */}
           {isDirty ? (
-            <div className="sticky bottom-[76px] z-10 lg:bottom-4">
+            <div className="sticky bottom-[var(--size-bottom-nav)] z-10 lg:bottom-4">
               <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 shadow-lg">
                 <p className="min-w-0 text-body text-ink" aria-live="polite">
                   {pendingCount} хүүхдийн бүртгэл хадгалагдаагүй байна
