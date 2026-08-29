@@ -385,6 +385,7 @@ function CreateYearDialog({
   onClose: () => void;
   hasAny: boolean;
 }) {
+  const toast = useToast();
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [startsOn, setStartsOn] = useState("");
@@ -399,9 +400,11 @@ function CreateYearDialog({
         body: { name, startsOn, endsOn, isCurrent },
       }),
     onSuccess: () => {
+      toast.success("Хичээлийн жил үүслээ.");
       void queryClient.invalidateQueries({ queryKey: YEARS_KEY });
       onClose();
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   const errors = fieldErrors(create.error);

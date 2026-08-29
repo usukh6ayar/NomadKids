@@ -397,11 +397,16 @@ function InviteUserDialog({
  * so a mis-click on a user with two memberships is not silently the wrong one.
  */
 function RevokeMembershipButton({ membershipId, label }: { membershipId: string; label: string }) {
+  const toast = useToast();
   const queryClient = useQueryClient();
 
   const revoke = useMutation({
     mutationFn: () => mutate(`/memberships/${membershipId}`, z.unknown(), { method: "DELETE" }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin", "users"] }),
+    onSuccess: () => {
+      toast.success("Эрхийг хураалаа.");
+      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   return (

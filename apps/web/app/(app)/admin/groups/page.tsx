@@ -503,6 +503,7 @@ function ManageTeachersDialog({
   groupName: string;
   onClose: () => void;
 }) {
+  const toast = useToast();
   const queryClient = useQueryClient();
   const { primaryKindergartenId } = useSession();
   const [membershipId, setMembershipId] = useState("");
@@ -534,17 +535,21 @@ function ManageTeachersDialog({
         body: { membershipId, role },
       }),
     onSuccess: () => {
+      toast.success("Багш хуваарилагдлаа.");
       setMembershipId("");
       refresh();
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => mutate(`/group-teachers/${id}`, z.unknown(), { method: "DELETE" }),
     onSuccess: () => {
+      toast.success("Багшийг хаслаа.");
       setRemovingId(null);
       refresh();
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   // Only assignments that have not ended — `endedOn` is how the API retires one.
@@ -710,6 +715,7 @@ function CreateGroupDialog({
   kindergartenId: string;
   onClose: () => void;
 }) {
+  const toast = useToast();
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [ageBand, setAgeBand] = useState<string>("JUNIOR");
@@ -731,9 +737,11 @@ function CreateGroupDialog({
         body: { name, ageBand, schoolYearId: selectedYear },
       }),
     onSuccess: () => {
+      toast.success("Бүлэг үүслээ.");
       void queryClient.invalidateQueries({ queryKey: ["admin", "groups"] });
       onClose();
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   const errors = fieldErrors(create.error);

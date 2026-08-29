@@ -14,6 +14,7 @@ import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
@@ -315,15 +316,18 @@ function DeactivateButton({
   itemPath: string;
   queryKey: readonly unknown[];
 }) {
+  const toast = useToast();
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
 
   const deactivate = useMutation({
     mutationFn: () => mutate(`${itemPath}/${id}`, z.unknown(), { method: "DELETE" }),
     onSuccess: () => {
+      toast.success("Идэвхгүй болголоо.");
       setConfirming(false);
       void queryClient.invalidateQueries({ queryKey });
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   if (!confirming) {
@@ -367,6 +371,7 @@ function ConfigForm({
   initial?: Record<string, unknown>;
   onDone: () => void;
 }) {
+  const toast = useToast();
   const queryClient = useQueryClient();
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(
@@ -387,9 +392,11 @@ function ConfigForm({
       return mutate(path, z.unknown(), { method, body });
     },
     onSuccess: () => {
+      toast.success("Тохиргоо хадгалагдлаа.");
       void queryClient.invalidateQueries({ queryKey });
       onDone();
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   const errors = fieldErrors(save.error);

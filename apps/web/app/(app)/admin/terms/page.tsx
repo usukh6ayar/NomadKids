@@ -11,6 +11,7 @@ import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { RowList } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
@@ -155,6 +156,7 @@ function CreateTermDialog({
   nextNumber: number;
   onClose: () => void;
 }) {
+  const toast = useToast();
   const queryClient = useQueryClient();
   const [schoolYearId, setSchoolYearId] = useState(defaultYearId);
   const [number, setNumber] = useState(String(nextNumber));
@@ -169,11 +171,13 @@ function CreateTermDialog({
         body: { schoolYearId, number: Number(number), name: name.trim(), startsOn, endsOn },
       }),
     onSuccess: () => {
+      toast.success("Улирал үүслээ.");
       void queryClient.invalidateQueries({ queryKey: ["admin", "terms"] });
       // The admin dashboard prints the current term in its header.
       void queryClient.invalidateQueries({ queryKey: qk.dashboard.admin() });
       onClose();
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   const errors = fieldErrors(create.error);
@@ -314,6 +318,7 @@ function EditTermDialog({
   term: z.infer<typeof termSchema>;
   onClose: () => void;
 }) {
+  const toast = useToast();
   const queryClient = useQueryClient();
   const [name, setName] = useState(term.name);
   const [startsOn, setStartsOn] = useState((term.startsOn ?? "").slice(0, 10));
@@ -326,10 +331,12 @@ function EditTermDialog({
         body: { name: name.trim(), startsOn, endsOn },
       }),
     onSuccess: () => {
+      toast.success("Улирал хадгалагдлаа.");
       void queryClient.invalidateQueries({ queryKey: ["admin", "terms"] });
       void queryClient.invalidateQueries({ queryKey: qk.dashboard.admin() });
       onClose();
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   const errors = fieldErrors(save.error);

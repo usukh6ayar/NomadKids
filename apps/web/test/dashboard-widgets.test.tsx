@@ -583,16 +583,20 @@ describe("хураангуй хайрцгууд", () => {
    * destination is reference, not a task.
    */
   /**
-   * ★ Rewritten 2026-08-28: this asserted a filled "Ирц бүртгэх" button in the
-   * card's footer, and the card has no footer any more.
+   * ★ Reversed twice in two days, and the second reversal is the client's.
    *
-   * The client's dashboard is six white cards with no actions on them, so the
-   * register link left this component along with its illustration and its
-   * wash. It did not become unreachable — `app/(app)/layout.tsx` now carries
-   * "Бүлгийн бүртгэл" in the sidebar for exactly that reason, and the test
-   * below is what stops the link being dropped rather than moved.
+   * The card carried a filled "Ирц бүртгэх" button. The 2026-08-28 redesign
+   * took it off — six white cards with no actions on them — and this test was
+   * rewritten to assert the absence, with the route kept reachable from the
+   * sidebar's "Бүлгийн бүртгэл".
+   *
+   * On 2026-08-29 the client asked for it back, and the state that makes the
+   * case is the one asserted here: the card reads "Бүртгээгүй байна · N хүүхэд
+   * бүртгэхийг хүлээж байна", which names a task and then offered no way to do
+   * it. The sidebar entry stays; a menu three sections down is not the same as
+   * a button on the sentence that asks for the work.
    */
-  it("carries no action of its own, since the sidebar now holds the register", async () => {
+  it("offers the register while nothing has been marked", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
       {
@@ -605,7 +609,10 @@ describe("хураангуй хайрцгууд", () => {
     renderWithProviders(<AttendanceToday />);
 
     await screen.findByText("Бүртгээгүй байна");
-    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getByRole("link", { name: /Ирц бүртгэх/ })).toHaveAttribute(
+      "href",
+      `/groups/${GROUP.id}/attendance`,
+    );
   });
 });
 

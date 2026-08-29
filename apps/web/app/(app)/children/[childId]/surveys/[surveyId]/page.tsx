@@ -10,6 +10,7 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { PageHeader } from "@/components/shell/app-shell";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { Card } from "@/components/ui/card";
 import { Checkbox, Field, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
@@ -19,6 +20,7 @@ const activeSurveysSchema = z.array(surveySchema);
 
 /** A guardian answers one CHILD-scope survey. */
 export default function SurveyResponsePage() {
+  const toast = useToast();
   const params = useParams<{ childId: string; surveyId: string }>();
   const { childId, surveyId } = params;
   const router = useRouter();
@@ -45,9 +47,11 @@ export default function SurveyResponsePage() {
         },
       }),
     onSuccess: () => {
+      toast.success("Саналыг хүлээж авлаа. Баярлалаа.");
       void queryClient.invalidateQueries({ queryKey: qk.childSurveys(childId) });
       router.replace(`/children/${childId}/general`);
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   if (active.isLoading) return <LoadingState rows={3} />;

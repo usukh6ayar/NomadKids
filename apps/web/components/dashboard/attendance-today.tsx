@@ -1,11 +1,13 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CloudOff, Users } from "lucide-react";
+import { ArrowRight, ClipboardCheck, CloudOff, Users } from "lucide-react";
+import Link from "next/link";
 import { groupAttendanceRowSchema } from "@kinder/contracts";
 import { z } from "zod";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/states";
 import { BoardCard, BoardCardEmpty } from "./board-card";
@@ -131,7 +133,41 @@ export function AttendanceToday() {
   const nothingMarked = marked === 0;
 
   return (
-    <BoardCard title="Өнөөдрийн ирц">
+    <BoardCard
+      title="Өнөөдрийн ирц"
+      /*
+        ★ The way into the register, back on the card — 2026-08-29.
+
+        The link came off when this became a plain `BoardCard`, and the state
+        that most needs it is the one where the card says "Бүртгээгүй байна · 5
+        хүүхэд бүртгэхийг хүлээж байна" — a sentence that names a task and then
+        offers no way to do it. It is the most useful control on the screen at
+        8am and it was a dead end.
+
+        Filled while the register is empty, quiet once it is done: marking the
+        register is the one thing this card exists to prompt, and after it is
+        filled the same destination is reference rather than a task competing
+        with the rest of the dashboard.
+      */
+      footer={
+        nothingMarked ? (
+          <Button asChild size="sm" className="w-full">
+            <Link href={`/groups/${group.id}/attendance`}>
+              <ClipboardCheck size={16} aria-hidden="true" />
+              Ирц бүртгэх
+            </Link>
+          </Button>
+        ) : (
+          <Link
+            href={`/groups/${group.id}/attendance`}
+            className="inline-flex min-h-[44px] items-center gap-1.5 text-body font-medium text-primary hover:text-primary-strong"
+          >
+            Ирцийн бүртгэл
+            <ArrowRight size={15} aria-hidden="true" />
+          </Link>
+        )
+      }
+    >
       {/*
         ★ Ring, then the fraction — the sketch's own arrangement, and the
         reason the card carries no wash or chip any more. See `board-card.tsx`.

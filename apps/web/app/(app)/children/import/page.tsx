@@ -13,6 +13,7 @@ import { useSession } from "@/lib/auth/session";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { EmptyState, FormError, LoadingState } from "@/components/ui/states";
 
@@ -54,6 +55,7 @@ export default function ImportPage() {
 }
 
 function ImportChildren() {
+  const toast = useToast();
   const router = useRouter();
   const { primaryKindergartenId } = useSession();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -73,10 +75,12 @@ function ImportChildren() {
       );
     },
     onSuccess: (result) => {
+      toast.success("Импорт дууслаа.");
       setPreview(result);
       // A completed import leaves the roster stale, so go and look at it.
       if (!result.dryRun) router.push("/children");
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   function choose(list: FileList | null) {

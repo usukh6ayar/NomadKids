@@ -13,6 +13,7 @@ import { useSession } from "@/lib/auth/session";
 import { useDebounced } from "@/lib/use-debounced";
 import { formatDate, formatFileSize } from "@/lib/format";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { Card, RowList, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
@@ -228,6 +229,7 @@ function DocumentRow({
 }
 
 function PublishForm({ kindergartenId, onDone }: { kindergartenId: string; onDone: () => void }) {
+  const toast = useToast();
   const queryClient = useQueryClient();
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
@@ -250,9 +252,11 @@ function PublishForm({ kindergartenId, onDone }: { kindergartenId: string; onDon
       });
     },
     onSuccess: () => {
+      toast.success("Баримт нэмэгдлээ.");
       void queryClient.invalidateQueries({ queryKey: ["documents"] });
       onDone();
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   const errors = fieldErrors(save.error);

@@ -19,6 +19,7 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
@@ -135,6 +136,7 @@ function ExportButton({ surveyId }: { surveyId: string }) {
  * indicator keys, nothing to pair.
  */
 function CloneButton({ surveyId, schoolYear }: { surveyId: string; schoolYear: string | null }) {
+  const toast = useToast();
   const router = useRouter();
   const [period, setPeriod] = useState<"MIDLINE" | "ENDLINE">("ENDLINE");
 
@@ -144,7 +146,11 @@ function CloneButton({ surveyId, schoolYear }: { surveyId: string; schoolYear: s
         method: "POST",
         body: { period, schoolYear },
       }),
-    onSuccess: (created) => router.push(`/surveys/${created.id}`),
+    onSuccess: (created) => {
+      toast.success("Судалгааг хуулбарлалаа.");
+      router.push(`/surveys/${created.id}`);
+    },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   return (
@@ -174,10 +180,25 @@ function CloneButton({ surveyId, schoolYear }: { surveyId: string; schoolYear: s
 }
 
 function PublishButton({ surveyId }: { surveyId: string }) {
-  const router = useRouter();
+  const queryClient = useQueryClient();
+  const toast = useToast();
   const publish = useMutation({
     mutationFn: () => mutate(`/surveys/${surveyId}/publish`, surveySchema, { method: "POST" }),
-    onSuccess: () => router.refresh(),
+    /*
+      ★ `invalidateQueries`, not `router.refresh()` — which did nothing here.
+
+      This page reads its survey through `useQuery`, and `router.refresh()`
+      re-renders *server* components. Nothing on this screen is one, so
+      publishing left the badge reading "Ноорог" and the buttons unchanged
+      until a hard reload: the action worked and the screen denied it. Two
+      symptoms of one cause, and the toast is the other half of the fix.
+    */
+    onSuccess: () => {
+      toast.success("Судалгааг нийтэллээ. Эцэг эхчүүд бөглөж эхэлнэ.");
+      void queryClient.invalidateQueries({ queryKey: qk.survey(surveyId) });
+      void queryClient.invalidateQueries({ queryKey: qk.kindergartenSurveys("") });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   return (
@@ -193,10 +214,16 @@ function PublishButton({ surveyId }: { surveyId: string }) {
 }
 
 function CloseButton({ surveyId }: { surveyId: string }) {
-  const router = useRouter();
+  const queryClient = useQueryClient();
+  const toast = useToast();
   const close = useMutation({
     mutationFn: () => mutate(`/surveys/${surveyId}/close`, surveySchema, { method: "POST" }),
-    onSuccess: () => router.refresh(),
+    // Same repair as `publish` above — see the note there.
+    onSuccess: () => {
+      toast.success("Судалгааг хаалаа. Шинэ хариулт хүлээж авахгүй.");
+      void queryClient.invalidateQueries({ queryKey: qk.survey(surveyId) });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   return (
@@ -221,6 +248,7 @@ function QuestionEditor({
   }[];
   onSaved: () => void;
 }) {
+  const toast = useToast();
   const [questions, setQuestions] = useState<DraftQuestion[]>(() =>
     initialQuestions.length > 0
       ? initialQuestions
@@ -266,7 +294,11 @@ function QuestionEditor({
           })),
         },
       }),
-    onSuccess: onSaved,
+    onSuccess: () => {
+      toast.success("Асуултууд хадгалагдлаа.");
+      onSaved();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   function update(index: number, patch: Partial<DraftQuestion>) {

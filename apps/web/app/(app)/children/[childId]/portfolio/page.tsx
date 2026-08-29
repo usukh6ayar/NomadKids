@@ -36,6 +36,7 @@ import { errorMessage, fieldErrors, isNotFound } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
@@ -360,6 +361,7 @@ function AboutMeSection({
   isLoading: boolean;
   error: unknown;
 }) {
+  const toast = useToast();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
@@ -399,9 +401,11 @@ function AboutMeSection({
         },
       }),
     onSuccess: () => {
+      toast.success("Хадгаллаа.");
       setEditing(false);
       void queryClient.invalidateQueries({ queryKey: qk.aboutMe(childId) });
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   const errors = fieldErrors(save.error);
@@ -657,6 +661,7 @@ function AgeSection({
   /** Decides which years open by default. See `AgeSectionShell`. */
   currentAge: number | null;
 }) {
+  const toast = useToast();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
@@ -688,9 +693,11 @@ function AgeSection({
       });
     },
     onSuccess: () => {
+      toast.success("Хадгаллаа.");
       setEditing(false);
       void queryClient.invalidateQueries({ queryKey: qk.ageProfiles(childId) });
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   const errors = fieldErrors(save.error);
@@ -879,6 +886,7 @@ function BirthdaySection({
   /** Birthdays not yet had arrive collapsed, as the age sections do. */
   currentAge: number | null;
 }) {
+  const toast = useToast();
   const queryClient = useQueryClient();
   const [editingAge, setEditingAge] = useState<number | null>(null);
   const [text, setText] = useState("");
@@ -891,9 +899,11 @@ function BirthdaySection({
         body: { note: text.trim() || null },
       }),
     onSuccess: () => {
+      toast.success("Хадгаллаа.");
       setEditingAge(null);
       void queryClient.invalidateQueries({ queryKey: qk.birthdayNotes(childId) });
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   return (
