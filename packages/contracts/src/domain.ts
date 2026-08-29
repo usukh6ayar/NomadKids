@@ -1448,9 +1448,14 @@ export const adminDashboardSchema = z.object({
   /**
    * Assessment progress per group.
    *
-   * A ratio, not a chart. "12 of 18 assessed" tells an administrator which
-   * group to chase; a bar of the same number tells them nothing more and the
-   * brief rules charts out.
+   * A ratio, and the bar beside it is a reading aid rather than the content.
+   * "12 of 18 assessed" is what tells an administrator which group to chase.
+   *
+   * ★ This note used to end "and the brief rules charts out", which read §13's
+   * "хэт олон өнгө, хөдөлгөөн ашиглахгүй" — no excess of colour or motion — as
+   * a ban. It is not one: §12.3 asks for six charts by name, including the
+   * domain averages this same endpoint now returns. The narrow claim survives
+   * (a ratio does not need a chart to be understood); the general one does not.
    */
   assessmentCoverage: z.array(
     z.object({
@@ -1467,6 +1472,62 @@ export const adminDashboardSchema = z.object({
       actorLabel: z.string().nullish(),
       objectType: z.string().nullish(),
       createdAt: z.string(),
+    }),
+  ),
+  /**
+   * Today's register across the whole kindergarten — RFP §12.2.
+   *
+   * ★ Three numbers, because two of them answer different questions.
+   *
+   * `recorded` against `expected` says whether the register has been *taken*;
+   * `present` against `expected` says how full the kindergarten *is*. A single
+   * percentage would conflate "nobody has filled this in yet" with "nobody came
+   * in", which are the two states an administrator most needs to tell apart at
+   * nine in the morning.
+   */
+  attendanceToday: z.object({
+    /** Active enrolments — the roster, not the number of rows written. */
+    expected: z.number(),
+    recorded: z.number(),
+    /** `PRESENT` + `HALF_DAY`. A half day is a child who came. */
+    present: z.number(),
+  }),
+  /**
+   * Attendance per group over the last 30 days.
+   *
+   * ★ Raw per-status counts, never a rate.
+   *
+   * Which statuses count as "attending" is a policy question — the funding
+   * rules answer it one way, a head count another — and burying that decision
+   * in a dashboard query is how two screens end up disagreeing about the same
+   * month. `counts` is keyed by `AttendanceStatus`; a status with no rows is
+   * absent from the map rather than zero.
+   */
+  attendanceByGroup: z.array(
+    z.object({
+      groupId: uuidSchema,
+      name: z.string(),
+      counts: z.record(z.string(), z.number()),
+    }),
+  ),
+  /**
+   * Each group's mean level per development domain — RFP §12.3's "Хөгжлийн
+   * чиглэлийн дундаж", at the group granularity §12.2 needs.
+   *
+   * ★ A domain nobody assessed is absent from `averageByDomain`, not zero.
+   * Zero is a real score on the 1–4 scale's floor; "not assessed" is not a
+   * score, and a radar that plots the two alike draws a group as failing at
+   * something it has not been asked about yet.
+   *
+   * Empty without a current term: an assessment belongs to one.
+   */
+  domainAveragesByGroup: z.array(
+    z.object({
+      groupId: uuidSchema,
+      name: z.string(),
+      /** How many assessment rows the averages are computed from. */
+      sampleSize: z.number(),
+      averageByDomain: z.record(z.string(), z.number()),
     }),
   ),
 });

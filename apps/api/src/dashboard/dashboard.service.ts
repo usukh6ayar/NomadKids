@@ -16,6 +16,23 @@ import { withActorLabel } from "./audit-actor";
  *
  * The parent home is a feed of what happened, not a dashboard at all.
  */
+/**
+ * Midnight UTC for the given instant.
+ *
+ * ★ UTC, because `Attendance.date` is stored as a bare calendar day.
+ *
+ * The register writes a date with no time, so matching it against a local
+ * midnight would miss by the timezone offset — in Ulaanbaatar (UTC+8) a local
+ * midnight is 16:00 the previous day in UTC, and today's register would be
+ * looked up under yesterday. `growth.service.ts` carries the same helper for
+ * the same reason.
+ */
+function startOfDay(value: Date): Date {
+  return new Date(
+    Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate(), 0, 0, 0, 0),
+  );
+}
+
 @Injectable()
 export class DashboardService {
   constructor(
@@ -148,13 +165,31 @@ export class DashboardService {
     const kindergartenIds = this.tenants.adminKindergartenIds(actor);
     const term = await this.repo.currentTerm(kindergartenIds, new Date());
 
-    const [counts, coverage, recentActivity, storage] = await Promise.all([
-      this.repo.kindergartenCounts(kindergartenIds),
-      term ? this.repo.assessmentCoverage(kindergartenIds, term.id) : Promise.resolve([]),
-      this.repo.recentAuditEntries(kindergartenIds),
-      // RFP §12.2 — "Хадгалалтын хэмжээ" and "Тайлангийн статистик".
-      this.repo.storageAndReportStats(kindergartenIds),
-    ]);
+    /*
+     * ★ The attendance window is the last 30 days, not the term.
+     *
+     * A term runs four months, and a register summarised over that long stops
+     * describing anything actionable — one bad fortnight in September is
+     * invisible against December. Thirty days is short enough to move when
+     * something changes and long enough that a single holiday does not swing
+     * it. It is also independent of whether a term is configured, which the
+     * coverage figures beside it are not.
+     */
+    const today = startOfDay(new Date());
+    const monthAgo = new Date(today);
+    monthAgo.setDate(monthAgo.getDate() - 29);
+
+    const [counts, coverage, recentActivity, storage, attendanceToday, attendanceByGroup, domains] =
+      await Promise.all([
+        this.repo.kindergartenCounts(kindergartenIds),
+        term ? this.repo.assessmentCoverage(kindergartenIds, term.id) : Promise.resolve([]),
+        this.repo.recentAuditEntries(kindergartenIds),
+        // RFP §12.2 — "Хадгалалтын хэмжээ" and "Тайлангийн статистик".
+        this.repo.storageAndReportStats(kindergartenIds),
+        this.repo.attendanceToday(kindergartenIds, today),
+        this.repo.attendanceByGroup(kindergartenIds, monthAgo, today),
+        term ? this.repo.domainAveragesByGroup(kindergartenIds, term.id) : Promise.resolve([]),
+      ]);
 
     return {
       currentTerm: term ? { id: term.id, number: term.number, name: term.name } : null,
@@ -162,6 +197,10 @@ export class DashboardService {
       assessmentCoverage: coverage,
       recentActivity: recentActivity.map(withActorLabel),
       storage,
+      attendanceToday,
+      attendanceByGroup,
+      /** Empty without a current term — an assessment belongs to one. */
+      domainAveragesByGroup: domains,
     };
   }
 
