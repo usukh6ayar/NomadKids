@@ -400,19 +400,33 @@ export function AppShell({
   /**
    * Whether this person administers the kindergarten.
    *
-   * Only the footer reads it, to decide between naming a teacher's group and
-   * naming a role — an admin sees every group, so the first of them is not
-   * "theirs". Passed rather than derived here so the shell keeps taking its
-   * role decisions from one place, `(app)/layout.tsx`.
+   * The footer reads it to decide between naming a teacher's group and naming
+   * a role — an admin sees every group, so the first of them is not "theirs" —
+   * and the masthead reads it for the subtitle below. Passed rather than
+   * derived here so the shell keeps taking its role decisions from one place,
+   * `(app)/layout.tsx`.
    */
   isAdmin?: boolean;
 }) {
   // Every role gets the sidebar from `lg` up; only the bottom bar is
   // role-dependent (mobile-only, all three variants).
   const desktopSidebar = true;
+
+  /*
+   * ★ The staff variant names the role, not the larger of the two audiences.
+   *
+   * `variant` is `teacher` for a director as well — the route tree is one tree
+   * (`(app)/layout.tsx`) and both roles reach the same screens — so this line
+   * greeted a kindergarten's director with "Багшийн хэсэг" on every page of the
+   * product, including the seven screens only they can open. The masthead is
+   * the one place that says whose product this is; getting it wrong there is
+   * not cosmetic.
+   */
   const subtitle =
     variant === "teacher"
-      ? "Багшийн хэсэг"
+      ? isAdmin
+        ? "Захирлын хэсэг"
+        : "Багшийн хэсэг"
       : variant === "platform"
         ? "Платформын удирдлага"
         : "Эцэг эхийн хэсэг";
@@ -429,7 +443,9 @@ export function AppShell({
    * normally.
    */
   const bottomNav = nav.map((item) =>
-    item.href === "/settings" ? { ...item, href: undefined, onSelect: () => setMenuOpen(true) } : item,
+    item.href === "/settings"
+      ? { ...item, href: undefined, onSelect: () => setMenuOpen(true) }
+      : item,
   );
 
   return (

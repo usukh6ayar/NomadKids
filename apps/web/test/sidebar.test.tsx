@@ -101,7 +101,7 @@ describe("navigation icons", () => {
       "Судалгаа",
       "Баримт бичгийн сан",
       "Багшийн мэдээлэл",
-      "Бүлэг, цэцэрлэгийн мэдээлэл",
+      "Удирдлага",
     ];
 
     for (const label of entries) {
@@ -187,18 +187,14 @@ describe("role-based navigation", () => {
 
     expect(within(nav).getByRole("link", { name: "Хүүхдүүд" })).toBeInTheDocument();
     expect(within(nav).getByRole("link", { name: "Ажиглалт хянах" })).toBeInTheDocument();
-    expect(
-      within(nav).queryByRole("link", { name: "Бүлэг, цэцэрлэгийн мэдээлэл" }),
-    ).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Удирдлага" })).not.toBeInTheDocument();
   });
 
   it("adds the administration entry for an admin", async () => {
     renderShell(["TEACHER", "ADMIN"]);
     const nav = await sidebar();
 
-    expect(
-      within(nav).getByRole("link", { name: "Бүлэг, цэцэрлэгийн мэдээлэл" }),
-    ).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Удирдлага" })).toBeInTheDocument();
   });
 
   it("gives a parent their own sections, not the staff ones", async () => {

@@ -15,10 +15,11 @@ import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
-import { fullName, initials } from "@/lib/format";
+import { formatRelative, fullName, initials } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RowList } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DataList, DataRow } from "@/components/ui/data-list";
 import { Checkbox, Field, Input, Select } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { useToast } from "@/components/ui/toast";
@@ -43,6 +44,18 @@ const ROLE_LABEL: Record<string, string> = {
   ADMIN: "Админ",
   PARENT: "Эцэг эх",
 };
+
+/**
+ * The list's columns, shared by its header strip and every row.
+ *
+ * `Эрх` is the widest because a dual-role account carries two badges and each
+ * badge carries its own revoke control; `Сүүлд нэвтэрсэн` is sized for
+ * `formatRelative`'s longest output ("13 хоногийн өмнө").
+ */
+const USER_COLUMNS = [
+  { key: "roles", label: "Эрх", className: "md:w-[228px]" },
+  { key: "lastLogin", label: "Сүүлд нэвтэрсэн", className: "md:w-[140px]" },
+];
 
 /**
  * Staff and families in this kindergarten.
@@ -136,66 +149,80 @@ function AdminUsers() {
         />
       ) : null}
 
+      {/*
+        ★ Four columns, because the response already carried four things and the
+        row rendered one of them.
+
+        This list was `[avatar] [name flex-1] [badges] [two buttons]`, which put
+        a person's name against the left edge and their controls against the
+        right with the width of a laptop screen between. `lastLoginAt` was in
+        `adminUserSchema` from the beginning and had never been displayed
+        anywhere — and it is the column a director actually wants here, because
+        it answers the question a staff list is opened to answer: who has
+        started using this, and who was invited and never came.
+
+        ★★ Both actions still live on the row rather than behind a kebab, for
+        the reason the previous note gave and this one keeps: two controls is
+        not a menu's worth, and hiding the only way to correct a mistyped phone
+        number behind an unlabelled click is worse than repeating a word.
+      */}
       {items.length > 0 ? (
-        <RowList>
+        <DataList columns={USER_COLUMNS} actionsWidth="w-[236px]">
           {items.map((user) => (
-            <div
+            <DataRow
               key={user.id}
-              className="flex min-h-[64px] flex-wrap items-center gap-3 rounded-row border border-border bg-surface px-4 py-3"
-            >
-              <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-primary-soft text-body font-semibold text-primary">
-                {initials(user)}
-              </span>
-
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-lead font-semibold text-ink">
-                  {fullName(user)}
+              lead={
+                <span className="grid size-10 place-items-center rounded-pill bg-primary-soft text-body font-semibold text-primary">
+                  {initials(user)}
                 </span>
-                <span className="mt-px block truncate text-compact text-muted">
-                  {[user.username, user.email, user.phone].filter(Boolean).join(" · ") || "—"}
-                </span>
-              </span>
-
-              <span className="flex flex-wrap items-center gap-1">
-                {user.memberships.map((m) =>
-                  m.isActive === false ? (
-                    // Kept visible rather than filtered out. The record of the
-                    // relationship survives revocation, and an admin looking
-                    // for "why can this teacher not see the group" needs to see
-                    // that the answer is here.
-                    <Badge key={m.id} tone="neutral">
-                      {ROLE_LABEL[m.role] ?? m.role} · хураасан
-                    </Badge>
-                  ) : (
-                    <span key={m.id} className="flex items-center gap-1">
-                      <Badge tone={m.role === "ADMIN" ? "peach" : "sky"}>
-                        {ROLE_LABEL[m.role] ?? m.role}
-                      </Badge>
-                      <RevokeMembershipButton
-                        membershipId={m.id}
-                        label={`${fullName(user)} — ${ROLE_LABEL[m.role] ?? m.role}`}
-                      />
-                    </span>
-                  ),
-                )}
-                {user.isActive === false ? <Badge tone="sun">Идэвхгүй</Badge> : null}
-              </span>
-
-              {/*
-                ★ Both actions live on the row, not behind a menu.
-
-                Two controls is not a menu's worth, and a kebab would hide the
-                only way to correct a mistyped phone number behind a click that
-                gives no hint it is there. `basis-full sm:basis-auto` drops them
-                onto their own line on a phone rather than squeezing the name.
-              */}
-              <span className="flex basis-full items-center justify-end gap-1 sm:basis-auto">
-                <EditUserButton user={user} />
-                <AddMembershipButton user={user} />
-              </span>
-            </div>
+              }
+              title={fullName(user)}
+              subtitle={[user.username, user.email, user.phone].filter(Boolean).join(" · ") || "—"}
+              cells={{
+                roles: (
+                  <span className="flex flex-wrap items-center gap-1">
+                    {user.memberships.map((m) =>
+                      m.isActive === false ? (
+                        // Kept visible rather than filtered out. The record of
+                        // the relationship survives revocation, and an admin
+                        // looking for "why can this teacher not see the group"
+                        // needs to see that the answer is here.
+                        <Badge key={m.id} tone="neutral">
+                          {ROLE_LABEL[m.role] ?? m.role} · хураасан
+                        </Badge>
+                      ) : (
+                        <span key={m.id} className="flex items-center gap-1">
+                          <Badge tone={m.role === "ADMIN" ? "peach" : "sky"}>
+                            {ROLE_LABEL[m.role] ?? m.role}
+                          </Badge>
+                          <RevokeMembershipButton
+                            membershipId={m.id}
+                            label={`${fullName(user)} — ${ROLE_LABEL[m.role] ?? m.role}`}
+                          />
+                        </span>
+                      ),
+                    )}
+                    {user.isActive === false ? <Badge tone="sun">Идэвхгүй</Badge> : null}
+                  </span>
+                ),
+                lastLogin: user.lastLoginAt ? (
+                  <span className="text-body text-muted">{formatRelative(user.lastLoginAt)}</span>
+                ) : (
+                  // Not an em dash: "never signed in" is a fact about the
+                  // account, and the dash this list uses for a missing value
+                  // would read as "we do not know".
+                  <span className="text-body text-faint">Нэвтрээгүй</span>
+                ),
+              }}
+              actions={
+                <>
+                  <EditUserButton user={user} />
+                  <AddMembershipButton user={user} />
+                </>
+              }
+            />
           ))}
-        </RowList>
+        </DataList>
       ) : null}
 
       {inviting && primaryKindergartenId ? (
@@ -404,26 +431,48 @@ function RevokeMembershipButton({ membershipId, label }: { membershipId: string;
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin", "users"] }),
   });
 
+  /*
+   * ★ 28px and a `window.confirm`, both of which this product had already
+   * ruled out everywhere else.
+   *
+   * `globals.css` documents `--size-tap: 44px` as a floor rather than a
+   * preference — "so a component cannot quietly ship a 32px button that is
+   * unusable with a thumb" — and `responsive.test.tsx` asserts it against
+   * `Button`'s variants. This was a hand-rolled `<button>`, so it never passed
+   * through the component the test guards, and it shipped at 28px: the
+   * smallest control in the product, on the one action here that cannot be
+   * undone.
+   *
+   * `confirm-dialog.tsx` says in its own first line that it replaced
+   * `window.confirm` in five places. This was a sixth, and it is the case that
+   * argues hardest for it — the native dialog renders its buttons in the
+   * browser's language, so a Mongolian sentence about revoking a teacher's
+   * access was answered with an English "OK".
+   */
   return (
-    <button
-      type="button"
-      disabled={revoke.isPending}
-      onClick={() => {
-        if (
-          window.confirm(
-            `${label} эрхийг хураах уу?\n\n` +
-              "Бүлгийн хуваарилалт нь мөн дуусна. Эрхийг буцааж өгөхөд хуваарилалт " +
-              "автоматаар сэргэхгүй тул дахин хийх шаардлагатай.",
-          )
-        ) {
-          revoke.mutate();
-        }
-      }}
-      className="grid size-[28px] place-items-center rounded-pill text-muted transition-colors hover:bg-danger-soft hover:text-danger disabled:opacity-50"
-    >
-      <X size={14} aria-hidden />
-      <span className="sr-only">{label} эрхийг хураах</span>
-    </button>
+    <ConfirmDialog
+      trigger={
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={`${label} эрхийг хураах`}
+          disabled={revoke.isPending}
+          className="text-muted hover:bg-danger-soft hover:text-danger"
+        >
+          <X size={16} aria-hidden />
+        </Button>
+      }
+      title="Эрхийг хураах уу?"
+      description={
+        `${label} эрхийг хураана. Бүлгийн хуваарилалт нь мөн дуусна. ` +
+        "Эрхийг буцааж өгөхөд хуваарилалт автоматаар сэргэхгүй тул дахин хийх шаардлагатай."
+      }
+      confirmLabel="Хураах"
+      pendingLabel="Хурааж байна…"
+      tone="danger"
+      pending={revoke.isPending}
+      onConfirm={() => revoke.mutate()}
+    />
   );
 }
 

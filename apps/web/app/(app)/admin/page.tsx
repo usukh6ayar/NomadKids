@@ -2,7 +2,20 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { FileText, GraduationCap, HardDrive, Heart, School, Users } from "lucide-react";
+import type { ReactNode } from "react";
+import {
+  Building2,
+  CalendarClock,
+  CalendarRange,
+  ChevronRight,
+  FileText,
+  GraduationCap,
+  HardDrive,
+  Heart,
+  School,
+  SlidersHorizontal,
+  Users,
+} from "lucide-react";
 import { adminDashboardSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -15,6 +28,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { SectionHeader } from "@/components/ui/card";
 import { ErrorState, LoadingState } from "@/components/ui/states";
+import { IconChip } from "@/components/ui/icon-chip";
 import { formatFileSize } from "@/lib/format";
 import { StatCard } from "@/components/ui/stat-card";
 
@@ -97,15 +111,28 @@ function AdminDashboard() {
 
         `art` is a slot. These are lucide glyphs until the illustrated icons
         arrive; swapping them is a change at this call site.
+
+        ★★ Two columns on a phone, three from `lg`, and none of them `wide`.
+
+        This grid was `grid-cols-1 sm:grid-cols-2` with the first card spanning
+        both, which produced two faults at once. On a desktop the six cards
+        filled 2·2·1 and left the last one orphaned beside a card-shaped hole;
+        on a phone every card was full width, so six figures — 1,100px of them
+        — stood between the heading and the seven links that are the actual
+        reason to open this screen. A count is a glance, not a page.
+
+        Six divides evenly by both two and three, so neither breakpoint
+        orphans. The `wide` span went with it: the child count is the most
+        important figure here, but making it four times the area of the others
+        bought that emphasis with the layout of every other card.
       */}
-      <section aria-label="Товч мэдээлэл" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <section aria-label="Товч мэдээлэл" className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <StatCard
           label="Нийт хүүхэд"
           value={counts.children}
           unit="хүүхэд"
-          size="wide"
           tone="cornflower"
-          art={<Users size={40} aria-hidden />}
+          art={<Users size={28} aria-hidden />}
         />
         <StatCard
           label="Бүлэг"
@@ -133,10 +160,20 @@ function AdminDashboard() {
         */}
         {storage ? (
           <>
+            {/*
+              ★ The figure counts files; the size is the caption under it.
+
+              It was the other way round, and on a kindergarten that has not
+              uploaded anything the card read "—" over "0 файл": `formatFileSize`
+              returns an em dash for zero bytes, which is right where a size is
+              unknown and wrong where it is known to be nothing. The label says
+              "файл", so the number under it should be files — and a size has no
+              honest zero to show, while a count does.
+            */}
             <StatCard
               label="Хадгалсан файл"
-              value={formatFileSize(storage.totalBytes)}
-              unit={`${storage.fileCount} файл`}
+              value={storage.fileCount}
+              unit={storage.totalBytes > 0 ? formatFileSize(storage.totalBytes) : "хоосон"}
               tone="teal"
               art={<HardDrive size={28} aria-hidden />}
             />
@@ -156,30 +193,80 @@ function AdminDashboard() {
       </section>
 
       {/*
-        The admin's actual work lives on these screens; this page is the read-only
-        summary. Ordered by the dependency chain — a group needs a school year,
-        a child needs a group — so a new kindergarten can be set up top to bottom.
+        The admin's actual work lives on these screens; this page is the
+        read-only summary.
+
+        ★ The heading is no longer "Удирдлага".
+
+        The page's own `h1` is "Удирдлага", and this section's was too — the
+        same word twice, 400px apart, naming a screen and then a part of it. A
+        reader scanning for structure finds two anchors that do not distinguish
+        anything.
       */}
-      <section aria-label="Удирдлагын хэсгүүд">
+      <section aria-labelledby="sections-heading">
         <SectionHeader
-          title="Удирдлага"
+          id="sections-heading"
+          title="Удирдлагын хэсгүүд"
           lede="Цэцэрлэг, хичээлийн жил, бүлэг, хэрэглэгчийн бүртгэл."
         />
-        <div className="grid gap-2 sm:grid-cols-2">
-          <AdminLink href="/admin/school-years" title="Хичээлийн жил" note="Эхлээд үүсгэнэ" />
-          <AdminLink href="/admin/groups" title="Бүлгүүд" note="Багш хуваарилах" />
-          <AdminLink href="/admin/users" title="Хэрэглэгчид" note="Багш, админ урих" />
-          <AdminLink href="/admin/terms" title="Улирал" note="Үнэлгээний хугацаа" />
+        {/*
+          ★ Six tiles, and the seventh link moved rather than the grid bent.
+
+          Seven is prime, so no column count divides it: three columns orphaned
+          a tile on a third row, two columns orphaned one on a fourth, and
+          splitting the seven into two grouped cards only moved the ragged edge
+          sideways — a four-row card beside a three-row card ends lower than it,
+          which is the same hole in a different place. Stretching either the odd
+          tile or the short card to fill the gap puts the hole *inside* a
+          surface instead of beside it.
+
+          The number was the symptom. `Үйлдлийн түүх` is not a thing an
+          administrator sets up — it is the audit log, and this page already
+          renders the most recent entries of it at the bottom under `Сүүлийн
+          үйлдэл`. A link to the full history belongs on that section, where the
+          reader is already looking at three lines of it and wants more, not in
+          a grid of setup destinations six rows above.
+
+          Six divides by two and by three, so the grid closes cleanly at every
+          breakpoint, and the audit link ended up somewhere it is more likely to
+          be found rather than somewhere that made the arithmetic work.
+        */}
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          <AdminLink
+            href="/admin/school-years"
+            title="Хичээлийн жил"
+            note="Эхлээд үүсгэнэ"
+            icon={<CalendarRange size={20} aria-hidden />}
+          />
+          <AdminLink
+            href="/admin/terms"
+            title="Улирал"
+            note="Үнэлгээний хугацаа"
+            icon={<CalendarClock size={20} aria-hidden />}
+          />
+          <AdminLink
+            href="/admin/groups"
+            title="Бүлгүүд"
+            note="Багш хуваарилах"
+            icon={<School size={20} aria-hidden />}
+          />
+          <AdminLink
+            href="/admin/users"
+            title="Хэрэглэгчид"
+            note="Багш, админ урих"
+            icon={<Users size={20} aria-hidden />}
+          />
           <AdminLink
             href="/admin/assessment-config"
             title="Үнэлгээний тохиргоо"
             note="Чиглэл, түвшин, ажиглалтын төрөл"
+            icon={<SlidersHorizontal size={20} aria-hidden />}
           />
-          <AdminLink href="/admin/audit" title="Үйлдлийн түүх" note="Хэн, хэзээ, юу хийсэн" />
           <AdminLink
             href="/admin/kindergarten"
             title="Цэцэрлэгийн мэдээлэл"
             note="Нэр, хаяг, холбоо барих"
+            icon={<Building2 size={20} aria-hidden />}
           />
         </div>
       </section>
@@ -190,20 +277,62 @@ function AdminDashboard() {
         href={(groupId) => `/groups/${groupId}/assessment`}
       />
 
-      <RecentActivitySection entries={recentActivity} />
+      <RecentActivitySection entries={recentActivity} auditHref="/admin/audit" />
     </div>
   );
 }
 
-/** One destination in the admin hub. */
-function AdminLink({ href, title, note }: { href: string; title: string; note: string }) {
+/**
+ * One destination in the admin hub.
+ *
+ * ★ A glyph and a chevron, because seven identical rectangles are not a menu.
+ *
+ * This rendered as a bordered box with two lines of text, seven times. Nothing
+ * in it was wrong and nothing in it was findable: a director looking for
+ * "Хэрэглэгчид" had to read all seven titles in order, every time, because
+ * there was no shape to remember any of them by. An icon gives each entry a
+ * second, faster handle — you learn where the people one is on the page rather
+ * than re-reading to find it.
+ *
+ * ★★ The chip is `primary`, not one of the six semantic tones, and
+ * `icon-chip.tsx` argues that at length: these seven destinations do not mean
+ * complete, waiting and needs-attention, and borrowing that palette to
+ * decorate them would say so in a vocabulary the product reads as meaningful.
+ *
+ * ★★★ The chevron is the affordance the hover border is carrying alone.
+ *
+ * A border that changes colour only says "this is a link" once the pointer is
+ * already on it — which leaves a touch screen, where there is no hover at all,
+ * with no signal whatsoever.
+ */
+function AdminLink({
+  href,
+  title,
+  note,
+  icon,
+}: {
+  href: string;
+  title: string;
+  note: string;
+  icon: ReactNode;
+}) {
   return (
     <Link
       href={href}
-      className="flex min-h-[64px] flex-col justify-center rounded-row border border-border bg-surface px-4 py-3 transition-colors hover:border-primary"
+      className="group flex min-h-[72px] items-center gap-3 rounded-row border border-border bg-surface px-4 py-3 transition-colors hover:border-primary"
     >
-      <span className="text-lead font-semibold text-ink">{title}</span>
-      <span className="mt-px text-compact text-muted">{note}</span>
+      <IconChip icon={icon} tone="primary" />
+
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-lead font-semibold text-ink">{title}</span>
+        <span className="mt-px block truncate text-compact text-muted">{note}</span>
+      </span>
+
+      <ChevronRight
+        size={18}
+        aria-hidden
+        className="shrink-0 text-faint transition-colors group-hover:text-primary"
+      />
     </Link>
   );
 }
