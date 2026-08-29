@@ -4,11 +4,12 @@ import * as Dialog from "@radix-ui/react-dialog";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, ChevronDown, LogOut, Search, X } from "lucide-react";
 import { useId, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { notificationSchema, paginated, unreadCountSchema } from "@kinder/contracts";
-import { get } from "@/lib/api/browser";
+import { get, mutate } from "@/lib/api/browser";
+import { z } from "zod";
 import { Input } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/states";
 import { qk } from "@/lib/api/keys";
@@ -363,7 +364,7 @@ function NotificationBell() {
             </Dialog.Close>
           </div>
 
-          <NotificationBellList onNavigate={() => setOpen(false)} />
+          <NotificationBellList onNavigate={() => setOpen(false)} unreadCount={count} />
 
           <Link
             href="/notifications"
@@ -391,7 +392,39 @@ function NotificationBell() {
  *
  * `enabled` on the panel being open: a bell that nobody presses costs nothing.
  */
-function NotificationBellList({ onNavigate }: { onNavigate: () => void }) {
+function NotificationBellList({
+  onNavigate,
+  unreadCount,
+}: {
+  onNavigate: () => void;
+  unreadCount: number;
+}) {
+  const queryClient = useQueryClient();
+
+  /**
+   * "Бүгдийг уншсан", built from the per-notice endpoint.
+   *
+   * ★ There is no `POST /notifications/read-all`, and this does not invent one.
+   *
+   * It marks the rows the panel is actually showing — the five it fetched —
+   * sequentially, then refetches. That is honest about what it did: a person
+   * who has fifty unread notices and presses this clears the five they can see,
+   * and the badge drops by five rather than to zero. The button is hidden when
+   * none of the visible rows is unread, so it never promises more than it does.
+   *
+   * A real "mark everything read" is one endpoint away and belongs on the
+   * server, where it is a single `updateMany` rather than N round trips. Worth
+   * adding the day a kindergarten's boards get busy enough to need it.
+   */
+  const markVisibleRead = useMutation({
+    mutationFn: async (ids: string[]) => {
+      for (const id of ids) {
+        await mutate(`/notifications/${id}/read`, z.unknown(), { method: "POST" });
+      }
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+  });
+
   const { data, isLoading } = useQuery({
     queryKey: qk.notifications({ bell: true }),
     queryFn: () => get("/notifications?page=1&pageSize=5", bellListSchema),
@@ -415,45 +448,72 @@ function NotificationBellList({ onNavigate }: { onNavigate: () => void }) {
     return <p className="px-4 py-8 text-center text-body text-muted">Мэдэгдэл алга байна.</p>;
   }
 
+  const unreadIds = items.filter((n) => n.reads.length === 0).map((n) => n.id);
+
   return (
-    <ul className="min-h-0 flex-1 divide-y divide-border-soft overflow-y-auto">
-      {items.map((notification) => {
-        const unread = notification.reads.length === 0;
-        return (
-          <li key={notification.id}>
-            <Link
-              href={`/notifications/${notification.id}`}
-              onClick={onNavigate}
-              className="flex items-start gap-2.5 px-4 py-3 transition-colors hover:bg-canvas"
-            >
-              {/* Unread is a dot *and* a weight *and* an sr-only word — a dot
-                  alone is invisible to a screen reader. */}
-              <span
-                aria-hidden="true"
+    <>
+      {unreadIds.length > 0 ? (
+        <div className="flex items-center justify-between gap-2 border-b border-border-soft px-4 py-2">
+          <span className="text-caption text-muted">{unreadCount} уншаагүй</span>
+          <button
+            type="button"
+            onClick={() => markVisibleRead.mutate(unreadIds)}
+            disabled={markVisibleRead.isPending}
+            className="min-h-[36px] rounded-control px-2 text-caption font-medium text-primary transition-colors hover:bg-canvas disabled:text-faint"
+          >
+            {markVisibleRead.isPending ? "Тэмдэглэж байна…" : "Эдгээрийг уншсан болгох"}
+          </button>
+        </div>
+      ) : null}
+
+      <ul className="min-h-0 flex-1 divide-y divide-border-soft overflow-y-auto">
+        {items.map((notification) => {
+          const unread = notification.reads.length === 0;
+          return (
+            <li key={notification.id}>
+              <Link
+                href={`/notifications/${notification.id}`}
+                onClick={onNavigate}
+                /*
+                ★ An unread row sits on the brand tint; a read one is plain.
+
+                The dot alone was the whole difference and it is 8px. Tinting
+                the row is what makes "which of these have I not seen" a glance
+                rather than a search — the same three-signal rule the feed's own
+                cards follow (tint, weight, and a word for a screen reader).
+              */
                 className={cn(
-                  "mt-1.5 size-2 shrink-0 rounded-pill",
-                  unread ? "bg-primary" : "bg-transparent",
+                  "flex items-start gap-2.5 px-4 py-3 transition-colors",
+                  unread ? "bg-primary-soft/60 hover:bg-primary-soft" : "hover:bg-canvas",
                 )}
-              />
-              <span className="min-w-0 flex-1">
+              >
                 <span
+                  aria-hidden="true"
                   className={cn(
-                    "block truncate text-body text-ink",
-                    unread ? "font-semibold" : "font-medium",
+                    "mt-1.5 size-2 shrink-0 rounded-pill",
+                    unread ? "bg-primary" : "bg-transparent",
                   )}
-                >
-                  {notification.title}
+                />
+                <span className="min-w-0 flex-1">
+                  <span
+                    className={cn(
+                      "block truncate text-body text-ink",
+                      unread ? "font-semibold" : "font-medium",
+                    )}
+                  >
+                    {notification.title}
+                  </span>
+                  {unread ? <span className="sr-only">Уншаагүй</span> : null}
+                  <span className="mt-0.5 block text-caption text-muted">
+                    {formatRelative(notification.publishedAt ?? notification.createdAt)}
+                  </span>
                 </span>
-                {unread ? <span className="sr-only">Уншаагүй</span> : null}
-                <span className="mt-0.5 block text-caption text-muted">
-                  {formatRelative(notification.publishedAt ?? notification.createdAt)}
-                </span>
-              </span>
-            </Link>
-          </li>
-        );
-      })}
-    </ul>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </>
   );
 }
 

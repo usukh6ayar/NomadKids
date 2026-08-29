@@ -99,6 +99,7 @@ export default function ChildGeneralPage() {
       <ChildHeroProfile
         child={data}
         showHealthAlert={isStaff}
+        canEditPhoto
         actions={<ChildActions childId={childId} isStaff={isStaff} />}
       />
 

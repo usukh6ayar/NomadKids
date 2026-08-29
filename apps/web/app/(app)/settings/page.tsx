@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { Pencil } from "lucide-react";
 import { z } from "zod";
 import { userProfileSchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
@@ -51,6 +52,20 @@ function ProfileForm() {
   });
 
   const [form, setForm] = useState<Record<string, string>>({});
+  /**
+   * ★ A profile reads as a profile until you ask to change it.
+   *
+   * This screen was a form that was always open — six text inputs and a Save
+   * button, whether or not anybody intended to edit anything. That is a form
+   * with a heading, not a profile: there is no state in which a teacher can
+   * simply *look at* their own details, and an always-editable field invites
+   * the accidental keystroke that a Save button then makes permanent.
+   *
+   * Reading is the default and editing is a mode you enter deliberately, which
+   * is what "Засах дарж байгаад засна" asks for. Cancelling restores the saved
+   * values rather than keeping a half-typed draft around.
+   */
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     if (!data) return;
@@ -85,8 +100,27 @@ function ProfileForm() {
       // The shell shows the name, so the session has to be refreshed too.
       void queryClient.invalidateQueries({ queryKey: qk.session() });
       toast.success("Хувийн мэдээлэл хадгалагдлаа.");
+      setEditing(false);
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
+
+  /** Throws away the draft and returns to the read view. */
+  function cancelEdit() {
+    if (data) {
+      setForm({
+        lastName: data.lastName ?? "",
+        firstName: data.firstName ?? "",
+        email: data.email ?? "",
+        phone: data.phone ?? "",
+        specialization: data.specialization ?? "",
+        education: data.education ?? "",
+        bio: data.bio ?? "",
+      });
+    }
+    save.reset();
+    setEditing(false);
+  }
 
   const errors = fieldErrors(save.error);
 
@@ -95,7 +129,18 @@ function ProfileForm() {
 
   return (
     <section aria-labelledby="profile-heading">
-      <SectionHeader id="profile-heading" title="Хувийн мэдээлэл" />
+      <SectionHeader
+        id="profile-heading"
+        title="Хувийн мэдээлэл"
+        action={
+          editing ? undefined : (
+            <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
+              <Pencil size={16} aria-hidden="true" />
+              Засах
+            </Button>
+          )
+        }
+      />
 
       {/*
         RFP §3.3 — профайл зураг. Outside the form and above it: the upload
@@ -117,22 +162,39 @@ function ProfileForm() {
         />
       </Card>
 
-      <Card pad="roomy">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!save.isPending) save.mutate();
-          }}
-          className="flex flex-col gap-4"
-          noValidate
-        >
-          <FormError
-            message={
-              save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null
-            }
-          />
+      {!editing ? (
+        /*
+          The read view. A definition list rather than disabled inputs: a greyed
+          field still looks like something you failed to type into, where a
+          label over a value looks like a record — and an empty one says "—"
+          instead of showing a blank box.
+        */
+        <Card pad="roomy">
+          <dl className="grid gap-4 sm:grid-cols-2">
+            <ReadField label="Овог" value={data?.lastName} />
+            <ReadField label="Нэр" value={data?.firstName} />
+            <ReadField label="И-мэйл" value={data?.email} />
+            <ReadField label="Утас" value={data?.phone} />
+            <ReadField label="Танилцуулга" value={data?.bio} className="sm:col-span-2" />
+          </dl>
+        </Card>
+      ) : (
+        <Card pad="roomy">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!save.isPending) save.mutate();
+            }}
+            className="flex flex-col gap-4"
+            noValidate
+          >
+            <FormError
+              message={
+                save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null
+              }
+            />
 
-          {/*
+            {/*
             ★ The inline "Хадгалагдлаа." block that sat here is now a toast.
 
             This form is long enough to scroll, and the submit button is at its
@@ -142,81 +204,105 @@ function ProfileForm() {
             stays inline: it is attached to the fields the user has to fix.
           */}
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Овог" error={errors.lastName} required>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Овог" error={errors.lastName} required>
+                {({ id, describedBy, invalid }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    value={form.lastName ?? ""}
+                    onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
+                  />
+                )}
+              </Field>
+
+              <Field label="Нэр" error={errors.firstName} required>
+                {({ id, describedBy, invalid }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    value={form.firstName ?? ""}
+                    onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
+                  />
+                )}
+              </Field>
+
+              <Field label="И-мэйл" error={errors.email}>
+                {({ id, describedBy, invalid }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    type="email"
+                    autoComplete="email"
+                    value={form.email ?? ""}
+                    onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                  />
+                )}
+              </Field>
+
+              <Field label="Утас" error={errors.phone}>
+                {({ id, describedBy, invalid }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
+                    value={form.phone ?? ""}
+                    onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                  />
+                )}
+              </Field>
+            </div>
+
+            <Field label="Танилцуулга" error={errors.bio}>
               {({ id, describedBy, invalid }) => (
-                <Input
+                <Textarea
                   id={id}
                   aria-describedby={describedBy}
                   invalid={invalid}
-                  value={form.lastName ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
+                  value={form.bio ?? ""}
+                  onChange={(e) => setForm((f) => ({ ...f, bio: e.target.value }))}
                 />
               )}
             </Field>
 
-            <Field label="Нэр" error={errors.firstName} required>
-              {({ id, describedBy, invalid }) => (
-                <Input
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  value={form.firstName ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
-                />
-              )}
-            </Field>
-
-            <Field label="И-мэйл" error={errors.email}>
-              {({ id, describedBy, invalid }) => (
-                <Input
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  type="email"
-                  autoComplete="email"
-                  value={form.email ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                />
-              )}
-            </Field>
-
-            <Field label="Утас" error={errors.phone}>
-              {({ id, describedBy, invalid }) => (
-                <Input
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  type="tel"
-                  inputMode="tel"
-                  autoComplete="tel"
-                  value={form.phone ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                />
-              )}
-            </Field>
-          </div>
-
-          <Field label="Танилцуулга" error={errors.bio}>
-            {({ id, describedBy, invalid }) => (
-              <Textarea
-                id={id}
-                aria-describedby={describedBy}
-                invalid={invalid}
-                value={form.bio ?? ""}
-                onChange={(e) => setForm((f) => ({ ...f, bio: e.target.value }))}
-              />
-            )}
-          </Field>
-
-          <div>
-            <Button type="submit" disabled={save.isPending}>
-              {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
-            </Button>
-          </div>
-        </form>
-      </Card>
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" disabled={save.isPending}>
+                {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
+              </Button>
+              <Button type="button" variant="ghost" onClick={cancelEdit} disabled={save.isPending}>
+                Болих
+              </Button>
+            </div>
+          </form>
+        </Card>
+      )}
     </section>
+  );
+}
+
+/** One label-and-value pair of the read view. */
+function ReadField({
+  label,
+  value,
+  className,
+}: {
+  label: string;
+  value?: string | null;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <dt className="text-caption text-muted">{label}</dt>
+      {/* An em dash, not an empty node: a blank line under a label reads as a
+          rendering fault rather than as "nothing recorded". */}
+      <dd className="mt-0.5 whitespace-pre-wrap text-body text-ink">{value?.trim() || "—"}</dd>
+    </div>
   );
 }
 

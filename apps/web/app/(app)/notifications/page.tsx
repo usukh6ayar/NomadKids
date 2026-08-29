@@ -350,16 +350,23 @@ export default function NotificationsPage() {
               </h2>
 
               {/*
-                ★ Two columns from `xl`, and the measurement behind it stands.
+                ★ One centred column, capped — not the two-across grid this
+                carried until 2026-08-29.
 
-                Tried at `md` first, per the tablet line in the 2026-08-28
-                brief, and measured back: at 768px each card is ~350px, where a
-                Mongolian title wraps to two lines and orphans its badge while
-                the card beside it keeps one line. At 1280px each is ~465px and
-                the pair aligns. The rail is gone, so the grid can now span the
-                whole feed rather than sitting inside one day.
+                The grid was answering "use the horizontal space" and produced
+                the wrong thing: a post is гарчиг, дэлгэрэнгүй, зураг read in
+                that order, and at 1336px split two ways each card was a 465px
+                banner whose photograph dwarfed the words above it. The report
+                was that it "looks odd on a big screen" and should read the same
+                as it does on a phone.
+
+                So the feed is a column that stops growing. 640px is about 75
+                characters of Mongolian — the width prose is comfortable at, and
+                what every social feed converges on for the same reason. A
+                desktop reader gets the phone's card at the phone's proportions,
+                centred, with the page's whitespace either side of it.
               */}
-              <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+              <div className="mx-auto flex w-full max-w-[640px] flex-col gap-3">
                 {items.map((notification) => (
                   <NotificationRow key={notification.id} notification={notification} />
                 ))}
@@ -613,7 +620,32 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
   const when = notification.publishedAt ?? notification.createdAt;
 
   return (
-    <article className="flex flex-col gap-3 rounded-card border border-border bg-surface p-4 transition-colors hover:border-primary">
+    /*
+      ★ Read and unread are two visibly different cards, not one card with a
+      bolder title.
+
+      The only difference used to be the "Шинэ" pill and a font weight, which
+      on a phone at arm's length is no difference at all — the report was that
+      a teacher cannot tell which posts they have already opened. Three signals
+      separate them now, and each survives the loss of the others:
+
+        · a blue rail down the left edge of an unread card
+        · the card's tint — white while unread, the page's own canvas once read
+        · the title's weight, and the "Шинэ" pill above it
+
+      A read card is deliberately *quieter* rather than greyed out: its text
+      stays `--color-ink` at full contrast, because a notice a family has
+      already opened is still a notice they may need to re-read. What changes
+      is the surface it sits on, not its legibility.
+    */
+    <article
+      className={cn(
+        "flex flex-col gap-3 rounded-card border p-4 transition-colors",
+        isUnread
+          ? "border-l-4 border-l-primary border-y-border border-r-border bg-surface hover:border-primary"
+          : "border-border-soft bg-canvas hover:border-border",
+      )}
+    >
       {/* Who posted it, and when. `ChildAvatar` takes any `{firstName,
           lastName}` and draws initials when there is no photograph — an author
           has no `photoMediaFileId`, so it is always the initials here. */}
