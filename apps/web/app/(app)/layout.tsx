@@ -308,77 +308,76 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
    */
   const entry = (label: string, href: string) => ({ label, href, icon: routeIcon(href) });
 
+  /*
+   * ★ A teacher with one group skips the picker; everybody else gets it.
+   *
+   * `/attendance`, `/assessment` and `/meals` are group-scoped features, so
+   * each has a landing page that asks which group (`GroupPicker`). For a
+   * teacher who has exactly one, that page has exactly one row — a click that
+   * only ever has one answer, on the screen they open every morning. So their
+   * sidebar links straight past it, and an administrator, who has no single
+   * group to link to, lands on the picker.
+   *
+   * The destination differs; the label does not. One feature has one name
+   * wherever it is reached from.
+   */
+  const scoped = (feature: string) => (groupId ? `/groups/${groupId}/${feature}` : `/${feature}`);
+
   return [
+    /*
+     * ★ Three sections, named after the client's own 2026-08-29 drawing.
+     *
+     * It groups the product as Суралцагч / Санхүү / Систем, which is a
+     * different cut from the "Хүүхдийн хөгжил ба үнэлгээ · Харилцаа холбоо ·
+     * Багш ба байгууллага" this sidebar used — and a better one for the
+     * audience, because it separates *what you do with a child* from *what you
+     * run the kindergarten with*.
+     *
+     * ★★ The drawing's names are kept; its exact contents are not.
+     *
+     * It files "Мэдээ / Ангийн самбар" and "Чат" under Санхүү, which they are
+     * not — the reference system's own heading for that group was "Үйл
+     * ажиллагаа ба санхүү", operations *and* finance, and the shortened label
+     * lost the half that made it true. This uses the longer name.
+     *
+     * Санхүү itself has no entry: `apps/api/src/funding` exists, but
+     * `docs/reference/FINANCE_SCOPE.md` records the tariffs and the definition
+     * of a funding day as still outstanding from the client (D3, D4), so the
+     * engine "will correctly calculate nothing" until they arrive. A menu row
+     * that opens an empty screen is what this sidebar's own rule forbids.
+     */
     {
-      title: "Хүүхдийн хөгжил ба үнэлгээ",
+      title: "Суралцагч",
       entries: [
         entry("Хүүхдүүд", "/children"),
+        { label: "Ирц", href: scoped("attendance"), icon: <CalendarCheck {...sectionIconProps} /> },
+        {
+          label: "Үнэлгээ",
+          href: scoped("assessment"),
+          icon: <ClipboardCheck {...sectionIconProps} />,
+        },
         entry("Ажиглалт хянах", "/observations/review"),
         entry("Чөлөөний хүсэлт хянах", "/attendance-requests/review"),
       ],
     },
-    /*
-     * ★ The group's own registers, added 2026-08-28 — and this section exists
-     * because three shipped routes were about to become unreachable.
-     *
-     * `/groups/:id/attendance`, `/groups/:id/meals` and
-     * `/groups/:id/assessment` have never had a top-level menu entry,
-     * deliberately: none of them can start without a group, so an unscoped item
-     * would open a screen whose first act is "which group?". They were reached
-     * from the teacher dashboard instead — `AttendanceToday`'s footer link,
-     * `QuickLinks`, `GroupsSection` and `TeacherHero` — and the client's
-     * 2026-08-28 redesign removed all four from that screen.
-     * `group-meals.test.tsx` warns about exactly this ("Someone tidying that
-     * card must fail a test, not ship a feature nobody can open") but renders
-     * `GroupsSection` in isolation, so it would have stayed green while the
-     * routes went dark.
-     *
-     * The group is resolved once by `useMyGroup()` in `AppLayout` — the same
-     * key the dashboard's cards read, so this costs no extra request — and the
-     * section is omitted when there is no single group to scope it to. That is
-     * `WhoAmI`'s rule: an admin sees every group, so naming one would be a lie.
-     * They reach the same three screens from `/admin/groups`, whose rows carry
-     * a link each.
-     *
-     * ★★ The icons are passed explicitly. `routeIcon()` is keyed by literal
-     * href and these are interpolated, so it would return `undefined` for all
-     * three and leave one section in the sidebar as bare text rows — the exact
-     * gap `sidebar.test.tsx` exists to catch.
-     */
-    ...(groupId
-      ? [
-          {
-            title: "Бүлгийн бүртгэл",
-            entries: [
-              {
-                label: "Ирц",
-                href: `/groups/${groupId}/attendance`,
-                icon: <CalendarCheck {...sectionIconProps} />,
-              },
-              {
-                label: "Хоол ба цэс",
-                href: `/groups/${groupId}/meals`,
-                icon: <UtensilsCrossed {...sectionIconProps} />,
-              },
-              {
-                label: "Явцын үнэлгээ",
-                href: `/groups/${groupId}/assessment`,
-                icon: <ClipboardCheck {...sectionIconProps} />,
-              },
-            ],
-          },
-        ]
-      : []),
     {
-      title: "Харилцаа холбоо",
-      entries: [entry("Ангийн самбар / Мэдээ", "/notifications"), entry("Судалгаа", "/surveys")],
-    },
-    {
-      title: "Багш ба байгууллага",
+      title: "Үйл ажиллагаа",
       entries: [
+        {
+          label: "Хоол ба цэс",
+          href: scoped("meals"),
+          icon: <UtensilsCrossed {...sectionIconProps} />,
+        },
+        entry("Ангийн самбар / Мэдээ", "/notifications"),
+        entry("Судалгаа", "/surveys"),
         // RFP §9 — "Багшид зориулсан PDF баримт бичгийн сан". Staff only, so it
         // lives here and never in `parentSections`.
         entry("Баримт бичгийн сан", "/documents"),
+      ],
+    },
+    {
+      title: "Систем",
+      entries: [
         entry("Багшийн мэдээлэл", "/settings"),
         /*
          * ★ "Удирдлага", not "Бүлэг, цэцэрлэгийн мэдээлэл".
