@@ -4,6 +4,7 @@ import { TenantAccessService } from "../authz/tenant-access.service";
 import { Role } from "../domain/enums";
 import type { Actor } from "../authz/actor";
 import { DashboardRepository } from "./dashboard.repository";
+import { withActorLabel } from "./audit-actor";
 
 /**
  * Dashboards.
@@ -159,7 +160,7 @@ export class DashboardService {
       currentTerm: term ? { id: term.id, number: term.number, name: term.name } : null,
       counts,
       assessmentCoverage: coverage,
-      recentActivity,
+      recentActivity: recentActivity.map(withActorLabel),
       storage,
     };
   }

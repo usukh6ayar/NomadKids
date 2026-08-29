@@ -16,6 +16,7 @@ import { downloadUrl } from "@/lib/api/client";
 import { useDebounced } from "@/lib/use-debounced";
 import { Button } from "@/components/ui/button";
 import { Card, RowList } from "@/components/ui/card";
+import { Pagination } from "@/components/ui/pagination";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
@@ -237,29 +238,7 @@ function StaffChildren() {
             ))}
           </RowList>
 
-          {data.totalPages > 1 ? (
-            <nav aria-label="Хуудаслалт" className="flex items-center justify-between gap-3">
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              >
-                Өмнөх
-              </Button>
-              <span className="text-body text-muted" aria-live="polite">
-                {data.page} / {data.totalPages}
-              </span>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={page >= data.totalPages}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                Дараах
-              </Button>
-            </nav>
-          ) : null}
+          <Pagination page={data.page} totalPages={data.totalPages} onPage={setPage} />
         </>
       ) : null}
     </div>

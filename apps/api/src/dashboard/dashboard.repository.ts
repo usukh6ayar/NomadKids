@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import type { VisibleChildrenFilter } from "../authz/authz.repository";
 import type { AuditAction } from "../domain/enums";
+import { AUDIT_ACTOR_SELECT } from "./audit-actor";
 
 /**
  * Dashboard reads.
@@ -445,6 +446,7 @@ export class DashboardRepository {
         actorLabel: true,
         objectType: true,
         createdAt: true,
+        actor: AUDIT_ACTOR_SELECT,
       },
     });
   }
@@ -552,6 +554,9 @@ export class DashboardRepository {
         orderBy: { createdAt: "desc" },
         skip: page.skip,
         take: page.take,
+        // Resolves "who did this" in the same round trip — see `audit-actor.ts`
+        // for why the name is read from the relation rather than stored.
+        include: { actor: AUDIT_ACTOR_SELECT },
       }),
       this.prisma.auditLog.count({ where }),
     ]);

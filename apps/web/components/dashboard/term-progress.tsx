@@ -1,6 +1,6 @@
-import Image from "next/image";
 import type { TeacherDashboard } from "@kinder/contracts";
 import { Ring } from "@/components/ui/chart/ring";
+import { Art } from "@/components/ui/art";
 import { TileShell } from "./tile-shell";
 import { percentOf } from "./percent";
 
@@ -54,7 +54,7 @@ export function TermProgress({
   return (
     <section aria-label="Улирлын үнэлгээний явц" className="h-full">
       <TileShell
-        icon={<Image src="/icons/icon-progress.png" alt="" width={48} height={48} />}
+        icon={<Art name="progress" />}
         tone="teal"
         size="feature"
         label="Улирлын үнэлгээний явц"

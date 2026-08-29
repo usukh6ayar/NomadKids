@@ -1487,6 +1487,20 @@ export const auditEntrySchema = z.object({
   objectId: uuidSchema.nullish(),
   childId: uuidSchema.nullish(),
   actorUserId: uuidSchema.nullish(),
+  /**
+   * Who performed the action, as a name.
+   *
+   * ★ Resolved by the server on read, not read straight off the column.
+   *
+   * `AuditLog.actorLabel` is filled by two of the hundred and ten places that
+   * append to the log, so the raw column is null for almost every action. The
+   * API resolves the name from `actorUserId` and falls back to the stored text
+   * for an actor whose user row is gone — `apps/api/src/dashboard/audit-actor.ts`
+   * carries the reasoning.
+   *
+   * Null is a real answer: an unauthenticated action has no actor.
+   */
+  actorLabel: z.string().nullish(),
   createdAt: z.string(),
   metadata: z.unknown().nullish(),
 });

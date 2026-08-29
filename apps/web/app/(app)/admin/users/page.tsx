@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DataList, DataRow } from "@/components/ui/data-list";
+import { Pagination, ResultCount } from "@/components/ui/pagination";
 import { Checkbox, Field, Input, Select } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { useToast } from "@/components/ui/toast";
@@ -86,18 +87,44 @@ function AdminUsers() {
   const { primaryKindergartenId } = useSession();
   const [query, setQuery] = useState("");
   const [role, setRole] = useState<string>("");
+  const [page, setPage] = useState(1);
   const [inviting, setInviting] = useState(false);
 
+  /*
+    ★ A new filter starts at page one.
+
+    `/admin/audit` learned this first and says why: filtering from page four
+    shows an empty result that reads as "no such users" rather than "no such
+    users *on this page*".
+  */
+  function narrow(change: () => void) {
+    change();
+    setPage(1);
+  }
+
+  /*
+    ★ The response has been paginated since this screen was written; the screen
+    asked for page one and rendered whatever came back.
+
+    `pageSize: 50` was hardcoded and `total` / `totalPages` were both ignored,
+    so a kindergarten with more than fifty accounts showed the first fifty and
+    said nothing at all about the rest. The demo has twelve, which is why this
+    was invisible — a real kindergarten of 200 children has that many guardians
+    before its staff are counted.
+  */
   const users = useQuery({
-    queryKey: qk.adminUsers({ q: query, role }),
+    queryKey: qk.adminUsers({ q: query, role, page: String(page) }),
     queryFn: () => {
-      const params = new URLSearchParams({ page: "1", pageSize: "50" });
+      const params = new URLSearchParams({ page: String(page), pageSize: "50" });
       if (query.trim()) params.set("q", query.trim());
       if (role) params.set("role", role);
       if (primaryKindergartenId) params.set("kindergartenId", primaryKindergartenId);
       return get(`/users?${params}`, listSchema);
     },
     enabled: Boolean(primaryKindergartenId),
+    // The list does not collapse to a skeleton on every keystroke — same
+    // reasoning as `/admin/audit` and `/children`.
+    placeholderData: (previous) => previous,
   });
 
   const items = users.data?.items ?? [];
@@ -121,13 +148,13 @@ function AdminUsers() {
           aria-label="Нэрээр хайх"
           placeholder="Нэр эсвэл нэвтрэх нэрээр хайх"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => narrow(() => setQuery(e.target.value))}
           className="max-w-[320px] flex-1"
         />
         <Select
           aria-label="Эрхээр шүүх"
           value={role}
-          onChange={(e) => setRole(e.target.value)}
+          onChange={(e) => narrow(() => setRole(e.target.value))}
           className="max-w-[180px]"
         >
           <option value="">Бүх эрх</option>
@@ -166,8 +193,14 @@ function AdminUsers() {
         not a menu's worth, and hiding the only way to correct a mistyped phone
         number behind an unlabelled click is worse than repeating a word.
       */}
+      {items.length > 0 ? <ResultCount total={users.data!.total} noun="хэрэглэгч" /> : null}
+
       {items.length > 0 ? (
-        <DataList columns={USER_COLUMNS} actionsWidth="w-[236px]">
+        <DataList
+          columns={USER_COLUMNS}
+          actionsWidth="w-[236px]"
+          className={users.isPlaceholderData ? "opacity-60" : ""}
+        >
           {items.map((user) => (
             <DataRow
               key={user.id}
@@ -223,6 +256,10 @@ function AdminUsers() {
             />
           ))}
         </DataList>
+      ) : null}
+
+      {users.data ? (
+        <Pagination page={users.data.page} totalPages={users.data.totalPages} onPage={setPage} />
       ) : null}
 
       {inviting && primaryKindergartenId ? (

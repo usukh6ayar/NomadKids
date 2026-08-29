@@ -1,7 +1,7 @@
-import Image from "next/image";
 import type { TeacherDashboard } from "@kinder/contracts";
 import { TileShell } from "./tile-shell";
 import { BarRow } from "@/components/ui/chart/bar-row";
+import { Art } from "@/components/ui/art";
 
 /**
  * What kinds of observation this term is made of.
@@ -66,7 +66,7 @@ export function ObservationMix({
     */
     <section aria-label="Ажиглалтын төрлүүд" className="h-full">
       <TileShell
-        icon={<Image src="/icons/icon-analytics.png" alt="" width={48} height={48} />}
+        icon={<Art name="analytics" />}
         tone="mint"
         size="feature"
         label="Ажиглалтын төрлүүд"

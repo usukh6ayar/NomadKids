@@ -16,6 +16,8 @@ import { formatRelative } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, RowCard, RowList } from "@/components/ui/card";
+import { X } from "lucide-react";
+import { Pagination, ResultCount } from "@/components/ui/pagination";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
@@ -51,7 +53,30 @@ function AuditBrowser() {
   const [to, setTo] = useState("");
   const [page, setPage] = useState(1);
 
-  const filters = { action: action || undefined, from: from || undefined, to: to || undefined };
+  /*
+    ★ Filtering by person is driven from the rows, not from a picker.
+
+    `actorUserId` has been an accepted filter since the endpoint was written and
+    nothing in the UI ever sent it. The obvious way to expose it is a select of
+    everyone in the kindergarten — and that list is unbounded in the way that
+    matters: `MAX_PAGE_SIZE` is 100, and a kindergarten of 200 children has more
+    guardians than that before its staff are counted, so the picker would
+    quietly omit the people at the end of the alphabet.
+
+    Clicking the name on a row has no such ceiling. It also matches the question
+    being asked: an administrator reads "Батсайхан Оюунчимэг" in the log and
+    wants the rest of that person's actions — they are not browsing a roster.
+    The label is kept beside the id because the chip has to name who is being
+    filtered, and the row it came from may not be on the current page.
+  */
+  const [actor, setActor] = useState<{ id: string; label: string } | null>(null);
+
+  const filters = {
+    action: action || undefined,
+    from: from || undefined,
+    to: to || undefined,
+    actorUserId: actor?.id,
+  };
 
   const entries = useQuery({
     queryKey: qk.audit({ ...filters, page }),
@@ -60,6 +85,7 @@ function AuditBrowser() {
       if (action) params.set("action", action);
       if (from) params.set("from", from);
       if (to) params.set("to", to);
+      if (actor) params.set("actorUserId", actor.id);
       return get(`/audit?${params}`, listSchema);
     },
     // Keeps the previous page on screen while the next loads, so the list does
@@ -130,7 +156,7 @@ function AuditBrowser() {
           )}
         </Field>
 
-        {action || from || to ? (
+        {action || from || to || actor ? (
           <Button
             variant="ghost"
             size="sm"
@@ -139,6 +165,7 @@ function AuditBrowser() {
                 setAction("");
                 setFrom("");
                 setTo("");
+                setActor(null);
               })
             }
           >
@@ -159,46 +186,64 @@ function AuditBrowser() {
 
       {entries.data && entries.data.items.length > 0 ? (
         <>
-          <p className="text-body text-muted" aria-live="polite">
-            Нийт {entries.data.total} бичлэг
-          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <ResultCount total={entries.data.total} noun="бичлэг" />
+
+            {/*
+              ★ The chip names who is being filtered, because nothing else on
+              the screen does.
+
+              An `actorUserId` in the query string with no visible sign of it is
+              a list that looks short for no reason — the same failure as a
+              search box that has quietly kept its text. It carries its own
+              clear button rather than relying on "Шүүлт цэвэрлэх", which resets
+              every filter at once.
+            */}
+            {actor ? (
+              <span className="inline-flex items-center gap-1 rounded-pill bg-primary-soft py-1 pl-3 pr-1 text-caption font-medium text-primary">
+                Хэн: {actor.label}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`${actor.label} — шүүлтийг арилгах`}
+                  className="size-[28px] min-h-0 text-primary hover:bg-primary/10"
+                  onClick={() => narrow(() => setActor(null))}
+                >
+                  <X size={14} aria-hidden />
+                </Button>
+              </span>
+            ) : null}
+          </div>
 
           <RowList className={entries.isPlaceholderData ? "opacity-60" : ""}>
             {entries.data.items.map((entry) => (
-              <AuditRow key={entry.id} entry={entry} />
+              <AuditRow
+                key={entry.id}
+                entry={entry}
+                onFilterActor={(next) => narrow(() => setActor(next))}
+              />
             ))}
           </RowList>
 
-          {entries.data.totalPages > 1 ? (
-            <nav aria-label="Хуудаслалт" className="flex items-center justify-between gap-3">
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              >
-                Өмнөх
-              </Button>
-              <span className="text-body text-muted" aria-live="polite">
-                {entries.data.page} / {entries.data.totalPages}
-              </span>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={page >= entries.data.totalPages}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                Дараах
-              </Button>
-            </nav>
-          ) : null}
+          <Pagination
+            page={entries.data.page}
+            totalPages={entries.data.totalPages}
+            onPage={setPage}
+          />
         </>
       ) : null}
     </div>
   );
 }
 
-function AuditRow({ entry }: { entry: z.infer<typeof auditEntrySchema> }) {
+function AuditRow({
+  entry,
+  onFilterActor,
+}: {
+  entry: z.infer<typeof auditEntrySchema>;
+  /** Absent on a screen with no filtering, which keeps the name plain text. */
+  onFilterActor?: (actor: { id: string; label: string }) => void;
+}) {
   const metadata = entry.metadata;
   const hasMetadata = metadata !== null && metadata !== undefined && typeof metadata === "object";
 
@@ -222,6 +267,46 @@ function AuditRow({ entry }: { entry: z.infer<typeof auditEntrySchema> }) {
             {AUDIT_OBJECT_LABEL[entry.objectType] ?? entry.objectType}
           </span>
         ) : null}
+
+        {/*
+          ★ Who did it — the column this screen was missing entirely.
+
+          "Устгасан · Хүүхэд · 3 хоногийн өмнө" is three quarters of an answer,
+          and the missing quarter is the one an audit log exists to give. The
+          name is resolved server-side from `actorUserId`; see
+          `apps/api/src/dashboard/audit-actor.ts` for why it is not read off
+          `AuditLog.actorLabel`, which almost nothing writes.
+
+          An em dash rather than a hidden row when there is no actor: an
+          unauthenticated action is a real entry, and blanking the column would
+          make it look like a rendering fault.
+        */}
+        <span className="text-body text-muted">
+          <span className="text-faint">· </span>
+          {entry.actorLabel && entry.actorUserId && onFilterActor ? (
+            /*
+              ★ The name is a button when the log can be narrowed to it.
+
+              Plain text when it cannot: an entry whose actor was hard-deleted
+              keeps its label and loses its id, and a control that filters to
+              nobody is worse than no control. Same rule the sidebar is held to
+              — nothing offers what it cannot deliver.
+            */
+            <button
+              type="button"
+              onClick={() => onFilterActor({ id: entry.actorUserId!, label: entry.actorLabel! })}
+              className="rounded-control underline decoration-transparent underline-offset-2 transition-colors hover:text-primary hover:decoration-current"
+              title={`${entry.actorLabel}-ийн үйлдлүүдийг харах`}
+            >
+              {entry.actorLabel}
+            </button>
+          ) : (
+            <span className={entry.actorLabel ? undefined : "text-faint"}>
+              {entry.actorLabel ?? "—"}
+            </span>
+          )}
+        </span>
+
         <span className="ml-auto text-caption text-muted">{formatRelative(entry.createdAt)}</span>
       </div>
 

@@ -249,6 +249,30 @@ describe("admin dashboard", () => {
       ),
     ).toBe(true);
   });
+
+  /**
+   * The same resolution the audit screen gets. This feed read `actorLabel`
+   * straight off the column, which no service outside `auth` writes — so every
+   * line of it named its actor as "—" while the data to name them was one join
+   * away.
+   */
+  it("names the actor in the activity feed", async () => {
+    await db.user.update({
+      where: { id: a.teacherUser.id },
+      data: { lastName: "Сүрэн", firstName: "Ганаа" },
+    });
+
+    await observe(false);
+
+    const res = await request(server()).get("/v1/dashboard/admin").set("Cookie", adminA.cookies);
+    const entry = res.body.recentActivity.find(
+      (e: { objectType: string }) => e.objectType === "Observation",
+    );
+
+    expect(entry).toBeDefined();
+    expect(entry.actorLabel).toBe("Сүрэн Ганаа");
+    expect(entry.actor).toBeUndefined();
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -474,6 +498,132 @@ describe("audit log", () => {
     // Forging history must not be possible through the API.
     const res = await authed(request(server()).post("/v1/audit"), adminA).send({ action: "LOGIN" });
     expect(res.status).toBe(404);
+  });
+
+  /**
+   * ★ "Who did this" — resolved on read, because the column is almost never
+   * written.
+   *
+   * `AuditLog.actorLabel` is filled by two of the hundred and ten call sites
+   * that append to the log (both in `auth.service`), so an audit screen reading
+   * the raw column shows a name for logins and a dash for everything else. The
+   * name is resolved from `actorUserId` instead — see `audit-actor.ts`.
+   */
+  it("names the person who performed the action", async () => {
+    await db.user.update({
+      where: { id: a.teacherUser.id },
+      data: { lastName: "Дорж", firstName: "Болд" },
+    });
+
+    await observe(false);
+
+    const res = await request(server())
+      .get("/v1/audit?action=CREATE")
+      .set("Cookie", adminA.cookies);
+
+    const entry = res.body.items.find(
+      (e: { objectType: string }) => e.objectType === "Observation",
+    );
+    expect(entry).toBeDefined();
+    expect(entry.actorLabel).toBe("Дорж Болд");
+  });
+
+  /**
+   * ★★ The stored text is the fallback, and this is the case it exists for.
+   *
+   * `actorUserId` is `SetNull` on delete, so a hard-deleted user leaves the
+   * relation empty and the plain-text label written at append time is the only
+   * remaining attribution. The schema's own comment says so; without this the
+   * fallback branch is unexercised and could be dropped by anyone tidying the
+   * resolver.
+   */
+  it("★ falls back to the stored label when the actor's user row is gone", async () => {
+    await db.auditLog.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        actorUserId: null,
+        actorLabel: "Гарсан ажилтан",
+        action: "DELETE",
+        objectType: "Child",
+      },
+    });
+
+    const res = await request(server())
+      .get("/v1/audit?action=DELETE")
+      .set("Cookie", adminA.cookies);
+
+    expect(res.body.items[0].actorLabel).toBe("Гарсан ажилтан");
+  });
+
+  it("reports no actor rather than inventing one", async () => {
+    await db.auditLog.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        actorUserId: null,
+        actorLabel: null,
+        action: "RESTORE",
+        objectType: "Child",
+      },
+    });
+
+    const res = await request(server())
+      .get("/v1/audit?action=RESTORE")
+      .set("Cookie", adminA.cookies);
+
+    expect(res.body.items[0].actorLabel).toBeNull();
+  });
+
+  /**
+   * ★★★ The relation is joined to compute a label and must not ship with the
+   * response.
+   *
+   * The audit log is the one endpoint whose whole job is disclosure, so what it
+   * discloses should be a deliberate list. A passed-through `actor` object
+   * would widen it silently the next time somebody adds a field to that select
+   * for an unrelated reason.
+   */
+  /**
+   * ★ Filtering by actor — accepted by the endpoint since it was written, and
+   * never sent by anything until the audit screen made the names clickable.
+   *
+   * Scoped by the same `kindergartenId` clause as every other read here, so an
+   * id belonging to another kindergarten's staff narrows to nothing rather than
+   * revealing that they exist.
+   */
+  it("narrows the log to one person", async () => {
+    await observe(false);
+
+    const res = await request(server())
+      .get(`/v1/audit?actorUserId=${a.teacherUser.id}`)
+      .set("Cookie", adminA.cookies);
+
+    expect(res.status).toBe(200);
+    expect(res.body.items.length).toBeGreaterThan(0);
+    expect(
+      res.body.items.every((e: { actorUserId: string }) => e.actorUserId === a.teacherUser.id),
+    ).toBe(true);
+  });
+
+  it("★ an actor from another kindergarten matches nothing rather than leaking", async () => {
+    await observe(false);
+
+    const res = await request(server())
+      .get(`/v1/audit?actorUserId=${b.teacherUser.id}`)
+      .set("Cookie", adminA.cookies);
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toEqual([]);
+  });
+
+  it("★ does not expose the joined user record", async () => {
+    await observe(false);
+
+    const res = await request(server()).get("/v1/audit").set("Cookie", adminA.cookies);
+
+    expect(res.body.items.length).toBeGreaterThan(0);
+    for (const entry of res.body.items) {
+      expect(entry.actor).toBeUndefined();
+    }
   });
 });
 
