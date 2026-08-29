@@ -15,6 +15,7 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
+import { ChildAvatar } from "@/components/media/media-image";
 import { SingleImageUpload } from "@/components/media/single-image-upload";
 
 const profileSchema = userProfileSchema.extend({
@@ -193,52 +194,76 @@ function ProfileForm() {
           two identify the same person and belong on the same line.
         */
         <Card pad="roomy" className="flex flex-col gap-5">
+          {/*
+            ★ The avatar the rest of the product draws, not the uploader's
+            dashed placeholder.
+
+            `SingleImageUpload` renders an 80px dashed ring when there is no
+            picture — correct on a form, where it is the drop target and the
+            dashes say "put something here". At the top of a profile it reads as
+            a broken image: a grey outline where a face should be.
+
+            `ChildAvatar` is what every other surface in this product uses for a
+            person, and it draws their initials on a tinted circle when there is
+            no photograph — a name is a real answer where a dashed outline is an
+            absence.
+
+            RFP §3.3 — профайл зураг. The uploader keeps its job and loses its
+            preview: it sits under the name as a plain control, which is where a
+            profile header puts it. It stays outside the form because it saves on
+            selection, and a picture chosen inside a form with a Save button reads
+            as unsaved until one is pressed. Only ever the signed-in user's own —
+            the API refuses any other id.
+          */}
           <div className="flex flex-wrap items-center gap-4 border-b border-border-soft pb-5">
-            {/*
-              RFP §3.3 — профайл зураг. Outside the form: the upload saves on
-              selection, so putting it inside a form with its own Save button
-              would leave somebody choosing a picture and then wondering why the
-              button stayed greyed out.
-
-              Only ever the signed-in user's own — the API refuses any other id,
-              and this component has no way to name one.
-            */}
-            {/*
-              ★ A short hint here, the long one everywhere else.
-
-              `SingleImageUpload`'s default is "JPEG, PNG эсвэл WebP. Дээд
-              хэмжээ 10 MB." — right on a form where the uploader owns its row,
-              and about 360px wide. Beside a name it pushed the whole block past
-              the card's width and wrapped the name onto its own line, which is
-              the layout this header exists to avoid. The formats and the limit
-              are both still stated, in a third of the space.
-            */}
-            <SingleImageUpload
-              endpoint={`/users/${data?.id}/photo`}
-              currentMediaId={data?.photoMediaFileId}
-              label="Зураг"
-              alt="Таны профайл зураг"
-              shape="round"
-              hint="JPEG, PNG · 10 MB"
-              invalidateKeys={[qk.profile(), qk.session()]}
-            />
+            <ChildAvatar child={data ?? {}} size={72} />
 
             <div className="min-w-0 flex-1">
               <p className="truncate text-title font-semibold text-ink">
                 {[data?.lastName, data?.firstName].filter(Boolean).join(" ") || "—"}
               </p>
               <p className="truncate text-body text-muted">{data?.email || "И-мэйл оруулаагүй"}</p>
+
+              <div className="mt-2">
+                <SingleImageUpload
+                  endpoint={`/users/${data?.id}/photo`}
+                  currentMediaId={data?.photoMediaFileId}
+                  label="Зураг нэмэх"
+                  alt="Таны профайл зураг"
+                  shape="round"
+                  hidePreview
+                  invalidateKeys={[qk.profile(), qk.session()]}
+                />
+              </div>
             </div>
           </div>
 
-          {/* The header already states the name and the email, so neither is
-              repeated here — what is left is what it does not say. */}
-          <dl className="grid gap-4 sm:grid-cols-2">
-            <ReadField label="Утас" value={data?.phone} />
-            <ReadField label="Мэргэжил" value={data?.specialization} />
-            <ReadField label="Боловсрол" value={data?.education} />
-            <ReadField label="Танилцуулга" value={data?.bio} className="sm:col-span-2" />
-          </dl>
+          {/*
+            ★ One sentence when every optional field is empty, not four dashes.
+
+            The header already states the name and the email, so what is left
+            here is only what it does not say — and on a fresh account that is
+            Утас, Мэргэжил, Боловсрол and Танилцуулга, all blank. Four labels
+            over four em dashes reads as a form that failed to load, and it is
+            the first thing a new teacher sees on their own profile.
+
+            The dash is still right for *one* missing value among several: it
+            says "we asked and there is no answer". A whole card of them says
+            something else, so the empty case gets a sentence and the Засах
+            button in the header above is the next step.
+          */}
+          {!data?.phone && !data?.specialization && !data?.education && !data?.bio ? (
+            <p className="text-body text-muted">
+              Утас, мэргэжил, боловсролоо нэмбэл багш нарын жагсаалтад бүрэн харагдана.
+            </p>
+          ) : (
+            <dl className="grid gap-4 sm:grid-cols-2">
+              <ReadField label="Утас" value={data?.phone} />
+              <ReadField label="Мэргэжил" value={data?.specialization} />
+              <ReadField label="Боловсрол" value={data?.education} />
+              <ReadField label="Танилцуулга" value={data?.bio} className="sm:col-span-2" />
+            </dl>
+          )}
         </Card>
       ) : (
         <Card pad="roomy" className="flex flex-col gap-5">

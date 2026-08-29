@@ -689,7 +689,7 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
     */
     <article
       className={cn(
-        "flex flex-col gap-3 rounded-card border p-4 transition-colors",
+        "flex flex-col gap-2.5 rounded-card border p-4 transition-colors",
         isUnread
           ? "border-l-4 border-l-primary border-y-border border-r-border bg-surface hover:border-primary"
           : "border-border-soft bg-canvas hover:border-border",
@@ -700,12 +700,25 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
           has no `photoMediaFileId`, so it is always the initials here. */}
       <div className="flex items-center gap-2.5">
         <ChildAvatar child={notification.author ?? {}} size={40} />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-body font-semibold text-ink">
+
+        {/*
+          ★ One line, not two.
+
+          The author sat over the timestamp in a two-line stack, which is 36px
+          of a card whose content is often two lines itself. They are one fact —
+          who posted this and when — and a middot joins them the way every feed
+          does. `truncate` on the name and `shrink-0` on the time means a long
+          Mongolian name gives way rather than pushing the date off the row.
+        */}
+        <p className="flex min-w-0 flex-1 items-baseline gap-1.5">
+          <span className="truncate text-body font-semibold text-ink">
             {fullName(notification.author)}
-          </p>
-          <p className="text-caption text-muted">{formatRelative(when)}</p>
-        </div>
+          </span>
+          <span aria-hidden="true" className="text-faint">
+            ·
+          </span>
+          <span className="shrink-0 text-caption text-muted">{formatRelative(when)}</span>
+        </p>
         {/*
           ★ Both classifications sit here, and both are `Badge`.
 
@@ -765,8 +778,19 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
             {isUnread ? <span className="sr-only"> Уншаагүй</span> : null}
           </Link>
         </h3>
+        {/*
+          ★ `--color-ink`, not `--color-muted`.
+
+          The excerpt is the post — the thing a family opened the board to
+          read — and it was set in the same grey as the timestamp above it. A
+          card whose only body text is styled as metadata reads as a card with
+          no body: the eye takes the title and moves on, which is the opposite
+          of what a class board is for.
+        */}
         {notification.body ? (
-          <p className="mt-1 text-body text-muted">{excerpt(notification.body, 140)}</p>
+          <p className="mt-1 text-body leading-relaxed text-ink">
+            {excerpt(notification.body, 140)}
+          </p>
         ) : null}
       </div>
 
@@ -798,12 +822,21 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
       ) : null}
 
       {/*
-        The engagement row. "Чухал" used to sit at its right-hand end and has
-        moved up beside "Шинэ" — a classification is something you read *about*
-        the post, not something you do *with* it, and this row is for the
-        latter.
+        ★ No rule, and no reserved row.
+
+        This was a `border-t` with 10px of padding over a 44px control — about
+        55px of card, on every post, to hold one hollow heart. Most notices have
+        no likes, so most cards spent that on nothing and the divider drew a
+        line under an empty space.
+
+        The button keeps its 44px target (`LikeButton` owns that) and the
+        negative margin pulls its padding back into the card's own, so the row
+        costs the height of the glyph rather than the height of the control.
+        "Чухал" used to sit at this row's right-hand end and has moved up beside
+        "Шинэ" — a classification is something you read *about* a post, not
+        something you do *with* it.
       */}
-      <div className="flex items-center border-t border-border-soft pt-2.5">
+      <div className="-mb-2 flex items-center">
         <LikeButton
           notificationId={notification.id}
           likeCount={notification.likeCount}

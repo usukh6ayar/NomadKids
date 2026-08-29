@@ -40,6 +40,7 @@ export function SingleImageUpload({
   hint,
   shape = "square",
   invalidateKeys = [],
+  hidePreview = false,
 }: {
   /** The API path that accepts the file, e.g. `/kindergartens/:id/logo`. */
   endpoint: string;
@@ -49,6 +50,18 @@ export function SingleImageUpload({
   /** Required: this image carries meaning, so it needs a real description. */
   alt: string;
   hint?: ReactNode;
+  /**
+   * Draw only the control, not the 80px preview beside it.
+   *
+   * ★ For a surface that already shows the picture in its own way.
+   *
+   * The preview is a real drop target on a form, and its dashed placeholder
+   * says "put something here". A profile header already draws the person — as
+   * their photograph or, when there is none, as their initials — so a second
+   * copy beside it is the same image twice, and the dashed version of it reads
+   * as a broken one.
+   */
+  hidePreview?: boolean;
   /** A portrait is round; a logo and a class photo are not. */
   shape?: "square" | "round";
   /** Query keys to refetch once the server has the new file. */
@@ -105,7 +118,7 @@ export function SingleImageUpload({
       <FormError message={localError ?? (upload.isError ? errorMessage(upload.error) : null)} />
 
       <div className="flex items-center gap-4">
-        {shownId ? (
+        {hidePreview ? null : shownId ? (
           <img
             src={mediaUrl(shownId)}
             alt={alt}
@@ -135,15 +148,30 @@ export function SingleImageUpload({
             className="sr-only"
             onChange={(e) => handleFile(e.target.files)}
           />
-          <Button asChild variant="secondary" disabled={upload.isPending}>
+          <Button
+            asChild
+            variant="secondary"
+            size={hidePreview ? "sm" : "md"}
+            disabled={upload.isPending}
+          >
             <label htmlFor={inputId} className="cursor-pointer">
               <ImagePlus size={18} />
               {upload.isPending ? "Илгээж байна…" : shownId ? "Солих" : label}
             </label>
           </Button>
-          <p className="text-caption text-muted">
-            {hint ?? `JPEG, PNG эсвэл WebP. Дээд хэмжээ ${MAX_MB} MB.`}
-          </p>
+          {/*
+            ★ No hint line without the preview.
+
+            With the preview the pair is a form control and the hint is its help
+            text. Without it — in a profile header, under a name — it is a third
+            line under a button nobody has pressed yet, stating a limit the file
+            picker enforces anyway.
+          */}
+          {hidePreview ? null : (
+            <p className="text-caption text-muted">
+              {hint ?? `JPEG, PNG эсвэл WebP. Дээд хэмжээ ${MAX_MB} MB.`}
+            </p>
+          )}
         </div>
       </div>
     </div>
