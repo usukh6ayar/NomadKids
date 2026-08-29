@@ -878,24 +878,19 @@ describe("дүрслэл", () => {
     );
 
     const link = screen.getByRole("link", { name: /Мишээл/ });
-    // `/general`, not the bare id. The child hub page was deleted when it
-    // was split into general/observations/attendance, so `/children/:id` is
-    // no longer a route and 404s — `month-birthdays.tsx` carries the same
-    // note against the link this asserts on. The expectation was stale, not
-    // the component.
+    /*
+     * ★ `/general`, not the bare child id.
+     *
+     * `76a9cd4` deleted the child hub and split it into its own pages, so
+     * `children/[childId]/` has no `page.tsx` — this assertion was pinning a
+     * URL that 404s. The widget was already updated; the test was not, and it
+     * has been the suite's one red line since.
+     */
     expect(link).toHaveAttribute("href", "/children/44444444-4444-4444-8444-444444444444/general");
     expect(link.textContent).toContain("8/01");
   });
 });
 
-/**
- * The launcher grid — the parent home's tiles, on the teacher's screen.
- *
- * ★ What is worth testing here is not that six links render. It is that the
- * two group-scoped ones never render a link to a group that was not resolved:
- * `/groups/undefined/attendance` is a 404 the reader would read as the product
- * being broken, and it is exactly what a static href would have produced.
- */
 /*
  * ★ The "түргэн холбоос" suite was deleted on 2026-08-29 with the component.
  *

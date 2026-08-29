@@ -9,9 +9,10 @@ import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
+import { formatDate } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RowList } from "@/components/ui/card";
+import { DataList, DataRow } from "@/components/ui/data-list";
 import { Checkbox, Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { FormDialog } from "@/components/ui/form-dialog";
@@ -95,11 +96,11 @@ function AdminSchoolYears() {
       ) : null}
 
       {items.length > 0 ? (
-        <RowList>
+        <DataList columns={YEAR_COLUMNS} leadWidth={null} actionsWidth="w-[280px]">
           {items.map((year) => (
             <YearRow key={year.id} year={year} />
           ))}
-        </RowList>
+        </DataList>
       ) : null}
 
       {creating && primaryKindergartenId ? (
@@ -115,6 +116,16 @@ function AdminSchoolYears() {
 
 type SchoolYear = z.infer<typeof schoolYearSchema>;
 
+/**
+ * The list's columns. `Одоогийн болгох` is the widest action and only appears
+ * on years that are not current, so the gutter is sized for the row that has
+ * both controls rather than for the one that has one.
+ */
+const YEAR_COLUMNS = [
+  { key: "startsOn", label: "Эхлэх", className: "md:w-[112px]" },
+  { key: "endsOn", label: "Дуусах", className: "md:w-[112px]" },
+];
+
 /** `2026-09-01T00:00:00.000Z` → `2026-09-01`, which is all `<input type="date">` takes. */
 function dateValue(iso: string | null | undefined): string {
   return iso ? iso.slice(0, 10) : "";
@@ -122,27 +133,39 @@ function dateValue(iso: string | null | undefined): string {
 
 function YearRow({ year }: { year: SchoolYear }) {
   return (
-    <div className="flex min-h-[64px] flex-wrap items-center gap-3 rounded-row border border-border bg-surface px-4 py-3">
-      <span className="min-w-0 flex-1">
+    <DataRow
+      title={
         <span className="flex flex-wrap items-center gap-2">
-          <span className="min-w-0 truncate text-lead font-semibold text-ink">{year.name}</span>
+          <span className="min-w-0 truncate">{year.name}</span>
           {year.isCurrent ? <Badge tone="mint">Одоогийн</Badge> : null}
         </span>
-        <span className="mt-px block text-compact text-muted">
-          {[dateValue(year.startsOn), dateValue(year.endsOn)].filter(Boolean).join(" — ") || "—"}
-        </span>
-      </span>
+      }
+      cells={{
+        /*
+          ★ `formatDate`, and one column each.
 
-      {/*
-        `basis-full … sm:basis-auto` — at 390px the actions drop to their own
-        line under the name instead of squeezing it to a few characters; from
-        the small breakpoint up they sit on the right of the same row.
-      */}
-      <span className="flex basis-full flex-wrap items-center justify-end gap-2 sm:basis-auto">
-        {year.isCurrent ? null : <MakeCurrentButton year={year} />}
-        <EditYearButton year={year} />
-      </span>
-    </div>
+          The two dates were joined with an em dash into a caption under the
+          name, in `dateValue`'s output — which is `2026-09-01`, the format
+          `<input type="date">` requires and nothing a person reads. That
+          helper exists to feed the edit form's inputs; it had been borrowed to
+          render display text, so the product's own `2026.09.01` never reached
+          this screen. Two columns also let a director compare the start of one
+          year with the start of the next by looking down rather than across.
+        */
+        startsOn: (
+          <span className="text-body tabular-nums text-ink">{formatDate(year.startsOn)}</span>
+        ),
+        endsOn: (
+          <span className="text-body tabular-nums text-muted">{formatDate(year.endsOn)}</span>
+        ),
+      }}
+      actions={
+        <>
+          {year.isCurrent ? null : <MakeCurrentButton year={year} />}
+          <EditYearButton year={year} />
+        </>
+      }
+    />
   );
 }
 

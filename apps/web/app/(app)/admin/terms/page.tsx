@@ -10,14 +10,36 @@ import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import { RowList } from "@/components/ui/card";
+import { DataList, DataRow } from "@/components/ui/data-list";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { formatDate } from "@/lib/format";
+
+const TERM_COLUMNS = [
+  { key: "startsOn", label: "Эхлэх", className: "md:w-[112px]" },
+  { key: "endsOn", label: "Дуусах", className: "md:w-[112px]" },
+  { key: "year", label: "Хичээлийн жил", className: "md:w-[128px]" },
+];
+
+/**
+ * Whether today falls inside the term.
+ *
+ * Dates only — a term that ends on the 31st includes the whole of the 31st, so
+ * the comparison is against the day rather than the instant.
+ */
+function isRunning(
+  startsOn: string | null | undefined,
+  endsOn: string | null | undefined,
+): boolean {
+  if (!startsOn || !endsOn) return false;
+  const today = new Date().toISOString().slice(0, 10);
+  return startsOn.slice(0, 10) <= today && today <= endsOn.slice(0, 10);
+}
 
 /**
  * Terms.
@@ -104,28 +126,65 @@ function AdminTerms() {
           description="Ихэвчлэн намар, өвөл, хавар гэсэн гурван улирал байдаг."
         />
       ) : (
-        <RowList>
+        /*
+          ★ These rows had no card around them.
+
+          They were `RowList`'s children but plain `<div>`s, so unlike every
+          other administrative list in the product they rendered as bare text
+          floating on the canvas with an 8px gap — `RowList` is documented as
+          "the column those rows sit in", and `RowCard` is the row. One screen
+          out of the seven looked like a different product.
+        */
+        <DataList columns={TERM_COLUMNS} leadWidth={null} actionsWidth="w-[44px]">
           {items.map((term) => (
-            <div
+            <DataRow
               key={term.id}
-              className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3"
-            >
-              <span className="min-w-0">
-                <span className="block truncate font-medium text-ink">
-                  {term.number}. {term.name}
+              title={
+                <span className="flex flex-wrap items-center gap-2">
+                  <span className="min-w-0 truncate">
+                    {term.number}. {term.name}
+                  </span>
+                  {/*
+                    ★ Derived from the dates, not from a flag, because that is
+                    what the server does too.
+
+                    `school-years/page.tsx` records that the dashboard resolves
+                    "this term" by testing today against `startsOn`/`endsOn`
+                    rather than reading `SchoolYear.isCurrent`. This says the
+                    same thing on the screen where the terms are edited — an
+                    administrator setting up next year's dates could not tell
+                    from this list which term the product currently considers
+                    live.
+                  */}
+                  {isRunning(term.startsOn, term.endsOn) ? (
+                    <Badge tone="mint">Идэвхтэй</Badge>
+                  ) : null}
                 </span>
-                <span className="block truncate text-caption text-muted">
-                  {formatDate(term.startsOn)} – {formatDate(term.endsOn)}
-                  {term.schoolYear ? ` · ${term.schoolYear.name}` : ""}
-                </span>
-              </span>
-              <Button variant="ghost" size="icon" onClick={() => setEditing(term)}>
-                <Pencil size={18} />
-                <span className="sr-only">{term.name} засах</span>
-              </Button>
-            </div>
+              }
+              cells={{
+                startsOn: (
+                  <span className="text-body tabular-nums text-ink">
+                    {formatDate(term.startsOn)}
+                  </span>
+                ),
+                endsOn: (
+                  <span className="text-body tabular-nums text-muted">
+                    {formatDate(term.endsOn)}
+                  </span>
+                ),
+                year: term.schoolYear ? (
+                  <span className="text-body text-muted">{term.schoolYear.name}</span>
+                ) : null,
+              }}
+              actions={
+                <Button variant="ghost" size="icon" onClick={() => setEditing(term)}>
+                  <Pencil size={18} />
+                  <span className="sr-only">{term.name} засах</span>
+                </Button>
+              }
+            />
           ))}
-        </RowList>
+        </DataList>
       )}
 
       {creating && currentYear ? (

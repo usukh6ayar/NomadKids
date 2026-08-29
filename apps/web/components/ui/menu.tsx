@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { Button } from "@/components/ui/button";
+import { IconChip } from "@/components/ui/icon-chip";
 import { cn } from "@/lib/utils";
 
 export interface MenuItem {
@@ -162,11 +163,7 @@ export function Menu({
               onClick={() => setOpen(false)}
               className="flex min-h-[52px] items-center gap-3 px-3 py-2 text-left text-ink hover:bg-canvas focus:bg-canvas focus:outline-none"
             >
-              {item.icon ? (
-                <span className="grid size-9 shrink-0 place-items-center rounded-control bg-primary-soft text-primary">
-                  {item.icon}
-                </span>
-              ) : null}
+              {item.icon ? <IconChip icon={item.icon} tone="primary" /> : null}
               <span className="min-w-0">
                 <span className="block text-body font-medium leading-tight">{item.label}</span>
                 {item.hint ? (

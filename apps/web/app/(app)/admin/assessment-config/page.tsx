@@ -26,6 +26,30 @@ const levelsSchema = z.array(assessmentLevelSchema);
 const typesSchema = z.array(observationTypeConfigSchema);
 
 /**
+ * The latin slug an administrator types when creating a row — `physical`,
+ * `daily`.
+ *
+ * ★ It stays on screen, and it moves to its own column.
+ *
+ * It reads as a leak, and the first instinct is to delete it: an English word
+ * in the middle of a Mongolian row on the one screen a director configures.
+ * But `code` is a required field on the create form — the administrator
+ * supplies it — and it is what the API and every report key on, so hiding it
+ * would leave them editing a value they cannot see. Set in a fixed column at
+ * the end of the row instead, it reads as a reference rather than as an
+ * interruption, and the names line up down the list.
+ */
+function CodeCell({ code }: { code?: string | null }) {
+  if (!code) return null;
+
+  return (
+    <code className="hidden w-[104px] shrink-0 truncate text-caption text-faint sm:block">
+      {code}
+    </code>
+  );
+}
+
+/**
  * Assessment configuration — RFP §6.1, §6.2 and §2.1's "Хөгжлийн шалгуур,
  * үнэлгээний мэдээллийг удирдах".
  *
@@ -91,8 +115,10 @@ function AssessmentConfig() {
         renderRow={(row) => (
           <>
             <ColorDot color={row.color} />
-            <span className="text-body font-medium text-ink">{row.name}</span>
-            <code className="text-caption text-muted">{row.code}</code>
+            <span className="min-w-0 flex-1 truncate text-body font-medium text-ink">
+              {row.name}
+            </span>
+            <CodeCell code={row.code} />
           </>
         )}
         createFields={[
@@ -118,7 +144,7 @@ function AssessmentConfig() {
         renderRow={(row) => (
           <>
             <ColorDot color={row.color} />
-            <span className="text-body font-medium text-ink">
+            <span className="min-w-0 flex-1 truncate text-body font-medium text-ink">
               {row.value}. {row.label}
             </span>
           </>
@@ -145,8 +171,10 @@ function AssessmentConfig() {
         emptyDescription="Төрөл нэмээгүй байна."
         renderRow={(row) => (
           <>
-            <span className="text-body font-medium text-ink">{row.name}</span>
-            <code className="text-caption text-muted">{row.code}</code>
+            <span className="min-w-0 flex-1 truncate text-body font-medium text-ink">
+              {row.name}
+            </span>
+            <CodeCell code={row.code} />
           </>
         )}
         createFields={[
@@ -236,7 +264,17 @@ function ConfigSection<T extends ConfigRow>({
         lede={lede}
         action={
           !adding ? (
-            <Button size="sm" onClick={() => setAdding(true)}>
+            /*
+              ★ `secondary`, because there are three of these on one screen.
+
+              Filled blue is the product's call to action, and a page carrying
+              three of them stacked down its right edge has no call to action —
+              it has three equal claims on the eye, none of which is what an
+              administrator opened this screen to do. Each one is still the
+              primary action *of its own section*, which is what a bordered
+              button beside a section heading already says.
+            */
+            <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
               Нэмэх
             </Button>
           ) : null

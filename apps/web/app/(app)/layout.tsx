@@ -380,7 +380,20 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         // lives here and never in `parentSections`.
         entry("Баримт бичгийн сан", "/documents"),
         entry("Багшийн мэдээлэл", "/settings"),
-        ...(isAdmin ? [entry("Бүлэг, цэцэрлэгийн мэдээлэл", "/admin")] : []),
+        /*
+         * ★ "Удирдлага", not "Бүлэг, цэцэрлэгийн мэдээлэл".
+         *
+         * The sidebar entry is `text-compact` beside a 16px icon inside a
+         * 280px rail, which leaves room for about twenty characters. The old
+         * label was twenty-seven and rendered as "Бүлэг, цэцэрлэгийн м…" on
+         * every desktop — an ellipsis where the destination's name should be,
+         * on the one entry a director uses most. It also named two of the
+         * seven screens behind it and omitted the other five.
+         *
+         * It matches the bottom bar's tab for the same href, which is the
+         * point: one destination, one name.
+         */
+        ...(isAdmin ? [entry("Удирдлага", "/admin")] : []),
       ],
     },
   ];

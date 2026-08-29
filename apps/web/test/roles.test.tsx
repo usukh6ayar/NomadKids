@@ -47,7 +47,7 @@ describe("navigation is built from the session's roles", () => {
     expect(screen.getAllByText("Хүүхдүүд").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Ажиглалт хянах").length).toBeGreaterThan(0);
     // Administration belongs to admins only.
-    expect(screen.queryByText("Бүлэг, цэцэрлэгийн мэдээлэл")).toBeNull();
+    expect(screen.queryByText("Удирдлага")).toBeNull();
   });
 
   it("a parent sees the parent navigation and no staff-only destinations", async () => {
@@ -88,10 +88,14 @@ describe("navigation is built from the session's roles", () => {
       </AppLayout>,
     );
 
-    // The admin entry is a sidebar section row now, not a bottom-bar tab.
-    await waitFor(() =>
-      expect(screen.getAllByText("Бүлэг, цэцэрлэгийн мэдээлэл").length).toBeGreaterThan(0),
-    );
+    /*
+      The admin entry is a sidebar section row rather than a bottom-bar tab
+      since the 2026-08-29 nav change, and PR #16 renamed it from "Бүлэг,
+      цэцэрлэгийн мэдээлэл" to "Удирдлага" in the same window — twenty-seven
+      characters truncated to "Бүлэг, цэцэрлэгийн м…" in a 280px rail. This
+      follows that name; the guarantee is unchanged.
+    */
+    await waitFor(() => expect(screen.getAllByText("Удирдлага").length).toBeGreaterThan(0));
   });
 
   /**
