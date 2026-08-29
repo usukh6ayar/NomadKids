@@ -5,6 +5,7 @@ import type { ReactElement, ReactNode } from "react";
 import { vi } from "vitest";
 import { SessionProvider } from "@/lib/auth/session";
 import { SelectedChildProvider } from "@/lib/selected-child";
+import { ToastProvider } from "@/components/ui/toast";
 import type { Role } from "@kinder/contracts";
 
 /**
@@ -42,8 +43,20 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ROUTER,
   useParams: () => mockParams,
   useSearchParams: () => mockSearchParams,
-  usePathname: () => "/",
+  usePathname: () => mockPathname,
 }));
+
+/**
+ * The route the component under test believes it is on.
+ *
+ * Needed by anything that renders navigation: an active state is a comparison
+ * against the current path, and a helper pinned to "/" can only ever prove that
+ * nothing is active.
+ */
+export let mockPathname = "/";
+export function setPathname(pathname: string) {
+  mockPathname = pathname;
+}
 
 export interface RouteStub {
   /** Matched against the path after `/v1`, by `startsWith`. */
@@ -181,21 +194,31 @@ export function renderWithProviders(ui: ReactElement): RenderResult {
     },
   });
 
+  /*
+   * ★ `ToastProvider` is here, in the same order as `app/providers.tsx`.
+   *
+   * `useToast` falls back to a no-op outside a provider, so omitting it would
+   * not crash — it would silently make every toast assertion unprovable while
+   * the tests still passed. Wrapping with the real provider means a test that
+   * looks for a confirmation is looking at the component that ships.
+   */
   function Wrapper({ children }: { children: ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
-        <SessionProvider>
-          {/*
-            Always present in production — `AppLayout` mounts it unconditionally
-            for every authenticated route, before any page-level component ever
-            renders (`SelectedChildProvider`, `(app)/layout.tsx`). `myChildIds`
-            is `undefined` here rather than a real list: no test asserts on the
-            switcher through this generic wrapper, and a page that does
-            (`landmarks.test.tsx`, `roles.test.tsx`) wraps itself explicitly with
-            real ids where the assertion needs them.
-          */}
-          <SelectedChildProvider myChildIds={undefined}>{children}</SelectedChildProvider>
-        </SessionProvider>
+        <ToastProvider>
+          <SessionProvider>
+            {/*
+              Always present in production — `AppLayout` mounts it unconditionally
+              for every authenticated route, before any page-level component ever
+              renders (`SelectedChildProvider`, `(app)/layout.tsx`). `myChildIds`
+              is `undefined` here rather than a real list: no test asserts on the
+              switcher through this generic wrapper, and a page that does
+              (`landmarks.test.tsx`, `roles.test.tsx`) wraps itself explicitly with
+              real ids where the assertion needs them.
+            */}
+            <SelectedChildProvider myChildIds={undefined}>{children}</SelectedChildProvider>
+          </SessionProvider>
+        </ToastProvider>
       </QueryClientProvider>
     );
   }

@@ -123,7 +123,7 @@ tests: `test_a_revoked_teacher_gets_404_on_the_child_detail`,
 | PATCH  | `/kindergartens/:id`              | admin          | kg:admin                         | name, address, contact      | updated                                 |
 | GET    | `/kindergartens/:id/school-years` | any            | kg                               | —                           | list                                    |
 | POST   | `/kindergartens/:id/school-years` | admin          | kg:admin                         | name, startsOn, endsOn      | created                                 |
-| PATCH  | `/school-years/:id`               | admin          | kg:admin                         | dates, isCurrent            | updated; clears other `isCurrent`       |
+| PATCH  | `/school-years/:id`               | admin          | kg:admin                         | name, dates, isCurrent      | updated; clears other `isCurrent`       |
 | GET    | `/groups`                         | teacher, admin | teacher → own groups; admin → kg | `?schoolYearId&status&page` | paginated                               |
 | POST   | `/groups`                         | admin          | kg:admin                         | name, schoolYearId, ageBand | created                                 |
 | GET    | `/groups/:id`                     | teacher, admin | assigned or kg:admin             | —                           | group + teachers + roster count         |
@@ -135,6 +135,21 @@ tests: `test_a_revoked_teacher_gets_404_on_the_child_detail`,
 `GET /groups` for a teacher returns **only** their assigned groups. Reference:
 `test_a_teacher_from_another_group_gets_404`,
 `test_a_director_cannot_open_another_kindergartens_group`.
+
+Both school-year writes answer **409** for a name already used in that
+kindergarten — `@@unique([kindergartenId, name])`. Until 2026-08-27 they leaked
+it as a 500: Prisma's `P2002` reached the problem filter as an unrecognised
+exception, so an administrator who typed the same year twice was told the
+system had broken. There is no `DELETE /school-years/:id` and no archive flag;
+groups, enrolments, terms and age profiles reference a year with
+`onDelete: Restrict`, and nothing retires one.
+
+`PATCH /school-years/:id` moves `isCurrent` and never clears it as a side
+effect: `updateSchoolYearSchema` leaves the field optional with **no** default,
+unlike the create schema's `.default(false)`, so a rename arrives with it
+`undefined` and the flag stays where it was. Sending `false` explicitly is
+accepted and would leave the kindergarten with no current year at all — no
+client does.
 
 ### 4.1 Platform routes
 
@@ -668,6 +683,63 @@ reports success doing it.
 
 ---
 
+## 12c. Meal register — нэмэлт.md §2
+
+| Method | Route                         | Role           | Ownership            | Request                      | Response                           |
+| ------ | ----------------------------- | -------------- | -------------------- | ---------------------------- | ---------------------------------- |
+| GET    | `/groups/:id/meals`           | teacher, admin | assigned or kg:admin | `?date&kind` — both required | roster; `record` null if unmarked  |
+| PUT    | `/groups/:id/meals`           | teacher, admin | assigned or kg:admin | `{ date, kind, entries[] }`  | the saved records                  |
+| GET    | `/children/:id/meals/summary` | any            | child                | `?month=YYYY-MM`             | counts by kind × status, `daysFed` |
+
+**This is not the menu.** `MenuDay` (§12d) is what the kitchen planned to cook,
+one row per kindergarten per day, readable by a parent. `MealRecord` is what one
+child actually ate at one sitting. They share the `MealKind` vocabulary and
+nothing else — no foreign key, no join.
+
+Nor is it derivable from `Attendance`, which is why it is a separate table.
+`нэмэлт.md` §3 computes the food cost from **хооллосон өдөр** — days eaten — and
+a child collected before lunch attended and did not eat. Inferring one from the
+other makes the cost silently wrong.
+
+`kind` is one of `BREAKFAST · LUNCH · AFTERNOON_SNACK · EXTRA`; each entry's
+`status` is one of `TAKEN · NOT_TAKEN · PARTIAL · SPECIAL`, plus an optional
+`note` of at most 500 characters. There is no "unrecorded" status: a child
+nobody has marked is one the sheet returns with `record: null`, and the roster
+comes from `Enrollment` rather than from the meal rows so that they appear at
+all.
+
+The write is a **batch** — one request per sitting, not per child — because a
+teacher marks a whole group at a serving hatch. Three behaviours follow from
+that and are asserted in `meal-register.test.ts`:
+
+- an entry for a child not actively enrolled in the group is **dropped**, not an
+  error: a stale roster must not lose the nineteen marks that are correct, and
+  must not bill a meal to the wrong group;
+- if every entry is dropped the request is a 400, rather than a silent no-op;
+- a future date is refused.
+
+One audit row is written per sitting — the act the teacher performed — not one
+per child. §14 asks for a financial audit trail and this feeds the food cost.
+
+There is **no `DELETE`**. A saved mark is changed to another status; nothing
+un-records it. `MealRecord.deletedAt` exists and no endpoint sets it, which is
+why the repository hand-rolls find-then-write instead of Prisma's `upsert()`:
+the unique index is partial (`WHERE "deletedAt" IS NULL`), so a soft-deleted row
+leaves its sitting free and `upsert()` cannot see that.
+
+★ Authorization is the same on both group routes: staff, **and** — for a
+non-admin — a group the teacher is actively assigned to. Membership of the
+kindergarten is not enough. The check was missing from the write until
+2026-08-27, so a teacher could record meals for any group in their kindergarten;
+the read had always carried it.
+
+`GET /children/:id/meals/summary` is a different controller with a different
+rule — no `@Roles`, authorized by `canAccessChild`, so a guardian may read their
+own child's month. Nothing in the web app calls it yet; whether parents should
+see it is an open product decision.
+
+---
+
 ## 13. Dashboard
 
 | Method | Route                | Role    | Ownership    | Request | Response                                                       |
@@ -715,9 +787,21 @@ No write endpoint exists. The log is append-only and appended to internally.
 
 ## 15. Not in the MVP
 
-`/attendance` · `/meals` · `/invoices` · `/payments` · `/tariffs` · `/health` ·
+`/attendance` · `/invoices` · `/payments` · `/tariffs` · `/health` ·
 `/medications` · `/surveys` · `/chat` · `/messages` · `/exports/excel` ·
 `/analytics` · `/push` · WebSocket endpoints.
 
 These are Phase 2 or Phase 3. Do not add them without pulling the phase forward
 explicitly.
+
+★ `/meals` left this list on 2026-08-27. The meal register shipped with
+`нэмэлт.md`'s foundation and CLAUDE.md §7 moved the scope line to match, so the
+entry had become actively false — a document that says a live route does not
+exist teaches people to stop reading it, which is the reasoning §7 records for
+itself. The routes are §12c.
+
+★★ Several of the entries still above are in the same state — `/attendance`,
+`/health`, `/medications`, `/surveys` and `/exports/excel` are all built and
+some are documented in this very file. Reconciling the whole list is its own
+pass and is deliberately not folded into this one; only the line this change
+made false was corrected.

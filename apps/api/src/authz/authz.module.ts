@@ -1,5 +1,6 @@
 import { Global, Module } from "@nestjs/common";
 import { AuthzRepository } from "./authz.repository";
+import { ChatAccessService } from "./chat-access.service";
 import { ChildAccessService } from "./child-access.service";
 import { PlatformAccessService } from "./platform-access.service";
 import { TenantAccessService } from "./tenant-access.service";
@@ -11,7 +12,19 @@ import { TenantAccessService } from "./tenant-access.service";
  */
 @Global()
 @Module({
-  providers: [AuthzRepository, ChildAccessService, TenantAccessService, PlatformAccessService],
-  exports: [AuthzRepository, ChildAccessService, TenantAccessService, PlatformAccessService],
+  providers: [
+    AuthzRepository,
+    ChatAccessService,
+    ChildAccessService,
+    TenantAccessService,
+    PlatformAccessService,
+  ],
+  exports: [
+    AuthzRepository,
+    ChatAccessService,
+    ChildAccessService,
+    TenantAccessService,
+    PlatformAccessService,
+  ],
 })
 export class AuthzModule {}

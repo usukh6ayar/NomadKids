@@ -7,6 +7,8 @@ import { z } from "zod";
 import { mutate } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 /**
  * Archiving a record.
@@ -49,12 +51,22 @@ export function ArchiveButton({
   const router = useRouter();
   const queryClient = useQueryClient();
 
+  const toast = useToast();
+
   const archive = useMutation({
     mutationFn: () => mutate(path, z.unknown(), { method: "DELETE" }),
     onSuccess: () => {
       for (const key of invalidate) {
         void queryClient.invalidateQueries({ queryKey: key });
       }
+      /*
+        ★ The success is a toast; the failure is not.
+        The row has gone and often the page has gone with it, so there is
+        nowhere left to render a confirmation — which is exactly the case a
+        toast exists for. The error below stays in place for the opposite
+        reason, documented there.
+      */
+      toast.success(`${label} — архивлагдлаа.`);
       // Pushed after invalidation so the list being returned to is already
       // refetching rather than showing the row that has just gone.
       if (redirectTo) router.push(redirectTo);
@@ -63,19 +75,35 @@ export function ArchiveButton({
 
   return (
     <span className="inline-flex flex-col items-end gap-1">
-      <Button
-        type="button"
-        variant={variant}
-        size="sm"
-        disabled={archive.isPending}
-        onClick={() => {
-          if (window.confirm(confirmation)) archive.mutate();
-        }}
-        className="text-danger hover:bg-danger-soft"
-      >
-        <Trash2 size={18} />
-        {archive.isPending ? "Архивлаж байна…" : label}
-      </Button>
+      {/*
+        ★ Was `window.confirm(confirmation)`.
+
+        The native dialog could not be styled, put an English "OK / Cancel"
+        above Mongolian copy, and blocked the main thread — so the button
+        behind it could not show that anything had started. The shared dialog
+        keeps the same one-sentence question and adds the pending state.
+      */}
+      <ConfirmDialog
+        title={label}
+        description={confirmation}
+        confirmLabel={label}
+        pendingLabel="Архивлаж байна…"
+        tone="danger"
+        pending={archive.isPending}
+        onConfirm={() => archive.mutate()}
+        trigger={
+          <Button
+            type="button"
+            variant={variant}
+            size="sm"
+            disabled={archive.isPending}
+            className="text-danger hover:bg-danger-soft"
+          >
+            <Trash2 size={18} />
+            {archive.isPending ? "Архивлаж байна…" : label}
+          </Button>
+        }
+      />
 
       {/*
         Shown in place rather than as a toast. The most likely failure is the

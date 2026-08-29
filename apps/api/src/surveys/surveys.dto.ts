@@ -1,35 +1,138 @@
 import { z } from "zod";
 import { uuidSchema } from "@kinder/contracts";
 
+/** "2025-2026" — a school year spans two calendar years, so it is a string. */
+const schoolYearSchema = z
+  .string()
+  .regex(/^\d{4}-\d{4}$/, "Хичээлийн жил 2025-2026 хэлбэртэй байна")
+  .refine((value) => {
+    const [from, to] = value.split("-").map(Number) as [number, number];
+    return to === from + 1;
+  }, "Хичээлийн жил дараалсан хоёр он байна");
+
+export const surveyPeriodSchema = z.enum(["BASELINE", "MIDLINE", "ENDLINE"]);
+
 export const createSurveySchema = z
   .object({
     title: z.string().min(1).max(200),
     description: z.string().max(2000).nullable().optional(),
     scope: z.enum(["CHILD", "KINDERGARTEN"]),
+    // RFP Module 1.1's archival classification, and what Module 1.2 pairs on.
+    // Optional: a one-off poll belongs to no wave, and forcing a period on it
+    // would put it in a comparison it has no business in.
+    schoolYear: schoolYearSchema.nullable().optional(),
+    period: surveyPeriodSchema.nullable().optional(),
   })
   .strict();
 export type CreateSurveyDto = z.infer<typeof createSurveySchema>;
 
+/**
+ * A matrix's shape — RFP Module 1.1's "олон үзүүлэлтийн хүснэгт".
+ *
+ * ★ Rows carry a stable `key` alongside their label.
+ *
+ * The key is what an answer is stored against and what the year-on-year
+ * comparison pairs on. If rows were identified by their label, correcting a
+ * typo in "Хэл ярианы хөгжил" would orphan every answer already given and break
+ * the pairing against last year — so the label is free to change and the key
+ * never does.
+ */
+const matrixOptionsSchema = z.object({
+  rows: z
+    .array(
+      z.object({
+        key: z
+          .string()
+          .min(1)
+          .max(60)
+          .regex(/^[a-zA-Z0-9_-]+$/, "Мөрийн түлхүүр латин үсэг, тоо, зураасаас бүрдэнэ"),
+        label: z.string().min(1).max(200),
+      }),
+    )
+    .min(1)
+    .max(20),
+  columns: z
+    .array(z.object({ value: z.number().int().min(0).max(100), label: z.string().min(1).max(60) }))
+    .min(2)
+    .max(10),
+});
+
 const questionInputSchema = z
   .object({
     order: z.number().int().min(0),
-    type: z.enum(["RATING", "YES_NO", "TEXT", "CHECKBOX"]),
+    type: z.enum(["RATING", "YES_NO", "TEXT", "CHECKBOX", "MATRIX"]),
     prompt: z.string().min(1).max(500),
-    options: z.array(z.string().min(1).max(120)).max(20).nullable().optional(),
+    /** A string array for CHECKBOX; `{ rows, columns }` for MATRIX. */
+    options: z
+      .union([z.array(z.string().min(1).max(120)).max(20), matrixOptionsSchema])
+      .nullable()
+      .optional(),
+    /**
+     * What this question measures, stable across waves — RFP Module 1.2.
+     *
+     * Sent by the client and preserved through edits, because editing a DRAFT's
+     * questions deletes and recreates every row. Null means "not comparable",
+     * which is the honest answer for a one-off poll question.
+     */
+    indicatorKey: z
+      .string()
+      .min(1)
+      .max(60)
+      .regex(/^[a-zA-Z0-9_-]+$/, "Үзүүлэлтийн түлхүүр латин үсэг, тоо, зураасаас бүрдэнэ")
+      .nullable()
+      .optional(),
   })
-  .refine((q) => q.type !== "CHECKBOX" || (q.options?.length ?? 0) > 0, {
+  .refine((q) => q.type !== "CHECKBOX" || (Array.isArray(q.options) && q.options.length > 0), {
     message: "Олон сонголттой асуулт хамгийн багадаа нэг сонголттой байна",
     path: ["options"],
-  });
+  })
+  .refine((q) => q.type !== "MATRIX" || (q.options !== null && !Array.isArray(q.options)), {
+    message: "Матриц асуулт мөр болон баганатай байна",
+    path: ["options"],
+  })
+  .refine(
+    (q) => {
+      if (q.type !== "MATRIX" || Array.isArray(q.options) || !q.options) return true;
+      // Duplicate row keys would silently merge two indicators into one bucket
+      // in the comparison, which reads as a plausible average of the wrong two
+      // things rather than as an error.
+      const keys = q.options.rows.map((row) => row.key);
+      return new Set(keys).size === keys.length;
+    },
+    { message: "Матрицын мөрийн түлхүүр давхардсан байна", path: ["options"] },
+  );
 
 export const saveQuestionsSchema = z
   .object({
     questions: z.array(questionInputSchema).min(1).max(30),
   })
-  .strict();
+  .strict()
+  .refine(
+    (body) => {
+      const keys = body.questions
+        .map((q) => q.indicatorKey)
+        .filter((key): key is string => typeof key === "string");
+      return new Set(keys).size === keys.length;
+    },
+    { message: "Үзүүлэлтийн түлхүүр давхардсан байна", path: ["questions"] },
+  );
 export type SaveQuestionsDto = z.infer<typeof saveQuestionsSchema>;
 
-const answerValueSchema = z.union([z.number(), z.boolean(), z.string(), z.array(z.string())]);
+/**
+ * MATRIX answers are `{ [rowKey]: number }`; the rest are unchanged.
+ *
+ * `z.record` rather than a fixed shape because the row keys are whatever the
+ * question defines. The service checks each key against the question's own rows
+ * before storing, so an answer naming a row that does not exist is refused
+ * rather than saved as data nothing can score.
+ */
+const answerValueSchema = z.union([
+  z.number(),
+  z.boolean(),
+  z.string(),
+  z.array(z.string()),
+  z.record(z.string(), z.number()),
+]);
 
 export const submitResponseSchema = z
   .object({
@@ -41,3 +144,26 @@ export const submitResponseSchema = z
   })
   .strict();
 export type SubmitResponseDto = z.infer<typeof submitResponseSchema>;
+
+/**
+ * Cloning a survey into the next wave — RFP Module 1.2.
+ *
+ * ★ The clone is how "ижил асуулга" comes to exist at all. Retyping thirty
+ * questions in May would produce a survey that merely looks like September's,
+ * with no shared indicator keys and therefore nothing to compare.
+ */
+export const cloneSurveySchema = z
+  .object({
+    title: z.string().min(1).max(200).optional(),
+    schoolYear: schoolYearSchema.nullable().optional(),
+    period: surveyPeriodSchema.nullable().optional(),
+  })
+  .strict();
+export type CloneSurveyDto = z.infer<typeof cloneSurveySchema>;
+
+/** Which wave to compare this one against — Module 1.2. */
+export const compareSurveyQuerySchema = z.object({
+  /** Defaults to the survey's own baseline, found by school year and period. */
+  baselineId: uuidSchema.optional(),
+});
+export type CompareSurveyQuery = z.infer<typeof compareSurveyQuerySchema>;

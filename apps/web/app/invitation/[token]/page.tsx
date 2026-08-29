@@ -8,11 +8,29 @@ import { z } from "zod";
 import { mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
-import { Field, Input } from "@/components/ui/field";
+import { Field, Input, Select } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { AuthShell } from "@/components/shell/auth-shell";
 
 const MIN_LENGTH = 8;
+
+/**
+ * How a guardian describes themselves to the child.
+ *
+ * ★ Chosen here, by the guardian, rather than guessed by a teacher at invite
+ * time — which is how a father used to end up recorded as a mother. The
+ * account is created with `OTHER` and this is what replaces it.
+ *
+ * The order is the common cases first: `guardianRelationSchema` lists five and
+ * two of them cover almost every family.
+ */
+const RELATIONS = [
+  { value: "MOTHER", label: "Ээж" },
+  { value: "FATHER", label: "Аав" },
+  { value: "GRANDPARENT", label: "Өвөө, эмээ" },
+  { value: "SIBLING", label: "Ах, эгч" },
+  { value: "OTHER", label: "Бусад" },
+];
 
 /**
  * Accepting an invitation — choosing the first password on a new account.
@@ -32,6 +50,9 @@ export default function AcceptInvitationPage() {
   const params = useParams<{ token: string }>();
   const router = useRouter();
 
+  const [firstName, setFirstName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [relation, setRelation] = useState<string>("MOTHER");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
@@ -40,7 +61,13 @@ export default function AcceptInvitationPage() {
     mutationFn: () =>
       mutate("/auth/invitation/accept", z.unknown(), {
         method: "POST",
-        body: { token: params.token, password },
+        body: {
+          token: params.token,
+          password,
+          firstName: firstName.trim(),
+          phone: phone.trim(),
+          relation,
+        },
       }),
     onSuccess: () => {
       // Straight to the login form: the account now has a credential and the
@@ -95,7 +122,7 @@ export default function AcceptInvitationPage() {
     <AuthShell>
       <h2 className="mb-1.5 text-heading font-semibold tracking-[-.01em] text-ink">Тавтай морил</h2>
       <p className="mb-4 text-body leading-relaxed text-muted">
-        Бүртгэлээ идэвхжүүлэхийн тулд нууц үгээ сонгоно уу.
+        Өөрийнхөө нэр, утсаа бөглөөд нууц үгээ сонгоно уу.
       </p>
 
       <ul className="mb-4 list-disc space-y-1 pl-5 text-body text-muted">
@@ -105,6 +132,65 @@ export default function AcceptInvitationPage() {
       <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
         <FormError message={localError ?? (accept.isError ? errorMessage(accept.error) : null)} />
 
+        {/*
+          ★ The guardian introduces themselves here, and the teacher no longer
+          guesses on their behalf.
+
+          Inviting used to ask a teacher for a surname, a given name, a login
+          handle, a phone and the relationship — five facts about somebody
+          standing in front of them. The invitation now carries only a token,
+          and these three fields are where the account becomes a person.
+
+          **No surname**, at the client's request: "эцэг эхийн овог хэрэггүй,
+          зөвхөн нэр нь байхад болно". A form finished in a corridor on a phone
+          should ask for what is needed and stop.
+        */}
+        <Field label="Таны нэр" error={errors.firstName} required>
+          {({ id, describedBy, invalid }) => (
+            <Input
+              id={id}
+              aria-describedby={describedBy}
+              invalid={invalid}
+              autoComplete="given-name"
+              autoFocus
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+            />
+          )}
+        </Field>
+
+        <Field label="Утасны дугаар" error={errors.phone} required>
+          {({ id, describedBy, invalid }) => (
+            <Input
+              id={id}
+              aria-describedby={describedBy}
+              invalid={invalid}
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
+          )}
+        </Field>
+
+        <Field label="Хүүхдийн юу нь болох" error={errors.relation} required>
+          {({ id, describedBy }) => (
+            <Select
+              id={id}
+              aria-describedby={describedBy}
+              value={relation}
+              onChange={(e) => setRelation(e.target.value)}
+            >
+              {RELATIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+
         <Field label="Нууц үг" error={errors.password} required>
           {({ id, describedBy, invalid }) => (
             <Input
@@ -113,7 +199,6 @@ export default function AcceptInvitationPage() {
               invalid={invalid}
               type="password"
               autoComplete="new-password"
-              autoFocus
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />

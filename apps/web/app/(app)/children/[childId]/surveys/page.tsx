@@ -48,10 +48,7 @@ export default function ChildSurveysPage() {
   });
 
   const header = (
-    <PageHeader
-      title="Миний судалгаанууд"
-      lede={child.data ? fullName(child.data) : undefined}
-    />
+    <PageHeader title="Миний судалгаанууд" lede={child.data ? fullName(child.data) : undefined} />
   );
 
   if (surveys.isLoading) {
@@ -126,9 +123,7 @@ export default function ChildSurveysPage() {
                 </span>
               </span>
 
-              {open ? (
-                <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden />
-              ) : null}
+              {open ? <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden /> : null}
             </>
           );
 

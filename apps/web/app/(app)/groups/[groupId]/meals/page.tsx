@@ -1,56 +1,100 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { NotebookPen } from "lucide-react";
 import { z } from "zod";
 import {
-  groupMealSheetEntrySchema,
+  groupMealRowSchema,
   groupSchema,
-  MEAL_KIND_LABEL,
-  MEAL_STATUS_LABEL,
-  mealKindSchema,
   mealRecordSchema,
-  mealStatusSchema,
+  type MealKind,
+  type MealStatus,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
-import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
-import { RequireRole } from "@/components/shell/require-role";
-import { Button } from "@/components/ui/button";
-import { Card, SectionHeader } from "@/components/ui/card";
-import { Field, Select } from "@/components/ui/field";
-import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
-import { ChildAvatar } from "@/components/media/media-image";
+import { qk } from "@/lib/api/keys";
 import { fullName } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/shell/app-shell";
+import { RequireRole } from "@/components/shell/require-role";
+import { ChildAvatar } from "@/components/media/media-image";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, SectionHeader } from "@/components/ui/card";
+import { Field, Input, Textarea } from "@/components/ui/field";
+import { FormDialog } from "@/components/ui/form-dialog";
+import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { useToast } from "@/components/ui/toast";
 
-const sheetSchema = z.array(groupMealSheetEntrySchema);
+const sheetSchema = z.array(groupMealRowSchema);
 const savedSchema = z.array(mealRecordSchema);
-const MEAL_KINDS = mealKindSchema.options;
-const MEAL_STATUSES = mealStatusSchema.options;
 
-function todayIso(): string {
+/** The four sittings `MealKind` defines — `нэмэлт.md` §2, in serving order. */
+const SITTINGS: { value: MealKind; label: string; short: string }[] = [
+  { value: "BREAKFAST", label: "Өглөөний цай", short: "Өглөө" },
+  { value: "LUNCH", label: "Үдийн хоол", short: "Үд" },
+  { value: "AFTERNOON_SNACK", label: "Үдээс хойших цай", short: "Үдээс хойш" },
+  { value: "EXTRA", label: "Нэмэлт хоол", short: "Нэмэлт" },
+];
+
+/**
+ * The four statuses, with the tone each is scanned by.
+ *
+ * ★ Colour carries meaning here and is never the only carrier: the label is
+ * always rendered, and the selected control is the one with `aria-checked`.
+ * A teacher scanning twenty rows for who has not eaten reads the colour; a
+ * screen reader reads the label and the state.
+ */
+const STATUSES: { value: MealStatus; label: string; selected: string }[] = [
+  { value: "TAKEN", label: "Авсан", selected: "border-mint-ink/30 bg-mint text-mint-ink" },
+  { value: "NOT_TAKEN", label: "Аваагүй", selected: "border-danger/30 bg-danger-soft text-danger" },
+  { value: "PARTIAL", label: "Хэсэгчлэн", selected: "border-sun-ink/30 bg-sun text-sun-ink" },
+  { value: "SPECIAL", label: "Тусгай хоол", selected: "border-sky-ink/30 bg-sky text-sky-ink" },
+];
+
+const STATUS_LABEL = Object.fromEntries(STATUSES.map((s) => [s.value, s.label])) as Record<
+  MealStatus,
+  string
+>;
+
+function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** What a row is carrying, once the teacher has touched it. */
+interface Draft {
+  status: MealStatus;
+  /** Seeded from the saved record, so changing a status never wipes its note. */
+  note: string;
+}
+
 /**
- * The meal register — `нэмэлт.md` §2.
+ * The group's meal register — `нэмэлт.md` §2.
  *
- * ★ One sitting at a time, the same "one column, not a matrix" call
- * `GroupAssessmentPage` already made for the same reason: a teacher marking
- * twenty children at a serving hatch needs one clear task — this date, this
- * sitting — not four sittings' worth of choices open at once.
+ * ★ It is not the menu, and the two must not be confused.
  *
- * The whole sitting saves in one request, same as the assessment column: a
- * teacher taps through the roster and saves once.
+ * `MenuDay` is what the kitchen planned to cook, one row per kindergarten per
+ * day, and a parent reads it. This is what each child actually ate at one
+ * sitting. They share the `MealKind` vocabulary and nothing else — §3 computes
+ * the food cost from **хооллосон өдөр**, days eaten, so nothing here may be
+ * inferred from the menu or from `Attendance`. A child collected before lunch
+ * attended and did not eat.
+ *
+ * ★★ Batch save, unlike the attendance day sheet beside it.
+ *
+ * Attendance writes per tap because it is a fact about right now, usually
+ * corrected in the moment. The meal API takes a whole sitting in one request
+ * for the opposite reason, written into its own DTO: a teacher marks twenty
+ * children at a serving hatch with the queue waiting, and twenty round trips
+ * over a kindergarten's connection is the difference between a usable screen
+ * and a form nobody fills in. So this screen holds a draft and saves once.
  */
 export default function GroupMealsPage() {
   return (
     <RequireRole roles={["TEACHER", "ADMIN"]}>
-      <Suspense fallback={<LoadingState rows={4} />}>
-        <GroupMeals />
-      </Suspense>
+      <GroupMeals />
     </RequireRole>
   );
 }
@@ -58,104 +102,121 @@ export default function GroupMealsPage() {
 function GroupMeals() {
   const params = useParams<{ groupId: string }>();
   const groupId = params.groupId;
-  const searchParams = useSearchParams();
-  const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
-  // The selection lives in the URL, same reasoning as the assessment
-  // screen's term/domain: a teacher can bookmark or share "this date, this
-  // sitting", and a reload does not throw them back to today's breakfast.
-  const date = searchParams.get("date") || todayIso();
-  const kind = searchParams.get("kind") || MEAL_KINDS[0]!;
-
-  function setSelection(next: { date?: string; kind?: string }) {
-    const updated = new URLSearchParams(searchParams.toString());
-    if (next.date !== undefined) updated.set("date", next.date);
-    if (next.kind !== undefined) updated.set("kind", next.kind);
-    router.replace(`?${updated.toString()}`, { scroll: false });
-  }
+  const [date, setDate] = useState(today());
+  const [kind, setKind] = useState<MealKind>("BREAKFAST");
+  /** Unsaved marks, keyed by child id — never by row index, which reorders. */
+  const [draft, setDraft] = useState<Record<string, Draft>>({});
+  const [noting, setNoting] = useState<string | null>(null);
 
   const group = useQuery({
     queryKey: ["group", groupId],
     queryFn: () => get(`/groups/${groupId}`, groupSchema),
   });
 
+  /*
+    ★ One sitting, not four.
+
+    The API answers per `kind` and requires it, so the first paint costs one
+    request rather than four — and `enabled` covers the empty date a cleared
+    `<input type="date">` produces, which would otherwise fire `?date=` and
+    come back 400 against the format regex.
+  */
   const sheet = useQuery({
-    queryKey: qk.groupMealSheet(groupId, date, kind),
+    queryKey: qk.groupMeals(groupId, date, kind),
     queryFn: () => get(`/groups/${groupId}/meals?date=${date}&kind=${kind}`, sheetSchema),
+    enabled: Boolean(groupId && date),
   });
 
-  /** Pending status choices, keyed by child. Empty until something is tapped. */
-  const [draft, setDraft] = useState<Record<string, string>>({});
+  /*
+    The invariant: a draft belongs to exactly one (date, sitting).
+
+    Carrying breakfast's marks into lunch would save them under the wrong
+    `kind` — the register's version of the assessment column's wrong-domain
+    save, and the same guard. The controls are disabled while anything is
+    unsaved (see `SittingPicker`), so in practice this never has work to do;
+    it stays because "in practice" is not an invariant.
+  */
+  useEffect(() => {
+    setDraft({});
+  }, [groupId, date, kind]);
 
   const save = useMutation({
     mutationFn: () => {
-      const entries = Object.entries(draft).map(([childId, status]) => ({ childId, status }));
+      /*
+        ★ Only the rows the teacher marked.
+
+        `MealStatus` has no "not recorded" member, so an unmarked child has no
+        status to send — and the DTO requires one per entry. Sending the whole
+        roster would mean inventing a status for children nobody marked.
+      */
+      const entries = Object.entries(draft).map(([childId, value]) => ({
+        childId,
+        status: value.status,
+        note: value.note.trim() ? value.note.trim() : null,
+      }));
+
       return mutate(`/groups/${groupId}/meals`, savedSchema, {
         method: "PUT",
         body: { date, kind, entries },
       });
     },
-    onSuccess: () => {
+    onSuccess: (saved) => {
       setDraft({});
-      void queryClient.invalidateQueries({ queryKey: qk.groupMealSheet(groupId, date, kind) });
+      void queryClient.invalidateQueries({ queryKey: qk.groupMeals(groupId, date, kind) });
+      toast.success(`${saved.length} хүүхдийн хоол бүртгэгдлээ.`);
     },
   });
 
-  if (group.isLoading) return <LoadingState rows={4} />;
-
-  if (group.isError) {
-    return (
-      <div className="py-6">
-        <ErrorState description={errorMessage(group.error)} />
-      </div>
-    );
-  }
-
+  const rows = sheet.data ?? [];
   const pendingCount = Object.keys(draft).length;
+  const isDirty = pendingCount > 0;
+  const sitting = SITTINGS.find((s) => s.value === kind)!;
+
+  /** The saved status, unless the teacher has changed it in this session. */
+  const statusFor = (row: z.infer<typeof groupMealRowSchema>): MealStatus | null =>
+    draft[row.child.id]?.status ?? row.record?.status ?? null;
+
+  const setStatus = (row: z.infer<typeof groupMealRowSchema>, status: MealStatus) => {
+    setDraft((current) => ({
+      ...current,
+      [row.child.id]: {
+        status,
+        // Preserved: marking a child PARTIAL must not silently clear the note
+        // that says why they only ate half.
+        note: current[row.child.id]?.note ?? row.record?.note ?? "",
+      },
+    }));
+  };
+
+  const notingRow = rows.find((r) => r.child.id === noting) ?? null;
+  const recorded = rows.filter((row) => statusFor(row) !== null).length;
 
   return (
     <div className="flex flex-col gap-5 py-2">
-      <header>
-        <h1 className="text-heading font-semibold text-ink">Хоолны бүртгэл</h1>
-        <p className="mt-0.5 text-body text-muted">{group.data?.name}</p>
-      </header>
+      <PageHeader title="Хоолны бүртгэл" lede={group.data?.name} />
 
-      <Card className="grid gap-4 px-4 py-4 sm:grid-cols-2 sm:px-5">
-        <Field label="Огноо">
-          {({ id }) => (
-            <input
-              id={id}
-              type="date"
-              value={date}
-              max={todayIso()}
-              onChange={(e) => {
-                setDraft({});
-                setSelection({ date: e.target.value || todayIso() });
-              }}
-              className="flex h-[48px] w-full items-center rounded-control border border-border bg-surface px-3.5 text-body text-ink outline-none focus-visible:border-primary"
-            />
-          )}
-        </Field>
+      <Card className="flex flex-col gap-4 px-4 py-4 sm:px-5">
+        <SittingPicker value={kind} onChange={setKind} locked={isDirty} />
 
-        <Field label="Хоолны цаг">
-          {({ id }) => (
-            <Select
-              id={id}
-              value={kind}
-              onChange={(e) => {
-                setDraft({});
-                setSelection({ kind: e.target.value });
-              }}
-            >
-              {MEAL_KINDS.map((k) => (
-                <option key={k} value={k}>
-                  {MEAL_KIND_LABEL[k]}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Огноо" hint={isDirty ? "Эхлээд хадгална уу." : undefined}>
+            {({ id, describedBy }) => (
+              <Input
+                id={id}
+                aria-describedby={describedBy}
+                type="date"
+                // The API refuses a future sitting; the picker says so first.
+                max={today()}
+                value={date}
+                disabled={isDirty}
+                onChange={(e) => setDate(e.target.value)}
+              />
+            )}
+          </Field>
+        </div>
       </Card>
 
       {sheet.isLoading ? <LoadingState rows={5} /> : null}
@@ -174,26 +235,30 @@ function GroupMeals() {
       {sheet.data ? (
         <>
           <SectionHeader
-            title={MEAL_KIND_LABEL[kind] ?? kind}
-            action={<span className="text-body text-muted">{sheet.data.length} хүүхэд</span>}
+            title={sitting.label}
+            action={
+              <span className="text-body text-muted">
+                {recorded}/{rows.length} бүртгэсэн
+              </span>
+            }
           />
 
-          {sheet.data.length === 0 ? (
+          {rows.length === 0 ? (
             <EmptyState
               title="Бүлэгт хүүхэд алга"
               description="Энэ хичээлийн жилд идэвхтэй бүртгэлтэй хүүхэд байхгүй байна."
             />
           ) : (
             <Card className="divide-y divide-border">
-              {sheet.data.map((entry) => (
+              {rows.map((row) => (
                 <ChildRow
-                  key={entry.enrollmentId}
-                  child={entry.child}
-                  selectedStatus={draft[entry.child.id] ?? entry.record?.status ?? null}
-                  isDirty={Boolean(draft[entry.child.id])}
-                  onSelect={(status) =>
-                    setDraft((current) => ({ ...current, [entry.child.id]: status }))
-                  }
+                  key={row.enrollmentId}
+                  child={row.child}
+                  status={statusFor(row)}
+                  note={draft[row.child.id]?.note ?? row.record?.note ?? ""}
+                  isDirty={Boolean(draft[row.child.id])}
+                  onSelect={(status) => setStatus(row, status)}
+                  onOpenNote={() => setNoting(row.child.id)}
                 />
               ))}
             </Card>
@@ -201,87 +266,312 @@ function GroupMeals() {
 
           <FormError message={save.isError ? errorMessage(save.error) : null} />
 
-          {pendingCount > 0 ? (
-            <div className="sticky bottom-[76px] z-10 lg:bottom-4">
+          {/*
+            A sticky save bar, the same place the assessment column puts one:
+            on a phone the roster is longer than the viewport, so a button at
+            the foot of the page is a scroll away from the row just tapped.
+            `--size-bottom-nav` clears the mobile navigation — see `globals.css`,
+            which records what it is measured from and why a literal went stale.
+          */}
+          {isDirty ? (
+            <div className="sticky bottom-[var(--size-bottom-nav)] z-10 lg:bottom-4">
               <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 shadow-lg">
-                <p className="text-body text-ink" aria-live="polite">
-                  {pendingCount} хүүхдийн хоол хадгалагдаагүй байна
+                <p className="min-w-0 text-body text-ink" aria-live="polite">
+                  {pendingCount} хүүхдийн бүртгэл хадгалагдаагүй байна
                 </p>
                 <div className="flex gap-2">
                   <Button size="sm" disabled={save.isPending} onClick={() => save.mutate()}>
                     {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
                   </Button>
-                  <Button variant="secondary" size="sm" onClick={() => setDraft({})}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={save.isPending}
+                    onClick={() => setDraft({})}
+                  >
                     Болих
                   </Button>
                 </div>
               </Card>
             </div>
           ) : null}
-
-          {save.isSuccess && pendingCount === 0 ? (
-            <p role="status" className="rounded-control bg-mint px-4 py-3 text-body text-mint-ink">
-              Хоолны бүртгэл хадгалагдлаа.
-            </p>
-          ) : null}
         </>
+      ) : null}
+
+      {notingRow ? (
+        <NoteDialog
+          childName={fullName(notingRow.child)}
+          status={statusFor(notingRow)}
+          value={draft[notingRow.child.id]?.note ?? notingRow.record?.note ?? ""}
+          onClose={() => setNoting(null)}
+          onSave={(note) => {
+            const status = statusFor(notingRow);
+            // Guarded by the trigger being disabled without a status — the DTO
+            // has no note-only entry, so there is nothing to attach one to.
+            if (!status) return;
+            setDraft((current) => ({
+              ...current,
+              [notingRow.child.id]: { status, note },
+            }));
+            setNoting(null);
+          }}
+        />
       ) : null}
     </div>
   );
 }
 
 /**
- * One child's row — four status buttons, same "buttons, not a dropdown"
- * reasoning as the assessment screen's level choice: marking is the whole
- * task, and four options fit a phone row at 44px each.
+ * Which sitting is being recorded.
+ *
+ * ★ `role="group"` with `aria-pressed`, not a tablist.
+ *
+ * `home/page.tsx` documents why the product stopped claiming `role="tab"`: a
+ * tablist promises a `tabpanel`, `aria-controls`, a roving tabindex and arrow
+ * keys, and announcing "tab, 1 of 4" while none of that works is worse than
+ * not claiming the pattern. These are buttons that stay in.
+ *
+ * ★★ Locked while there are unsaved marks.
+ *
+ * The draft belongs to one sitting; switching would discard it. The assessment
+ * column clears its draft silently in the same situation, and that is the one
+ * thing this screen does differently — twenty marks made at a serving hatch is
+ * too much work to lose to a mistaken tap. "Болих" in the save bar is one press
+ * away, so the way out is always available and always deliberate.
  */
-function ChildRow({
-  child,
-  selectedStatus,
-  isDirty,
-  onSelect,
+function SittingPicker({
+  value,
+  onChange,
+  locked,
 }: {
-  child: { id: string; lastName: string; firstName: string };
-  selectedStatus: string | null;
-  isDirty: boolean;
-  onSelect: (status: string) => void;
+  value: MealKind;
+  onChange: (kind: MealKind) => void;
+  locked: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:gap-4">
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <ChildAvatar child={child} size={40} />
-        <span className="min-w-0">
-          <span className="block truncate font-medium text-ink">{fullName(child)}</span>
-          {isDirty ? <span className="text-caption text-primary">Хадгалаагүй</span> : null}
-        </span>
-      </div>
-
+    <div className="flex flex-col gap-1.5">
+      <span className="text-compact font-medium text-muted" id="sitting-label">
+        Хоолны цаг
+      </span>
       <div
-        role="radiogroup"
-        aria-label={`${fullName(child)} — хоолны байдал`}
-        className="flex flex-wrap gap-2"
+        role="group"
+        aria-labelledby="sitting-label"
+        /*
+          Scrolls inside itself rather than widening the page — four Mongolian
+          sitting names do not fit across 390px, and a row that cannot give
+          takes the whole layout sideways.
+        */
+        className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0"
       >
-        {MEAL_STATUSES.map((status) => {
-          const selected = status === selectedStatus;
+        {SITTINGS.map((s) => {
+          const active = s.value === value;
           return (
             <button
-              key={status}
+              key={s.value}
               type="button"
-              role="radio"
-              aria-checked={selected}
-              onClick={() => onSelect(status)}
+              aria-pressed={active}
+              disabled={locked && !active}
+              title={locked && !active ? "Эхлээд хадгална уу эсвэл болино уу." : undefined}
+              onClick={() => onChange(s.value)}
               className={cn(
-                "min-h-[44px] rounded-control border px-3 text-body font-medium transition-colors",
-                selected
-                  ? "border-primary bg-primary text-primary-ink"
+                "min-h-[44px] shrink-0 rounded-pill border px-4 text-body font-medium transition-colors",
+                "disabled:cursor-not-allowed disabled:opacity-50",
+                active
+                  ? "border-primary bg-primary-soft text-primary"
                   : "border-border bg-surface text-muted hover:bg-canvas hover:text-ink",
               )}
             >
-              {MEAL_STATUS_LABEL[status]}
+              {/* The full name where it fits, an abbreviation on a phone. */}
+              <span className="hidden sm:inline">{s.label}</span>
+              <span className="sm:hidden">{s.short}</span>
             </button>
           );
         })}
       </div>
     </div>
+  );
+}
+
+/**
+ * One child's row.
+ *
+ * ★ Compact, and a list rather than a card per child.
+ *
+ * This is repeated daily entry over a whole group: a card each would put four
+ * children on a phone screen and turn a two-minute job into scrolling. The
+ * statuses are buttons rather than a select for the same reason the assessment
+ * levels are — choosing is the entire task, and a dropdown costs two taps and
+ * hides the options.
+ */
+function ChildRow({
+  child,
+  status,
+  note,
+  isDirty,
+  onSelect,
+  onOpenNote,
+}: {
+  child: { id: string; lastName: string; firstName: string };
+  status: MealStatus | null;
+  note: string;
+  isDirty: boolean;
+  onSelect: (status: MealStatus) => void;
+  onOpenNote: () => void;
+}) {
+  const name = fullName(child);
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <ChildAvatar child={child} size={40} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-medium text-ink">{name}</span>
+          {/*
+            ★ "Not yet recorded" is a state the register has to show. A child
+            nobody has marked comes back with `record: null` on purpose, and a
+            row that looked identical to a marked one would defeat the point.
+          */}
+          {status === null ? (
+            <span className="text-caption text-muted">Бүртгээгүй</span>
+          ) : (
+            <span className="flex flex-wrap items-center gap-1.5">
+              <span className="text-caption text-muted">{STATUS_LABEL[status]}</span>
+              {isDirty ? <Badge tone="sun">Хадгалаагүй</Badge> : null}
+            </span>
+          )}
+        </span>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          disabled={status === null}
+          aria-label={`${name} — тэмдэглэл`}
+          title={
+            status === null ? "Эхлээд хоолны төлөвийг сонгоно уу." : note ? note : "Тэмдэглэл нэмэх"
+          }
+          onClick={onOpenNote}
+          className={cn("shrink-0", note ? "text-primary" : "text-muted")}
+        >
+          <NotebookPen size={18} aria-hidden="true" />
+        </Button>
+      </div>
+
+      {/*
+        `basis-full` below `sm`: four 44px controls plus a name do not fit one
+        390px line, so the statuses take their own row under the child rather
+        than squeezing the name to three characters.
+      */}
+      <div
+        role="radiogroup"
+        aria-label={`${name} — хоол`}
+        className="flex basis-full flex-wrap gap-2 sm:basis-auto"
+      >
+        {STATUSES.map((s) => {
+          const selected = s.value === status;
+          return (
+            <button
+              key={s.value}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              onClick={() => onSelect(s.value)}
+              className={cn(
+                "min-h-[44px] flex-1 rounded-control border px-3 text-body font-medium transition-colors sm:flex-none",
+                selected
+                  ? s.selected
+                  : "border-border bg-surface text-muted hover:bg-canvas hover:text-ink",
+              )}
+            >
+              {s.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A note on one child's record — `MealRecord.note`.
+ *
+ * ★ Behind a control rather than in the row, and that is the whole design.
+ *
+ * §2's register is twenty children marked quickly; a textarea on every row
+ * would be four screens of scrolling for a field most rows never use. It earns
+ * its place on the two statuses that beg the question — "Гэрээсээ хоолтой
+ * ирсэн" for `NOT_TAKEN`, "Харшлын улмаас тусгай хоол" for `SPECIAL` — so the
+ * dialog says so, and nothing requires it.
+ *
+ * ★★ It edits the draft, not the server.
+ *
+ * There is no note-only endpoint: `entries[]` requires a status per row, so a
+ * note travels with the sitting's batch save like everything else. Closing this
+ * dialog stages the change; the save bar commits it.
+ */
+function NoteDialog({
+  childName,
+  status,
+  value,
+  onClose,
+  onSave,
+}: {
+  childName: string;
+  status: MealStatus | null;
+  value: string;
+  onClose: () => void;
+  onSave: (note: string) => void;
+}) {
+  const [text, setText] = useState(value);
+  const tooLong = text.length > 500;
+
+  return (
+    <FormDialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title="Тэмдэглэл"
+      description={status ? `${childName} — ${STATUS_LABEL[status]}` : childName}
+      footer={
+        <>
+          <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+            Болих
+          </Button>
+          <Button type="submit" form="meal-note-form" size="sm" disabled={tooLong}>
+            Нэмэх
+          </Button>
+        </>
+      }
+    >
+      <form
+        id="meal-note-form"
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!tooLong) onSave(text);
+        }}
+      >
+        <Field
+          label="Тэмдэглэл"
+          hint="Жишээ: гэрээсээ хоолтой ирсэн, харшлын улмаас тусгай хоол."
+          // The DTO's own limit. Enforced here because zod's overflow message
+          // arrives in English, which no screen in this product shows.
+          error={tooLong ? "Тэмдэглэл 500 тэмдэгтээс хэтрэхгүй." : undefined}
+        >
+          {({ id, describedBy, invalid }) => (
+            <Textarea
+              id={id}
+              aria-describedby={describedBy}
+              invalid={invalid}
+              rows={3}
+              maxLength={500}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              autoFocus
+            />
+          )}
+        </Field>
+      </form>
+    </FormDialog>
   );
 }

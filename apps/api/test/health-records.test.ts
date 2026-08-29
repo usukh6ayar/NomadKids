@@ -379,6 +379,156 @@ describe("vaccination", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Deleting a record that was wrong — CLAUDE.md §4.1
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * ★ Deleting is not ending, and the difference is a safety one.
+ *
+ * "Ends an allergy without losing the record" above covers a child who outgrew
+ * one — real history, and the menu cross-check stops firing on it. These cover
+ * the other case: the row was **wrong**. A wrong allergy is the one that
+ * matters, because `menu/with-warnings` turns it into an instruction a kitchen
+ * acts on, and ending it would assert the child once had an allergy they never
+ * had.
+ *
+ * The endpoints already existed and were reachable from nothing — these pin the
+ * authorization boundary now that the health screen calls them.
+ */
+describe("deleting a health record", () => {
+  async function anAllergy() {
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/health/allergies`),
+      teacherA,
+    ).send(NUT_ALLERGY);
+    return res.body.id as string;
+  }
+
+  async function aVaccination() {
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/health/vaccinations`),
+      teacherA,
+    ).send({ vaccineName: "Улаанбурхан", administeredOn: inDays(-100) });
+    return res.body.id as string;
+  }
+
+  it("a teacher deletes an allergy on their own child", async () => {
+    const id = await anAllergy();
+    const res = await authed(request(server()).delete(`/v1/allergies/${id}`), teacherA);
+    expect(res.status).toBe(200);
+
+    const after = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/health`),
+      teacherA,
+    );
+    expect(after.body.allergies).toHaveLength(0);
+  });
+
+  /** A guardian reads allergies; recording and removing them is staff work. */
+  it("a guardian cannot delete an allergy", async () => {
+    const id = await anAllergy();
+    const res = await authed(request(server()).delete(`/v1/allergies/${id}`), parentA);
+    expect(res.status).toBe(404);
+
+    const row = await db.allergyRecord.findUnique({ where: { id } });
+    expect(row?.deletedAt).toBeNull();
+  });
+
+  /**
+   * ★ 404, never 403 — CLAUDE.md §1.7. A 403 would confirm the record exists
+   * to somebody who may not know that.
+   */
+  it("a teacher from another kindergarten cannot delete an allergy", async () => {
+    const id = await anAllergy();
+    const teacherB = await login(app, b.teacherUser.username);
+
+    const res = await authed(request(server()).delete(`/v1/allergies/${id}`), teacherB);
+    expect(res.status).toBe(404);
+
+    const row = await db.allergyRecord.findUnique({ where: { id } });
+    expect(row?.deletedAt).toBeNull();
+  });
+
+  it("a nonexistent allergy is a 404, not a 500", async () => {
+    const res = await authed(
+      request(server()).delete("/v1/allergies/11111111-1111-4111-8111-111111111111"),
+      teacherA,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("a malformed id is refused before anything is looked up", async () => {
+    const res = await authed(request(server()).delete("/v1/allergies/not-a-uuid"), teacherA);
+    expect(res.status).toBe(400);
+  });
+
+  it("deleting is soft, and keeps the audit trail", async () => {
+    const id = await anAllergy();
+    await authed(request(server()).delete(`/v1/allergies/${id}`), teacherA);
+
+    const row = await db.allergyRecord.findUnique({ where: { id } });
+    expect(row).not.toBeNull();
+    expect(row?.deletedAt).not.toBeNull();
+
+    // Who removed it lives in AuditLog, not in a column — CLAUDE.md §3.2.
+    const entry = await db.auditLog.findFirst({
+      where: { objectType: "AllergyRecord", objectId: id, action: "DELETE" },
+    });
+    expect(entry?.actorUserId).toBe(a.teacherUser.id);
+  });
+
+  /** A deleted allergy must stop reaching the kitchen. */
+  it("a deleted allergy raises no menu warning", async () => {
+    const id = await anAllergy();
+    await authed(
+      request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/${inDays(0)}`),
+      teacherA,
+    ).send({ dishes: [{ name: "Самартай бялуу", allergenTags: ["самар"] }] });
+
+    const before = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/menu/with-warnings?from=${inDays(0)}&to=${inDays(0)}`,
+      ),
+      teacherA,
+    );
+    expect(before.body[0].warnings.length).toBeGreaterThan(0);
+
+    await authed(request(server()).delete(`/v1/allergies/${id}`), teacherA);
+
+    const after = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/menu/with-warnings?from=${inDays(0)}&to=${inDays(0)}`,
+      ),
+      teacherA,
+    );
+    expect(after.body[0].warnings).toHaveLength(0);
+  });
+
+  it("a teacher deletes a vaccination, and a guardian cannot", async () => {
+    const id = await aVaccination();
+
+    expect((await authed(request(server()).delete(`/v1/vaccinations/${id}`), parentA)).status).toBe(
+      404,
+    );
+
+    expect(
+      (await authed(request(server()).delete(`/v1/vaccinations/${id}`), teacherA)).status,
+    ).toBe(200);
+
+    const row = await db.vaccinationRecord.findUnique({ where: { id } });
+    expect(row?.deletedAt).not.toBeNull();
+  });
+
+  it("a teacher from another kindergarten cannot delete a vaccination", async () => {
+    const id = await aVaccination();
+    const teacherB = await login(app, b.teacherUser.username);
+
+    const res = await authed(request(server()).delete(`/v1/vaccinations/${id}`), teacherB);
+    expect(res.status).toBe(404);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // The combined response
 // ═══════════════════════════════════════════════════════════════════════════
 

@@ -1,24 +1,16 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { UserPlus } from "lucide-react";
+import { QrCode } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { z } from "zod";
 import { mutate } from "@/lib/api/browser";
-import { errorMessage, fieldErrors } from "@/lib/api/errors";
+import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { Button } from "@/components/ui/button";
-import { Field, Input, Select } from "@/components/ui/field";
+import { Checkbox } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { InvitationHandover } from "@/components/admin/invitation-handover";
-
-const RELATIONS = [
-  { value: "MOTHER", label: "Ээж" },
-  { value: "FATHER", label: "Аав" },
-  { value: "GRANDPARENT", label: "Өвөө, эмээ" },
-  { value: "SIBLING", label: "Ах, эгч" },
-  { value: "OTHER", label: "Бусад" },
-] as const;
 
 const resultSchema = z.object({
   invitationToken: z.string(),
@@ -77,23 +69,13 @@ function InviteDialog({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [lastName, setLastName] = useState("");
-  const [firstName, setFirstName] = useState("");
-  const [username, setUsername] = useState("");
-  const [phone, setPhone] = useState("");
-  const [relation, setRelation] = useState<string>("MOTHER");
+  const [isPrimary, setIsPrimary] = useState(false);
 
   const invite = useMutation({
     mutationFn: () =>
       mutate(`/children/${childId}/guardian-invitations`, resultSchema, {
         method: "POST",
-        body: {
-          username,
-          lastName,
-          firstName,
-          relation,
-          phone: phone.trim() === "" ? null : phone.trim(),
-        },
+        body: { isPrimary },
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.child(childId) });
@@ -113,8 +95,6 @@ function InviteDialog({
     };
   }, [onClose]);
 
-  const errors = fieldErrors(invite.error);
-
   return (
     <div
       role="dialog"
@@ -127,113 +107,57 @@ function InviteDialog({
           <InvitationHandover
             token={invite.data.invitationToken}
             title="Урилга бэлэн"
-            subtitle={`${invite.data.user.lastName} ${invite.data.user.firstName} — ${childName}-ийн хавтас руу`}
+            /*
+              The child, not the guardian: at this point the guardian has no name
+              — they supply it when they accept. Naming the child is also what a
+              teacher holding up two codes needs to tell them apart.
+            */
+            subtitle={`${childName}-ийн хавтас руу`}
             onClose={onClose}
           />
         ) : (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!invite.isPending) invite.mutate();
-            }}
-            className="flex flex-col gap-4"
-            noValidate
-          >
+          /*
+            ★ One button, no form fields.
+
+            This asked a teacher for a surname, a given name, a login handle, a
+            phone and the relationship — five facts about a person standing in
+            front of them who can type them faster and correctly. The guardian
+            now gives their own name, phone and relationship when they accept;
+            the teacher's whole job is to press this and hold up the code.
+          */
+          <div className="flex flex-col gap-4">
             <div>
               <h2 className="text-title font-semibold text-ink">Эцэг эх урих</h2>
               <p className="mt-0.5 text-body text-muted">
-                {childName}-ийн хавтас руу. Урилга 7 хоног хүчинтэй.
+                {childName}-ийн хавтас руу. QR код үүсгэн уншуулна — эцэг эх нэр, утсаа өөрөө
+                бөглөнө. Урилга 7 хоног хүчинтэй.
               </p>
             </div>
 
             <FormError message={invite.isError ? errorMessage(invite.error) : null} />
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Овог" error={errors.lastName} required>
-                {({ id, describedBy, invalid }) => (
-                  <Input
-                    id={id}
-                    aria-describedby={describedBy}
-                    invalid={invalid}
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    autoFocus
-                  />
-                )}
-              </Field>
-
-              <Field label="Нэр" error={errors.firstName} required>
-                {({ id, describedBy, invalid }) => (
-                  <Input
-                    id={id}
-                    aria-describedby={describedBy}
-                    invalid={invalid}
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                  />
-                )}
-              </Field>
-            </div>
-
-            <Field
-              label="Нэвтрэх нэр"
-              error={errors.username}
-              hint="Латин үсэг, тоо. Эцэг эх үүгээр нэвтэрнэ."
-              required
-            >
-              {({ id, describedBy, invalid }) => (
-                <Input
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  autoCapitalize="none"
-                />
-              )}
-            </Field>
-
-            <Field label="Утас" error={errors.phone} hint="Заавал биш.">
-              {({ id, describedBy, invalid }) => (
-                <Input
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                />
-              )}
-            </Field>
-
-            <Field label="Хүүхэдтэй ямар хамааралтай" error={errors.relation} required>
-              {({ id, describedBy, invalid }) => (
-                <Select
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  value={relation}
-                  onChange={(e) => setRelation(e.target.value)}
-                >
-                  {RELATIONS.map((r) => (
-                    <option key={r.value} value={r.value}>
-                      {r.label}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </Field>
+            {/*
+              The one thing the kindergarten decides rather than the guardian:
+              which of two guardians is the first to be called.
+            */}
+            <Checkbox
+              label="Үндсэн асран хамгаалагч"
+              description="Яаралтай үед эхэлж холбогдоно."
+              checked={isPrimary}
+              onChange={(e) => setIsPrimary(e.target.checked)}
+              disabled={invite.isPending}
+            />
 
             <div className="flex flex-wrap gap-2 border-t border-border pt-4">
-              <Button type="submit" disabled={invite.isPending}>
-                <UserPlus size={18} />
-                {invite.isPending ? "Үүсгэж байна…" : "Урилга үүсгэх"}
+              <Button onClick={() => invite.mutate()} disabled={invite.isPending}>
+                <QrCode size={18} aria-hidden="true" />
+                {invite.isPending ? "Үүсгэж байна…" : "QR код үүсгэх"}
               </Button>
-              <Button type="button" variant="ghost" onClick={onClose} disabled={invite.isPending}>
+              <Button variant="ghost" onClick={onClose} disabled={invite.isPending}>
                 Болих
               </Button>
             </div>
-          </form>
+          </div>
         )}
       </div>
     </div>

@@ -320,7 +320,12 @@ describe("arrival claims", () => {
     const res = await authed(
       request(server()).post(`/v1/children/${a.child.id}/attendance-requests`),
       parentA,
-    ).send({ dateFrom: "2026-02-11", dateTo: "2026-02-11", requestedStatus: "PRESENT", arrivedWith: "OTHER" });
+    ).send({
+      dateFrom: "2026-02-11",
+      dateTo: "2026-02-11",
+      requestedStatus: "PRESENT",
+      arrivedWith: "OTHER",
+    });
 
     const row = await db.attendanceRequest.findUniqueOrThrow({ where: { id: res.body.id } });
     expect(row.arrivedAt).not.toBeNull();

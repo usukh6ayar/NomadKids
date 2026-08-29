@@ -17,15 +17,16 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { LikeButton } from "@/components/notifications/like-button";
 import { ChildAvatar, MediaThumb } from "@/components/media/media-image";
 import { useSession } from "@/lib/auth/session";
-import { CheckCircle2, ChevronRight, Newspaper, Plus, Search } from "lucide-react";
+import { CheckCircle2, ChevronRight, Newspaper, PenLine, Search } from "lucide-react";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RowCard, RowList } from "@/components/ui/card";
+import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
 import { Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { excerpt, fullName, groupByDay } from "@/lib/format";
+import { excerpt, formatRelative, fullName } from "@/lib/format";
 import { SURVEY_TONE_BG, SURVEY_TYPE_META } from "@/lib/survey-meta";
 import { cn } from "@/lib/utils";
 
@@ -49,6 +50,13 @@ export default function NotificationsPage() {
   const { hasRole } = useSession();
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
+  /*
+   * Filtered in the browser, unlike `unread` and `q` which the API understands.
+   * `isImportant` is on every row the list already returned, so narrowing here
+   * costs nothing; adding `?important=` to the endpoint for a boolean the
+   * client is holding would be a round trip for an `Array.filter`.
+   */
+  const [importantOnly, setImportantOnly] = useState(false);
 
   /*
    * ★ Debounced, not submit-on-Enter — unlike `HeaderSearch` (`app-shell.tsx`),
@@ -87,7 +95,8 @@ export default function NotificationsPage() {
 
   const [surveyChildId, setSurveyChildId] = useState<string | null>(null);
   const surveyChildren = myChildren.data ?? [];
-  const selectedSurveyChild = surveyChildren.find((c) => c.id === surveyChildId) ?? surveyChildren[0];
+  const selectedSurveyChild =
+    surveyChildren.find((c) => c.id === surveyChildId) ?? surveyChildren[0];
 
   /*
    * ★ One query per child, so the tab's own badge counts every family
@@ -144,7 +153,9 @@ export default function NotificationsPage() {
     getNextPageParam: (last) => (last.page < last.totalPages ? last.page + 1 : undefined),
   });
 
-  const items = data?.pages.flatMap((p) => p.items) ?? [];
+  const items = (data?.pages.flatMap((p) => p.items) ?? []).filter(
+    (n) => !importantOnly || n.isImportant,
+  );
 
   /**
    * The sentinel below the list. Loading on intersection rather than on a
@@ -177,47 +188,16 @@ export default function NotificationsPage() {
             ? "Цэцэрлэгээс ирсэн зар, мэдээлэл."
             : "Танай хүүхдэд зориулсан судалгаанууд."
         }
-        /*
-          A two-state toggle rendered as buttons with `aria-pressed`, so the
-          current filter is announced rather than being visible only as a
-          background colour. Staff-only "Шинэ мэдэгдэл" and the unread filter
-          are news-tab actions — a parent on the surveys tab has neither.
-        */
-        actions={
-          tab === "news" ? (
-            <div className="flex flex-wrap items-center gap-2">
-              {isStaff ? (
-                <Button asChild size="sm">
-                  <Link href="/notifications/new">
-                    <Plus size={18} />
-                    Шинэ мэдэгдэл
-                  </Link>
-                </Button>
-              ) : null}
-
-              <div className="flex gap-1 rounded-control border border-border bg-surface p-1">
-                <FilterButton active={!showUnreadOnly} onClick={() => setShowUnreadOnly(false)}>
-                  Бүгд
-                </FilterButton>
-                <FilterButton active={showUnreadOnly} onClick={() => setShowUnreadOnly(true)}>
-                  Уншаагүй
-                </FilterButton>
-              </div>
-            </div>
-          ) : undefined
-        }
       />
 
       {/*
-        ★ One box, two behaviours — backend search on the news tab (the API
-        now filters `title`/`body` case-insensitively, `notifications.repository.ts`),
-        a client-side filter on the surveys tab. The survey list is never
-        more than a handful of rows already sitting in memory (`SurveysTab`),
-        so filtering it again on the server would be a request for data this
-        screen already has — the same reasoning `/children`'s live search
-        does not extend to a list this short.
+        Capped from `lg` up. Full width is right on a phone, where the field is
+        the only thing on its row; at 1336px an unbounded search box for a
+        two-word query is the widest element on the screen and reads as the
+        page's main event rather than as a way past the list — the same
+        reasoning that put `HeaderSearch` (`app-shell.tsx`) on a 280px cap.
       */}
-      <div className="relative">
+      <div className="relative lg:max-w-[420px]">
         <Search
           size={18}
           aria-hidden="true"
@@ -232,6 +212,65 @@ export default function NotificationsPage() {
           className="pl-11"
         />
       </div>
+
+      {/*
+        ★ Full width on a phone, sized to its label from `sm` — the drawing
+        makes this the screen's one primary action and gives it the whole row.
+        It was a small button in the page header; a header action competing
+        with a title for a 375px line is the thing the drawing fixes.
+      */}
+      {isStaff && tab === "news" ? (
+        <Button asChild className="w-full sm:w-auto sm:self-start">
+          <Link href="/notifications/new">
+            <PenLine size={18} aria-hidden="true" />
+            Пост оруулах
+          </Link>
+        </Button>
+      ) : null}
+
+      {/*
+        ★ The filter row, and the taxonomy question the drawing raises.
+
+        The client's drawing shows Бүгд · Зарлал · Үйл ажиллагаа · Сургалт.
+        `notificationSchema` has no category — `isImportant` is the only
+        classification a notice carries — so these are the filters that exist
+        rather than three that would sort nothing. `Чухал` is that flag;
+        `Уншаагүй` is `reads`, which the API already filters on with `?unread`.
+
+        A real category needs a column, a value in the compose form and a query
+        parameter. It is a small piece of work and not one a component can do.
+      */}
+      {tab === "news" ? (
+        <FilterChipRow label="Мэдээг шүүх">
+          <FilterChip
+            active={!showUnreadOnly && !importantOnly}
+            onClick={() => {
+              setShowUnreadOnly(false);
+              setImportantOnly(false);
+            }}
+          >
+            Бүгд
+          </FilterChip>
+          <FilterChip
+            active={showUnreadOnly}
+            onClick={() => {
+              setShowUnreadOnly(true);
+              setImportantOnly(false);
+            }}
+          >
+            Уншаагүй
+          </FilterChip>
+          <FilterChip
+            active={importantOnly}
+            onClick={() => {
+              setImportantOnly(true);
+              setShowUnreadOnly(false);
+            }}
+          >
+            Чухал
+          </FilterChip>
+        </FilterChipRow>
+      ) : null}
 
       {!isStaff ? (
         <div role="tablist" aria-label="Мэдээ эсвэл судалгаа" className="flex gap-2">
@@ -265,76 +304,88 @@ export default function NotificationsPage() {
 
       {tab === "news" ? (
         <>
-      {isLoading ? <LoadingState rows={4} /> : null}
+          {isLoading ? <LoadingState rows={4} /> : null}
 
-      {isError ? (
-        <ErrorState
-          description={errorMessage(error)}
-          action={
-            <Button variant="secondary" onClick={() => void refetch()}>
-              Дахин оролдох
-            </Button>
-          }
-        />
-      ) : null}
+          {isError ? (
+            <ErrorState
+              description={errorMessage(error)}
+              action={
+                <Button variant="secondary" onClick={() => void refetch()}>
+                  Дахин оролдох
+                </Button>
+              }
+            />
+          ) : null}
 
-      {data && items.length === 0 ? (
-        <EmptyState
-          icon={<Image src="/background/mascot-teacher.webp" alt="" width={96} height={96} />}
-          title={showUnreadOnly ? "Уншаагүй мэдэгдэл алга" : "Мэдэгдэл алга"}
-          description={
-            showUnreadOnly
-              ? "Бүх мэдэгдлийг уншсан байна."
-              : "Цэцэрлэгээс мэдэгдэл ирэхэд энд харагдана."
-          }
-        />
-      ) : null}
+          {data && items.length === 0 ? (
+            <EmptyState
+              icon={<Image src="/background/mascot-teacher.webp" alt="" width={96} height={96} />}
+              title={showUnreadOnly ? "Уншаагүй мэдэгдэл алга" : "Мэдэгдэл алга"}
+              description={
+                showUnreadOnly
+                  ? "Бүх мэдэгдлийг уншсан байна."
+                  : "Цэцэрлэгээс мэдэгдэл ирэхэд энд харагдана."
+              }
+            />
+          ) : null}
 
-      {items.length > 0 ? (
-        /*
-         * ★ Day-grouped, matching the home feed's own rail.
-         *
-         * A class board is exactly the same shape of content as "Сүүлийн
-         * мөчүүд" — a chronological record — so it reads with the same
-         * device rather than inventing a second one. Each row used to carry
-         * its own relative timestamp; grouped by day, that fact belongs to
-         * the day once, so `NotificationRow` drops it in favour of the
-         * group's own label.
-         */
-        <div className="flex flex-col">
-          {groupByDay(items, (n) => n.publishedAt ?? n.createdAt).map((group, index, all) => (
-            <div key={group.key} className="flex gap-3">
-              <div className="flex w-5 shrink-0 flex-col items-center" aria-hidden="true">
-                <span className="mt-2 size-2.5 shrink-0 rounded-pill bg-primary ring-4 ring-primary-soft" />
-                {index < all.length - 1 ? <span className="mt-1 w-px flex-1 bg-border" /> : null}
+          {items.length > 0 ? (
+            /*
+             * ★ One heading over a flat feed, where this was a dot-and-line
+             * rail with a heading per day.
+             *
+             * The rail is the right device for a chronological *record* — it
+             * is what `/home`'s "Сүүлийн мөчүүд" still uses, and the argument
+             * for it here was that a class board is the same shape of content.
+             * The client's 2026-08-28 drawing is a social feed instead: one
+             * "Сүүлийн мэдээ" heading, then posts that carry their own
+             * timestamp beside their author. With `formatRelative` on every
+             * card, a per-day heading above them repeats what each card under
+             * it already says, and the rail's 20px gutter costs a twentieth of
+             * a 375px screen to draw it.
+             */
+            <section aria-labelledby="news-feed-heading" className="flex flex-col gap-3">
+              <h2 id="news-feed-heading" className="text-title font-semibold text-ink">
+                Сүүлийн мэдээ
+              </h2>
+
+              {/*
+                ★ One centred column, capped — not the two-across grid this
+                carried until 2026-08-29.
+
+                The grid was answering "use the horizontal space" and produced
+                the wrong thing: a post is гарчиг, дэлгэрэнгүй, зураг read in
+                that order, and at 1336px split two ways each card was a 465px
+                banner whose photograph dwarfed the words above it. The report
+                was that it "looks odd on a big screen" and should read the same
+                as it does on a phone.
+
+                So the feed is a column that stops growing. 640px is about 75
+                characters of Mongolian — the width prose is comfortable at, and
+                what every social feed converges on for the same reason. A
+                desktop reader gets the phone's card at the phone's proportions,
+                centred, with the page's whitespace either side of it.
+              */}
+              <div className="mx-auto flex w-full max-w-[640px] flex-col gap-3">
+                {items.map((notification) => (
+                  <NotificationRow key={notification.id} notification={notification} />
+                ))}
               </div>
-              <div className={cn("min-w-0 flex-1", index < all.length - 1 && "pb-5")}>
-                <h3 className="mb-2 text-caption font-semibold uppercase tracking-wide text-muted">
-                  {group.label}
-                </h3>
-                <RowList>
-                  {group.items.map((notification) => (
-                    <NotificationRow key={notification.id} notification={notification} />
-                  ))}
-                </RowList>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : null}
+            </section>
+          ) : null}
 
-      {/* Height, so it can intersect at all — a zero-height div never does. */}
-      <div ref={sentinel} aria-hidden="true" className="h-px" />
+          {/* Height, so it can intersect at all — a zero-height div never does. */}
+          <div ref={sentinel} aria-hidden="true" className="h-px" />
 
-      {isFetchingNextPage ? (
-        <p role="status" className="py-2 text-center text-body text-muted">
-          Ачаалж байна…
-        </p>
-      ) : null}
+          {isFetchingNextPage ? (
+            <p role="status" className="py-2 text-center text-body text-muted">
+              Ачаалж байна…
+            </p>
+          ) : null}
 
-      {!hasNextPage && items.length > 0 ? (
-        <p className="py-2 text-center text-body text-muted">Бүх мэдэгдлийг үзлээ.</p>
-      ) : null}
+          {!hasNextPage && items.length > 0 ? (
+            <p className="py-2 text-center text-body text-muted">Бүх мэдэгдлийг үзлээ.</p>
+          ) : null}
         </>
       ) : null}
     </div>
@@ -397,7 +448,9 @@ function SurveysTab({
   familyChildren: { id: string; firstName?: string | null; lastName?: string | null }[];
   selectedChild: { id: string; firstName?: string | null; lastName?: string | null } | undefined;
   onSelectChild: (id: string) => void;
-  surveys: { data?: z.infer<typeof activeSurveysSchema>; isLoading: boolean; isError: boolean } | undefined;
+  surveys:
+    | { data?: z.infer<typeof activeSurveysSchema>; isLoading: boolean; isError: boolean }
+    | undefined;
   /** Filters the already-loaded list client-side — see the search box's own note above. */
   searchTerm: string;
 }) {
@@ -492,13 +545,13 @@ function SurveysTab({
                   </span>
                   <span className="block font-semibold text-ink">{survey.title}</span>
                   <span className="mt-0.5 block text-caption text-muted">
-                    {questionCount > 0
-                      ? `Нийт ${questionCount} асуулттай`
-                      : survey.description}
+                    {questionCount > 0 ? `Нийт ${questionCount} асуулттай` : survey.description}
                   </span>
                 </span>
 
-                {open ? <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden /> : null}
+                {open ? (
+                  <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden />
+                ) : null}
               </>
             );
 
@@ -522,31 +575,36 @@ function SurveysTab({
   );
 }
 
-function FilterButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={cn(
-        // 44px, not 40: this is the tap floor the rest of the product holds to.
-        "min-h-[44px] rounded-control px-3 text-body font-medium",
-        active ? "bg-primary-soft text-primary" : "text-muted hover:text-ink",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
+/**
+ * One notice, as the client's 2026-08-28 drawing shows it: a post.
+ *
+ * ★ Author, time, title, body, photographs, reactions — the shape of a feed
+ * card rather than the 72px list row this was.
+ *
+ * ★★ What the drawing asks for and this does **not** render, with the reason,
+ * because three of them look like omissions and none is:
+ *
+ *  - **A comment count (💬 5).** `notificationSchema` has no comment field and
+ *    its docblock says so on purpose: "There is no comment field, and that is
+ *    deliberate — see the `like` endpoint". Comments are a Phase IV
+ *    conversation feature (CLAUDE.md §7, alongside chat).
+ *
+ *  - **A view count (👁 35).** `reads` on this schema is *this* reader's own
+ *    receipt and nothing else — `notifications.repository.ts` refuses to expose
+ *    who else has opened a notice, so a parent cannot work out which other
+ *    families are reading the board. The number exists for the *author* on
+ *    `boardNotice.readCount` (the dashboard's Сүүлийн нийтлэл card shows it),
+ *    which is the one place the disclosure is safe.
+ *
+ *  - **Category chips (Зарлал · Үйл ажиллагаа · Сургалт).** There is no
+ *    category on a notification. `isImportant` is the only classification the
+ *    model carries, and it is rendered — as "Чухал", where the drawing puts its
+ *    category label. Inventing a taxonomy would mean a chip row that filters on
+ *    a field nobody fills.
+ *
+ * Adding any of the three is a schema change plus an endpoint, not a component
+ * edit; each is a small, well-scoped piece of work whenever the client wants it.
+ */
 function NotificationRow({ notification }: { notification: z.infer<typeof notificationSchema> }) {
   const queryClient = useQueryClient();
   const isUnread = notification.reads.length === 0;
@@ -559,79 +617,126 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
     },
   });
 
+  const when = notification.publishedAt ?? notification.createdAt;
+
   return (
-    <Link
-      href={`/notifications/${notification.id}`}
-      // Marking read on open is the behaviour every user expects; doing it only
-      // via an explicit button leaves the badge stuck at a number they have
-      // already dealt with.
-      onClick={() => {
-        if (isUnread) markRead.mutate();
-      }}
-      // Its own card, per `.kidrow`. The border moving to the brand colour is
-      // the reference's hover affordance for a row that is a link.
-      className="flex min-h-[72px] items-start gap-3 rounded-row border border-border bg-surface px-4 py-3 transition-colors hover:border-primary"
+    /*
+      ★ Read and unread are two visibly different cards, not one card with a
+      bolder title.
+
+      The only difference used to be the "Шинэ" pill and a font weight, which
+      on a phone at arm's length is no difference at all — the report was that
+      a teacher cannot tell which posts they have already opened. Three signals
+      separate them now, and each survives the loss of the others:
+
+        · a blue rail down the left edge of an unread card
+        · the card's tint — white while unread, the page's own canvas once read
+        · the title's weight, and the "Шинэ" pill above it
+
+      A read card is deliberately *quieter* rather than greyed out: its text
+      stays `--color-ink` at full contrast, because a notice a family has
+      already opened is still a notice they may need to re-read. What changes
+      is the surface it sits on, not its legibility.
+    */
+    <article
+      className={cn(
+        "flex flex-col gap-3 rounded-card border p-4 transition-colors",
+        isUnread
+          ? "border-l-4 border-l-primary border-y-border border-r-border bg-surface hover:border-primary"
+          : "border-border-soft bg-canvas hover:border-border",
+      )}
     >
-      {/*
-        Unread is signalled three ways — a dot, a bolder title, and an sr-only
-        word — because a dot alone is invisible to a screen reader and weight
-        alone is easy to miss.
-      */}
-      <span
-        aria-hidden="true"
-        className={cn(
-          "mt-2 size-2 shrink-0 rounded-pill",
-          isUnread ? "bg-primary" : "bg-transparent",
-        )}
-      />
-
-      <span className="min-w-0 flex-1">
-        <span className="flex flex-wrap items-center gap-2">
-          <span className={cn("text-ink", isUnread ? "font-semibold" : "font-medium")}>
-            {notification.title}
-          </span>
-          {isUnread ? <span className="sr-only">Уншаагүй</span> : null}
-          {notification.isImportant ? <Badge tone="peach">Чухал</Badge> : null}
-        </span>
-
-        <span className="mt-0.5 block text-body text-muted">{excerpt(notification.body, 110)}</span>
-
-        {/*
-          Photos, as a feed shows them: one fills the width, several become a
-          grid. `max-h` keeps a tall portrait photo from pushing the next post
-          off the screen — the row is a summary, and the detail page is where a
-          picture gets to be its own size.
-        */}
-        {notification.media.length > 0 ? (
-          <span
-            className={cn(
-              "mt-2 grid gap-1.5 overflow-hidden rounded-control",
-              notification.media.length === 1 ? "grid-cols-1" : "grid-cols-2 sm:grid-cols-3",
-            )}
-          >
-            {notification.media.slice(0, 6).map((photo) => (
-              <MediaThumb
-                key={photo.id}
-                mediaId={photo.id}
-                caption={photo.caption}
-                className={notification.media.length === 1 ? "aspect-[16/9] max-h-[320px]" : ""}
-              />
-            ))}
+      {/* Who posted it, and when. `ChildAvatar` takes any `{firstName,
+          lastName}` and draws initials when there is no photograph — an author
+          has no `photoMediaFileId`, so it is always the initials here. */}
+      <div className="flex items-center gap-2.5">
+        <ChildAvatar child={notification.author ?? {}} size={40} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-body font-semibold text-ink">
+            {fullName(notification.author)}
+          </p>
+          <p className="text-caption text-muted">{formatRelative(when)}</p>
+        </div>
+        {isUnread ? (
+          <span className="shrink-0 rounded-pill bg-primary-soft px-2 py-0.5 text-caption font-medium text-primary">
+            Шинэ
           </span>
         ) : null}
+      </div>
 
-        <span className="mt-1 flex flex-wrap items-center justify-between gap-2">
-          <span className="text-caption text-muted">{fullName(notification.author)}</span>
+      {/*
+        The title is the link, not the whole card.
 
-          {/* Inside the row, which is a link — the button stops the click. */}
-          <LikeButton
-            notificationId={notification.id}
-            likeCount={notification.likeCount}
-            likedByMe={notification.likedByMe}
-            className="-my-2"
-          />
-        </span>
-      </span>
-    </Link>
+        A card-wide `<a>` swallows the like button and the photographs — the
+        row this replaced had exactly that problem and worked around it by
+        stopping the click inside `LikeButton`. One link with a real accessible
+        name is both simpler and what a screen reader can navigate.
+      */}
+      <div className="min-w-0">
+        <h3
+          className={cn(
+            "text-lead leading-heading text-ink",
+            isUnread ? "font-semibold" : "font-medium",
+          )}
+        >
+          <Link
+            href={`/notifications/${notification.id}`}
+            onClick={() => {
+              if (isUnread) markRead.mutate();
+            }}
+            className="hover:underline"
+          >
+            {notification.title}
+            {/*
+              ★ Inside the link, not beside it.
+
+              Unread is signalled three ways — the "Шинэ" pill above, the
+              title's weight, and this word — because a pill is invisible to a
+              screen reader and weight alone is easy to miss. It sits *within*
+              the anchor so the state is part of the link's accessible name:
+              a reader tabbing through the feed hears "Аялал, Уншаагүй, link"
+              rather than having to associate a pill somewhere above it.
+            */}
+            {isUnread ? <span className="sr-only"> Уншаагүй</span> : null}
+          </Link>
+        </h3>
+        {notification.body ? (
+          <p className="mt-1 text-body text-muted">{excerpt(notification.body, 140)}</p>
+        ) : null}
+      </div>
+
+      {notification.media.length > 0 ? (
+        <div
+          className={cn(
+            "grid gap-1.5 overflow-hidden rounded-control",
+            notification.media.length === 1 ? "grid-cols-1" : "grid-cols-2",
+          )}
+        >
+          {notification.media.slice(0, 4).map((photo) => (
+            <MediaThumb
+              key={photo.id}
+              mediaId={photo.id}
+              caption={photo.caption}
+              className={notification.media.length === 1 ? "aspect-[16/9]" : "aspect-square"}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {/* The engagement row — a real reaction on the left, the one real
+          classification on the right. See the docblock for the two counts and
+          the category taxonomy the drawing shows and the model does not have. */}
+      <div className="flex items-center justify-between gap-2 border-t border-border-soft pt-2.5">
+        <LikeButton
+          notificationId={notification.id}
+          likeCount={notification.likeCount}
+          likedByMe={notification.likedByMe}
+          className="-my-2"
+        />
+        {notification.isImportant ? (
+          <span className="text-caption font-medium text-danger">Чухал</span>
+        ) : null}
+      </div>
+    </article>
   );
 }

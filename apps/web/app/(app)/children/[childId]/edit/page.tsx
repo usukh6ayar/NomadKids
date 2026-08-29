@@ -10,6 +10,7 @@ import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
@@ -92,6 +93,7 @@ function DetailsForm({
   childId: string;
   child: z.infer<typeof childDetailSchema>;
 }) {
+  const toast = useToast();
   const router = useRouter();
   const queryClient = useQueryClient();
 
@@ -118,9 +120,11 @@ function DetailsForm({
         },
       }),
     onSuccess: () => {
+      toast.success("Хүүхдийн мэдээлэл хадгалагдлаа.");
       void queryClient.invalidateQueries({ queryKey: qk.child(childId) });
       void queryClient.invalidateQueries({ queryKey: ["children"] });
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   const errors = fieldErrors(save.error);
@@ -268,6 +272,7 @@ function DetailsForm({
  * and there is nothing to undo halfway.
  */
 function TransferCard({ childId }: { childId: string }) {
+  const toast = useToast();
   const queryClient = useQueryClient();
   const { hasRole } = useSession();
   const [groupId, setGroupId] = useState("");
@@ -285,10 +290,12 @@ function TransferCard({ childId }: { childId: string }) {
         body: { groupId },
       }),
     onSuccess: () => {
+      toast.success("Бүлэг шилжүүллээ.");
       void queryClient.invalidateQueries({ queryKey: qk.child(childId) });
       void queryClient.invalidateQueries({ queryKey: ["children"] });
       setGroupId("");
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   // Teachers are not shown this at all: the endpoint resolves the target group
@@ -373,7 +380,14 @@ function TransferCard({ childId }: { childId: string }) {
  * or when there is no ACTIVE enrollment to graduate — the same "no dead
  * action" reasoning as `ArchiveButton` for an already-archived child.
  */
-function GraduateCard({ childId, child }: { childId: string; child: z.infer<typeof childDetailSchema> }) {
+function GraduateCard({
+  childId,
+  child,
+}: {
+  childId: string;
+  child: z.infer<typeof childDetailSchema>;
+}) {
+  const toast = useToast();
   const queryClient = useQueryClient();
   const { hasRole } = useSession();
   const [confirming, setConfirming] = useState(false);
@@ -387,10 +401,12 @@ function GraduateCard({ childId, child }: { childId: string; child: z.infer<type
         body: { status: "GRADUATED" },
       }),
     onSuccess: () => {
+      toast.success("Төгсгөлөө.");
       void queryClient.invalidateQueries({ queryKey: qk.child(childId) });
       void queryClient.invalidateQueries({ queryKey: ["children"] });
       setConfirming(false);
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   if (!hasRole("ADMIN") || !active) return null;
@@ -407,7 +423,10 @@ function GraduateCard({ childId, child }: { childId: string; child: z.infer<type
         <FormError message={graduate.isError ? errorMessage(graduate.error) : null} />
 
         {graduate.isSuccess ? (
-          <p role="status" className="rounded-control bg-mint px-3.5 py-2.5 text-body text-mint-ink">
+          <p
+            role="status"
+            className="rounded-control bg-mint px-3.5 py-2.5 text-body text-mint-ink"
+          >
             Төгссөнөөр тэмдэглэлээ.
           </p>
         ) : confirming ? (

@@ -132,11 +132,24 @@ describe("the observation mix", () => {
     expect(screen.queryByText(/биелэлт/i)).toBeNull();
   });
 
+  /*
+   * ★ `img` with a sentence, not `progressbar` with a value — and the change
+   * follows the argument the test above already makes.
+   *
+   * That one records why the visible text refuses a "биелэлт" framing: no
+   * target exists to divide by, so a completion score would imply somebody set
+   * one. The ARIA role contradicted it. `progressbar` with `aria-valuenow="0"`
+   * is announced as nought out of a hundred — exactly the completion reading
+   * the words were written to avoid, delivered only to the people who cannot
+   * see that the words avoid it.
+   *
+   * `BarRow` names the whole fact instead: "Анхаарал шаардсан: 0 ажиглалт,
+   * нийтийн 0%".
+   */
   it("keeps a type that nobody used, at zero", () => {
     render(<ObservationMix observationsByType={types} term="I улирал" />);
 
-    const bar = screen.getByRole("progressbar", { name: /Анхаарал шаардсан/ });
-    expect(bar).toHaveAttribute("aria-valuenow", "0");
+    expect(screen.getByRole("img", { name: /Анхаарал шаардсан: 0 ажиглалт/ })).toBeInTheDocument();
   });
 
   it("renders nothing at all when the term has no observations", () => {
@@ -186,8 +199,24 @@ describe("the dashboard's grid", () => {
    * a row rather than all of it. It deliberately does not pin gaps, paddings or
    * exact spans — those are taste, they will change, and a test that locks them
    * makes every future adjustment a test edit.
+   *
+   * ★★ Rewritten 2026-08-26, because the mechanism above stopped working while
+   * still passing.
+   *
+   * It asserted `lg:col-span-6` on the section. A column span only does
+   * anything to a *grid child*, and the dashboard's restructure moved this band
+   * out of the twelve-column grid into a flex column — so the class stayed in
+   * the markup, the test stayed green, and the counts spread across the full
+   * width of a 1440px window anyway. Exactly the regression described above,
+   * shipped past the test written to catch it, because the assertion checked a
+   * string rather than a consequence.
+   *
+   * The durable invariant is density, not width: three short numbers share one
+   * container instead of each claiming a card of its own. That is what made the
+   * old version look like three empty placeholders, and it holds wherever the
+   * band is placed.
    */
-  it("keeps the counts to half a row rather than the full width", async () => {
+  it("keeps the three counts in one container rather than a card each", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
       {
@@ -201,8 +230,17 @@ describe("the dashboard's grid", () => {
     renderWithProviders(<DashboardStats counts={{ children: 5, groups: 1, pendingReviews: 0 }} />);
 
     const region = await screen.findByRole("region", { name: "Өнөөдрийн тойм" });
-    expect(region.className).toMatch(/lg:col-span-6/);
-    expect(region.className).not.toMatch(/lg:col-span-12/);
+
+    // One card, not three. `rounded-card` is what `Card` renders, so counting
+    // them counts surfaces rather than divs.
+    const surfaces = region.querySelectorAll(".rounded-card");
+    expect(surfaces).toHaveLength(1);
+
+    // And all three counts are inside that single surface.
+    const card = surfaces[0]!;
+    expect(card.textContent).toContain("Хүүхэд");
+    expect(card.textContent).toContain("Бүлэг");
+    expect(card.textContent).toContain("Дундаж нас");
   });
 
   /**

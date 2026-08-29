@@ -8,6 +8,7 @@ import { attendanceRecordSchema, groupAttendanceRowSchema, groupSchema } from "@
 import { get, mutate } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
+import { useToast } from "@/components/ui/toast";
 import { errorMessage } from "@/lib/api/errors";
 import { RequireRole } from "@/components/shell/require-role";
 import { Card, SectionHeader } from "@/components/ui/card";
@@ -63,6 +64,20 @@ function GroupAttendance() {
     queryFn: () => get(`/groups/${groupId}/attendance?date=${date}`, daySheetSchema),
   });
 
+  /*
+   * ★ Every outcome is announced. CLAUDE.md §5: "toast after save".
+   *
+   * This screen mutated silently — the list refreshed and nothing said whether
+   * the write had landed, which on a phone with a slow connection is
+   * indistinguishable from a tap that did not register. The report was that a
+   * teacher "cannot tell whether it saved"; this is that, on the screens they
+   * use daily.
+   *
+   * `onError` matters as much as `onSuccess`: a failed write previously left
+   * the row looking unchanged with no explanation at all.
+   */
+  const toast = useToast();
+
   const record = useMutation({
     mutationFn: ({ childId, status }: { childId: string; status: string }) =>
       mutate(`/children/${childId}/attendance/${date}`, attendanceRecordSchema, {
@@ -70,8 +85,10 @@ function GroupAttendance() {
         body: { status },
       }),
     onSuccess: () => {
+      toast.success("Ирц бүртгэгдлээ.");
       void queryClient.invalidateQueries({ queryKey: qk.groupAttendance(groupId, date) });
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   return (

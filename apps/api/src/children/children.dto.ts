@@ -124,17 +124,24 @@ export type AddGuardianDto = z.infer<typeof addGuardianSchema>;
  * No password field. An adult who types a password for someone else knows that
  * password, and "temporary" credentials are permanent in practice.
  */
+/**
+ * ★ Rewritten 2026-08-29: the teacher supplies nothing but who is primary.
+ *
+ * This used to take a username, a surname, a given name, a phone and the
+ * relationship — five fields, typed by a teacher, about a person who is
+ * standing in front of them and can type it themselves. Every one of them was
+ * a chance to mistype somebody else's name into a permanent record, and the
+ * username in particular is a credential a parent then has to be told.
+ *
+ * What the invitation actually needs is a token. The account is created with a
+ * generated handle and a placeholder name; the guardian fills in their own name,
+ * phone and relationship when they accept it (`invitationAcceptSchema`). The
+ * teacher's whole job is to press a button and hold up a QR code.
+ *
+ * `isPrimary` stays because it is genuinely the kindergarten's decision — which
+ * of two guardians is the first to call — and not the guardian's own.
+ */
 export const inviteGuardianSchema = z.object({
-  username: z
-    .string()
-    .min(3, "Нэвтрэх нэр дор хаяж 3 тэмдэгт байх ёстой")
-    .max(64)
-    .regex(/^[a-zA-Z0-9._-]+$/, "Нэвтрэх нэр латин үсэг, тоо, . _ - агуулна"),
-  email: z.email().max(254).nullable().optional(),
-  phone: z.string().max(32).nullable().optional(),
-  lastName: z.string().min(1, "Овгийг оруулна уу").max(100),
-  firstName: z.string().min(1, "Нэрийг оруулна уу").max(100),
-  relation: guardianRelationSchema,
   isPrimary: z.boolean().default(false),
 });
 export type InviteGuardianDto = z.infer<typeof inviteGuardianSchema>;

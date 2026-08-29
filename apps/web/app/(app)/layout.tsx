@@ -2,8 +2,15 @@
 
 import { useQuery } from "@tanstack/react-query";
 import {
+  BarChart3,
   Building2,
+  // `ChevronRight` left with the child-picker modal `origin/main` removed;
+  // `CalendarCheck` stays because the staff nav still labels Ирц with it.
+  CalendarCheck,
+  ClipboardCheck,
   ClipboardList,
+  Newspaper,
+  FileText,
   Home,
   Images,
   LayoutGrid,
@@ -14,6 +21,9 @@ import {
   ShieldCheck,
   UtensilsCrossed,
   Users,
+  // `X` was the picker modal's close button and went with it. The type stays:
+  // `ICON_FOR` below is keyed by href and annotated with it.
+  type LucideIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
@@ -23,6 +33,7 @@ import { AppShell, type ChildSwitcher, type NavItem, type NavSection } from "@/c
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { ChildAvatar } from "@/components/media/media-image";
+import { useMyGroup } from "@/components/dashboard/use-my-group";
 import { LoadingState } from "@/components/ui/states";
 import { useSession } from "@/lib/auth/session";
 import { SelectedChildProvider, useSelectedChild } from "@/lib/selected-child";
@@ -73,6 +84,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
    * Called unconditionally (hooks must not follow the early returns below) and
    * gated by role with `enabled` instead.
    */
+  /*
+   * The group whose registers the sidebar links to — see `staffSections`.
+   * `useMyGroup` shares its key with the dashboard's cards, so on any screen
+   * that has already loaded them this resolves from cache.
+   */
+  const myGroup = useMyGroup({ enabled: Boolean(session) && isStaff });
+
   const myChildren = useQuery({
     queryKey: qk.myChildren(),
     queryFn: () => get("/children/mine", ownChildrenSchema),
@@ -101,9 +119,16 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     );
   }
 
+  const groupId = myGroup.count === 1 ? (myGroup.group?.id ?? null) : null;
+
   return (
     <SelectedChildProvider myChildIds={myChildren.data?.map((child) => child.id)}>
-      <AuthenticatedShell isStaff={isStaff} isAdmin={hasRole("ADMIN")} myChildren={myChildren.data}>
+      <AuthenticatedShell
+        isStaff={isStaff}
+        isAdmin={hasRole("ADMIN")}
+        groupId={groupId}
+        myChildren={myChildren.data}
+      >
         {children}
       </AuthenticatedShell>
     </SelectedChildProvider>
@@ -118,17 +143,20 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 function AuthenticatedShell({
   isStaff,
   isAdmin,
+  groupId,
   myChildren,
   children,
 }: {
   isStaff: boolean;
   isAdmin: boolean;
+  /** The teacher's one group, resolved once by `useMyGroup()` in `AppLayout` — null for an admin (every group) or a teacher assigned none. */
+  groupId: string | null;
   myChildren: ChildSummary[] | undefined;
   children: ReactNode;
 }) {
   const { selectedChildId, setSelectedChildId } = useSelectedChild();
 
-  const nav = isStaff ? staffNav(isAdmin) : parentNav(myChildren, selectedChildId);
+  const nav = isStaff ? staffNav(isAdmin, groupId) : parentNav(myChildren, selectedChildId);
 
   // Below two children there is nothing to switch between — the sidebar
   // already names the one child directly, same as before this existed.
@@ -142,10 +170,30 @@ function AuthenticatedShell({
       : undefined;
 
   return (
+    /*
+     * ★ The merge takes `origin/main`'s shape and this side's `isAdmin`, and
+     * neither half of that is arbitrary.
+     *
+     * This side wrapped the shell in a fragment to hang a `ChildPickerModal`
+     * off `childPickerOpen`. `origin/main` removed the parent child switcher
+     * outright — 6064be3, "drop the header greeting and child switcher from
+     * the parent home page" — so the state hook and the component it rendered
+     * are both gone. Keeping the fragment would have left three identifiers
+     * referenced and none of them defined: a build failure, not a conflict.
+     * The picker is upstream's deliberate removal and it stays removed.
+     *
+     * `isAdmin` goes the other way. It is a real prop on the merged `AppShell`
+     * (it drives `WhoAmI`'s role line), and `origin/main` simply predates it,
+     * so dropping it would silently mislabel every administrator as a teacher
+     * in their own sidebar.
+     */
     <AppShell
       nav={nav}
-      sections={isStaff ? staffSections(isAdmin) : parentSections(myChildren, selectedChildId)}
+      sections={
+        isStaff ? staffSections(isAdmin, groupId) : parentSections(myChildren, selectedChildId)
+      }
       variant={isStaff ? "teacher" : "parent"}
+      isAdmin={isAdmin}
       childSwitcher={childSwitcher}
     >
       {children}
@@ -156,27 +204,103 @@ function AuthenticatedShell({
 const iconProps = { size: 20, strokeWidth: 2, "aria-hidden": true } as const;
 
 /**
- * Staff navigation.
+ * Section entries sit one level in, so their icons are one step down.
  *
- * Six items at most — the bottom bar on a 375px screen fits six 44px targets
- * and no more. "Үнэлгээ" is deliberately absent as a top-level destination:
- * assessment always begins from a group, so it lives on the dashboard and the
- * child page rather than as a menu item that would first ask "which group?".
+ * 18px against the top level's 20px: the indent already says "child of the
+ * row above", and matching the parent's size would make the sub-level compete
+ * with it. `parentSections` had been spelling `size={18}` inline on each entry,
+ * which is the same number three times and no name for it.
  */
-function staffNav(isAdmin: boolean): NavItem[] {
-  const items: NavItem[] = [
-    { href: "/dashboard", label: "Нүүр", icon: <LayoutGrid {...iconProps} /> },
-    { href: "/children", label: "Хүүхдүүд", icon: <Users {...iconProps} /> },
-    { href: "/observations/review", label: "Хянах", icon: <ClipboardList {...iconProps} /> },
-    { href: "/notifications", label: "Мэдэгдэл", icon: <Bell {...iconProps} />, badge: "unread" },
+const sectionIconProps = { size: 18, strokeWidth: 2, "aria-hidden": true } as const;
+
+/**
+ * One icon per destination, chosen once.
+ *
+ * ★ Keyed by `href`, and that is the point rather than a convenience.
+ *
+ * Several routes appear in more than one menu — `/notifications` is in the
+ * staff sections, the parent sections and both bottom bars; `/settings` is in
+ * three. Each call site used to pick its own glyph, and they had already
+ * drifted: the same route was `Bell` in one list and nothing at all in
+ * another. A map keyed by the destination makes "the same feature, two icons"
+ * unrepresentable instead of merely discouraged.
+ *
+ * ★★ Existing choices are kept, not re-picked. `/children` was already `Users`
+ * and `/observations/review` already `ClipboardList` in the top-level nav; both
+ * stay, so the phone's bottom bar and the desktop sidebar keep agreeing. Only
+ * the four routes that had no icon anywhere are new decisions.
+ */
+const ROUTE_ICON: Record<string, LucideIcon> = {
+  "/dashboard": LayoutGrid,
+  "/home": Home,
+  "/children": Users,
+  "/observations/review": ClipboardList,
+  "/attendance-requests/review": CalendarCheck,
+  "/notifications": Newspaper,
+  "/surveys": BarChart3,
+  "/documents": FileText,
+  "/settings": Settings,
+  "/admin": ShieldCheck,
+  "/platform": Building2,
+};
+
+/** The section-level icon for a route, or nothing if it has no destination. */
+function routeIcon(href: string | undefined) {
+  if (!href) return undefined;
+  const Icon = ROUTE_ICON[href];
+
+  return Icon ? <Icon {...sectionIconProps} /> : undefined;
+}
+
+/**
+ * Staff navigation — the phone's bottom bar, and the sidebar's first entry.
+ *
+ * ★ Rewritten 2026-08-28 to the client's own drawing: Самбар · Мэдээ · Явцын
+ * үнэлгээ · Судалгаа · Цэс.
+ *
+ * Five tabs, and the two that left are the reason "Цэс" is the fifth.
+ * **Хүүхдүүд** and **Ажиглалт хянах** used to sit here and are now reached
+ * from the menu the last tab opens — `MobileMenuDrawer`, which renders the same
+ * sections the desktop sidebar does. That is the drawer's whole purpose and
+ * what the client described: the things a five-tab bar cannot name live one tap
+ * behind it. Neither destination lost a route.
+ *
+ * ★★ "Явцын үнэлгээ" is a tab now, having been deliberately absent for months.
+ *
+ * The old note here read: "assessment always begins from a group, so it lives
+ * on the dashboard rather than as a menu item that would first ask 'which
+ * group?'". That reasoning was sound and its premise is gone twice over — the
+ * dashboard no longer carries the entry point (the 2026-08-28 redesign removed
+ * `GroupsSection` and `TeacherHero`), and `useMyGroup()` resolves the group in
+ * the layout, so the tab can point straight at it without asking anything.
+ *
+ * The fallbacks are the honest part. A teacher with one group gets that
+ * group's assessment sheet. An admin sees every group in the kindergarten, so
+ * there is no single sheet to open and the tab goes to `/admin/groups`, whose
+ * rows carry a Үнэлгээ link each. A teacher with no group assigned goes to
+ * `/children`, where assessment can still be reached per child. No branch is a
+ * dead link, and none of them opens a screen whose first act is "which group?".
+ */
+function staffNav(isAdmin: boolean, groupId: string | null): NavItem[] {
+  const assessmentHref = groupId
+    ? `/groups/${groupId}/assessment`
+    : isAdmin
+      ? "/admin/groups"
+      : "/children";
+
+  return [
+    { href: "/dashboard", label: "Самбар", icon: <LayoutGrid {...iconProps} /> },
+    { href: "/notifications", label: "Мэдээ", icon: <Newspaper {...iconProps} />, badge: "unread" },
+    { href: assessmentHref, label: "Явцын үнэлгээ", icon: <ClipboardCheck {...iconProps} /> },
+    { href: "/surveys", label: "Судалгаа", icon: <BarChart3 {...iconProps} /> },
+    /*
+      ★ `/settings` is what `AppShell` matches on to open the drawer instead of
+      navigating (see its `bottomNav` mapping), so the href is load-bearing even
+      though this tab never uses it as a destination on a phone. The label is
+      the client's; `parentNav` already calls the same tab "Цэс".
+    */
+    { href: "/settings", label: "Цэс", icon: <Menu {...iconProps} /> },
   ];
-
-  if (isAdmin) {
-    items.push({ href: "/admin", label: "Удирдлага", icon: <ShieldCheck {...iconProps} /> });
-  }
-
-  items.push({ href: "/settings", label: "Профайл", icon: <Settings {...iconProps} /> });
-  return items;
 }
 
 /**
@@ -215,31 +339,104 @@ function staffNav(isAdmin: boolean): NavItem[] {
  * not see it at all. Showing it to them greyed out promised something that was
  * never going to arrive for that account.
  */
-function staffSections(isAdmin: boolean): NavSection[] {
+function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
+  /*
+   * ★ Every entry takes its icon from `ROUTE_ICON` rather than naming one.
+   *
+   * All eight of these shipped with no icon at all — the `icon` field existed
+   * on `NavSection` and this builder passed it for none of them, so the desktop
+   * sidebar was three headings over eight bare text links while the bottom bar
+   * beside it was fully illustrated. Resolving by route also means an entry
+   * added here cannot disagree with the same destination in the top-level nav.
+   */
+  const entry = (label: string, href: string) => ({ label, href, icon: routeIcon(href) });
+
   return [
     {
       title: "Хүүхдийн хөгжил ба үнэлгээ",
       entries: [
-        { label: "Хүүхдүүд", href: "/children" },
-        { label: "Ажиглалт хянах", href: "/observations/review" },
-        { label: "Чөлөөний хүсэлт хянах", href: "/attendance-requests/review" },
+        entry("Хүүхдүүд", "/children"),
+        entry("Ажиглалт хянах", "/observations/review"),
+        entry("Чөлөөний хүсэлт хянах", "/attendance-requests/review"),
       ],
     },
+    /*
+     * ★ The group's own registers, added 2026-08-28 — and this section exists
+     * because three shipped routes were about to become unreachable.
+     *
+     * `/groups/:id/attendance`, `/groups/:id/meals` and
+     * `/groups/:id/assessment` have never had a top-level menu entry,
+     * deliberately: none of them can start without a group, so an unscoped item
+     * would open a screen whose first act is "which group?". They were reached
+     * from the teacher dashboard instead — `AttendanceToday`'s footer link,
+     * `QuickLinks`, `GroupsSection` and `TeacherHero` — and the client's
+     * 2026-08-28 redesign removed all four from that screen.
+     * `group-meals.test.tsx` warns about exactly this ("Someone tidying that
+     * card must fail a test, not ship a feature nobody can open") but renders
+     * `GroupsSection` in isolation, so it would have stayed green while the
+     * routes went dark.
+     *
+     * The group is resolved once by `useMyGroup()` in `AppLayout` — the same
+     * key the dashboard's cards read, so this costs no extra request — and the
+     * section is omitted when there is no single group to scope it to. That is
+     * `WhoAmI`'s rule: an admin sees every group, so naming one would be a lie.
+     * They reach the same three screens from `/admin/groups`, whose rows carry
+     * a link each.
+     *
+     * ★★ The icons are passed explicitly. `routeIcon()` is keyed by literal
+     * href and these are interpolated, so it would return `undefined` for all
+     * three and leave one section in the sidebar as bare text rows — the exact
+     * gap `sidebar.test.tsx` exists to catch.
+     */
+    ...(groupId
+      ? [
+          {
+            title: "Бүлгийн бүртгэл",
+            entries: [
+              {
+                label: "Ирц",
+                href: `/groups/${groupId}/attendance`,
+                icon: <CalendarCheck {...sectionIconProps} />,
+              },
+              {
+                label: "Хоол ба цэс",
+                href: `/groups/${groupId}/meals`,
+                icon: <UtensilsCrossed {...sectionIconProps} />,
+              },
+              {
+                label: "Явцын үнэлгээ",
+                href: `/groups/${groupId}/assessment`,
+                icon: <ClipboardCheck {...sectionIconProps} />,
+              },
+            ],
+          },
+        ]
+      : []),
     {
       title: "Харилцаа холбоо",
-      entries: [
-        { label: "Ангийн самбар / Мэдээ", href: "/notifications" },
-        { label: "Судалгаа", href: "/surveys" },
-      ],
+      entries: [entry("Ангийн самбар / Мэдээ", "/notifications"), entry("Судалгаа", "/surveys")],
     },
     {
       title: "Багш ба байгууллага",
       entries: [
         // RFP §9 — "Багшид зориулсан PDF баримт бичгийн сан". Staff only, so it
         // lives here and never in `parentSections`.
-        { label: "Баримт бичгийн сан", href: "/documents" },
-        { label: "Багшийн мэдээлэл", href: "/settings" },
-        ...(isAdmin ? [{ label: "Бүлэг, цэцэрлэгийн мэдээлэл", href: "/admin" }] : []),
+        entry("Баримт бичгийн сан", "/documents"),
+        entry("Багшийн мэдээлэл", "/settings"),
+        /*
+         * ★ "Удирдлага", not "Бүлэг, цэцэрлэгийн мэдээлэл".
+         *
+         * The sidebar entry is `text-compact` beside a 16px icon inside a
+         * 280px rail, which leaves room for about twenty characters. The old
+         * label was twenty-seven and rendered as "Бүлэг, цэцэрлэгийн м…" on
+         * every desktop — an ellipsis where the destination's name should be,
+         * on the one entry a director uses most. It also named two of the
+         * seven screens behind it and omitted the other five.
+         *
+         * It matches the bottom bar's tab for the same href, which is the
+         * point: one destination, one name.
+         */
+        ...(isAdmin ? [entry("Удирдлага", "/admin")] : []),
       ],
     },
   ];
@@ -391,7 +588,7 @@ function parentSections(
         {
           label: "Ангийн самбар / Мэдээ",
           href: "/notifications",
-          icon: <Bell size={18} aria-hidden="true" />,
+          icon: routeIcon("/notifications"),
         },
         // No `href`: chat is RFP Phase IV. It renders as a disabled row, the
         // same treatment "Санхүү" below gets, so the menu describes the product
@@ -403,13 +600,8 @@ function parentSections(
       title: "Санхүү ба бүртгэл",
       entries: [
         { label: "Санхүү" },
-        {
-          label: "Миний бүртгэл",
-          href: "/settings",
-          icon: <Settings size={18} aria-hidden="true" />,
-        },
+        { label: "Миний бүртгэл", href: "/settings", icon: routeIcon("/settings") },
       ],
     },
   ];
 }
-

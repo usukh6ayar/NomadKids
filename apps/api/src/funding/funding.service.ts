@@ -159,7 +159,7 @@ export class FundingService {
     );
 
     const attendedBy = new Map(attendance.map((row) => [row.childId, row._count._all]));
-    const fedBy = new Map(meals.map((row) => [row.childId, row._count._all]));
+    const fedBy = new Map(meals.map((row) => [row.childId, row.daysFed]));
 
     const rows = enrollments.flatMap((enrollment) => {
       const rule = pickRule(rules, enrollment.group?.ageBand ?? null, lastIso);

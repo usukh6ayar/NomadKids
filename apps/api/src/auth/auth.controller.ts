@@ -216,7 +216,12 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
-    await this.auth.acceptInvitation(body.token, body.password, context(req));
+    await this.auth.acceptInvitation(
+      body.token,
+      body.password,
+      { firstName: body.firstName, phone: body.phone, relation: body.relation },
+      context(req),
+    );
     // Any session this account had was revoked server-side; clear the browser's
     // cookies too, so the next step is a deliberate login.
     clearAuthCookies(res);

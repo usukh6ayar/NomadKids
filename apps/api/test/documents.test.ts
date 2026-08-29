@@ -363,6 +363,271 @@ describe("replacing the file", () => {
   });
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Editing the metadata — PATCH /documents/:id
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * ★ Written when the screen gained an edit control. The route existed and was
+ * covered only by "a teacher from another kindergarten cannot edit one" — the
+ * authorization case, and none of the behaviour.
+ */
+describe("editing the metadata", () => {
+  const patch = (id: string, session = teacherA) =>
+    authed(request(server()).patch(`/v1/documents/${id}`), session);
+
+  it("updates every field the DTO accepts", async () => {
+    const created = await publish(teacherA, { title: "Хуучин", category: "Журам" });
+
+    const res = await patch(created.body.id).send({
+      title: "Шинэ нэр",
+      category: "Хөтөлбөр",
+      description: "Тайлбар",
+      version: "2026.2",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      title: "Шинэ нэр",
+      category: "Хөтөлбөр",
+      description: "Тайлбар",
+      version: "2026.2",
+    });
+  });
+
+  it("leaves the fields it was not given alone", async () => {
+    const created = await publish(teacherA, { title: "Хөтөлбөр", category: "Журам" });
+
+    const res = await patch(created.body.id).send({ title: "Зөвхөн нэр" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.title).toBe("Зөвхөн нэр");
+    expect(res.body.category).toBe("Журам");
+  });
+
+  /**
+   * ★★ `null` is how a field is cleared, and the distinction matters on the
+   * screen that renders it. `category` has no `min`, so `""` validates and is
+   * stored — and `listCategories` filters on `category: { not: null }`, so an
+   * empty string survives it and becomes a blank option in the filter dropdown.
+   */
+  it("clears an optional field with null, and stores an empty string as one", async () => {
+    const created = await publish(teacherA, { title: "Хөтөлбөр", category: "Журам" });
+
+    const cleared = await patch(created.body.id).send({ category: null });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.category).toBeNull();
+
+    const blanked = await patch(created.body.id).send({ category: "" });
+    expect(blanked.status).toBe(200);
+    expect(blanked.body.category).toBe("");
+
+    // The blank one is what reaches the filter chips — the reason a client
+    // sends `null` rather than the empty input's value.
+    const categories = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/documents/categories`),
+      teacherA,
+    );
+    expect(categories.body).toContain("");
+  });
+
+  it("refuses an empty body", async () => {
+    const created = await publish();
+
+    const res = await patch(created.body.id).send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.detail).toMatch(/Өөрчлөх талбар алга/);
+  });
+
+  it("refuses an empty title, as a field error", async () => {
+    const created = await publish();
+
+    const res = await patch(created.body.id).send({ title: "" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.errors?.title?.[0]).toMatch(/Нэрийг оруулна уу/);
+  });
+
+  it("refuses a title over the limit", async () => {
+    const created = await publish();
+    const res = await patch(created.body.id).send({ title: "a".repeat(201) });
+    expect(res.status).toBe(400);
+  });
+
+  /**
+   * `updateDocumentSchema` is `createDocumentSchema.partial()`, and the base is
+   * `.strict()`. Whether strictness survives `.partial()` is the kind of thing
+   * that changes between zod majors, so it is pinned rather than assumed — a
+   * client that posted `fileMediaFileId` must not be able to repoint the file
+   * through the metadata route.
+   */
+  it("rejects a field that is not in the DTO", async () => {
+    const created = await publish();
+
+    const res = await patch(created.body.id).send({
+      title: "Нэр",
+      fileMediaFileId: "00000000-0000-4000-8000-000000000000",
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("an admin of the same kindergarten may edit", async () => {
+    const created = await publish(teacherA);
+    const res = await patch(created.body.id, adminA).send({ title: "Захирлын засвар" });
+    expect(res.status).toBe(200);
+  });
+
+  /**
+   * ★ There is no per-author rule. `publishedById` is display only, and any
+   * staff member of the document's kindergarten may edit any document in it —
+   * which is what the screen's controls must mirror.
+   */
+  it("a colleague who did not publish it may still edit it", async () => {
+    const created = await publish(adminA);
+    const res = await patch(created.body.id, teacherA).send({ title: "Хамтрагчийн засвар" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.publishedBy.id).toBe(a.adminUser.id);
+  });
+
+  it("a parent cannot edit", async () => {
+    const created = await publish();
+    const res = await patch(created.body.id, parentA).send({ title: "Эцэг эхийн оролдлого" });
+    expect(res.status).toBe(404);
+  });
+
+  it("writes an audit entry naming the fields", async () => {
+    const created = await publish();
+    await patch(created.body.id).send({ title: "Аудиттай", version: "2026.3" });
+
+    const entry = await db.auditLog.findFirst({
+      where: { objectType: "Document", action: "UPDATE", objectId: created.body.id },
+    });
+    expect(entry?.actorUserId).toBe(a.teacherUser.id);
+    expect(entry?.metadata).toMatchObject({ fields: ["title", "version"] });
+  });
+
+  it("returns 404 for a document that does not exist", async () => {
+    const res = await patch("00000000-0000-4000-8000-000000000000").send({ title: "Хоосон" });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("replacing the file — authorization and versioning", () => {
+  it("an admin may replace a document a teacher published", async () => {
+    const created = await publish(teacherA);
+
+    const res = await authed(
+      request(server()).post(`/v1/documents/${created.body.id}/file`),
+      adminA,
+    ).attach("file", PDF, "шинэ.pdf");
+
+    expect(res.status).toBe(201);
+  });
+
+  it("a teacher from another kindergarten cannot replace the file", async () => {
+    const created = await publish();
+    const teacherB = await login(app, b.teacherUser.username);
+
+    const res = await authed(
+      request(server()).post(`/v1/documents/${created.body.id}/file`),
+      teacherB,
+    ).attach("file", PDF, "хулгай.pdf");
+
+    expect(res.status).toBe(404);
+  });
+
+  it("a parent cannot replace the file", async () => {
+    const created = await publish();
+
+    const res = await authed(
+      request(server()).post(`/v1/documents/${created.body.id}/file`),
+      parentA,
+    ).attach("file", PDF, "шинэ.pdf");
+
+    expect(res.status).toBe(404);
+  });
+
+  /**
+   * ★ Omitting `version` keeps the old label rather than clearing it — the
+   * repository skips the column entirely when it is null. So a replacement with
+   * no new version number stays labelled as the previous one, which is why the
+   * screen offers the field beside the file picker.
+   */
+  it("keeps the previous version label when no new one is given", async () => {
+    const created = await publish(teacherA, { title: "Хөтөлбөр", version: "2025.1" });
+
+    const res = await authed(
+      request(server()).post(`/v1/documents/${created.body.id}/file`),
+      teacherA,
+    ).attach("file", PDF, "шинэ.pdf");
+
+    expect(res.status).toBe(201);
+    expect(res.body.version).toBe("2025.1");
+  });
+
+  /**
+   * ★★ A replacement re-dates the document: `publishedAt` is set to now, and
+   * the list is ordered by it. So replacing a file moves the row to the top —
+   * backend semantics the screen has to state rather than hide.
+   */
+  it("re-dates the document to the moment of the replacement", async () => {
+    const created = await publish(teacherA, { title: "Хөтөлбөр" });
+    const before = await db.document.findUniqueOrThrow({ where: { id: created.body.id } });
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await authed(request(server()).post(`/v1/documents/${created.body.id}/file`), teacherA).attach(
+      "file",
+      PDF,
+      "шинэ.pdf",
+    );
+
+    const after = await db.document.findUniqueOrThrow({ where: { id: created.body.id } });
+    expect(after.publishedAt.getTime()).toBeGreaterThan(before.publishedAt.getTime());
+  });
+
+  /** The retired file stops being reachable — `/media/:id` filters `deletedAt`. */
+  it("the previous file can no longer be opened", async () => {
+    const created = await publish();
+    const before = await db.document.findUniqueOrThrow({ where: { id: created.body.id } });
+
+    await authed(request(server()).post(`/v1/documents/${created.body.id}/file`), teacherA).attach(
+      "file",
+      PDF,
+      "шинэ.pdf",
+    );
+
+    const res = await authed(
+      request(server()).get(`/v1/media/${before.fileMediaFileId}`),
+      teacherA,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("refuses a replacement with no file attached", async () => {
+    const created = await publish();
+    const res = await authed(
+      request(server()).post(`/v1/documents/${created.body.id}/file`),
+      teacherA,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("writes an audit entry", async () => {
+    const created = await publish();
+    await authed(request(server()).post(`/v1/documents/${created.body.id}/file`), teacherA)
+      .field("version", "2026.9")
+      .attach("file", PDF, "шинэ.pdf");
+
+    const entry = await db.auditLog.findFirst({
+      where: { objectType: "Document", action: "UPDATE", objectId: created.body.id },
+    });
+    expect(entry?.metadata).toMatchObject({ replacedFile: true, version: "2026.9" });
+  });
+});
+
 describe("removing", () => {
   it("soft-deletes rather than removing the row", async () => {
     const created = await publish();
@@ -370,5 +635,80 @@ describe("removing", () => {
 
     const row = await db.document.findUniqueOrThrow({ where: { id: created.body.id } });
     expect(row.deletedAt).not.toBeNull();
+  });
+
+  /**
+   * ★ Soft, but one-way as far as the product is concerned.
+   *
+   * Every read filters `deletedAt: null` and no endpoint restores one, so from
+   * an administrator's point of view this is permanent — which is why the
+   * screen confirms it with a danger tone rather than treating it as the
+   * reversible toggle `/admin/groups` uses for archiving.
+   */
+  it("disappears from the library and can no longer be reached", async () => {
+    const created = await publish(teacherA, { title: "Устгах баримт" });
+    const remove = await authed(
+      request(server()).delete(`/v1/documents/${created.body.id}`),
+      teacherA,
+    );
+    expect(remove.status).toBe(200);
+
+    const list = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/documents`),
+      teacherA,
+    );
+    expect(list.body.items.map((d: { id: string }) => d.id)).not.toContain(created.body.id);
+
+    // And nothing else will touch it either — there is no restore route.
+    const edit = await authed(
+      request(server()).patch(`/v1/documents/${created.body.id}`),
+      teacherA,
+    ).send({ title: "Сэргээх оролдлого" });
+    expect(edit.status).toBe(404);
+  });
+
+  it("an admin may remove a document a teacher published", async () => {
+    const created = await publish(teacherA);
+    const res = await authed(request(server()).delete(`/v1/documents/${created.body.id}`), adminA);
+    expect(res.status).toBe(200);
+  });
+
+  it("a teacher from another kindergarten cannot remove one", async () => {
+    const created = await publish();
+    const teacherB = await login(app, b.teacherUser.username);
+
+    const res = await authed(
+      request(server()).delete(`/v1/documents/${created.body.id}`),
+      teacherB,
+    );
+
+    expect(res.status).toBe(404);
+    const row = await db.document.findUniqueOrThrow({ where: { id: created.body.id } });
+    expect(row.deletedAt).toBeNull();
+  });
+
+  it("a parent cannot remove one", async () => {
+    const created = await publish();
+    const res = await authed(request(server()).delete(`/v1/documents/${created.body.id}`), parentA);
+    expect(res.status).toBe(404);
+  });
+
+  /** The row survives for the audit trail even though nothing will show it. */
+  it("writes an audit entry that outlives the document", async () => {
+    const created = await publish();
+    await authed(request(server()).delete(`/v1/documents/${created.body.id}`), teacherA);
+
+    const entry = await db.auditLog.findFirst({
+      where: { objectType: "Document", action: "DELETE", objectId: created.body.id },
+    });
+    expect(entry?.actorUserId).toBe(a.teacherUser.id);
+  });
+
+  it("returns 404 for a document that does not exist", async () => {
+    const res = await authed(
+      request(server()).delete("/v1/documents/00000000-0000-4000-8000-000000000000"),
+      teacherA,
+    );
+    expect(res.status).toBe(404);
   });
 });

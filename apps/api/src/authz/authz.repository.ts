@@ -3,6 +3,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import type { Actor, ActorMembership } from "./actor";
 import { teacherMembershipIds } from "./actor";
 import type { ChildAccessFacts } from "./child-access";
+import type { ChatAccessFacts } from "./chat-access";
 
 /**
  * Loads the facts authorization decisions are made from.
@@ -150,6 +151,87 @@ export class AuthzRepository {
           : []),
       ],
     };
+  }
+
+  /**
+   * The groups this actor teaches, and the groups their children are in.
+   *
+   * ★ Two queries, both scoped to the actor, neither reaching for a room.
+   *
+   * `GroupTeacher` gives the teaching side: active assignments only
+   * (`endedOn IS NULL`), restricted to groups that are not soft-deleted.
+   * `Guardianship` → `Child` → `Enrollment` gives the family side, and it is
+   * restricted to **ACTIVE** enrollments — `chat-access.ts` explains why a
+   * room reads current membership where child access reads history.
+   *
+   * A guardian whose `canView` is false is excluded, matching `isGuardianOf`:
+   * a person who may not see the child may not sit in their group's room.
+   */
+  async loadChatAccessFacts(actor: Actor): Promise<ChatAccessFacts> {
+    const membershipIds = teacherMembershipIds(actor);
+
+    const [teaching, guarded] = await Promise.all([
+      /*
+        ★ Scoped by `membershipId`, not by `userId` — `GroupTeacher` has no
+        user column. `teacherMembershipIds` is what narrows it to the actor's
+        *teacher* memberships, so an admin membership in the same kindergarten
+        does not silently widen the set. `loadActiveTeachingGroupIds` above
+        does exactly this and this mirrors it deliberately: two definitions of
+        "groups I teach" that could drift is the thing to avoid.
+      */
+      membershipIds.length === 0
+        ? Promise.resolve([])
+        : this.prisma.groupTeacher.findMany({
+            where: {
+              membershipId: { in: membershipIds },
+              endedOn: null,
+              deletedAt: null,
+              group: { deletedAt: null },
+            },
+            select: { group: { select: { id: true, name: true, kindergartenId: true } } },
+          }),
+      this.prisma.guardianship.findMany({
+        where: {
+          guardianUserId: actor.userId,
+          canView: true,
+          deletedAt: null,
+          child: { deletedAt: null },
+        },
+        select: {
+          child: {
+            select: {
+              enrollments: {
+                where: { status: "ACTIVE", deletedAt: null, group: { deletedAt: null } },
+                select: { group: { select: { id: true, name: true, kindergartenId: true } } },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+
+    return {
+      teachingGroups: teaching.map((row) => row.group),
+      guardianGroups: guarded.flatMap((row) => row.child.enrollments.map((e) => e.group)),
+    };
+  }
+
+  /**
+   * The names of the kindergartens the actor belongs to.
+   *
+   * Only the staff room needs one, and only to disambiguate for somebody with
+   * memberships in two — see `roomsFor`. One query over ids the actor already
+   * carries, so it discloses nothing their memberships do not.
+   */
+  async loadKindergartenNames(actor: Actor): Promise<Record<string, string | undefined>> {
+    const ids = [...new Set(actor.memberships.map((m) => m.kindergartenId))];
+    if (ids.length < 2) return {};
+
+    const rows = await this.prisma.kindergarten.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, name: true },
+    });
+    return Object.fromEntries(rows.map((row) => [row.id, row.name]));
   }
 }
 

@@ -1,5 +1,6 @@
 import type { ComponentProps, ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { TONE_CARD, type Tone } from "@/components/ui/tone";
 
 /**
  * A surface. White, a slate-200 hairline, and `shadow-sm`.
@@ -49,12 +50,32 @@ const PADDING = {
 export function Card({
   className,
   pad = "none",
+  tone,
   ...props
-}: ComponentProps<"div"> & { pad?: keyof typeof PADDING }) {
+}: ComponentProps<"div"> & {
+  pad?: keyof typeof PADDING;
+  /**
+   * A semantic accent wash — `mint` for complete, `sun` for waiting, and so on.
+   *
+   * ★ Optional, and the default is deliberately no tone at all.
+   *
+   * An untinted card is the workhorse and stays exactly as it was: white,
+   * hairline, `shadow-sm`. Tone is for the handful of surfaces whose *state* is
+   * the thing a reader needs at a glance — a card that is tinted because the
+   * page looked plain is the failure this prop invites and `TONE_MEANING`
+   * exists to argue against.
+   *
+   * ★★ The tint replaces the background and the border; it does **not** claim
+   * the text colour. See `TONE_CARD` for why the two differ.
+   */
+  tone?: Tone;
+}) {
   return (
     <div
       className={cn(
-        "rounded-card border border-border bg-surface shadow-sm",
+        "rounded-card border shadow-sm",
+        // Untinted stays byte-for-byte what it was.
+        tone ? TONE_CARD[tone] : "border-border bg-surface",
         PADDING[pad],
         className,
       )}
@@ -126,6 +147,7 @@ export function SectionHeader({
   action,
   as: Tag = "h2",
   id,
+  icon,
   className,
 }: {
   title: string;
@@ -134,6 +156,21 @@ export function SectionHeader({
   as?: "h1" | "h2" | "h3";
   /** Set it when a wrapping `<section>` points `aria-labelledby` at this heading. */
   id?: string;
+  /**
+   * A visual identity for the section — an `IconChip`, usually.
+   *
+   * ★ The same slot, with the same reservations, that `PageHeader` already
+   * carries. A chip on *every* section is the flatness this is meant to fix
+   * with more colour in it; it belongs on the handful of sections that are
+   * features in their own right — today's menu, the class board — and nowhere
+   * a heading and a lede already say enough.
+   *
+   * ★★ It is a slot rather than an icon name, so a lucide glyph today and an
+   * illustrated `.webp` tomorrow occupy it without this signature changing.
+   * `aria-hidden` is the caller's job, via `IconChip`'s own default: the
+   * heading beside it is the accessible name and announcing both repeats it.
+   */
+  icon?: ReactNode;
   className?: string;
 }) {
   return (
@@ -143,14 +180,24 @@ export function SectionHeader({
         className,
       )}
     >
-      <div className="min-w-0">
-        <Tag
-          id={id}
-          className="text-lead font-semibold leading-[1.3] text-ink md:text-title md:leading-[1.35]"
-        >
-          {title}
-        </Tag>
-        {lede ? <p className="mt-0.5 text-caption text-muted md:text-body">{lede}</p> : null}
+      {/*
+        `items-center`, so a chip sits on the optical centre of a title and its
+        lede rather than hanging off the first line. `min-w-0` on the text
+        column is what lets a long Mongolian compound wrap instead of pushing
+        the action off the row.
+      */}
+      <div className="flex min-w-0 items-center gap-2.5 md:gap-3">
+        {icon ? <span className="shrink-0">{icon}</span> : null}
+
+        <div className="min-w-0">
+          <Tag
+            id={id}
+            className="text-lead font-semibold leading-[1.3] text-ink md:text-title md:leading-[1.35]"
+          >
+            {title}
+          </Tag>
+          {lede ? <p className="mt-0.5 text-caption text-muted md:text-body">{lede}</p> : null}
+        </div>
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
     </div>

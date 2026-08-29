@@ -112,7 +112,9 @@ export function ChildAttendance({
 
   return (
     <div className="flex flex-col gap-6">
-      {isStaff ? <TodayAttendanceRecorder childId={childId} childFirstName={childFirstName} /> : null}
+      {isStaff ? (
+        <TodayAttendanceRecorder childId={childId} childFirstName={childFirstName} />
+      ) : null}
 
       {/*
         ★ A calendar, not the flat "Энэ сарын ирц" list this tab used to end
@@ -178,7 +180,9 @@ export function ChildAttendance({
 
           {requests.data && requests.data.length === 0 ? (
             <EmptyState
-              icon={<Image src="/background/mascot-girl-teal-b.webp" alt="" width={96} height={96} />}
+              icon={
+                <Image src="/background/mascot-girl-teal-b.webp" alt="" width={96} height={96} />
+              }
               title="Хүсэлт алга"
               description="Хүүхэд чөлөөтэй байх өдрөө урьдчилан мэдэгдэхийг хүсвэл энд бичнэ үү."
             />
@@ -198,7 +202,9 @@ export function ChildAttendance({
                     </Badge>
                   </div>
                   <p className="text-body text-muted">
-                    {req.pickedUpWith && !req.arrivedWith ? "Явсан" : STATUS_LABEL[req.requestedStatus]}
+                    {req.pickedUpWith && !req.arrivedWith
+                      ? "Явсан"
+                      : STATUS_LABEL[req.requestedStatus]}
                     {req.arrivedWith
                       ? ` · ${companionDisplay(req.arrivedWith, req.arrivedWithName)}${req.arrivedAt ? `, ${toLocalTime(req.arrivedAt)}` : ""}`
                       : ""}
@@ -319,7 +325,9 @@ function TodayRecorder({
         <p className="font-medium text-ink">Өнөөдрийн ирц</p>
         <div role="radiogroup" aria-label="Өнөөдрийн ирц" className="flex flex-wrap gap-2">
           {Object.entries(STATUS_LABEL).map(([status, label]) => {
-            const active = currentStatus ? currentStatus === status : status === "PRESENT" && arrivalOpen;
+            const active = currentStatus
+              ? currentStatus === status
+              : status === "PRESENT" && arrivalOpen;
             return (
               <button
                 key={status}
@@ -356,7 +364,9 @@ function TodayRecorder({
           childFirstName={childFirstName}
           pending={record.isPending}
           savedWith={currentStatus === "PRESENT" ? (todayRecord?.arrivedWith ?? null) : null}
-          savedWithName={currentStatus === "PRESENT" ? (todayRecord?.arrivedWithName ?? null) : null}
+          savedWithName={
+            currentStatus === "PRESENT" ? (todayRecord?.arrivedWithName ?? null) : null
+          }
           savedAt={currentStatus === "PRESENT" ? (todayRecord?.arrivedAt ?? null) : null}
           onConfirm={(arrivedWith, arrivedWithName, arrivedAt) =>
             record.mutate({ status: "PRESENT", arrivedWith, arrivedWithName, arrivedAt })

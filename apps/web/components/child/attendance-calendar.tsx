@@ -55,7 +55,8 @@ export function AttendanceCalendar({ childId }: { childId: string }) {
 
   const summary = useQuery({
     queryKey: qk.attendanceSummary(childId, month),
-    queryFn: () => get(`/children/${childId}/attendance/summary?month=${month}`, attendanceSummarySchema),
+    queryFn: () =>
+      get(`/children/${childId}/attendance/summary?month=${month}`, attendanceSummarySchema),
   });
 
   const [y, m] = month.split("-").map(Number);
@@ -161,7 +162,10 @@ export function AttendanceCalendar({ childId }: { childId: string }) {
                 <div className="flex flex-wrap gap-x-4 gap-y-1.5">
                   {ATTENDANCE_STATUS_ORDER.filter((s) => (summary.data?.[s] ?? 0) > 0).map((s) => (
                     <span key={s} className="flex items-center gap-1.5 text-caption text-muted">
-                      <span className={cn("size-2.5 shrink-0 rounded-pill", ATTENDANCE_STATUS_BG[s])} aria-hidden="true" />
+                      <span
+                        className={cn("size-2.5 shrink-0 rounded-pill", ATTENDANCE_STATUS_BG[s])}
+                        aria-hidden="true"
+                      />
                       {ATTENDANCE_STATUS_LABEL[s]} — {summary.data?.[s] ?? 0}
                     </span>
                   ))}

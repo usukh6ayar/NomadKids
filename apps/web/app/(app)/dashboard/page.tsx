@@ -1,25 +1,23 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Megaphone, NotebookPen, Plus, UserPlus } from "lucide-react";
 import { teacherDashboardSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
+import { formatDate } from "@/lib/format";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
-import { Menu } from "@/components/ui/menu";
 import { ErrorState, LoadingState } from "@/components/ui/states";
-import { DashboardStats } from "@/components/dashboard/dashboard-stats";
-import { GroupsSection } from "@/components/dashboard/groups-section";
-import { NeedsAttentionAlerts } from "@/components/dashboard/needs-attention-alerts";
+import { AttendanceToday } from "@/components/dashboard/attendance-today";
+import { TodayMenu } from "@/components/dashboard/today-menu";
+import { SurveySummary } from "@/components/dashboard/survey-summary";
 import { ClassBoardNotice } from "@/components/dashboard/class-board-notice";
 import { GenderRatio } from "@/components/dashboard/gender-ratio";
 import { MonthBirthdays } from "@/components/dashboard/month-birthdays";
-import { ObservationMix } from "@/components/dashboard/observation-mix";
-import { RecentObservations } from "@/components/dashboard/recent-observations";
-import { TermProgress } from "@/components/dashboard/term-progress";
+import { WeeklyAttendance } from "@/components/dashboard/weekly-attendance";
+import { useMyGroup } from "@/components/dashboard/use-my-group";
 
 /**
  * "What needs my attention today."
@@ -37,50 +35,68 @@ import { TermProgress } from "@/components/dashboard/term-progress";
  * that genuinely belongs to the page: fetching `GET /dashboard/teacher` once and
  * deciding between loading, error and content.
  *
- * ★★★ What this screen deliberately does NOT show, and why.
+ * ★★★ The 2026-08-26 sketch, and what changed to let it be built.
  *
- * The requested design called for attendance (30/35), medication reminders, a
- * Smart Pick-Up feed, today's lunch menu with an allergy warning, parent
- * messages and a term radar chart. Every one of those is excluded from the MVP
- * by CLAUDE.md §7 — they are RFP Module 2 and Phase III/IV — and the client
- * confirmed on 2026-08-22 that the dashboard stays in scope. Each tile here is
- * backed by a real field of `GET /dashboard/teacher`; none of them is mock
- * data waiting for a backend, which is the state that makes a dashboard lie.
+ * The client asked three times — 2026-08-22, 08-23, 08-24 — for attendance
+ * (30/35), today's lunch with an allergy badge, a survey panel and a radar
+ * chart. Each time it was held, and the stated reason for attendance was
+ * specific: "there is no model, no migration and no endpoint anywhere in the
+ * API; any KPI on this screen could only render an invented number."
  *
- * Asked for again on 2026-08-23 — an urgent-alerts row (Smart Pick-Up,
- * medication), one-click Хооллосон/Унтсан/Тоглосон, today's lunch with an
- * allergy badge, and a radar chart — and held out again, deliberately, by the
- * same decision. What changed that day was the chrome, not the content: the
- * palette, the header's search and action menu, and the sidebar.
+ * That reason expired on 2026-08-25. CLAUDE.md §7 was rewritten to pull RFP
+ * Module 2 and Phase II–III into scope, and `Attendance`, `MenuDay`,
+ * `MealRecord`, `AllergyRecord` and `Survey` all shipped with endpoints behind
+ * them. The hold is not being overridden — its premise is gone, and leaving
+ * the old argument here would be the "rule the codebase contradicts" that §7
+ * itself warns teaches people to stop reading.
  *
- * ★★★★ Asked for a third time on 2026-08-24, and held again. Logged for Phase 2.
+ * So the sketch is now buildable on real data, and every tile below reads a
+ * real response:
  *
- * The request: a radar chart of the five development domains with the child's
- * scores against the class average, attendance KPIs (30/35, 86%, a monthly
- * mean), per-type completion bars for Ажиглалт / Ярилцлага / Бүтээл, and a task
- * board. The client reviewed the scope and confirmed the hold the same day.
+ *   Өнөөдрийн ирц 30/35   GET /groups/:id/attendance?date=  (AttendanceToday)
+ *   Долоо хоногийн ирц    the same endpoint, five weekdays (WeeklyAttendance)
+ *   Хоолны цэс + харшил   GET /kindergartens/:id/menu/with-warnings
+ *   Судалгаа              GET /kindergartens/:id/surveys → /surveys/:id/results
+ *   Бүлгийн хүүхдүүд      GET /children/summary
+ *   Явцын үнэлгээ         observationsByType, from this endpoint
+ *   Төрсөн өдөр           birthdaysThisMonth
+ *   Сүүлийн нийтлэл       boardNotice + GET /notifications/:id for the photo
  *
- * Worth writing down, because the three requests are not equally hard to say no
- * to and the next person should not have to re-derive that:
+ * ★★★★ The 2026-08-28 desktop pass restructured the first three bands to the
+ * client's second sketch, and two of its labels are deliberate divergences:
  *
- *  - **The radar is a scope decision, not a data problem.** `DevelopmentDomain`,
- *    `AssessmentLevel` (1..4) and `Assessment` all exist and carry exactly the
- *    axes asked for. What is missing is a class-average aggregate endpoint and a
- *    charting dependency. CLAUDE.md §7 excludes "radar charts" and "analytics",
- *    so it is Phase 2 — but it is buildable on real data the day that changes.
+ *  - The sketch titles the week chart **"Сарын ирц"** (the month's attendance)
+ *    while drawing five columns labelled Да–Ба, which is a week. The card is
+ *    named for what it shows. A month would need
+ *    `GET /groups/:id/attendance/summary?from=&to=`, which does not exist and
+ *    which this pass was told not to add — twenty day-sheet requests from the
+ *    client would be CLAUDE.md §3.4's N+1 moved somewhere the rule cannot see.
  *
- *  - **Attendance is a data problem.** There is no model, no migration and no
- *    endpoint anywhere in the API; it is RFP Module 2. Any KPI on this screen
- *    could only render an invented number, and a teacher reading a fabricated
- *    86% is worse than a dashboard that never mentions attendance.
+ *  - The sketch's second card reads "Охид 17 / Хөвгүүд 18" as two plain
+ *    figures. `GenderRatio` keeps its donut, which carries the same two counts
+ *    plus the roster's size and their shares. Replacing a working chart with
+ *    two numerals would be a regression dressed as fidelity.
  *
- *  - **Per-type completion may be closer than it looks.** `ObservationType` is a
- *    real configuration table, so Ажиглалт / Ярилцлага / Бүтээл are real values
- *    rather than an invented taxonomy. It needs an aggregate endpoint, not a
- *    schema change.
+ * ★★★★ What is STILL held, and why — so the next person does not re-derive it:
  *
- * The birthdays and the term-progress bar this screen already renders are the
- * parts of that design that had data behind them, and they shipped.
+ *  - **Чат.** The sketch draws a chat bubble bottom-right. Phase IV, no model,
+ *    no endpoint. `app/(app)/layout.tsx` already carries a deliberate faint
+ *    "Чат" nav entry with no href, which is the honest representation of a
+ *    feature that does not exist. No affordance is added here.
+ *
+ *  - **The radar against a class average.** `DevelopmentDomain`,
+ *    `AssessmentLevel` and `Assessment` carry the axes, and
+ *    `components/assessment/development-radar.tsx` can draw one — but the
+ *    *class average* it is meant to be compared against has no aggregate
+ *    endpoint. `GET /children/:id/assessment-radar` is per child. Drawing the
+ *    comparison would mean computing an average on the client from a roster
+ *    the dashboard does not fetch, which is the invented-number failure this
+ *    file was already avoiding. `TermProgress` reports the real, related fact:
+ *    how many of the roster have been assessed.
+ *
+ * ★★★★★ One teacher, one group. `useMyGroup()` resolves it once and the whole
+ * screen speaks about it — no switcher, no group picker, no "which class?"
+ * step, because the product does not offer a second one.
  */
 export default function DashboardPage() {
   return (
@@ -96,6 +112,10 @@ function TeacherDashboard() {
     queryFn: () => get("/dashboard/teacher", teacherDashboardSchema),
   });
 
+  // Shared with `TeacherHero`, `AttendanceToday` and `WeeklyAttendance` under
+  // one query key, so naming the group in the lede costs nothing.
+  const { group, count: groupCount } = useMyGroup();
+
   /*
    * ★ All three branches render the same `PageHeader`.
    *
@@ -103,17 +123,27 @@ function TeacherDashboard() {
    * different size *and* a different weight from the one `PageHeader` renders —
    * so the title grew 4px and changed weight in place the moment the query
    * resolved. Three copies of one string, and the copy nobody looks at was the
-   * one on screen while the screen was loading.
+   * one on screen while the screen was loading. Only the lede differs between
+   * them, and it is never empty, because a line that appears late moves
+   * everything below it.
    *
-   * The search and the action menu render in every branch: both are static
-   * links, neither depends on the response, and holding their space is what
-   * keeps the header from reflowing under the user's cursor. The lede is the
-   * one part that genuinely differs, so it is the one part passed in — and it
-   * is never empty, because a line that appears late moves everything below it.
+   * ★★ "Ангийн самбар", renamed from "Хяналтын самбар" on 2026-08-28. The
+   * client's own name for this screen, and the reason `ClassBoardNotice`'s
+   * heading moved to "Сүүлийн нийтлэл" in the same pass: the two would
+   * otherwise have been the same string on the same page.
+   *
+   * The lede is the group and the date, in the sketch's own order — the two
+   * facts that scope every figure below it. `useMyGroup()` resolves the group
+   * the whole screen already speaks about, so this costs no request.
+   *
+   * ★★★ No header search and no "+ Үйлдэл" menu.
+   *
+   * Both went with the widgets on 2026-08-28. The sketch's header is a title
+   * and a line under it, and neither control was reachable only from here: the
+   * search submitted into `/children`, which has its own, and the menu's three
+   * destinations are the primary actions of the three screens they open.
    */
-  const header = (lede: string) => (
-    <PageHeader title="Хяналтын самбар" lede={lede} search actions={<CreateMenu />} />
-  );
+  const header = (lede: string) => <PageHeader title="Ангийн самбар" lede={lede} />;
 
   if (isLoading) {
     return (
@@ -140,168 +170,92 @@ function TeacherDashboard() {
     );
   }
 
-  const dashboard = data!;
-  const {
-    counts,
-    needsAttention,
-    recentObservations,
-    currentTerm,
-    birthdaysToday,
-    birthdaysThisMonth,
-    boardNotice,
-    termProgress,
-    observationsByType,
-  } = dashboard;
+  /*
+   * ★ Five of the ten fields `GET /dashboard/teacher` returns are read here now.
+   *
+   * `counts`, `needsAttention`, `recentObservations`, `termProgress` and
+   * `observationsByType` belong to the nine widgets this screen dropped on
+   * 2026-08-28 (see the docblock above). They are deliberately **not** removed
+   * from `teacherDashboardSchema` or from the endpoint: the components that
+   * read them still exist and still have tests, and narrowing a response to
+   * match one screen's current layout is the coupling `GroupsSection` and
+   * `DashboardStats` each decline in their own comments.
+   */
+  const { currentTerm, birthdaysThisMonth, boardNotice } = data!;
 
+  /*
+   * ★ Bands are spaced further apart than the cards inside them.
+   *
+   * Everything used to sit on one `gap-3 md:gap-4 lg:gap-5` rhythm, so the
+   * distance between two tiles in a row and the distance between the tile row
+   * and the menu section were identical — which is what made the screen read
+   * as a bag of cards rather than as a structure. One step up (`gap-5 lg:gap-7`)
+   * between bands and the grouping becomes visible without a single divider.
+   */
   return (
-    <div className="flex flex-col gap-3 md:gap-4 lg:gap-5">
+    // 20px between bands on a phone, 24px from `lg` — the brief's own section
+    // rhythm, and a step above the 16/20px gap between cards inside a band so
+    // the grouping is visible without a divider.
+    <div className="flex flex-col gap-5 lg:gap-6">
       {header(
-        currentTerm ? `${currentTerm.name} · идэвхтэй улирал` : "Идэвхтэй улирал тохируулаагүй",
+        /*
+          Group · date, per the sketch — but only where naming one group is
+          true. An admin sees every group in the kindergarten and
+          `TeacherAssignment` permits a teacher covering two, so both fall back
+          to the term rather than being told they run "Дэлбээ". Same rule
+          `WhoAmI` (`app-shell.tsx`) applies to the sidebar's context line.
+        */
+        groupCount === 1 && group
+          ? `${group.name} · ${formatDate(new Date())}`
+          : currentTerm
+            ? `${currentTerm.name} · идэвхтэй улирал`
+            : "Идэвхтэй улирал тохируулаагүй",
       )}
 
       {/*
-        ★ The alert first, and compact.
+        ★ Two across from 375px up, not from a breakpoint.
 
-        `NeedsAttentionAlerts` renders only when it has something to say, so its
-        presence is the signal — that argument still holds and it stays out of
-        the grid. What was wrong was its weight: a full section heading over
-        cards with a size-10 icon, occupying a third of the screen to report
-        three birthdays. It reads as an inline notification now.
+        The sketch pairs these on a *phone*, and that is buildable: at 375px
+        each card is about 168px, which fits a 96px dial over "30 / 35" (the
+        card stacks its ring and figure below `sm`) and two counts either side
+        of a rule. `AttendanceToday` and `GenderRatio` each carry that
+        narrow-width handling themselves rather than the page guessing at it.
+
+        ★★ Neither card can vanish, so this needs no hole-guard. Both render a
+        quiet `BoardCardEmpty` on every failure and empty case — their
+        docblocks record reversing `return null` for exactly this grid.
       */}
-      <NeedsAttentionAlerts birthdaysToday={birthdaysToday} needsAttention={needsAttention} />
+      <div className="grid grid-cols-2 gap-3 md:gap-4 lg:gap-5">
+        <AttendanceToday />
+        <GenderRatio />
+      </div>
+
+      {/* The week's register, full width — the sketch's own emphasis, and the
+          only card on the screen that needs a horizontal axis. */}
+      <WeeklyAttendance />
+
+      <div className="grid grid-cols-2 gap-3 md:gap-4 lg:gap-5">
+        <MonthBirthdays birthdays={birthdaysThisMonth} />
+        <SurveySummary />
+      </div>
+
+      {/* The latest post, full width. Stacked on a phone; text beside its
+          photograph from `lg` — see `class-board-notice.tsx`. */}
+      <ClassBoardNotice notice={boardNotice} />
 
       {/*
-        ★★ One twelve-column grid, not a stack of full-width blocks.
+        ★★★ D — today's menu, restored 2026-08-29.
 
-        The previous layout put two stat cards in `grid-cols-2` — which stretched
-        each to half the viewport, so "Хүүхэд 5" occupied 600px of a 1200px
-        screen and the rest was white. That is a leftover: the row held four
-        tiles until two of them were removed as duplicates of the sections
-        below, and nothing revisited the columns they sat in.
-
-        Twelve columns let the pieces size to their content instead:
-
-          Хүүхэд 3 · Бүлэг 3 · the group's assessment 6   — one dense row
-          Улирлын явц 6 · Ажиглалтын төрлүүд 6            — equal halves
-          Сүүлийн ажиглалтууд 12                          — the long feed
-
-        The group card sharing the counts' row is what fixes it sitting alone
-        with dead space beside it, and pairing a number with the action it
-        motivates reads better than either alone.
-
-        `items-start` matters: without it grid stretches every cell in a row to
-        the tallest, so a two-line card grows to match a six-row list and the
-        white space moves inside the card instead of beside it.
-
-        The second column arrives at `md`, not `sm`. At 640px two charts side by
-        side are about 300px each — narrower than the radar wants, and enough to
-        wrap every bar label. That breakpoint was a two-column default rather
-        than a measurement against this content.
+        It came off this screen with the eight other widgets the redesign
+        removed, and unlike them it had nowhere else to go: `TodayMenu` is the
+        only surface anywhere in the product for the allergy cross-check, which
+        CLAUDE.md §7 lists as delivered ("§11 the allergy cross-check — done").
+        Removing the dashboard from under it did not remove the feature from
+        scope, it just made it unreachable — so it sits below the five cards the
+        client drew rather than among them, which keeps their layout exactly as
+        approved.
       */}
-      <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 md:gap-4 lg:grid-cols-12 lg:gap-5">
-        <DashboardStats counts={counts} />
-
-        {/*
-          The roster's shape, beside its size. Both read `/children/summary`
-          under one query key, so the pair costs a single request.
-        */}
-        <div className="md:col-span-2 lg:col-span-6">
-          <GenderRatio />
-        </div>
-
-        {/*
-          ★ The class board takes the wide half.
-
-          It is the only widget here carrying a body of text rather than a
-          number, and the sketch gives it the largest panel for that reason —
-          a paragraph in a quarter-width column wraps to a column of two-word
-          lines.
-        */}
-        <div className="md:col-span-2 lg:col-span-7">
-          <ClassBoardNotice notice={boardNotice} />
-        </div>
-
-        <div className="md:col-span-2 lg:col-span-5">
-          <MonthBirthdays birthdays={birthdaysThisMonth} />
-        </div>
-
-        {/*
-          Six columns on a desktop, its own row on a phone. `GroupsSection`
-          renders a single action card, a list, or nothing at all depending on
-          how many groups the teacher has — so it takes a span rather than
-          assuming a height.
-        */}
-        <div className="md:col-span-2 lg:col-span-6">
-          <GroupsSection />
-        </div>
-
-        <div className="md:col-span-2 lg:col-span-6">
-          {currentTerm ? <TermProgress term={currentTerm.name} progress={termProgress} /> : null}
-        </div>
-
-        <div className="md:col-span-2 lg:col-span-6">
-          <ObservationMix
-            observationsByType={observationsByType}
-            term={currentTerm?.name ?? null}
-          />
-        </div>
-
-        {/*
-          The feed is the longest section and the least urgent, so it spans the
-          full width at the foot rather than stretching one column to twice the
-          height of its neighbour.
-        */}
-        <div className="md:col-span-2 lg:col-span-12">
-          <RecentObservations observations={recentObservations} />
-        </div>
-      </div>
+      <TodayMenu />
     </div>
-  );
-}
-
-/**
- * "+ Үйлдэл" — one primary control, three real destinations.
- *
- * The requested menu was Add Photo / Text / Voice. Voice is voice-to-text, which
- * CLAUDE.md §7 puts outside the MVP, and a photo is not a standalone action in
- * this product: pictures attach to an observation, on the screen where you write
- * it, because a photo with no note attached to it is not a portfolio entry. So
- * the menu lists what a teacher can actually start, and each entry opens a
- * screen that exists — the rule the sidebar is held to as well.
- *
- * Every one of them still passes through choosing a child or a group first; that
- * is inherent, not a missing shortcut.
- */
-function CreateMenu() {
-  return (
-    <Menu
-      ariaLabel="Шинээр үүсгэх"
-      label={
-        <>
-          <Plus size={18} aria-hidden="true" />
-          Үйлдэл
-        </>
-      }
-      items={[
-        {
-          href: "/children",
-          label: "Ажиглалт бичих",
-          hint: "Хүүхэд сонгоод бичнэ. Зургийг мөн тэндээс хавсаргана.",
-          icon: <NotebookPen size={18} aria-hidden="true" />,
-        },
-        {
-          href: "/notifications/new",
-          label: "Зарлал нийтлэх",
-          hint: "Бүлгийн эцэг эхэд мэдэгдэл илгээх.",
-          icon: <Megaphone size={18} aria-hidden="true" />,
-        },
-        {
-          href: "/children/new",
-          label: "Хүүхэд бүртгэх",
-          hint: "Шинэ хүүхдийг бүлэгт нэмэх.",
-          icon: <UserPlus size={18} aria-hidden="true" />,
-        },
-      ]}
-    />
   );
 }

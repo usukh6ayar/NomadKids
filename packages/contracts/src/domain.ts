@@ -30,6 +30,8 @@ export type Role = z.infer<typeof roleSchema>;
 export const sexSchema = z.enum(["MALE", "FEMALE"]);
 export const childStatusSchema = z.enum(["ACTIVE", "ARCHIVED"]);
 export const enrollmentStatusSchema = z.enum(["ACTIVE", "ENDED", "TRANSFERRED", "GRADUATED"]);
+/** Who a guardian is to the child. Set by the guardian themselves when they
+ * accept their invitation — see `invitationAcceptSchema`. */
 export const guardianRelationSchema = z.enum([
   "MOTHER",
   "FATHER",
@@ -37,6 +39,7 @@ export const guardianRelationSchema = z.enum([
   "SIBLING",
   "OTHER",
 ]);
+export type GuardianRelation = z.infer<typeof guardianRelationSchema>;
 
 /**
  * "Хүү" / "Охин", not "Эрэгтэй" / "Эмэгтэй".
@@ -339,11 +342,23 @@ export const menuDaySchema = z.object({
 });
 export type MenuDay = z.infer<typeof menuDaySchema>;
 
-/** One child's meal-register row — `нэмэлт.md` §2. */
+/**
+ * One saved record, as `PUT /groups/:id/meals` returns them — `нэмэлт.md` §2.
+ *
+ * A different resource from the menu above: `MenuDay` is what the kitchen
+ * planned to cook, kindergarten-wide; `MealRecord` is what one child actually
+ * ate at one sitting. They share the `MealKind` vocabulary and nothing else —
+ * no foreign key, no join. §3 computes the food cost from **хооллосон өдөр**,
+ * days eaten, which is why this cannot be inferred from `Attendance` either: a
+ * child collected before lunch attended and did not eat.
+ *
+ * ★ The API answers with the whole Prisma row; this names the fields the
+ * product uses and zod drops the rest. Adding `kindergartenId` or
+ * `recordedById` here would put ids on the wire that no screen reads.
+ */
 export const mealRecordSchema = z.object({
   id: uuidSchema,
   childId: uuidSchema,
-  enrollmentId: uuidSchema,
   date: z.string(),
   kind: mealKindSchema,
   status: mealStatusSchema,
@@ -351,27 +366,29 @@ export const mealRecordSchema = z.object({
 });
 export type MealRecord = z.infer<typeof mealRecordSchema>;
 
-/** A group's roster for one sitting, marked or not — `GET /groups/:id/meals`. */
-export const groupMealSheetEntrySchema = z.object({
-  child: z.object({
-    id: uuidSchema,
-    lastName: z.string(),
-    firstName: z.string(),
-  }),
+/**
+ * One row of a group's sitting — a child, reconciled against whatever has been
+ * marked. `record` is `null` for a child nobody has marked yet, and that is the
+ * point of a register rather than a list of what happened.
+ *
+ * The same shape as `groupAttendanceRowSchema`, because the API builds both the
+ * same way: the roster comes from `Enrollment`, never from the records.
+ */
+export const groupMealRowSchema = z.object({
+  child: personRefSchema,
   enrollmentId: uuidSchema,
-  record: mealRecordSchema.nullable(),
+  record: mealRecordSchema.nullish(),
 });
-export type GroupMealSheetEntry = z.infer<typeof groupMealSheetEntrySchema>;
+export type GroupMealRow = z.infer<typeof groupMealRowSchema>;
 
-/** A child's month, by sitting and status — `GET /children/:id/meals/summary`. */
-export const mealSummarySchema = z.object({
-  month: z.string(),
-  counts: z.array(
-    z.object({ kind: mealKindSchema, status: mealStatusSchema, count: z.number() }),
-  ),
-  daysFed: z.number(),
-});
-export type MealSummary = z.infer<typeof mealSummarySchema>;
+/*
+ * ★ The staff menu — `menuDayWithWarningsSchema` — is NOT here.
+ *
+ * It carries allergy severities, so it needs `allergySeveritySchema`, which the
+ * health section declares further down this file. A `const` is not hoisted:
+ * referencing it from here would throw on module evaluation, not at build.
+ * It lives at the end of the health section instead.
+ */
 
 // ── Surveys ──────────────────────────────────────────────────────────────────
 
@@ -381,16 +398,45 @@ export type SurveyScope = z.infer<typeof surveyScopeSchema>;
 export const surveyStatusSchema = z.enum(["DRAFT", "PUBLISHED", "CLOSED"]);
 export type SurveyStatus = z.infer<typeof surveyStatusSchema>;
 
-export const surveyQuestionTypeSchema = z.enum(["RATING", "YES_NO", "TEXT", "CHECKBOX"]);
+/** RFP Module 1.1's archival classification, and Module 1.2's pairing key. */
+export const surveyPeriodSchema = z.enum(["BASELINE", "MIDLINE", "ENDLINE"]);
+export type SurveyPeriod = z.infer<typeof surveyPeriodSchema>;
+
+export const SURVEY_PERIOD_LABEL: Record<SurveyPeriod, string> = {
+  BASELINE: "Эхний үнэлгээ",
+  MIDLINE: "Завсрын үнэлгээ",
+  ENDLINE: "Жилийн эцсийн үнэлгээ",
+};
+
+export const surveyQuestionTypeSchema = z.enum([
+  "RATING",
+  "YES_NO",
+  "TEXT",
+  "CHECKBOX",
+  /** RFP Module 1.1 — several indicators on one shared scale. */
+  "MATRIX",
+]);
 export type SurveyQuestionType = z.infer<typeof surveyQuestionTypeSchema>;
+
+/** A MATRIX question's shape — RFP Module 1.1. */
+export const matrixOptionsSchema = z.object({
+  rows: z.array(z.object({ key: z.string(), label: z.string() })),
+  columns: z.array(z.object({ value: z.number(), label: z.string() })),
+});
+export type MatrixOptions = z.infer<typeof matrixOptionsSchema>;
 
 export const surveyQuestionSchema = z.object({
   id: uuidSchema,
   order: z.number(),
   type: surveyQuestionTypeSchema,
   prompt: z.string(),
-  /** CHECKBOX's choices. Empty for the other three types. */
-  options: z.array(z.string()).nullish(),
+  /** CHECKBOX's choices, or a MATRIX's rows and columns. */
+  options: z.union([z.array(z.string()), matrixOptionsSchema]).nullish(),
+  /**
+   * What this question measures, stable across waves — RFP Module 1.2.
+   * Null means "not comparable", which is honest for a one-off poll.
+   */
+  indicatorKey: z.string().nullish(),
 });
 export type SurveyQuestion = z.infer<typeof surveyQuestionSchema>;
 
@@ -403,6 +449,11 @@ export const surveySchema = z.object({
   publishedAt: z.string().nullish(),
   closedAt: z.string().nullish(),
   createdAt: z.string(),
+  /** "2025-2026" — a school year spans two calendar years. */
+  schoolYear: z.string().nullish(),
+  /** Which wave: RFP Module 1.1's эхний/завсрын/жилийн эцсийн үнэлгээ. */
+  period: surveyPeriodSchema.nullish(),
+  clonedFromSurveyId: uuidSchema.nullish(),
   questions: z.array(surveyQuestionSchema).default([]),
   /** Set only on the child-facing list — has this guardian already answered
    * for this child (or, for a KINDERGARTEN-scope survey, at all)? */
@@ -410,13 +461,50 @@ export const surveySchema = z.object({
 });
 export type Survey = z.infer<typeof surveySchema>;
 
-/** A single answer's value: a number (RATING), a boolean (YES_NO), a string
- * (TEXT), or a string array (CHECKBOX). */
+/** One indicator's begin-to-end movement — RFP Module 1.2. */
+export const indicatorComparisonSchema = z.object({
+  indicatorKey: z.string(),
+  rowKey: z.string().nullish(),
+  label: z.string(),
+  baselineMean: z.number().nullish(),
+  endlineMean: z.number().nullish(),
+  maxScore: z.number().nullish(),
+  delta: z.number().nullish(),
+  /** Progress as a share of the scale, not of the baseline. */
+  deltaPercent: z.number().nullish(),
+  baselineCount: z.number(),
+  endlineCount: z.number(),
+});
+export type IndicatorComparison = z.infer<typeof indicatorComparisonSchema>;
+
+export const surveyComparisonSchema = z.object({
+  baseline: z
+    .object({ id: uuidSchema, title: z.string(), period: surveyPeriodSchema.nullish() })
+    .nullable(),
+  indicators: z.array(indicatorComparisonSchema),
+  children: z.array(
+    z.object({ childId: uuidSchema, indicators: z.array(indicatorComparisonSchema) }),
+  ),
+  /** Why there is nothing to compare, when there is nothing to compare. */
+  note: z.string().nullable(),
+});
+export type SurveyComparison = z.infer<typeof surveyComparisonSchema>;
+
+/**
+ * A single answer's value: a number (RATING), a boolean (YES_NO), a string
+ * (TEXT), a string array (CHECKBOX), or one score per row (MATRIX).
+ *
+ * The matrix case is a record keyed by the question's own row keys, so it
+ * cannot be given a fixed shape here. The API checks each key and value against
+ * the question's `options` before storing, so an answer naming a row that does
+ * not exist is refused rather than saved as data nothing can score.
+ */
 export const surveyAnswerValueSchema = z.union([
   z.number(),
   z.boolean(),
   z.string(),
   z.array(z.string()),
+  z.record(z.string(), z.number()),
 ]);
 export type SurveyAnswerValue = z.infer<typeof surveyAnswerValueSchema>;
 
@@ -771,6 +859,45 @@ export const childHealthSchema = z.object({
   healthNotes: z.string().nullish(),
 });
 export type ChildHealth = z.infer<typeof childHealthSchema>;
+
+/**
+ * One dish on the menu matched against one child's active allergy — the shape
+ * `findAllergenWarnings` emits, in the order it emits it (severe first).
+ *
+ * ★ Declared in the health section, not beside the menu, because it needs
+ * `allergySeveritySchema` above. A `const` is not hoisted, so referencing it
+ * from the meals section would throw on module evaluation rather than fail at
+ * build — the kind of break that only shows up when the bundle first runs.
+ *
+ * ★★ This names another family's child and what they react to, so it is staff
+ * data. `GET /kindergartens/:id/menu/with-warnings` is `@Roles("TEACHER",
+ * "ADMIN")` for that reason, and is a separate route from the plain menu rather
+ * than a flag on it — a parent reads the menu and never this. Anything built on
+ * this schema inherits that constraint and must not reach a parent surface.
+ */
+export const allergenWarningSchema = z.object({
+  childId: uuidSchema,
+  childName: z.string(),
+  dishName: z.string(),
+  /** What the menu was tagged with. */
+  allergenTag: z.string(),
+  /** What the child's record calls it — the two match loosely, never by equality. */
+  allergen: z.string(),
+  severity: allergySeveritySchema,
+});
+export type AllergenWarning = z.infer<typeof allergenWarningSchema>;
+
+/**
+ * A menu day as the staff route returns it — RFP Module 2's cross-check.
+ *
+ * Extends `menuDaySchema` rather than restating it: the API spreads the same
+ * Prisma row into both responses and adds `warnings` to this one, so the day's
+ * own fields must not be able to drift between the two schemas.
+ */
+export const menuDayWithWarningsSchema = menuDaySchema.extend({
+  warnings: z.array(allergenWarningSchema).default([]),
+});
+export type MenuDayWithWarnings = z.infer<typeof menuDayWithWarningsSchema>;
 
 // ── Milestones — RFP §4.5 ────────────────────────────────────────────────────
 
@@ -1423,6 +1550,66 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
 };
 
 /**
+ * Audited record types, in Mongolian.
+ *
+ * ★ The other half of the sentence `AUDIT_ACTION_LABEL` translates.
+ *
+ * An audit line reads "<action> · <objectType>", and only the action was ever
+ * translated — so a director's activity feed and their audit screen both said
+ * "Үзсэн · Child", "Засварласан · Membership", "Устгасан · Guardianship". The
+ * comment above that map is the whole argument, applied to one column and not
+ * the other: a raw enum is meaningless to an administrator, and an English one
+ * on a Mongolian screen is worse than meaningless — it reads as a fault.
+ *
+ * ★★ Keyed by the string the API writes to `AuditLog.objectType`, which is the
+ * Prisma model name. Every value written anywhere in `apps/api/src` is listed;
+ * a model added later that is not falls back to its own name at the call site
+ * rather than rendering blank.
+ */
+export const AUDIT_OBJECT_LABEL: Record<string, string> = {
+  AllergyRecord: "Харшил",
+  ArtworkComparison: "Уран бүтээлийн харьцуулалт",
+  Assessment: "Үнэлгээ",
+  AssessmentLevel: "Үнэлгээний түвшин",
+  Attendance: "Ирц",
+  AttendanceRequest: "Чөлөөний хүсэлт",
+  AuditLog: "Үйлдлийн бүртгэл",
+  BirthdayNote: "Төрсөн өдрийн мэндчилгээ",
+  Child: "Хүүхэд",
+  ChildAgeProfile: "Хүүхдийн насны мэдээлэл",
+  ChildExport: "Хүүхдийн жагсаалтын экспорт",
+  ChildImport: "Хүүхдийн импорт",
+  ChildProfile: "Хүүхдийн дэлгэрэнгүй",
+  ConsentRecord: "Зураг ашиглах зөвшөөрөл",
+  DevelopmentDomain: "Хөгжлийн чиглэл",
+  Document: "Баримт бичиг",
+  Enrollment: "Элсэлт",
+  FundingCalculation: "Санхүүжилтийн тооцоо",
+  FundingRule: "Санхүүжилтийн дүрэм",
+  Group: "Бүлэг",
+  GroupTeacher: "Бүлгийн багш",
+  GrowthMeasurement: "Өсөлтийн хэмжилт",
+  Guardianship: "Асран хамгаалагч",
+  Kindergarten: "Цэцэрлэг",
+  MealRecord: "Хоолны бүртгэл",
+  MediaFile: "Файл",
+  MedicationAuthorisation: "Эм хэрэглэх зөвшөөрөл",
+  Membership: "Эрх",
+  Milestone: "Онцлох ахиц",
+  Notification: "Мэдээ",
+  Observation: "Ажиглалт",
+  ObservationType: "Ажиглалтын төрөл",
+  ReportJob: "Тайлан",
+  SafetyIncident: "Ослын бүртгэл",
+  SchoolYear: "Хичээлийн жил",
+  Survey: "Судалгаа",
+  SurveyResponse: "Судалгааны хариулт",
+  Term: "Улирал",
+  TermReport: "Улирлын тайлан",
+  User: "Хэрэглэгч",
+};
+
+/**
  * Where the server says this user's session should land after login.
  *
  * `null` means the account holds no membership at all — a real state (an
@@ -1593,3 +1780,62 @@ export const rosterSummarySchema = z.object({
   girls: z.number(),
 });
 export type RosterSummary = z.infer<typeof rosterSummarySchema>;
+
+// ── Chat ─────────────────────────────────────────────────────────────────────
+
+/**
+ * A group message board — RFP Phase IV, in scope from 2026-08-29 (CLAUDE.md §7).
+ *
+ * ★ **No AI.** The client stated it three times and it is worth restating where
+ * the types live: there is no assistant, no generated reply, no model call.
+ * These are messages people typed, in rooms they already belong to.
+ */
+export const chatRoomKindSchema = z.enum(["GROUP", "STAFF"]);
+export type ChatRoomKind = z.infer<typeof chatRoomKindSchema>;
+
+/**
+ * One room in the actor's list.
+ *
+ * `key` is the room's identity — `group:<uuid>` or `staff:<kindergartenId>`.
+ * It is opaque to the client and authorizes nothing: the API resolves it
+ * against the caller's own rooms on every request (`ChatAccessService`).
+ */
+export const chatRoomSchema = z.object({
+  key: z.string(),
+  kind: chatRoomKindSchema,
+  kindergartenId: uuidSchema,
+  groupId: uuidSchema.nullable(),
+  name: z.string(),
+  /** How many people can see this room — the drawing's "24 гишүүн". */
+  memberCount: z.number(),
+  /** Newest message, for the list's preview line. Null in an empty room. */
+  lastMessage: z
+    .object({
+      id: uuidSchema,
+      body: z.string(),
+      createdAt: z.string(),
+      author: personRefSchema.nullish(),
+    })
+    .nullable()
+    .default(null),
+  /** Messages since this reader's `lastReadAt`. */
+  unreadCount: z.number().default(0),
+});
+export type ChatRoom = z.infer<typeof chatRoomSchema>;
+
+export const chatMessageSchema = z.object({
+  id: uuidSchema,
+  roomKey: z.string(),
+  body: z.string(),
+  createdAt: z.string(),
+  author: personRefSchema.nullish(),
+  /** Whether the signed-in reader wrote it — the client aligns their own right. */
+  mine: z.boolean().default(false),
+});
+export type ChatMessage = z.infer<typeof chatMessageSchema>;
+
+/** Bodies are bounded: a chat message is not a document. */
+export const sendChatMessageSchema = z.object({
+  body: z.string().trim().min(1, "Мессеж хоосон байна").max(2000),
+});
+export type SendChatMessageDto = z.infer<typeof sendChatMessageSchema>;

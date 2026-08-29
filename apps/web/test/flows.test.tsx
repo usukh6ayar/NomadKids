@@ -21,6 +21,10 @@ import { PhotoUpload } from "@/components/media/photo-upload";
 import { ChildGallery } from "@/components/media/child-gallery";
 import { ObservationPhotos } from "@/components/observations/observation-photos";
 import DashboardPage from "@/app/(app)/dashboard/page";
+import { NeedsAttentionAlerts } from "@/components/dashboard/needs-attention-alerts";
+import { RecentObservations } from "@/components/dashboard/recent-observations";
+import { TermProgress } from "@/components/dashboard/term-progress";
+import { DashboardStats } from "@/components/dashboard/dashboard-stats";
 import TermReportPage from "@/app/(app)/children/[childId]/term-report/page";
 import NotificationDetailPage from "@/app/(app)/notifications/[notificationId]/page";
 
@@ -443,9 +447,7 @@ describe("registering a child", () => {
 
     await user.click(screen.getByRole("button", { name: "Бүртгэх" }));
 
-    await waitFor(() =>
-      expect(ROUTER.push).toHaveBeenCalledWith(`/children/${CHILD_ID}/general`),
-    );
+    await waitFor(() => expect(ROUTER.push).toHaveBeenCalledWith(`/children/${CHILD_ID}/general`));
 
     const post = calls.find((c) => c.method === "POST")!;
     // ★ The group has to travel with the child. Registered without one, the
@@ -775,8 +777,6 @@ describe("revoking a guardian's access", () => {
     const user = userEvent.setup();
     setParams({ childId: CHILD_ID });
 
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
-
     const { calls } = stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
       { path: `/guardianships/${GUARDIANSHIP_ID}`, method: "PATCH", body: {} },
@@ -785,12 +785,15 @@ describe("revoking a guardian's access", () => {
 
     renderWithProviders(<ChildGeneralPage />);
 
+    // ★ Was `vi.spyOn(window, "confirm")`. The native prompt is gone; this now
+    // opens the shared `ConfirmDialog` and presses its confirm, which is the
+    // path a person takes.
     await user.click(await screen.findByRole("button", { name: /харах эрхийг хураах/ }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Эрхийг хураах" }));
 
     await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true));
     expect(calls.find((c) => c.method === "PATCH")!.body).toMatchObject({ canView: false });
-
-    confirmSpy.mockRestore();
   });
 });
 
@@ -832,9 +835,14 @@ describe("the child profile tabs", () => {
   }
 
   /**
-   * ★ Only "Ерөнхий" is a primary tab since the child hub was deleted
-   * (2026-08-28) and Ажиглалт moved to its own route — Growth, health,
-   * incidents and artwork are what remain behind "Бусад".
+   * ★ All five sections are tabs since 2026-08-29, and the "Бусад" pane that
+   * used to hold four of them is gone because it never worked.
+   *
+   * Radix picks which `Tabs.Content` renders from the value on `Tabs.Root`, and
+   * `ChildTabs` set that value to `"more"` whenever a secondary section was
+   * active — so `?tab=growth` re-rendered the tile grid instead of Өсөлт, and
+   * pressing the Өсөлт tile handed back the Өсөлт tile. Four sections were
+   * unreachable for as long as the pane existed. See `child-tabs.tsx`.
    */
   it("opens on Ерөнхий when the URL carries no tab", async () => {
     setParams({ childId: CHILD_ID });
@@ -845,34 +853,31 @@ describe("the child profile tabs", () => {
 
     const general = await screen.findByRole("tab", { name: "Ерөнхий" });
     expect(general).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tab", { name: "Бусад" })).toHaveAttribute("aria-selected", "false");
+    // Three of the four that were behind "Бусад" are in the strip now — the
+    // fourth, Бүтээл, moved to the portfolio's own "Хөгжил" page (2026-08-29,
+    // `general/page.tsx`'s own doc comment).
+    for (const label of ["Өсөлт", "Эрүүл мэнд", "Аюулгүй байдал"]) {
+      expect(screen.getByRole("tab", { name: label })).toHaveAttribute("aria-selected", "false");
+    }
+    expect(screen.queryByRole("tab", { name: "Бусад" })).toBeNull();
   });
 
   /**
-   * A link naming a secondary section lands on "Бусад", which is the pane
-   * that section lives in — `ChildTabs` mounts the overflow pane's own
-   * `Tabs.Content`, not the individual panel's, whenever the active value is
-   * one of its secondary tabs. This is `ChildTabs`' existing behaviour,
-   * unchanged from the hub; a link to `?tab=growth` and one to `?tab=health`
-   * still both land somewhere real rather than on the wrong tab or a blank
-   * strip.
+   * ★ The regression test for the bug above: a link naming a section opens
+   * *that section*, not a menu pointing back at it.
    */
-  it("opens the overflow pane for a secondary tab named in the URL", async () => {
+  it("opens the section a link names", async () => {
     setParams({ childId: CHILD_ID });
     setSearchParams("tab=growth");
     stubChild(enrolled());
 
     renderWithProviders(<ChildGeneralPage />);
 
-    expect(await screen.findByRole("tab", { name: "Бусад" })).toHaveAttribute(
+    expect(await screen.findByRole("tab", { name: "Өсөлт" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
     expect(screen.getByRole("tab", { name: "Ерөнхий" })).toHaveAttribute("aria-selected", "false");
-    expect(screen.getByRole("link", { name: /Өсөлт/ })).toHaveAttribute(
-      "href",
-      expect.stringContaining("tab=growth"),
-    );
   });
 
   /** A hand-edited or stale link opens the record rather than an empty page. */
@@ -889,7 +894,7 @@ describe("the child profile tabs", () => {
     );
   });
 
-  it("writes 'more' to the URL when the overflow pane is opened", async () => {
+  it("writes the opened tab to the URL", async () => {
     const user = userEvent.setup();
     setParams({ childId: CHILD_ID });
     setSearchParams("");
@@ -897,10 +902,10 @@ describe("the child profile tabs", () => {
 
     renderWithProviders(<ChildGeneralPage />);
 
-    await user.click(await screen.findByRole("tab", { name: "Бусад" }));
+    await user.click(await screen.findByRole("tab", { name: "Өсөлт" }));
 
     expect(ROUTER.replace).toHaveBeenCalledWith(
-      expect.stringContaining("tab=more"),
+      expect.stringContaining("tab=growth"),
       // `push` would make every tab press a history entry to unwind, and
       // re-anchoring to the top on each one is disorienting on a phone.
       expect.objectContaining({ scroll: false }),
@@ -988,18 +993,25 @@ describe("the child profile tabs", () => {
     expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
   });
 
-  it("does not fetch a secondary tab's data merely because the URL names it", async () => {
+  /**
+   * ★ This asserted the opposite until 2026-08-29, and passing was the symptom.
+   *
+   * It read "does not fetch a secondary tab's data merely because the URL names
+   * it" and was green — because landing on `?tab=growth` rendered the overflow
+   * tile grid rather than `ChildGrowth`, so the growth query never fired. The
+   * test was describing the bug as though it were a policy. A link to a
+   * section must open the section, which means fetching what the section
+   * shows.
+   */
+  it("fetches a tab's data when the URL names it", async () => {
     setParams({ childId: CHILD_ID });
     setSearchParams("tab=growth");
     const { calls } = stubChild(enrolled());
 
     renderWithProviders(<ChildGeneralPage />);
-    await screen.findByRole("tab", { name: "Бусад" });
+    await screen.findByRole("tab", { name: "Өсөлт" });
 
-    // Landing here opens the overflow pane, not `ChildGrowth` itself (see the
-    // test above) — so its query never fires from a URL alone, only once a
-    // tile is actually opened as a primary tab.
-    expect(calls.some((c) => c.url.includes("/growth"))).toBe(false);
+    await waitFor(() => expect(calls.some((c) => c.url.includes("/growth"))).toBe(true));
   });
 
   /**
@@ -1040,13 +1052,11 @@ describe("the child profile tabs", () => {
      * quietly take the medication form away from the people RFP Module 2 gives
      * it to.
      *
-     * ★ It moved behind "Бусад" on 2026-08-25 — the strip had grown to ten
-     * tabs, which on a 375px screen means the last five are off the right edge
-     * with nothing to say they exist. `?tab=health` still opens it directly,
-     * which is what keeps the section addressable; what this now asserts is
-     * that the pane holding it is there.
+     * ★ It spent 2026-08-25 to 08-29 behind a "Бусад" pane that could not
+     * actually open it (see the tab tests above), so this assertion checked the
+     * pane rather than the section. It is a tab of its own again.
      */
-    expect(screen.getByRole("tab", { name: "Бусад" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Эрүүл мэнд" })).toBeInTheDocument();
   });
 });
 
@@ -1092,7 +1102,6 @@ describe("archiving", () => {
   it("archives with DELETE and returns to the list", async () => {
     const user = userEvent.setup();
     setParams({ notificationId: NOTICE_ID });
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
 
     const { calls } = stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
@@ -1102,19 +1111,24 @@ describe("archiving", () => {
 
     renderWithProviders(<NotificationDetailPage />);
 
+    // ★ Was `vi.spyOn(window, "confirm")`. `ArchiveButton` now opens the shared
+    // `ConfirmDialog`, so the trigger and the confirm are two separate presses.
     await user.click(await screen.findByRole("button", { name: /Архивлах/ }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /Архивлах/ }));
 
     await waitFor(() => expect(calls.some((c) => c.method === "DELETE")).toBe(true));
     await waitFor(() => expect(ROUTER.push).toHaveBeenCalledWith("/notifications"));
 
-    confirmSpy.mockRestore();
+    // "Toast after save": the row is gone and often the page with it, so the
+    // confirmation has nowhere to live except the toast.
+    expect(await screen.findByText(/архивлагдлаа/i)).toBeInTheDocument();
   });
 
   /** Nothing happens if the confirmation is declined — it is a soft delete, not a free one. */
   it("does nothing when the confirmation is declined", async () => {
     const user = userEvent.setup();
     setParams({ notificationId: NOTICE_ID });
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
 
     const { calls } = stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
@@ -1123,10 +1137,20 @@ describe("archiving", () => {
 
     renderWithProviders(<NotificationDetailPage />);
 
-    await user.click(await screen.findByRole("button", { name: /Архивлах/ }));
+    /*
+      ★ This now cancels the dialog explicitly.
 
+      With `window.confirm` mocked to `false` the old version asserted a real
+      decline. Against the new dialog the same code would pass without ever
+      declining anything — opening the dialog sends no request either — so the
+      assertion has to press "Болих" for the test to still mean what it says.
+    */
+    await user.click(await screen.findByRole("button", { name: /Архивлах/ }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Болих" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(calls.some((c) => c.method === "DELETE")).toBe(false);
-    confirmSpy.mockRestore();
   });
 });
 
@@ -1227,6 +1251,25 @@ describe("paginated media", () => {
  * kind of thing that renders plausibly while being wrong: a birthday list that
  * quietly shows nobody, a progress bar that divides by zero and prints "NaN%".
  */
+/**
+ * The teacher's dashboard — Ангийн самбар.
+ *
+ * ★ Rewritten 2026-08-28, when the client replaced this screen with a five-card
+ * design and asked for the rest to be removed.
+ *
+ * Nine widgets came off the page: the identity hero, the launcher grid, the
+ * roster counts, the attention alerts, today's menu, the observation feed, the
+ * observation mix, the term progress and the group actions. **None of them was
+ * deleted** — every component still exists, still has its own tests, and can be
+ * put back on a screen by rendering it.
+ *
+ * The seven cases that used to live here rendered `DashboardPage` and asserted
+ * on those widgets. Each was pinning a real guarantee — "an empty roster must
+ * not render NaN%", "the alerts section is absent, not empty, on a quiet day" —
+ * and a guarantee is not worth less because the page stopped mounting the
+ * component that carries it. So they render the components directly now, and
+ * the page's own tests below assert what the page is.
+ */
 describe("teacher dashboard", () => {
   const BIRTHDAY_CHILD = "cccccccc-cccc-4ccc-8ccc-ccccccccccc1";
 
@@ -1236,70 +1279,155 @@ describe("teacher dashboard", () => {
       counts: { children: 10, groups: 1, pendingReviews: 0 },
       needsAttention: { pendingReviews: 0, childrenMissingAssessment: [] },
       birthdaysToday: [],
+      birthdaysThisMonth: [],
       termProgress: { assessed: 0, total: 10 },
       recentObservations: [],
+      boardNotice: null,
       ...over,
     };
   }
 
-  it("names the children whose birthday is today", async () => {
+  function stubDashboard(over: Record<string, unknown> = {}) {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      {
-        path: "/dashboard/teacher",
-        body: dashboardBody({
-          birthdaysToday: [
-            { id: BIRTHDAY_CHILD, lastName: "Ганболд", firstName: "Сарнай", dateOfBirth: null },
-          ],
-        }),
-      },
+      { path: "/dashboard/teacher", body: dashboardBody(over) },
       { path: "/groups", body: { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 } },
+      { path: "/children/summary", body: { total: 10, averageAgeMonths: 48, boys: 5, girls: 5 } },
+    ]);
+  }
+
+  // ═══ The page the client asked for ═══
+
+  it("renders the five cards of the sketch and nothing else", async () => {
+    stubDashboard();
+
+    renderWithProviders(<DashboardPage />);
+
+    for (const card of [
+      "Ангийн самбар",
+      "Өнөөдрийн ирц",
+      "Бүлгийн хүүхдүүд",
+      "Сарын ирц",
+      "Төрсөн өдөр",
+      "Судалгаа",
+      "Сүүлийн нийтлэл",
+    ]) {
+      expect(
+        await screen.findByRole("heading", { name: card }),
+        `${card} is missing`,
+      ).toBeInTheDocument();
+    }
+  });
+
+  /**
+   * ★ The nine removals, asserted as removals.
+   *
+   * Without this the next person restoring one of them — the launcher grid is
+   * the likely candidate, since it was itself added on request — would not know
+   * it had been taken off deliberately rather than lost in a merge.
+   */
+  it("does not carry the widgets the client removed", async () => {
+    stubDashboard({
+      needsAttention: {
+        pendingReviews: 4,
+        childrenMissingAssessment: [
+          {
+            id: BIRTHDAY_CHILD,
+            lastName: "Ганболд",
+            firstName: "Сарнай",
+            photoMediaFileId: null,
+            group: { id: GROUP_ID, name: "Дунд бүлэг" },
+          },
+        ],
+      },
+    });
+
+    renderWithProviders(<DashboardPage />);
+
+    await screen.findByRole("heading", { name: "Өнөөдрийн ирц" });
+
+    for (const region of [
+      "Анхаарах зүйлс",
+      "Түргэн холбоос",
+      "Өнөөдрийн тойм",
+      "Сүүлийн ажиглалтууд",
+      "Улирлын үнэлгээний явц",
+      "Бүлгийн бүртгэлүүд",
+    ]) {
+      expect(screen.queryByRole("region", { name: region }), `${region} is back`).toBeNull();
+    }
+    // The header's search box and "+ Үйлдэл" menu went with them.
+    expect(screen.queryByRole("search")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Үйлдэл/ })).toBeNull();
+
+    /*
+      ★ Хоолны цэс is the one that came back, on 2026-08-29.
+
+      It left with the other eight and, unlike them, had nowhere else to go:
+      `TodayMenu` is the only surface in the product for the allergy
+      cross-check, which CLAUDE.md §7 lists as delivered. It sits *below* the
+      five cards the client drew rather than among them, so their layout is
+      untouched — this asserts it is on the page at all, which is the part that
+      was broken.
+    */
+    expect(screen.getByRole("region", { name: "Хоолны цэс" })).toBeInTheDocument();
+  });
+
+  it("names the group and the date under the title", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: "/dashboard/teacher", body: dashboardBody() },
+      {
+        path: "/groups",
+        body: {
+          items: [{ id: GROUP_ID, name: "Дунд бүлэг" }],
+          page: 1,
+          pageSize: 20,
+          total: 1,
+          totalPages: 1,
+        },
+      },
+      { path: "/children/summary", body: { total: 10, averageAgeMonths: 48, boys: 5, girls: 5 } },
     ]);
 
     renderWithProviders(<DashboardPage />);
 
-    expect(await screen.findByText(/Өнөөдөр төрсөн өдөртэй/)).toBeInTheDocument();
+    expect(await screen.findByText(/Дунд бүлэг · \d{4}\.\d{2}\.\d{2}/)).toBeInTheDocument();
+  });
+
+  // ═══ Guarantees that outlived the widgets carrying them ═══
+
+  it("names the children whose birthday is today", () => {
+    renderWithProviders(
+      <NeedsAttentionAlerts
+        birthdaysToday={[
+          { id: BIRTHDAY_CHILD, lastName: "Ганболд", firstName: "Сарнай", dateOfBirth: null },
+        ]}
+        needsAttention={{ pendingReviews: 0, childrenMissingAssessment: [] }}
+      />,
+    );
+
+    expect(screen.getByText(/Өнөөдөр төрсөн өдөртэй/)).toBeInTheDocument();
     expect(screen.getByText(/Сарнай/)).toBeInTheDocument();
   });
 
-  it("shows the term progress as a labelled progressbar", async () => {
-    stubApi([
-      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      {
-        path: "/dashboard/teacher",
-        body: dashboardBody({ termProgress: { assessed: 4, total: 10 } }),
-      },
-      { path: "/groups", body: { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 } },
-    ]);
+  it("shows the term progress as a labelled progressbar", () => {
+    renderWithProviders(<TermProgress term="I улирал" progress={{ assessed: 4, total: 10 }} />);
 
-    renderWithProviders(<DashboardPage />);
-
-    const bar = await screen.findByRole("progressbar");
-    expect(bar).toHaveAttribute("aria-valuenow", "40");
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "40");
   });
 
   /**
    * ★ A group with no children is a real state on the first day of a school
    * year. `4/0` is not — and `Math.round(0/0)` renders the string "NaN%".
    */
-  it("does not print NaN when the roster is empty", async () => {
-    stubApi([
-      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      {
-        path: "/dashboard/teacher",
-        body: dashboardBody({
-          counts: { children: 0, groups: 1, pendingReviews: 0 },
-          termProgress: { assessed: 0, total: 0 },
-        }),
-      },
-      { path: "/groups", body: { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 } },
-    ]);
+  it("does not print NaN when the roster is empty", () => {
+    const { container } = renderWithProviders(
+      <TermProgress term="I улирал" progress={{ assessed: 0, total: 0 }} />,
+    );
 
-    renderWithProviders(<DashboardPage />);
-
-    const bar = await screen.findByRole("progressbar");
-    expect(bar).toHaveAttribute("aria-valuenow", "0");
-    expect(screen.queryByText(/NaN/)).not.toBeInTheDocument();
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "0");
+    expect(container.textContent).not.toContain("NaN");
   });
 
   /**
@@ -1310,47 +1438,40 @@ describe("teacher dashboard", () => {
    * to skip past the one part of the screen that is asking for something, and
    * that failure is invisible in a screenshot of a busy day.
    */
-  it("hides the alerts entirely when nothing needs attention", async () => {
-    stubApi([
-      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      { path: "/dashboard/teacher", body: dashboardBody() },
-      { path: "/groups", body: { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 } },
-    ]);
+  it("hides the alerts entirely when nothing needs attention", () => {
+    renderWithProviders(
+      <NeedsAttentionAlerts
+        birthdaysToday={[]}
+        needsAttention={{ pendingReviews: 0, childrenMissingAssessment: [] }}
+      />,
+    );
 
-    renderWithProviders(<DashboardPage />);
-
-    // Wait for the render to settle on content before asserting an absence —
-    // otherwise this passes against the loading state.
-    expect(await screen.findByRole("progressbar")).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Анхаарах зүйлс" })).not.toBeInTheDocument();
+    // Not `toBeEmptyDOMElement` on the container: `renderWithProviders` mounts
+    // the toast viewport alongside whatever it is given, so the container is
+    // never empty. The absence that matters is the section itself.
+    expect(screen.queryByRole("region", { name: "Анхаарах зүйлс" })).toBeNull();
   });
 
-  it("names every child still missing an assessment, and links to them", async () => {
-    stubApi([
-      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      {
-        path: "/dashboard/teacher",
-        body: dashboardBody({
-          needsAttention: {
-            pendingReviews: 0,
-            childrenMissingAssessment: [
-              {
-                id: BIRTHDAY_CHILD,
-                lastName: "Ганболд",
-                firstName: "Сарнай",
-                photoMediaFileId: null,
-                group: { id: GROUP_ID, name: "Дунд бүлэг" },
-              },
-            ],
-          },
-        }),
-      },
-      { path: "/groups", body: { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 } },
-    ]);
+  it("names every child still missing an assessment, and links to them", () => {
+    renderWithProviders(
+      <NeedsAttentionAlerts
+        birthdaysToday={[]}
+        needsAttention={{
+          pendingReviews: 0,
+          childrenMissingAssessment: [
+            {
+              id: BIRTHDAY_CHILD,
+              lastName: "Ганболд",
+              firstName: "Сарнай",
+              photoMediaFileId: null,
+              group: { id: GROUP_ID, name: "Дунд бүлэг" },
+            },
+          ],
+        }}
+      />,
+    );
 
-    renderWithProviders(<DashboardPage />);
-
-    const alerts = await screen.findByRole("region", { name: "Анхаарах зүйлс" });
+    const alerts = screen.getByRole("region", { name: "Анхаарах зүйлс" });
     expect(within(alerts).getByText(/Сарнай/)).toBeInTheDocument();
     expect(within(alerts).getByText("Дунд бүлэг")).toBeInTheDocument();
     expect(within(alerts).getByRole("link", { name: /Сарнай/ })).toHaveAttribute(
@@ -1364,71 +1485,51 @@ describe("teacher dashboard", () => {
    * day, not a broken screen, and it has to say so — an empty section that
    * simply vanishes reads as a feature that failed to load.
    */
-  it("offers the way to write the first observation when the feed is empty", async () => {
-    stubApi([
-      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      { path: "/dashboard/teacher", body: dashboardBody({ recentObservations: [] }) },
-      { path: "/groups", body: { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 } },
-    ]);
+  it("offers the way to write the first observation when the feed is empty", () => {
+    renderWithProviders(<RecentObservations observations={[]} />);
 
-    renderWithProviders(<DashboardPage />);
-
-    const feed = await screen.findByRole("region", { name: "Сүүлийн ажиглалтууд" });
+    const feed = screen.getByRole("region", { name: "Сүүлийн ажиглалтууд" });
     expect(within(feed).getByText("Ажиглалт хараахан бичигдээгүй")).toBeInTheDocument();
     expect(within(feed).getByRole("link", { name: "Хүүхдүүд" })).toBeInTheDocument();
   });
 
   /**
-   * ★ The tile row lost its term-progress and review tiles, and the rule one of
-   * them carried had to survive the removal.
+   * ★ `pendingReviews` exists twice in the response with the same value, and
+   * this fixture gives them **different** ones on purpose.
    *
-   * Both were already on the screen: "Улирлын явц" repeated the `TermProgress`
-   * section's own numbers a few hundred pixels above it, and "Хянах" repeated a
-   * count that the alert card below states *and acts on*.
-   *
-   * The review tile was pinned here for a reason worth keeping, though. The two
-   * `pendingReviews` fields are given **different** values in this fixture:
    * `dashboard.service.ts` computes one number and writes it to both
    * `counts.pendingReviews` and `needsAttention.pendingReviews`, so a fixture
-   * that sets them equal — as every other one in this file does — cannot tell
-   * which field the screen reads. "Waiting for you" is the `needsAttention` one,
-   * and the day the queue is narrowed to a teacher's own groups this is what
-   * catches the alert card reading the other. The assertion moved from the tile
-   * to the card; the guarantee did not move at all.
+   * that sets them equal cannot tell which field the screen reads. "Waiting for
+   * you" is the `needsAttention` one, and the day the queue is narrowed to a
+   * teacher's own groups this is what catches a card reading the other.
    */
+  it("reads the review count from needsAttention, not from counts", () => {
+    renderWithProviders(
+      <NeedsAttentionAlerts
+        birthdaysToday={[]}
+        needsAttention={{ pendingReviews: 3, childrenMissingAssessment: [] }}
+      />,
+    );
+
+    const alerts = screen.getByRole("region", { name: "Анхаарах зүйлс" });
+    expect(within(alerts).getByText(/3 бичлэг/)).toBeInTheDocument();
+    expect(within(alerts).queryByText(/9 бичлэг/)).not.toBeInTheDocument();
+    expect(within(alerts).getByRole("link", { name: "Хянах" })).toBeInTheDocument();
+  });
+
   it("counts the roster and the groups, and leaves the rest to the sections", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      {
-        path: "/dashboard/teacher",
-        body: dashboardBody({
-          counts: { children: 10, groups: 2, pendingReviews: 9 },
-          needsAttention: { pendingReviews: 3, childrenMissingAssessment: [] },
-          termProgress: { assessed: 7, total: 10 },
-        }),
-      },
-      { path: "/groups", body: { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 } },
+      { path: "/children/summary", body: { total: 10, averageAgeMonths: 48, boys: 5, girls: 5 } },
     ]);
 
-    renderWithProviders(<DashboardPage />);
+    renderWithProviders(<DashboardStats counts={{ children: 10, groups: 2, pendingReviews: 9 }} />);
 
     const tiles = await screen.findByRole("region", { name: "Өнөөдрийн тойм" });
     expect(within(tiles).getByText("Хүүхэд")).toBeInTheDocument();
     expect(within(tiles).getByText("Бүлэг")).toBeInTheDocument();
-
     // The two that were saying what the sections below already said.
     expect(within(tiles).queryByText("70%")).not.toBeInTheDocument();
     expect(within(tiles).queryByText("Хянах")).not.toBeInTheDocument();
-
-    // The term's share is stated once, by the element that is a `progressbar`.
-    const progress = await screen.findByRole("region", { name: "Улирлын үнэлгээний явц" });
-    expect(within(progress).getByText("70%")).toBeInTheDocument();
-    expect(within(progress).getByRole("progressbar")).toHaveAttribute("aria-valuenow", "70");
-
-    // …and the review queue is stated once, by the card that can act on it.
-    const alerts = await screen.findByRole("region", { name: "Анхаарах зүйлс" });
-    expect(within(alerts).getByText(/3 бичлэг/)).toBeInTheDocument();
-    expect(within(alerts).queryByText(/9 бичлэг/)).not.toBeInTheDocument();
-    expect(within(alerts).getByRole("link", { name: "Хянах" })).toBeInTheDocument();
   });
 });

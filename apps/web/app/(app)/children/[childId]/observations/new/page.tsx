@@ -11,6 +11,7 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { PORTFOLIO } from "@/lib/vocabulary";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field";
@@ -41,6 +42,7 @@ function todayLocal(): string {
  * so the parent schema does not accept them at all.
  */
 export default function NewObservationPage() {
+  const toast = useToast();
   const params = useParams<{ childId: string }>();
   const childId = params.childId;
   const router = useRouter();
@@ -109,11 +111,24 @@ export default function NewObservationPage() {
       });
     },
     onSuccess: (observation) => {
+      /*
+        ★ No success toast here, deliberately — unlike the other ten screens in
+        this pass.
+
+        Saving replaces the form with a confirmation card that also says what
+        to do next ("Хүсвэл зураг хавсаргана уу"), and the photo uploader
+        appears under it. A toast would be the same sentence twice, two inches
+        apart. `toast.ts` makes this argument the other way round for errors:
+        the one that is actionable stays inline.
+
+        `onError` below is the half that was genuinely missing.
+      */
       setSavedId(observation.id);
       // Prefix invalidation: everything under this child is now stale.
       void queryClient.invalidateQueries({ queryKey: qk.child(childId) });
       void queryClient.invalidateQueries({ queryKey: qk.dashboard.teacher() });
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   const errors = fieldErrors(save.error);

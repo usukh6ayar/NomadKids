@@ -12,6 +12,7 @@ import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { EmptyState, FormError, LoadingState } from "@/components/ui/states";
+import { useToast } from "@/components/ui/toast";
 import { AgeSectionShell } from "@/components/child/age-section-shell";
 import { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
 import { GRADIENT_TONE_STYLE, type GradientTone } from "@/lib/gradient-tones";
@@ -163,6 +164,7 @@ function AgeSection({
   currentAge: number | null;
 }) {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
 
@@ -193,9 +195,11 @@ function AgeSection({
       });
     },
     onSuccess: () => {
+      toast.success("Хадгаллаа.");
       setEditing(false);
       void queryClient.invalidateQueries({ queryKey: qk.ageProfiles(childId) });
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   const errors = fieldErrors(save.error);

@@ -104,7 +104,23 @@ function AdminKindergarten() {
   if (isError) return <ErrorState description={errorMessage(error)} />;
 
   return (
-    <div className="flex flex-col gap-6 lg:gap-8">
+    /*
+      ★ The form is capped at a readable measure rather than the shell's width.
+
+      Every control here ran the full 1,140px of the content column, so the
+      phone number and the email address each got an input wide enough for a
+      paragraph. An input's width is a hint about what belongs in it, and one
+      this wide says nothing except that the layout had space left over — while
+      making the eye travel from a label on the left edge to a value that stops
+      a third of the way across.
+
+      760px is the page-level counterpart to the measures the modal forms
+      already keep — `auth-shell` at 440 and `FormDialog` at 480 — which are
+      narrower because a dialog floats over the page and a full screen would
+      look thin at either. It applies to the wrapper, so the logo card above
+      and the form below stay the same width instead of stepping.
+    */
+    <div className="flex max-w-[760px] flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Цэцэрлэгийн мэдээлэл"
         lede="Эцэг эхэд харагдах нэр, хаяг, холбоо барих мэдээлэл."

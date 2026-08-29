@@ -10,6 +10,7 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { PageHeader } from "@/components/shell/app-shell";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { Card } from "@/components/ui/card";
 import { Checkbox, Field, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
@@ -19,6 +20,7 @@ const activeSurveysSchema = z.array(surveySchema);
 
 /** A guardian answers one CHILD-scope survey. */
 export default function SurveyResponsePage() {
+  const toast = useToast();
   const params = useParams<{ childId: string; surveyId: string }>();
   const { childId, surveyId } = params;
   const router = useRouter();
@@ -45,9 +47,11 @@ export default function SurveyResponsePage() {
         },
       }),
     onSuccess: () => {
+      toast.success("Саналыг хүлээж авлаа. Баярлалаа.");
       void queryClient.invalidateQueries({ queryKey: qk.childSurveys(childId) });
       router.replace(`/children/${childId}/general`);
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   if (active.isLoading) return <LoadingState rows={3} />;
@@ -151,7 +155,7 @@ export default function SurveyResponsePage() {
 
             {question.type === "CHECKBOX" ? (
               <div className="flex flex-col gap-2">
-                {(question.options ?? []).map((option) => {
+                {stringOptions(question.options).map((option) => {
                   const current = (answers[question.id] as string[]) ?? [];
                   const checked = current.includes(option);
                   return (
@@ -172,6 +176,56 @@ export default function SurveyResponsePage() {
                 })}
               </div>
             ) : null}
+
+            {/*
+              A matrix — RFP Module 1.1.
+
+              ★ One radio group per row, not a `<table>`. On a phone a seven by
+              five grid is either unreadable or scrolled sideways, and the thing
+              a table buys — comparing columns down the page — is not what a
+              parent does here. Stacked groups read the same at every width.
+            */}
+            {question.type === "MATRIX" ? (
+              <div className="flex flex-col gap-3">
+                {matrixShape(question.options)?.rows.map((row) => {
+                  const current = (answers[question.id] as Record<string, number>) ?? {};
+
+                  return (
+                    <fieldset key={row.key} className="flex flex-col gap-1.5">
+                      <legend className="text-body text-ink">{row.label}</legend>
+                      <div className="flex flex-wrap gap-2">
+                        {matrixShape(question.options)?.columns.map((column) => {
+                          const selected = current[row.key] === column.value;
+
+                          return (
+                            <button
+                              key={column.value}
+                              type="button"
+                              role="radio"
+                              aria-checked={selected}
+                              onClick={() =>
+                                setAnswers((a) => ({
+                                  ...a,
+                                  [question.id]: { ...current, [row.key]: column.value },
+                                }))
+                              }
+                              className={cn(
+                                "min-h-11 rounded-control border px-3.5 text-body transition-colors",
+                                selected
+                                  ? "border-primary bg-primary text-primary-ink"
+                                  : "border-border bg-surface text-muted hover:bg-canvas hover:text-ink",
+                              )}
+                            >
+                              {column.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </fieldset>
+                  );
+                })}
+              </div>
+            ) : null}
           </Card>
         ))}
 
@@ -181,4 +235,35 @@ export default function SurveyResponsePage() {
       </form>
     </div>
   );
+}
+
+/**
+ * `options` is a union — a CHECKBOX's strings or a MATRIX's shape.
+ *
+ * Narrowed through these two helpers rather than cast, so a question whose
+ * type and options disagree renders nothing instead of throwing. The column is
+ * `Json` in the database; a hand-edited row can hold anything.
+ */
+function stringOptions(options: unknown): string[] {
+  return Array.isArray(options) ? options.filter((o): o is string => typeof o === "string") : [];
+}
+
+function matrixShape(
+  options: unknown,
+): { rows: { key: string; label: string }[]; columns: { value: number; label: string }[] } | null {
+  if (typeof options !== "object" || options === null || Array.isArray(options)) return null;
+
+  const { rows, columns } = options as { rows?: unknown; columns?: unknown };
+  if (!Array.isArray(rows) || !Array.isArray(columns)) return null;
+
+  return {
+    rows: rows.filter(
+      (r): r is { key: string; label: string } =>
+        typeof r?.key === "string" && typeof r?.label === "string",
+    ),
+    columns: columns.filter(
+      (c): c is { value: number; label: string } =>
+        typeof c?.value === "number" && typeof c?.label === "string",
+    ),
+  };
 }

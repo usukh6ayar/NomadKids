@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { TONE_SURFACE, type Tone } from "@/components/ui/tone";
 
 /**
  * A statistic that is itself the content — RFP §12.1 and §12.2.
@@ -35,7 +36,7 @@ export function StatCard({
   /** "хүүхэд", "%" — the words under the figure. */
   unit?: string;
   art?: ReactNode;
-  tone?: "sky" | "mint" | "sun" | "peach" | "cornflower" | "teal";
+  tone?: Tone;
   /** `wide` spans two columns and gives the art real room. */
   size?: "normal" | "wide";
   /** A progress bar or a sparkline, below the figure. */
@@ -78,7 +79,7 @@ export function StatCard({
           className={cn(
             "grid shrink-0 place-items-center rounded-card [&>img]:size-full [&>img]:object-contain",
             size === "wide" ? "size-20" : "size-14",
-            ART_TONE[tone],
+            TONE_SURFACE[tone],
           )}
         >
           {art}
@@ -110,12 +111,3 @@ export function StatBar({ percent, label }: { percent: number; label: string }) 
     </div>
   );
 }
-
-const ART_TONE = {
-  sky: "bg-sky text-sky-ink",
-  mint: "bg-mint text-mint-ink",
-  sun: "bg-sun text-sun-ink",
-  peach: "bg-peach text-peach-ink",
-  cornflower: "bg-cornflower text-cornflower-ink",
-  teal: "bg-teal text-teal-ink",
-} as const;

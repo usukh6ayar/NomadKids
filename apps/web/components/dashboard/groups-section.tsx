@@ -12,17 +12,18 @@ import { Card, SectionHeader } from "@/components/ui/card";
 const groupsSchema = paginated(groupSchema);
 
 /**
- * The way into assessment, the meal register, and the daily attendance sheet.
+ * The way into the attendance sheet, the meal register and assessment.
  *
- * ★ None of the three has a top-level menu item, because none can start
- * without a group — a menu entry would open a screen whose first act is to
- * ask "which group?". So the groups a teacher actually teaches are listed
- * here, and each one is a direct link into its assessment column, its meal
- * register and its attendance sheet.
+ * ★ None of the three has a top-level menu item, because none can start without
+ * a group — a menu entry would open a screen whose first act is to ask "which
+ * group?". So the groups a teacher actually teaches are listed here, and each
+ * one links straight into its day sheets and its assessment column.
  *
- * Without this `/groups/[groupId]/assessment`, `/groups/[groupId]/meals` and
- * `/groups/[groupId]/attendance` would be unreachable through the UI, which
- * is its own kind of dead route.
+ * Without this `/groups/[groupId]/assessment`, `/groups/[groupId]/attendance`
+ * and `/groups/[groupId]/meals` would be unreachable through the UI, which is
+ * its own kind of dead route. `group-meals.test.ts` asserts the third link for
+ * exactly that reason — the register shipped with a backend, a screen and no
+ * way in would still look finished.
  *
  * ★★ It fetches its own data, deliberately.
  *
@@ -61,13 +62,36 @@ export function GroupsSection() {
     const group = data.items[0]!;
 
     return (
-      <section aria-label="Бүлгийн үйлдлүүд">
+      /*
+       * ★ It carries a heading now, and that is a consequence of where it
+       * moved rather than a change of mind about headings.
+       *
+       * This used to sit in a 6/6 row beside the term's progress, which gave a
+       * bare card the context a neighbour provides. The restructure put it at
+       * the very foot of the page, below the observation feed — and there an
+       * unlabelled strip reading "Дунд бүлэг" with three buttons is an orphan:
+       * nothing above it says what it is for, and it follows a section that
+       * has both a heading and a lede.
+       *
+       * The alternative was to drop it, and that is not available. It is the
+       * only route to `/groups/:id/meals` anywhere in the product —
+       * `group-meals.test.ts` asserts the link for exactly that reason, since
+       * the meal register shipped with a backend, a screen and no way in.
+       */
+      <section aria-labelledby="group-actions-heading">
+        <SectionHeader
+          id="group-actions-heading"
+          title="Бүлгийн бүртгэлүүд"
+          lede="Өдөр тутмын ба улирлын бүртгэл рүү шууд."
+        />
         <Card pad="roomy" className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="truncate font-medium text-ink">{group.name}</p>
             <p className="text-body text-muted">Ирц, хоол бүртгэх, улирлын үнэлгээ хийх.</p>
           </div>
-          <div className="flex gap-2">
+          {/* Wraps rather than pinning the card wide — three actions plus a
+              group name do not fit one 390px line. */}
+          <div className="flex flex-wrap gap-2">
             <Button asChild variant="secondary" size="sm">
               <Link href={`/groups/${group.id}/attendance`}>
                 <CalendarCheck size={18} />

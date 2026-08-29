@@ -3,23 +3,35 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { z } from "zod";
-import { UserPlus, X } from "lucide-react";
-import { adminUserSchema, invitedUserSchema, paginated, type Role } from "@kinder/contracts";
+import { Pencil, ShieldPlus, UserPlus, X } from "lucide-react";
+import {
+  adminUserSchema,
+  invitedUserSchema,
+  kindergartenSchema,
+  paginated,
+  type Role,
+} from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
-import { fullName, initials } from "@/lib/format";
+import { formatRelative, fullName, initials } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RowList } from "@/components/ui/card";
-import { Field, Input, Select } from "@/components/ui/field";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DataList, DataRow } from "@/components/ui/data-list";
+import { Checkbox, Field, Input, Select } from "@/components/ui/field";
+import { FormDialog } from "@/components/ui/form-dialog";
+import { useToast } from "@/components/ui/toast";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { InvitationHandover } from "@/components/admin/invitation-handover";
 
 const listSchema = paginated(adminUserSchema);
+
+/** One row of the admin list — the shape both dialogs below edit. */
+type AdminUser = z.infer<typeof adminUserSchema>;
 
 const ROLES: { value: Role; label: string }[] = [
   { value: "TEACHER", label: "Багш" },
@@ -32,6 +44,18 @@ const ROLE_LABEL: Record<string, string> = {
   ADMIN: "Админ",
   PARENT: "Эцэг эх",
 };
+
+/**
+ * The list's columns, shared by its header strip and every row.
+ *
+ * `Эрх` is the widest because a dual-role account carries two badges and each
+ * badge carries its own revoke control; `Сүүлд нэвтэрсэн` is sized for
+ * `formatRelative`'s longest output ("13 хоногийн өмнө").
+ */
+const USER_COLUMNS = [
+  { key: "roles", label: "Эрх", className: "md:w-[228px]" },
+  { key: "lastLogin", label: "Сүүлд нэвтэрсэн", className: "md:w-[140px]" },
+];
 
 /**
  * Staff and families in this kindergarten.
@@ -125,53 +149,80 @@ function AdminUsers() {
         />
       ) : null}
 
+      {/*
+        ★ Four columns, because the response already carried four things and the
+        row rendered one of them.
+
+        This list was `[avatar] [name flex-1] [badges] [two buttons]`, which put
+        a person's name against the left edge and their controls against the
+        right with the width of a laptop screen between. `lastLoginAt` was in
+        `adminUserSchema` from the beginning and had never been displayed
+        anywhere — and it is the column a director actually wants here, because
+        it answers the question a staff list is opened to answer: who has
+        started using this, and who was invited and never came.
+
+        ★★ Both actions still live on the row rather than behind a kebab, for
+        the reason the previous note gave and this one keeps: two controls is
+        not a menu's worth, and hiding the only way to correct a mistyped phone
+        number behind an unlabelled click is worse than repeating a word.
+      */}
       {items.length > 0 ? (
-        <RowList>
+        <DataList columns={USER_COLUMNS} actionsWidth="w-[236px]">
           {items.map((user) => (
-            <div
+            <DataRow
               key={user.id}
-              className="flex min-h-[64px] flex-wrap items-center gap-3 rounded-row border border-border bg-surface px-4 py-3"
-            >
-              <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-primary-soft text-body font-semibold text-primary">
-                {initials(user)}
-              </span>
-
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-lead font-semibold text-ink">
-                  {fullName(user)}
+              lead={
+                <span className="grid size-10 place-items-center rounded-pill bg-primary-soft text-body font-semibold text-primary">
+                  {initials(user)}
                 </span>
-                <span className="mt-px block truncate text-compact text-muted">
-                  {[user.username, user.email, user.phone].filter(Boolean).join(" · ") || "—"}
-                </span>
-              </span>
-
-              <span className="flex flex-wrap items-center gap-1">
-                {user.memberships.map((m) =>
-                  m.isActive === false ? (
-                    // Kept visible rather than filtered out. The record of the
-                    // relationship survives revocation, and an admin looking
-                    // for "why can this teacher not see the group" needs to see
-                    // that the answer is here.
-                    <Badge key={m.id} tone="neutral">
-                      {ROLE_LABEL[m.role] ?? m.role} · хураасан
-                    </Badge>
-                  ) : (
-                    <span key={m.id} className="flex items-center gap-1">
-                      <Badge tone={m.role === "ADMIN" ? "peach" : "sky"}>
-                        {ROLE_LABEL[m.role] ?? m.role}
-                      </Badge>
-                      <RevokeMembershipButton
-                        membershipId={m.id}
-                        label={`${fullName(user)} — ${ROLE_LABEL[m.role] ?? m.role}`}
-                      />
-                    </span>
-                  ),
-                )}
-                {user.isActive === false ? <Badge tone="sun">Идэвхгүй</Badge> : null}
-              </span>
-            </div>
+              }
+              title={fullName(user)}
+              subtitle={[user.username, user.email, user.phone].filter(Boolean).join(" · ") || "—"}
+              cells={{
+                roles: (
+                  <span className="flex flex-wrap items-center gap-1">
+                    {user.memberships.map((m) =>
+                      m.isActive === false ? (
+                        // Kept visible rather than filtered out. The record of
+                        // the relationship survives revocation, and an admin
+                        // looking for "why can this teacher not see the group"
+                        // needs to see that the answer is here.
+                        <Badge key={m.id} tone="neutral">
+                          {ROLE_LABEL[m.role] ?? m.role} · хураасан
+                        </Badge>
+                      ) : (
+                        <span key={m.id} className="flex items-center gap-1">
+                          <Badge tone={m.role === "ADMIN" ? "peach" : "sky"}>
+                            {ROLE_LABEL[m.role] ?? m.role}
+                          </Badge>
+                          <RevokeMembershipButton
+                            membershipId={m.id}
+                            label={`${fullName(user)} — ${ROLE_LABEL[m.role] ?? m.role}`}
+                          />
+                        </span>
+                      ),
+                    )}
+                    {user.isActive === false ? <Badge tone="sun">Идэвхгүй</Badge> : null}
+                  </span>
+                ),
+                lastLogin: user.lastLoginAt ? (
+                  <span className="text-body text-muted">{formatRelative(user.lastLoginAt)}</span>
+                ) : (
+                  // Not an em dash: "never signed in" is a fact about the
+                  // account, and the dash this list uses for a missing value
+                  // would read as "we do not know".
+                  <span className="text-body text-faint">Нэвтрээгүй</span>
+                ),
+              }}
+              actions={
+                <>
+                  <EditUserButton user={user} />
+                  <AddMembershipButton user={user} />
+                </>
+              }
+            />
           ))}
-        </RowList>
+        </DataList>
       ) : null}
 
       {inviting && primaryKindergartenId ? (
@@ -373,32 +424,448 @@ function InviteUserDialog({
  * so a mis-click on a user with two memberships is not silently the wrong one.
  */
 function RevokeMembershipButton({ membershipId, label }: { membershipId: string; label: string }) {
+  const toast = useToast();
   const queryClient = useQueryClient();
 
   const revoke = useMutation({
     mutationFn: () => mutate(`/memberships/${membershipId}`, z.unknown(), { method: "DELETE" }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin", "users"] }),
+    onSuccess: () => {
+      toast.success("Эрхийг хураалаа.");
+      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
+  /*
+   * ★ 28px and a `window.confirm`, both of which this product had already
+   * ruled out everywhere else.
+   *
+   * `globals.css` documents `--size-tap: 44px` as a floor rather than a
+   * preference — "so a component cannot quietly ship a 32px button that is
+   * unusable with a thumb" — and `responsive.test.tsx` asserts it against
+   * `Button`'s variants. This was a hand-rolled `<button>`, so it never passed
+   * through the component the test guards, and it shipped at 28px: the
+   * smallest control in the product, on the one action here that cannot be
+   * undone.
+   *
+   * `confirm-dialog.tsx` says in its own first line that it replaced
+   * `window.confirm` in five places. This was a sixth, and it is the case that
+   * argues hardest for it — the native dialog renders its buttons in the
+   * browser's language, so a Mongolian sentence about revoking a teacher's
+   * access was answered with an English "OK".
+   */
   return (
-    <button
-      type="button"
-      disabled={revoke.isPending}
-      onClick={() => {
-        if (
-          window.confirm(
-            `${label} эрхийг хураах уу?\n\n` +
-              "Бүлгийн хуваарилалт нь мөн дуусна. Эрхийг буцааж өгөхөд хуваарилалт " +
-              "автоматаар сэргэхгүй тул дахин хийх шаардлагатай.",
-          )
-        ) {
-          revoke.mutate();
+    <ConfirmDialog
+      trigger={
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={`${label} эрхийг хураах`}
+          disabled={revoke.isPending}
+          className="text-muted hover:bg-danger-soft hover:text-danger"
+        >
+          <X size={16} aria-hidden />
+        </Button>
+      }
+      title="Эрхийг хураах уу?"
+      description={
+        `${label} эрхийг хураана. Бүлгийн хуваарилалт нь мөн дуусна. ` +
+        "Эрхийг буцааж өгөхөд хуваарилалт автоматаар сэргэхгүй тул дахин хийх шаардлагатай."
+      }
+      confirmLabel="Хураах"
+      pendingLabel="Хурааж байна…"
+      tone="danger"
+      pending={revoke.isPending}
+      onConfirm={() => revoke.mutate()}
+    />
+  );
+}
+
+/**
+ * Correcting an existing account — `PATCH /users/:id`.
+ *
+ * ★ The fields are exactly what `updateUserSchema` accepts, and no more.
+ *
+ * The DTO allows `lastName`, `firstName`, `email`, `phone` and `isActive`.
+ * `username` is deliberately absent from it: it is a login identifier other
+ * people may already have been told, and the API offers no way to change it —
+ * so this form shows it read-only rather than offering an input that would be
+ * silently dropped. The professional fields (`specialization`, `education`,
+ * `bio`) belong to `PATCH /me/profile`; they are the user's own to write, and
+ * an admin editing somebody's biography is not a capability this API grants.
+ *
+ * ★★ No confirmation. An edit with an explicit "Хадгалах" is already
+ * deliberate, and `ConfirmDialog` is reserved for what is destructive or hard
+ * to undo — putting a prompt in front of a typo fix teaches people to click
+ * through prompts.
+ */
+function EditUserButton({ user }: { user: AdminUser }) {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+
+  const [form, setForm] = useState({
+    lastName: user.lastName,
+    firstName: user.firstName,
+    email: user.email ?? "",
+    phone: user.phone ?? "",
+    isActive: user.isActive !== false,
+  });
+
+  /*
+   * ★ Re-seeded every time the dialog opens.
+   *
+   * The row can refetch while this is closed — somebody else edits the same
+   * person, or the list reloads after an unrelated change — and a form still
+   * holding the values it read on mount would quietly write them back.
+   */
+  function openWith() {
+    setForm({
+      lastName: user.lastName,
+      firstName: user.firstName,
+      email: user.email ?? "",
+      phone: user.phone ?? "",
+      isActive: user.isActive !== false,
+    });
+    save.reset();
+    setOpen(true);
+  }
+
+  const save = useMutation({
+    mutationFn: () =>
+      mutate(`/users/${user.id}`, adminUserSchema, {
+        method: "PATCH",
+        body: {
+          lastName: form.lastName.trim(),
+          firstName: form.firstName.trim(),
+          // `null` clears the field. `""` would fail the API's email format
+          // check, which is the difference between "no email" and "bad email".
+          email: form.email.trim() === "" ? null : form.email.trim(),
+          phone: form.phone.trim() === "" ? null : form.phone.trim(),
+          isActive: form.isActive,
+        },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+      toast.success(`${fullName(user)} — хадгалагдлаа.`);
+      setOpen(false);
+    },
+  });
+
+  const errors = fieldErrors(save.error);
+
+  return (
+    <>
+      <Button variant="ghost" size="sm" onClick={openWith}>
+        <Pencil size={16} aria-hidden="true" />
+        Засах
+      </Button>
+
+      <FormDialog
+        open={open}
+        onOpenChange={setOpen}
+        busy={save.isPending}
+        title="Хэрэглэгч засах"
+        description={user.username ? `Нэвтрэх нэр: ${user.username}` : undefined}
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={save.isPending}
+              onClick={() => setOpen(false)}
+            >
+              Болих
+            </Button>
+            <Button type="submit" form="edit-user-form" size="sm" disabled={save.isPending}>
+              {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
+            </Button>
+          </>
         }
-      }}
-      className="grid size-[28px] place-items-center rounded-pill text-muted transition-colors hover:bg-danger-soft hover:text-danger disabled:opacity-50"
-    >
-      <X size={14} aria-hidden />
-      <span className="sr-only">{label} эрхийг хураах</span>
-    </button>
+      >
+        <form
+          id="edit-user-form"
+          className="flex flex-col gap-4"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!save.isPending) save.mutate();
+          }}
+        >
+          {/*
+            A 409 for a duplicate email or phone arrives without a field name,
+            so it shows here rather than under an input. `fieldErrors` puts the
+            validation failures on the fields themselves.
+          */}
+          <FormError
+            message={
+              save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null
+            }
+          />
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Овог" error={errors.lastName} required>
+              {({ id, describedBy, invalid }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  value={form.lastName}
+                  onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
+                />
+              )}
+            </Field>
+
+            <Field label="Нэр" error={errors.firstName} required>
+              {({ id, describedBy, invalid }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  value={form.firstName}
+                  onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
+                />
+              )}
+            </Field>
+          </div>
+
+          <Field label="И-мэйл" error={errors.email}>
+            {({ id, describedBy, invalid }) => (
+              <Input
+                id={id}
+                aria-describedby={describedBy}
+                invalid={invalid}
+                type="email"
+                autoComplete="email"
+                value={form.email}
+                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+              />
+            )}
+          </Field>
+
+          {/* The API wants eight digits starting 5–9; the hint says so before
+              the server has to. */}
+          <Field label="Утас" error={errors.phone} hint="8 оронтой, 5–9-өөр эхэлнэ">
+            {({ id, describedBy, invalid }) => (
+              <Input
+                id={id}
+                aria-describedby={describedBy}
+                invalid={invalid}
+                type="tel"
+                inputMode="tel"
+                value={form.phone}
+                onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+              />
+            )}
+          </Field>
+
+          {/*
+            ★ Deactivating blocks sign-in; it does not remove the account or any
+            role. Reversible from this same checkbox, which is why it is a field
+            here rather than a confirmed destructive action of its own.
+          */}
+          <Checkbox
+            label="Идэвхтэй"
+            description="Тэмдэглэгээг авбал энэ хэрэглэгч нэвтэрч чадахгүй болно. Эрх, бүртгэл хэвээр үлдэнэ."
+            checked={form.isActive}
+            onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
+          />
+        </form>
+      </FormDialog>
+    </>
+  );
+}
+
+/**
+ * Granting a role — `POST /users/:id/memberships`.
+ *
+ * ★ A membership is a pair, not a role.
+ *
+ * `addMembershipSchema` requires `{ kindergartenId, role }`, and the
+ * kindergarten is not a formality: `Membership` is the only thing that grants
+ * access to anything, and every repository derives its tenant scope from it. A
+ * role picked without one would be meaningless, so this form asks for both.
+ *
+ * ★★ The kindergartens offered are the ones this admin administers.
+ *
+ * `addMembership` calls `assertAdmin(actor, dto.kindergartenId)`, so a
+ * kindergarten where the actor is merely a member — a director who is also a
+ * parent elsewhere — would be refused. The list is derived from the session's
+ * own memberships exactly as `adminKindergartenIds` derives it on the server,
+ * rather than from `GET /kindergartens`, which answers with *member* scope and
+ * would offer targets the API then rejects.
+ *
+ * This does not weaken anything: the server re-checks. It only avoids putting a
+ * control on screen whose only outcome is an error.
+ *
+ * ★★★ Duplicates are the API's to judge, not this form's.
+ *
+ * Re-granting a **revoked** role reactivates it and is the common case — an
+ * admin re-hiring a teacher. Re-granting a role that is already active is a
+ * 409 whose message is the explanation. So every role stays selectable and the
+ * server's answer is shown; a client-side filter would block the reactivation
+ * that is supposed to work.
+ */
+function AddMembershipButton({ user }: { user: AdminUser }) {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const { session, primaryKindergartenId } = useSession();
+  const [open, setOpen] = useState(false);
+
+  // The same derivation `TenantAccessService.adminKindergartenIds` makes.
+  const adminKindergartenIds = [
+    ...new Set(
+      (session?.memberships ?? []).filter((m) => m.role === "ADMIN").map((m) => m.kindergartenId),
+    ),
+  ];
+
+  const [kindergartenId, setKindergartenId] = useState(
+    primaryKindergartenId ?? adminKindergartenIds[0] ?? "",
+  );
+  const [role, setRole] = useState<Role>("TEACHER");
+
+  /*
+   * Names for the ids above. Member-scoped, so it is filtered rather than
+   * trusted — and it is only fetched while the dialog is open, because a list
+   * of fifty users would otherwise fire fifty identical requests.
+   */
+  const kindergartens = useQuery({
+    queryKey: qk.kindergartens(),
+    queryFn: () => get("/kindergartens", z.array(kindergartenSchema)),
+    enabled: open && adminKindergartenIds.length > 1,
+  });
+
+  const options = (kindergartens.data ?? []).filter((k) => adminKindergartenIds.includes(k.id));
+
+  const grant = useMutation({
+    mutationFn: () =>
+      mutate(`/users/${user.id}/memberships`, z.unknown(), {
+        method: "POST",
+        body: { kindergartenId, role },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+      toast.success(`${fullName(user)} — ${ROLE_LABEL[role] ?? role} эрх нэмэгдлээ.`);
+      setOpen(false);
+    },
+  });
+
+  // Nothing to grant into. An admin always has at least one, so this is the
+  // defensive branch rather than the expected one.
+  if (adminKindergartenIds.length === 0) return null;
+
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => {
+          grant.reset();
+          setKindergartenId(primaryKindergartenId ?? adminKindergartenIds[0] ?? "");
+          setRole("TEACHER");
+          setOpen(true);
+        }}
+      >
+        <ShieldPlus size={16} aria-hidden="true" />
+        Эрх нэмэх
+      </Button>
+
+      <FormDialog
+        open={open}
+        onOpenChange={setOpen}
+        busy={grant.isPending}
+        title="Эрх нэмэх"
+        description={`${fullName(user)} — ямар цэцэрлэгт ямар эрх эзэмших вэ.`}
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={grant.isPending}
+              onClick={() => setOpen(false)}
+            >
+              Болих
+            </Button>
+            <Button type="submit" form="add-membership-form" size="sm" disabled={grant.isPending}>
+              {grant.isPending ? "Нэмж байна…" : "Эрх нэмэх"}
+            </Button>
+          </>
+        }
+      >
+        <form
+          id="add-membership-form"
+          className="flex flex-col gap-4"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!grant.isPending) grant.mutate();
+          }}
+        >
+          {/* The 409 for an already-active role lands here, and its message is
+              the whole explanation. */}
+          <FormError message={grant.isError ? errorMessage(grant.error) : null} />
+
+          {/*
+            One kindergarten is the normal case, and a select with a single
+            option is a control that cannot be used. It states the target
+            instead — the value still goes in the request.
+          */}
+          {adminKindergartenIds.length > 1 ? (
+            <Field label="Цэцэрлэг" required>
+              {({ id, describedBy }) => (
+                <Select
+                  id={id}
+                  aria-describedby={describedBy}
+                  value={kindergartenId}
+                  onChange={(e) => setKindergartenId(e.target.value)}
+                >
+                  {options.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {k.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          ) : null}
+
+          <Field label="Эрх" required>
+            {({ id, describedBy }) => (
+              <Select
+                id={id}
+                aria-describedby={describedBy}
+                value={role}
+                onChange={(e) => setRole(e.target.value as Role)}
+              >
+                {ROLES.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+
+          {/*
+            Says what the current state is, so an admin can see before
+            submitting that the role they are about to grant is already held —
+            without the form refusing a re-grant the API would have accepted.
+          */}
+          {user.memberships.length > 0 ? (
+            <p className="text-caption text-muted">
+              Одоогийн эрх:{" "}
+              {user.memberships
+                .map(
+                  (m) =>
+                    `${ROLE_LABEL[m.role] ?? m.role}${m.isActive === false ? " (хураасан)" : ""}`,
+                )
+                .join(", ")}
+            </p>
+          ) : null}
+        </form>
+      </FormDialog>
+    </>
   );
 }

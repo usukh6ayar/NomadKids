@@ -89,7 +89,9 @@ export class TenantsService {
 
     // The repository demotes any existing current year inside the same
     // transaction — the partial unique index makes the ordering mandatory.
-    const created = await this.repo.createSchoolYear({ ...dto, kindergartenId });
+    const created = await this.guardDuplicateName(() =>
+      this.repo.createSchoolYear({ ...dto, kindergartenId }),
+    );
 
     await this.audit.append({
       action: "CREATE",
@@ -101,11 +103,25 @@ export class TenantsService {
     return created;
   }
 
+  /**
+   * Edits a school year — the name, the dates, or the current-year flag.
+   *
+   * ★ `isCurrent` is only ever *moved*, never cleared as a side effect.
+   *
+   * `updateSchoolYearSchema` leaves the field `optional()` with no default,
+   * unlike the create schema's `.default(false)`. That difference is load
+   * bearing: a rename arrives with `isCurrent: undefined`, the repository skips
+   * its demotion and Prisma skips the column, so the flag stays where it was.
+   * Giving this DTO the same `.default(false)` would silently un-current a
+   * kindergarten every time somebody fixed a typo in a year's name.
+   */
   async updateSchoolYear(actor: Actor, id: string, dto: UpdateSchoolYearDto) {
     const existing = await this.repo.findSchoolYear(this.adminScope(actor), id);
     if (!existing) throw new NotFoundException();
 
-    const updated = await this.repo.updateSchoolYear(id, existing.kindergartenId, dto);
+    const updated = await this.guardDuplicateName(() =>
+      this.repo.updateSchoolYear(id, existing.kindergartenId, dto),
+    );
     await this.audit.append({
       action: "UPDATE",
       kindergartenId: existing.kindergartenId,
@@ -114,6 +130,28 @@ export class TenantsService {
       objectId: id,
     });
     return updated;
+  }
+
+  /**
+   * Turns a duplicate year name into a 409 with a sentence a person can act on.
+   *
+   * `@@unique([kindergartenId, name])` is the only unique constraint a single
+   * school-year write can realistically hit — the partial current-year index
+   * cannot fire, because the repository demotes the previous holder inside the
+   * same transaction. Left alone, Prisma's P2002 arrives at the problem filter
+   * as an unrecognised exception and becomes a bare 500, which tells an
+   * administrator who typed "2026-2027" twice that the system is broken.
+   * `catalog.service.ts` guards its own codes the same way.
+   */
+  private async guardDuplicateName<T>(run: () => Promise<T>): Promise<T> {
+    try {
+      return await run();
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new ConflictException("Энэ нэртэй хичээлийн жил аль хэдийн бүртгэгдсэн байна");
+      }
+      throw error;
+    }
   }
 
   // ── Groups ────────────────────────────────────────────────────────────────
@@ -294,4 +332,14 @@ export class TenantsService {
     });
     return ended;
   }
+}
+
+/** Prisma's unique-constraint code. Narrowed without importing the client. */
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "P2002"
+  );
 }

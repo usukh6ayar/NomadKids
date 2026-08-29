@@ -4,6 +4,7 @@ import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@ta
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { SessionProvider } from "@/lib/auth/session";
+import { ToastProvider } from "@/components/ui/toast";
 import { rememberCsrfToken } from "@/lib/api/csrf";
 import { isSessionExpired } from "@/lib/api/errors";
 
@@ -99,9 +100,19 @@ export function Providers({ children }: { children: ReactNode }) {
     return client;
   });
 
+  /*
+   * ★ `ToastProvider` inside the query client, outside the session.
+   *
+   * Inside the query client because a mutation's `onSuccess` is what raises a
+   * toast. Outside the session so a toast survives the session query resolving
+   * — the viewport it mounts is a live region, and a region remounted at the
+   * moment its first message arrives is not reliably announced.
+   */
   return (
     <QueryClientProvider client={queryClient}>
-      <SessionProvider>{children}</SessionProvider>
+      <ToastProvider>
+        <SessionProvider>{children}</SessionProvider>
+      </ToastProvider>
     </QueryClientProvider>
   );
 }

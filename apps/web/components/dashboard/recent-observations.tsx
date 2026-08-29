@@ -1,10 +1,12 @@
 import Link from "next/link";
+import Image from "next/image";
 import { NotebookPen, Users } from "lucide-react";
 import type { TeacherDashboard } from "@kinder/contracts";
 import { ChildAvatar } from "@/components/media/media-image";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
+import { IconChip } from "@/components/ui/icon-chip";
 import { EmptyState } from "@/components/ui/states";
 import { excerpt, formatRelative, fullName } from "@/lib/format";
 
@@ -38,6 +40,13 @@ export function RecentObservations({
       <SectionHeader
         title="Сүүлийн ажиглалтууд"
         lede={isEmpty ? undefined : "Хамгийн сүүлд бичигдсэн ажиглалтууд."}
+        icon={
+          <IconChip
+            icon={<Image src="/icons/icon-portfolio.png" alt="" width={48} height={48} />}
+            tone="cornflower"
+            size="lg"
+          />
+        }
         // The empty state already offers this exact link, and two identical
         // buttons three inches apart is a question about which one is the real
         // one. The header keeps it only when there is a list to look past.
@@ -52,7 +61,14 @@ export function RecentObservations({
 
       {isEmpty ? (
         <EmptyState
-          icon={<NotebookPen size={28} aria-hidden="true" />}
+          /*
+            The `illustration` slot, not the `icon` one — `states.tsx` keeps
+            them apart because a 20px glyph is a hint and a drawing is the
+            first thing a reader sees. `mascot-robot` is what
+            `child-observations.tsx` already shows for this same empty
+            condition, so the feed and the child's own page agree.
+          */
+          illustration={<Image src="/background/mascot-robot.webp" alt="" width={96} height={96} />}
           title="Ажиглалт хараахан бичигдээгүй"
           description="Хүүхэд сонгоод эхний ажиглалтаа бичихэд энд харагдана."
           action={
@@ -96,7 +112,13 @@ export function RecentObservations({
                   </span>
                 </span>
 
-                <span className="shrink-0 whitespace-nowrap text-caption text-muted">
+                {/*
+                  ★ A pill, so the column of dates is a rail the eye can run
+                  down. Ten rows of unstyled grey text on the right edge is the
+                  one part of this feed that was never scannable — which is the
+                  whole job of a "recent" list.
+                */}
+                <span className="shrink-0 self-center whitespace-nowrap rounded-pill bg-canvas px-2.5 py-1 text-caption tabular-nums text-muted">
                   {formatRelative(obs.observedOn)}
                 </span>
               </Link>

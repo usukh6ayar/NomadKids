@@ -1,17 +1,28 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
+import { Eye, EyeOff } from "lucide-react";
 import { assessmentRadarSchema, assessmentSchema } from "@kinder/contracts";
-import { get } from "@/lib/api/browser";
+import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState, Skeleton } from "@/components/ui/states";
 import { DevelopmentRadar } from "@/components/assessment/development-radar";
 
 const assessmentsSchema = z.array(assessmentSchema);
+
+/**
+ * What `POST /children/:id/assessments/publish` answers with.
+ *
+ * Declared here rather than in `@kinder/contracts` because one component reads
+ * it and nothing else in the product does — the same call the other local
+ * response shapes on this screen make.
+ */
+const publishResultSchema = z.object({ updated: z.number(), visible: z.boolean() });
 
 /**
  * The "Үнэлгээ" tab — this child's development levels, grouped by term.
@@ -76,7 +87,22 @@ export function ChildAssessments({ childId, isStaff }: { childId: string; isStaf
     <div className="flex flex-col gap-6">
       {[...byTerm.entries()].map(([key, term]) => (
         <section key={key} aria-label={term.name}>
-          <SectionHeader as="h3" title={term.name} />
+          <SectionHeader
+            as="h3"
+            title={term.name}
+            /*
+              ★ Staff only, and only for a real term.
+              A guardian's list is already filtered to what was published, so
+              `visibleToParents` is `true` on every row they can see — a badge
+              reading "нийтэлсэн" beside data they are looking at says nothing,
+              and the control behind it is not theirs.
+            */
+            action={
+              isStaff && key !== "no-term" ? (
+                <TermPublish childId={childId} termId={key} rows={term.rows} />
+              ) : undefined
+            }
+          />
 
           {/*
             Only for a real term. `no-term` is the bucket for assessments whose
@@ -107,6 +133,124 @@ export function ChildAssessments({ childId, isStaff }: { childId: string; isStaf
           </Card>
         </section>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Publishing one term's assessments to the family — RFP §2.3.
+ *
+ * ★ Why this exists at all.
+ *
+ * `Assessment.visibleToParents` is `@default(false)`, and the guardian branch
+ * of `listForChild` filters on it. `POST /children/:id/assessments/publish` has
+ * existed since the assessment module shipped and **nothing in the product ever
+ * called it** — so every assessment a teacher recorded was invisible to every
+ * parent, permanently. The empty state above already promised "Багш үнэлгээг
+ * нийтлэхэд энд харагдана"; this is the action that makes the promise true.
+ *
+ * ★★ Per child and per term, because that is the endpoint's own granularity.
+ *
+ * `setTermVisibility` updates every assessment for one child in one term, so
+ * this control sits on the term it governs rather than on the group grid. A
+ * "publish the whole group" button would be N requests fanned out from the
+ * client for an operation the API does not offer — worth adding as a real bulk
+ * endpoint later, not worth faking here.
+ *
+ * ★★★ No confirmation dialog, deliberately.
+ *
+ * This product confirms what cannot be undone: `term-report` finalising asks,
+ * because the form disappears afterwards. Publishing is a **toggle** — the DTO
+ * is `{ termId, visible: boolean }` — so it matches the survey and the
+ * announcement, neither of which confirms. Adding a prompt to a reversible
+ * action here would make the one on the term report mean less.
+ */
+function TermPublish({
+  childId,
+  termId,
+  rows,
+}: {
+  childId: string;
+  termId: string;
+  rows: { visibleToParents?: boolean | null }[];
+}) {
+  const queryClient = useQueryClient();
+
+  const publishedCount = rows.filter((row) => row.visibleToParents === true).length;
+  const allPublished = publishedCount === rows.length;
+  const nonePublished = publishedCount === 0;
+  /** The button flips whichever way the term is not. */
+  const nextVisible = !allPublished;
+
+  const publish = useMutation({
+    mutationFn: () =>
+      mutate(`/children/${childId}/assessments/publish`, publishResultSchema, {
+        method: "POST",
+        body: { termId, visible: nextVisible },
+      }),
+    // The badge beside the button is the real feedback: it flips as soon as the
+    // refetched list says so. Invalidate rather than patch the cache, so what
+    // is on screen is what the API actually stored.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.childAssessments(childId) }),
+  });
+
+  return (
+    <div className="flex flex-col items-end gap-1.5">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {allPublished ? (
+          <Badge tone="mint">
+            <Eye size={13} aria-hidden="true" />
+            Эцэг эхэд нээлттэй
+          </Badge>
+        ) : nonePublished ? (
+          <Badge tone="neutral">
+            <EyeOff size={13} aria-hidden="true" />
+            Нийтлээгүй
+          </Badge>
+        ) : (
+          /*
+            Partial is a real state: a term can hold assessments saved before an
+            earlier publish and others added after it. Saying "нийтэлсэн" here
+            would tell a teacher the family can see rows they cannot.
+          */
+          <Badge tone="sun">
+            {publishedCount}/{rows.length} нийтэлсэн
+          </Badge>
+        )}
+
+        <Button
+          size="sm"
+          variant={allPublished ? "secondary" : "primary"}
+          // Guards the double-click, and the pending label says why.
+          disabled={publish.isPending}
+          onClick={() => publish.mutate()}
+        >
+          {publish.isPending
+            ? allPublished
+              ? "Буцааж байна…"
+              : "Нийтэлж байна…"
+            : allPublished
+              ? "Нийтлэлийг буцаах"
+              : "Эцэг эхэд нийтлэх"}
+        </Button>
+      </div>
+
+      {publish.isError ? (
+        <p role="alert" className="text-caption text-danger">
+          {errorMessage(publish.error)}
+        </p>
+      ) : publish.isSuccess ? (
+        /*
+          There is no toast component in this product, so success is stated
+          where the action was taken — the pattern the rest of the app uses.
+          `role="status"` announces it once without stealing focus.
+        */
+        <p role="status" className="text-caption text-mint-ink">
+          {publish.data.visible
+            ? "Нийтэллээ. Эцэг эх одоо харна."
+            : "Нийтлэлийг буцаалаа. Эцэг эх харахгүй."}
+        </p>
+      ) : null}
     </div>
   );
 }

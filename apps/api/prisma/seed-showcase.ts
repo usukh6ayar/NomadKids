@@ -92,6 +92,11 @@ async function main(): Promise<void> {
   const summary = await seedDemoKindergarten(prisma, {
     password,
     kindergartenName: KINDERGARTEN_NAME,
+    // Unset by default, which keeps the documented `zahiral` / `bagsh1`
+    // accounts on a fresh database. Set it when this runs alongside an
+    // existing seeded kindergarten — otherwise `makeUser` stops with the
+    // reason, rather than quietly giving one teacher two kindergartens.
+    accountSuffix: process.env.SEED_SHOWCASE_ACCOUNT_SUFFIX,
   });
 
   // ★ The password is deliberately not printed. It was typed into the command

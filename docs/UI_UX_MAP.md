@@ -257,13 +257,13 @@ shadcn/ui; the 3,115 lines of hand-written CSS are not ported.
 
 ## 7. Screens deliberately not built
 
-| Not built                               | Why                                                  |
-| --------------------------------------- | ---------------------------------------------------- |
-| Reports index                           | Reports are generated from a child's page            |
-| Enrollment management screen            | Edited within the child                              |
-| Guardianship screen                     | Edited within the child                              |
-| Media library                           | Photos are reached through a child or an observation |
+| Not built                                                                 | Why                                                                                                                         |
+| ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Reports index                                                             | Reports are generated from a child's page                                                                                   |
+| Enrollment management screen                                              | Edited within the child                                                                                                     |
+| Guardianship screen                                                       | Edited within the child                                                                                                     |
+| Media library                                                             | Photos are reached through a child or an observation                                                                        |
 | Standalone audit log viewer (filter, search, paginate across all entries) | `/admin` and `/platform/[id]` each show a recent-activity summary (last 10) instead — a dedicated searchable log is Phase 2 |
-| Attendance, meals, finance, invoices    | Phase 2                                              |
-| Chat, surveys, analytics, growth charts | Phase 2/3                                            |
-| Separate admin child list               | Admins use the teacher screens                       |
+| Attendance, meals, finance, invoices                                      | Phase 2                                                                                                                     |
+| Chat, surveys, analytics, growth charts                                   | Phase 2/3                                                                                                                   |
+| Separate admin child list                                                 | Admins use the teacher screens                                                                                              |

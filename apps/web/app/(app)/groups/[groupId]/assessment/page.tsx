@@ -14,8 +14,10 @@ import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
+import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
@@ -127,6 +129,29 @@ function GroupAssessment() {
     setDraft({});
   }, [termId, domainId, groupId]);
 
+  /**
+   * ★ The result is announced, not left to be inferred.
+   *
+   * This screen saved silently apart from a green line rendered *below the
+   * roster* — and the control that triggers it is a sticky bar pinned to the
+   * bottom of the viewport, so a teacher who pressed Хадгалах after scrolling
+   * through thirty children had the confirmation somewhere off-screen. The
+   * report was simply "багш хадгалж байгаа эсэхээ мэдэхгүй байна", which is
+   * exactly what that arrangement produces.
+   *
+   * CLAUDE.md §5 asks for a toast after a save, `ToastProvider` has been in the
+   * shell the whole time, and eight other screens already use it. This one did
+   * not.
+   *
+   * ★★ Both outcomes, and the failure keeps its inline message too.
+   *
+   * `toast.ts` argues that an error is read rather than glanced at and that a
+   * screen whose error is actionable should keep rendering it — so the
+   * `FormError` above the roster stays, and the toast is what draws the eye to
+   * it from the foot of a long list. A success needs no second copy.
+   */
+  const toast = useToast();
+
   const save = useMutation({
     mutationFn: () => {
       const entries = Object.entries(draft).map(([childId, levelId]) => ({ childId, levelId }));
@@ -135,13 +160,18 @@ function GroupAssessment() {
         body: { termId, domainId, entries },
       });
     },
-    onSuccess: () => {
+    onSuccess: (_data, _vars) => {
+      const saved = Object.keys(draft).length;
       setDraft({});
+      toast.success(
+        saved > 0 ? `${saved} хүүхдийн үнэлгээ хадгалагдлаа.` : "Үнэлгээ хадгалагдлаа.",
+      );
       void queryClient.invalidateQueries({
         queryKey: qk.groupAssessment(groupId, termId, domainId),
       });
       void queryClient.invalidateQueries({ queryKey: qk.dashboard.teacher() });
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   if (group.isLoading) return <LoadingState rows={4} />;
@@ -157,13 +187,23 @@ function GroupAssessment() {
   const pendingCount = Object.keys(draft).length;
 
   return (
-    <div className="flex flex-col gap-5 py-2">
-      <header>
-        <h1 className="text-heading font-semibold text-ink">Үнэлгээ</h1>
-        <p className="mt-0.5 text-body text-muted">{group.data?.name}</p>
-      </header>
+    <div className="flex flex-col gap-5 lg:gap-6">
+      {/*
+        ★ `PageHeader`, not a hand-rolled `<header>` — 2026-08-29.
 
-      <Card className="grid gap-4 px-4 py-4 sm:grid-cols-2 sm:px-5">
+        This screen opened with its own `<h1 className="text-heading">` over a
+        `<p>`. Every other screen in the product uses `PageHeader`, which is
+        `text-heading` on a phone and `text-display` from `md` up: so this one
+        title stayed 22px on a desktop while the rest grew to 24px, and it was
+        the only page heading that did not. The same mistake `dashboard/page.tsx`
+        records fixing in its own three branches.
+      */}
+      <PageHeader title="Явцын үнэлгээ" lede={group.data?.name ?? "Бүлгийн үнэлгээ"} />
+
+      {/* `pad="roomy"` rather than four inline padding values — `card.tsx`
+          documents the two named steps and why call sites stopped inventing
+          their own. */}
+      <Card pad="roomy" className="grid gap-4 sm:grid-cols-2">
         <Field label="Улирал">
           {({ id }) => (
             <Select
@@ -260,7 +300,7 @@ function GroupAssessment() {
             from wherever the teacher just tapped.
           */}
           {pendingCount > 0 ? (
-            <div className="sticky bottom-[76px] z-10 lg:bottom-4">
+            <div className="sticky bottom-[var(--size-bottom-nav)] z-10 lg:bottom-4">
               <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 shadow-lg">
                 <p className="text-body text-ink" aria-live="polite">
                   {pendingCount} хүүхдийн үнэлгээ хадгалагдаагүй байна
@@ -277,11 +317,14 @@ function GroupAssessment() {
             </div>
           ) : null}
 
-          {save.isSuccess && pendingCount === 0 ? (
-            <p role="status" className="rounded-control bg-mint px-4 py-3 text-body text-mint-ink">
-              Үнэлгээ хадгалагдлаа.
-            </p>
-          ) : null}
+          {/*
+            ★ The static green line that used to sit here is gone.
+
+            It rendered on `save.isSuccess` and never cleared, so a teacher who
+            saved once saw "Үнэлгээ хадгалагдлаа." under the roster for the rest
+            of the session — including while making a second set of changes it
+            was not describing. A toast says it once, at the moment it is true.
+          */}
         </>
       ) : null}
     </div>

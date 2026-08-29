@@ -3,14 +3,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { z } from "zod";
-import { auditEntrySchema, AUDIT_ACTION_LABEL, paginated } from "@kinder/contracts";
+import {
+  auditEntrySchema,
+  AUDIT_ACTION_LABEL,
+  AUDIT_OBJECT_LABEL,
+  paginated,
+} from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { formatRelative } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, RowList } from "@/components/ui/card";
+import { Card, RowCard, RowList } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
@@ -77,7 +82,16 @@ function AuditBrowser() {
       />
 
       <div className="flex flex-wrap items-end gap-3">
-        <Field label="Үйлдэл" className="min-w-[180px] flex-1">
+        {/*
+          ★ `max-w`, because `flex-1` on the widest field is not a width.
+
+          This select held one word — "Бүгд", "Нэвтэрсэн" — and `flex-1` gave
+          it every pixel the two date inputs did not want: 1,050px of control
+          for a twelve-character value, with its own chevron a screen away from
+          its text. A filter bar reads as a row of controls; one control
+          stretched across it reads as an input somebody forgot to size.
+        */}
+        <Field label="Үйлдэл" className="min-w-[180px] max-w-[240px] flex-1">
           {({ id }) => (
             <Select
               id={id}
@@ -145,8 +159,8 @@ function AuditBrowser() {
 
       {entries.data && entries.data.items.length > 0 ? (
         <>
-          <p className="text-caption text-muted" aria-live="polite">
-            Нийт {entries.data.total}
+          <p className="text-body text-muted" aria-live="polite">
+            Нийт {entries.data.total} бичлэг
           </p>
 
           <RowList className={entries.isPlaceholderData ? "opacity-60" : ""}>
@@ -188,13 +202,26 @@ function AuditRow({ entry }: { entry: z.infer<typeof auditEntrySchema> }) {
   const metadata = entry.metadata;
   const hasMetadata = metadata !== null && metadata !== undefined && typeof metadata === "object";
 
+  /*
+    ★ `RowCard`, not a bare `<div>`.
+
+    Like `/admin/terms` before it, this list put unwrapped `<div>`s inside
+    `RowList` — the column, without the row — so every entry rendered as loose
+    text on the canvas while the neighbouring admin screens rendered cards. The
+    metadata disclosure below already used a `Card`, which made the mismatch
+    visible on the same row: a bordered surface nested inside nothing.
+  */
   return (
-    <div className="flex flex-col gap-1 px-4 py-3">
+    <RowCard className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone={entry.action === "DELETE" ? "danger" : "sky"}>
           {AUDIT_ACTION_LABEL[entry.action] ?? entry.action}
         </Badge>
-        {entry.objectType ? <span className="text-body text-ink">{entry.objectType}</span> : null}
+        {entry.objectType ? (
+          <span className="text-body text-ink">
+            {AUDIT_OBJECT_LABEL[entry.objectType] ?? entry.objectType}
+          </span>
+        ) : null}
         <span className="ml-auto text-caption text-muted">{formatRelative(entry.createdAt)}</span>
       </div>
 
@@ -216,6 +243,6 @@ function AuditRow({ entry }: { entry: z.infer<typeof auditEntrySchema> }) {
           </Card>
         </details>
       ) : null}
-    </div>
+    </RowCard>
   );
 }

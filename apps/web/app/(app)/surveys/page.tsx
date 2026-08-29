@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { z } from "zod";
-import { surveySchema } from "@kinder/contracts";
+import { ListChecks, Plus, Search, Users } from "lucide-react";
+import { surveySchema, type SurveyQuestionType } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
@@ -14,9 +15,13 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RowList } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
+import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { formatDate } from "@/lib/format";
+import { SURVEY_TONE_BG, SURVEY_TYPE_META } from "@/lib/survey-meta";
+import { cn } from "@/lib/utils";
 
 const surveysSchema = z.array(surveySchema);
 
@@ -45,9 +50,45 @@ export default function SurveysPage() {
   );
 }
 
+/**
+ * ★ Two tabs, and the mapping to `status` is deliberate rather than obvious.
+ *
+ * `surveyStatusSchema` has three states and the brief asks for two tabs, so a
+ * `DRAFT` has to land in one of them. It goes in Идэвхтэй: a draft is work in
+ * progress that the person on this screen still has to finish, and the tab a
+ * teacher opens to find unfinished work is not the one labelled "done". It
+ * keeps its own "Ноорог" badge inside the card, so the two are never confused
+ * for each other — the tab is where you look, the badge is what it is.
+ */
+const TABS = [
+  { key: "active" as const, label: "Идэвхтэй", statuses: ["DRAFT", "PUBLISHED"] },
+  { key: "closed" as const, label: "Дууссан", statuses: ["CLOSED"] },
+];
+
 function SurveysList() {
   const { primaryKindergartenId } = useSession();
   const [creating, setCreating] = useState(false);
+  const [tab, setTab] = useState<"active" | "closed">("active");
+  /**
+   * ★ Filtered by question type, not by a subject taxonomy.
+   *
+   * The client's mock-up draws Эрүүл мэнд / Бие бялдар / Оюун ухаан chips here,
+   * and there is no field behind them: `surveySchema` carries a scope, a status,
+   * a school year and an assessment period, and nothing that names a subject.
+   * Inventing one would mean either a column nobody fills or a chip row that
+   * filters on a guess. The type of a survey's first question is the taxonomy
+   * this product actually has — `SURVEY_TYPE_META` already renders it as chips
+   * on the parent's own list — so the row is built from that and the two lists
+   * keep one vocabulary.
+   */
+  const [type, setType] = useState<SurveyQuestionType | null>(null);
+  /**
+   * Client-side, like the notifications page's survey tab and for the same
+   * reason: a kindergarten's surveys are a handful of rows already in memory,
+   * so filtering them again on the server would be a request for data this
+   * screen is holding.
+   */
+  const [search, setSearch] = useState("");
 
   const surveys = useQuery({
     queryKey: qk.kindergartenSurveys(primaryKindergartenId ?? ""),
@@ -55,22 +96,106 @@ function SurveysList() {
     enabled: Boolean(primaryKindergartenId),
   });
 
+  const all = surveys.data ?? [];
+  const term = search.trim().toLowerCase();
+  const statuses = TABS.find((t) => t.key === tab)!.statuses;
+
+  const visible = all.filter(
+    (survey) =>
+      statuses.includes(survey.status) &&
+      (!type || (survey.questions[0]?.type ?? "TEXT") === type) &&
+      (!term ||
+        survey.title.toLowerCase().includes(term) ||
+        (survey.description ?? "").toLowerCase().includes(term)),
+  );
+
+  /** The tab counts, which the filters above must not change — see `TabPill`. */
+  const countFor = (key: "active" | "closed") =>
+    all.filter((s) => TABS.find((t) => t.key === key)!.statuses.includes(s.status)).length;
+
   return (
-    <div className="flex flex-col gap-6 lg:gap-8">
+    <div className="flex flex-col gap-5 lg:gap-6">
       <PageHeader
         title="Судалгаа"
         lede="Гэр бүлээс санал асуулга авах."
         actions={
-          <Button size="sm" onClick={() => setCreating(true)}>
-            Шинэ судалгаа
+          <Button onClick={() => setCreating(true)}>
+            <Plus size={18} aria-hidden="true" />
+            Санал асуулга үүсгэх
           </Button>
         }
       />
 
+      {/*
+        ★ Search on its own row, chips on theirs — at every width.
+
+        They shared a row from `lg` up in the first pass and it measured badly:
+        six chips need about 900px, so beside a 320px field they wrapped, and
+        the field sat vertically centred against a two-line block with a gap the
+        width of a card between them. Stacked, the field is capped where a
+        two-word query needs it and the chips get a full row to fit on one line.
+      */}
+      <div className="relative lg:w-[320px]">
+        <Search
+          size={18}
+          aria-hidden="true"
+          className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
+        />
+        <Input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Судалгаа хайх"
+          aria-label="Судалгаа хайх"
+          className="pl-11"
+        />
+      </div>
+
+      {/*
+        `overflow-x-auto` on a phone, wrapping from `lg`: six chips do not fit a
+        375px row, and a horizontal scroller is how the rest of this product
+        already handles that (`SurveysTab`'s child switcher). The negative
+        margin lets the scroller bleed to the screen edge so a half-visible chip
+        reads as "there is more", rather than stopping short inside the page
+        padding where it reads as the end of the row.
+      */}
+      <FilterChipRow label="Судалгааны төрлөөр шүүх">
+        <FilterChip active={type === null} onClick={() => setType(null)}>
+          Бүгд
+        </FilterChip>
+        {(Object.keys(SURVEY_TYPE_META) as SurveyQuestionType[]).map((key) => (
+          <FilterChip key={key} active={type === key} onClick={() => setType(key)}>
+            {SURVEY_TYPE_META[key].label}
+          </FilterChip>
+        ))}
+      </FilterChipRow>
+
+      {/*
+        An underlined tab strip rather than a second row of pills: the chips
+        above are already pills, and two pill rows in a column read as ten
+        equal filters instead of "which set, then narrowed how".
+      */}
+      <div
+        role="tablist"
+        aria-label="Судалгааны төлөв"
+        className="flex gap-6 border-b border-border"
+      >
+        {TABS.map((t) => (
+          <TabPill
+            key={t.key}
+            active={tab === t.key}
+            count={countFor(t.key)}
+            onClick={() => setTab(t.key)}
+          >
+            {t.label}
+          </TabPill>
+        ))}
+      </div>
+
       {surveys.isLoading ? <LoadingState rows={3} /> : null}
       {surveys.isError ? <ErrorState description={errorMessage(surveys.error)} /> : null}
 
-      {surveys.data && surveys.data.length === 0 ? (
+      {surveys.data && all.length === 0 ? (
         <EmptyState
           title="Судалгаа алга"
           description="Эхний судалгаагаа үүсгэж эхэлнэ үү."
@@ -78,22 +203,43 @@ function SurveysList() {
         />
       ) : null}
 
-      {surveys.data && surveys.data.length > 0 ? (
-        <RowList>
-          {surveys.data.map((survey) => (
-            <Link
-              key={survey.id}
-              href={`/surveys/${survey.id}`}
-              className="flex min-h-[64px] flex-wrap items-center justify-between gap-2 rounded-row border border-border bg-surface px-4 py-3 transition-colors hover:border-primary"
+      {surveys.data && all.length > 0 && visible.length === 0 ? (
+        <EmptyState
+          title="Тохирох судалгаа алга"
+          description="Хайлт эсвэл шүүлтүүрээ өөрчилж үзнэ үү."
+          action={
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setSearch("");
+                setType(null);
+              }}
             >
-              <div className="min-w-0">
-                <p className="truncate font-medium text-ink">{survey.title}</p>
-                <p className="text-body text-muted">{SCOPE_LABEL[survey.scope]}</p>
-              </div>
-              <Badge tone={STATUS_TONE[survey.status]}>{STATUS_LABEL[survey.status]}</Badge>
-            </Link>
+              Шүүлтүүр цэвэрлэх
+            </Button>
+          }
+        />
+      ) : null}
+
+      {/*
+        ★ One column on a phone, two from `md`, three at `2xl`.
+
+        The brief asks for wider cards on a desktop and a responsive grid where
+        there are several — which are the same request at two window sizes. A
+        1336px content column carrying one survey title per row is the
+        stretched-mobile-page failure this pass exists to remove; three tracks
+        at `2xl` put each card at about 430px, which is the width the card was
+        designed around (a title over two meta lines).
+
+        `items-stretch` is the default and is what makes cards in a row end
+        level regardless of how long their titles wrap.
+      */}
+      {visible.length > 0 ? (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 2xl:grid-cols-3">
+          {visible.map((survey) => (
+            <SurveyCard key={survey.id} survey={survey} />
           ))}
-        </RowList>
+        </div>
       ) : null}
 
       {creating && primaryKindergartenId ? (
@@ -103,6 +249,116 @@ function SurveysList() {
         />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * One tab of the Идэвхтэй / Дууссан strip.
+ *
+ * ★ The count is of the *tab*, not of what is showing.
+ *
+ * It counts every survey in that state, ignoring the search box and the type
+ * chips above. A count that moved with the filters would answer "how many did
+ * my search find" — which the list underneath already answers — instead of
+ * "is there anything over there", which is the only question a tab label can
+ * usefully answer before you press it.
+ */
+function TabPill({
+  active,
+  count,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  count: number;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={cn(
+        // `-mb-px` pulls the underline onto the container's own hairline so the
+        // two are one line rather than two a pixel apart.
+        "-mb-px min-h-[44px] border-b-2 px-1 text-lead font-semibold transition-colors",
+        active ? "border-primary text-primary" : "border-transparent text-muted hover:text-ink",
+      )}
+    >
+      {children}
+      <span className="ml-2 text-body font-medium tabular-nums text-faint">{count}</span>
+    </button>
+  );
+}
+
+/**
+ * A survey, as a card.
+ *
+ * ★ Replaces a 64px row carrying a title, a scope and a status badge.
+ *
+ * Everything on it comes from `surveySchema` — the type chip from
+ * `questions[0].type` (see `lib/survey-meta.ts` for why a survey's first
+ * question is an honest stand-in for its kind), the question count from
+ * `questions.length`, and the date from whichever of `closedAt` /
+ * `publishedAt` / `createdAt` describes the state it is in. Nothing here is a
+ * field the API does not send.
+ *
+ * `h-full` so a card in a grid row fills the height its tallest neighbour
+ * sets, which is what keeps the footers of a row on one line.
+ */
+function SurveyCard({ survey }: { survey: z.infer<typeof surveySchema> }) {
+  const meta = SURVEY_TYPE_META[survey.questions[0]?.type ?? "TEXT"];
+  const questionCount = survey.questions.length;
+  const date = survey.closedAt ?? survey.publishedAt ?? survey.createdAt;
+
+  return (
+    <Link href={`/surveys/${survey.id}`} className="group h-full">
+      <Card
+        pad="roomy"
+        className="flex h-full flex-col gap-3 transition-colors hover:border-primary"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <span
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-caption font-semibold",
+              SURVEY_TONE_BG[meta.tone],
+            )}
+          >
+            <meta.Icon size={14} aria-hidden="true" />
+            {meta.label}
+          </span>
+          <Badge tone={STATUS_TONE[survey.status]}>{STATUS_LABEL[survey.status]}</Badge>
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <h3 className="text-lead font-semibold leading-[1.35] text-ink group-hover:underline">
+            {survey.title}
+          </h3>
+          {survey.description ? (
+            <p className="mt-1 line-clamp-2 text-body text-muted">{survey.description}</p>
+          ) : null}
+        </div>
+
+        {/*
+          The footer sits on a hairline and carries the three facts a teacher
+          scans a list of surveys for: who it asks, how long it is, and when it
+          last moved.
+        */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border-soft pt-3 text-caption text-muted">
+          <span className="inline-flex items-center gap-1.5">
+            <Users size={14} aria-hidden="true" />
+            {SCOPE_LABEL[survey.scope]}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <ListChecks size={14} aria-hidden="true" />
+            {questionCount} асуулт
+          </span>
+          <span className="ml-auto tabular-nums">{formatDate(date)}</span>
+        </div>
+      </Card>
+    </Link>
   );
 }
 

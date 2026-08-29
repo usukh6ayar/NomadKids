@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Textarea } from "@/components/ui/field";
 import { FormError, LoadingState } from "@/components/ui/states";
+import { useToast } from "@/components/ui/toast";
 import { formatDate } from "@/lib/format";
 import { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
 import { YEAR_ANIMAL_ICON, ZODIAC_ICON } from "@/lib/zodiac-icons";
@@ -91,6 +92,7 @@ export function ChildBirthdayNotes({
   currentAge: number | null;
 }) {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [editingAge, setEditingAge] = useState<number | null>(null);
   const [text, setText] = useState("");
   const notes = section?.notes ?? [];
@@ -102,9 +104,11 @@ export function ChildBirthdayNotes({
         body: { note: text.trim() || null },
       }),
     onSuccess: () => {
+      toast.success("Хадгаллаа.");
       setEditingAge(null);
       void queryClient.invalidateQueries({ queryKey: qk.birthdayNotes(childId) });
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   return (

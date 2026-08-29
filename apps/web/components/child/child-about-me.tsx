@@ -33,6 +33,7 @@ import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { EmptyState, FormError, LoadingState } from "@/components/ui/states";
+import { useToast } from "@/components/ui/toast";
 import { formatDate } from "@/lib/format";
 import { YEAR_ANIMAL_ICON, ZODIAC_ICON } from "@/lib/zodiac-icons";
 import { cn } from "@/lib/utils";
@@ -127,6 +128,7 @@ export function ChildAboutMe({
   error: unknown;
 }) {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
 
@@ -195,6 +197,7 @@ export function ChildAboutMe({
         },
       }),
     onSuccess: () => {
+      toast.success("Хадгаллаа.");
       setEditing(false);
       void queryClient.invalidateQueries({ queryKey: qk.aboutMe(childId) });
       // Also invalidates `Child` — `lastName`/`firstName`/`dateOfBirth`/`sex`
@@ -205,6 +208,7 @@ export function ChildAboutMe({
       // what `ChildBirthdayFacts` (rendered from this same query) shows.
       void queryClient.invalidateQueries({ queryKey: qk.birthdayNotes(childId) });
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   const errors = fieldErrors(save.error);

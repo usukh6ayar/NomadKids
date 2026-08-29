@@ -277,15 +277,33 @@ distinction matters when reading this rule:
 - §11 the allergy cross-check — **done** (it was already RFP Module 2)
 - §3–§10, §13, §14, §16 — the finance module proper — **not started**
 
-**Still out** — RFP §20 Phase IV, minus what `нэмэлт.md` pulled forward. Say
-which phase it belongs to and ask:
+★★ **Chat moved into scope on 2026-08-29, at the client's explicit request.**
 
-native mobile apps · chat · SMS · push notification · QR pick-up ·
+It was listed below as Phase IV, and the rule above worked exactly as written:
+the request was raised against §7, the phase was named, the client was asked,
+and they answered "build it fully". This line moves rather than being quietly
+ignored — the third time §7 has moved and for the same reason each time, which
+is stated a few paragraphs up: a mandatory rule the codebase contradicts stops
+being read.
+
+What that costs is worth writing down, because "chat" is one word and a
+fortnight of work: a message model, an authorization path of its own, a
+paginated history endpoint, an unread cursor per person per room, and a
+realtime story. It is being built against the same rules as everything else —
+membership derived per request (§1.3), 404 for a room you are not in (§1.7),
+`kindergartenId` on every row (§3.1), soft delete (§3.2), no unbounded list
+(§3.4). **There is no AI in it**, which the client stated three times: it is a
+group message board, not an assistant.
+
+**Still out** — RFP §20 Phase IV, minus what `нэмэлт.md` and the 2026-08-29
+request pulled forward. Say which phase it belongs to and ask:
+
+native mobile apps · SMS · push notification · QR pick-up ·
 electronic signature · multi-language · AI observation suggestions ·
 voice-to-text
 
 Pulling work forward silently is still how a three-week delivery becomes six.
-The difference is that the client has now asked for this much, once, explicitly.
+The difference is that the client has now asked for this much, explicitly.
 
 ---
 

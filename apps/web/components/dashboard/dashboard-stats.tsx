@@ -5,6 +5,7 @@ import { rosterSummarySchema, type TeacherDashboard } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { formatAgeFromMonths } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 
 /**
@@ -90,24 +91,36 @@ export function DashboardStats({ counts }: { counts: TeacherDashboard["counts"] 
   const averageAge = roster.data?.averageAgeMonths;
 
   return (
-    <section
-      aria-label="Өнөөдрийн тойм"
-      className="grid grid-cols-3 gap-2 md:col-span-2 md:gap-3 lg:col-span-6 lg:gap-5"
-    >
-      <Stat label="Хүүхэд" value={counts.children} />
-      <Stat label="Бүлэг" value={counts.groups} />
-      {/*
-        ★★ Absent rather than zero while it loads or if it fails.
-        A card reading "0 нас" for a beat is a claim about the roster; an empty
-        slot is only a slower card. The other two do not move when it arrives —
-        the grid reserves three columns whatever this renders.
-      */}
-      <Stat
-        label="Дундаж нас"
-        value={
-          averageAge === null || averageAge === undefined ? "—" : formatAgeFromMonths(averageAge)
-        }
-      />
+    /*
+     * ★ One card holding three facts, not three cards holding one each.
+     *
+     * Measured on a real 1440px window: three separate cards were ~370px wide
+     * apiece to carry "Хүүхэд" and a two-digit number, so each was mostly
+     * empty and the band read as three placeholders above the tiles that
+     * actually say something. These are context — the roster's size and shape
+     * — not headline statistics, and context belongs on one line.
+     *
+     * `divide-x` rather than gaps: the three are one thought, and separating
+     * them into cards was what made them compete with the row below.
+     */
+    <section aria-label="Өнөөдрийн тойм">
+      <Card pad="compact" className="grid grid-cols-3 divide-x divide-border-soft">
+        <Stat label="Хүүхэд" value={counts.children} />
+        <Stat label="Бүлэг" value={counts.groups} />
+        {/*
+          ★★ Absent rather than zero while it loads or if it fails.
+          A cell reading "0 нас" for a beat is a claim about the roster; an
+          empty slot is only a slower cell. The other two do not move when it
+          arrives — the grid reserves three columns whatever this renders.
+        */}
+        <Stat
+          label="Дундаж нас"
+          kind="phrase"
+          value={
+            averageAge === null || averageAge === undefined ? "—" : formatAgeFromMonths(averageAge)
+          }
+        />
+      </Card>
     </section>
   );
 }
@@ -126,23 +139,49 @@ export function DashboardStats({ counts }: { counts: TeacherDashboard["counts"] 
  * `value` takes a string as well as a number because the age is worded — "3 нас
  * 5 сар", not 41. `tabular-nums` still applies: it aligns the digits inside
  * that phrase and costs nothing where there are none.
+ *
+ * ★ `kind` exists because a two-digit numeral and a four-word phrase cannot
+ * share a type size in a 100px cell, and this was measured rather than
+ * guessed.
+ *
+ * The card moved into the five-column half of the "today" band, where each of
+ * its three cells is about 106px of usable width at 1440. "4 нас 11 сар" at
+ * `--text-display` (24px) is roughly 130px, so it wrapped to two lines and then
+ * to three at 1024 — which made a context strip the tallest thing in its
+ * column, above a chart. `Хүүхэд 5` at the same size is 12px wide and has no
+ * such problem, so stepping *both* down would have shrunk the two figures for
+ * a fault neither of them has. The phrase takes one step down; the numerals
+ * keep the size that makes them readable across a desk.
  */
-function Stat({ label, value }: { label: string; value: number | string }) {
+function Stat({
+  label,
+  value,
+  kind = "figure",
+}: {
+  label: string;
+  value: number | string;
+  /** `phrase` is a worded value — an age, not a count. */
+  kind?: "figure" | "phrase";
+}) {
   return (
-    <Card pad="compact">
+    <div className="px-2 first:pl-0 last:pr-0 md:px-3">
       {/*
         The label wraps rather than truncating: "Дундаж нас" does not fit 110px
         on one line, and a clipped label is a worse failure than a two-line one.
       */}
       <p className="text-caption leading-tight text-muted md:text-body">{label}</p>
       {/*
-        `text-title` on a phone — at 24px "3 нас 5 сар" takes three lines in a
-        110px tile. `[overflow-wrap:anywhere]` guards a longer value than any
-        that exists today: nothing in this row may push the grid wide.
+        `[overflow-wrap:anywhere]` guards a longer value than any that exists
+        today: nothing in this row may push the grid wide.
       */}
-      <p className="mt-0.5 text-title font-semibold leading-tight tabular-nums text-ink [overflow-wrap:anywhere] md:mt-1 md:text-display">
+      <p
+        className={cn(
+          "mt-0.5 font-semibold leading-tight tabular-nums text-ink [overflow-wrap:anywhere]",
+          kind === "phrase" ? "text-lead md:text-title" : "text-title md:text-display",
+        )}
+      >
         {value}
       </p>
-    </Card>
+    </div>
   );
 }

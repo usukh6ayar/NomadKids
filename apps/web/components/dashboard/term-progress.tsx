@@ -1,22 +1,44 @@
+import Image from "next/image";
 import type { TeacherDashboard } from "@kinder/contracts";
-import { Card, SectionHeader } from "@/components/ui/card";
+import { Ring } from "@/components/ui/chart/ring";
+import { TileShell } from "./tile-shell";
 import { percentOf } from "./percent";
 
 /**
  * This term's assessment progress — RFP §12.1 "улирлын үнэлгээний явц".
  *
- * ★ A bar, not a chart.
+ * ★ A `Ring` now, where this was a full-width rule under a heading.
  *
- * The requested design put a radar chart here. Charts are excluded from the MVP
- * (CLAUDE.md §7) and a radar of one term's averages would need a charting
- * dependency to say something a sentence says better. This is one number, its
- * denominator, and a rule showing the ratio — readable at a glance and
- * announced properly to a screen reader, which a canvas chart is not.
+ * The rule was the right answer while this was a section of its own: a bar
+ * reads a ratio at a glance and announces itself properly, which a canvas chart
+ * does not. It moved into the "явц" band beside the observation mix, where two
+ * cards of the same shape have to be comparable, and a 600px horizontal rule
+ * beside a stack of four short bars is not a pair. `Ring` is the shared
+ * primitive for exactly one percentage (§16), the tile shell is the one the mix
+ * already wears, and the two now read as one band.
  *
- * The stat tile above shows the same percentage. That is a summary and this is
- * its detail: the tile answers "how far along", the bar answers "out of how
- * many, and is that nearly done" — and only one of the two is a `progressbar`
- * an assistive technology can report.
+ * ★★ **The `progressbar` role survived the change, and that was the constraint
+ * the redraw had to satisfy rather than a detail.**
+ *
+ * `Ring` is `aria-hidden` unless it is given a name, because on every screen
+ * that has one the figure is also on the card as text. That is right here too —
+ * but the *ratio* is the thing an assistive technology should be able to report,
+ * and dropping to three separate text nodes would have lost it. So the role sits
+ * on the group that holds the ring and the counts, with `aria-valuenow` and an
+ * `aria-valuetext` that says the fraction in words. One progressbar on the
+ * screen, the same one `flows.test.tsx` has always asserted on.
+ *
+ * ★★★ Completed and pending, and no third state — because there is no third
+ * state in the data.
+ *
+ * `termProgress` is `{ assessed, total }`. "Partial" would need a per-domain
+ * count of what has been filled in for a child mid-assessment, and neither the
+ * endpoint nor `Assessment` carries one; a tile that named it would be
+ * inventing a number. Pending is `total - assessed`, which is arithmetic on
+ * what the server sent.
+ *
+ * ★★★★ And still no target. The denominator is the roster, which is a fact —
+ * not a quota somebody set, which is what `ObservationMix` refuses to imply.
  */
 export function TermProgress({
   term,
@@ -27,40 +49,61 @@ export function TermProgress({
 }) {
   const { assessed, total } = progress;
   const percent = percentOf(progress);
+  const pending = Math.max(0, total - assessed);
 
   return (
-    <section aria-label="Улирлын үнэлгээний явц">
-      <SectionHeader title="Улирлын үнэлгээний явц" lede={term} />
-      <Card className="px-4 py-4">
-        <div className="flex items-baseline justify-between gap-3">
-          <p className="text-body text-muted">
-            <span className="text-title font-semibold tabular-nums text-ink">{assessed}</span>
-            {" / "}
-            <span className="tabular-nums">{total}</span> хүүхэд үнэлэгдсэн
-          </p>
-          <p className="text-body font-medium tabular-nums text-primary-strong">{percent}%</p>
-        </div>
-
-        {/* Track: `--color-track` (slate-100), one step darker than the canvas
-            so the empty part of the bar is visible on a white card rather than
-            disappearing into it. */}
+    <section aria-label="Улирлын үнэлгээний явц" className="h-full">
+      <TileShell
+        icon={<Image src="/icons/icon-progress.png" alt="" width={48} height={48} />}
+        tone="teal"
+        size="feature"
+        label="Улирлын үнэлгээний явц"
+        footer={<p className="text-caption text-muted">{term}</p>}
+      >
         <div
-          className="mt-3 h-2 w-full overflow-hidden rounded-pill bg-track"
           role="progressbar"
           aria-valuenow={percent}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-label={`${term} үнэлгээний явц`}
+          aria-valuetext={`${total} хүүхдээс ${assessed} үнэлэгдсэн`}
+          className="flex items-center gap-4 md:gap-5"
         >
-          {/* Fill: `--color-primary` (blue-700). Nothing sits on top of it, but
-              it is the same blue as the buttons on purpose — a progress bar in
-              a second brand shade reads as a different kind of thing. */}
-          <div
-            className="h-full rounded-pill bg-primary transition-[width]"
-            style={{ width: `${percent}%` }}
-          />
+          <Ring percent={percent} size="lg" />
+
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold tabular-nums leading-none text-ink text-figure">
+              {assessed}
+              <span className="text-display text-faint">/{total}</span>
+            </p>
+            <p className="mt-1 text-caption text-muted">хүүхэд үнэлэгдсэн</p>
+
+            {/*
+              Two states, each with the dot of its own arc — the same legend
+              shape the sex split and the attendance breakdown use. `mint` is
+              `tone.ts`'s "complete" and `sun` its "waiting", which is exactly
+              what these two are.
+            */}
+            <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
+              <Legend tone="mint" label="Дууссан" value={assessed} />
+              <Legend tone="sun" label="Хүлээгдэж буй" value={pending} />
+            </ul>
+          </div>
         </div>
-      </Card>
+      </TileShell>
     </section>
+  );
+}
+
+function Legend({ tone, label, value }: { tone: "mint" | "sun"; label: string; value: number }) {
+  return (
+    <li className="flex items-center gap-1.5 text-caption text-muted">
+      <span
+        aria-hidden="true"
+        className={`size-2.5 shrink-0 rounded-pill ${tone === "mint" ? "bg-mint-ink" : "bg-sun-ink"}`}
+      />
+      {label}
+      <span className="font-semibold tabular-nums text-ink">{value}</span>
+    </li>
   );
 }

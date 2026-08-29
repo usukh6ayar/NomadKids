@@ -51,6 +51,7 @@ export const qk = {
   artwork: (childId: string) => ["child", childId, "artwork"] as const,
   consent: (childId: string) => ["child", childId, "consent"] as const,
   audit: (filters: Record<string, unknown> = {}) => ["admin", "audit", filters] as const,
+  surveyComparison: (surveyId: string) => ["survey", surveyId, "comparison"] as const,
   configDomains: (kindergartenId: string) =>
     ["admin", "config", "domains", kindergartenId] as const,
   configLevels: (kindergartenId: string) => ["admin", "config", "levels", kindergartenId] as const,
@@ -61,10 +62,26 @@ export const qk = {
     ["documents", kindergartenId, "categories"] as const,
   groupAttendance: (groupId: string, date: string) =>
     ["group", groupId, "attendance", date] as const,
-  groupMealSheet: (groupId: string, date: string, kind: string) =>
+  /**
+   * One sitting of one group on one day — the meal register's unit of work.
+   *
+   * ★ `kind` is part of the key, not a filter applied after the fetch. The API
+   * requires it on the query and answers with that sitting alone, so breakfast
+   * and lunch are different responses; sharing a key would let a cached
+   * breakfast sheet satisfy a request for lunch and show the wrong marks.
+   */
+  groupMeals: (groupId: string, date: string, kind: string) =>
     ["group", groupId, "meals", date, kind] as const,
-  childMealSummary: (childId: string, month: string) =>
-    ["child", childId, "meals", "summary", month] as const,
+  /**
+   * The staff menu — dishes plus the allergy cross-check.
+   *
+   * ★ A different key from the plain menu `child-menu.tsx` reads, deliberately.
+   * The two routes answer with different bodies for different audiences, and
+   * sharing a key would let a parent's cached menu satisfy a teacher's query
+   * for the warnings — or worse, the reverse.
+   */
+  menuWithWarnings: (kindergartenId: string, from: string, to: string) =>
+    ["kindergarten", kindergartenId, "menu", "with-warnings", from, to] as const,
   attendanceReviewQueue: (filters: Record<string, unknown> = {}) =>
     ["attendance-requests", "review-queue", filters] as const,
 
@@ -96,6 +113,15 @@ export const qk = {
   notifications: (filters: Record<string, unknown> = {}) => ["notifications", filters] as const,
   notification: (id: string) => ["notifications", "detail", id] as const,
   unreadCount: () => ["notifications", "unread-count"] as const,
+
+  /*
+   * Chat. Its own namespace rather than hanging off `notifications`: the two
+   * carry different unread counts and invalidating one must not clear the
+   * other's cache.
+   */
+  chatRooms: () => ["chat", "rooms"] as const,
+  chatMessages: (roomKey: string) => ["chat", "messages", roomKey] as const,
+  chatUnread: () => ["chat", "unread-count"] as const,
 
   childMedia: (childId: string) => ["child", childId, "media"] as const,
   childReports: (childId: string) => ["child", childId, "reports"] as const,

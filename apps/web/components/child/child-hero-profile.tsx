@@ -6,6 +6,7 @@ import { SEX_LABEL, type ChildDetail } from "@kinder/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { ChildAvatar } from "@/components/media/media-image";
+import { ChildPhotoButton } from "@/components/child/child-photo-button";
 import { formatAge, formatDate, fullName } from "@/lib/format";
 
 /**
@@ -54,11 +55,20 @@ export function ChildHeroProfile({
   child,
   actions,
   showHealthAlert = false,
+  canEditPhoto = false,
 }: {
   child: ChildDetail;
   actions?: ReactNode;
   /** Staff only. See the note above. */
   showHealthAlert?: boolean;
+  /**
+   * Shows the camera badge that changes the profile picture.
+   *
+   * Passed rather than derived: this component is rendered from the child's
+   * own page, which already knows the viewer's role, and a second derivation
+   * here is a second place for the two to disagree.
+   */
+  canEditPhoto?: boolean;
 }) {
   // Newest first (`startedOn: "desc"`), and ACTIVE is what "current" means —
   // a child who has left still has a most-recent enrollment.
@@ -75,7 +85,18 @@ export function ChildHeroProfile({
   return (
     <Card pad="roomy">
       <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center">
-        <ChildAvatar child={child} size={72} className="shrink-0" />
+        {/*
+          `relative`, so the camera badge can hang off the avatar's corner —
+          see `ChildPhotoButton`. The wrapper is what carries the positioning
+          context; `ChildAvatar` itself is unchanged and still used flat in the
+          roster, the feeds and the birthday list.
+        */}
+        <div className="relative shrink-0">
+          <ChildAvatar child={child} size={72} />
+          {canEditPhoto ? (
+            <ChildPhotoButton childId={child.id} childName={fullName(child)} />
+          ) : null}
+        </div>
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">

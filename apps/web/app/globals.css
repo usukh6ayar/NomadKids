@@ -172,6 +172,29 @@
   --size-tap: 44px;
 
   /*
+   * ★ The phone's bottom navigation, as a token — because four places had
+   * guessed it and the guess went stale.
+   *
+   * `BottomBar` is `fixed`, so anything else pinned to the bottom of a phone
+   * viewport has to clear it: the toast viewport, the two sticky save bars on
+   * the register screens, and the floating chat button. All four carried their
+   * own literal — `4.5rem` twice and `76px` twice — and all four were written
+   * when a tab was `min-h-[56px]`.
+   *
+   * The bar grew to **79px** on 2026-08-29 when the tabs went to `min-h-[60px]`
+   * to fit "Явцын үнэлгээ" on two lines, and every one of those literals became
+   * an overlap. Measured in a browser at 390 × 844: the chat button sat 7px
+   * *under* the navigation.
+   *
+   * 5rem is 80px — the measured height, rounded up to the nearest step of the
+   * scale rather than pinned to a number that a one-pixel change would falsify
+   * again. `env(safe-area-inset-bottom)` is added at each call site, not here,
+   * because the sticky bars sit inside a scroll container that already accounts
+   * for it while the fixed ones do not.
+   */
+  --size-bottom-nav: 5rem;
+
+  /*
    * ★ The type scale. Seven steps, and nothing between them.
    *
    * There were twenty distinct sizes before this, arbitrary values interleaved

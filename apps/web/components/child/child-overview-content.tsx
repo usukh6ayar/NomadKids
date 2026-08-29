@@ -137,13 +137,15 @@ export function ChildOverviewContent({
           {firstDay ? (
             <span className="flex items-center gap-2 rounded-pill border border-border bg-surface px-3.5 py-2 text-body text-ink">
               <CalendarPlus size={16} className="shrink-0 text-primary" aria-hidden="true" />
-              Цэцэрлэгийн анхны өдөр: <strong className="font-semibold">{formatDate(firstDay)}</strong>
+              Цэцэрлэгийн анхны өдөр:{" "}
+              <strong className="font-semibold">{formatDate(firstDay)}</strong>
             </span>
           ) : null}
           {graduatedOn ? (
             <span className="flex items-center gap-2 rounded-pill border border-border bg-surface px-3.5 py-2 text-body text-ink">
               <GraduationCap size={16} className="shrink-0 text-primary" aria-hidden="true" />
-              Цэцэрлэгээс төгссөн: <strong className="font-semibold">{formatDate(graduatedOn)}</strong>
+              Цэцэрлэгээс төгссөн:{" "}
+              <strong className="font-semibold">{formatDate(graduatedOn)}</strong>
             </span>
           ) : null}
         </div>
@@ -164,7 +166,9 @@ export function ChildOverviewContent({
                 href={`/children/${childId}/portfolio/growth#age-${age}`}
                 className="flex flex-col justify-between overflow-hidden rounded-card border border-border shadow-sm transition-transform hover:-translate-y-0.5"
               >
-                <span className={`flex flex-1 items-center justify-center py-6 text-display font-bold ${AGE_TONE[age]}`}>
+                <span
+                  className={`flex flex-1 items-center justify-center py-6 text-display font-bold ${AGE_TONE[age]}`}
+                >
                   {age}
                 </span>
                 <span className="flex items-center justify-between bg-surface px-3 py-2 text-caption">

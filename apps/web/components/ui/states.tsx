@@ -58,15 +58,41 @@ export function EmptyState({
   description,
   action,
   icon,
+  illustration,
 }: {
   title: string;
   description?: string;
   action?: ReactNode;
+  /**
+   * A small lucide glyph. Sits at `--color-muted`, which is correct on the
+   * card's white — it is not correct on a tint, so a toned empty state should
+   * use `illustration` instead.
+   */
   icon?: ReactNode;
+  /**
+   * Artwork, given real room — a mascot or a feature illustration.
+   *
+   * ★ A separate slot from `icon`, not a bigger version of it.
+   *
+   * A 20px glyph and a 96px drawing want different space above the title and
+   * different treatment: the glyph is a hint, the drawing is the first thing a
+   * reader sees. One slot doing both means every call site passes a size, and
+   * then no two empty states in the product are the same height.
+   *
+   * ★★ Nothing is drawn when this is absent. There is deliberately no default
+   * illustration: a placeholder shipped everywhere is how a product ends up
+   * with the same shrug on 34 screens, and `/home` already shows what a chosen
+   * one is worth. Screens are wired to real artwork one at a time.
+   *
+   * The caller passes the `<Image>`, so it is `aria-hidden` at the call site
+   * with `alt=""` — the title beside it already says what is empty.
+   */
+  illustration?: ReactNode;
 }) {
   return (
     <Card className="flex flex-col items-center gap-2 px-6 py-10 text-center">
-      {icon ? <div className="mb-2 text-muted">{icon}</div> : null}
+      {illustration ? <div className="mb-1">{illustration}</div> : null}
+      {!illustration && icon ? <div className="mb-2 text-muted">{icon}</div> : null}
       <p className="font-medium text-ink">{title}</p>
       {description ? <p className="max-w-sm text-body text-muted">{description}</p> : null}
       {action ? <div className="mt-3">{action}</div> : null}

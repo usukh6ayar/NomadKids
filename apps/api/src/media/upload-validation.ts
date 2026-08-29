@@ -299,3 +299,44 @@ export async function validatePdfUpload(
 
   return { buffer: input, mimeType: "application/pdf", sizeBytes: input.length };
 }
+
+// ── Spreadsheets — RFP §3.4's child import ───────────────────────────────────
+
+/**
+ * A roster is text, so the ceiling is far below an image's.
+ *
+ * Three hundred children of names and dates is tens of kilobytes. Five
+ * megabytes leaves room for a workbook carrying formatting and a stray embedded
+ * logo while still refusing anything that is obviously not a roster — and the
+ * parser holds the whole file in memory, so the cap is what stops one upload
+ * from taking the process down.
+ */
+export const MAX_SPREADSHEET_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Detects a real `.xlsx` from its content — CLAUDE.md §1.6.
+ *
+ * ★ An `.xlsx` is a ZIP archive, so the magic number is a ZIP's.
+ *
+ * `PK\x03\x04` at offset zero is the local file header every ZIP begins with.
+ * That is as far as content sniffing can go here: the parser is what proves the
+ * archive holds a workbook rather than some other zipped thing, and it runs
+ * inside a try/catch for exactly that reason. What this check does buy is
+ * refusing an executable renamed to `.xlsx` before it ever reaches the parser.
+ *
+ * ★★ The legacy `.xls` binary format is deliberately **not** accepted. It is a
+ * COM compound document that can carry macros, and supporting it would mean
+ * parsing a format designed around executable content in order to read a list
+ * of names.
+ */
+export function validateSpreadsheetUpload(input: Buffer): void {
+  if (input.length > MAX_SPREADSHEET_BYTES) {
+    throw new UploadRejected(
+      `Файл хэт том байна. Дээд хэмжээ ${Math.floor(MAX_SPREADSHEET_BYTES / 1024 / 1024)} MB`,
+    );
+  }
+
+  if (input.length < 4 || input.subarray(0, 4).toString("latin1") !== "PK\x03\x04") {
+    throw new UploadRejected("Зөвхөн .xlsx файл оруулах боломжтой");
+  }
+}

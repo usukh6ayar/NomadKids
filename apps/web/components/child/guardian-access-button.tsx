@@ -5,6 +5,7 @@ import { RotateCcw, X } from "lucide-react";
 import { z } from "zod";
 import { mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 /**
  * Revoking or restoring one guardian's view of one child.
@@ -63,20 +64,26 @@ export function GuardianAccessButton({
   }
 
   return (
-    <button
-      type="button"
-      disabled={change.isPending}
-      onClick={() => {
-        // Confirmed: it takes a parent's access to their child away, and the
-        // control sits in a list where the rows look alike.
-        if (window.confirm(`${guardianName} энэ хүүхдийг харах эрхийг хураах уу?`)) {
-          change.mutate(false);
-        }
-      }}
-      className="grid size-[36px] place-items-center rounded-pill text-muted transition-colors hover:bg-danger-soft hover:text-danger disabled:opacity-50"
-    >
-      <X size={16} aria-hidden />
-      <span className="sr-only">{guardianName} — харах эрхийг хураах</span>
-    </button>
+    // Confirmed: it takes a parent's access to their child away, and the
+    // control sits in a list where the rows look alike. Was `window.confirm`.
+    <ConfirmDialog
+      title="Харах эрхийг хураах"
+      description={`${guardianName} энэ хүүхдийн мэдээллийг цаашид харахгүй болно. Дараа нь эргүүлэн сэргээж болно.`}
+      confirmLabel="Эрхийг хураах"
+      pendingLabel="Хураж байна…"
+      tone="danger"
+      pending={change.isPending}
+      onConfirm={() => change.mutate(false)}
+      trigger={
+        <button
+          type="button"
+          disabled={change.isPending}
+          className="grid size-[36px] place-items-center rounded-pill text-muted transition-colors hover:bg-danger-soft hover:text-danger disabled:opacity-50"
+        >
+          <X size={16} aria-hidden />
+          <span className="sr-only">{guardianName} — харах эрхийг хураах</span>
+        </button>
+      }
+    />
   );
 }

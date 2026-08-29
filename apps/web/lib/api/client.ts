@@ -43,6 +43,18 @@ export function mediaUrl(mediaId: string): string {
   return `${BASE_URL}${API_PREFIX}/media/${mediaId}`;
 }
 
+/**
+ * A URL for a file the browser should download rather than fetch.
+ *
+ * ★ Navigated to, not `fetch`ed. The session cookie rides along on a
+ * navigation, and the browser handles `Content-Disposition` itself — reading
+ * the bytes into JavaScript to rebuild them as a blob would hold a whole
+ * spreadsheet in memory to achieve the same thing.
+ */
+export function downloadUrl(path: string): string {
+  return `${BASE_URL}${API_PREFIX}${path}`;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,

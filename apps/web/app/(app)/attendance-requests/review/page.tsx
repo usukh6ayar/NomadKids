@@ -12,6 +12,7 @@ import { errorMessage } from "@/lib/api/errors";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { Card } from "@/components/ui/card";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import {
@@ -92,18 +93,34 @@ function ReviewQueue() {
 function RequestCard({ request }: { request: z.infer<typeof queueItemSchema> }) {
   const queryClient = useQueryClient();
 
+  /*
+   * ★ Every outcome is announced. CLAUDE.md §5: "toast after save".
+   *
+   * This screen mutated silently — the list refreshed and nothing said whether
+   * the write had landed, which on a phone with a slow connection is
+   * indistinguishable from a tap that did not register. The report was that a
+   * teacher "cannot tell whether it saved"; this is that, on the screens they
+   * use daily.
+   *
+   * `onError` matters as much as `onSuccess`: a failed write previously left
+   * the row looking unchanged with no explanation at all.
+   */
+  const toast = useToast();
+
   const review = useMutation({
     mutationFn: (decision: "APPROVED" | "REJECTED") =>
       mutate(`/attendance-requests/${request.id}/review`, attendanceRequestSchema, {
         method: "POST",
         body: { decision },
       }),
-    onSuccess: () => {
+    onSuccess: (_data, decision) => {
+      toast.success(decision === "APPROVED" ? "Хүсэлт зөвшөөрөгдлөө." : "Хүсэлт татгалзагдлаа.");
       void queryClient.invalidateQueries({ queryKey: qk.attendanceReviewQueue() });
       if (request.child) {
         void queryClient.invalidateQueries({ queryKey: qk.child(request.child.id) });
       }
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   return (

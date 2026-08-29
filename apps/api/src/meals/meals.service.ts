@@ -134,6 +134,28 @@ export class MealsService {
     if (!group) throw new NotFoundException();
     this.tenants.assertStaff(actor, group.kindergartenId);
 
+    /*
+      ★ The same assignment check `groupMealSheet` makes, and it was missing
+      here until 2026-08-27.
+
+      The read was guarded and the write was not, so a teacher assigned to one
+      group could record meals for any other group in their kindergarten —
+      rows that §3 turns into that group's food cost. A write is strictly more
+      privileged than the read beside it, so this was an omission rather than a
+      decision: `AssessmentService.saveGroupColumn`, the closest sibling and the
+      same shape of group-scoped batch write, has carried it on both paths from
+      the start.
+
+      It sits *before* the date validation deliberately. Validating first would
+      answer an unassigned teacher with 400 for a future date and 404 otherwise,
+      which is exactly the oracle CLAUDE.md §1.7 closes — the response must not
+      reveal that the group exists.
+    */
+    if (!this.tenants.isAdmin(actor, group.kindergartenId)) {
+      const assigned = await this.authz.loadActiveTeachingGroupIds(actor);
+      if (!assigned.includes(groupId)) throw new NotFoundException();
+    }
+
     const date = toDate(dto.date);
     if (date.getTime() > Date.now()) {
       throw new BadRequestException("Хоолны огноо ирээдүйд байж болохгүй");
@@ -187,18 +209,27 @@ export class MealsService {
     const from = new Date(Date.UTC(year, monthNum - 1, 1));
     const to = new Date(Date.UTC(year, monthNum, 0));
 
-    const counts = await this.repo.monthlyMealCounts(childId, from, to);
+    const { counts, daysFed } = await this.repo.monthlyMealCounts(childId, from, to);
 
     return {
       month,
       counts,
       /*
-       * The figure §3 multiplies. `PARTIAL` and `SPECIAL` count as days the
-       * child was fed — the kitchen cooked and served — while `NOT_TAKEN` does
-       * not. A tariff that prices them differently reads `counts` instead; this
-       * is the plain "how many days did we feed this child".
+       * The figure §3 multiplies — distinct dates on which the child ate
+       * something, never a count of sittings.
+       *
+       * ★ This used to sum `counts`, which was wrong by however many meals a
+       * kindergarten serves: `MealRecord` is one row per sitting, so a child
+       * fed breakfast, lunch and a snack scored three "days" for one day.
+       * `нэмэлт.md` says "хооллосон **өдөр**" and §6 reports it beside "ирсэн
+       * **өдөр**"; both are days. The repository now counts distinct dates.
+       *
+       * `PARTIAL` and `SPECIAL` still count as fed and `NOT_TAKEN` still does
+       * not — the status meanings are unchanged, only the unit. A tariff that
+       * prices them differently reads `counts`, which is why that breakdown
+       * stays.
        */
-      daysFed: counts.filter((c) => c.status !== "NOT_TAKEN").reduce((sum, c) => sum + c.count, 0),
+      daysFed,
     };
   }
 }

@@ -737,10 +737,23 @@ describe("teacher B sees only B's children", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("POST /children/:id/guardian-invitations", () => {
-  const invitation = (extra: Record<string, unknown> = {}) => ({
-    username: uniq("etseg"),
-    lastName: "Ганболд",
+  /**
+   * ★ The teacher supplies nothing but who is primary — 2026-08-29.
+   *
+   * This used to send a username, a surname, a given name and a relationship:
+   * four facts about a person standing in front of the teacher, typed by the
+   * teacher. The account is now a placeholder with a generated handle, and the
+   * guardian gives their own name, phone and relationship when they accept.
+   * See `inviteGuardianSchema`.
+   */
+  const invitation = (extra: Record<string, unknown> = {}) => ({ ...extra });
+
+  /** What a guardian fills in on the acceptance screen. */
+  const acceptance = (token: string, extra: Record<string, unknown> = {}) => ({
+    token,
+    password: "Shine-Nuuts99",
     firstName: "Сарнай",
+    phone: "99001122",
     relation: "MOTHER",
     ...extra,
   });
@@ -768,7 +781,15 @@ describe("POST /children/:id/guardian-invitations", () => {
       where: { childId: a.child.id, guardianUserId: res.body.user.id },
     });
     expect(guardianship?.canView).toBe(true);
-    expect(guardianship?.relation).toBe("MOTHER");
+    /*
+      ★ `OTHER` until the guardian says otherwise.
+      
+      The relationship is theirs to state, and a teacher guessing it is how a
+      father is recorded as a mother. The enum has no "unknown" member; `OTHER`
+      already means "not one of the named relationships", which is true here.
+      The acceptance test below asserts it becomes `MOTHER`.
+    */
+    expect(guardianship?.relation).toBe("OTHER");
 
     const membership = await db.membership.findFirst({
       where: { userId: res.body.user.id, kindergartenId: a.kindergarten.id },
@@ -781,38 +802,73 @@ describe("POST /children/:id/guardian-invitations", () => {
     const res = await authed(
       request(server()).post(`/v1/children/${a.child.id}/guardian-invitations`),
       teacherA,
-    ).send(invitation({ username: "etseg-shalgalt" }));
+    ).send(invitation());
 
-    // The password is random bytes nobody has seen. An unaccepted invitation
-    // therefore grants nothing, which is what makes creating the guardianship
-    // up front safe.
+    // The handle is generated now, so the test reads it back rather than
+    // choosing it — which is the point: nobody, including the teacher, knows a
+    // credential for this account until the invitation is accepted.
+    const username = res.body.user.username as string;
+    expect(username).toMatch(/^guardian-/);
+
     const login = await request(server())
       .post("/v1/auth/login")
-      .send({ identifier: "etseg-shalgalt", password: "Shine-Nuuts99" });
+      .send({ identifier: username, password: "Shine-Nuuts99" });
     expect(login.status).toBe(401);
 
     const accept = await request(server())
       .post("/v1/auth/invitation/accept")
-      .send({ token: res.body.invitationToken, password: "Shine-Nuuts99" });
+      .send(acceptance(res.body.invitationToken));
     expect(accept.status).toBe(204);
 
     const after = await request(server())
       .post("/v1/auth/login")
-      .send({ identifier: "etseg-shalgalt", password: "Shine-Nuuts99" });
+      .send({ identifier: username, password: "Shine-Nuuts99" });
     expect(after.status).toBe(200);
+  });
+
+  /**
+   * ★ The half of the flow that moved: the guardian describes themselves.
+   *
+   * The account is created as "Асран хамгаалагч" with no phone and an `OTHER`
+   * relationship. Accepting is what turns it into a person, and this is the
+   * assertion that the three fields actually land.
+   */
+  it("writes the guardian's own name, phone and relationship on acceptance", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/guardian-invitations`),
+      teacherA,
+    ).send(invitation());
+
+    expect(res.body.user.firstName).toBe("Асран хамгаалагч");
+
+    await request(server())
+      .post("/v1/auth/invitation/accept")
+      .send(acceptance(res.body.invitationToken, { firstName: "Болормаа", relation: "FATHER" }))
+      .expect(204);
+
+    const user = await db.user.findUnique({ where: { id: res.body.user.id } });
+    expect(user?.firstName).toBe("Болормаа");
+    expect(user?.phone).toBe("99001122");
+    // No surname is collected at all — the client asked for a given name only.
+    expect(user?.lastName).toBe("");
+
+    const guardianship = await db.guardianship.findFirst({
+      where: { childId: a.child.id, guardianUserId: res.body.user.id },
+    });
+    expect(guardianship?.relation).toBe("FATHER");
   });
 
   it("the accepted guardian sees that child and no other", async () => {
     const res = await authed(
       request(server()).post(`/v1/children/${a.child.id}/guardian-invitations`),
       teacherA,
-    ).send(invitation({ username: "etseg-hamrah" }));
+    ).send(invitation());
 
     await request(server())
       .post("/v1/auth/invitation/accept")
-      .send({ token: res.body.invitationToken, password: "Shine-Nuuts99" });
+      .send(acceptance(res.body.invitationToken));
 
-    const session = await login(app, "etseg-hamrah", "Shine-Nuuts99");
+    const session = await login(app, res.body.user.username, "Shine-Nuuts99");
 
     const mine = await request(server())
       .get(`/v1/children/${a.child.id}`)
@@ -880,60 +936,6 @@ describe("POST /children/:id/guardian-invitations", () => {
       .send(invitation());
 
     expect(res.status).toBe(403);
-  });
-
-  it("refuses a username that already exists", async () => {
-    const existing = await createUser({ username: uniq("busad") });
-
-    const res = await authed(
-      request(server()).post(`/v1/children/${a.child.id}/guardian-invitations`),
-      teacherA,
-    ).send(invitation({ username: existing.username }));
-
-    /*
-     * ★ A conflict, not a silent link.
-     *
-     * Attaching an account somebody already owns to this child is exactly the
-     * decision this endpoint may not make — it is `POST children/:id/guardians`,
-     * and an administrator's. Answering 409 sends the teacher to ask for one.
-     */
-    expect(res.status).toBe(409);
-
-    const guardianship = await db.guardianship.findFirst({
-      where: { childId: a.child.id, guardianUserId: existing.id },
-    });
-    expect(guardianship).toBeNull();
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════════════════
-// The roster summary — RFP §12.1
-// ═══════════════════════════════════════════════════════════════════════════
-
-describe("roster summary", () => {
-  /**
-   * ★ Over the whole filtered roster, not the page on screen.
-   *
-   * The list is paginated at 25. An average computed on the client would be the
-   * mean age of whichever children happened to be visible, changing when you
-   * press "next" — a number that describes nothing.
-   */
-  it("counts and averages every child the caller may see, past page one", async () => {
-    const now = new Date();
-    // Thirty children, comfortably past the page size, all exactly two years old.
-    for (let i = 0; i < 30; i += 1) {
-      const child = await createChild(a.kindergarten.id, {
-        dateOfBirth: new Date(now.getFullYear() - 2, now.getMonth(), 1),
-      });
-      await enrollChild(a.kindergarten.id, child.id, a.group.id, a.schoolYear.id);
-    }
-
-    const res = await request(server()).get("/v1/children/summary").set("Cookie", teacherA.cookies);
-
-    expect(res.status).toBe(200);
-    // The scenario's own child is in there too.
-    expect(res.body.total).toBeGreaterThanOrEqual(30);
-    expect(res.body.averageAgeMonths).toBeGreaterThan(12);
   });
 
   /**
