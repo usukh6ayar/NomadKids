@@ -197,36 +197,46 @@ export default function NotificationsPage() {
         page's main event rather than as a way past the list — the same
         reasoning that put `HeaderSearch` (`app-shell.tsx`) on a 280px cap.
       */}
-      <div className="relative lg:max-w-[420px]">
-        <Search
-          size={18}
-          aria-hidden="true"
-          className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
-        />
-        <Input
-          type="search"
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          placeholder={tab === "news" ? "Мэдээнээс хайх" : "Судалгаанаас хайх"}
-          aria-label={tab === "news" ? "Мэдээнээс хайх" : "Судалгаанаас хайх"}
-          className="pl-11"
-        />
-      </div>
-
       {/*
-        ★ Full width on a phone, sized to its label from `sm` — the drawing
-        makes this the screen's one primary action and gives it the whole row.
-        It was a small button in the page header; a header action competing
-        with a title for a 375px line is the thing the drawing fixes.
+        ★ The search field and the compose button share a row.
+
+        They were two stacked blocks with a `gap-6` between them, and with the
+        filter chips below that the screen spent three rows and ~200px of
+        chrome before the first post. None of the three is the page's subject;
+        the feed is.
+
+        Both keep the sizing their own notes argue for — the field capped so it
+        does not read as the page's main event, the button full-width on a
+        phone where it is the one primary action on its own line. From `sm` they
+        sit side by side because there is room for both and no reason for the
+        button to have a row of its own.
       */}
-      {isStaff && tab === "news" ? (
-        <Button asChild className="w-full sm:w-auto sm:self-start">
-          <Link href="/notifications/new">
-            <PenLine size={18} aria-hidden="true" />
-            Пост оруулах
-          </Link>
-        </Button>
-      ) : null}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative w-full sm:max-w-[420px]">
+          <Search
+            size={18}
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
+          />
+          <Input
+            type="search"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder={tab === "news" ? "Мэдээнээс хайх" : "Судалгаанаас хайх"}
+            aria-label={tab === "news" ? "Мэдээнээс хайх" : "Судалгаанаас хайх"}
+            className="pl-11"
+          />
+        </div>
+
+        {isStaff && tab === "news" ? (
+          <Button asChild className="w-full sm:w-auto">
+            <Link href="/notifications/new">
+              <PenLine size={18} aria-hidden="true" />
+              Пост оруулах
+            </Link>
+          </Button>
+        ) : null}
+      </div>
 
       {/*
         ★ The filter row, and the taxonomy question the drawing raises.
@@ -344,14 +354,17 @@ export default function NotificationsPage() {
              * it already says, and the rail's 20px gutter costs a twentieth of
              * a 375px screen to draw it.
              */
-            <section aria-labelledby="news-feed-heading" className="flex flex-col gap-3">
+            <section
+              aria-labelledby="news-feed-heading"
+              className="flex w-full max-w-[640px] flex-col gap-3 lg:max-w-[760px] xl:max-w-[880px]"
+            >
               <h2 id="news-feed-heading" className="text-title font-semibold text-ink">
                 Сүүлийн мэдээ
               </h2>
 
               {/*
-                ★ One centred column, capped — not the two-across grid this
-                carried until 2026-08-29.
+                ★ One column, capped — not the two-across grid this carried
+                until 2026-08-29.
 
                 The grid was answering "use the horizontal space" and produced
                 the wrong thing: a post is гарчиг, дэлгэрэнгүй, зураг read in
@@ -360,13 +373,35 @@ export default function NotificationsPage() {
                 was that it "looks odd on a big screen" and should read the same
                 as it does on a phone.
 
-                So the feed is a column that stops growing. 640px is about 75
-                characters of Mongolian — the width prose is comfortable at, and
-                what every social feed converges on for the same reason. A
-                desktop reader gets the phone's card at the phone's proportions,
-                centred, with the page's whitespace either side of it.
+                So the feed is a column that stops growing — but it grows with
+                the screen first. A flat 640px cap left 500px of nothing beside
+                it at 1440, which is the same fault in the other direction: a
+                cap is a limit on a *line*, not a layout for a page. The steps
+                are 640 · 760 · 880, so a card is never narrower than a phone's
+                and never wider than about a hundred characters of Mongolian.
+
+                The photographs do not grow with it — see the media grid below,
+                which keeps its own cap. That is what makes widening safe: the
+                objection to the two-across grid was never the width itself, it
+                was a 465px card whose banner dwarfed the words above it.
+
+                ★★ Left-aligned, not centred, and the cap moved up to the
+                `<section>`.
+
+                `mx-auto` was on this div while the heading above it, the search
+                field, the compose button and the filter chips all sat at the
+                page's left edge — so the cards floated off on their own with a
+                300px gutter to their left and nothing in it. The report was
+                that the feed "comes out small in the middle", and that is
+                exactly what a centred column does beside four left-aligned
+                controls: it stops looking capped and starts looking stranded.
+
+                Capping the section instead puts the heading and its cards on
+                one left edge, shared with everything above them. The whitespace
+                still exists; it is now all on one side, where it reads as a
+                margin rather than as a hole.
               */}
-              <div className="mx-auto flex w-full max-w-[640px] flex-col gap-3">
+              <div className="flex flex-col gap-3">
                 {items.map((notification) => (
                   <NotificationRow key={notification.id} notification={notification} />
                 ))}
@@ -377,14 +412,28 @@ export default function NotificationsPage() {
           {/* Height, so it can intersect at all — a zero-height div never does. */}
           <div ref={sentinel} aria-hidden="true" className="h-px" />
 
+          {/*
+            ★ Centred within the feed's column, not within the page.
+
+            `text-center` on a full-width `<p>` put "Бүх мэдэгдлийг үзлээ." in
+            the middle of the content area while the column it belongs to ended
+            640px earlier — so the line that closes the feed sat under the empty
+            half of the screen, detached from the last card it is about. The
+            same cap the section carries puts it back under its own column.
+          */}
           {isFetchingNextPage ? (
-            <p role="status" className="py-2 text-center text-body text-muted">
+            <p
+              role="status"
+              className="max-w-[640px] py-2 text-center text-body text-muted lg:max-w-[760px] xl:max-w-[880px]"
+            >
               Ачаалж байна…
             </p>
           ) : null}
 
           {!hasNextPage && items.length > 0 ? (
-            <p className="py-2 text-center text-body text-muted">Бүх мэдэгдлийг үзлээ.</p>
+            <p className="max-w-[640px] py-2 text-center text-body text-muted lg:max-w-[760px] xl:max-w-[880px]">
+              Бүх мэдэгдлийг үзлээ.
+            </p>
           ) : null}
         </>
       ) : null}
@@ -657,11 +706,27 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
           </p>
           <p className="text-caption text-muted">{formatRelative(when)}</p>
         </div>
-        {isUnread ? (
-          <span className="shrink-0 rounded-pill bg-primary-soft px-2 py-0.5 text-caption font-medium text-primary">
-            Шинэ
-          </span>
-        ) : null}
+        {/*
+          ★ Both classifications sit here, and both are `Badge`.
+
+          "Чухал" was a bare red word in the footer while "Шинэ" was a pill in
+          the header — two status signals in two corners of the same card, in
+          two different treatments, so neither read as a status. A reader
+          scanning the feed had to check the top of a card for one and the
+          bottom for the other.
+
+          `Badge` rather than a hand-rolled pill: `badge.tsx` documents its
+          tones as meanings and pins their contrast, and this card had been
+          spelling `bg-primary-soft px-2 py-0.5 …` inline — the fourth copy of
+          something the component exists to own.
+
+          Important leads, because it is the one that changes what a family
+          does about the notice; new only says they have not seen it yet.
+        */}
+        <span className="flex shrink-0 items-center gap-1.5">
+          {notification.isImportant ? <Badge tone="danger">Чухал</Badge> : null}
+          {isUnread ? <Badge tone="primary">Шинэ</Badge> : null}
+        </span>
       </div>
 
       {/*
@@ -705,10 +770,19 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
         ) : null}
       </div>
 
+      {/*
+        ★ The photographs stop growing before the card does.
+
+        The card widens with the screen (640 · 760 · 880) and a 16:9 banner at
+        880 is 495px tall — a picture that arrives before the headline and
+        pushes the next post off the screen. 640 is the width the single-photo
+        case was designed at, so the grid keeps it and the extra width goes to
+        the text, which is what a reader came for.
+      */}
       {notification.media.length > 0 ? (
         <div
           className={cn(
-            "grid gap-1.5 overflow-hidden rounded-control",
+            "grid max-w-[640px] gap-1.5 overflow-hidden rounded-control",
             notification.media.length === 1 ? "grid-cols-1" : "grid-cols-2",
           )}
         >
@@ -723,19 +797,19 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
         </div>
       ) : null}
 
-      {/* The engagement row — a real reaction on the left, the one real
-          classification on the right. See the docblock for the two counts and
-          the category taxonomy the drawing shows and the model does not have. */}
-      <div className="flex items-center justify-between gap-2 border-t border-border-soft pt-2.5">
+      {/*
+        The engagement row. "Чухал" used to sit at its right-hand end and has
+        moved up beside "Шинэ" — a classification is something you read *about*
+        the post, not something you do *with* it, and this row is for the
+        latter.
+      */}
+      <div className="flex items-center border-t border-border-soft pt-2.5">
         <LikeButton
           notificationId={notification.id}
           likeCount={notification.likeCount}
           likedByMe={notification.likedByMe}
           className="-my-2"
         />
-        {notification.isImportant ? (
-          <span className="text-caption font-medium text-danger">Чухал</span>
-        ) : null}
       </div>
     </article>
   );

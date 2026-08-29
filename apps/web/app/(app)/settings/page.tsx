@@ -34,22 +34,41 @@ const MIN_PASSWORD_LENGTH = 8;
 export default function SettingsPage() {
   return (
     /*
-      ★ A capped column, like the feed — 2026-08-29.
+      ★ Capped, then split — one column becomes two where there is room.
 
-      These are three forms, and a form at 1336px is a label on the far left
-      with its field running to the far right: the eye has to travel the whole
-      width to connect the two. `/notifications` was capped at 640px in the same
-      pass and for the same reason; a settings page has even less excuse, since
-      none of its fields is longer than a phone number.
+      A form at 1336px is a label on the far left with its field running to the
+      far right, and the eye has to travel the whole width to connect them. So
+      the forms are capped, and were capped at a flat 760px until 2026-08-29.
 
-      760px rather than 640: the profile's name and email sit two-across from
-      `sm`, and 640 squeezed that pair to about 300px each.
+      That fixed the field width and created a different fault: on a 1440px
+      screen the content column is about 1140px, so a 760px page left 380px of
+      nothing down its right-hand side. The report was that it does not fill the
+      screen — and it does not, because a cap is a limit on a *line*, not a
+      layout for a page.
+
+      These are two independent forms plus a sign-out row, and nothing about
+      changing a password depends on the profile above it. From `xl` they sit
+      side by side: each column keeps a form-shaped width, and the page uses the
+      space instead of leaving a margin the width of the sidebar.
+
+      Below `xl` they stack and the cap comes back — at 1024px two columns would
+      put the profile's name-and-email pair at about 250px each, which is the
+      squeeze the 760px cap was chosen to avoid in the first place.
     */
-    <div className="flex w-full max-w-[760px] flex-col gap-6 lg:gap-8">
+    <div className="flex w-full flex-col gap-6 lg:gap-8">
       <PageHeader title="Профайл" lede="Хувийн мэдээлэл, нэвтрэх нууц үг." />
-      <ProfileForm />
-      <PasswordForm />
-      <SignOutCard />
+
+      <div className="grid w-full max-w-[760px] items-start gap-6 lg:gap-8 xl:max-w-none xl:grid-cols-2">
+        <ProfileForm />
+
+        {/* The password form and the sign-out row are one column: both are
+            about the session rather than about the person, and neither is tall
+            enough to hold a column of its own. */}
+        <div className="flex flex-col gap-6 lg:gap-8">
+          <PasswordForm />
+          <SignOutCard />
+        </div>
+      </div>
     </div>
   );
 }
