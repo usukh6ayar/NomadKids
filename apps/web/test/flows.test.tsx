@@ -835,9 +835,14 @@ describe("the child profile tabs", () => {
   }
 
   /**
-   * ★ Only "Ерөнхий" is a primary tab since the child hub was deleted
-   * (2026-08-28) and Ажиглалт moved to its own route — Growth, health,
-   * incidents and artwork are what remain behind "Бусад".
+   * ★ All five sections are tabs since 2026-08-29, and the "Бусад" pane that
+   * used to hold four of them is gone because it never worked.
+   *
+   * Radix picks which `Tabs.Content` renders from the value on `Tabs.Root`, and
+   * `ChildTabs` set that value to `"more"` whenever a secondary section was
+   * active — so `?tab=growth` re-rendered the tile grid instead of Өсөлт, and
+   * pressing the Өсөлт tile handed back the Өсөлт tile. Four sections were
+   * unreachable for as long as the pane existed. See `child-tabs.tsx`.
    */
   it("opens on Ерөнхий when the URL carries no tab", async () => {
     setParams({ childId: CHILD_ID });
@@ -848,34 +853,29 @@ describe("the child profile tabs", () => {
 
     const general = await screen.findByRole("tab", { name: "Ерөнхий" });
     expect(general).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tab", { name: "Бусад" })).toHaveAttribute("aria-selected", "false");
+    // The four that were behind "Бусад" are in the strip now.
+    for (const label of ["Өсөлт", "Эрүүл мэнд", "Аюулгүй байдал", "Бүтээл"]) {
+      expect(screen.getByRole("tab", { name: label })).toHaveAttribute("aria-selected", "false");
+    }
+    expect(screen.queryByRole("tab", { name: "Бусад" })).toBeNull();
   });
 
   /**
-   * A link naming a secondary section lands on "Бусад", which is the pane
-   * that section lives in — `ChildTabs` mounts the overflow pane's own
-   * `Tabs.Content`, not the individual panel's, whenever the active value is
-   * one of its secondary tabs. This is `ChildTabs`' existing behaviour,
-   * unchanged from the hub; a link to `?tab=growth` and one to `?tab=health`
-   * still both land somewhere real rather than on the wrong tab or a blank
-   * strip.
+   * ★ The regression test for the bug above: a link naming a section opens
+   * *that section*, not a menu pointing back at it.
    */
-  it("opens the overflow pane for a secondary tab named in the URL", async () => {
+  it("opens the section a link names", async () => {
     setParams({ childId: CHILD_ID });
     setSearchParams("tab=growth");
     stubChild(enrolled());
 
     renderWithProviders(<ChildGeneralPage />);
 
-    expect(await screen.findByRole("tab", { name: "Бусад" })).toHaveAttribute(
+    expect(await screen.findByRole("tab", { name: "Өсөлт" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
     expect(screen.getByRole("tab", { name: "Ерөнхий" })).toHaveAttribute("aria-selected", "false");
-    expect(screen.getByRole("link", { name: /Өсөлт/ })).toHaveAttribute(
-      "href",
-      expect.stringContaining("tab=growth"),
-    );
   });
 
   /** A hand-edited or stale link opens the record rather than an empty page. */
@@ -892,7 +892,7 @@ describe("the child profile tabs", () => {
     );
   });
 
-  it("writes 'more' to the URL when the overflow pane is opened", async () => {
+  it("writes the opened tab to the URL", async () => {
     const user = userEvent.setup();
     setParams({ childId: CHILD_ID });
     setSearchParams("");
@@ -900,10 +900,10 @@ describe("the child profile tabs", () => {
 
     renderWithProviders(<ChildGeneralPage />);
 
-    await user.click(await screen.findByRole("tab", { name: "Бусад" }));
+    await user.click(await screen.findByRole("tab", { name: "Өсөлт" }));
 
     expect(ROUTER.replace).toHaveBeenCalledWith(
-      expect.stringContaining("tab=more"),
+      expect.stringContaining("tab=growth"),
       // `push` would make every tab press a history entry to unwind, and
       // re-anchoring to the top on each one is disorienting on a phone.
       expect.objectContaining({ scroll: false }),
@@ -991,18 +991,25 @@ describe("the child profile tabs", () => {
     expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
   });
 
-  it("does not fetch a secondary tab's data merely because the URL names it", async () => {
+  /**
+   * ★ This asserted the opposite until 2026-08-29, and passing was the symptom.
+   *
+   * It read "does not fetch a secondary tab's data merely because the URL names
+   * it" and was green — because landing on `?tab=growth` rendered the overflow
+   * tile grid rather than `ChildGrowth`, so the growth query never fired. The
+   * test was describing the bug as though it were a policy. A link to a
+   * section must open the section, which means fetching what the section
+   * shows.
+   */
+  it("fetches a tab's data when the URL names it", async () => {
     setParams({ childId: CHILD_ID });
     setSearchParams("tab=growth");
     const { calls } = stubChild(enrolled());
 
     renderWithProviders(<ChildGeneralPage />);
-    await screen.findByRole("tab", { name: "Бусад" });
+    await screen.findByRole("tab", { name: "Өсөлт" });
 
-    // Landing here opens the overflow pane, not `ChildGrowth` itself (see the
-    // test above) — so its query never fires from a URL alone, only once a
-    // tile is actually opened as a primary tab.
-    expect(calls.some((c) => c.url.includes("/growth"))).toBe(false);
+    await waitFor(() => expect(calls.some((c) => c.url.includes("/growth"))).toBe(true));
   });
 
   /**
@@ -1043,13 +1050,11 @@ describe("the child profile tabs", () => {
      * quietly take the medication form away from the people RFP Module 2 gives
      * it to.
      *
-     * ★ It moved behind "Бусад" on 2026-08-25 — the strip had grown to ten
-     * tabs, which on a 375px screen means the last five are off the right edge
-     * with nothing to say they exist. `?tab=health` still opens it directly,
-     * which is what keeps the section addressable; what this now asserts is
-     * that the pane holding it is there.
+     * ★ It spent 2026-08-25 to 08-29 behind a "Бусад" pane that could not
+     * actually open it (see the tab tests above), so this assertion checked the
+     * pane rather than the section. It is a tab of its own again.
      */
-    expect(screen.getByRole("tab", { name: "Бусад" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Эрүүл мэнд" })).toBeInTheDocument();
   });
 });
 
