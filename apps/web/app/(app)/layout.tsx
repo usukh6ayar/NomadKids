@@ -360,6 +360,21 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         entry("Чөлөөний хүсэлт хянах", "/attendance-requests/review"),
       ],
     },
+    /*
+     * ★ "Мэдээ", not "Ангийн самбар / Мэдээ".
+     *
+     * Two faults in one label. A slash names one destination twice, which is
+     * what a menu does when nobody could decide — and the half it led with
+     * belonged to a *different screen*: `/dashboard` is titled "Ангийн самбар"
+     * for a teacher, renamed to that on 2026-08-28 at the client's request. So
+     * the sidebar offered "Ангийн самбар" and landed you on a page headed
+     * "Мэдээ", while the actual class board sat two rows above under "Самбар".
+     *
+     * Both bottom bars already called this destination "Мэдээ", so the two
+     * sidebars disagreed with their own bottom bar *and* with the page's own
+     * `PageHeader`. One destination, one name — the rule that settled
+     * "Удирдлага" below.
+     */
     {
       title: "Үйл ажиллагаа",
       entries: [
@@ -368,7 +383,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
           href: scoped("meals"),
           icon: <UtensilsCrossed {...sectionIconProps} />,
         },
-        entry("Ангийн самбар / Мэдээ", "/notifications"),
+        entry("Мэдээ", "/notifications"),
         entry("Судалгаа", "/surveys"),
         // RFP §9 — "Багшид зориулсан PDF баримт бичгийн сан". Staff only, so it
         // lives here and never in `parentSections`.
@@ -523,14 +538,23 @@ function parentSections(myChildren: ChildSummary[] | undefined): NavSection[] {
       title: "Харилцаа холбоо",
       entries: [
         {
-          label: "Ангийн самбар / Мэдээ",
+          label: "Мэдээ",
           href: "/notifications",
           icon: routeIcon("/notifications"),
         },
-        // No `href`: chat is RFP Phase IV. It renders as a disabled row, the
-        // same treatment "Санхүү" below gets, so the menu describes the product
-        // the client was shown without offering a link into nothing.
-        { label: "Чат" },
+        /*
+         * ★ Chat is no longer a dead row — it is built, and it is reachable.
+         *
+         * This said "chat is RFP Phase IV" and rendered as inert text. Both
+         * halves stopped being true on 2026-08-29: CLAUDE.md §7 moved chat into
+         * scope at the client's explicit request, and `AppShell` now renders
+         * `ChatWidget` on every screen for every role — so a parent already has
+         * it, from anywhere, with an unread badge.
+         *
+         * A greyed-out row saying "удахгүй" beside a working floating button is
+         * worse than either alone: it tells a family the feature is missing
+         * while the feature waves at them from the corner of the same page.
+         */
       ],
     },
     {

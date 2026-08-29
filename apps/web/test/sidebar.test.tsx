@@ -95,9 +95,12 @@ describe("navigation icons", () => {
 
     const entries = [
       "Хүүхдүүд",
+      "Ирц",
+      "Үнэлгээ",
       "Ажиглалт хянах",
       "Чөлөөний хүсэлт хянах",
-      "Ангийн самбар / Мэдээ",
+      "Хоол ба цэс",
+      "Мэдээ",
       "Судалгаа",
       "Баримт бичгийн сан",
       "Багшийн мэдээлэл",
@@ -207,21 +210,33 @@ describe("role-based navigation", () => {
   });
 
   /*
-   * ★ Chat and finance are named but not offered.
+   * ★ Finance is named but not offered.
    *
-   * Both are in the parent menu as inert rows so the product describes what the
-   * client was shown — an `<a href="/chat">` that 404s teaches someone the
-   * product is broken. The assertion is that they are *not links*.
+   * It is in the parent menu as an inert row so the product describes what the
+   * client was shown — an `<a href="/finance">` that 404s teaches someone the
+   * product is broken. The assertion is that it is *not a link*.
+   *
+   * ★★ Chat used to be asserted here beside it, and is not any more.
+   *
+   * That pairing held while both were unbuilt. On 2026-08-29 CLAUDE.md §7 moved
+   * chat into scope at the client's request and `AppShell` began rendering
+   * `ChatWidget` on every screen for every role — so a parent has chat, from
+   * anywhere, with an unread badge. A greyed row reading "удахгүй" beside a
+   * working floating button is worse than either alone: it tells a family the
+   * feature is missing while the feature waves from the corner of the same
+   * page. The row is gone, and this asserts it stays gone rather than being
+   * restored by someone reading the old comment.
    */
   it("does not make unbuilt features clickable", async () => {
     renderShell(["PARENT"], "/home");
     const nav = await sidebar();
 
-    expect(within(nav).getByText("Чат")).toBeInTheDocument();
-    expect(within(nav).queryByRole("link", { name: /Чат/ })).not.toBeInTheDocument();
-
     expect(within(nav).getByText("Санхүү")).toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: /Санхүү/ })).not.toBeInTheDocument();
+
+    // Chat is built and reachable from the floating widget, so it is not a menu
+    // row at all — dead or alive.
+    expect(within(nav).queryByText("Чат")).not.toBeInTheDocument();
   });
 });
 
