@@ -1,5 +1,5 @@
-import Image from "next/image";
 import Link from "next/link";
+import { Art, type ArtName } from "@/components/ui/art";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
@@ -94,7 +94,17 @@ export function QuickTile({
  *
  * `alt=""`: the label beside it says the same word, and `QuickTile` already
  * carries the accessible name on the link itself.
+ *
+ * ★★ It takes a name from `Art`, not a path.
+ *
+ * The note above and `art.tsx`'s are the same argument reached from two
+ * directions — this one about the `width`/`height`/`className` triple, that one
+ * about the `/icons/icon-*.png` string. Both are per-call-site decisions that
+ * cannot be checked, and a path is the one that fails silently: a renamed file
+ * renders a broken image and nothing tells CI. Delegating means the tile owns
+ * its size and the registry owns what the drawings are called, rather than each
+ * call site owning half of each.
  */
-export function TileIcon({ src }: { src: string }) {
-  return <Image src={src} alt="" width={44} height={44} className="size-11" />;
+export function TileIcon({ name }: { name: ArtName }) {
+  return <Art name={name} size={44} className="size-11" />;
 }
