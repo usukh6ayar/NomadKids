@@ -1027,3 +1027,176 @@ responsive   child detail, 8 widths — clean
 ```
 
 Full API suite after the change: **679 passed**, no regression.
+
+---
+
+## 11. The administration screens — columns instead of two edges
+
+Added 2026-08-29. **Frontend, plus one label map in `@kinder/contracts`.** No
+token changed: `globals.css` and `tone.ts` are untouched, and this section is
+about how seven screens _assembled_ what was already there.
+
+### 11.1 What the capture showed
+
+Every list under `/admin` was written the same way:
+
+```
+[avatar] [name  flex-1] [badges] [actions]
+```
+
+That is correct on a phone and empties out on a desktop. Measured at 1440 with
+the shell's 1200px content column, `/admin/users` put a person's name against
+the left edge and their two buttons against the right with **~900px of nothing
+between them**, and — because every row sized itself to its own content —
+nothing lined up between rows. A reader scanning thirteen people had no column
+to scan down and had to cross the full width to pair a name with its controls.
+
+Same shape on `/admin/groups`, `/admin/school-years` and
+`/admin/assessment-config`. Nothing in any row was _wrong_; there was simply no
+structure between the two edges.
+
+### 11.2 The shared row
+
+`components/ui/data-list.tsx` — `DataList` and `DataRow`. A header strip of
+column names over a column of row cards, with the widths declared once and read
+by both through context, so a header and the cells under it cannot drift apart.
+
+Two breakpoint rules carry the responsive behaviour:
+
+```
+md and up    header strip visible; the name cell is `flex: 1 1 0%`, the same
+             rule the header uses, so both absorb leftover width identically
+below md     no header; each cell renders `label: value` inline and the name
+             takes a 200px basis, which pushes the first cell to the next line
+```
+
+The 200px basis is not cosmetic. Without it the badges shared the name's line on
+a 390px screen and every person in the list rendered as `Алтанзул Эц…`.
+
+### 11.3 What filled the width
+
+Not padding — data the API already returned and no screen displayed.
+
+| Screen                | Columns added                        | Source                                                                                                          |
+| --------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `/admin/users`        | Эрх · **Сүүлд нэвтэрсэн**            | `lastLoginAt`, in `adminUserSchema` from the beginning, never rendered anywhere                                 |
+| `/admin/groups`       | Насны бүлэг · Хичээлийн жил · Хүүхэд | was one dot-joined caption under the name                                                                       |
+| `/admin/school-years` | Эхлэх · Дуусах                       | was `dateValue()` output — `2026-09-01`, the format `<input type="date">` needs, not the product's `2026.09.01` |
+| `/admin/terms`        | Эхлэх · Дуусах · Хичээлийн жил       | same caption problem, plus a derived Идэвхтэй badge                                                             |
+
+`lastLoginAt` is the column an administrator actually opens a staff list for: it
+answers who has started using the product and who was invited and never came.
+
+### 11.4 Defects the pass turned up
+
+Each was found by looking at a rendered page, not by reading source.
+
+- **The masthead greeted a director as a teacher.** `variant` is `teacher` for
+  both staff roles — the route tree is one tree — so every page of the product
+  said "Багшийн хэсэг" to the person who administers the kindergarten,
+  including the seven screens only they can open. The subtitle now reads
+  `isAdmin`, which `AppShell` was already being passed for the footer.
+- **The sidebar's admin entry was truncated on every desktop.** 27 characters
+  ("Бүлэг, цэцэрлэгийн мэдээлэл") in a rail that fits about 20, rendering as
+  `Бүлэг, цэцэрлэгийн м…` — an ellipsis where the destination's name should be,
+  on the entry a director uses most. It is "Удирдлага", matching the bottom
+  bar's tab for the same href.
+- **Half of every audit line was English.** `AUDIT_ACTION_LABEL` translated the
+  action and nothing translated `objectType`, so the audit screen and the
+  dashboard feed both read `Үзсэн · Child`, `Засварласан · Membership`.
+  `AUDIT_OBJECT_LABEL` covers all 40 model names `apps/api/src` writes.
+- **Two of the seven screens had no cards.** `/admin/terms` and `/admin/audit`
+  put bare `<div>`s inside `RowList` — the column without the row — so their
+  entries rendered as loose text on the canvas while every neighbouring screen
+  rendered cards. On the audit row the mismatch was visible within one row: the
+  metadata disclosure already used a `Card`, nested inside nothing.
+- **A 28px destructive control.** The membership revoke button was a
+  hand-rolled `<button>`, so it never passed through the component
+  `responsive.test.tsx` guards, and it shipped below the 44px floor — the
+  smallest control in the product, on an action that cannot be undone. It also
+  drove `window.confirm`, which `confirm-dialog.tsx` records having replaced in
+  five other places; this was the sixth, and the one that argued hardest for it,
+  since the native dialog answers a Mongolian sentence with an English "OK".
+- **A form at full content width.** `/admin/kindergarten` ran every control to
+  1140px, giving the phone number an input wide enough for a paragraph. Capped
+  at 760px — the page-level counterpart to `auth-shell`'s 440 and
+  `FormDialog`'s 480.
+- **Three primary buttons on one screen.** `/admin/assessment-config` stacked
+  three filled blue "Нэмэх" down its right edge. A page with three calls to
+  action has none; each is still its section's primary, which a bordered button
+  beside a section heading already says.
+- **A filter sized by whatever was left over.** The audit action `<select>`
+  carried one word and `flex-1`, so it rendered 1,050px wide with its chevron a
+  screen away from its text.
+- **An em dash where a zero belonged.** The storage tile read "—" over "0 файл":
+  `formatFileSize` returns a dash for zero bytes, right where a size is unknown
+  and wrong where it is known to be nothing. The figure now counts files and the
+  size is its caption.
+
+### 11.5 Seven tiles, and why the hub now has six
+
+The `/admin` hub laid its destinations out as a grid of seven. Seven is prime,
+so no column count divides it: three columns orphaned a tile on a third row, two
+columns orphaned one on a fourth. Splitting them into two grouped cards was
+tried and moved the ragged edge sideways — a four-row card beside a three-row
+card ends lower than it. Stretching the odd tile to span the gap puts the hole
+inside a surface instead of beside it.
+
+The number was the symptom. **Үйлдлийн түүх is not something an administrator
+sets up** — it is the audit log, and this page already renders its newest
+entries at the bottom under Сүүлийн үйлдэл. The link moved onto that section's
+heading as "Бүх түүх", where a reader is already looking at three lines of it.
+Six divides by two and by three, so the grid closes cleanly at every breakpoint,
+and the link is easier to find rather than harder.
+
+`RecentActivitySection` takes the href as an optional prop: the platform
+operator renders the same section for a tenant and has no route into that
+tenant's audit log, so passing nothing leaves the heading without an action
+rather than offering a link that 404s.
+
+### 11.6 Measured, before and after
+
+Full-page height in CSS pixels, headless Chrome, same demo data:
+
+```
+                          1440 wide          390 wide
+/admin                    1383 → 1000        1846 → 1577
+/admin/users              1215 → 1241        1988 → 2953
+```
+
+`/admin` now fits a 1440×1000 viewport without scrolling; it did not before.
+
+**`/admin/users` on a phone got 48% taller, and that is a deliberate trade.**
+The extra height buys a column the list did not have (Сүүлд нэвтэрсэн) and full
+names: the first attempt kept the old height by letting cells share the name's
+line, and every name in the list truncated. Recorded here per this document's
+own rule — the port fixes what it can and writes down what it traded.
+
+Desktop rows are 26px taller in total, which is the header strip.
+
+### 11.7 Tests
+
+```
+web    382 passed, 25 files
+tsc    clean, web and api
+eslint clean
+```
+
+Two assertions in `admin-school-years.test.tsx` moved rather than changed. They
+pinned the row's sizing contract against that page's source; both constraints
+now live in `data-list.tsx`, which is what made them worth asserting once
+instead of per screen. Pointed at the page after the move, they would have
+pinned the absence of a class the page is correct not to have.
+
+`dashboard-widgets.test.tsx` was asserting that a birthday links to
+`/children/:id` — a URL `76a9cd4` deleted along with the child hub, so the test
+had been pinning a 404. It had been the suite's one red line since then; the
+widget was already correct.
+
+### 11.8 Not done
+
+The audit screen still cannot say **who** performed an action.
+`auditEntrySchema` carries `actorUserId` (a UUID) and no `actorLabel`, while the
+dashboard's feed of the same log has one. Showing a name here is an API change,
+not a UI change, and is left for its own commit rather than smuggled into a
+visual pass.
