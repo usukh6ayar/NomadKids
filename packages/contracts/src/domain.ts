@@ -540,6 +540,13 @@ export const aboutMeSchema = z.object({
   birthplace: z.string().nullish(),
   bloodType: z.string().nullish(),
   eyeColor: z.string().nullish(),
+  // A guardian's manual pick, overriding birthFacts()'s computed answer —
+  // see ChildProfile's own doc comment. Resolved server-side into
+  // BirthdaySection's zodiac/yearAnimal; these two are the raw stored
+  // override codes, present here only so the picker can show what's
+  // currently selected.
+  yearAnimalCode: z.string().nullish(),
+  zodiacCode: z.string().nullish(),
   // Prisma Decimal serialises as a string.
   heightCm: z.union([z.string(), z.number()]).nullish(),
   weightKg: z.union([z.string(), z.number()]).nullish(),

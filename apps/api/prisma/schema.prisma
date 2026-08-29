@@ -696,6 +696,18 @@ model ChildProfile {
   bloodType  String?
   eyeColor   String?
 
+  /// A guardian's own pick, overriding `birthFacts()`'s computed answer for
+  /// §4.2's "Монгол жилийн амьтан" and "Өрнийн орд" — added the same day, on
+  /// the same instruction, after the client asked specifically for the
+  /// picker back having first agreed the computed version should stand.
+  /// `code`, not the Mongolian name, matching `YEAR_ANIMALS`/`ZODIAC_SIGNS`
+  /// in `@kinder/contracts`'s `birth-facts.ts` — validated against that same
+  /// list on write, so a stored value can never fail the lookup that resolves
+  /// it to a name. Null means "no override" — `birthFacts()` still answers
+  /// until a guardian actually picks something.
+  yearAnimalCode String?
+  zodiacCode     String?
+
   heightCm   Decimal?  @db.Decimal(5, 1)
   weightKg   Decimal?  @db.Decimal(5, 2)
   recordedOn DateTime? @db.Date

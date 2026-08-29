@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { ageInYears, birthFacts } from "@kinder/contracts";
+import { ageInYears, birthFacts, YEAR_ANIMALS, ZODIAC_SIGNS } from "@kinder/contracts";
 import { AuditRepository } from "../audit/audit.repository";
 import { ChildAccessService } from "../authz/child-access.service";
 import { isGuardianOf } from "../authz/child-access";
@@ -92,6 +92,8 @@ export class PortfolioService {
         birthplace: null,
         bloodType: null,
         eyeColor: null,
+        yearAnimalCode: null,
+        zodiacCode: null,
         heightCm: null,
         weightKg: null,
         recordedOn: null,
@@ -216,15 +218,37 @@ export class PortfolioService {
    * The two derived facts come from `@kinder/contracts`, which is also what the
    * PDF templates read. Computing them here and only here would leave the
    * printed portfolio — the artefact the family keeps — without the section.
+   *
+   * ★ A guardian's stored `yearAnimalCode`/`zodiacCode` override the computed
+   * answer when present — added 2026-08-28, on the client's instruction,
+   * after first agreeing the computed version should stand (see
+   * `ChildProfile`'s own doc comment for the back-and-forth). Looked up
+   * against `YEAR_ANIMALS`/`ZODIAC_SIGNS` rather than trusted as a name
+   * directly: the stored value is a `code` precisely so this lookup — not
+   * the write path — is what a corrupted or hand-edited row would fail
+   * safely against, falling back to the computed fact instead of rendering
+   * `undefined`.
    */
   async listBirthdayNotes(actor: Actor, childId: string) {
     await this.childAccess.assertCanAccess(actor, childId);
 
-    const { child, notes } = await this.repo.loadBirthdaySection(childId);
+    const { child, notes, profile } = await this.repo.loadBirthdaySection(childId);
     if (!child) throw new NotFoundException();
 
+    const computed = birthFacts(child.dateOfBirth);
+    const yearAnimalOverride = YEAR_ANIMALS.find((a) => a.code === profile?.yearAnimalCode);
+    const zodiacOverride = ZODIAC_SIGNS.find((z) => z.code === profile?.zodiacCode);
+
     return {
-      ...birthFacts(child.dateOfBirth),
+      ...computed,
+      // A manual pick resolves the lunar-boundary ambiguity by definition —
+      // `beforeLunarNewYear` is `false` for an override so the "нягтлан
+      // баталгаажуулна уу" caveat does not ask a guardian to re-verify the
+      // choice they just made.
+      yearAnimal: yearAnimalOverride
+        ? { ...yearAnimalOverride, beforeLunarNewYear: false }
+        : computed.yearAnimal,
+      zodiac: zodiacOverride ?? computed.zodiac,
       // Prisma's `@db.Date` is UTC midnight, so slicing the ISO string is the
       // date that was recorded — not a timezone-shifted neighbour of it.
       dateOfBirth: child.dateOfBirth.toISOString().slice(0, 10),

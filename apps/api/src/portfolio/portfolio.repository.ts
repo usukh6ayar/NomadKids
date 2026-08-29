@@ -106,15 +106,23 @@ export class PortfolioRepository {
    * cannot be assembled at all.
    */
   async loadBirthdaySection(childId: string) {
-    const [child, notes] = await Promise.all([
+    const [child, notes, profile] = await Promise.all([
       this.prisma.child.findFirst({
         where: { id: childId, deletedAt: null },
         select: { dateOfBirth: true },
       }),
       this.listBirthdayNotes(childId),
+      // A guardian's manual zodiac/year-animal pick, if any — see
+      // `ChildProfile`'s own doc comment. A separate query rather than a
+      // Prisma `include` on `child`, since `Child` and `ChildProfile` are
+      // not related in that direction here.
+      this.prisma.childProfile.findFirst({
+        where: { childId, deletedAt: null },
+        select: { yearAnimalCode: true, zodiacCode: true },
+      }),
     ]);
 
-    return { child, notes };
+    return { child, notes, profile };
   }
 
   async upsertBirthdayNote(

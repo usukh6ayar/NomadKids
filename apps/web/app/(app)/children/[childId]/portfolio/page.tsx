@@ -33,6 +33,8 @@ import {
   birthdaySectionSchema,
   childDetailSchema,
   SEX_LABEL,
+  YEAR_ANIMALS,
+  ZODIAC_SIGNS,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -373,7 +375,7 @@ const ABOUT_FIELDS = [
     tone: "sky",
   },
   { key: "clanName", label: "Ургийн овог", long: false, Icon: Users, tone: "mint" },
-  { key: "nickname", label: "Өвөрддөг нэр", long: false, Icon: Tag, tone: "peach" },
+  { key: "nickname", label: "Өхөөрддөг нэр", long: false, Icon: Tag, tone: "peach" },
   { key: "birthplace", label: "Төрсөн газар", long: false, Icon: MapPin, tone: "sun" },
   { key: "bloodType", label: "Цусны бүлэг", long: false, Icon: Droplet, tone: "sky" },
   // `eyeColor` is not here — it gets its own swatch picker, `EYE_COLOR_OPTIONS`
@@ -445,6 +447,8 @@ function AboutMeSection({
       birthplace: data.birthplace ?? "",
       bloodType: data.bloodType ?? "",
       eyeColor: data.eyeColor ?? "",
+      yearAnimalCode: data.yearAnimalCode ?? "",
+      zodiacCode: data.zodiacCode ?? "",
       heightCm: data.heightCm === null || data.heightCm === undefined ? "" : String(data.heightCm),
       weightKg: data.weightKg === null || data.weightKg === undefined ? "" : String(data.weightKg),
       // `<input type="date">` wants `YYYY-MM-DD`; the API sends an ISO stamp.
@@ -474,6 +478,10 @@ function AboutMeSection({
           birthplace: form.birthplace?.trim() || null,
           bloodType: form.bloodType?.trim() || null,
           eyeColor: form.eyeColor?.trim() || null,
+          // Empty clears the override and returns the field to the computed
+          // fact — see `PortfolioService.listBirthdayNotes`.
+          yearAnimalCode: form.yearAnimalCode?.trim() || null,
+          zodiacCode: form.zodiacCode?.trim() || null,
           // Empty means "clear it", which the API models as null. Sending ""
           // would fail the numeric coercion.
           heightCm: form.heightCm?.trim() ? Number(form.heightCm) : null,
@@ -488,6 +496,9 @@ function AboutMeSection({
       // may have changed, and `ChildHeroProfile` above this section reads
       // the same query key.
       void queryClient.invalidateQueries({ queryKey: qk.child(childId) });
+      // And the birthday section — a yearAnimalCode/zodiacCode override
+      // changes what `BirthFacts` (rendered from this same query) shows.
+      void queryClient.invalidateQueries({ queryKey: qk.birthdayNotes(childId) });
     },
   });
 
@@ -767,6 +778,32 @@ function AboutMeSection({
                 </div>
               )}
             </Field>
+
+            {/*
+              ★ 2026-08-28: a guardian picks these directly, on the client's
+              instruction — reversing the "stays computed" call made the same
+              day, after seeing the computed version work and asking for the
+              picker back anyway (see `ChildProfile`'s own doc comment). A
+              pick overrides `birthFacts()`'s computed answer server-side
+              (`PortfolioService.listBirthdayNotes`); clearing it here
+              (tapping the selected tile again) returns to the computed one
+              rather than leaving the field visibly empty.
+            */}
+            <CyclePicker
+              label="Арван хоёр жил"
+              options={YEAR_ANIMALS}
+              iconFor={(code) => YEAR_ANIMAL_ICON[code] ?? "⭐"}
+              value={form.yearAnimalCode ?? ""}
+              onChange={(code) => setForm((f) => ({ ...f, yearAnimalCode: code }))}
+            />
+
+            <CyclePicker
+              label="Одны орд"
+              options={ZODIAC_SIGNS}
+              iconFor={(code) => ZODIAC_ICON[code] ?? "✨"}
+              value={form.zodiacCode ?? ""}
+              onChange={(code) => setForm((f) => ({ ...f, zodiacCode: code }))}
+            />
 
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Өндөр (см)" error={errors.heightCm}>
@@ -1289,6 +1326,83 @@ const ZODIAC_ICON: Record<string, string> = {
   scorpio: "♏",
   sagittarius: "♐",
 };
+
+/**
+ * A 12-tile grid behind a disclosure trigger, shared by the year-animal and
+ * zodiac pickers below — same options-in/code-out shape, same layout, so
+ * one component rather than two that could drift apart.
+ *
+ * `<details>`, not a Radix popover: the trigger and the grid are both
+ * always in the DOM (nothing to portal), and `<details>` gets the
+ * keyboard/click toggle for free — the same device `BirthdaySection`'s own
+ * per-age cards already use.
+ */
+function CyclePicker({
+  label,
+  options,
+  iconFor,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: { code: string; name: string }[];
+  iconFor: (code: string) => string;
+  value: string;
+  onChange: (code: string) => void;
+}) {
+  const current = options.find((option) => option.code === value);
+
+  return (
+    <div>
+      <span className="mb-1.5 block text-caption font-medium text-ink">{label}</span>
+      <details
+        aria-label={label}
+        className="group rounded-control border border-border [&[open]]:border-primary"
+      >
+        <summary className="flex min-h-[48px] cursor-pointer list-none items-center justify-between gap-2 px-3.5 text-body text-ink [&::-webkit-details-marker]:hidden">
+          <span className="flex min-w-0 items-center gap-2">
+            <span aria-hidden="true" className="text-[18px] leading-none">
+              {current ? iconFor(current.code) : "⭐"}
+            </span>
+            <span className={cn("truncate", !current && "text-muted")}>
+              {current?.name ?? "Сонгох…"}
+            </span>
+          </span>
+          <ChevronDown
+            size={16}
+            aria-hidden="true"
+            className="shrink-0 text-faint transition-transform group-open:rotate-180"
+          />
+        </summary>
+
+        <div className="grid grid-cols-4 gap-2 border-t border-border p-2.5">
+          {options.map((option) => {
+            const selected = option.code === value;
+            return (
+              <button
+                key={option.code}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => onChange(selected ? "" : option.code)}
+                className={cn(
+                  "flex flex-col items-center gap-1 rounded-control border px-1.5 py-2 text-caption font-medium transition-colors",
+                  selected
+                    ? "border-primary bg-primary-soft text-primary-strong"
+                    : "border-border bg-surface text-ink hover:border-primary",
+                )}
+              >
+                <span aria-hidden="true" className="text-[22px] leading-none">
+                  {iconFor(option.code)}
+                </span>
+                {option.name}
+              </button>
+            );
+          })}
+        </div>
+      </details>
+    </div>
+  );
+}
 
 function BirthFacts({ section }: { section: z.infer<typeof birthdaySectionSchema> }) {
   const facts = [

@@ -1,5 +1,13 @@
 import { z } from "zod";
+import { YEAR_ANIMALS, ZODIAC_SIGNS } from "@kinder/contracts";
 import { dateOfBirthSchema, sexSchema } from "../children/children.dto";
+
+const yearAnimalCodeSchema = z.enum(
+  YEAR_ANIMALS.map((animal) => animal.code) as [string, ...string[]],
+);
+const zodiacCodeSchema = z.enum(
+  ZODIAC_SIGNS.map((sign) => sign.code) as [string, ...string[]],
+);
 
 /**
  * Portfolio request schemas.
@@ -37,6 +45,15 @@ export const updateAboutMeSchema = z
     birthplace: text(200),
     bloodType: text(10),
     eyeColor: text(50),
+    /**
+     * ★ A guardian's manual pick — added 2026-08-28, after the client asked
+     * for the picker back having first agreed the computed answer
+     * (`birthFacts()`) should stand. `null` clears the override and returns
+     * to the computed value; `undefined` (omitted) leaves it unchanged, same
+     * as every other field here.
+     */
+    yearAnimalCode: yearAnimalCodeSchema.nullable().optional(),
+    zodiacCode: zodiacCodeSchema.nullable().optional(),
     /** Plausible ranges for a 2–5 year old, with room either side. */
     heightCm: z.coerce.number().min(30).max(200).nullable().optional(),
     weightKg: z.coerce.number().min(2).max(100).nullable().optional(),
