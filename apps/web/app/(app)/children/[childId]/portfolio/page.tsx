@@ -16,13 +16,16 @@ import {
   Droplet,
   FileText,
   Heart,
+  Images,
   MapPin,
   MessageCircle,
   Pencil,
   Ruler,
   Sparkles,
+  Sprout,
   Sun,
   Tag,
+  User,
   Users,
   Weight,
 } from "lucide-react";
@@ -193,6 +196,8 @@ export default function PortfolioPage() {
         </Link>
       </Button>
 
+      <SectionHeader as="h1" title={PORTFOLIO} className="mb-0" />
+
       {/*
         ★ The PDF lives here now, not on the child hub.
 
@@ -233,48 +238,14 @@ export default function PortfolioPage() {
       />
 
       {/*
-        ★ One navigation, not two.
-
-        A row of three jump pills (Миний тухай / Зургийн цомог / Төрсөн өдөр) sat
-        above this, so the screen opened with seven links to content that was
-        directly below them — a full phone screen of navigation for a page you
-        were about to scroll anyway. "Миний тухай" was the first thing under its
-        own pill.
-
-        The age row earns its place where the pills did not: the four years are
-        the one part of this record that is *collapsed*, so these are the only
-        links that reveal something rather than scrolling to it.
+        ★ Three doors, not seven links — 2026-08-29, reversing 2026-08-28's
+        own "one navigation, not two" call above, on the client's
+        instruction, with a reference screenshot of this exact tile row.
+        `PortfolioHubNav`'s own doc comment has the reasoning; the age row
+        that used to render right here moves to `#growth` rather than
+        disappearing — see that section, below `BirthFacts`.
       */}
-      <nav aria-label="Насны хэсгүүд рүү шилжих">
-        <ul className="grid grid-cols-4 gap-2">
-          {PORTFOLIO_AGES.map((age) => {
-            const filled = hasAgeContent(ageProfiles.data?.find((p) => p.age === age));
-            const tone = GRADIENT_TONE_STYLE[AGE_TONE[age]];
-            return (
-              <li key={age}>
-                <a
-                  href={`#age-${age}`}
-                  aria-label={`${age} нас — ${filled ? "мэдээлэлтэй" : "хоосон"}`}
-                  className={cn(
-                    "flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-row border border-white/30 px-1.5 py-2 text-caption font-bold text-white transition-transform hover:scale-[1.02] md:min-h-[64px] md:px-2 md:text-body",
-                    tone.gradient,
-                    tone.shadow,
-                  )}
-                >
-                  <span>{age} нас</span>
-                  {filled ? (
-                    <Check size={14} aria-hidden="true" />
-                  ) : (
-                    // Holds the line's height so the four buttons stay the same
-                    // size whether or not they are filled.
-                    <span aria-hidden="true" className="block h-[14px]" />
-                  )}
-                </a>
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
+      <PortfolioHubNav />
 
       <AboutMeSection
         childId={childId}
@@ -290,25 +261,65 @@ export default function PortfolioPage() {
         тухай" above found "Монгол жил"/"Өрнийн орд" nowhere near it, several
         screens down past the age sections, gallery, milestones and consent.
         The reference build groups these with the rest of a child's identity
-        facts in one form; this keeps them auto-computed rather than
-        becoming pickers (still the right call — see `BirthFacts`'s own doc
-        comment history), but at least keeps them in the same *place* a
-        reader would look. `BirthdaySection` still owns the notes below —
-        only the always-true facts card moved.
+        facts in one form, and — 2026-08-28, later the same day — so does
+        this one: `yearAnimalCode`/`zodiacCode` are guardian-editable picks
+        now, not only computed. `BirthdaySection` still owns the notes
+        below — only the always-true facts card moved.
       */}
       {!birthdays.isLoading && birthdays.data ? <BirthFacts section={birthdays.data} /> : null}
 
-      {PORTFOLIO_AGES.map((age) => (
-        <AgeSection
-          key={age}
-          childId={childId}
-          age={age}
-          profile={ageProfiles.data?.find((p) => p.age === age)}
-          isLoading={ageProfiles.isLoading}
-          isGuardian={isGuardian}
-          currentAge={currentAge}
-        />
-      ))}
+      {/*
+        ★ "Хөгжил"'s own door, per `PortfolioHubNav`. This nav row is the
+        part of the old top-of-page block (see the comment above
+        `<PortfolioHubNav />`) that earns a place *here* rather than
+        vanishing: the four years are the one part of this record that is
+        *collapsed*, so these are the only links that reveal something
+        rather than scrolling to it.
+      */}
+      <div id="growth" className="scroll-mt-20">
+        <nav aria-label="Насны хэсгүүд рүү шилжих">
+          <ul className="grid grid-cols-4 gap-2">
+            {PORTFOLIO_AGES.map((age) => {
+              const filled = hasAgeContent(ageProfiles.data?.find((p) => p.age === age));
+              const tone = GRADIENT_TONE_STYLE[AGE_TONE[age]];
+              return (
+                <li key={age}>
+                  <a
+                    href={`#age-${age}`}
+                    aria-label={`${age} нас — ${filled ? "мэдээлэлтэй" : "хоосон"}`}
+                    className={cn(
+                      "flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-row border border-white/30 px-1.5 py-2 text-caption font-bold text-white transition-transform hover:scale-[1.02] md:min-h-[64px] md:px-2 md:text-body",
+                      tone.gradient,
+                      tone.shadow,
+                    )}
+                  >
+                    <span>{age} нас</span>
+                    {filled ? (
+                      <Check size={14} aria-hidden="true" />
+                    ) : (
+                      // Holds the line's height so the four buttons stay the same
+                      // size whether or not they are filled.
+                      <span aria-hidden="true" className="block h-[14px]" />
+                    )}
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+
+        {PORTFOLIO_AGES.map((age) => (
+          <AgeSection
+            key={age}
+            childId={childId}
+            age={age}
+            profile={ageProfiles.data?.find((p) => p.age === age)}
+            isLoading={ageProfiles.isLoading}
+            isGuardian={isGuardian}
+            currentAge={currentAge}
+          />
+        ))}
+      </div>
 
       {/*
         Photographs and work, between the age timeline and the birthday notes.
@@ -405,6 +416,56 @@ const EYE_COLOR_OPTIONS = [
   { label: "Цэнхэр", hex: "#4a7ba6" },
   { label: "Саарал", hex: "#8a8f94" },
 ] as const;
+
+// ── The portfolio's own front door ──────────────────────────────────────────
+
+/**
+ * Миний тухай / Хөгжил / Зургийн цомог — three doors into the sections
+ * below, on the client's instruction, with a reference screenshot of this
+ * exact tile row.
+ *
+ * ★ Each `href` is an in-page anchor, not a route — `#about-me` and
+ * `#gallery` already exist as section ids on this same page (`AboutMeSection`
+ * below, `ChildGallery`'s own `id="gallery"`), and `#growth` is new, wrapping
+ * the age row and its four `AgeSection`s. Dedicated routes for each tile are
+ * follow-up work the client asked for separately ("дараа нь page хийе"); an
+ * anchor is what upgrades to a route later without this component changing
+ * shape, the same device `ChildOverviewContent`'s own age grid already uses
+ * for `#age-${age}`.
+ */
+function PortfolioHubNav() {
+  const items: { href: string; label: string; tone: "mint" | "sky"; Icon: typeof User }[] = [
+    { href: "#about-me", label: "Миний тухай", tone: "mint", Icon: User },
+    { href: "#growth", label: "Хөгжил", tone: "mint", Icon: Sprout },
+    { href: "#gallery", label: "Зургийн цомог", tone: "sky", Icon: Images },
+  ];
+
+  return (
+    <nav aria-label="Цахим хавтасны хэсгүүд">
+      <ul className="grid grid-cols-3 gap-2">
+        {items.map(({ href, label, tone, Icon }) => (
+          <li key={href}>
+            <a
+              href={href}
+              className="flex flex-col items-center gap-2 rounded-control px-2 py-3 text-center transition-transform hover:-translate-y-0.5"
+            >
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "flex size-14 items-center justify-center rounded-card",
+                  STORY_TONE[tone],
+                )}
+              >
+                <Icon size={26} />
+              </span>
+              <span className="text-caption font-semibold leading-tight text-ink">{label}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
 
 function AboutMeSection({
   childId,
