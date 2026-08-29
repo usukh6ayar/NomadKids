@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { TONE_VAR, type Tone } from "@/components/ui/tone";
 import { clampPercent } from "./chart-tokens";
 
 /**
@@ -38,6 +39,7 @@ export function ColumnChart({
    * ceiling — the three a reader needs to place a bar without counting.
    */
   gridlines = [0, 50, 100],
+  axisLabel = (percent) => `${percent}%`,
   /** How tall the plot area is. The labels and the axis sit outside it. */
   height = 140,
   emptyLabel = "бүртгэлгүй",
@@ -66,8 +68,37 @@ export function ColumnChart({
     value: number | null;
     /** The full name for a screen reader — "Даваа". Defaults to `label`. */
     accessibleLabel?: string;
+    /**
+     * The column's own accent.
+     *
+     * ★ Omit for a single series; pass one when the columns are *categories*.
+     *
+     * Five weekdays are one series measured five times and share a colour —
+     * painting them differently would imply a distinction that is not there.
+     * Five development domains are five different things, and a reader has to
+     * carry each one down to a legend or a row of bars below; giving each its
+     * own accent is what lets them do that without counting positions.
+     *
+     * Colour is never the only carrier: every column is named under the axis.
+     */
+    tone?: Tone;
   }[];
   gridlines?: number[];
+  /**
+   * How a gridline's position becomes its printed value.
+   *
+   * ★ The chart works in percentages; what they *mean* is the caller's.
+   *
+   * A column's height is a share of the plot, so this component has always
+   * taken 0–100 — and it printed "50%" beside the rule, which is right when the
+   * value is a share and wrong when it is not. A 1–4 assessment scale drawn
+   * against its own maximum is still a percentage internally, but a director
+   * reading "50%" against a domain scored 2.0 has to do the conversion in their
+   * head every time.
+   *
+   * Defaults to the percentage, so every existing caller is unchanged.
+   */
+  axisLabel?: (percent: number) => string;
   height?: number;
   /** What a screen reader hears for a column with no value. */
   emptyLabel?: string;
@@ -93,7 +124,7 @@ export function ColumnChart({
           // stacking it inside the band above — which would read as a label
           // for the band rather than for the line.
           <span key={line} className="-my-2 leading-none">
-            {line}%
+            {axisLabel(line)}
           </span>
         ))}
       </div>
@@ -151,8 +182,12 @@ export function ColumnChart({
                         The cap widens at `lg`: 36px is right when five columns
                         share a 280px card, and a hairline when they share 1132.
                       */
-                      className="mx-auto w-full max-w-[36px] rounded-t-control bg-primary transition-[height] lg:max-w-[56px]"
-                      style={{ height: `${percent}%`, minHeight: percent > 0 ? 4 : 0 }}
+                      className="mx-auto w-full max-w-[36px] rounded-t-control transition-[height] lg:max-w-[56px]"
+                      style={{
+                        height: `${percent}%`,
+                        minHeight: percent > 0 ? 4 : 0,
+                        background: column.tone ? TONE_VAR[column.tone] : "var(--color-primary)",
+                      }}
                     />
                   )}
                 </li>
@@ -176,21 +211,52 @@ export function ColumnChart({
         <ul
           aria-hidden="true"
           className={cn(
-            "mt-2 flex justify-around gap-2 border-t border-border pt-2",
-            tilted && "h-[84px] items-start",
+            "mt-2 flex items-start justify-around gap-2 border-t border-border pt-2",
+            tilted && "h-[104px]",
           )}
         >
           {columns.map((column) =>
             tilted ? (
+              /*
+                ★ Anchored by its right end, so the label hangs *below* the
+                axis instead of climbing into the plot.
+
+                It was `left-1/2 origin-top-left -rotate-45`: the text starts at
+                the tick and a counter-clockwise turn swings it up and to the
+                right, straight through the columns it is labelling. Anchoring
+                the right end at the tick and turning about that corner swings
+                the other end down-left, which is the arrangement every chart
+                library uses for turned labels — the label ends where its
+                column begins and the space it occupies is the margin below the
+                axis, which is what `h-[104px]` reserves.
+
+                104px rather than 84: at 45° a label needs its own length ÷ √2
+                of vertical room, and "Нийгэмшихүй, сэтгэл хөдлөл" is about
+                145px — so 84 clipped the longest names of the five this was
+                turned for in the first place.
+              */
               <li key={column.label} className="relative min-w-0 flex-1">
-                <span className="absolute left-1/2 top-0 origin-top-left -rotate-45 whitespace-nowrap text-caption text-muted">
+                <span className="absolute right-1/2 top-0 origin-top-right -rotate-45 whitespace-nowrap text-caption text-muted">
                   {column.label}
                 </span>
               </li>
             ) : (
+              /*
+                ★ Two lines, not one truncated one.
+
+                Five weekdays are two characters and never wrap. A category
+                name — "Нийгэмшихүй, сэтгэл хөдлөл" — is twenty, and `truncate`
+                turned it into "Нийгэмшихүй, сэ…", which is the point at which a
+                chart stops naming its own columns. `line-clamp-2` keeps the
+                short case identical and gives the long one the room it needs.
+
+                This is also what makes `tilted` a *narrow card* measure rather
+                than a long-label one: at 226px per column a wrapped label costs
+                34px of height where a turned one costs 104.
+              */
               <li
                 key={column.label}
-                className="min-w-0 flex-1 truncate text-center text-caption text-muted"
+                className="line-clamp-2 min-w-0 flex-1 text-center text-caption leading-tight text-muted"
               >
                 {column.label}
               </li>

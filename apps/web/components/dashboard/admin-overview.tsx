@@ -11,6 +11,8 @@ import {
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
+import { formatLongDate } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
@@ -18,7 +20,12 @@ import { ErrorState, LoadingState } from "@/components/ui/states";
 import { StatCard, StatTrend } from "@/components/ui/stat-card";
 import { IconChip } from "@/components/ui/icon-chip";
 import { BarRow } from "@/components/ui/chart/bar-row";
-import { CalendarCheck, GraduationCap, School, Users } from "lucide-react";
+import { ColumnChart } from "@/components/ui/chart/columns";
+import { Donut } from "@/components/ui/chart/donut";
+import { Ring } from "@/components/ui/chart/ring";
+import { SERIES_TONES } from "@/components/ui/chart/chart-tokens";
+import { TONE_VAR, type Tone } from "@/components/ui/tone";
+import { CalendarCheck, GraduationCap, PieChart, School, Users } from "lucide-react";
 import {
   AssessmentCoverageSection,
   RecentActivitySection,
@@ -111,7 +118,26 @@ export function AdminOverview() {
             />
           }
         />
-        <AttendanceTodayCard today={attendanceToday} />
+        <StatCard
+          label="Өнөөдрийн ирц"
+          value={
+            <>
+              {attendanceToday.present}
+              <span className="text-muted"> / {attendanceToday.expected}</span>
+            </>
+          }
+          unit={
+            attendanceToday.recorded >= attendanceToday.expected && attendanceToday.expected > 0
+              ? "бүртгэл бүрэн"
+              : `${Math.max(0, attendanceToday.expected - attendanceToday.recorded)} бүртгээгүй`
+          }
+          tone={
+            attendanceToday.recorded >= attendanceToday.expected && attendanceToday.expected > 0
+              ? "mint"
+              : "sun"
+          }
+          art={<CalendarCheck size={22} aria-hidden />}
+        />
         <StatCard
           label="Бүлэг"
           value={counts.groups}
@@ -142,6 +168,26 @@ export function AdminOverview() {
         wrapping a Mongolian group name — so they stack rather than shrink, the
         same trade `/admin`'s tile grid makes at the same breakpoint.
       */}
+      {/*
+        ★ A dial and a ring, because these two questions have different shapes.
+
+        Every panel on this screen was a horizontal bar, and a screen where
+        every answer looks the same teaches a reader to stop distinguishing the
+        questions. The two here are genuinely different kinds of fact and the
+        chart primitives this codebase already owns say so:
+
+          · "how full is the kindergarten today" is one number against a
+            maximum — a `Ring`, which is what a dial is for
+          · "what did the last month look like" is parts of a whole — a
+            `Donut`, which is what `gender-ratio.tsx` uses for the same shape
+
+        Neither was reachable while both were `BarRow`.
+      */}
+      <div className="grid items-start gap-6 xl:grid-cols-2">
+        <TodayDial today={attendanceToday} />
+        <AttendanceMix groups={attendanceByGroup} />
+      </div>
+
       <div className="grid items-start gap-6 xl:grid-cols-2">
         <AttendanceByGroup groups={attendanceByGroup} />
 
@@ -152,8 +198,9 @@ export function AdminOverview() {
         />
       </div>
 
-      {/* Full width: five bars per group is the tallest panel here, and halving
-          its width truncates every Mongolian domain name. */}
+      {/* Full width: a column per domain plus a row of bars per group is the
+          tallest panel here, and halving its width truncates every Mongolian
+          domain name. */}
       <DomainAverages groups={domainAveragesByGroup} hasCurrentTerm={Boolean(currentTerm)} />
 
       <RecentActivitySection entries={recentActivity} auditHref="/admin/audit" />
@@ -162,40 +209,6 @@ export function AdminOverview() {
 }
 
 const domainsSchema = z.array(developmentDomainSchema);
-
-/**
- * "Өнөөдрийн ирц — 12 / 14".
- *
- * ★ The figure is who came; the caption says whether anyone has looked.
- *
- * `recorded` and `present` answer different questions and the card shows both,
- * because at nine in the morning they are the two states that matter and a
- * single percentage cannot tell them apart: a register nobody has filled in and
- * a kindergarten nobody came to both read as 0%.
- *
- * ★★ `sun` while the register is incomplete, `mint` once it is done — the
- * tones' own meanings from `tone.ts`, "waiting" and "complete", used as
- * documented rather than for decoration.
- */
-function AttendanceTodayCard({ today }: { today: AdminDashboard["attendanceToday"] }) {
-  const complete = today.expected > 0 && today.recorded >= today.expected;
-  const outstanding = Math.max(0, today.expected - today.recorded);
-
-  return (
-    <StatCard
-      label="Өнөөдрийн ирц"
-      value={
-        <>
-          {today.present}
-          <span className="text-muted"> / {today.expected}</span>
-        </>
-      }
-      unit={complete ? "бүртгэл бүрэн" : `${outstanding} хүүхэд бүртгээгүй`}
-      tone={complete ? "mint" : "sun"}
-      art={<CalendarCheck size={22} aria-hidden />}
-    />
-  );
-}
 
 /**
  * Statuses that count as the child having been at the kindergarten.
@@ -207,6 +220,40 @@ function AttendanceTodayCard({ today }: { today: AdminDashboard["attendanceToday
  */
 const ATTENDED = ["PRESENT", "HALF_DAY"] as const;
 
+/**
+ * The register's six statuses, in the order a reader thinks about them.
+ *
+ * ★ Present first, absent last, and the order is fixed rather than sorted by
+ * size — a legend that reorders itself between renders makes a reader re-learn
+ * it every time, and the colours are handed out by position in this list.
+ */
+const STATUS_ORDER = ["PRESENT", "HALF_DAY", "EXCUSED", "SICK", "OTHER", "ABSENT"] as const;
+
+/**
+ * A tone per status, chosen by meaning rather than by position.
+ *
+ * ★ `seriesColor` hands these out by index, and two of the six collide.
+ *
+ * `SERIES_TONES` is `sky · mint · sun · peach · cornflower · teal`, and both
+ * `sky-ink` (#1d4e89) and `cornflower-ink` (#2b5aa8) are blue — fine when a
+ * chart has three categories, confusing when it has six and the first and
+ * fifth are "Ирсэн" and "Бусад".
+ *
+ * Naming them instead also uses `tone.ts` as documented — a tone is a meaning:
+ * present is `mint` (complete), illness is `sun` (waiting) and an unexplained
+ * absence is `peach` (attention), which is the one an administrator is looking
+ * for. Colour is never the only signal; every segment is named and counted in
+ * the legend beside it.
+ */
+const STATUS_TONE: Record<string, Tone> = {
+  PRESENT: "mint",
+  HALF_DAY: "sky",
+  EXCUSED: "cornflower",
+  SICK: "sun",
+  OTHER: "teal",
+  ABSENT: "peach",
+};
+
 const STATUS_LABEL: Record<string, string> = {
   PRESENT: "Ирсэн",
   HALF_DAY: "Хагас өдөр",
@@ -217,14 +264,173 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 /**
+ * Today's register as a dial — "how full is the kindergarten right now".
+ *
+ * ★ A `Ring`, because this is one number against a maximum.
+ *
+ * That is what a dial is for and what a bar is not: a bar invites comparison
+ * with the bar beneath it, and there is nothing beneath this one. The
+ * kindergarten's own roster is the maximum, so the arc is always read against
+ * the same denominator.
+ *
+ * ★★ Two figures beside it, not one percentage inside it.
+ *
+ * `recorded` and `present` answer different questions — whether anyone has
+ * taken the register, and how many children came — and the pair is the reason
+ * this panel exists rather than a single percentage. At nine in the morning an
+ * empty register and an empty kindergarten look identical to one number.
+ */
+function TodayDial({ today }: { today: AdminDashboard["attendanceToday"] }) {
+  const complete = today.expected > 0 && today.recorded >= today.expected;
+  const outstanding = Math.max(0, today.expected - today.recorded);
+  const percent = today.expected > 0 ? (today.present / today.expected) * 100 : 0;
+
+  return (
+    <section aria-labelledby="today-dial">
+      <SectionHeader
+        id="today-dial"
+        title="Өнөөдрийн ирц"
+        lede={formatLongDate(new Date())}
+        icon={<IconChip icon={<CalendarCheck size={20} aria-hidden />} tone="primary" />}
+      />
+
+      <Card pad="roomy" className="flex flex-wrap items-center gap-6">
+        <Ring
+          percent={percent}
+          size="lg"
+          tone={complete ? "mint" : "sun"}
+          muted={today.expected === 0}
+          label={`Ирсэн ${today.present}, нийт ${today.expected}`}
+        >
+          <span className="text-title font-semibold tabular-nums text-ink">
+            {Math.round(percent)}%
+          </span>
+        </Ring>
+
+        <dl className="flex min-w-0 flex-1 flex-col gap-3">
+          <div>
+            <dt className="text-caption text-muted">Ирсэн</dt>
+            <dd className="text-figure font-semibold leading-none tabular-nums text-ink">
+              {today.present}
+              <span className="text-title text-muted"> / {today.expected}</span>
+            </dd>
+          </div>
+
+          <div className="border-t border-border-soft pt-3">
+            <dt className="text-caption text-muted">Бүртгэл</dt>
+            <dd
+              className={cn("text-lead font-medium", complete ? "text-mint-ink" : "text-sun-ink")}
+            >
+              {complete ? "Бүрэн бүртгэсэн" : `${outstanding} хүүхэд бүртгээгүй`}
+            </dd>
+          </div>
+        </dl>
+      </Card>
+    </section>
+  );
+}
+
+/**
+ * The last 30 days as one ring — "what does a month here look like".
+ *
+ * ★ A `Donut`, because these are parts of a whole.
+ *
+ * Every recorded day falls into exactly one of six statuses, which is the
+ * definition of a pie: the segments sum to the total by construction, so a
+ * reader can trust the proportions without reading a single number.
+ * `gender-ratio.tsx` uses the same component for the same reason.
+ *
+ * ★★ The whole kindergarten, not per group.
+ *
+ * Per-group attendance is the panel below this one, where a bar per group is
+ * the right shape because the question there is comparison. This one answers a
+ * different question — is the absence we have mostly illness, or mostly
+ * unexplained? — and that is about the kindergarten, not about any one group.
+ */
+function AttendanceMix({ groups }: { groups: AdminDashboard["attendanceByGroup"] }) {
+  const totals: Record<string, number> = {};
+  for (const group of groups) {
+    for (const [status, n] of Object.entries(group.counts)) {
+      totals[status] = (totals[status] ?? 0) + n;
+    }
+  }
+
+  const segments = STATUS_ORDER.filter((s) => (totals[s] ?? 0) > 0).map((status) => ({
+    label: STATUS_LABEL[status] ?? status,
+    value: totals[status]!,
+    tone: STATUS_TONE[status]!,
+  }));
+
+  const total = segments.reduce((sum, s) => sum + s.value, 0);
+
+  return (
+    <section aria-labelledby="attendance-mix">
+      <SectionHeader
+        id="attendance-mix"
+        title="Ирцийн бүтэц"
+        lede="Сүүлийн 30 хоног, бүх бүлгээр."
+        icon={<IconChip icon={<PieChart size={20} aria-hidden />} tone="primary" />}
+      />
+
+      {total === 0 ? (
+        <Card pad="roomy" className="text-body text-muted">
+          Сүүлийн 30 хоногт ирц бүртгээгүй байна.
+        </Card>
+      ) : (
+        <Card pad="roomy" className="flex flex-wrap items-center gap-6">
+          <Donut
+            segments={segments}
+            size={132}
+            label={segments.map((s) => `${s.label} ${s.value}`).join(", ")}
+            centre={
+              <span className="text-center">
+                <span className="block text-title font-semibold tabular-nums leading-none text-ink">
+                  {total}
+                </span>
+                <span className="block text-caption text-muted">өдөр</span>
+              </span>
+            }
+          />
+
+          {/*
+            A legend with the numbers on it, not a key you have to match by
+            colour. `tone.ts` records that colour must never be the only carrier
+            of meaning; here every segment is named and counted in text, and the
+            swatch only ties the row to its arc.
+          */}
+          <dl className="grid min-w-0 flex-1 gap-x-4 gap-y-2 sm:grid-cols-2">
+            {segments.map((segment) => (
+              <div key={segment.label} className="flex items-baseline gap-2">
+                <span
+                  aria-hidden="true"
+                  className="mt-1.5 size-2.5 shrink-0 rounded-pill"
+                  style={{ background: TONE_VAR[segment.tone] }}
+                />
+                <dt className="min-w-0 flex-1 truncate text-body text-muted">{segment.label}</dt>
+                <dd className="shrink-0 text-body font-medium tabular-nums text-ink">
+                  {segment.value}
+                  <span className="ml-1 text-caption font-normal text-muted">
+                    {Math.round((segment.value / total) * 100)}%
+                  </span>
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </Card>
+      )}
+    </section>
+  );
+}
+
+/**
  * "Ирцийн нэгтгэл" — each group's attendance over the last 30 days.
  *
- * ★ A percentage *and* the counts behind it.
+ * ★ Bars here, because the question is comparison.
  *
- * A bar alone invites the reading "Ахлах бүлэг is at 78%" without saying of
- * what: 78% of a fortnight is a different fact from 78% of one recorded day.
- * The breakdown underneath names every status with a row, so a group whose
- * absences are all `SICK` is not read as a group with an attendance problem.
+ * The donut above answers "what is our absence made of"; this answers "which
+ * group is behind", and a bar is the only shape that lets an eye rank things by
+ * running down a column. The two panels use the same data and different charts
+ * because they are asked different questions of it.
  */
 function AttendanceByGroup({ groups }: { groups: AdminDashboard["attendanceByGroup"] }) {
   const withRows = groups.filter((g) => Object.values(g.counts).some((n) => n > 0));
@@ -233,9 +439,9 @@ function AttendanceByGroup({ groups }: { groups: AdminDashboard["attendanceByGro
     <section aria-labelledby="attendance-by-group">
       <SectionHeader
         id="attendance-by-group"
-        title="Ирцийн нэгтгэл"
-        lede="Сүүлийн 30 хоног, бүлгээр."
-        icon={<IconChip icon={<CalendarCheck size={20} aria-hidden />} tone="primary" />}
+        title="Бүлгүүдийн ирц"
+        lede="Сүүлийн 30 хоног."
+        icon={<IconChip icon={<School size={20} aria-hidden />} tone="primary" />}
       />
 
       {withRows.length === 0 ? (
@@ -251,20 +457,18 @@ function AttendanceByGroup({ groups }: { groups: AdminDashboard["attendanceByGro
             const percent = total > 0 ? Math.round((attended / total) * 100) : 0;
 
             return (
-              <div key={group.groupId} className="flex flex-col gap-1.5 px-4 py-3">
+              <div key={group.groupId} className="px-4 py-3">
                 <BarRow
                   inline
                   label={group.name}
                   percent={percent}
                   value={`${percent}%`}
+                  /* Green once a group is essentially always here, amber below —
+                     the tones' own meanings, and the same threshold the client's
+                     drawing marks with its own colour change. */
+                  tone={percent >= 90 ? "mint" : percent >= 75 ? "sky" : "sun"}
                   accessibleLabel={`${group.name} — ирц ${percent}%`}
                 />
-                <p className="text-caption leading-relaxed text-muted sm:pl-[116px] md:pl-[144px]">
-                  {Object.entries(group.counts)
-                    .filter(([, n]) => n > 0)
-                    .map(([status, n]) => `${STATUS_LABEL[status] ?? status} ${n}`)
-                    .join(" · ")}
-                </p>
               </div>
             );
           })}
@@ -275,21 +479,35 @@ function AttendanceByGroup({ groups }: { groups: AdminDashboard["attendanceByGro
 }
 
 /**
- * "Бүлгүүдийн явцын үнэлгээ" — RFP §12.3's "Хөгжлийн чиглэлийн дундаж".
+ * "Хөгжлийн чиглэлийн дундаж" — RFP §12.3, at the two granularities it needs.
  *
- * ★ Bars, not the radar the reference sketched.
+ * ★ Columns for the kindergarten, bars for the groups — and the pairing is the
+ * point.
  *
- * `DevelopmentRadar` exists and is used on a child's page, where it compares
- * *one* child against their group — two shapes on one set of axes, which is
- * what a radar is good at. Here there are up to twenty groups and five domains,
- * and twenty overlaid polygons is a diagram nobody can read. Bars grouped by
- * domain answer the question this panel is actually asked ("is any group
- * behind, and in what?") by letting the eye run down a column.
+ * The panel answers two questions that look alike and are not. "Which
+ * development area is this kindergarten weakest in?" is a comparison across
+ * five categories with no natural order, which is what a column chart is for —
+ * the eye reads height against a shared baseline. "And is any one group
+ * dragging that down?" is a comparison *within* each category, which needs a
+ * row per group.
  *
- * ★★ A domain with no assessments renders "—", never a zero-length bar. The
- * endpoint leaves it out of the map for the same reason: zero is a real score
- * on a 1–4 scale, and drawing "not assessed" as zero accuses a group of failing
- * at something nobody has looked at.
+ * Answering both with the same chart is what the first version did, and it
+ * produced ten identical bars in two stacks with nothing to say which of them
+ * mattered.
+ *
+ * ★★ The columns are the mean of the group means, not of every assessment.
+ *
+ * A group of twenty and a group of four would otherwise let the larger one
+ * decide the kindergarten's figure — and the question is about the
+ * kindergarten's *provision*, where each group is one unit of it. The
+ * per-group rows below carry the sample size so a small group is visibly
+ * small.
+ *
+ * ★★★ A domain nobody assessed is absent from the map rather than zero.
+ *
+ * Zero is a real score on a 1–4 scale's floor. A chart that plots "not
+ * assessed" as zero accuses a group of failing at something nobody has looked
+ * at yet, which is the opposite of what this panel is for.
  */
 function DomainAverages({
   groups,
@@ -318,12 +536,24 @@ function DomainAverages({
 
   const assessed = groups.filter((g) => g.sampleSize > 0);
 
+  /** The kindergarten-wide mean per domain — the mean of the group means. */
+  const overall = (domains ?? []).map((domain) => {
+    const scores = assessed
+      .map((g) => g.averageByDomain[domain.id])
+      .filter((v): v is number => v !== undefined);
+
+    return {
+      domain,
+      average: scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null,
+    };
+  });
+
   return (
     <section aria-labelledby="domain-averages">
       <SectionHeader
         id="domain-averages"
-        title="Бүлгүүдийн явцын үнэлгээ"
-        lede="Хөгжлийн чиглэл тус бүрийн дундаж, 1–4 оноогоор."
+        title="Хөгжлийн чиглэлийн дундаж"
+        lede="1–4 оноогоор. Багана нь цэцэрлэгийн дундаж, мөр нь бүлэг тус бүр."
         icon={<IconChip icon={<GraduationCap size={20} aria-hidden />} tone="primary" />}
       />
 
@@ -339,36 +569,73 @@ function DomainAverages({
           Энэ улиралд үнэлгээ хийгдээгүй байна.
         </Card>
       ) : (
-        <Card pad="roomy" className="grid gap-x-8 gap-y-6 lg:grid-cols-2">
-          {assessed.map((group) => (
-            <div key={group.groupId}>
-              <p className="mb-2 flex flex-wrap items-baseline gap-x-2 text-lead font-semibold text-ink">
-                {group.name}
-                <span className="text-caption font-normal text-muted">
-                  {group.sampleSize} үнэлгээ
-                </span>
-              </p>
+        <Card pad="roomy" className="flex flex-col gap-6">
+          {/*
+            The scale is 1–4, so a column is drawn against 4 rather than against
+            the largest value in the set — a kindergarten at 3.9 beside one at
+            4.0 must not look half as far along. `tilted` because the domain
+            names are sentences, not abbreviations.
+          */}
+          <ColumnChart
+            height={132}
+            /*
+              The rules are the four steps of the scale, and the axis prints
+              them as scores. A director reading "50%" against a domain scored
+              2.0 has to do the conversion every time; the scale is 1–4 and the
+              chart should say so.
+            */
+            gridlines={[0, 25, 50, 75, 100]}
+            axisLabel={(percent) => String((percent / 100) * 4)}
+            columns={overall.map(({ domain, average }, index) => ({
+              label: domain.name,
+              value: average === null ? null : (average / 4) * 100,
+              /*
+                A colour per domain, matching the order the per-group bars
+                below run in — so a reader who spots the weakest column can
+                find the same domain in each group's list without counting
+                positions. `seriesColor` hands them out in a fixed order, so a
+                domain keeps its colour between renders.
+              */
+              tone: SERIES_TONES[index % SERIES_TONES.length],
+              accessibleLabel:
+                average === null
+                  ? `${domain.name} — үнэлгээгүй`
+                  : `${domain.name} — ${average.toFixed(1)} оноо`,
+            }))}
+            emptyLabel="үнэлгээгүй"
+          />
 
-              <div className="flex flex-col gap-1.5">
-                {domains.map((domain) => {
-                  const average = group.averageByDomain[domain.id];
-                  return (
-                    <BarRow
-                      key={domain.id}
-                      inline
-                      labelWidth="w-[136px] lg:w-[152px] xl:w-[200px]"
-                      label={domain.name}
-                      /* The scale is 1–4, so a bar is drawn against 4 rather
-                         than against the largest value in the set — a group at
-                         3.9 beside one at 4.0 must not look half as far along. */
-                      percent={average === undefined ? 0 : (average / 4) * 100}
-                      value={average === undefined ? "—" : average.toFixed(1)}
-                    />
-                  );
-                })}
+          <div className="grid gap-x-8 gap-y-6 border-t border-border-soft pt-5 lg:grid-cols-2">
+            {assessed.map((group) => (
+              <div key={group.groupId}>
+                <p className="mb-2 flex flex-wrap items-baseline gap-x-2 text-lead font-semibold text-ink">
+                  {group.name}
+                  <span className="text-caption font-normal text-muted">
+                    {group.sampleSize} үнэлгээ
+                  </span>
+                </p>
+
+                <div className="flex flex-col gap-1.5">
+                  {domains.map((domain, index) => {
+                    const average = group.averageByDomain[domain.id];
+                    return (
+                      <BarRow
+                        key={domain.id}
+                        inline
+                        labelWidth="w-[136px] lg:w-[152px] xl:w-[200px]"
+                        label={domain.name}
+                        percent={average === undefined ? 0 : (average / 4) * 100}
+                        value={average === undefined ? "—" : average.toFixed(1)}
+                        /* The same accent this domain has in the columns above,
+                           which is what makes the two halves one panel. */
+                        tone={SERIES_TONES[index % SERIES_TONES.length]}
+                      />
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </Card>
       )}
     </section>
