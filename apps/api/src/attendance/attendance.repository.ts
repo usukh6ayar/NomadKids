@@ -1,7 +1,11 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { toSkipTake, type PageParams } from "../common/pagination";
-import type { AttendanceCompanion, AttendanceRequestStatus, AttendanceStatus } from "../domain/enums";
+import type {
+  AttendanceCompanion,
+  AttendanceRequestStatus,
+  AttendanceStatus,
+} from "../domain/enums";
 
 /**
  * Attendance records and the guardian requests that precede them.
@@ -110,7 +114,9 @@ export class AttendanceRepository {
             // pickup a later approval, or staff's own `PATCH .../pickup`,
             // already wrote.
             ...(data.arrivedWith !== undefined ? { arrivedWith: data.arrivedWith } : {}),
-            ...(data.arrivedWithName !== undefined ? { arrivedWithName: data.arrivedWithName } : {}),
+            ...(data.arrivedWithName !== undefined
+              ? { arrivedWithName: data.arrivedWithName }
+              : {}),
             ...(data.arrivedAt !== undefined ? { arrivedAt: data.arrivedAt } : {}),
             ...(data.pickedUpWith !== undefined ? { pickedUpWith: data.pickedUpWith } : {}),
             ...(data.pickedUpWithName !== undefined

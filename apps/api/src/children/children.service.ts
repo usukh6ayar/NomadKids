@@ -293,13 +293,26 @@ export class ChildrenService {
   async inviteGuardian(actor: Actor, childId: string, dto: InviteGuardianDto) {
     const facts = await this.childAccess.assertCanRecord(actor, childId);
 
-    const created = await this.users.createGuardianAccount(actor, facts.childKindergartenId, dto);
+    const created = await this.users.createPlaceholderGuardianAccount(
+      actor,
+      facts.childKindergartenId,
+    );
 
     const guardianship = await this.repo.createGuardianship({
       kindergartenId: facts.childKindergartenId,
       childId,
       guardianUserId: created.user.id,
-      relation: dto.relation,
+      /*
+        ★ `OTHER` until the guardian says otherwise.
+        
+        The relationship is the guardian's own fact — "аав", "ээж" — and asking
+        a teacher to guess it is how a father ends up recorded as a mother. It
+        is set when the invitation is accepted, alongside their name and phone.
+        The enum has no "unknown" member and adding one would mean a migration
+        plus every consumer learning to render it; `OTHER` already means "not
+        one of the named relationships", which is exactly true here.
+      */
+      relation: "OTHER",
       isPrimary: dto.isPrimary,
     });
 

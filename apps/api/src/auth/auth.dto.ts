@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { guardianRelationSchema } from "@kinder/contracts";
 
 /**
  * Request schemas for the auth endpoints.
@@ -35,9 +36,40 @@ export type PasswordResetConfirmDto = z.infer<typeof passwordResetConfirmSchema>
  * the account at all. Sharing a schema would invite sharing the endpoint, and
  * then an invitation token would be usable to reset an existing password.
  */
+/**
+ * ★ The guardian introduces themselves here, not the teacher at invite time.
+ *
+ * `firstName`, `phone` and `relation` used to be typed by a teacher into
+ * `inviteGuardianSchema`. All three are facts about the person accepting, and
+ * this is the moment they are present to state them — a father recorded as a
+ * mother is the failure that motivated the change.
+ *
+ * **No surname.** The client was explicit — "эцэг эхийн овог хэрэггүй, зөвхөн
+ * нэр нь байхад болно" — and it is right for a screen finished on a phone in a
+ * corridor.
+ *
+ * ★★ All three are **optional**, and that is not laxity — this endpoint serves
+ * two invitations.
+ *
+ * A guardian's account is a placeholder created by a teacher pressing one
+ * button: no name, no phone, no relationship, so the acceptance form must
+ * collect them and the web form marks all three required.
+ *
+ * A **director's** account is not. `POST /platform/kindergartens` registers a
+ * kindergarten *and* its administrator, with the name the platform operator
+ * typed — that account arrives complete, and its acceptance form asks only for
+ * a password. Requiring a name here would have made every director invitation
+ * fail with a 400, which is exactly what `platform.test.ts` caught.
+ *
+ * The rule the server enforces is the honest one: if these are sent they are
+ * written, and a field that is absent leaves what is already there alone.
+ */
 export const invitationAcceptSchema = z.object({
   token: z.string().min(10).max(200),
   password: z.string().min(8, "Нууц үг дор хаяж 8 тэмдэгт байх ёстой").max(200),
+  firstName: z.string().trim().min(1, "Нэрээ оруулна уу").max(100).optional(),
+  phone: z.string().trim().min(6, "Утасны дугаараа оруулна уу").max(32).optional(),
+  relation: guardianRelationSchema.optional(),
 });
 export type InvitationAcceptDto = z.infer<typeof invitationAcceptSchema>;
 

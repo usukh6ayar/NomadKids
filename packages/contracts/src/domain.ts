@@ -30,6 +30,8 @@ export type Role = z.infer<typeof roleSchema>;
 export const sexSchema = z.enum(["MALE", "FEMALE"]);
 export const childStatusSchema = z.enum(["ACTIVE", "ARCHIVED"]);
 export const enrollmentStatusSchema = z.enum(["ACTIVE", "ENDED", "TRANSFERRED", "GRADUATED"]);
+/** Who a guardian is to the child. Set by the guardian themselves when they
+ * accept their invitation — see `invitationAcceptSchema`. */
 export const guardianRelationSchema = z.enum([
   "MOTHER",
   "FATHER",
@@ -37,6 +39,7 @@ export const guardianRelationSchema = z.enum([
   "SIBLING",
   "OTHER",
 ]);
+export type GuardianRelation = z.infer<typeof guardianRelationSchema>;
 
 /**
  * "Хүү" / "Охин", not "Эрэгтэй" / "Эмэгтэй".

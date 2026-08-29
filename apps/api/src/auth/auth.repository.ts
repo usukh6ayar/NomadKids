@@ -195,6 +195,47 @@ export class AuthRepository {
     });
   }
 
+  /**
+   * Writes the details a guardian gave when accepting their invitation.
+   *
+   * ★ One transaction, because the two halves are one act: a user whose name
+   * was updated but whose guardianship still says `OTHER` is a record that
+   * looks complete and is not.
+   *
+   * The relationship reaches every guardianship this user holds — see the note
+   * at the call site. `updateMany` rather than a loop: a parent of two siblings
+   * has two rows and they are the same person in both.
+   */
+  async completeInvitedProfile(
+    userId: string,
+    profile: { firstName?: string; phone?: string; relation?: string },
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      /*
+        Only what was sent. A director's invitation carries a password and
+        nothing else — their name was typed by the platform operator when the
+        kindergarten was registered, and overwriting it with `undefined` would
+        be this endpoint erasing a fact it was never given.
+      */
+      if (profile.firstName || profile.phone) {
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            ...(profile.firstName ? { firstName: profile.firstName } : {}),
+            ...(profile.phone ? { phone: profile.phone } : {}),
+          },
+        });
+      }
+
+      if (profile.relation) {
+        await tx.guardianship.updateMany({
+          where: { guardianUserId: userId, deletedAt: null },
+          data: { relation: profile.relation as never },
+        });
+      }
+    });
+  }
+
   async setPassword(userId: string, passwordHash: string): Promise<void> {
     await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
   }

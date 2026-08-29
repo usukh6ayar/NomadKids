@@ -89,6 +89,45 @@ export class UsersService {
     return this.createInvitedAccount(actor, kindergartenId, { ...dto, role: "PARENT" });
   }
 
+  /**
+   * A guardian account with nothing in it but a token.
+   *
+   * ★ The teacher types none of this. The handle is generated, the name is a
+   * placeholder, and the guardian replaces both when they accept the invitation
+   * — see `inviteGuardianSchema` for why five fields typed by the wrong person
+   * became zero.
+   *
+   * ★★ The username is random rather than derived from anything.
+   *
+   * A readable handle (`ganbold-eej`) would be a guess away from another
+   * family's, and the guardian never types it: they arrive through a one-time
+   * link and log in afterwards with the phone number they set themselves.
+   * `randomBytes(6)` is 8 base64url characters — enough that the collision
+   * retry below is a formality rather than a loop anybody waits on.
+   */
+  async createPlaceholderGuardianAccount(actor: Actor, kindergartenId: string) {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const username = `guardian-${randomBytes(6).toString("base64url").toLowerCase()}`;
+      if (await this.repo.findByUsername(username)) continue;
+
+      return this.createInvitedAccount(actor, kindergartenId, {
+        username,
+        email: null,
+        phone: null,
+        /*
+          Placeholders, replaced at acceptance. `lastName` is non-null in the
+          schema and the client asked for guardians not to have to give one at
+          all, so it stays empty-but-present: "Овог хэрэггүй, зөвхөн нэр".
+        */
+        lastName: "",
+        firstName: "Асран хамгаалагч",
+        role: "PARENT",
+      });
+    }
+
+    throw new ConflictException("Урилга үүсгэж чадсангүй. Дахин оролдоно уу");
+  }
+
   private async createInvitedAccount(actor: Actor, kindergartenId: string, dto: CreateUserDto) {
     // Checked explicitly so a collision is a readable 409 rather than a raw
     // unique-constraint error surfacing as a 500.

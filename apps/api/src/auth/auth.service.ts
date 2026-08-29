@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { AuditRepository } from "../audit/audit.repository";
 import { AuthzRepository } from "../authz/authz.repository";
 import type { Actor } from "../authz/actor";
+import type { GuardianRelation } from "@kinder/contracts";
 import { AuthRepository } from "./auth.repository";
 import { PasswordService, validatePasswordStrength } from "./password.service";
 import { hashToken, TokenService } from "./token.service";
@@ -335,7 +336,12 @@ export class AuthService {
    * "expired". Each of those tells someone holding a guessed token something
    * about it.
    */
-  async acceptInvitation(token: string, password: string, ctx: RequestContext) {
+  async acceptInvitation(
+    token: string,
+    password: string,
+    profile: { firstName?: string; phone?: string; relation?: GuardianRelation },
+    ctx: RequestContext,
+  ) {
     const errors = validatePasswordStrength(password);
     if (errors.length > 0) throw new UnauthorizedException(errors.join(". "));
 
@@ -346,6 +352,23 @@ export class AuthService {
 
     await this.repo.consumeAuthToken(row.id);
     await this.repo.setPassword(row.userId, await this.passwords.hash(password));
+
+    /*
+      ★ The guardian's own details, written now rather than guessed at invite.
+      
+      The account was created with a generated handle and the placeholder
+      "Асран хамгаалагч" — see `createPlaceholderGuardianAccount`. This is where
+      it becomes a person. The surname stays empty on purpose: the client asked
+      for guardians to give a given name only.
+      
+      `relation` reaches every guardianship this user holds, which is correct
+      and not a shortcut: a person invited twice for two siblings is the same
+      father in both, and the invitation they just accepted is the only place
+      they will ever be asked.
+    */
+    if (profile.firstName || profile.phone || profile.relation) {
+      await this.repo.completeInvitedProfile(row.userId, profile);
+    }
 
     /*
      * Revoked for the same reason a reset does it, not because a fresh account

@@ -188,8 +188,7 @@ export class AttendanceService {
     // Same "companion with no time means now" default `record()` uses — only
     // meaningful when this request is actually an arrival or pickup claim.
     const isPresentClaim = dto.requestedStatus === "PRESENT";
-    const arrivedAt =
-      isPresentClaim && dto.arrivedWith ? (dto.arrivedAt ?? new Date()) : undefined;
+    const arrivedAt = isPresentClaim && dto.arrivedWith ? (dto.arrivedAt ?? new Date()) : undefined;
     const pickedUpAt =
       isPresentClaim && dto.pickedUpWith ? (dto.pickedUpAt ?? new Date()) : undefined;
 
