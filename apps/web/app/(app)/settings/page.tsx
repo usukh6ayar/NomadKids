@@ -33,7 +33,19 @@ const MIN_PASSWORD_LENGTH = 8;
  */
 export default function SettingsPage() {
   return (
-    <div className="flex flex-col gap-6 lg:gap-8">
+    /*
+      ★ A capped column, like the feed — 2026-08-29.
+
+      These are three forms, and a form at 1336px is a label on the far left
+      with its field running to the far right: the eye has to travel the whole
+      width to connect the two. `/notifications` was capped at 640px in the same
+      pass and for the same reason; a settings page has even less excuse, since
+      none of its fields is longer than a phone number.
+
+      760px rather than 640: the profile's name and email sit two-across from
+      `sm`, and 640 squeezed that pair to about 300px each.
+    */
+    <div className="flex w-full max-w-[760px] flex-col gap-6 lg:gap-8">
       <PageHeader title="Профайл" lede="Хувийн мэдээлэл, нэвтрэх нууц үг." />
       <ProfileForm />
       <PasswordForm />

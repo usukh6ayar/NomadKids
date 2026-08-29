@@ -14,6 +14,7 @@ import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
+import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -186,13 +187,23 @@ function GroupAssessment() {
   const pendingCount = Object.keys(draft).length;
 
   return (
-    <div className="flex flex-col gap-5 py-2">
-      <header>
-        <h1 className="text-heading font-semibold text-ink">Үнэлгээ</h1>
-        <p className="mt-0.5 text-body text-muted">{group.data?.name}</p>
-      </header>
+    <div className="flex flex-col gap-5 lg:gap-6">
+      {/*
+        ★ `PageHeader`, not a hand-rolled `<header>` — 2026-08-29.
 
-      <Card className="grid gap-4 px-4 py-4 sm:grid-cols-2 sm:px-5">
+        This screen opened with its own `<h1 className="text-heading">` over a
+        `<p>`. Every other screen in the product uses `PageHeader`, which is
+        `text-heading` on a phone and `text-display` from `md` up: so this one
+        title stayed 22px on a desktop while the rest grew to 24px, and it was
+        the only page heading that did not. The same mistake `dashboard/page.tsx`
+        records fixing in its own three branches.
+      */}
+      <PageHeader title="Явцын үнэлгээ" lede={group.data?.name ?? "Бүлгийн үнэлгээ"} />
+
+      {/* `pad="roomy"` rather than four inline padding values — `card.tsx`
+          documents the two named steps and why call sites stopped inventing
+          their own. */}
+      <Card pad="roomy" className="grid gap-4 sm:grid-cols-2">
         <Field label="Улирал">
           {({ id }) => (
             <Select
