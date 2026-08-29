@@ -346,53 +346,95 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
      * engine "will correctly calculate nothing" until they arrive. A menu row
      * that opens an empty screen is what this sidebar's own rule forbids.
      */
+    /*
+     * ★ Four sections, and the cut is by *what the work is*, not by subject.
+     *
+     * The client's 2026-08-29 drawing groups the product as Суралцагч /
+     * Санхүү / Систем, and the first pass here took those three names
+     * literally. That produced a "Үйл ажиллагаа" holding the meal register, the
+     * class board, surveys and the staff PDF library — four rows doing three
+     * unrelated jobs, which is what a section becomes when it is really the
+     * leftovers.
+     *
+     * The structural fact that settles it: Ирц, Хоол ба цэс and Үнэлгээ are
+     * the same screen three times. All three are recorded against a group, all
+     * three land on `GroupPicker`, all three link straight past it for a
+     * teacher with one group. Splitting them across two sections — two under
+     * the child, one under operations — was arbitrary, and it is the reason
+     * nothing else fell into place.
+     *
+     * So the registers sit together and each remaining name becomes exactly
+     * true: a child's file, the group's registers, what goes out to a family,
+     * and what you set up or look up. Two to three rows each.
+     *
+     * ★★ Where Санхүү goes when it arrives.
+     *
+     * Not here. `docs/reference/FINANCE_SCOPE.md` records the tariffs and the
+     * definition of a funding day as still outstanding from the client (D3,
+     * D4) — the engine "will correctly calculate nothing" until they arrive —
+     * and it is nine reports and an invoicing flow, not a menu row. It earns
+     * its own section on the day it can answer a question.
+     */
     {
       title: "Суралцагч",
       entries: [
         entry("Хүүхдүүд", "/children"),
-        { label: "Ирц", href: scoped("attendance"), icon: <CalendarCheck {...sectionIconProps} /> },
-        {
-          label: "Үнэлгээ",
-          href: scoped("assessment"),
-          icon: <ClipboardCheck {...sectionIconProps} />,
-        },
         entry("Ажиглалт хянах", "/observations/review"),
         entry("Чөлөөний хүсэлт хянах", "/attendance-requests/review"),
       ],
     },
-    /*
-     * ★ "Мэдээ", not "Ангийн самбар / Мэдээ".
-     *
-     * Two faults in one label. A slash names one destination twice, which is
-     * what a menu does when nobody could decide — and the half it led with
-     * belonged to a *different screen*: `/dashboard` is titled "Ангийн самбар"
-     * for a teacher, renamed to that on 2026-08-28 at the client's request. So
-     * the sidebar offered "Ангийн самбар" and landed you on a page headed
-     * "Мэдээ", while the actual class board sat two rows above under "Самбар".
-     *
-     * Both bottom bars already called this destination "Мэдээ", so the two
-     * sidebars disagreed with their own bottom bar *and* with the page's own
-     * `PageHeader`. One destination, one name — the rule that settled
-     * "Удирдлага" below.
-     */
     {
-      title: "Үйл ажиллагаа",
+      /*
+       * ★ The name this section had before the redesign, restored.
+       *
+       * It was "Бүлгийн бүртгэл" and it was right — these three are the
+       * kindergarten's registers, kept per group. The redesign scattered them
+       * and the section's own docblock had already argued they belong together.
+       *
+       * The icons are passed explicitly rather than resolved by `routeIcon()`:
+       * for a teacher these hrefs are interpolated with a group id, so a
+       * literal-keyed lookup returns `undefined` and the rows render as bare
+       * text — the exact gap `sidebar.test.tsx` exists to catch.
+       */
+      title: "Бүлгийн бүртгэл",
       entries: [
+        { label: "Ирц", href: scoped("attendance"), icon: <CalendarCheck {...sectionIconProps} /> },
         {
           label: "Хоол ба цэс",
           href: scoped("meals"),
           icon: <UtensilsCrossed {...sectionIconProps} />,
         },
-        entry("Мэдээ", "/notifications"),
-        entry("Судалгаа", "/surveys"),
-        // RFP §9 — "Багшид зориулсан PDF баримт бичгийн сан". Staff only, so it
-        // lives here and never in `parentSections`.
-        entry("Баримт бичгийн сан", "/documents"),
+        {
+          label: "Үнэлгээ",
+          href: scoped("assessment"),
+          icon: <ClipboardCheck {...sectionIconProps} />,
+        },
       ],
+    },
+    {
+      /*
+       * ★ Outward only — both of these leave the building.
+       *
+       * A notice goes on the class board a family reads at home; a survey asks
+       * them a question. Neither is something a teacher does *to* a record,
+       * which is what separates them from the section above.
+       */
+      title: "Харилцаа холбоо",
+      entries: [entry("Мэдээ", "/notifications"), entry("Судалгаа", "/surveys")],
     },
     {
       title: "Систем",
       entries: [
+        /*
+         * RFP §9 — "Багшид зориулсан PDF баримт бичгийн сан": хөтөлбөр, арга
+         * зүй, дотоод журам. Staff only, so it never appears in
+         * `parentSections`.
+         *
+         * ★ It sat under "Үйл ажиллагаа" and does not belong there: a shelf you
+         * read from is not an activity. It is reference material, which is what
+         * this section is for.
+         */
+        entry("Баримт бичгийн сан", "/documents"),
         entry("Багшийн мэдээлэл", "/settings"),
         /*
          * ★ "Удирдлага", not "Бүлэг, цэцэрлэгийн мэдээлэл".
