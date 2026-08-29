@@ -12,12 +12,13 @@ import { SectionHeader } from "@/components/ui/card";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { TodayAttendanceRecorder } from "@/components/child/child-attendance";
+import { ChildGallery } from "@/components/media/child-gallery";
+import { ChildConsent } from "@/components/child/child-consent";
 import { useSession } from "@/lib/auth/session";
-import { formatDate } from "@/lib/format";
+import { formatDate, fullName } from "@/lib/format";
+import { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
 
 const ageProfilesSchema = z.array(ageProfileSchema);
-
-const PORTFOLIO_AGES = [2, 3, 4, 5] as const;
 
 /**
  * A card's colour, fixed per age rather than cycled — the product's own four
@@ -43,14 +44,28 @@ function hasAgeContent(profile?: z.infer<typeof ageProfileSchema>): boolean {
  * The child overview's actual content — the mock-up's own birth-to-now
  * timeline, without an opinion on how it got on screen.
  *
- * ★ Split out of `overview/page.tsx` so the identical body can also render
- * inline as the child hub's own "Зургийн цомог" tab panel
- * (`children/[childId]/page.tsx`) rather than navigating there, while the
- * bottom bar's own "Зураг" tab still lands on the standalone page. One body,
- * two frames around it, rather than the frame and the content drifting apart
- * the next time either changes.
+ * ★ Split out of `overview/page.tsx` originally so the identical body could
+ * also render inline as the deleted child hub's own "Зургийн цомог" tab
+ * panel. That hub is gone, but the split still earns its keep: this is now
+ * also where the portfolio hub's own "Зургийн цомог" tile
+ * (`portfolio/page.tsx`'s `PortfolioHubNav`) sends a reader, on the client's
+ * instruction — the same destination the bottom bar's "Зураг" tab already
+ * used, rather than a second screen that happens to show the same child.
  *
- * ★★ Two facts, and only one is always real. "Цэцэрлэгийн анхны өдөр" is
+ * ★★ The album lives here now, not on the portfolio.
+ *
+ * `ChildGallery` used to render inline on the single-scroll portfolio page.
+ * Once that page shrank to the hero and its three doors (2026-08-29), the
+ * gallery needed a real home rather than disappearing — and this is the one
+ * screen the product already calls "Зураг", by icon and by nav label
+ * (`layout.tsx`'s `parentNav`). Putting the actual photographs behind that
+ * name is what the name was always supposed to mean; before this, "Зураг"
+ * opened an age timeline with no picture in it. `ChildConsent` (RFP §16)
+ * follows it for the same reason `child-milestones.tsx`'s move to the
+ * portfolio explains: consent about photographs belongs next to the
+ * photographs it governs, not several screens away.
+ *
+ * ★★★ Two facts, and only one is always real. "Цэцэрлэгийн анхны өдөр" is
  * `min(enrollments[].startedOn)` — data the child-detail payload already
  * carries, no backend change needed. "Цэцэрлэгээс төгссөн" only renders when
  * an enrollment is actually `GRADUATED` (`EnrollmentStatus`, added for this
@@ -59,10 +74,9 @@ function hasAgeContent(profile?: z.infer<typeof ageProfileSchema>): boolean {
  * Before that ever happens for a child, this chip is simply absent rather
  * than showing a date that isn't true yet.
  *
- * ★★★ `showHero` exists only because this body now has two homes. Standalone
- * on `/overview` it is the screen's one identity anchor; inline as the child
- * hub's own tab it would be the *second* `ChildHeroProfile` on the same
- * screen, right below the page's own — same name, same photo, read twice.
+ * ★★★★ `showHero` stays a prop, kept from when this body had two homes at
+ * once — cheap to keep, and it is what stops a caller that embeds this
+ * elsewhere from getting a duplicate `ChildHeroProfile` for free.
  */
 export function ChildOverviewContent({
   childId,
@@ -71,7 +85,7 @@ export function ChildOverviewContent({
   childId: string;
   showHero?: boolean;
 }) {
-  const { hasRole } = useSession();
+  const { session, hasRole } = useSession();
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
 
   const child = useQuery({
@@ -96,6 +110,9 @@ export function ChildOverviewContent({
   }
 
   const data = child.data!;
+  const isGuardian = data.guardianships.some(
+    (g) => g.guardian?.id === session?.user.id && g.canView !== false,
+  );
   const enrollments = data.enrollments ?? [];
 
   const firstDay = enrollments
@@ -144,7 +161,7 @@ export function ChildOverviewContent({
             return (
               <Link
                 key={age}
-                href={`/children/${childId}/portfolio#age-${age}`}
+                href={`/children/${childId}/portfolio/growth#age-${age}`}
                 className="flex flex-col justify-between overflow-hidden rounded-card border border-border shadow-sm transition-transform hover:-translate-y-0.5"
               >
                 <span className={`flex flex-1 items-center justify-center py-6 text-display font-bold ${AGE_TONE[age]}`}>
@@ -165,6 +182,15 @@ export function ChildOverviewContent({
       {isStaff ? (
         <TodayAttendanceRecorder childId={childId} childFirstName={data.firstName} />
       ) : null}
+
+      <ChildGallery
+        childId={childId}
+        childName={fullName(data)}
+        canEdit={isStaff || isGuardian}
+        photoMediaFileId={data.photoMediaFileId}
+      />
+
+      <ChildConsent childId={childId} isGuardian={isGuardian} />
     </div>
   );
 }

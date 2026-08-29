@@ -9,7 +9,6 @@ import {
   ClipboardList,
   HeartPulse,
   MoreHorizontal,
-  Palette,
   Pencil,
   Plus,
   Ruler,
@@ -26,7 +25,6 @@ import { ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildGrowth } from "@/components/child/child-growth";
 import { ChildHealth } from "@/components/child/child-health";
 import { ChildIncidents } from "@/components/child/child-incidents";
-import { ChildArtwork } from "@/components/child/child-artwork";
 import { ChildGeneralInfo } from "@/components/child/child-general-info";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { ChildTabs } from "@/components/child/child-tabs";
@@ -36,7 +34,6 @@ const GENERAL = "general";
 const GROWTH = "growth";
 const HEALTH = "health";
 const INCIDENTS = "incidents";
-const ARTWORK = "artwork";
 
 /**
  * The child's record — identity, actions, and the "Ерөнхий" panel.
@@ -45,8 +42,13 @@ const ARTWORK = "artwork";
  * Зураг moved to their own routes (`/observations`, `/overview`) — same "one
  * destination, not a route and a tab both showing the same thing" reasoning
  * `/attendance` and `/menu` already followed elsewhere in this directory.
- * Growth, health, incidents and artwork have no outside link pointing at them
+ * Growth, health and incidents have no outside link pointing at them
  * directly, so they stay here behind "Бусад" rather than becoming routes too.
+ *
+ * ★★ Artwork left the same way 2026-08-29: the portfolio's own "Хөгжил" page
+ * (`portfolio/growth/page.tsx`) now links to it directly, so by this file's
+ * own rule above it stopped belonging behind "Бусад" here and moved to be
+ * that page's "Бүтээл" tab instead.
  *
  * This is what "Хүүхдийн бүртгэл" now means — every other per-child page's
  * back button points here.
@@ -143,14 +145,6 @@ export default function ChildGeneralPage() {
             note: "Тохиолдлын бүртгэл",
             icon: <ShieldAlert size={24} aria-hidden />,
             content: <ChildIncidents childId={childId} isStaff={isStaff} />,
-          },
-          {
-            value: ARTWORK,
-            label: "Бүтээл",
-            secondary: true,
-            note: "Хөгжлийн харьцуулалт",
-            icon: <Palette size={24} aria-hidden />,
-            content: <ChildArtwork childId={childId} isStaff={isStaff} />,
           },
         ]}
       />

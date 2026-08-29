@@ -8,12 +8,13 @@ import {
   setSearchParams,
   stubApi,
 } from "./support/render";
-import PortfolioPage from "@/app/(app)/children/[childId]/portfolio/page";
+import GrowthPage from "@/app/(app)/children/[childId]/portfolio/growth/page";
 
 const CHILD_ID = "44444444-4444-4444-8444-444444444444";
 
 /**
- * The portfolio's age sections.
+ * The portfolio's age sections — now "Насны онцлог", the "Хөгжил" page's
+ * default tab (`portfolio/growth/page.tsx`).
  *
  * ★ Two requirements pulling against each other, which is why both are pinned.
  *
@@ -39,19 +40,11 @@ function bornYearsAgo(years: number): string {
   return dob.toISOString().slice(0, 10);
 }
 
-function stubPortfolio(dateOfBirth: string, ageProfiles: unknown[] = []) {
+function stubGrowth(dateOfBirth: string, ageProfiles: unknown[] = []) {
   stubApi([
     { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-    {
-      path: `/children/${CHILD_ID}/about-me`,
-      body: { exists: false },
-    },
     { path: `/children/${CHILD_ID}/age-profiles`, body: ageProfiles },
-    { path: `/children/${CHILD_ID}/birthday-notes`, body: [] },
-    {
-      path: `/children/${CHILD_ID}/media`,
-      body: { items: [], page: 1, pageSize: 25, total: 0, totalPages: 0 },
-    },
+    { path: `/children/${CHILD_ID}/milestones`, body: [] },
     {
       path: `/children/${CHILD_ID}`,
       body: {
@@ -86,9 +79,9 @@ beforeEach(() => {
 
 describe("portfolio age sections", () => {
   it("renders a section for every age 2–5 whatever the child's age (RFP §4.3)", async () => {
-    stubPortfolio(bornYearsAgo(2));
+    stubGrowth(bornYearsAgo(2));
 
-    renderWithProviders(<PortfolioPage />);
+    renderWithProviders(<GrowthPage />);
 
     await waitFor(() => expect(ageDisclosure(2)).toBeInTheDocument());
     for (const age of [2, 3, 4, 5]) {
@@ -99,9 +92,9 @@ describe("portfolio age sections", () => {
   });
 
   it("opens the years the child has lived and closes the rest", async () => {
-    stubPortfolio(bornYearsAgo(3));
+    stubGrowth(bornYearsAgo(3));
 
-    renderWithProviders(<PortfolioPage />);
+    renderWithProviders(<GrowthPage />);
 
     await waitFor(() => expect(ageDisclosure(2)).toBeInTheDocument());
 
@@ -114,9 +107,9 @@ describe("portfolio age sections", () => {
   it("opens a future year that somebody has already written into", async () => {
     // Content outranks the date: a family filling "5 нас" in early meant it,
     // and collapsing writing that exists would hide real content.
-    stubPortfolio(bornYearsAgo(2), [{ age: 5, favoriteColour: null, favoriteFood: "Бууз" }]);
+    stubGrowth(bornYearsAgo(2), [{ age: 5, favoriteColour: null, favoriteFood: "Бууз" }]);
 
-    renderWithProviders(<PortfolioPage />);
+    renderWithProviders(<GrowthPage />);
 
     await waitFor(() => expect(ageDisclosure(5)).toBeInTheDocument());
     expect(ageDisclosure(5).open).toBe(true);
@@ -124,9 +117,9 @@ describe("portfolio age sections", () => {
   });
 
   it("does not offer an edit control for a year that is still closed", async () => {
-    stubPortfolio(bornYearsAgo(2));
+    stubGrowth(bornYearsAgo(2));
 
-    renderWithProviders(<PortfolioPage />);
+    renderWithProviders(<GrowthPage />);
     await waitFor(() => expect(ageDisclosure(2)).toBeInTheDocument());
 
     // The nine "Засах" buttons were the substance of the finding. The control
@@ -152,9 +145,9 @@ describe("portfolio age sections", () => {
    * would break the moment a per-age tint came back for a legitimate reason.
    */
   it("marks the filled year with an icon the accessible name also states", async () => {
-    stubPortfolio(bornYearsAgo(3), [{ age: 2, favoriteFood: "Бууз" }]);
+    stubGrowth(bornYearsAgo(3), [{ age: 2, favoriteFood: "Бууз" }]);
 
-    renderWithProviders(<PortfolioPage />);
+    renderWithProviders(<GrowthPage />);
 
     const row = await screen.findByRole("navigation", { name: /Насны хэсгүүд/ });
     const link = (age: number) =>
@@ -172,9 +165,9 @@ describe("portfolio age sections", () => {
 
   it("opening a closed year reveals its edit control", async () => {
     const user = userEvent.setup();
-    stubPortfolio(bornYearsAgo(2));
+    stubGrowth(bornYearsAgo(2));
 
-    renderWithProviders(<PortfolioPage />);
+    renderWithProviders(<GrowthPage />);
     await waitFor(() => expect(ageDisclosure(2)).toBeInTheDocument());
 
     const summary = ageDisclosure(4).querySelector("summary")!;
@@ -184,7 +177,7 @@ describe("portfolio age sections", () => {
   });
 });
 
-describe("RFP §4.1 and §4.3 completeness", () => {
+describe("RFP §4.3 completeness", () => {
   /**
    * ★ The gap this closes was real storage with no interface.
    *
@@ -200,9 +193,9 @@ describe("RFP §4.1 and §4.3 completeness", () => {
    */
   it("offers every stored age-profile field to a teacher", async () => {
     const user = userEvent.setup();
-    stubPortfolio(bornYearsAgo(3));
+    stubGrowth(bornYearsAgo(3));
 
-    renderWithProviders(<PortfolioPage />);
+    renderWithProviders(<GrowthPage />);
     await waitFor(() => expect(ageDisclosure(3)).toBeInTheDocument());
 
     const panel = ageDisclosure(3);
@@ -220,58 +213,14 @@ describe("RFP §4.1 and §4.3 completeness", () => {
   });
 
   it("renders a stored value for a field the UI used to drop", async () => {
-    stubPortfolio(bornYearsAgo(3), [
+    stubGrowth(bornYearsAgo(3), [
       { age: 3, favoriteStory: "Алтан загасны үлгэр", learningInterest: "Тоо тоолох" },
     ]);
 
-    renderWithProviders(<PortfolioPage />);
+    renderWithProviders(<GrowthPage />);
 
     await waitFor(() => expect(ageDisclosure(3)).toBeInTheDocument());
     expect(screen.getByText("Алтан загасны үлгэр")).toBeInTheDocument();
     expect(screen.getByText("Тоо тоолох")).toBeInTheDocument();
-  });
-
-  /**
-   * ★★ `recordedOn` was stored and accepted, and the *contract* dropped it.
-   *
-   * Zod strips what it is not told about, so a measurement's date could be
-   * written through `PATCH /about-me` and never read back. A height with no date
-   * is a number about a growing child that nobody can place in time.
-   */
-  it("shows when a height and weight were measured", async () => {
-    stubApi([
-      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      {
-        path: `/children/${CHILD_ID}/about-me`,
-        body: { exists: true, heightCm: "98.5", weightKg: "15.2", recordedOn: "2026-03-14" },
-      },
-      { path: `/children/${CHILD_ID}/age-profiles`, body: [] },
-      { path: `/children/${CHILD_ID}/birthday-notes`, body: [] },
-      {
-        path: `/children/${CHILD_ID}/media`,
-        body: { items: [], page: 1, pageSize: 25, total: 0, totalPages: 0 },
-      },
-      {
-        path: `/children/${CHILD_ID}`,
-        body: {
-          id: CHILD_ID,
-          lastName: "Ганболд",
-          firstName: "Батбаяр",
-          sex: "MALE",
-          dateOfBirth: bornYearsAgo(3),
-          status: "ACTIVE",
-          photoMediaFileId: null,
-          enrollments: [],
-          guardianships: [],
-          kindergarten: { id: "33333333-3333-4333-8333-333333333333", name: "Цэцэрлэг" },
-          healthNotes: null,
-        },
-      },
-    ]);
-
-    renderWithProviders(<PortfolioPage />);
-
-    expect(await screen.findByText("98.5 см")).toBeInTheDocument();
-    expect(screen.getByText("2026.03.14")).toBeInTheDocument();
   });
 });
