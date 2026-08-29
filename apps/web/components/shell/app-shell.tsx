@@ -854,46 +854,57 @@ function WhoAmI({ variant, isAdmin }: { variant: Variant; isAdmin: boolean }) {
           : "Эцэг эх";
 
   return (
-    <div className="flex min-h-[44px] shrink-0 items-center gap-2 rounded-row bg-canvas px-3 py-2">
-      <span className="grid size-7 shrink-0 place-items-center rounded-pill bg-primary-soft text-caption font-bold text-primary">
-        {initials(session?.user)}
-      </span>
+    /*
+      ★ A rule above it, because the list scrolls behind it.
 
-      {/*
-        `min-w-0` on the growing column and `truncate` on both lines: a
-        Mongolian full name and a group name are each long enough to push the
-        two buttons off the 244px panel, and the name is what has to give.
-      */}
-      {/*
-        ★ The identity *is* the settings link, rather than a third control
-        beside the other two.
-
-        A separate 44px settings button is the obvious reading of "settings in
-        the footer", and it does not fit: the panel is 244px, and an avatar plus
-        two tap targets plus padding leaves about 96px for the name — which
-        truncates a Mongolian full name to a few characters. Tapping your own
-        name to reach your own account is the conventional affordance anyway,
-        and it costs no width, so the column keeps ~140px.
-      */}
-      <Link
-        href="/settings"
-        className="min-w-0 flex-1 rounded-control hover:opacity-80"
-        aria-label={`${fullName(session?.user)} — тохиргоо`}
-      >
-        <span className="block truncate text-compact font-semibold leading-[1.2] text-ink">
-          {fullName(session?.user)}
+      On a short window the nav overflows and its last row is cut by this
+      footer. Without a boundary that reads as a boundary the cut looks like a
+      rendering fault; with one, the list visibly continues underneath. The
+      negative margin makes the rule span the panel's full width rather than
+      stopping at this card's own inset.
+    */
+    <div className="-mx-3.5 shrink-0 border-t border-border px-3.5 pt-3">
+      <div className="flex min-h-[44px] items-center gap-2 rounded-row bg-canvas px-3 py-2">
+        <span className="grid size-7 shrink-0 place-items-center rounded-pill bg-primary-soft text-caption font-bold text-primary">
+          {initials(session?.user)}
         </span>
-        <span className="block truncate text-caption text-muted">{context}</span>
-      </Link>
 
-      <button
-        type="button"
-        onClick={() => void logout()}
-        aria-label="Гарах"
-        className="grid size-11 shrink-0 place-items-center rounded-control text-muted hover:bg-surface hover:text-primary"
-      >
-        <LogOut size={18} aria-hidden="true" />
-      </button>
+        {/*
+          `min-w-0` on the growing column and `truncate` on both lines: a
+          Mongolian full name and a group name are each long enough to push the
+          two buttons off the 244px panel, and the name is what has to give.
+        */}
+        {/*
+          ★ The identity *is* the settings link, rather than a third control
+          beside the other two.
+
+          A separate 44px settings button is the obvious reading of "settings in
+          the footer", and it does not fit: the panel is 244px, and an avatar plus
+          two tap targets plus padding leaves about 96px for the name — which
+          truncates a Mongolian full name to a few characters. Tapping your own
+          name to reach your own account is the conventional affordance anyway,
+          and it costs no width, so the column keeps ~140px.
+        */}
+        <Link
+          href="/settings"
+          className="min-w-0 flex-1 rounded-control hover:opacity-80"
+          aria-label={`${fullName(session?.user)} — тохиргоо`}
+        >
+          <span className="block truncate text-compact font-semibold leading-[1.2] text-ink">
+            {fullName(session?.user)}
+          </span>
+          <span className="block truncate text-caption text-muted">{context}</span>
+        </Link>
+
+        <button
+          type="button"
+          onClick={() => void logout()}
+          aria-label="Гарах"
+          className="grid size-11 shrink-0 place-items-center rounded-control text-muted hover:bg-surface hover:text-primary"
+        >
+          <LogOut size={18} aria-hidden="true" />
+        </button>
+      </div>
     </div>
   );
 }
@@ -936,18 +947,45 @@ function SidebarContent({
     <>
       <Brand subtitle={subtitle} />
 
-      <div className="-mr-1.5 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1.5">
-        {primary ? <NavLink item={primary} pathname={pathname} orientation="vertical" /> : null}
+      {/*
+        ★ A fade at the bottom edge, so a cut-off row reads as "there is more"
+        rather than as a layout fault.
+        
+        The list scrolls whenever the window is short enough, and on macOS the
+        scrollbar is an overlay that stays invisible until it is used — so the
+        only signal was a row sliced in half at the bottom of the rail. The
+        gradient is `--color-surface` fading to transparent over the last 24px
+        and is `pointer-events-none`, so it cannot eat a click on the row
+        underneath it.
+        
+        `group-has-[:last-child]` is not available here, so it is unconditional:
+        over a list that does not scroll it sits on the panel's own background
+        and is invisible anyway.
+      */}
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div className="-mr-1.5 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1.5">
+          {primary ? <NavLink item={primary} pathname={pathname} orientation="vertical" /> : null}
 
-        {sections?.length
-          ? sections.map((section) => (
-              <NavGroup key={section.title} section={section} pathname={pathname} />
-            ))
-          : nav
-              .slice(1)
-              .map((item) => (
-                <NavLink key={item.label} item={item} pathname={pathname} orientation="vertical" />
-              ))}
+          {sections?.length
+            ? sections.map((section) => (
+                <NavGroup key={section.title} section={section} pathname={pathname} />
+              ))
+            : nav
+                .slice(1)
+                .map((item) => (
+                  <NavLink
+                    key={item.label}
+                    item={item}
+                    pathname={pathname}
+                    orientation="vertical"
+                  />
+                ))}
+        </div>
+
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-surface to-transparent"
+        />
       </div>
 
       {/*
@@ -1107,7 +1145,22 @@ function MobileMenuDrawer({
  */
 function NavGroup({ section, pathname }: { section: NavSection; pathname: string }) {
   return (
-    <details open className="border-b border-border py-0.5 [&[open]>summary>svg]:rotate-180">
+    /*
+      ★ No vertical padding, and no rule under the last section.
+      
+      Four sections at `py-0.5` plus their gaps put the staff sidebar 12px over
+      its own scroll container at a 900px window — so the last entry rendered
+      half-cut with no scrollbar to explain it (macOS draws overlay scrollbars,
+      which are invisible until you scroll). It read as a broken layout rather
+      than as a list that continues.
+      
+      `last:border-b-0` because the footer below already separates itself with
+      its own tinted surface; the rule was drawing a second line 8px above it.
+    */
+    <details
+      open
+      className="border-b border-border last:border-b-0 [&[open]>summary>svg]:rotate-180"
+    >
       <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between px-2.5 py-2 text-compact font-semibold text-ink [&::-webkit-details-marker]:hidden">
         {section.title}
         <ChevronDown

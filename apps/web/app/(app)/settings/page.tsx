@@ -173,44 +173,90 @@ function ProfileForm() {
         }
       />
 
-      {/*
-        RFP §3.3 — профайл зураг. Outside the form and above it: the upload
-        saves on selection, so putting it inside a form with its own Save button
-        would leave somebody choosing a picture and then wondering why the
-        button stayed greyed out.
-
-        Only ever the signed-in user's own — the API refuses any other id, and
-        this component has no way to name one.
-      */}
-      <Card pad="roomy" className="mb-4">
-        <SingleImageUpload
-          endpoint={`/users/${data?.id}/photo`}
-          currentMediaId={data?.photoMediaFileId}
-          label="Зураг нэмэх"
-          alt="Таны профайл зураг"
-          shape="round"
-          invalidateKeys={[qk.profile(), qk.session()]}
-        />
-      </Card>
-
       {!editing ? (
         /*
           The read view. A definition list rather than disabled inputs: a greyed
           field still looks like something you failed to type into, where a
           label over a value looks like a record — and an empty one says "—"
           instead of showing a blank box.
+
+          ★ One card, with the picture in its header — it was two.
+
+          The upload sat in a `Card` of its own above this one: a dashed circle,
+          a full-width "Зураг нэмэх" button and a line of hint text, which is
+          most of a card's height to say one thing. Under it a second card held
+          the four fields. A profile is one record, and splitting it put a rule
+          and 16px of gap through the middle of it.
+
+          Now the picture leads the card and the person's name sits beside it,
+          which is the shape every profile converges on for the same reason: the
+          two identify the same person and belong on the same line.
         */
-        <Card pad="roomy">
+        <Card pad="roomy" className="flex flex-col gap-5">
+          <div className="flex flex-wrap items-center gap-4 border-b border-border-soft pb-5">
+            {/*
+              RFP §3.3 — профайл зураг. Outside the form: the upload saves on
+              selection, so putting it inside a form with its own Save button
+              would leave somebody choosing a picture and then wondering why the
+              button stayed greyed out.
+
+              Only ever the signed-in user's own — the API refuses any other id,
+              and this component has no way to name one.
+            */}
+            {/*
+              ★ A short hint here, the long one everywhere else.
+
+              `SingleImageUpload`'s default is "JPEG, PNG эсвэл WebP. Дээд
+              хэмжээ 10 MB." — right on a form where the uploader owns its row,
+              and about 360px wide. Beside a name it pushed the whole block past
+              the card's width and wrapped the name onto its own line, which is
+              the layout this header exists to avoid. The formats and the limit
+              are both still stated, in a third of the space.
+            */}
+            <SingleImageUpload
+              endpoint={`/users/${data?.id}/photo`}
+              currentMediaId={data?.photoMediaFileId}
+              label="Зураг"
+              alt="Таны профайл зураг"
+              shape="round"
+              hint="JPEG, PNG · 10 MB"
+              invalidateKeys={[qk.profile(), qk.session()]}
+            />
+
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-title font-semibold text-ink">
+                {[data?.lastName, data?.firstName].filter(Boolean).join(" ") || "—"}
+              </p>
+              <p className="truncate text-body text-muted">{data?.email || "И-мэйл оруулаагүй"}</p>
+            </div>
+          </div>
+
+          {/* The header already states the name and the email, so neither is
+              repeated here — what is left is what it does not say. */}
           <dl className="grid gap-4 sm:grid-cols-2">
-            <ReadField label="Овог" value={data?.lastName} />
-            <ReadField label="Нэр" value={data?.firstName} />
-            <ReadField label="И-мэйл" value={data?.email} />
             <ReadField label="Утас" value={data?.phone} />
+            <ReadField label="Мэргэжил" value={data?.specialization} />
+            <ReadField label="Боловсрол" value={data?.education} />
             <ReadField label="Танилцуулга" value={data?.bio} className="sm:col-span-2" />
           </dl>
         </Card>
       ) : (
-        <Card pad="roomy">
+        <Card pad="roomy" className="flex flex-col gap-5">
+          {/* The uploader stays outside the form and above it, for the reason
+              its own note gives: it saves on selection, and a picture chosen
+              inside a form with a Save button reads as unsaved until you press
+              one. */}
+          <div className="border-b border-border-soft pb-5">
+            <SingleImageUpload
+              endpoint={`/users/${data?.id}/photo`}
+              currentMediaId={data?.photoMediaFileId}
+              label="Зураг"
+              alt="Таны профайл зураг"
+              shape="round"
+              invalidateKeys={[qk.profile(), qk.session()]}
+            />
+          </div>
+
           <form
             onSubmit={(e) => {
               e.preventDefault();
