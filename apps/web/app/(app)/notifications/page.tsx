@@ -198,6 +198,37 @@ export default function NotificationsPage() {
         reasoning that put `HeaderSearch` (`app-shell.tsx`) on a 280px cap.
       */}
       {/*
+        ★ The tabs come first, because they decide what the rest of the page is
+        about.
+
+        They sat below the search field and the filter chips, which put a
+        "Мэдээнээс хайх" placeholder and a "Чухал" filter above the control that
+        chooses between Мэдээ and Судалгаа — so a parent read two narrowing
+        controls before the one that says what is being narrowed. Search and
+        filters both change meaning with the tab; the tab changes meaning with
+        nothing.
+      */}
+      {!isStaff ? (
+        <div role="tablist" aria-label="Мэдээ эсвэл судалгаа" className="flex gap-2">
+          <TabButton
+            active={tab === "news"}
+            onClick={() => setTab("news")}
+            icon={<Newspaper size={16} aria-hidden="true" />}
+          >
+            Мэдээ
+          </TabButton>
+          <TabButton
+            active={tab === "surveys"}
+            onClick={() => setTab("surveys")}
+            icon={<CheckCircle2 size={16} aria-hidden="true" />}
+            badge={totalPending > 0 ? totalPending : undefined}
+          >
+            Судалгаа
+          </TabButton>
+        </div>
+      ) : null}
+
+      {/*
         ★ The search field and the compose button share a row.
 
         They were two stacked blocks with a `gap-6` between them, and with the
@@ -280,26 +311,6 @@ export default function NotificationsPage() {
             Чухал
           </FilterChip>
         </FilterChipRow>
-      ) : null}
-
-      {!isStaff ? (
-        <div role="tablist" aria-label="Мэдээ эсвэл судалгаа" className="flex gap-2">
-          <TabButton
-            active={tab === "news"}
-            onClick={() => setTab("news")}
-            icon={<Newspaper size={16} aria-hidden="true" />}
-          >
-            Мэдээ
-          </TabButton>
-          <TabButton
-            active={tab === "surveys"}
-            onClick={() => setTab("surveys")}
-            icon={<CheckCircle2 size={16} aria-hidden="true" />}
-            badge={totalPending > 0 ? totalPending : undefined}
-          >
-            Судалгаа
-          </TabButton>
-        </div>
       ) : null}
 
       {tab === "surveys" && !isStaff ? (
