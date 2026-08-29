@@ -523,6 +523,40 @@ export class DashboardRepository {
   // ── Kindergarten-wide, for the administrator's dashboard ──────────────────
 
   /**
+   * How many children were enrolled on a given past date.
+   *
+   * ★ Exact, because `Enrollment` records when each one started and ended.
+   *
+   * A child was here on a date if their enrolment had begun by then and had not
+   * yet ended — which is a fact the table holds, not an estimate. That is why
+   * this comparison exists for children and for nothing else on the dashboard:
+   * `Group` and `Membership` carry a `createdAt` but no end date in the same
+   * shape, so "how many groups existed a month ago" would count a group
+   * archived last week and quietly report a number nobody could reproduce.
+   *
+   * A statistic that cannot be checked is worse on a dashboard than an absent
+   * one, so the other three cards carry no trend rather than a plausible guess.
+   */
+  async childrenEnrolledOn(kindergartenIds: string[], date: Date): Promise<number> {
+    if (kindergartenIds.length === 0) return 0;
+
+    const rows = await this.prisma.enrollment.findMany({
+      where: {
+        kindergartenId: { in: kindergartenIds },
+        deletedAt: null,
+        startedOn: { lte: date },
+        OR: [{ endedOn: null }, { endedOn: { gt: date } }],
+      },
+      // One row per child: a child who moved between groups has two enrolments
+      // and is still one child.
+      select: { childId: true },
+      distinct: ["childId"],
+    });
+
+    return rows.length;
+  }
+
+  /**
    * Today's register across every group — "Өнөөдрийн ирц", RFP §12.2.
    *
    * ★ Two numbers, and the denominator is the roster rather than the rows.

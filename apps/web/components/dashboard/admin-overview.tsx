@@ -15,7 +15,7 @@ import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { ErrorState, LoadingState } from "@/components/ui/states";
-import { StatCard } from "@/components/ui/stat-card";
+import { StatCard, StatTrend } from "@/components/ui/stat-card";
 import { IconChip } from "@/components/ui/icon-chip";
 import { BarRow } from "@/components/ui/chart/bar-row";
 import { CalendarCheck, GraduationCap, School, Users } from "lucide-react";
@@ -84,6 +84,7 @@ export function AdminOverview() {
     assessmentCoverage,
     recentActivity,
     currentTerm,
+    childrenAMonthAgo,
   } = data!;
 
   return (
@@ -101,7 +102,14 @@ export function AdminOverview() {
           value={counts.children}
           unit="хүүхэд"
           tone="cornflower"
-          art={<Users size={28} aria-hidden />}
+          art={<Users size={22} aria-hidden />}
+          trend={
+            <StatTrend
+              current={counts.children}
+              previous={childrenAMonthAgo}
+              since="сүүлийн 30 хоногт"
+            />
+          }
         />
         <AttendanceTodayCard today={attendanceToday} />
         <StatCard
@@ -109,26 +117,44 @@ export function AdminOverview() {
           value={counts.groups}
           unit="идэвхтэй"
           tone="mint"
-          art={<School size={28} aria-hidden />}
+          art={<School size={22} aria-hidden />}
         />
         <StatCard
           label="Багш, ажилтан"
           value={counts.staff}
           unit={`${counts.guardians} эцэг эх`}
           tone="sky"
-          art={<GraduationCap size={28} aria-hidden />}
+          art={<GraduationCap size={22} aria-hidden />}
         />
       </section>
 
-      <AttendanceByGroup groups={attendanceByGroup} />
+      {/*
+        ★ These two are paired because they are the same shape, not because
+        they are the same subject.
 
+        Both render exactly one row per group, so they stay the same height at
+        every kindergarten — two groups or twelve. The drawing pairs two panels
+        of similar size; pairing by *row count* is how that stays true when the
+        data changes, and the first attempt (the domain chart beside this list)
+        put a ten-bar panel next to a two-row one and left half a screen empty.
+
+        Below `xl` the content column is under 900px, where two columns start
+        wrapping a Mongolian group name — so they stack rather than shrink, the
+        same trade `/admin`'s tile grid makes at the same breakpoint.
+      */}
+      <div className="grid items-start gap-6 xl:grid-cols-2">
+        <AttendanceByGroup groups={attendanceByGroup} />
+
+        <AssessmentCoverageSection
+          coverage={assessmentCoverage}
+          hasCurrentTerm={Boolean(currentTerm)}
+          href={(groupId) => `/groups/${groupId}/assessment`}
+        />
+      </div>
+
+      {/* Full width: five bars per group is the tallest panel here, and halving
+          its width truncates every Mongolian domain name. */}
       <DomainAverages groups={domainAveragesByGroup} hasCurrentTerm={Boolean(currentTerm)} />
-
-      <AssessmentCoverageSection
-        coverage={assessmentCoverage}
-        hasCurrentTerm={Boolean(currentTerm)}
-        href={(groupId) => `/groups/${groupId}/assessment`}
-      />
 
       <RecentActivitySection entries={recentActivity} auditHref="/admin/audit" />
     </div>
@@ -166,7 +192,7 @@ function AttendanceTodayCard({ today }: { today: AdminDashboard["attendanceToday
       }
       unit={complete ? "бүртгэл бүрэн" : `${outstanding} хүүхэд бүртгээгүй`}
       tone={complete ? "mint" : "sun"}
-      art={<CalendarCheck size={28} aria-hidden />}
+      art={<CalendarCheck size={22} aria-hidden />}
     />
   );
 }
@@ -226,8 +252,14 @@ function AttendanceByGroup({ groups }: { groups: AdminDashboard["attendanceByGro
 
             return (
               <div key={group.groupId} className="flex flex-col gap-1.5 px-4 py-3">
-                <BarRow label={group.name} percent={percent} value={`${percent}%`} />
-                <p className="text-caption text-muted">
+                <BarRow
+                  inline
+                  label={group.name}
+                  percent={percent}
+                  value={`${percent}%`}
+                  accessibleLabel={`${group.name} — ирц ${percent}%`}
+                />
+                <p className="text-caption leading-relaxed text-muted sm:pl-[116px] md:pl-[144px]">
                   {Object.entries(group.counts)
                     .filter(([, n]) => n > 0)
                     .map(([status, n]) => `${STATUS_LABEL[status] ?? status} ${n}`)
@@ -307,7 +339,7 @@ function DomainAverages({
           Энэ улиралд үнэлгээ хийгдээгүй байна.
         </Card>
       ) : (
-        <Card pad="roomy" className="flex flex-col gap-5">
+        <Card pad="roomy" className="grid gap-x-8 gap-y-6 lg:grid-cols-2">
           {assessed.map((group) => (
             <div key={group.groupId}>
               <p className="mb-2 flex flex-wrap items-baseline gap-x-2 text-lead font-semibold text-ink">
@@ -323,6 +355,8 @@ function DomainAverages({
                   return (
                     <BarRow
                       key={domain.id}
+                      inline
+                      labelWidth="w-[136px] lg:w-[152px] xl:w-[200px]"
                       label={domain.name}
                       /* The scale is 1–4, so a bar is drawn against 4 rather
                          than against the largest value in the set — a group at

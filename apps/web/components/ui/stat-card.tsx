@@ -27,6 +27,7 @@ export function StatCard({
   art,
   tone = "sky",
   size = "normal",
+  trend,
   footer,
   className,
 }: {
@@ -39,6 +40,14 @@ export function StatCard({
   tone?: Tone;
   /** `wide` spans two columns and gives the art real room. */
   size?: "normal" | "wide";
+  /**
+   * A comparison against an earlier period — the drawing's "↑ 0 Өмнөх сараас".
+   *
+   * A slot rather than a number, because only the caller knows what the figure
+   * is being compared against and whether the comparison is honest for that
+   * statistic. `StatTrend` below renders the usual shape.
+   */
+  trend?: ReactNode;
   /** A progress bar or a sparkline, below the figure. */
   footer?: ReactNode;
   className?: string;
@@ -47,12 +56,38 @@ export function StatCard({
     <Card
       pad="roomy"
       className={cn(
-        "flex items-start justify-between gap-3 overflow-hidden",
+        "flex items-start gap-3 overflow-hidden",
         size === "wide" && "sm:col-span-2",
         className,
       )}
     >
-      <div className="flex min-w-0 flex-col gap-1">
+      {/*
+        ★ The art leads the card, rather than closing it.
+
+        It sat on the right until the client's 2026-08-29 drawing, opposite the
+        figure — which reads as decoration parked in the leftover space, and on
+        a two-column phone grid it squeezed the number it was meant to
+        illustrate. Leading, it is the thing the eye lands on first and the row
+        of cards becomes scannable by shape before any of it is read.
+
+        `size-11` and a tinted square, not a circle: `IconChip`'s `md` step and
+        `--radius-card`, so this and every other chip in the product are the
+        same object.
+      */}
+      {art ? (
+        <span
+          aria-hidden="true"
+          className={cn(
+            "grid shrink-0 place-items-center rounded-card [&>img]:size-full [&>img]:object-contain",
+            size === "wide" ? "size-14" : "size-11",
+            TONE_SURFACE[tone],
+          )}
+        >
+          {art}
+        </span>
+      ) : null}
+
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
         <p className="text-body text-muted">{label}</p>
 
         {/*
@@ -70,22 +105,80 @@ export function StatCard({
         </p>
 
         {unit ? <p className="text-caption text-muted">{unit}</p> : null}
+
+        {/*
+          ★ The trend sits under a rule, so it reads as a second statement
+          rather than a third line of the first.
+
+          "0" beside "10" with nothing between them is two numbers a reader has
+          to disambiguate; a hairline says the one below is *about* the one
+          above. Absent entirely when the caller has nothing honest to put
+          there — an empty trend row implies a comparison that was made and
+          came out flat.
+        */}
+        {trend ? (
+          <div className="mt-2.5 border-t border-border-soft pt-2 text-caption">{trend}</div>
+        ) : null}
+
         {footer ? <div className="mt-1.5">{footer}</div> : null}
       </div>
-
-      {art ? (
-        <span
-          aria-hidden="true"
-          className={cn(
-            "grid shrink-0 place-items-center rounded-card [&>img]:size-full [&>img]:object-contain",
-            size === "wide" ? "size-20" : "size-14",
-            TONE_SURFACE[tone],
-          )}
-        >
-          {art}
-        </span>
-      ) : null}
     </Card>
+  );
+}
+
+/**
+ * "↑ 2 өмнөх сараас" — a figure's change against an earlier one.
+ *
+ * ★ The arrow is not the only signal, and the word beside it is not decoration.
+ *
+ * Colour and a glyph both say "up"; the phrase beside them says *up from
+ * what*, which is the part a reader cannot infer. `globals.css` records "no
+ * critical meaning through colour alone" as an RFP §13 requirement, and a
+ * green triangle on its own is exactly that.
+ *
+ * ★★ No change renders an em dash rather than an arrow beside a zero.
+ *
+ * An arrow pointing up next to "0" is a small contradiction the eye has to
+ * resolve every time it lands there. A dash says "unchanged" in one glyph and
+ * takes the colour off the card, which is right — nothing happened.
+ *
+ * ★★★ `mint` and `peach`, not green and red.
+ *
+ * Fewer children this month is not an error, and painting it in the danger
+ * colour would tell a director something the number does not. `peach` is
+ * `tone.ts`'s "attention", which is what a fall in enrolment deserves.
+ */
+export function StatTrend({
+  current,
+  previous,
+  /** What the comparison is against — "өмнөх сараас". */
+  since,
+}: {
+  current: number;
+  previous: number;
+  since: string;
+}) {
+  const delta = current - previous;
+
+  if (delta === 0) {
+    return (
+      <p className="text-muted">
+        <span aria-hidden="true">—</span> Өөрчлөлтгүй, {since}
+      </p>
+    );
+  }
+
+  const up = delta > 0;
+
+  return (
+    <p className={up ? "text-mint-ink" : "text-peach-ink"}>
+      <span aria-hidden="true">{up ? "↑" : "↓"}</span>{" "}
+      <span className="font-medium tabular-nums">
+        {up ? "+" : "−"}
+        {Math.abs(delta)}
+      </span>{" "}
+      <span className="text-muted">{since}</span>
+    </p>
   );
 }
 

@@ -179,17 +179,26 @@ export class DashboardService {
     const monthAgo = new Date(today);
     monthAgo.setDate(monthAgo.getDate() - 29);
 
-    const [counts, coverage, recentActivity, storage, attendanceToday, attendanceByGroup, domains] =
-      await Promise.all([
-        this.repo.kindergartenCounts(kindergartenIds),
-        term ? this.repo.assessmentCoverage(kindergartenIds, term.id) : Promise.resolve([]),
-        this.repo.recentAuditEntries(kindergartenIds),
-        // RFP §12.2 — "Хадгалалтын хэмжээ" and "Тайлангийн статистик".
-        this.repo.storageAndReportStats(kindergartenIds),
-        this.repo.attendanceToday(kindergartenIds, today),
-        this.repo.attendanceByGroup(kindergartenIds, monthAgo, today),
-        term ? this.repo.domainAveragesByGroup(kindergartenIds, term.id) : Promise.resolve([]),
-      ]);
+    const [
+      counts,
+      coverage,
+      recentActivity,
+      storage,
+      attendanceToday,
+      childrenAMonthAgo,
+      attendanceByGroup,
+      domains,
+    ] = await Promise.all([
+      this.repo.kindergartenCounts(kindergartenIds),
+      term ? this.repo.assessmentCoverage(kindergartenIds, term.id) : Promise.resolve([]),
+      this.repo.recentAuditEntries(kindergartenIds),
+      // RFP §12.2 — "Хадгалалтын хэмжээ" and "Тайлангийн статистик".
+      this.repo.storageAndReportStats(kindergartenIds),
+      this.repo.attendanceToday(kindergartenIds, today),
+      this.repo.childrenEnrolledOn(kindergartenIds, monthAgo),
+      this.repo.attendanceByGroup(kindergartenIds, monthAgo, today),
+      term ? this.repo.domainAveragesByGroup(kindergartenIds, term.id) : Promise.resolve([]),
+    ]);
 
     return {
       currentTerm: term ? { id: term.id, number: term.number, name: term.name } : null,
@@ -198,6 +207,14 @@ export class DashboardService {
       recentActivity: recentActivity.map(withActorLabel),
       storage,
       attendanceToday,
+      /**
+       * Children enrolled 30 days ago, so the card can show the change.
+       *
+       * Only this count has a trend, and `childrenEnrolledOn` explains why:
+       * enrolment history makes it exact, while the other three would be a
+       * guess dressed as a figure.
+       */
+      childrenAMonthAgo,
       attendanceByGroup,
       /** Empty without a current term — an assessment belongs to one. */
       domainAveragesByGroup: domains,

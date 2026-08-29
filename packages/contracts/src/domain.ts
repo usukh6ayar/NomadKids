@@ -1485,6 +1485,19 @@ export const adminDashboardSchema = z.object({
    * in", which are the two states an administrator most needs to tell apart at
    * nine in the morning.
    */
+  /**
+   * Children enrolled 30 days ago — the drawing's "↑ 0 Өмнөх сараас".
+   *
+   * ★ Only this count carries a comparison, and the omission is deliberate.
+   *
+   * `Enrollment` records when each one started and ended, so "how many children
+   * were here a month ago" is a fact the table holds. `Group` and `Membership`
+   * have no equivalent end date, so the same question about groups or staff
+   * would count one archived last week and report a number nobody could
+   * reproduce. A statistic that cannot be checked is worse on a dashboard than
+   * an absent one.
+   */
+  childrenAMonthAgo: z.number(),
   attendanceToday: z.object({
     /** Active enrolments — the roster, not the number of rows written. */
     expected: z.number(),
