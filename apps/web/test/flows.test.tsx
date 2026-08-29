@@ -1345,7 +1345,6 @@ describe("teacher dashboard", () => {
       "Өнөөдрийн тойм",
       "Сүүлийн ажиглалтууд",
       "Улирлын үнэлгээний явц",
-      "Хоолны цэс",
       "Бүлгийн бүртгэлүүд",
     ]) {
       expect(screen.queryByRole("region", { name: region }), `${region} is back`).toBeNull();
@@ -1353,6 +1352,18 @@ describe("teacher dashboard", () => {
     // The header's search box and "+ Үйлдэл" menu went with them.
     expect(screen.queryByRole("search")).toBeNull();
     expect(screen.queryByRole("button", { name: /Үйлдэл/ })).toBeNull();
+
+    /*
+      ★ Хоолны цэс is the one that came back, on 2026-08-29.
+
+      It left with the other eight and, unlike them, had nowhere else to go:
+      `TodayMenu` is the only surface in the product for the allergy
+      cross-check, which CLAUDE.md §7 lists as delivered. It sits *below* the
+      five cards the client drew rather than among them, so their layout is
+      untouched — this asserts it is on the page at all, which is the part that
+      was broken.
+    */
+    expect(screen.getByRole("region", { name: "Хоолны цэс" })).toBeInTheDocument();
   });
 
   it("names the group and the date under the title", async () => {

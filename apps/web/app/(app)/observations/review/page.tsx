@@ -13,6 +13,7 @@ import { errorMessage } from "@/lib/api/errors";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { Card } from "@/components/ui/card";
 import { Checkbox, Field, Textarea } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
@@ -96,6 +97,20 @@ function ReviewCard({ observation }: { observation: z.infer<typeof queueItemSche
   const [publish, setPublish] = useState(true);
   const [returning, setReturning] = useState(false);
 
+  /*
+   * ★ Every outcome is announced. CLAUDE.md §5: "toast after save".
+   *
+   * This screen mutated silently — the list refreshed and nothing said whether
+   * the write had landed, which on a phone with a slow connection is
+   * indistinguishable from a tap that did not register. The report was that a
+   * teacher "cannot tell whether it saved"; this is that, on the screens they
+   * use daily.
+   *
+   * `onError` matters as much as `onSuccess`: a failed write previously left
+   * the row looking unchanged with no explanation at all.
+   */
+  const toast = useToast();
+
   const review = useMutation({
     mutationFn: (decision: "APPROVED" | "RETURNED") =>
       mutate(`/observations/${observation.id}/review`, observationSchema, {
@@ -108,13 +123,15 @@ function ReviewCard({ observation }: { observation: z.infer<typeof queueItemSche
           ...(decision === "APPROVED" ? { visibleToParents: publish } : {}),
         },
       }),
-    onSuccess: () => {
+    onSuccess: (_data, decision) => {
+      toast.success(decision === "APPROVED" ? "Ажиглалт баталгаажлаа." : "Ажиглалт буцаагдлаа.");
       void queryClient.invalidateQueries({ queryKey: qk.reviewQueue() });
       void queryClient.invalidateQueries({ queryKey: qk.dashboard.teacher() });
       if (observation.child) {
         void queryClient.invalidateQueries({ queryKey: qk.child(observation.child.id) });
       }
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   return (

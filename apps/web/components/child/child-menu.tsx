@@ -181,10 +181,7 @@ export function ChildMenu({
                   <span>{Number(date.slice(8, 10))}</span>
                   <span
                     aria-hidden="true"
-                    className={cn(
-                      "size-1.5 rounded-pill",
-                      filled ? "bg-mint" : "bg-transparent",
-                    )}
+                    className={cn("size-1.5 rounded-pill", filled ? "bg-mint" : "bg-transparent")}
                   />
                 </button>
               );
@@ -193,7 +190,9 @@ export function ChildMenu({
 
           {!isStaff && !hasAnyDish ? (
             <EmptyState
-              icon={<Image src="/background/mascot-boy-orange.webp" alt="" width={96} height={96} />}
+              icon={
+                <Image src="/background/mascot-boy-orange.webp" alt="" width={96} height={96} />
+              }
               title="Цэс оруулаагүй байна"
               description="Багш цэс оруулсны дараа энд харагдана."
             />

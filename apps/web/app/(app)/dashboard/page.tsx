@@ -11,6 +11,7 @@ import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { AttendanceToday } from "@/components/dashboard/attendance-today";
+import { TodayMenu } from "@/components/dashboard/today-menu";
 import { SurveySummary } from "@/components/dashboard/survey-summary";
 import { ClassBoardNotice } from "@/components/dashboard/class-board-notice";
 import { GenderRatio } from "@/components/dashboard/gender-ratio";
@@ -241,6 +242,20 @@ function TeacherDashboard() {
       {/* The latest post, full width. Stacked on a phone; text beside its
           photograph from `lg` — see `class-board-notice.tsx`. */}
       <ClassBoardNotice notice={boardNotice} />
+
+      {/*
+        ★★★ D — today's menu, restored 2026-08-29.
+
+        It came off this screen with the eight other widgets the redesign
+        removed, and unlike them it had nowhere else to go: `TodayMenu` is the
+        only surface anywhere in the product for the allergy cross-check, which
+        CLAUDE.md §7 lists as delivered ("§11 the allergy cross-check — done").
+        Removing the dashboard from under it did not remove the feature from
+        scope, it just made it unreachable — so it sits below the five cards the
+        client drew rather than among them, which keeps their layout exactly as
+        approved.
+      */}
+      <TodayMenu />
     </div>
   );
 }

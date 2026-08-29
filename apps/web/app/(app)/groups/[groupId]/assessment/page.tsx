@@ -16,6 +16,7 @@ import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
@@ -127,6 +128,29 @@ function GroupAssessment() {
     setDraft({});
   }, [termId, domainId, groupId]);
 
+  /**
+   * ★ The result is announced, not left to be inferred.
+   *
+   * This screen saved silently apart from a green line rendered *below the
+   * roster* — and the control that triggers it is a sticky bar pinned to the
+   * bottom of the viewport, so a teacher who pressed Хадгалах after scrolling
+   * through thirty children had the confirmation somewhere off-screen. The
+   * report was simply "багш хадгалж байгаа эсэхээ мэдэхгүй байна", which is
+   * exactly what that arrangement produces.
+   *
+   * CLAUDE.md §5 asks for a toast after a save, `ToastProvider` has been in the
+   * shell the whole time, and eight other screens already use it. This one did
+   * not.
+   *
+   * ★★ Both outcomes, and the failure keeps its inline message too.
+   *
+   * `toast.ts` argues that an error is read rather than glanced at and that a
+   * screen whose error is actionable should keep rendering it — so the
+   * `FormError` above the roster stays, and the toast is what draws the eye to
+   * it from the foot of a long list. A success needs no second copy.
+   */
+  const toast = useToast();
+
   const save = useMutation({
     mutationFn: () => {
       const entries = Object.entries(draft).map(([childId, levelId]) => ({ childId, levelId }));
@@ -135,13 +159,18 @@ function GroupAssessment() {
         body: { termId, domainId, entries },
       });
     },
-    onSuccess: () => {
+    onSuccess: (_data, _vars) => {
+      const saved = Object.keys(draft).length;
       setDraft({});
+      toast.success(
+        saved > 0 ? `${saved} хүүхдийн үнэлгээ хадгалагдлаа.` : "Үнэлгээ хадгалагдлаа.",
+      );
       void queryClient.invalidateQueries({
         queryKey: qk.groupAssessment(groupId, termId, domainId),
       });
       void queryClient.invalidateQueries({ queryKey: qk.dashboard.teacher() });
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   if (group.isLoading) return <LoadingState rows={4} />;
@@ -277,11 +306,14 @@ function GroupAssessment() {
             </div>
           ) : null}
 
-          {save.isSuccess && pendingCount === 0 ? (
-            <p role="status" className="rounded-control bg-mint px-4 py-3 text-body text-mint-ink">
-              Үнэлгээ хадгалагдлаа.
-            </p>
-          ) : null}
+          {/*
+            ★ The static green line that used to sit here is gone.
+
+            It rendered on `save.isSuccess` and never cleared, so a teacher who
+            saved once saw "Үнэлгээ хадгалагдлаа." under the roster for the rest
+            of the session — including while making a second set of changes it
+            was not describing. A toast says it once, at the moment it is true.
+          */}
         </>
       ) : null}
     </div>

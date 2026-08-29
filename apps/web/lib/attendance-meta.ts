@@ -36,7 +36,13 @@ export const ATTENDANCE_STATUS_BG: Record<string, string> = {
 };
 
 /** The order every legend and stacked bar renders in — fixed, never sorted by count. */
-export const ATTENDANCE_STATUS_ORDER = ["PRESENT", "HALF_DAY", "EXCUSED", "SICK", "ABSENT"] as const;
+export const ATTENDANCE_STATUS_ORDER = [
+  "PRESENT",
+  "HALF_DAY",
+  "EXCUSED",
+  "SICK",
+  "ABSENT",
+] as const;
 
 /**
  * Who handed the child over — drop-off, pickup, and (as of 2026-08-26) a

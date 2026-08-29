@@ -373,7 +373,13 @@ function TransferCard({ childId }: { childId: string }) {
  * or when there is no ACTIVE enrollment to graduate — the same "no dead
  * action" reasoning as `ArchiveButton` for an already-archived child.
  */
-function GraduateCard({ childId, child }: { childId: string; child: z.infer<typeof childDetailSchema> }) {
+function GraduateCard({
+  childId,
+  child,
+}: {
+  childId: string;
+  child: z.infer<typeof childDetailSchema>;
+}) {
   const queryClient = useQueryClient();
   const { hasRole } = useSession();
   const [confirming, setConfirming] = useState(false);
@@ -407,7 +413,10 @@ function GraduateCard({ childId, child }: { childId: string; child: z.infer<type
         <FormError message={graduate.isError ? errorMessage(graduate.error) : null} />
 
         {graduate.isSuccess ? (
-          <p role="status" className="rounded-control bg-mint px-3.5 py-2.5 text-body text-mint-ink">
+          <p
+            role="status"
+            className="rounded-control bg-mint px-3.5 py-2.5 text-body text-mint-ink"
+          >
             Төгссөнөөр тэмдэглэлээ.
           </p>
         ) : confirming ? (

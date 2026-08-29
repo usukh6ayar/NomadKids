@@ -8,7 +8,6 @@ import { AttendanceToday } from "@/components/dashboard/attendance-today";
 import { TodayMenu } from "@/components/dashboard/today-menu";
 import { ObservationMix } from "@/components/dashboard/observation-mix";
 import { TermProgress } from "@/components/dashboard/term-progress";
-import { QuickLinks } from "@/components/dashboard/quick-links";
 
 /**
  * The widgets from the client's sketch, against what the database actually
@@ -890,83 +889,17 @@ describe("дүрслэл", () => {
  * `/groups/undefined/attendance` is a 404 the reader would read as the product
  * being broken, and it is exactly what a static href would have produced.
  */
-describe("түргэн холбоос", () => {
-  const UNREAD = { path: "/notifications/unread-count", body: { count: 0 } };
-
-  it("points Ирц and Хоол at the teacher's own group", async () => {
-    stubApi([
-      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      {
-        path: "/groups?",
-        body: { items: [GROUP], page: 1, pageSize: 20, total: 1, totalPages: 1 },
-      },
-      UNREAD,
-    ]);
-
-    renderWithProviders(<QuickLinks />);
-
-    expect(await screen.findByRole("link", { name: "Ирц" })).toHaveAttribute(
-      "href",
-      `/groups/${GROUP.id}/attendance`,
-    );
-    expect(screen.getByRole("link", { name: "Хоол" })).toHaveAttribute(
-      "href",
-      `/groups/${GROUP.id}/meals`,
-    );
-  });
-
-  /** A teacher with no group assigned gets four tiles, not two broken ones. */
-  it("omits the group tiles when no group is assigned", async () => {
-    stubApi([
-      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      { path: "/groups?", body: { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 } },
-      UNREAD,
-    ]);
-
-    renderWithProviders(<QuickLinks />);
-
-    expect(await screen.findByRole("link", { name: "Хүүхдүүд" })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Ирц" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Хоол" })).not.toBeInTheDocument();
-  });
-
-  /**
-   * ★ The badge carries the number into the link's accessible name. A red dot
-   * a screen reader cannot count is "something changed"; "3 шинэ" is the fact.
-   */
-  it("counts the unread notices on Ангийн самбар", async () => {
-    stubApi([
-      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      {
-        path: "/groups?",
-        body: { items: [GROUP], page: 1, pageSize: 20, total: 1, totalPages: 1 },
-      },
-      { path: "/notifications/unread-count", body: { count: 3 } },
-    ]);
-
-    renderWithProviders(<QuickLinks />);
-
-    expect(await screen.findByRole("link", { name: "Ангийн самбар, 3 шинэ" })).toHaveAttribute(
-      "href",
-      "/notifications",
-    );
-  });
-
-  /** No dead tiles on staff — `staffSections`' rule, applied to this grid. */
-  it("has no удахгүй placeholder", async () => {
-    stubApi([
-      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      {
-        path: "/groups?",
-        body: { items: [GROUP], page: 1, pageSize: 20, total: 1, totalPages: 1 },
-      },
-      UNREAD,
-    ]);
-
-    renderWithProviders(<QuickLinks />);
-
-    await screen.findByRole("link", { name: "Судалгаа" });
-    expect(screen.queryByText("Удахгүй")).not.toBeInTheDocument();
-    expect(screen.queryByText("Санхүү")).not.toBeInTheDocument();
-  });
-});
+/*
+ * ★ The "түргэн холбоос" suite was deleted on 2026-08-29 with the component.
+ *
+ * `QuickLinks` was the teacher dashboard's launcher grid. The client's redesign
+ * removed it from that screen and nothing else rendered it, so the component
+ * went too — its four cases here tested that its Ирц and Хоол tiles pointed at
+ * the signed-in teacher's own group, and that a teacher with no group got
+ * neither.
+ *
+ * **That guarantee did not go with them.** The same two destinations are now in
+ * the sidebar's "Бүлгийн бүртгэл" section, scoped from the same `useMyGroup()`
+ * and omitted the same way when there is no single group to name — see
+ * `app/(app)/layout.tsx`. `sidebar.test.tsx` is where it belongs now.
+ */
