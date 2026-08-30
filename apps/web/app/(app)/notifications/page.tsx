@@ -770,12 +770,20 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
 
       The only difference used to be the "Шинэ" pill and a font weight, which
       on a phone at arm's length is no difference at all — the report was that
-      a teacher cannot tell which posts they have already opened. Three signals
-      separate them now, and each survives the loss of the others:
+      a teacher cannot tell which posts they have already opened.
 
-        · a blue rail down the left edge of an unread card
+      ★★ The coloured rail down the left edge is gone (2026-08-30, on request).
+
+      It was a fourth signal and the loudest one: a 4px bar on every unread card
+      turned a quiet feed into a striped one, and on a board where most posts
+      are unread it drew a margin rather than marking an exception. The three
+      that remain each still work without the others, which was the original
+      requirement:
+
         · the card's tint — white while unread, the page's own canvas once read
-        · the title's weight, and the "Шинэ" pill above it
+        · the border — full strength while unread, `border-border-soft` after
+        · the title's weight, the "Шинэ" pill, and the word inside the link
+          itself for a screen reader
 
       A read card is deliberately *quieter* rather than greyed out: its text
       stays `--color-ink` at full contrast, because a notice a family has
@@ -786,7 +794,7 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
       className={cn(
         "flex flex-col gap-2.5 rounded-card border p-4 transition-colors",
         isUnread
-          ? "border-l-4 border-l-primary border-y-border border-r-border bg-surface hover:border-primary"
+          ? "border-border bg-surface hover:border-primary"
           : "border-border-soft bg-canvas hover:border-border",
       )}
     >
