@@ -48,8 +48,9 @@ export function GroupsSection() {
    * A teacher here is responsible for a single group, so this section rendered
    * a heading, a supporting line and one row — three lines of chrome around one
    * link, naming a group the teacher already knows they teach. The name is not
-   * the information; "go and act on them" is — now two actions, attendance and
-   * assessment, since both are real, daily-and-quarterly tasks that start here.
+   * the information; "go and act on them" is — now three actions, attendance,
+   * meals and assessment, since all three are real, recurring tasks that
+   * start here (daily, per sitting, and quarterly respectively).
    *
    * So a single group collapses to its actions. The list survives for the
    * cases that are genuinely lists: an admin sees every group in the

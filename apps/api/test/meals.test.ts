@@ -3,12 +3,23 @@ import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestApp } from "./support/app";
 import { resetData, testDb } from "./support/db";
-import { authed, createScenario, login, type AuthSession, type Scenario } from "./support/fixtures";
+import {
+  authed,
+  createChild,
+  createGroup,
+  createScenario,
+  enrollChild,
+  login,
+  type AuthSession,
+  type Scenario,
+} from "./support/fixtures";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
 
 /**
- * The weekly menu — RFP §989. Kindergarten-wide, not per-child: there is no
- * per-child "did they eat" record here, deliberately (not in the RFP).
+ * The weekly menu — RFP §989, kindergarten-wide — and the meal register,
+ * `нэмэлт.md` §2, which is per child: whether they ate. The two are separate
+ * models on purpose (`MealRecord` is not derived from `Attendance`) — see the
+ * schema's own note on why "present" does not imply "fed".
  */
 
 let app: INestApplication;
@@ -110,6 +121,45 @@ describe("saving a day", () => {
     expect(row.totalCalories).toBeNull();
   });
 
+  it("saves a dish's meal-time, calories and portions alongside its name", async () => {
+    const res = await authed(
+      request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-03-02`),
+      teacherA,
+    ).send({
+      dishes: [
+        {
+          name: "Сүүтэй будаа",
+          allergenTags: ["сүү"],
+          kind: "BREAKFAST",
+          calories: 230,
+          portions: 1,
+        },
+      ],
+    });
+
+    expect(res.status).toBe(200);
+    const row = await db.menuDay.findFirstOrThrow({
+      where: { kindergartenId: a.kindergarten.id },
+    });
+    expect(row.dishes).toEqual([
+      {
+        name: "Сүүтэй будаа",
+        allergenTags: ["сүү"],
+        kind: "BREAKFAST",
+        calories: 230,
+        portions: 1,
+      },
+    ]);
+  });
+
+  it("rejects a negative or implausibly large per-dish calories", async () => {
+    const res = await authed(
+      request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-03-02`),
+      teacherA,
+    ).send({ dishes: [{ name: "x", allergenTags: [], calories: -5 }] });
+    expect(res.status).toBe(400);
+  });
+
   it("rejects a negative or implausibly large totalCalories", async () => {
     const negative = await authed(
       request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-03-02`),
@@ -180,5 +230,163 @@ describe("isolation", () => {
     ).send({ dishes: [{ name: "x", allergenTags: [] }] });
 
     expect(res.status).toBe(404);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The meal register — нэмэлт.md §2
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("the meal register", () => {
+  it("a teacher marks a whole sitting in one request", async () => {
+    const res = await authed(
+      request(server()).put(`/v1/groups/${a.group.id}/meals`),
+      teacherA,
+    ).send({
+      date: "2026-03-02",
+      kind: "LUNCH",
+      entries: [{ childId: a.child.id, status: "TAKEN" }],
+    });
+
+    expect(res.status).toBe(200);
+    const row = await db.mealRecord.findFirstOrThrow({ where: { childId: a.child.id } });
+    expect(row).toMatchObject({
+      enrollmentId: a.enrollment.id,
+      kind: "LUNCH",
+      status: "TAKEN",
+      recordedById: a.teacherUser.id,
+    });
+  });
+
+  it("a second PUT for the same sitting updates rather than duplicates", async () => {
+    const record = () =>
+      authed(request(server()).put(`/v1/groups/${a.group.id}/meals`), teacherA).send({
+        date: "2026-03-02",
+        kind: "LUNCH",
+        entries: [{ childId: a.child.id, status: "TAKEN" }],
+      });
+
+    await record();
+    await authed(request(server()).put(`/v1/groups/${a.group.id}/meals`), teacherA).send({
+      date: "2026-03-02",
+      kind: "LUNCH",
+      entries: [{ childId: a.child.id, status: "NOT_TAKEN" }],
+    });
+
+    const rows = await db.mealRecord.findMany({ where: { childId: a.child.id } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.status).toBe("NOT_TAKEN");
+  });
+
+  it("the group sheet lists every enrolled child, marked or not", async () => {
+    const second = await createChild(a.kindergarten.id, { firstName: "Хоёр" });
+    await enrollChild(a.kindergarten.id, second.id, a.group.id, a.schoolYear.id);
+
+    await authed(request(server()).put(`/v1/groups/${a.group.id}/meals`), teacherA).send({
+      date: "2026-03-02",
+      kind: "BREAKFAST",
+      entries: [{ childId: a.child.id, status: "PARTIAL" }],
+    });
+
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/meals?date=2026-03-02&kind=BREAKFAST`),
+      teacherA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(2);
+    const marked = res.body.find((e: { child: { id: string } }) => e.child.id === a.child.id);
+    const unmarked = res.body.find((e: { child: { id: string } }) => e.child.id === second.id);
+    expect(marked.record.status).toBe("PARTIAL");
+    expect(unmarked.record).toBeNull();
+  });
+
+  it("a child not enrolled in the group is dropped, not an error", async () => {
+    const elsewhere = await createChild(a.kindergarten.id, { firstName: "Өөр" });
+
+    const res = await authed(
+      request(server()).put(`/v1/groups/${a.group.id}/meals`),
+      teacherA,
+    ).send({
+      date: "2026-03-02",
+      kind: "LUNCH",
+      entries: [
+        { childId: a.child.id, status: "TAKEN" },
+        { childId: elsewhere.id, status: "TAKEN" },
+      ],
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    const count = await db.mealRecord.count();
+    expect(count).toBe(1);
+  });
+
+  it("a child's month counts by sitting and status", async () => {
+    await authed(request(server()).put(`/v1/groups/${a.group.id}/meals`), teacherA).send({
+      date: "2026-03-02",
+      kind: "LUNCH",
+      entries: [{ childId: a.child.id, status: "TAKEN" }],
+    });
+    await authed(request(server()).put(`/v1/groups/${a.group.id}/meals`), teacherA).send({
+      date: "2026-03-03",
+      kind: "LUNCH",
+      entries: [{ childId: a.child.id, status: "NOT_TAKEN" }],
+    });
+
+    const res = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/meals/summary?month=2026-03`),
+      parentA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.daysFed).toBe(1);
+    expect(res.body.counts).toEqual(
+      expect.arrayContaining([
+        { kind: "LUNCH", status: "TAKEN", count: 1 },
+        { kind: "LUNCH", status: "NOT_TAKEN", count: 1 },
+      ]),
+    );
+  });
+
+  describe("isolation", () => {
+    it("a parent cannot record the register", async () => {
+      const res = await authed(
+        request(server()).put(`/v1/groups/${a.group.id}/meals`),
+        parentA,
+      ).send({ date: "2026-03-02", kind: "LUNCH", entries: [{ childId: a.child.id, status: "TAKEN" }] });
+
+      expect(res.status).toBe(404);
+    });
+
+    it("a teacher assigned to a different group in the same kindergarten gets 404", async () => {
+      const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Өөр бүлэг");
+      const child = await createChild(a.kindergarten.id, { firstName: "Хол" });
+      await enrollChild(a.kindergarten.id, child.id, other.id, a.schoolYear.id);
+
+      const res = await authed(
+        request(server()).get(`/v1/groups/${other.id}/meals?date=2026-03-02&kind=LUNCH`),
+        teacherA,
+      );
+
+      expect(res.status).toBe(404);
+    });
+
+    it("a teacher from another kindergarten gets 404", async () => {
+      const res = await authed(
+        request(server()).put(`/v1/groups/${a.group.id}/meals`),
+        await login(app, b.teacherUser.username),
+      ).send({ date: "2026-03-02", kind: "LUNCH", entries: [{ childId: a.child.id, status: "TAKEN" }] });
+
+      expect(res.status).toBe(404);
+    });
+
+    it("a guardian of another child gets 404 on the meal summary", async () => {
+      const res = await authed(
+        request(server()).get(`/v1/children/${a.child.id}/meals/summary?month=2026-03`),
+        parentB,
+      );
+      expect(res.status).toBe(404);
+    });
   });
 });
