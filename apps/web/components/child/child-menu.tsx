@@ -8,37 +8,34 @@ import {
   Cookie,
   Flame,
   Info,
-  Plus,
   Soup,
   Sun,
-  Trash2,
   Utensils,
   UtensilsCrossed,
 } from "lucide-react";
 import Image from "next/image";
 import { useState, type ReactNode } from "react";
 import { z } from "zod";
-import { MEAL_KIND_LABEL, menuDaySchema, type MealKind, type MenuDish } from "@kinder/contracts";
+import { menuDaySchema, MEAL_KIND_LABEL, type MealKind, type MenuDish } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
-import { Field, Input, Select } from "@/components/ui/field";
-import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
+import {
+  MEAL_KIND_ORDER,
+  MenuDishEditor,
+  fromDraft,
+  toDraft,
+  type DishDraft,
+} from "@/components/menu/menu-dish-editor";
 import { formatDayMonth, formatLongDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const menuSchema = z.array(menuDaySchema);
 
 const WEEKDAYS = ["Да", "Мя", "Лх", "Пү", "Ба", "Бя", "Ня"];
-const MEAL_KIND_ORDER: MealKind[] = [
-  "BREAKFAST",
-  "MID_MORNING_SNACK",
-  "LUNCH",
-  "AFTERNOON_SNACK",
-  "EXTRA",
-];
 
 /** One colour and icon per sitting, so the cards read as different things at a
  * glance rather than five identical white boxes with different headings. */
@@ -357,7 +354,7 @@ function DayDetail({
       </div>
 
       {editing ? (
-        <EditForm
+        <MenuDishEditor
           draftDishes={draftDishes}
           onChange={setDraftDishes}
           onSave={() => save.mutate()}
@@ -466,211 +463,6 @@ function MealCard({
   );
 }
 
-// ── Editing ──────────────────────────────────────────────────────────────────
-
-interface DishDraft {
-  /** Stable per-row identity for React's reconciliation — removing a middle
-   * row must not shift focus onto whatever row inherits its array index. */
-  key: string;
-  name: string;
-  kind: MealKind;
-  allergenTags: string;
-  ingredients: string;
-  calories: string;
-  portions: string;
-}
-
-function toDraft(dishes: MenuDish[]): DishDraft[] {
-  return dishes.map((dish, i) => ({
-    key: `${i}-${dish.name}`,
-    name: dish.name,
-    kind: dish.kind ?? "BREAKFAST",
-    allergenTags: dish.allergenTags.join(", "),
-    ingredients: dish.ingredients ?? "",
-    calories: dish.calories === null || dish.calories === undefined ? "" : String(dish.calories),
-    portions: dish.portions === null || dish.portions === undefined ? "" : String(dish.portions),
-  }));
-}
-
-/** The inverse of `toDraft`. Blank names are dropped rather than saved as "". */
-function fromDraft(drafts: DishDraft[]) {
-  return drafts
-    .filter((d) => d.name.trim())
-    .map((d) => ({
-      name: d.name.trim(),
-      kind: d.kind,
-      allergenTags: d.allergenTags
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean),
-      ingredients: d.ingredients.trim() || null,
-      calories: d.calories.trim() ? Number(d.calories) : null,
-      portions: d.portions.trim() ? Number(d.portions) : null,
-    }));
-}
-
-function newDraft(kind: MealKind): DishDraft {
-  return {
-    key: crypto.randomUUID(),
-    name: "",
-    kind,
-    allergenTags: "",
-    ingredients: "",
-    calories: "",
-    portions: "",
-  };
-}
-
-/**
- * A row per dish, structured rather than the free-text-with-a-parenthesis
- * syntax this used to be.
- *
- * ★ Replaced the single textarea on purpose. "Нэр (сүү, самар)" per line
- * worked when a dish was a name and a tag list; it has no honest way to also
- * carry which sitting a dish belongs to, its calories or its portion count
- * without inventing more punctuation a teacher has to remember the shape of.
- * A row of real fields is longer to build and shorter to use correctly.
- */
-function EditForm({
-  draftDishes,
-  onChange,
-  onSave,
-  onCancel,
-  saving,
-  error,
-}: {
-  draftDishes: DishDraft[];
-  onChange: (next: DishDraft[]) => void;
-  onSave: () => void;
-  onCancel: () => void;
-  saving: boolean;
-  error: string | null;
-}) {
-  function update(index: number, patch: Partial<DishDraft>) {
-    onChange(draftDishes.map((d, i) => (i === index ? { ...d, ...patch } : d)));
-  }
-
-  function remove(index: number) {
-    onChange(draftDishes.filter((_, i) => i !== index));
-  }
-
-  function addRow() {
-    const lastKind = draftDishes.at(-1)?.kind ?? "BREAKFAST";
-    onChange([...draftDishes, newDraft(lastKind)]);
-  }
-
-  return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!saving) onSave();
-      }}
-      className="flex flex-col gap-3"
-    >
-      <FormError message={error} />
-
-      {draftDishes.length === 0 ? (
-        <p className="text-body text-muted">Хоол алга. Доор нэмнэ үү.</p>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {draftDishes.map((dish, i) => (
-            <Card key={dish.key} pad="compact" className="flex flex-col gap-2.5">
-              <div className="flex items-end gap-2">
-                <div className="flex-1">
-                  <Field label="Хоолны нэр">
-                    {({ id }) => (
-                      <Input
-                        id={id}
-                        value={dish.name}
-                        onChange={(e) => update(i, { name: e.target.value })}
-                        autoFocus={i === draftDishes.length - 1}
-                      />
-                    )}
-                  </Field>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Энэ хоолыг хасах"
-                  onClick={() => remove(i)}
-                >
-                  <Trash2 size={18} aria-hidden="true" />
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                <Field label="Хоолны цаг">
-                  {({ id }) => (
-                    <Select
-                      id={id}
-                      value={dish.kind}
-                      onChange={(e) => update(i, { kind: e.target.value as MealKind })}
-                    >
-                      {MEAL_KIND_ORDER.map((kind) => (
-                        <option key={kind} value={kind}>
-                          {MEAL_KIND_LABEL[kind]}
-                        </option>
-                      ))}
-                    </Select>
-                  )}
-                </Field>
-                <Field label="Илчлэг (ккал)">
-                  {({ id }) => (
-                    <Input
-                      id={id}
-                      type="number"
-                      inputMode="numeric"
-                      min={0}
-                      max={3000}
-                      value={dish.calories}
-                      onChange={(e) => update(i, { calories: e.target.value })}
-                    />
-                  )}
-                </Field>
-                <Field label="Порц">
-                  {({ id }) => (
-                    <Input
-                      id={id}
-                      type="number"
-                      inputMode="decimal"
-                      min={0}
-                      step={0.5}
-                      value={dish.portions}
-                      onChange={(e) => update(i, { portions: e.target.value })}
-                    />
-                  )}
-                </Field>
-                <Field label="Харшлын орц" hint="Таслалаар тусгаарлана">
-                  {({ id, describedBy }) => (
-                    <Input
-                      id={id}
-                      aria-describedby={describedBy}
-                      placeholder="сүү, өндөг"
-                      value={dish.allergenTags}
-                      onChange={(e) => update(i, { allergenTags: e.target.value })}
-                    />
-                  )}
-                </Field>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      <Button type="button" variant="secondary" size="sm" onClick={addRow} className="self-start">
-        <Plus size={16} aria-hidden="true" />
-        Хоол нэмэх
-      </Button>
-
-      <div className="flex gap-2">
-        <Button type="submit" size="sm" disabled={saving}>
-          {saving ? "Хадгалж байна…" : "Хадгалах"}
-        </Button>
-        <Button type="button" variant="secondary" size="sm" onClick={onCancel} disabled={saving}>
-          Цуцлах
-        </Button>
-      </div>
-    </form>
-  );
-}
+// Dish drafting/editing lives in `components/menu/menu-dish-editor.tsx` now —
+// `MenuDishEditor`, `DishDraft`, `toDraft`, `fromDraft` — shared with the
+// Тогооч role's own `(app)/menu/page.tsx`, which needs the exact same fields.
