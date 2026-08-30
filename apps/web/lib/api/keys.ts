@@ -110,6 +110,16 @@ export const qk = {
   kindergartens: () => ["kindergartens"] as const,
   groups: (filters: Record<string, unknown> = {}) => ["groups", filters] as const,
 
+  /**
+   * The monthly attendance-and-funding register.
+   *
+   * ★ `["funding", "register", …]` in that order, so the whole namespace can be
+   * invalidated with the prefix after a recalculation without naming the
+   * filters the screen happened to have set.
+   */
+  fundingRegister: (kindergartenId: string, filters: Record<string, unknown> = {}) =>
+    ["funding", "register", kindergartenId, filters] as const,
+
   notifications: (filters: Record<string, unknown> = {}) => ["notifications", filters] as const,
   notification: (id: string) => ["notifications", "detail", id] as const,
   unreadCount: () => ["notifications", "unread-count"] as const,

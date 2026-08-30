@@ -222,6 +222,28 @@ export const observationTypeSchema = z.object({
 export const attendanceStatusSchema = z.enum(["PRESENT", "HALF_DAY", "EXCUSED", "SICK", "ABSENT"]);
 export type AttendanceStatus = z.infer<typeof attendanceStatusSchema>;
 
+/**
+ * The six statuses, named — one map, read by the web app and by the API's
+ * spreadsheet alike.
+ *
+ * ★ It lives here rather than in either app because both render it.
+ *
+ * The API names things in codes everywhere except in a file: a spreadsheet is
+ * opened in Excel by somebody who never sees this product, so its header row
+ * has to be readable on its own. That gave the workbook a second copy of these
+ * five words, and a second copy is how "Хагас өдөр" becomes "Хагас хоног" on
+ * one surface. Shared, it cannot.
+ */
+export const ATTENDANCE_STATUS_LABEL: Record<string, string> = {
+  PRESENT: "Ирсэн",
+  HALF_DAY: "Хагас өдөр",
+  EXCUSED: "Чөлөөтэй",
+  SICK: "Өвчтэй",
+  ABSENT: "Тасалсан",
+  /** The sixth, which `attendanceStatusSchema` predates — see `attendanceCountsSchema`. */
+  OTHER: "Бусад",
+};
+
 export const attendanceRequestStatusSchema = z.enum(["PENDING", "APPROVED", "REJECTED"]);
 export type AttendanceRequestStatus = z.infer<typeof attendanceRequestStatusSchema>;
 
@@ -1887,3 +1909,166 @@ export const sendChatMessageSchema = z.object({
   body: z.string().trim().min(1, "Мессеж хоосон байна").max(2000),
 });
 export type SendChatMessageDto = z.infer<typeof sendChatMessageSchema>;
+
+// ── Attendance register and funding — нэмэлт.md §5, §6 ───────────────────────
+
+export const fundingSourceSchema = z.enum(["STATE", "PARENT", "KINDERGARTEN", "OTHER"]);
+export type FundingSource = z.infer<typeof fundingSourceSchema>;
+
+/**
+ * ★ Named after where the money comes from, not what it is spent on.
+ *
+ * `нэмэлт.md` §3 separates state funding from what a family pays, and the whole
+ * module exists because those two reconcile against different documents — a
+ * ministry schedule and a parent's invoice. A label that blurred them ("Хоолны
+ * төлбөр") would put both on one line in a report that has to keep them apart.
+ */
+export const FUNDING_SOURCE_LABEL: Record<FundingSource, string> = {
+  STATE: "Улсын санхүүжилт",
+  PARENT: "Эцэг эхийн төлбөр",
+  KINDERGARTEN: "Цэцэрлэгийн хураамж",
+  OTHER: "Бусад эх үүсвэр",
+};
+
+export const fundingRuleSchema = z.object({
+  id: uuidSchema,
+  name: z.string(),
+  source: fundingSourceSchema,
+  effectiveFrom: z.string(),
+  effectiveTo: z.string().nullish(),
+  ageBand: z.string().nullish(),
+  /** Money is a decimal **string** on the wire — see `funding.dto.ts` for why. */
+  dailyRate: z.string().nullish(),
+  monthlyRate: z.string().nullish(),
+  dependsOnAttendance: z.boolean(),
+  dependsOnMeals: z.boolean(),
+  note: z.string().nullish(),
+});
+export type FundingRule = z.infer<typeof fundingRuleSchema>;
+
+/**
+ * A month's days, per status — all **six**, including `OTHER`.
+ *
+ * ★ Not `attendanceSummarySchema`, and the difference is deliberate.
+ *
+ * That one is `z.record(attendanceStatusSchema, …)` over the five statuses the
+ * web app had when it was written; `AttendanceStatus` in schema.prisma has
+ * carried a sixth since 2026-08-25 (see its doc comment). A register that
+ * silently dropped `OTHER` would show a child with twenty-one recorded days as
+ * having twenty, and the missing day would appear as an unexplained gap in a
+ * figure somebody bills against. Explicit fields, so adding a seventh status is
+ * a type error here rather than a quiet zero.
+ */
+export const attendanceCountsSchema = z.object({
+  PRESENT: z.number().int(),
+  HALF_DAY: z.number().int(),
+  EXCUSED: z.number().int(),
+  SICK: z.number().int(),
+  ABSENT: z.number().int(),
+  OTHER: z.number().int(),
+});
+export type AttendanceCounts = z.infer<typeof attendanceCountsSchema>;
+
+/**
+ * What the row needs a human to do about it.
+ *
+ * ★ Derived on every read, never stored.
+ *
+ * A stored flag would be a fourth thing that can disagree with the register,
+ * the meal log and the calculation. All three of these are questions the data
+ * already answers:
+ *
+ *  - `CHECK` — the kitchen fed the child on more days than the register says
+ *    they attended. `funding-rules.ts` calls this out by name as "a data-entry
+ *    error worth surfacing rather than silently pricing"; this is the surface.
+ *  - `MISSING_DOCUMENT` — absence days with no approved request behind them.
+ *    §6's "акт дутуу": the deduction cannot be justified to an auditor.
+ *  - `SETTLED` — an approved or received amount has been recorded.
+ *  - `CALCULATED` — the month has been run and nothing is outstanding.
+ *  - `PENDING` — no calculation exists for this child yet.
+ */
+export const registerStateSchema = z.enum([
+  "CHECK",
+  "MISSING_DOCUMENT",
+  "SETTLED",
+  "CALCULATED",
+  "PENDING",
+]);
+export type RegisterState = z.infer<typeof registerStateSchema>;
+
+export const REGISTER_STATE_LABEL: Record<RegisterState, string> = {
+  CHECK: "Шалгах",
+  MISSING_DOCUMENT: "Акт дутуу",
+  SETTLED: "Баталгаажсан",
+  CALCULATED: "Тооцсон",
+  PENDING: "Тооцоолоогүй",
+};
+
+/** The money on one row. Absent until the month has been calculated. */
+export const registerFundingSchema = z.object({
+  id: uuidSchema,
+  source: fundingSourceSchema,
+  daysAttended: z.number().int(),
+  daysFed: z.number().int(),
+  dailyRate: z.string().nullish(),
+  /** Өдрийн тариф × ажлын өдөр — what a full month would have cost. */
+  grossAmount: z.string(),
+  /** Суутгал — the days not billed. `gross − net`, never independently stored. */
+  deductionAmount: z.string(),
+  /** Эцсийн төлбөр — the stored `calculatedAmount`, unmodified. */
+  netAmount: z.string(),
+  approvedAmount: z.string().nullish(),
+  receivedAmount: z.string().nullish(),
+  note: z.string().nullish(),
+});
+
+export const registerRowSchema = z.object({
+  child: personRefSchema,
+  group: z.object({ id: uuidSchema, name: z.string() }).nullish(),
+  counts: attendanceCountsSchema,
+  /** Days the kitchen served this child anything — one per date, not per sitting. */
+  mealDays: z.number().int(),
+  /** Absence days with no approved `AttendanceRequest` covering them. */
+  undocumentedDays: z.number().int(),
+  funding: registerFundingSchema.nullish(),
+  state: registerStateSchema,
+});
+export type RegisterRow = z.infer<typeof registerRowSchema>;
+
+/**
+ * Totals over the **whole filtered set**, not the page.
+ *
+ * A footer that summed only the fifty rows on screen would read as the month's
+ * total and be wrong by however many pages follow it.
+ */
+export const registerTotalsSchema = z.object({
+  children: z.number().int(),
+  counts: attendanceCountsSchema,
+  mealDays: z.number().int(),
+  grossAmount: z.string(),
+  deductionAmount: z.string(),
+  netAmount: z.string(),
+  approvedAmount: z.string(),
+  receivedAmount: z.string(),
+  /** How many rows carry each state — what the alert strip counts. */
+  needingCheck: z.number().int(),
+  missingDocuments: z.number().int(),
+});
+
+export const attendanceRegisterSchema = paginated(registerRowSchema).extend({
+  month: z.string(),
+  source: fundingSourceSchema.nullish(),
+  /**
+   * Days the kindergarten actually operated — dates with at least one
+   * attendance row, not weekdays on a calendar.
+   *
+   * ★ A holiday nobody registered is not a working day, and no table of
+   * Mongolian public holidays is hard-coded anywhere for it to disagree with.
+   */
+  workingDays: z.number().int(),
+  totals: registerTotalsSchema,
+  rules: z.array(fundingRuleSchema),
+  /** When the month was last run, from the newest calculation row. */
+  calculatedAt: z.string().nullish(),
+});
+export type AttendanceRegister = z.infer<typeof attendanceRegisterSchema>;

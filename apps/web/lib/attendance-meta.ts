@@ -10,13 +10,17 @@ import { User, UserRound, Users } from "lucide-react";
  * reused rather than a second, chart-specific palette: PRESENT is the one
  * "good" outcome, ABSENT the one "critical" one, and the rest sit between.
  */
-export const ATTENDANCE_STATUS_LABEL: Record<string, string> = {
-  PRESENT: "Ирсэн",
-  HALF_DAY: "Хагас өдөр",
-  EXCUSED: "Чөлөөтэй",
-  SICK: "Өвчтэй",
-  ABSENT: "Тасалсан",
-};
+/*
+ * ★ Re-exported from `@kinder/contracts`, not defined here.
+ *
+ * The API's spreadsheet writes the same five words into a header row (see
+ * `register-workbook.ts`), and a second copy of them is how one surface comes
+ * to say "Хагас өдөр" while another says "Хагас хоног". The shared map also
+ * carries `OTHER`, the sixth status `attendanceStatusSchema` predates — every
+ * consumer here renders by `ATTENDANCE_STATUS_ORDER` below, which is still the
+ * five, so nothing on an existing screen changes.
+ */
+export { ATTENDANCE_STATUS_LABEL } from "@kinder/contracts";
 
 export const ATTENDANCE_STATUS_TONE: Record<string, "mint" | "sky" | "peach" | "danger"> = {
   PRESENT: "mint",

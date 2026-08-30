@@ -94,3 +94,49 @@ export function ruleAppliesOn(
   if (rule.effectiveTo !== null && isoDate > rule.effectiveTo) return false;
   return true;
 }
+
+/**
+ * A calculated row, split into the three figures a register shows.
+ *
+ * ★ `net` is what was stored. `gross` and `deduction` are presentation.
+ *
+ * The engine above computes one number per child per month, and that number is
+ * the one submitted, invoiced and reconciled — it is never recomputed here.
+ * What an administrator reading a monthly register wants beside it is *why* it
+ * is not the full month, so this derives the other two around the stored value:
+ *
+ *     gross     = өдрийн тариф × ажлын өдөр      (a full month, had they attended)
+ *     deduction = gross − net                     (the days that fell out)
+ *     net       = calculatedAmount                (stored, untouched)
+ *
+ * ★★ Deriving rather than storing is what keeps the three consistent.
+ *
+ * A `deductionAmount` column would be a second place the same fact lives, and
+ * the two would part company the first time a month was recalculated after an
+ * attendance correction. Here `net + deduction === gross` is arithmetic, not a
+ * hope — and `deduction` is clamped at zero because a child fed on more days
+ * than the kindergarten opened is a register error (`CHECK` on the row), not a
+ * negative discount.
+ *
+ * A flat monthly rule has no daily rate to multiply, so its gross *is* its net:
+ * §5's "Сарын тариф" does not vary with attendance, and showing a deduction
+ * against it would invent a discount the rule does not offer.
+ */
+export interface BillingBreakdown {
+  gross: number;
+  deduction: number;
+  net: number;
+}
+
+export function splitBilling(
+  dailyRate: number | null,
+  netAmount: number,
+  workingDays: number,
+): BillingBreakdown {
+  if (dailyRate === null) {
+    return { gross: netAmount, deduction: 0, net: netAmount };
+  }
+
+  const gross = Math.round(dailyRate * workingDays);
+  return { gross, deduction: Math.max(gross - netAmount, 0), net: netAmount };
+}

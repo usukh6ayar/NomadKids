@@ -232,6 +232,104 @@ export class FundingRepository {
       received: row._sum.receivedAmount?.toString() ?? "0",
     }));
   }
+  // ── The monthly register — нэмэлт.md §6 ────────────────────────────────────
+
+  /**
+   * Everything one month of one kindergarten needs, in five queries.
+   *
+   * ★ Month-bounded reads, aggregated in memory, and a paginated response.
+   *
+   * CLAUDE.md §3.4 forbids N+1 queries and unbounded responses. Both hold: this
+   * is a fixed five queries however many children there are, and the service
+   * slices a page out of what it builds. What it deliberately does *not* do is
+   * push the pagination into the database, and that is the interesting choice —
+   * the register's footer is a total over the **whole filter**, and the alert
+   * strip counts flagged rows across the whole month. Computing those from a
+   * fifty-row page would make both wrong; computing them with a second set of
+   * aggregate queries would state the same filter twice, in SQL, where the two
+   * copies can drift.
+   *
+   * The set is bounded by the kindergarten's roster for one month — the same
+   * bound `monthInputs` above already accepts, for the same reason.
+   *
+   * ★★ Attendance comes back as rows, not a `groupBy`.
+   *
+   * The counts could be grouped in Postgres, but `undocumentedDays` needs the
+   * absence **dates** to test them against approved requests, and a count
+   * cannot answer that. One read that serves both beats a `groupBy` plus a
+   * second read of the same table.
+   */
+  async registerInputs(kindergartenId: string, from: Date, to: Date, filter: { groupId?: string }) {
+    const [enrollments, attendance, meals, approvedRequests, calculations] = await Promise.all([
+      this.prisma.enrollment.findMany({
+        where: {
+          kindergartenId,
+          status: "ACTIVE",
+          deletedAt: null,
+          ...(filter.groupId ? { groupId: filter.groupId } : {}),
+        },
+        select: {
+          childId: true,
+          child: { select: { id: true, lastName: true, firstName: true } },
+          group: { select: { id: true, name: true } },
+        },
+        orderBy: [{ child: { lastName: "asc" } }, { child: { firstName: "asc" } }],
+      }),
+
+      this.prisma.attendance.findMany({
+        where: { kindergartenId, deletedAt: null, date: { gte: from, lte: to } },
+        select: { childId: true, date: true, status: true },
+      }),
+
+      // One group per (child, date) — the fed-**day** unit `monthInputs`
+      // documents at length. Anything but NOT_TAKEN: the kitchen served.
+      this.prisma.mealRecord.groupBy({
+        by: ["childId", "date"],
+        where: {
+          kindergartenId,
+          deletedAt: null,
+          date: { gte: from, lte: to },
+          status: { in: ["TAKEN", "PARTIAL", "SPECIAL"] },
+        },
+      }),
+
+      /*
+       * The paperwork behind an absence — §6's "акт".
+       *
+       * Only `APPROVED` counts. A request still pending review is exactly the
+       * state the register is meant to make visible: the deduction has been
+       * asked for and not yet justified.
+       *
+       * Overlapping the month rather than contained by it, so a leave that
+       * starts in May and ends in June documents its June days too.
+       */
+      this.prisma.attendanceRequest.findMany({
+        where: {
+          kindergartenId,
+          deletedAt: null,
+          reviewStatus: "APPROVED",
+          dateFrom: { lte: to },
+          dateTo: { gte: from },
+        },
+        select: { childId: true, dateFrom: true, dateTo: true },
+      }),
+
+      this.prisma.fundingCalculation.findMany({
+        where: { kindergartenId, month: from, deletedAt: null },
+        orderBy: { createdAt: "desc" },
+      }),
+    ]);
+
+    return { enrollments, attendance, meals, approvedRequests, calculations };
+  }
+
+  /** The kindergarten's name, for the spreadsheet's title row. */
+  async findKindergartenName(id: string) {
+    return this.prisma.kindergarten.findFirst({
+      where: { id, deletedAt: null },
+      select: { name: true },
+    });
+  }
 }
 
 export type { AgeBand };

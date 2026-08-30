@@ -21,6 +21,7 @@ import {
   ShieldCheck,
   Users,
   UtensilsCrossed,
+  Wallet,
   // `X` was the picker modal's close button and went with it. The type stays:
   // `ICON_FOR` below is keyed by href and annotated with it.
   type LucideIcon,
@@ -198,6 +199,7 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
   "/documents": FileText,
   "/settings": Settings,
   "/admin": ShieldCheck,
+  "/admin/funding": Wallet,
   "/platform": Building2,
 };
 
@@ -367,13 +369,23 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
      * true: a child's file, the group's registers, what goes out to a family,
      * and what you set up or look up. Two to three rows each.
      *
-     * ★★ Where Санхүү goes when it arrives.
+     * ★★ Санхүү has its own section as of 2026-08-30, and only its first row.
      *
-     * Not here. `docs/reference/FINANCE_SCOPE.md` records the tariffs and the
-     * definition of a funding day as still outstanding from the client (D3,
-     * D4) — the engine "will correctly calculate nothing" until they arrive —
-     * and it is nine reports and an invoicing flow, not a menu row. It earns
-     * its own section on the day it can answer a question.
+     * This said finance was "not here… it earns its own section on the day it
+     * can answer a question", and that day is what changed: `/admin/funding`
+     * reads the month's attendance register priced against the tariffs an
+     * administrator has entered. D3 and D4 (the state formula, and what counts
+     * as a funding day) are still unanswered by the client and this does not
+     * pretend otherwise — `нэмэлт.md` §4 *requires* the tariffs to be
+     * configuration rather than code, so the screen shows whatever rules the
+     * kindergarten has entered and no government number is hard-coded anywhere
+     * behind it. The nine reports and the invoicing flow are still to come, and
+     * still get no row until they exist.
+     *
+     * ★★★ Admin only, and it is the one section that is. §13 of `нэмэлт.md`:
+     * "Багш санхүүгийн бүрэн мэдээллийг харах эрхгүй байна". The API agrees —
+     * every funding route is `@Roles("ADMIN")` — so a teacher who reached the
+     * URL would get a 403 from a menu row that promised otherwise.
      */
     {
       title: "Суралцагч",
@@ -422,6 +434,14 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
       title: "Харилцаа холбоо",
       entries: [entry("Мэдээ", "/notifications"), entry("Судалгаа", "/surveys")],
     },
+    ...(isAdmin
+      ? [
+          {
+            title: "Санхүү",
+            entries: [entry("Ирц ба тооцоолол", "/admin/funding")],
+          },
+        ]
+      : []),
     {
       title: "Систем",
       entries: [

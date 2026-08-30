@@ -94,4 +94,43 @@ export const settleFundingSchema = z
   .refine((body) => Object.keys(body).length > 0, { message: "Өөрчлөх талбар алга" });
 export type SettleFundingDto = z.infer<typeof settleFundingSchema>;
 
+/**
+ * The monthly register's filters — the client's own filter bar, typed.
+ *
+ * ★ `status` arrives as a comma-separated list, not repeated query keys.
+ *
+ * The filter is a multi-select ("Ирсэн, Өвчтэй, Чөлөөтэй, …"), and Express
+ * parses `?status=SICK&status=ABSENT` into an array but `?status=SICK` into a
+ * string — a shape the parser then has to normalise on every read. One
+ * delimited value has one shape whatever the user picked, and it is what the
+ * URL the screen produces already looks like.
+ */
+export const registerQuerySchema = z.object({
+  month: isoMonth,
+  source: fundingSourceSchema.optional(),
+  groupId: uuidSchema.optional(),
+  /** A name fragment. Matched against "<эцгийн нэр> <нэр>", case-insensitively. */
+  q: z.string().trim().max(100).optional(),
+  status: z
+    .string()
+    .optional()
+    .transform((value) =>
+      value
+        ? value
+            .split(",")
+            .map((part) => part.trim())
+            .filter(Boolean)
+        : undefined,
+    )
+    .pipe(
+      z
+        .array(z.enum(["PRESENT", "HALF_DAY", "EXCUSED", "SICK", "ABSENT", "OTHER"]))
+        .max(6)
+        .optional(),
+    ),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+});
+export type RegisterQuery = z.infer<typeof registerQuerySchema>;
+
 export { uuidSchema };
