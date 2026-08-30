@@ -32,15 +32,18 @@ import {
   Newspaper,
   PenLine,
   Search,
+  Trash2,
 } from "lucide-react";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RowCard, RowList } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
 import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
+import { useToast } from "@/components/ui/toast";
 import { excerpt, formatRelative, fullName } from "@/lib/format";
 import { SURVEY_TONE_BG, SURVEY_TYPE_META } from "@/lib/survey-meta";
 import { cn } from "@/lib/utils";
@@ -62,7 +65,7 @@ const activeSurveysSchema = z.array(surveySchema);
  * week is indistinguishable from a push (docs/ARCHITECTURE.md §7).
  */
 export default function NotificationsPage() {
-  const { hasRole } = useSession();
+  const { hasRole, session } = useSession();
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
   /*
@@ -518,7 +521,19 @@ export default function NotificationsPage() {
               */}
               <div className="flex flex-col gap-3">
                 {items.map((notification) => (
-                  <NotificationRow key={notification.id} notification={notification} />
+                  <NotificationRow
+                    key={notification.id}
+                    notification={notification}
+                    /*
+                      An admin may withdraw any post in their kindergarten; a
+                      teacher only their own. The same rule `requireStaffOwned`
+                      applies on the server — this only decides whether the
+                      button is drawn.
+                    */
+                    canDelete={
+                      hasRole("ADMIN") || (isStaff && notification.author?.id === session?.user?.id)
+                    }
+                  />
                 ))}
               </div>
             </section>
@@ -769,9 +784,37 @@ function SurveysTab({
  * Adding any of the three is a schema change plus an endpoint, not a component
  * edit; each is a small, well-scoped piece of work whenever the client wants it.
  */
-function NotificationRow({ notification }: { notification: z.infer<typeof notificationSchema> }) {
+function NotificationRow({
+  notification,
+  canDelete,
+}: {
+  notification: z.infer<typeof notificationSchema>;
+  /**
+   * Whether *this* reader may withdraw *this* post.
+   *
+   * ★ Decided by the caller, and re-decided by the API.
+   *
+   * `requireStaffOwned` is the authority: a teacher reaches their own notice,
+   * an admin reaches any in their kindergarten, and everyone else gets a 404.
+   * This flag only decides whether to draw a button — a card that hides the
+   * menu is a courtesy, not a permission, and `notifications.test.ts` pins the
+   * server side of it with a second teacher in the same kindergarten.
+   */
+  canDelete: boolean;
+}) {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const isUnread = notification.reads.length === 0;
+
+  const remove = useMutation({
+    mutationFn: () =>
+      mutate(`/notifications/${notification.id}`, z.unknown(), { method: "DELETE" }),
+    onSuccess: () => {
+      toast.success("Пост устлаа.");
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
 
   const markRead = useMutation({
     mutationFn: () =>
@@ -852,8 +895,53 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
           does about the notice; new only says they have not seen it yet.
         */}
         <span className="flex shrink-0 items-center gap-1.5">
+          {/*
+            ★ The category, which the note above this component said could not
+            be rendered — until 2026-08-30 it was right.
+
+            It read: "There is no category on a notification. `isImportant` is
+            the only classification the model carries… Inventing a taxonomy
+            would mean a chip row that filters on a field nobody fills."
+            `Notification.category` is that field now, the composer sets it and
+            the feed filters on it, so the chip is a fact rather than an
+            invention.
+
+            `neutral`, not a colour per category: nine tones would make the
+            header a paint chart and none of them would mean anything. The two
+            coloured badges beside it are *statuses* — something to do, or
+            something unseen — and colour is how a reader tells those from a
+            label.
+          */}
+          <Badge tone="neutral">{NOTIFICATION_CATEGORY_LABEL[notification.category]}</Badge>
           {notification.isImportant ? <Badge tone="danger">Чухал</Badge> : null}
           {isUnread ? <Badge tone="primary">Шинэ</Badge> : null}
+
+          {/*
+            Withdrawing a post. `ConfirmDialog` owns its own open state and
+            takes the control that opens it, so the button *is* the trigger —
+            CLAUDE.md §5 asks for a confirmation before a delete and this is
+            the shape the rest of the product uses for one.
+          */}
+          {canDelete ? (
+            <ConfirmDialog
+              trigger={
+                <button
+                  type="button"
+                  aria-label="Постыг устгах"
+                  className="grid size-9 place-items-center rounded-control text-muted transition-colors hover:bg-canvas hover:text-danger"
+                >
+                  <Trash2 size={16} aria-hidden="true" />
+                </button>
+              }
+              title="Энэ постыг устгах уу?"
+              description="Эцэг эхийн самбараас хасагдана. Хэн устгасныг бүртгэлд үлдээнэ."
+              confirmLabel="Устгах"
+              cancelLabel="Цуцлах"
+              tone="danger"
+              pending={remove.isPending}
+              onConfirm={() => remove.mutate()}
+            />
+          ) : null}
         </span>
       </div>
 
@@ -866,6 +954,16 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
         name is both simpler and what a screen reader can navigate.
       */}
       <div className="min-w-0">
+        {/*
+          ★ The link wraps the title, or the body when there is no title.
+
+          Titles became optional on 2026-08-30 — the client asked for posts that
+          are a photograph and a sentence. An `<h3>` containing nothing would
+          leave the card with no link at all and a screen reader with an empty
+          heading in the outline, so a post without a heading makes its first
+          line the link instead. The card still has exactly one link with a real
+          accessible name, which is what the note below is about.
+        */}
         <h3
           className={cn(
             "text-lead leading-heading text-ink",
@@ -879,7 +977,7 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
             }}
             className="hover:underline"
           >
-            {notification.title}
+            {notification.title ?? excerpt(notification.body ?? "", 80)}
             {/*
               ★ Inside the link, not beside it.
 
@@ -902,7 +1000,7 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
           no body: the eye takes the title and moves on, which is the opposite
           of what a class board is for.
         */}
-        {notification.body ? (
+        {notification.title && notification.body ? (
           <p className="mt-1 text-body leading-relaxed text-ink">
             {excerpt(notification.body, 140)}
           </p>
