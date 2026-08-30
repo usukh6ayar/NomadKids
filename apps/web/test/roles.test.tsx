@@ -39,12 +39,16 @@ describe("navigation is built from the session's roles", () => {
     );
 
     // ★ The labels moved on 2026-08-28 when the client redrew the bottom bar
-    // as Самбар · Мэдээ · Явцын үнэлгээ · Судалгаа · Цэс. "Хүүхдүүд" and
-    // "Ажиглалт хянах" are still staff-only destinations — they are in the
+    // as Самбар · Мэдээ · Явцын үнэлгээ · Судалгаа · Цэс. The children list and
+    // the review queue are still staff-only destinations — they are in the
     // sidebar sections now (and behind the phone's Цэс tab) rather than being
     // tabs of their own, which is what this is checking.
+    //
+    // ★★ "Хүүхдүүд" became "Хүүхдийн удирдлага" on 2026-08-30, when the sidebar
+    // was rewritten to the client's reference grouping and took its row names
+    // with it.
     await waitFor(() => expect(screen.getAllByText("Самбар").length).toBeGreaterThan(0));
-    expect(screen.getAllByText("Хүүхдүүд").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Хүүхдийн удирдлага").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Ажиглалт хянах").length).toBeGreaterThan(0);
     // Administration belongs to admins only.
     expect(screen.queryByText("Удирдлага")).toBeNull();
