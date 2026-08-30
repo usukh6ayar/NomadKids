@@ -112,7 +112,11 @@ describe("portfolio age sections", () => {
     renderWithProviders(<GrowthPage />);
 
     await waitFor(() => expect(ageDisclosure(5)).toBeInTheDocument());
-    expect(ageDisclosure(5).open).toBe(true);
+    // The age-profiles fetch that decides "filled" settles after the section
+    // itself first appears — `AgeSectionShell`'s own doc comment covers why
+    // ("`filled` is false on the first render, always") — so this waits for
+    // the effect it drives rather than assuming it has already landed.
+    await waitFor(() => expect(ageDisclosure(5).open).toBe(true));
     expect(ageDisclosure(4).open).toBe(false);
   });
 
@@ -153,8 +157,10 @@ describe("portfolio age sections", () => {
     const link = (age: number) =>
       within(row).getByRole("link", { name: new RegExp(`^${age} нас`) });
 
-    // The accessible name states it outright — colour is never the only carrier.
-    expect(link(2)).toHaveAccessibleName("2 нас — мэдээлэлтэй");
+    // The accessible name states it outright — colour is never the only
+    // carrier. It also depends on the age-profiles fetch, which settles
+    // after the nav itself first renders (see the previous test's own note).
+    await waitFor(() => expect(link(2)).toHaveAccessibleName("2 нас — мэдээлэлтэй"));
     expect(link(3)).toHaveAccessibleName("3 нас — хоосон");
 
     // …and the filled year's `Check` icon is the visible signal a sighted user
@@ -220,7 +226,10 @@ describe("RFP §4.3 completeness", () => {
     renderWithProviders(<GrowthPage />);
 
     await waitFor(() => expect(ageDisclosure(3)).toBeInTheDocument());
-    expect(screen.getByText("Алтан загасны үлгэр")).toBeInTheDocument();
+    // Same reason as the two tests above: the stored value only appears once
+    // the age-profiles fetch settles, which is not guaranteed by the time the
+    // section itself first renders.
+    await waitFor(() => expect(screen.getByText("Алтан загасны үлгэр")).toBeInTheDocument());
     expect(screen.getByText("Тоо тоолох")).toBeInTheDocument();
   });
 });

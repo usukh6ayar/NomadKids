@@ -370,6 +370,60 @@ export class ChildrenService {
   }
 
   /**
+   * The "Цэцэрлэг, бүлгийн архив" screen — current placement, who to contact
+   * there, and past placements.
+   *
+   * `current` is the one `ACTIVE` enrollment (null for a child registered but
+   * not yet enrolled, or one who has left); `history` is every other row,
+   * newest first. Teachers are loaded only for the current group — a name and
+   * their role, never contact details, which are staff-profile fields the
+   * archive does not hand to families.
+   *
+   * No audit row: a read of a sub-resource, same as `listEnrollments`.
+   */
+  async getEnrollmentArchive(actor: Actor, childId: string) {
+    await this.childAccess.assertCanAccess(actor, childId);
+
+    const child = await this.repo.findEnrollmentArchive(childId);
+    if (!child) throw new NotFoundException();
+
+    const active = child.enrollments.find((e) => e.status === "ACTIVE") ?? null;
+    const teachers = active?.group
+      ? await this.repo.listActiveGroupTeachers(active.group.id)
+      : [];
+
+    return {
+      child: { id: child.id, firstName: child.firstName, lastName: child.lastName },
+      current: active
+        ? {
+            id: active.id,
+            startedOn: active.startedOn,
+            schoolYear: active.schoolYear,
+            kindergarten: active.kindergarten,
+            group: active.group,
+            teachers: teachers.map((t) => ({
+              id: t.membership.user.id,
+              lastName: t.membership.user.lastName,
+              firstName: t.membership.user.firstName,
+              role: t.role,
+            })),
+          }
+        : null,
+      history: child.enrollments
+        .filter((e) => e.status !== "ACTIVE")
+        .map((e) => ({
+          id: e.id,
+          status: e.status,
+          startedOn: e.startedOn,
+          endedOn: e.endedOn,
+          kindergarten: { id: e.kindergarten.id, name: e.kindergarten.name },
+          group: e.group ? { id: e.group.id, name: e.group.name } : null,
+          schoolYear: e.schoolYear,
+        })),
+    };
+  }
+
+  /**
    * Enrols a child in a group, transferring them if they are already placed.
    *
    * The group determines the kindergarten and the school year, so neither is

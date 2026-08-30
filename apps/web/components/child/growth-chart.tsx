@@ -94,9 +94,18 @@ function bounds(series: Series) {
 export function GrowthChartFigure({
   chart,
   className,
+  /**
+   * `"grid"` puts the two figures side by side instead of stacked — the
+   * comparison page's own reference screenshot draws them that way, next to
+   * each other rather than one above the other. The default stays the
+   * original stacked layout so `ChildGrowth`'s existing full-width usage is
+   * unchanged.
+   */
+  layout = "stacked",
 }: {
   chart: GrowthChart;
   className?: string;
+  layout?: "stacked" | "grid";
 }) {
   const height = seriesFor(chart, "height");
   const weight = seriesFor(chart, "weight");
@@ -105,8 +114,10 @@ export function GrowthChartFigure({
 
   return (
     <div className={cn("flex flex-col gap-6", className)}>
-      <MetricChart series={height} />
-      <MetricChart series={weight} />
+      <div className={layout === "grid" ? "grid gap-4 sm:grid-cols-2" : "flex flex-col gap-6"}>
+        <MetricChart series={height} />
+        <MetricChart series={weight} />
+      </div>
 
       <GrowthTable chart={chart} />
 

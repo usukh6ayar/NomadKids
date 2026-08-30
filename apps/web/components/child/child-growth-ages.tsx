@@ -15,24 +15,11 @@ import { EmptyState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { AgeSectionShell } from "@/components/child/age-section-shell";
 import { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
-import { GRADIENT_TONE_STYLE, type GradientTone } from "@/lib/gradient-tones";
+import { AGE_TONE } from "@/lib/age-content";
+import { GRADIENT_TONE_STYLE } from "@/lib/gradient-tones";
 import { cn } from "@/lib/utils";
 
 const ageProfilesSchema = z.array(ageProfileSchema);
-
-/*
- * ★ A per-age tint, matching the reference build's own 2/3/4 нас colours
- * (`GRADIENT_TONE_STYLE`'s doc comment has the source). The fill signal
- * itself is the `Check` icon at full size and contrast — colour only
- * distinguishes which of four different ages a tile is, the same job
- * `GRADIENT_TONE_STYLE`'s five tones do on `/home`'s own tile grid.
- */
-const AGE_TONE: Record<(typeof PORTFOLIO_AGES)[number], GradientTone> = {
-  2: "green",
-  3: "blue",
-  4: "orange",
-  5: "purple",
-};
 
 /** Whether an age section has anything in it yet — drives the filled dot. */
 function hasAgeContent(profile?: z.infer<typeof ageProfileSchema>): boolean {
@@ -58,8 +45,13 @@ function hasAgeContent(profile?: z.infer<typeof ageProfileSchema>): boolean {
  * хувцас have no column, so adding them is a migration rather than a list edit
  * — deliberately left out of a frontend change. "Тухайн насны зураг" is the
  * gallery, which lives on the child's own "Зураг" page.
+ *
+ * ★★★ Exported since 2026-08-30 — the parent's per-age page
+ * (`portfolio/growth/age/[age]/page.tsx`) and the comparison page
+ * (`portfolio/growth/compare/page.tsx`) read the same key→label map this
+ * editor does, rather than each spelling its own copy that could drift.
  */
-const AGE_FIELDS = [
+export const AGE_FIELDS = [
   { key: "favoriteColor", label: "Дуртай өнгө", long: false },
   { key: "favoriteFood", label: "Дуртай хоол", long: false },
   { key: "favoriteToy", label: "Дуртай тоглоом", long: false },

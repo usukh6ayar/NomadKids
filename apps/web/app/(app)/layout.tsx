@@ -705,12 +705,12 @@ function parentNav(
  * parent actually wants instead of a route to a list they then pick from
  * anyway.
  *
- * ★★ Three rows for the *selected* child, not one, since the child hub was
+ * ★★ Four rows for the *selected* child, not one, since the child hub was
  * deleted (2026-08-28) — it used to carry Ерөнхий and Ажиглалт as tabs on one
  * page, and without that page a desktop reader needs both named here
  * directly. `/general`'s icon is the child's own avatar, matching every
- * per-child row this menu has ever shown; Ажиглалт and Хоол underneath it
- * carry a plain glyph instead.
+ * per-child row this menu has ever shown; Ажиглалт, Хоол and Цэцэрлэгийн
+ * архив underneath it carry a plain glyph instead.
  *
  * ★★★ One child, not every child — 2026-08-28's second change the same day.
  * This mapped every one of a family's children in, which put two identical
@@ -721,6 +721,13 @@ function parentNav(
  * "Хоол" tabs, and this section follows it rather than listing everyone at
  * once. "Хоол" joined the same day, mirroring `parentNav`'s own addition —
  * both surfaces name the same three destinations for the same reason.
+ *
+ * "Цэцэрлэгийн архив" joined later, at the client's request for a "Цэцэрлэг,
+ * бүлгийн архив" screen: current placement, its teacher, and the family's
+ * full enrollment history (`/children/[childId]/enrollment-archive`). It has
+ * no bottom-bar tab of its own — that row is spent on `parentNav`'s four
+ * destinations already — so a phone reader reaches it from the home page's
+ * "Цэцэрлэг" tile (`(app)/home/page.tsx`) instead.
  */
 function parentSections(
   myChildren: ChildSummary[] | undefined,
@@ -747,6 +754,11 @@ function parentSections(
               label: "Хоол",
               href: `/children/${selected.id}/menu`,
               icon: <UtensilsCrossed size={18} aria-hidden="true" />,
+            },
+            {
+              label: "Цэцэрлэгийн архив",
+              href: `/children/${selected.id}/enrollment-archive`,
+              icon: <Building2 size={18} aria-hidden="true" />,
             },
           ]
         : [{ label: "Холбогдсон хүүхэд алга" }],

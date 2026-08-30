@@ -40,6 +40,8 @@ export const qk = {
   ageProfiles: (childId: string) => ["child", childId, "age-profiles"] as const,
   birthdayNotes: (childId: string) => ["child", childId, "birthday-notes"] as const,
 
+  enrollmentArchive: (childId: string) => ["child", childId, "enrollment-archive"] as const,
+
   attendance: (childId: string, month: string) => ["child", childId, "attendance", month] as const,
   attendanceSummary: (childId: string, month: string) =>
     ["child", childId, "attendance", "summary", month] as const,
