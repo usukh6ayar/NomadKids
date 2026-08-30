@@ -6,7 +6,17 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { z } from "zod";
 import { ListChecks, Plus, Search, Users } from "lucide-react";
-import { surveySchema, type SurveyQuestionType } from "@kinder/contracts";
+import {
+  SURVEY_KIND_HINT,
+  SURVEY_KIND_LABEL,
+  surveyKindSchema,
+  surveySchema,
+  type SurveyKind,
+  type SurveyQuestionType,
+} from "@kinder/contracts";
+
+/** The two kinds in the order the client's drawing puts them: Пол, then Форм. */
+const SURVEY_KINDS = surveyKindSchema.options;
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
@@ -372,12 +382,32 @@ function CreateSurveyDialog({
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [scope, setScope] = useState<"CHILD" | "KINDERGARTEN">("CHILD");
+  const [kind, setKind] = useState<SurveyKind>("POLL");
+  /**
+   * The optional closing date, as the `yyyy-mm-dd` an `<input type="date">`
+   * produces. Empty means no deadline, which the client asked to keep possible.
+   */
+  const [closesOn, setClosesOn] = useState("");
 
   const create = useMutation({
     mutationFn: () =>
       mutate(`/kindergartens/${kindergartenId}/surveys`, surveySchema, {
         method: "POST",
-        body: { title, scope },
+        body: {
+          title,
+          scope,
+          kind,
+          /*
+            ★ End of the chosen day, not its midnight.
+
+            `<input type="date">` yields `2026-09-15`, which parses as
+            00:00 — so sending it raw would close the survey at the start of
+            the day a teacher wrote down, and everyone answering on the 15th
+            would be a day late. `T23:59:59` makes the date inclusive, which is
+            what "хаагдах огноо: 9-р сарын 15" means to the person typing it.
+          */
+          closesAt: closesOn ? new Date(`${closesOn}T23:59:59`).toISOString() : null,
+        },
       }),
     onSuccess: (survey) => router.push(`/surveys/${survey.id}`),
   });
@@ -403,6 +433,50 @@ function CreateSurveyDialog({
           <h2 className="text-title font-semibold text-ink">Шинэ судалгаа</h2>
 
           <FormError message={create.isError ? errorMessage(create.error) : null} />
+
+          {/*
+            ★ The two kinds, as a radio group drawn like tabs.
+
+            Tabs in appearance because that is the client's drawing, but
+            `role="radiogroup"` underneath: these two choose *what is being
+            created* rather than switching between two views of one thing, and
+            a screen reader announcing "tab" for a permanent property of the
+            survey would describe the wrong control.
+          */}
+          <fieldset>
+            <legend className="mb-2 text-body font-medium text-ink">Төрөл</legend>
+            <div className="grid grid-cols-2 gap-2">
+              {SURVEY_KINDS.map((value) => (
+                <label
+                  key={value}
+                  className={cn(
+                    "cursor-pointer rounded-card border px-3 py-2.5 transition-colors",
+                    kind === value
+                      ? "border-primary bg-primary-soft"
+                      : "border-border hover:bg-canvas",
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="survey-kind"
+                    value={value}
+                    checked={kind === value}
+                    onChange={() => setKind(value)}
+                    className="sr-only"
+                  />
+                  <span
+                    className={cn(
+                      "block text-body font-semibold",
+                      kind === value ? "text-primary" : "text-ink",
+                    )}
+                  >
+                    {SURVEY_KIND_LABEL[value]}
+                  </span>
+                  <span className="block text-caption text-muted">{SURVEY_KIND_HINT[value]}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
 
           <Field label="Гарчиг" error={errors.title} required>
             {({ id, describedBy, invalid }) => (
@@ -431,6 +505,23 @@ function CreateSurveyDialog({
                 <option value="CHILD">Хүүхэд тус бүрээр</option>
                 <option value="KINDERGARTEN">Цэцэрлэгээр нэг удаа</option>
               </Select>
+            )}
+          </Field>
+
+          <Field
+            label="Хаагдах огноо"
+            hint="Заавал биш — хоосон орхивол гараар хаах хүртэл нээлттэй байна."
+            error={errors.closesAt}
+          >
+            {({ id, describedBy, invalid }) => (
+              <Input
+                id={id}
+                type="date"
+                aria-describedby={describedBy}
+                invalid={invalid}
+                value={closesOn}
+                onChange={(e) => setClosesOn(e.target.value)}
+              />
             )}
           </Field>
 

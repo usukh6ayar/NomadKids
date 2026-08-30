@@ -149,6 +149,159 @@ describe("management — staff only", () => {
   });
 });
 
+/**
+ * The client's 2026-08-31 additions: an optional deadline, and a question type
+ * that takes exactly one of its own options.
+ */
+describe("the closing date", () => {
+  /** Publishes a CHILD-scope survey whose deadline is already in the past. */
+  async function expiredSurvey() {
+    const { surveyId, questionId } = await publishedChildSurvey();
+    await db.survey.update({
+      where: { id: surveyId },
+      data: { closesAt: new Date(Date.now() - 60_000) },
+    });
+    return { surveyId, questionId };
+  }
+
+  it("refuses a response after the closing date", async () => {
+    const { surveyId, questionId } = await expiredSurvey();
+
+    const res = await authed(
+      request(server()).post(`/v1/surveys/${surveyId}/responses`),
+      parentA,
+    ).send({ childId: a.child.id, answers: [{ questionId, value: 4 }] });
+
+    expect(res.status).toBe(400);
+  });
+
+  /*
+   * The deadline is an intention, not a state — nothing sweeps it — so a survey
+   * that has stopped accepting answers is still PUBLISHED. Asserted because the
+   * alternative implementation (a job that flips the status) would pass the
+   * test above while behaving differently for every reader of the list.
+   */
+  it("leaves the survey PUBLISHED rather than closing it", async () => {
+    const { surveyId, questionId } = await expiredSurvey();
+
+    await authed(request(server()).post(`/v1/surveys/${surveyId}/responses`), parentA).send({
+      childId: a.child.id,
+      answers: [{ questionId, value: 4 }],
+    });
+
+    const row = await db.survey.findUniqueOrThrow({ where: { id: surveyId } });
+    expect(row.status).toBe("PUBLISHED");
+    expect(row.closedAt).toBeNull();
+  });
+
+  it("accepts a response when no closing date is set", async () => {
+    const { surveyId, questionId } = await publishedChildSurvey();
+
+    const res = await authed(
+      request(server()).post(`/v1/surveys/${surveyId}/responses`),
+      parentA,
+    ).send({ childId: a.child.id, answers: [{ questionId, value: 4 }] });
+
+    expect(res.status).toBe(201);
+  });
+
+  it("accepts a response before the closing date", async () => {
+    const { surveyId, questionId } = await publishedChildSurvey();
+    await db.survey.update({
+      where: { id: surveyId },
+      data: { closesAt: new Date(Date.now() + 86_400_000) },
+    });
+
+    const res = await authed(
+      request(server()).post(`/v1/surveys/${surveyId}/responses`),
+      parentA,
+    ).send({ childId: a.child.id, answers: [{ questionId, value: 4 }] });
+
+    expect(res.status).toBe(201);
+  });
+});
+
+describe("SINGLE_CHOICE questions", () => {
+  /** A published CHILD-scope survey with one single-choice question. */
+  async function singleChoiceSurvey() {
+    const created = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
+      teacherA,
+    ).send({ title: "Аялалд оролцох эсэх", scope: "CHILD", kind: "POLL" });
+
+    await authed(request(server()).put(`/v1/surveys/${created.body.id}/questions`), teacherA).send({
+      questions: [
+        {
+          order: 0,
+          type: "SINGLE_CHOICE",
+          prompt: "Оролцох уу?",
+          options: ["Тийм", "Үгүй"],
+        },
+      ],
+    });
+
+    await authed(request(server()).post(`/v1/surveys/${created.body.id}/publish`), teacherA);
+
+    const withQuestions = await db.survey.findUniqueOrThrow({
+      where: { id: created.body.id },
+      include: { questions: true },
+    });
+    return { surveyId: created.body.id as string, questionId: withQuestions.questions[0]!.id };
+  }
+
+  it("refuses a question with no options, as CHECKBOX does", async () => {
+    const created = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
+      teacherA,
+    ).send({ title: "Судалгаа", scope: "KINDERGARTEN" });
+
+    const res = await authed(
+      request(server()).put(`/v1/surveys/${created.body.id}/questions`),
+      teacherA,
+    ).send({ questions: [{ order: 0, type: "SINGLE_CHOICE", prompt: "Аль нь вэ?" }] });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts one of the offered options", async () => {
+    const { surveyId, questionId } = await singleChoiceSurvey();
+
+    const res = await authed(
+      request(server()).post(`/v1/surveys/${surveyId}/responses`),
+      parentA,
+    ).send({ childId: a.child.id, answers: [{ questionId, value: "Тийм" }] });
+
+    expect(res.status).toBe(201);
+  });
+
+  it("refuses an answer that is not one of the options", async () => {
+    const { surveyId, questionId } = await singleChoiceSurvey();
+
+    const res = await authed(
+      request(server()).post(`/v1/surveys/${surveyId}/responses`),
+      parentA,
+    ).send({ childId: a.child.id, answers: [{ questionId, value: "Магадгүй" }] });
+
+    expect(res.status).toBe(400);
+  });
+
+  /*
+   * The case the validation exists for: an array would store cleanly and then
+   * appear in the results chart as a bucket named "Тийм,Үгүй" that no option
+   * produces — a question that looks answered and reads as nonsense.
+   */
+  it("refuses an array, which would make it a CHECKBOX", async () => {
+    const { surveyId, questionId } = await singleChoiceSurvey();
+
+    const res = await authed(
+      request(server()).post(`/v1/surveys/${surveyId}/responses`),
+      parentA,
+    ).send({ childId: a.child.id, answers: [{ questionId, value: ["Тийм", "Үгүй"] }] });
+
+    expect(res.status).toBe(400);
+  });
+});
+
 describe("responding — CHILD scope", () => {
   it("a guardian submits a response for their own child", async () => {
     const { surveyId, questionId } = await publishedChildSurvey();

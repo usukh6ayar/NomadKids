@@ -121,6 +121,7 @@ export function ChatWidget() {
       */}
       <Dialog.Trigger
         aria-label={count > 0 ? `Чат, ${count} шинэ мессеж` : "Чат"}
+        data-print-hide
         className={cn(
           "fixed right-4 z-30 grid size-14 place-items-center rounded-pill bg-primary text-primary-ink shadow-lg transition-colors hover:bg-primary-hover",
           "bottom-[calc(var(--size-bottom-nav)+env(safe-area-inset-bottom)+0.5rem)] lg:bottom-6 lg:right-6",

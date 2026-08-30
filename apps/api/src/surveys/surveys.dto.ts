@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { uuidSchema } from "@kinder/contracts";
+import { surveyKindSchema, uuidSchema } from "@kinder/contracts";
 
 /** "2025-2026" — a school year spans two calendar years, so it is a string. */
 const schoolYearSchema = z
@@ -17,6 +17,19 @@ export const createSurveySchema = z
     title: z.string().min(1).max(200),
     description: z.string().max(2000).nullable().optional(),
     scope: z.enum(["CHILD", "KINDERGARTEN"]),
+    /*
+      Defaulted rather than required so every existing caller — the clone
+      endpoint, the seeds, `surveys.test.ts` — keeps compiling and keeps meaning
+      what it meant. A survey created without saying is a form, which is what
+      all of them were before the column existed.
+    */
+    kind: surveyKindSchema.optional(),
+    /*
+      The optional deadline. `coerce` because it arrives as an ISO string from
+      the composer's `<input type="date">`, and nullable because "no closing
+      date" is a choice the client asked to keep — not an omission.
+    */
+    closesAt: z.coerce.date().nullable().optional(),
     // RFP Module 1.1's archival classification, and what Module 1.2 pairs on.
     // Optional: a one-off poll belongs to no wave, and forcing a period on it
     // would put it in a comparison it has no business in.
@@ -60,9 +73,9 @@ const matrixOptionsSchema = z.object({
 const questionInputSchema = z
   .object({
     order: z.number().int().min(0),
-    type: z.enum(["RATING", "YES_NO", "TEXT", "CHECKBOX", "MATRIX"]),
+    type: z.enum(["RATING", "YES_NO", "TEXT", "SINGLE_CHOICE", "CHECKBOX", "MATRIX"]),
     prompt: z.string().min(1).max(500),
-    /** A string array for CHECKBOX; `{ rows, columns }` for MATRIX. */
+    /** A string array for SINGLE_CHOICE and CHECKBOX; `{ rows, columns }` for MATRIX. */
     options: z
       .union([z.array(z.string().min(1).max(120)).max(20), matrixOptionsSchema])
       .nullable()
@@ -82,10 +95,21 @@ const questionInputSchema = z
       .nullable()
       .optional(),
   })
-  .refine((q) => q.type !== "CHECKBOX" || (Array.isArray(q.options) && q.options.length > 0), {
-    message: "Олон сонголттой асуулт хамгийн багадаа нэг сонголттой байна",
-    path: ["options"],
-  })
+  /*
+    Both option-bearing types need at least one choice. `SINGLE_CHOICE` joined
+    the check rather than getting its own: a question offering nothing to pick
+    is unanswerable whether it takes one answer or several, and two refinements
+    with the same body is how one of them stops being updated.
+  */
+  .refine(
+    (q) =>
+      !(q.type === "CHECKBOX" || q.type === "SINGLE_CHOICE") ||
+      (Array.isArray(q.options) && q.options.length > 0),
+    {
+      message: "Сонголттой асуулт хамгийн багадаа нэг сонголттой байна",
+      path: ["options"],
+    },
+  )
   .refine((q) => q.type !== "MATRIX" || (q.options !== null && !Array.isArray(q.options)), {
     message: "Матриц асуулт мөр болон баганатай байна",
     path: ["options"],

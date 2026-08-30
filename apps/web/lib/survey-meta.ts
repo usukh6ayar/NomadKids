@@ -1,4 +1,4 @@
-import { BarChart3, CheckCircle2, Grid3x3, ListChecks, PenLine } from "lucide-react";
+import { BarChart3, CheckCircle2, CircleDot, Grid3x3, ListChecks, PenLine } from "lucide-react";
 import type { SurveyQuestionType } from "@kinder/contracts";
 
 /**
@@ -36,6 +36,20 @@ export const SURVEY_TYPE_META: Record<
 > = {
   RATING: { label: "Рэйтинг судалгаа", tone: "mint", Icon: BarChart3 },
   YES_NO: { label: "Тийм/Үгүй судалгаа", tone: "sky", Icon: CheckCircle2 },
+  /*
+   * ★ This entry is the mechanism above working as intended.
+   *
+   * `SINGLE_CHOICE` was added to the contract on 2026-08-31 and this file
+   * stopped compiling the same minute — which is exactly what the note says
+   * taking the key type from the enum buys, rather than finding out from a
+   * Vercel build a week later.
+   *
+   * `sun` is shared with `CHECKBOX` deliberately: both are "pick from a list",
+   * and the palette admits four tones for six types, so the two that are the
+   * same shape share one rather than borrowing a tone that means something
+   * else on the other screens.
+   */
+  SINGLE_CHOICE: { label: "Нэг сонголтот судалгаа", tone: "sun", Icon: CircleDot },
   CHECKBOX: { label: "Сонголтот судалгаа", tone: "sun", Icon: ListChecks },
   TEXT: { label: "Нээлттэй судалгаа", tone: "peach", Icon: PenLine },
   /*

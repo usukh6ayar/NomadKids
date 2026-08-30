@@ -359,3 +359,57 @@ select {
     display: none;
   }
 }
+
+/*
+ * Printing — the Хэвлэх button on the survey results, 2026-08-31.
+ *
+ * ★ Chrome off, content on. A print stylesheet is the whole difference between
+ * "a results sheet" and "a screenshot of an app with a sidebar in it".
+ *
+ * `data-print-hide` rather than a class per element: the sidebar, the bottom
+ * bar, the desktop header and the floating chat button are four components that
+ * each already own their positioning, and marking them at the source is one
+ * attribute each instead of a selector here that has to be kept in step with
+ * their class names.
+ *
+ * The colour adjustments are what stop a browser "saving ink" by dropping the
+ * tints that carry meaning — a bar chart whose bars print white is a blank
+ * chart. `print-color-adjust: exact` is honoured by Chrome and Safari; Firefox
+ * needs the `-webkit-` spelling, which is why both are here.
+ */
+@media print {
+  [data-print-hide] {
+    display: none !important;
+  }
+
+  /* The app's scroll containers become page flow — a fixed height would print
+     one screenful and silently drop the rest of a long results list. */
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+
+  *,
+  *::before,
+  *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* A card split across a page break loses the heading that says what it is. */
+  section,
+  table,
+  figure {
+    break-inside: avoid;
+  }
+
+  a[href]::after {
+    content: "";
+  }
+}

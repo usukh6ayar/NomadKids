@@ -532,11 +532,52 @@ export const surveyQuestionTypeSchema = z.enum([
   "RATING",
   "YES_NO",
   "TEXT",
+  /** Pick exactly one of `options` — the client's "Нэг сонголт". */
+  "SINGLE_CHOICE",
   "CHECKBOX",
   /** RFP Module 1.1 — several indicators on one shared scale. */
   "MATRIX",
 ]);
 export type SurveyQuestionType = z.infer<typeof surveyQuestionTypeSchema>;
+
+/** Mongolian labels — CLAUDE.md §5. The composer and the answering form share them. */
+export const SURVEY_QUESTION_TYPE_LABEL: Record<SurveyQuestionType, string> = {
+  RATING: "Үнэлгээ (1–5)",
+  YES_NO: "Тийм/Үгүй",
+  TEXT: "Чөлөөт бичвэр",
+  SINGLE_CHOICE: "Нэг сонголт",
+  CHECKBOX: "Олон сонголт",
+  MATRIX: "Матриц (олон үзүүлэлт)",
+};
+
+/** Which of the two question types carries a plain list of choices. */
+export const OPTION_QUESTION_TYPES = ["SINGLE_CHOICE", "CHECKBOX"] as const;
+
+/** Whether this question's `options` is a `string[]` the composer should edit. */
+export function hasOptionList(type: SurveyQuestionType): boolean {
+  return (OPTION_QUESTION_TYPES as readonly string[]).includes(type);
+}
+
+/**
+ * Poll or form — the client's 2026-08-31 request.
+ *
+ * A poll is one question read as a bar on the class board; a form is a
+ * questionnaire. See the note on `SurveyKind` in `schema.prisma` for why this
+ * is stored rather than inferred from the question count.
+ */
+export const surveyKindSchema = z.enum(["POLL", "FORM"]);
+export type SurveyKind = z.infer<typeof surveyKindSchema>;
+
+export const SURVEY_KIND_LABEL: Record<SurveyKind, string> = {
+  POLL: "Пол",
+  FORM: "Форм судалгаа",
+};
+
+/** The one-line description each kind carries on the composer's two tabs. */
+export const SURVEY_KIND_HINT: Record<SurveyKind, string> = {
+  POLL: "Нэг асуулт, шууд дүн",
+  FORM: "Олон асуулт, дэлгэрэнгүй хариулт",
+};
 
 /** A MATRIX question's shape — RFP Module 1.1. */
 export const matrixOptionsSchema = z.object({
@@ -565,9 +606,16 @@ export const surveySchema = z.object({
   title: z.string(),
   description: z.string().nullish(),
   scope: surveyScopeSchema,
+  /** Defaulted for rows written before the column existed. */
+  kind: surveyKindSchema.catch("FORM"),
   status: surveyStatusSchema,
   publishedAt: z.string().nullish(),
   closedAt: z.string().nullish(),
+  /**
+   * The optional deadline. Null is "no closing date", which the client asked
+   * to stay possible — see `Survey.closesAt` for why it is not `closedAt`.
+   */
+  closesAt: z.string().nullish(),
   createdAt: z.string(),
   /** "2025-2026" — a school year spans two calendar years. */
   schoolYear: z.string().nullish(),
@@ -670,6 +718,19 @@ export type SurveyGroupResult = z.infer<typeof surveyGroupResultSchema>;
 export const surveyResultsSchema = z.object({
   survey: surveySchema,
   totalResponses: z.number(),
+  /**
+   * How many responses the survey is waiting on — the client's "Бөглөөгүй".
+   *
+   * `expectedResponses` is enrolled children for a CHILD survey and distinct
+   * guardians for a KINDERGARTEN one, narrowed by `groupId` where it applies;
+   * `missingResponses` is the difference, floored at zero. Both are computed by
+   * the API, which is the only side that can see enrolments and memberships.
+   *
+   * Defaulted so a client reading a response from an older API renders a
+   * headline of zero rather than crashing on a missing key.
+   */
+  expectedResponses: z.number().default(0),
+  missingResponses: z.number().default(0),
   /** Which group the headline is narrowed to. Null when it covers everyone. */
   groupId: uuidSchema.nullish(),
   questions: z.array(surveyQuestionResultSchema),
