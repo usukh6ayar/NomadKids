@@ -373,6 +373,173 @@ describe("About Me", () => {
   });
 });
 
+/**
+ * ★ 2026-08-28, on the client's instruction: a guardian can now change
+ * `Child.lastName`/`firstName`/`dateOfBirth`/`sex` through this endpoint —
+ * a deliberate, scoped reversal of the rule `ChildrenService.update`'s own
+ * doc comment names (`test_a_guardian_cannot_edit_their_own_child`, from the
+ * Django reference). `PATCH /children/:id` itself is unchanged — these tests
+ * pin both halves: the new path works, and the old guarantee still holds for
+ * the fields this did not touch.
+ */
+describe("guardian-editable identity fields", () => {
+  it("a guardian renames their child and changes sex through about-me", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/children/${a.child.id}/about-me`),
+      parentA,
+    ).send({ lastName: "Шинэ", firstName: "Нэр", sex: "FEMALE" });
+
+    expect(res.status).toBe(200);
+
+    const child = await db.child.findUniqueOrThrow({ where: { id: a.child.id } });
+    expect(child.lastName).toBe("Шинэ");
+    expect(child.firstName).toBe("Нэр");
+    expect(child.sex).toBe("FEMALE");
+  });
+
+  it("saves a Child field and a ChildProfile field in the same request", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/children/${a.child.id}/about-me`),
+      parentA,
+    ).send({ dateOfBirth: "2022-05-01", dream: "Багш болох" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.dream).toBe("Багш болох");
+
+    const child = await db.child.findUniqueOrThrow({ where: { id: a.child.id } });
+    expect(child.dateOfBirth.toISOString().slice(0, 10)).toBe("2022-05-01");
+  });
+
+  it("rejects an implausible date of birth the same way registration does", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/children/${a.child.id}/about-me`),
+      parentA,
+    ).send({ dateOfBirth: "2099-01-01" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("records a second audit row against Child, not only ChildProfile", async () => {
+    await authed(request(server()).patch(`/v1/children/${a.child.id}/about-me`), parentA).send({
+      firstName: "Аюур",
+    });
+
+    const childEntry = await db.auditLog.findFirst({
+      where: { objectType: "Child", childId: a.child.id, action: "UPDATE" },
+    });
+    expect(childEntry?.actorUserId).toBe(a.parentUser.id);
+    expect((childEntry?.metadata as { fields: string[] }).fields).toEqual(["firstName"]);
+  });
+
+  it("does not write Child at all when no identity field is sent", async () => {
+    await authed(request(server()).patch(`/v1/children/${a.child.id}/about-me`), parentA).send({
+      dream: "Зураачаар мэргэжих",
+    });
+
+    const childEntry = await db.auditLog.findFirst({
+      where: { objectType: "Child", childId: a.child.id, action: "UPDATE" },
+    });
+    expect(childEntry).toBeNull();
+  });
+
+  it("a guardian still cannot reach the broader child-edit endpoint", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/children/${a.child.id}`),
+      parentA,
+    ).send({ firstName: "Дахин" });
+
+    // The coarse assertCanRecord gate — unchanged, and still 404.
+    expect(res.status).toBe(404);
+  });
+});
+
+/**
+ * ★ 2026-08-28, on the client's instruction, reversing course a second time:
+ * the zodiac/year-animal facts had already moved from a typed field to
+ * `birthFacts()`'s computed answer once. This adds a guardian-chosen override
+ * back on top of the computed value rather than reverting to a free-typed
+ * field — see `ChildProfile`'s own doc comment for the full back-and-forth.
+ * These tests pin both directions: an override changes what `birthday-notes`
+ * returns, and clearing it falls back to the computed value rather than to
+ * `null`.
+ */
+describe("guardian-editable zodiac / year-animal override", () => {
+  it("an override replaces the computed zodiac and year animal", async () => {
+    const write = await authed(
+      request(server()).patch(`/v1/children/${a.child.id}/about-me`),
+      parentA,
+    ).send({ yearAnimalCode: "dragon", zodiacCode: "leo" });
+    expect(write.status).toBe(200);
+
+    const res = await request(server())
+      .get(`/v1/children/${a.child.id}/birthday-notes`)
+      .set("Cookie", teacherA.cookies);
+
+    // The scenario child is born 2021-04-12 — ox/Хонь unless overridden.
+    expect(res.body.yearAnimal).toMatchObject({ code: "dragon", name: "Луу" });
+    expect(res.body.zodiac).toEqual({ code: "leo", name: "Арслан" });
+  });
+
+  it("forces beforeLunarNewYear to false on an override, even inside the ambiguous window", async () => {
+    // Born 1 February: the computed animal alone carries
+    // beforeLunarNewYear: true, since Цагаан сар can fall as late as
+    // mid-March. A guardian's explicit pick resolves that ambiguity by
+    // definition, so the override must not carry the same caveat.
+    const feb = await createChild(a.kindergarten.id, { dateOfBirth: new Date("2021-02-01") });
+    await enrollChild(a.kindergarten.id, feb.id, a.group.id, a.schoolYear.id);
+
+    const unoverridden = await request(server())
+      .get(`/v1/children/${feb.id}/birthday-notes`)
+      .set("Cookie", teacherA.cookies);
+    expect(unoverridden.body.yearAnimal.beforeLunarNewYear).toBe(true);
+
+    await authed(request(server()).patch(`/v1/children/${feb.id}/about-me`), teacherA).send({
+      yearAnimalCode: "tiger",
+    });
+
+    const overridden = await request(server())
+      .get(`/v1/children/${feb.id}/birthday-notes`)
+      .set("Cookie", teacherA.cookies);
+    expect(overridden.body.yearAnimal).toMatchObject({ code: "tiger", beforeLunarNewYear: false });
+  });
+
+  it("rejects a code that is not in the canonical list", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/children/${a.child.id}/about-me`),
+      parentA,
+    ).send({ yearAnimalCode: "unicorn" });
+    expect(res.status).toBe(400);
+  });
+
+  it("clearing the override with null falls back to the computed value", async () => {
+    await authed(request(server()).patch(`/v1/children/${a.child.id}/about-me`), parentA).send({
+      zodiacCode: "leo",
+    });
+    await authed(request(server()).patch(`/v1/children/${a.child.id}/about-me`), parentA).send({
+      zodiacCode: null,
+    });
+
+    const res = await request(server())
+      .get(`/v1/children/${a.child.id}/birthday-notes`)
+      .set("Cookie", teacherA.cookies);
+
+    expect(res.body.zodiac).toEqual({ code: "aries", name: "Хонь" });
+  });
+
+  it("round-trips through about-me itself, not only birthday-notes", async () => {
+    await authed(request(server()).patch(`/v1/children/${a.child.id}/about-me`), parentA).send({
+      yearAnimalCode: "snake",
+    });
+
+    const res = await request(server())
+      .get(`/v1/children/${a.child.id}/about-me`)
+      .set("Cookie", parentA.cookies);
+
+    expect(res.body.yearAnimalCode).toBe("snake");
+    expect(res.body.zodiacCode).toBeNull();
+  });
+});
+
 describe("age profiles", () => {
   it("persists and reads back", async () => {
     await authed(

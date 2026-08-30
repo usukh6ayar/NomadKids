@@ -1,4 +1,13 @@
 import { z } from "zod";
+import { YEAR_ANIMALS, ZODIAC_SIGNS } from "@kinder/contracts";
+import { dateOfBirthSchema, sexSchema } from "../children/children.dto";
+
+const yearAnimalCodeSchema = z.enum(
+  YEAR_ANIMALS.map((animal) => animal.code) as [string, ...string[]],
+);
+const zodiacCodeSchema = z.enum(
+  ZODIAC_SIGNS.map((sign) => sign.code) as [string, ...string[]],
+);
 
 /**
  * Portfolio request schemas.
@@ -30,10 +39,41 @@ export const updateAboutMeSchema = z
     memorableSayings: text(2000),
     dream: text(1000),
     distinguishingTraits: text(2000),
+    // Added 2026-08-28, on the client's instruction — not in RFP §4.1.
+    clanName: text(200),
+    nickname: text(200),
+    birthplace: text(200),
+    bloodType: text(10),
+    eyeColor: text(50),
+    /**
+     * ★ A guardian's manual pick — added 2026-08-28, after the client asked
+     * for the picker back having first agreed the computed answer
+     * (`birthFacts()`) should stand. `null` clears the override and returns
+     * to the computed value; `undefined` (omitted) leaves it unchanged, same
+     * as every other field here.
+     */
+    yearAnimalCode: yearAnimalCodeSchema.nullable().optional(),
+    zodiacCode: zodiacCodeSchema.nullable().optional(),
     /** Plausible ranges for a 2–5 year old, with room either side. */
     heightCm: z.coerce.number().min(30).max(200).nullable().optional(),
     weightKg: z.coerce.number().min(2).max(100).nullable().optional(),
     recordedOn: z.coerce.date().nullable().optional(),
+    /**
+     * ★ `Child`'s own columns, writable from this endpoint on top of
+     * `ChildProfile`'s — a deliberate, client-confirmed reversal of the rule
+     * `ChildrenService.update`'s own doc comment names: the reference suite's
+     * `test_a_guardian_cannot_edit_their_own_child` asserted a guardian may
+     * read but not edit these. That test governed `PATCH /children/:id`,
+     * which still enforces it unchanged (`assertCanRecord`, staff only) —
+     * this is a second, narrower path, added 2026-08-28, that reaches only
+     * these four fields rather than `nationalId`/`healthNotes`/`status`,
+     * and reuses `assertCanAccess` the same way every other about-me field
+     * already does.
+     */
+    lastName: z.string().min(1).max(100).optional(),
+    firstName: z.string().min(1).max(100).optional(),
+    dateOfBirth: dateOfBirthSchema.optional(),
+    sex: sexSchema.optional(),
   })
   .strict();
 export type UpdateAboutMeDto = z.infer<typeof updateAboutMeSchema>;

@@ -11,12 +11,13 @@ import {
   ROLE_LABEL,
   notificationSchema,
   paginated,
+  type ChildSummary,
   type Role,
   unreadCountSchema,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { z } from "zod";
-import { Input } from "@/components/ui/field";
+import { Input, Select } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/states";
 import { qk } from "@/lib/api/keys";
 import { useLogout, useSession } from "@/lib/auth/session";
@@ -80,6 +81,18 @@ export interface NavSection {
      */
     icon?: ReactNode;
   }[];
+}
+
+/**
+ * The sidebar's child picker — parent-only, and only when it has something to
+ * pick between. `(app)/layout.tsx`'s `AuthenticatedShell` builds this from
+ * `SelectedChildProvider`, so the rest of the shell never touches
+ * `localStorage` directly.
+ */
+export interface ChildSwitcher {
+  children: ChildSummary[];
+  selectedId: string;
+  onSelect: (id: string) => void;
 }
 
 /**
@@ -550,6 +563,7 @@ export function AppShell({
   children,
   variant = "teacher",
   isAdmin = false,
+  childSwitcher,
 }: {
   nav: NavItem[];
   /** Desktop sidebar sections. Without them the sidebar renders `nav` flat. */
@@ -566,6 +580,8 @@ export function AppShell({
    * `(app)/layout.tsx`.
    */
   isAdmin?: boolean;
+  /** A parent with more than one child — see `ChildSwitcher`. */
+  childSwitcher?: ChildSwitcher;
 }) {
   const { session } = useSession();
 
@@ -626,6 +642,7 @@ export function AppShell({
           subtitle={subtitle}
           variant={variant}
           isAdmin={isAdmin}
+          childSwitcher={childSwitcher}
         />
       ) : null}
 
@@ -685,6 +702,7 @@ export function AppShell({
         subtitle={subtitle}
         variant={variant}
         isAdmin={isAdmin}
+        childSwitcher={childSwitcher}
       />
     </div>
   );
@@ -962,6 +980,7 @@ function SidebarContent({
   subtitle,
   variant,
   isAdmin,
+  childSwitcher,
 }: {
   nav: NavItem[];
   sections?: NavSection[];
@@ -970,6 +989,7 @@ function SidebarContent({
   variant: Variant;
   /** Whether the signed-in person administers this kindergarten. */
   isAdmin: boolean;
+  childSwitcher?: ChildSwitcher;
 }) {
   const pathname = usePathname();
 
@@ -983,16 +1003,23 @@ function SidebarContent({
       <Brand subtitle={subtitle} />
 
       {/*
+        Above the scrolling list rather than inside it: which child the sidebar
+        is about is not one of the rows it scrolls past, and a switcher that
+        can scroll out of sight is a switcher a parent cannot find.
+      */}
+      {childSwitcher ? <ChildSwitcherControl switcher={childSwitcher} /> : null}
+
+      {/*
         ★ A fade at the bottom edge, so a cut-off row reads as "there is more"
         rather than as a layout fault.
-        
+
         The list scrolls whenever the window is short enough, and on macOS the
         scrollbar is an overlay that stays invisible until it is used — so the
         only signal was a row sliced in half at the bottom of the rail. The
         gradient is `--color-surface` fading to transparent over the last 24px
         and is `pointer-events-none`, so it cannot eat a click on the row
         underneath it.
-        
+
         `group-has-[:last-child]` is not available here, so it is unconditional:
         over a list that does not scroll it sits on the panel's own background
         and is invisible anyway.
@@ -1050,12 +1077,14 @@ function Sidebar({
   subtitle,
   variant,
   isAdmin,
+  childSwitcher,
 }: {
   nav: NavItem[];
   sections?: NavSection[];
   subtitle: string;
   variant: Variant;
   isAdmin: boolean;
+  childSwitcher?: ChildSwitcher;
 }) {
   return (
     <nav
@@ -1077,8 +1106,38 @@ function Sidebar({
         subtitle={subtitle}
         variant={variant}
         isAdmin={isAdmin}
+        childSwitcher={childSwitcher}
       />
     </nav>
+  );
+}
+
+/**
+ * The parent's own child picker, above the sidebar's nav — the only place a
+ * family with more than one child chooses which is "current" for the
+ * sections below and for Home's tiles. Uses the same `Select` every form in
+ * this product uses (`components/ui/field.tsx`) rather than a bespoke
+ * control, so it does not have to teach a second interaction pattern for one
+ * dropdown.
+ */
+function ChildSwitcherControl({ switcher }: { switcher: ChildSwitcher }) {
+  return (
+    <div>
+      <label htmlFor="child-switcher" className="sr-only">
+        Хүүхэд сонгох
+      </label>
+      <Select
+        id="child-switcher"
+        value={switcher.selectedId}
+        onChange={(event) => switcher.onSelect(event.target.value)}
+      >
+        {switcher.children.map((child) => (
+          <option key={child.id} value={child.id}>
+            {fullName(child)}
+          </option>
+        ))}
+      </Select>
+    </div>
   );
 }
 
@@ -1105,6 +1164,7 @@ function MobileMenuDrawer({
   subtitle,
   variant,
   isAdmin,
+  childSwitcher,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -1122,6 +1182,7 @@ function MobileMenuDrawer({
    */
   variant: Variant;
   isAdmin: boolean;
+  childSwitcher?: ChildSwitcher;
 }) {
   const closeOnLinkClick = (event: MouseEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest("a")) onOpenChange(false);
@@ -1150,6 +1211,7 @@ function MobileMenuDrawer({
               subtitle={subtitle}
               variant={variant}
               isAdmin={isAdmin}
+              childSwitcher={childSwitcher}
             />
           </div>
         </Dialog.Content>

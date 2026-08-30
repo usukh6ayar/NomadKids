@@ -322,9 +322,45 @@ export type AttendanceRequest = z.infer<typeof attendanceRequestSchema>;
 
 // ── Meals ────────────────────────────────────────────────────────────────────
 
+export const mealKindSchema = z.enum([
+  "BREAKFAST",
+  "MID_MORNING_SNACK",
+  "LUNCH",
+  "AFTERNOON_SNACK",
+  "EXTRA",
+]);
+export type MealKind = z.infer<typeof mealKindSchema>;
+
+export const MEAL_KIND_LABEL: Record<string, string> = {
+  BREAKFAST: "Өглөөний цай",
+  MID_MORNING_SNACK: "2-р цай",
+  LUNCH: "Үдийн хоол",
+  AFTERNOON_SNACK: "Үдээс хойших цай",
+  EXTRA: "Нэмэлт хоол",
+};
+
+/** Whether a child ate — `нэмэлт.md` §2. */
+export const mealStatusSchema = z.enum(["TAKEN", "NOT_TAKEN", "PARTIAL", "SPECIAL"]);
+export type MealStatus = z.infer<typeof mealStatusSchema>;
+
+export const MEAL_STATUS_LABEL: Record<string, string> = {
+  TAKEN: "Авсан",
+  NOT_TAKEN: "Аваагүй",
+  PARTIAL: "Хэсэгчлэн",
+  SPECIAL: "Тусгай хоол",
+};
+
 export const menuDishSchema = z.object({
   name: z.string(),
   allergenTags: z.array(z.string()).default([]),
+  /** Which sitting this dish belongs to. Absent on rows written before this existed. */
+  kind: mealKindSchema.nullish(),
+  /** The cook's full recipe line — separate from `allergenTags`, which stays a
+   * short controlled list for the cross-check to match on. */
+  ingredients: z.string().nullish(),
+  note: z.string().nullish(),
+  calories: z.number().int().nullish(),
+  portions: z.number().nullish(),
 });
 export type MenuDish = z.infer<typeof menuDishSchema>;
 
@@ -337,23 +373,14 @@ export const menuDaySchema = z.object({
 export type MenuDay = z.infer<typeof menuDaySchema>;
 
 /**
- * The meal register — `нэмэлт.md` §2. A different resource from the menu above.
+ * One saved record, as `PUT /groups/:id/meals` returns them — `нэмэлт.md` §2.
  *
- * ★ `MenuDay` is what the kitchen planned to cook, kindergarten-wide;
- * `MealRecord` is what one child actually ate at one sitting. They share the
- * `MealKind` vocabulary and nothing else — no foreign key, no join. §3 computes
- * the food cost from **хооллосон өдөр**, days eaten, which is why this cannot
- * be inferred from `Attendance` either: a child collected before lunch attended
- * and did not eat.
- */
-export const mealKindSchema = z.enum(["BREAKFAST", "LUNCH", "AFTERNOON_SNACK", "EXTRA"]);
-export type MealKind = z.infer<typeof mealKindSchema>;
-
-export const mealStatusSchema = z.enum(["TAKEN", "NOT_TAKEN", "PARTIAL", "SPECIAL"]);
-export type MealStatus = z.infer<typeof mealStatusSchema>;
-
-/**
- * One saved record, as `PUT /groups/:id/meals` returns them.
+ * A different resource from the menu above: `MenuDay` is what the kitchen
+ * planned to cook, kindergarten-wide; `MealRecord` is what one child actually
+ * ate at one sitting. They share the `MealKind` vocabulary and nothing else —
+ * no foreign key, no join. §3 computes the food cost from **хооллосон өдөр**,
+ * days eaten, which is why this cannot be inferred from `Attendance` either: a
+ * child collected before lunch attended and did not eat.
  *
  * ★ The API answers with the whole Prisma row; this names the fields the
  * product uses and zod drops the rest. Adding `kindergartenId` or
@@ -625,6 +652,19 @@ export const aboutMeSchema = z.object({
   memorableSayings: z.string().nullish(),
   dream: z.string().nullish(),
   distinguishingTraits: z.string().nullish(),
+  // Added 2026-08-28, on the client's instruction — not in RFP §4.1.
+  clanName: z.string().nullish(),
+  nickname: z.string().nullish(),
+  birthplace: z.string().nullish(),
+  bloodType: z.string().nullish(),
+  eyeColor: z.string().nullish(),
+  // A guardian's manual pick, overriding birthFacts()'s computed answer —
+  // see ChildProfile's own doc comment. Resolved server-side into
+  // BirthdaySection's zodiac/yearAnimal; these two are the raw stored
+  // override codes, present here only so the picker can show what's
+  // currently selected.
+  yearAnimalCode: z.string().nullish(),
+  zodiacCode: z.string().nullish(),
   // Prisma Decimal serialises as a string.
   heightCm: z.union([z.string(), z.number()]).nullish(),
   weightKg: z.union([z.string(), z.number()]).nullish(),

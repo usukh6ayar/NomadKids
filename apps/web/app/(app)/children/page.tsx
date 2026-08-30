@@ -21,6 +21,7 @@ import { Pagination } from "@/components/ui/pagination";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
+import { useSelectedChild } from "@/lib/selected-child";
 import { formatAge, formatAgeFromMonths, fullName } from "@/lib/format";
 import { MY_CHILDREN } from "@/lib/vocabulary";
 import { z } from "zod";
@@ -569,6 +570,7 @@ function MyChildren() {
     queryKey: qk.myChildren(),
     queryFn: () => get("/children/mine", ownSchema),
   });
+  const { setSelectedChildId } = useSelectedChild();
 
   return (
     <div className="flex flex-col gap-6 lg:gap-8">
@@ -598,7 +600,12 @@ function MyChildren() {
       {data && data.length > 0 ? (
         <div className="grid gap-3 md:grid-cols-2">
           {data.map((child) => (
-            <Link key={child.id} href={`/children/${child.id}/general`} className="block">
+            <Link
+              key={child.id}
+              href={`/children/${child.id}/general`}
+              onClick={() => setSelectedChildId(child.id)}
+              className="block"
+            >
               <Card
                 pad="roomy"
                 className="flex min-h-[88px] items-center gap-3 hover:bg-canvas md:gap-4"

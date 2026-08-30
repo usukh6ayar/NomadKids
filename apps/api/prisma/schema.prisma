@@ -109,10 +109,12 @@ enum EnrollmentStatus {
   ACTIVE
   ENDED
   TRANSFERRED
-  /** A distinct outcome from ENDED/TRANSFERRED — the child completed the
+  /**
+   * A distinct outcome from ENDED/TRANSFERRED — the child completed the
    * programme rather than leaving mid-way or moving elsewhere. Added so a
    * parent-facing "Цэцэрлэгээс төгссөн" date can be real data instead of a
-   * misleading reuse of the generic "this enrollment period ended". */
+   * misleading reuse of the generic "this enrollment period ended".
+   */
   GRADUATED
 }
 
@@ -713,6 +715,26 @@ model ChildProfile {
   dream                String?
   distinguishingTraits String?
 
+  /// Added 2026-08-28, on the client's instruction — not in RFP §4.1's own
+  /// field list, which stops at `distinguishingTraits` above.
+  clanName   String?
+  nickname   String?
+  birthplace String?
+  bloodType  String?
+  eyeColor   String?
+
+  /// A guardian's own pick, overriding `birthFacts()`'s computed answer for
+  /// §4.2's "Монгол жилийн амьтан" and "Өрнийн орд" — added the same day, on
+  /// the same instruction, after the client asked specifically for the
+  /// picker back having first agreed the computed version should stand.
+  /// `code`, not the Mongolian name, matching `YEAR_ANIMALS`/`ZODIAC_SIGNS`
+  /// in `@kinder/contracts`'s `birth-facts.ts` — validated against that same
+  /// list on write, so a stored value can never fail the lookup that resolves
+  /// it to a name. Null means "no override" — `birthFacts()` still answers
+  /// until a guardian actually picks something.
+  yearAnimalCode String?
+  zodiacCode     String?
+
   heightCm   Decimal?  @db.Decimal(5, 1)
   weightKg   Decimal?  @db.Decimal(5, 2)
   recordedOn DateTime? @db.Date
@@ -1271,6 +1293,9 @@ model ConsentRecord {
 /// Which sitting — `нэмэлт.md` §2.
 enum MealKind {
   BREAKFAST // Өглөөний цай
+  /// Added 2026-08-28, on the client's instruction — нэмэлт.md §2 names four
+  /// sittings; a fifth, between breakfast and lunch, is this one.
+  MID_MORNING_SNACK // 2-р цай
   LUNCH // Үдийн хоол
   AFTERNOON_SNACK // Үдээс хойших цай
   EXTRA // Нэмэлт хоол
@@ -1817,8 +1842,8 @@ model AttendanceRequest {
   pickedUpWithName String?
   pickedUpAt       DateTime?
   /// The staff member who reviewed it — `User.id`, matching `recordedById`.
-  reviewedById    String?                 @db.Uuid
-  reviewedAt      DateTime?
+  reviewedById     String?              @db.Uuid
+  reviewedAt       DateTime?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

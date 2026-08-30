@@ -63,8 +63,12 @@ const ZODIAC_BOUNDARIES: { month: number; day: number; code: string; name: strin
 /**
  * The twelve-year animal cycle, indexed so that a year with `year % 12 === 4`
  * is Хулгана — 2020, 2008, 1996 and so on.
+ *
+ * Exported so a guardian's manual override (`ChildProfile.yearAnimalCode`,
+ * added 2026-08-28) has one list of valid codes to validate against and pick
+ * from, rather than a second, hand-typed copy that could drift from this one.
  */
-const YEAR_ANIMALS: { code: string; name: string }[] = [
+export const YEAR_ANIMALS: { code: string; name: string }[] = [
   { code: "rat", name: "Хулгана" },
   { code: "ox", name: "Үхэр" },
   { code: "tiger", name: "Бар" },
@@ -78,6 +82,20 @@ const YEAR_ANIMALS: { code: string; name: string }[] = [
   { code: "dog", name: "Нохой" },
   { code: "pig", name: "Гахай" },
 ];
+
+/**
+ * The twelve zodiac signs, deduped from `ZODIAC_BOUNDARIES` (which lists
+ * Матар twice — the sign spans the new year) rather than typed a third time.
+ * Same reason as `YEAR_ANIMALS`: a manual override needs one canonical list.
+ */
+export const ZODIAC_SIGNS: { code: string; name: string }[] = (() => {
+  const seen = new Set<string>();
+  return ZODIAC_BOUNDARIES.filter((b) => {
+    if (seen.has(b.code)) return false;
+    seen.add(b.code);
+    return true;
+  }).map(({ code, name }) => ({ code, name }));
+})();
 
 /**
  * Parses the date shapes this system actually carries.

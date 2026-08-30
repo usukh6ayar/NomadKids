@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "MealKind" ADD VALUE 'MID_MORNING_SNACK';

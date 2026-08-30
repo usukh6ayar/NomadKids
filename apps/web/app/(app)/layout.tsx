@@ -19,8 +19,8 @@ import {
   NotebookPen,
   Settings,
   ShieldCheck,
-  Users,
   UtensilsCrossed,
+  Users,
   Wallet,
   // `X` was the picker modal's close button and went with it. The type stays:
   // `ICON_FOR` below is keyed by href and annotated with it.
@@ -30,13 +30,14 @@ import { useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 import { childSummarySchema, type ChildSummary } from "@kinder/contracts";
 import { z } from "zod";
-import { AppShell, type NavItem, type NavSection } from "@/components/shell/app-shell";
+import { AppShell, type ChildSwitcher, type NavItem, type NavSection } from "@/components/shell/app-shell";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { ChildAvatar } from "@/components/media/media-image";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
 import { LoadingState } from "@/components/ui/states";
 import { useSession } from "@/lib/auth/session";
+import { SelectedChildProvider, useSelectedChild } from "@/lib/selected-child";
 import { fullName } from "@/lib/format";
 
 const ownChildrenSchema = z.array(childSummarySchema);
@@ -131,6 +132,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     );
   }
 
+  // Ahead of the provider for the same reason the superadmin branch is: a cook
+  // and an accountant are staff, so `/children/mine` never ran for them and
+  // there is no selected child to provide. Their shell is the two screens their
+  // role has and nothing else.
   if (isCook || isAccountant) {
     return (
       <AppShell nav={supportNav(isCook)} sections={supportSections(isCook)} variant="teacher">
@@ -139,9 +144,55 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  const nav = isStaff
-    ? staffNav(hasRole("ADMIN"), myGroup.count === 1 ? (myGroup.group?.id ?? null) : null)
-    : parentNav(myChildren.data);
+  const groupId = myGroup.count === 1 ? (myGroup.group?.id ?? null) : null;
+
+  return (
+    <SelectedChildProvider myChildIds={myChildren.data?.map((child) => child.id)}>
+      <AuthenticatedShell
+        isStaff={isStaff}
+        isAdmin={hasRole("ADMIN")}
+        groupId={groupId}
+        myChildren={myChildren.data}
+      >
+        {children}
+      </AuthenticatedShell>
+    </SelectedChildProvider>
+  );
+}
+
+/**
+ * Split out of `AppLayout` so it can read `useSelectedChild()` — that hook
+ * only works below `SelectedChildProvider`, and the provider itself needs
+ * `myChildren` from the component above it.
+ */
+function AuthenticatedShell({
+  isStaff,
+  isAdmin,
+  groupId,
+  myChildren,
+  children,
+}: {
+  isStaff: boolean;
+  isAdmin: boolean;
+  /** The teacher's one group, resolved once by `useMyGroup()` in `AppLayout` — null for an admin (every group) or a teacher assigned none. */
+  groupId: string | null;
+  myChildren: ChildSummary[] | undefined;
+  children: ReactNode;
+}) {
+  const { selectedChildId, setSelectedChildId } = useSelectedChild();
+
+  const nav = isStaff ? staffNav(isAdmin, groupId) : parentNav(myChildren, selectedChildId);
+
+  // Below two children there is nothing to switch between — the sidebar
+  // already names the one child directly, same as before this existed.
+  const childSwitcher: ChildSwitcher | undefined =
+    !isStaff && myChildren && myChildren.length > 1 && selectedChildId
+      ? {
+          children: myChildren,
+          selectedId: selectedChildId,
+          onSelect: setSelectedChildId,
+        }
+      : undefined;
 
   return (
     /*
@@ -164,15 +215,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     <AppShell
       nav={nav}
       sections={
-        isStaff
-          ? staffSections(
-              hasRole("ADMIN"),
-              myGroup.count === 1 ? (myGroup.group?.id ?? null) : null,
-            )
-          : parentSections(myChildren.data)
+        isStaff ? staffSections(isAdmin, groupId) : parentSections(myChildren, selectedChildId)
       }
       variant={isStaff ? "teacher" : "parent"}
-      isAdmin={hasRole("ADMIN")}
+      isAdmin={isAdmin}
+      childSwitcher={childSwitcher}
     >
       {children}
     </AppShell>
@@ -580,7 +627,7 @@ function platformNav(): NavItem[] {
 }
 
 /**
- * Parent navigation — four items: Нүүр / Мэдээ / Зураг / Цэс.
+ * Parent navigation — five items: Нүүр / Мэдээ / Зураг / Хоол / Цэс.
  *
  * ★ Renamed from the brief's original Нүүр / Хавтас / Мэдэгдэл / Профайл to
  * match the parent's own mock-up. "Мэдээ" is `Мэдэгдэл` renamed; the route
@@ -591,35 +638,37 @@ function platformNav(): NavItem[] {
  * "/settings"` regardless of label, so this tab's own name differing from
  * `staffNav`'s "Профайл" costs nothing there.
  *
- * ★★ "Зураг" is a plain link, no popup. It goes straight to the first
- * child's `/overview` — the same "first child, most families only ever
- * have one" default `/home`'s own switcher and `selected` use. A family with
- * more than one child still gets exactly this behaviour rather than being
- * asked which child first: the tab always resolves to *a* real page, and once
- * there, that child's own switcher (or the sidebar's "Хүүхдийн мэдээлэл" list
- * on desktop) is how they reach a different one — the same pattern every
- * other per-child destination in this product already follows, rather than a
- * picker unique to this one tab. Before `myChildren` has loaded (or for a
- * family connected to none), it falls back to `/children` — a real list,
- * never a dead link and never a modal.
+ * ★★ "Зураг" and "Хоол" are plain links, no popup — each goes straight to
+ * the *selected* child's `/overview` or `/menu` (2026-08-28: was always the
+ * first child before the switcher existed — see `SelectedChildProvider`).
+ * Before `myChildren` has loaded (or for a family connected to none), both
+ * fall back to `/children` — a real list, never a dead link.
  *
  * "Ирц" and "Хоол ба цэс" briefly had their own bottom-bar tabs, each
  * resolving to a `?tab=` deep link on a confirmed single child or to
- * `/children` otherwise. For any family that isn't exactly one child, that
- * put three of the six tabs on the same destination: a wasted tab, and on
- * that landing page, three simultaneous "current page" highlights. A parent
- * reaches both from their child's own page, or from the home grid.
+ * `/children` otherwise — removed for exactly the reason "Хоол" now avoids:
+ * for any family that isn't exactly one child, that put multiple tabs on the
+ * same `/children` destination with nothing to say which child they meant.
+ * `SelectedChildProvider` is what makes bringing "Хоол" back honest — the
+ * tab now always resolves to one specific child's menu, the same one every
+ * other selected-child destination in the shell already points at.
  *
  * `myChildren` comes from `AppLayout`, which owns the query — this function
  * has no hooks of its own to fetch with.
  */
-function parentNav(myChildren: ChildSummary[] | undefined): NavItem[] {
-  const zuragHref = myChildren?.[0] ? `/children/${myChildren[0].id}/overview` : "/children";
+function parentNav(
+  myChildren: ChildSummary[] | undefined,
+  selectedChildId: string | undefined,
+): NavItem[] {
+  const activeId = selectedChildId ?? myChildren?.[0]?.id;
+  const zuragHref = activeId ? `/children/${activeId}/overview` : "/children";
+  const hoolHref = activeId ? `/children/${activeId}/menu` : "/children";
 
   return [
     { href: "/home", label: "Нүүр", icon: <Home {...iconProps} /> },
     { href: "/notifications", label: "Мэдээ", icon: <Bell {...iconProps} />, badge: "unread" },
     { href: zuragHref, label: "Зураг", icon: <Images {...iconProps} /> },
+    { href: hoolHref, label: "Хоол", icon: <UtensilsCrossed {...iconProps} /> },
     { href: "/settings", label: "Цэс", icon: <Menu {...iconProps} /> },
   ];
 }
@@ -656,34 +705,51 @@ function parentNav(myChildren: ChildSummary[] | undefined): NavItem[] {
  * parent actually wants instead of a route to a list they then pick from
  * anyway.
  *
- * ★★ Two rows per child, not one, since the child hub was deleted
- * (2026-08-28). It used to carry Ерөнхий and Ажиглалт as tabs on one page;
- * without that page a desktop reader needs both named here directly, the
- * same way `parentNav`'s own "Зураг" tab already links straight to a specific
- * child's page rather than to a list. `/general`'s icon is the child's own
- * avatar, matching every other per-child row this menu has ever shown; the
- * Ажиглалт row underneath it carries a plain glyph instead, so a family with
- * two children reads two two-row groups rather than four look-alike rows.
+ * ★★ Three rows for the *selected* child, not one, since the child hub was
+ * deleted (2026-08-28) — it used to carry Ерөнхий and Ажиглалт as tabs on one
+ * page, and without that page a desktop reader needs both named here
+ * directly. `/general`'s icon is the child's own avatar, matching every
+ * per-child row this menu has ever shown; Ажиглалт and Хоол underneath it
+ * carry a plain glyph instead.
+ *
+ * ★★★ One child, not every child — 2026-08-28's second change the same day.
+ * This mapped every one of a family's children in, which put two identical
+ * "Ажиглалт" rows on the menu for any family with two — the same label twice
+ * with nothing beside it to say whose. `SelectedChildProvider` (the
+ * switcher `app-shell.tsx` renders above this section) is what disambiguates
+ * now: one child is "current" at a time, same as `parentNav`'s "Зураг" and
+ * "Хоол" tabs, and this section follows it rather than listing everyone at
+ * once. "Хоол" joined the same day, mirroring `parentNav`'s own addition —
+ * both surfaces name the same three destinations for the same reason.
  */
-function parentSections(myChildren: ChildSummary[] | undefined): NavSection[] {
+function parentSections(
+  myChildren: ChildSummary[] | undefined,
+  selectedChildId: string | undefined,
+): NavSection[] {
+  const selected = myChildren?.find((child) => child.id === selectedChildId) ?? myChildren?.[0];
+
   return [
     {
       title: "Хүүхдийн мэдээлэл",
-      entries:
-        myChildren && myChildren.length > 0
-          ? myChildren.flatMap((child) => [
-              {
-                label: fullName(child),
-                href: `/children/${child.id}/general`,
-                icon: <ChildAvatar child={child} size={24} />,
-              },
-              {
-                label: "Ажиглалт",
-                href: `/children/${child.id}/observations`,
-                icon: <NotebookPen size={18} aria-hidden="true" />,
-              },
-            ])
-          : [{ label: "Холбогдсон хүүхэд алга" }],
+      entries: selected
+        ? [
+            {
+              label: fullName(selected),
+              href: `/children/${selected.id}/general`,
+              icon: <ChildAvatar child={selected} size={24} />,
+            },
+            {
+              label: "Ажиглалт",
+              href: `/children/${selected.id}/observations`,
+              icon: <NotebookPen size={18} aria-hidden="true" />,
+            },
+            {
+              label: "Хоол",
+              href: `/children/${selected.id}/menu`,
+              icon: <UtensilsCrossed size={18} aria-hidden="true" />,
+            },
+          ]
+        : [{ label: "Холбогдсон хүүхэд алга" }],
     },
     {
       title: "Харилцаа холбоо",
