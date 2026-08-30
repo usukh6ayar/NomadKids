@@ -231,6 +231,19 @@ export class ChildrenController {
     return this.service.listEnrollments(actor, params.id);
   }
 
+  /**
+   * The "Цэцэрлэг, бүлгийн архив" read — current placement, homeroom teachers,
+   * past placements. No `@Roles`: a guardian and staff both reach it, and the
+   * service's `assertCanAccess` is the real gate.
+   */
+  @Get("children/:id/enrollment-archive")
+  async enrollmentArchive(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.getEnrollmentArchive(actor, params.id);
+  }
+
   @Post("children/:id/enrollments")
   @Roles("ADMIN")
   async enroll(

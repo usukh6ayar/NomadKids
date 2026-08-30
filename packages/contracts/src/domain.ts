@@ -143,6 +143,74 @@ export const enrollmentSummarySchema = z.object({
   endedOn: z.string().nullish(),
 });
 
+/**
+ * `GET /children/:id/enrollment-archive` — the "Цэцэрлэг, бүлгийн архив" screen.
+ *
+ * A parent-facing read of where a child attends now, who to contact there, and
+ * every kindergarten/group they were placed in before. `current` is the one
+ * `ACTIVE` enrollment (null for a child registered but not yet enrolled, or one
+ * who has left); `history` is the `ENDED`/`TRANSFERRED`/`GRADUATED` rows only.
+ *
+ * `teacherRoleSchema` mirrors the `TeacherRole` Prisma enum. The teacher block
+ * carries a name and nothing else — contact details are staff-profile fields
+ * the archive deliberately does not expose to families.
+ */
+export const teacherRoleSchema = z.enum(["LEAD", "ASSISTANT"]);
+
+export const TEACHER_ROLE_LABEL: Record<z.infer<typeof teacherRoleSchema>, string> = {
+  LEAD: "Ахлах багш",
+  ASSISTANT: "Туслах багш",
+};
+
+export const enrollmentArchiveEntrySchema = z.object({
+  id: uuidSchema,
+  status: enrollmentStatusSchema,
+  startedOn: z.string(),
+  endedOn: z.string().nullable(),
+  kindergarten: namedRefSchema,
+  group: namedRefSchema.nullable(),
+  schoolYear: namedRefSchema.nullable(),
+});
+
+export const enrollmentArchiveTeacherSchema = z.object({
+  id: uuidSchema,
+  lastName: z.string(),
+  firstName: z.string(),
+  role: teacherRoleSchema,
+});
+
+export const enrollmentArchiveSchema = z.object({
+  /** For the hero — saves the page a second `/children/:id` fetch. */
+  child: z.object({ id: uuidSchema, firstName: z.string(), lastName: z.string() }),
+  current: z
+    .object({
+      id: uuidSchema,
+      startedOn: z.string(),
+      schoolYear: namedRefSchema.nullable(),
+      kindergarten: z.object({
+        id: uuidSchema,
+        name: z.string(),
+        address: z.string().nullable(),
+        phone: z.string().nullable(),
+        email: z.string().nullable(),
+        description: z.string().nullable(),
+      }),
+      group: z
+        .object({
+          id: uuidSchema,
+          name: z.string(),
+          schedule: z.string().nullable(),
+          rules: z.string().nullable(),
+        })
+        .nullable(),
+      teachers: z.array(enrollmentArchiveTeacherSchema),
+    })
+    .nullable(),
+  /** Past placements only (`status !== "ACTIVE"`), newest first. */
+  history: z.array(enrollmentArchiveEntrySchema),
+});
+export type EnrollmentArchive = z.infer<typeof enrollmentArchiveSchema>;
+
 export const childSummarySchema = z.object({
   id: uuidSchema,
   lastName: z.string(),

@@ -337,6 +337,63 @@ export class ChildrenRepository {
   }
 
   /**
+   * The child's identity plus every enrollment — the "Цэцэрлэг, бүлгийн архив"
+   * read.
+   *
+   * Wider than `listEnrollments`: the kindergarten contact fields and the
+   * group's schedule/rules feed the "Одоогийн цэцэрлэг, бүлгийн мэдээлэл" card,
+   * so they are selected here and nowhere else. Access is gated by
+   * `assertCanAccess` in the service before this runs — same contract as
+   * `listEnrollments`.
+   */
+  async findEnrollmentArchive(childId: string) {
+    return this.prisma.child.findFirst({
+      where: { id: childId, deletedAt: null },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        enrollments: {
+          where: { deletedAt: null },
+          orderBy: { startedOn: "desc" },
+          select: {
+            id: true,
+            status: true,
+            startedOn: true,
+            endedOn: true,
+            kindergarten: {
+              select: {
+                id: true,
+                name: true,
+                address: true,
+                phone: true,
+                email: true,
+                description: true,
+              },
+            },
+            group: { select: { id: true, name: true, schedule: true, rules: true } },
+            schoolYear: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+  }
+
+  /** The current homeroom teachers of a group — LEAD before ASSISTANT. */
+  async listActiveGroupTeachers(groupId: string) {
+    return this.prisma.groupTeacher.findMany({
+      where: { groupId, endedOn: null, deletedAt: null },
+      orderBy: { role: "asc" },
+      select: {
+        role: true,
+        membership: {
+          select: { user: { select: { id: true, lastName: true, firstName: true } } },
+        },
+      },
+    });
+  }
+
+  /**
    * Enrolls a child, ending any active enrollment for the same school year.
    *
    * ★ One transaction, and the order is forced by the database: a partial

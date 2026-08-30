@@ -134,7 +134,7 @@ export default function ParentHomePage() {
 
       {/*
         ★ A 3-column icon grid matching the parent's own mock-up: Ангийн
-        самбар, Ирц, Хоол, Үнэлгээ, Судалгаа, Санхүү. The icon assets
+        самбар, Ирц, Хоол, Цэцэрлэг, Үнэлгээ, Судалгаа, Санхүү. The icon assets
         (icon-notice.png, icon-attendance.png, …) already carry their own
         colour per tile, so the grid reads as varied as the reference's
         icon-square grid without inventing a new colour system for it.
@@ -145,11 +145,15 @@ export default function ParentHomePage() {
         Судалгаа has its own permanent tile — `SurveyTile` below — landing on
         `/children/:id/surveys`, the list this grid's Судалгаа entry could
         not honestly point to before that page existed.
-        Ирц, Хоол and Үнэлгээ each land on their own standalone route now
-        (`/children/:id/attendance`, `/menu`, `/assessments`) rather than a
-        `?tab=` deep link into the child hub — the hub dropped those same
-        three tabs, so a deep link into them would no longer have opened
-        anything.
+        Ирц, Хоол, Цэцэрлэг and Үнэлгээ each land on their own standalone
+        route now (`/children/:id/attendance`, `/menu`, `/enrollment-archive`,
+        `/assessments`) rather than a `?tab=` deep link into the child hub —
+        the hub dropped those same tabs, so a deep link into them would no
+        longer have opened anything.
+        Цэцэрлэг is the client's own later addition — "Цэцэрлэг, бүлгийн
+        архив", the current placement, its teacher, and the family's full
+        enrollment history — sitting between Хоол and Үнэлгээ so the one
+        `ComingSoonTile` (Санхүү) stays last in the grid.
         Санхүү is a `ComingSoonTile`, not a link: CLAUDE.md §7 keeps finance
         a later phase, and this screen does not get to pull it forward on
         its own — `(app)/layout.tsx`'s sidebar makes the same call there,
@@ -174,6 +178,11 @@ export default function ParentHomePage() {
             href={`/children/${selected.id}/menu`}
             label="Хоол"
             icon={<TileIcon src="/icons/icon-menu.png" />}
+          />
+          <QuickTile
+            href={`/children/${selected.id}/enrollment-archive`}
+            label="Цэцэрлэг"
+            icon={<TileIcon src="/icons/icon-kindergarten.png" />}
           />
           <QuickTile
             href={`/children/${selected.id}/assessments`}
