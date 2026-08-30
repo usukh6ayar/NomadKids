@@ -1029,9 +1029,40 @@ export type GrowthChart = z.infer<typeof growthChartSchema>;
 
 // ── Notifications ────────────────────────────────────────────────────────────
 
+/**
+ * What kind of notice this is — the client's own taxonomy, from their board
+ * drawing: Зарлал · Үйл ажиллагаа · Сургалт, plus the honest fourth.
+ */
+export const notificationCategorySchema = z.enum(["ANNOUNCEMENT", "ACTIVITY", "TRAINING", "OTHER"]);
+export type NotificationCategory = z.infer<typeof notificationCategorySchema>;
+
+export const NOTIFICATION_CATEGORY_LABEL: Record<NotificationCategory, string> = {
+  ANNOUNCEMENT: "Зарлал",
+  ACTIVITY: "Үйл ажиллагаа",
+  TRAINING: "Сургалт",
+  OTHER: "Бусад",
+};
+
+/** The order the filter row and the compose form render them in — never sorted. */
+export const NOTIFICATION_CATEGORY_ORDER = [
+  "ANNOUNCEMENT",
+  "ACTIVITY",
+  "TRAINING",
+  "OTHER",
+] as const;
+
 export const notificationSchema = z.object({
   id: uuidSchema,
   title: z.string(),
+  /**
+   * ★ `.catch("OTHER")` rather than `.default`.
+   *
+   * A default covers a missing key; this also covers a *present* one the web
+   * app does not know — a fifth category added to the enum server-side would
+   * otherwise throw at parse time and blank the whole board rather than
+   * showing one notice under an unfamiliar label.
+   */
+  category: notificationCategorySchema.catch("OTHER"),
   body: z.string().nullish(),
   status: z.enum(["DRAFT", "PUBLISHED"]).nullish(),
   isImportant: z.boolean().nullish(),

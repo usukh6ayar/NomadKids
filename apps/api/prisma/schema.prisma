@@ -162,6 +162,28 @@ enum NotificationStatus {
   PUBLISHED
 }
 
+/// What kind of notice this is — the client's own taxonomy, from the drawing
+/// their board mock-up carries: Зарлал · Үйл ажиллагаа · Сургалт.
+///
+/// ★ An enum, not the `DevelopmentDomain` treatment.
+///
+/// CLAUDE.md §2.3 says anything an administrator can edit is a table. This is
+/// not that: it is a fixed vocabulary the client drew, and the filter row on
+/// the board is drawn from it — a kindergarten inventing a seventh category
+/// would produce a chip row nobody designed. `OTHER` is the escape hatch every
+/// enum in this schema keeps, so a notice that is none of the three is filed
+/// honestly rather than as the nearest wrong one.
+enum NotificationCategory {
+  /// Зарлал — an announcement: a closure, a deadline, a change of plan.
+  ANNOUNCEMENT
+  /// Үйл ажиллагаа — an outing, a concert, a photo day.
+  ACTIVITY
+  /// Сургалт — a parents' meeting, a training, something to learn from.
+  TRAINING
+  /// Бусад — none of the three, and said so rather than guessed.
+  OTHER
+}
+
 enum TermReportStatus {
   DRAFT
   FINAL
@@ -279,11 +301,11 @@ model User {
   documentBookmarks     DocumentBookmark[]        @relation("DocumentBookmarkUser")
   consentsDecided       ConsentRecord[]           @relation("ConsentDecidedBy")
   mealsRecorded         MealRecord[]              @relation("MealRecordedBy")
+  chatMessages          ChatMessage[]             @relation("ChatAuthor")
+  chatReads             ChatRead[]                @relation("ChatReader")
 
   @@index([deletedAt])
   @@map("users")
-  chatMessages         ChatMessage[] @relation("ChatAuthor")
-  chatReads            ChatRead[]    @relation("ChatReader")
 }
 
 /// ★ The only source of authority in the system.
@@ -453,11 +475,11 @@ model Kindergarten {
   mealRecords           MealRecord[]
   fundingRules          FundingRule[]
   fundingCalculations   FundingCalculation[]
+  chatMessages          ChatMessage[]
+  chatReads             ChatRead[]
 
   @@index([deletedAt])
   @@map("kindergartens")
-  chatMessages   ChatMessage[]
-  chatReads      ChatRead[]
 }
 
 model SchoolYear {
@@ -2270,16 +2292,23 @@ model MediaFile {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Notification {
-  id             String             @id @default(uuid()) @db.Uuid
-  kindergartenId String             @db.Uuid
+  id             String               @id @default(uuid()) @db.Uuid
+  kindergartenId String               @db.Uuid
   title          String
   body           String
-  startsOn       DateTime?          @db.Date
-  endsOn         DateTime?          @db.Date
-  isImportant    Boolean            @default(false)
-  status         NotificationStatus @default(DRAFT)
+  startsOn       DateTime?            @db.Date
+  endsOn         DateTime?            @db.Date
+  isImportant    Boolean              @default(false)
+  /// ★ Defaults to OTHER, so every existing notice is filed honestly.
+  ///
+  /// The alternative — defaulting the backfill to ANNOUNCEMENT because most of
+  /// them probably are — would put a claim on two hundred rows nobody checked.
+  /// A board filtered to Зарлал would then show notices that were never
+  /// classified, which is worse than showing them under Бусад.
+  category       NotificationCategory @default(OTHER)
+  status         NotificationStatus   @default(DRAFT)
   publishedAt    DateTime?
-  authorId       String?            @db.Uuid
+  authorId       String?              @db.Uuid
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -2297,6 +2326,7 @@ model Notification {
   media        MediaFile[]            @relation("NotificationMedia")
 
   @@index([kindergartenId, status, publishedAt(sort: Desc)])
+  @@index([kindergartenId, category])
   @@map("notifications")
 }
 

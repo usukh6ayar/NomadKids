@@ -18,10 +18,21 @@ const targetSchema = z
     message: "Бүлэг эсвэл хүүхдийн аль нэгийг сонгоно уу",
   });
 
+const categorySchema = z.enum(["ANNOUNCEMENT", "ACTIVITY", "TRAINING", "OTHER"]);
+
 export const createNotificationSchema = z
   .object({
     title: z.string().min(1, "Гарчиг оруулна уу").max(200),
     body: z.string().min(1, "Мэдэгдлийн текст оруулна уу").max(8000),
+    /**
+     * ★ Defaults to OTHER rather than being required.
+     *
+     * A required field would break every caller that predates it, and the
+     * honest fallback for "the author did not say" is the category that means
+     * exactly that. The compose form still asks — see its own note on why the
+     * field is a select and not free text.
+     */
+    category: categorySchema.default("OTHER"),
     isImportant: z.boolean().default(false),
     startsOn: z.coerce.date().nullable().optional(),
     endsOn: z.coerce.date().nullable().optional(),
@@ -38,6 +49,7 @@ export const updateNotificationSchema = z
   .object({
     title: z.string().min(1).max(200).optional(),
     body: z.string().min(1).max(8000).optional(),
+    category: categorySchema.optional(),
     isImportant: z.boolean().optional(),
     startsOn: z.coerce.date().nullable().optional(),
     endsOn: z.coerce.date().nullable().optional(),
@@ -69,5 +81,7 @@ export const listNotificationsQuerySchema = paginationQuerySchema.extend({
    * every board in the kindergarten.
    */
   groupId: uuidSchema.optional(),
+  /** One kind of notice — the board's second filter row. */
+  category: categorySchema.optional(),
 });
 export type ListNotificationsQuery = z.infer<typeof listNotificationsQuerySchema>;

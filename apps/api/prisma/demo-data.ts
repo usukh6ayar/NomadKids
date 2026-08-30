@@ -639,20 +639,30 @@ export async function seedDemoKindergarten(
   }
 
   console.log("Creating announcements…");
+  /*
+   * ★ One of each category, so the board's filter row has something to filter.
+   *
+   * A demo where every notice is an ANNOUNCEMENT shows a chip row in which two
+   * of the three chips return nothing — which reads as a broken filter rather
+   * than as an honest empty result.
+   */
   const announcements = [
     {
       title: "Намрын аялал",
       body: "Ирэх пүрэв гарагт Богд уулын дэнжид аялна. Дулаан хувцас, ус авчирна уу.",
+      category: "ACTIVITY" as const,
       isImportant: true,
     },
     {
       title: "Эцэг эхийн хурал",
       body: "Улирлын үнэлгээний танилцуулга ирэх сарын 25-ны 18:00 цагт болно.",
+      category: "TRAINING" as const,
       isImportant: false,
     },
     {
       title: "Гэрэл зургийн өдөр",
       body: "Хүүхдүүдийн хувийн хавтасны гэрэл зургийг дараагийн долоо хоногт авна.",
+      category: "ANNOUNCEMENT" as const,
       isImportant: false,
     },
   ];
@@ -663,6 +673,7 @@ export async function seedDemoKindergarten(
         kindergartenId: kg.id,
         title: a.title,
         body: a.body,
+        category: a.category,
         isImportant: a.isImportant,
         status: "PUBLISHED",
         publishedAt: new Date(),
@@ -1277,6 +1288,8 @@ export async function seedDemoKindergarten(
           kindergartenId: kg.id,
           title: `Аюулгүй байдлын мэдэгдэл — ${entry.child.lastName} ${entry.child.firstName}`,
           body: `${i.description} ${i.firstAid ?? ""}`.trim(),
+          // The same classification `IncidentsService.report` gives a real one.
+          category: "ANNOUNCEMENT",
           isImportant: i.isHighPriority,
           status: "PUBLISHED",
           publishedAt: occurredAt,

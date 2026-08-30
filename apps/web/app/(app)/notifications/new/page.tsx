@@ -3,13 +3,19 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { mediaSchema, notificationSchema } from "@kinder/contracts";
+import {
+  mediaSchema,
+  notificationSchema,
+  NOTIFICATION_CATEGORY_LABEL,
+  NOTIFICATION_CATEGORY_ORDER,
+  type NotificationCategory,
+} from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Checkbox, Field, Input, Textarea } from "@/components/ui/field";
+import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
 import { ImagePlus, X } from "lucide-react";
@@ -53,6 +59,17 @@ function ComposeNotice() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [isImportant, setIsImportant] = useState(false);
+  /*
+   * ★ "Зарлал" is the default, not "Бусад".
+   *
+   * The DTO defaults to OTHER, which is the honest fallback for a caller that
+   * says nothing — but a person filling this form *is* saying something, and
+   * most of what goes on a class board is an announcement. Starting on the
+   * commonest answer means the field costs nothing to leave alone and still
+   * files the notice under a real heading; starting on "Бусад" would make the
+   * lazy path the one that classifies nothing.
+   */
+  const [category, setCategory] = useState<NotificationCategory>("ANNOUNCEMENT");
   /**
    * Chosen photographs, held in the browser until the post is submitted.
    *
@@ -105,7 +122,7 @@ function ComposeNotice() {
         const created = await mutate(
           `/kindergartens/${primaryKindergartenId}/notifications`,
           notificationSchema,
-          { method: "POST", body: { title, body, isImportant, targets: [] } },
+          { method: "POST", body: { title, body, category, isImportant, targets: [] } },
         );
         id = created.id;
         setDraftId(id);
@@ -189,6 +206,34 @@ function ComposeNotice() {
                 disabled={busy}
                 autoFocus
               />
+            )}
+          </Field>
+
+          {/*
+            ★ A select over four fixed values, not a free-text "төрөл" box.
+            
+            The board's filter row is drawn from this vocabulary, so a typed
+            category would fill it with near-duplicates — "Зарлал", "зарлал",
+            "Зар" — and a parent filtering by one of them would miss the other
+            two. The four are the client's own drawing plus the honest fourth;
+            `notificationCategorySchema` is where they are defined once.
+          */}
+          <Field label="Гарчгийн төрөл" error={errors.category}>
+            {({ id, describedBy }) => (
+              <Select
+                id={id}
+                aria-describedby={describedBy}
+                value={category}
+                onChange={(e) => setCategory(e.target.value as NotificationCategory)}
+                disabled={busy}
+                className="sm:max-w-[280px]"
+              >
+                {NOTIFICATION_CATEGORY_ORDER.map((value) => (
+                  <option key={value} value={value}>
+                    {NOTIFICATION_CATEGORY_LABEL[value]}
+                  </option>
+                ))}
+              </Select>
             )}
           </Field>
 

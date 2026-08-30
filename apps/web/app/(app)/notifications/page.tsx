@@ -11,7 +11,14 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
-import { childSummarySchema, notificationSchema, paginated, surveySchema } from "@kinder/contracts";
+import {
+  childSummarySchema,
+  notificationSchema,
+  paginated,
+  surveySchema,
+  NOTIFICATION_CATEGORY_LABEL,
+  NOTIFICATION_CATEGORY_ORDER,
+} from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
 import { useSwitchableGroups } from "@/components/shell/group-switcher";
@@ -97,7 +104,18 @@ export default function NotificationsPage() {
    */
   const [groupId, setGroupId] = useState("");
 
-  const filters = { unread: showUnreadOnly, q, groupId };
+  /*
+   * ★ The category the client's own drawing asked for — Зарлал · Үйл ажиллагаа
+   * · Сургалт — which this file's own note said "needs a column, a value in the
+   * compose form and a query parameter". It has all three now.
+   *
+   * Server-side, unlike `importantOnly`: a category is a column, so filtering
+   * in the browser would narrow only the pages already fetched and the infinite
+   * scroll would keep loading notices it then hid.
+   */
+  const [category, setCategory] = useState("");
+
+  const filters = { unread: showUnreadOnly, q, groupId, category };
 
   /*
    * ★ Two tabs, one screen — the mock-up's own pairing of Мэдээ and Судалгаа
@@ -181,6 +199,7 @@ export default function NotificationsPage() {
       if (showUnreadOnly) params.set("unread", "true");
       if (q) params.set("q", q);
       if (groupId) params.set("groupId", groupId);
+      if (category) params.set("category", category);
       return get(`/notifications?${params}`, listSchema);
     },
     getNextPageParam: (last) => (last.page < last.totalPages ? last.page + 1 : undefined),
@@ -347,6 +366,28 @@ export default function NotificationsPage() {
               ))}
             </FilterChipRow>
           ) : null}
+
+          {/*
+            ★ The kind of notice — the client's drawing, finally wired.
+
+            This row is what the group row above narrows *within*: "Дэлбээ
+            бүлгийн зарлалууд" is two chips, and neither of them is a search
+            term somebody has to spell correctly.
+          */}
+          <FilterChipRow label="Гарчгийн төрөл">
+            <FilterChip active={!category} onClick={() => setCategory("")}>
+              Бүх төрөл
+            </FilterChip>
+            {NOTIFICATION_CATEGORY_ORDER.map((value) => (
+              <FilterChip
+                key={value}
+                active={category === value}
+                onClick={() => setCategory(value)}
+              >
+                {NOTIFICATION_CATEGORY_LABEL[value]}
+              </FilterChip>
+            ))}
+          </FilterChipRow>
 
           <FilterChipRow label="Мэдээг шүүх">
             <FilterChip
@@ -861,7 +902,22 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
         nothing for that case makes the most important audience the one with no
         label — a reader would have to know the convention to read the absence.
       */}
-      <AudienceBadge targets={notification.targets} />
+      {/*
+        ★ The kind of notice and who it is for, on one quiet line.
+
+        Two facts about the same notice, so one line rather than two: a reader
+        scanning the board wants "Зарлал · Дэлбээ бүлэг" as a phrase, not as two
+        separate labels they have to associate.
+      */}
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-muted">
+        <span className="font-medium text-ink">
+          {NOTIFICATION_CATEGORY_LABEL[notification.category]}
+        </span>
+        <span aria-hidden="true" className="text-faint">
+          ·
+        </span>
+        <AudienceBadge targets={notification.targets} />
+      </p>
 
       {/*
         The title is the link, not the whole card.
@@ -994,15 +1050,15 @@ function AudienceBadge({ targets }: { targets: z.infer<typeof notificationSchema
 
   if (targets.length === 0) {
     return (
-      <p className="flex items-center gap-1.5 text-caption text-muted">
+      <span className="flex items-center gap-1.5">
         <Building2 size={14} aria-hidden="true" className="shrink-0" />
         Бүх цэцэрлэг
-      </p>
+      </span>
     );
   }
 
   return (
-    <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-caption text-muted">
+    <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
       <Users size={14} aria-hidden="true" className="shrink-0" />
       {groups.length > 0 ? <span>{groups.join(", ")}</span> : null}
       {childCount > 0 ? (
@@ -1011,6 +1067,6 @@ function AudienceBadge({ targets }: { targets: z.infer<typeof notificationSchema
           {childCount} хүүхэд
         </span>
       ) : null}
-    </p>
+    </span>
   );
 }

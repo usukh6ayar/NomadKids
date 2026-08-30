@@ -30,6 +30,7 @@ export {
   GuardianRelation,
   MealKind,
   MealStatus,
+  NotificationCategory,
   MediaAttribution,
   MediaPurpose,
   MediaStatus,

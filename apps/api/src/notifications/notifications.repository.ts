@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import type { NotificationCategory } from "../domain/enums";
 import { toSkipTake, type PageParams } from "../common/pagination";
 
 /**
@@ -62,6 +63,7 @@ export class NotificationsRepository {
     unreadOnly: boolean,
     q?: string,
     groupId?: string,
+    category?: string,
   ) {
     const { skip, take } = toSkipTake(page);
 
@@ -82,6 +84,10 @@ export class NotificationsRepository {
      * flag on the notice, because the flag would be a second copy of the same
      * fact and could disagree with the rows the moment a target is added.
      */
+    // One kind of notice. A plain equality rather than the group filter's
+    // `some OR none` — a category is a column on the notice itself, so there
+    // is no "aimed at nobody" case to fold in.
+    if (category) extra.push({ category });
     if (groupId) {
       extra.push({
         OR: [
@@ -182,6 +188,7 @@ export class NotificationsRepository {
       kindergartenId: string;
       title: string;
       body: string;
+      category: NotificationCategory;
       isImportant: boolean;
       startsOn: Date | null;
       endsOn: Date | null;

@@ -1009,3 +1009,104 @@ describe("filtering the board by group", () => {
     expect(titles).toContain("Нарангийн зар");
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The kind of notice — the client's own taxonomy
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * ★ Зарлал · Үйл ажиллагаа · Сургалт, plus the honest fourth.
+ *
+ * The board's filter row is drawn from this vocabulary, so what these protect
+ * is that it *is* a vocabulary: a fixed enum the API refuses to extend at the
+ * caller's request, defaulting to OTHER rather than guessing when nobody said.
+ */
+describe("the notice's category", () => {
+  async function notifyWith(category: string | undefined, title: string) {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/notifications`),
+      teacherA,
+    ).send({ title, body: "Дэлгэрэнгүй", targets: [], ...(category ? { category } : {}) });
+    if (res.status !== 201) throw new Error(`create failed: ${res.status} ${res.text}`);
+    await authed(request(server()).post(`/v1/notifications/${res.body.id}/publish`), teacherA);
+    return res.body;
+  }
+
+  it("stores the category it was given", async () => {
+    const created = await notifyWith("ACTIVITY", "Намрын аялал");
+    expect(created.category).toBe("ACTIVITY");
+  });
+
+  /**
+   * ★ OTHER, not ANNOUNCEMENT.
+   *
+   * "The author did not say" is a fact, and the category that means exactly
+   * that is the honest place to put it. Defaulting to Зарлал because most
+   * notices are announcements would put a classification on a notice nobody
+   * classified — and a parent filtering to Зарлал would then read it as one.
+   */
+  it("files an unclassified notice as OTHER rather than guessing", async () => {
+    const created = await notifyWith(undefined, "Ангилалгүй");
+    expect(created.category).toBe("OTHER");
+  });
+
+  it("refuses a category outside the vocabulary", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/notifications`),
+      teacherA,
+    ).send({ title: "Буруу", body: "Дэлгэрэнгүй", targets: [], category: "GOSSIP" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("filters the board to one kind", async () => {
+    await notifyWith("ACTIVITY", "Намрын аялал");
+    await notifyWith("TRAINING", "Эцэг эхийн хурал");
+
+    const res = await authed(
+      request(server()).get("/v1/notifications?category=ACTIVITY"),
+      teacherA,
+    );
+    const titles = res.body.items.map((n: { title: string }) => n.title);
+
+    expect(titles).toContain("Намрын аялал");
+    expect(titles).not.toContain("Эцэг эхийн хурал");
+  });
+
+  it("rejects a category it does not know as a filter", async () => {
+    const res = await authed(request(server()).get("/v1/notifications?category=GOSSIP"), teacherA);
+    expect(res.status).toBe(400);
+  });
+
+  /**
+   * ★ A safety incident is an announcement, not OTHER.
+   *
+   * `IncidentsService.report` classifies it explicitly. Leaving it to the DTO's
+   * default would file the most consequential notice this product sends under
+   * "none of the above", where a parent filtering to Зарлал would not find it.
+   */
+  it("classifies an incident notice as an announcement", async () => {
+    const incident = await db.safetyIncident.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        childId: a.child.id,
+        kind: "INJURY",
+        occurredAt: new Date(),
+        description: "Ширээний ирмэгт маажуулав.",
+        recordedById: a.teacherUser.id,
+      },
+    });
+
+    const res = await authed(
+      request(server()).post(`/v1/incidents/${incident.id}/report`),
+      teacherA,
+    ).send({ title: "Аюулгүй байдлын мэдэгдэл", body: "Ариутгаж, наалт наав." });
+
+    expect(res.status).toBe(201);
+
+    const notice = await db.notification.findFirst({
+      where: { kindergartenId: a.kindergarten.id, title: "Аюулгүй байдлын мэдэгдэл" },
+    });
+    expect(notice?.category).toBe("ANNOUNCEMENT");
+  });
+});
