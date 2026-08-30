@@ -133,6 +133,14 @@ export const qk = {
   platformDistribution: (month: string) => ["platform", "distribution", month] as const,
   platformPartners: () => ["platform", "partners"] as const,
 
+  /** The kitchen's week, keyed by its Monday. */
+  weeklyMenu: (kindergartenId: string, weekStart: string) =>
+    ["menu", "week", kindergartenId, weekStart] as const,
+  /** One kindergarten's own funding — not the platform's revenue. */
+  kindergartenFunding: (kindergartenId: string, month: string) =>
+    ["funding", kindergartenId, month] as const,
+  fundingRules: (kindergartenId: string) => ["funding", "rules", kindergartenId] as const,
+
   childMedia: (childId: string) => ["child", childId, "media"] as const,
   childReports: (childId: string) => ["child", childId, "reports"] as const,
   report: (jobId: string) => ["report", jobId] as const,

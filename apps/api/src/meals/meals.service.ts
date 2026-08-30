@@ -49,7 +49,16 @@ export class MealsService {
    * CLAUDE.md §3.4.
    */
   async listWithAllergenWarnings(actor: Actor, kindergartenId: string, from: string, to: string) {
-    this.tenants.assertStaff(actor, kindergartenId);
+    /*
+      ★ The cook, as of 2026-08-30 — this is the screen the role exists for.
+
+      The warnings name which children react to what, which is medical
+      information about a family and the reason this is a separate route from
+      the plain menu. A cook decides what goes in the pot, so they are exactly
+      who needs it; withholding it would leave the one person who can act on an
+      allergy unable to see it.
+    */
+    this.tenants.assertCanManageMeals(actor, kindergartenId);
 
     const [days, allergies] = await Promise.all([
       this.repo.findInRange(
@@ -71,7 +80,9 @@ export class MealsService {
 
   /** Staff only. */
   async saveDay(actor: Actor, kindergartenId: string, dateIso: string, dto: SaveMenuDayDto) {
-    this.tenants.assertStaff(actor, kindergartenId);
+    // Writing the weekly menu is the cook's own work. The teacher keeps it too
+    // — they serve it and answer for it when a parent asks.
+    this.tenants.assertCanManageMeals(actor, kindergartenId);
     const date = new Date(`${dateIso}T00:00:00.000Z`);
     return this.repo.upsertDay(
       kindergartenId,
@@ -97,6 +108,15 @@ export class MealsService {
       this.tenants.memberKindergartenIds(actor),
     );
     if (!group) throw new NotFoundException();
+    /*
+      ★ Still `assertStaff` — the cook does not read this one.
+
+      The group register names individual children and what each of them ate.
+      A cook cooks for a count, not for a named child, and the client's own
+      line was to grant no more than the role needs: "шинээр хэт их эрх
+      олгохгүй". The kindergarten-wide menu is the kitchen's screen; this is the
+      teacher's register and it is child data.
+    */
     this.tenants.assertStaff(actor, group.kindergartenId);
 
     if (!this.tenants.isAdmin(actor, group.kindergartenId)) {

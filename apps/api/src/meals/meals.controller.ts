@@ -45,7 +45,7 @@ export class MealsController {
    * the menu and never this.
    */
   @Get("with-warnings")
-  @Roles("TEACHER", "ADMIN")
+  @Roles("TEACHER", "ADMIN", "COOK")
   async listWithWarnings(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
@@ -55,7 +55,7 @@ export class MealsController {
   }
 
   @Put(":date")
-  @Roles("TEACHER", "ADMIN")
+  @Roles("TEACHER", "ADMIN", "COOK")
   async save(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(dayParamsSchema)) params: { id: string } & DateParam,

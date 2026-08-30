@@ -66,6 +66,18 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const { session, isLoading, hasRole, isSuperAdmin } = useSession();
   const router = useRouter();
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
+  /*
+    ★ Neither of these is `isStaff`, and the shell has to say so before the
+    parent branch does.
+
+    `assertStaff` on the API means TEACHER or ADMIN and gates the teaching
+    surface; a cook and an accountant deliberately fail it. Without a branch of
+    their own they fall through to `parentNav`, which renders "Танд холбогдсон
+    хүүхэд байхгүй байна" — the same wrong screen the superadmin check a few
+    lines down exists to prevent, for the same reason.
+  */
+  const isCook = hasRole("COOK");
+  const isAccountant = hasRole("ACCOUNTANT");
 
   useEffect(() => {
     if (isLoading || session) return;
@@ -114,6 +126,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   if (isSuperAdmin) {
     return (
       <AppShell nav={platformNav()} variant="platform">
+        {children}
+      </AppShell>
+    );
+  }
+
+  if (isCook || isAccountant) {
+    return (
+      <AppShell nav={supportNav(isCook)} sections={supportSections(isCook)} variant="teacher">
         {children}
       </AppShell>
     );
@@ -198,6 +218,8 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
   "/surveys": BarChart3,
   "/documents": FileText,
   "/settings": Settings,
+  "/menu": UtensilsCrossed,
+  "/finance": Wallet,
   "/admin": ShieldCheck,
   "/platform": Building2,
   "/platform/revenue": Wallet,
@@ -308,7 +330,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
    * beside it was fully illustrated. Resolving by route also means an entry
    * added here cannot disagree with the same destination in the top-level nav.
    */
-  const entry = (label: string, href: string) => ({ label, href, icon: routeIcon(href) });
+  const entry = navEntry;
 
   /*
    * ★ A teacher with one group skips the picker; everybody else gets it.
@@ -471,6 +493,62 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
          */
         ...(isAdmin ? [entry("Удирдлага", "/admin")] : []),
       ],
+    },
+  ];
+}
+
+/**
+ * The cook's and the accountant's bottom bar — 2026-08-30.
+ *
+ * ★ One function for both, because they differ by exactly one destination.
+ *
+ * Each has a screen of their own (the weekly menu, the kindergarten's funding),
+ * the news every employee reads, and their profile. Chat is the floating
+ * widget, which is on every screen already and needs no tab.
+ *
+ * Самбар is deliberately absent. `/dashboard` is `RequireRole
+ * ["TEACHER","ADMIN"]` and every widget on it is about children — a cook
+ * opening it would meet a permission wall on the first screen of the app. The
+ * client's list has "Самбар" for both roles, and it is the one line of their
+ * sketch that describes a screen neither role can see.
+ */
+function supportNav(isCook: boolean): NavItem[] {
+  return [
+    isCook
+      ? { href: "/menu", label: "Цэс", icon: <UtensilsCrossed {...iconProps} /> }
+      : { href: "/finance", label: "Санхүү", icon: <Wallet {...iconProps} /> },
+    { href: "/notifications", label: "Мэдээ", icon: <Newspaper {...iconProps} /> },
+    { href: "/settings", label: "Профайл", icon: <Settings {...iconProps} /> },
+  ];
+}
+
+/**
+ * A section row, with its icon resolved from the href.
+ *
+ * ★ Module-level since 2026-08-30, when `supportSections` needed it too.
+ *
+ * It was a closure inside `staffSections`, which is fine until a second
+ * function wants the same three-line shape — at which point the choice is
+ * lifting it or copying it, and a copy is where `routeIcon()` stops being
+ * consulted on one of them.
+ */
+const navEntry = (label: string, href: string) => ({ label, href, icon: routeIcon(href) });
+
+function supportSections(isCook: boolean): NavSection[] {
+  return [
+    {
+      title: isCook ? "Гал тогоо" : "Санхүү",
+      entries: isCook
+        ? [navEntry("Долоо хоногийн цэс", "/menu")]
+        : [navEntry("Санхүүжилт", "/finance")],
+    },
+    {
+      title: "Харилцаа холбоо",
+      entries: [navEntry("Ангийн самбар / Мэдээ", "/notifications")],
+    },
+    {
+      title: "Миний мэдээлэл",
+      entries: [navEntry("Профайл", "/settings")],
     },
   ];
 }

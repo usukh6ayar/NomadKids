@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
+import { RequireRole } from "@/components/shell/require-role";
 import { downloadUrl } from "@/lib/api/client";
 import { useDebounced } from "@/lib/use-debounced";
 import { Button } from "@/components/ui/button";
@@ -43,7 +44,24 @@ export default function ChildrenPage() {
   const { hasRole } = useSession();
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
 
-  return isStaff ? <StaffChildren /> : <MyChildren />;
+  /*
+    ★ Wrapped in `RequireRole` since 2026-08-30, and the reason is the two
+    roles added that day.
+
+    The branch below is a fork between two audiences, not a gate: anyone who is
+    not staff got `MyChildren`. That was true while the only other role was
+    PARENT. A cook now falls into the same branch and meets "Миний хүүхдүүд ·
+    Таны бүртгэлтэй хүүхдүүд" — the API returns nothing, so no record leaks,
+    but the screen tells an employee the app thinks they are somebody's parent.
+
+    The list is the roles that have children to see, which is the question this
+    route actually answers.
+  */
+  return (
+    <RequireRole roles={["TEACHER", "ADMIN", "PARENT"]}>
+      {isStaff ? <StaffChildren /> : <MyChildren />}
+    </RequireRole>
+  );
 }
 
 // ── Staff ────────────────────────────────────────────────────────────────────

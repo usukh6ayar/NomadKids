@@ -46,6 +46,52 @@ export class TenantAccessService {
     if (!ok) throw new NotFoundException();
   }
 
+  /**
+   * Throws 404 unless the actor may work on the kitchen's records here.
+   *
+   * ★ A predicate of its own rather than widening `assertStaff`.
+   *
+   * `assertStaff` means TEACHER or ADMIN and gates the teacher's whole
+   * surface — notices, observations, a child's development record. A cook
+   * needs the weekly menu and the meal register; adding COOK to `assertStaff`
+   * to give them that would also give them every child's file, because a
+   * hundred call sites read "staff" as "may do the teaching work".
+   *
+   * The teacher keeps the menu too: they serve it and they mark who ate.
+   */
+  assertCanManageMeals(actor: Actor, kindergartenId: string): void {
+    const ok = actor.memberships.some(
+      (m) =>
+        m.kindergartenId === kindergartenId &&
+        (m.role === Role.COOK || m.role === Role.TEACHER || m.role === Role.ADMIN),
+    );
+    if (!ok) throw new NotFoundException();
+  }
+
+  /**
+   * Throws 404 unless the actor may read this kindergarten's money.
+   *
+   * ★ **This kindergarten's**, which is the distinction the role turns on.
+   *
+   * `/kindergartens/:id/funding` is one kindergarten's tariffs, monthly
+   * calculation and what the state actually paid — the accountant's job.
+   * `/platform/revenue` is the operator's income across every kindergarten and
+   * how the partners divide it, and it stays behind `isSuperAdmin`
+   * (`PlatformAccessService`): an accountant employed by one kindergarten has
+   * no business reading another's takings, let alone the platform's.
+   *
+   * The admin keeps it: they had it before this role existed and the client
+   * asked for existing permissions to be left alone.
+   */
+  assertCanReadFinance(actor: Actor, kindergartenId: string): void {
+    const ok = actor.memberships.some(
+      (m) =>
+        m.kindergartenId === kindergartenId &&
+        (m.role === Role.ACCOUNTANT || m.role === Role.ADMIN),
+    );
+    if (!ok) throw new NotFoundException();
+  }
+
   isAdmin(actor: Actor, kindergartenId: string): boolean {
     return hasRoleIn(actor, Role.ADMIN, kindergartenId);
   }

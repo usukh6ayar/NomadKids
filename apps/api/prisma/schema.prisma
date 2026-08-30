@@ -37,10 +37,32 @@ datasource db {
 // one of the enums below is a code change by design.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// A person's standing in one kindergarten.
+///
+/// ★ Two staff roles joined on 2026-08-30 at the client's request, and what
+/// they deliberately are *not* is the part worth writing down.
+///
+/// `TenantAccessService.assertStaff` means TEACHER or ADMIN and gates the
+/// teacher's whole surface — writing notices, recording observations, reading a
+/// child. Neither new role passes it. A cook needs the kitchen; an accountant
+/// needs the ledger; giving either "staff" because both are employed here would
+/// hand them every child's development record, which is the failure §1.1 exists
+/// to make structurally impossible rather than merely unlikely.
+///
+/// Each new role gets its own narrow predicate instead — see
+/// `assertCanManageMeals` and `assertCanReadFinance`.
 enum Role {
   ADMIN
   TEACHER
   PARENT
+  /// Тогооч — the kitchen and the weekly menu.
+  COOK
+  /// Нягтлан — the kindergarten's own funding, invoices and reconciliation.
+  ///
+  /// ★ Not the platform's. `/platform/revenue` is the operator's income across
+  /// every kindergarten and stays behind `isSuperAdmin`; this role reads
+  /// `/kindergartens/:id/funding`, which is one kindergarten's own money.
+  ACCOUNTANT
 }
 
 enum AuthTokenPurpose {

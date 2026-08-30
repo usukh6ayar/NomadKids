@@ -24,8 +24,38 @@ import { paginated } from "./pagination";
 
 // ── Primitives ───────────────────────────────────────────────────────────────
 
-export const roleSchema = z.enum(["ADMIN", "TEACHER", "PARENT"]);
+export const roleSchema = z.enum(["ADMIN", "TEACHER", "PARENT", "COOK", "ACCOUNTANT"]);
 export type Role = z.infer<typeof roleSchema>;
+
+/**
+ * Mongolian names for the roles — CLAUDE.md §5.
+ *
+ * ★ One map, so a role is called the same thing on the invite form, the user
+ * list and the profile badge. Three screens had spelled "Багш" and "Эцэг эх"
+ * inline, which is how a fourth screen ends up saying "Багш нар".
+ */
+export const ROLE_LABEL: Record<Role, string> = {
+  ADMIN: "Админ",
+  TEACHER: "Багш",
+  PARENT: "Эцэг эх",
+  COOK: "Тогооч",
+  ACCOUNTANT: "Нягтлан",
+};
+
+/**
+ * The roles an administrator may hand out, in the order the client listed them.
+ *
+ * ★ Every role the API accepts, which is the property `admin-users.test.tsx`
+ * pins: "offers every role the API accepts, and no others". A picker that
+ * drifts from `roleSchema` either hides a role that works or offers one that
+ * 400s, and neither is discoverable from the screen.
+ *
+ * PARENT stays. A guardian is normally created by inviting them against a
+ * child, which is what links the family to the record — but the API accepts
+ * the role here and an administrator repairing a broken account needs the same
+ * reach the API has.
+ */
+export const ASSIGNABLE_ROLES = ["ADMIN", "TEACHER", "PARENT", "COOK", "ACCOUNTANT"] as const;
 
 export const sexSchema = z.enum(["MALE", "FEMALE"]);
 export const childStatusSchema = z.enum(["ACTIVE", "ARCHIVED"]);
@@ -1708,7 +1738,7 @@ export const AUDIT_OBJECT_LABEL: Record<string, string> = {
  * revoked user gets.
  */
 export const primaryDashboardSchema = z.object({
-  dashboard: z.enum(["platform", "admin", "teacher", "parent"]).nullable(),
+  dashboard: z.enum(["platform", "admin", "teacher", "cook", "accountant", "parent"]).nullable(),
 });
 
 // ── Platform (superadmin) ───────────────────────────────────────────────────
@@ -2001,3 +2031,75 @@ export const revenueDistributionSchema = z.object({
     .default([]),
 });
 export type RevenueDistribution = z.infer<typeof revenueDistributionSchema>;
+
+// ── One kindergarten's funding — `нэмэлт.md` §4–§6 ───────────────────────────
+
+/**
+ * ★ Not to be confused with `platformRevenueSchema`.
+ *
+ * That one is the operator's income across every kindergarten and carries no
+ * per-child anything, deliberately. This is a single kindergarten's own money,
+ * read by its administrator or its accountant, and it *does* name children —
+ * because reconciling a state transfer means knowing which child was funded for
+ * how many days. `assertCanReadFinance` is what keeps it to those two roles.
+ */
+export const fundingSourceSchema = z.enum(["STATE", "PARENT", "KINDERGARTEN", "OTHER"]);
+export type FundingSource = z.infer<typeof fundingSourceSchema>;
+
+export const FUNDING_SOURCE_LABEL: Record<FundingSource, string> = {
+  STATE: "Улсын",
+  PARENT: "Эцэг эхийн",
+  KINDERGARTEN: "Цэцэрлэгийн",
+  OTHER: "Бусад",
+};
+
+export const fundingRuleSchema = z.object({
+  id: uuidSchema,
+  name: z.string(),
+  source: fundingSourceSchema,
+  effectiveFrom: z.string(),
+  effectiveTo: z.string().nullable(),
+  ageBand: z.string().nullable(),
+  /** Decimal strings — `funding.dto.ts` explains why money never rides a double. */
+  dailyRate: z.string().nullable(),
+  monthlyRate: z.string().nullable(),
+  dependsOnAttendance: z.boolean(),
+  dependsOnMeals: z.boolean(),
+  note: z.string().nullable(),
+});
+export type FundingRule = z.infer<typeof fundingRuleSchema>;
+
+export const fundingCalculationSchema = z.object({
+  id: uuidSchema,
+  source: fundingSourceSchema,
+  daysAttended: z.number(),
+  daysFed: z.number(),
+  dailyRate: z.string().nullable(),
+  calculatedAmount: z.string(),
+  approvedAmount: z.string().nullable(),
+  receivedAmount: z.string().nullable(),
+  note: z.string().nullable(),
+  child: z.object({
+    id: uuidSchema,
+    lastName: z.string().nullable(),
+    firstName: z.string(),
+  }),
+});
+export type FundingCalculation = z.infer<typeof fundingCalculationSchema>;
+
+export const fundingMonthSchema = z.object({
+  month: z.string(),
+  items: z.array(fundingCalculationSchema).default([]),
+  totals: z
+    .array(
+      z.object({
+        source: fundingSourceSchema,
+        children: z.number(),
+        calculated: z.string(),
+        approved: z.string(),
+        received: z.string(),
+      }),
+    )
+    .default([]),
+});
+export type FundingMonth = z.infer<typeof fundingMonthSchema>;

@@ -79,10 +79,18 @@ function LoginForm() {
             ? "/admin"
             : primary.dashboard === "teacher"
               ? "/dashboard"
-              : primary.dashboard === "parent"
-                ? "/home"
-                : // No membership at all — a real state after a revocation.
-                  "/no-access",
+              : // The screen each support role exists for. Neither can open
+                // `/dashboard` — every widget on it is about children — so
+                // sending them there would meet a permission wall on the first
+                // screen after signing in.
+                primary.dashboard === "cook"
+                ? "/menu"
+                : primary.dashboard === "accountant"
+                  ? "/finance"
+                  : primary.dashboard === "parent"
+                    ? "/home"
+                    : // No membership at all — a real state after a revocation.
+                      "/no-access",
       );
     },
   });

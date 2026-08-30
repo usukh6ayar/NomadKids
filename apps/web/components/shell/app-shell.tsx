@@ -7,7 +7,13 @@ import { usePathname, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, ChevronDown, LogOut, Search, X } from "lucide-react";
 import { useId, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
-import { notificationSchema, paginated, unreadCountSchema } from "@kinder/contracts";
+import {
+  ROLE_LABEL,
+  notificationSchema,
+  paginated,
+  type Role,
+  unreadCountSchema,
+} from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { z } from "zod";
 import { Input } from "@/components/ui/field";
@@ -561,6 +567,8 @@ export function AppShell({
    */
   isAdmin?: boolean;
 }) {
+  const { session } = useSession();
+
   // Every role gets the sidebar from `lg` up; only the bottom bar is
   // role-dependent (mobile-only, all three variants).
   const desktopSidebar = true;
@@ -575,11 +583,19 @@ export function AppShell({
    * the one place that says whose product this is; getting it wrong there is
    * not cosmetic.
    */
+  /*
+    ★★ Two more staff roles share the teacher variant since 2026-08-30.
+
+    They get the same frame — they are employees of one kindergarten and the
+    route tree is one tree — so without a branch of their own a cook read
+    "Багшийн хэсэг" under the kindergarten's name. That is the same mistake
+    this docblock records fixing for the director, one role along.
+  */
   const subtitle =
     variant === "teacher"
       ? isAdmin
         ? "Захирлын хэсэг"
-        : "Багшийн хэсэг"
+        : (SUPPORT_SUBTITLE[highestRole(session?.memberships)] ?? "Багшийн хэсэг")
       : variant === "platform"
         ? "Платформын удирдлага"
         : "Эцэг эхийн хэсэг";
@@ -702,8 +718,17 @@ export function AppShell({
  * is available to a screen reader without being read twice by eye.
  */
 function DesktopHeader({ variant, isAdmin }: { variant: Variant; isAdmin: boolean }) {
-  const { session } = useSession();
-  const isTeacher = variant === "teacher" && !isAdmin;
+  const { session, hasRole } = useSession();
+  /*
+    ★ `hasRole("TEACHER")`, not "the teacher variant and not an admin".
+
+    Since 2026-08-30 a cook and an accountant share this variant — they are
+    employees of one kindergarten and the frame is the same — and neither
+    teaches a group. `GET /groups` is `@Roles("TEACHER","ADMIN")`, so the old
+    condition fired a request that 404s on every render of their shell, four
+    times a page load, to fill a chip that was never going to have a value.
+  */
+  const isTeacher = variant === "teacher" && !isAdmin && hasRole("TEACHER");
   const { group, count } = useMyGroup({ enabled: isTeacher });
 
   return (
@@ -836,22 +861,32 @@ function Brand({ subtitle }: { subtitle: string }) {
  * does not exist.
  */
 function WhoAmI({ variant, isAdmin }: { variant: Variant; isAdmin: boolean }) {
-  const { session } = useSession();
+  const { session, hasRole } = useSession();
   const logout = useLogout();
 
-  const isTeacher = variant === "teacher" && !isAdmin;
+  // `hasRole("TEACHER")` for the reason `DesktopHeader` gives: the teacher
+  // variant now covers three roles and only one of them has a group.
+  const isTeacher = variant === "teacher" && !isAdmin && hasRole("TEACHER");
   const { group, count } = useMyGroup({ enabled: isTeacher });
 
+  /*
+    ★ The role a person is actually in, named from `ROLE_LABEL` — 2026-08-30.
+
+    This chain read `isAdmin ? "Админ" : "Багш"` under the teacher shell, which
+    was true while the teacher shell held only those two. A cook and an
+    accountant share that shell now (they are staff of a kindergarten and get
+    the same frame), so the fallback would have labelled both of them "Багш" —
+    the one line on screen that tells a person what the system thinks they are.
+
+    A teacher with exactly one group still sees the group's name instead: it is
+    the more useful fact, and it is what the client's drawing shows.
+  */
   const context =
     isTeacher && count === 1 && group
       ? group.name
-      : variant === "teacher"
-        ? isAdmin
-          ? "Админ"
-          : "Багш"
-        : variant === "platform"
-          ? "Платформын удирдлага"
-          : "Эцэг эх";
+      : variant === "platform"
+        ? "Платформын удирдлага"
+        : ROLE_LABEL[highestRole(session?.memberships)];
 
   return (
     /*
@@ -1442,3 +1477,33 @@ function UnreadDot() {
     </span>
   );
 }
+
+/**
+ * The role to call someone by, when they hold more than one.
+ *
+ * ★ Ranked, not `memberships[0]`.
+ *
+ * A director is very often ADMIN *and* TEACHER — they run the kindergarten and
+ * they have a group — and the array's order is whatever Prisma returned. The
+ * line under their name is the one place the app tells a person what it thinks
+ * they are, and telling a director "Багш" because their teacher membership was
+ * created first is exactly the mislabelling the old `isAdmin ? … : …` was
+ * written to avoid. This keeps that guarantee and extends it to the two roles
+ * added on 2026-08-30.
+ *
+ * Falls back to PARENT: a guardian holds one membership and never reaches the
+ * tie-break at all.
+ */
+function highestRole(memberships: { role: Role }[] | undefined): Role {
+  const rank: Role[] = ["ADMIN", "TEACHER", "ACCOUNTANT", "COOK", "PARENT"];
+  for (const role of rank) {
+    if (memberships?.some((m) => m.role === role)) return role;
+  }
+  return "PARENT";
+}
+
+/** The masthead line for the roles that share the staff frame. */
+const SUPPORT_SUBTITLE: Partial<Record<Role, string>> = {
+  COOK: "Гал тогооны хэсэг",
+  ACCOUNTANT: "Санхүүгийн хэсэг",
+};
