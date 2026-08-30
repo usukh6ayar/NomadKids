@@ -25,23 +25,31 @@ export class FundingService {
   ) {}
 
   /**
-   * ★ Administrator only, throughout this service.
+   * ★ The accountant and the administrator, throughout this service.
    *
-   * `нэмэлт.md` §13 asks for a dedicated accountant role and says plainly
-   * "Багш санхүүгийн бүрэн мэдээллийг харах эрхгүй байна". That role does not
-   * exist yet — adding a fourth `Role` touches every authorization primitive in
-   * the system and deserves its own change. Until it does, `assertAdmin` is the
-   * closest correct answer: it keeps teachers out, which is the requirement's
-   * actual instruction, and widening to an accountant later is a smaller change
-   * than narrowing from staff would be.
+   * `нэмэлт.md` §13 asked for a dedicated accountant role and said plainly
+   * "Багш санхүүгийн бүрэн мэдээллийг харах эрхгүй байна". This docblock used
+   * to record that the role did not exist and that `assertAdmin` was the
+   * closest correct answer, adding: "widening to an accountant later is a
+   * smaller change than narrowing from staff would be."
+   *
+   * That is what happened on 2026-08-30. `Role.ACCOUNTANT` exists and
+   * `assertCanReadFinance` is the widening — one predicate, ACCOUNTANT or
+   * ADMIN, and the teacher is still out, which was always the requirement's
+   * actual instruction.
+   *
+   * ★★ This kindergarten's money, not the platform's. `/platform/revenue` —
+   * income across every kindergarten and how the partners divide it — stays
+   * behind `isSuperAdmin`. An accountant employed by one kindergarten has no
+   * business reading another's takings.
    */
   async listRules(actor: Actor, kindergartenId: string) {
-    this.tenants.assertAdmin(actor, kindergartenId);
+    this.tenants.assertCanReadFinance(actor, kindergartenId);
     return this.repo.listRules(kindergartenId);
   }
 
   async createRule(actor: Actor, kindergartenId: string, dto: CreateFundingRuleDto) {
-    this.tenants.assertAdmin(actor, kindergartenId);
+    this.tenants.assertCanReadFinance(actor, kindergartenId);
 
     const created = await this.repo.createRule({
       kindergartenId,
@@ -80,7 +88,7 @@ export class FundingService {
   async updateRule(actor: Actor, id: string, dto: UpdateFundingRuleDto) {
     const rule = await this.repo.findRule(id);
     if (!rule) throw new NotFoundException();
-    this.tenants.assertAdmin(actor, rule.kindergartenId);
+    this.tenants.assertCanReadFinance(actor, rule.kindergartenId);
 
     const data: Record<string, unknown> = {};
     if (dto.name !== undefined) data.name = dto.name;
@@ -106,7 +114,7 @@ export class FundingService {
   async removeRule(actor: Actor, id: string) {
     const rule = await this.repo.findRule(id);
     if (!rule) throw new NotFoundException();
-    this.tenants.assertAdmin(actor, rule.kindergartenId);
+    this.tenants.assertCanReadFinance(actor, rule.kindergartenId);
 
     await this.repo.softDeleteRule(id);
     await this.audit.append({
@@ -123,7 +131,7 @@ export class FundingService {
   // ── The monthly calculation — нэмэлт.md §6 ─────────────────────────────────
 
   async listMonth(actor: Actor, kindergartenId: string, query: ListFundingQuery) {
-    this.tenants.assertAdmin(actor, kindergartenId);
+    this.tenants.assertCanReadFinance(actor, kindergartenId);
 
     const { first } = monthBounds(query.month);
     const [items, totals] = await Promise.all([
@@ -147,7 +155,7 @@ export class FundingService {
    * so both answers survive.
    */
   async calculateMonth(actor: Actor, kindergartenId: string, dto: CalculateMonthDto) {
-    this.tenants.assertAdmin(actor, kindergartenId);
+    this.tenants.assertCanReadFinance(actor, kindergartenId);
 
     const { first, last, lastIso } = monthBounds(dto.month);
     const rules = await this.repo.rulesInForce(kindergartenId, dto.source, last);
@@ -223,7 +231,7 @@ export class FundingService {
   async settle(actor: Actor, id: string, dto: SettleFundingDto) {
     const calculation = await this.repo.findCalculation(id);
     if (!calculation) throw new NotFoundException();
-    this.tenants.assertAdmin(actor, calculation.kindergartenId);
+    this.tenants.assertCanReadFinance(actor, calculation.kindergartenId);
 
     const data: Record<string, unknown> = {};
     if (dto.approvedAmount !== undefined) data.approvedAmount = dto.approvedAmount;

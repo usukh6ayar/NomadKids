@@ -37,10 +37,32 @@ datasource db {
 // one of the enums below is a code change by design.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// A person's standing in one kindergarten.
+///
+/// ★ Two staff roles joined on 2026-08-30 at the client's request, and what
+/// they deliberately are *not* is the part worth writing down.
+///
+/// `TenantAccessService.assertStaff` means TEACHER or ADMIN and gates the
+/// teacher's whole surface — writing notices, recording observations, reading a
+/// child. Neither new role passes it. A cook needs the kitchen; an accountant
+/// needs the ledger; giving either "staff" because both are employed here would
+/// hand them every child's development record, which is the failure §1.1 exists
+/// to make structurally impossible rather than merely unlikely.
+///
+/// Each new role gets its own narrow predicate instead — see
+/// `assertCanManageMeals` and `assertCanReadFinance`.
 enum Role {
   ADMIN
   TEACHER
   PARENT
+  /// Тогооч — the kitchen and the weekly menu.
+  COOK
+  /// Нягтлан — the kindergarten's own funding, invoices and reconciliation.
+  ///
+  /// ★ Not the platform's. `/platform/revenue` is the operator's income across
+  /// every kindergarten and stays behind `isSuperAdmin`; this role reads
+  /// `/kindergartens/:id/funding`, which is one kindergarten's own money.
+  ACCOUNTANT
 }
 
 enum AuthTokenPurpose {
@@ -173,17 +195,6 @@ enum NotificationStatus {
 /// would produce a chip row nobody designed. `OTHER` is the escape hatch every
 /// enum in this schema keeps, so a notice that is none of the three is filed
 /// honestly rather than as the nearest wrong one.
-enum NotificationCategory {
-  /// Зарлал — an announcement: a closure, a deadline, a change of plan.
-  ANNOUNCEMENT
-  /// Үйл ажиллагаа — an outing, a concert, a photo day.
-  ACTIVITY
-  /// Сургалт — a parents' meeting, a training, something to learn from.
-  TRAINING
-  /// Бусад — none of the three, and said so rather than guessed.
-  OTHER
-}
-
 enum TermReportStatus {
   DRAFT
   FINAL
@@ -2291,21 +2302,60 @@ model MediaFile {
 // Notifications
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// What kind of notice this is — the client's own list, 2026-08-30.
+///
+/// ★ An enum rather than a `NotificationCategory` table, which is the opposite
+/// of what CLAUDE.md §2.3 asks for and needs its reason written down.
+///
+/// §2.3's rule is that anything **an administrator can edit** is a table. These
+/// are not administrator-editable: the client specified the nine values in
+/// writing, parents filter by them, and a kindergarten inventing a tenth would
+/// produce a chip no other kindergarten's parents can search. The rule's own
+/// examples — `DevelopmentDomain`, `AssessmentLevel`, `ObservationType` — are
+/// all things a kindergarten genuinely tailors. This is closer to
+/// `NotificationStatus`: a fixed vocabulary the product defines.
+///
+/// If the client later asks for per-kindergarten categories, this becomes a
+/// table and the enum becomes its seed — the same migration `DevelopmentDomain`
+/// went through.
+enum NotificationCategory {
+  /// Зарлал — something is happening, act on it.
+  ANNOUNCEMENT
+  /// Мэдээлэл — for information.
+  INFORMATION
+  /// Зөвлөмж — advice for the family.
+  ADVICE
+  /// Сургалт, үйл ажиллагаа
+  ACTIVITY
+  /// Өдрийн дэглэм — the daily routine.
+  ROUTINE
+  /// Зугаалга — an outing.
+  OUTING
+  /// Өдөрлөг — an event day.
+  EVENT
+  /// Төрсөн өдөр
+  BIRTHDAY
+  /// Бусад
+  OTHER
+}
+
 model Notification {
   id             String               @id @default(uuid()) @db.Uuid
   kindergartenId String               @db.Uuid
-  title          String
+  /// ★ Nullable since 2026-08-30, at the client's request.
+  ///
+  /// A notice used to require one. The client asked for posts that are a
+  /// photograph and a sentence — "Өнөөдөр цэцэрлэгт хүрээлэнд явлаа" needs no
+  /// heading, and forcing one produced titles that restated the first line of
+  /// the body. Existing rows all have one; the column simply stops demanding it.
+  title          String?
   body           String
+  /// Defaults to OTHER so every row written before this column existed has a
+  /// value the filter can match, rather than being invisible to every chip.
+  category       NotificationCategory @default(OTHER)
   startsOn       DateTime?            @db.Date
   endsOn         DateTime?            @db.Date
   isImportant    Boolean              @default(false)
-  /// ★ Defaults to OTHER, so every existing notice is filed honestly.
-  ///
-  /// The alternative — defaulting the backfill to ANNOUNCEMENT because most of
-  /// them probably are — would put a claim on two hundred rows nobody checked.
-  /// A board filtered to Зарлал would then show notices that were never
-  /// classified, which is worse than showing them under Бусад.
-  category       NotificationCategory @default(OTHER)
   status         NotificationStatus   @default(DRAFT)
   publishedAt    DateTime?
   authorId       String?              @db.Uuid
@@ -2551,4 +2601,49 @@ model ChatRead {
   /// distinct and every staff room row would slip past it.
   @@unique([userId, roomKey])
   @@map("chat_reads")
+}
+
+// ── Revenue sharing ──────────────────────────────────────────────────────────
+
+/// A person who takes an agreed percentage of the platform's income.
+///
+/// ★ **The one table in this schema with no `kindergartenId`**, and the
+/// exception is deliberate rather than an oversight.
+///
+/// CLAUDE.md §3.1 requires every *tenant-scoped* table to carry one, because
+/// one filter is what enforces isolation between kindergartens. This is not
+/// tenant-scoped: a partner's share is an agreement between the platform's
+/// owners about the platform's own income, in the same register as
+/// `User.isSuperAdmin`. Giving it a kindergarten id would invite a query that
+/// filtered by one and quietly returned a fraction of the answer.
+///
+/// Nothing outside `PlatformAccessService` may read it — see
+/// `platform-revenue.controller.ts`.
+///
+/// ★★ Percentages are effective-dated and never edited in place, which is
+/// `FundingRule`'s discipline and for the same reason: a month's distribution
+/// is evidence of the split it was calculated under, and editing the percentage
+/// rewrites what was already paid out. A new agreement is a new row starting
+/// the day the old one ends.
+model RevenuePartner {
+  id   String @id @default(uuid()) @db.Uuid
+  /// The person, as they should be named in a payout list.
+  name String
+
+  /// Their share, 0–100. `DECIMAL(5,2)` so 12.5% is exactly 12.5 rather than a
+  /// float that renders as 12.499999999999998 in a figure about money.
+  sharePercent Decimal @db.Decimal(5, 2)
+
+  effectiveFrom DateTime  @db.Date
+  /// Null while the agreement is current. Setting it closes the share.
+  effectiveTo   DateTime? @db.Date
+
+  note String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([effectiveFrom])
+  @@map("revenue_partners")
 }

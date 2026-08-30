@@ -336,3 +336,26 @@ select {
     transition-duration: 0.01ms !important;
   }
 }
+
+/*
+ * A scroller with no visible bar — the news category row, 2026-08-30.
+ *
+ * ★ A utility rather than inline styles because it needs three vendor
+ * spellings and one of them is not a property at all.
+ *
+ * The row it is used on scrolls horizontally at every width and says so by
+ * showing half a chip at the edge. A permanent grey bar under a line of pills
+ * reads as a rendering fault rather than as an affordance, and on macOS with
+ * "show scroll bars: always" that is what appears.
+ *
+ * The content stays reachable by keyboard and by wheel — this hides the bar,
+ * not the overflow.
+ */
+@utility scrollbar-none {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* old Edge */
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

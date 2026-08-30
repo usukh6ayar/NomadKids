@@ -79,6 +79,18 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const { session, isLoading, hasRole, isSuperAdmin } = useSession();
   const router = useRouter();
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
+  /*
+    ★ Neither of these is `isStaff`, and the shell has to say so before the
+    parent branch does.
+
+    `assertStaff` on the API means TEACHER or ADMIN and gates the teaching
+    surface; a cook and an accountant deliberately fail it. Without a branch of
+    their own they fall through to `parentNav`, which renders "Танд холбогдсон
+    хүүхэд байхгүй байна" — the same wrong screen the superadmin check a few
+    lines down exists to prevent, for the same reason.
+  */
+  const isCook = hasRole("COOK");
+  const isAccountant = hasRole("ACCOUNTANT");
 
   useEffect(() => {
     if (isLoading || session) return;
@@ -127,6 +139,18 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   if (isSuperAdmin) {
     return (
       <AppShell nav={platformNav()} variant="platform">
+        {children}
+      </AppShell>
+    );
+  }
+
+  // Ahead of the provider for the same reason the superadmin branch is: a cook
+  // and an accountant are staff, so `/children/mine` never ran for them and
+  // there is no selected child to provide. Their shell is the two screens their
+  // role has and nothing else.
+  if (isCook || isAccountant) {
+    return (
+      <AppShell nav={supportNav(isCook)} sections={supportSections(isCook)} variant="teacher">
         {children}
       </AppShell>
     );
@@ -253,9 +277,12 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
   "/surveys": BarChart3,
   "/documents": FileText,
   "/settings": Settings,
+  "/menu": UtensilsCrossed,
+  "/finance": Wallet,
   "/admin": ShieldCheck,
   "/admin/funding": Wallet,
   "/platform": Building2,
+  "/platform/revenue": Wallet,
 
   /*
    * ★ The seven administration screens, which had no icons because they had no
@@ -357,11 +384,15 @@ function staffNav(isAdmin: boolean, groupId: string | null): NavItem[] {
  * and reading six things they cannot do learns that most of the product is
  * broken. Every rule below follows from that.
  *
- * ★★ **Rewritten 2026-08-30 to the client's own reference sidebar**, which
- * groups the product in three: Сургалт ба сурагчид · Үйл ажиллагаа ба санхүү ·
- * Систем ба тохиргоо. Those names are kept exactly; what they hold is this
- * product's screens rather than the reference's, which differ in three ways
- * worth naming.
+ * ★★ **The section headings are the 2026-08-29 drawing's**, kept as they were
+ * merged: Хүүхдийн хөгжил ба үнэлгээ · Өдөр тутмын бүртгэл · Харилцаа холбоо ·
+ * Санхүү ба баримт бичиг · Багш ба байгууллага.
+ *
+ * A second pass on this branch renamed them to the reference's three — Сургалт
+ * ба сурагчид · Үйл ажиллагаа ба санхүү · Систем ба тохиргоо — at the same
+ * hour as the rename above landed on `main`, and only one naming can survive a
+ * merge. The one that shipped stays. What that second pass added *besides* the
+ * names is kept below, because none of it depends on them.
  *
  * **The seven administration screens are rows now.** They were all behind a
  * single "Удирдлага" hub, so a director looking for "Улирал" read one word that
@@ -389,6 +420,17 @@ function staffNav(isAdmin: boolean, groupId: string | null): NavItem[] {
  * would promise something that account will never get.
  */
 function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
+  /*
+   * ★ Every entry takes its icon from `ROUTE_ICON` rather than naming one.
+   *
+   * All eight of these shipped with no icon at all — the `icon` field existed
+   * on `NavSection` and this builder passed it for none of them, so the desktop
+   * sidebar was three headings over eight bare text links while the bottom bar
+   * beside it was fully illustrated. Resolving by route also means an entry
+   * added here cannot disagree with the same destination in the top-level nav.
+   */
+  const entry = navEntry;
+
   /** An entry only an administrator has, dropped entirely for anyone else. */
   const adminEntry = (label: string, href: string) => (isAdmin ? [entry(label, href)] : []);
 
@@ -409,36 +451,102 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
    */
   const scoped = (feature: string) => (groupId ? `/groups/${groupId}/${feature}` : `/${feature}`);
 
-  /*
-   * ★ The three group-scoped rows name their icons inline.
-   *
-   * For a teacher these hrefs carry a group id, so `routeIcon()`'s literal
-   * lookup returns `undefined` and the rows would render as bare text — the
-   * exact gap `sidebar.test.tsx` exists to catch.
-   */
-  const scopedEntry = (label: string, feature: string, icon: ReactNode) => ({
-    label,
-    href: scoped(feature),
-    icon,
-  });
-
   return [
+    /*
+     * ★ Three sections, named after the client's own 2026-08-29 drawing.
+     *
+     * It groups the product as Суралцагч / Санхүү / Систем, which is a
+     * different cut from the "Хүүхдийн хөгжил ба үнэлгээ · Харилцаа холбоо ·
+     * Багш ба байгууллага" this sidebar used — and a better one for the
+     * audience, because it separates *what you do with a child* from *what you
+     * run the kindergarten with*.
+     *
+     * ★★ The drawing's names are kept; its exact contents are not.
+     *
+     * It files "Мэдээ / Ангийн самбар" and "Чат" under Санхүү, which they are
+     * not — the reference system's own heading for that group was "Үйл
+     * ажиллагаа ба санхүү", operations *and* finance, and the shortened label
+     * lost the half that made it true. This uses the longer name.
+     *
+     * Санхүү itself has no entry: `apps/api/src/funding` exists, but
+     * `docs/reference/FINANCE_SCOPE.md` records the tariffs and the definition
+     * of a funding day as still outstanding from the client (D3, D4), so the
+     * engine "will correctly calculate nothing" until they arrive. A menu row
+     * that opens an empty screen is what this sidebar's own rule forbids.
+     */
+    /*
+     * ★ Four sections, and the cut is by *what the work is*, not by subject.
+     *
+     * The client's 2026-08-29 drawing groups the product as Суралцагч /
+     * Санхүү / Систем, and the first pass here took those three names
+     * literally. That produced a "Үйл ажиллагаа" holding the meal register, the
+     * class board, surveys and the staff PDF library — four rows doing three
+     * unrelated jobs, which is what a section becomes when it is really the
+     * leftovers.
+     *
+     * The structural fact that settles it: Ирц, Хоол ба цэс and Үнэлгээ are
+     * the same screen three times. All three are recorded against a group, all
+     * three land on `GroupPicker`, all three link straight past it for a
+     * teacher with one group. Splitting them across two sections — two under
+     * the child, one under operations — was arbitrary, and it is the reason
+     * nothing else fell into place.
+     *
+     * So the registers sit together and each remaining name becomes exactly
+     * true: a child's file, the group's registers, what goes out to a family,
+     * and what you set up or look up. Two to three rows each.
+     *
+     * ★★ Санхүү has its own section as of 2026-08-30, and only its first row.
+     *
+     * This said finance was "not here… it earns its own section on the day it
+     * can answer a question", and that day is what changed: `/admin/funding`
+     * reads the month's attendance register priced against the tariffs an
+     * administrator has entered. D3 and D4 (the state formula, and what counts
+     * as a funding day) are still unanswered by the client and this does not
+     * pretend otherwise — `нэмэлт.md` §4 *requires* the tariffs to be
+     * configuration rather than code, so the screen shows whatever rules the
+     * kindergarten has entered and no government number is hard-coded anywhere
+     * behind it. The nine reports and the invoicing flow are still to come, and
+     * still get no row until they exist.
+     *
+     * ★★★ Admin only, and it is the one section that is. §13 of `нэмэлт.md`:
+     * "Багш санхүүгийн бүрэн мэдээллийг харах эрхгүй байна". The API agrees —
+     * every funding route is `@Roles("ADMIN")` — so a teacher who reached the
+     * URL would get a 403 from a menu row that promised otherwise.
+     */
+    /*
+      ★ Five sections, named for the subject matter — the client's 2026-08-30
+      drawing.
+
+      The cut before this was Суралцагч · Бүлгийн бүртгэл · Харилцаа холбоо ·
+      Систем, which grouped by *what a teacher does to a record*. The client's
+      groups by what the work is about, and it puts the two things a teacher
+      opens most — the children and their assessment — in one section instead
+      of two.
+
+      Three items on the drawing are not reproduced literally, and each is a
+      place where the drawing is older than the code:
+
+        - **Баримт бичиг** is drawn greyed with "удахгүй". It shipped with RFP
+          §9 on 2026-08-25 and works. Advertising a working feature as missing
+          is the mistake this file already records making with Явцын үнэлгээ.
+        - **Санхүү** is drawn the same way. It exists as of 2026-08-30 but it
+          is the *platform operator's* — `platformNav()` carries it. A greyed
+          row here would promise a teacher something that will never arrive for
+          their account, which is why "Бүлэг, цэцэрлэгийн мэдээлэл" stopped
+          being shown to teachers.
+        - **Чат** has no row: the widget floats over every screen
+          (`chat-widget.tsx`), so a link would point at something already on
+          screen. The drawing predates the widget.
+    */
     {
-      /*
-       * ★ The children, and everything recorded against them.
-       *
-       * Ирц and Үнэлгээ sit here rather than in a registers section of their
-       * own, which is where a previous pass put them. The reference is right
-       * and the reason is the audience: a teacher does not think "now I will
-       * use a register", they think "now I will do something with my group".
-       * Хоол ба цэс is the one that leaves — see the next section.
-       */
-      title: "Сургалт ба сурагчид",
+      title: "Хүүхдийн хөгжил ба үнэлгээ",
       entries: [
-        entry("Хүүхдийн удирдлага", "/children"),
-        ...adminEntry("Бүлгийн удирдлага", "/admin/groups"),
-        scopedEntry("Ирц", "attendance", <CalendarCheck {...sectionIconProps} />),
-        scopedEntry("Үнэлгээ", "assessment", <ClipboardCheck {...sectionIconProps} />),
+        entry("Хүүхдүүд", "/children"),
+        {
+          label: "Явцын үнэлгээ",
+          href: scoped("assessment"),
+          icon: <ClipboardCheck {...sectionIconProps} />,
+        },
         /*
          * ★ Two review queues left this section on 2026-08-30, and neither
          * lost its screen.
@@ -460,41 +568,21 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
     },
     {
       /*
-       * ★ What the kindergarten *runs*, and what it costs — the reference's own
-       * pairing, and the half this product kept splitting apart.
+       * The registers, kept per day.
        *
-       * Хоол ба цэс is here rather than beside Ирц because the kitchen is an
-       * operation: somebody cooks, somebody counts portions, and the same
-       * numbers land in Санхүү two rows down as "хооллосон өдөр". Мэдээ and
-       * Судалгаа are here because both go *out* — to a family, at home — which
-       * is the same kind of work and not something done to a child's record.
+       * Icons passed explicitly rather than resolved by `routeIcon()`: for a
+       * teacher these hrefs carry a group id, so a literal-keyed lookup returns
+       * `undefined` and the rows render as bare text — the gap
+       * `sidebar.test.tsx` exists to catch.
        */
-      title: "Үйл ажиллагаа ба санхүү",
+      title: "Өдөр тутмын бүртгэл",
       entries: [
-        scopedEntry("Хоол ба цэс", "meals", <UtensilsCrossed {...sectionIconProps} />),
-        /*
-         * ★ Санхүү arrived 2026-08-30 and is admin-only.
-         *
-         * `нэмэлт.md` §13: "Багш санхүүгийн бүрэн мэдээллийг харах эрхгүй
-         * байна". Every funding route is `@Roles("ADMIN")`, so a teacher who
-         * followed this row would get a 404 from a menu that promised a screen.
-         *
-         * It reads the month's attendance register priced against the tariffs
-         * an administrator has entered. D3 and D4 — the state formula, and what
-         * counts as a funding day — are still unanswered by the client, and
-         * `нэмэлт.md` §4 requires the tariffs to be configuration rather than
-         * code, so nothing from a government schedule is hard-coded behind it.
-         */
-        ...adminEntry("Санхүү", "/admin/funding"),
-        /*
-         * The reference calls this "Мэдээ / Ангийн самбар" and both halves are
-         * true — it is the board a family reads at home. Shortened because the
-         * full label is twenty-one characters in a rail that fits twenty, and
-         * a destination whose name ends in "…" is the fault this file has
-         * already fixed once.
-         */
-        entry("Мэдээ ба самбар", "/notifications"),
-        entry("Судалгаа", "/surveys"),
+        { label: "Ирц", href: scoped("attendance"), icon: <CalendarCheck {...sectionIconProps} /> },
+        {
+          label: "Хоол ба цэс",
+          href: scoped("meals"),
+          icon: <UtensilsCrossed {...sectionIconProps} />,
+        },
       ],
     },
     {
@@ -505,29 +593,119 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
        * 2026-08-30; the hub keeps its row and now sits above them rather than
        * instead of them.
        *
-       * Хичээлийн жил and Улирал are two rows where the reference has one
-       * ("Улирал, хичээлийн жил") because this product has two screens, and one
-       * row would have to drop a reader on one of them and leave the other
-       * unnamed. Both labels fit; the combined one does not.
+       * A notice goes on a board a family reads at home; a survey asks them a
+       * question. Neither is something a teacher does *to* a record, which is
+       * what separates them from the sections above.
        */
-      title: "Систем ба тохиргоо",
+      title: "Харилцаа холбоо",
+      entries: [entry("Ангийн самбар / Мэдээ", "/notifications"), entry("Судалгаа", "/surveys")],
+    },
+    ...(isAdmin
+      ? [
+          {
+            title: "Санхүү",
+            entries: [entry("Ирц ба тооцоолол", "/admin/funding")],
+          },
+        ]
+      : []),
+    {
+      title: "Санхүү ба баримт бичиг",
       entries: [
+        /*
+         * RFP §9 — "Багшид зориулсан PDF баримт бичгийн сан": хөтөлбөр, арга
+         * зүй, дотоод журам. Staff only, so it never appears in
+         * `parentSections`.
+         */
+        entry("Баримт бичгийн сан", "/documents"),
+      ],
+    },
+    {
+      title: "Багш ба байгууллага",
+      entries: [
+        entry("Багшийн мэдээлэл", "/settings"),
+        /*
+         * ★ "Удирдлага", not "Бүлэг, цэцэрлэгийн мэдээлэл".
+         *
+         * Twenty-seven characters truncate to "Бүлэг, цэцэрлэгийн м…" in a
+         * 280px rail — an ellipsis where the destination's name should be, on
+         * the entry a director uses most. It also named two of the seven
+         * screens behind it. Matches the bottom bar's tab for the same href:
+         * one destination, one name.
+         */
         ...adminEntry("Удирдлага", "/admin"),
+        /*
+         * ★ The seven screens the hub used to hide, listed under it.
+         *
+         * They had no rows and therefore no icons until 2026-08-30: reaching
+         * "Аудит" meant opening Удирдлага and then finding it among seven
+         * tiles, which is two steps for a screen a director opens daily. The
+         * hub keeps its row — it is still where the tiles live and what the
+         * bottom bar points at — and now sits above them rather than instead
+         * of them.
+         */
         ...adminEntry("Цэцэрлэгийн мэдээлэл", "/admin/kindergarten"),
         ...adminEntry("Хэрэглэгч ба эрх", "/admin/users"),
         ...adminEntry("Хичээлийн жил", "/admin/school-years"),
         ...adminEntry("Улирал", "/admin/terms"),
         ...adminEntry("Үнэлгээний тохиргоо", "/admin/assessment-config"),
         ...adminEntry("Аудит", "/admin/audit"),
-        /*
-         * RFP §9 — "Багшид зориулсан PDF баримт бичгийн сан": хөтөлбөр, арга
-         * зүй, дотоод журам. Staff only, so it never appears in
-         * `parentSections`. Reference material, which is what this section is
-         * for — a shelf you read from is not an activity.
-         */
-        entry("Баримт бичгийн сан", "/documents"),
-        entry("Багшийн мэдээлэл", "/settings"),
       ],
+    },
+  ];
+}
+
+/**
+ * The cook's and the accountant's bottom bar — 2026-08-30.
+ *
+ * ★ One function for both, because they differ by exactly one destination.
+ *
+ * Each has a screen of their own (the weekly menu, the kindergarten's funding),
+ * the news every employee reads, and their profile. Chat is the floating
+ * widget, which is on every screen already and needs no tab.
+ *
+ * Самбар is deliberately absent. `/dashboard` is `RequireRole
+ * ["TEACHER","ADMIN"]` and every widget on it is about children — a cook
+ * opening it would meet a permission wall on the first screen of the app. The
+ * client's list has "Самбар" for both roles, and it is the one line of their
+ * sketch that describes a screen neither role can see.
+ */
+function supportNav(isCook: boolean): NavItem[] {
+  return [
+    isCook
+      ? { href: "/menu", label: "Цэс", icon: <UtensilsCrossed {...iconProps} /> }
+      : { href: "/finance", label: "Санхүү", icon: <Wallet {...iconProps} /> },
+    { href: "/notifications", label: "Мэдээ", icon: <Newspaper {...iconProps} /> },
+    { href: "/settings", label: "Профайл", icon: <Settings {...iconProps} /> },
+  ];
+}
+
+/**
+ * A section row, with its icon resolved from the href.
+ *
+ * ★ Module-level since 2026-08-30, when `supportSections` needed it too.
+ *
+ * It was a closure inside `staffSections`, which is fine until a second
+ * function wants the same three-line shape — at which point the choice is
+ * lifting it or copying it, and a copy is where `routeIcon()` stops being
+ * consulted on one of them.
+ */
+const navEntry = (label: string, href: string) => ({ label, href, icon: routeIcon(href) });
+
+function supportSections(isCook: boolean): NavSection[] {
+  return [
+    {
+      title: isCook ? "Гал тогоо" : "Санхүү",
+      entries: isCook
+        ? [navEntry("Долоо хоногийн цэс", "/menu")]
+        : [navEntry("Санхүүжилт", "/finance")],
+    },
+    {
+      title: "Харилцаа холбоо",
+      entries: [navEntry("Ангийн самбар / Мэдээ", "/notifications")],
+    },
+    {
+      title: "Миний мэдээлэл",
+      entries: [navEntry("Профайл", "/settings")],
     },
   ];
 }
@@ -543,6 +721,17 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
 function platformNav(): NavItem[] {
   return [
     { href: "/platform", label: "Цэцэрлэгүүд", icon: <Building2 {...iconProps} /> },
+    /*
+      ★ Санхүү — the operator's own money, not a kindergarten's.
+
+      `/kindergartens/:id/funding` is the administrator's screen and correctly
+      refuses a superadmin, who holds no membership (§1.1). This is the question
+      above it: what arrived across every kindergarten, and how the agreed
+      shares divide it. It is the second item because registering kindergartens
+      is still the operator's first job — §7 keeps the platform surface small,
+      and this is the one addition the client asked for.
+    */
+    { href: "/platform/revenue", label: "Санхүү", icon: <Wallet {...iconProps} /> },
     { href: "/settings", label: "Профайл", icon: <Settings {...iconProps} /> },
   ];
 }

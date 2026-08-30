@@ -135,6 +135,24 @@ export const qk = {
   chatMessages: (roomKey: string) => ["chat", "messages", roomKey] as const,
   chatUnread: () => ["chat", "unread-count"] as const,
 
+  /*
+   * The platform operator's money. Keyed by month because the screen switches
+   * between them and each is a different answer — a single "revenue" key would
+   * serve August's figures under September's heading for as long as it stayed
+   * fresh.
+   */
+  platformRevenue: (month: string) => ["platform", "revenue", month] as const,
+  platformDistribution: (month: string) => ["platform", "distribution", month] as const,
+  platformPartners: () => ["platform", "partners"] as const,
+
+  /** The kitchen's week, keyed by its Monday. */
+  weeklyMenu: (kindergartenId: string, weekStart: string) =>
+    ["menu", "week", kindergartenId, weekStart] as const,
+  /** One kindergarten's own funding — not the platform's revenue. */
+  kindergartenFunding: (kindergartenId: string, month: string) =>
+    ["funding", kindergartenId, month] as const,
+  fundingRules: (kindergartenId: string) => ["funding", "rules", kindergartenId] as const,
+
   childMedia: (childId: string) => ["child", childId, "media"] as const,
   childReports: (childId: string) => ["child", childId, "reports"] as const,
   report: (jobId: string) => ["report", jobId] as const,

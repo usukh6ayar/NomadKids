@@ -62,8 +62,13 @@ export class NotificationsRepository {
     page: PageParams,
     unreadOnly: boolean,
     q?: string,
-    groupId?: string,
-    category?: string,
+    filters: {
+      /** One group's board — RFP §8.1's targeting, read back. See below. */
+      groupId?: string;
+      category?: NotificationCategory;
+      from?: Date;
+      to?: Date;
+    } = {},
   ) {
     const { skip, take } = toSkipTake(page);
 
@@ -84,14 +89,10 @@ export class NotificationsRepository {
      * flag on the notice, because the flag would be a second copy of the same
      * fact and could disagree with the rows the moment a target is added.
      */
-    // One kind of notice. A plain equality rather than the group filter's
-    // `some OR none` — a category is a column on the notice itself, so there
-    // is no "aimed at nobody" case to fold in.
-    if (category) extra.push({ category });
-    if (groupId) {
+    if (filters.groupId) {
       extra.push({
         OR: [
-          { targets: { some: { groupId, deletedAt: null } } },
+          { targets: { some: { groupId: filters.groupId, deletedAt: null } } },
           { targets: { none: { deletedAt: null } } },
         ],
       });
@@ -104,6 +105,24 @@ export class NotificationsRepository {
         ],
       });
     }
+    // One kind of notice. A plain equality rather than the group filter's
+    // `some OR none` — a category is a column on the notice itself, so there
+    // is no "aimed at nobody" case to fold in.
+    if (filters.category) extra.push({ category: filters.category });
+
+    /*
+      The range reads `publishedAt` — see the query DTO's note. `to` is
+      inclusive of its whole day: a parent choosing 2026-08-30 as the end means
+      "up to and including the 30th", and `lte` against a bare date would stop
+      at midnight and silently drop everything posted that day.
+    */
+    if (filters.from) extra.push({ publishedAt: { gte: filters.from } });
+    if (filters.to) {
+      const endOfDay = new Date(filters.to);
+      endOfDay.setUTCHours(23, 59, 59, 999);
+      extra.push({ publishedAt: { lte: endOfDay } });
+    }
+
     const finalWhere = extra.length > 0 ? { AND: [where, ...extra] } : where;
 
     const [items, total] = await Promise.all([
@@ -186,9 +205,10 @@ export class NotificationsRepository {
   async create(
     data: {
       kindergartenId: string;
-      title: string;
-      body: string;
+      /** Null when the author wrote a body and no heading — see the DTO. */
+      title: string | null;
       category: NotificationCategory;
+      body: string;
       isImportant: boolean;
       startsOn: Date | null;
       endsOn: Date | null;

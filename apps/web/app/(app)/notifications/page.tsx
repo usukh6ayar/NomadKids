@@ -12,12 +12,13 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import {
+  NOTIFICATION_CATEGORIES,
+  NOTIFICATION_CATEGORY_LABEL,
   childSummarySchema,
   notificationSchema,
   paginated,
   surveySchema,
-  NOTIFICATION_CATEGORY_LABEL,
-  NOTIFICATION_CATEGORY_ORDER,
+  type NotificationCategory,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
@@ -27,11 +28,13 @@ import { ChildAvatar, MediaThumb } from "@/components/media/media-image";
 import { useSession } from "@/lib/auth/session";
 import {
   Building2,
+  CalendarRange,
   CheckCircle2,
   ChevronRight,
   Newspaper,
   PenLine,
   Search,
+  Trash2,
   Users,
 } from "lucide-react";
 import { qk } from "@/lib/api/keys";
@@ -39,9 +42,11 @@ import { errorMessage } from "@/lib/api/errors";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RowCard, RowList } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
-import { Input } from "@/components/ui/field";
+import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
+import { useToast } from "@/components/ui/toast";
 import { excerpt, formatRelative, fullName } from "@/lib/format";
 import { SURVEY_TONE_BG, SURVEY_TYPE_META } from "@/lib/survey-meta";
 import { cn } from "@/lib/utils";
@@ -63,7 +68,7 @@ const activeSurveysSchema = z.array(surveySchema);
  * week is indistinguishable from a push (docs/ARCHITECTURE.md §7).
  */
 export default function NotificationsPage() {
-  const { hasRole } = useSession();
+  const { hasRole, session } = useSession();
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
   /*
@@ -84,6 +89,17 @@ export default function NotificationsPage() {
    */
   const [searchInput, setSearchInput] = useState("");
   const [q, setQ] = useState("");
+  /*
+    ★ Category, and a date range — the client's 2026-08-30 filter.
+
+    `null` is "Бүгд" rather than a tenth enum value: the API omits the
+    parameter entirely for "all", and encoding "no filter" as a category would
+    mean every request carried one and the server had to know which was special.
+  */
+  const [category, setCategory] = useState<NotificationCategory | null>(null);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [datesOpen, setDatesOpen] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setQ(searchInput.trim()), 350);
     return () => clearTimeout(t);
@@ -104,18 +120,7 @@ export default function NotificationsPage() {
    */
   const [groupId, setGroupId] = useState("");
 
-  /*
-   * ★ The category the client's own drawing asked for — Зарлал · Үйл ажиллагаа
-   * · Сургалт — which this file's own note said "needs a column, a value in the
-   * compose form and a query parameter". It has all three now.
-   *
-   * Server-side, unlike `importantOnly`: a category is a column, so filtering
-   * in the browser would narrow only the pages already fetched and the infinite
-   * scroll would keep loading notices it then hid.
-   */
-  const [category, setCategory] = useState("");
-
-  const filters = { unread: showUnreadOnly, q, groupId, category };
+  const filters = { unread: showUnreadOnly, q, groupId, category, from, to };
 
   /*
    * ★ Two tabs, one screen — the mock-up's own pairing of Мэдээ and Судалгаа
@@ -200,6 +205,8 @@ export default function NotificationsPage() {
       if (q) params.set("q", q);
       if (groupId) params.set("groupId", groupId);
       if (category) params.set("category", category);
+      if (from) params.set("from", from);
+      if (to) params.set("to", to);
       return get(`/notifications?${params}`, listSchema);
     },
     getNextPageParam: (last) => (last.page < last.totalPages ? last.page + 1 : undefined),
@@ -327,28 +334,32 @@ export default function NotificationsPage() {
       </div>
 
       {/*
-        ★ The filter row, and the taxonomy question the drawing raises.
+        ★ The category row — the work the note that stood here predicted.
 
-        The client's drawing shows Бүгд · Зарлал · Үйл ажиллагаа · Сургалт.
-        `notificationSchema` has no category — `isImportant` is the only
-        classification a notice carries — so these are the filters that exist
-        rather than three that would sort nothing. `Чухал` is that flag;
-        `Уншаагүй` is `reads`, which the API already filters on with `?unread`.
+        It read: "A real category needs a column, a value in the compose form
+        and a query parameter. It is a small piece of work and not one a
+        component can do." `Notification.category` is that column, the composer
+        sets it, and `?category=` is the parameter. The chips filter on the
+        server now rather than sorting nothing.
 
-        A real category needs a column, a value in the compose form and a query
-        parameter. It is a small piece of work and not one a component can do.
+        `scroll` keeps ten chips on one line — see `FilterChipRow`. Wrapped they
+        take three rows and 130px above the first post.
+
+        Уншаагүй and Чухал stay: they are not categories but they are how a
+        parent finds what they have not seen, and dropping them to make room
+        would trade a working filter for a taxonomy.
       */}
       {tab === "news" ? (
-        <>
+        <div className="flex flex-col gap-2">
           {/*
             ★ Two filter rows, and they are not the same kind of question.
 
-            "Аль бүлгийн самбар" chooses *whose* board this is; "Уншаагүй /
-            Чухал" narrows the one already chosen. Stacking them as one row of
-            six chips made a reader guess which of the six were mutually
-            exclusive with which — they read as one set and behave as two.
-            Separated, with the audience first, because it is the question the
-            other one depends on.
+            "Бүлгийн самбар" chooses *whose* board this is; the category chips
+            below narrow the one already chosen. Stacked as a single row they
+            read as one set of alternatives and behave as two, so a reader has
+            to discover by clicking which chips are exclusive with which. The
+            audience comes first, because it is the question the other depends
+            on.
           */}
           {isStaff && (boardGroups.data?.items.length ?? 0) > 1 ? (
             <FilterChipRow label="Бүлгийн самбар">
@@ -367,42 +378,33 @@ export default function NotificationsPage() {
             </FilterChipRow>
           ) : null}
 
-          {/*
-            ★ The kind of notice — the client's drawing, finally wired.
-
-            This row is what the group row above narrows *within*: "Дэлбээ
-            бүлгийн зарлалууд" is two chips, and neither of them is a search
-            term somebody has to spell correctly.
-          */}
-          <FilterChipRow label="Гарчгийн төрөл">
-            <FilterChip active={!category} onClick={() => setCategory("")}>
-              Бүх төрөл
-            </FilterChip>
-            {NOTIFICATION_CATEGORY_ORDER.map((value) => (
-              <FilterChip
-                key={value}
-                active={category === value}
-                onClick={() => setCategory(value)}
-              >
-                {NOTIFICATION_CATEGORY_LABEL[value]}
-              </FilterChip>
-            ))}
-          </FilterChipRow>
-
-          <FilterChipRow label="Мэдээг шүүх">
+          <FilterChipRow label="Мэдээг ангиллаар шүүх" scroll>
             <FilterChip
-              active={!showUnreadOnly && !importantOnly}
+              active={category === null && !showUnreadOnly && !importantOnly}
               onClick={() => {
+                setCategory(null);
                 setShowUnreadOnly(false);
                 setImportantOnly(false);
               }}
             >
               Бүгд
             </FilterChip>
+            {NOTIFICATION_CATEGORIES.map((value) => (
+              <FilterChip
+                key={value}
+                active={category === value}
+                onClick={() => setCategory(category === value ? null : value)}
+              >
+                {NOTIFICATION_CATEGORY_LABEL[value]}
+              </FilterChip>
+            ))}
+          </FilterChipRow>
+
+          <div className="flex flex-wrap items-center gap-2">
             <FilterChip
               active={showUnreadOnly}
               onClick={() => {
-                setShowUnreadOnly(true);
+                setShowUnreadOnly(!showUnreadOnly);
                 setImportantOnly(false);
               }}
             >
@@ -411,14 +413,70 @@ export default function NotificationsPage() {
             <FilterChip
               active={importantOnly}
               onClick={() => {
-                setImportantOnly(true);
+                setImportantOnly(!importantOnly);
                 setShowUnreadOnly(false);
               }}
             >
               Чухал
             </FilterChip>
-          </FilterChipRow>
-        </>
+
+            {/*
+              ★ The date range is behind a toggle, not two inputs always on
+              screen.
+
+              The client asked for it — "2026.08.01–2026.08.30 хоорондох" — and
+              also asked that the filter UI stay "хэт том, төвөгтэй болгохгүй".
+              Two date fields permanently above the feed are 80px a parent
+              scrolls past every visit to reach the thing they came for. The
+              chip carries the range once it is set, so a filter that is on is
+              never invisible.
+            */}
+            <FilterChip active={Boolean(from || to)} onClick={() => setDatesOpen(!datesOpen)}>
+              <CalendarRange size={14} aria-hidden="true" />
+              {from || to ? `${from || "…"} — ${to || "…"}` : "Огноогоор"}
+            </FilterChip>
+
+            {from || to ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setFrom("");
+                  setTo("");
+                }}
+                className="text-caption text-muted underline-offset-2 hover:text-ink hover:underline"
+              >
+                Огноог арилгах
+              </button>
+            ) : null}
+          </div>
+
+          {datesOpen ? (
+            <div className="grid gap-3 rounded-card border border-border bg-surface p-3 sm:max-w-[420px] sm:grid-cols-2">
+              <Field label="Эхлэх огноо">
+                {({ id }) => (
+                  <Input
+                    id={id}
+                    type="date"
+                    value={from}
+                    max={to || undefined}
+                    onChange={(event) => setFrom(event.target.value)}
+                  />
+                )}
+              </Field>
+              <Field label="Дуусах огноо">
+                {({ id }) => (
+                  <Input
+                    id={id}
+                    type="date"
+                    value={to}
+                    min={from || undefined}
+                    onChange={(event) => setTo(event.target.value)}
+                  />
+                )}
+              </Field>
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       {tab === "surveys" && !isStaff ? (
@@ -539,7 +597,19 @@ export default function NotificationsPage() {
               */}
               <div className="flex flex-col gap-3">
                 {items.map((notification) => (
-                  <NotificationRow key={notification.id} notification={notification} />
+                  <NotificationRow
+                    key={notification.id}
+                    notification={notification}
+                    /*
+                      An admin may withdraw any post in their kindergarten; a
+                      teacher only their own. The same rule `requireStaffOwned`
+                      applies on the server — this only decides whether the
+                      button is drawn.
+                    */
+                    canDelete={
+                      hasRole("ADMIN") || (isStaff && notification.author?.id === session?.user?.id)
+                    }
+                  />
                 ))}
               </div>
             </section>
@@ -790,9 +860,37 @@ function SurveysTab({
  * Adding any of the three is a schema change plus an endpoint, not a component
  * edit; each is a small, well-scoped piece of work whenever the client wants it.
  */
-function NotificationRow({ notification }: { notification: z.infer<typeof notificationSchema> }) {
+function NotificationRow({
+  notification,
+  canDelete,
+}: {
+  notification: z.infer<typeof notificationSchema>;
+  /**
+   * Whether *this* reader may withdraw *this* post.
+   *
+   * ★ Decided by the caller, and re-decided by the API.
+   *
+   * `requireStaffOwned` is the authority: a teacher reaches their own notice,
+   * an admin reaches any in their kindergarten, and everyone else gets a 404.
+   * This flag only decides whether to draw a button — a card that hides the
+   * menu is a courtesy, not a permission, and `notifications.test.ts` pins the
+   * server side of it with a second teacher in the same kindergarten.
+   */
+  canDelete: boolean;
+}) {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const isUnread = notification.reads.length === 0;
+
+  const remove = useMutation({
+    mutationFn: () =>
+      mutate(`/notifications/${notification.id}`, z.unknown(), { method: "DELETE" }),
+    onSuccess: () => {
+      toast.success("Пост устлаа.");
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
 
   const markRead = useMutation({
     mutationFn: () =>
@@ -881,8 +979,53 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
           does about the notice; new only says they have not seen it yet.
         */}
         <span className="flex shrink-0 items-center gap-1.5">
+          {/*
+            ★ The category, which the note above this component said could not
+            be rendered — until 2026-08-30 it was right.
+
+            It read: "There is no category on a notification. `isImportant` is
+            the only classification the model carries… Inventing a taxonomy
+            would mean a chip row that filters on a field nobody fills."
+            `Notification.category` is that field now, the composer sets it and
+            the feed filters on it, so the chip is a fact rather than an
+            invention.
+
+            `neutral`, not a colour per category: nine tones would make the
+            header a paint chart and none of them would mean anything. The two
+            coloured badges beside it are *statuses* — something to do, or
+            something unseen — and colour is how a reader tells those from a
+            label.
+          */}
+          <Badge tone="neutral">{NOTIFICATION_CATEGORY_LABEL[notification.category]}</Badge>
           {notification.isImportant ? <Badge tone="danger">Чухал</Badge> : null}
           {isUnread ? <Badge tone="primary">Шинэ</Badge> : null}
+
+          {/*
+            Withdrawing a post. `ConfirmDialog` owns its own open state and
+            takes the control that opens it, so the button *is* the trigger —
+            CLAUDE.md §5 asks for a confirmation before a delete and this is
+            the shape the rest of the product uses for one.
+          */}
+          {canDelete ? (
+            <ConfirmDialog
+              trigger={
+                <button
+                  type="button"
+                  aria-label="Постыг устгах"
+                  className="grid size-9 place-items-center rounded-control text-muted transition-colors hover:bg-canvas hover:text-danger"
+                >
+                  <Trash2 size={16} aria-hidden="true" />
+                </button>
+              }
+              title="Энэ постыг устгах уу?"
+              description="Эцэг эхийн самбараас хасагдана. Хэн устгасныг бүртгэлд үлдээнэ."
+              confirmLabel="Устгах"
+              cancelLabel="Цуцлах"
+              tone="danger"
+              pending={remove.isPending}
+              onConfirm={() => remove.mutate()}
+            />
+          ) : null}
         </span>
       </div>
 
@@ -902,22 +1045,7 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
         nothing for that case makes the most important audience the one with no
         label — a reader would have to know the convention to read the absence.
       */}
-      {/*
-        ★ The kind of notice and who it is for, on one quiet line.
-
-        Two facts about the same notice, so one line rather than two: a reader
-        scanning the board wants "Зарлал · Дэлбээ бүлэг" as a phrase, not as two
-        separate labels they have to associate.
-      */}
-      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-muted">
-        <span className="font-medium text-ink">
-          {NOTIFICATION_CATEGORY_LABEL[notification.category]}
-        </span>
-        <span aria-hidden="true" className="text-faint">
-          ·
-        </span>
-        <AudienceBadge targets={notification.targets} />
-      </p>
+      <AudienceBadge targets={notification.targets} />
 
       {/*
         The title is the link, not the whole card.
@@ -928,6 +1056,16 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
         name is both simpler and what a screen reader can navigate.
       */}
       <div className="min-w-0">
+        {/*
+          ★ The link wraps the title, or the body when there is no title.
+
+          Titles became optional on 2026-08-30 — the client asked for posts that
+          are a photograph and a sentence. An `<h3>` containing nothing would
+          leave the card with no link at all and a screen reader with an empty
+          heading in the outline, so a post without a heading makes its first
+          line the link instead. The card still has exactly one link with a real
+          accessible name, which is what the note below is about.
+        */}
         <h3
           className={cn(
             "text-lead leading-heading text-ink",
@@ -941,7 +1079,7 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
             }}
             className="hover:underline"
           >
-            {notification.title}
+            {notification.title ?? excerpt(notification.body ?? "", 80)}
             {/*
               ★ Inside the link, not beside it.
 
@@ -964,7 +1102,7 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
           no body: the eye takes the title and moves on, which is the opposite
           of what a class board is for.
         */}
-        {notification.body ? (
+        {notification.title && notification.body ? (
           <p className="mt-1 text-body leading-relaxed text-ink">
             {excerpt(notification.body, 140)}
           </p>
@@ -1050,15 +1188,15 @@ function AudienceBadge({ targets }: { targets: z.infer<typeof notificationSchema
 
   if (targets.length === 0) {
     return (
-      <span className="flex items-center gap-1.5">
+      <p className="flex items-center gap-1.5 text-caption text-muted">
         <Building2 size={14} aria-hidden="true" className="shrink-0" />
         Бүх цэцэрлэг
-      </span>
+      </p>
     );
   }
 
   return (
-    <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+    <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-caption text-muted">
       <Users size={14} aria-hidden="true" className="shrink-0" />
       {groups.length > 0 ? <span>{groups.join(", ")}</span> : null}
       {childCount > 0 ? (
@@ -1067,6 +1205,6 @@ function AudienceBadge({ targets }: { targets: z.infer<typeof notificationSchema
           {childCount} хүүхэд
         </span>
       ) : null}
-    </span>
+    </p>
   );
 }

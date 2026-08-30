@@ -5,6 +5,8 @@ import { useState } from "react";
 import { z } from "zod";
 import { GraduationCap, Pencil, ShieldPlus, UserPlus, Users, UsersRound, X } from "lucide-react";
 import {
+  ASSIGNABLE_ROLES,
+  ROLE_LABEL,
   adminDashboardSchema,
   adminUserSchema,
   invitedUserSchema,
@@ -36,17 +38,23 @@ const listSchema = paginated(adminUserSchema);
 /** One row of the admin list — the shape both dialogs below edit. */
 type AdminUser = z.infer<typeof adminUserSchema>;
 
-const ROLES: { value: Role; label: string }[] = [
-  { value: "TEACHER", label: "Багш" },
-  { value: "ADMIN", label: "Админ" },
-  { value: "PARENT", label: "Эцэг эх" },
-];
-
-const ROLE_LABEL: Record<string, string> = {
-  TEACHER: "Багш",
-  ADMIN: "Админ",
-  PARENT: "Эцэг эх",
-};
+/**
+ * The roles this screen may hand out.
+ *
+ * ★ From `@kinder/contracts` rather than restated here — 2026-08-30.
+ *
+ * Two more staff roles arrived that day (Тогооч, Нягтлан) and this list was one
+ * of three places spelling the names inline. A local copy is how a fourth
+ * screen ends up offering three roles when the system has five.
+ *
+ * PARENT is deliberately absent from `ASSIGNABLE_ROLES` — a guardian is
+ * created by inviting them against a child, which is what links the family to
+ * the record. Offering it here would make an account with no child attached.
+ */
+const ROLES: { value: Role; label: string }[] = ASSIGNABLE_ROLES.map((value) => ({
+  value,
+  label: ROLE_LABEL[value],
+}));
 
 /**
  * The list's columns, shared by its header strip and every row.

@@ -23,6 +23,17 @@ export const STAFF_ROOM = (kindergartenId: string): RoomKey => `staff:${kinderga
 
 export type RoomKind = "GROUP" | "STAFF";
 
+/**
+ * Who is in "Бүх багш".
+ *
+ * ★ A set rather than a chain of `!==`, because it now has four members and
+ * the chain was already the kind of condition that gains a role silently.
+ *
+ * The name on screen stays "Бүх багш" — it is the client's own, and it is what
+ * a kindergarten calls the room whether or not the cook is reading it.
+ */
+const STAFF_ROOM_ROLES = new Set<Role>([Role.TEACHER, Role.ADMIN, Role.COOK, Role.ACCOUNTANT]);
+
 export interface Room {
   readonly key: RoomKey;
   readonly kind: RoomKind;
@@ -69,7 +80,18 @@ export function roomsFor(actor: Actor, facts: ChatAccessFacts, names: Kindergart
   const rooms = new Map<RoomKey, Room>();
 
   for (const membership of actor.memberships) {
-    if (membership.role !== Role.TEACHER && membership.role !== Role.ADMIN) continue;
+    /*
+      ★ Every employed role, which since 2026-08-30 includes the cook and the
+      accountant.
+
+      This is `roomsFor`'s only deliberate departure from `assertStaff`, and
+      the reason is that the two answer different questions. `assertStaff` asks
+      "may this person do the teaching work" and correctly excludes both new
+      roles. This asks "does this person work here", and the staff room is the
+      one place where that is the right question — the client listed "Бүх
+      ажилтан" for both roles by name.
+    */
+    if (!STAFF_ROOM_ROLES.has(membership.role)) continue;
     const key = STAFF_ROOM(membership.kindergartenId);
     rooms.set(key, {
       key,

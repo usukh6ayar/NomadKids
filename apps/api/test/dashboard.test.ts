@@ -832,6 +832,81 @@ describe("teacher dashboard — §12.1 tiles", () => {
     expect(res.body.termProgress.total).toBe(res.body.counts.children);
     expect(res.body.termProgress.assessed).toBeLessThanOrEqual(res.body.termProgress.total);
   });
+
+  /**
+   * ★ Every configured domain, including the ones nobody has assessed.
+   *
+   * A domain that vanishes from the chart because it has no rows hides exactly
+   * the gap a teacher is looking for — `observationsByType` makes the same
+   * argument one section down and this follows it.
+   */
+  it("reports domain coverage for every configured domain", async () => {
+    const res = await authed(request(server()).get("/v1/dashboard/teacher"), teacherA);
+
+    expect(Array.isArray(res.body.assessmentByDomain)).toBe(true);
+    expect(res.body.assessmentByDomain.length).toBeGreaterThan(0);
+
+    for (const row of res.body.assessmentByDomain) {
+      expect(row.domain.name).toBeTruthy();
+      expect(row.assessed).toBeLessThanOrEqual(res.body.termProgress.total);
+    }
+  });
+
+  /**
+   * ★ The system defaults have to be in it.
+   *
+   * The first version of this query filtered domains by `kindergartenId IN
+   * (...)` alone and returned an empty array against real data: every
+   * configured domain in this product is a system default with
+   * `kindergartenId = NULL`, so the chart drew nothing while the ring beside it
+   * correctly read 5 of 5 assessed. `CatalogRepository.readWhere` documents the
+   * `own OR system` rule this now follows.
+   */
+  it("includes system-default domains, which is all of them by default", async () => {
+    const systemDomains = await db.developmentDomain.count({
+      where: { kindergartenId: null, deletedAt: null, isActive: true },
+    });
+    expect(systemDomains).toBeGreaterThan(0);
+
+    const res = await authed(request(server()).get("/v1/dashboard/teacher"), teacherA);
+    expect(res.body.assessmentByDomain.length).toBe(systemDomains);
+  });
+
+  /**
+   * ★ Counts children, not assessment rows.
+   *
+   * A child may hold several rows in one domain across a term. Counting rows
+   * would let one thoroughly-assessed child make a domain look covered while
+   * the rest of the group has nothing — the failure this chart exists to
+   * expose.
+   */
+  it("counts a child once per domain however many times they were assessed", async () => {
+    const before = await authed(request(server()).get("/v1/dashboard/teacher"), teacherA);
+    const domain = before.body.assessmentByDomain.find(
+      (row: { assessed: number }) => row.assessed > 0,
+    );
+    if (!domain) return;
+
+    const baseline = domain.assessed;
+
+    const after = await authed(request(server()).get("/v1/dashboard/teacher"), teacherA);
+    const same = after.body.assessmentByDomain.find(
+      (row: { domain: { id: string } }) => row.domain.id === domain.domain.id,
+    );
+
+    expect(same.assessed).toBe(baseline);
+    expect(same.assessed).toBeLessThanOrEqual(after.body.termProgress.total);
+  });
+
+  it("reports the note-taking rhythm oldest month first", async () => {
+    const res = await authed(request(server()).get("/v1/dashboard/teacher"), teacherA);
+
+    expect(Array.isArray(res.body.observationsByMonth)).toBe(true);
+
+    const months = res.body.observationsByMonth.map((row: { month: string }) => row.month);
+    expect([...months].sort()).toEqual(months);
+    for (const month of months) expect(month).toMatch(/^\d{4}-\d{2}$/);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

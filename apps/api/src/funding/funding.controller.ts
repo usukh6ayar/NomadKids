@@ -24,13 +24,17 @@ import {
 /**
  * Funding rules and the monthly calculation — нэмэлт.md §4, §5, §6.
  *
- * ★ Administrator only. §13 asks for a dedicated accountant role and says
- * teachers may not see full financial information; that role does not exist
- * yet, and `assertAdmin` is the closest correct answer until it does — see
- * `FundingService`.
+ * ★ The accountant and the administrator. §13 asked for a dedicated accountant
+ * role and said teachers may not see full financial information; this docblock
+ * used to record that the role did not exist yet. It arrived on 2026-08-30 —
+ * see `FundingService` and `assertCanReadFinance`.
+ *
+ * The decorator gates the route and the service checks the membership: a
+ * `@Roles` list alone would let an accountant employed by one kindergarten
+ * reach another's ledger by changing the id in the URL.
  */
 @Controller("kindergartens/:id/funding")
-@Roles("ADMIN")
+@Roles("ADMIN", "ACCOUNTANT")
 export class KindergartenFundingController {
   constructor(private readonly service: FundingService) {}
 
@@ -117,7 +121,7 @@ export class KindergartenFundingController {
 }
 
 @Controller()
-@Roles("ADMIN")
+@Roles("ADMIN", "ACCOUNTANT")
 export class FundingController {
   constructor(private readonly service: FundingService) {}
 

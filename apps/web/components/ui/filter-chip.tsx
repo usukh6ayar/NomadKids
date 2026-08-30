@@ -60,13 +60,39 @@ export function FilterChip({
  * half-visible chip reads as "there is more" rather than stopping short inside
  * the page padding, where it reads as the end of the row. Both call sites had
  * copied this pair of behaviours too.
+ *
+ * ★★ `scroll` keeps it on one line at every width — added 2026-08-30 for the
+ * news categories.
+ *
+ * Wrapping is right for three or four chips. The client's category list is ten,
+ * and "Сургалт, үйл ажиллагаа" alone is 160px: wrapped, they occupy three rows
+ * and about 130px of vertical space above the first post, which is the page's
+ * actual content. They asked for a scroller instead, in as many words — "use a
+ * clean horizontal scroll rather than breaking the design".
  */
-export function FilterChipRow({ label, children }: { label: string; children: ReactNode }) {
+export function FilterChipRow({
+  label,
+  children,
+  scroll = false,
+}: {
+  label: string;
+  children: ReactNode;
+  /** One line at every width, rather than wrapping from `sm`. */
+  scroll?: boolean;
+}) {
   return (
     <div
       role="group"
       aria-label={label}
-      className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0"
+      className={cn(
+        "-mx-4 flex gap-2 overflow-x-auto px-4 pb-1",
+        scroll
+          ? // `scrollbar-none` hides the bar; the half-chip at the edge is what
+            // says the row continues, and on a trackpad a permanent grey bar
+            // under a row of pills reads as a rendering fault.
+            "scrollbar-none sm:mx-0 sm:px-0"
+          : "sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0",
+      )}
     >
       {children}
     </div>

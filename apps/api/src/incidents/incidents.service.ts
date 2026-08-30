@@ -153,17 +153,15 @@ export class IncidentsService {
 
     const notification = await this.notifications.create(actor, incident.kindergartenId, {
       title: dto.title,
-      body: dto.body,
       /*
-       * ★ ANNOUNCEMENT, not OTHER.
-       *
-       * A safety incident told to a family is an announcement in the client's
-       * own taxonomy: something happened and you are being informed. Leaving it
-       * to the DTO's `OTHER` default would file the most consequential notice
-       * this product sends under "none of the above", and a parent filtering
-       * their board to Зарлал would not see it.
-       */
+        ANNOUNCEMENT, of the nine the client listed on 2026-08-30.
+
+        A safety incident notice asks the family to do something — collect the
+        child, watch for symptoms, sign the report. INFORMATION is the category
+        for a notice they only need to have read, which this is not.
+      */
       category: "ANNOUNCEMENT" as const,
+      body: dto.body,
       // An incident notice is important by definition — that is what
       // distinguishes it from the class board.
       isImportant: true,

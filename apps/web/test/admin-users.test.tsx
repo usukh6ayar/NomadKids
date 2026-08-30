@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ASSIGNABLE_ROLES, ROLE_LABEL } from "@kinder/contracts";
 import {
   renderWithProviders,
   selectOption,
@@ -469,8 +470,17 @@ describe("эрх нэмэх", () => {
     await u.click(await screen.findByRole("button", { name: "Эрх нэмэх" }));
     await u.click(await screen.findByLabelText(/^Эрх \*/));
 
+    /*
+      ★ Five since 2026-08-30, and read from the contract rather than retyped.
+
+      Тогооч and Нягтлан joined `roleSchema` that day. Restating the labels here
+      is what made this assertion the thing that broke instead of the thing that
+      caught a drift — the picker and this list now come from the same
+      `ASSIGNABLE_ROLES`, so the test still fails if the two disagree, but it
+      cannot fail merely because the system grew a role.
+    */
     const names = (await screen.findAllByRole("option")).map((o) => o.textContent);
-    expect(names).toEqual(["Багш", "Админ", "Эцэг эх"]);
+    expect(names).toEqual(ASSIGNABLE_ROLES.map((role) => ROLE_LABEL[role]));
   });
 });
 

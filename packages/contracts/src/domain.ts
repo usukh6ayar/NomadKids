@@ -24,8 +24,38 @@ import { paginated } from "./pagination";
 
 // ── Primitives ───────────────────────────────────────────────────────────────
 
-export const roleSchema = z.enum(["ADMIN", "TEACHER", "PARENT"]);
+export const roleSchema = z.enum(["ADMIN", "TEACHER", "PARENT", "COOK", "ACCOUNTANT"]);
 export type Role = z.infer<typeof roleSchema>;
+
+/**
+ * Mongolian names for the roles — CLAUDE.md §5.
+ *
+ * ★ One map, so a role is called the same thing on the invite form, the user
+ * list and the profile badge. Three screens had spelled "Багш" and "Эцэг эх"
+ * inline, which is how a fourth screen ends up saying "Багш нар".
+ */
+export const ROLE_LABEL: Record<Role, string> = {
+  ADMIN: "Админ",
+  TEACHER: "Багш",
+  PARENT: "Эцэг эх",
+  COOK: "Тогооч",
+  ACCOUNTANT: "Нягтлан",
+};
+
+/**
+ * The roles an administrator may hand out, in the order the client listed them.
+ *
+ * ★ Every role the API accepts, which is the property `admin-users.test.tsx`
+ * pins: "offers every role the API accepts, and no others". A picker that
+ * drifts from `roleSchema` either hides a role that works or offers one that
+ * 400s, and neither is discoverable from the screen.
+ *
+ * PARENT stays. A guardian is normally created by inviting them against a
+ * child, which is what links the family to the record — but the API accepts
+ * the role here and an administrator repairing a broken account needs the same
+ * reach the API has.
+ */
+export const ASSIGNABLE_ROLES = ["ADMIN", "TEACHER", "PARENT", "COOK", "ACCOUNTANT"] as const;
 
 export const sexSchema = z.enum(["MALE", "FEMALE"]);
 export const childStatusSchema = z.enum(["ACTIVE", "ARCHIVED"]);
@@ -1063,35 +1093,50 @@ export type GrowthChart = z.infer<typeof growthChartSchema>;
 // ── Notifications ────────────────────────────────────────────────────────────
 
 /**
- * What kind of notice this is — the client's own taxonomy, from their board
- * drawing: Зарлал · Үйл ажиллагаа · Сургалт, plus the honest fourth.
+ * The client's nine categories, 2026-08-30, in the order they asked for.
+ *
+ * ★ The order is data, not a rendering detail. "Бүгд" then Зарлал, Мэдээлэл,
+ * Зөвлөмж… is the sequence the client wrote down, and a filter row that sorts
+ * them alphabetically or by usage is a different list than the one approved.
+ * The array is the source of truth for both the chips and the composer.
  */
-export const notificationCategorySchema = z.enum(["ANNOUNCEMENT", "ACTIVITY", "TRAINING", "OTHER"]);
-export type NotificationCategory = z.infer<typeof notificationCategorySchema>;
-
-export const NOTIFICATION_CATEGORY_LABEL: Record<NotificationCategory, string> = {
-  ANNOUNCEMENT: "Зарлал",
-  ACTIVITY: "Үйл ажиллагаа",
-  TRAINING: "Сургалт",
-  OTHER: "Бусад",
-};
-
-/** The order the filter row and the compose form render them in — never sorted. */
-export const NOTIFICATION_CATEGORY_ORDER = [
+export const NOTIFICATION_CATEGORIES = [
   "ANNOUNCEMENT",
+  "INFORMATION",
+  "ADVICE",
   "ACTIVITY",
-  "TRAINING",
+  "ROUTINE",
+  "OUTING",
+  "EVENT",
+  "BIRTHDAY",
   "OTHER",
 ] as const;
 
+export const notificationCategorySchema = z.enum(NOTIFICATION_CATEGORIES);
+export type NotificationCategory = z.infer<typeof notificationCategorySchema>;
+
+/** Mongolian labels — CLAUDE.md §5. Exactly the client's wording. */
+export const NOTIFICATION_CATEGORY_LABEL: Record<NotificationCategory, string> = {
+  ANNOUNCEMENT: "Зарлал",
+  INFORMATION: "Мэдээлэл",
+  ADVICE: "Зөвлөмж",
+  ACTIVITY: "Сургалт, үйл ажиллагаа",
+  ROUTINE: "Өдрийн дэглэм",
+  OUTING: "Зугаалга",
+  EVENT: "Өдөрлөг",
+  BIRTHDAY: "Төрсөн өдөр",
+  OTHER: "Бусад",
+};
+
 export const notificationSchema = z.object({
   id: uuidSchema,
-  title: z.string(),
+  /** Null when the author wrote a body and no heading — optional since 2026-08-30. */
+  title: z.string().nullable(),
   /**
    * ★ `.catch("OTHER")` rather than `.default`.
    *
    * A default covers a missing key; this also covers a *present* one the web
-   * app does not know — a fifth category added to the enum server-side would
+   * app does not know — a tenth category added to the enum server-side would
    * otherwise throw at parse time and blank the whole board rather than
    * showing one notice under an unfamiliar label.
    */
@@ -1550,6 +1595,25 @@ export const teacherDashboardSchema = z.object({
   termProgress: z
     .object({ assessed: z.number(), total: z.number() })
     .default({ assessed: 0, total: 0 }),
+  /**
+   * How many of the roster have been assessed in each development domain.
+   *
+   * ★ A count of children, not of assessment rows.
+   *
+   * A child may hold several rows in one domain across a term, so counting
+   * rows would let one thoroughly-assessed child make a domain look covered
+   * while eighteen others have nothing — the gap this is drawn to expose. The
+   * denominator is `termProgress.total`, the same roster.
+   *
+   * Every configured domain appears, including those at zero: a domain that
+   * vanishes from a chart because nobody has been assessed in it hides exactly
+   * what a teacher is looking for. `observationsByType` argues the same.
+   */
+  assessmentByDomain: z
+    .array(z.object({ domain: namedRefSchema, assessed: z.number() }))
+    .default([]),
+  /** Observations written per month, `YYYY-MM`, oldest first — six months. */
+  observationsByMonth: z.array(z.object({ month: z.string(), count: z.number() })).default([]),
   recentObservations: z.array(feedObservationSchema).default([]),
 });
 export type TeacherDashboard = z.infer<typeof teacherDashboardSchema>;
@@ -1820,7 +1884,7 @@ export const AUDIT_OBJECT_LABEL: Record<string, string> = {
  * revoked user gets.
  */
 export const primaryDashboardSchema = z.object({
-  dashboard: z.enum(["platform", "admin", "teacher", "parent"]).nullable(),
+  dashboard: z.enum(["platform", "admin", "teacher", "cook", "accountant", "parent"]).nullable(),
 });
 
 // ── Platform (superadmin) ───────────────────────────────────────────────────
@@ -2038,24 +2102,101 @@ export const sendChatMessageSchema = z.object({
 });
 export type SendChatMessageDto = z.infer<typeof sendChatMessageSchema>;
 
-// ── Attendance register and funding — нэмэлт.md §5, §6 ───────────────────────
+// ── Platform revenue ─────────────────────────────────────────────────────────
 
+/**
+ * What one kindergarten produced in a month — the platform operator's view.
+ *
+ * ★ Totals only. There is deliberately no per-child breakdown on this shape,
+ * and that is a security boundary rather than an omission: `platform-access.
+ * service.ts` records that a superadmin registers kindergartens and does not
+ * read children, and a funding row carries a child's id, their attendance and
+ * what they were billed. Aggregates are the platform's business; the rows
+ * behind them are the kindergarten's, and `/kindergartens/:id/funding` is where
+ * an administrator reads those.
+ */
+export const kindergartenRevenueSchema = z.object({
+  kindergartenId: uuidSchema,
+  name: z.string(),
+  /** How many funding rows the totals were computed from. Never who. */
+  entries: z.number(),
+  /** Decimal strings, not numbers — see `funding.dto.ts` for why. */
+  calculated: z.string(),
+  approved: z.string(),
+  received: z.string(),
+});
+export type KindergartenRevenue = z.infer<typeof kindergartenRevenueSchema>;
+
+export const platformRevenueSchema = z.object({
+  month: z.string(),
+  kindergartens: z.array(kindergartenRevenueSchema).default([]),
+  totals: z.object({
+    calculated: z.string(),
+    approved: z.string(),
+    received: z.string(),
+  }),
+});
+export type PlatformRevenue = z.infer<typeof platformRevenueSchema>;
+
+/** A person with an agreed percentage of the platform's income. */
+export const revenuePartnerSchema = z.object({
+  id: uuidSchema,
+  name: z.string(),
+  sharePercent: z.string(),
+  effectiveFrom: z.string(),
+  effectiveTo: z.string().nullable(),
+  note: z.string().nullable(),
+});
+export type RevenuePartner = z.infer<typeof revenuePartnerSchema>;
+
+/**
+ * The month's income divided by the agreed shares.
+ *
+ * ★ Computed from **received**, not from calculated or approved.
+ *
+ * A share of money that has not arrived is a promise, and paying it out is the
+ * platform lending its own cash against a state transfer that may still be
+ * revised. `unallocated` is what is left when the shares do not add to 100 —
+ * shown rather than hidden, because a split that quietly loses 8% of a month
+ * is the failure this screen exists to prevent.
+ */
+export const revenueDistributionSchema = z.object({
+  month: z.string(),
+  received: z.string(),
+  allocatedPercent: z.string(),
+  unallocated: z.string(),
+  shares: z
+    .array(
+      z.object({
+        partnerId: uuidSchema,
+        name: z.string(),
+        sharePercent: z.string(),
+        amount: z.string(),
+      }),
+    )
+    .default([]),
+});
+export type RevenueDistribution = z.infer<typeof revenueDistributionSchema>;
+
+// ── One kindergarten's funding — `нэмэлт.md` §4–§6 ───────────────────────────
+
+/**
+ * ★ Not to be confused with `platformRevenueSchema`.
+ *
+ * That one is the operator's income across every kindergarten and carries no
+ * per-child anything, deliberately. This is a single kindergarten's own money,
+ * read by its administrator or its accountant, and it *does* name children —
+ * because reconciling a state transfer means knowing which child was funded for
+ * how many days. `assertCanReadFinance` is what keeps it to those two roles.
+ */
 export const fundingSourceSchema = z.enum(["STATE", "PARENT", "KINDERGARTEN", "OTHER"]);
 export type FundingSource = z.infer<typeof fundingSourceSchema>;
 
-/**
- * ★ Named after where the money comes from, not what it is spent on.
- *
- * `нэмэлт.md` §3 separates state funding from what a family pays, and the whole
- * module exists because those two reconcile against different documents — a
- * ministry schedule and a parent's invoice. A label that blurred them ("Хоолны
- * төлбөр") would put both on one line in a report that has to keep them apart.
- */
 export const FUNDING_SOURCE_LABEL: Record<FundingSource, string> = {
-  STATE: "Улсын санхүүжилт",
-  PARENT: "Эцэг эхийн төлбөр",
-  KINDERGARTEN: "Цэцэрлэгийн хураамж",
-  OTHER: "Бусад эх үүсвэр",
+  STATE: "Улсын",
+  PARENT: "Эцэг эхийн",
+  KINDERGARTEN: "Цэцэрлэгийн",
+  OTHER: "Бусад",
 };
 
 export const fundingRuleSchema = z.object({
@@ -2073,6 +2214,49 @@ export const fundingRuleSchema = z.object({
   note: z.string().nullish(),
 });
 export type FundingRule = z.infer<typeof fundingRuleSchema>;
+
+/*
+ * The month as the funding screen reads it, row by row — `нэмэлт.md` §4.
+ *
+ * Kept beside the register below rather than folded into it: this is one
+ * calculation per child with the stored amounts, and the register is the
+ * director's month-end view that joins those amounts to attendance and meals.
+ * Two readers of the same rows, asking different questions.
+ */
+export const fundingCalculationSchema = z.object({
+  id: uuidSchema,
+  source: fundingSourceSchema,
+  daysAttended: z.number(),
+  daysFed: z.number(),
+  dailyRate: z.string().nullable(),
+  calculatedAmount: z.string(),
+  approvedAmount: z.string().nullable(),
+  receivedAmount: z.string().nullable(),
+  note: z.string().nullable(),
+  child: z.object({
+    id: uuidSchema,
+    lastName: z.string().nullable(),
+    firstName: z.string(),
+  }),
+});
+export type FundingCalculation = z.infer<typeof fundingCalculationSchema>;
+
+export const fundingMonthSchema = z.object({
+  month: z.string(),
+  items: z.array(fundingCalculationSchema).default([]),
+  totals: z
+    .array(
+      z.object({
+        source: fundingSourceSchema,
+        children: z.number(),
+        calculated: z.string(),
+        approved: z.string(),
+        received: z.string(),
+      }),
+    )
+    .default([]),
+});
+export type FundingMonth = z.infer<typeof fundingMonthSchema>;
 
 /**
  * A month's days, per status — all **six**, including `OTHER`.

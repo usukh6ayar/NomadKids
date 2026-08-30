@@ -114,16 +114,17 @@ describe("navigation icons", () => {
     renderShell(["TEACHER", "ADMIN"]);
     const nav = await sidebar();
 
+    /*
+      The client's 2026-08-30 labels. "Үнэлгээ" is "Явцын үнэлгээ" and "Мэдээ"
+      is "Ангийн самбар / Мэдээ" — both are the names on their drawing, and
+      both now point at a landing page rather than at a group-scoped href.
+    */
     const entries = [
-      // Сургалт ба сурагчид
-      "Хүүхдийн удирдлага",
-      "Бүлгийн удирдлага",
+      "Хүүхдүүд",
+      "Явцын үнэлгээ",
       "Ирц",
-      "Үнэлгээ",
-      // Үйл ажиллагаа ба санхүү
       "Хоол ба цэс",
-      "Санхүү",
-      "Мэдээ ба самбар",
+      "Ангийн самбар / Мэдээ",
       "Судалгаа",
       // Систем ба тохиргоо — the seven that were behind the hub, plus the hub
       "Удирдлага",
@@ -195,9 +196,7 @@ describe("the active route", () => {
     renderShell(["TEACHER"], "/surveys");
     const nav = await sidebar();
 
-    expect(within(nav).getByRole("link", { name: "Хүүхдийн удирдлага" })).not.toHaveAttribute(
-      "aria-current",
-    );
+    expect(within(nav).getByRole("link", { name: "Хүүхдүүд" })).not.toHaveAttribute("aria-current");
   });
 
   it("treats a child route as inside its section entry", async () => {
@@ -220,7 +219,7 @@ describe("role-based navigation", () => {
     renderShell(["TEACHER"]);
     const nav = await sidebar();
 
-    expect(within(nav).getByRole("link", { name: "Хүүхдийн удирдлага" })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Хүүхдүүд" })).toBeInTheDocument();
     expect(within(nav).getByRole("link", { name: "Ирц" })).toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: "Удирдлага" })).not.toBeInTheDocument();
   });
@@ -255,8 +254,7 @@ describe("role-based navigation", () => {
     const nav = await sidebar();
 
     for (const label of [
-      "Бүлгийн удирдлага",
-      "Санхүү",
+      "Ирц ба тооцоолол",
       "Цэцэрлэгийн мэдээлэл",
       "Хэрэглэгч ба эрх",
       "Хичээлийн жил",
@@ -271,14 +269,15 @@ describe("role-based navigation", () => {
     }
   });
 
-  /** The three headings the client's reference sidebar groups the product by. */
-  it("groups the staff menu into the reference's three sections", async () => {
+  /** The headings the staff menu groups the product by, per the 2026-08-29 drawing. */
+  it("groups the staff menu into named sections", async () => {
     renderShell(["TEACHER", "ADMIN"]);
     const nav = await sidebar();
 
-    expect(within(nav).getByText("Сургалт ба сурагчид")).toBeInTheDocument();
-    expect(within(nav).getByText("Үйл ажиллагаа ба санхүү")).toBeInTheDocument();
-    expect(within(nav).getByText("Систем ба тохиргоо")).toBeInTheDocument();
+    expect(within(nav).getByText("Хүүхдийн хөгжил ба үнэлгээ")).toBeInTheDocument();
+    expect(within(nav).getByText("Өдөр тутмын бүртгэл")).toBeInTheDocument();
+    expect(within(nav).getByText("Харилцаа холбоо")).toBeInTheDocument();
+    expect(within(nav).getByText("Багш ба байгууллага")).toBeInTheDocument();
   });
 
   /**
@@ -296,8 +295,7 @@ describe("role-based navigation", () => {
       ["Улирал", "/admin/terms"],
       ["Үнэлгээний тохиргоо", "/admin/assessment-config"],
       ["Аудит", "/admin/audit"],
-      ["Бүлгийн удирдлага", "/admin/groups"],
-      ["Санхүү", "/admin/funding"],
+      ["Ирц ба тооцоолол", "/admin/funding"],
     ] as const) {
       expect(within(nav).getByRole("link", { name: label })).toHaveAttribute("href", href);
     }
@@ -315,7 +313,7 @@ describe("role-based navigation", () => {
     const nav = await sidebar();
 
     expect(within(nav).getByText("Хүүхдийн мэдээлэл")).toBeInTheDocument();
-    expect(within(nav).queryByRole("link", { name: "Хүүхдийн удирдлага" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Хүүхдүүд" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: "Баримт бичгийн сан" })).not.toBeInTheDocument();
   });
 

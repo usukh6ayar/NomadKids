@@ -78,8 +78,7 @@ export class NotificationsService {
       page,
       query.unread === true,
       query.q?.trim() || undefined,
-      query.groupId,
-      query.category,
+      { groupId: query.groupId, category: query.category, from: query.from, to: query.to },
     );
 
     return paginate(
@@ -123,8 +122,8 @@ export class NotificationsService {
       {
         kindergartenId,
         title: dto.title,
-        body: dto.body,
         category: dto.category,
+        body: dto.body,
         isImportant: dto.isImportant,
         startsOn: dto.startsOn ?? null,
         endsOn: dto.endsOn ?? null,
@@ -184,6 +183,19 @@ export class NotificationsService {
     return published;
   }
 
+  /**
+   * Withdraws a notice — `DELETE /notifications/:id`, soft delete per §3.2.
+   *
+   * ★ Whose notice this may be is `requireStaffOwned`'s rule, which as of
+   * 2026-08-30 actually checks ownership: a teacher reaches their own and an
+   * admin reaches any in their kindergarten. The client asked for exactly that
+   * and it is what this method has claimed to do since it was written.
+   *
+   * Published or not: a notice sent by mistake is the one most worth
+   * withdrawing, and refusing because families have already seen it would
+   * leave the author no recourse. What was seen is not unsaid — the audit row
+   * below keeps the DELETE against the actor.
+   */
   async archive(actor: Actor, id: string) {
     const row = await this.requireStaffOwned(actor, id);
     const archived = await this.repo.softDelete(id);
@@ -275,10 +287,34 @@ export class NotificationsService {
   // ── internals ─────────────────────────────────────────────────────────────
 
   /** Staff in the notice's kindergarten. Any of them may edit; §8.1 is a shared queue. */
+  /**
+   * The notice, if this actor may change it.
+   *
+   * ★ It now checks what its name always claimed.
+   *
+   * Until 2026-08-30 this asserted only that the actor was staff of the
+   * notice's kindergarten — so **any teacher could edit any other teacher's
+   * post**, and every caller (`update`, `publish`, `remove`) inherited that.
+   * The name said "owned" and the body did not check it; found while adding
+   * delete, which the client asked to scope to a teacher's own posts.
+   *
+   * The rule, as the client stated it:
+   *
+   *   - a **teacher** may change their own notice and nobody else's
+   *   - an **admin** may change any notice in their kindergarten, which is the
+   *     existing administrative permission and is not being narrowed here
+   *
+   * 404 rather than 403 — §1.7. A teacher who cannot touch another teacher's
+   * post should not learn from the status code that it exists.
+   */
   private async requireStaffOwned(actor: Actor, id: string) {
     const row = await this.repo.findForAuthorization(id);
     if (!row) throw new NotFoundException();
     this.tenants.assertStaff(actor, row.kindergartenId);
+
+    const isAdmin = this.tenants.isAdmin(actor, row.kindergartenId);
+    if (!isAdmin && row.authorId !== actor.userId) throw new NotFoundException();
+
     return row;
   }
 
