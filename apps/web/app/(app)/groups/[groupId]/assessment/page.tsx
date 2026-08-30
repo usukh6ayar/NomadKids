@@ -15,6 +15,7 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { PageHeader } from "@/components/shell/app-shell";
+import { GroupSwitcher, useSwitchableGroups } from "@/components/shell/group-switcher";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -75,6 +76,12 @@ function GroupAssessment() {
     if (next.domainId !== undefined) updated.set("domainId", next.domainId);
     router.replace(`?${updated.toString()}`, { scroll: false });
   }
+
+  /*
+   * ★ The same key the other two registers use, so switching from Ирц to
+   * Үнэлгээ for the same group does not refetch the list of groups.
+   */
+  const switchable = useSwitchableGroups();
 
   const group = useQuery({
     queryKey: ["group", groupId],
@@ -228,6 +235,12 @@ function GroupAssessment() {
         records fixing in its own three branches.
       */}
       <PageHeader title="Явцын үнэлгээ" lede={group.data?.name ?? "Бүлгийн үнэлгээ"} />
+
+      <GroupSwitcher
+        groups={switchable.data?.items ?? []}
+        activeGroupId={groupId}
+        href={(id) => `/groups/${id}/assessment`}
+      />
 
       {/* `pad="roomy"` rather than four inline padding values — `card.tsx`
           documents the two named steps and why call sites stopped inventing

@@ -61,6 +61,7 @@ export class NotificationsRepository {
     page: PageParams,
     unreadOnly: boolean,
     q?: string,
+    groupId?: string,
   ) {
     const { skip, take } = toSkipTake(page);
 
@@ -69,6 +70,26 @@ export class NotificationsRepository {
     // term must narrow what this actor may see, not widen it.
     const extra: Record<string, unknown>[] = [];
     if (unreadOnly) extra.push({ reads: { none: { userId } } });
+    /*
+     * One group's board — the notices aimed at it, plus the ones aimed at
+     * nobody in particular.
+     *
+     * ★ `none: { deletedAt: null }` is how "aimed at everyone" is asked for.
+     *
+     * This module's convention is that a notice with no live target rows is
+     * for the whole kindergarten (`targetSchema`), so a group's board is the
+     * union of the two. Written as `some OR none` rather than as a computed
+     * flag on the notice, because the flag would be a second copy of the same
+     * fact and could disagree with the rows the moment a target is added.
+     */
+    if (groupId) {
+      extra.push({
+        OR: [
+          { targets: { some: { groupId, deletedAt: null } } },
+          { targets: { none: { deletedAt: null } } },
+        ],
+      });
+    }
     if (q) {
       extra.push({
         OR: [

@@ -7,6 +7,7 @@ import { z } from "zod";
 import { attendanceRecordSchema, groupAttendanceRowSchema, groupSchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
+import { GroupSwitcher, useSwitchableGroups } from "@/components/shell/group-switcher";
 import { qk } from "@/lib/api/keys";
 import { useToast } from "@/components/ui/toast";
 import { errorMessage } from "@/lib/api/errors";
@@ -62,6 +63,12 @@ function GroupAttendance() {
   const groupId = params.groupId;
   const queryClient = useQueryClient();
   const [date, setDate] = useState(today());
+
+  /*
+   * ★ The same key the other two registers use, so switching from Ирц to
+   * Үнэлгээ for the same group does not refetch the list of groups.
+   */
+  const switchable = useSwitchableGroups();
 
   const group = useQuery({
     queryKey: ["group", groupId],
@@ -120,6 +127,12 @@ function GroupAttendance() {
   return (
     <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader title="Ирц" lede={group.data?.name} />
+
+      <GroupSwitcher
+        groups={switchable.data?.items ?? []}
+        activeGroupId={groupId}
+        href={(id) => `/groups/${id}/attendance`}
+      />
 
       <Card className="px-4 py-4 sm:px-5">
         <Field label="Огноо">

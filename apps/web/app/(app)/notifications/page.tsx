@@ -14,10 +14,19 @@ import { z } from "zod";
 import { childSummarySchema, notificationSchema, paginated, surveySchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
+import { useSwitchableGroups } from "@/components/shell/group-switcher";
 import { LikeButton } from "@/components/notifications/like-button";
 import { ChildAvatar, MediaThumb } from "@/components/media/media-image";
 import { useSession } from "@/lib/auth/session";
-import { CheckCircle2, ChevronRight, Newspaper, PenLine, Search } from "lucide-react";
+import {
+  Building2,
+  CheckCircle2,
+  ChevronRight,
+  Newspaper,
+  PenLine,
+  Search,
+  Users,
+} from "lucide-react";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Badge } from "@/components/ui/badge";
@@ -73,7 +82,22 @@ export default function NotificationsPage() {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  const filters = { unread: showUnreadOnly, q };
+  /*
+   * ★ The board, one group at a time — §8.1's targeting, read back.
+   *
+   * A notice is aimed at a group, at a child, or at the whole kindergarten, and
+   * this screen showed all of them in one undifferentiated feed: a teacher of
+   * Дэлбээ бүлэг scrolled past every notice written for Наран бүлэг to find
+   * their own. The chips below narrow to one group's board, and the API
+   * includes the kindergarten-wide notices in it — a closure announcement
+   * belongs on every board, not only on the one nobody filtered.
+   *
+   * Empty string is "бүх бүлэг", which is the unfiltered feed rather than a
+   * fourth audience.
+   */
+  const [groupId, setGroupId] = useState("");
+
+  const filters = { unread: showUnreadOnly, q, groupId };
 
   /*
    * ★ Two tabs, one screen — the mock-up's own pairing of Мэдээ and Судалгаа
@@ -85,6 +109,14 @@ export default function NotificationsPage() {
    * forward on its own.
    */
   const [tab, setTab] = useState<"news" | "surveys">("news");
+
+  /*
+   * Staff only. A guardian's board is already narrowed to the groups their own
+   * children are in — `audienceFilter` does it server-side — so offering them
+   * a group chip row would be a control that filters a list already filtered,
+   * with names of groups they may not have a child in.
+   */
+  const boardGroups = useSwitchableGroups(isStaff);
 
   const myChildren = useQuery({
     queryKey: qk.myChildren(),
@@ -148,6 +180,7 @@ export default function NotificationsPage() {
       const params = new URLSearchParams({ page: String(pageParam), pageSize: "15" });
       if (showUnreadOnly) params.set("unread", "true");
       if (q) params.set("q", q);
+      if (groupId) params.set("groupId", groupId);
       return get(`/notifications?${params}`, listSchema);
     },
     getNextPageParam: (last) => (last.page < last.totalPages ? last.page + 1 : undefined),
@@ -156,6 +189,11 @@ export default function NotificationsPage() {
   const items = (data?.pages.flatMap((p) => p.items) ?? []).filter(
     (n) => !importantOnly || n.isImportant,
   );
+
+  /** The board's own name — the group's, or the kindergarten's whole board. */
+  const boardName = groupId
+    ? (boardGroups.data?.items.find((g) => g.id === groupId)?.name ?? "Бүлгийн самбар")
+    : "Бүх бүлгийн самбар";
 
   /**
    * The sentinel below the list. Loading on intersection rather than on a
@@ -282,35 +320,64 @@ export default function NotificationsPage() {
         parameter. It is a small piece of work and not one a component can do.
       */}
       {tab === "news" ? (
-        <FilterChipRow label="Мэдээг шүүх">
-          <FilterChip
-            active={!showUnreadOnly && !importantOnly}
-            onClick={() => {
-              setShowUnreadOnly(false);
-              setImportantOnly(false);
-            }}
-          >
-            Бүгд
-          </FilterChip>
-          <FilterChip
-            active={showUnreadOnly}
-            onClick={() => {
-              setShowUnreadOnly(true);
-              setImportantOnly(false);
-            }}
-          >
-            Уншаагүй
-          </FilterChip>
-          <FilterChip
-            active={importantOnly}
-            onClick={() => {
-              setImportantOnly(true);
-              setShowUnreadOnly(false);
-            }}
-          >
-            Чухал
-          </FilterChip>
-        </FilterChipRow>
+        <>
+          {/*
+            ★ Two filter rows, and they are not the same kind of question.
+
+            "Аль бүлгийн самбар" chooses *whose* board this is; "Уншаагүй /
+            Чухал" narrows the one already chosen. Stacking them as one row of
+            six chips made a reader guess which of the six were mutually
+            exclusive with which — they read as one set and behave as two.
+            Separated, with the audience first, because it is the question the
+            other one depends on.
+          */}
+          {isStaff && (boardGroups.data?.items.length ?? 0) > 1 ? (
+            <FilterChipRow label="Бүлгийн самбар">
+              <FilterChip active={!groupId} onClick={() => setGroupId("")}>
+                Бүх бүлэг
+              </FilterChip>
+              {(boardGroups.data?.items ?? []).map((group) => (
+                <FilterChip
+                  key={group.id}
+                  active={groupId === group.id}
+                  onClick={() => setGroupId(group.id)}
+                >
+                  {group.name}
+                </FilterChip>
+              ))}
+            </FilterChipRow>
+          ) : null}
+
+          <FilterChipRow label="Мэдээг шүүх">
+            <FilterChip
+              active={!showUnreadOnly && !importantOnly}
+              onClick={() => {
+                setShowUnreadOnly(false);
+                setImportantOnly(false);
+              }}
+            >
+              Бүгд
+            </FilterChip>
+            <FilterChip
+              active={showUnreadOnly}
+              onClick={() => {
+                setShowUnreadOnly(true);
+                setImportantOnly(false);
+              }}
+            >
+              Уншаагүй
+            </FilterChip>
+            <FilterChip
+              active={importantOnly}
+              onClick={() => {
+                setImportantOnly(true);
+                setShowUnreadOnly(false);
+              }}
+            >
+              Чухал
+            </FilterChip>
+          </FilterChipRow>
+        </>
       ) : null}
 
       {tab === "surveys" && !isStaff ? (
@@ -321,6 +388,23 @@ export default function NotificationsPage() {
           surveys={selectedSurveys}
           searchTerm={searchInput}
         />
+      ) : null}
+
+      {/*
+        ★ What you are looking at, and how much of it there is.
+
+        With the group chips above, the same feed now has several possible
+        subjects, and a board that does not name its own is a board a reader has
+        to remember the state of. The count is the API's `total` for exactly the
+        filters in force — not a fold over the pages loaded so far, which would
+        creep upward as the reader scrolls and read as posts arriving.
+      */}
+      {tab === "news" && data ? (
+        <p className="-mt-2 text-caption text-muted" aria-live="polite">
+          {boardName} · {data.pages[0]?.total ?? 0} мэдээ
+          {showUnreadOnly ? " · зөвхөн уншаагүй" : ""}
+          {importantOnly ? " · зөвхөн чухал" : ""}
+        </p>
       ) : null}
 
       {tab === "news" ? (
@@ -754,6 +838,24 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
       </div>
 
       {/*
+        ★ Who the notice is for, which the card never said.
+
+        `NotificationTarget` has carried the audience since §8.1 was built and
+        the API has always returned it — the card simply did not render it, so
+        a notice for Дэлбээ бүлэг and one for the whole kindergarten looked
+        identical on a board holding both. A parent could not tell whether "Маргааш
+        аялал" was about their child; a teacher could not tell whose class they
+        were reading.
+
+        ★★ "Бүх цэцэрлэг" is stated, not left blank.
+
+        No target rows means everyone (`targetSchema` in the API), and rendering
+        nothing for that case makes the most important audience the one with no
+        label — a reader would have to know the convention to read the absence.
+      */}
+      <AudienceBadge targets={notification.targets} />
+
+      {/*
         The title is the link, not the whole card.
 
         A card-wide `<a>` swallows the like button and the photographs — the
@@ -856,5 +958,51 @@ function NotificationRow({ notification }: { notification: z.infer<typeof notifi
         />
       </div>
     </article>
+  );
+}
+
+/**
+ * Who a notice was written for.
+ *
+ * ★ It reads the targeting rows rather than a summary field, because there is
+ * no summary field and there should not be one.
+ *
+ * `NotificationTarget` is the audience: a row per group or per child, and
+ * **no rows at all** means the whole kindergarten (`targetSchema` in the API
+ * says so, and the storage layer uses the same convention so the two cannot
+ * drift). A `scope` column beside them would be a second copy of that fact,
+ * wrong the moment a target is added.
+ *
+ * ★★ Group names are listed; children are counted, never named.
+ *
+ * A notice aimed at three children is aimed at three *families*, and printing
+ * their names on a board every other family reads would tell each of them who
+ * else was written to. The same reasoning `notificationSchema` gives for
+ * collapsing reactions to a count and reads to a boolean.
+ */
+function AudienceBadge({ targets }: { targets: z.infer<typeof notificationSchema>["targets"] }) {
+  const groups = targets.map((t) => t.group?.name).filter((name): name is string => Boolean(name));
+  const childCount = targets.filter((t) => t.childId).length;
+
+  if (targets.length === 0) {
+    return (
+      <p className="flex items-center gap-1.5 text-caption text-muted">
+        <Building2 size={14} aria-hidden="true" className="shrink-0" />
+        Бүх цэцэрлэг
+      </p>
+    );
+  }
+
+  return (
+    <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-caption text-muted">
+      <Users size={14} aria-hidden="true" className="shrink-0" />
+      {groups.length > 0 ? <span>{groups.join(", ")}</span> : null}
+      {childCount > 0 ? (
+        <span>
+          {groups.length > 0 ? "· " : ""}
+          {childCount} хүүхэд
+        </span>
+      ) : null}
+    </p>
   );
 }

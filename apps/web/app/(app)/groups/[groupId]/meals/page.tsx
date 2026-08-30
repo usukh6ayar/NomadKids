@@ -18,6 +18,7 @@ import { qk } from "@/lib/api/keys";
 import { fullName } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/shell/app-shell";
+import { GroupSwitcher, useSwitchableGroups } from "@/components/shell/group-switcher";
 import { RequireRole } from "@/components/shell/require-role";
 import { ChildAvatar } from "@/components/media/media-image";
 import { Badge } from "@/components/ui/badge";
@@ -141,6 +142,12 @@ function GroupMeals() {
   const [draft, setDraft] = useState<Record<string, Draft>>({});
   const [noting, setNoting] = useState<string | null>(null);
 
+  /*
+   * ★ The same key the other two registers use, so switching from Ирц to
+   * Үнэлгээ for the same group does not refetch the list of groups.
+   */
+  const switchable = useSwitchableGroups();
+
   const group = useQuery({
     queryKey: ["group", groupId],
     queryFn: () => get(`/groups/${groupId}`, groupSchema),
@@ -242,6 +249,12 @@ function GroupMeals() {
   return (
     <div className="flex flex-col gap-5 py-2">
       <PageHeader title="Хоолны бүртгэл" lede={group.data?.name} />
+
+      <GroupSwitcher
+        groups={switchable.data?.items ?? []}
+        activeGroupId={groupId}
+        href={(id) => `/groups/${id}/meals`}
+      />
 
       <Card className="flex flex-col gap-4 px-4 py-4 sm:px-5">
         <SittingPicker value={kind} onChange={setKind} locked={isDirty} />

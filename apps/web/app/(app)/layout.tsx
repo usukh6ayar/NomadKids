@@ -393,17 +393,19 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
   const adminEntry = (label: string, href: string) => (isAdmin ? [entry(label, href)] : []);
 
   /*
-   * ★ A teacher with one group skips the picker; everybody else gets it.
+   * ★ A teacher with one group links straight at it; everybody else takes the
+   * doorway.
    *
-   * `/attendance`, `/assessment` and `/meals` are group-scoped features, so
-   * each has a landing page that asks which group (`GroupPicker`). For a
-   * teacher who has exactly one, that page has exactly one row — a click that
-   * only ever has one answer, on the screen they open every morning. So their
-   * sidebar links straight past it, and an administrator, who has no single
-   * group to link to, lands on the picker.
+   * `/attendance`, `/assessment` and `/meals` are group-scoped, so something
+   * has to decide which group. It used to be a page listing them, which for a
+   * teacher with one group was a page with one row, every morning. Those routes
+   * now resolve the first group and forward, and the register carries the
+   * groups as chips along its top (`GroupSwitcher`) — so an administrator lands
+   * on a real register and switches in place instead of returning to a menu.
    *
-   * The destination differs; the label does not. One feature has one name
-   * wherever it is reached from.
+   * A teacher with exactly one group still gets the direct link, which skips
+   * even the redirect. The destination differs; the label does not. One feature
+   * has one name wherever it is reached from.
    */
   const scoped = (feature: string) => (groupId ? `/groups/${groupId}/${feature}` : `/${feature}`);
 

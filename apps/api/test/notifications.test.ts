@@ -910,3 +910,102 @@ describe("notice photos", () => {
     expect(res.status).toBe(400);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// One group's board — the `?groupId=` filter
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * ★ The filter is a *view* of the reader's own audience, never a way to reach
+ * another one.
+ *
+ * `audienceFilter` decides the set and this narrows it, folded in as one more
+ * `AND` beside it. The cases below assert both halves: that a staff reader can
+ * look at one group's board, and that a guardian passing a group id they have
+ * no child in gets an empty board rather than that group's notices.
+ */
+describe("filtering the board by group", () => {
+  /** A second group in kindergarten A, so "one group's board" has an other. */
+  async function secondGroup() {
+    return db.group.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        schoolYearId: a.schoolYear.id,
+        name: "Наран бүлэг",
+        ageBand: "MIDDLE",
+      },
+    });
+  }
+
+  it("returns the notices aimed at that group", async () => {
+    const other = await secondGroup();
+    await notify([{ groupId: a.group.id }], { title: "Дэлбээгийн зар" });
+    await notify([{ groupId: other.id }], { title: "Нарангийн зар" });
+
+    const res = await authed(
+      request(server()).get(`/v1/notifications?groupId=${a.group.id}`),
+      teacherA,
+    );
+
+    expect(res.status).toBe(200);
+    const titles = res.body.items.map((n: { title: string }) => n.title);
+    expect(titles).toContain("Дэлбээгийн зар");
+    expect(titles).not.toContain("Нарангийн зар");
+  });
+
+  /**
+   * ★ A kindergarten-wide notice is on every group's board.
+   *
+   * "No target rows" is this module's convention for "everyone". Filtering to
+   * group-specific notices only would hide the closure announcement from every
+   * board in the kindergarten — the one notice that most needs to be on all of
+   * them.
+   */
+  it("keeps a kindergarten-wide notice on every group's board", async () => {
+    const other = await secondGroup();
+    await notify([], { title: "Цэцэрлэг хаагдана" });
+
+    for (const groupId of [a.group.id, other.id]) {
+      const res = await authed(
+        request(server()).get(`/v1/notifications?groupId=${groupId}`),
+        teacherA,
+      );
+      const titles = res.body.items.map((n: { title: string }) => n.title);
+      expect(titles, `group ${groupId}`).toContain("Цэцэрлэг хаагдана");
+    }
+  });
+
+  it("narrows the audience it is given rather than widening it", async () => {
+    const other = await secondGroup();
+    await notify([{ groupId: other.id }], { title: "Нарангийн зар" });
+
+    // The guardian has no child in `other`, so this notice is not theirs to
+    // read — asking for that group's board must not hand it over.
+    const res = await authed(
+      request(server()).get(`/v1/notifications?groupId=${other.id}`),
+      parentA,
+    );
+
+    expect(res.status).toBe(200);
+    const titles = res.body.items.map((n: { title: string }) => n.title);
+    expect(titles).not.toContain("Нарангийн зар");
+  });
+
+  it("rejects a group id that is not a uuid", async () => {
+    const res = await authed(request(server()).get("/v1/notifications?groupId=naran"), teacherA);
+    expect(res.status).toBe(400);
+  });
+
+  /** Without the filter the board is unchanged — every audience, as before. */
+  it("shows every board when no group is named", async () => {
+    const other = await secondGroup();
+    await notify([{ groupId: a.group.id }], { title: "Дэлбээгийн зар" });
+    await notify([{ groupId: other.id }], { title: "Нарангийн зар" });
+
+    const res = await authed(request(server()).get("/v1/notifications"), teacherA);
+    const titles = res.body.items.map((n: { title: string }) => n.title);
+
+    expect(titles).toContain("Дэлбээгийн зар");
+    expect(titles).toContain("Нарангийн зар");
+  });
+});

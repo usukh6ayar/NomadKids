@@ -78,6 +78,7 @@ export class NotificationsService {
       page,
       query.unread === true,
       query.q?.trim() || undefined,
+      query.groupId,
     );
 
     return paginate(
