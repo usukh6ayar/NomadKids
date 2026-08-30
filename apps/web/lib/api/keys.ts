@@ -89,7 +89,9 @@ export const qk = {
   kindergartenSurveys: (kindergartenId: string) =>
     ["kindergarten", kindergartenId, "surveys"] as const,
   survey: (surveyId: string) => ["survey", surveyId] as const,
-  surveyResults: (surveyId: string) => ["survey", surveyId, "results"] as const,
+  /** The group filter is part of the key: each cut is its own cached answer. */
+  surveyResults: (surveyId: string, groupId = "") =>
+    ["survey", surveyId, "results", groupId] as const,
 
   childAssessments: (childId: string, termId?: string) =>
     ["child", childId, "assessments", termId ?? "all"] as const,

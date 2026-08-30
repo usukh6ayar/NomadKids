@@ -262,7 +262,25 @@ export class SurveysService {
 
   // ── Results — staff only ────────────────────────────────────────────────
 
-  async results(actor: Actor, surveyId: string) {
+  /**
+   * A survey's answers, in total and broken down by group.
+   *
+   * ★ Two cuts of one read, because a director asks two questions of the same
+   * survey: "what did families say" and "did Дэлбээ бүлэг say something
+   * different from Наран бүлэг".
+   *
+   * The second is the one this could not answer. Every answer already knows
+   * which child it is about and every child knows its group, so the breakdown
+   * was one join away — and without it a kindergarten with a problem in one
+   * group reads an average across four and concludes there is no problem.
+   *
+   * ★★ `groupId` narrows the headline; the breakdown always covers every group.
+   *
+   * The comparison is the point, and a comparison that hid every group but the
+   * one selected would be a bar chart with one bar. So the filter changes what
+   * the top of the screen counts and leaves the chart beneath it whole.
+   */
+  async results(actor: Actor, surveyId: string, groupId?: string) {
     const survey = await this.repo.findForAuthorization(surveyId);
     if (!survey) throw new NotFoundException();
     this.tenants.assertStaff(actor, survey.kindergartenId);
@@ -270,47 +288,84 @@ export class SurveysService {
     const withQuestions = await this.repo.findWithQuestions(surveyId);
     if (!withQuestions) throw new NotFoundException();
 
-    const [totalResponses, answers] = await Promise.all([
-      this.repo.countResponses(surveyId),
-      this.repo.allAnswers(surveyId),
-    ]);
+    const answers = await this.repo.answersByGroup(surveyId, survey.kindergartenId);
 
-    const byQuestion = new Map<string, unknown[]>();
+    const selected = groupId ? answers.filter((answer) => answer.group?.id === groupId) : answers;
+
+    /*
+     * Responses, not answers. One response carries one answer per question, so
+     * counting rows would multiply the respondent count by the question count —
+     * "24 хариулт" on a six-question survey answered by four families.
+     */
+    const responseCount = (rows: typeof answers) => new Set(rows.map((row) => row.responseId)).size;
+
+    const tally = (rows: typeof answers) =>
+      withQuestions.questions.map((question) => {
+        const values = rows.filter((row) => row.questionId === question.id).map((row) => row.value);
+
+        if (question.type === "TEXT") {
+          return {
+            question,
+            responseCount: values.length,
+            counts: null,
+            responses: values as string[],
+          };
+        }
+
+        const counts: Record<string, number> = {};
+        if (question.type === "CHECKBOX") {
+          for (const value of values) {
+            for (const choice of value as string[]) counts[choice] = (counts[choice] ?? 0) + 1;
+          }
+        } else {
+          // RATING or YES_NO — the value itself, stringified, is the bucket key.
+          for (const value of values) {
+            const key = String(value);
+            counts[key] = (counts[key] ?? 0) + 1;
+          }
+        }
+
+        return { question, responseCount: values.length, counts, responses: null };
+      });
+
+    /*
+     * ★ Ordered by name, and a group with no answers still appears.
+     *
+     * "Наран бүлэг: 0" is the most interesting bar on the chart — it says
+     * nobody there answered — and dropping empty groups would hide exactly
+     * that. The set of groups therefore comes from the enrolments, not from
+     * the answers.
+     */
+    const groups = new Map<string, { id: string | null; name: string }>();
     for (const answer of answers) {
-      const list = byQuestion.get(answer.questionId) ?? [];
-      list.push(answer.value);
-      byQuestion.set(answer.questionId, list);
+      const key = answer.group?.id ?? "";
+      if (!groups.has(key)) {
+        groups.set(key, answer.group ?? { id: null, name: "Бүлэггүй" });
+      }
     }
 
-    const questions = withQuestions.questions.map((question) => {
-      const values = byQuestion.get(question.id) ?? [];
-
-      if (question.type === "TEXT") {
+    const byGroup = [...groups.values()]
+      .sort((a, b) => a.name.localeCompare(b.name, "mn"))
+      .map((group) => {
+        const rows = answers.filter((answer) => (answer.group?.id ?? null) === group.id);
         return {
-          question,
-          responseCount: values.length,
-          counts: null,
-          responses: values as string[],
+          group,
+          responseCount: responseCount(rows),
+          questions: tally(rows).map((entry) => ({
+            questionId: entry.question.id,
+            responseCount: entry.responseCount,
+            counts: entry.counts,
+          })),
         };
-      }
+      });
 
-      const counts: Record<string, number> = {};
-      if (question.type === "CHECKBOX") {
-        for (const value of values) {
-          for (const choice of value as string[]) counts[choice] = (counts[choice] ?? 0) + 1;
-        }
-      } else {
-        // RATING or YES_NO — the value itself, stringified, is the bucket key.
-        for (const value of values) {
-          const key = String(value);
-          counts[key] = (counts[key] ?? 0) + 1;
-        }
-      }
-
-      return { question, responseCount: values.length, counts, responses: null };
-    });
-
-    return { survey: withQuestions, totalResponses, questions };
+    return {
+      survey: withQuestions,
+      totalResponses: responseCount(selected),
+      groupId: groupId ?? null,
+      questions: tally(selected),
+      byGroup,
+    };
   }
 
   // ── Comparison and export — RFP Module 1.2, 1.3 ───────────────────────────

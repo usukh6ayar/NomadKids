@@ -546,10 +546,43 @@ export const surveyQuestionResultSchema = z.object({
 });
 export type SurveyQuestionResult = z.infer<typeof surveyQuestionResultSchema>;
 
+/**
+ * One group's answers to one survey — the row a comparison chart draws a bar
+ * from.
+ *
+ * ★ `group.id` is nullable, and the null case is named rather than dropped.
+ *
+ * A response with no child — a survey aimed at staff — belongs to no group. It
+ * is counted under "Бүлэггүй" because a breakdown whose parts do not sum to the
+ * total is a breakdown nobody can check against the headline above it.
+ */
+export const surveyGroupResultSchema = z.object({
+  group: z.object({ id: uuidSchema.nullable(), name: z.string() }),
+  responseCount: z.number(),
+  questions: z.array(
+    z.object({
+      questionId: uuidSchema,
+      responseCount: z.number(),
+      counts: z.record(z.string(), z.number()).nullable(),
+    }),
+  ),
+});
+export type SurveyGroupResult = z.infer<typeof surveyGroupResultSchema>;
+
 export const surveyResultsSchema = z.object({
   survey: surveySchema,
   totalResponses: z.number(),
+  /** Which group the headline is narrowed to. Null when it covers everyone. */
+  groupId: uuidSchema.nullish(),
   questions: z.array(surveyQuestionResultSchema),
+  /**
+   * ★ Always every group, never narrowed by `groupId`.
+   *
+   * The filter changes what the top of the screen counts; the comparison
+   * beneath it stays whole, because a comparison filtered to one group is a
+   * chart with one bar.
+   */
+  byGroup: z.array(surveyGroupResultSchema).default([]),
 });
 export type SurveyResults = z.infer<typeof surveyResultsSchema>;
 

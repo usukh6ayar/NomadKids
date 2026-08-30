@@ -156,6 +156,57 @@ export class SurveysRepository {
     });
   }
 
+  /**
+   * Every answer again, this time carrying the group the answer is *about*.
+   *
+   * ★ The group comes from the child's active enrolment, not from the
+   * respondent.
+   *
+   * A guardian is not in a group; their child is. And a family with two
+   * children in two groups answers a survey twice — once per child — so the
+   * responder is the wrong key entirely: it would file both answers under one
+   * person and lose which group each was about.
+   *
+   * ★★ Two queries, not one per response.
+   *
+   * The enrolments are fetched as a set and joined in memory, the same trade
+   * `allAnswers` documents above: a kindergarten's response volume is dozens,
+   * and a per-response lookup is the N+1 §3.4 forbids.
+   *
+   * A response with no child — a survey aimed at staff — carries `groupId:
+   * null` and is counted under "Бүлэггүй" rather than dropped, because a
+   * breakdown whose parts do not sum to the total is a breakdown nobody can
+   * check.
+   */
+  async answersByGroup(surveyId: string, kindergartenId: string) {
+    const [answers, enrollments] = await Promise.all([
+      this.prisma.surveyAnswer.findMany({
+        where: { response: { surveyId, deletedAt: null } },
+        select: {
+          questionId: true,
+          value: true,
+          responseId: true,
+          response: { select: { childId: true } },
+        },
+      }),
+      this.prisma.enrollment.findMany({
+        where: { kindergartenId, status: "ACTIVE", deletedAt: null },
+        select: { childId: true, group: { select: { id: true, name: true } } },
+      }),
+    ]);
+
+    const groupOfChild = new Map(
+      enrollments.map((e) => [e.childId, e.group ? { id: e.group.id, name: e.group.name } : null]),
+    );
+
+    return answers.map((answer) => ({
+      questionId: answer.questionId,
+      value: answer.value,
+      responseId: answer.responseId,
+      group: answer.response.childId ? (groupOfChild.get(answer.response.childId) ?? null) : null,
+    }));
+  }
+
   // ── Comparison and export — RFP Module 1.2, 1.3 ───────────────────────────
 
   /**
