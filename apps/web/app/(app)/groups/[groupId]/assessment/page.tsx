@@ -245,42 +245,54 @@ function GroupAssessment() {
       {/* `pad="roomy"` rather than four inline padding values — `card.tsx`
           documents the two named steps and why call sites stopped inventing
           their own. */}
-      <Card pad="roomy" className="grid gap-4 sm:grid-cols-2">
-        <Field label="Улирал">
-          {({ id }) => (
-            <Select
-              id={id}
-              value={termId}
-              onChange={(e) => setSelection({ termId: e.target.value })}
-              disabled={terms.isLoading}
-            >
-              {(terms.data ?? []).map((term) => (
-                <option key={term.id} value={term.id}>
-                  {term.schoolYear ? `${term.schoolYear.name} · ` : ""}
-                  {term.name}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
+      <Card pad="roomy" className="flex flex-col gap-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Улирал">
+            {({ id }) => (
+              <Select
+                id={id}
+                value={termId}
+                onChange={(e) => setSelection({ termId: e.target.value })}
+                disabled={terms.isLoading}
+              >
+                {(terms.data ?? []).map((term) => (
+                  <option key={term.id} value={term.id}>
+                    {term.schoolYear ? `${term.schoolYear.name} · ` : ""}
+                    {term.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
 
-        <Field label="Хөгжлийн чиглэл" hint="Нэг удаад нэг чиглэлээр үнэлнэ.">
-          {({ id, describedBy }) => (
-            <Select
-              id={id}
-              aria-describedby={describedBy}
-              value={domainId}
-              onChange={(e) => setSelection({ domainId: e.target.value })}
-              disabled={config.isLoading}
-            >
-              {(config.data?.domains ?? []).map((domain) => (
-                <option key={domain.id} value={domain.id}>
-                  {domain.name}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
+          <Field label="Хөгжлийн чиглэл" hint="Нэг удаад нэг чиглэлээр үнэлнэ.">
+            {({ id, describedBy }) => (
+              <Select
+                id={id}
+                aria-describedby={describedBy}
+                value={domainId}
+                onChange={(e) => setSelection({ domainId: e.target.value })}
+                disabled={config.isLoading}
+              >
+                {(config.data?.domains ?? []).map((domain) => (
+                  <option key={domain.id} value={domain.id}>
+                    {domain.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        </div>
+
+        {column.data && children.length > 0 ? (
+          <RegisterProgress
+            inset
+            recorded={assessed}
+            total={children.length}
+            verb="үнэлсэн"
+            breakdown={breakdown}
+          />
+        ) : null}
       </Card>
 
       {terms.data?.length === 0 ? (
@@ -300,15 +312,6 @@ function GroupAssessment() {
               Дахин оролдох
             </Button>
           }
-        />
-      ) : null}
-
-      {column.data && children.length > 0 ? (
-        <RegisterProgress
-          recorded={assessed}
-          total={children.length}
-          verb="үнэлсэн"
-          breakdown={breakdown}
         />
       ) : null}
 

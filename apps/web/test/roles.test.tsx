@@ -49,7 +49,10 @@ describe("navigation is built from the session's roles", () => {
     // with it.
     await waitFor(() => expect(screen.getAllByText("Самбар").length).toBeGreaterThan(0));
     expect(screen.getAllByText("Хүүхдийн удирдлага").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Ажиглалт хянах").length).toBeGreaterThan(0);
+    // "Ажиглалт хянах" was asserted here until 2026-08-30, when the review
+    // queues left the menu for the screens they belong to. Ирц is the
+    // staff-only destination that replaced it as the check.
+    expect(screen.getAllByText("Ирц").length).toBeGreaterThan(0);
     // Administration belongs to admins only.
     expect(screen.queryByText("Удирдлага")).toBeNull();
   });
@@ -119,7 +122,13 @@ describe("navigation is built from the session's roles", () => {
       </AppLayout>,
     );
 
-    await waitFor(() => expect(screen.getAllByText("Ажиглалт хянах").length).toBeGreaterThan(0));
+    /*
+      A staff-only destination is what proves the staff shell rendered. This
+      asserted "Ажиглалт хянах" until 2026-08-30, when the review queues moved
+      onto the screens they belong to; "Бүлгийн бүртгэл"'s Ирц row is the
+      staff-only entry that replaced it, and a parent's menu never has it.
+    */
+    await waitFor(() => expect(screen.getAllByText("Ирц").length).toBeGreaterThan(0));
   });
 });
 

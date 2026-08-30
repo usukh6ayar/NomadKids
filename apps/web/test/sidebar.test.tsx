@@ -120,8 +120,6 @@ describe("navigation icons", () => {
       "Бүлгийн удирдлага",
       "Ирц",
       "Үнэлгээ",
-      "Ажиглалт хянах",
-      "Чөлөөний хүсэлт",
       // Үйл ажиллагаа ба санхүү
       "Хоол ба цэс",
       "Санхүү",
@@ -223,8 +221,25 @@ describe("role-based navigation", () => {
     const nav = await sidebar();
 
     expect(within(nav).getByRole("link", { name: "Хүүхдийн удирдлага" })).toBeInTheDocument();
-    expect(within(nav).getByRole("link", { name: "Ажиглалт хянах" })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Ирц" })).toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: "Удирдлага" })).not.toBeInTheDocument();
+  });
+
+  /**
+   * ★ Two review queues left the menu on 2026-08-30 and kept their screens.
+   *
+   * Чөлөөний хүсэлт is rendered under the attendance day sheet, where approving
+   * one writes the very rows that sheet is about; Ажиглалт хянах is reached
+   * from the dashboard alert that counts what is waiting. A row that says
+   * nothing about whether there is anything to review is a row somebody opens
+   * to find out — which is what both of these were.
+   */
+  it("keeps the review queues out of the menu", async () => {
+    renderShell(["TEACHER", "ADMIN"]);
+    const nav = await sidebar();
+
+    expect(within(nav).queryByRole("link", { name: "Ажиглалт хянах" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Чөлөөний хүсэлт" })).not.toBeInTheDocument();
   });
 
   /**
@@ -300,7 +315,7 @@ describe("role-based navigation", () => {
     const nav = await sidebar();
 
     expect(within(nav).getByText("Хүүхдийн мэдээлэл")).toBeInTheDocument();
-    expect(within(nav).queryByRole("link", { name: "Ажиглалт хянах" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Хүүхдийн удирдлага" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: "Баримт бичгийн сан" })).not.toBeInTheDocument();
   });
 

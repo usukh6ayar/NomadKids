@@ -275,6 +275,10 @@ function GroupMeals() {
             )}
           </Field>
         </div>
+
+        {sheet.data && rows.length > 0 ? (
+          <RegisterProgress inset recorded={recorded} total={rows.length} breakdown={breakdown} />
+        ) : null}
       </Card>
 
       {sheet.isLoading ? <LoadingState rows={5} /> : null}
@@ -288,10 +292,6 @@ function GroupMeals() {
             </Button>
           }
         />
-      ) : null}
-
-      {sheet.data && rows.length > 0 ? (
-        <RegisterProgress recorded={recorded} total={rows.length} breakdown={breakdown} />
       ) : null}
 
       {sheet.data ? (

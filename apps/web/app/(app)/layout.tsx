@@ -439,14 +439,23 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         ...adminEntry("Бүлгийн удирдлага", "/admin/groups"),
         scopedEntry("Ирц", "attendance", <CalendarCheck {...sectionIconProps} />),
         scopedEntry("Үнэлгээ", "assessment", <ClipboardCheck {...sectionIconProps} />),
-        entry("Ажиглалт хянах", "/observations/review"),
         /*
-         * "Чөлөөний хүсэлт", not "…хүсэлт хянах". The rail fits about twenty
-         * characters at `text-compact` beside a 16px icon; the longer label is
-         * twenty-one and clipped on every desktop. The row above it already
-         * establishes that a review queue is what this part of the menu holds.
+         * ★ Two review queues left this section on 2026-08-30, and neither
+         * lost its screen.
+         *
+         * **Чөлөөний хүсэлт** is rendered under the day sheet on the attendance
+         * register — approving one writes the `Attendance` rows, so it is the
+         * same register from the other end, and a separate menu row asked a
+         * teacher to know that the absence they were about to mark by hand
+         * might already have been explained somewhere else.
+         *
+         * **Ажиглалт хянах** is reached from the dashboard's own alert, which
+         * counts what is waiting; a menu row that says nothing about whether
+         * there *is* anything to review is a row somebody opens to find out.
+         *
+         * Both routes still exist — a notification links to them and a bookmark
+         * points at them — they simply are not menu entries any more.
          */
-        entry("Чөлөөний хүсэлт", "/attendance-requests/review"),
       ],
     },
     {

@@ -17,6 +17,7 @@ import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
 import { RegisterProgress } from "@/components/register/register-progress";
+import { AttendanceRequestQueue } from "@/components/attendance/request-queue";
 import {
   ATTENDANCE_STATUS_CHART_TONE,
   ATTENDANCE_STATUS_LABEL,
@@ -134,8 +135,8 @@ function GroupAttendance() {
         href={(id) => `/groups/${id}/attendance`}
       />
 
-      <Card className="px-4 py-4 sm:px-5">
-        <Field label="Огноо">
+      <Card className="flex flex-col gap-3.5 px-4 py-4 sm:px-5">
+        <Field label="Огноо" className="sm:max-w-[240px]">
           {({ id }) => (
             <Input
               id={id}
@@ -146,6 +147,10 @@ function GroupAttendance() {
             />
           )}
         </Field>
+
+        {sheet.data && rows.length > 0 ? (
+          <RegisterProgress inset recorded={recorded} total={rows.length} breakdown={breakdown} />
+        ) : null}
       </Card>
 
       <FormError message={record.isError ? errorMessage(record.error) : null} />
@@ -153,10 +158,6 @@ function GroupAttendance() {
       {sheet.isLoading ? <LoadingState rows={5} /> : null}
 
       {sheet.isError ? <ErrorState description={errorMessage(sheet.error)} /> : null}
-
-      {sheet.data && sheet.data.length > 0 ? (
-        <RegisterProgress recorded={recorded} total={rows.length} breakdown={breakdown} />
-      ) : null}
 
       {sheet.data ? (
         <>
@@ -185,6 +186,16 @@ function GroupAttendance() {
           )}
         </>
       ) : null}
+
+      {/*
+        ★ The guardians' notices, under the sheet they are about.
+
+        Approving one writes the `Attendance` rows for those days, so it is the
+        same register seen from the other end. It had a sidebar entry of its
+        own, which asked a teacher to know that the absence they were about to
+        mark by hand might already have been explained on a different screen.
+      */}
+      <AttendanceRequestQueue heading="Эцэг эхийн мэдэгдэл" />
     </div>
   );
 }

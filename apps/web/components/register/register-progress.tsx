@@ -45,6 +45,22 @@ export function RegisterProgress({
   /** What has been recorded — "бүртгэсэн" for a register, "үнэлсэн" for assessment. */
   verb = "бүртгэсэн",
   breakdown,
+  /**
+   * Rendered inside the card above the list rather than as a card of its own.
+   *
+   * ★ It is where this belongs, and the standalone version was the mistake.
+   *
+   * Each register opens with a white card holding its controls — the date, the
+   * sitting, the term and domain — and the progress was a *second* card under
+   * it. Two stacked white blocks saying different things about the same sheet
+   * pushed the first child of the register below the fold on a phone, and the
+   * one a teacher reads at a glance was the lower of the two.
+   *
+   * Inside, it is a footer to the controls: no second border, no second
+   * shadow, one hairline separating it from the fields, and the whole strip a
+   * step quieter — it is a readout, not a heading.
+   */
+  inset = false,
   className,
 }: {
   recorded: number;
@@ -60,15 +76,22 @@ export function RegisterProgress({
    * information a reader needs while working.
    */
   breakdown: RegisterCount[];
+  inset?: boolean;
   className?: string;
 }) {
   const remaining = Math.max(total - recorded, 0);
   const percent = total === 0 ? 0 : Math.round((recorded / total) * 100);
   const shown = breakdown.filter((item) => item.count > 0);
 
+  const Frame = inset ? "div" : Card;
+
   return (
-    <Card
-      className={cn("flex flex-wrap items-center gap-x-5 gap-y-3 px-4 py-3.5 sm:px-5", className)}
+    <Frame
+      className={cn(
+        "flex flex-wrap items-center gap-x-5 gap-y-3",
+        inset ? "border-t border-border-soft pt-3.5" : "px-4 py-3.5 sm:px-5",
+        className,
+      )}
     >
       {/*
         ★ The ring carries the label, because here it is the only thing that
@@ -94,7 +117,12 @@ export function RegisterProgress({
             written. The whole line is numerals and words either way, and
             lining up the digits is what the class is for.
           */}
-          <p className="text-lead font-semibold leading-tight tabular-nums text-ink">
+          <p
+            className={cn(
+              "font-semibold leading-tight tabular-nums text-ink",
+              inset ? "text-body" : "text-lead",
+            )}
+          >
             {/*
               ★ "Хүүхэд алга", not a dash.
 
@@ -134,6 +162,6 @@ export function RegisterProgress({
           ))}
         </ul>
       ) : null}
-    </Card>
+    </Frame>
   );
 }
