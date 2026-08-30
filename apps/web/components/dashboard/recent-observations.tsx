@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { IconChip } from "@/components/ui/icon-chip";
 import { EmptyState } from "@/components/ui/states";
+import { Art } from "@/components/ui/art";
 import { excerpt, formatRelative, fullName } from "@/lib/format";
 
 /**
@@ -40,13 +41,7 @@ export function RecentObservations({
       <SectionHeader
         title="Сүүлийн ажиглалтууд"
         lede={isEmpty ? undefined : "Хамгийн сүүлд бичигдсэн ажиглалтууд."}
-        icon={
-          <IconChip
-            icon={<Image src="/icons/icon-portfolio.png" alt="" width={48} height={48} />}
-            tone="cornflower"
-            size="lg"
-          />
-        }
+        icon={<IconChip icon={<Art name="portfolio" />} tone="cornflower" size="lg" />}
         // The empty state already offers this exact link, and two identical
         // buttons three inches apart is a question about which one is the real
         // one. The header keeps it only when there is a list to look past.

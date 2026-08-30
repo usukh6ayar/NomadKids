@@ -12,6 +12,7 @@ import { useSession } from "@/lib/auth/session";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { IconChip } from "@/components/ui/icon-chip";
 import { Skeleton } from "@/components/ui/states";
+import { Art } from "@/components/ui/art";
 
 const menuSchema = z.array(menuDayWithWarningsSchema);
 
@@ -74,13 +75,7 @@ export function TodayMenu() {
         id="today-menu-heading"
         title="Хоолны цэс"
         lede="Өнөөдрийн хоол, харшлын шалгалттай"
-        icon={
-          <IconChip
-            icon={<Image src="/icons/icon-menu.png" alt="" width={48} height={48} />}
-            tone="sun"
-            size="lg"
-          />
-        }
+        icon={<IconChip icon={<Art name="menu" />} tone="sun" size="lg" />}
       />
 
       <Card pad="roomy" className="flex flex-col gap-3">

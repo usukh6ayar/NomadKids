@@ -155,25 +155,25 @@ export default function ParentHomePage() {
             href="/notifications"
             label="Ангийн самбар"
             badge={unread && unread.count > 0 ? unread.count : undefined}
-            icon={<TileIcon src="/icons/icon-notice.png" />}
+            icon={<TileIcon name="notice" />}
           />
           <QuickTile
             href={`/children/${selected.id}/attendance`}
             label="Ирц"
-            icon={<TileIcon src="/icons/icon-attendance.png" />}
+            icon={<TileIcon name="attendance" />}
           />
           <QuickTile
             href={`/children/${selected.id}/menu`}
             label="Хоол"
-            icon={<TileIcon src="/icons/icon-menu.png" />}
+            icon={<TileIcon name="menu" />}
           />
           <QuickTile
             href={`/children/${selected.id}/assessments`}
             label="Үнэлгээ"
-            icon={<TileIcon src="/icons/icon-progress.png" />}
+            icon={<TileIcon name="progress" />}
           />
           <SurveyTile childId={selected.id} />
-          <ComingSoonTile label="Санхүү" icon={<TileIcon src="/icons/icon-finance.png" />} />
+          <ComingSoonTile label="Санхүү" icon={<TileIcon name="finance" />} />
         </QuickTileGrid>
       </section>
     </HomeBackdrop>
@@ -257,7 +257,7 @@ function SurveyTile({ childId }: { childId: string }) {
       href={`/children/${childId}/surveys`}
       label="Судалгаа"
       badge={pendingCount > 0 ? pendingCount : undefined}
-      icon={<TileIcon src="/icons/icon-survey.png" />}
+      icon={<TileIcon name="survey" />}
     />
   );
 }

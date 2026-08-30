@@ -249,6 +249,30 @@ describe("admin dashboard", () => {
       ),
     ).toBe(true);
   });
+
+  /**
+   * The same resolution the audit screen gets. This feed read `actorLabel`
+   * straight off the column, which no service outside `auth` writes — so every
+   * line of it named its actor as "—" while the data to name them was one join
+   * away.
+   */
+  it("names the actor in the activity feed", async () => {
+    await db.user.update({
+      where: { id: a.teacherUser.id },
+      data: { lastName: "Сүрэн", firstName: "Ганаа" },
+    });
+
+    await observe(false);
+
+    const res = await request(server()).get("/v1/dashboard/admin").set("Cookie", adminA.cookies);
+    const entry = res.body.recentActivity.find(
+      (e: { objectType: string }) => e.objectType === "Observation",
+    );
+
+    expect(entry).toBeDefined();
+    expect(entry.actorLabel).toBe("Сүрэн Ганаа");
+    expect(entry.actor).toBeUndefined();
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -402,6 +426,162 @@ describe("primary dashboard", () => {
 // Audit read API
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * The kindergarten-wide figures the administrator's dashboard adds — RFP §12.2
+ * and §12.3.
+ *
+ * ★ These are the numbers the *teacher* dashboard cannot answer for an admin.
+ *
+ * `DashboardService.teacher` scopes everything to
+ * `loadActiveTeachingGroupIds`, which reads TEACHER memberships — an
+ * administrator holds none, so every group-scoped widget returns zero for
+ * them. The admin endpoint scopes by kindergarten instead, and these pin that
+ * difference rather than the arithmetic.
+ */
+describe("admin dashboard — kindergarten-wide figures", () => {
+  const today = new Date(
+    Date.UTC(
+      new Date().getUTCFullYear(),
+      new Date().getUTCMonth(),
+      new Date().getUTCDate(),
+      0,
+      0,
+      0,
+      0,
+    ),
+  );
+
+  async function mark(status: "PRESENT" | "HALF_DAY" | "SICK" | "ABSENT", date = today) {
+    return db.attendance.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        enrollmentId: a.enrollment.id,
+        childId: a.child.id,
+        date,
+        status,
+      },
+    });
+  }
+
+  async function adminDashboard(session = adminA) {
+    const res = await request(server()).get("/v1/dashboard/admin").set("Cookie", session.cookies);
+    expect(res.status).toBe(200);
+    return res.body;
+  }
+
+  it("counts the roster as expected, not the rows written", async () => {
+    // No register taken at all: the denominator still has to be the roster, or
+    // an untaken morning reads as 0/0 — "nothing to do".
+    const body = await adminDashboard();
+
+    expect(body.attendanceToday.expected).toBeGreaterThan(0);
+    expect(body.attendanceToday.recorded).toBe(0);
+    expect(body.attendanceToday.present).toBe(0);
+  });
+
+  it("separates 'register taken' from 'children present'", async () => {
+    await mark("ABSENT");
+
+    const body = await adminDashboard();
+    expect(body.attendanceToday.recorded).toBe(1);
+    // Recorded but not present — the two numbers must not collapse.
+    expect(body.attendanceToday.present).toBe(0);
+  });
+
+  /** ★ A half day is a child who came. */
+  it("counts a half day as present", async () => {
+    await mark("HALF_DAY");
+
+    expect((await adminDashboard()).attendanceToday.present).toBe(1);
+  });
+
+  it("★ never counts another kindergarten's register", async () => {
+    await db.attendance.create({
+      data: {
+        kindergartenId: b.kindergarten.id,
+        enrollmentId: b.enrollment.id,
+        childId: b.child.id,
+        date: today,
+        status: "PRESENT",
+      },
+    });
+
+    const body = await adminDashboard();
+    expect(body.attendanceToday.recorded).toBe(0);
+  });
+
+  it("breaks the last 30 days down per group and per status", async () => {
+    const yesterday = new Date(today);
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+
+    await mark("PRESENT");
+    await mark("SICK", yesterday);
+
+    const body = await adminDashboard();
+    const group = body.attendanceByGroup.find((g: { groupId: string }) => g.groupId === a.group.id);
+
+    expect(group).toBeDefined();
+    expect(group.counts.PRESENT).toBe(1);
+    expect(group.counts.SICK).toBe(1);
+    // A status with no rows is absent, not zero — "none" and "not asked" differ.
+    expect(group.counts.ABSENT).toBeUndefined();
+  });
+
+  it("★ a group in another kindergarten is not in the breakdown", async () => {
+    const body = await adminDashboard();
+
+    expect(body.attendanceByGroup.some((g: { groupId: string }) => g.groupId === b.group.id)).toBe(
+      false,
+    );
+  });
+
+  it("averages each group's assessments by development domain", async () => {
+    const domain = await db.developmentDomain.findFirstOrThrow({ where: { code: "physical" } });
+    const level = await db.assessmentLevel.findFirstOrThrow({ where: { value: 3 } });
+
+    await db.assessment.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        enrollmentId: a.enrollment.id,
+        childId: a.child.id,
+        termId,
+        domainId: domain.id,
+        levelId: level.id,
+      },
+    });
+
+    const body = await adminDashboard();
+    const group = body.domainAveragesByGroup.find(
+      (g: { groupId: string }) => g.groupId === a.group.id,
+    );
+
+    expect(group.averageByDomain[domain.id]).toBe(3);
+    expect(group.sampleSize).toBe(1);
+  });
+
+  /**
+   * ★ An unassessed domain is absent from the map.
+   *
+   * Zero is a real score on a 1–4 scale's floor. A radar that plots "not
+   * assessed" as zero draws a group as failing at something nobody has looked
+   * at yet, which is the opposite of what the chart is for.
+   */
+  it("★ leaves an unassessed domain out rather than scoring it zero", async () => {
+    const body = await adminDashboard();
+    const group = body.domainAveragesByGroup.find(
+      (g: { groupId: string }) => g.groupId === a.group.id,
+    );
+
+    expect(group).toBeDefined();
+    expect(Object.keys(group.averageByDomain)).toEqual([]);
+  });
+
+  it("a teacher cannot read any of it", async () => {
+    const res = await request(server()).get("/v1/dashboard/admin").set("Cookie", teacherA.cookies);
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("audit log", () => {
   it("is admin only", async () => {
     expect((await request(server()).get("/v1/audit").set("Cookie", teacherA.cookies)).status).toBe(
@@ -474,6 +654,132 @@ describe("audit log", () => {
     // Forging history must not be possible through the API.
     const res = await authed(request(server()).post("/v1/audit"), adminA).send({ action: "LOGIN" });
     expect(res.status).toBe(404);
+  });
+
+  /**
+   * ★ "Who did this" — resolved on read, because the column is almost never
+   * written.
+   *
+   * `AuditLog.actorLabel` is filled by two of the hundred and ten call sites
+   * that append to the log (both in `auth.service`), so an audit screen reading
+   * the raw column shows a name for logins and a dash for everything else. The
+   * name is resolved from `actorUserId` instead — see `audit-actor.ts`.
+   */
+  it("names the person who performed the action", async () => {
+    await db.user.update({
+      where: { id: a.teacherUser.id },
+      data: { lastName: "Дорж", firstName: "Болд" },
+    });
+
+    await observe(false);
+
+    const res = await request(server())
+      .get("/v1/audit?action=CREATE")
+      .set("Cookie", adminA.cookies);
+
+    const entry = res.body.items.find(
+      (e: { objectType: string }) => e.objectType === "Observation",
+    );
+    expect(entry).toBeDefined();
+    expect(entry.actorLabel).toBe("Дорж Болд");
+  });
+
+  /**
+   * ★★ The stored text is the fallback, and this is the case it exists for.
+   *
+   * `actorUserId` is `SetNull` on delete, so a hard-deleted user leaves the
+   * relation empty and the plain-text label written at append time is the only
+   * remaining attribution. The schema's own comment says so; without this the
+   * fallback branch is unexercised and could be dropped by anyone tidying the
+   * resolver.
+   */
+  it("★ falls back to the stored label when the actor's user row is gone", async () => {
+    await db.auditLog.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        actorUserId: null,
+        actorLabel: "Гарсан ажилтан",
+        action: "DELETE",
+        objectType: "Child",
+      },
+    });
+
+    const res = await request(server())
+      .get("/v1/audit?action=DELETE")
+      .set("Cookie", adminA.cookies);
+
+    expect(res.body.items[0].actorLabel).toBe("Гарсан ажилтан");
+  });
+
+  it("reports no actor rather than inventing one", async () => {
+    await db.auditLog.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        actorUserId: null,
+        actorLabel: null,
+        action: "RESTORE",
+        objectType: "Child",
+      },
+    });
+
+    const res = await request(server())
+      .get("/v1/audit?action=RESTORE")
+      .set("Cookie", adminA.cookies);
+
+    expect(res.body.items[0].actorLabel).toBeNull();
+  });
+
+  /**
+   * ★★★ The relation is joined to compute a label and must not ship with the
+   * response.
+   *
+   * The audit log is the one endpoint whose whole job is disclosure, so what it
+   * discloses should be a deliberate list. A passed-through `actor` object
+   * would widen it silently the next time somebody adds a field to that select
+   * for an unrelated reason.
+   */
+  /**
+   * ★ Filtering by actor — accepted by the endpoint since it was written, and
+   * never sent by anything until the audit screen made the names clickable.
+   *
+   * Scoped by the same `kindergartenId` clause as every other read here, so an
+   * id belonging to another kindergarten's staff narrows to nothing rather than
+   * revealing that they exist.
+   */
+  it("narrows the log to one person", async () => {
+    await observe(false);
+
+    const res = await request(server())
+      .get(`/v1/audit?actorUserId=${a.teacherUser.id}`)
+      .set("Cookie", adminA.cookies);
+
+    expect(res.status).toBe(200);
+    expect(res.body.items.length).toBeGreaterThan(0);
+    expect(
+      res.body.items.every((e: { actorUserId: string }) => e.actorUserId === a.teacherUser.id),
+    ).toBe(true);
+  });
+
+  it("★ an actor from another kindergarten matches nothing rather than leaking", async () => {
+    await observe(false);
+
+    const res = await request(server())
+      .get(`/v1/audit?actorUserId=${b.teacherUser.id}`)
+      .set("Cookie", adminA.cookies);
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toEqual([]);
+  });
+
+  it("★ does not expose the joined user record", async () => {
+    await observe(false);
+
+    const res = await request(server()).get("/v1/audit").set("Cookie", adminA.cookies);
+
+    expect(res.body.items.length).toBeGreaterThan(0);
+    for (const entry of res.body.items) {
+      expect(entry.actor).toBeUndefined();
+    }
   });
 });
 

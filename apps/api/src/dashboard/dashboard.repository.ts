@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import type { VisibleChildrenFilter } from "../authz/authz.repository";
 import type { AuditAction } from "../domain/enums";
+import { AUDIT_ACTOR_SELECT } from "./audit-actor";
 
 /**
  * Dashboard reads.
@@ -445,6 +446,7 @@ export class DashboardRepository {
         actorLabel: true,
         objectType: true,
         createdAt: true,
+        actor: AUDIT_ACTOR_SELECT,
       },
     });
   }
@@ -518,6 +520,232 @@ export class DashboardRepository {
     });
   }
 
+  // ── Kindergarten-wide, for the administrator's dashboard ──────────────────
+
+  /**
+   * How many children were enrolled on a given past date.
+   *
+   * ★ Exact, because `Enrollment` records when each one started and ended.
+   *
+   * A child was here on a date if their enrolment had begun by then and had not
+   * yet ended — which is a fact the table holds, not an estimate. That is why
+   * this comparison exists for children and for nothing else on the dashboard:
+   * `Group` and `Membership` carry a `createdAt` but no end date in the same
+   * shape, so "how many groups existed a month ago" would count a group
+   * archived last week and quietly report a number nobody could reproduce.
+   *
+   * A statistic that cannot be checked is worse on a dashboard than an absent
+   * one, so the other three cards carry no trend rather than a plausible guess.
+   */
+  async childrenEnrolledOn(kindergartenIds: string[], date: Date): Promise<number> {
+    if (kindergartenIds.length === 0) return 0;
+
+    const rows = await this.prisma.enrollment.findMany({
+      where: {
+        kindergartenId: { in: kindergartenIds },
+        deletedAt: null,
+        startedOn: { lte: date },
+        OR: [{ endedOn: null }, { endedOn: { gt: date } }],
+      },
+      // One row per child: a child who moved between groups has two enrolments
+      // and is still one child.
+      select: { childId: true },
+      distinct: ["childId"],
+    });
+
+    return rows.length;
+  }
+
+  /**
+   * Today's register across every group — "Өнөөдрийн ирц", RFP §12.2.
+   *
+   * ★ Two numbers, and the denominator is the roster rather than the rows.
+   *
+   * `recorded / expected`, where `expected` counts active enrolments and
+   * `recorded` counts the rows written for the day. A register that has not
+   * been taken has no rows at all, so a ratio computed from rows alone would
+   * read 0/0 — "nothing to do" — on precisely the morning somebody needs to be
+   * reminded. The roster is what makes an untaken register visible.
+   *
+   * ★★ `PRESENT` and `HALF_DAY` both count as attending.
+   *
+   * A half day is a child who came. Collapsing it into "absent" would report a
+   * kindergarten as emptier than it was, and the funding module cares about the
+   * distinction separately — this figure is the head count, not a claim.
+   */
+  async attendanceToday(kindergartenIds: string[], date: Date) {
+    if (kindergartenIds.length === 0) {
+      return { expected: 0, recorded: 0, present: 0 };
+    }
+
+    const [expected, byStatus] = await Promise.all([
+      this.prisma.enrollment.count({
+        where: {
+          status: "ACTIVE",
+          deletedAt: null,
+          group: { kindergartenId: { in: kindergartenIds }, deletedAt: null, status: "ACTIVE" },
+        },
+      }),
+      this.prisma.attendance.groupBy({
+        by: ["status"],
+        where: {
+          date,
+          deletedAt: null,
+          enrollment: {
+            status: "ACTIVE",
+            deletedAt: null,
+            group: { kindergartenId: { in: kindergartenIds }, deletedAt: null, status: "ACTIVE" },
+          },
+        },
+        _count: { _all: true },
+      }),
+    ]);
+
+    let recorded = 0;
+    let present = 0;
+    for (const row of byStatus) {
+      recorded += row._count._all;
+      if (row.status === "PRESENT" || row.status === "HALF_DAY") present += row._count._all;
+    }
+
+    return { expected, recorded, present };
+  }
+
+  /**
+   * Attendance per group over a date range — the sketch's "Ирцийн нэгтгэл".
+   *
+   * ★ Every live status, never a single percentage.
+   *
+   * `AttendanceStatus` has six members and they are not interchangeable:
+   * `SICK` and `EXCUSED` are accounted for, `ABSENT` is not, and the funding
+   * rules treat them differently again. Returning one "attendance rate" would
+   * bake a policy decision — which statuses count — into a dashboard query,
+   * where nobody would find it. The caller decides what to draw.
+   *
+   * ★★ Bounded at 20 groups, like `assessmentCoverage` beside it. A dashboard
+   * is the first screen of a session; an unbounded query here is felt on every
+   * login (§3.4).
+   */
+  async attendanceByGroup(kindergartenIds: string[], from: Date, to: Date) {
+    if (kindergartenIds.length === 0) return [];
+
+    const groups = await this.prisma.group.findMany({
+      where: { kindergartenId: { in: kindergartenIds }, deletedAt: null, status: "ACTIVE" },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+      take: 20,
+    });
+    if (groups.length === 0) return [];
+
+    const groupIds = groups.map((g) => g.id);
+
+    /*
+     * One grouped query for every group and status, rather than one per group.
+     * `enrollmentId` is carried so the rows can be attributed back — Prisma's
+     * `groupBy` cannot group by a relation's column, so the mapping is done in
+     * memory over a set bounded by the same 20 groups.
+     */
+    const rows = await this.prisma.attendance.groupBy({
+      by: ["enrollmentId", "status"],
+      where: {
+        deletedAt: null,
+        date: { gte: from, lte: to },
+        enrollment: { groupId: { in: groupIds }, deletedAt: null },
+      },
+      _count: { _all: true },
+    });
+
+    const enrollments = await this.prisma.enrollment.findMany({
+      where: { id: { in: [...new Set(rows.map((r) => r.enrollmentId))] } },
+      select: { id: true, groupId: true },
+    });
+    const groupOf = new Map(enrollments.map((e) => [e.id, e.groupId]));
+
+    const perGroup = new Map<string, Record<string, number>>();
+    for (const row of rows) {
+      const groupId = groupOf.get(row.enrollmentId);
+      if (!groupId) continue;
+      const acc = perGroup.get(groupId) ?? {};
+      acc[row.status] = (acc[row.status] ?? 0) + row._count._all;
+      perGroup.set(groupId, acc);
+    }
+
+    return groups.map((g) => ({
+      groupId: g.id,
+      name: g.name,
+      counts: perGroup.get(g.id) ?? {},
+    }));
+  }
+
+  /**
+   * Every group's mean level per development domain, for the term — the
+   * sketch's "Бүлгүүдийн явцын үнэлгээ" radar.
+   *
+   * ★ The same computation `AssessmentService.groupAverages` already performs
+   * for one group, done once for all of them.
+   *
+   * That method exists and is correct; calling it in a loop would be one query
+   * per group on the first screen of every administrator's session, which is
+   * the N+1 §3.4 forbids. The arithmetic is deliberately identical — mean of
+   * `AssessmentLevel.value`, rounded to one decimal, because "the underlying
+   * scale is 1–4 with four steps and a mean printed to three places claims a
+   * precision the instrument does not have".
+   *
+   * ★★ A domain nobody assessed is absent from the map rather than zero. Zero
+   * is a real score on a 1–4 scale's floor; "not assessed" is not a score.
+   */
+  async domainAveragesByGroup(kindergartenIds: string[], termId: string) {
+    if (kindergartenIds.length === 0) return [];
+
+    const groups = await this.prisma.group.findMany({
+      where: { kindergartenId: { in: kindergartenIds }, deletedAt: null, status: "ACTIVE" },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+      take: 20,
+    });
+    if (groups.length === 0) return [];
+
+    const rows = await this.prisma.assessment.findMany({
+      where: {
+        termId,
+        deletedAt: null,
+        enrollment: {
+          groupId: { in: groups.map((g) => g.id) },
+          status: "ACTIVE",
+          deletedAt: null,
+        },
+      },
+      select: {
+        domainId: true,
+        enrollment: { select: { groupId: true } },
+        level: { select: { value: true } },
+      },
+    });
+
+    const totals = new Map<string, { sum: number; n: number }>();
+    for (const row of rows) {
+      const value = row.level?.value;
+      if (value === undefined || value === null) continue;
+      const key = `${row.enrollment.groupId}:${row.domainId}`;
+      const acc = totals.get(key) ?? { sum: 0, n: 0 };
+      acc.sum += value;
+      acc.n += 1;
+      totals.set(key, acc);
+    }
+
+    return groups.map((g) => {
+      const averageByDomain: Record<string, number> = {};
+      let sampleSize = 0;
+      for (const [key, { sum, n }] of totals) {
+        const [groupId, domainId] = key.split(":");
+        if (groupId !== g.id) continue;
+        averageByDomain[domainId!] = Math.round((sum / n) * 10) / 10;
+        sampleSize += n;
+      }
+      return { groupId: g.id, name: g.name, sampleSize, averageByDomain };
+    });
+  }
+
   // ── Audit ─────────────────────────────────────────────────────────────────
 
   async listAudit(
@@ -552,6 +780,9 @@ export class DashboardRepository {
         orderBy: { createdAt: "desc" },
         skip: page.skip,
         take: page.take,
+        // Resolves "who did this" in the same round trip — see `audit-actor.ts`
+        // for why the name is read from the relation rather than stored.
+        include: { actor: AUDIT_ACTOR_SELECT },
       }),
       this.prisma.auditLog.count({ where }),
     ]);

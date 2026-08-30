@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
+import { Art } from "@/components/ui/art";
 import { ArrowRight, Eye, Megaphone } from "lucide-react";
 import { notificationSchema, type TeacherDashboard } from "@kinder/contracts";
 import { useQuery } from "@tanstack/react-query";
@@ -190,7 +190,7 @@ export function ClassBoardNotice({ notice }: { notice: TeacherDashboard["boardNo
               aria-hidden="true"
               className="grid aspect-[16/9] w-full place-items-center rounded-card bg-primary-soft lg:aspect-auto lg:w-[200px] lg:shrink-0 lg:p-6"
             >
-              <Image src="/icons/icon-notice.png" alt="" width={88} height={88} />
+              <Art name="notice" size={88} />
             </div>
           )}
         </Link>

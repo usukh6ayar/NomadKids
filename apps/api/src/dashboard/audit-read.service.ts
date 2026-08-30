@@ -4,6 +4,7 @@ import { TenantAccessService } from "../authz/tenant-access.service";
 import type { Actor } from "../authz/actor";
 import { paginate, toSkipTake, type PageParams } from "../common/pagination";
 import { DashboardRepository } from "./dashboard.repository";
+import { withActorLabel } from "./audit-actor";
 import type { AuditAction } from "../domain/enums";
 
 /**
@@ -57,6 +58,8 @@ export class AuditReadService {
       toSkipTake(page),
     );
 
-    return paginate(items, total, page);
+    // `withActorLabel` resolves the name and drops the joined relation — see
+    // `audit-actor.ts` for why the label is read rather than stored.
+    return paginate(items.map(withActorLabel), total, page);
   }
 }

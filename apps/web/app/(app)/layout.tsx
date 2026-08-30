@@ -310,76 +310,132 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
    */
   const entry = (label: string, href: string) => ({ label, href, icon: routeIcon(href) });
 
+  /*
+   * ★ A teacher with one group skips the picker; everybody else gets it.
+   *
+   * `/attendance`, `/assessment` and `/meals` are group-scoped features, so
+   * each has a landing page that asks which group (`GroupPicker`). For a
+   * teacher who has exactly one, that page has exactly one row — a click that
+   * only ever has one answer, on the screen they open every morning. So their
+   * sidebar links straight past it, and an administrator, who has no single
+   * group to link to, lands on the picker.
+   *
+   * The destination differs; the label does not. One feature has one name
+   * wherever it is reached from.
+   */
+  const scoped = (feature: string) => (groupId ? `/groups/${groupId}/${feature}` : `/${feature}`);
+
   return [
+    /*
+     * ★ Three sections, named after the client's own 2026-08-29 drawing.
+     *
+     * It groups the product as Суралцагч / Санхүү / Систем, which is a
+     * different cut from the "Хүүхдийн хөгжил ба үнэлгээ · Харилцаа холбоо ·
+     * Багш ба байгууллага" this sidebar used — and a better one for the
+     * audience, because it separates *what you do with a child* from *what you
+     * run the kindergarten with*.
+     *
+     * ★★ The drawing's names are kept; its exact contents are not.
+     *
+     * It files "Мэдээ / Ангийн самбар" and "Чат" under Санхүү, which they are
+     * not — the reference system's own heading for that group was "Үйл
+     * ажиллагаа ба санхүү", operations *and* finance, and the shortened label
+     * lost the half that made it true. This uses the longer name.
+     *
+     * Санхүү itself has no entry: `apps/api/src/funding` exists, but
+     * `docs/reference/FINANCE_SCOPE.md` records the tariffs and the definition
+     * of a funding day as still outstanding from the client (D3, D4), so the
+     * engine "will correctly calculate nothing" until they arrive. A menu row
+     * that opens an empty screen is what this sidebar's own rule forbids.
+     */
+    /*
+     * ★ Four sections, and the cut is by *what the work is*, not by subject.
+     *
+     * The client's 2026-08-29 drawing groups the product as Суралцагч /
+     * Санхүү / Систем, and the first pass here took those three names
+     * literally. That produced a "Үйл ажиллагаа" holding the meal register, the
+     * class board, surveys and the staff PDF library — four rows doing three
+     * unrelated jobs, which is what a section becomes when it is really the
+     * leftovers.
+     *
+     * The structural fact that settles it: Ирц, Хоол ба цэс and Үнэлгээ are
+     * the same screen three times. All three are recorded against a group, all
+     * three land on `GroupPicker`, all three link straight past it for a
+     * teacher with one group. Splitting them across two sections — two under
+     * the child, one under operations — was arbitrary, and it is the reason
+     * nothing else fell into place.
+     *
+     * So the registers sit together and each remaining name becomes exactly
+     * true: a child's file, the group's registers, what goes out to a family,
+     * and what you set up or look up. Two to three rows each.
+     *
+     * ★★ Where Санхүү goes when it arrives.
+     *
+     * Not here. `docs/reference/FINANCE_SCOPE.md` records the tariffs and the
+     * definition of a funding day as still outstanding from the client (D3,
+     * D4) — the engine "will correctly calculate nothing" until they arrive —
+     * and it is nine reports and an invoicing flow, not a menu row. It earns
+     * its own section on the day it can answer a question.
+     */
     {
-      title: "Хүүхдийн хөгжил ба үнэлгээ",
+      title: "Суралцагч",
       entries: [
         entry("Хүүхдүүд", "/children"),
         entry("Ажиглалт хянах", "/observations/review"),
         entry("Чөлөөний хүсэлт хянах", "/attendance-requests/review"),
       ],
     },
-    /*
-     * ★ The group's own registers, added 2026-08-28 — and this section exists
-     * because three shipped routes were about to become unreachable.
-     *
-     * `/groups/:id/attendance`, `/groups/:id/meals` and
-     * `/groups/:id/assessment` have never had a top-level menu entry,
-     * deliberately: none of them can start without a group, so an unscoped item
-     * would open a screen whose first act is "which group?". They were reached
-     * from the teacher dashboard instead — `AttendanceToday`'s footer link,
-     * `QuickLinks`, `GroupsSection` and `TeacherHero` — and the client's
-     * 2026-08-28 redesign removed all four from that screen.
-     * `group-meals.test.tsx` warns about exactly this ("Someone tidying that
-     * card must fail a test, not ship a feature nobody can open") but renders
-     * `GroupsSection` in isolation, so it would have stayed green while the
-     * routes went dark.
-     *
-     * The group is resolved once by `useMyGroup()` in `AppLayout` — the same
-     * key the dashboard's cards read, so this costs no extra request — and the
-     * section is omitted when there is no single group to scope it to. That is
-     * `WhoAmI`'s rule: an admin sees every group, so naming one would be a lie.
-     * They reach the same three screens from `/admin/groups`, whose rows carry
-     * a link each.
-     *
-     * ★★ The icons are passed explicitly. `routeIcon()` is keyed by literal
-     * href and these are interpolated, so it would return `undefined` for all
-     * three and leave one section in the sidebar as bare text rows — the exact
-     * gap `sidebar.test.tsx` exists to catch.
-     */
-    ...(groupId
-      ? [
-          {
-            title: "Бүлгийн бүртгэл",
-            entries: [
-              {
-                label: "Ирц",
-                href: `/groups/${groupId}/attendance`,
-                icon: <CalendarCheck {...sectionIconProps} />,
-              },
-              {
-                label: "Хоол ба цэс",
-                href: `/groups/${groupId}/meals`,
-                icon: <UtensilsCrossed {...sectionIconProps} />,
-              },
-              {
-                label: "Явцын үнэлгээ",
-                href: `/groups/${groupId}/assessment`,
-                icon: <ClipboardCheck {...sectionIconProps} />,
-              },
-            ],
-          },
-        ]
-      : []),
     {
-      title: "Харилцаа холбоо",
-      entries: [entry("Ангийн самбар / Мэдээ", "/notifications"), entry("Судалгаа", "/surveys")],
+      /*
+       * ★ The name this section had before the redesign, restored.
+       *
+       * It was "Бүлгийн бүртгэл" and it was right — these three are the
+       * kindergarten's registers, kept per group. The redesign scattered them
+       * and the section's own docblock had already argued they belong together.
+       *
+       * The icons are passed explicitly rather than resolved by `routeIcon()`:
+       * for a teacher these hrefs are interpolated with a group id, so a
+       * literal-keyed lookup returns `undefined` and the rows render as bare
+       * text — the exact gap `sidebar.test.tsx` exists to catch.
+       */
+      title: "Бүлгийн бүртгэл",
+      entries: [
+        { label: "Ирц", href: scoped("attendance"), icon: <CalendarCheck {...sectionIconProps} /> },
+        {
+          label: "Хоол ба цэс",
+          href: scoped("meals"),
+          icon: <UtensilsCrossed {...sectionIconProps} />,
+        },
+        {
+          label: "Үнэлгээ",
+          href: scoped("assessment"),
+          icon: <ClipboardCheck {...sectionIconProps} />,
+        },
+      ],
     },
     {
-      title: "Багш ба байгууллага",
+      /*
+       * ★ Outward only — both of these leave the building.
+       *
+       * A notice goes on the class board a family reads at home; a survey asks
+       * them a question. Neither is something a teacher does *to* a record,
+       * which is what separates them from the section above.
+       */
+      title: "Харилцаа холбоо",
+      entries: [entry("Мэдээ", "/notifications"), entry("Судалгаа", "/surveys")],
+    },
+    {
+      title: "Систем",
       entries: [
-        // RFP §9 — "Багшид зориулсан PDF баримт бичгийн сан". Staff only, so it
-        // lives here and never in `parentSections`.
+        /*
+         * RFP §9 — "Багшид зориулсан PDF баримт бичгийн сан": хөтөлбөр, арга
+         * зүй, дотоод журам. Staff only, so it never appears in
+         * `parentSections`.
+         *
+         * ★ It sat under "Үйл ажиллагаа" and does not belong there: a shelf you
+         * read from is not an activity. It is reference material, which is what
+         * this section is for.
+         */
         entry("Баримт бичгийн сан", "/documents"),
         entry("Багшийн мэдээлэл", "/settings"),
         /*
@@ -537,14 +593,23 @@ function parentSections(myChildren: ChildSummary[] | undefined): NavSection[] {
       title: "Харилцаа холбоо",
       entries: [
         {
-          label: "Ангийн самбар / Мэдээ",
+          label: "Мэдээ",
           href: "/notifications",
           icon: routeIcon("/notifications"),
         },
-        // No `href`: chat is RFP Phase IV. It renders as a disabled row, the
-        // same treatment "Санхүү" below gets, so the menu describes the product
-        // the client was shown without offering a link into nothing.
-        { label: "Чат" },
+        /*
+         * ★ Chat is no longer a dead row — it is built, and it is reachable.
+         *
+         * This said "chat is RFP Phase IV" and rendered as inert text. Both
+         * halves stopped being true on 2026-08-29: CLAUDE.md §7 moved chat into
+         * scope at the client's explicit request, and `AppShell` now renders
+         * `ChatWidget` on every screen for every role — so a parent already has
+         * it, from anywhere, with an unread badge.
+         *
+         * A greyed-out row saying "удахгүй" beside a working floating button is
+         * worse than either alone: it tells a family the feature is missing
+         * while the feature waves at them from the corner of the same page.
+         */
       ],
     },
     {

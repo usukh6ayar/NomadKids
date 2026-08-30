@@ -70,6 +70,91 @@ beforeEach(() => {
   setSearchParams("");
 });
 
+/**
+ * ★ The list has always been paginated and the screen always rendered page one.
+ *
+ * `pageSize` was hardcoded to 50 and `total`/`totalPages` were both discarded,
+ * so a kindergarten with more accounts than that showed the first fifty and
+ * said nothing about the rest. The demo data has twelve, which is why nothing
+ * ever surfaced it.
+ */
+describe("хуудаслалт", () => {
+  /** A response that claims more pages than it returns rows for. */
+  function stubPaged(page: number, totalPages: number) {
+    return stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: "/users?",
+        body: { items: [user()], page, pageSize: 50, total: 120, totalPages },
+      },
+    ]);
+  }
+
+  it("reports how many accounts the filter matched", async () => {
+    stubPaged(1, 3);
+    renderWithProviders(<AdminUsersPage />);
+
+    expect(await screen.findByText("Нийт 120 хэрэглэгч")).toBeInTheDocument();
+  });
+
+  it("offers paging when there is more than one page", async () => {
+    stubPaged(1, 3);
+    renderWithProviders(<AdminUsersPage />);
+
+    expect(await screen.findByRole("navigation", { name: "Хуудаслалт" })).toBeInTheDocument();
+    expect(screen.getByText("1 / 3")).toBeInTheDocument();
+    // Nothing to go back to from the first page.
+    expect(screen.getByRole("button", { name: "Өмнөх" })).toBeDisabled();
+  });
+
+  it("asks the API for the next page", async () => {
+    const { calls } = stubPaged(1, 3);
+    const u = userEvent.setup();
+    renderWithProviders(<AdminUsersPage />);
+
+    await u.click(await screen.findByRole("button", { name: "Дараах" }));
+
+    await waitFor(() => expect(calls.some((c) => c.url.includes("page=2"))).toBe(true));
+  });
+
+  it("renders no paging controls for a single page", async () => {
+    stubUsers();
+    renderWithProviders(<AdminUsersPage />);
+
+    await screen.findByText(/Дорж/);
+    expect(screen.queryByRole("navigation", { name: "Хуудаслалт" })).toBeNull();
+  });
+
+  /**
+   * ★★ A new filter starts at page one.
+   *
+   * Filtering from page four returns an empty result that reads as "no such
+   * users" rather than "none on this page" — the same trap `/admin/audit`
+   * documents, and the reason both screens route their filter changes through
+   * a reset.
+   */
+  it("returns to the first page when the filter changes", async () => {
+    const { calls } = stubPaged(2, 3);
+    const u = userEvent.setup();
+    renderWithProviders(<AdminUsersPage />);
+
+    await u.click(await screen.findByRole("button", { name: "Дараах" }));
+    await waitFor(() => expect(calls.some((c) => c.url.includes("page=3"))).toBe(true));
+
+    calls.length = 0;
+    // The search field rather than the role filter: both route through
+    // `narrow()`, and this one is a real `<input>` — the role filter is a Radix
+    // combobox rendered as a button, which `selectOptions` cannot drive.
+    await u.type(screen.getByRole("searchbox", { name: "Нэрээр хайх" }), "Д");
+
+    await waitFor(() => {
+      const listed = calls.filter((c) => c.url.includes("/users?"));
+      expect(listed.length).toBeGreaterThan(0);
+      expect(listed.every((c) => c.url.includes("page=1"))).toBe(true);
+    });
+  });
+});
+
 describe("хэрэглэгч засах", () => {
   it("offers an edit action on the row", async () => {
     stubUsers();

@@ -15,6 +15,7 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
+import { ChildAvatar } from "@/components/media/media-image";
 import { SingleImageUpload } from "@/components/media/single-image-upload";
 
 const profileSchema = userProfileSchema.extend({
@@ -34,22 +35,41 @@ const MIN_PASSWORD_LENGTH = 8;
 export default function SettingsPage() {
   return (
     /*
-      ★ A capped column, like the feed — 2026-08-29.
+      ★ Capped, then split — one column becomes two where there is room.
 
-      These are three forms, and a form at 1336px is a label on the far left
-      with its field running to the far right: the eye has to travel the whole
-      width to connect the two. `/notifications` was capped at 640px in the same
-      pass and for the same reason; a settings page has even less excuse, since
-      none of its fields is longer than a phone number.
+      A form at 1336px is a label on the far left with its field running to the
+      far right, and the eye has to travel the whole width to connect them. So
+      the forms are capped, and were capped at a flat 760px until 2026-08-29.
 
-      760px rather than 640: the profile's name and email sit two-across from
-      `sm`, and 640 squeezed that pair to about 300px each.
+      That fixed the field width and created a different fault: on a 1440px
+      screen the content column is about 1140px, so a 760px page left 380px of
+      nothing down its right-hand side. The report was that it does not fill the
+      screen — and it does not, because a cap is a limit on a *line*, not a
+      layout for a page.
+
+      These are two independent forms plus a sign-out row, and nothing about
+      changing a password depends on the profile above it. From `xl` they sit
+      side by side: each column keeps a form-shaped width, and the page uses the
+      space instead of leaving a margin the width of the sidebar.
+
+      Below `xl` they stack and the cap comes back — at 1024px two columns would
+      put the profile's name-and-email pair at about 250px each, which is the
+      squeeze the 760px cap was chosen to avoid in the first place.
     */
-    <div className="flex w-full max-w-[760px] flex-col gap-6 lg:gap-8">
+    <div className="flex w-full flex-col gap-6 lg:gap-8">
       <PageHeader title="Профайл" lede="Хувийн мэдээлэл, нэвтрэх нууц үг." />
-      <ProfileForm />
-      <PasswordForm />
-      <SignOutCard />
+
+      <div className="grid w-full max-w-[760px] items-start gap-6 lg:gap-8 xl:max-w-none xl:grid-cols-2">
+        <ProfileForm />
+
+        {/* The password form and the sign-out row are one column: both are
+            about the session rather than about the person, and neither is tall
+            enough to hold a column of its own. */}
+        <div className="flex flex-col gap-6 lg:gap-8">
+          <PasswordForm />
+          <SignOutCard />
+        </div>
+      </div>
     </div>
   );
 }
@@ -154,44 +174,114 @@ function ProfileForm() {
         }
       />
 
-      {/*
-        RFP §3.3 — профайл зураг. Outside the form and above it: the upload
-        saves on selection, so putting it inside a form with its own Save button
-        would leave somebody choosing a picture and then wondering why the
-        button stayed greyed out.
-
-        Only ever the signed-in user's own — the API refuses any other id, and
-        this component has no way to name one.
-      */}
-      <Card pad="roomy" className="mb-4">
-        <SingleImageUpload
-          endpoint={`/users/${data?.id}/photo`}
-          currentMediaId={data?.photoMediaFileId}
-          label="Зураг нэмэх"
-          alt="Таны профайл зураг"
-          shape="round"
-          invalidateKeys={[qk.profile(), qk.session()]}
-        />
-      </Card>
-
       {!editing ? (
         /*
           The read view. A definition list rather than disabled inputs: a greyed
           field still looks like something you failed to type into, where a
           label over a value looks like a record — and an empty one says "—"
           instead of showing a blank box.
+
+          ★ One card, with the picture in its header — it was two.
+
+          The upload sat in a `Card` of its own above this one: a dashed circle,
+          a full-width "Зураг нэмэх" button and a line of hint text, which is
+          most of a card's height to say one thing. Under it a second card held
+          the four fields. A profile is one record, and splitting it put a rule
+          and 16px of gap through the middle of it.
+
+          Now the picture leads the card and the person's name sits beside it,
+          which is the shape every profile converges on for the same reason: the
+          two identify the same person and belong on the same line.
         */
-        <Card pad="roomy">
-          <dl className="grid gap-4 sm:grid-cols-2">
-            <ReadField label="Овог" value={data?.lastName} />
-            <ReadField label="Нэр" value={data?.firstName} />
-            <ReadField label="И-мэйл" value={data?.email} />
-            <ReadField label="Утас" value={data?.phone} />
-            <ReadField label="Танилцуулга" value={data?.bio} className="sm:col-span-2" />
-          </dl>
+        <Card pad="roomy" className="flex flex-col gap-5">
+          {/*
+            ★ The avatar the rest of the product draws, not the uploader's
+            dashed placeholder.
+
+            `SingleImageUpload` renders an 80px dashed ring when there is no
+            picture — correct on a form, where it is the drop target and the
+            dashes say "put something here". At the top of a profile it reads as
+            a broken image: a grey outline where a face should be.
+
+            `ChildAvatar` is what every other surface in this product uses for a
+            person, and it draws their initials on a tinted circle when there is
+            no photograph — a name is a real answer where a dashed outline is an
+            absence.
+
+            RFP §3.3 — профайл зураг. The uploader keeps its job and loses its
+            preview: it sits under the name as a plain control, which is where a
+            profile header puts it. It stays outside the form because it saves on
+            selection, and a picture chosen inside a form with a Save button reads
+            as unsaved until one is pressed. Only ever the signed-in user's own —
+            the API refuses any other id.
+          */}
+          <div className="flex flex-wrap items-center gap-4 border-b border-border-soft pb-5">
+            <ChildAvatar child={data ?? {}} size={72} />
+
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-title font-semibold text-ink">
+                {[data?.lastName, data?.firstName].filter(Boolean).join(" ") || "—"}
+              </p>
+              <p className="truncate text-body text-muted">{data?.email || "И-мэйл оруулаагүй"}</p>
+
+              <div className="mt-2">
+                <SingleImageUpload
+                  endpoint={`/users/${data?.id}/photo`}
+                  currentMediaId={data?.photoMediaFileId}
+                  label="Зураг нэмэх"
+                  alt="Таны профайл зураг"
+                  shape="round"
+                  hidePreview
+                  invalidateKeys={[qk.profile(), qk.session()]}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/*
+            ★ One sentence when every optional field is empty, not four dashes.
+
+            The header already states the name and the email, so what is left
+            here is only what it does not say — and on a fresh account that is
+            Утас, Мэргэжил, Боловсрол and Танилцуулга, all blank. Four labels
+            over four em dashes reads as a form that failed to load, and it is
+            the first thing a new teacher sees on their own profile.
+
+            The dash is still right for *one* missing value among several: it
+            says "we asked and there is no answer". A whole card of them says
+            something else, so the empty case gets a sentence and the Засах
+            button in the header above is the next step.
+          */}
+          {!data?.phone && !data?.specialization && !data?.education && !data?.bio ? (
+            <p className="text-body text-muted">
+              Утас, мэргэжил, боловсролоо нэмбэл багш нарын жагсаалтад бүрэн харагдана.
+            </p>
+          ) : (
+            <dl className="grid gap-4 sm:grid-cols-2">
+              <ReadField label="Утас" value={data?.phone} />
+              <ReadField label="Мэргэжил" value={data?.specialization} />
+              <ReadField label="Боловсрол" value={data?.education} />
+              <ReadField label="Танилцуулга" value={data?.bio} className="sm:col-span-2" />
+            </dl>
+          )}
         </Card>
       ) : (
-        <Card pad="roomy">
+        <Card pad="roomy" className="flex flex-col gap-5">
+          {/* The uploader stays outside the form and above it, for the reason
+              its own note gives: it saves on selection, and a picture chosen
+              inside a form with a Save button reads as unsaved until you press
+              one. */}
+          <div className="border-b border-border-soft pb-5">
+            <SingleImageUpload
+              endpoint={`/users/${data?.id}/photo`}
+              currentMediaId={data?.photoMediaFileId}
+              label="Зураг"
+              alt="Таны профайл зураг"
+              shape="round"
+              invalidateKeys={[qk.profile(), qk.session()]}
+            />
+          </div>
+
           <form
             onSubmit={(e) => {
               e.preventDefault();

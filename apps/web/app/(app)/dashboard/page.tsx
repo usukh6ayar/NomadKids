@@ -18,6 +18,8 @@ import { GenderRatio } from "@/components/dashboard/gender-ratio";
 import { MonthBirthdays } from "@/components/dashboard/month-birthdays";
 import { WeeklyAttendance } from "@/components/dashboard/weekly-attendance";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
+import { AdminOverview } from "@/components/dashboard/admin-overview";
+import { useSession } from "@/lib/auth/session";
 
 /**
  * "What needs my attention today."
@@ -101,9 +103,53 @@ import { useMyGroup } from "@/components/dashboard/use-my-group";
 export default function DashboardPage() {
   return (
     <RequireRole roles={["TEACHER", "ADMIN"]}>
-      <TeacherDashboard />
+      <Home />
     </RequireRole>
   );
+}
+
+/**
+ * The staff landing screen, which is two screens.
+ *
+ * ★ Same URL, different content, because "home" means different things.
+ *
+ * Everything below this line is the teacher's class board — the client's own
+ * name for it since 2026-08-28 — and every figure on it is scoped by
+ * `loadActiveTeachingGroupIds`, which reads TEACHER memberships. An
+ * administrator holds none, so they were shown a class board reporting "Хүүхэд
+ * 0 · Бүлэг 0" beside a gender ring that had correctly counted ten children.
+ * Half the widgets are group-scoped and half are kindergarten-scoped; the
+ * screen was contradicting itself because it was being shown to the wrong
+ * person, not because either half was wrong.
+ *
+ * ★★ Branching here rather than at the route.
+ *
+ * A separate `/admin/overview` would give an administrator two landing pages
+ * and make "Нүүр" ambiguous in the sidebar. The reference system reached the
+ * same arrangement from the other direction: its `/hyanalt/` is one URL that
+ * renders "Удирдлагын самбар" for an admin.
+ *
+ * ★★★ An admin who also teaches gets the class board.
+ *
+ * `hasRole("TEACHER")` wins, and the order matters: a director who has taken a
+ * group is a teacher for the purposes of this screen — they have children to
+ * register this morning — and the kindergarten-wide figures are one click away
+ * under Удирдлага. The reverse default would hide the register from the person
+ * who has to take it.
+ */
+function Home() {
+  const { hasRole } = useSession();
+
+  if (hasRole("ADMIN") && !hasRole("TEACHER")) {
+    return (
+      <div className="flex flex-col gap-5 py-2">
+        <PageHeader title="Удирдлагын самбар" lede="Цэцэрлэгийн өнөөдрийн байдал." />
+        <AdminOverview />
+      </div>
+    );
+  }
+
+  return <TeacherDashboard />;
 }
 
 function TeacherDashboard() {
