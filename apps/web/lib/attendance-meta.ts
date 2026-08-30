@@ -1,4 +1,5 @@
 import { User, UserRound, Users } from "lucide-react";
+import type { Tone } from "@/components/ui/tone";
 
 /**
  * The five `AttendanceStatus` values, in one place.
@@ -28,6 +29,25 @@ export const ATTENDANCE_STATUS_TONE: Record<string, "mint" | "sky" | "peach" | "
   EXCUSED: "sky",
   SICK: "peach",
   ABSENT: "danger",
+};
+
+/**
+ * The same five statuses as a chart `Tone`.
+ *
+ * ★ It differs from `ATTENDANCE_STATUS_TONE` in exactly one entry, and that
+ * difference is a type boundary rather than a second design decision: `Badge`
+ * has a `danger` variant and the chart palette (`ui/tone.ts`) does not — its
+ * six tones are accent washes, and `--color-danger` is deliberately outside
+ * them. `ABSENT` becomes `peach`, the attention tone, which is the nearest the
+ * chart palette has and the one the funding register's own alert already uses
+ * for the same meaning.
+ */
+export const ATTENDANCE_STATUS_CHART_TONE: Record<string, Tone> = {
+  PRESENT: "mint",
+  HALF_DAY: "sky",
+  EXCUSED: "sky",
+  SICK: "sun",
+  ABSENT: "peach",
 };
 
 /** Same tones, as a solid background fill for a calendar day cell or a chart segment. */

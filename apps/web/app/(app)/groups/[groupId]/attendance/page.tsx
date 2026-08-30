@@ -15,18 +15,27 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
+import { RegisterProgress } from "@/components/register/register-progress";
+import {
+  ATTENDANCE_STATUS_CHART_TONE,
+  ATTENDANCE_STATUS_LABEL,
+  ATTENDANCE_STATUS_ORDER,
+} from "@/lib/attendance-meta";
 import { fullName } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const daySheetSchema = z.array(groupAttendanceRowSchema);
 
-const STATUS_LABEL: Record<string, string> = {
-  PRESENT: "Ирсэн",
-  HALF_DAY: "Хагас өдөр",
-  EXCUSED: "Чөлөөтэй",
-  SICK: "Өвчтэй",
-  ABSENT: "Тасалсан",
-};
+/*
+ * ★ The five statuses come from `lib/attendance-meta.ts`, not from a copy here.
+ *
+ * This file kept its own map, which is how the day sheet came to be the one
+ * screen where the summary strip above the list could disagree with the buttons
+ * inside it. The order is fixed there too — best to worst, never sorted by
+ * count — and the tones are the product's own status palette, so a red count in
+ * this strip is the same red as the calendar on the child's page.
+ */
+const STATUS_LABEL = ATTENDANCE_STATUS_LABEL;
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -91,6 +100,23 @@ function GroupAttendance() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  /*
+   * ★ Counted from the sheet on screen, not fetched.
+   *
+   * The rows are already here and every tap rewrites one of them, so a second
+   * request for the same month's totals would be a number that lags the buttons
+   * it sits above — a teacher marking a child present and watching the count
+   * not move learns to distrust both.
+   */
+  const rows = sheet.data ?? [];
+  const recorded = rows.filter((row) => row.record).length;
+  const breakdown = ATTENDANCE_STATUS_ORDER.map((status) => ({
+    key: status,
+    label: ATTENDANCE_STATUS_LABEL[status] ?? status,
+    count: rows.filter((row) => row.record?.status === status).length,
+    tone: ATTENDANCE_STATUS_CHART_TONE[status] ?? "sky",
+  }));
+
   return (
     <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader title="Ирц" lede={group.data?.name} />
@@ -114,6 +140,10 @@ function GroupAttendance() {
       {sheet.isLoading ? <LoadingState rows={5} /> : null}
 
       {sheet.isError ? <ErrorState description={errorMessage(sheet.error)} /> : null}
+
+      {sheet.data && sheet.data.length > 0 ? (
+        <RegisterProgress recorded={recorded} total={rows.length} breakdown={breakdown} />
+      ) : null}
 
       {sheet.data ? (
         <>

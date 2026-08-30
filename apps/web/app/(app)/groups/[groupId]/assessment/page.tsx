@@ -19,6 +19,8 @@ import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { Card, SectionHeader } from "@/components/ui/card";
+import { RegisterProgress } from "@/components/register/register-progress";
+import type { Tone } from "@/components/ui/tone";
 import { Field, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
@@ -186,6 +188,33 @@ function GroupAssessment() {
 
   const pendingCount = Object.keys(draft).length;
 
+  /*
+   * ★ How far through the column, and what the group's spread looks like.
+   *
+   * The strip counts through the draft the same way the meal register does —
+   * this screen batches behind a sticky save bar, so a summary reading only
+   * saved rows would sit still while a teacher taps down the list and jump at
+   * the moment they save, which is the one moment it tells them nothing new.
+   *
+   * ★★ The levels are configuration (`AssessmentLevel` is a table, CLAUDE.md
+   * §2.3), so their colours cannot be hard-coded per name. What *is* fixed is
+   * that they are ordered, worst to best — so the tone is taken from the level's
+   * position in that order along a fixed ramp. Three levels or six, the lowest
+   * is the attention tone and the highest is the complete one.
+   */
+  const children = column.data?.children ?? [];
+  const levels = column.data?.levels ?? [];
+  const levelFor = (child: (typeof children)[number]) =>
+    draft[child.childId] ?? child.assessment?.levelId ?? null;
+
+  const assessed = children.filter((child) => levelFor(child) !== null).length;
+  const breakdown = levels.map((level, index) => ({
+    key: level.id,
+    label: level.label,
+    count: children.filter((child) => levelFor(child) === level.id).length,
+    tone: levelTone(index, levels.length),
+  }));
+
   return (
     <div className="flex flex-col gap-5 lg:gap-6">
       {/*
@@ -261,14 +290,20 @@ function GroupAssessment() {
         />
       ) : null}
 
+      {column.data && children.length > 0 ? (
+        <RegisterProgress
+          recorded={assessed}
+          total={children.length}
+          verb="үнэлсэн"
+          breakdown={breakdown}
+        />
+      ) : null}
+
       {column.data ? (
         <>
-          <SectionHeader
-            title={column.data.domain.name}
-            action={
-              <span className="text-body text-muted">{column.data.children.length} хүүхэд</span>
-            }
-          />
+          {/* The headcount moved into the strip above — see the meal
+              register's note on not printing one figure twice. */}
+          <SectionHeader title={column.data.domain.name} />
 
           {column.data.children.length === 0 ? (
             <EmptyState
@@ -394,4 +429,22 @@ function ChildRow({
       </div>
     </div>
   );
+}
+
+/**
+ * A level's tone, from its position in the ordered scale.
+ *
+ * ★ Position, not name. `AssessmentLevel` is a table an administrator edits
+ * (CLAUDE.md §2.3) — a kindergarten may call its levels "Эхлэн", "Хөгжиж буй",
+ * "Эзэмшсэн" or anything else, and may have three of them or six. What never
+ * changes is that they are ordered worst to best, so the ramp is walked in
+ * proportion: the lowest level always reads as attention and the highest always
+ * as complete, whatever they are called and however many there are.
+ */
+const LEVEL_RAMP: Tone[] = ["peach", "sun", "sky", "mint"];
+
+function levelTone(index: number, count: number): Tone {
+  if (count <= 1) return "mint";
+  const slot = Math.round((index / (count - 1)) * (LEVEL_RAMP.length - 1));
+  return LEVEL_RAMP[slot] ?? "sky";
 }

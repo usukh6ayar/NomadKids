@@ -3,8 +3,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { z } from "zod";
-import { Pencil, ShieldPlus, UserPlus, X } from "lucide-react";
+import { GraduationCap, Pencil, ShieldPlus, UserPlus, Users, UsersRound, X } from "lucide-react";
 import {
+  adminDashboardSchema,
   adminUserSchema,
   invitedUserSchema,
   kindergartenSchema,
@@ -20,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DataList, DataRow } from "@/components/ui/data-list";
+import { StatCard } from "@/components/ui/stat-card";
 import { Pagination, ResultCount } from "@/components/ui/pagination";
 import { Checkbox, Field, Input, Select } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
@@ -127,6 +129,22 @@ function AdminUsers() {
     placeholderData: (previous) => previous,
   });
 
+  /*
+   * ★ The headline counts come from `/dashboard/admin`, not from this page of
+   * fifty rows.
+   *
+   * "Хэдэн багштай вэ" is a fact about the kindergarten, and folding it out of
+   * whatever fifty accounts happened to load would answer it wrongly the moment
+   * there are fifty-one — a number that is right until it quietly is not. The
+   * dashboard endpoint counts server-side, and `/admin` has usually fetched it
+   * already, so on the way in from there this resolves from cache.
+   */
+  const overview = useQuery({
+    queryKey: qk.dashboard.admin(),
+    queryFn: () => get("/dashboard/admin", adminDashboardSchema),
+    staleTime: 60_000,
+  });
+
   const items = users.data?.items ?? [];
 
   return (
@@ -141,6 +159,44 @@ function AdminUsers() {
           </Button>
         }
       />
+
+      {/*
+        ★ Three tiles, and the third is the one this screen could not answer.
+
+        A director opening Хэрэглэгч ба эрх is usually asking one of two things:
+        how many staff accounts exist, and how many families are actually
+        connected. The list answered neither — it opened on page one of fifty
+        rows mixing all three roles, and the totals were in a different screen.
+
+        `Нийт` comes from the list's own `total` because that figure is exactly
+        what the filters above produce: with a role selected it narrows with
+        them, which is the honest reading of "нийт" on a filtered list. The
+        other two are kindergarten-wide and never narrow, so they are labelled
+        for what they are.
+      */}
+      <section aria-label="Товч мэдээлэл" className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+        <StatCard
+          label={role ? "Шүүлтэд тохирсон" : "Нийт бүртгэл"}
+          value={users.data?.total ?? "—"}
+          unit="хэрэглэгч"
+          tone="sky"
+          art={<UsersRound size={22} aria-hidden />}
+        />
+        <StatCard
+          label="Багш, ажилтан"
+          value={overview.data?.counts.staff ?? "—"}
+          unit="бүртгэл"
+          tone="cornflower"
+          art={<GraduationCap size={22} aria-hidden />}
+        />
+        <StatCard
+          label="Эцэг эх"
+          value={overview.data?.counts.guardians ?? "—"}
+          unit="бүртгэл"
+          tone="mint"
+          art={<Users size={22} aria-hidden />}
+        />
+      </section>
 
       <div className="flex flex-wrap gap-2">
         <Input

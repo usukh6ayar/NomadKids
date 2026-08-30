@@ -435,8 +435,20 @@ export async function seedDemoKindergarten(
 
   const groups = await Promise.all(
     [
-      { name: "Дунд бүлэг", ageBand: "JUNIOR" as const },
-      { name: "Ахлах бүлэг", ageBand: "MIDDLE" as const },
+      /*
+       * ★ Named the way a kindergarten names a group, not after its age band.
+       *
+       * These were "Дунд бүлэг" (JUNIOR) and "Ахлах бүлэг" (MIDDLE) — each
+       * group's name was character-for-character the label of its own band, so
+       * every screen that shows both showed the same two words twice: the
+       * admin list printed them one column apart and it read as a bug.
+       *
+       * Real kindergartens name groups after flowers, animals or the sun; the
+       * band is a separate fact about the same group, which is the distinction
+       * a demo has to show for the two fields to look like two fields.
+       */
+      { name: "Дэлбээ бүлэг", ageBand: "JUNIOR" as const },
+      { name: "Наран бүлэг", ageBand: "MIDDLE" as const },
     ].map((g) =>
       prisma.group.create({
         data: { kindergartenId: kg.id, schoolYearId: year.id, name: g.name, ageBand: g.ageBand },

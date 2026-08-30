@@ -214,6 +214,25 @@ export function DataRow({
             // Its own line on a phone, right-aligned so the controls sit under
             // the edge of the card rather than under the name.
             "flex basis-full items-center justify-end gap-1 md:basis-auto md:shrink-0",
+            /*
+              ★ `flex-wrap`, because the gutter is a fixed width and the buttons
+              inside it are not.
+
+              `actionsWidth` reserves the same gutter in the header and on every
+              row so the columns line up — that is the whole point of it — but a
+              fixed-width box with `shrink-0` children and no wrapping does not
+              clip an over-full row, it **spills**: the controls run past the
+              edge of the card and over the column to their left, which is what
+              /admin/groups did once it grew to seven of them (three register
+              links, Багш, Засах, Архивлах and Устгах ≈ 520px inside a 352px
+              box). It read as letters printed on top of each other.
+
+              Wrapping keeps every control, keeps the columns aligned, and costs
+              one extra line on the handful of rows that are genuinely that
+              full. `items-center` is what keeps the two lines optically
+              attached to the row rather than drifting to its top edge.
+            */
+            "flex-wrap",
             actionsWidth,
           )}
         >
