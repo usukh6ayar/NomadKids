@@ -910,3 +910,206 @@ describe("notice photos", () => {
     expect(res.status).toBe(400);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Whose notice it is — 2026-08-30
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * ★ These are the tests `requireStaffOwned` never had, and the reason it was
+ * wrong for as long as it was.
+ *
+ * It asserted only that the actor was staff of the notice's kindergarten, so
+ * **any teacher could edit or delete any other teacher's post**. The name said
+ * "owned"; the body checked nothing of the sort. Nothing here failed, because
+ * every existing case used one teacher.
+ *
+ * The rule, as the client stated it on 2026-08-30: a teacher reaches their own
+ * notice and nobody else's; an admin reaches any in their kindergarten, which
+ * is the existing administrative permission and is not narrowed.
+ *
+ * 404 rather than 403 throughout — §1.7. A teacher who may not touch another
+ * teacher's post should not learn from the status code that it exists.
+ */
+describe("post ownership", () => {
+  let otherTeacher: AuthSession;
+
+  beforeEach(async () => {
+    // A second teacher in the *same* kindergarten — the case the old check
+    // waved through. A teacher from another kindergarten was already refused
+    // by `assertStaff`, which is why that alone looked sufficient.
+    const user = await createUser({ username: uniq("teacher-a2") });
+    await createMembership(user.id, a.kindergarten.id, "TEACHER");
+    otherTeacher = await login(app, user.username);
+  });
+
+  it("lets a teacher delete their own post", async () => {
+    const id = await notify([{ groupId: a.group.id }]);
+
+    const res = await authed(request(server()).delete(`/v1/notifications/${id}`), teacherA);
+
+    expect(res.status).toBe(200);
+    const row = await testDb().notification.findUnique({ where: { id } });
+    expect(row?.deletedAt).not.toBeNull();
+  });
+
+  it("refuses a teacher deleting another teacher's post, with 404", async () => {
+    const id = await notify([{ groupId: a.group.id }]);
+
+    const res = await authed(request(server()).delete(`/v1/notifications/${id}`), otherTeacher);
+
+    expect(res.status).toBe(404);
+    const row = await testDb().notification.findUnique({ where: { id } });
+    expect(row?.deletedAt).toBeNull();
+  });
+
+  it("refuses a teacher editing another teacher's post", async () => {
+    const id = await notify([{ groupId: a.group.id }], { publish: false });
+
+    const res = await authed(request(server()).patch(`/v1/notifications/${id}`), otherTeacher).send(
+      { body: "Өөрчилсөн" },
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  it("refuses a teacher publishing another teacher's draft", async () => {
+    const id = await notify([{ groupId: a.group.id }], { publish: false });
+
+    const res = await authed(
+      request(server()).post(`/v1/notifications/${id}/publish`),
+      otherTeacher,
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  /** The admin permission is unchanged — the client asked for it to stay. */
+  it("lets an admin delete any post in their kindergarten", async () => {
+    const id = await notify([{ groupId: a.group.id }]);
+
+    const res = await authed(request(server()).delete(`/v1/notifications/${id}`), adminA);
+
+    expect(res.status).toBe(200);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Category, optional title and the date range — the client's 2026-08-30 filter
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("category and search filters", () => {
+  /** Posts a notice in a category, published, and returns its id. */
+  async function post(category: string, body: string, title: string | null = null) {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/notifications`),
+      teacherA,
+    ).send({ title, category, body, targets: [{ groupId: a.group.id }] });
+
+    if (res.status !== 201) throw new Error(`create failed: ${res.status} ${res.text}`);
+    await authed(request(server()).post(`/v1/notifications/${res.body.id}/publish`), teacherA);
+    return res.body.id as string;
+  }
+
+  /**
+   * ★ A post with no heading at all.
+   *
+   * The client asked for this directly: "Өнөөдөр цэцэрлэгт хүрээлэнд явлаа"
+   * needs no title, and requiring one produced headings that restated the
+   * first line of the body.
+   */
+  it("accepts a post with no title", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/notifications`),
+      teacherA,
+    ).send({ body: "Гарчиггүй мэдээ", targets: [{ groupId: a.group.id }] });
+
+    expect(res.status).toBe(201);
+    expect(res.body.title).toBeNull();
+  });
+
+  /** An untouched input posts `""`; storing it would make two empty states. */
+  it("stores an empty title as null rather than an empty string", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/notifications`),
+      teacherA,
+    ).send({ title: "   ", body: "Хоосон гарчиг", targets: [{ groupId: a.group.id }] });
+
+    expect(res.status).toBe(201);
+    expect(res.body.title).toBeNull();
+  });
+
+  it("defaults a post with no category to OTHER, so no filter hides it", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/notifications`),
+      teacherA,
+    ).send({ body: "Ангилалгүй", targets: [{ groupId: a.group.id }] });
+
+    expect(res.body.category).toBe("OTHER");
+  });
+
+  it("filters by category", async () => {
+    await post("ANNOUNCEMENT", "Намрын аялал");
+    await post("BIRTHDAY", "Төрсөн өдрийн мэнд");
+
+    const res = await authed(
+      request(server()).get("/v1/notifications?category=ANNOUNCEMENT"),
+      parentA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0].body).toBe("Намрын аялал");
+  });
+
+  it("refuses a category that is not one of the client's nine", async () => {
+    const res = await authed(request(server()).get("/v1/notifications?category=ЗАРЛАЛ"), parentA);
+    expect(res.status).toBe(400);
+  });
+
+  /**
+   * ★ The whole point of the filter, as the client described it: "2026.08.01–
+   * 2026.08.30 хоорондох Зарлал төрлийн мэдээнүүдээс 'аялал' гэж хайх".
+   */
+  it("combines text, category and a date range", async () => {
+    await post("ANNOUNCEMENT", "Намрын аялал болно");
+    await post("ANNOUNCEMENT", "Эцэг эхийн хурал");
+    await post("OUTING", "Аялал дууслаа");
+
+    const today = new Date().toISOString().slice(0, 10);
+    const res = await authed(
+      request(server()).get(
+        `/v1/notifications?q=аялал&category=ANNOUNCEMENT&from=${today}&to=${today}`,
+      ),
+      parentA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0].body).toBe("Намрын аялал болно");
+  });
+
+  /**
+   * ★ `to` includes its whole day.
+   *
+   * A parent choosing today as the end means "up to and including today", and
+   * `lte` against a bare date stops at midnight — which would drop everything
+   * posted during the day the user actually asked about.
+   */
+  it("includes posts made on the last day of the range", async () => {
+    await post("INFORMATION", "Өнөөдрийн мэдээ");
+
+    const today = new Date().toISOString().slice(0, 10);
+    const res = await authed(request(server()).get(`/v1/notifications?to=${today}`), parentA);
+
+    expect(res.body.items.length).toBeGreaterThan(0);
+  });
+
+  it("excludes a range that ended before the post", async () => {
+    await post("INFORMATION", "Өнөөдрийн мэдээ");
+
+    const res = await authed(request(server()).get("/v1/notifications?to=2020-01-01"), parentA);
+
+    expect(res.body.items).toHaveLength(0);
+  });
+});

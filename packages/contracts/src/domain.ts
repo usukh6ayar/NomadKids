@@ -967,9 +967,47 @@ export type GrowthChart = z.infer<typeof growthChartSchema>;
 
 // ── Notifications ────────────────────────────────────────────────────────────
 
+/**
+ * The client's nine categories, 2026-08-30, in the order they asked for.
+ *
+ * ★ The order is data, not a rendering detail. "Бүгд" then Зарлал, Мэдээлэл,
+ * Зөвлөмж… is the sequence the client wrote down, and a filter row that sorts
+ * them alphabetically or by usage is a different list than the one approved.
+ * The array is the source of truth for both the chips and the composer.
+ */
+export const NOTIFICATION_CATEGORIES = [
+  "ANNOUNCEMENT",
+  "INFORMATION",
+  "ADVICE",
+  "ACTIVITY",
+  "ROUTINE",
+  "OUTING",
+  "EVENT",
+  "BIRTHDAY",
+  "OTHER",
+] as const;
+
+export const notificationCategorySchema = z.enum(NOTIFICATION_CATEGORIES);
+export type NotificationCategory = z.infer<typeof notificationCategorySchema>;
+
+/** Mongolian labels — CLAUDE.md §5. Exactly the client's wording. */
+export const NOTIFICATION_CATEGORY_LABEL: Record<NotificationCategory, string> = {
+  ANNOUNCEMENT: "Зарлал",
+  INFORMATION: "Мэдээлэл",
+  ADVICE: "Зөвлөмж",
+  ACTIVITY: "Сургалт, үйл ажиллагаа",
+  ROUTINE: "Өдрийн дэглэм",
+  OUTING: "Зугаалга",
+  EVENT: "Өдөрлөг",
+  BIRTHDAY: "Төрсөн өдөр",
+  OTHER: "Бусад",
+};
+
 export const notificationSchema = z.object({
   id: uuidSchema,
-  title: z.string(),
+  /** Null when the author wrote a body and no heading — optional since 2026-08-30. */
+  title: z.string().nullable(),
+  category: notificationCategorySchema.default("OTHER"),
   body: z.string().nullish(),
   status: z.enum(["DRAFT", "PUBLISHED"]).nullish(),
   isImportant: z.boolean().nullish(),
@@ -1799,3 +1837,79 @@ export const sendChatMessageSchema = z.object({
   body: z.string().trim().min(1, "Мессеж хоосон байна").max(2000),
 });
 export type SendChatMessageDto = z.infer<typeof sendChatMessageSchema>;
+
+// ── Platform revenue ─────────────────────────────────────────────────────────
+
+/**
+ * What one kindergarten produced in a month — the platform operator's view.
+ *
+ * ★ Totals only. There is deliberately no per-child breakdown on this shape,
+ * and that is a security boundary rather than an omission: `platform-access.
+ * service.ts` records that a superadmin registers kindergartens and does not
+ * read children, and a funding row carries a child's id, their attendance and
+ * what they were billed. Aggregates are the platform's business; the rows
+ * behind them are the kindergarten's, and `/kindergartens/:id/funding` is where
+ * an administrator reads those.
+ */
+export const kindergartenRevenueSchema = z.object({
+  kindergartenId: uuidSchema,
+  name: z.string(),
+  /** How many funding rows the totals were computed from. Never who. */
+  entries: z.number(),
+  /** Decimal strings, not numbers — see `funding.dto.ts` for why. */
+  calculated: z.string(),
+  approved: z.string(),
+  received: z.string(),
+});
+export type KindergartenRevenue = z.infer<typeof kindergartenRevenueSchema>;
+
+export const platformRevenueSchema = z.object({
+  month: z.string(),
+  kindergartens: z.array(kindergartenRevenueSchema).default([]),
+  totals: z.object({
+    calculated: z.string(),
+    approved: z.string(),
+    received: z.string(),
+  }),
+});
+export type PlatformRevenue = z.infer<typeof platformRevenueSchema>;
+
+/** A person with an agreed percentage of the platform's income. */
+export const revenuePartnerSchema = z.object({
+  id: uuidSchema,
+  name: z.string(),
+  sharePercent: z.string(),
+  effectiveFrom: z.string(),
+  effectiveTo: z.string().nullable(),
+  note: z.string().nullable(),
+});
+export type RevenuePartner = z.infer<typeof revenuePartnerSchema>;
+
+/**
+ * The month's income divided by the agreed shares.
+ *
+ * ★ Computed from **received**, not from calculated or approved.
+ *
+ * A share of money that has not arrived is a promise, and paying it out is the
+ * platform lending its own cash against a state transfer that may still be
+ * revised. `unallocated` is what is left when the shares do not add to 100 —
+ * shown rather than hidden, because a split that quietly loses 8% of a month
+ * is the failure this screen exists to prevent.
+ */
+export const revenueDistributionSchema = z.object({
+  month: z.string(),
+  received: z.string(),
+  allocatedPercent: z.string(),
+  unallocated: z.string(),
+  shares: z
+    .array(
+      z.object({
+        partnerId: uuidSchema,
+        name: z.string(),
+        sharePercent: z.string(),
+        amount: z.string(),
+      }),
+    )
+    .default([]),
+});
+export type RevenueDistribution = z.infer<typeof revenueDistributionSchema>;

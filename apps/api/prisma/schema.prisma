@@ -2244,11 +2244,57 @@ model MediaFile {
 // Notifications
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// What kind of notice this is — the client's own list, 2026-08-30.
+///
+/// ★ An enum rather than a `NotificationCategory` table, which is the opposite
+/// of what CLAUDE.md §2.3 asks for and needs its reason written down.
+///
+/// §2.3's rule is that anything **an administrator can edit** is a table. These
+/// are not administrator-editable: the client specified the nine values in
+/// writing, parents filter by them, and a kindergarten inventing a tenth would
+/// produce a chip no other kindergarten's parents can search. The rule's own
+/// examples — `DevelopmentDomain`, `AssessmentLevel`, `ObservationType` — are
+/// all things a kindergarten genuinely tailors. This is closer to
+/// `NotificationStatus`: a fixed vocabulary the product defines.
+///
+/// If the client later asks for per-kindergarten categories, this becomes a
+/// table and the enum becomes its seed — the same migration `DevelopmentDomain`
+/// went through.
+enum NotificationCategory {
+  /// Зарлал — something is happening, act on it.
+  ANNOUNCEMENT
+  /// Мэдээлэл — for information.
+  INFORMATION
+  /// Зөвлөмж — advice for the family.
+  ADVICE
+  /// Сургалт, үйл ажиллагаа
+  ACTIVITY
+  /// Өдрийн дэглэм — the daily routine.
+  ROUTINE
+  /// Зугаалга — an outing.
+  OUTING
+  /// Өдөрлөг — an event day.
+  EVENT
+  /// Төрсөн өдөр
+  BIRTHDAY
+  /// Бусад
+  OTHER
+}
+
 model Notification {
   id             String             @id @default(uuid()) @db.Uuid
   kindergartenId String             @db.Uuid
-  title          String
+  /// ★ Nullable since 2026-08-30, at the client's request.
+  ///
+  /// A notice used to require one. The client asked for posts that are a
+  /// photograph and a sentence — "Өнөөдөр цэцэрлэгт хүрээлэнд явлаа" needs no
+  /// heading, and forcing one produced titles that restated the first line of
+  /// the body. Existing rows all have one; the column simply stops demanding it.
+  title          String?
   body           String
+  /// Defaults to OTHER so every row written before this column existed has a
+  /// value the filter can match, rather than being invisible to every chip.
+  category       NotificationCategory @default(OTHER)
   startsOn       DateTime?          @db.Date
   endsOn         DateTime?          @db.Date
   isImportant    Boolean            @default(false)
@@ -2496,4 +2542,49 @@ model ChatRead {
   /// distinct and every staff room row would slip past it.
   @@unique([userId, roomKey])
   @@map("chat_reads")
+}
+
+// ── Revenue sharing ──────────────────────────────────────────────────────────
+
+/// A person who takes an agreed percentage of the platform's income.
+///
+/// ★ **The one table in this schema with no `kindergartenId`**, and the
+/// exception is deliberate rather than an oversight.
+///
+/// CLAUDE.md §3.1 requires every *tenant-scoped* table to carry one, because
+/// one filter is what enforces isolation between kindergartens. This is not
+/// tenant-scoped: a partner's share is an agreement between the platform's
+/// owners about the platform's own income, in the same register as
+/// `User.isSuperAdmin`. Giving it a kindergarten id would invite a query that
+/// filtered by one and quietly returned a fraction of the answer.
+///
+/// Nothing outside `PlatformAccessService` may read it — see
+/// `platform-revenue.controller.ts`.
+///
+/// ★★ Percentages are effective-dated and never edited in place, which is
+/// `FundingRule`'s discipline and for the same reason: a month's distribution
+/// is evidence of the split it was calculated under, and editing the percentage
+/// rewrites what was already paid out. A new agreement is a new row starting
+/// the day the old one ends.
+model RevenuePartner {
+  id   String @id @default(uuid()) @db.Uuid
+  /// The person, as they should be named in a payout list.
+  name String
+
+  /// Their share, 0–100. `DECIMAL(5,2)` so 12.5% is exactly 12.5 rather than a
+  /// float that renders as 12.499999999999998 in a figure about money.
+  sharePercent Decimal @db.Decimal(5, 2)
+
+  effectiveFrom DateTime  @db.Date
+  /// Null while the agreement is current. Setting it closes the share.
+  effectiveTo   DateTime? @db.Date
+
+  note String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([effectiveFrom])
+  @@map("revenue_partners")
 }

@@ -1,15 +1,28 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { mediaSchema, notificationSchema } from "@kinder/contracts";
-import { mutate } from "@/lib/api/browser";
+import { paginated } from "@kinder/contracts";
+import {
+  NOTIFICATION_CATEGORIES,
+  NOTIFICATION_CATEGORY_LABEL,
+  childSummarySchema,
+  mediaSchema,
+  notificationSchema,
+  type NotificationCategory,
+} from "@kinder/contracts";
+
+/** The roster, already scoped by `canAccessChild` — see `AudiencePicker`. */
+const childListSchema = paginated(childSummarySchema);
+import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
+import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox, Field, Input, Textarea } from "@/components/ui/field";
+import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
 import { FormError } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
 import { ImagePlus, X } from "lucide-react";
@@ -51,6 +64,17 @@ function ComposeNotice() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [title, setTitle] = useState("");
+  /*
+    ★ The category, and who the post is for — the client's 2026-08-30 request.
+
+    `OTHER` is the default rather than an empty selection: every post has to
+    land in some chip, and forcing a choice before the teacher has written
+    anything is the multi-step flow they asked to be rid of ("facebook post
+    oruulah shig engiin hyalbar bolgo").
+  */
+  const [category, setCategory] = useState<NotificationCategory>("OTHER");
+  /** Null means everyone — the API reads an empty `targets` array the same way. */
+  const [childIds, setChildIds] = useState<string[] | null>(null);
   const [body, setBody] = useState("");
   const [isImportant, setIsImportant] = useState(false);
   /**
@@ -105,7 +129,20 @@ function ComposeNotice() {
         const created = await mutate(
           `/kindergartens/${primaryKindergartenId}/notifications`,
           notificationSchema,
-          { method: "POST", body: { title, body, isImportant, targets: [] } },
+          {
+            method: "POST",
+            body: {
+              // Empty stays empty: the DTO turns "" into null, which is what
+              // "this post has no heading" is stored as.
+              title: title.trim() || null,
+              category,
+              body,
+              isImportant,
+              // No selection is the whole kindergarten, which the API spells as
+              // no targets at all rather than as every child listed.
+              targets: childIds ? childIds.map((childId) => ({ childId })) : [],
+            },
+          },
         );
         id = created.id;
         setDraftId(id);
@@ -178,7 +215,15 @@ function ComposeNotice() {
         <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
           <FormError message={publishAll.isError ? errorMessage(publishAll.error) : null} />
 
-          <Field label="Гарчиг" error={errors.title} required>
+          {/*
+            ★ No longer `required` — the client asked for it on 2026-08-30.
+
+            A post can be a photograph and a sentence. Requiring a heading
+            produced titles that restated the first line of the body, and the
+            label now says so rather than leaving the teacher to discover it by
+            submitting.
+          */}
+          <Field label="Гарчиг (заавал биш)" error={errors.title}>
             {({ id, describedBy, invalid }) => (
               <Input
                 id={id}
@@ -191,6 +236,29 @@ function ComposeNotice() {
               />
             )}
           </Field>
+
+          {/*
+            The category, as chips rather than a `<select>`.
+
+            Nine options that are each two or three words read faster laid out
+            than opened one at a time, and this is the same control the feed
+            filters with — a teacher picking "Зарлал" here sees the chip they
+            just pressed on the list afterwards.
+          */}
+          <fieldset>
+            <legend className="mb-2 text-body font-medium text-ink">Төрөл</legend>
+            <FilterChipRow label="Мэдээний төрөл" scroll>
+              {NOTIFICATION_CATEGORIES.map((value) => (
+                <FilterChip
+                  key={value}
+                  active={category === value}
+                  onClick={() => setCategory(value)}
+                >
+                  {NOTIFICATION_CATEGORY_LABEL[value]}
+                </FilterChip>
+              ))}
+            </FilterChipRow>
+          </fieldset>
 
           <Field label="Дэлгэрэнгүй" error={errors.body} required>
             {({ id, describedBy, invalid }) => (
@@ -205,6 +273,8 @@ function ComposeNotice() {
               />
             )}
           </Field>
+
+          <AudiencePicker value={childIds} onChange={setChildIds} disabled={busy} />
 
           {/* Photographs, chosen here and sent when the post is. */}
           <div className="flex flex-col gap-2">
@@ -293,5 +363,98 @@ function ComposeNotice() {
         </form>
       </Card>
     </div>
+  );
+}
+
+/**
+ * Who the post is for — everyone, or named children.
+ *
+ * ★ `null` is "Бүх хүүхэд", and it is not the same as every child ticked.
+ *
+ * The API reads an empty `targets` array as the whole kindergarten, and a
+ * notice aimed that way keeps reaching families who enrol *after* it was
+ * posted. Listing every current child instead would freeze the audience at the
+ * moment of writing, which is a different and quieter promise. Ticking children
+ * individually is the deliberate narrowing; the default stays broad.
+ *
+ * ★★ The roster is the teacher's own group. `GET /children` is already scoped
+ * by `canAccessChild`, so this shows exactly the children they may write about
+ * and no filtering happens here — a picker that decided its own list would be
+ * the second place that answers "whose children are these", which §1.1 exists
+ * to prevent.
+ */
+function AudiencePicker({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string[] | null;
+  onChange: (next: string[] | null) => void;
+  disabled: boolean;
+}) {
+  const children = useQuery({
+    queryKey: qk.children({ pageSize: 200 }),
+    queryFn: () => get("/children?pageSize=200", childListSchema),
+  });
+
+  const items = children.data?.items ?? [];
+  const everyone = value === null;
+
+  function toggle(childId: string) {
+    const current = value ?? [];
+    const next = current.includes(childId)
+      ? current.filter((id) => id !== childId)
+      : [...current, childId];
+    // Unticking the last one is "everyone" again rather than "nobody", which
+    // would be a post with no audience — a state the form should not be able
+    // to reach.
+    onChange(next.length === 0 ? null : next);
+  }
+
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <legend className="mb-1 text-body font-medium text-ink">Хэнд харагдах</legend>
+
+      <Checkbox
+        label="Бүх хүүхэд"
+        checked={everyone}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked ? null : [])}
+      />
+
+      {children.isLoading ? <p className="text-caption text-muted">Ачаалж байна…</p> : null}
+
+      {!everyone && items.length > 0 ? (
+        /*
+          Capped and scrolled rather than a list of forty checkboxes pushing
+          the publish button off the screen — the client asked for a picker
+          that stays usable "олон хүүхэдтэй үед".
+        */
+        <div className="max-h-[220px] overflow-y-auto rounded-card border border-border p-3">
+          <ul className="flex flex-col gap-2">
+            {items.map((child) => (
+              <li key={child.id}>
+                <Checkbox
+                  label={`${child.lastName ? `${child.lastName} ` : ""}${child.firstName}`}
+                  checked={(value ?? []).includes(child.id)}
+                  disabled={disabled}
+                  onChange={() => toggle(child.id)}
+                />
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {!everyone && !children.isLoading && items.length === 0 ? (
+        <p className="text-caption text-muted">Хүүхэд олдсонгүй.</p>
+      ) : null}
+
+      <p className="text-caption text-muted">
+        {everyone
+          ? "Бүх эцэг эхэд харагдана."
+          : `${(value ?? []).length} хүүхдийн эцэг эхэд харагдана.`}
+      </p>
+    </fieldset>
   );
 }

@@ -49,6 +49,18 @@ export async function closeTestDb(): Promise<void> {
  * by table, not by row. Without restoring them, every test that reaches for a
  * development domain or observation type fails on the second case.
  */
+/*
+ * ★ `revenue_partners` is named explicitly, and it is the only table here that
+ * has to be.
+ *
+ * Every other name below is reachable by CASCADE from "kindergartens" or
+ * "users". That one has no foreign key at all — it is platform-level, an
+ * agreement between the platform's owners rather than any kindergarten's record
+ * (the model explains why it carries no `kindergartenId`). So it survived every
+ * reset, and the first test to create a 60% share turned the next test's 60%
+ * share into a 120% total. Any future table with no tenant relation needs the
+ * same line.
+ */
 export async function resetData(): Promise<void> {
   const db = testDb();
   await db.$executeRawUnsafe(`
@@ -59,7 +71,8 @@ export async function resetData(): Promise<void> {
       "child_age_profiles", "child_profiles", "enrollments", "guardianships",
       "children", "group_teachers", "groups", "school_years", "memberships",
       "sessions", "auth_tokens", "login_attempts", "kindergartens", "users",
-      "development_domains", "assessment_levels", "observation_types"
+      "development_domains", "assessment_levels", "observation_types",
+      "revenue_partners"
     RESTART IDENTITY CASCADE
   `);
   await applySystemConfig(db);

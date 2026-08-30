@@ -21,6 +21,7 @@ import {
   ShieldCheck,
   Users,
   UtensilsCrossed,
+  Wallet,
   // `X` was the picker modal's close button and went with it. The type stays:
   // `ICON_FOR` below is keyed by href and annotated with it.
   type LucideIcon,
@@ -199,6 +200,7 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
   "/settings": Settings,
   "/admin": ShieldCheck,
   "/platform": Building2,
+  "/platform/revenue": Wallet,
 };
 
 /** The section-level icon for a route, or nothing if it has no destination. */
@@ -410,6 +412,17 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
 function platformNav(): NavItem[] {
   return [
     { href: "/platform", label: "Цэцэрлэгүүд", icon: <Building2 {...iconProps} /> },
+    /*
+      ★ Санхүү — the operator's own money, not a kindergarten's.
+
+      `/kindergartens/:id/funding` is the administrator's screen and correctly
+      refuses a superadmin, who holds no membership (§1.1). This is the question
+      above it: what arrived across every kindergarten, and how the agreed
+      shares divide it. It is the second item because registering kindergartens
+      is still the operator's first job — §7 keeps the platform surface small,
+      and this is the one addition the client asked for.
+    */
+    { href: "/platform/revenue", label: "Санхүү", icon: <Wallet {...iconProps} /> },
     { href: "/settings", label: "Профайл", icon: <Settings {...iconProps} /> },
   ];
 }

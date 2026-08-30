@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import type { NotificationCategory } from "../generated/prisma/enums";
 import { PrismaService } from "../prisma/prisma.service";
 import { toSkipTake, type PageParams } from "../common/pagination";
 
@@ -61,6 +62,7 @@ export class NotificationsRepository {
     page: PageParams,
     unreadOnly: boolean,
     q?: string,
+    filters: { category?: NotificationCategory; from?: Date; to?: Date } = {},
   ) {
     const { skip, take } = toSkipTake(page);
 
@@ -77,6 +79,21 @@ export class NotificationsRepository {
         ],
       });
     }
+    if (filters.category) extra.push({ category: filters.category });
+
+    /*
+      The range reads `publishedAt` — see the query DTO's note. `to` is
+      inclusive of its whole day: a parent choosing 2026-08-30 as the end means
+      "up to and including the 30th", and `lte` against a bare date would stop
+      at midnight and silently drop everything posted that day.
+    */
+    if (filters.from) extra.push({ publishedAt: { gte: filters.from } });
+    if (filters.to) {
+      const endOfDay = new Date(filters.to);
+      endOfDay.setUTCHours(23, 59, 59, 999);
+      extra.push({ publishedAt: { lte: endOfDay } });
+    }
+
     const finalWhere = extra.length > 0 ? { AND: [where, ...extra] } : where;
 
     const [items, total] = await Promise.all([
@@ -159,7 +176,9 @@ export class NotificationsRepository {
   async create(
     data: {
       kindergartenId: string;
-      title: string;
+      /** Null when the author wrote a body and no heading — see the DTO. */
+      title: string | null;
+      category: NotificationCategory;
       body: string;
       isImportant: boolean;
       startsOn: Date | null;

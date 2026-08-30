@@ -11,20 +11,35 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
-import { childSummarySchema, notificationSchema, paginated, surveySchema } from "@kinder/contracts";
+import {
+  NOTIFICATION_CATEGORIES,
+  NOTIFICATION_CATEGORY_LABEL,
+  childSummarySchema,
+  notificationSchema,
+  paginated,
+  surveySchema,
+  type NotificationCategory,
+} from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
 import { LikeButton } from "@/components/notifications/like-button";
 import { ChildAvatar, MediaThumb } from "@/components/media/media-image";
 import { useSession } from "@/lib/auth/session";
-import { CheckCircle2, ChevronRight, Newspaper, PenLine, Search } from "lucide-react";
+import {
+  CalendarRange,
+  CheckCircle2,
+  ChevronRight,
+  Newspaper,
+  PenLine,
+  Search,
+} from "lucide-react";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RowCard, RowList } from "@/components/ui/card";
 import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
-import { Input } from "@/components/ui/field";
+import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { excerpt, formatRelative, fullName } from "@/lib/format";
 import { SURVEY_TONE_BG, SURVEY_TYPE_META } from "@/lib/survey-meta";
@@ -68,12 +83,23 @@ export default function NotificationsPage() {
    */
   const [searchInput, setSearchInput] = useState("");
   const [q, setQ] = useState("");
+  /*
+    ★ Category, and a date range — the client's 2026-08-30 filter.
+
+    `null` is "Бүгд" rather than a tenth enum value: the API omits the
+    parameter entirely for "all", and encoding "no filter" as a category would
+    mean every request carried one and the server had to know which was special.
+  */
+  const [category, setCategory] = useState<NotificationCategory | null>(null);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [datesOpen, setDatesOpen] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setQ(searchInput.trim()), 350);
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  const filters = { unread: showUnreadOnly, q };
+  const filters = { unread: showUnreadOnly, q, category, from, to };
 
   /*
    * ★ Two tabs, one screen — the mock-up's own pairing of Мэдээ and Судалгаа
@@ -148,6 +174,9 @@ export default function NotificationsPage() {
       const params = new URLSearchParams({ page: String(pageParam), pageSize: "15" });
       if (showUnreadOnly) params.set("unread", "true");
       if (q) params.set("q", q);
+      if (category) params.set("category", category);
+      if (from) params.set("from", from);
+      if (to) params.set("to", to);
       return get(`/notifications?${params}`, listSchema);
     },
     getNextPageParam: (last) => (last.page < last.totalPages ? last.page + 1 : undefined),
@@ -229,47 +258,122 @@ export default function NotificationsPage() {
       ) : null}
 
       {/*
-        ★ The filter row, and the taxonomy question the drawing raises.
+        ★ The category row — the work the note that stood here predicted.
 
-        The client's drawing shows Бүгд · Зарлал · Үйл ажиллагаа · Сургалт.
-        `notificationSchema` has no category — `isImportant` is the only
-        classification a notice carries — so these are the filters that exist
-        rather than three that would sort nothing. `Чухал` is that flag;
-        `Уншаагүй` is `reads`, which the API already filters on with `?unread`.
+        It read: "A real category needs a column, a value in the compose form
+        and a query parameter. It is a small piece of work and not one a
+        component can do." `Notification.category` is that column, the composer
+        sets it, and `?category=` is the parameter. The chips filter on the
+        server now rather than sorting nothing.
 
-        A real category needs a column, a value in the compose form and a query
-        parameter. It is a small piece of work and not one a component can do.
+        `scroll` keeps ten chips on one line — see `FilterChipRow`. Wrapped they
+        take three rows and 130px above the first post.
+
+        Уншаагүй and Чухал stay: they are not categories but they are how a
+        parent finds what they have not seen, and dropping them to make room
+        would trade a working filter for a taxonomy.
       */}
       {tab === "news" ? (
-        <FilterChipRow label="Мэдээг шүүх">
-          <FilterChip
-            active={!showUnreadOnly && !importantOnly}
-            onClick={() => {
-              setShowUnreadOnly(false);
-              setImportantOnly(false);
-            }}
-          >
-            Бүгд
-          </FilterChip>
-          <FilterChip
-            active={showUnreadOnly}
-            onClick={() => {
-              setShowUnreadOnly(true);
-              setImportantOnly(false);
-            }}
-          >
-            Уншаагүй
-          </FilterChip>
-          <FilterChip
-            active={importantOnly}
-            onClick={() => {
-              setImportantOnly(true);
-              setShowUnreadOnly(false);
-            }}
-          >
-            Чухал
-          </FilterChip>
-        </FilterChipRow>
+        <div className="flex flex-col gap-2">
+          <FilterChipRow label="Мэдээг ангиллаар шүүх" scroll>
+            <FilterChip
+              active={category === null && !showUnreadOnly && !importantOnly}
+              onClick={() => {
+                setCategory(null);
+                setShowUnreadOnly(false);
+                setImportantOnly(false);
+              }}
+            >
+              Бүгд
+            </FilterChip>
+            {NOTIFICATION_CATEGORIES.map((value) => (
+              <FilterChip
+                key={value}
+                active={category === value}
+                onClick={() => setCategory(category === value ? null : value)}
+              >
+                {NOTIFICATION_CATEGORY_LABEL[value]}
+              </FilterChip>
+            ))}
+          </FilterChipRow>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <FilterChip
+              active={showUnreadOnly}
+              onClick={() => {
+                setShowUnreadOnly(!showUnreadOnly);
+                setImportantOnly(false);
+              }}
+            >
+              Уншаагүй
+            </FilterChip>
+            <FilterChip
+              active={importantOnly}
+              onClick={() => {
+                setImportantOnly(!importantOnly);
+                setShowUnreadOnly(false);
+              }}
+            >
+              Чухал
+            </FilterChip>
+
+            {/*
+              ★ The date range is behind a toggle, not two inputs always on
+              screen.
+
+              The client asked for it — "2026.08.01–2026.08.30 хоорондох" — and
+              also asked that the filter UI stay "хэт том, төвөгтэй болгохгүй".
+              Two date fields permanently above the feed are 80px a parent
+              scrolls past every visit to reach the thing they came for. The
+              chip carries the range once it is set, so a filter that is on is
+              never invisible.
+            */}
+            <FilterChip active={Boolean(from || to)} onClick={() => setDatesOpen(!datesOpen)}>
+              <CalendarRange size={14} aria-hidden="true" />
+              {from || to ? `${from || "…"} — ${to || "…"}` : "Огноогоор"}
+            </FilterChip>
+
+            {from || to ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setFrom("");
+                  setTo("");
+                }}
+                className="text-caption text-muted underline-offset-2 hover:text-ink hover:underline"
+              >
+                Огноог арилгах
+              </button>
+            ) : null}
+          </div>
+
+          {datesOpen ? (
+            <div className="grid gap-3 rounded-card border border-border bg-surface p-3 sm:max-w-[420px] sm:grid-cols-2">
+              <Field label="Эхлэх огноо">
+                {({ id }) => (
+                  <Input
+                    id={id}
+                    type="date"
+                    value={from}
+                    max={to || undefined}
+                    onChange={(event) => setFrom(event.target.value)}
+                  />
+                )}
+              </Field>
+              <Field label="Дуусах огноо">
+                {({ id }) => (
+                  <Input
+                    id={id}
+                    type="date"
+                    value={to}
+                    min={from || undefined}
+                    onChange={(event) => setTo(event.target.value)}
+                  />
+                )}
+              </Field>
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       {!isStaff ? (
