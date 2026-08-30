@@ -2513,3 +2513,36 @@ export const attendanceRegisterSchema = paginated(registerRowSchema).extend({
   calculatedAt: z.string().nullish(),
 });
 export type AttendanceRegister = z.infer<typeof attendanceRegisterSchema>;
+
+// ── Group observation statistics ─────────────────────────────────────────────
+
+/**
+ * A group's note-keeping, summarised — the client's 2026-08-31 dashboard.
+ *
+ * ★ Counts only. Nothing here carries an observation's text, which is why the
+ * endpoint needs no visibility filter: there is nothing in it a guardian's
+ * `GET` would have to be stopped from seeing, and staff-only access is about
+ * the group boundary rather than about the notes.
+ */
+const statBucketSchema = z.object({
+  id: uuidSchema,
+  name: z.string(),
+  count: z.number(),
+});
+
+export const groupObservationStatsSchema = z.object({
+  /** Notes written in the window. */
+  total: z.number(),
+  /** Actively enrolled children — the denominator for coverage. */
+  enrolled: z.number(),
+  /** How many *different* children were written about, not how many notes. */
+  childrenWithNotes: z.number(),
+  /** Every configured type, including the ones sitting at zero. */
+  byType: z.array(statBucketSchema).default([]),
+  byDomain: z.array(statBucketSchema).default([]),
+  /** The busiest activity names — free text, so keyed by name rather than id. */
+  byActivity: z.array(z.object({ name: z.string(), count: z.number() })).default([]),
+  /** `yyyy-mm` buckets, ascending. Months with no notes are absent. */
+  byMonth: z.array(z.object({ month: z.string(), count: z.number() })).default([]),
+});
+export type GroupObservationStats = z.infer<typeof groupObservationStatsSchema>;

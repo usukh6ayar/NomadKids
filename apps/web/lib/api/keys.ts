@@ -105,6 +105,10 @@ export const qk = {
   groupAssessment: (groupId: string, termId: string, domainId: string) =>
     ["group", groupId, "assessment", termId, domainId] as const,
 
+  /** The coverage dashboard. Keyed by window, so a new school year is a new entry. */
+  groupObservationStats: (groupId: string, from: string, to: string) =>
+    ["group", groupId, "observation-stats", from, to] as const,
+
   assessmentConfig: (kindergartenId: string) =>
     ["kindergarten", kindergartenId, "assessment-config"] as const,
   terms: (kindergartenId: string, schoolYearId?: string) =>

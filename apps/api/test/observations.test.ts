@@ -694,3 +694,138 @@ describe("filters and lifecycle", () => {
     expect(res.body.length).toBeGreaterThanOrEqual(5);
   });
 });
+
+/**
+ * The group coverage dashboard — `GET /groups/:id/observation-stats`.
+ *
+ * ★ Authorised per group, not per child, so it needs its own §4.1 cases.
+ *
+ * The three that matter are the three a group-scoped endpoint can get wrong:
+ * another kindergarten's group, a group in *this* kindergarten that this
+ * teacher is not assigned to, and a guardian who has no business here at all.
+ * All three must be 404 — a 403 would confirm the group exists.
+ */
+describe("group observation stats", () => {
+  const RANGE = "from=2026-01-01&to=2026-12-31";
+
+  it("counts a group's notes by type, and keeps a zero row", async () => {
+    await teacherObservation();
+
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/observation-stats?${RANGE}`),
+      teacherA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+
+    const daily = res.body.byType.find((row: { id: string }) => row.id === typeId);
+    expect(daily.count).toBe(1);
+
+    /*
+      Every configured type appears even at zero — "Ярилцлага 0" is the finding,
+      and a missing row reads as a type nobody set up.
+    */
+    expect(res.body.byType.length).toBeGreaterThan(1);
+    expect(res.body.byType.some((row: { count: number }) => row.count === 0)).toBe(true);
+  });
+
+  it("counts distinct children, not notes", async () => {
+    await teacherObservation();
+    await teacherObservation({ observedOn: "2026-03-11" });
+
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/observation-stats?${RANGE}`),
+      teacherA,
+    );
+
+    // Two notes about the same child is one child covered.
+    expect(res.body.total).toBe(2);
+    expect(res.body.childrenWithNotes).toBe(1);
+    expect(res.body.enrolled).toBe(1);
+  });
+
+  it("buckets notes by calendar month", async () => {
+    await teacherObservation();
+    await teacherObservation({ observedOn: "2026-03-11" });
+
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/observation-stats?${RANGE}`),
+      teacherA,
+    );
+
+    expect(res.body.byMonth).toEqual([
+      { month: "2026-02", count: 1 },
+      { month: "2026-03", count: 1 },
+    ]);
+  });
+
+  it("excludes notes outside the window", async () => {
+    await teacherObservation();
+
+    const res = await authed(
+      request(server()).get(
+        `/v1/groups/${a.group.id}/observation-stats?from=2026-06-01&to=2026-12-31`,
+      ),
+      teacherA,
+    );
+
+    expect(res.body.total).toBe(0);
+  });
+
+  it("a teacher from another kindergarten gets 404", async () => {
+    const res = await authed(
+      request(server()).get(`/v1/groups/${b.group.id}/observation-stats?${RANGE}`),
+      teacherA,
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  /*
+   * Membership is not enough. A second group in the *same* kindergarten that
+   * this teacher is not assigned to is the case a tenant filter alone lets
+   * through, which is why the service repeats the assignment check.
+   */
+  it("a teacher not assigned to the group gets 404", async () => {
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Хараагүй бүлэг");
+
+    const res = await authed(
+      request(server()).get(`/v1/groups/${other.id}/observation-stats?${RANGE}`),
+      teacherA,
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  it("an admin sees a group they do not teach", async () => {
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Өөр бүлэг");
+
+    const res = await authed(
+      request(server()).get(`/v1/groups/${other.id}/observation-stats?${RANGE}`),
+      adminA,
+    );
+
+    expect(res.status).toBe(200);
+  });
+
+  it("a guardian gets 404", async () => {
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/observation-stats?${RANGE}`),
+      parentA,
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  it("refuses a window wider than a school year", async () => {
+    const res = await authed(
+      request(server()).get(
+        `/v1/groups/${a.group.id}/observation-stats?from=2020-01-01&to=2026-12-31`,
+      ),
+      teacherA,
+    );
+
+    expect(res.status).toBe(400);
+  });
+});
