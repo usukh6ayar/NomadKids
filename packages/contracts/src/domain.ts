@@ -1468,6 +1468,25 @@ export const teacherDashboardSchema = z.object({
   termProgress: z
     .object({ assessed: z.number(), total: z.number() })
     .default({ assessed: 0, total: 0 }),
+  /**
+   * How many of the roster have been assessed in each development domain.
+   *
+   * ★ A count of children, not of assessment rows.
+   *
+   * A child may hold several rows in one domain across a term, so counting
+   * rows would let one thoroughly-assessed child make a domain look covered
+   * while eighteen others have nothing — the gap this is drawn to expose. The
+   * denominator is `termProgress.total`, the same roster.
+   *
+   * Every configured domain appears, including those at zero: a domain that
+   * vanishes from a chart because nobody has been assessed in it hides exactly
+   * what a teacher is looking for. `observationsByType` argues the same.
+   */
+  assessmentByDomain: z
+    .array(z.object({ domain: namedRefSchema, assessed: z.number() }))
+    .default([]),
+  /** Observations written per month, `YYYY-MM`, oldest first — six months. */
+  observationsByMonth: z.array(z.object({ month: z.string(), count: z.number() })).default([]),
   recentObservations: z.array(feedObservationSchema).default([]),
 });
 export type TeacherDashboard = z.infer<typeof teacherDashboardSchema>;

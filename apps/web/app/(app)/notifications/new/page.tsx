@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { paginated } from "@kinder/contracts";
+import { MAX_PAGE_SIZE, paginated } from "@kinder/contracts";
 import {
   NOTIFICATION_CATEGORIES,
   NOTIFICATION_CATEGORY_LABEL,
@@ -393,8 +393,21 @@ function AudiencePicker({
   disabled: boolean;
 }) {
   const children = useQuery({
-    queryKey: qk.children({ pageSize: 200 }),
-    queryFn: () => get("/children?pageSize=200", childListSchema),
+    /*
+      ★ `MAX_PAGE_SIZE`, not a number picked by eye.
+
+      This read `?pageSize=200` and the API answered 400 every time: 100 is a
+      hard ceiling, and `pagination.ts` says why — "without it,
+      `?pageSize=100000` turns any list endpoint into a bulk export of a
+      kindergarten's children". Importing the constant is what stops the next
+      guess being 500.
+
+      A kindergarten with more than a hundred children on one roster would need
+      this picker paginated. None is close, and inventing that now would be a
+      scrolling list nobody can use in place of one nobody has needed.
+    */
+    queryKey: qk.children({ pageSize: MAX_PAGE_SIZE }),
+    queryFn: () => get(`/children?pageSize=${MAX_PAGE_SIZE}`, childListSchema),
   });
 
   const items = children.data?.items ?? [];

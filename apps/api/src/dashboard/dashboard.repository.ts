@@ -232,6 +232,113 @@ export class DashboardRepository {
   }
 
   /**
+   * How many of the roster have been assessed in each development domain.
+   *
+   * ★ A count of *children*, not of assessment rows — and the distinction is
+   * the same one `termProgress` makes for the term as a whole.
+   *
+   * A child may hold several rows in one domain across a term. Counting rows
+   * would let one thoroughly-assessed child make a domain look covered while
+   * eighteen others have nothing, which is precisely the question this chart
+   * exists to answer. Deduplicated by child id, per domain.
+   *
+   * One query for every domain at once — §3.4. The alternative, a count per
+   * domain, is nine round trips to draw one chart.
+   */
+  async assessmentByDomain(groupIds: string[], kindergartenIds: string[], termId: string) {
+    if (groupIds.length === 0 || kindergartenIds.length === 0) return [];
+
+    const [domains, rows] = await Promise.all([
+      /*
+        ★ `own OR system`, not `kindergartenId IN (...)`.
+
+        `kindergartenId = NULL` marks a **system default** shared by every
+        kindergarten, and `CatalogRepository.readWhere` documents the asymmetry
+        at length: reads must include those rows because a teacher's screen
+        renders "Хэл яриа" from one; writes must exclude them.
+
+        The first version of this query used `IN` alone and returned an empty
+        array on real data — all five configured domains in this system are
+        system defaults, so the chart drew nothing while the ring beside it
+        correctly read 5 of 5 assessed.
+      */
+      this.prisma.developmentDomain.findMany({
+        where: {
+          deletedAt: null,
+          isActive: true,
+          OR: [{ kindergartenId: { in: kindergartenIds } }, { kindergartenId: null }],
+        },
+        select: { id: true, name: true },
+        orderBy: [{ order: "asc" }, { name: "asc" }],
+      }),
+      this.prisma.assessment.findMany({
+        where: {
+          termId,
+          deletedAt: null,
+          enrollment: { groupId: { in: groupIds }, status: "ACTIVE", deletedAt: null },
+        },
+        select: { domainId: true, childId: true },
+      }),
+    ]);
+
+    const childrenPerDomain = new Map<string, Set<string>>();
+    for (const row of rows) {
+      const set = childrenPerDomain.get(row.domainId) ?? new Set<string>();
+      set.add(row.childId);
+      childrenPerDomain.set(row.domainId, set);
+    }
+
+    /*
+      Every configured domain, including the ones with nothing in them — a
+      domain that vanishes from the chart because no one has been assessed in
+      it hides exactly the gap a teacher is looking for. `ObservationMix` makes
+      the same argument about empty categories.
+    */
+    return domains.map((domain) => ({
+      domain: { id: domain.id, name: domain.name },
+      assessed: childrenPerDomain.get(domain.id)?.size ?? 0,
+    }));
+  }
+
+  /**
+   * Observations written per month, oldest first — the note-taking rhythm.
+   *
+   * ★ Grouped in TypeScript rather than by SQL `date_trunc`.
+   *
+   * Prisma's `groupBy` cannot group a `DateTime` by month, and the alternative
+   * is `$queryRaw` — which no other method in this file uses and which nothing
+   * would typecheck. The row count here is one term's observations for one
+   * teacher's groups, a few hundred at most, so the grouping is cheaper than
+   * the machinery to avoid it.
+   *
+   * Bounded by `since`, never the whole history — §3.4.
+   */
+  async observationsByMonth(groupIds: string[], since: Date) {
+    if (groupIds.length === 0) return [];
+
+    const rows = await this.prisma.observation.findMany({
+      where: {
+        deletedAt: null,
+        observedOn: { gte: since },
+        child: {
+          enrollments: { some: { groupId: { in: groupIds }, status: "ACTIVE", deletedAt: null } },
+        },
+      },
+      select: { observedOn: true },
+    });
+
+    const counts = new Map<string, number>();
+    for (const row of rows) {
+      const month = row.observedOn.toISOString().slice(0, 7);
+      counts.set(month, (counts.get(month) ?? 0) + 1);
+    }
+
+    return [...counts.entries()]
+      .map(([month, count]) => ({ month, count }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+  }
+
+  /**
    * How this term's observations are distributed across the configured types.
    *
    * ★ Counts, and deliberately not a completion percentage.

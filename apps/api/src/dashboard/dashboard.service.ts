@@ -65,6 +65,8 @@ export class DashboardService {
       observationCounts,
       birthdaysThisMonth,
       boardNotice,
+      assessmentByDomain,
+      observationsByMonth,
     ] = await Promise.all([
       this.repo.pendingReviewCount(groupIds),
       this.repo.recentObservations(groupIds),
@@ -82,6 +84,11 @@ export class DashboardService {
         : Promise.resolve([]),
       this.repo.birthdaysThisMonth(groupIds, today),
       this.repo.latestBoardNotice(kindergartenIds),
+      // No current term means no domain coverage to report — the same honest
+      // empty the assessment gap above returns, rather than a query against a
+      // term that does not exist.
+      term ? this.repo.assessmentByDomain(groupIds, kindergartenIds, term.id) : Promise.resolve([]),
+      this.repo.observationsByMonth(groupIds, sixMonthsAgo(today)),
     ]);
 
     return {
@@ -157,6 +164,21 @@ export class DashboardService {
        * percentage of domain-rows would answer a different one.
        */
       termProgress: { assessed: progress.assessed, total: childCount },
+      /*
+        ★ Two aggregates for the assessment screen's charts, added 2026-08-30.
+
+        `assessmentByDomain` counts *children* per domain rather than rows —
+        one thoroughly-assessed child would otherwise make a domain look
+        covered while eighteen others have nothing, which is the gap the chart
+        exists to show. `total` for it is `childCount`, the same denominator
+        `termProgress` uses.
+
+        `observationsByMonth` is the note-taking rhythm over the last six
+        months. Six because a school year is ten and a phone shows six columns
+        legibly; the client asked for a chart, not for the whole history.
+      */
+      assessmentByDomain,
+      observationsByMonth,
       recentObservations,
     };
   }
@@ -307,4 +329,9 @@ export class DashboardService {
     if (roles.has(Role.PARENT)) return "parent";
     return null;
   }
+}
+
+/** The first of the month five months back — six columns including this one. */
+function sixMonthsAgo(from: Date): Date {
+  return new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() - 5, 1));
 }

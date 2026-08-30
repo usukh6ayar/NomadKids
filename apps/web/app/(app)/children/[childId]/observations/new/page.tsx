@@ -2,8 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { z } from "zod";
 import { childDetailSchema, observationSchema, observationTypeSchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
@@ -41,8 +41,25 @@ function todayLocal(): string {
  * visibility, report inclusion and domain tagging are the teacher's decisions,
  * so the parent schema does not accept them at all.
  */
+/**
+ * ★ A Suspense boundary, because the form reads `?typeId=`.
+ *
+ * `useSearchParams` suspends during prerender in the App Router, and a client
+ * page that calls it without a boundary fails the build rather than at
+ * runtime. `/groups/:id/assessment` wraps its own reader the same way and for
+ * the same reason.
+ */
 export default function NewObservationPage() {
+  return (
+    <Suspense fallback={<LoadingState rows={4} />}>
+      <NewObservationForm />
+    </Suspense>
+  );
+}
+
+function NewObservationForm() {
   const toast = useToast();
+  const searchParams = useSearchParams();
   const params = useParams<{ childId: string }>();
   const childId = params.childId;
   const router = useRouter();
@@ -61,7 +78,21 @@ export default function NewObservationPage() {
     enabled: isStaff && child.isSuccess,
   });
 
-  const [typeId, setTypeId] = useState("");
+  /*
+    ★ `?typeId=` seeds the select — 2026-08-30.
+
+    `/assessment` puts one button per configured type beside the child picker,
+    which is the shortcut the client asked for: pick a child, pick a kind,
+    write. Arriving here with the kind already chosen is what makes those
+    buttons worth pressing rather than being three routes to the same empty
+    form.
+
+    Seeded, not forced: the select still lists every type and the teacher can
+    change their mind here. An id that does not match any configured type
+    simply leaves the field empty, which is the same state as arriving with no
+    parameter at all — no validation branch needed for a stale bookmark.
+  */
+  const [typeId, setTypeId] = useState(searchParams.get("typeId") ?? "");
   const [observedOn, setObservedOn] = useState(todayLocal());
   const [activityName, setActivityName] = useState("");
   const [situation, setSituation] = useState("");
