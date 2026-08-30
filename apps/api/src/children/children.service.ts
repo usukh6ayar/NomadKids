@@ -169,9 +169,19 @@ export class ChildrenService {
   /**
    * Edits a child.
    *
-   * `assertCanRecord`, not `assertCanAccess` — a guardian may read their child's
-   * record and may not edit it. The reference suite tests exactly this
-   * (`test_a_guardian_cannot_edit_their_own_child`).
+   * `assertCanRecord`, not `assertCanAccess` — a guardian may read their
+   * child's record and, through *this* endpoint, may still not edit it. The
+   * reference suite tests exactly this (`test_a_guardian_cannot_edit_their_
+   * own_child`), and that guarantee is unchanged here: `nationalId`,
+   * `healthNotes`, `status` and a group transfer all still require staff.
+   *
+   * ★ 2026-08-28, on the client's instruction: a guardian *can* now change
+   * four of these same columns — `lastName`, `firstName`, `dateOfBirth`,
+   * `sex` — through a second, narrower path,
+   * `PortfolioService.updateAboutMe`. That is a deliberate, scoped reversal
+   * of the rule above for those four fields only, not a hole in it — see
+   * that method's own doc comment for the reasoning and
+   * `updateAboutMeSchema`'s for where the fields are declared.
    */
   async update(actor: Actor, childId: string, dto: UpdateChildDto) {
     const facts = await this.childAccess.assertCanRecord(actor, childId);

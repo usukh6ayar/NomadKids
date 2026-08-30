@@ -853,8 +853,10 @@ describe("the child profile tabs", () => {
 
     const general = await screen.findByRole("tab", { name: "Ерөнхий" });
     expect(general).toHaveAttribute("aria-selected", "true");
-    // The four that were behind "Бусад" are in the strip now.
-    for (const label of ["Өсөлт", "Эрүүл мэнд", "Аюулгүй байдал", "Бүтээл"]) {
+    // Three of the four that were behind "Бусад" are in the strip now — the
+    // fourth, Бүтээл, moved to the portfolio's own "Хөгжил" page (2026-08-29,
+    // `general/page.tsx`'s own doc comment).
+    for (const label of ["Өсөлт", "Эрүүл мэнд", "Аюулгүй байдал"]) {
       expect(screen.getByRole("tab", { name: label })).toHaveAttribute("aria-selected", "false");
     }
     expect(screen.queryByRole("tab", { name: "Бусад" })).toBeNull();
