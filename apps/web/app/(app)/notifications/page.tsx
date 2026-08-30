@@ -34,6 +34,7 @@ import {
   Newspaper,
   PenLine,
   Search,
+  Pencil,
   Trash2,
   Users,
 } from "lucide-react";
@@ -999,6 +1000,27 @@ function NotificationRow({
           <Badge tone="neutral">{NOTIFICATION_CATEGORY_LABEL[notification.category]}</Badge>
           {notification.isImportant ? <Badge tone="danger">Чухал</Badge> : null}
           {isUnread ? <Badge tone="primary">Шинэ</Badge> : null}
+
+          {/*
+            ★ Editing, added 2026-08-31 at the client's request, and gated on
+            the same flag as the delete below.
+
+            `canDelete` is "this reader authored this post, or administers this
+            kindergarten" — which is exactly `requireStaffOwned`, the rule
+            `PATCH /notifications/:id` already enforces. One flag for both
+            actions because one server-side rule governs both; a second
+            `canEdit` computed separately would be a second answer to the same
+            question, and the two would drift.
+          */}
+          {canDelete ? (
+            <Link
+              href={`/notifications/${notification.id}/edit`}
+              aria-label="Постыг засах"
+              className="grid size-9 place-items-center rounded-control text-muted transition-colors hover:bg-canvas hover:text-ink"
+            >
+              <Pencil size={16} aria-hidden="true" />
+            </Link>
+          ) : null}
 
           {/*
             Withdrawing a post. `ConfirmDialog` owns its own open state and
