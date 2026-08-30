@@ -17,16 +17,9 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ObservationPhotos } from "@/components/observations/observation-photos";
-import { fullName } from "@/lib/format";
+import { fullName, todayLocal } from "@/lib/format";
 
 const typesSchema = z.array(observationTypeSchema);
-
-/** Today, as `YYYY-MM-DD` in local time — `toISOString()` would shift the day in UTC+8. */
-function todayLocal(): string {
-  const now = new Date();
-  const offset = now.getTimezoneOffset() * 60_000;
-  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
-}
 
 /**
  * Record one observation.

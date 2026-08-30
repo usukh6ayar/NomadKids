@@ -16,6 +16,7 @@ import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { ChildGrowthAges } from "@/components/child/child-growth-ages";
 import { ChildMilestones } from "@/components/child/child-milestones";
 import { ChildArtwork } from "@/components/child/child-artwork";
+import { ParentGrowthLauncher } from "@/components/child/parent-growth-launcher";
 import { PORTFOLIO } from "@/lib/vocabulary";
 import { ageInYears } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -63,6 +64,16 @@ const TONE_CLASS: Record<string, string> = {
  * staying in two places — the same "no outside link → stays behind Бусад,
  * otherwise it gets a real destination" rule that page's own doc comment
  * states.
+ *
+ * ★★★ Staff only, since 2026-08-30. A second client reference screenshot
+ * replaced a *parent's* view of this page outright — `ParentGrowthLauncher`,
+ * below — with a hero and three quick-share doors, dropping "Насны онцлог"
+ * for that audience. Staff still see everything on this page exactly as
+ * before: RFP §4.3's age-2–5 profile fields (`ChildGrowthAges`) are a
+ * professional editing surface a family does not use the same way a teacher
+ * does, and nothing here asked for that to change. `ChildMilestones` moved
+ * into `ParentGrowthLauncher` itself rather than disappearing for parents —
+ * it has no other route pointing at it, unlike Ажиглалт and Бүтээл.
  */
 export default function GrowthPage() {
   const params = useParams<{ childId: string }>();
@@ -114,6 +125,35 @@ export default function GrowthPage() {
     (g) => g.guardian?.id === session?.user.id && g.canView !== false,
   );
   const currentAge = ageInYears(data.dateOfBirth);
+
+  /*
+   * ★ `isStaff` is read the instant `child` finishes loading, with no extra
+   * wait for `useSession()` to settle. That is safe rather than reckless: in
+   * the real app, `AppLayout` (`(app)/layout.tsx`) never renders any child of
+   * the authenticated shell — this page included — until the session has
+   * already resolved, so `hasRole` is correct on this component's very first
+   * render every time it exists at all. Only a test that mounts this page
+   * directly, bypassing `AppLayout`, can see `isStaff` settle a render after
+   * `child` does; `portfolio.test.tsx` awaits the staff content it needs
+   * rather than assuming it lands on the very first paint, for exactly that
+   * reason.
+   */
+  if (!isStaff) {
+    return (
+      <div className="flex flex-col gap-6 py-2">
+        <ParentGrowthLauncher child={data} />
+
+        {/* The mockup's own back target — a parent's launch pad, not the hub. */}
+        <Link
+          href="/home"
+          className="inline-flex min-h-11 w-fit items-center gap-1.5 text-body text-primary underline underline-offset-4"
+        >
+          <ArrowLeft size={16} aria-hidden="true" />
+          Нүүр хуудас руу буцах
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6 py-2">
