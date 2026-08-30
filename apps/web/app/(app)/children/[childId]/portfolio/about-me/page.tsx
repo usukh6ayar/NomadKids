@@ -10,7 +10,7 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { ErrorState, LoadingState } from "@/components/ui/states";
-import { ChildHeroProfile } from "@/components/child/child-hero-profile";
+import { AboutMeSummaryCard } from "@/components/child/about-me-summary-card";
 import { ChildAboutMe, aboutMeResponseSchema } from "@/components/child/child-about-me";
 import { ChildBirthdayFacts, ChildBirthdayNotes } from "@/components/child/child-birthday";
 import { PORTFOLIO } from "@/lib/vocabulary";
@@ -27,6 +27,16 @@ import { ageInYears } from "@/lib/format";
  * (Монгол жил / Одны орд) and the birthday notes. Reached only from that
  * tile, so the back button returns to the hub rather than to
  * "Хүүхдийн бүртгэл" the way a standalone route normally would.
+ *
+ * ★★ `AboutMeSummaryCard`, not `ChildHeroProfile`, leads this page —
+ * 2026-08-30, another client reference screenshot, this time of the top card
+ * alone. `ChildHeroProfile` is the identity block every other per-child page
+ * shares; this page's own job (name/DOB/sex, then a launcher into the age
+ * content and the artwork comparison) earned it a purpose-built card instead.
+ * Everything below — `ChildAboutMe`'s story fields, the birthday facts and
+ * notes — is unchanged; the screenshot was the top of the page, not all of
+ * it. `ChildAboutMe`'s own heading dropped from `h1` to `h2` for exactly that
+ * reason: `AboutMeSummaryCard` now carries the page's one `h1`.
  */
 export default function AboutMePage() {
   const params = useParams<{ childId: string }>();
@@ -81,7 +91,7 @@ export default function AboutMePage() {
         </Link>
       </Button>
 
-      <ChildHeroProfile child={data} />
+      <AboutMeSummaryCard child={data} childId={childId} />
 
       <ChildAboutMe
         childId={childId}

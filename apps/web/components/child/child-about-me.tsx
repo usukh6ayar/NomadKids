@@ -218,7 +218,7 @@ export function ChildAboutMe({
     <section aria-labelledby="about-me-heading">
       <SectionHeader
         id="about-me-heading"
-        as="h1"
+        as="h2"
         title="Миний тухай"
         action={
           !editing ? (

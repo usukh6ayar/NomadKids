@@ -670,6 +670,59 @@ describe("enrollment history", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// The enrollment archive — "Цэцэрлэг, бүлгийн архив"
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("enrollment archive", () => {
+  const archive = (childId: string) => `/v1/children/${childId}/enrollment-archive`;
+
+  it("gives a guardian the current placement, its teacher, and an empty history", async () => {
+    const res = await request(server()).get(archive(a.child.id)).set("Cookie", parentA.cookies);
+
+    expect(res.status).toBe(200);
+    expect(res.body.child.id).toBe(a.child.id);
+    expect(res.body.current.kindergarten.id).toBe(a.kindergarten.id);
+    expect(res.body.current.group.id).toBe(a.group.id);
+    expect(res.body.current.teachers).toEqual([
+      expect.objectContaining({ id: a.teacherUser.id, role: "LEAD" }),
+    ]);
+    expect(res.body.history).toEqual([]);
+  });
+
+  it("moves the old placement into history after a transfer", async () => {
+    const newGroup = await createGroup(a.kindergarten.id, a.schoolYear.id, "Шинэ бүлэг");
+    await authed(request(server()).post(`/v1/children/${a.child.id}/enrollments`), adminA).send({
+      groupId: newGroup.id,
+    });
+
+    const res = await request(server()).get(archive(a.child.id)).set("Cookie", parentA.cookies);
+
+    expect(res.status).toBe(200);
+    expect(res.body.current.group.id).toBe(newGroup.id);
+    expect(res.body.history).toHaveLength(1);
+    expect(res.body.history[0]).toMatchObject({
+      status: "TRANSFERRED",
+      group: { id: a.group.id },
+    });
+  });
+
+  it("a guardian of another child gets 404", async () => {
+    const res = await request(server()).get(archive(a.child.id)).set("Cookie", parentB.cookies);
+    expect(res.status).toBe(404);
+  });
+
+  it("a teacher from another kindergarten gets 404", async () => {
+    const res = await request(server()).get(archive(a.child.id)).set("Cookie", teacherB.cookies);
+    expect(res.status).toBe(404);
+  });
+
+  it("an admin from another kindergarten gets 404", async () => {
+    const res = await request(server()).get(archive(a.child.id)).set("Cookie", adminB.cookies);
+    expect(res.status).toBe(404);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Audit and misc
 // ═══════════════════════════════════════════════════════════════════════════
 

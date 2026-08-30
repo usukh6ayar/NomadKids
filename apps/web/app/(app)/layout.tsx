@@ -815,12 +815,12 @@ function parentNav(
  * parent actually wants instead of a route to a list they then pick from
  * anyway.
  *
- * ★★ Three rows for the *selected* child, not one, since the child hub was
+ * ★★ Four rows for the *selected* child, not one, since the child hub was
  * deleted (2026-08-28) — it used to carry Ерөнхий and Ажиглалт as tabs on one
  * page, and without that page a desktop reader needs both named here
  * directly. `/general`'s icon is the child's own avatar, matching every
- * per-child row this menu has ever shown; Ажиглалт and Хоол underneath it
- * carry a plain glyph instead.
+ * per-child row this menu has ever shown; Ажиглалт, Хоол and Цэцэрлэгийн
+ * архив underneath it carry a plain glyph instead.
  *
  * ★★★ One child, not every child — 2026-08-28's second change the same day.
  * This mapped every one of a family's children in, which put two identical
@@ -831,6 +831,13 @@ function parentNav(
  * "Хоол" tabs, and this section follows it rather than listing everyone at
  * once. "Хоол" joined the same day, mirroring `parentNav`'s own addition —
  * both surfaces name the same three destinations for the same reason.
+ *
+ * "Цэцэрлэгийн архив" joined later, at the client's request for a "Цэцэрлэг,
+ * бүлгийн архив" screen: current placement, its teacher, and the family's
+ * full enrollment history (`/children/[childId]/enrollment-archive`). It has
+ * no bottom-bar tab of its own — that row is spent on `parentNav`'s four
+ * destinations already — so a phone reader reaches it from the home page's
+ * "Цэцэрлэг" tile (`(app)/home/page.tsx`) instead.
  */
 function parentSections(
   myChildren: ChildSummary[] | undefined,
@@ -839,7 +846,7 @@ function parentSections(
   const selected = myChildren?.find((child) => child.id === selectedChildId) ?? myChildren?.[0];
 
   /*
-   * ★ Five rows for the selected child, not two.
+   * ★ Six rows for the selected child, not two.
    *
    * A parent's whole product *is* their child's file, and three of its tabs —
    * Ирц, Хоол, Судалгаа — had no name anywhere in this menu even though a
@@ -849,6 +856,14 @@ function parentSections(
    *
    * The switcher above decides *which* child; these rows decide *what about
    * them*, so they follow the selection rather than repeating per child.
+   *
+   * ★★ "Цэцэрлэгийн архив" is the sixth and it comes from `main`, not from
+   * here. It is the one row that is not about a day — placement, teacher and
+   * the family's full enrollment history — so it sits last, after the five
+   * that are. Its icon stays `Building2`, the glyph `main` chose for it, but
+   * spelled with `sectionIconProps` like every other row in this list: the
+   * size is the same 18 either way, and this file already argues that writing
+   * the number inline is "the same number three times and no name for it".
    */
   const childEntries = selected
     ? [
@@ -876,6 +891,11 @@ function parentSections(
           label: "Судалгаа",
           href: `/children/${selected.id}/surveys`,
           icon: <BarChart3 {...sectionIconProps} />,
+        },
+        {
+          label: "Цэцэрлэгийн архив",
+          href: `/children/${selected.id}/enrollment-archive`,
+          icon: <Building2 {...sectionIconProps} />,
         },
       ]
     : [{ label: "Холбогдсон хүүхэд алга" }];

@@ -216,12 +216,18 @@ list, so the header cannot report a total the rows beneath it contradict.
 | POST   | `/children/:id/guardians`   | admin          | kg:admin            | userId or new-user fields, relation                                | guardianship                          |
 | PATCH  | `/guardianships/:id`        | admin          | kg:admin            | relation, isPrimary, **canView**                                   | updated                               |
 | GET    | `/children/:id/enrollments` | any            | child               | —                                                                  | full history, newest first            |
+| GET    | `/children/:id/enrollment-archive` | any     | child               | —                                                                  | current placement + teachers + past history |
 | POST   | `/children/:id/enrollments` | admin          | kg:admin            | groupId, schoolYearId, startedOn                                   | created; ends the previous active one |
 | PATCH  | `/enrollments/:id`          | admin          | kg:admin            | endedOn, status                                                    | updated                               |
 
 `GET /children` returns the actor's visible set — a parent sees only their own
 children, a teacher only their groups' children, an admin their kindergartens'.
 It is never filtered by a client-supplied `kindergartenId`.
+
+`GET /children/:id/enrollment-archive` is the "Цэцэрлэг, бүлгийн архив" screen —
+the one `ACTIVE` enrollment (kindergarten contact fields, group schedule/rules,
+and its current homeroom teachers by name and role only, never phone/email),
+plus every other enrollment as `history`, newest first.
 
 `PATCH /guardianships/:id` with `canView: false` is the revocation path. The
 relationship record survives.

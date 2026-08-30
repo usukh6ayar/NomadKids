@@ -28,6 +28,19 @@ function toDate(value: string | Date | null | undefined): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+/**
+ * Today, as `YYYY-MM-DD` in local time — what a date `<input>` wants.
+ *
+ * `toISOString()` shifts the day in any zone ahead of UTC (Mongolia is
+ * UTC+8), so subtracting the timezone offset first is load-bearing, not
+ * decorative.
+ */
+export function todayLocal(): string {
+  const now = new Date();
+  const offset = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+}
+
 /** `2026.08.19` — compact, unambiguous, and what the reference system used. */
 export function formatDate(value: string | Date | null | undefined): string {
   const date = toDate(value);
