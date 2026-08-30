@@ -90,3 +90,33 @@ export const reviewObservationSchema = z
   })
   .strict();
 export type ReviewObservationDto = z.infer<typeof reviewObservationSchema>;
+
+/**
+ * The window a group's coverage dashboard reports on.
+ *
+ * ★ Two dates rather than a month, and the screen sends both.
+ *
+ * The client's drawing asks two questions at once: "how many children did I
+ * write about *this month*" and "how has that gone *across the year*". One
+ * `?month=` parameter answers the first and forces a second endpoint for the
+ * second. A range answers both — the caller asks for the school year, and the
+ * monthly buckets inside it are what the chart draws.
+ *
+ * Bounded at 400 days: the widest legitimate ask is one school year, and the
+ * ceiling stops a caller turning `date_trunc` loose over the whole table.
+ */
+export const groupStatsQuerySchema = z
+  .object({
+    from: z.coerce.date(),
+    to: z.coerce.date(),
+  })
+  .strict()
+  .refine((q) => q.to >= q.from, {
+    message: "Дуусах огноо эхлэх огнооноос хойш байна",
+    path: ["to"],
+  })
+  .refine((q) => q.to.getTime() - q.from.getTime() <= 400 * 24 * 60 * 60 * 1000, {
+    message: "Хугацааны хязгаар 400 хоног",
+    path: ["to"],
+  });
+export type GroupStatsQuery = z.infer<typeof groupStatsQuerySchema>;

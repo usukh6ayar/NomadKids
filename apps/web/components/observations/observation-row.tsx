@@ -52,6 +52,19 @@ export function ObservationRow({
 
           {observation.reviewStatus === "PENDING" ? <Badge tone="sun">Хүлээгдэж буй</Badge> : null}
           {observation.reviewStatus === "RETURNED" ? <Badge tone="peach">Буцаагдсан</Badge> : null}
+          {/*
+            ★ "Баталсан" is drawn only where review is a thing the reader can
+            see — `showVisibility` is the staff flag.
+
+            The other two review states are exceptions and read as such on their
+            own; approval is the resting state, so a badge on every parent's
+            card would be a green tick beside all of them saying nothing. The
+            client asked for the badge by name, and a teacher looking at a
+            review queue is who it answers: "this one is done".
+          */}
+          {showVisibility && observation.reviewStatus === "APPROVED" ? (
+            <Badge tone="mint">Баталсан</Badge>
+          ) : null}
         </div>
 
         {body ? <p className="text-body text-muted">{excerpt(body, 140)}</p> : null}

@@ -11,11 +11,13 @@ import {
   createParentObservationSchema,
   listObservationsQuerySchema,
   reviewObservationSchema,
+  groupStatsQuerySchema,
   updateObservationSchema,
   type CreateObservationDto,
   type CreateParentObservationDto,
   type ListObservationsQuery,
   type ReviewObservationDto,
+  type GroupStatsQuery,
   type UpdateObservationDto,
 } from "./observations.dto";
 
@@ -141,5 +143,28 @@ export class ObservationsController {
     @Body(new ZodValidationPipe(reviewObservationSchema)) body: ReviewObservationDto,
   ) {
     return this.service.review(actor, params.id, body);
+  }
+}
+
+/**
+ * A group's note-keeping, summarised — the client's 2026-08-31 dashboard.
+ *
+ * Separate controller because the resource is a *group*, not a child: the
+ * `children/:id/observations` routes authorise per child through
+ * `canAccessChild`, and this one authorises per group. One controller answering
+ * to two authorization paths is the shape §1.1 exists to prevent.
+ */
+@Controller("groups/:id/observation-stats")
+export class GroupObservationStatsController {
+  constructor(private readonly service: ObservationsService) {}
+
+  @Get()
+  @Roles("TEACHER", "ADMIN")
+  async stats(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(groupStatsQuerySchema)) query: GroupStatsQuery,
+  ) {
+    return this.service.groupStats(actor, params.id, query.from, query.to);
   }
 }

@@ -8,6 +8,8 @@ import {
   type SurveyGroupResult,
   surveySchema,
   SURVEY_PERIOD_LABEL,
+  SURVEY_QUESTION_TYPE_LABEL,
+  hasOptionList,
   type MatrixOptions,
   type SurveyQuestionType,
 } from "@kinder/contracts";
@@ -50,13 +52,12 @@ type DraftQuestion = {
   indicatorKey: string;
 };
 
-const TYPE_LABEL: Record<SurveyQuestionType, string> = {
-  RATING: "Үнэлгээ (1–5)",
-  YES_NO: "Тийм/Үгүй",
-  TEXT: "Чөлөөт бичвэр",
-  CHECKBOX: "Олон сонголт",
-  MATRIX: "Матриц (олон үзүүлэлт)",
-};
+/**
+ * The labels live in `@kinder/contracts` so the composer here and the answering
+ * form a parent sees name the same type identically. They were duplicated here
+ * until `SINGLE_CHOICE` was added and only one copy learned about it.
+ */
+const TYPE_LABEL = SURVEY_QUESTION_TYPE_LABEL;
 
 export default function SurveyDetailPage() {
   return (
@@ -90,6 +91,7 @@ function SurveyDetail() {
           <div className="flex flex-wrap items-center gap-2">
             {data.status !== "DRAFT" ? (
               <>
+                <PrintButton />
                 <ExportButton surveyId={surveyId} />
                 <CloneButton surveyId={surveyId} schoolYear={data.schoolYear ?? null} />
               </>
@@ -122,6 +124,30 @@ function SurveyDetail() {
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Хэвлэх — the client's fourth action on the survey screen.
+ *
+ * ★ `window.print()`, not a generated PDF, and that is the right tool here.
+ *
+ * The report worker exists for documents that must look identical everywhere
+ * and be stored — it needs Chromium, a gigabyte of RAM and system Cyrillic
+ * fonts (CLAUDE.md §6), and it runs as a queued job with a `ReportJob` row. A
+ * teacher printing the results they are looking at wants this page on paper
+ * now, which the browser already does perfectly and instantly.
+ *
+ * The `data-print-hide` attribute on the sidebar, the bottom bar, the desktop
+ * header and the chat button — with the `@media print` block in `globals.css`
+ * that acts on it — is what makes the output a results sheet rather than a
+ * screenshot of an app.
+ */
+function PrintButton() {
+  return (
+    <Button size="sm" variant="secondary" onClick={() => window.print()}>
+      Хэвлэх
+    </Button>
   );
 }
 
@@ -292,12 +318,11 @@ function QuestionEditor({
             order: index,
             type: q.type,
             prompt: q.prompt,
-            options:
-              q.type === "CHECKBOX"
-                ? q.options.map((o) => o.trim()).filter(Boolean)
-                : q.type === "MATRIX"
-                  ? { rows: parseRows(q.rowsText), columns: parseColumns(q.columnsText) }
-                  : undefined,
+            options: hasOptionList(q.type)
+              ? q.options.map((o) => o.trim()).filter(Boolean)
+              : q.type === "MATRIX"
+                ? { rows: parseRows(q.rowsText), columns: parseColumns(q.columnsText) }
+                : undefined,
             // Empty means "not comparable" — the honest answer for a one-off
             // poll question, and what the API stores as null.
             indicatorKey: q.indicatorKey.trim() || null,
@@ -328,7 +353,7 @@ function QuestionEditor({
     if (empty !== -1) return `${empty + 1}-р асуултын текст хоосон байна.`;
 
     const noChoice = questions.findIndex(
-      (q) => q.type === "CHECKBOX" && q.options.every((o) => !o.trim()),
+      (q) => hasOptionList(q.type) && q.options.every((o) => !o.trim()),
     );
     if (noChoice !== -1) return `${noChoice + 1}-р асуултад сонголт оруулна уу.`;
 
@@ -380,7 +405,13 @@ function QuestionEditor({
               </Field>
             </div>
 
-            {question.type === "CHECKBOX" ? (
+            {/*
+              Shown for both option-bearing types. `hasOptionList` is imported
+              rather than spelled `=== "CHECKBOX" || === "SINGLE_CHOICE"` here and
+              again in the validation below — two copies of the same predicate is
+              how one of them misses the next type that carries options.
+            */}
+            {hasOptionList(question.type) ? (
               <fieldset className="flex flex-col gap-2">
                 <legend className="mb-1 text-body font-medium text-ink">Сонголтууд</legend>
                 {question.options.map((option, optionIndex) => (
@@ -624,6 +655,14 @@ function Results({ surveyId }: { surveyId: string }) {
 
   const data = results.data!;
   const groups = data.byGroup;
+
+  /*
+    Who the counts are counting. A CHILD survey is answered once per child, so
+    the number under "Бөглөсөн" is children; a kindergarten-wide one is answered
+    once per person. Naming it matters because the two denominators differ and
+    a bare "18" beside "Бөглөөгүй" does not say 18 of what.
+  */
+  const respondentNoun = data.survey.scope === "CHILD" ? "хүүхэд" : "эцэг эх";
   const selected = groups.find((entry) => entry.group.id === groupId);
 
   return (
@@ -634,6 +673,32 @@ function Results({ surveyId }: { surveyId: string }) {
         lede={selected ? `${selected.group.name}-ийн хариултууд.` : undefined}
         action={<span className="text-body text-muted">{data.totalResponses} хариулт</span>}
       />
+
+      {/*
+        ★ Бөглөсөн and Бөглөөгүй, the client's two headline numbers.
+
+        The second is the one that could not be shown before: the API now
+        returns how many responses the survey is *waiting on* — enrolled
+        children for a CHILD survey, distinct guardians for a kindergarten-wide
+        one — because only the server can see enrolments and memberships.
+
+        Rendered only when there is a population to compare against. A survey
+        whose expected count is zero (a kindergarten with no active enrolments,
+        or an older API that does not send the field) would otherwise show
+        "0 бөглөөгүй" beside a real response count, which reads as complete
+        when it is really unknown.
+      */}
+      {data.expectedResponses > 0 ? (
+        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <SummaryTile label="Бөглөсөн" value={data.totalResponses} hint={respondentNoun} />
+          <SummaryTile label="Бөглөөгүй" value={data.missingResponses} hint={respondentNoun} />
+          <SummaryTile
+            label="Хамралт"
+            value={`${Math.round((data.totalResponses / data.expectedResponses) * 100)}%`}
+            hint={`${data.expectedResponses}-аас`}
+          />
+        </dl>
+      ) : null}
 
       {/*
         ★ Rendered only when there is more than one group to choose between.
@@ -912,4 +977,29 @@ function parseColumns(text: string): { value: number; label: string }[] {
       return Number.isFinite(value) && label ? { value, label } : null;
     })
     .filter((column): column is { value: number; label: string } => column !== null);
+}
+
+/**
+ * One headline number in the results summary.
+ *
+ * A `<dl>` cell rather than a `<div>`: "Бөглөсөн / 12" is a term and its
+ * definition, and the pairing is what a screen reader needs to read them as
+ * belonging together instead of as six loose numbers.
+ */
+function SummaryTile({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: number | string;
+  hint?: string;
+}) {
+  return (
+    <div className="rounded-card border border-border bg-surface px-3 py-2.5">
+      <dt className="text-caption text-muted">{label}</dt>
+      <dd className="text-lead font-semibold tabular-nums text-ink">{value}</dd>
+      {hint ? <p className="text-caption text-faint">{hint}</p> : null}
+    </div>
+  );
 }

@@ -19,7 +19,13 @@ import { GroupSwitcher, useSwitchableGroups } from "@/components/shell/group-swi
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import Link from "next/link";
+import { observationTypeSchema } from "@kinder/contracts";
+
+/** The kindergarten's configured record kinds — one shortcut button each. */
+const observationTypesSchema = z.array(observationTypeSchema);
 import { Card, SectionHeader } from "@/components/ui/card";
+import { GroupCoverage } from "@/components/assessment/group-coverage";
 import { RegisterProgress } from "@/components/register/register-progress";
 import type { Tone } from "@/components/ui/tone";
 import { Field, Select } from "@/components/ui/field";
@@ -242,6 +248,22 @@ function GroupAssessment() {
         href={(id) => `/groups/${id}/assessment`}
       />
 
+      {/*
+        ★ The client's 2026-08-31 top strip: pick a child, then start a record.
+
+        Their note asked for the desktop pattern on the phone too — a child
+        selector and the three "Шинэ тэмдэглэл" actions above the dashboard,
+        replacing the two large selection cards a phone reader used to meet
+        first. Those selects have not been deleted: they are what the register
+        below is keyed on, and dropping them would remove the screen's whole
+        function. They have moved *under* the summary instead, so the first
+        thing on the screen is what the group looks like rather than two
+        dropdowns to configure before anything appears.
+      */}
+      <NewRecordStrip children={children} />
+
+      <GroupCoverage groupId={groupId} />
+
       {/* `pad="roomy"` rather than four inline padding values — `card.tsx`
           documents the two named steps and why call sites stopped inventing
           their own. */}
@@ -463,4 +485,92 @@ function levelTone(index: number, count: number): Tone {
   if (count <= 1) return "mint";
   const slot = Math.round((index / (count - 1)) * (LEVEL_RAMP.length - 1));
   return LEVEL_RAMP[slot] ?? "sky";
+}
+
+/**
+ * Pick a child, then start a record about them.
+ *
+ * ★ One button per *configured* observation type, not three hard-coded ones.
+ *
+ * The client's drawing names Ажиглалт, Ярилцлага and Бүтээл — which are the
+ * three rows the catalogue ships with. Reading the catalogue rather than
+ * spelling those three here means a kindergarten that adds a fourth type gets a
+ * fourth button, and one that renames "Бүтээл" sees the new name. Types are a
+ * table precisely so they are not a TypeScript literal (§2.3).
+ *
+ * ★★ The types are fetched against the group's first child, and any child would
+ * do: `GET /children/:id/observations/types` is scoped to the child's
+ * kindergarten, and every child in this group shares one. It is child-addressed
+ * because that is the endpoint's authorization path, not because the answer
+ * varies per child.
+ *
+ * ★★★ Defaults to nobody rather than to the first child. "Шинэ тэмдэглэл"
+ * against a name the teacher did not choose is how a note lands on the wrong
+ * child, and this control's only job is to make that choice explicit.
+ */
+function NewRecordStrip({
+  children,
+}: {
+  children: { childId: string; lastName?: string | null; firstName: string }[];
+}) {
+  const [childId, setChildId] = useState("");
+
+  const anyChildId = children[0]?.childId;
+  const types = useQuery({
+    queryKey: qk.observationTypes(anyChildId ?? ""),
+    queryFn: () => get(`/children/${anyChildId}/observations/types`, observationTypesSchema),
+    enabled: Boolean(anyChildId),
+    staleTime: 5 * 60_000,
+  });
+
+  const selected = children.find((child) => child.childId === childId);
+
+  if (children.length === 0) return null;
+
+  return (
+    <Card pad="roomy" className="flex flex-col gap-3">
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr),auto] sm:items-end">
+        <Field label="Хүүхэд">
+          {({ id }) => (
+            <Select id={id} value={childId} onChange={(e) => setChildId(e.target.value)}>
+              <option value="">Хүүхэд сонгох…</option>
+              {children.map((child) => (
+                <option key={child.childId} value={child.childId}>
+                  {child.lastName ? `${child.lastName} ` : ""}
+                  {child.firstName}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+
+        {/*
+          Disabled, not hidden, while no child is chosen. A row of buttons that
+          appears once a select is touched changes the screen's shape underneath
+          somebody; a disabled button with a reason under it says what to do.
+        */}
+        <div className="flex flex-wrap gap-2">
+          {(types.data ?? []).map((type) =>
+            selected ? (
+              <Button key={type.id} asChild size="sm" variant="secondary">
+                <Link href={`/children/${selected.childId}/observations/new?typeId=${type.id}`}>
+                  {type.name}
+                </Link>
+              </Button>
+            ) : (
+              <Button key={type.id} size="sm" variant="secondary" disabled>
+                {type.name}
+              </Button>
+            ),
+          )}
+        </div>
+      </div>
+
+      {!selected ? (
+        <p className="text-caption text-muted">
+          Шинэ тэмдэглэл хөтлөхийн тулд эхлээд хүүхдээ сонгоно уу.
+        </p>
+      ) : null}
+    </Card>
+  );
 }

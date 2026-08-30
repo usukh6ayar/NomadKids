@@ -1930,10 +1930,35 @@ enum SurveyStatus {
   CLOSED
 }
 
+/// Which of the client's two survey shapes this is — their 2026-08-31 request.
+///
+/// ★ A column rather than a UI preset, and the distinction is not cosmetic.
+///
+/// The two differ in what they promise a reader. A **POLL** is one question
+/// answered in a tap, published to the class board and read as a bar; a **FORM**
+/// is a questionnaire somebody sits down with. That changes how the list should
+/// group them, what the composer defaults to, and which results view makes
+/// sense — none of which can be recovered afterwards from a survey that merely
+/// happens to have one question, because a form with one question is not a poll.
+enum SurveyKind {
+  POLL
+  FORM
+}
+
 enum SurveyQuestionType {
   RATING // 1-5
   YES_NO
   TEXT
+  /// Pick exactly one; `options` holds the choices.
+  ///
+  /// ★ Added 2026-08-31. `CHECKBOX` was the only option-bearing type, and it is
+  /// multi-select — so "Нэг сонголт" on the client's drawing had no
+  /// representation at all and every choice question silently allowed several
+  /// answers. Scored by `survey-scoring.ts` exactly as `CHECKBOX` is (one
+  /// counter per option); what differs is what the answering form renders, and
+  /// that a response carrying two values is now invalid rather than merely
+  /// unusual.
+  SINGLE_CHOICE
   CHECKBOX // multi-select; `options` holds the choices
   /// RFP Module 1.1 — "Matrix (олон үзүүлэлтийн хүснэгт)".
   ///
@@ -1963,10 +1988,26 @@ model Survey {
   title          String
   description    String?
   scope          SurveyScope
+  kind           SurveyKind   @default(FORM)
   status         SurveyStatus @default(DRAFT)
   createdById    String?      @db.Uuid
   publishedAt    DateTime?
   closedAt       DateTime?
+
+  /// When answering stops — the client's optional "Хаагдах огноо".
+  ///
+  /// ★ Not the same field as `closedAt`, and the pair is easy to misread.
+  ///
+  /// `closedAt` is a fact: somebody pressed Хаах, and it records when. This is
+  /// an *intention* set in advance, and it is nullable because the client asked
+  /// for "an option to create a survey without specifying a closing date" —
+  /// null means it stays open until closed by hand.
+  ///
+  /// A survey past this instant refuses new responses without its `status`
+  /// changing, so a deadline needs no scheduled job to enforce it. The status
+  /// still moves to CLOSED only when a person closes it, which keeps "why did
+  /// this stop accepting answers" answerable from the row itself.
+  closesAt DateTime?
 
   /// "2025-2026". A string, not a year number: a school year spans two.
   schoolYear String?

@@ -751,6 +751,7 @@ function DesktopHeader({ variant, isAdmin }: { variant: Variant; isAdmin: boolea
 
   return (
     <header
+      data-print-hide
       /*
        * Sticky rather than fixed: a fixed header would need every page below it
        * padded by its own height, which is the class of coupling `AppShell`
@@ -1095,6 +1096,8 @@ function Sidebar({
   return (
     <nav
       aria-label="Үндсэн цэс"
+      // Chrome, not content — see the print block in `globals.css`.
+      data-print-hide
       /*
        * ★ Only the menu scrolls.
        *
@@ -1373,6 +1376,7 @@ function BottomBar({ nav, hideOnDesktop }: { nav: NavItem[]; hideOnDesktop: bool
 
   return (
     <nav
+      data-print-hide
       /*
        * ★ A distinct name from the sidebar's, which is also "Үндсэн цэс".
        *

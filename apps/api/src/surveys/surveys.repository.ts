@@ -1,6 +1,12 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import type { SurveyPeriod, SurveyQuestionType, SurveyScope, SurveyStatus } from "../domain/enums";
+import type {
+  SurveyKind,
+  SurveyPeriod,
+  SurveyQuestionType,
+  SurveyScope,
+  SurveyStatus,
+} from "../domain/enums";
 
 const questionOrder = { order: "asc" as const };
 
@@ -15,6 +21,9 @@ export class SurveysRepository {
     title: string;
     description: string | null;
     scope: SurveyScope;
+    /** Optional so the clone path keeps compiling; the column defaults to FORM. */
+    kind?: SurveyKind;
+    closesAt?: Date | null;
     createdById: string;
     schoolYear?: string | null;
     period?: SurveyPeriod | null;
@@ -35,7 +44,19 @@ export class SurveysRepository {
   async findForAuthorization(surveyId: string) {
     return this.prisma.survey.findFirst({
       where: { id: surveyId, deletedAt: null },
-      select: { id: true, kindergartenId: true, scope: true, status: true },
+      /*
+        `closesAt` is selected because `submitResponse` enforces the deadline
+        from this row. An explicit select that omitted it would read
+        `undefined`, and `undefined && …` is falsy — so every deadline would
+        silently pass rather than fail loudly.
+      */
+      select: {
+        id: true,
+        kindergartenId: true,
+        scope: true,
+        status: true,
+        closesAt: true,
+      },
     });
   }
 
@@ -205,6 +226,55 @@ export class SurveysRepository {
       responseId: answer.responseId,
       group: answer.response.childId ? (groupOfChild.get(answer.response.childId) ?? null) : null,
     }));
+  }
+
+  /**
+   * How many responses this survey *should* collect — the denominator behind
+   * the client's "Бөглөөгүй".
+   *
+   * ★ Two different populations, because the two scopes ask two different
+   * questions of two different people.
+   *
+   * A `CHILD` survey is answered once per child, by a guardian — so the
+   * expected count is actively enrolled children, narrowed to one group when
+   * the results view is. A `KINDERGARTEN` survey is answered once per person,
+   * so it counts guardians with a live membership instead. Using children for
+   * both would tell a family with two children that they owe two answers to a
+   * survey that accepts one.
+   *
+   * ★★ "Active enrolment", the same condition `answersByGroup` uses. A child
+   * who left in October is not someone the November survey is waiting on, and
+   * counting them would make full participation permanently unreachable.
+   */
+  async countExpectedRespondents(
+    kindergartenId: string,
+    scope: SurveyScope,
+    groupId: string | null,
+  ): Promise<number> {
+    if (scope === "CHILD") {
+      return this.prisma.enrollment.count({
+        where: {
+          kindergartenId,
+          status: "ACTIVE",
+          deletedAt: null,
+          ...(groupId ? { groupId } : {}),
+        },
+      });
+    }
+
+    /*
+      Distinct users, not memberships: one person may guardian two children and
+      still answers a kindergarten-wide survey once. `distinct` on the row and
+      a length read rather than `count`, because Prisma's `count` ignores
+      `distinct` on a non-aggregate field.
+    */
+    const rows = await this.prisma.membership.findMany({
+      where: { kindergartenId, role: "PARENT", deletedAt: null },
+      select: { userId: true },
+      distinct: ["userId"],
+    });
+
+    return rows.length;
   }
 
   // ── Comparison and export — RFP Module 1.2, 1.3 ───────────────────────────

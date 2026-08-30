@@ -34,6 +34,10 @@ export class SurveysService {
       title: dto.title,
       description: dto.description ?? null,
       scope: dto.scope,
+      // The column defaults to FORM, and so does an omitted field: a caller
+      // that predates `kind` keeps creating exactly what it created before.
+      kind: dto.kind ?? "FORM",
+      closesAt: dto.closesAt ?? null,
       createdById: actor.userId,
       schoolYear: dto.schoolYear ?? null,
       period: dto.period ?? null,
@@ -170,6 +174,23 @@ export class SurveysService {
       throw new BadRequestException("Энэ судалгаа одоогоор хариулах боломжгүй байна");
     }
 
+    /*
+      ★ The deadline is enforced here and nowhere else.
+
+      `closesAt` is an intention rather than a state (see `Survey.closesAt`), so
+      nothing sweeps it: a survey past its date keeps `status = PUBLISHED` and
+      simply stops accepting answers. Checking at submit is what makes that
+      correct without a scheduled job, and it is the only place that can be
+      correct — a job that flipped the status at midnight would still leave the
+      window between the deadline and the sweep open.
+
+      A null `closesAt` is "no closing date", which the client asked to remain
+      possible, so it never fails this.
+    */
+    if (survey.closesAt && survey.closesAt.getTime() <= Date.now()) {
+      throw new BadRequestException("Энэ судалгааны хугацаа дууссан байна");
+    }
+
     let childId: string | null = null;
 
     if (survey.scope === "CHILD") {
@@ -239,6 +260,30 @@ export class SurveysService {
         if (typeof cell !== "number" || !columnValues.has(cell)) {
           throw new BadRequestException("Матрицад байхгүй хариулт сонгосон");
         }
+      }
+    }
+
+    /*
+     * A SINGLE_CHOICE answer is one of the question's own options — exactly
+     * one, and not an array.
+     *
+     * ★ Checked for the same reason the matrix is, and it matters more here.
+     *
+     * Zod types the value as "some JSON", so without this an array sails
+     * through and `SINGLE_CHOICE` silently becomes `CHECKBOX`: the tally in
+     * `results()` stringifies whatever it is given, so `["a","b"]` would appear
+     * in the chart as a bucket named `a,b` that no option produces. The
+     * question would look answered and the result would be unreadable — the
+     * failure the matrix note describes, in a type a parent meets far more
+     * often.
+     */
+    for (const answer of dto.answers) {
+      const question = questionById.get(answer.questionId);
+      if (question?.type !== "SINGLE_CHOICE") continue;
+
+      const options = Array.isArray(question.options) ? (question.options as unknown[]) : [];
+      if (typeof answer.value !== "string" || !options.includes(answer.value)) {
+        throw new BadRequestException("Сонголтод байхгүй хариулт сонгосон");
       }
     }
 
@@ -359,9 +404,31 @@ export class SurveysService {
         };
       });
 
+    /*
+      The denominator for "Бөглөөгүй". Computed here rather than on the client,
+      which cannot see enrolments or memberships and would have to guess from
+      the group list — a guess that would be wrong for every family with two
+      children.
+    */
+    const expectedResponses = await this.repo.countExpectedRespondents(
+      survey.kindergartenId,
+      survey.scope,
+      groupId ?? null,
+    );
+
+    const totalResponses = responseCount(selected);
+
     return {
       survey: withQuestions,
-      totalResponses: responseCount(selected),
+      totalResponses,
+      expectedResponses,
+      /*
+        Never negative. A child who enrolled after answering, or a guardian
+        whose membership was revoked, can leave more responses on record than
+        the population currently expects — and "-2 бөглөөгүй" is worse than a
+        zero that reads as "everyone we are waiting on has answered".
+      */
+      missingResponses: Math.max(0, expectedResponses - totalResponses),
       groupId: groupId ?? null,
       questions: tally(selected),
       byGroup,

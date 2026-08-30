@@ -7,6 +7,7 @@ import {
 import { AuditRepository } from "../audit/audit.repository";
 import { AuthzRepository } from "../authz/authz.repository";
 import { ChildAccessService } from "../authz/child-access.service";
+import { TenantAccessService } from "../authz/tenant-access.service";
 import { canRecordForChild, isGuardianOf } from "../authz/child-access";
 import type { Actor } from "../authz/actor";
 import { paginate, type PageParams } from "../common/pagination";
@@ -32,7 +33,74 @@ export class ObservationsService {
     private readonly childAccess: ChildAccessService,
     private readonly authz: AuthzRepository,
     private readonly audit: AuditRepository,
+    private readonly tenants: TenantAccessService,
   ) {}
+
+  /**
+   * A group's note-keeping, summarised — the client's 2026-08-31 dashboard.
+   *
+   * ★ Authorised exactly as the assessment register is, and for the same
+   * reason.
+   *
+   * Kindergarten membership is not enough: a teacher may only look at a group
+   * they are assigned to, so this repeats `getGroupColumn`'s two-step check —
+   * the group must be in a kindergarten this actor belongs to, and then, unless
+   * they administer it, in their own assignment list. 404 for both, never 403
+   * (§1.7): a teacher probing group ids learns nothing about which exist.
+   *
+   * ★★ The numbers are counts of notes, never the notes themselves. Nothing
+   * here can leak a private observation's text, which is why this endpoint does
+   * not need the visibility filter the reading endpoints carry.
+   */
+  async groupStats(actor: Actor, groupId: string, from: Date, to: Date) {
+    const group = await this.repo.findGroupForStats(
+      groupId,
+      this.tenants.memberKindergartenIds(actor),
+    );
+    if (!group) throw new NotFoundException();
+
+    if (!this.tenants.isAdmin(actor, group.kindergartenId)) {
+      const assigned = await this.authz.loadActiveTeachingGroupIds(actor);
+      if (!assigned.includes(groupId)) throw new NotFoundException();
+    }
+
+    const [stats, byMonth, types, domains] = await Promise.all([
+      this.repo.groupObservationStats(groupId, from, to),
+      this.repo.observationsByMonth(groupId, from, to),
+      this.repo.listTypes(group.kindergartenId),
+      this.repo.listDomainsForStats(group.kindergartenId),
+    ]);
+
+    /*
+      The catalogue rows are joined here rather than in each `groupBy`: Prisma
+      cannot include a relation on an aggregate, and two small lookups beat one
+      query per bucket. Every configured type and domain appears even with a
+      count of zero — "Ярилцлага 0" is the finding, and a row missing from the
+      list looks like a row that was never configured.
+    */
+    const typeCount = new Map(stats.byType.map((row) => [row.typeId, row._count._all]));
+    const domainCount = new Map(stats.byDomain.map((row) => [row.domainId, row._count._all]));
+
+    return {
+      total: stats.total,
+      enrolled: stats.enrolled,
+      childrenWithNotes: stats.childrenWithNotes,
+      byType: types.map((type) => ({
+        id: type.id,
+        name: type.name,
+        count: typeCount.get(type.id) ?? 0,
+      })),
+      byDomain: domains.map((domain) => ({
+        id: domain.id,
+        name: domain.name,
+        count: domainCount.get(domain.id) ?? 0,
+      })),
+      byActivity: stats.byActivity
+        .filter((row) => row.activityName)
+        .map((row) => ({ name: row.activityName as string, count: row._count._all })),
+      byMonth,
+    };
+  }
 
   async listTypes(actor: Actor, childId: string) {
     const facts = await this.childAccess.assertCanAccess(actor, childId);

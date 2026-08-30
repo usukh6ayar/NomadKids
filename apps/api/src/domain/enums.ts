@@ -42,6 +42,7 @@ export {
   ReviewStatus,
   Role,
   Sex,
+  SurveyKind,
   SurveyPeriod,
   SurveyQuestionType,
   SurveyScope,
