@@ -1248,6 +1248,30 @@ export type ObservationTypeConfig = z.infer<typeof observationTypeConfigSchema>;
 
 // ── Document library — RFP §9 ────────────────────────────────────────────────
 
+/**
+ * What a document in the library *is* — RFP §9's own three, plus the fourth.
+ *
+ * ★ A vocabulary, where this was free text.
+ *
+ * §9 names the library's contents in one line — "Багшид зориулсан PDF баримт
+ * бичгийн сан: хөтөлбөр, арга зүй, дотоод журам" — and the screen's own lede
+ * repeats it. The field behind it accepted any eighty characters, so the same
+ * shelf could be spelled "Журам", "журам", "Дотоод журам" and "Дүрэм журам",
+ * and a teacher filtering by one of them would miss the other three. On a
+ * library nobody can search by content, the category *is* the way in.
+ *
+ * ★★ Still a string column, not an enum.
+ *
+ * Unlike `NotificationCategory`, this is a shelf label rather than a
+ * classification the system reasons about: nothing branches on it, existing
+ * rows carry arbitrary values, and a migration to an enum would have to guess
+ * what "Тушаал" was meant to be. The vocabulary is enforced where documents are
+ * created — the form offers four choices — and an older row keeps whatever it
+ * says, which the filter still lists.
+ */
+export const DOCUMENT_CATEGORIES = ["Хөтөлбөр", "Арга зүй", "Журам", "Бусад"] as const;
+export type DocumentCategory = (typeof DOCUMENT_CATEGORIES)[number];
+
 export const documentSchema = z.object({
   id: uuidSchema,
   title: z.string(),
