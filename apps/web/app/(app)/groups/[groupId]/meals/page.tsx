@@ -18,11 +18,14 @@ import { qk } from "@/lib/api/keys";
 import { fullName } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/shell/app-shell";
+import { GroupSwitcher, useSwitchableGroups } from "@/components/shell/group-switcher";
 import { RequireRole } from "@/components/shell/require-role";
 import { ChildAvatar } from "@/components/media/media-image";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
+import { RegisterProgress } from "@/components/register/register-progress";
+import type { Tone } from "@/components/ui/tone";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
@@ -47,11 +50,39 @@ const SITTINGS: { value: MealKind; label: string; short: string }[] = [
  * A teacher scanning twenty rows for who has not eaten reads the colour; a
  * screen reader reads the label and the state.
  */
-const STATUSES: { value: MealStatus; label: string; selected: string }[] = [
-  { value: "TAKEN", label: "Авсан", selected: "border-mint-ink/30 bg-mint text-mint-ink" },
-  { value: "NOT_TAKEN", label: "Аваагүй", selected: "border-danger/30 bg-danger-soft text-danger" },
-  { value: "PARTIAL", label: "Хэсэгчлэн", selected: "border-sun-ink/30 bg-sun text-sun-ink" },
-  { value: "SPECIAL", label: "Тусгай хоол", selected: "border-sky-ink/30 bg-sky text-sky-ink" },
+const STATUSES: { value: MealStatus; label: string; selected: string; tone: Tone }[] = [
+  {
+    value: "TAKEN",
+    label: "Авсан",
+    selected: "border-mint-ink/30 bg-mint text-mint-ink",
+    tone: "mint",
+  },
+  {
+    value: "NOT_TAKEN",
+    label: "Аваагүй",
+    selected: "border-danger/30 bg-danger-soft text-danger",
+    /*
+      ★ `peach`, where the button beside it is `danger`.
+
+      The chart palette (`ui/tone.ts`) has six accent washes and
+      `--color-danger` is deliberately not one of them. `peach` is its
+      attention tone and the nearest thing — the same substitution
+      `ATTENDANCE_STATUS_CHART_TONE` makes for ABSENT, for the same reason.
+    */
+    tone: "peach",
+  },
+  {
+    value: "PARTIAL",
+    label: "Хэсэгчлэн",
+    selected: "border-sun-ink/30 bg-sun text-sun-ink",
+    tone: "sun",
+  },
+  {
+    value: "SPECIAL",
+    label: "Тусгай хоол",
+    selected: "border-sky-ink/30 bg-sky text-sky-ink",
+    tone: "sky",
+  },
 ];
 
 const STATUS_LABEL = Object.fromEntries(STATUSES.map((s) => [s.value, s.label])) as Record<
@@ -110,6 +141,12 @@ function GroupMeals() {
   /** Unsaved marks, keyed by child id — never by row index, which reorders. */
   const [draft, setDraft] = useState<Record<string, Draft>>({});
   const [noting, setNoting] = useState<string | null>(null);
+
+  /*
+   * ★ The same key the other two registers use, so switching from Ирц to
+   * Үнэлгээ for the same group does not refetch the list of groups.
+   */
+  const switchable = useSwitchableGroups();
 
   const group = useQuery({
     queryKey: ["group", groupId],
@@ -194,9 +231,30 @@ function GroupMeals() {
   const notingRow = rows.find((r) => r.child.id === noting) ?? null;
   const recorded = rows.filter((row) => statusFor(row) !== null).length;
 
+  /*
+   * ★ Counted through `statusFor`, so an unsaved draft counts.
+   *
+   * This screen batches its writes behind a save bar, unlike the attendance
+   * sheet. A summary that read only `row.record` would sit still while a
+   * teacher taps their way down the list and jump when they save — the one
+   * moment the number tells them nothing they did not just do.
+   */
+  const breakdown = STATUSES.map((status) => ({
+    key: status.value,
+    label: status.label,
+    count: rows.filter((row) => statusFor(row) === status.value).length,
+    tone: status.tone,
+  }));
+
   return (
     <div className="flex flex-col gap-5 py-2">
       <PageHeader title="Хоолны бүртгэл" lede={group.data?.name} />
+
+      <GroupSwitcher
+        groups={switchable.data?.items ?? []}
+        activeGroupId={groupId}
+        href={(id) => `/groups/${id}/meals`}
+      />
 
       <Card className="flex flex-col gap-4 px-4 py-4 sm:px-5">
         <SittingPicker value={kind} onChange={setKind} locked={isDirty} />
@@ -217,6 +275,10 @@ function GroupMeals() {
             )}
           </Field>
         </div>
+
+        {sheet.data && rows.length > 0 ? (
+          <RegisterProgress inset recorded={recorded} total={rows.length} breakdown={breakdown} />
+        ) : null}
       </Card>
 
       {sheet.isLoading ? <LoadingState rows={5} /> : null}
@@ -234,14 +296,14 @@ function GroupMeals() {
 
       {sheet.data ? (
         <>
-          <SectionHeader
-            title={sitting.label}
-            action={
-              <span className="text-body text-muted">
-                {recorded}/{rows.length} бүртгэсэн
-              </span>
-            }
-          />
+          {/*
+            ★ The count left the section header when `RegisterProgress` arrived.
+
+            "14/18 бүртгэсэн" is now the strip's second line, and keeping it
+            here as well would put the same figure twice on one screen — the
+            failure `ROUTE_ICON` guards against, one component down.
+          */}
+          <SectionHeader title={sitting.label} />
 
           {rows.length === 0 ? (
             <EmptyState

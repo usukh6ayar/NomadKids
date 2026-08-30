@@ -17,8 +17,15 @@ import {
   Bell,
   Menu,
   NotebookPen,
+  CalendarDays,
+  CalendarRange,
+  School,
+  ScrollText,
   Settings,
+  Shapes,
   ShieldCheck,
+  SlidersHorizontal,
+  UserCog,
   UtensilsCrossed,
   Users,
   Wallet,
@@ -30,7 +37,12 @@ import { useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 import { childSummarySchema, type ChildSummary } from "@kinder/contracts";
 import { z } from "zod";
-import { AppShell, type ChildSwitcher, type NavItem, type NavSection } from "@/components/shell/app-shell";
+import {
+  AppShell,
+  type ChildSwitcher,
+  type NavItem,
+  type NavSection,
+} from "@/components/shell/app-shell";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { ChildAvatar } from "@/components/media/media-image";
@@ -268,9 +280,40 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
   "/menu": UtensilsCrossed,
   "/finance": Wallet,
   "/admin": ShieldCheck,
+  "/admin/funding": Wallet,
   "/platform": Building2,
   "/platform/revenue": Wallet,
+
+  /*
+   * ★ The seven administration screens, which had no icons because they had no
+   * rows — every one of them sat behind the single "Удирдлага" hub.
+   *
+   * `Building2` is not reused for `/admin/kindergarten`: it is already
+   * `/platform`, the superadmin's list of *every* kindergarten, and one glyph
+   * for "the estate" and "my own building" is the drift this map exists to
+   * prevent. `School` is the narrower thing.
+   */
+  "/admin/groups": Shapes,
+  "/admin/kindergarten": School,
+  "/admin/users": UserCog,
+  "/admin/school-years": CalendarRange,
+  "/admin/terms": CalendarDays,
+  "/admin/assessment-config": SlidersHorizontal,
+  "/admin/audit": ScrollText,
 };
+
+/**
+ * One section row, taking its icon from the route it points at.
+ *
+ * ★ Module-level, so `staffSections` and `parentSections` cannot build a row
+ * two different ways. Both menus name `/notifications` and `/settings`, and a
+ * per-builder copy is how the same destination came to carry one glyph in one
+ * menu and none in the other — the drift `ROUTE_ICON` exists to prevent, one
+ * level up.
+ */
+function entry(label: string, href: string) {
+  return { label, href, icon: routeIcon(href) };
+}
 
 /** The section-level icon for a route, or nothing if it has no destination. */
 function routeIcon(href: string | undefined) {
@@ -336,36 +379,45 @@ function staffNav(isAdmin: boolean, groupId: string | null): NavItem[] {
  *
  * ★ Every entry goes somewhere. There are no "удахгүй" placeholders.
  *
- * This sidebar previously named the whole product across three phases and left
- * eight of its thirteen entries as dead labels. Two failure modes came out of
- * that, and the second is the worse one:
+ * This sidebar once named the whole product across three phases and left eight
+ * of its thirteen entries as dead labels — a teacher opening the menu every day
+ * and reading six things they cannot do learns that most of the product is
+ * broken. Every rule below follows from that.
  *
- *  - **Чат · Санхүү** are a later phase (CLAUDE.md §7). A
- *    teacher opening the menu every day and reading six things they cannot do
- *    learns that most of this product is broken. They are gone until the
- *    screen behind them exists; adding a line back is a one-line change on
- *    the day it ships. **Ирц** and **Судалгаа** were pulled forward by
- *    explicit client request and shipped 2026-08-24: the attendance day
- *    sheet is reached from the dashboard's group card, same as assessment,
- *    with its own review-queue line below for a guardian's advance notice;
- *    survey management earns a line here directly since — unlike
- *    attendance — it has no group to start from. Хоол ба цэс shipped the
- *    same day too, reached from the child page rather than the sidebar,
- *    since there is nothing kindergarten-wide to manage from here — only
- *    per-day content that belongs where a family reads it. **Баримт бичгийн
- *    сан** joined them on 2026-08-25 as RFP §9 shipped — staff only, so it
- *    appears here and never in `parentSections`.
+ * ★★ **The section headings are the 2026-08-29 drawing's**, kept as they were
+ * merged: Хүүхдийн хөгжил ба үнэлгээ · Өдөр тутмын бүртгэл · Харилцаа холбоо ·
+ * Санхүү ба баримт бичиг · Багш ба байгууллага.
  *
- *  - **Явцын үнэлгээ** and **Тайлан** were marked `soon` while both are fully
- *    built. Assessment begins from a group and a report from a child, so
- *    neither has a top-level route — but advertising a working feature as
- *    missing is worse than not listing it. They are reached where the work
- *    actually starts: the dashboard's group card, and the child page's PDF
- *    button.
+ * A second pass on this branch renamed them to the reference's three — Сургалт
+ * ба сурагчид · Үйл ажиллагаа ба санхүү · Систем ба тохиргоо — at the same
+ * hour as the rename above landed on `main`, and only one naming can survive a
+ * merge. The one that shipped stays. What that second pass added *besides* the
+ * names is kept below, because none of it depends on them.
  *
- * **Бүлэг, цэцэрлэгийн мэдээлэл** is an admin destination, so a teacher does
- * not see it at all. Showing it to them greyed out promised something that was
- * never going to arrive for that account.
+ * **The seven administration screens are rows now.** They were all behind a
+ * single "Удирдлага" hub, so a director looking for "Улирал" read one word that
+ * did not say it and had to open a page to find out. The reference names its
+ * destinations directly and it is right to: a menu whose job is to say what is
+ * in the product should not make you open a screen to read the menu. The hub
+ * keeps its row — it carries kindergarten-wide figures an admin who also
+ * teaches cannot get from `/dashboard`, which gives that person the class
+ * board — and now sits above the screens it used to hide.
+ *
+ * **"Багшийн удирдлага" is not a second row.** The reference has a teacher
+ * module beside its user module; here both are `/admin/users`, one screen with
+ * a role filter. Two rows pointing at one URL would light the same row for
+ * both — `NavLink` matches on `pathname`, which carries no query string — so
+ * one row, named for what the screen actually is.
+ *
+ * **Чат has no row.** It is built and it is reachable from every screen in the
+ * product, as a floating button with its own unread badge (`ChatWidget`). A
+ * menu row beside a button that is already on screen is a second way in for a
+ * feature that needs one.
+ *
+ * ★★★ A teacher sees only what a teacher may open. Every admin destination is
+ * gated on `isAdmin` rather than shown greyed out — the API answers 404 to a
+ * teacher on all of them (`TenantAccessService.assertAdmin`), so a visible row
+ * would promise something that account will never get.
  */
 function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
   /*
@@ -379,18 +431,23 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
    */
   const entry = navEntry;
 
+  /** An entry only an administrator has, dropped entirely for anyone else. */
+  const adminEntry = (label: string, href: string) => (isAdmin ? [entry(label, href)] : []);
+
   /*
-   * ★ A teacher with one group skips the picker; everybody else gets it.
+   * ★ A teacher with one group links straight at it; everybody else takes the
+   * doorway.
    *
-   * `/attendance`, `/assessment` and `/meals` are group-scoped features, so
-   * each has a landing page that asks which group (`GroupPicker`). For a
-   * teacher who has exactly one, that page has exactly one row — a click that
-   * only ever has one answer, on the screen they open every morning. So their
-   * sidebar links straight past it, and an administrator, who has no single
-   * group to link to, lands on the picker.
+   * `/attendance`, `/assessment` and `/meals` are group-scoped, so something
+   * has to decide which group. It used to be a page listing them, which for a
+   * teacher with one group was a page with one row, every morning. Those routes
+   * now resolve the first group and forward, and the register carries the
+   * groups as chips along its top (`GroupSwitcher`) — so an administrator lands
+   * on a real register and switches in place instead of returning to a menu.
    *
-   * The destination differs; the label does not. One feature has one name
-   * wherever it is reached from.
+   * A teacher with exactly one group still gets the direct link, which skips
+   * even the redirect. The destination differs; the label does not. One feature
+   * has one name wherever it is reached from.
    */
   const scoped = (feature: string) => (groupId ? `/groups/${groupId}/${feature}` : `/${feature}`);
 
@@ -438,13 +495,23 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
      * true: a child's file, the group's registers, what goes out to a family,
      * and what you set up or look up. Two to three rows each.
      *
-     * ★★ Where Санхүү goes when it arrives.
+     * ★★ Санхүү has its own section as of 2026-08-30, and only its first row.
      *
-     * Not here. `docs/reference/FINANCE_SCOPE.md` records the tariffs and the
-     * definition of a funding day as still outstanding from the client (D3,
-     * D4) — the engine "will correctly calculate nothing" until they arrive —
-     * and it is nine reports and an invoicing flow, not a menu row. It earns
-     * its own section on the day it can answer a question.
+     * This said finance was "not here… it earns its own section on the day it
+     * can answer a question", and that day is what changed: `/admin/funding`
+     * reads the month's attendance register priced against the tariffs an
+     * administrator has entered. D3 and D4 (the state formula, and what counts
+     * as a funding day) are still unanswered by the client and this does not
+     * pretend otherwise — `нэмэлт.md` §4 *requires* the tariffs to be
+     * configuration rather than code, so the screen shows whatever rules the
+     * kindergarten has entered and no government number is hard-coded anywhere
+     * behind it. The nine reports and the invoicing flow are still to come, and
+     * still get no row until they exist.
+     *
+     * ★★★ Admin only, and it is the one section that is. §13 of `нэмэлт.md`:
+     * "Багш санхүүгийн бүрэн мэдээллийг харах эрхгүй байна". The API agrees —
+     * every funding route is `@Roles("ADMIN")` — so a teacher who reached the
+     * URL would get a 403 from a menu row that promised otherwise.
      */
     /*
       ★ Five sections, named for the subject matter — the client's 2026-08-30
@@ -480,7 +547,23 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
           href: scoped("assessment"),
           icon: <ClipboardCheck {...sectionIconProps} />,
         },
-        entry("Ажиглалт хянах", "/observations/review"),
+        /*
+         * ★ Two review queues left this section on 2026-08-30, and neither
+         * lost its screen.
+         *
+         * **Чөлөөний хүсэлт** is rendered under the day sheet on the attendance
+         * register — approving one writes the `Attendance` rows, so it is the
+         * same register from the other end, and a separate menu row asked a
+         * teacher to know that the absence they were about to mark by hand
+         * might already have been explained somewhere else.
+         *
+         * **Ажиглалт хянах** is reached from the dashboard's own alert, which
+         * counts what is waiting; a menu row that says nothing about whether
+         * there *is* anything to review is a row somebody opens to find out.
+         *
+         * Both routes still exist — a notification links to them and a bookmark
+         * points at them — they simply are not menu entries any more.
+         */
       ],
     },
     {
@@ -500,12 +583,15 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
           href: scoped("meals"),
           icon: <UtensilsCrossed {...sectionIconProps} />,
         },
-        entry("Чөлөөний хүсэлт хянах", "/attendance-requests/review"),
       ],
     },
     {
       /*
-       * ★ Outward only — both of these leave the building.
+       * ★ What you set up once, and what you look up afterwards.
+       *
+       * The seven administration screens were behind the "Удирдлага" hub until
+       * 2026-08-30; the hub keeps its row and now sits above them rather than
+       * instead of them.
        *
        * A notice goes on a board a family reads at home; a survey asks them a
        * question. Neither is something a teacher does *to* a record, which is
@@ -514,6 +600,14 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
       title: "Харилцаа холбоо",
       entries: [entry("Ангийн самбар / Мэдээ", "/notifications"), entry("Судалгаа", "/surveys")],
     },
+    ...(isAdmin
+      ? [
+          {
+            title: "Санхүү",
+            entries: [entry("Ирц ба тооцоолол", "/admin/funding")],
+          },
+        ]
+      : []),
     {
       title: "Санхүү ба баримт бичиг",
       entries: [
@@ -538,7 +632,23 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
          * screens behind it. Matches the bottom bar's tab for the same href:
          * one destination, one name.
          */
-        ...(isAdmin ? [entry("Удирдлага", "/admin")] : []),
+        ...adminEntry("Удирдлага", "/admin"),
+        /*
+         * ★ The seven screens the hub used to hide, listed under it.
+         *
+         * They had no rows and therefore no icons until 2026-08-30: reaching
+         * "Аудит" meant opening Удирдлага and then finding it among seven
+         * tiles, which is two steps for a screen a director opens daily. The
+         * hub keeps its row — it is still where the tiles live and what the
+         * bottom bar points at — and now sits above them rather than instead
+         * of them.
+         */
+        ...adminEntry("Цэцэрлэгийн мэдээлэл", "/admin/kindergarten"),
+        ...adminEntry("Хэрэглэгч ба эрх", "/admin/users"),
+        ...adminEntry("Хичээлийн жил", "/admin/school-years"),
+        ...adminEntry("Улирал", "/admin/terms"),
+        ...adminEntry("Үнэлгээний тохиргоо", "/admin/assessment-config"),
+        ...adminEntry("Аудит", "/admin/audit"),
       ],
     },
   ];
@@ -735,63 +845,86 @@ function parentSections(
 ): NavSection[] {
   const selected = myChildren?.find((child) => child.id === selectedChildId) ?? myChildren?.[0];
 
-  return [
-    {
-      title: "Хүүхдийн мэдээлэл",
-      entries: selected
-        ? [
-            {
-              label: fullName(selected),
-              href: `/children/${selected.id}/general`,
-              icon: <ChildAvatar child={selected} size={24} />,
-            },
-            {
-              label: "Ажиглалт",
-              href: `/children/${selected.id}/observations`,
-              icon: <NotebookPen size={18} aria-hidden="true" />,
-            },
-            {
-              label: "Хоол",
-              href: `/children/${selected.id}/menu`,
-              icon: <UtensilsCrossed size={18} aria-hidden="true" />,
-            },
-            {
-              label: "Цэцэрлэгийн архив",
-              href: `/children/${selected.id}/enrollment-archive`,
-              icon: <Building2 size={18} aria-hidden="true" />,
-            },
-          ]
-        : [{ label: "Холбогдсон хүүхэд алга" }],
-    },
-    {
-      title: "Харилцаа холбоо",
-      entries: [
+  /*
+   * ★ Six rows for the selected child, not two.
+   *
+   * A parent's whole product *is* their child's file, and three of its tabs —
+   * Ирц, Хоол, Судалгаа — had no name anywhere in this menu even though a
+   * parent opens them constantly and each is a real route. They were reachable
+   * only by landing on the child's page first and finding the tab, which is a
+   * menu that names a third of what it leads to.
+   *
+   * The switcher above decides *which* child; these rows decide *what about
+   * them*, so they follow the selection rather than repeating per child.
+   *
+   * ★★ "Цэцэрлэгийн архив" is the sixth and it comes from `main`, not from
+   * here. It is the one row that is not about a day — placement, teacher and
+   * the family's full enrollment history — so it sits last, after the five
+   * that are. Its icon stays `Building2`, the glyph `main` chose for it, but
+   * spelled with `sectionIconProps` like every other row in this list: the
+   * size is the same 18 either way, and this file already argues that writing
+   * the number inline is "the same number three times and no name for it".
+   */
+  const childEntries = selected
+    ? [
         {
-          label: "Мэдээ",
-          href: "/notifications",
-          icon: routeIcon("/notifications"),
+          label: fullName(selected),
+          href: `/children/${selected.id}/general`,
+          icon: <ChildAvatar child={selected} size={24} />,
         },
-        /*
-         * ★ Chat is no longer a dead row — it is built, and it is reachable.
-         *
-         * This said "chat is RFP Phase IV" and rendered as inert text. Both
-         * halves stopped being true on 2026-08-29: CLAUDE.md §7 moved chat into
-         * scope at the client's explicit request, and `AppShell` now renders
-         * `ChatWidget` on every screen for every role — so a parent already has
-         * it, from anywhere, with an unread badge.
-         *
-         * A greyed-out row saying "удахгүй" beside a working floating button is
-         * worse than either alone: it tells a family the feature is missing
-         * while the feature waves at them from the corner of the same page.
-         */
-      ],
+        {
+          label: "Ажиглалт",
+          href: `/children/${selected.id}/observations`,
+          icon: <NotebookPen {...sectionIconProps} />,
+        },
+        {
+          label: "Ирц",
+          href: `/children/${selected.id}/attendance`,
+          icon: <CalendarCheck {...sectionIconProps} />,
+        },
+        {
+          label: "Хоол",
+          href: `/children/${selected.id}/menu`,
+          icon: <UtensilsCrossed {...sectionIconProps} />,
+        },
+        {
+          label: "Судалгаа",
+          href: `/children/${selected.id}/surveys`,
+          icon: <BarChart3 {...sectionIconProps} />,
+        },
+        {
+          label: "Цэцэрлэгийн архив",
+          href: `/children/${selected.id}/enrollment-archive`,
+          icon: <Building2 {...sectionIconProps} />,
+        },
+      ]
+    : [{ label: "Холбогдсон хүүхэд алга" }];
+
+  return [
+    { title: "Хүүхдийн мэдээлэл", entries: childEntries },
+    {
+      /*
+       * ★ Чат has no row here either, for the reason `staffSections` gives:
+       * `ChatWidget` floats on every screen for every role, with its own unread
+       * badge. A menu row beside a button already on screen is a second way in
+       * for a feature that needs one.
+       */
+      title: "Харилцаа холбоо",
+      entries: [entry("Мэдээ", "/notifications")],
     },
     {
-      title: "Санхүү ба бүртгэл",
-      entries: [
-        { label: "Санхүү" },
-        { label: "Миний бүртгэл", href: "/settings", icon: routeIcon("/settings") },
-      ],
+      /*
+       * ★ The inert "Санхүү" row is gone.
+       *
+       * It was label-only — the reference's device for naming a feature the
+       * build has not reached — and it was the last one left in the product
+       * after `staffSections` was rewritten. Parent invoices are `нэмэлт.md`
+       * §7–§10 and not started; until they are, a family reading "Санхүү" in
+       * grey learns only that something is missing. This file argues that case
+       * three times about the staff menu and then did the opposite here.
+       */
+      title: "Тохиргоо",
+      entries: [entry("Миний бүртгэл", "/settings")],
     },
   ];
 }

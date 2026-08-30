@@ -350,7 +350,9 @@ function Rules({ rules }: { rules: ReturnType<typeof useQuery<z.infer<typeof rul
                 </p>
               </div>
               <span className="shrink-0 text-body font-semibold tabular-nums text-ink">
-                {rule.dailyRate ? `${money(rule.dailyRate)}/хоног` : money(rule.monthlyRate)}
+                {rule.dailyRate
+                  ? `${money(rule.dailyRate)}/хоног`
+                  : money(rule.monthlyRate ?? null)}
               </span>
             </div>
           ))}

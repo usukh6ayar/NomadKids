@@ -3,7 +3,16 @@ import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestApp } from "./support/app";
 import { resetData, testDb } from "./support/db";
-import { authed, createScenario, login, type AuthSession, type Scenario } from "./support/fixtures";
+import {
+  authed,
+  createChild,
+  createScenario,
+  enrollChild,
+  linkGuardian,
+  login,
+  type AuthSession,
+  type Scenario,
+} from "./support/fixtures";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
 
 let app: INestApplication;
@@ -291,6 +300,143 @@ describe("results — staff only", () => {
   });
 
   it("a parent cannot see results", async () => {
+    const { surveyId } = await publishedChildSurvey();
+    const res = await authed(request(server()).get(`/v1/surveys/${surveyId}/results`), parentA);
+    expect(res.status).toBe(404);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Results, group by group — RFP Module 1.2's comparison, cut the other way
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * ★ A problem in one group disappears into an average across four, and
+ * disappearing is what a survey is run to stop.
+ *
+ * The results endpoint answered one question — "what did families say" — and
+ * these cover the second: "did this group say something different". The group
+ * comes from the child the answer is *about*, never from the respondent: a
+ * guardian belongs to no group, and a family with two children in two groups
+ * answers twice.
+ */
+describe("results by group", () => {
+  /** A second group with a child and a guardian who can answer for them. */
+  async function secondGroupChild() {
+    const group = await db.group.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        schoolYearId: a.schoolYear.id,
+        name: "Наран бүлэг",
+        ageBand: "MIDDLE",
+      },
+    });
+    const child = await createChild(a.kindergarten.id, {
+      lastName: "Наран",
+      firstName: "Тэмүүжин",
+    });
+    await enrollChild(a.kindergarten.id, child.id, group.id, a.schoolYear.id);
+    await linkGuardian(a.kindergarten.id, child.id, a.parentUser.id);
+    return { group, child };
+  }
+
+  async function answer(surveyId: string, questionId: string, childId: string, value: number) {
+    return authed(request(server()).post(`/v1/surveys/${surveyId}/responses`), parentA).send({
+      childId,
+      answers: [{ questionId, value }],
+    });
+  }
+
+  it("splits the answers by the group the child is in", async () => {
+    const { surveyId, questionId } = await publishedChildSurvey();
+    const other = await secondGroupChild();
+
+    await answer(surveyId, questionId, a.child.id, 5);
+    await answer(surveyId, questionId, other.child.id, 2);
+
+    const res = await authed(request(server()).get(`/v1/surveys/${surveyId}/results`), teacherA);
+    expect(res.status).toBe(200);
+
+    const names = res.body.byGroup.map((g: { group: { name: string } }) => g.group.name);
+    expect(names).toContain(a.group.name);
+    expect(names).toContain("Наран бүлэг");
+
+    const naran = res.body.byGroup.find(
+      (g: { group: { name: string } }) => g.group.name === "Наран бүлэг",
+    );
+    expect(naran.responseCount).toBe(1);
+    expect(naran.questions[0].counts).toEqual({ "2": 1 });
+  });
+
+  /**
+   * ★ Responses, not answers.
+   *
+   * One response carries one answer per question, so counting answer rows would
+   * report "24 хариулт" for a six-question survey four families answered.
+   */
+  it("counts responses rather than answer rows", async () => {
+    const created = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
+      teacherA,
+    ).send({ title: "Хоёр асуулттай", scope: "CHILD" });
+
+    await authed(request(server()).put(`/v1/surveys/${created.body.id}/questions`), teacherA).send({
+      questions: [
+        { order: 0, type: "RATING", prompt: "Нэг" },
+        { order: 1, type: "RATING", prompt: "Хоёр" },
+      ],
+    });
+    await authed(request(server()).post(`/v1/surveys/${created.body.id}/publish`), teacherA);
+
+    const survey = await db.survey.findUniqueOrThrow({
+      where: { id: created.body.id },
+      include: { questions: { orderBy: { order: "asc" } } },
+    });
+
+    await authed(request(server()).post(`/v1/surveys/${survey.id}/responses`), parentA).send({
+      childId: a.child.id,
+      answers: survey.questions.map((q) => ({ questionId: q.id, value: 4 })),
+    });
+
+    const res = await authed(request(server()).get(`/v1/surveys/${survey.id}/results`), teacherA);
+    expect(res.body.totalResponses).toBe(1);
+    expect(res.body.byGroup[0].responseCount).toBe(1);
+  });
+
+  /**
+   * ★ The filter narrows the headline and leaves the breakdown whole.
+   *
+   * A comparison filtered to one group is a chart with one bar, so `byGroup`
+   * ignores `groupId` by design.
+   */
+  it("narrows the totals but never the comparison", async () => {
+    const { surveyId, questionId } = await publishedChildSurvey();
+    const other = await secondGroupChild();
+
+    await answer(surveyId, questionId, a.child.id, 5);
+    await answer(surveyId, questionId, other.child.id, 2);
+
+    const res = await authed(
+      request(server()).get(`/v1/surveys/${surveyId}/results?groupId=${other.group.id}`),
+      teacherA,
+    );
+
+    expect(res.body.totalResponses).toBe(1);
+    expect(res.body.questions[0].counts).toEqual({ "2": 1 });
+    // Both groups still on the chart.
+    expect(res.body.byGroup).toHaveLength(2);
+  });
+
+  it("rejects a group id that is not a uuid", async () => {
+    const { surveyId } = await publishedChildSurvey();
+    const res = await authed(
+      request(server()).get(`/v1/surveys/${surveyId}/results?groupId=naran`),
+      teacherA,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("keeps a guardian out of the results entirely", async () => {
     const { surveyId } = await publishedChildSurvey();
     const res = await authed(request(server()).get(`/v1/surveys/${surveyId}/results`), parentA);
     expect(res.status).toBe(404);

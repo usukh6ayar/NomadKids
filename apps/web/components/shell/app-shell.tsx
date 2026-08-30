@@ -1023,6 +1023,12 @@ function SidebarContent({
         `group-has-[:last-child]` is not available here, so it is unconditional:
         over a list that does not scroll it sits on the panel's own background
         and is invisible anyway.
+
+        ★★ Both sides of this conflict were real, and the merge keeps both.
+        `origin/main` added the child switcher; this branch added the fade and
+        the wrapper it needs. Taking either alone would have lost a fix that
+        shipped for a reason — the switcher went in one commit above the list,
+        the fade one commit below it, and neither touches the other's job.
       */}
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div className="-mr-1.5 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1.5">

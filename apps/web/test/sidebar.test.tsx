@@ -35,12 +35,33 @@ const GROUPS = {
   totalPages: 1,
 };
 
-function renderShell(roles: Parameters<typeof sessionFor>[0], pathname = "/dashboard") {
+/** A guardian's own child — the parent menu builds its rows from the first. */
+const OWN_CHILD = {
+  id: "66666666-6666-4666-8666-666666666666",
+  lastName: "Батмөнх",
+  firstName: "Тэмүүлэн",
+  dateOfBirth: "2021-04-02",
+  sex: "MALE",
+  photoMediaFileId: null,
+  group: null,
+};
+
+function renderShell(
+  roles: Parameters<typeof sessionFor>[0],
+  pathname = "/dashboard",
+  /*
+   * ★ Empty by default, because most cases here are about the staff menu and a
+   * child would only add fetches. The parent cases that read the child's rows
+   * pass one — without it `parentSections` correctly renders "Холбогдсон
+   * хүүхэд алга" and there is nothing to assert against.
+   */
+  ownChildren: unknown[] = [],
+) {
   setPathname(pathname);
   stubApi([
     { path: "/auth/me", body: sessionFor(roles) },
     { path: "/groups", body: GROUPS },
-    { path: "/children/mine", body: [] },
+    { path: "/children/mine", body: ownChildren },
     { path: "/notifications/unread-count", body: { count: 0 } },
   ]);
 
@@ -101,15 +122,20 @@ describe("navigation icons", () => {
     const entries = [
       "Хүүхдүүд",
       "Явцын үнэлгээ",
-      "Ажиглалт хянах",
       "Ирц",
       "Хоол ба цэс",
-      "Чөлөөний хүсэлт хянах",
       "Ангийн самбар / Мэдээ",
       "Судалгаа",
+      // Систем ба тохиргоо — the seven that were behind the hub, plus the hub
+      "Удирдлага",
+      "Цэцэрлэгийн мэдээлэл",
+      "Хэрэглэгч ба эрх",
+      "Хичээлийн жил",
+      "Улирал",
+      "Үнэлгээний тохиргоо",
+      "Аудит",
       "Баримт бичгийн сан",
       "Багшийн мэдээлэл",
-      "Удирдлага",
     ];
 
     for (const label of entries) {
@@ -194,8 +220,85 @@ describe("role-based navigation", () => {
     const nav = await sidebar();
 
     expect(within(nav).getByRole("link", { name: "Хүүхдүүд" })).toBeInTheDocument();
-    expect(within(nav).getByRole("link", { name: "Ажиглалт хянах" })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Ирц" })).toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: "Удирдлага" })).not.toBeInTheDocument();
+  });
+
+  /**
+   * ★ Two review queues left the menu on 2026-08-30 and kept their screens.
+   *
+   * Чөлөөний хүсэлт is rendered under the attendance day sheet, where approving
+   * one writes the very rows that sheet is about; Ажиглалт хянах is reached
+   * from the dashboard alert that counts what is waiting. A row that says
+   * nothing about whether there is anything to review is a row somebody opens
+   * to find out — which is what both of these were.
+   */
+  it("keeps the review queues out of the menu", async () => {
+    renderShell(["TEACHER", "ADMIN"]);
+    const nav = await sidebar();
+
+    expect(within(nav).queryByRole("link", { name: "Ажиглалт хянах" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Чөлөөний хүсэлт" })).not.toBeInTheDocument();
+  });
+
+  /**
+   * ★ Every administration destination is admin-only, not merely the hub.
+   *
+   * Surfacing the seven screens that used to sit behind "Удирдлага" made seven
+   * new ways to show a teacher a row the API answers 404 to
+   * (`TenantAccessService.assertAdmin`). One `queryByRole` per destination,
+   * because a single spot-check would have passed while six others leaked.
+   */
+  it("hides every administration destination from a teacher", async () => {
+    renderShell(["TEACHER"]);
+    const nav = await sidebar();
+
+    for (const label of [
+      "Ирц ба тооцоолол",
+      "Цэцэрлэгийн мэдээлэл",
+      "Хэрэглэгч ба эрх",
+      "Хичээлийн жил",
+      "Улирал",
+      "Үнэлгээний тохиргоо",
+      "Аудит",
+    ]) {
+      expect(
+        within(nav).queryByRole("link", { name: label }),
+        `${label} is visible to a teacher`,
+      ).not.toBeInTheDocument();
+    }
+  });
+
+  /** The headings the staff menu groups the product by, per the 2026-08-29 drawing. */
+  it("groups the staff menu into named sections", async () => {
+    renderShell(["TEACHER", "ADMIN"]);
+    const nav = await sidebar();
+
+    expect(within(nav).getByText("Хүүхдийн хөгжил ба үнэлгээ")).toBeInTheDocument();
+    expect(within(nav).getByText("Өдөр тутмын бүртгэл")).toBeInTheDocument();
+    expect(within(nav).getByText("Харилцаа холбоо")).toBeInTheDocument();
+    expect(within(nav).getByText("Багш ба байгууллага")).toBeInTheDocument();
+  });
+
+  /**
+   * ★ The reason the seven rows were added: a hub row does not name what is
+   * behind it, and "Улирал" was a word this menu never said.
+   */
+  it("names each administration screen rather than hiding it behind the hub", async () => {
+    renderShell(["ADMIN"]);
+    const nav = await sidebar();
+
+    for (const [label, href] of [
+      ["Цэцэрлэгийн мэдээлэл", "/admin/kindergarten"],
+      ["Хэрэглэгч ба эрх", "/admin/users"],
+      ["Хичээлийн жил", "/admin/school-years"],
+      ["Улирал", "/admin/terms"],
+      ["Үнэлгээний тохиргоо", "/admin/assessment-config"],
+      ["Аудит", "/admin/audit"],
+      ["Ирц ба тооцоолол", "/admin/funding"],
+    ] as const) {
+      expect(within(nav).getByRole("link", { name: label })).toHaveAttribute("href", href);
+    }
   });
 
   it("adds the administration entry for an admin", async () => {
@@ -210,7 +313,7 @@ describe("role-based navigation", () => {
     const nav = await sidebar();
 
     expect(within(nav).getByText("Хүүхдийн мэдээлэл")).toBeInTheDocument();
-    expect(within(nav).queryByRole("link", { name: "Ажиглалт хянах" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Хүүхдүүд" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: "Баримт бичгийн сан" })).not.toBeInTheDocument();
   });
 
@@ -232,16 +335,48 @@ describe("role-based navigation", () => {
    * page. The row is gone, and this asserts it stays gone rather than being
    * restored by someone reading the old comment.
    */
-  it("does not make unbuilt features clickable", async () => {
+  /**
+   * ★ There are no dead rows left anywhere in the product.
+   *
+   * The parent menu carried an inert "Санхүү" label — the reference's device
+   * for naming a feature the build has not reached — and it was the last one
+   * after `staffSections` was rewritten. Parent invoices are `нэмэлт.md`
+   * §7–§10 and not started; a family reading grey text learns only that
+   * something is missing.
+   *
+   * Чат is the other side of the same rule: built, and reachable from the
+   * floating widget on every screen, so it is not a menu row at all.
+   */
+  it("leaves no unbuilt feature named in either menu", async () => {
     renderShell(["PARENT"], "/home");
     const nav = await sidebar();
 
-    expect(within(nav).getByText("Санхүү")).toBeInTheDocument();
-    expect(within(nav).queryByRole("link", { name: /Санхүү/ })).not.toBeInTheDocument();
-
-    // Chat is built and reachable from the floating widget, so it is not a menu
-    // row at all — dead or alive.
+    expect(within(nav).queryByText("Санхүү")).not.toBeInTheDocument();
     expect(within(nav).queryByText("Чат")).not.toBeInTheDocument();
+    expect(within(nav).queryByText("удахгүй")).not.toBeInTheDocument();
+  });
+
+  /**
+   * ★ A parent's menu names every tab of their child's file.
+   *
+   * Ирц, Хоол and Судалгаа are routes a parent opens constantly and had no
+   * name in this menu — reachable only by landing on the child's page and
+   * finding the tab there.
+   */
+  it("names the child's tabs a parent actually opens", async () => {
+    renderShell(["PARENT"], "/home", [OWN_CHILD]);
+    const nav = await sidebar();
+
+    await waitFor(() =>
+      expect(within(nav).getByRole("link", { name: /Батмөнх/ })).toBeInTheDocument(),
+    );
+
+    for (const label of ["Ажиглалт", "Ирц", "Хоол", "Судалгаа"]) {
+      expect(
+        within(nav).queryByRole("link", { name: label }),
+        `${label} is missing from the parent menu`,
+      ).toBeInTheDocument();
+    }
   });
 });
 

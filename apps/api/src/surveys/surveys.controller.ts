@@ -12,11 +12,13 @@ import {
   createSurveySchema,
   saveQuestionsSchema,
   submitResponseSchema,
+  surveyResultsQuerySchema,
   type CloneSurveyDto,
   type CompareSurveyQuery,
   type CreateSurveyDto,
   type SaveQuestionsDto,
   type SubmitResponseDto,
+  type SurveyResultsQuery,
 } from "./surveys.dto";
 
 /** Kindergarten-scoped survey management — staff only. */
@@ -157,8 +159,9 @@ export class SurveysController {
   async results(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(surveyResultsQuerySchema)) query: SurveyResultsQuery,
   ) {
-    return this.service.results(actor, params.id);
+    return this.service.results(actor, params.id, query.groupId);
   }
 
   @Post(":id/responses")

@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Res } from "@nestjs/common";
+import type { Response } from "express";
 import { idParamSchema } from "@kinder/contracts";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
@@ -9,11 +10,13 @@ import {
   calculateMonthSchema,
   createFundingRuleSchema,
   listFundingQuerySchema,
+  registerQuerySchema,
   settleFundingSchema,
   updateFundingRuleSchema,
   type CalculateMonthDto,
   type CreateFundingRuleDto,
   type ListFundingQuery,
+  type RegisterQuery,
   type SettleFundingDto,
   type UpdateFundingRuleDto,
 } from "./funding.dto";
@@ -60,6 +63,50 @@ export class KindergartenFundingController {
     @Query(new ZodValidationPipe(listFundingQuerySchema)) query: ListFundingQuery,
   ) {
     return this.service.listMonth(actor, params.id, query);
+  }
+
+  /**
+   * The month's register — every enrolled child, their days, and the money.
+   *
+   * ★ Separate from `listMonth` above rather than replacing it.
+   *
+   * `listMonth` answers "what did the calculation produce", which is what a
+   * reconciliation against a bank statement needs and what §6's totals are.
+   * This answers "what does the month look like", which includes children the
+   * calculation skipped — a child no rule covers has no calculation row and
+   * would simply vanish from a screen built on the other endpoint, which is
+   * the one child an administrator most needs to see.
+   */
+  @Get("register")
+  async register(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(registerQuerySchema)) query: RegisterQuery,
+  ) {
+    return this.service.monthlyRegister(actor, params.id, query);
+  }
+
+  /**
+   * The same register, as a file — нэмэлт.md §16.
+   *
+   * Takes the register's own query, so the filters set on screen apply to the
+   * download. The row limit does not: a file is the whole month.
+   */
+  @Get("register/export")
+  async exportRegister(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(registerQuerySchema)) query: RegisterQuery,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.service.exportRegister(actor, params.id, query);
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(buffer);
   }
 
   /** Runs the month from the attendance and meal registers — §6, §17. */

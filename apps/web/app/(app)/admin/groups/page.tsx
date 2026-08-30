@@ -7,12 +7,16 @@ import {
   Archive,
   CalendarCheck,
   ClipboardCheck,
+  Gauge,
   Pencil,
   Plus,
   RotateCcw,
+  Shapes,
   Trash2,
+  TrendingUp,
   UserMinus,
   UserPlus,
+  Users,
   UtensilsCrossed,
 } from "lucide-react";
 import { z } from "zod";
@@ -31,6 +35,9 @@ import { fullName } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataList, DataRow } from "@/components/ui/data-list";
+import { StatCard } from "@/components/ui/stat-card";
+import { BarRow } from "@/components/ui/chart/bar-row";
+import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -94,7 +101,18 @@ function AdminGroups() {
 
   const groups = useQuery({
     queryKey: qk.adminGroups(),
-    queryFn: () => get("/groups", groupsSchema),
+    /*
+     * ★ `pageSize=100`, the API's maximum, and this screen has no pager.
+     *
+     * The summary above the list folds over the rows it received, so a default
+     * page of 25 would have it reporting "25 бүлэг · 480 хүүхэд" for a
+     * kindergarten with thirty groups — a wrong total presented as a fact,
+     * which is worse than no summary. A kindergarten does not have a hundred
+     * groups; if one ever does, the list needs a pager and the summary needs
+     * the server to count, and both should be built then rather than guessed
+     * at now.
+     */
+    queryFn: () => get("/groups?pageSize=100", groupsSchema),
   });
 
   const items = groups.data?.items ?? [];
@@ -121,6 +139,8 @@ function AdminGroups() {
           description="Хүүхэд бүртгэхийн өмнө бүлэг үүсгэх шаардлагатай."
         />
       ) : null}
+
+      {items.length > 0 ? <GroupsOverview groups={items} /> : null}
 
       {items.length > 0 ? (
         <DataList columns={GROUP_COLUMNS} leadWidth={null} actionsWidth="w-[352px]">
@@ -173,8 +193,31 @@ function GroupRow({ group }: { group: z.infer<typeof groupListItemSchema> }) {
             kindergartens, *is* the age band — the demo data renders "Дунд
             бүлэг" twice on the same row.
           */
+          /*
+            ★ A band that only repeats the name is written quietly.
+
+            A kindergarten may name a group after its age band — the demo data
+            does, so "Дунд бүлэг" is the group's name *and* the label of its
+            JUNIOR band, and the row printed the same two words twice at the
+            same weight, one column apart. It read as a rendering fault.
+
+            The cell keeps the value, because the column has to mean the same
+            thing on every row for a reader scanning down it — a blank here
+            would say "no age band set", which is a different and false claim.
+            What changes is the weight: at `text-muted` the eye passes over a
+            repetition instead of reading it a second time, and a band that
+            actually differs from the name still reads at full strength.
+          */
           band: group.ageBand ? (
-            <span className="text-body text-ink">{BAND_LABEL[group.ageBand] ?? group.ageBand}</span>
+            <span
+              className={
+                BAND_LABEL[group.ageBand] === group.name
+                  ? "text-body text-muted"
+                  : "text-body text-ink"
+              }
+            >
+              {BAND_LABEL[group.ageBand] ?? group.ageBand}
+            </span>
           ) : null,
           year: group.schoolYear?.name ? (
             <span className="text-body text-muted">{group.schoolYear.name}</span>
@@ -249,6 +292,112 @@ function GroupRow({ group }: { group: z.infer<typeof groupListItemSchema> }) {
         />
       ) : null}
     </>
+  );
+}
+
+/**
+ * The kindergarten's shape, above the list that makes it.
+ *
+ * ★ Counted from the rows already on screen — no second request.
+ *
+ * Every figure here is a fold over `items`, which the list has fetched anyway.
+ * Asking the API for the same numbers would add a request whose answer can
+ * disagree with the table under it the moment a group is created, which is the
+ * one thing a summary sitting directly above a list must never do.
+ *
+ * ★★ Дундаж дүүргэлт is the figure this screen existed without.
+ *
+ * "Хэдэн бүлэгтэй вэ" is answerable by counting rows. "Бүлэг бүрт дунджаар
+ * хэдэн хүүхэд байна" is the question a director actually opens this screen
+ * with — it is what decides whether to open another group — and it was nowhere
+ * in the product.
+ */
+function GroupsOverview({ groups }: { groups: z.infer<typeof groupListItemSchema>[] }) {
+  const active = groups.filter((group) => group.status !== "ARCHIVED");
+  const children = groups.reduce((sum, group) => sum + (group._count?.enrollments ?? 0), 0);
+  const archived = groups.length - active.length;
+
+  /*
+   * Averaged over **active** groups only. An archived group holds no children
+   * and dividing by it reports a smaller class size than any group actually
+   * has — the direction that makes a full kindergarten look like it has room.
+   */
+  const average = active.length > 0 ? Math.round((children / active.length) * 10) / 10 : 0;
+
+  const busiest = Math.max(...groups.map((group) => group._count?.enrollments ?? 0), 0);
+
+  return (
+    <section aria-label="Товч мэдээлэл" className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatCard
+          label="Бүлэг"
+          value={active.length}
+          unit="идэвхтэй"
+          tone="sky"
+          art={<Shapes size={22} aria-hidden />}
+          footer={
+            archived > 0 ? (
+              <p className="text-caption text-muted">{archived} архивласан</p>
+            ) : undefined
+          }
+        />
+        <StatCard
+          label="Нийт хүүхэд"
+          value={children}
+          unit="хүүхэд"
+          tone="mint"
+          art={<Users size={22} aria-hidden />}
+        />
+        <StatCard
+          label="Дундаж дүүргэлт"
+          value={average}
+          unit="хүүхэд / бүлэг"
+          tone="cornflower"
+          art={<Gauge size={22} aria-hidden />}
+        />
+        <StatCard
+          label="Хамгийн олонтой"
+          value={busiest}
+          unit="хүүхэд"
+          tone="teal"
+          art={<TrendingUp size={22} aria-hidden />}
+        />
+      </div>
+
+      {/*
+        ★ Bars, not a second row of tiles.
+
+        The four figures above are independent numbers. These are shares of one
+        whole — how the same children are split across the groups — and a bar
+        is the only mark here that answers "which is fullest" by length rather
+        than by reading four numerals and comparing them.
+
+        Sorted by size, unlike the register strip's fixed order: there is no
+        natural sequence to a kindergarten's groups, so the useful order is the
+        one that puts the fullest first.
+      */}
+      {children > 0 ? (
+        <Card pad="roomy" className="flex flex-col gap-2.5">
+          <SectionHeader title="Бүлгийн дүүргэлт" as="h3" />
+          {[...active]
+            .sort((a, b) => (b._count?.enrollments ?? 0) - (a._count?.enrollments ?? 0))
+            .map((group) => {
+              const count = group._count?.enrollments ?? 0;
+              return (
+                <BarRow
+                  key={group.id}
+                  inline
+                  label={group.name}
+                  percent={busiest === 0 ? 0 : (count / busiest) * 100}
+                  value={count}
+                  tone="sky"
+                  accessibleLabel={`${group.name}: ${count} хүүхэд`}
+                />
+              );
+            })}
+        </Card>
+      ) : null}
+    </section>
   );
 }
 

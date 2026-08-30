@@ -184,6 +184,17 @@ enum NotificationStatus {
   PUBLISHED
 }
 
+/// What kind of notice this is — the client's own taxonomy, from the drawing
+/// their board mock-up carries: Зарлал · Үйл ажиллагаа · Сургалт.
+///
+/// ★ An enum, not the `DevelopmentDomain` treatment.
+///
+/// CLAUDE.md §2.3 says anything an administrator can edit is a table. This is
+/// not that: it is a fixed vocabulary the client drew, and the filter row on
+/// the board is drawn from it — a kindergarten inventing a seventh category
+/// would produce a chip row nobody designed. `OTHER` is the escape hatch every
+/// enum in this schema keeps, so a notice that is none of the three is filed
+/// honestly rather than as the nearest wrong one.
 enum TermReportStatus {
   DRAFT
   FINAL
@@ -301,11 +312,11 @@ model User {
   documentBookmarks     DocumentBookmark[]        @relation("DocumentBookmarkUser")
   consentsDecided       ConsentRecord[]           @relation("ConsentDecidedBy")
   mealsRecorded         MealRecord[]              @relation("MealRecordedBy")
+  chatMessages          ChatMessage[]             @relation("ChatAuthor")
+  chatReads             ChatRead[]                @relation("ChatReader")
 
   @@index([deletedAt])
   @@map("users")
-  chatMessages         ChatMessage[] @relation("ChatAuthor")
-  chatReads            ChatRead[]    @relation("ChatReader")
 }
 
 /// ★ The only source of authority in the system.
@@ -475,11 +486,11 @@ model Kindergarten {
   mealRecords           MealRecord[]
   fundingRules          FundingRule[]
   fundingCalculations   FundingCalculation[]
+  chatMessages          ChatMessage[]
+  chatReads             ChatRead[]
 
   @@index([deletedAt])
   @@map("kindergartens")
-  chatMessages   ChatMessage[]
-  chatReads      ChatRead[]
 }
 
 model SchoolYear {
@@ -2329,8 +2340,8 @@ enum NotificationCategory {
 }
 
 model Notification {
-  id             String             @id @default(uuid()) @db.Uuid
-  kindergartenId String             @db.Uuid
+  id             String               @id @default(uuid()) @db.Uuid
+  kindergartenId String               @db.Uuid
   /// ★ Nullable since 2026-08-30, at the client's request.
   ///
   /// A notice used to require one. The client asked for posts that are a
@@ -2342,12 +2353,12 @@ model Notification {
   /// Defaults to OTHER so every row written before this column existed has a
   /// value the filter can match, rather than being invisible to every chip.
   category       NotificationCategory @default(OTHER)
-  startsOn       DateTime?          @db.Date
-  endsOn         DateTime?          @db.Date
-  isImportant    Boolean            @default(false)
-  status         NotificationStatus @default(DRAFT)
+  startsOn       DateTime?            @db.Date
+  endsOn         DateTime?            @db.Date
+  isImportant    Boolean              @default(false)
+  status         NotificationStatus   @default(DRAFT)
   publishedAt    DateTime?
-  authorId       String?            @db.Uuid
+  authorId       String?              @db.Uuid
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -2365,6 +2376,7 @@ model Notification {
   media        MediaFile[]            @relation("NotificationMedia")
 
   @@index([kindergartenId, status, publishedAt(sort: Desc)])
+  @@index([kindergartenId, category])
   @@map("notifications")
 }
 

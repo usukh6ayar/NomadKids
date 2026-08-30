@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { childSummarySchema, paginated, rosterSummarySchema, SEX_LABEL } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
+import { useSwitchableGroups } from "@/components/shell/group-switcher";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
@@ -274,6 +275,16 @@ function StaffChildren() {
  * literally the same value.
  */
 export interface RosterFacets {
+  /**
+   * ★ The facet a director asked for first, and the only one the API already
+   * understood without being asked.
+   *
+   * `listChildrenQuerySchema` has taken `groupId` since the roster was written;
+   * nothing on this screen ever sent it, so "show me Дэлбээ бүлэг" was
+   * answerable only by opening a group's register — a different screen, for a
+   * different job, that cannot export or sort.
+   */
+  groupId?: string;
   sex?: "MALE" | "FEMALE";
   ageMin?: number;
   ageMax?: number;
@@ -304,6 +315,7 @@ function rosterParams(
 ): URLSearchParams {
   const params = new URLSearchParams();
   if (search) params.set("q", search);
+  if (facets.groupId) params.set("groupId", facets.groupId);
   if (facets.sex) params.set("sex", facets.sex);
   if (facets.ageMin !== undefined) params.set("ageMin", String(facets.ageMin));
   if (facets.ageMax !== undefined) params.set("ageMax", String(facets.ageMax));
@@ -349,10 +361,41 @@ function RosterFilters({
   onChange: (next: RosterFacets) => void;
 }) {
   const active =
-    facets.sex !== undefined || facets.ageMin !== undefined || facets.ageMax !== undefined;
+    facets.groupId !== undefined ||
+    facets.sex !== undefined ||
+    facets.ageMin !== undefined ||
+    facets.ageMax !== undefined;
+
+  /*
+   * ★ The same query the registers use, so a screen reached from one of them
+   * finds the list of groups already in cache.
+   */
+  const groups = useSwitchableGroups();
 
   return (
     <section aria-label="Шүүлт, эрэмбэ" className="flex flex-wrap items-end gap-3">
+      {/*
+        Group leads the row: it is the coarsest cut and the one a director
+        reaches for, where sex and age narrow whatever it leaves.
+      */}
+      <Field label="Бүлэг" className="min-w-[160px] flex-1">
+        {({ id, describedBy }) => (
+          <Select
+            id={id}
+            aria-describedby={describedBy}
+            value={facets.groupId ?? ""}
+            onChange={(e) => onChange({ ...facets, groupId: e.target.value || undefined })}
+          >
+            <option value="">Бүх бүлэг</option>
+            {(groups.data?.items ?? []).map((group) => (
+              <option key={group.id} value={group.id}>
+                {group.name}
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
+
       <Field label="Хүйс" className="min-w-[140px] flex-1">
         {({ id, describedBy }) => (
           <Select

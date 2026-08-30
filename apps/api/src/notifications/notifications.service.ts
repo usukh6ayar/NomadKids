@@ -78,7 +78,7 @@ export class NotificationsService {
       page,
       query.unread === true,
       query.q?.trim() || undefined,
-      { category: query.category, from: query.from, to: query.to },
+      { groupId: query.groupId, category: query.category, from: query.from, to: query.to },
     );
 
     return paginate(
@@ -138,7 +138,7 @@ export class NotificationsService {
       actorUserId: actor.userId,
       objectType: "Notification",
       objectId: notification.id,
-      metadata: { targetCount: dto.targets.length },
+      metadata: { targetCount: dto.targets.length, category: dto.category },
     });
 
     return notification;

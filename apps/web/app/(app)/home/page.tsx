@@ -182,7 +182,7 @@ export default function ParentHomePage() {
           <QuickTile
             href={`/children/${selected.id}/enrollment-archive`}
             label="Цэцэрлэг"
-            icon={<TileIcon src="/icons/icon-kindergarten.png" />}
+            icon={<TileIcon name="kindergarten" />}
           />
           <QuickTile
             href={`/children/${selected.id}/assessments`}

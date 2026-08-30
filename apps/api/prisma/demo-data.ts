@@ -435,8 +435,20 @@ export async function seedDemoKindergarten(
 
   const groups = await Promise.all(
     [
-      { name: "Дунд бүлэг", ageBand: "JUNIOR" as const },
-      { name: "Ахлах бүлэг", ageBand: "MIDDLE" as const },
+      /*
+       * ★ Named the way a kindergarten names a group, not after its age band.
+       *
+       * These were "Дунд бүлэг" (JUNIOR) and "Ахлах бүлэг" (MIDDLE) — each
+       * group's name was character-for-character the label of its own band, so
+       * every screen that shows both showed the same two words twice: the
+       * admin list printed them one column apart and it read as a bug.
+       *
+       * Real kindergartens name groups after flowers, animals or the sun; the
+       * band is a separate fact about the same group, which is the distinction
+       * a demo has to show for the two fields to look like two fields.
+       */
+      { name: "Дэлбээ бүлэг", ageBand: "JUNIOR" as const },
+      { name: "Наран бүлэг", ageBand: "MIDDLE" as const },
     ].map((g) =>
       prisma.group.create({
         data: { kindergartenId: kg.id, schoolYearId: year.id, name: g.name, ageBand: g.ageBand },
@@ -627,20 +639,30 @@ export async function seedDemoKindergarten(
   }
 
   console.log("Creating announcements…");
+  /*
+   * ★ One of each category, so the board's filter row has something to filter.
+   *
+   * A demo where every notice is an ANNOUNCEMENT shows a chip row in which two
+   * of the three chips return nothing — which reads as a broken filter rather
+   * than as an honest empty result.
+   */
   const announcements = [
     {
       title: "Намрын аялал",
       body: "Ирэх пүрэв гарагт Богд уулын дэнжид аялна. Дулаан хувцас, ус авчирна уу.",
+      category: "ACTIVITY" as const,
       isImportant: true,
     },
     {
       title: "Эцэг эхийн хурал",
       body: "Улирлын үнэлгээний танилцуулга ирэх сарын 25-ны 18:00 цагт болно.",
+      category: "TRAINING" as const,
       isImportant: false,
     },
     {
       title: "Гэрэл зургийн өдөр",
       body: "Хүүхдүүдийн хувийн хавтасны гэрэл зургийг дараагийн долоо хоногт авна.",
+      category: "ANNOUNCEMENT" as const,
       isImportant: false,
     },
   ];
@@ -651,6 +673,7 @@ export async function seedDemoKindergarten(
         kindergartenId: kg.id,
         title: a.title,
         body: a.body,
+        category: a.category,
         isImportant: a.isImportant,
         status: "PUBLISHED",
         publishedAt: new Date(),
@@ -1265,6 +1288,8 @@ export async function seedDemoKindergarten(
           kindergartenId: kg.id,
           title: `Аюулгүй байдлын мэдэгдэл — ${entry.child.lastName} ${entry.child.firstName}`,
           body: `${i.description} ${i.firstAid ?? ""}`.trim(),
+          // The same classification `IncidentsService.report` gives a real one.
+          category: "ANNOUNCEMENT",
           isImportant: i.isHighPriority,
           status: "PUBLISHED",
           publishedAt: occurredAt,

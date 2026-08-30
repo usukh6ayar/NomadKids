@@ -39,13 +39,20 @@ describe("navigation is built from the session's roles", () => {
     );
 
     // ★ The labels moved on 2026-08-28 when the client redrew the bottom bar
-    // as Самбар · Мэдээ · Явцын үнэлгээ · Судалгаа · Цэс. "Хүүхдүүд" and
-    // "Ажиглалт хянах" are still staff-only destinations — they are in the
+    // as Самбар · Мэдээ · Явцын үнэлгээ · Судалгаа · Цэс. The children list and
+    // the review queue are still staff-only destinations — they are in the
     // sidebar sections now (and behind the phone's Цэс tab) rather than being
     // tabs of their own, which is what this is checking.
+    //
+    // ★★ "Хүүхдүүд" became "Хүүхдүүд" on 2026-08-30, when the sidebar
+    // was rewritten to the client's reference grouping and took its row names
+    // with it.
     await waitFor(() => expect(screen.getAllByText("Самбар").length).toBeGreaterThan(0));
     expect(screen.getAllByText("Хүүхдүүд").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Ажиглалт хянах").length).toBeGreaterThan(0);
+    // "Ажиглалт хянах" was asserted here until 2026-08-30, when the review
+    // queues left the menu for the screens they belong to. Ирц is the
+    // staff-only destination that replaced it as the check.
+    expect(screen.getAllByText("Ирц").length).toBeGreaterThan(0);
     // Administration belongs to admins only.
     expect(screen.queryByText("Удирдлага")).toBeNull();
   });
@@ -115,7 +122,13 @@ describe("navigation is built from the session's roles", () => {
       </AppLayout>,
     );
 
-    await waitFor(() => expect(screen.getAllByText("Ажиглалт хянах").length).toBeGreaterThan(0));
+    /*
+      A staff-only destination is what proves the staff shell rendered. This
+      asserted "Ажиглалт хянах" until 2026-08-30, when the review queues moved
+      onto the screens they belong to; "Бүлгийн бүртгэл"'s Ирц row is the
+      staff-only entry that replaced it, and a parent's menu never has it.
+    */
+    await waitFor(() => expect(screen.getAllByText("Ирц").length).toBeGreaterThan(0));
   });
 });
 

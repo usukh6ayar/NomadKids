@@ -7,6 +7,7 @@ import { z } from "zod";
 import { attendanceRecordSchema, groupAttendanceRowSchema, groupSchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
+import { GroupSwitcher, useSwitchableGroups } from "@/components/shell/group-switcher";
 import { qk } from "@/lib/api/keys";
 import { useToast } from "@/components/ui/toast";
 import { errorMessage } from "@/lib/api/errors";
@@ -15,18 +16,28 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
+import { RegisterProgress } from "@/components/register/register-progress";
+import { AttendanceRequestQueue } from "@/components/attendance/request-queue";
+import {
+  ATTENDANCE_STATUS_CHART_TONE,
+  ATTENDANCE_STATUS_LABEL,
+  ATTENDANCE_STATUS_ORDER,
+} from "@/lib/attendance-meta";
 import { fullName } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const daySheetSchema = z.array(groupAttendanceRowSchema);
 
-const STATUS_LABEL: Record<string, string> = {
-  PRESENT: "Ирсэн",
-  HALF_DAY: "Хагас өдөр",
-  EXCUSED: "Чөлөөтэй",
-  SICK: "Өвчтэй",
-  ABSENT: "Тасалсан",
-};
+/*
+ * ★ The five statuses come from `lib/attendance-meta.ts`, not from a copy here.
+ *
+ * This file kept its own map, which is how the day sheet came to be the one
+ * screen where the summary strip above the list could disagree with the buttons
+ * inside it. The order is fixed there too — best to worst, never sorted by
+ * count — and the tones are the product's own status palette, so a red count in
+ * this strip is the same red as the calendar on the child's page.
+ */
+const STATUS_LABEL = ATTENDANCE_STATUS_LABEL;
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -53,6 +64,12 @@ function GroupAttendance() {
   const groupId = params.groupId;
   const queryClient = useQueryClient();
   const [date, setDate] = useState(today());
+
+  /*
+   * ★ The same key the other two registers use, so switching from Ирц to
+   * Үнэлгээ for the same group does not refetch the list of groups.
+   */
+  const switchable = useSwitchableGroups();
 
   const group = useQuery({
     queryKey: ["group", groupId],
@@ -91,12 +108,35 @@ function GroupAttendance() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  /*
+   * ★ Counted from the sheet on screen, not fetched.
+   *
+   * The rows are already here and every tap rewrites one of them, so a second
+   * request for the same month's totals would be a number that lags the buttons
+   * it sits above — a teacher marking a child present and watching the count
+   * not move learns to distrust both.
+   */
+  const rows = sheet.data ?? [];
+  const recorded = rows.filter((row) => row.record).length;
+  const breakdown = ATTENDANCE_STATUS_ORDER.map((status) => ({
+    key: status,
+    label: ATTENDANCE_STATUS_LABEL[status] ?? status,
+    count: rows.filter((row) => row.record?.status === status).length,
+    tone: ATTENDANCE_STATUS_CHART_TONE[status] ?? "sky",
+  }));
+
   return (
     <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader title="Ирц" lede={group.data?.name} />
 
-      <Card className="px-4 py-4 sm:px-5">
-        <Field label="Огноо">
+      <GroupSwitcher
+        groups={switchable.data?.items ?? []}
+        activeGroupId={groupId}
+        href={(id) => `/groups/${id}/attendance`}
+      />
+
+      <Card className="flex flex-col gap-3.5 px-4 py-4 sm:px-5">
+        <Field label="Огноо" className="sm:max-w-[240px]">
           {({ id }) => (
             <Input
               id={id}
@@ -107,6 +147,10 @@ function GroupAttendance() {
             />
           )}
         </Field>
+
+        {sheet.data && rows.length > 0 ? (
+          <RegisterProgress inset recorded={recorded} total={rows.length} breakdown={breakdown} />
+        ) : null}
       </Card>
 
       <FormError message={record.isError ? errorMessage(record.error) : null} />
@@ -142,6 +186,16 @@ function GroupAttendance() {
           )}
         </>
       ) : null}
+
+      {/*
+        ★ The guardians' notices, under the sheet they are about.
+
+        Approving one writes the `Attendance` rows for those days, so it is the
+        same register seen from the other end. It had a sidebar entry of its
+        own, which asked a teacher to know that the absence they were about to
+        mark by hand might already have been explained on a different screen.
+      */}
+      <AttendanceRequestQueue heading="Эцэг эхийн мэдэгдэл" />
     </div>
   );
 }

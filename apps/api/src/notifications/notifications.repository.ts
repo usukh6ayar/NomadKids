@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
-import type { NotificationCategory } from "../generated/prisma/enums";
 import { PrismaService } from "../prisma/prisma.service";
+import type { NotificationCategory } from "../domain/enums";
 import { toSkipTake, type PageParams } from "../common/pagination";
 
 /**
@@ -62,7 +62,13 @@ export class NotificationsRepository {
     page: PageParams,
     unreadOnly: boolean,
     q?: string,
-    filters: { category?: NotificationCategory; from?: Date; to?: Date } = {},
+    filters: {
+      /** One group's board — RFP §8.1's targeting, read back. See below. */
+      groupId?: string;
+      category?: NotificationCategory;
+      from?: Date;
+      to?: Date;
+    } = {},
   ) {
     const { skip, take } = toSkipTake(page);
 
@@ -71,6 +77,26 @@ export class NotificationsRepository {
     // term must narrow what this actor may see, not widen it.
     const extra: Record<string, unknown>[] = [];
     if (unreadOnly) extra.push({ reads: { none: { userId } } });
+    /*
+     * One group's board — the notices aimed at it, plus the ones aimed at
+     * nobody in particular.
+     *
+     * ★ `none: { deletedAt: null }` is how "aimed at everyone" is asked for.
+     *
+     * This module's convention is that a notice with no live target rows is
+     * for the whole kindergarten (`targetSchema`), so a group's board is the
+     * union of the two. Written as `some OR none` rather than as a computed
+     * flag on the notice, because the flag would be a second copy of the same
+     * fact and could disagree with the rows the moment a target is added.
+     */
+    if (filters.groupId) {
+      extra.push({
+        OR: [
+          { targets: { some: { groupId: filters.groupId, deletedAt: null } } },
+          { targets: { none: { deletedAt: null } } },
+        ],
+      });
+    }
     if (q) {
       extra.push({
         OR: [
@@ -79,6 +105,9 @@ export class NotificationsRepository {
         ],
       });
     }
+    // One kind of notice. A plain equality rather than the group filter's
+    // `some OR none` — a category is a column on the notice itself, so there
+    // is no "aimed at nobody" case to fold in.
     if (filters.category) extra.push({ category: filters.category });
 
     /*

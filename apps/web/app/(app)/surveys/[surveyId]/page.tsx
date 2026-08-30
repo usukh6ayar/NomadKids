@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   surveyResultsSchema,
+  type SurveyGroupResult,
   surveySchema,
   SURVEY_PERIOD_LABEL,
   type MatrixOptions,
@@ -17,11 +18,12 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
-import { Badge } from "@/components/ui/badge";
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { Card, SectionHeader } from "@/components/ui/card";
+import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
+import { BarRow } from "@/components/ui/chart/bar-row";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 
@@ -580,39 +582,106 @@ function QuestionEditor({
   );
 }
 
+/**
+ * A survey's answers — as a whole, per group, and compared between groups.
+ *
+ * ★ Three questions of one dataset, which the screen used to answer one of.
+ *
+ * It rendered a flat list of questions with each answer as a `Badge` — "Тийм:
+ * 12  Үгүй: 3" — which is a legend with no chart. Three things were missing and
+ * all three come from the same read:
+ *
+ *  · **A shape.** A bar whose length is the share answers a "which is the
+ *    biggest" at a glance; a row of pills makes a reader compare numerals.
+ *  · **One group at a time.** A director asks "what did Дэлбээ бүлэг say", and
+ *    the only answer available was the kindergarten's average.
+ *  · **Group against group.** Which is the actual question — a problem in one
+ *    group disappears into an average across four, and disappearing is exactly
+ *    what a survey is run to stop.
+ *
+ * ★★ The filter narrows the headline and never the comparison.
+ *
+ * A comparison filtered to one group is a chart with one bar. So the chips
+ * change what the question cards count and leave the chart beneath them whole.
+ */
 function Results({ surveyId }: { surveyId: string }) {
+  const [groupId, setGroupId] = useState("");
+
   const results = useQuery({
-    queryKey: qk.surveyResults(surveyId),
-    queryFn: () => get(`/surveys/${surveyId}/results`, surveyResultsSchema),
+    queryKey: qk.surveyResults(surveyId, groupId),
+    queryFn: () =>
+      get(
+        `/surveys/${surveyId}/results${groupId ? `?groupId=${groupId}` : ""}`,
+        surveyResultsSchema,
+      ),
+    // The chart below is the same for every filter, so it must not blink to a
+    // skeleton each time a chip is pressed.
+    placeholderData: (previous) => previous,
   });
 
   if (results.isLoading) return <LoadingState rows={3} />;
   if (results.isError) return <ErrorState description={errorMessage(results.error)} />;
 
   const data = results.data!;
+  const groups = data.byGroup;
+  const selected = groups.find((entry) => entry.group.id === groupId);
 
   return (
-    <section aria-labelledby="results-heading">
+    <section aria-labelledby="results-heading" className="flex flex-col gap-4">
       <SectionHeader
         id="results-heading"
         title="Хариултууд"
+        lede={selected ? `${selected.group.name}-ийн хариултууд.` : undefined}
         action={<span className="text-body text-muted">{data.totalResponses} хариулт</span>}
       />
 
+      {/*
+        ★ Rendered only when there is more than one group to choose between.
+
+        A single-group kindergarten gets a chip row whose only effect is to
+        re-fetch the same numbers — the rule `GroupSwitcher` and `Pagination`
+        are both held to.
+      */}
+      {groups.length > 1 ? (
+        <FilterChipRow label="Бүлгээр шүүх">
+          <FilterChip active={!groupId} onClick={() => setGroupId("")}>
+            Бүх бүлэг
+          </FilterChip>
+          {groups.map((entry) => (
+            <FilterChip
+              key={entry.group.id ?? "none"}
+              active={groupId === entry.group.id}
+              onClick={() => setGroupId(entry.group.id ?? "")}
+            >
+              {entry.group.name} ({entry.responseCount})
+            </FilterChip>
+          ))}
+        </FilterChipRow>
+      ) : null}
+
+      {groups.length > 1 ? <GroupResponseChart groups={groups} /> : null}
+
       <div className="flex flex-col gap-3">
         {data.questions.map((q) => (
-          <Card key={q.question.id} className="flex flex-col gap-2 px-4 py-4">
-            <p className="font-medium text-ink">{q.question.prompt}</p>
-            <p className="text-caption text-muted">{q.responseCount} хариулсан</p>
+          <Card key={q.question.id} className="flex flex-col gap-3 px-4 py-4">
+            <div>
+              <p className="font-medium text-ink">{q.question.prompt}</p>
+              <p className="text-caption text-muted">{q.responseCount} хариулсан</p>
+            </div>
 
-            {q.counts ? (
-              <div className="flex flex-wrap gap-2">
-                {Object.entries(q.counts).map(([key, count]) => (
-                  <Badge key={key} tone="sky">
-                    {key}: {count}
-                  </Badge>
-                ))}
-              </div>
+            {q.counts ? <AnswerBars counts={q.counts} total={q.responseCount} /> : null}
+
+            {/*
+              ★ The per-group split sits under the question it splits, not in a
+              section of its own.
+
+              "Тийм 12 / Үгүй 3" is only interesting beside "and eleven of the
+              Тийм were one group" — putting the two on different parts of the
+              page asks a reader to hold the first while scrolling to the
+              second.
+            */}
+            {q.counts && groups.length > 1 ? (
+              <QuestionByGroup questionId={q.question.id} groups={groups} />
             ) : null}
 
             {q.responses ? (
@@ -628,6 +697,161 @@ function Results({ surveyId }: { surveyId: string }) {
         ))}
       </div>
     </section>
+  );
+}
+
+/**
+ * How many families in each group answered at all.
+ *
+ * ★ The first thing to check, before any answer is read.
+ *
+ * A group that did not respond has no opinion in the results, and an average
+ * that quietly excludes it reads as the kindergarten's view. This is the bar
+ * that says which groups are actually in the figures below.
+ */
+function GroupResponseChart({ groups }: { groups: SurveyGroupResult[] }) {
+  const most = Math.max(...groups.map((entry) => entry.responseCount), 0);
+
+  return (
+    <Card pad="roomy" className="flex flex-col gap-2.5">
+      <SectionHeader title="Бүлэг тус бүрийн оролцоо" as="h3" />
+      {groups.map((entry) => (
+        <BarRow
+          key={entry.group.id ?? "none"}
+          inline
+          label={entry.group.name}
+          percent={most === 0 ? 0 : (entry.responseCount / most) * 100}
+          value={entry.responseCount}
+          tone="sky"
+          accessibleLabel={`${entry.group.name}: ${entry.responseCount} хариулт`}
+        />
+      ))}
+    </Card>
+  );
+}
+
+/**
+ * One question's answers as bars — the share, not a row of pills.
+ *
+ * ★ Percentages of the answers to *this* question, not of the survey.
+ *
+ * A question somebody skipped has fewer answers than the survey has responses,
+ * and dividing by the larger figure would make every bar on that card short for
+ * a reason the card does not explain.
+ */
+function AnswerBars({ counts, total }: { counts: Record<string, number>; total: number }) {
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+
+  return (
+    <div className="flex flex-col gap-2">
+      {entries.map(([key, count]) => (
+        <BarRow
+          key={key}
+          inline
+          label={key}
+          percent={total === 0 ? 0 : (count / total) * 100}
+          value={
+            <span className="tabular-nums">
+              {count}
+              <span className="ms-1 text-muted">
+                ({total === 0 ? 0 : Math.round((count / total) * 100)}%)
+              </span>
+            </span>
+          }
+          tone="sky"
+          accessibleLabel={`${key}: ${count} хариулт`}
+        />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The same question, group beside group.
+ *
+ * ★ A table, and deliberately.
+ *
+ * Four groups × four answers is a cross-tab, and the question a reader brings
+ * to it — "is one column different from the others" — is answered by scanning a
+ * column, which is what a table is for. Bars would need sixteen of them and a
+ * legend nobody reads.
+ *
+ * Percentages **within each group**, because the groups are different sizes: a
+ * group of eight and a group of twenty compared by raw count says only that one
+ * is bigger, which is not what anybody is asking.
+ */
+function QuestionByGroup({
+  questionId,
+  groups,
+}: {
+  questionId: string;
+  groups: SurveyGroupResult[];
+}) {
+  const rows = groups
+    .map((entry) => ({
+      name: entry.group.name,
+      key: entry.group.id ?? "none",
+      result: entry.questions.find((q) => q.questionId === questionId),
+    }))
+    .filter((row) => (row.result?.responseCount ?? 0) > 0);
+
+  if (rows.length < 2) return null;
+
+  // The columns are every answer anybody gave, in one fixed order — so a group
+  // that never chose an option still has a cell for it rather than a shifted
+  // row.
+  const options = [...new Set(rows.flatMap((row) => Object.keys(row.result?.counts ?? {})))].sort();
+
+  if (options.length === 0) return null;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[420px] border-collapse text-caption">
+        <caption className="sr-only">Бүлэг тус бүрийн хариулт</caption>
+        <thead>
+          <tr>
+            <th scope="col" className="border-b border-border py-1.5 pe-3 text-left text-muted">
+              Бүлэг
+            </th>
+            {options.map((option) => (
+              <th
+                key={option}
+                scope="col"
+                className="border-b border-border px-2 py-1.5 text-right text-muted"
+              >
+                {option}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.key}>
+              <th
+                scope="row"
+                className="border-b border-border-soft py-1.5 pe-3 text-left font-medium text-ink"
+              >
+                {row.name}
+              </th>
+              {options.map((option) => {
+                const count = row.result?.counts?.[option] ?? 0;
+                const answered = row.result?.responseCount ?? 0;
+                const share = answered === 0 ? 0 : Math.round((count / answered) * 100);
+
+                return (
+                  <td
+                    key={option}
+                    className="border-b border-border-soft px-2 py-1.5 text-right tabular-nums text-ink"
+                  >
+                    {count === 0 ? <span className="text-faint">—</span> : `${share}%`}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

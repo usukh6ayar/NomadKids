@@ -167,3 +167,14 @@ export const compareSurveyQuerySchema = z.object({
   baselineId: uuidSchema.optional(),
 });
 export type CompareSurveyQuery = z.infer<typeof compareSurveyQuerySchema>;
+
+/**
+ * The results screen's own filter — one group's answers.
+ *
+ * ★ It narrows the headline and never the breakdown.
+ *
+ * See `SurveysService.results`: the per-group comparison is the point of the
+ * screen, and a comparison filtered to one group is a chart with one bar.
+ */
+export const surveyResultsQuerySchema = z.object({ groupId: uuidSchema.optional() }).strict();
+export type SurveyResultsQuery = z.infer<typeof surveyResultsQuerySchema>;

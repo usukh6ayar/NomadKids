@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Bookmark, BookmarkCheck, FileText, Search } from "lucide-react";
 import { z } from "zod";
-import { documentSchema, paginated } from "@kinder/contracts";
+import { documentSchema, paginated, DOCUMENT_CATEGORIES } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { mediaUrl } from "@/lib/api/client";
 import { qk } from "@/lib/api/keys";
@@ -108,11 +108,27 @@ function DocumentLibrary() {
           />
         </div>
 
+        {/*
+          ★ The four shelves, plus whatever older rows actually carry.
+
+          The endpoint returns the distinct categories in use, which before this
+          change was whatever anybody had typed. Listing the vocabulary
+          unconditionally means a shelf exists to file into even when it is
+          empty — a teacher looking for Журам should find the option rather than
+          conclude the library has none — and unioning the two means a document
+          filed under an old spelling is still reachable rather than orphaned by
+          a filter that no longer names it.
+        */}
         <Field label="Ангилал" className="min-w-[160px]">
           {({ id }) => (
             <Select id={id} value={category} onChange={(e) => setCategory(e.target.value)}>
               <option value="">Бүгд</option>
-              {(categories.data ?? []).map((name) => (
+              {[
+                ...DOCUMENT_CATEGORIES,
+                ...(categories.data ?? []).filter(
+                  (name) => !DOCUMENT_CATEGORIES.includes(name as never),
+                ),
+              ].map((name) => (
                 <option key={name} value={name}>
                   {name}
                 </option>
@@ -232,7 +248,16 @@ function PublishForm({ kindergartenId, onDone }: { kindergartenId: string; onDon
   const toast = useToast();
   const queryClient = useQueryClient();
   const [title, setTitle] = useState("");
-  const [category, setCategory] = useState("");
+  /*
+   * ★ "Журам" is the default, and that is the point of the change.
+   *
+   * RFP §9 names the library "хөтөлбөр, арга зүй, дотоод журам", and what an
+   * administrator publishes to their staff is almost always the third — a
+   * rule, a procedure, an internal order. Starting there means the commonest
+   * document is filed correctly by somebody who changes nothing, and a teacher
+   * opening the library sees a Журам shelf rather than four spellings of it.
+   */
+  const [category, setCategory] = useState<string>("Журам");
   const [version, setVersion] = useState("");
   const [description, setDescription] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -291,15 +316,28 @@ function PublishForm({ kindergartenId, onDone }: { kindergartenId: string; onDon
             )}
           </Field>
 
+          {/*
+            ★ A select over §9's own shelves, where this was a free-text box.
+
+            The library has no full-text search, so the category *is* the way
+            in — and a typed one produced "Журам", "журам" and "Дотоод журам"
+            as three separate shelves holding one thing. `DOCUMENT_CATEGORIES`
+            is where the four are named once, shared with the filter above.
+          */}
           <Field label="Ангилал" error={errors.category}>
             {({ id, describedBy }) => (
-              <Input
+              <Select
                 id={id}
                 aria-describedby={describedBy}
-                placeholder="Хөтөлбөр"
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-              />
+              >
+                {DOCUMENT_CATEGORIES.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </Select>
             )}
           </Field>
 

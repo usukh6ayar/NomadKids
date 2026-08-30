@@ -51,6 +51,14 @@ const optionalTitle = z
 export const createNotificationSchema = z
   .object({
     title: optionalTitle,
+    /**
+     * ★ Defaults to OTHER rather than being required.
+     *
+     * A required field would break every caller that predates it, and the
+     * honest fallback for "the author did not say" is the category that means
+     * exactly that. The compose form still asks — see its own note on why the
+     * field is a select and not free text.
+     */
     category: notificationCategorySchema.default("OTHER"),
     body: z.string().min(1, "Мэдэгдлийн текст оруулна уу").max(8000),
     isImportant: z.boolean().default(false),
@@ -90,6 +98,27 @@ export type UpdateNotificationDto = z.infer<typeof updateNotificationSchema>;
 export const listNotificationsQuerySchema = paginationQuerySchema.extend({
   unread: z.coerce.boolean().optional(),
   q: z.string().max(100).optional(),
+  /**
+   * The board for one group — §8.1's targeting, read back.
+   *
+   * ★ It narrows what the actor may already see; it never widens it.
+   *
+   * `audienceFilter` decides the set, and this is folded in as one more `AND`
+   * beside it (`NotificationsRepository.list`). A guardian passing another
+   * group's id therefore gets an empty board rather than that group's — the
+   * filter is a view of their own audience, not a way to address a different
+   * one.
+   *
+   * ★★ A notice for the whole kindergarten belongs to every group's board.
+   *
+   * "No target rows" is this module's convention for "everyone" (see
+   * `targetSchema` above), so filtering by group has to match a notice aimed at
+   * that group *or* aimed at nobody in particular. The alternative — showing
+   * only group-specific notices — would hide the closure announcement from
+   * every board in the kindergarten.
+   */
+  groupId: uuidSchema.optional(),
+  /** One kind of notice — the board's second filter row. */
   category: notificationCategorySchema.optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),

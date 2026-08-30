@@ -91,7 +91,9 @@ export const qk = {
   kindergartenSurveys: (kindergartenId: string) =>
     ["kindergarten", kindergartenId, "surveys"] as const,
   survey: (surveyId: string) => ["survey", surveyId] as const,
-  surveyResults: (surveyId: string) => ["survey", surveyId, "results"] as const,
+  /** The group filter is part of the key: each cut is its own cached answer. */
+  surveyResults: (surveyId: string, groupId = "") =>
+    ["survey", surveyId, "results", groupId] as const,
 
   childAssessments: (childId: string, termId?: string) =>
     ["child", childId, "assessments", termId ?? "all"] as const,
@@ -111,6 +113,16 @@ export const qk = {
     ["kindergarten", kindergartenId, "school-years"] as const,
   kindergartens: () => ["kindergartens"] as const,
   groups: (filters: Record<string, unknown> = {}) => ["groups", filters] as const,
+
+  /**
+   * The monthly attendance-and-funding register.
+   *
+   * ★ `["funding", "register", …]` in that order, so the whole namespace can be
+   * invalidated with the prefix after a recalculation without naming the
+   * filters the screen happened to have set.
+   */
+  fundingRegister: (kindergartenId: string, filters: Record<string, unknown> = {}) =>
+    ["funding", "register", kindergartenId, filters] as const,
 
   notifications: (filters: Record<string, unknown> = {}) => ["notifications", filters] as const,
   notification: (id: string) => ["notifications", "detail", id] as const,
