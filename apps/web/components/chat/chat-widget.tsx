@@ -3,7 +3,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, MessageCircle, Send, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { z } from "zod";
 import { chatMessageSchema, chatRoomSchema, unreadCountSchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
@@ -20,6 +20,34 @@ const historySchema = z.object({
   items: z.array(chatMessageSchema),
   nextCursor: z.string().nullable(),
 });
+
+export const chatRoomsSchema = roomsSchema;
+
+/**
+ * How the surrounding frame renders a pane's title and its dismiss control.
+ *
+ * ★ The panes below are shared by the floating widget and `/chat`, and this is
+ * the only thing that differs between them.
+ *
+ * Inside the widget the title must be `Dialog.Title` — Radix requires one for
+ * the dialog to be labelled, and a plain `<h2>` there is an accessibility
+ * failure rather than a style choice. On the page there is no dialog to label
+ * and nothing to dismiss, so the title is an ordinary heading and `Close` is
+ * omitted entirely. Passing the components in keeps one implementation of the
+ * room list and the room, which is the whole point: two copies is how the
+ * unread badge ends up correct in one of them.
+ */
+export interface ChatChrome {
+  Title: React.ComponentType<{ className?: string; children: ReactNode }>;
+  Close?: React.ComponentType<{
+    "aria-label": string;
+    className?: string;
+    children: ReactNode;
+  }>;
+}
+
+/** The widget's chrome: Radix owns both controls. */
+const dialogChrome: ChatChrome = { Title: Dialog.Title, Close: Dialog.Close };
 
 /**
  * The floating chat launcher and its panel.
@@ -139,26 +167,41 @@ export function ChatWidget() {
   );
 }
 
-/** The list of rooms — the panel's first view. */
-function ChatList({
+/** The list of rooms — the panel's first view, and `/chat`'s left column. */
+export function ChatList({
   rooms,
   loading,
   onOpen,
+  activeKey,
+  chrome = dialogChrome,
 }: {
   rooms: z.infer<typeof roomsSchema> | undefined;
   loading: boolean;
   onOpen: (key: string) => void;
+  /**
+   * Which room the frame is showing beside this list, if any.
+   *
+   * Only the page passes it: on desktop the list and the room are on screen at
+   * once, so the open row has to say so. The widget shows one view at a time
+   * and has nothing to mark.
+   */
+  activeKey?: string | null;
+  chrome?: ChatChrome;
 }) {
+  const { Title, Close } = chrome;
+
   return (
     <>
       <header className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-        <Dialog.Title className="text-lead font-semibold text-ink">Чатууд</Dialog.Title>
-        <Dialog.Close
-          aria-label="Хаах"
-          className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
-        >
-          <X size={18} aria-hidden="true" />
-        </Dialog.Close>
+        <Title className="text-lead font-semibold text-ink">Чатууд</Title>
+        {Close ? (
+          <Close
+            aria-label="Хаах"
+            className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
+          >
+            <X size={18} aria-hidden="true" />
+          </Close>
+        ) : null}
       </header>
 
       {loading ? (
@@ -177,7 +220,11 @@ function ChatList({
               <button
                 type="button"
                 onClick={() => onOpen(room.key)}
-                className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-canvas"
+                aria-current={room.key === activeKey ? "true" : undefined}
+                className={cn(
+                  "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-canvas",
+                  room.key === activeKey && "bg-primary-soft hover:bg-primary-soft",
+                )}
               >
                 {/* Initials, not an avatar: a room is a group of people and
                     there is no one face for it. */}
@@ -221,7 +268,30 @@ function ChatList({
 }
 
 /** One room: a header that goes back, the messages, and the composer. */
-function ChatRoom({ room, onBack }: { room: z.infer<typeof chatRoomSchema>; onBack: () => void }) {
+export function ChatRoom({
+  room,
+  onBack,
+  hideBackAtLg = false,
+  chrome = dialogChrome,
+}: {
+  room: z.infer<typeof chatRoomSchema>;
+  /**
+   * Omitted by `/chat` at desktop width, where the list is already beside this
+   * pane — a "back" arrow pointing at something visible is a control that
+   * appears to do nothing. The page still passes it below `lg`, where the room
+   * replaces the list exactly as it does in the widget.
+   */
+  onBack?: () => void;
+  /**
+   * Hides the back arrow from `lg` up, where `/chat` shows the room list beside
+   * this pane. A CSS class rather than a second `onBack` prop because the pane
+   * cannot read the viewport, and the alternative — dropping `onBack` on
+   * desktop — would break the same page below `lg`, which needs it.
+   */
+  hideBackAtLg?: boolean;
+  chrome?: ChatChrome;
+}) {
+  const { Title, Close } = chrome;
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState("");
   const bottom = useRef<HTMLDivElement | null>(null);
@@ -283,26 +353,31 @@ function ChatRoom({ room, onBack }: { room: z.infer<typeof chatRoomSchema>; onBa
   return (
     <>
       <header className="flex items-center gap-2 border-b border-border px-2 py-2.5">
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label="Чатууд руу буцах"
-          className="grid size-9 shrink-0 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
-        >
-          <ArrowLeft size={18} aria-hidden="true" />
-        </button>
-        <div className="min-w-0 flex-1">
-          <Dialog.Title className="truncate text-body font-semibold text-ink">
-            {room.name}
-          </Dialog.Title>
+        {onBack ? (
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="Чатууд руу буцах"
+            className={cn(
+              "grid size-9 shrink-0 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink",
+              hideBackAtLg && "lg:hidden",
+            )}
+          >
+            <ArrowLeft size={18} aria-hidden="true" />
+          </button>
+        ) : null}
+        <div className="min-w-0 flex-1 ps-1">
+          <Title className="truncate text-body font-semibold text-ink">{room.name}</Title>
           <p className="text-caption text-muted">{room.memberCount} гишүүн</p>
         </div>
-        <Dialog.Close
-          aria-label="Хаах"
-          className="grid size-9 shrink-0 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
-        >
-          <X size={18} aria-hidden="true" />
-        </Dialog.Close>
+        {Close ? (
+          <Close
+            aria-label="Хаах"
+            className="grid size-9 shrink-0 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
+          >
+            <X size={18} aria-hidden="true" />
+          </Close>
+        ) : null}
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto bg-canvas px-3 py-3">

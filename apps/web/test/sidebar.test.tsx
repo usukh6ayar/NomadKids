@@ -225,20 +225,41 @@ describe("role-based navigation", () => {
   });
 
   /**
-   * ★ Two review queues left the menu on 2026-08-30 and kept their screens.
+   * ★ The two review queues are back in the menu, and this test is the
+   * inversion of the one that stood here.
    *
+   * It asserted their absence, for a reason worth keeping on the record:
    * Чөлөөний хүсэлт is rendered under the attendance day sheet, where approving
-   * one writes the very rows that sheet is about; Ажиглалт хянах is reached
-   * from the dashboard alert that counts what is waiting. A row that says
-   * nothing about whether there is anything to review is a row somebody opens
-   * to find out — which is what both of these were.
+   * one writes the very rows that sheet is about, and Ажиглалт хянах is reached
+   * from the dashboard alert that counts what is waiting — so a menu row that
+   * says nothing about whether there is anything to review is a row somebody
+   * opens to find out.
+   *
+   * The client asked for both by name on 2026-08-31, in a written list of the
+   * destinations the menu must carry. That is the case the old reasoning could
+   * not answer: a queue reachable only through an alert cannot be found on any
+   * day the alert is empty. The assertion flips rather than being deleted,
+   * because "these rows exist" is now the requirement and an absent test would
+   * let them silently disappear again.
    */
-  it("keeps the review queues out of the menu", async () => {
+  it("shows the review queues in the menu", async () => {
     renderShell(["TEACHER", "ADMIN"]);
     const nav = await sidebar();
 
-    expect(within(nav).queryByRole("link", { name: "Ажиглалт хянах" })).not.toBeInTheDocument();
-    expect(within(nav).queryByRole("link", { name: "Чөлөөний хүсэлт" })).not.toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Ажиглалт хянах" })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Чөлөөний хүсэлт хянах" })).toBeInTheDocument();
+  });
+
+  /**
+   * Чат earns a row once `/chat` exists — the widget floats on every screen, so
+   * the row would otherwise point at something already on the page. See the
+   * note in `(app)/layout.tsx`.
+   */
+  it("shows a chat row that points at the chat page", async () => {
+    renderShell(["TEACHER"]);
+    const nav = await sidebar();
+
+    expect(within(nav).getByRole("link", { name: "Чат" })).toHaveAttribute("href", "/chat");
   });
 
   /**

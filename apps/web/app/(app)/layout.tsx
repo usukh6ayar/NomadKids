@@ -16,6 +16,7 @@ import {
   LayoutGrid,
   Bell,
   Menu,
+  MessageCircle,
   NotebookPen,
   CalendarDays,
   CalendarRange,
@@ -274,6 +275,7 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
   "/observations/review": ClipboardList,
   "/attendance-requests/review": CalendarCheck,
   "/notifications": Newspaper,
+  "/chat": MessageCircle,
   "/surveys": BarChart3,
   "/documents": FileText,
   "/settings": Settings,
@@ -548,22 +550,24 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
           icon: <ClipboardCheck {...sectionIconProps} />,
         },
         /*
-         * ★ Two review queues left this section on 2026-08-30, and neither
-         * lost its screen.
+         * ★ Both review queues came back on 2026-08-31, at the client's
+         * written request, and the note they replace was not wrong.
          *
-         * **Чөлөөний хүсэлт** is rendered under the day sheet on the attendance
-         * register — approving one writes the `Attendance` rows, so it is the
-         * same register from the other end, and a separate menu row asked a
-         * teacher to know that the absence they were about to mark by hand
-         * might already have been explained somewhere else.
+         * It argued that **Чөлөөний хүсэлт** is the attendance register from
+         * the other end, and that **Ажиглалт хянах** is reached from the
+         * dashboard alert that actually counts what is waiting — so neither
+         * needed a row that says nothing about whether there is anything in it.
+         * That reasoning still holds for a teacher who lives on the dashboard.
          *
-         * **Ажиглалт хянах** is reached from the dashboard's own alert, which
-         * counts what is waiting; a menu row that says nothing about whether
-         * there *is* anything to review is a row somebody opens to find out.
-         *
-         * Both routes still exist — a notification links to them and a bookmark
-         * points at them — they simply are not menu entries any more.
+         * It stops holding for the person who does not. The client asked for
+         * both by name in a list of eleven destinations, which is the answer to
+         * "can you find this without being told where it is" — and a queue you
+         * reach only through an alert is invisible on every day the alert is
+         * empty. A row that is sometimes redundant beats a screen that is
+         * sometimes unreachable.
          */
+        entry("Ажиглалт хянах", "/observations/review"),
+        entry("Чөлөөний хүсэлт хянах", "/attendance-requests/review"),
       ],
     },
     {
@@ -598,7 +602,27 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
        * what separates them from the sections above.
        */
       title: "Харилцаа холбоо",
-      entries: [entry("Ангийн самбар / Мэдээ", "/notifications"), entry("Судалгаа", "/surveys")],
+      entries: [
+        entry("Ангийн самбар / Мэдээ", "/notifications"),
+        entry("Судалгаа", "/surveys"),
+        /*
+         * ★ Чат has a row as of 2026-08-31, and the note above that said it
+         * should not is the one being answered.
+         *
+         * That note read: "the widget floats over every screen, so a link would
+         * point at something already on screen. The drawing predates the
+         * widget." The drawing did — but the client asked again in writing
+         * afterwards, with the widget shipped, which makes it a request rather
+         * than a stale sketch.
+         *
+         * `/chat` is not a second door onto the panel. It is the same rooms in
+         * a frame the panel cannot be: at `lg` the room list and the open
+         * conversation sit side by side. The page renders the widget's own
+         * `ChatList` and `ChatRoom`, so there is one implementation and two
+         * frames — not two chats.
+         */
+        entry("Чат", "/chat"),
+      ],
     },
     ...(isAdmin
       ? [
