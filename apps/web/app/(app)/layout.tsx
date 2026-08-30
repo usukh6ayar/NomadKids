@@ -377,28 +377,53 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
      * and it is nine reports and an invoicing flow, not a menu row. It earns
      * its own section on the day it can answer a question.
      */
+    /*
+      ★ Five sections, named for the subject matter — the client's 2026-08-30
+      drawing.
+
+      The cut before this was Суралцагч · Бүлгийн бүртгэл · Харилцаа холбоо ·
+      Систем, which grouped by *what a teacher does to a record*. The client's
+      groups by what the work is about, and it puts the two things a teacher
+      opens most — the children and their assessment — in one section instead
+      of two.
+
+      Three items on the drawing are not reproduced literally, and each is a
+      place where the drawing is older than the code:
+
+        - **Баримт бичиг** is drawn greyed with "удахгүй". It shipped with RFP
+          §9 on 2026-08-25 and works. Advertising a working feature as missing
+          is the mistake this file already records making with Явцын үнэлгээ.
+        - **Санхүү** is drawn the same way. It exists as of 2026-08-30 but it
+          is the *platform operator's* — `platformNav()` carries it. A greyed
+          row here would promise a teacher something that will never arrive for
+          their account, which is why "Бүлэг, цэцэрлэгийн мэдээлэл" stopped
+          being shown to teachers.
+        - **Чат** has no row: the widget floats over every screen
+          (`chat-widget.tsx`), so a link would point at something already on
+          screen. The drawing predates the widget.
+    */
     {
-      title: "Суралцагч",
+      title: "Хүүхдийн хөгжил ба үнэлгээ",
       entries: [
         entry("Хүүхдүүд", "/children"),
+        {
+          label: "Явцын үнэлгээ",
+          href: scoped("assessment"),
+          icon: <ClipboardCheck {...sectionIconProps} />,
+        },
         entry("Ажиглалт хянах", "/observations/review"),
-        entry("Чөлөөний хүсэлт хянах", "/attendance-requests/review"),
       ],
     },
     {
       /*
-       * ★ The name this section had before the redesign, restored.
+       * The registers, kept per day.
        *
-       * It was "Бүлгийн бүртгэл" and it was right — these three are the
-       * kindergarten's registers, kept per group. The redesign scattered them
-       * and the section's own docblock had already argued they belong together.
-       *
-       * The icons are passed explicitly rather than resolved by `routeIcon()`:
-       * for a teacher these hrefs are interpolated with a group id, so a
-       * literal-keyed lookup returns `undefined` and the rows render as bare
-       * text — the exact gap `sidebar.test.tsx` exists to catch.
+       * Icons passed explicitly rather than resolved by `routeIcon()`: for a
+       * teacher these hrefs carry a group id, so a literal-keyed lookup returns
+       * `undefined` and the rows render as bare text — the gap
+       * `sidebar.test.tsx` exists to catch.
        */
-      title: "Бүлгийн бүртгэл",
+      title: "Өдөр тутмын бүртгэл",
       entries: [
         { label: "Ирц", href: scoped("attendance"), icon: <CalendarCheck {...sectionIconProps} /> },
         {
@@ -406,50 +431,43 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
           href: scoped("meals"),
           icon: <UtensilsCrossed {...sectionIconProps} />,
         },
-        {
-          label: "Үнэлгээ",
-          href: scoped("assessment"),
-          icon: <ClipboardCheck {...sectionIconProps} />,
-        },
+        entry("Чөлөөний хүсэлт хянах", "/attendance-requests/review"),
       ],
     },
     {
       /*
        * ★ Outward only — both of these leave the building.
        *
-       * A notice goes on the class board a family reads at home; a survey asks
-       * them a question. Neither is something a teacher does *to* a record,
-       * which is what separates them from the section above.
+       * A notice goes on a board a family reads at home; a survey asks them a
+       * question. Neither is something a teacher does *to* a record, which is
+       * what separates them from the sections above.
        */
       title: "Харилцаа холбоо",
-      entries: [entry("Мэдээ", "/notifications"), entry("Судалгаа", "/surveys")],
+      entries: [entry("Ангийн самбар / Мэдээ", "/notifications"), entry("Судалгаа", "/surveys")],
     },
     {
-      title: "Систем",
+      title: "Санхүү ба баримт бичиг",
       entries: [
         /*
          * RFP §9 — "Багшид зориулсан PDF баримт бичгийн сан": хөтөлбөр, арга
          * зүй, дотоод журам. Staff only, so it never appears in
          * `parentSections`.
-         *
-         * ★ It sat under "Үйл ажиллагаа" and does not belong there: a shelf you
-         * read from is not an activity. It is reference material, which is what
-         * this section is for.
          */
         entry("Баримт бичгийн сан", "/documents"),
+      ],
+    },
+    {
+      title: "Багш ба байгууллага",
+      entries: [
         entry("Багшийн мэдээлэл", "/settings"),
         /*
          * ★ "Удирдлага", not "Бүлэг, цэцэрлэгийн мэдээлэл".
          *
-         * The sidebar entry is `text-compact` beside a 16px icon inside a
-         * 280px rail, which leaves room for about twenty characters. The old
-         * label was twenty-seven and rendered as "Бүлэг, цэцэрлэгийн м…" on
-         * every desktop — an ellipsis where the destination's name should be,
-         * on the one entry a director uses most. It also named two of the
-         * seven screens behind it and omitted the other five.
-         *
-         * It matches the bottom bar's tab for the same href, which is the
-         * point: one destination, one name.
+         * Twenty-seven characters truncate to "Бүлэг, цэцэрлэгийн м…" in a
+         * 280px rail — an ellipsis where the destination's name should be, on
+         * the entry a director uses most. It also named two of the seven
+         * screens behind it. Matches the bottom bar's tab for the same href:
+         * one destination, one name.
          */
         ...(isAdmin ? [entry("Удирдлага", "/admin")] : []),
       ],

@@ -93,14 +93,19 @@ describe("navigation icons", () => {
     renderShell(["TEACHER", "ADMIN"]);
     const nav = await sidebar();
 
+    /*
+      The client's 2026-08-30 labels. "Үнэлгээ" is "Явцын үнэлгээ" and "Мэдээ"
+      is "Ангийн самбар / Мэдээ" — both are the names on their drawing, and
+      both now point at a landing page rather than at a group-scoped href.
+    */
     const entries = [
       "Хүүхдүүд",
-      "Ирц",
-      "Үнэлгээ",
+      "Явцын үнэлгээ",
       "Ажиглалт хянах",
-      "Чөлөөний хүсэлт хянах",
+      "Ирц",
       "Хоол ба цэс",
-      "Мэдээ",
+      "Чөлөөний хүсэлт хянах",
+      "Ангийн самбар / Мэдээ",
       "Судалгаа",
       "Баримт бичгийн сан",
       "Багшийн мэдээлэл",
