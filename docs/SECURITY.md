@@ -2,9 +2,23 @@
 
 **Stack:** Next.js (Vercel) ↔ NestJS (Railway/Fly) ↔ PostgreSQL ↔ Cloudflare R2
 **Production:** `https://nomadkids.mn` (web) · `https://api.nomadkids.mn` (API)
-**Status:** design. Authentication is **not implemented yet** — the Phase 0
-foundation carries only environment validation, the error envelope, the tenant
-scope helper and the Prisma boundary.
+**Status:** built. Authentication (`apps/api/src/auth/`), the authorization
+module (`apps/api/src/authz/`), the media path and the audit trail all ship —
+phases 3 and 12 in `IMPLEMENTATION_STATUS.md`. This file remains the design
+those were built to: where a section and the code disagree, one of the two is a
+bug, and neither is allowed to stay wrong.
+
+★ **This line said "design — authentication is _not implemented yet_" until
+2026-08-31.** By then `auth/` had shipped argon2id hashing, the HttpOnly cookie
+pair, the CSRF guard, the lockout counter and `test/auth.test.ts`. A security
+document whose first paragraph understates what exists reads as a draft, and a
+draft's rules stop being treated as mandatory — the same failure CLAUDE.md §7
+has now corrected three times, for the same reason.
+
+**Where this file is still design rather than record, it says so in place.** In
+particular §6's 108 acceptance cases are the integration suite's specification,
+not a claim that 108 of them pass; `IMPLEMENTATION_STATUS.md` is the record of
+what was actually run, and it is the one to trust on coverage.
 
 The reference Django system passes RFP §21 today. Its 108 named authorization
 tests are reproduced here as an acceptance matrix (§6) — they are the
@@ -19,10 +33,30 @@ through it. Not in controllers, not in services, not in the frontend.
 
 ```
 apps/api/src/authz/
-    child-access.ts      can this actor reach this child?
-    scope.ts             which kindergartens / children can this actor see?
-    guards/              Nest guards that call the above
+    actor.ts                    who is asking — userId + memberships, rebuilt per request
+    child-access.ts             the pure decision: canAccessChild(actor, facts)
+    child-access.service.ts     loads the facts, then throws 404 — assertCanAccess,
+                                assertCanRecord, assertCanContributeMedia,
+                                assertCanAdminister
+    chat-access.{ts,service.ts} the same shape for a chat room
+    platform-access.service.ts  isSuperAdmin — the operator's own screens
+    tenant-access.service.ts    assertAdmin / adminKindergartenIds
+    authz.repository.ts         the only Prisma access in the module
+
+apps/api/src/auth/guards/       auth · csrf · roles · super-admin
 ```
+
+★ **The decision and the loading are deliberately separate files.** `*.ts` is a
+pure function over facts already fetched — it is unit-testable without a
+database (`child-access.test.ts`), and it cannot accidentally widen a query.
+`*.service.ts` fetches those facts and turns a `false` into a 404. Guards live
+under `auth/` because they are transport concerns: they extract the actor from
+a cookie and call into this module.
+
+> This block listed `scope.ts` and `authz/guards/` until 2026-08-31. Neither
+> ever existed under those names — the file was written before the module was,
+> and nobody came back to it. A map that names files a reader cannot open
+> teaches them to stop opening the map.
 
 If the logic exists in two places the REST API and the future mobile client will
 answer differently, and §21 fails. In the reference system this module is 430
@@ -36,10 +70,37 @@ in the system."_
 | Concern         | Decision                                                         |
 | --------------- | ---------------------------------------------------------------- |
 | Hashing         | **argon2id** (`argon2` npm), memory 64 MB, time 3, parallelism 1 |
-| Password policy | ≥ 8 chars, upper + lower + digit                                 |
+| Password policy | ≥ 8 chars, upper + lower + digit — **Cyrillic counts, see ★**    |
 | Lockout         | 5 failures per identifier in 15 min → 15 min block               |
-| Reset / invite  | Single-use token, **SHA-256 hashed at rest**, 1 h expiry         |
+| Reset token     | Single-use, **SHA-256 hashed at rest**, 1 h expiry               |
+| Invitation      | Single-use, **SHA-256 hashed at rest**, **7 days** — see ★★      |
 | Session         | HttpOnly cookie pair — see §3                                    |
+
+★ **The complexity rule is enforced in the service, not in the Zod schema — and
+that is easy to misread.** `apps/api/src/auth/auth.dto.ts` carries only
+`z.string().min(8).max(200)`, so reading the DTOs alone suggests there is no
+policy. There is: `validatePasswordStrength()` in `password.service.ts` runs on
+all three write paths — `confirmPasswordReset`, `acceptInvitation` and
+`changePassword` — and rejects with the Mongolian message the user is shown.
+
+**The character classes are deliberately Cyrillic-aware:** `[A-ZА-ЯӨҮ]` and
+`[a-zа-яөү]`, not `[A-Z]`/`[a-z]`. A Mongolian parent typing `Нууцүг123` passes;
+a Latin-only rule would have rejected a perfectly good password in the language
+the product is written in. `password.service.test.ts` pins that case.
+
+The one thing a reader should not conclude from this split is that the DTO is
+the place to add the next rule. Validation that produces a user-facing sentence
+belongs where the sentence is built.
+
+★★ **Reset and invitation deliberately differ, and the difference is not a
+mistake.** A reset is recovery of an account someone already has, minutes after
+they asked for it; an hour is generous. An invitation is a kindergarten handing
+a QR code to a parent at pick-up — the parent gets to it that evening, or on the
+weekend. Seven days is the number in `users.service.ts`
+(`INVITATION_TTL_MS`), and both are single-use: the row is consumed on
+acceptance, so a long window is a window on an unused credential, not a
+re-usable one. This table said "1 h" for both until 2026-08-31 and had never
+matched the code.
 
 > **The lockout counter must survive a failed request.** `LoginAttempt` rows and
 > `AuditLog` rows for `login_failed` exist to record things that went wrong. If

@@ -97,20 +97,20 @@ export class PasswordService {
   private dummyHash?: string;
 }
 
+export { PRODUCTION_COST };
+
 /**
  * Password policy: 8+ characters with an upper case letter, a lower case letter
  * and a digit. Inherited from the reference system, which the client has
- * already accepted.
+ * already accepted. Returns Mongolian messages, shown to the user directly.
  *
- * Returns Mongolian messages because they are shown to the user directly.
+ * ★ The rule itself moved to `@kinder/contracts` on 2026-08-31 and is
+ * re-exported here so every existing caller and test keeps its import.
+ *
+ * It moved because the web forms needed it. They had been printing a single
+ * requirement — "8-аас доошгүй тэмдэгт" — while the service rejected four, so
+ * a parent could satisfy everything the screen asked for and still be turned
+ * away by a 401 they had no way to anticipate. A rule enforced in one place
+ * and explained in another is a rule with two versions.
  */
-export { PRODUCTION_COST };
-
-export function validatePasswordStrength(password: string): string[] {
-  const errors: string[] = [];
-  if (password.length < 8) errors.push("Нууц үг дор хаяж 8 тэмдэгт байх ёстой");
-  if (!/[A-ZА-ЯӨҮ]/.test(password)) errors.push("Нууц үгэнд том үсэг байх ёстой");
-  if (!/[a-zа-яөү]/.test(password)) errors.push("Нууц үгэнд жижиг үсэг байх ёстой");
-  if (!/\d/.test(password)) errors.push("Нууц үгэнд тоо байх ёстой");
-  return errors;
-}
+export { validatePasswordStrength } from "@kinder/contracts";

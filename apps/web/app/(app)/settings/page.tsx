@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Pencil } from "lucide-react";
 import { z } from "zod";
-import { userProfileSchema } from "@kinder/contracts";
+import { userProfileSchema, validatePasswordStrength } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
@@ -22,8 +22,6 @@ const profileSchema = userProfileSchema.extend({
   specialization: z.string().nullish(),
   education: z.string().nullish(),
 });
-
-const MIN_PASSWORD_LENGTH = 8;
 
 /**
  * Own profile and password.
@@ -439,8 +437,11 @@ function PasswordForm() {
             e.preventDefault();
             if (change.isPending) return;
 
-            if (newPassword.length < MIN_PASSWORD_LENGTH) {
-              setLocalError(`Шинэ нууц үг дор хаяж ${MIN_PASSWORD_LENGTH} тэмдэгт байх ёстой.`);
+            // Same rules the API runs, from the same module — see
+            // `@kinder/contracts/password`.
+            const weaknesses = validatePasswordStrength(newPassword);
+            if (weaknesses.length > 0) {
+              setLocalError(`${weaknesses.join(". ")}.`);
               return;
             }
             if (newPassword !== confirm) {

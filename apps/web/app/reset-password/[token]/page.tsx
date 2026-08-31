@@ -5,14 +5,13 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { z } from "zod";
+import { PASSWORD_RULES, validatePasswordStrength } from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { AuthShell } from "@/components/shell/auth-shell";
-
-const MIN_LENGTH = 8;
 
 /**
  * Set a new password from an emailed token.
@@ -48,8 +47,9 @@ export default function ResetPasswordPage() {
     event.preventDefault();
     if (reset.isPending) return;
 
-    if (password.length < MIN_LENGTH) {
-      setLocalError(`Нууц үг дор хаяж ${MIN_LENGTH} тэмдэгт байх ёстой.`);
+    const weaknesses = validatePasswordStrength(password);
+    if (weaknesses.length > 0) {
+      setLocalError(`${weaknesses.join(". ")}.`);
       return;
     }
     if (password !== confirm) {
@@ -87,14 +87,23 @@ export default function ResetPasswordPage() {
       <h2 className="mb-2.5 text-heading font-semibold tracking-[-.01em] text-ink">Шинэ нууц үг</h2>
 
       {/*
-        ★ One rule, because one rule is enforced.
-        The reference lists four — length, upper, lower, digit — mirroring
-        Django's AUTH_PASSWORD_VALIDATORS. This API's `auth.dto.ts` requires
-        length alone. Copying the list would announce requirements that do not
-        exist and reject nothing, which teaches users the messages are noise.
+        ★ Every rule, because every rule is enforced — corrected 2026-08-31.
+
+        This block used to print the length alone and explained itself with
+        "one rule, because one rule is enforced", reading `auth.dto.ts` and
+        finding `min(8)` there. The other three live in `password.service.ts`
+        and always have: `validatePasswordStrength` runs on reset, invitation
+        and change, and rejects with a 401. So the screen understated the
+        policy and the server enforced it — the worst arrangement of the two,
+        since the user learns the rule only by breaking it.
+
+        `PASSWORD_RULES` and the check below now come from the same module the
+        API calls.
       */}
       <ul className="mb-4 list-disc space-y-1 pl-5 text-body text-muted">
-        <li>{MIN_LENGTH}-аас доошгүй тэмдэгт</li>
+        {PASSWORD_RULES.map((rule) => (
+          <li key={rule}>{rule}</li>
+        ))}
       </ul>
 
       <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>

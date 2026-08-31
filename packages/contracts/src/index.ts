@@ -12,4 +12,5 @@ export * from "./birth-facts";
 export * from "./domain";
 export * from "./ids";
 export * from "./pagination";
+export * from "./password";
 export * from "./problem";

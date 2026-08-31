@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { z } from "zod";
+import { PASSWORD_RULES, validatePasswordStrength } from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,13 @@ import { Field, Input, Select } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { AuthShell } from "@/components/shell/auth-shell";
 
-const MIN_LENGTH = 8;
+/**
+ * The rules come from `@kinder/contracts`, which is also what the API runs.
+ *
+ * ★ This screen used to print one requirement and let the server reject on
+ * four. A parent who satisfied the list still got a 401 — after the round trip,
+ * in a red banner, having already typed the password twice.
+ */
 
 /**
  * How a guardian describes themselves to the child.
@@ -82,8 +89,9 @@ export default function AcceptInvitationPage() {
     event.preventDefault();
     if (accept.isPending) return;
 
-    if (password.length < MIN_LENGTH) {
-      setLocalError(`Нууц үг дор хаяж ${MIN_LENGTH} тэмдэгт байх ёстой.`);
+    const weaknesses = validatePasswordStrength(password);
+    if (weaknesses.length > 0) {
+      setLocalError(`${weaknesses.join(". ")}.`);
       return;
     }
     // Checked here and not sent: the API takes one password, and a mismatch is
@@ -126,7 +134,9 @@ export default function AcceptInvitationPage() {
       </p>
 
       <ul className="mb-4 list-disc space-y-1 pl-5 text-body text-muted">
-        <li>{MIN_LENGTH}-аас доошгүй тэмдэгт</li>
+        {PASSWORD_RULES.map((rule) => (
+          <li key={rule}>{rule}</li>
+        ))}
       </ul>
 
       <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
