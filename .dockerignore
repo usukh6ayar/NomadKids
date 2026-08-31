@@ -1,7 +1,14 @@
-# The build context is the repository root (apps/api/Dockerfile expects it), so
-# everything not needed to build the API is excluded here — otherwise the
-# context includes the PDF spike's own Chromium install and every node_modules
-# tree, and the upload alone takes minutes.
+# The DEFAULT ignore file for the repository-root build context.
+#
+# ★ Both images build from the root, because both need `packages/contracts` and
+# the workspace lockfile. This file excludes what neither needs.
+#
+# ★★ Each Dockerfile also has its own `<path>.dockerignore` beside it, which
+# BuildKit prefers over this one when present. That is how `apps/web` can be
+# excluded from the API's context — it is several hundred megabytes the API
+# never reads — while the web build still sees it. Before those files existed
+# the web image failed with `"/apps/web": not found`, which reads like a missing
+# directory rather than an ignore rule.
 
 node_modules
 **/node_modules
@@ -18,7 +25,6 @@ node_modules
 # Its own dependency tree, deliberately outside the workspace.
 docs/spikes
 
-apps/web
 docs
 *.md
 !apps/api/assets/fonts/README.md

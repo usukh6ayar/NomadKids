@@ -3,21 +3,31 @@
 **Status:** design and configuration reference. Nothing is deployed yet;
 deployment is the last implementation phase.
 
-**Data residency:** approved by the client on 2026-08-19 (D13). This
-application's data may be stored in cloud infrastructure outside Mongolia —
-[SECURITY.md](SECURITY.md) §14.1.
+> ★★ **The platform changed on 2026-08-31: one Datacom VPS, not Vercel +
+> Railway.** The runnable configuration lives in
+> [VPS_DEPLOYMENT.md](VPS_DEPLOYMENT.md), `docker-compose.prod.yml` and the
+> `Caddyfile`; this file keeps the reasoning that outlived the platform —
+> domains, cookies, the worker's memory floor, storage — because none of it was
+> ever Railway-specific. Where the two disagree, VPS_DEPLOYMENT.md is current.
+
+**Data residency:** the client approved cloud infrastructure outside Mongolia on
+2026-08-19 (D13, [SECURITY.md](SECURITY.md) §14.1). ★ **That permission is no
+longer used.** With the move to a Datacom VPS and MinIO in place of Cloudflare
+R2, every row and every photograph stays in Mongolia. D13 stands as headroom, not
+as a description of where the data is.
 
 ---
 
 ## 1. Domains
 
-| Role | Origin                     | Platform    | DNS                               |
-| ---- | -------------------------- | ----------- | --------------------------------- |
-| Web  | `https://nomadkids.mn`     | Vercel      | apex → Vercel (A / ALIAS)         |
-| API  | `https://api.nomadkids.mn` | Railway/Fly | `api` CNAME → the platform's host |
+| Role  | Origin                       | Platform      | DNS                |
+| ----- | ---------------------------- | ------------- | ------------------ |
+| Web   | `https://nomadkids.mn`       | VPS (Next.js) | apex → VPS IP (A)  |
+| API   | `https://api.nomadkids.mn`   | VPS (NestJS)  | `api` → VPS IP (A) |
+| Media | `https://media.nomadkids.mn` | VPS (MinIO)   | `media` → VPS IP   |
 
-Both are on the registrable domain `nomadkids.mn`, so they are **same-site**.
-Everything in [SECURITY.md](SECURITY.md) §3 depends on that:
+All three are on the registrable domain `nomadkids.mn`, so they are
+**same-site**. Everything in [SECURITY.md](SECURITY.md) §3 depends on that:
 
 ```
 same registrable domain  →  same-site  →  SameSite=Lax works
@@ -25,14 +35,15 @@ same registrable domain  →  same-site  →  SameSite=Lax works
                                        →  the browser's own CSRF defence applies
 ```
 
-> **Set the DNS records before the auth module is written.** Developing against
-> `*.vercel.app` + `*.railway.app` puts the two on different registrable
+> **Set the DNS records before the first deploy.** Developing against
+> `*.vercel.app` + `*.railway.app` would put the two on different registrable
 > domains. Cookies become cross-site, `SameSite=None` becomes mandatory, and the
 > code written under those conditions bakes in the weaker configuration. The
-> change back is easy to make and hard to notice.
+> change back is easy to make and hard to notice. On the VPS all three names are
+> A records to one IP, so this holds by construction.
 
-HTTPS everywhere. Both platforms terminate TLS and issue certificates
-automatically; no plaintext origin appears in any configuration, and the
+HTTPS everywhere. Caddy terminates TLS and obtains certificates from Let's
+Encrypt automatically; no plaintext origin appears in any configuration, and the
 environment loader rejects one in production.
 
 ---
@@ -40,23 +51,29 @@ environment loader rejects one in production.
 ## 2. Services
 
 ```
-                    ┌────────────────────────────────┐
-                    │  Vercel                        │
-   users ──────────▶│  https://nomadkids.mn          │
-                    │  Next.js — SSR + static        │
-                    └───────────────┬────────────────┘
-                                    │ HTTPS, credentialed
-                                    │ cookie + X-CSRF-Token
-                    ┌───────────────▼────────────────┐
-                    │  Railway / Fly                 │
-                    │  https://api.nomadkids.mn      │
-                    │  NestJS                        │
+                              users
+                                │ HTTPS
+                    ┌───────────▼────────────────────┐
+                    │  Caddy — the only open ports   │
+                    │  80/443, TLS from Let's Encrypt│
                     └──┬──────────┬──────────┬───────┘
-                       │          │          │
-          ┌────────────▼──┐  ┌────▼────┐  ┌──▼──────────────┐
-          │  PostgreSQL   │  │  Redis  │  │ Cloudflare R2   │
-          │  (managed)    │  │ BullMQ  │  │ private bucket  │
-          └───────────────┘  └────┬────┘  └─────────────────┘
+      nomadkids.mn ────┘   api.   │          │  media.
+                    ┌────────────▼───┐  ┌────▼────────────┐
+                    │  web           │  │  storage        │
+                    │  Next.js :3000 │  │  MinIO :9000    │
+                    └───────┬────────┘  │  private bucket │
+                            │ cookie    └─────────────────┘
+                            │ + X-CSRF-Token       ▲
+                    ┌───────▼────────────────────┐ │
+                    │  api — NestJS :3001        │─┘
+                    │  + Chromium (in-process    │
+                    │    report worker)          │
+                    └──┬──────────┬──────────────┘
+                       │          │
+          ┌────────────▼──┐  ┌────▼────┐
+          │  PostgreSQL   │  │  Redis  │
+          │  (container)  │  │ BullMQ  │
+          └───────────────┘  └────┬────┘
                                   │
                     ┌─────────────▼──────────────────┐
                     │  Report worker                 │

@@ -1,0 +1,35 @@
+# Build context for the web image.
+#
+# ★ The mirror of the API's: `apps/api` is excluded here, because the web build
+# needs only `apps/web` and `packages/contracts`. Keeping the two contexts
+# disjoint means a change to one app does not invalidate the other's build
+# cache.
+#
+# ★★ `**/.next` matters more than it looks. Without it, a developer's local
+# `next build` output is uploaded into the context and copied over the image's
+# own — producing a container built from whatever was last run on a laptop.
+
+node_modules
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/*.tsbuildinfo
+
+.git
+.github
+.env
+.env.*
+!.env.example
+
+docs/spikes
+
+# The web image does not contain the API — including its Chromium fonts and
+# Prisma engines.
+apps/api
+
+docs
+*.md
+
+**/coverage
+**/.vitest

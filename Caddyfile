@@ -1,0 +1,106 @@
+# TLS and routing for the VPS deployment.
+#
+# ★ Three hostnames, one certificate each, obtained and renewed by Caddy from
+# Let's Encrypt without a cron job. That last part is the reason Caddy is here
+# rather than nginx + certbot: a renewal cron is a thing that works for ninety
+# days and then silently does not.
+#
+# ★★ All three are subdomains of ONE registrable domain, and that is load-
+# bearing rather than tidy. `docs/SECURITY.md` §3 depends on the web app and
+# the API being **same-site**: it is what makes `SameSite=Lax` work, what makes
+# a host-only cookie sufficient, and what lets the browser's own CSRF defence
+# apply at all. Putting the API on a different registrable domain would force
+# `SameSite=None` and quietly weaken every session in the product.
+
+{
+	# Where Let's Encrypt sends expiry warnings. Set it — the first notice that
+	# renewal is failing arrives here, and nowhere else.
+	email {$ACME_EMAIL}
+}
+
+# ── The web app ──────────────────────────────────────────────────────────────
+{$WEB_DOMAIN} {
+	encode zstd gzip
+
+	reverse_proxy web:3000 {
+		# Next reads these to build absolute URLs and to know the visitor is on
+		# HTTPS. Without them it emits http:// links behind a TLS terminator.
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+	}
+
+	log {
+		output file /data/access-web.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+	}
+}
+
+# ── The API ──────────────────────────────────────────────────────────────────
+{$API_DOMAIN} {
+	encode zstd gzip
+
+	reverse_proxy api:3001 {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+
+		# ★ PDF generation takes ~2.5 s and a cold Chromium adds ~500 ms, but the
+		# slow endpoint is the Excel export over a full month. Caddy's default
+		# would cut the response before the file finished.
+		transport http {
+			read_timeout 120s
+			write_timeout 120s
+		}
+	}
+
+	log {
+		output file /data/access-api.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+	}
+}
+
+# ── Object storage ───────────────────────────────────────────────────────────
+#
+# ★★★ **This hostname is public, and that is by design — but the bucket is
+# not.** Objects are reachable only through a presigned URL that
+# `GET /media/:id` issues *after* running the authorization check, and each one
+# expires in five minutes (`STORAGE_PRESIGN_TTL`). The bucket itself is created
+# with `mc anonymous set none`, so a request without a signature gets
+# AccessDenied.
+#
+# The browser has to reach this host directly: `MediaService` hands the client a
+# signed URL and the client follows it. Proxying media through the API instead
+# would put every photograph through Node's event loop for no security benefit.
+{$MEDIA_DOMAIN} {
+	# ★ No `encode`. These are JPEGs, PNGs and PDFs — already compressed — and
+	# gzipping them again costs CPU on every download to save nothing.
+	reverse_proxy storage:9000 {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+
+		# A term's photographs are tens of megabytes; the default write timeout
+		# cuts the download of a large report on a slow connection.
+		transport http {
+			read_timeout 300s
+			write_timeout 300s
+		}
+	}
+
+	# ★ The MinIO console is never exposed. It is an admin UI with full access to
+	# every object, on a public hostname, protected by one password. Reach it
+	# through an SSH tunnel when it is needed:
+	#   ssh -L 9001:localhost:9001 user@server
+	#   docker compose -f docker-compose.prod.yml exec storage true
+	@console path /minio/* /console/*
+	respond @console 404
+
+	log {
+		output file /data/access-media.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+	}
+}
