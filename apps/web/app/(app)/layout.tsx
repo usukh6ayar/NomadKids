@@ -563,16 +563,24 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
          * what is waiting. A menu row says nothing about whether there is
          * anything in the queue, so it is a row somebody opens to find out.
          *
-         * ★★ Both rows came back on 2026-08-31 and are removed again the same
-         * day, at the owner's instruction, which is worth recording rather
-         * than silently flip-flopping: the argument for restoring them was
-         * that a queue reached only through an alert is invisible on the days
-         * the alert is empty. That is true, and it is the weaker half of the
-         * trade — an empty queue is exactly the day nobody needs to open it.
+         * ★★ Both rows are in the menu, and this note is the third entry in
+         * an argument that has now been settled by the person who gets to
+         * settle it.
          *
-         * Both routes still resolve. A notification links to them and a
-         * bookmark points at them; they are simply not menu entries.
+         * They were removed on 2026-08-30 for the reasons above, restored on
+         * 2026-08-31 because the client listed both by name in a written list
+         * of the destinations the menu must carry, and removed again the same
+         * day by `1513f7e` — whose case is the one written above and is a good
+         * one: an empty queue is exactly the day nobody needs to open it.
+         *
+         * The owner chose the client's list. That is the tie-breaker rather
+         * than the stronger argument, and deliberately so: the reasoning on
+         * both sides is about which is tidier, while the request is about what
+         * somebody was promised. Recorded in full so the next person reads a
+         * decision instead of a flip-flop.
          */
+        entry("Ажиглалт хянах", "/observations/review"),
+        entry("Чөлөөний хүсэлт хянах", "/attendance-requests/review"),
       ],
     },
     {
@@ -611,15 +619,22 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         entry("Ангийн самбар / Мэдээ", "/notifications"),
         entry("Судалгаа", "/surveys"),
         /*
-         * ★ Чат has no row, which is what the note at the top of this list has
-         * said all along: `chat-widget.tsx` floats over every screen, so a menu
-         * entry points at something the reader is already looking at.
+         * ★ Чат keeps its row, on the same 2026-08-31 ruling as the two review
+         * queues above.
          *
-         * `/chat` still exists and is worth keeping — at `lg` it puts the room
-         * list and the open conversation side by side, which the floating panel
-         * cannot. It renders the widget's own `ChatList` and `ChatRoom`, so
-         * there is one implementation in two frames. It is simply not a row.
+         * The argument against it is real and is the one this file has carried
+         * from the start: `chat-widget.tsx` floats over every screen, so a menu
+         * entry points at something the reader is already looking at. The
+         * client asked for the row anyway — in the navigation drawing and again
+         * in writing, after the widget had shipped — and the owner chose the
+         * client's list.
+         *
+         * `/chat` is not merely a second door onto the panel: at `lg` it puts
+         * the room list and the open conversation side by side, which the
+         * floating panel cannot. It renders the widget's own `ChatList` and
+         * `ChatRoom`, so there is one implementation in two frames.
          */
+        entry("Чат", "/chat"),
       ],
     },
     ...(isAdmin

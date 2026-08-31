@@ -225,42 +225,28 @@ describe("role-based navigation", () => {
   });
 
   /**
-   * ★ The two review queues are back in the menu, and this test is the
-   * inversion of the one that stood here.
+   * ★ The three rows the client asked for by name, and this assertion has now
+   * been written in both directions on the same day.
    *
-   * It asserted their absence, for a reason worth keeping on the record:
-   * Чөлөөний хүсэлт is rendered under the attendance day sheet, where approving
-   * one writes the very rows that sheet is about, and Ажиглалт хянах is reached
-   * from the dashboard alert that counts what is waiting — so a menu row that
-   * says nothing about whether there is anything to review is a row somebody
-   * opens to find out.
+   * The case against them is real and is recorded in `(app)/layout.tsx`:
+   * Чөлөөний хүсэлт renders inside Ирц, where approving one writes the very
+   * rows the day sheet is about; Ажиглалт хянах is reached from the dashboard
+   * alert that counts what is waiting; and the chat widget floats over every
+   * screen already.
    *
-   * Both rows were restored on 2026-08-31 and removed again the same day, at
-   * the owner's instruction. The assertion flips back rather than being
-   * deleted: "these rows are not in the menu" is the requirement, and without
-   * a test the next person to read the client's written list adds them again.
+   * The owner settled it on the client's written list rather than on the
+   * stronger argument, deliberately — the reasoning on both sides is about
+   * which menu is tidier, while the request is about what somebody was
+   * promised. The test asserts presence so the next tidy-up has to come back
+   * here and read that before removing them a third time.
    */
-  it("keeps the review queues out of the menu", async () => {
+  it("shows the review queues and chat in the menu", async () => {
     renderShell(["TEACHER", "ADMIN"]);
     const nav = await sidebar();
 
-    expect(within(nav).queryByRole("link", { name: "Ажиглалт хянах" })).not.toBeInTheDocument();
-    expect(
-      within(nav).queryByRole("link", { name: "Чөлөөний хүсэлт хянах" }),
-    ).not.toBeInTheDocument();
-  });
-
-  /**
-   * Чат has no row: `chat-widget.tsx` floats over every screen, so the entry
-   * would point at something the reader is already looking at. `/chat` itself
-   * still exists — it is the wide two-pane frame the panel cannot be — and is
-   * reached from the widget, not from the menu.
-   */
-  it("keeps chat out of the menu, since the widget is already on screen", async () => {
-    renderShell(["TEACHER"]);
-    const nav = await sidebar();
-
-    expect(within(nav).queryByRole("link", { name: "Чат" })).not.toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Ажиглалт хянах" })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Чөлөөний хүсэлт хянах" })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Чат" })).toHaveAttribute("href", "/chat");
   });
 
   /**
@@ -380,8 +366,10 @@ describe("role-based navigation", () => {
    * §7–§10 and not started; a family reading grey text learns only that
    * something is missing.
    *
-   * Чат is the other side of the same rule: built, and reachable from the
-   * floating widget on every screen, so it is not a menu row at all.
+   * Чат is the other side of the same rule for a *parent*: the row added on
+   * 2026-08-31 is in `staffSections`, and `parentSections` still has none — a
+   * guardian reaches chat from the floating widget. This case is about the
+   * parent menu, so it is unaffected by that row and still asserts absence.
    */
   it("leaves no unbuilt feature named in either menu", async () => {
     renderShell(["PARENT"], "/home");
