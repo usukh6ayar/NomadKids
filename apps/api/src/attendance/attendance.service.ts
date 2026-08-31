@@ -50,15 +50,7 @@ export class AttendanceService {
    * actually assigned to teach.
    */
   async groupDaySheet(actor: Actor, groupId: string, dateIso: string) {
-    const group = await this.repo.findGroup(groupId, this.tenants.memberKindergartenIds(actor));
-    if (!group) throw new NotFoundException();
-
-    // Membership is not enough: a teacher may only see a group they are
-    // assigned to teach.
-    if (!this.tenants.isAdmin(actor, group.kindergartenId)) {
-      const assigned = await this.authz.loadActiveTeachingGroupIds(actor);
-      if (!assigned.includes(groupId)) throw new NotFoundException();
-    }
+    await this.assertCanReadGroup(actor, groupId);
 
     const date = new Date(`${dateIso}T00:00:00.000Z`);
     const { enrollments, records } = await this.repo.groupDaySheet(groupId, date);
@@ -296,6 +288,105 @@ export class AttendanceService {
     const { items, total } = await this.repo.listPendingForGroups(groupIds, page);
     return paginate(items, total, page);
   }
+
+  /**
+   * One group's month — the register's own analytics panel.
+   *
+   * ★ Raw counts, no rates.
+   *
+   * `dashboard.repository.ts` states the rule this follows: which statuses
+   * count as "attended" is a policy question the funding rules answer
+   * differently from the way a teacher reads a register, so the endpoint
+   * returns what was recorded and each reader states its own definition. A
+   * percentage computed here would be a third answer nobody could reconcile
+   * with the other two.
+   *
+   * ★★ `days` carries only the dates that have a record.
+   *
+   * Not every calendar day: a kindergarten's working days are the days somebody
+   * registered, which is the same definition the funding register uses and the
+   * reason no table of public holidays is hard-coded anywhere. A weekend padded
+   * in with zeroes would read as a day everybody missed.
+   */
+  async groupMonthSummary(actor: Actor, groupId: string, month: string) {
+    await this.assertCanReadGroup(actor, groupId);
+
+    const { from, to } = monthRange(month);
+    const { byDate, byStatus, byEnrollment, roster } = await this.repo.groupMonthSummary(
+      groupId,
+      from,
+      to,
+    );
+
+    const days = new Map<string, Record<string, number>>();
+    for (const row of byDate) {
+      const key = toDateOnly(row.date);
+      const counts = days.get(key) ?? emptyCounts();
+      counts[row.status] = (counts[row.status] ?? 0) + row._count._all;
+      days.set(key, counts);
+    }
+
+    const totals = emptyCounts();
+    for (const row of byStatus) totals[row.status] = row._count._all;
+
+    const perEnrollment = new Map<string, Record<string, number>>();
+    for (const row of byEnrollment) {
+      const counts = perEnrollment.get(row.enrollmentId) ?? emptyCounts();
+      counts[row.status] = (counts[row.status] ?? 0) + row._count._all;
+      perEnrollment.set(row.enrollmentId, counts);
+    }
+
+    return {
+      month,
+      /** Currently enrolled, which is what the day sheet beside this shows. */
+      roster: roster.length,
+      days: [...days.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, counts]) => ({ date, counts })),
+      totals,
+      /*
+       * Every child on the roster, including the ones with nothing recorded —
+       * a child who has no rows at all is the most interesting name on this
+       * list, and dropping them for having no data would hide exactly that.
+       */
+      children: roster
+        .map((enrollment) => ({
+          child: enrollment.child,
+          counts: perEnrollment.get(enrollment.id) ?? emptyCounts(),
+        }))
+        .sort((a, b) => a.child.lastName.localeCompare(b.child.lastName, "mn")),
+    };
+  }
+
+  /**
+   * Who may read one group's register.
+   *
+   * ★ Named once and shared by the day sheet and the month summary.
+   *
+   * Membership in the kindergarten is not enough: a teacher may only reach a
+   * group they are actually assigned to teach, and an administrator may reach
+   * any group in their own kindergarten. Two copies of that rule is how the
+   * new endpoint would end up answering it more generously than the old one —
+   * CLAUDE.md §1.1, and 404 rather than 403 throughout per §1.7.
+   */
+  private async assertCanReadGroup(actor: Actor, groupId: string): Promise<void> {
+    const group = await this.repo.findGroup(groupId, this.tenants.memberKindergartenIds(actor));
+    if (!group) throw new NotFoundException();
+
+    if (!this.tenants.isAdmin(actor, group.kindergartenId)) {
+      const assigned = await this.authz.loadActiveTeachingGroupIds(actor);
+      if (!assigned.includes(groupId)) throw new NotFoundException();
+    }
+  }
+}
+
+/** The six statuses, all present and zeroed — a missing key reads as a gap. */
+function emptyCounts(): Record<string, number> {
+  return { PRESENT: 0, HALF_DAY: 0, EXCUSED: 0, SICK: 0, ABSENT: 0, OTHER: 0 };
+}
+
+function toDateOnly(value: Date): string {
+  return value.toISOString().slice(0, 10);
 }
 
 /** `YYYY-MM` to the first and last instant of that month, in UTC. */

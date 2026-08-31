@@ -158,9 +158,23 @@ function FundingRegister() {
     placeholderData: (previous) => previous,
   });
 
+  /*
+   * ★ `GET /groups`, not `GET /kindergartens/:id/groups`.
+   *
+   * The second one does not exist. `kindergartens/:id/groups` is a **POST**
+   * route — creating a group — and the API has no GET beside it, so this
+   * screen's group filter answered 404 from the day it shipped: the select
+   * rendered empty, and a director filtering the register by group silently
+   * got nothing to choose from. The test mocked the wrong path too, which is
+   * why it passed.
+   *
+   * The list route scopes itself to the actor's own memberships, so no
+   * kindergarten id is needed — and the key matches `useSwitchableGroups` so
+   * the register reads the same warm cache the register switcher fills.
+   */
   const groups = useQuery({
-    queryKey: qk.groups({ kindergartenId: primaryKindergartenId }),
-    queryFn: () => get(`/kindergartens/${primaryKindergartenId}/groups?pageSize=100`, groupsSchema),
+    queryKey: qk.groups({ pageSize: 100 }),
+    queryFn: () => get("/groups?page=1&pageSize=100", groupsSchema),
     enabled: Boolean(primaryKindergartenId),
     staleTime: 5 * 60_000,
   });

@@ -585,4 +585,144 @@ describe("isolation", () => {
     );
     expect(res.status).toBe(404);
   });
+
+  /**
+   * ★ The month summary answers to the same rule as the day sheet.
+   *
+   * Both go through `assertCanReadGroup`, which is why this is asserted through
+   * the route rather than against the helper: a second endpoint on the same
+   * group is exactly where a check gets forgotten, and the aggregate leaks more
+   * than one day would — a whole month of one group's attendance, per child.
+   */
+  it("a teacher from another group gets 404 on the month summary", async () => {
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/attendance/summary?month=2026-02`),
+      await login(app, b.teacherUser.username),
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("a user from another kindergarten gets 404 on the month summary", async () => {
+    const res = await authed(
+      request(server()).get(`/v1/groups/${b.group.id}/attendance/summary?month=2026-02`),
+      teacherA,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  /**
+   * 404, not 403 — CLAUDE.md §1.7, and the guard answers it that way across the
+   * product. A 403 would confirm that this group exists to somebody who may not
+   * read it.
+   */
+  it("a guardian may not read a group's month summary", async () => {
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/attendance/summary?month=2026-02`),
+      parentA,
+    );
+    expect(res.status).toBe(404);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The month behind the register — what the screen's own panel draws
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("group month summary", () => {
+  /** Marks one child on one day, through the route a teacher actually uses. */
+  async function mark(childId: string, date: string, status: string) {
+    const res = await authed(
+      request(server()).put(`/v1/children/${childId}/attendance/${date}`),
+      teacherA,
+    ).send({ status });
+    if (res.status !== 200) throw new Error(`mark failed: ${res.status} ${res.text}`);
+  }
+
+  it("counts a month by day, by status and by child", async () => {
+    await mark(a.child.id, "2026-02-10", "PRESENT");
+    await mark(a.child.id, "2026-02-11", "SICK");
+    await mark(a.child.id, "2026-02-12", "PRESENT");
+
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/attendance/summary?month=2026-02`),
+      teacherA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.month).toBe("2026-02");
+    expect(res.body.totals.PRESENT).toBe(2);
+    expect(res.body.totals.SICK).toBe(1);
+    // Three days carry a record, so three columns — not twenty-eight.
+    expect(res.body.days).toHaveLength(3);
+    expect(res.body.days[0].date).toBe("2026-02-10");
+    expect(res.body.days[1].counts.SICK).toBe(1);
+
+    const row = res.body.children.find((c: { child: { id: string } }) => c.child.id === a.child.id);
+    expect(row.counts.PRESENT).toBe(2);
+    expect(row.counts.SICK).toBe(1);
+  });
+
+  /**
+   * ★ A child with nothing recorded still appears.
+   *
+   * They are the most interesting name on the list — the one nobody has marked
+   * all month — and a summary built only from the rows that exist cannot show
+   * them. `roster` counts the same people, so the two always agree.
+   */
+  it("lists a child who has no attendance rows at all", async () => {
+    const child = await createChild(a.kindergarten.id, { firstName: "Тэмдэглээгүй" });
+    await enrollChild(a.kindergarten.id, child.id, a.group.id, a.schoolYear.id);
+
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/attendance/summary?month=2026-02`),
+      teacherA,
+    );
+
+    expect(res.status).toBe(200);
+    const row = res.body.children.find((c: { child: { id: string } }) => c.child.id === child.id);
+    expect(row).toBeDefined();
+    expect(row.counts.PRESENT).toBe(0);
+    expect(res.body.roster).toBe(res.body.children.length);
+  });
+
+  /** Another month's rows are another month's — the range is closed at both ends. */
+  it("does not count a day outside the month asked for", async () => {
+    await mark(a.child.id, "2026-01-31", "PRESENT");
+    await mark(a.child.id, "2026-02-01", "PRESENT");
+    await mark(a.child.id, "2026-03-01", "PRESENT");
+
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/attendance/summary?month=2026-02`),
+      teacherA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.totals.PRESENT).toBe(1);
+    expect(res.body.days).toHaveLength(1);
+    expect(res.body.days[0].date).toBe("2026-02-01");
+  });
+
+  /**
+   * ★ `2026-13` used to answer 200 with January 2027.
+   *
+   * `\d{2}` accepted it and `monthRange` rolled it over, so a typo in a URL —
+   * or an off-by-one in a caller's month arithmetic — returned a different
+   * month's register with nothing to say it had. Both this route and the
+   * child's own month list read the same schema.
+   */
+  it("rejects a month that does not exist", async () => {
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/attendance/summary?month=2026-13`),
+      teacherA,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("an administrator may read any group in their kindergarten", async () => {
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/attendance/summary?month=2026-02`),
+      await login(app, a.adminUser.username),
+    );
+    expect(res.status).toBe(200);
+  });
 });

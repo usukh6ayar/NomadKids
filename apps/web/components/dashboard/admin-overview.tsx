@@ -19,6 +19,7 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { StatCard, StatTrend } from "@/components/ui/stat-card";
 import { IconChip } from "@/components/ui/icon-chip";
+import { SurveySummary } from "./survey-summary";
 import { BarRow } from "@/components/ui/chart/bar-row";
 import { ColumnChart } from "@/components/ui/chart/columns";
 import { Donut } from "@/components/ui/chart/donut";
@@ -202,6 +203,26 @@ export function AdminOverview() {
           tallest panel here, and halving its width truncates every Mongolian
           domain name. */}
       <DomainAverages groups={domainAveragesByGroup} hasCurrentTerm={Boolean(currentTerm)} />
+
+      {/*
+        ★ The teacher board's own survey panel, unchanged, on the director's
+        board too.
+
+        This screen had no survey anywhere while the teacher's dashboard
+        carried one, so the person who commissions a survey and reads its
+        result was the one person the product never showed how it was going.
+        The same component rather than a second version of it: it already
+        reads `/kindergartens/:id/surveys` and `/surveys/:id/results`, both of
+        which an administrator may call, and a copy adapted "for admins" is how
+        two panels answering one question start disagreeing about the number.
+
+        Half width, paired with nothing, because `SurveySummary` is a
+        `BoardCard` sized for the teacher board's two-column grid and stretching
+        it across this page would leave a bar chart in a field of white.
+      */}
+      <div className="grid items-start gap-6 xl:grid-cols-2">
+        <SurveySummary />
+      </div>
 
       <RecentActivitySection entries={recentActivity} auditHref="/admin/audit" />
     </div>

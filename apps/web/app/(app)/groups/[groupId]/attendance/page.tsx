@@ -18,6 +18,7 @@ import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui
 import { ChildAvatar } from "@/components/media/media-image";
 import { RegisterProgress } from "@/components/register/register-progress";
 import { AttendanceRequestQueue } from "@/components/attendance/request-queue";
+import { AttendanceMonthPanel } from "@/components/attendance/month-panel";
 import {
   ATTENDANCE_STATUS_CHART_TONE,
   ATTENDANCE_STATUS_LABEL,
@@ -135,22 +136,40 @@ function GroupAttendance() {
         href={(id) => `/groups/${id}/attendance`}
       />
 
-      <Card className="flex flex-col gap-3.5 px-4 py-4 sm:px-5">
-        <Field label="Огноо" className="sm:max-w-[240px]">
-          {({ id }) => (
-            <Input
-              id={id}
-              type="date"
-              max={today()}
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
-          )}
-        </Field>
+      {/*
+        ★ Two columns from `lg`: today on the left, the month on the right.
 
-        {sheet.data && rows.length > 0 ? (
-          <RegisterProgress inset recorded={recorded} total={rows.length} breakdown={breakdown} />
-        ) : null}
+        The card was a date field and a progress ring in its left third with
+        about 900px of white beside them — on the screen a teacher opens every
+        morning. The split is the honest one: the left half is the work in
+        front of you, the right half is what that work has added up to. They
+        stack on a phone, work first, because a register is filled in one
+        thumb at a time and the month can wait for a scroll.
+      */}
+      <Card className="grid gap-5 px-4 py-4 sm:px-5 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] lg:gap-8">
+        <div className="flex flex-col gap-3.5">
+          <Field label="Огноо">
+            {({ id }) => (
+              <Input
+                id={id}
+                type="date"
+                max={today()}
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
+            )}
+          </Field>
+
+          {sheet.data && rows.length > 0 ? (
+            <RegisterProgress inset recorded={recorded} total={rows.length} breakdown={breakdown} />
+          ) : null}
+        </div>
+
+        {/*
+          The month the chosen date falls in, so moving the date picker to
+          July shows July's shape rather than always this month's.
+        */}
+        <AttendanceMonthPanel groupId={groupId} month={date.slice(0, 7)} />
       </Card>
 
       <FormError message={record.isError ? errorMessage(record.error) : null} />

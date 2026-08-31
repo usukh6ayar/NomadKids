@@ -2411,6 +2411,34 @@ export const attendanceCountsSchema = z.object({
 export type AttendanceCounts = z.infer<typeof attendanceCountsSchema>;
 
 /**
+ * One group's month, as the attendance register's own panel reads it.
+ *
+ * ★ Counts, never a percentage.
+ *
+ * Which statuses count as "attended" is a policy question — the funding rules
+ * answer it one way and a teacher reading a register another — so the endpoint
+ * returns what was recorded and each screen states its own definition. The
+ * same rule `attendanceCountsSchema` above is shaped by, and the reason
+ * `dashboard.repository.ts` keeps its `ATTENDED` list at the call site.
+ *
+ * `days` holds only dates that carry a record: a kindergarten's working days
+ * are the days somebody registered, not weekdays on a calendar, so a padded
+ * weekend would read as a day the whole group missed.
+ */
+export const groupAttendanceSummarySchema = z.object({
+  month: z.string(),
+  /** Currently enrolled — the same roster the day sheet lists. */
+  roster: z.number().int(),
+  days: z.array(z.object({ date: z.string(), counts: attendanceCountsSchema })).default([]),
+  totals: attendanceCountsSchema,
+  /** Every child on the roster, including those with nothing recorded. */
+  children: z
+    .array(z.object({ child: personRefSchema, counts: attendanceCountsSchema }))
+    .default([]),
+});
+export type GroupAttendanceSummary = z.infer<typeof groupAttendanceSummarySchema>;
+
+/**
  * What the row needs a human to do about it.
  *
  * ★ Derived on every read, never stored.

@@ -65,6 +65,16 @@ export const qk = {
   groupAttendance: (groupId: string, date: string) =>
     ["group", groupId, "attendance", date] as const,
   /**
+   * One group's month, for the register's own panel.
+   *
+   * ★ Shares the `["group", id, "attendance"]` prefix with the day sheet on
+   * purpose: marking a child changes both, and invalidating the prefix after a
+   * mutation refreshes the sheet and the month behind it in one call rather
+   * than leaving the panel a minute stale on the screen that just changed it.
+   */
+  groupAttendanceSummary: (groupId: string, month: string) =>
+    ["group", groupId, "attendance", "summary", month] as const,
+  /**
    * One sitting of one group on one day — the meal register's unit of work.
    *
    * ★ `kind` is part of the key, not a filter applied after the fetch. The API

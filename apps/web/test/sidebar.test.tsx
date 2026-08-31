@@ -126,8 +126,8 @@ describe("navigation icons", () => {
       "Хоол ба цэс",
       "Ангийн самбар / Мэдээ",
       "Судалгаа",
-      // Систем ба тохиргоо — the seven that were behind the hub, plus the hub
-      "Удирдлага",
+      // The seven that used to sit behind the "Удирдлага" hub, which no longer
+      // has a row of its own — see "does not repeat the administration hub".
       "Цэцэрлэгийн мэдээлэл",
       "Хэрэглэгч ба эрх",
       "Хичээлийн жил",
@@ -225,40 +225,27 @@ describe("role-based navigation", () => {
   });
 
   /**
-   * ★ The two review queues are back in the menu, and this test is the
-   * inversion of the one that stood here.
+   * ★ The three rows the client asked for by name, and this assertion has now
+   * been written in both directions on the same day.
    *
-   * It asserted their absence, for a reason worth keeping on the record:
-   * Чөлөөний хүсэлт is rendered under the attendance day sheet, where approving
-   * one writes the very rows that sheet is about, and Ажиглалт хянах is reached
-   * from the dashboard alert that counts what is waiting — so a menu row that
-   * says nothing about whether there is anything to review is a row somebody
-   * opens to find out.
+   * The case against them is real and is recorded in `(app)/layout.tsx`:
+   * Чөлөөний хүсэлт renders inside Ирц, where approving one writes the very
+   * rows the day sheet is about; Ажиглалт хянах is reached from the dashboard
+   * alert that counts what is waiting; and the chat widget floats over every
+   * screen already.
    *
-   * The client asked for both by name on 2026-08-31, in a written list of the
-   * destinations the menu must carry. That is the case the old reasoning could
-   * not answer: a queue reachable only through an alert cannot be found on any
-   * day the alert is empty. The assertion flips rather than being deleted,
-   * because "these rows exist" is now the requirement and an absent test would
-   * let them silently disappear again.
+   * The owner settled it on the client's written list rather than on the
+   * stronger argument, deliberately — the reasoning on both sides is about
+   * which menu is tidier, while the request is about what somebody was
+   * promised. The test asserts presence so the next tidy-up has to come back
+   * here and read that before removing them a third time.
    */
-  it("shows the review queues in the menu", async () => {
+  it("shows the review queues and chat in the menu", async () => {
     renderShell(["TEACHER", "ADMIN"]);
     const nav = await sidebar();
 
     expect(within(nav).getByRole("link", { name: "Ажиглалт хянах" })).toBeInTheDocument();
     expect(within(nav).getByRole("link", { name: "Чөлөөний хүсэлт хянах" })).toBeInTheDocument();
-  });
-
-  /**
-   * Чат earns a row once `/chat` exists — the widget floats on every screen, so
-   * the row would otherwise point at something already on the page. See the
-   * note in `(app)/layout.tsx`.
-   */
-  it("shows a chat row that points at the chat page", async () => {
-    renderShell(["TEACHER"]);
-    const nav = await sidebar();
-
     expect(within(nav).getByRole("link", { name: "Чат" })).toHaveAttribute("href", "/chat");
   });
 
@@ -322,11 +309,25 @@ describe("role-based navigation", () => {
     }
   });
 
-  it("adds the administration entry for an admin", async () => {
+  /**
+   * ★ No hub row, and that is deliberate rather than an omission.
+   *
+   * Every screen the "Удирдлага" tile page lists has its own row above this
+   * assertion, so the hub's only remaining job was to name what the menu
+   * already names. `/admin` is still where the root redirect lands an
+   * administrator (`app/page.tsx`), so the screen is not orphaned by losing
+   * the line.
+   */
+  it("does not repeat the administration hub as a row", async () => {
     renderShell(["TEACHER", "ADMIN"]);
     const nav = await sidebar();
 
-    expect(within(nav).getByRole("link", { name: "Удирдлага" })).toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Удирдлага" })).not.toBeInTheDocument();
+    // The screens it used to hide are still reachable, which is the point.
+    expect(within(nav).getByRole("link", { name: "Аудит" })).toHaveAttribute(
+      "href",
+      "/admin/audit",
+    );
   });
 
   it("gives a parent their own sections, not the staff ones", async () => {
@@ -365,8 +366,10 @@ describe("role-based navigation", () => {
    * §7–§10 and not started; a family reading grey text learns only that
    * something is missing.
    *
-   * Чат is the other side of the same rule: built, and reachable from the
-   * floating widget on every screen, so it is not a menu row at all.
+   * Чат is the other side of the same rule for a *parent*: the row added on
+   * 2026-08-31 is in `staffSections`, and `parentSections` still has none — a
+   * guardian reaches chat from the floating widget. This case is about the
+   * parent menu, so it is unaffected by that row and still asserts absence.
    */
   it("leaves no unbuilt feature named in either menu", async () => {
     renderShell(["PARENT"], "/home");

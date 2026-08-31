@@ -83,7 +83,7 @@ describe("navigation is built from the session's roles", () => {
     expect(screen.queryByText("Удирдлага")).toBeNull();
   });
 
-  it("an admin additionally sees Удирдлага", async () => {
+  it("an admin additionally sees the administration screens", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
       { path: "/notifications/unread-count", body: { count: 0 } },
@@ -96,13 +96,15 @@ describe("navigation is built from the session's roles", () => {
     );
 
     /*
-      The admin entry is a sidebar section row rather than a bottom-bar tab
-      since the 2026-08-29 nav change, and PR #16 renamed it from "Бүлэг,
-      цэцэрлэгийн мэдээлэл" to "Удирдлага" in the same window — twenty-seven
-      characters truncated to "Бүлэг, цэцэрлэгийн м…" in a 280px rail. This
-      follows that name; the guarantee is unchanged.
+      The guarantee is unchanged — an administrator reaches administration from
+      the nav — but what carries it is not. The single "Удирдлага" hub row was
+      dropped on 2026-08-31 once all seven screens behind it had rows of their
+      own, so this reads one of those screens instead of the hub's name. The
+      hub page is still where the root redirect lands an admin.
     */
-    await waitFor(() => expect(screen.getAllByText("Удирдлага").length).toBeGreaterThan(0));
+    await waitFor(() =>
+      expect(screen.getAllByText("Цэцэрлэгийн мэдээлэл").length).toBeGreaterThan(0),
+    );
   });
 
   /**
