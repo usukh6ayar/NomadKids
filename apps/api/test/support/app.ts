@@ -4,6 +4,7 @@ import type { NestExpressApplication } from "@nestjs/platform-express";
 import cookieParser from "cookie-parser";
 import { AppModule } from "../../src/app.module";
 import { ProblemExceptionFilter } from "../../src/common/filters/problem.filter";
+import { QpayService } from "../../src/integrations/qpay/qpay.service";
 
 /**
  * Boots the real application for integration tests.
@@ -25,8 +26,25 @@ import { ProblemExceptionFilter } from "../../src/common/filters/problem.filter"
  * Listening once means supertest reuses the open server, and the suite is
  * deterministic.
  */
-export async function createTestApp(): Promise<INestApplication> {
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+export async function createTestApp(options: TestAppOptions = {}): Promise<INestApplication> {
+  let builder = Test.createTestingModule({ imports: [AppModule] });
+
+  /*
+   * ★ The one sanctioned override, and it is narrow on purpose.
+   *
+   * Everything in this suite runs against the real guards and the real
+   * database. QPay is the exception because the alternative is a test that
+   * spends money: verifying a payment means an authenticated call to a payment
+   * provider, and there is no sandbox available to us (docs/QPAY_INTEGRATION.md
+   * §5). The *client* is stubbed, never the authorization around it — the
+   * callback route, its guards and `QpayPaymentsService` are all the real ones,
+   * which is what the security tests need to be worth anything.
+   */
+  if (options.qpay) {
+    builder = builder.overrideProvider(QpayService).useValue(options.qpay);
+  }
+
+  const moduleRef = await builder.compile();
 
   const app = moduleRef.createNestApplication<NestExpressApplication>();
   app.setGlobalPrefix("v1");
@@ -37,4 +55,9 @@ export async function createTestApp(): Promise<INestApplication> {
   await app.init();
   await app.listen(0);
   return app;
+}
+
+export interface TestAppOptions {
+  /** A stand-in for the payment provider. See the note above. */
+  qpay?: Partial<QpayService>;
 }
