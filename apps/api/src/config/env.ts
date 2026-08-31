@@ -112,6 +112,40 @@ export const envSchema = z.object({
   ESIS_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(15_000),
 
   /**
+   * QPay — parent payments (`нэмэлт.md` §8).
+   *
+   * ★ Optional as a set, like ESIS and SMTP. Without it invoicing still works
+   * in full: an accountant records cash and bank transfers by hand. Only the
+   * online-payment path reports itself unconfigured.
+   *
+   * ★★ `QPAY_PASSWORD` is a **credential** and `QPAY_USERNAME` is close to one.
+   * Neither reaches a response, a log line or the client bundle, and neither is
+   * prefixed `NEXT_PUBLIC_` — see `qpay.client.ts` for the redaction.
+   *
+   * ★★★ **One merchant serves every kindergarten**, confirmed by the client on
+   * 2026-08-31. That is why these are deployment-level settings rather than
+   * columns on `Kindergarten`: every payment lands in the operator's own
+   * account, and which kindergarten a payment belongs to is answered by the
+   * invoice it references, not by which credentials took it. If a kindergarten
+   * ever needs its own merchant, this becomes a table and `QpayConfig` grows a
+   * lookup — do not sprinkle a second set of variables to special-case one.
+   */
+  QPAY_BASE_URL: z.string().default(""),
+  QPAY_USERNAME: z.string().default(""),
+  QPAY_PASSWORD: z.string().default(""),
+  /** The invoice code QPay assigns the merchant. Not secret, but per-environment. */
+  QPAY_INVOICE_CODE: z.string().default(""),
+  /**
+   * Where QPay calls back after a payment.
+   *
+   * Must be publicly reachable — QPay dials it — which is exactly why its body
+   * is never trusted. The callback is a *notification*; the payment is then
+   * verified against QPay's own API before anything is credited.
+   */
+  QPAY_CALLBACK_URL: z.string().default(""),
+  QPAY_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(15_000),
+
+  /**
    * Whether this instance consumes the report queue.
    *
    * On by default: one container is the right shape for a kindergarten's
@@ -204,6 +238,39 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     }
     if (env.ESIS_BASE_URL && env.ESIS_BASE_URL.startsWith("http://")) {
       problems.push("ESIS_BASE_URL is a plaintext http:// origin — the token would cross it");
+    }
+
+    /*
+     * Half-configured QPay, refused for the same reason as ESIS and SMTP: it
+     * looks configured and then fails as an authentication error from the
+     * provider rather than as our own missing setting. The stakes are higher
+     * here — the failure surfaces to a parent trying to pay.
+     */
+    const qpay = [
+      ["QPAY_BASE_URL", env.QPAY_BASE_URL],
+      ["QPAY_USERNAME", env.QPAY_USERNAME],
+      ["QPAY_PASSWORD", env.QPAY_PASSWORD],
+      ["QPAY_INVOICE_CODE", env.QPAY_INVOICE_CODE],
+      ["QPAY_CALLBACK_URL", env.QPAY_CALLBACK_URL],
+    ] as const;
+    const qpaySet = qpay.filter(([, value]) => value !== "");
+
+    if (qpaySet.length > 0 && qpaySet.length < qpay.length) {
+      const missing = qpay.filter(([, value]) => value === "").map(([name]) => name);
+      // Names only. The values of the ones that *are* set include the password.
+      problems.push(`QPay is partly configured — missing ${missing.join(", ")}`);
+    }
+    if (env.QPAY_BASE_URL && env.QPAY_BASE_URL.startsWith("http://")) {
+      problems.push("QPAY_BASE_URL is a plaintext http:// origin — the password would cross it");
+    }
+    /*
+     * ★ The callback URL must be https in production, and for a sharper reason
+     * than the base URL: it is the address a payment confirmation arrives at.
+     * Over plaintext it can be read and rewritten in flight, and a rewritten
+     * confirmation is a free invoice.
+     */
+    if (env.QPAY_CALLBACK_URL && env.QPAY_CALLBACK_URL.startsWith("http://")) {
+      problems.push("QPAY_CALLBACK_URL is a plaintext http:// origin");
     }
 
     if (problems.length > 0) {

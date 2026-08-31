@@ -76,6 +76,7 @@ export class PdfRendererService implements OnModuleDestroy {
 
       const pdf = await page.pdf({
         format: "A4",
+        landscape: options.landscape ?? false,
         printBackground: true,
         displayHeaderFooter: Boolean(options.headerTemplate ?? options.footerTemplate),
         headerTemplate: options.headerTemplate ?? "<span></span>",
@@ -111,4 +112,16 @@ export class PdfRendererService implements OnModuleDestroy {
 export interface RenderOptions {
   headerTemplate?: string;
   footerTemplate?: string;
+  /**
+   * Rotates the page to A4 landscape.
+   *
+   * ★ Added for `нэмэлт.md` §16's financial reports, which are up to eight
+   * columns of names and money. In portrait every row wraps to three lines and
+   * the document becomes unreadable — the class of failure `docs/PDF_SPIKE.md`
+   * §4 warns about, where the file is produced successfully and is useless.
+   *
+   * Defaults to portrait: every child report is a reading document, and a
+   * portfolio in landscape would be the same mistake in the other direction.
+   */
+  landscape?: boolean;
 }

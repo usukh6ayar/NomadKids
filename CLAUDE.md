@@ -109,6 +109,15 @@ kindergarten's rows unless the call site remembers both filters. One forgotten
 filter is a cross-tenant leak. Repositories carry a base filter
 (`deletedAt: null` + tenant scope) that methods extend, never replace.
 
+★ **`Prisma.Decimal` is covered by this rule too.** It is re-exported from the
+generated client, so importing it for the number type opens the query surface
+to whatever file did so. Money outside a repository uses **`decimal.js`**
+directly — the same library Prisma's decimal is built on, so values cross the
+boundary unchanged. `invoices/invoice-math.ts` is the worked example. The rule
+caught this being got wrong on 2026-08-31, which is the argument for keeping it
+mechanical: it cannot tell "I only wanted the number type" from "I am about to
+run a query", and should not have to.
+
 ### 2.3 Configuration belongs in the database, not in code
 
 Anything an administrator can edit is a **table**, not a TypeScript enum:
@@ -269,13 +278,49 @@ accountant role as Phase IV. **It is now requested work**, so the line moves —
 same reason §7 moved the first time: a rule the codebase is about to contradict
 teaches everyone to stop reading the file.
 
-What has been built from `нэмэлт.md` so far is only its foundation, and the
-distinction matters when reading this rule:
+What has been built from `нэмэлт.md` so far, and what has not. **Updated
+2026-08-31** — the previous version of this list said "§3–§10, §13, §14, §16 —
+the finance module proper — not started", and by then §4, §5 and §6 had shipped.
+The list is corrected rather than left standing for the reason this whole
+section keeps repeating: a rule the codebase contradicts stops being read.
 
 - §1's sixth attendance status (`OTHER`) — **done**, it had been dropped
 - §2 the meal register, §12's dish fields — **done**
 - §11 the allergy cross-check — **done** (it was already RFP Module 2)
-- §3–§10, §13, §14, §16 — the finance module proper — **not started**
+- §13 the accountant role — **done**, `Role.ACCOUNTANT`
+- §4, §5, §6 state funding, the rules engine, the monthly calculation —
+  **done**: `FundingRule`, `FundingCalculation`, `settle()`, the monthly
+  register and its Excel export, `/admin/funding` and `/finance`. The rule
+  table ships **empty**, by §4's own instruction that no tariff is hard-coded
+- §3 meal cost — **partial**: `dependsOnMeals` weights a funding rule, but
+  there is no per-child meal cost split by source
+- §7 invoices — **done**: `Invoice`, `InvoiceLine`, `Payment`, generation from
+  the `PARENT` tariffs, a hand-written invoice, the carried balance
+- §8 online payment — **done**: `integrations/qpay/`, QR generation, the
+  verified callback, the lost-callback sync, and the parent's own screens
+  (`/children/:id/invoices`, `/invoices/:id`). **One merchant serves every
+  kindergarten** (client, 2026-08-31), so the credentials are deployment
+  settings, not a column
+- §9 the financial dashboard — **done**: `/kindergartens/:id/invoices/dashboard`
+  and the panel at the head of `/finance`. Nine figures, none of them stored —
+  every one aggregated on read from the calculations, invoices and payments
+- §10 the child finance tab — **done**: `/children/:id/finance`. **A guardian's
+  payload omits `funding` entirely** — the state's payments to the kindergarten
+  are its revenue, not the family's debt
+- §16 the nine reports — **done**: a screen at the foot of `/finance`, Excel
+  inline, and PDF on BullMQ as a `FINANCE_REPORT` job. Eight keys, not nine —
+  "Ирц–санхүүжилтийн тулгалт" is the monthly register, which shipped with §6 and
+  already exports. ★ A `FINANCE_REPORT` job carries **no `childId`**, which is
+  what keeps every `canAccessChild`-gated report route from ever serving one
+- §14 the financial audit log — **partial**: `AuditLog` records every financial
+  action, but not consistently as `Өмнөх утга → Шинэ утга`, and the reversal
+  rule for confirmed transactions is not built
+- §15 the external-ID history — **not started**
+
+★ §14 asks that a confirmed financial transaction is **never deleted** —
+"Залруулга эсвэл reversal transaction ашиглана". That is stricter than §3.2's
+soft delete and overrides it here: a confirmed payment gets a **reversing row**,
+not a `deletedAt`. §3.2 stays the rule everywhere else.
 
 ★★ **Chat moved into scope on 2026-08-29, at the client's explicit request.**
 

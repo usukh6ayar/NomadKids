@@ -1,0 +1,32 @@
+# Build context for the API image.
+#
+# ★ BuildKit reads this in preference to the root `.dockerignore` because it is
+# named after the Dockerfile. It exists so the API's context can exclude
+# `apps/web` — a few hundred megabytes the API never reads — now that the web
+# app builds from the same repository root.
+
+node_modules
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/*.tsbuildinfo
+
+.git
+.github
+.env
+.env.*
+!.env.example
+
+# Its own dependency tree, deliberately outside the workspace.
+docs/spikes
+
+# The API image does not contain the web app.
+apps/web
+
+docs
+*.md
+!apps/api/assets/fonts/README.md
+
+**/coverage
+**/.vitest

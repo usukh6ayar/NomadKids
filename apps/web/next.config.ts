@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type { NextConfig } from "next";
 
 const isProduction = process.env.NODE_ENV === "production";
@@ -13,6 +14,52 @@ const isProduction = process.env.NODE_ENV === "production";
  */
 const config: NextConfig = {
   reactStrictMode: true,
+
+  /**
+   * ★ A self-contained server bundle, for the VPS image.
+   *
+   * Without this, running Next in a container means copying the whole
+   * `node_modules` — a workspace install of several hundred megabytes, most of
+   * it build tooling the server never calls. `standalone` traces what the
+   * server actually imports and writes a `server.js` beside it.
+   *
+   * It is set unconditionally rather than behind `isProduction`: `next dev`
+   * ignores it, so a conditional would only add a way for the development and
+   * production builds to differ.
+   */
+  output: "standalone",
+
+  /**
+   * ★★ The monorepo root, not `apps/web`.
+   *
+   * Tracing stops at the package root by default, and this app imports
+   * `@kinder/contracts` from `packages/`. Without this the standalone bundle is
+   * built successfully and then crashes on the first request with
+   * `Cannot find module '@kinder/contracts'` — a failure that appears only in
+   * the container, never in `next dev`.
+   */
+  outputFileTracingRoot: join(import.meta.dirname, "..", ".."),
+
+  /**
+   * ★★★ `@swc/helpers/esm/**` — files Next needs at runtime and the trace misses.
+   *
+   * The trace resolves `@swc/helpers` through its CJS entry, so only `cjs/` is
+   * copied into the standalone bundle. At runtime Next's own `require-hook.js`
+   * asks for `esm/_interop_require_default.js`, which is not there, and the
+   * container dies on boot with a `MODULE_NOT_FOUND` naming a path deep inside
+   * `.pnpm/` — an error that says nothing about tracing.
+   *
+   * The image **built successfully** with this missing. Only running it found
+   * the fault, which is why `docs/VPS_DEPLOYMENT.md` §3.4 says to watch the
+   * logs rather than trust a green build.
+   *
+   * The version is a wildcard on purpose: pinning `@swc+helpers@0.5.23` would
+   * silently stop matching on the next `pnpm update`, and the failure would
+   * come back looking new.
+   */
+  outputFileTracingIncludes: {
+    "/**": ["../../node_modules/.pnpm/@swc+helpers@*/node_modules/@swc/helpers/esm/**/*"],
+  },
 
   // Names the framework on every response, which narrows the set of CVEs worth
   // trying against it. It buys nothing.

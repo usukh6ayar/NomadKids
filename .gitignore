@@ -25,3 +25,10 @@ docs/spikes/pdf/out/
 apps/api/src/generated/
 .vercel
 .env*
+
+# ★ The examples ARE tracked. `.env.example` predates the `.env*` rule above and
+# survives only because git keeps tracking what it already knows — a new example
+# file would be silently ignored, which is how a template for production
+# secrets ends up existing on one laptop and nowhere else.
+!.env.example
+!.env.production.example
