@@ -19,6 +19,7 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { StatCard, StatTrend } from "@/components/ui/stat-card";
 import { IconChip } from "@/components/ui/icon-chip";
+import { Art } from "@/components/ui/art";
 import { SurveySummary } from "./survey-summary";
 import { BarRow } from "@/components/ui/chart/bar-row";
 import { ColumnChart } from "@/components/ui/chart/columns";
@@ -312,7 +313,7 @@ function TodayDial({ today }: { today: AdminDashboard["attendanceToday"] }) {
         id="today-dial"
         title="Өнөөдрийн ирц"
         lede={formatLongDate(new Date())}
-        icon={<IconChip icon={<CalendarCheck size={20} aria-hidden />} tone="primary" />}
+        icon={<Art name="register" size={40} />}
       />
 
       <Card pad="roomy" className="flex flex-wrap items-center gap-6">
@@ -462,7 +463,7 @@ function AttendanceByGroup({ groups }: { groups: AdminDashboard["attendanceByGro
         id="attendance-by-group"
         title="Бүлгүүдийн ирц"
         lede="Сүүлийн 30 хоног."
-        icon={<IconChip icon={<School size={20} aria-hidden />} tone="primary" />}
+        icon={<Art name="kindergarten" size={40} />}
       />
 
       {withRows.length === 0 ? (

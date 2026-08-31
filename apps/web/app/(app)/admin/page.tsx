@@ -8,7 +8,6 @@ import {
   CalendarClock,
   CalendarRange,
   ChevronRight,
-  GraduationCap,
   HardDrive,
   Heart,
   School,
@@ -138,13 +137,13 @@ function AdminDashboard() {
           label="Бүлэг"
           value={counts.groups}
           tone="mint"
-          art={<School size={28} aria-hidden />}
+          art={<Art name="kindergarten" size={40} />}
         />
         <StatCard
           label="Багш, ажилтан"
           value={counts.staff}
           tone="sky"
-          art={<GraduationCap size={28} aria-hidden />}
+          art={<Art name="teacher" size={40} />}
         />
         <StatCard
           label="Эцэг эх"
