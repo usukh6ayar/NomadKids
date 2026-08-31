@@ -34,14 +34,41 @@ export class ReportsRepository {
     private readonly observations: ObservationsRepository,
   ) {}
 
+  /**
+   * ★ `childId` is nullable, for `нэмэлт.md` §16's financial reports.
+   *
+   * Every other type must carry one — a portfolio with no child is not a
+   * document. The generator enforces that (`!job.childId && !isFinance`), and
+   * every child-scoped report endpoint opens with the same guard, so a finance
+   * job is invisible to them by construction rather than by a filter somebody
+   * has to remember.
+   */
   async createJob(data: {
     kindergartenId: string;
-    childId: string;
+    childId: string | null;
     type: ReportType;
     params: object;
     requestedById: string;
   }) {
     return this.prisma.reportJob.create({ data });
+  }
+
+  /**
+   * A kindergarten's financial report jobs — `нэмэлт.md` §16.
+   *
+   * ★ Scoped to the kindergarten and the **type**, not to the requester. A
+   * financial report is the kindergarten's document, and an accountant who
+   * queued one on Friday must be able to collect it on Monday from a colleague's
+   * screen; child reports are filtered to their requester for the opposite
+   * reason (a parent has no business seeing a teacher's export).
+   */
+  async listFinanceJobs(kindergartenId: string, take = 20) {
+    return this.prisma.reportJob.findMany({
+      where: { kindergartenId, type: "FINANCE_REPORT", deletedAt: null },
+      orderBy: { requestedAt: "desc" },
+      take,
+      include: { resultMedia: { select: { id: true, storageKey: true, originalName: true } } },
+    });
   }
 
   async findJob(id: string) {
@@ -114,7 +141,16 @@ export class ReportsRepository {
     id: string,
     result: {
       kindergartenId: string;
-      childId: string;
+      /**
+       * ★ Nullable, for `нэмэлт.md` §16's financial reports — the only report
+       * type that belongs to a kindergarten rather than a child.
+       *
+       * A `MediaFile` with no `childId` is already refused by `/media/:id`
+       * (`if (!media.childId) throw new NotFoundException()`), so the resulting
+       * PDF is unreachable through the child-media route by construction. Its
+       * own endpoint checks `assertCanReadFinance` instead.
+       */
+      childId: string | null;
       storageKey: string;
       originalName: string;
       fileSize: number;

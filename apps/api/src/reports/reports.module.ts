@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AssessmentModule } from "../assessment/assessment.module";
 import { ObservationsModule } from "../observations/observations.module";
+import { FinanceReportsModule } from "../invoices/finance-reports.module";
 import { ChildReportsController, ReportsController } from "./reports.controller";
 import { ReportsRepository } from "./reports.repository";
 import { ReportsService } from "./reports.service";
@@ -21,9 +22,14 @@ import { PdfRendererService } from "./pdf-renderer.service";
  * `AssessmentModule` supplies term and term-report lookups, so that "may this
  * person ask for this term report" is answered by the module that owns the
  * rule.
+ *
+ * ★ `FinanceReportsModule` supplies `нэмэлт.md` §16's report data for the PDF
+ * type. It is a module of its own precisely so this import does not become a
+ * cycle: `InvoicesModule` needs *this* module to queue a PDF, so importing
+ * `InvoicesModule` here would point the two at each other.
  */
 @Module({
-  imports: [ObservationsModule, AssessmentModule],
+  imports: [ObservationsModule, AssessmentModule, FinanceReportsModule],
   controllers: [ReportsController, ChildReportsController],
   providers: [
     ReportsService,

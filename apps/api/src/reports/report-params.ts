@@ -31,6 +31,20 @@ export interface ReportJobParams {
   termId?: string;
   /** Required for `ANNUAL_REPORT` — RFP §6.5. */
   schoolYearId?: string;
+
+  /**
+   * `нэмэлт.md` §16 — which report, over what period.
+   *
+   * ★ Only set for `FINANCE_REPORT`, which carries no `childId`. The pair is
+   * enough to rebuild the report at render time; the *rows* are deliberately
+   * not stored on the job. A queued PDF that carried its own copy of the data
+   * would print figures from the moment the button was pressed, and an
+   * attendance correction landing in the thirty seconds before the worker ran
+   * would leave the PDF and the screen disagreeing with no way to tell which
+   * was right.
+   */
+  financeReport?: string;
+  financePeriod?: string;
 }
 
 /**

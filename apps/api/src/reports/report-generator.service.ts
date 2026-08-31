@@ -15,6 +15,8 @@ import {
   type AnnualReportData,
 } from "./annual-report-template";
 import { reportAudience, type ReportJobParams } from "./report-params";
+import { financeReportChrome, renderFinanceReportHtml } from "./finance-report-template";
+import { FinanceReportsService } from "../invoices/finance-reports.service";
 
 /** How long a generated file stays downloadable before the sweep removes it. */
 const RESULT_TTL_DAYS = 14;
@@ -46,6 +48,7 @@ export class ReportGeneratorService {
     private readonly repo: ReportsRepository,
     private readonly storage: StorageService,
     private readonly renderer: PdfRendererService,
+    private readonly financeReports: FinanceReportsService,
   ) {}
 
   /**
@@ -58,7 +61,16 @@ export class ReportGeneratorService {
    */
   async run(jobId: string, rethrow = false): Promise<{ status: "DONE" | "FAILED" }> {
     const job = await this.repo.findJob(jobId);
-    if (!job || !job.childId) {
+
+    /*
+     * ★ `FINANCE_REPORT` is the one type with no child — `нэмэлт.md` §16's
+     * reports are a kindergarten's ledger, not a child's document. Every other
+     * type must still have one, and a portfolio job that has lost its child is
+     * unrenderable.
+     */
+    const isFinance = job?.type === "FINANCE_REPORT";
+
+    if (!job || (!job.childId && !isFinance)) {
       // Not re-thrown: a job whose row is gone will never succeed, and retrying
       // it three times with backoff only delays the inevitable.
       this.logger.warn(`Report job ${jobId} not found; nothing to generate`);
@@ -80,12 +92,13 @@ export class ReportGeneratorService {
 
     try {
       const params = job.params as unknown as ReportJobParams;
-      const { html, chrome, filename } =
-        job.type === "TERM_REPORT"
-          ? await this.buildTermReport(job.childId, params)
+      const { html, chrome, filename } = isFinance
+        ? await this.buildFinanceReport(job.kindergartenId, params)
+        : job.type === "TERM_REPORT"
+          ? await this.buildTermReport(job.childId!, params)
           : job.type === "ANNUAL_REPORT"
-            ? await this.buildAnnualReport(job.childId, params)
-            : await this.buildPortfolio(job.childId, params);
+            ? await this.buildAnnualReport(job.childId!, params)
+            : await this.buildPortfolio(job.childId!, params);
 
       const pdf = await this.renderer.render(html, chrome);
 
@@ -301,6 +314,53 @@ export class ReportGeneratorService {
    * "there was no winter". `terms` comes from the school year, not from the
    * assessments, and the grid is filled against it.
    */
+  /**
+   * A financial report — `нэмэлт.md` §16.
+   *
+   * ★ **The rows are read now, not when the job was queued.**
+   *
+   * `params` carries only the report key and the period. A job that carried its
+   * own copy of the data would print the figures as they stood the moment the
+   * button was pressed, and an attendance correction landing in the seconds
+   * before the worker ran would leave the PDF and the screen disagreeing with
+   * nothing to say which was right. Reading here means the file states the
+   * ledger at the moment it was rendered — the timestamp it prints.
+   *
+   * ★★ The same `ReportTable` the screen and the spreadsheet use, so a column
+   * added to a report reaches all three without being written three times.
+   */
+  private async buildFinanceReport(kindergartenId: string, params: ReportJobParams) {
+    if (!params.financeReport || !params.financePeriod) {
+      throw new Error("Finance report requires a report key and a period");
+    }
+
+    const [table, kindergartenName] = await Promise.all([
+      this.financeReports.tableFor(
+        kindergartenId,
+        params.financeReport as never,
+        params.financePeriod,
+      ),
+      this.financeReports.kindergartenName(kindergartenId),
+    ]);
+
+    const generatedAt = new Date();
+
+    return {
+      html: renderFinanceReportHtml({
+        title: table.title,
+        kindergartenName,
+        period: params.financePeriod,
+        note: table.note,
+        columns: table.columns,
+        rows: table.rows,
+        totals: table.totals,
+        generatedAt,
+      }),
+      chrome: financeReportChrome(table.title, kindergartenName, params.financePeriod),
+      filename: `${params.financeReport}-${params.financePeriod}.pdf`,
+    };
+  }
+
   private async buildAnnualReport(childId: string, params: ReportJobParams) {
     if (!params.schoolYearId) throw new Error("Annual report requires a schoolYearId");
 
