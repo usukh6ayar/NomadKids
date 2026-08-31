@@ -2574,3 +2574,315 @@ export const groupObservationStatsSchema = z.object({
   byMonth: z.array(z.object({ month: z.string(), count: z.number() })).default([]),
 });
 export type GroupObservationStats = z.infer<typeof groupObservationStatsSchema>;
+
+// ── Parent invoices and payments — `нэмэлт.md` §7, §8 ────────────────────────
+
+/**
+ * ★ Every amount is a decimal **string**, never a number.
+ *
+ * The same rule the API applies in `invoices.dto.ts`, restated here because
+ * this is the file the web app validates against: a JSON number is an IEEE 754
+ * double, and a bill a family is asked to pay cannot pass through one. The
+ * screens format these strings — `money()` in the finance pages splits on the
+ * decimal point rather than parsing.
+ */
+export const invoiceStatusSchema = z.enum([
+  "UNPAID",
+  "PARTIALLY_PAID",
+  "PAID",
+  "OVERDUE",
+  "REFUNDED",
+]);
+export type InvoiceStatus = z.infer<typeof invoiceStatusSchema>;
+
+export const INVOICE_STATUS_LABEL: Record<InvoiceStatus, string> = {
+  UNPAID: "Төлөгдөөгүй",
+  PARTIALLY_PAID: "Хэсэгчлэн төлсөн",
+  PAID: "Төлсөн",
+  OVERDUE: "Хугацаа хэтэрсэн",
+  REFUNDED: "Буцаалт",
+};
+
+export const invoiceItemKindSchema = z.enum(["TUITION", "MEAL", "CLUB", "BUS", "EXTRA", "OTHER"]);
+export type InvoiceItemKind = z.infer<typeof invoiceItemKindSchema>;
+
+export const INVOICE_ITEM_KIND_LABEL: Record<InvoiceItemKind, string> = {
+  TUITION: "Сургалтын төлбөр",
+  MEAL: "Хоолны мөнгө",
+  CLUB: "Дугуйлан",
+  BUS: "Автобус",
+  EXTRA: "Нэмэлт үйлчилгээ",
+  OTHER: "Бусад",
+};
+
+export const paymentMethodSchema = z.enum(["QPAY", "SOCIALPAY", "BANK_TRANSFER", "CASH", "OTHER"]);
+export type PaymentMethod = z.infer<typeof paymentMethodSchema>;
+
+export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
+  QPAY: "QPay",
+  SOCIALPAY: "SocialPay",
+  BANK_TRANSFER: "Банкны шилжүүлэг",
+  CASH: "Бэлнээр",
+  OTHER: "Бусад",
+};
+
+/** One invoice as a list row. */
+export const invoiceSummarySchema = z.object({
+  id: uuidSchema,
+  childId: uuidSchema,
+  child: z
+    .object({ id: uuidSchema, lastName: z.string().nullable(), firstName: z.string() })
+    .nullable()
+    .optional(),
+  /** `yyyy-mm`. */
+  month: z.string(),
+  number: z.string(),
+  status: invoiceStatusSchema,
+  subtotalAmount: z.string(),
+  discountAmount: z.string(),
+  previousBalance: z.string(),
+  totalAmount: z.string(),
+  dueDate: z.string().nullable(),
+  issuedAt: z.string().nullable(),
+  note: z.string().nullable(),
+});
+export type InvoiceSummary = z.infer<typeof invoiceSummarySchema>;
+
+export const invoiceLineSchema = z.object({
+  id: uuidSchema,
+  kind: invoiceItemKindSchema,
+  label: z.string(),
+  quantity: z.string(),
+  unitAmount: z.string(),
+  amount: z.string(),
+  note: z.string().nullable(),
+});
+
+/**
+ * A payment on an invoice.
+ *
+ * `isReversal` rather than exposing `reversalOfId`: a screen needs to know that
+ * a row *undoes* another one, and `нэмэлт.md` §14 makes that visible rather
+ * than hiding the original. The amount on such a row is negative.
+ */
+export const invoicePaymentSchema = z.object({
+  id: uuidSchema,
+  amount: z.string(),
+  method: paymentMethodSchema,
+  status: z.enum(["PENDING", "PAID", "FAILED", "CANCELLED"]),
+  paidAt: z.string().nullable(),
+  providerPaymentId: z.string().nullable(),
+  isReversal: z.boolean(),
+  note: z.string().nullable(),
+  createdAt: z.string(),
+});
+
+export const invoiceDetailSchema = invoiceSummarySchema.extend({
+  /** What has actually been received. Reversals subtract. */
+  paidAmount: z.string(),
+  /** `totalAmount − paidAmount`. */
+  balanceAmount: z.string(),
+  lines: z.array(invoiceLineSchema).default([]),
+  payments: z.array(invoicePaymentSchema).default([]),
+});
+export type InvoiceDetail = z.infer<typeof invoiceDetailSchema>;
+
+/**
+ * What `POST /invoices/:id/qpay` returns — the QR a parent scans.
+ *
+ * `qrImage` is a base64 PNG, rendered as a data URI. `links` are bank
+ * deeplinks, which are what a parent actually taps on a phone: scanning a QR
+ * with the camera means leaving the app that is already showing it.
+ */
+export const qpayInvoiceSchema = z.object({
+  paymentId: uuidSchema,
+  amount: z.string(),
+  qrText: z.string(),
+  qrImage: z.string(),
+  links: z
+    .array(z.object({ name: z.string(), description: z.string(), link: z.string() }))
+    .default([]),
+});
+export type QpayInvoice = z.infer<typeof qpayInvoiceSchema>;
+
+/** What `POST /invoices/:id/qpay/sync` reports back. */
+export const qpaySyncSchema = z.object({
+  applied: z.number(),
+  status: invoiceStatusSchema,
+  paidAmount: z.string(),
+});
+
+/**
+ * The financial dashboard's month — `нэмэлт.md` §9.
+ *
+ * ★ Nine figures, none of them stored. Every one is aggregated on read from
+ * the funding calculations, invoices and payments that already exist, so the
+ * dashboard cannot drift from the register beneath it.
+ *
+ * ★★ `pending` and `unpaid` are derived server-side and clamped at zero —
+ * an overpayment is a reconciliation question, not a negative amount owed.
+ */
+export const financeDashboardSchema = z.object({
+  month: z.string(),
+  state: z.object({
+    children: z.number(),
+    calculated: z.string(),
+    approved: z.string(),
+    received: z.string(),
+    /** `approved − received`. */
+    pending: z.string(),
+  }),
+  parents: z.object({
+    invoices: z.number(),
+    billed: z.string(),
+    paid: z.string(),
+    /** `billed − paid`. */
+    unpaid: z.string(),
+    /**
+     * Past the due date with money still owed — **not** scoped to the month.
+     * Arrears do not disappear on the first of the next one.
+     */
+    overdueCount: z.number(),
+    overdueAmount: z.string(),
+  }),
+  meals: z.object({
+    total: z.string(),
+    fedDays: z.number(),
+    /** Children who actually ate — the denominator for `perChild`. */
+    children: z.number(),
+    perChild: z.string(),
+    bySource: z.array(z.object({ source: fundingSourceSchema, amount: z.string() })).default([]),
+  }),
+});
+export type FinanceDashboard = z.infer<typeof financeDashboardSchema>;
+
+/**
+ * One child's finance tab — `нэмэлт.md` §10.
+ *
+ * ★ `funding` is **optional on purpose**, and its absence is an authorization
+ * outcome rather than an empty list. State funding is what the government pays
+ * the kindergarten for this child — the kindergarten's revenue, not the
+ * family's debt — so the API omits the key entirely for a guardian rather than
+ * sending it for a screen to hide.
+ */
+export const childFundingRowSchema = z.object({
+  id: uuidSchema,
+  month: z.string(),
+  source: fundingSourceSchema,
+  rule: z.string().nullable(),
+  /** Which counter the daily rate multiplied. */
+  basis: z.enum(["ATTENDANCE", "MEALS"]),
+  daysAttended: z.number(),
+  daysFed: z.number(),
+  dailyRate: z.string().nullable(),
+  calculated: z.string(),
+  approved: z.string().nullable(),
+  received: z.string().nullable(),
+});
+
+export const childFinanceSchema = z.object({
+  childId: uuidSchema,
+  invoices: z.number(),
+  billed: z.string(),
+  paid: z.string(),
+  discounts: z.string(),
+  /** Signed: negative means the family is in credit. */
+  balance: z.string(),
+  funding: z.array(childFundingRowSchema).optional(),
+});
+export type ChildFinance = z.infer<typeof childFinanceSchema>;
+
+// ── The financial reports — `нэмэлт.md` §16 ──────────────────────────────────
+
+/**
+ * ★ Eight keys, not nine. §16 lists nine reports, but its third —
+ * "Ирц–санхүүжилтийн тулгалт" — is the monthly register, which shipped with §6
+ * and has its own screen and its own export. A ninth key here would give the
+ * product two answers to one question.
+ */
+export const financeReportKeySchema = z.enum([
+  "state-funding",
+  "child-funding",
+  "meal-days",
+  "meal-cost",
+  "parent-payments",
+  "unpaid",
+  "variance",
+  "annual",
+]);
+export type FinanceReportKey = z.infer<typeof financeReportKeySchema>;
+
+export const FINANCE_REPORT_LABEL: Record<FinanceReportKey, string> = {
+  "state-funding": "Сарын улсын санхүүжилтийн тайлан",
+  "child-funding": "Хүүхэд тус бүрийн санхүүжилтийн тайлан",
+  "meal-days": "Хооллосон өдөр–хоолны зардлын тайлан",
+  "meal-cost": "Сарын хоолны зардлын тайлан",
+  "parent-payments": "Эцэг эхийн төлбөрийн тайлан",
+  unpaid: "Төлөгдөөгүй төлбөрийн тайлан",
+  variance: "Санхүүжилтийн зөрүүний тайлан",
+  annual: "Хичээлийн жилийн санхүүгийн нэгтгэл",
+};
+
+/**
+ * Which period each report takes.
+ *
+ * ★ Three shapes, and the screen has to know which control to show. `unpaid`
+ * takes none at all — arrears are not a property of a month — so offering a
+ * month picker beside it would imply a filter that does not apply.
+ */
+export const FINANCE_REPORT_PERIOD: Record<FinanceReportKey, "month" | "year" | "none"> = {
+  "state-funding": "month",
+  "child-funding": "month",
+  "meal-days": "month",
+  "meal-cost": "month",
+  "parent-payments": "month",
+  unpaid: "none",
+  variance: "month",
+  annual: "year",
+};
+
+/** A generic report table — the same shape for all eight. */
+export const reportTableSchema = z.object({
+  title: z.string(),
+  columns: z.array(
+    z.object({
+      key: z.string(),
+      header: z.string(),
+      /** Rendered as tögrög and right-aligned. */
+      money: z.boolean().optional(),
+      width: z.number().optional(),
+    }),
+  ),
+  rows: z.array(z.record(z.string(), z.union([z.string(), z.number(), z.null()]))),
+  totals: z.record(z.string(), z.union([z.string(), z.number(), z.null()])).optional(),
+  note: z.string().optional(),
+});
+export type ReportTable = z.infer<typeof reportTableSchema>;
+
+/**
+ * A financial report queued as PDF — `нэмэлт.md` §16.
+ *
+ * ★ A job, not a file. Chromium takes ~2.5 s and a gigabyte of memory, so the
+ * PDF goes through BullMQ (CLAUDE.md §6) while the spreadsheet is built inline.
+ * The screen polls `status` until `downloadable`.
+ */
+export const financeReportJobSchema = z.object({
+  id: uuidSchema,
+  report: z.string().nullable(),
+  period: z.string().nullable(),
+  status: z.enum(["QUEUED", "RUNNING", "DONE", "FAILED"]),
+  progressPercent: z.number(),
+  pageCount: z.number(),
+  fileSize: z.number(),
+  errorMessage: z.string().nullable(),
+  requestedAt: z.string(),
+  completedAt: z.string().nullable(),
+  expiresAt: z.string().nullable(),
+  downloadable: z.boolean(),
+});
+export type FinanceReportJob = z.infer<typeof financeReportJobSchema>;
+
+export const financeReportDownloadSchema = z.object({
+  url: z.string(),
+  expiresIn: z.number(),
+});

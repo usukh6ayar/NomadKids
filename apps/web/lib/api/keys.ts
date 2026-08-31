@@ -169,6 +169,29 @@ export const qk = {
     ["funding", kindergartenId, month] as const,
   fundingRules: (kindergartenId: string) => ["funding", "rules", kindergartenId] as const,
 
+  /**
+   * A child's own invoices — `нэмэлт.md` §7, §10.
+   *
+   * ★ Prefixed `["child", childId, …]` deliberately, so that `qk.child(id)`
+   * invalidates a family's bills along with everything else hanging off the
+   * child. Paying one changes the child's finance tab, and a parent who has
+   * just paid must not see "Төлөгдөөгүй" on the way back.
+   */
+  childInvoices: (childId: string, filters: Record<string, unknown> = {}) =>
+    ["child", childId, "invoices", filters] as const,
+  invoice: (invoiceId: string) => ["invoice", invoiceId] as const,
+
+  /** The month's financial summary — `нэмэлт.md` §9. */
+  financeDashboard: (kindergartenId: string, month: string) =>
+    ["funding", kindergartenId, "dashboard", month] as const,
+  /** One child's balance and funding history — `нэмэлт.md` §10. */
+  childFinance: (childId: string) => ["child", childId, "finance"] as const,
+  /** One of §16's reports. The period is part of the key — switching month refetches. */
+  financeReport: (kindergartenId: string, report: string, period: string) =>
+    ["funding", kindergartenId, "report", report, period] as const,
+  /** One queued PDF job — polled while Chromium works. */
+  financeReportJob: (jobId: string) => ["finance-report-job", jobId] as const,
+
   childMedia: (childId: string) => ["child", childId, "media"] as const,
   childReports: (childId: string) => ["child", childId, "reports"] as const,
   report: (jobId: string) => ["report", jobId] as const,

@@ -22,6 +22,8 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
+import { FinanceDashboardPanel } from "@/components/finance/finance-dashboard";
+import { FinanceReports } from "@/components/finance/finance-reports";
 import { formatDate } from "@/lib/format";
 
 const rulesSchema = z.array(fundingRuleSchema);
@@ -101,6 +103,17 @@ function Finance() {
         }
       />
 
+      {/*
+        ★ The dashboard leads — `нэмэлт.md` §9. It answers "how is the month
+        going" from the same rows the register below prices child by child, so
+        it is the summary of what follows rather than a second source. It loads
+        independently: a slow aggregate must not hold up the register, and a
+        failing one must not blank the screen.
+      */}
+      {kindergartenId ? (
+        <FinanceDashboardPanel kindergartenId={kindergartenId} month={month} />
+      ) : null}
+
       {funding.isLoading ? <LoadingState rows={3} /> : null}
       {funding.isError ? <ErrorState description={errorMessage(funding.error)} /> : null}
 
@@ -117,6 +130,14 @@ function Finance() {
           <MonthRows items={funding.data.items} />
         </>
       ) : null}
+
+      {/*
+        ★ §16's reports sit below the register rather than above it. The
+        register is the month's working document — the thing an accountant
+        opens daily and reconciles against — and the reports are what they
+        produce from it once it is right.
+      */}
+      {kindergartenId ? <FinanceReports kindergartenId={kindergartenId} /> : null}
 
       <Rules rules={rules} />
     </div>
@@ -205,6 +226,16 @@ function RunMonth({
       toast.success("Сарын тооцоо гүйцэтгэлээ.");
       void queryClient.invalidateQueries({
         queryKey: qk.kindergartenFunding(kindergartenId, month),
+      });
+      /*
+       * ★ The dashboard reads the same calculations, so it goes stale the
+       * moment they are re-run. Without this, an accountant presses "Тооцоолох"
+       * and watches the register update while the summary above it keeps
+       * showing the previous month's figures — which reads as the two
+       * disagreeing about the money.
+       */
+      void queryClient.invalidateQueries({
+        queryKey: qk.financeDashboard(kindergartenId, month),
       });
     },
     onError: (error) => toast.error(errorMessage(error)),
