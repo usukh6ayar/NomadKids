@@ -6,6 +6,7 @@ import { PdfRendererService } from "../reports/pdf-renderer.service";
 import { ReportsQueue } from "../reports/reports.queue";
 import { bundledFontDir, checkCyrillicFont } from "../reports/font-check";
 import { MailService } from "../mail/mail.service";
+import { EsisService } from "../integrations/esis/esis.service";
 
 /**
  * Liveness and readiness.
@@ -27,6 +28,7 @@ export class HealthController {
     private readonly renderer: PdfRendererService,
     private readonly queue: ReportsQueue,
     private readonly mail: MailService,
+    private readonly esis: EsisService,
   ) {}
 
   @Public()
@@ -70,6 +72,23 @@ export class HealthController {
       cyrillicFontDetail: font.detail,
       smtp,
       smtpConfigured: this.mail.isConfigured,
+      /*
+       * ★ The ministry integration, reported for the same reason as SMTP and
+       * gating the status for neither: an unconfigured ESIS is the normal
+       * state until БМТТ issues a token (журам A/465 §3.7 — one token per
+       * developer, after the data-exchange contract), and a deployment that
+       * called itself degraded for the whole of that period would be crying
+       * wolf for months.
+       *
+       * ★★ It answers exactly one question — "would a call be attempted, and
+       * against which address?" — and it is `describe()`, not the config, so
+       * the token cannot leak through it: presence only, never a value, never
+       * a length. There is no live probe here on purpose. Reaching ESIS to see
+       * whether it answers means choosing an endpoint, and choosing one before
+       * the documentation arrives is the guess `esis.service.ts` exists to
+       * prevent.
+       */
+      esis: this.esis.status(),
     };
   }
 }
