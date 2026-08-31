@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Res } from "@nestjs/common";
 import type { Response } from "express";
-import { idParamSchema } from "@kinder/contracts";
+import { idParamSchema, paginationQuerySchema, type PaginationQuery } from "@kinder/contracts";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
@@ -117,6 +117,30 @@ export class KindergartenFundingController {
     @Body(new ZodValidationPipe(calculateMonthSchema)) body: CalculateMonthDto,
   ) {
     return this.service.calculateMonth(actor, params.id, body);
+  }
+}
+
+/**
+ * The accountant's own door to the audit trail — нэмэлт.md §13.
+ *
+ * ★ A separate controller, not a route bolted onto `KindergartenFundingController`,
+ * because its scope is wider than funding: `FINANCIAL_OBJECT_TYPES`
+ * (`audit.repository.ts`) already covers `Invoice`/`Payment` too.
+ * `/admin/audit` (`dashboard/`) stays the ADMIN-only, every-object-type view;
+ * this is the accountant's narrower one.
+ */
+@Controller("kindergartens/:id/financial-audit-log")
+@Roles("ADMIN", "ACCOUNTANT")
+export class FinancialAuditLogController {
+  constructor(private readonly service: FundingService) {}
+
+  @Get()
+  async list(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(paginationQuerySchema)) query: PaginationQuery,
+  ) {
+    return this.service.financialAuditLog(actor, params.id, query);
   }
 }
 

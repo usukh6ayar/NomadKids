@@ -1,7 +1,8 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Calculator } from "lucide-react";
+import { Calculator, Receipt, ScrollText } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { z } from "zod";
 import {
@@ -87,17 +88,31 @@ function Finance() {
         title="Санхүүжилт"
         lede="Сарын тооцоо, тариф. Ирц болон хоолны бүртгэлээс автоматаар бодогдоно."
         actions={
-          <Field label="Сар">
-            {({ id }) => (
-              <Input
-                id={id}
-                type="month"
-                value={month}
-                onChange={(event) => setMonth(event.target.value)}
-                className="w-[170px]"
-              />
-            )}
-          </Field>
+          <div className="flex flex-wrap items-end gap-3">
+            <Button asChild variant="secondary" size="sm">
+              <Link href="/invoices">
+                <Receipt size={16} aria-hidden="true" />
+                Эцэг эхийн нэхэмжлэл
+              </Link>
+            </Button>
+            <Button asChild variant="secondary" size="sm">
+              <Link href="/finance/audit-log">
+                <ScrollText size={16} aria-hidden="true" />
+                Аудит
+              </Link>
+            </Button>
+            <Field label="Сар">
+              {({ id }) => (
+                <Input
+                  id={id}
+                  type="month"
+                  value={month}
+                  onChange={(event) => setMonth(event.target.value)}
+                  className="w-[170px]"
+                />
+              )}
+            </Field>
+          </div>
         }
       />
 

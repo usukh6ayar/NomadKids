@@ -1,6 +1,24 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import type { AuditAction } from "../generated/prisma/enums";
+import { AUDIT_ACTOR_SELECT } from "../dashboard/audit-actor";
+
+/**
+ * The financial slice of `AuditLog.objectType` — нэмэлт.md §13's "Санхүүгийн
+ * audit log", one of exactly seven things the role must reach.
+ *
+ * ★ A filter, not a second table. §14's ten financial action types
+ * (tariff changed, invoice created, payment recorded, ...) are already
+ * `CREATE`/`UPDATE`/`DELETE` rows against these object types — the same table
+ * `/admin/audit` reads, narrowed to what an accountant is allowed to see.
+ */
+export const FINANCIAL_OBJECT_TYPES = [
+  "FundingRule",
+  "FundingCalculation",
+  "Invoice",
+  "InvoiceLineItem",
+  "Payment",
+] as const;
 
 /**
  * The audit log.
@@ -57,6 +75,23 @@ export class AuditRepository {
 
   async countForKindergarten(kindergartenId: string): Promise<number> {
     return this.prisma.auditLog.count({ where: { kindergartenId } });
+  }
+
+  /** нэмэлт.md §13's "Санхүүгийн audit log" — this kindergarten's financial slice only. */
+  async listFinancial(kindergartenId: string, params: { skip: number; take: number }) {
+    return this.prisma.auditLog.findMany({
+      where: { kindergartenId, objectType: { in: [...FINANCIAL_OBJECT_TYPES] } },
+      orderBy: { createdAt: "desc" },
+      skip: params.skip,
+      take: params.take,
+      include: { actor: AUDIT_ACTOR_SELECT },
+    });
+  }
+
+  async countFinancial(kindergartenId: string): Promise<number> {
+    return this.prisma.auditLog.count({
+      where: { kindergartenId, objectType: { in: [...FINANCIAL_OBJECT_TYPES] } },
+    });
   }
 }
 

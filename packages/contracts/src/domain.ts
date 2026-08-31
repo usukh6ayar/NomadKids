@@ -451,14 +451,35 @@ export const menuDishSchema = z.object({
   note: z.string().nullish(),
   calories: z.number().int().nullish(),
   portions: z.number().nullish(),
+  /**
+   * The технологийн карт this dish was cooked from, if any — Хоол
+   * үйлдвэрлэл's "батлагдсан цэс". When set, `name`/`allergenTags`/`calories`
+   * above are resolved from the (APPROVED) recipe by the API rather than
+   * trusted from what was typed; `portions` is what `POST .../consume` scales
+   * the recipe's ingredient quantities by.
+   */
+  recipeId: uuidSchema.nullish(),
+  /** A photograph of the dish as plated. */
+  photoMediaFileId: uuidSchema.nullish(),
 });
 export type MenuDish = z.infer<typeof menuDishSchema>;
+
+export const menuDayStatusSchema = z.enum(["DRAFT", "APPROVED"]);
+export type MenuDayStatus = z.infer<typeof menuDayStatusSchema>;
+
+export const MENU_DAY_STATUS_LABEL: Record<MenuDayStatus, string> = {
+  DRAFT: "Ноорог",
+  APPROVED: "Батлагдсан",
+};
 
 export const menuDaySchema = z.object({
   id: uuidSchema,
   date: z.string(),
   dishes: z.array(menuDishSchema),
   totalCalories: z.number().int().nullish(),
+  status: menuDayStatusSchema,
+  approvedAt: z.string().nullish(),
+  consumedAt: z.string().nullish(),
 });
 export type MenuDay = z.infer<typeof menuDaySchema>;
 
@@ -1113,6 +1134,210 @@ export const menuDayWithWarningsSchema = menuDaySchema.extend({
 });
 export type MenuDayWithWarnings = z.infer<typeof menuDayWithWarningsSchema>;
 
+// ── Kitchen production — ingredients, technology cards, suppliers, food
+// orders and stock. "Хоол үйлдвэрлэл — хамгийн том дутуу хэсэг", the client's
+// own gap list. Every quantity here is a decimal string, in the ingredient's
+// own base unit — see `IngredientUnit` — never a JSON number, for the same
+// reason money never is: a JSON double cannot round-trip `12.50` exactly. ──
+
+export const ingredientUnitSchema = z.enum(["GRAM", "MILLILITER", "PIECE"]);
+export type IngredientUnit = z.infer<typeof ingredientUnitSchema>;
+
+/** The base unit's short form, for a quantity like "500 г" or "2 ш". */
+export const INGREDIENT_UNIT_LABEL: Record<IngredientUnit, string> = {
+  GRAM: "г",
+  MILLILITER: "мл",
+  PIECE: "ширхэг",
+};
+
+const unitRefSchema = namedRefSchema.extend({ unit: ingredientUnitSchema });
+
+export const ingredientSchema = z.object({
+  id: uuidSchema,
+  name: z.string(),
+  unit: ingredientUnitSchema,
+  /** Per 100 of the ingredient's own unit — 100 g, 100 ml or 100 pieces. */
+  caloriesPer100: z.string().nullable(),
+  proteinPer100: z.string().nullable(),
+  fatPer100: z.string().nullable(),
+  carbsPer100: z.string().nullable(),
+  allergenTags: z.array(z.string()).default([]),
+  note: z.string().nullable(),
+});
+export type Ingredient = z.infer<typeof ingredientSchema>;
+
+export const recipeStatusSchema = z.enum(["DRAFT", "APPROVED"]);
+export type RecipeStatus = z.infer<typeof recipeStatusSchema>;
+
+export const RECIPE_STATUS_LABEL: Record<RecipeStatus, string> = {
+  DRAFT: "Ноорог",
+  APPROVED: "Батлагдсан",
+};
+
+export const recipeIngredientRowSchema = z.object({
+  id: uuidSchema,
+  ingredient: unitRefSchema,
+  /** In the ingredient's own unit — see `unitRefSchema`. */
+  quantity: z.string(),
+});
+export type RecipeIngredientRow = z.infer<typeof recipeIngredientRowSchema>;
+
+/**
+ * Шим тэжээлийн тооцоо — always computed by the API from the recipe's
+ * ingredient lines, never typed by hand. Any field is `null` the moment one
+ * ingredient in the recipe is missing that figure, rather than silently
+ * treating a gap as zero.
+ */
+export const nutritionSchema = z.object({
+  calories: z.number().nullable(),
+  protein: z.number().nullable(),
+  fat: z.number().nullable(),
+  carbs: z.number().nullable(),
+});
+export type Nutrition = z.infer<typeof nutritionSchema>;
+
+/**
+ * Технологийн карт. `nutritionTotal`/`nutritionPerPortion` and `allergenTags`
+ * are derived from `ingredients` on every read, not stored columns — see the
+ * schema comment on `Recipe` in `schema.prisma` for why.
+ */
+export const recipeSchema = z.object({
+  id: uuidSchema,
+  name: z.string(),
+  mealKind: mealKindSchema.nullable(),
+  yieldPortions: z.number(),
+  instructions: z.string().nullable(),
+  status: recipeStatusSchema,
+  approvedAt: z.string().nullable(),
+  ingredients: z.array(recipeIngredientRowSchema).default([]),
+  /** For the whole batch — `yieldPortions` portions. */
+  nutritionTotal: nutritionSchema,
+  /** `nutritionTotal` divided by `yieldPortions`. */
+  nutritionPerPortion: nutritionSchema,
+  /** The union of every line ingredient's `allergenTags` — what feeds the
+   * menu's allergy cross-check when a dish points at this recipe. */
+  allergenTags: z.array(z.string()).default([]),
+  createdAt: z.string(),
+});
+export type Recipe = z.infer<typeof recipeSchema>;
+
+/** The list view — no ingredient lines or instructions, one row per card. */
+export const recipeSummarySchema = recipeSchema.omit({ ingredients: true, instructions: true });
+export type RecipeSummary = z.infer<typeof recipeSummarySchema>;
+
+// ── Suppliers ────────────────────────────────────────────────────────────────
+
+export const supplierSchema = z.object({
+  id: uuidSchema,
+  name: z.string(),
+  registrationNumber: z.string().nullable(),
+  contactPerson: z.string().nullable(),
+  contactPhone: z.string().nullable(),
+  address: z.string().nullable(),
+  /** Гарал үүслийн тайлбар — free text, not a certification registry. */
+  originNote: z.string().nullable(),
+  isActive: z.boolean(),
+});
+export type Supplier = z.infer<typeof supplierSchema>;
+
+// ── Food orders — Хүнсний захиалга ────────────────────────────────────────────
+
+export const foodOrderStatusSchema = z.enum(["DRAFT", "ORDERED", "RECEIVED", "CANCELLED"]);
+export type FoodOrderStatus = z.infer<typeof foodOrderStatusSchema>;
+
+export const FOOD_ORDER_STATUS_LABEL: Record<FoodOrderStatus, string> = {
+  DRAFT: "Ноорог",
+  ORDERED: "Захиалсан",
+  RECEIVED: "Хүлээн авсан",
+  CANCELLED: "Цуцалсан",
+};
+
+export const foodOrderLineSchema = z.object({
+  id: uuidSchema,
+  ingredient: unitRefSchema,
+  quantity: z.string(),
+  unitPrice: z.string(),
+  totalPrice: z.string(),
+  /** `null` until the order is received. */
+  receivedQuantity: z.string().nullable(),
+});
+export type FoodOrderLine = z.infer<typeof foodOrderLineSchema>;
+
+export const foodOrderSchema = z.object({
+  id: uuidSchema,
+  supplier: namedRefSchema,
+  orderDate: z.string(),
+  status: foodOrderStatusSchema,
+  note: z.string().nullable(),
+  lines: z.array(foodOrderLineSchema).default([]),
+  /** Sum of every line's `totalPrice`. */
+  totalAmount: z.string(),
+  createdAt: z.string(),
+});
+export type FoodOrder = z.infer<typeof foodOrderSchema>;
+
+/** The list view — no lines, one row per order. */
+export const foodOrderSummarySchema = foodOrderSchema.omit({ lines: true });
+export type FoodOrderSummary = z.infer<typeof foodOrderSummarySchema>;
+
+// ── Stock — Нөөц, зарцуулалт ──────────────────────────────────────────────────
+
+export const stockDirectionSchema = z.enum(["IN", "OUT", "ADJUSTMENT"]);
+export type StockDirection = z.infer<typeof stockDirectionSchema>;
+
+export const STOCK_DIRECTION_LABEL: Record<StockDirection, string> = {
+  IN: "Орлого",
+  OUT: "Зарлага",
+  ADJUSTMENT: "Тохируулга",
+};
+
+export const stockSourceTypeSchema = z.enum(["PURCHASE", "CONSUMPTION", "ADJUSTMENT"]);
+export type StockSourceType = z.infer<typeof stockSourceTypeSchema>;
+
+export const stockMovementSchema = z.object({
+  id: uuidSchema,
+  ingredient: unitRefSchema,
+  date: z.string(),
+  direction: stockDirectionSchema,
+  quantity: z.string(),
+  sourceType: stockSourceTypeSchema,
+  note: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type StockMovement = z.infer<typeof stockMovementSchema>;
+
+/** Current on-hand quantity — `SUM(IN) + SUM(ADJUSTMENT) − SUM(OUT)`, computed
+ * per read rather than kept as a running balance column. */
+export const stockLevelSchema = z.object({
+  ingredient: unitRefSchema,
+  onHand: z.string(),
+});
+export type StockLevel = z.infer<typeof stockLevelSchema>;
+
+// ── Kitchen reports ──────────────────────────────────────────────────────────
+
+export const consumptionReportRowSchema = z.object({
+  ingredient: unitRefSchema,
+  quantity: z.string(),
+});
+export type ConsumptionReportRow = z.infer<typeof consumptionReportRowSchema>;
+
+/** One day's plan — the average nutrition of one portion that day, over every
+ * recipe-linked dish. No attendance is read; §7's "explicit scope cut". */
+export const nutritionReportRowSchema = z.object({
+  date: z.string(),
+  totalPortions: z.number(),
+  perPortion: nutritionSchema,
+});
+export type NutritionReportRow = z.infer<typeof nutritionReportRowSchema>;
+
+export const purchaseReportRowSchema = z.object({
+  supplier: namedRefSchema,
+  orderCount: z.number(),
+  totalAmount: z.string(),
+});
+export type PurchaseReportRow = z.infer<typeof purchaseReportRowSchema>;
+
 // ── Milestones — RFP §4.5 ────────────────────────────────────────────────────
 
 /**
@@ -1382,6 +1607,7 @@ export const mediaSchema = z.object({
   attribution: mediaAttributionSchema.nullish(),
   uploadedBy: personRefSchema.nullish(),
 });
+export type Media = z.infer<typeof mediaSchema>;
 
 /** The gallery response. Every list is paginated — CLAUDE.md §3.4. */
 export const mediaListSchema = paginated(mediaSchema);
@@ -1981,6 +2207,8 @@ export const AUDIT_OBJECT_LABEL: Record<string, string> = {
   GroupTeacher: "Бүлгийн багш",
   GrowthMeasurement: "Өсөлтийн хэмжилт",
   Guardianship: "Асран хамгаалагч",
+  Invoice: "Нэхэмжлэл",
+  InvoiceLineItem: "Нэхэмжлэлийн мөр",
   Kindergarten: "Цэцэрлэг",
   MealRecord: "Хоолны бүртгэл",
   MediaFile: "Файл",
@@ -1990,6 +2218,7 @@ export const AUDIT_OBJECT_LABEL: Record<string, string> = {
   Notification: "Мэдээ",
   Observation: "Ажиглалт",
   ObservationType: "Ажиглалтын төрөл",
+  Payment: "Төлбөр",
   ReportJob: "Тайлан",
   SafetyIncident: "Ослын бүртгэл",
   SchoolYear: "Хичээлийн жил",
@@ -2574,3 +2803,107 @@ export const groupObservationStatsSchema = z.object({
   byMonth: z.array(z.object({ month: z.string(), count: z.number() })).default([]),
 });
 export type GroupObservationStats = z.infer<typeof groupObservationStatsSchema>;
+
+// ── Parent invoices and payments — `нэмэлт.md` §7–§8 ─────────────────────────
+
+export const invoiceLineTypeSchema = z.enum(["TUITION", "MEAL", "CLUB", "BUS", "EXTRA", "OTHER"]);
+export type InvoiceLineType = z.infer<typeof invoiceLineTypeSchema>;
+
+/** нэмэлт.md §7's six payment types, in Mongolian. */
+export const INVOICE_LINE_TYPE_LABEL: Record<InvoiceLineType, string> = {
+  TUITION: "Сургалтын төлбөр",
+  MEAL: "Хоолны мөнгө",
+  CLUB: "Дугуйлан",
+  BUS: "Автобус",
+  EXTRA: "Нэмэлт үйлчилгээ",
+  OTHER: "Бусад",
+};
+
+export const invoiceStatusSchema = z.enum([
+  "UNPAID",
+  "PARTIALLY_PAID",
+  "PAID",
+  "OVERDUE",
+  "REFUNDED",
+]);
+export type InvoiceStatus = z.infer<typeof invoiceStatusSchema>;
+
+/** нэмэлт.md §8's five invoice states, in Mongolian. */
+export const INVOICE_STATUS_LABEL: Record<InvoiceStatus, string> = {
+  UNPAID: "Төлөгдөөгүй",
+  PARTIALLY_PAID: "Хэсэгчлэн төлсөн",
+  PAID: "Төлсөн",
+  OVERDUE: "Хугацаа хэтэрсэн",
+  REFUNDED: "Буцаалт",
+};
+
+export const paymentMethodSchema = z.enum(["CASH", "BANK_TRANSFER", "QPAY", "SOCIALPAY", "OTHER"]);
+export type PaymentMethod = z.infer<typeof paymentMethodSchema>;
+
+/** нэмэлт.md §8's payment methods, in Mongolian. */
+export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
+  CASH: "Бэлнээр",
+  BANK_TRANSFER: "Банкны шилжүүлэг",
+  QPAY: "QPay",
+  SOCIALPAY: "SocialPay",
+  OTHER: "Бусад",
+};
+
+export const invoiceLineItemSchema = z.object({
+  id: uuidSchema,
+  type: invoiceLineTypeSchema,
+  description: z.string().nullable(),
+  /** Decimal string — see `funding.dto.ts`'s `money` for why. */
+  amount: z.string(),
+});
+export type InvoiceLineItem = z.infer<typeof invoiceLineItemSchema>;
+
+export const paymentSchema = z.object({
+  id: uuidSchema,
+  /** Negative on a reversal row — see the `Payment` model's own comment. */
+  amount: z.string(),
+  method: paymentMethodSchema,
+  gatewayReference: z.string().nullable(),
+  note: z.string().nullable(),
+  voidedAt: z.string().nullable(),
+  reversalOfId: uuidSchema.nullable(),
+  recordedBy: personRefSchema.nullish(),
+  createdAt: z.string(),
+});
+export type Payment = z.infer<typeof paymentSchema>;
+
+/**
+ * One child's bill for one month.
+ *
+ * ★ Not to be confused with `fundingCalculationSchema` — that is what the
+ * state owes the kindergarten; this is what a parent owes it. §10's Child 360
+ * finance tab reads both, side by side, for exactly that reason.
+ */
+export const invoiceSchema = z.object({
+  id: uuidSchema,
+  month: z.string(),
+  baseAmount: z.string(),
+  mealAmount: z.string(),
+  extraAmount: z.string(),
+  discountAmount: z.string(),
+  previousBalance: z.string(),
+  totalDue: z.string(),
+  paidAmount: z.string(),
+  balance: z.string(),
+  dueDate: z.string(),
+  status: invoiceStatusSchema,
+  note: z.string().nullable(),
+  child: z.object({
+    id: uuidSchema,
+    lastName: z.string().nullable(),
+    firstName: z.string(),
+  }),
+  lineItems: z.array(invoiceLineItemSchema).default([]),
+  payments: z.array(paymentSchema).default([]),
+  createdAt: z.string(),
+});
+export type Invoice = z.infer<typeof invoiceSchema>;
+
+/** The list view — no line items or payments, one row per invoice. */
+export const invoiceSummarySchema = invoiceSchema.omit({ lineItems: true, payments: true });
+export type InvoiceSummary = z.infer<typeof invoiceSummarySchema>;

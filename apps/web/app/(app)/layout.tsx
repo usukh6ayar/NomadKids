@@ -3,7 +3,10 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   BarChart3,
+  Boxes,
   Building2,
+  Carrot,
+  ChefHat,
   // `ChevronRight` left with the child-picker modal `origin/main` removed;
   // `CalendarCheck` stays because the staff nav still labels Ирц with it.
   CalendarCheck,
@@ -21,11 +24,14 @@ import {
   CalendarDays,
   CalendarRange,
   School,
+  Receipt,
   ScrollText,
   Settings,
   Shapes,
   ShieldCheck,
+  ShoppingCart,
   SlidersHorizontal,
+  Truck,
   UserCog,
   UtensilsCrossed,
   Users,
@@ -281,6 +287,14 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
   "/settings": Settings,
   "/menu": UtensilsCrossed,
   "/finance": Wallet,
+  "/invoices": Receipt,
+  "/finance/audit-log": ScrollText,
+  "/kitchen/ingredients": Carrot,
+  "/kitchen/recipes": ChefHat,
+  "/kitchen/suppliers": Truck,
+  "/kitchen/orders": ShoppingCart,
+  "/kitchen/stock": Boxes,
+  "/kitchen/reports": BarChart3,
   "/admin": ShieldCheck,
   "/admin/funding": Wallet,
   "/platform": Building2,
@@ -730,8 +744,20 @@ function supportSections(isCook: boolean): NavSection[] {
     {
       title: isCook ? "Гал тогоо" : "Санхүү",
       entries: isCook
-        ? [navEntry("Долоо хоногийн цэс", "/menu")]
-        : [navEntry("Санхүүжилт", "/finance")],
+        ? [
+            navEntry("Долоо хоногийн цэс", "/menu"),
+            navEntry("Орц, түүхий эд", "/kitchen/ingredients"),
+            navEntry("Технологийн карт", "/kitchen/recipes"),
+            navEntry("Нийлүүлэгч", "/kitchen/suppliers"),
+            navEntry("Хүнсний захиалга", "/kitchen/orders"),
+            navEntry("Нөөц", "/kitchen/stock"),
+            navEntry("Тайлан", "/kitchen/reports"),
+          ]
+        : [
+            navEntry("Санхүүжилт", "/finance"),
+            navEntry("Эцэг эхийн нэхэмжлэл", "/invoices"),
+            navEntry("Санхүүгийн аудит", "/finance/audit-log"),
+          ],
     },
     {
       title: "Харилцаа холбоо",

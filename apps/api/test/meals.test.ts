@@ -1,5 +1,6 @@
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
+import sharp from "sharp";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestApp } from "./support/app";
 import { resetData, testDb } from "./support/db";
@@ -14,6 +15,7 @@ import {
   type Scenario,
 } from "./support/fixtures";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
+import { StorageService } from "../src/storage/storage.service";
 
 /**
  * The weekly menu — RFP §989, kindergarten-wide — and the meal register,
@@ -30,10 +32,19 @@ let b: Scenario;
 let teacherA: AuthSession;
 let parentA: AuthSession;
 let parentB: AuthSession;
+let storageAvailable = true;
 
 beforeAll(async () => {
   app = await createTestApp();
-});
+  storageAvailable = await app.get(StorageService).isReachable();
+  if (!storageAvailable) {
+    console.error(
+      "\n⚠ MinIO unreachable — dish-photo tests will FAIL.\n  docker compose up -d storage\n",
+    );
+  }
+  // The default hook timeout (10s) is tight for booting the whole Nest app on
+  // a cold run — every other suite that does the same extends it the same way.
+}, 60_000);
 
 afterAll(async () => {
   await app?.close();
@@ -52,6 +63,19 @@ beforeEach(async () => {
 });
 
 const server = () => app.getHttpServer();
+
+/** Uploads a dish photo for kindergarten A and returns its media id. */
+async function uploadDishPhoto(session: AuthSession, kindergartenId = a.kindergarten.id) {
+  const bytes = await sharp({ create: { width: 48, height: 36, channels: 3, background: "green" } })
+    .jpeg()
+    .toBuffer();
+  const res = await authed(
+    request(server()).post(`/v1/kindergartens/${kindergartenId}/menu/dish-photo`),
+    session,
+  ).attach("file", bytes, "хоол.jpg");
+  if (res.status !== 201) throw new Error(`dish-photo upload failed: ${res.status} ${res.text}`);
+  return res.body.id as string;
+}
 
 describe("saving a day", () => {
   it("a teacher saves the menu for a day", async () => {
@@ -150,6 +174,51 @@ describe("saving a day", () => {
         portions: 1,
       },
     ]);
+  });
+
+  it("saves a dish's photo, and the id round-trips on read", async () => {
+    if (!storageAvailable) return;
+
+    const mediaId = await uploadDishPhoto(teacherA);
+    const res = await authed(
+      request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-03-02`),
+      teacherA,
+    ).send({ dishes: [{ name: "Хуушуур", allergenTags: [], photoMediaFileId: mediaId }] });
+
+    expect(res.status).toBe(200);
+    const row = await db.menuDay.findFirstOrThrow({
+      where: { kindergartenId: a.kindergarten.id },
+    });
+    expect((row.dishes as { photoMediaFileId?: string }[])[0]?.photoMediaFileId).toBe(mediaId);
+
+    // And it is readable by anyone in the kindergarten — a dish photo is on
+    // the plain menu, not staff-only.
+    const download = await authed(request(server()).get(`/v1/media/${mediaId}`), parentA);
+    expect(download.status).toBe(302);
+  });
+
+  it("refuses a photoMediaFileId that is not this kindergarten's own MENU_DISH upload", async () => {
+    if (!storageAvailable) return;
+
+    // A real upload, but for kindergarten B.
+    const teacherB = await login(app, b.teacherUser.username);
+    const foreignMediaId = await uploadDishPhoto(teacherB, b.kindergarten.id);
+
+    const res = await authed(
+      request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-03-02`),
+      teacherA,
+    ).send({ dishes: [{ name: "Хуушуур", allergenTags: [], photoMediaFileId: foreignMediaId }] });
+
+    expect(res.status).toBe(400);
+    expect(await db.menuDay.count({ where: { kindergartenId: a.kindergarten.id } })).toBe(0);
+  });
+
+  it("a parent cannot upload a dish photo", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/menu/dish-photo`),
+      parentA,
+    ).attach("file", Buffer.from("not an image"), "x.jpg");
+    expect(res.status).toBe(404);
   });
 
   it("rejects a negative or implausibly large per-dish calories", async () => {
@@ -354,7 +423,11 @@ describe("the meal register", () => {
       const res = await authed(
         request(server()).put(`/v1/groups/${a.group.id}/meals`),
         parentA,
-      ).send({ date: "2026-03-02", kind: "LUNCH", entries: [{ childId: a.child.id, status: "TAKEN" }] });
+      ).send({
+        date: "2026-03-02",
+        kind: "LUNCH",
+        entries: [{ childId: a.child.id, status: "TAKEN" }],
+      });
 
       expect(res.status).toBe(404);
     });
@@ -376,7 +449,11 @@ describe("the meal register", () => {
       const res = await authed(
         request(server()).put(`/v1/groups/${a.group.id}/meals`),
         await login(app, b.teacherUser.username),
-      ).send({ date: "2026-03-02", kind: "LUNCH", entries: [{ childId: a.child.id, status: "TAKEN" }] });
+      ).send({
+        date: "2026-03-02",
+        kind: "LUNCH",
+        entries: [{ childId: a.child.id, status: "TAKEN" }],
+      });
 
       expect(res.status).toBe(404);
     });

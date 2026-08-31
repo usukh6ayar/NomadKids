@@ -3,7 +3,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ImagePlus } from "lucide-react";
 import { useId, useRef, useState, type ReactNode } from "react";
-import { mediaSchema } from "@kinder/contracts";
+import { mediaSchema, type Media } from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
 import { mediaUrl } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
@@ -41,6 +41,7 @@ export function SingleImageUpload({
   shape = "square",
   invalidateKeys = [],
   hidePreview = false,
+  onUploaded,
 }: {
   /** The API path that accepts the file, e.g. `/kindergartens/:id/logo`. */
   endpoint: string;
@@ -66,6 +67,16 @@ export function SingleImageUpload({
   shape?: "square" | "round";
   /** Query keys to refetch once the server has the new file. */
   invalidateKeys?: readonly (readonly unknown[])[];
+  /**
+   * Called with the new media object once the upload succeeds.
+   *
+   * ★ Only the three call sites that write straight through an owner id
+   * (the logo, a portrait, a class photo) can rely on `invalidateKeys` alone
+   * — the upload endpoint itself is the save. A caller that instead holds the
+   * id in its own local state (a menu dish, not yet saved) has no query to
+   * invalidate and needs the id handed back directly.
+   */
+  onUploaded?: (media: Media) => void;
 }) {
   const queryClient = useQueryClient();
   const inputId = useId();
@@ -79,10 +90,11 @@ export function SingleImageUpload({
       // No Content-Type: the browser must add the multipart boundary itself.
       return mutate(endpoint, mediaSchema, { method: "POST", body: form });
     },
-    onSuccess: () => {
+    onSuccess: (media) => {
       for (const key of invalidateKeys) {
         void queryClient.invalidateQueries({ queryKey: key });
       }
+      onUploaded?.(media);
     },
   });
 

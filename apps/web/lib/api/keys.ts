@@ -164,10 +164,43 @@ export const qk = {
   /** The kitchen's week, keyed by its Monday. */
   weeklyMenu: (kindergartenId: string, weekStart: string) =>
     ["menu", "week", kindergartenId, weekStart] as const,
+
+  /** Хоол үйлдвэрлэл — ingredients, technology cards, suppliers, food
+   * orders, stock and reports. Its own namespace, one per sub-domain. */
+  kitchen: {
+    ingredients: (kindergartenId: string, filters: Record<string, unknown> = {}) =>
+      ["kitchen", "ingredients", kindergartenId, filters] as const,
+    recipes: (kindergartenId: string, filters: Record<string, unknown> = {}) =>
+      ["kitchen", "recipes", kindergartenId, filters] as const,
+    approvedRecipes: (kindergartenId: string) =>
+      ["kitchen", "recipes", "approved", kindergartenId] as const,
+    recipe: (recipeId: string) => ["kitchen", "recipe", recipeId] as const,
+    suppliers: (kindergartenId: string, filters: Record<string, unknown> = {}) =>
+      ["kitchen", "suppliers", kindergartenId, filters] as const,
+    foodOrders: (kindergartenId: string, filters: Record<string, unknown> = {}) =>
+      ["kitchen", "food-orders", kindergartenId, filters] as const,
+    foodOrder: (orderId: string) => ["kitchen", "food-order", orderId] as const,
+    stock: (kindergartenId: string) => ["kitchen", "stock", kindergartenId] as const,
+    stockMovements: (kindergartenId: string, filters: Record<string, unknown> = {}) =>
+      ["kitchen", "stock-movements", kindergartenId, filters] as const,
+    reportConsumption: (kindergartenId: string, from: string, to: string) =>
+      ["kitchen", "report", "consumption", kindergartenId, from, to] as const,
+    reportNutrition: (kindergartenId: string, from: string, to: string) =>
+      ["kitchen", "report", "nutrition", kindergartenId, from, to] as const,
+    reportPurchases: (kindergartenId: string, from: string, to: string) =>
+      ["kitchen", "report", "purchases", kindergartenId, from, to] as const,
+  },
   /** One kindergarten's own funding — not the platform's revenue. */
   kindergartenFunding: (kindergartenId: string, month: string) =>
     ["funding", kindergartenId, month] as const,
   fundingRules: (kindergartenId: string) => ["funding", "rules", kindergartenId] as const,
+  /** нэмэлт.md §13 — the accountant's own door to the audit trail. */
+  financialAuditLog: (kindergartenId: string, page: number) =>
+    ["funding", "audit-log", kindergartenId, page] as const,
+  /** Filters are part of the key so switching month/status does not reuse a page. */
+  invoices: (kindergartenId: string, filters: Record<string, unknown>) =>
+    ["invoices", kindergartenId, filters] as const,
+  invoice: (invoiceId: string) => ["invoice", invoiceId] as const,
 
   childMedia: (childId: string) => ["child", childId, "media"] as const,
   childReports: (childId: string) => ["child", childId, "reports"] as const,
