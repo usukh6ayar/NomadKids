@@ -6,7 +6,15 @@ const attendanceCompanionValues = ["MOTHER", "FATHER", "OTHER"] as const;
 const companionNameSchema = z.string().trim().min(1).max(100).nullable().optional();
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Огноо YYYY-MM-DD хэлбэртэй байна");
-const isoMonth = z.string().regex(/^\d{4}-\d{2}$/, "Сар YYYY-MM хэлбэртэй байна");
+/**
+ * `YYYY-MM`, where MM is a month that exists.
+ *
+ * ★ `\d{2}` was not enough. It accepted `2026-13`, and `monthRange` turns that
+ * into `Date.UTC(2026, 12, 1)` — January 2027 — so the endpoint answered 200
+ * with a different month's register and nothing said so. A typed URL or an
+ * off-by-one in a caller's month arithmetic both land here.
+ */
+const isoMonth = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Сар YYYY-MM хэлбэртэй байна");
 
 /** The `:date` route param on `PUT /children/:id/attendance/:date`. */
 export const dateParamSchema = z.object({ date: isoDate });

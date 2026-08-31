@@ -134,4 +134,20 @@ export class GroupAttendanceController {
   ) {
     return this.service.groupDaySheet(actor, params.id, query.date);
   }
+
+  /**
+   * The month behind the day sheet — what the register's own panel draws.
+   *
+   * Declared after the bare `@Get()` and on a literal path, so `summary` is
+   * never read as a date.
+   */
+  @Get("summary")
+  @Roles("TEACHER", "ADMIN")
+  async monthSummary(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(listAttendanceQuerySchema)) query: ListAttendanceQuery,
+  ) {
+    return this.service.groupMonthSummary(actor, params.id, query.month);
+  }
 }

@@ -78,6 +78,60 @@ export class AttendanceRepository {
   }
 
   /**
+   * One group's month, aggregated three ways for the register's own panel.
+   *
+   * ★ Three grouped queries, not a page of rows the service counts.
+   *
+   * A group of twenty over a twenty-two-day month is 440 attendance rows, and
+   * the screen wants none of them — it wants the shape. Fetching the rows to
+   * count them in JavaScript would ship half a megabyte to draw six numbers,
+   * and it is the reading `docs/DATABASE.md` §N+1 exists to prevent.
+   *
+   * `byDate` and `byStatus` cannot be one query with two groupings, and
+   * `byChild` is keyed on `enrollmentId` because `groupBy` cannot group by a
+   * relation's column — the same constraint `dashboard.repository.ts` records
+   * against `attendanceByGroup`, resolved the same way: the ids are mapped back
+   * over a set the roster already bounds.
+   */
+  async groupMonthSummary(groupId: string, from: Date, to: Date) {
+    const where = {
+      deletedAt: null,
+      date: { gte: from, lte: to },
+      enrollment: { groupId, deletedAt: null },
+    };
+
+    const [byDate, byStatus, byEnrollment, roster] = await Promise.all([
+      this.prisma.attendance.groupBy({
+        by: ["date", "status"],
+        where,
+        _count: { _all: true },
+        orderBy: { date: "asc" },
+      }),
+      this.prisma.attendance.groupBy({ by: ["status"], where, _count: { _all: true } }),
+      this.prisma.attendance.groupBy({
+        by: ["enrollmentId", "status"],
+        where,
+        _count: { _all: true },
+      }),
+      /*
+       * The roster is *currently* enrolled, which is deliberately not "who has
+       * a row this month". A child who left mid-month should not make the
+       * group look under-recorded for every day since, and one who joined last
+       * week is part of what the teacher is looking at today.
+       */
+      this.prisma.enrollment.findMany({
+        where: { groupId, status: "ACTIVE", deletedAt: null },
+        select: {
+          id: true,
+          child: { select: { id: true, lastName: true, firstName: true } },
+        },
+      }),
+    ]);
+
+    return { byDate, byStatus, byEnrollment, roster };
+  }
+
+  /**
    * Create-or-update, keyed by `(enrollmentId, date)` among *live* rows.
    *
    * ★ Not `prisma.attendance.upsert()`, deliberately.
