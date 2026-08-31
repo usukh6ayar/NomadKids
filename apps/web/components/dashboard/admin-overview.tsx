@@ -27,7 +27,7 @@ import { Donut } from "@/components/ui/chart/donut";
 import { Ring } from "@/components/ui/chart/ring";
 import { SERIES_TONES } from "@/components/ui/chart/chart-tokens";
 import { TONE_VAR, type Tone } from "@/components/ui/tone";
-import { CalendarCheck, GraduationCap, PieChart, School, Users } from "lucide-react";
+import { GraduationCap, PieChart } from "lucide-react";
 import {
   AssessmentCoverageSection,
   RecentActivitySection,
@@ -111,7 +111,7 @@ export function AdminOverview() {
           value={counts.children}
           unit="хүүхэд"
           tone="cornflower"
-          art={<Users size={22} aria-hidden />}
+          art={<Art name="child" size={36} />}
           trend={
             <StatTrend
               current={counts.children}
@@ -138,21 +138,21 @@ export function AdminOverview() {
               ? "mint"
               : "sun"
           }
-          art={<CalendarCheck size={22} aria-hidden />}
+          art={<Art name="register" size={36} />}
         />
         <StatCard
           label="Бүлэг"
           value={counts.groups}
           unit="идэвхтэй"
           tone="mint"
-          art={<School size={22} aria-hidden />}
+          art={<Art name="kindergarten" size={36} />}
         />
         <StatCard
           label="Багш, ажилтан"
           value={counts.staff}
           unit={`${counts.guardians} эцэг эх`}
           tone="sky"
-          art={<GraduationCap size={22} aria-hidden />}
+          art={<Art name="teacher" size={36} />}
         />
       </section>
 
