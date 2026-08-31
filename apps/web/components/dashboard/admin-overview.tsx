@@ -19,6 +19,7 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { StatCard, StatTrend } from "@/components/ui/stat-card";
 import { IconChip } from "@/components/ui/icon-chip";
+import { Art } from "@/components/ui/art";
 import { SurveySummary } from "./survey-summary";
 import { BarRow } from "@/components/ui/chart/bar-row";
 import { ColumnChart } from "@/components/ui/chart/columns";
@@ -26,7 +27,7 @@ import { Donut } from "@/components/ui/chart/donut";
 import { Ring } from "@/components/ui/chart/ring";
 import { SERIES_TONES } from "@/components/ui/chart/chart-tokens";
 import { TONE_VAR, type Tone } from "@/components/ui/tone";
-import { CalendarCheck, GraduationCap, PieChart, School, Users } from "lucide-react";
+import { GraduationCap, PieChart } from "lucide-react";
 import {
   AssessmentCoverageSection,
   RecentActivitySection,
@@ -110,7 +111,7 @@ export function AdminOverview() {
           value={counts.children}
           unit="хүүхэд"
           tone="cornflower"
-          art={<Users size={22} aria-hidden />}
+          art={<Art name="child" size={36} />}
           trend={
             <StatTrend
               current={counts.children}
@@ -137,21 +138,21 @@ export function AdminOverview() {
               ? "mint"
               : "sun"
           }
-          art={<CalendarCheck size={22} aria-hidden />}
+          art={<Art name="register" size={36} />}
         />
         <StatCard
           label="Бүлэг"
           value={counts.groups}
           unit="идэвхтэй"
           tone="mint"
-          art={<School size={22} aria-hidden />}
+          art={<Art name="kindergarten" size={36} />}
         />
         <StatCard
           label="Багш, ажилтан"
           value={counts.staff}
           unit={`${counts.guardians} эцэг эх`}
           tone="sky"
-          art={<GraduationCap size={22} aria-hidden />}
+          art={<Art name="teacher" size={36} />}
         />
       </section>
 
@@ -312,7 +313,7 @@ function TodayDial({ today }: { today: AdminDashboard["attendanceToday"] }) {
         id="today-dial"
         title="Өнөөдрийн ирц"
         lede={formatLongDate(new Date())}
-        icon={<IconChip icon={<CalendarCheck size={20} aria-hidden />} tone="primary" />}
+        icon={<Art name="register" size={40} />}
       />
 
       <Card pad="roomy" className="flex flex-wrap items-center gap-6">
@@ -462,7 +463,7 @@ function AttendanceByGroup({ groups }: { groups: AdminDashboard["attendanceByGro
         id="attendance-by-group"
         title="Бүлгүүдийн ирц"
         lede="Сүүлийн 30 хоног."
-        icon={<IconChip icon={<School size={20} aria-hidden />} tone="primary" />}
+        icon={<Art name="kindergarten" size={40} />}
       />
 
       {withRows.length === 0 ? (
