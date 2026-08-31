@@ -126,8 +126,8 @@ describe("navigation icons", () => {
       "Хоол ба цэс",
       "Ангийн самбар / Мэдээ",
       "Судалгаа",
-      // Систем ба тохиргоо — the seven that were behind the hub, plus the hub
-      "Удирдлага",
+      // The seven that used to sit behind the "Удирдлага" hub, which no longer
+      // has a row of its own — see "does not repeat the administration hub".
       "Цэцэрлэгийн мэдээлэл",
       "Хэрэглэгч ба эрх",
       "Хичээлийн жил",
@@ -235,31 +235,32 @@ describe("role-based navigation", () => {
    * says nothing about whether there is anything to review is a row somebody
    * opens to find out.
    *
-   * The client asked for both by name on 2026-08-31, in a written list of the
-   * destinations the menu must carry. That is the case the old reasoning could
-   * not answer: a queue reachable only through an alert cannot be found on any
-   * day the alert is empty. The assertion flips rather than being deleted,
-   * because "these rows exist" is now the requirement and an absent test would
-   * let them silently disappear again.
+   * Both rows were restored on 2026-08-31 and removed again the same day, at
+   * the owner's instruction. The assertion flips back rather than being
+   * deleted: "these rows are not in the menu" is the requirement, and without
+   * a test the next person to read the client's written list adds them again.
    */
-  it("shows the review queues in the menu", async () => {
+  it("keeps the review queues out of the menu", async () => {
     renderShell(["TEACHER", "ADMIN"]);
     const nav = await sidebar();
 
-    expect(within(nav).getByRole("link", { name: "Ажиглалт хянах" })).toBeInTheDocument();
-    expect(within(nav).getByRole("link", { name: "Чөлөөний хүсэлт хянах" })).toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Ажиглалт хянах" })).not.toBeInTheDocument();
+    expect(
+      within(nav).queryByRole("link", { name: "Чөлөөний хүсэлт хянах" }),
+    ).not.toBeInTheDocument();
   });
 
   /**
-   * Чат earns a row once `/chat` exists — the widget floats on every screen, so
-   * the row would otherwise point at something already on the page. See the
-   * note in `(app)/layout.tsx`.
+   * Чат has no row: `chat-widget.tsx` floats over every screen, so the entry
+   * would point at something the reader is already looking at. `/chat` itself
+   * still exists — it is the wide two-pane frame the panel cannot be — and is
+   * reached from the widget, not from the menu.
    */
-  it("shows a chat row that points at the chat page", async () => {
+  it("keeps chat out of the menu, since the widget is already on screen", async () => {
     renderShell(["TEACHER"]);
     const nav = await sidebar();
 
-    expect(within(nav).getByRole("link", { name: "Чат" })).toHaveAttribute("href", "/chat");
+    expect(within(nav).queryByRole("link", { name: "Чат" })).not.toBeInTheDocument();
   });
 
   /**
@@ -322,11 +323,25 @@ describe("role-based navigation", () => {
     }
   });
 
-  it("adds the administration entry for an admin", async () => {
+  /**
+   * ★ No hub row, and that is deliberate rather than an omission.
+   *
+   * Every screen the "Удирдлага" tile page lists has its own row above this
+   * assertion, so the hub's only remaining job was to name what the menu
+   * already names. `/admin` is still where the root redirect lands an
+   * administrator (`app/page.tsx`), so the screen is not orphaned by losing
+   * the line.
+   */
+  it("does not repeat the administration hub as a row", async () => {
     renderShell(["TEACHER", "ADMIN"]);
     const nav = await sidebar();
 
-    expect(within(nav).getByRole("link", { name: "Удирдлага" })).toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Удирдлага" })).not.toBeInTheDocument();
+    // The screens it used to hide are still reachable, which is the point.
+    expect(within(nav).getByRole("link", { name: "Аудит" })).toHaveAttribute(
+      "href",
+      "/admin/audit",
+    );
   });
 
   it("gives a parent their own sections, not the staff ones", async () => {

@@ -550,24 +550,29 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
           icon: <ClipboardCheck {...sectionIconProps} />,
         },
         /*
-         * ★ Both review queues came back on 2026-08-31, at the client's
-         * written request, and the note they replace was not wrong.
+         * ★ Neither review queue is a menu row, decided twice now.
          *
-         * It argued that **Чөлөөний хүсэлт** is the attendance register from
-         * the other end, and that **Ажиглалт хянах** is reached from the
-         * dashboard alert that actually counts what is waiting — so neither
-         * needed a row that says nothing about whether there is anything in it.
-         * That reasoning still holds for a teacher who lives on the dashboard.
+         * **Чөлөөний хүсэлт** is the attendance register read from the other
+         * end: approving a request writes the very `Attendance` rows the day
+         * sheet is about, so `AttendanceRequestQueue` renders *inside* Ирц
+         * under "Эцэг эхийн мэдэгдэл". A separate row asked a teacher to know
+         * that the absence they were about to mark by hand might already have
+         * been explained on another screen.
          *
-         * It stops holding for the person who does not. The client asked for
-         * both by name in a list of eleven destinations, which is the answer to
-         * "can you find this without being told where it is" — and a queue you
-         * reach only through an alert is invisible on every day the alert is
-         * empty. A row that is sometimes redundant beats a screen that is
-         * sometimes unreachable.
+         * **Ажиглалт хянах** is reached from the dashboard alert that counts
+         * what is waiting. A menu row says nothing about whether there is
+         * anything in the queue, so it is a row somebody opens to find out.
+         *
+         * ★★ Both rows came back on 2026-08-31 and are removed again the same
+         * day, at the owner's instruction, which is worth recording rather
+         * than silently flip-flopping: the argument for restoring them was
+         * that a queue reached only through an alert is invisible on the days
+         * the alert is empty. That is true, and it is the weaker half of the
+         * trade — an empty queue is exactly the day nobody needs to open it.
+         *
+         * Both routes still resolve. A notification links to them and a
+         * bookmark points at them; they are simply not menu entries.
          */
-        entry("Ажиглалт хянах", "/observations/review"),
-        entry("Чөлөөний хүсэлт хянах", "/attendance-requests/review"),
       ],
     },
     {
@@ -606,22 +611,15 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         entry("Ангийн самбар / Мэдээ", "/notifications"),
         entry("Судалгаа", "/surveys"),
         /*
-         * ★ Чат has a row as of 2026-08-31, and the note above that said it
-         * should not is the one being answered.
+         * ★ Чат has no row, which is what the note at the top of this list has
+         * said all along: `chat-widget.tsx` floats over every screen, so a menu
+         * entry points at something the reader is already looking at.
          *
-         * That note read: "the widget floats over every screen, so a link would
-         * point at something already on screen. The drawing predates the
-         * widget." The drawing did — but the client asked again in writing
-         * afterwards, with the widget shipped, which makes it a request rather
-         * than a stale sketch.
-         *
-         * `/chat` is not a second door onto the panel. It is the same rooms in
-         * a frame the panel cannot be: at `lg` the room list and the open
-         * conversation sit side by side. The page renders the widget's own
-         * `ChatList` and `ChatRoom`, so there is one implementation and two
-         * frames — not two chats.
+         * `/chat` still exists and is worth keeping — at `lg` it puts the room
+         * list and the open conversation side by side, which the floating panel
+         * cannot. It renders the widget's own `ChatList` and `ChatRoom`, so
+         * there is one implementation in two frames. It is simply not a row.
          */
-        entry("Чат", "/chat"),
       ],
     },
     ...(isAdmin
@@ -648,24 +646,21 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
       entries: [
         entry("Багшийн мэдээлэл", "/settings"),
         /*
-         * ★ "Удирдлага", not "Бүлэг, цэцэрлэгийн мэдээлэл".
+         * ★ The seven administration screens, named — and no "Удирдлага" row
+         * above them any more.
          *
-         * Twenty-seven characters truncate to "Бүлэг, цэцэрлэгийн м…" in a
-         * 280px rail — an ellipsis where the destination's name should be, on
-         * the entry a director uses most. It also named two of the seven
-         * screens behind it. Matches the bottom bar's tab for the same href:
-         * one destination, one name.
-         */
-        ...adminEntry("Удирдлага", "/admin"),
-        /*
-         * ★ The seven screens the hub used to hide, listed under it.
+         * Reaching "Аудит" used to mean opening the hub and finding it among
+         * seven tiles: two steps for a screen a director opens daily. Once
+         * every one of those screens has its own row, the hub is a row whose
+         * only remaining job is to list what is already listed directly
+         * beneath it.
          *
-         * They had no rows and therefore no icons until 2026-08-30: reaching
-         * "Аудит" meant opening Удирдлага and then finding it among seven
-         * tiles, which is two steps for a screen a director opens daily. The
-         * hub keeps its row — it is still where the tiles live and what the
-         * bottom bar points at — and now sits above them rather than instead
-         * of them.
+         * `/admin` itself stays, and losing its row orphans nothing: signing
+         * in *lands* an administrator on it (`app/page.tsx` redirects the root
+         * by role), so the row pointed at the page they had just arrived from.
+         * It carries kindergarten-wide figures an administrator who also
+         * teaches cannot get from `/dashboard`; it is the sidebar line, not the
+         * screen, that had stopped earning itself.
          */
         ...adminEntry("Цэцэрлэгийн мэдээлэл", "/admin/kindergarten"),
         ...adminEntry("Хэрэглэгч ба эрх", "/admin/users"),
