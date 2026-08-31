@@ -208,6 +208,19 @@ enum ReportType {
   /// the third, and the one RFP §21.7 makes an acceptance criterion
   /// ("Улирлын болон нэгдсэн PDF тайлан зөв үүсдэг байх").
   ANNUAL_REPORT
+
+  /// `нэмэлт.md` §16's reports as PDF — the only type with **no child**.
+  ///
+  /// ★ That absence is load-bearing, not incidental. Every child report path
+  /// already opens with `if (!job || !job.childId) throw new NotFoundException()`,
+  /// so a financial report is invisible to them by construction: it cannot be
+  /// polled, listed or downloaded through an endpoint whose authorization is
+  /// `canAccessChild`. Its own routes check `assertCanReadFinance` instead.
+  ///
+  /// Do not give this type a `childId` to make some listing simpler — that
+  /// single change would expose a kindergarten's whole financial position to
+  /// any guardian of the child it was pinned to.
+  FINANCE_REPORT
 }
 
 enum ReportStatus {
@@ -312,6 +325,8 @@ model User {
   documentBookmarks     DocumentBookmark[]        @relation("DocumentBookmarkUser")
   consentsDecided       ConsentRecord[]           @relation("ConsentDecidedBy")
   mealsRecorded         MealRecord[]              @relation("MealRecordedBy")
+  invoicesCreated       Invoice[]                 @relation("InvoiceCreatedBy")
+  paymentsRecorded      Payment[]                 @relation("PaymentRecordedBy")
   chatMessages          ChatMessage[]             @relation("ChatAuthor")
   chatReads             ChatRead[]                @relation("ChatReader")
 
@@ -486,6 +501,8 @@ model Kindergarten {
   mealRecords           MealRecord[]
   fundingRules          FundingRule[]
   fundingCalculations   FundingCalculation[]
+  invoices              Invoice[]
+  payments              Payment[]
   chatMessages          ChatMessage[]
   chatReads             ChatRead[]
 
@@ -638,6 +655,7 @@ model Child {
   consents            ConsentRecord[]
   mealRecords         MealRecord[]
   fundingCalculations FundingCalculation[]
+  invoices            Invoice[]
 
   @@unique([kindergartenId, nationalId])
   @@index([kindergartenId, status])
@@ -1423,6 +1441,22 @@ model FundingRule {
   dependsOnAttendance Boolean @default(true)
   dependsOnMeals      Boolean @default(false)
 
+  /// Which invoice line a `PARENT`-source rule produces — `нэмэлт.md` §7.
+  ///
+  /// ★ One tariff table serves both sides, which is §17's single-entry
+  /// principle applied to configuration rather than to data.
+  ///
+  /// A rule with `source = PARENT` already means "what the family owes"; §6's
+  /// monthly calculation totals it as "Эцэг эхээс авах төлбөр". An invoice
+  /// needs the same number broken out by what it is *for* — tuition, meals,
+  /// the bus — and this column is that one missing fact. A second tariff table
+  /// beside this one would be a second place to change a price, and the two
+  /// would disagree within a term.
+  ///
+  /// Null on `STATE`, `KINDERGARTEN` and `OTHER` rules, which never bill a
+  /// parent. A `PARENT` rule without it is not used for invoicing.
+  invoiceItemKind InvoiceItemKind?
+
   note String?
 
   createdAt DateTime  @default(now())
@@ -1431,6 +1465,7 @@ model FundingRule {
 
   kindergarten        Kindergarten         @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   fundingCalculations FundingCalculation[]
+  invoiceLines        InvoiceLine[]
 
   /// "Which rules were in force in March" — the calculation's own lookup.
   @@index([kindergartenId, source, effectiveFrom])
@@ -1483,6 +1518,261 @@ model FundingCalculation {
   @@unique([childId, month, source])
   @@index([kindergartenId, month])
   @@map("funding_calculations")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Parent invoices and payments — `нэмэлт.md` §7, §8, §14
+//
+// ★ This is the first place in the schema where a row is somebody's debt.
+//
+// Everything above records what happened to a child. An invoice records what a
+// family owes, and a payment records money that moved. Two rules follow from
+// that and are enforced here rather than in a service:
+//
+//   1. **Money is `Decimal`, never `Float`.** A binary float cannot hold 0.1,
+//      and a month's billing is a sum of thousands of rows that has to
+//      reconcile against a bank statement. Same rule as `FundingRule`.
+//   2. **A confirmed payment is never deleted** — `нэмэлт.md` §14: "Баталгаажсан
+//      санхүүгийн гүйлгээг шууд устгахгүй. Залруулга эсвэл reversal transaction
+//      ашиглана." That is stricter than CLAUDE.md §3.2's soft delete and
+//      overrides it for `Payment` alone; see the note on that model.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// `нэмэлт.md` §8's invoice states — Төлөгдөөгүй … Буцаалт.
+///
+/// ★ Derived from the payments, never set by hand except for `REFUNDED`.
+/// A status column that a human can type into drifts from the sum of the rows
+/// beneath it, and then two screens disagree about whether a parent has paid.
+enum InvoiceStatus {
+  /// Төлөгдөөгүй — nothing received.
+  UNPAID
+  /// Хэсэгчлэн төлсөн — some received, less than the total.
+  PARTIALLY_PAID
+  /// Төлсөн — settled in full.
+  PAID
+  /// Хугацаа хэтэрсэн — past `dueDate` and still owing. A view of UNPAID or
+  /// PARTIALLY_PAID rather than a separate life stage, but stored so that the
+  /// overdue report is one indexed query.
+  OVERDUE
+  /// Буцаалт — reversed after being paid.
+  REFUNDED
+}
+
+/// `нэмэлт.md` §7's "Төлбөрийн төрөл".
+///
+/// ★ A line kind, not an invoice kind. §7 lists both a set of payment types and
+/// an invoice carrying "Үндсэн төлбөр / Хоолны төлбөр / Нэмэлт төлбөр" at once,
+/// which only reconciles if one invoice holds many lines. The three summary
+/// figures on a printed invoice are groupings of these.
+enum InvoiceItemKind {
+  /// Сургалтын төлбөр
+  TUITION
+  /// Хоолны мөнгө
+  MEAL
+  /// Дугуйлан
+  CLUB
+  /// Автобус
+  BUS
+  /// Нэмэлт үйлчилгээ
+  EXTRA
+  /// Бусад
+  OTHER
+}
+
+/// How the money arrived — `нэмэлт.md` §8.
+enum PaymentMethod {
+  QPAY
+  SOCIALPAY
+  /// Банкны шилжүүлэг, entered by the accountant from a statement.
+  BANK_TRANSFER
+  /// Бэлнээр.
+  CASH
+  OTHER
+}
+
+enum PaymentStatus {
+  /// Created, awaiting the provider's confirmation. QPay QR shown, not yet paid.
+  PENDING
+  /// Confirmed. The only status that counts towards an invoice's paid amount.
+  PAID
+  FAILED
+  CANCELLED
+}
+
+/// One month's bill for one child — `нэмэлт.md` §7.
+///
+/// ★ There is deliberately **no `@@unique([childId, month])`**, and that is a
+/// considered departure from `FundingCalculation` directly above.
+///
+/// A funding calculation is recomputed; an invoice is *issued*, and an issued
+/// invoice that turns out to be wrong has to be voided and reissued. A unique
+/// constraint plus soft delete makes reissue impossible, because the voided row
+/// still occupies the pair (Prisma cannot express a partial unique index). The
+/// duplicate is prevented in `InvoicesService` instead, where the check can say
+/// "among live rows", and `two invoices for one child and month are refused`
+/// in the test suite is what keeps that honest.
+model Invoice {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  childId        String @db.Uuid
+
+  /// Төлбөрийн сар, as its first day — the same convention as
+  /// `FundingCalculation.month`.
+  month DateTime @db.Date
+
+  /// The human-readable number a parent quotes on a transfer. Unique within a
+  /// kindergarten, never reused, generated by the service.
+  number String
+
+  status InvoiceStatus @default(UNPAID)
+
+  /// The sum of the lines, before discount and carried balance.
+  subtotalAmount  Decimal @default(0) @db.Decimal(12, 2)
+  /// Хөнгөлөлт.
+  discountAmount  Decimal @default(0) @db.Decimal(12, 2)
+  /// Өмнөх үлдэгдэл — what was still owed when this invoice was raised.
+  ///
+  /// Copied on at issue time rather than joined at read time: it is a statement
+  /// about the past, and recomputing it later would change a document the
+  /// parent has already been shown.
+  previousBalance Decimal @default(0) @db.Decimal(12, 2)
+  /// Нийт төлөх дүн = subtotal − discount + previousBalance. Stored because it
+  /// is what was billed, not what the current rates would produce.
+  totalAmount     Decimal @default(0) @db.Decimal(12, 2)
+
+  /// Төлөх хугацаа.
+  dueDate DateTime? @db.Date
+
+  /// When it was issued to the family. Null means still a draft — a draft may
+  /// be edited and soft-deleted, an issued invoice may not.
+  issuedAt DateTime?
+
+  note        String?
+  createdById String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten  @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child         @relation(fields: [childId], references: [id], onDelete: Restrict)
+  createdBy    User?         @relation("InvoiceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  lines        InvoiceLine[]
+  payments     Payment[]
+
+  @@unique([kindergartenId, number])
+  @@index([kindergartenId, month])
+  @@index([kindergartenId, status])
+  @@index([childId, month(sort: Desc)])
+  @@map("invoices")
+}
+
+/// One charge on one invoice — `нэмэлт.md` §7.
+model InvoiceLine {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  invoiceId      String @db.Uuid
+
+  kind  InvoiceItemKind
+  /// What the parent reads on the line. Copied from the rule's name at issue
+  /// time so that renaming a tariff later does not rewrite old invoices.
+  label String
+
+  /// Days, meals, or 1 for a flat charge.
+  quantity   Decimal @default(1) @db.Decimal(10, 2)
+  unitAmount Decimal @default(0) @db.Decimal(12, 2)
+  /// quantity × unitAmount, stored for the same reason `totalAmount` is.
+  amount     Decimal @default(0) @db.Decimal(12, 2)
+
+  /// Which tariff produced it, for tracing. Nullable so retiring a rule does
+  /// not take the historical line with it.
+  fundingRuleId String? @db.Uuid
+
+  note String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  invoice     Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  fundingRule FundingRule? @relation(fields: [fundingRuleId], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId])
+  @@index([kindergartenId, kind])
+  @@map("invoice_lines")
+}
+
+/// Money against an invoice — `нэмэлт.md` §8, §14.
+///
+/// ★ **This model has no `deletedAt`, on purpose.**
+///
+/// CLAUDE.md §3.2 forbids hard deletes and every other table answers that with
+/// a soft-delete column. `нэмэлт.md` §14 is stricter here: a confirmed
+/// financial transaction is not removed at all, by any mechanism. It is
+/// corrected by a **reversing row** — a second payment carrying `reversalOfId`
+/// and the negative amount — so that the ledger keeps both the mistake and the
+/// correction. A `deletedAt` column would offer a second way to make money
+/// disappear, and CLAUDE.md §3.2's own history (five tables that shipped a
+/// column nothing ever wrote) argues against carrying one for symmetry.
+///
+/// ★★ `idempotencyKey` is what makes a payment provider safe to talk to.
+///
+/// QPay confirms a payment by calling our callback URL, and a callback that is
+/// retried — by their infrastructure, by a network timeout, by an operator
+/// pressing a button twice — must not credit the parent twice. The key is set
+/// to a value derived from the provider's own payment id, and the unique index
+/// turns a duplicate delivery into a constraint violation the service can
+/// recognise and ignore rather than a silent double credit.
+model Payment {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  invoiceId      String @db.Uuid
+
+  /// Negative on a reversing row — see `reversalOfId`. An invoice's paid amount
+  /// is the sum over `PAID` rows, so a reversal subtracts by arithmetic rather
+  /// than by a second code path.
+  amount Decimal @db.Decimal(12, 2)
+
+  method PaymentMethod
+  status PaymentStatus @default(PENDING)
+
+  /// When the money actually moved, as reported by the provider or entered by
+  /// the accountant. Null while PENDING.
+  paidAt DateTime?
+
+  /// The provider's own identifiers, kept for reconciliation against their
+  /// statement. Informational — `idempotencyKey` is what enforces uniqueness.
+  providerInvoiceId String?
+  providerPaymentId String?
+
+  /// See the note above. Null for rows that no external system can retry.
+  idempotencyKey String? @unique
+
+  /// Set on a correcting row, pointing at the payment being reversed.
+  reversalOfId String? @db.Uuid
+
+  /// Who entered a manual payment. Null when a provider callback created it.
+  recordedById String? @db.Uuid
+
+  note String?
+
+  /// The provider's raw confirmation body, for disputes. Never parsed for
+  /// business logic — the parsed fields above are.
+  rawPayload Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  invoice      Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  recordedBy   User?        @relation("PaymentRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  reversalOf   Payment?     @relation("PaymentReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversals    Payment[]    @relation("PaymentReversal")
+
+  @@index([invoiceId])
+  @@index([kindergartenId, status, paidAt(sort: Desc)])
+  @@index([providerPaymentId])
+  @@map("payments")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -32,6 +32,7 @@
     "argon2": "^0.45.1",
     "bullmq": "^6.1.2",
     "cookie-parser": "^1.4.7",
+    "decimal.js": "^10.6.0",
     "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
     "file-type": "^22.0.2",

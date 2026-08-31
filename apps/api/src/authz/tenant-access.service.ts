@@ -84,6 +84,44 @@ export class TenantAccessService {
    * asked for existing permissions to be left alone.
    */
   assertCanReadFinance(actor: Actor, kindergartenId: string): void {
+    if (!this.canReadFinance(actor, kindergartenId)) throw new NotFoundException();
+  }
+
+  /**
+   * The same question as a boolean, for the places that must branch rather
+   * than throw.
+   *
+   * ★ Added for invoicing (`нэмэлт.md` §7, §8), where one endpoint serves two
+   * audiences: an accountant listing a month's invoices, and a parent opening
+   * their own child's. The parent's path cannot use `assertCanReadFinance` —
+   * they are not staff — so the invoice service asks this first and falls back
+   * to `ChildAccessService` for the guardian chain. Exposing the predicate is
+   * what keeps that decision inside `authz/` (CLAUDE.md §1.1) instead of a
+   * service re-deriving "is this person an accountant" from `memberships`.
+   */
+  canReadFinance(actor: Actor, kindergartenId: string): boolean {
+    return actor.memberships.some(
+      (m) =>
+        m.kindergartenId === kindergartenId &&
+        (m.role === Role.ACCOUNTANT || m.role === Role.ADMIN),
+    );
+  }
+
+  /**
+   * Throws 404 unless the actor may **change** this kindergarten's money —
+   * issue an invoice, record a payment, reverse one.
+   *
+   * ★ Identical to `canReadFinance` today, and deliberately a separate method.
+   *
+   * `нэмэлт.md` §13 lists the accountant's surface as read-and-write, so both
+   * predicates currently name ACCOUNTANT and ADMIN. They are split because the
+   * next narrowing anybody asks for is on this side — "an accountant may raise
+   * an invoice but only an admin may reverse a payment" is exactly the kind of
+   * rule a kindergarten adds after its first mistaken refund. With one shared
+   * method that change means auditing every call site to work out which ones
+   * meant *write*; with two it is a one-line edit here.
+   */
+  assertCanManageFinance(actor: Actor, kindergartenId: string): void {
     const ok = actor.memberships.some(
       (m) =>
         m.kindergartenId === kindergartenId &&
