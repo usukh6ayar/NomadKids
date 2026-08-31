@@ -94,8 +94,11 @@ function stub(over: Record<string, unknown> = {}) {
   return stubApi([
     { path: "/auth/me", body: sessionFor(["ADMIN"]) },
     { path: `/kindergartens/${KG}/funding/register`, body: register(over) },
+    // `GET /groups` — the route that exists. Mocking
+    // `/kindergartens/:id/groups` is what let a 404 ship: that path is POST
+    // only, and the page's select was empty against the real API.
     {
-      path: `/kindergartens/${KG}/groups`,
+      path: "/groups",
       body: { items: [], page: 1, pageSize: 100, total: 0, totalPages: 0 },
     },
   ]);

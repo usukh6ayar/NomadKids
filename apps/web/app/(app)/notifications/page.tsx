@@ -941,7 +941,20 @@ function NotificationRow({
       {/* Who posted it, and when. `ChildAvatar` takes any `{firstName,
           lastName}` and draws initials when there is no photograph — an author
           has no `photoMediaFileId`, so it is always the initials here. */}
-      <div className="flex items-center gap-2.5">
+      {/*
+        ★ `flex-wrap`, with a floor under the name-and-time line.
+
+        Three badges — a category, "Чухал", "Шинэ" — are `shrink-0`, so on a
+        390px phone they took the row and left the author line about 90px: less
+        than the timestamp alone, which is itself `shrink-0` and so spilled out
+        of its paragraph and was clipped mid-word by the card. The name it was
+        meant to give way to had already truncated to two letters.
+
+        The floor is what makes the wrap happen: without a minimum the author
+        line shrinks towards zero and the badges never move down, because a
+        flex item that can shrink is never a reason to wrap.
+      */}
+      <div className="flex flex-wrap items-center gap-2.5">
         <ChildAvatar child={notification.author ?? {}} size={40} />
 
         {/*
@@ -953,7 +966,7 @@ function NotificationRow({
           does. `truncate` on the name and `shrink-0` on the time means a long
           Mongolian name gives way rather than pushing the date off the row.
         */}
-        <p className="flex min-w-0 flex-1 items-baseline gap-1.5">
+        <p className="flex min-w-[9rem] flex-1 items-baseline gap-1.5">
           <span className="truncate text-body font-semibold text-ink">
             {fullName(notification.author)}
           </span>
