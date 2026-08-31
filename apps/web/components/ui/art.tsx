@@ -26,23 +26,32 @@ import Image from "next/image";
  *
  * ★★★ Adding one is a file and a line.
  *
- * The set does not yet cover the administration screens — there is no calendar,
- * no group of children, no people, no storage and no report — so those still
- * render lucide glyphs. The names are reserved below rather than pointed at
- * files that do not exist: a key here that resolves to a 404 is worse than no
- * key, because the call site looks correct.
+ * `child` and `report` arrived on 2026-08-31 and are wired to the
+ * administration board's own two cards. The rest of that screen still renders
+ * lucide glyphs, and the names stay reserved rather than pointed at files that
+ * do not exist: a key here that resolves to a 404 is worse than no key,
+ * because the call site looks correct.
  *
- * Pending, in the same `icon-<name>.png` convention, 1024×1024 with a
+ * Still pending, in the same `icon-<name>.png` convention, 1024×1024 with a
  * transparent background:
  *
- *   school-year · term · group · users · child · teacher · parent
- *   storage · report · settings
+ *   school-year · term · group · users · teacher · parent
+ *   storage · settings
+ *
+ * ★★★★★ The two that landed were rebuilt, not dropped in.
+ *
+ * They arrived as 570×426 screenshots — the tinted square cut off at the
+ * bottom — against a set that is 1024×1024. Extending each one's own fill
+ * downward and re-rounding the corners to the radius its top already had
+ * restores the square exactly, because what the crop removed was flat
+ * background and not drawing. Two of the five sent could not be recovered that
+ * way: their artwork runs off the cut edge, so they wait for a clean export.
  *
  * ★★★★ One family, not two.
  *
- * The thirteen below are already two styles: nine carry their own tinted
+ * The fifteen below are already two styles: eleven carry their own tinted
  * rounded square (`kindergarten`, `attendance`, `chat-blue`, `menu`, `notice`,
- * `portfolio`, `progress`, `survey`, `finance`) and four are bare cut-outs
+ * `portfolio`, `progress`, `survey`, `finance`, `child`, `report`) and four are bare cut-outs
  * (`analytics`, `chat-gradient`, `chat-simple`, `checklist`). Side by side in
  * one grid the two read as different sizes, because one has a chip's worth of
  * padding baked in and the other does not. Anything added should match the
@@ -51,6 +60,7 @@ import Image from "next/image";
 const SOURCE = {
   analytics: "/icons/icon-analytics.png",
   attendance: "/icons/icon-attendance.png",
+  child: "/icons/icon-child.png",
   chatBlue: "/icons/icon-chat-blue.png",
   chatGradient: "/icons/icon-chat-gradient.png",
   chatSimple: "/icons/icon-chat-simple.png",
@@ -61,6 +71,7 @@ const SOURCE = {
   notice: "/icons/icon-notice.png",
   portfolio: "/icons/icon-portfolio.png",
   progress: "/icons/icon-progress.png",
+  report: "/icons/icon-report.png",
   survey: "/icons/icon-survey.png",
 } as const;
 

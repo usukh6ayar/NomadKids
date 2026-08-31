@@ -8,7 +8,6 @@ import {
   CalendarClock,
   CalendarRange,
   ChevronRight,
-  FileText,
   GraduationCap,
   HardDrive,
   Heart,
@@ -27,6 +26,7 @@ import {
 } from "@/components/admin/dashboard-sections";
 import { Button } from "@/components/ui/button";
 import { SectionHeader } from "@/components/ui/card";
+import { Art } from "@/components/ui/art";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { IconChip } from "@/components/ui/icon-chip";
 import { formatFileSize } from "@/lib/format";
@@ -132,7 +132,7 @@ function AdminDashboard() {
           value={counts.children}
           unit="хүүхэд"
           tone="cornflower"
-          art={<Users size={28} aria-hidden />}
+          art={<Art name="child" size={40} />}
         />
         <StatCard
           label="Бүлэг"
@@ -186,7 +186,7 @@ function AdminDashboard() {
                   : `${storage.reports.total} нийт`
               }
               tone="sun"
-              art={<FileText size={28} aria-hidden />}
+              art={<Art name="report" size={40} />}
             />
           </>
         ) : null}
