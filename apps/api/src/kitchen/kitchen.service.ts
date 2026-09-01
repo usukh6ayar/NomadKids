@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import Decimal from "decimal.js";
 import { AuditRepository } from "../audit/audit.repository";
 import { TenantAccessService } from "../authz/tenant-access.service";
 import type { Actor } from "../authz/actor";
@@ -858,9 +859,12 @@ interface FoodOrderRow {
 }
 
 function toFoodOrderResponse(order: FoodOrderRow) {
+  // ★ decimal.js, not `+ Number(...)`. An order is a sum of many lines and
+  // `0.1 + 0.2 !== 0.3`; docs/FINANCE_MODULE.md §2.1 says money never becomes
+  // a JS number. Same defect, same fix as the invoices module (2026-09-01).
   const totalAmount = order.lines.reduce(
-    (sum, line) => sum + Number(line.totalPrice.toString()),
-    0,
+    (sum, line) => sum.plus(new Decimal(line.totalPrice.toString())),
+    new Decimal(0),
   );
 
   return {
@@ -882,8 +886,13 @@ function toFoodOrderResponse(order: FoodOrderRow) {
   };
 }
 
+/**
+ * ★★ The worst of the three float sites this replaced: the product was computed
+ * with JS numbers and then written straight into `FoodOrderLine.totalPrice`,
+ * a `Decimal(12,2)` column. The error was persisted, not just displayed.
+ */
 function lineTotal(quantity: string, unitPrice: string): string {
-  return (Number(quantity) * Number(unitPrice)).toFixed(2);
+  return new Decimal(quantity).mul(new Decimal(unitPrice)).toFixed(2);
 }
 
 function toDate(iso: string): Date {

@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { Prisma } from "../generated/prisma/client";
 import type {
   FoodOrderStatus,
   IngredientUnit,
@@ -494,14 +495,19 @@ export class KitchenRepository {
 
     const bySupplier = new Map<
       string,
-      { supplier: { id: string; name: string }; orderCount: number; total: number }
+      { supplier: { id: string; name: string }; orderCount: number; total: Prisma.Decimal }
     >();
     for (const order of orders) {
-      const total = order.lines.reduce((sum, line) => sum + Number(line.totalPrice), 0);
+      // Decimal, not a float sum — this is a repository, so `Prisma.Decimal`
+      // is the sanctioned type here (CLAUDE.md §2.2).
+      const total = order.lines.reduce(
+        (sum, line) => sum.add(line.totalPrice),
+        new Prisma.Decimal(0),
+      );
       const existing = bySupplier.get(order.supplierId);
       if (existing) {
         existing.orderCount += 1;
-        existing.total += total;
+        existing.total = existing.total.add(total);
       } else {
         bySupplier.set(order.supplierId, { supplier: order.supplier, orderCount: 1, total });
       }
