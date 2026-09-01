@@ -299,7 +299,9 @@ describe("overdue — the figure that is deliberately not month-scoped", () => {
   });
 
   it("ignores an invoice whose due date has not arrived", async () => {
-    await invoice({ dueDate: new Date("2099-01-01T00:00:00.000Z") });
+    // Tomorrow, not the fixture's own far-future default — otherwise this
+    // asserts against the value it was already given and can never fail.
+    await invoice({ dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000) });
 
     expect((await dashboard(adminA)).body.parents.overdueCount).toBe(0);
   });
