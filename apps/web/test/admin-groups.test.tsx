@@ -63,6 +63,181 @@ beforeEach(() => {
   setSearchParams("");
 });
 
+/**
+ * Promoting a whole group — Order А/261, Annex 2 §1 item 9, mandatory.
+ *
+ * ★ The two outcomes are decided by a field the director is not looking at.
+ *
+ * `POST /groups/:id/promotions` derives дэвшсэн or давтан суралцсан from the two
+ * groups\' age bands, so a director picking a target from a dropdown is choosing
+ * between them without being asked which they meant. The dialog says which it
+ * will be before they commit, and these hold that sentence to the bands rather
+ * than to whichever branch was written first.
+ */
+describe("бүлгээр дэвшүүлэх", () => {
+  const NEXT = "66666666-6666-4666-8666-666666666666";
+  const NEXT_YEAR = "77777777-7777-4777-8777-777777777777";
+
+  /** The source group with children in it, plus one target group. */
+  function stubTwoGroups(
+    targetOver: Record<string, unknown> = {},
+    extra: Parameters<typeof stubApi>[0] = [],
+  ) {
+    const source = group({ _count: { enrollments: 12 } });
+    const target = {
+      ...group(),
+      id: NEXT,
+      name: "Бэлтгэл бүлэг",
+      ageBand: "SENIOR",
+      schoolYearId: NEXT_YEAR,
+      schoolYear: { id: NEXT_YEAR, name: "2027-2028", isCurrent: false },
+      ...targetOver,
+    };
+
+    return stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      ...extra,
+      {
+        path: "/groups",
+        body: { items: [source, target], page: 1, pageSize: 20, total: 2, totalPages: 1 },
+      },
+    ]);
+  }
+
+  it("offers the action on a group that has children", async () => {
+    stubTwoGroups();
+    renderWithProviders(<AdminGroupsPage />);
+
+    const buttons = await screen.findAllByRole("button", { name: "Дэвшүүлэх" });
+    expect(buttons[0]).toBeEnabled();
+  });
+
+  /** An empty group has nobody to promote and the API answers 400. The screen
+   *  refuses first, so the director never meets that error. */
+  it("disables the action on an empty group", async () => {
+    stubGroups({ _count: { enrollments: 0 } });
+    renderWithProviders(<AdminGroupsPage />);
+
+    expect(await screen.findByRole("button", { name: "Дэвшүүлэх" })).toBeDisabled();
+  });
+
+  it("says the move will be recorded as a promotion when the bands differ", async () => {
+    stubTwoGroups();
+    const u = userEvent.setup();
+    renderWithProviders(<AdminGroupsPage />);
+
+    await u.click((await screen.findAllByRole("button", { name: "Дэвшүүлэх" }))[0]!);
+    await selectOption(u, /Хүлээн авах бүлэг/, /Бэлтгэл бүлэг/);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/дэвшсэн/)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/давтан суралцсан/)).toBeNull();
+  });
+
+  it("says давтан суралцсан when the target carries the same band", async () => {
+    // JUNIOR, the same band the source group has.
+    stubTwoGroups({ ageBand: "JUNIOR" });
+    const u = userEvent.setup();
+    renderWithProviders(<AdminGroupsPage />);
+
+    await u.click((await screen.findAllByRole("button", { name: "Дэвшүүлэх" }))[0]!);
+    await selectOption(u, /Хүлээн авах бүлэг/, /Бэлтгэл бүлэг/);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/давтан суралцсан/)).toBeInTheDocument();
+  });
+
+  it("posts the target group and nothing else", async () => {
+    const { calls } = stubTwoGroups({}, [
+      {
+        path: `/groups/${GROUP}/promotions`,
+        method: "POST",
+        body: { outcome: "PROMOTED", movedCount: 12, groupId: NEXT },
+      },
+    ]);
+    const u = userEvent.setup();
+    renderWithProviders(<AdminGroupsPage />);
+
+    await u.click((await screen.findAllByRole("button", { name: "Дэвшүүлэх" }))[0]!);
+    await selectOption(u, /Хүлээн авах бүлэг/, /Бэлтгэл бүлэг/);
+    const dialog = await screen.findByRole("dialog");
+    await u.click(within(dialog).getByRole("button", { name: "Дэвшүүлэх" }));
+
+    await waitFor(() => {
+      const post = calls.find((c) => c.method === "POST");
+      expect(post).toBeDefined();
+      expect(post!.url).toBe(`/groups/${GROUP}/promotions`);
+      // ★ No `outcome`. The server derives it; a client that sent its own
+      // answer would be a second source of the same fact.
+      expect(post!.body).toEqual({ toGroupId: NEXT });
+    });
+  });
+
+  it("sends nothing until a target is chosen", async () => {
+    const { calls } = stubTwoGroups();
+    const u = userEvent.setup();
+    renderWithProviders(<AdminGroupsPage />);
+
+    await u.click((await screen.findAllByRole("button", { name: "Дэвшүүлэх" }))[0]!);
+    const dialog = await screen.findByRole("dialog");
+
+    expect(within(dialog).getByRole("button", { name: "Дэвшүүлэх" })).toBeDisabled();
+    await u.click(within(dialog).getByRole("button", { name: "Болих" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
+  });
+
+  /**
+   * ★ A kindergarten may name a group after its age band, and the demo data
+   * does: SENIOR\'s label is "Бэлтгэл бүлэг" and so is the group\'s name. The
+   * obvious option label renders it twice — "Бэлтгэл бүлэг · 2027-2028 ·
+   * Бэлтгэл бүлэг" — which reads as a rendering fault. `GroupRow` already meets
+   * this problem one screen away.
+   */
+  it("does not print the age band when it only repeats the name", async () => {
+    stubTwoGroups();
+    const u = userEvent.setup();
+    renderWithProviders(<AdminGroupsPage />);
+
+    await u.click((await screen.findAllByRole("button", { name: "Дэвшүүлэх" }))[0]!);
+    await u.click(await screen.findByLabelText(/Хүлээн авах бүлэг/));
+
+    const option = await screen.findByRole("option", { name: /Бэлтгэл бүлэг/ });
+    expect(option).toHaveTextContent("Бэлтгэл бүлэг · 2027-2028");
+    expect(option.textContent).not.toMatch(/Бэлтгэл бүлэг.*Бэлтгэл бүлэг/);
+  });
+
+  /** The school year survives, because it is what actually tells two candidate
+   *  groups apart — a promotion targets next year\'s. */
+  it("keeps a band that differs from the name", async () => {
+    stubTwoGroups({ name: "Нар", ageBand: "SENIOR" });
+    const u = userEvent.setup();
+    renderWithProviders(<AdminGroupsPage />);
+
+    await u.click((await screen.findAllByRole("button", { name: "Дэвшүүлэх" }))[0]!);
+    await u.click(await screen.findByLabelText(/Хүлээн авах бүлэг/));
+
+    expect(await screen.findByRole("option", { name: /Нар/ })).toHaveTextContent(
+      "Нар · 2027-2028 · Бэлтгэл бүлэг",
+    );
+  });
+
+  /** The source group must not be offered as its own target — the API returns
+   *  400 for it, and the list it is drawn from contains it. */
+  it("does not offer the group itself as the target", async () => {
+    stubTwoGroups();
+    const u = userEvent.setup();
+    renderWithProviders(<AdminGroupsPage />);
+
+    await u.click((await screen.findAllByRole("button", { name: "Дэвшүүлэх" }))[0]!);
+    await u.click(await screen.findByLabelText(/Хүлээн авах бүлэг/));
+
+    expect(await screen.findByRole("option", { name: /Бэлтгэл бүлэг/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Дунд бүлэг/ })).toBeNull();
+  });
+});
+
 describe("бүлэг засах", () => {
   it("renders an edit action per group", async () => {
     stubGroups();

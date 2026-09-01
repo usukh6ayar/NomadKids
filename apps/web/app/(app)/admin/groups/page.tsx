@@ -23,6 +23,7 @@ import { z } from "zod";
 import {
   adminUserSchema,
   groupListItemSchema,
+  uuidSchema,
   groupWithTeachersSchema,
   paginated,
   schoolYearSchema,
@@ -308,6 +309,7 @@ function GroupRow({ group }: { group: z.infer<typeof groupListItemSchema> }) {
               Багш
             </Button>
 
+            <PromoteGroupButton group={group} enrolled={children} />
             <EditGroupButton group={group} />
             <ArchiveToggleButton group={group} />
             <DeleteGroupButton group={group} enrolled={children} />
@@ -447,6 +449,225 @@ function GroupsOverview({ groups }: { groups: z.infer<typeof groupListItemSchema
  *
  * No confirmation: an edit with an explicit "Хадгалах" is already deliberate.
  */
+/**
+ * A target group, named for the dropdown.
+ *
+ * ★ The age band is dropped when it only repeats the name.
+ *
+ * A kindergarten may name a group after its band — the demo data does — so
+ * "Ахлах бүлэг · 2026-2027 · Ахлах бүлэг" is what the obvious version renders,
+ * and it reads as a rendering fault rather than as information. `GroupRow`
+ * already meets this and solves it by writing the repetition quietly; a
+ * dropdown has no second weight to fall back on, so here it is dropped.
+ *
+ * The school year always stays. It is the field that actually distinguishes
+ * one candidate from another, because a promotion targets next year's group.
+ */
+function optionLabel(g: z.infer<typeof groupListItemSchema>): string {
+  const band = g.ageBand ? (BAND_LABEL[g.ageBand] ?? g.ageBand) : null;
+  return [g.name, g.schoolYear?.name, band === g.name ? null : band].filter(Boolean).join(" · ");
+}
+
+const promotionResultSchema = z.object({
+  outcome: z.enum(["PROMOTED", "REPEATED"]),
+  movedCount: z.number(),
+  groupId: uuidSchema,
+});
+
+/**
+ * Moving a whole group into next year's group — Order А/261, Annex 2 §1 item 9.
+ *
+ * ★ The endpoint shipped a day before this screen did, and that was deliberate
+ * rather than an oversight: `POST /groups/:id/promotions` was tested and left
+ * unlinked, the way the configuration tables were before `/admin/assessment-config`
+ * existed. This is the screen that makes it reachable.
+ *
+ * ★★ The outcome is previewed here and decided on the server.
+ *
+ * Whether a move counts as дэвших or давтан суралцах follows from the two age
+ * bands, and the service derives it — a client that sent its own answer would
+ * be a second source of the same fact. The preview below computes the same
+ * comparison purely so the director can see what they are about to record;
+ * nothing is sent, and if the two ever disagreed the server's word is what
+ * lands in the register.
+ */
+function PromoteGroupButton({
+  group,
+  enrolled,
+}: {
+  group: z.infer<typeof groupListItemSchema>;
+  enrolled: number;
+}) {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [toGroupId, setToGroupId] = useState("");
+
+  // Already in the cache — this is the list the row was rendered from.
+  const groups = useQuery({
+    queryKey: qk.adminGroups(),
+    queryFn: () => get("/groups?pageSize=100", groupsSchema),
+    enabled: open,
+  });
+
+  /*
+    Every other group, newest school year first. A promotion nearly always
+    targets next year, and a director with four years of history should not
+    have to scroll past 2023 to find it.
+  */
+  const targets = (groups.data?.items ?? [])
+    .filter((g) => g.id !== group.id && g.status !== "ARCHIVED")
+    .sort((x, y) => (y.schoolYear?.name ?? "").localeCompare(x.schoolYear?.name ?? ""));
+
+  const target = targets.find((g) => g.id === toGroupId);
+  const outcome = target && target.ageBand === group.ageBand ? "REPEATED" : "PROMOTED";
+
+  const promote = useMutation({
+    mutationFn: () =>
+      mutate(`/groups/${group.id}/promotions`, promotionResultSchema, {
+        method: "POST",
+        body: { toGroupId },
+      }),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: qk.adminGroups() });
+      void queryClient.invalidateQueries({ queryKey: ["children"] });
+      toast.success(
+        result.outcome === "REPEATED"
+          ? `${result.movedCount} хүүхэд давтан суралцахаар бүртгэгдлээ.`
+          : `${result.movedCount} хүүхэд дэвшлээ.`,
+      );
+      setOpen(false);
+    },
+  });
+
+  const errors = fieldErrors(promote.error);
+
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={enrolled === 0}
+        /* A group with nobody in it has nobody to promote, and the API says so
+           with a 400. Refusing here means the director never meets it. */
+        title={enrolled === 0 ? "Энэ бүлэгт хүүхэд бүртгэлгүй байна" : undefined}
+        onClick={() => {
+          setToGroupId("");
+          promote.reset();
+          setOpen(true);
+        }}
+      >
+        <TrendingUp size={16} aria-hidden="true" />
+        Дэвшүүлэх
+      </Button>
+
+      <FormDialog
+        open={open}
+        onOpenChange={setOpen}
+        busy={promote.isPending}
+        title="Бүлгээр дэвшүүлэх"
+        description={`${group.name} — ${enrolled} хүүхэд`}
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={promote.isPending}
+              onClick={() => setOpen(false)}
+            >
+              Болих
+            </Button>
+            <Button
+              type="submit"
+              form="promote-group-form"
+              size="sm"
+              disabled={!toGroupId || promote.isPending}
+            >
+              {promote.isPending ? "Дэвшүүлж байна…" : "Дэвшүүлэх"}
+            </Button>
+          </>
+        }
+      >
+        <form
+          id="promote-group-form"
+          className="flex flex-col gap-4"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (toGroupId && !promote.isPending) promote.mutate();
+          }}
+        >
+          <FormError
+            message={
+              promote.isError && Object.keys(errors).length === 0
+                ? errorMessage(promote.error)
+                : null
+            }
+          />
+
+          <Field label="Хүлээн авах бүлэг" error={errors.toGroupId} required>
+            {({ id, describedBy }) => (
+              <Select
+                id={id}
+                aria-describedby={describedBy}
+                value={toGroupId}
+                onChange={(e) => setToGroupId(e.target.value)}
+              >
+                <option value="">— Сонгоно уу —</option>
+                {targets.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {optionLabel(g)}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+
+          {/*
+            ★ What is about to be written, in words, before it is written.
+
+            The two outcomes are recorded differently and read differently in a
+            child's archive afterwards, and the difference is decided by a field
+            the director is not looking at — the age band of the group they just
+            picked from a dropdown. Saying it out loud is what stops a whole
+            group being filed as "давтан суралцсан" because the target group
+            happened to carry the same band.
+          */}
+          {target ? (
+            <p className="rounded-control bg-canvas px-3 py-2 text-body text-muted">
+              {/*
+                ★ The two names are quoted and joined by an arrow rather than
+                declined.
+
+                Written as "X бүлгээс Y бүлэгт" it reads "Дунд бүлэг бүлгээс
+                Ахлах бүлэг бүлэгт" — most groups are named "… бүлэг", so the
+                word lands twice. Declining the name instead ("«Дунд бүлэг»-т")
+                trades that for vowel harmony the code cannot get right: the
+                suffix depends on the group's own name, which the kindergarten
+                types. Quoting both and pointing an arrow between them is
+                correct for every name anyone can enter.
+              */}
+              <span className="text-ink">«{group.name}»</span> →{" "}
+              <span className="text-ink">«{target.name}»</span>. {enrolled} хүүхэд шилжинэ.{" "}
+              {outcome === "REPEATED" ? (
+                <>
+                  Насны бүлэг ижил тул <span className="text-ink">давтан суралцсан</span> гэж
+                  бүртгэгдэнэ.
+                </>
+              ) : (
+                <>
+                  Насны бүлэг өөр тул <span className="text-ink">дэвшсэн</span> гэж бүртгэгдэнэ.
+                </>
+              )}
+            </p>
+          ) : null}
+        </form>
+      </FormDialog>
+    </>
+  );
+}
+
 function EditGroupButton({ group }: { group: z.infer<typeof groupListItemSchema> }) {
   const queryClient = useQueryClient();
   const toast = useToast();
