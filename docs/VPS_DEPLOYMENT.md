@@ -174,6 +174,19 @@ docker compose -f docker-compose.prod.yml logs -f
 ★ `--env-file` бичихгүй байгаа нь §3.3-ын симлинк байгаа гэсэн үг. `docker
 compose config --quiet` нь анхааруулгагүй байвал зөв.
 
+★★★ **Урт build-ыг SSH-ээс салгаж ажиллуулна:**
+
+```bash
+setsid nohup docker compose -f docker-compose.prod.yml up -d --build \
+  </dev/null > /tmp/deploy.log 2>&1 & disown
+```
+
+`api` image нь Chromium-той тул 20 минут ба түүнээс дээш хугацаа авдаг. Энгийн
+`ssh … "docker compose up --build"` нь сүлжээ хормын төдий доголдоход
+**таслагдана** — 2026-09-02-нд гурван удаа тэгсэн, тал дундаа зогссон build нь
+хуучин контейнерийг ажиллуулсаар үлдэж, `git log` шинэ commit харуулж байхад
+route нь 404 буцааж байсан. Явцыг `tail -f /tmp/deploy.log`-оор хардаг.
+
 ★★ **`.env.production`-ыг өөрчилсний дараа `--force-recreate` заавал:**
 
 ```bash
