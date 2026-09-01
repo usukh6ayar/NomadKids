@@ -18,6 +18,23 @@ const CHILD_ID = "11111111-1111-4111-8111-111111111111";
 
 const CHILD_PAGE = <p>Хүүхдийн хуудас</p>;
 
+/**
+ * ★ Must satisfy `childDetailSchema`, not merely look like a child.
+ *
+ * These tests passed with `{ id, firstName, lastName, status }` only because
+ * the layout used to render the page regardless of its own query. Once it
+ * started waiting, that body failed Zod, the query retried with backoff, and
+ * three tests timed out — the fixture had been wrong all along and nothing
+ * could see it.
+ */
+const CHILD = {
+  id: CHILD_ID,
+  lastName: "Дорж",
+  firstName: "Болд",
+  dateOfBirth: "2021-04-12",
+  enrollments: [],
+};
+
 function renderLayout() {
   return renderWithProviders(<ChildLayout>{CHILD_PAGE}</ChildLayout>);
 }
@@ -32,6 +49,42 @@ const problem = (status: number, detail: string) => ({
 
 beforeEach(() => {
   setParams({ childId: CHILD_ID });
+});
+
+describe("what the layout does before it knows", () => {
+  /**
+   * ★ The defect a browser found and these tests had not.
+   *
+   * The layout used to render `children` while its own query was in flight,
+   * on the reasoning that any page under it fetches the child anyway. It does
+   * — and it also fetches everything else it needs. A guardian's first visit
+   * to a paywalled child produced four requests for the child and three for
+   * their surveys, every one a 402, and a flash of the generic error state
+   * before the gate replaced it.
+   *
+   * Rendering one page in a test cannot see a second page's requests, which is
+   * why this is asserted on the layout's own output instead.
+   */
+  it("renders nothing of the page until the gate has an answer", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["PARENT"]) },
+      {
+        path: `/children/${CHILD_ID}`,
+        method: "GET",
+        body: CHILD,
+      },
+    ]);
+
+    renderLayout();
+
+    // Synchronously after render, before any await: `fetch` is a promise, so
+    // the query is necessarily still pending here. The page must not be
+    // mounted yet, or it starts its own requests against a child nobody has
+    // been cleared to see.
+    expect(screen.queryByText("Хүүхдийн хуудас")).not.toBeInTheDocument();
+
+    expect(await screen.findByText("Хүүхдийн хуудас")).toBeInTheDocument();
+  });
 });
 
 describe("what the layout intercepts", () => {
@@ -89,12 +142,7 @@ describe("what the layout intercepts", () => {
       {
         path: `/children/${CHILD_ID}`,
         method: "GET",
-        body: {
-          id: CHILD_ID,
-          firstName: "Болд",
-          lastName: "Дорж",
-          status: "ACTIVE",
-        },
+        body: CHILD,
       },
     ]);
 
@@ -112,7 +160,7 @@ describe("what the layout intercepts", () => {
       {
         path: `/children/${CHILD_ID}`,
         method: "GET",
-        body: { id: CHILD_ID, firstName: "Болд", lastName: "Дорж", status: "ACTIVE" },
+        body: CHILD,
       },
     ]);
 

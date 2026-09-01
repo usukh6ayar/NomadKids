@@ -7,6 +7,7 @@ import { childDetailSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { isPaymentRequired } from "@/lib/api/errors";
+import { LoadingState } from "@/components/ui/states";
 import { AccessGate } from "@/components/child/access-gate";
 
 /**
@@ -35,14 +36,58 @@ export default function ChildLayout({ children }: { children: ReactNode }) {
   const child = useQuery({
     queryKey: qk.child(childId),
     queryFn: () => get(`/children/${childId}`, childDetailSchema),
-    // A paywall is not a transient failure — retrying it just delays the
-    // screen that takes the payment.
-    retry: (_count, error) => !isPaymentRequired(error),
+    /*
+     * ★ No `retry` override here on purpose.
+     *
+     * There was one — `(_, error) => !isPaymentRequired(error)` — written to
+     * stop a paywall being retried. It did that and broke everything else:
+     * `providers.tsx` already declines to retry 401/402/403/404 and caps the
+     * rest at two, and this replaced that whole policy with "retry anything
+     * that is not a 402, for ever". A 404 then never settled, `isError` never
+     * became true, and the layout sat on its loading skeleton indefinitely.
+     *
+     * The global rule is the right rule. 402 was added to it in the same
+     * change that found this.
+     */
   });
 
-  if (child.isError && isPaymentRequired(child.error)) {
-    return <AccessGate childId={childId} />;
+  /*
+   * ★ Nothing renders until the gate has an answer.
+   *
+   * The first version returned `children` while this query was still in
+   * flight, on the reasoning that a page which needs the child would fetch it
+   * anyway. It does — but it also fetches everything else. A guardian's first
+   * visit to a paywalled child produced four requests for the child and three
+   * for their surveys, every one a 402, and a flash of "Алдаа гарлаа" before
+   * the gate replaced it. Observed in a browser on 2026-09-01; no test caught
+   * it, because a test that renders one page cannot see a second page's
+   * requests.
+   *
+   * Waiting costs nothing: every screen under this route fetches the child
+   * under this exact key, so this is the request they were already blocked on,
+   * not an extra one.
+   */
+  /*
+   * ★★ Error branch FIRST, and the order is not cosmetic.
+   *
+   * `isLoading` is `isPending && isFetching` in TanStack Query v5, and a query
+   * that has failed and stopped retrying can still report `isPending` — so a
+   * loading check placed above the error branch swallowed the 404 and left the
+   * skeleton on screen for ever. Caught by the "lets a 404 through" test the
+   * moment this layout started waiting at all.
+   */
+  if (child.isError) {
+    if (isPaymentRequired(child.error)) return <AccessGate childId={childId} />;
+    /*
+     * ★ Everything else falls through to the page. A 404 has nothing
+     * actionable to offer, and only the page knows whether "no such child"
+     * reads as an empty portfolio or a missing record — intercepting it here
+     * would take that judgement away from fifteen screens at once.
+     */
+    return <>{children}</>;
   }
+
+  if (child.isPending) return <LoadingState rows={3} />;
 
   return <>{children}</>;
 }

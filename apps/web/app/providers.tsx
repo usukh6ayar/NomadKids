@@ -84,8 +84,15 @@ export function Providers({ children }: { children: ReactNode }) {
           retry: (failureCount, error) => {
             // Never retry an authorization failure. Retrying a 404 that means
             // "you may not see this" just makes three identical audit entries.
+            //
+            // ★ 402 belongs on this list for a sharper reason than the others:
+            // it is not a failure at all, it is an answer. The portal access
+            // fee is unpaid and will still be unpaid on the third attempt.
+            // It was missing until 2026-09-01, when a guardian's first visit
+            // to a paywalled child produced four requests for the child and
+            // three for their surveys, all 402, all identical.
             const status = (error as { status?: number }).status;
-            if (status === 401 || status === 403 || status === 404) return false;
+            if (status === 401 || status === 402 || status === 403 || status === 404) return false;
             return failureCount < 2;
           },
         },
