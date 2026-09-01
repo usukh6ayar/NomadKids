@@ -8,6 +8,7 @@ import type { Actor } from "../authz/actor";
 import { paginate } from "../common/pagination";
 import { isFutureDate, isValidRange } from "./attendance-rules";
 import { AttendanceRepository } from "./attendance.repository";
+import { buildJournalWorkbook } from "./journal-workbook";
 import type { AttendanceRegisterQuery } from "./attendance.dto";
 import type {
   CreateAttendanceRequestDto,
@@ -49,6 +50,54 @@ export class AttendanceService {
    * all their days, and the days are bounded by the query schema instead.
    */
   async register(actor: Actor, kindergartenId: string, query: AttendanceRegisterQuery) {
+    const built = await this.buildRegister(actor, kindergartenId, query);
+    const { page, pageSize } = query;
+    const start = (page - 1) * pageSize;
+
+    return {
+      ...paginate(built.rows.slice(start, start + pageSize), built.rows.length, query),
+      from: query.from,
+      to: query.to,
+      days: built.days,
+      totals: built.totals,
+    };
+  }
+
+  /**
+   * The same register as a spreadsheet — every row, not the page on screen.
+   *
+   * ★ A file is what somebody attaches to a claim or opens beside a bank
+   * statement, and one that stopped at row twenty-five because that is where
+   * the screen stopped would be worse than no file — the reasoning
+   * `FundingService.exportRegister` records for its own export. It takes the
+   * same filters, so what is downloaded is what was being looked at.
+   */
+  async exportRegister(actor: Actor, kindergartenId: string, query: AttendanceRegisterQuery) {
+    const built = await this.buildRegister(actor, kindergartenId, query);
+    const kindergarten = await this.authz.loadKindergartenNames(actor);
+
+    const buffer = await buildJournalWorkbook({
+      kindergartenName: kindergarten[kindergartenId] ?? "",
+      from: query.from,
+      to: query.to,
+      days: built.days,
+      rows: built.rows,
+      totals: built.totals,
+    });
+
+    return { buffer, filename: `irts-${query.from}-${query.to}.xlsx` };
+  }
+
+  /**
+   * The grid itself, shared by the screen and the file so they cannot answer
+   * differently — the same "one expression, two callers" the children
+   * repository records for its own roster filter.
+   */
+  private async buildRegister(
+    actor: Actor,
+    kindergartenId: string,
+    query: AttendanceRegisterQuery,
+  ) {
     this.tenants.assertCanReadFinance(actor, kindergartenId);
 
     const from = toUtcDate(query.from);
@@ -102,15 +151,10 @@ export class AttendanceService {
       };
     });
 
-    const { page, pageSize } = query;
-    const start = (page - 1) * pageSize;
-
     return {
-      ...paginate(rows.slice(start, start + pageSize), rows.length, query),
-      from: query.from,
-      to: query.to,
+      rows,
       days,
-      /** Across every matching child, not just the page — a total that changed with the page would be useless. */
+      /** Across every matching child, never just a page — a total that moved with the page would mislead. */
       totals: rows.reduce<Record<string, number>>((acc, row) => {
         for (const [status, count] of Object.entries(row.counts)) {
           acc[status] = (acc[status] ?? 0) + count;

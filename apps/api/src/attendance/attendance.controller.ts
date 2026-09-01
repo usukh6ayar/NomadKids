@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, Query } from "@nestjs/common";
+import type { Response } from "express";
+import { Body, Controller, Get, Param, Patch, Post, Put, Query, Res } from "@nestjs/common";
 import { idParamSchema, paginationQuerySchema } from "@kinder/contracts";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
@@ -149,6 +150,30 @@ export class KindergartenAttendanceController {
     @Query(new ZodValidationPipe(attendanceRegisterQuerySchema)) query: AttendanceRegisterQuery,
   ) {
     return this.service.register(actor, params.id, query);
+  }
+
+  /**
+   * The same register as a spreadsheet — нэмэлт.md §16's "Excel экспорт".
+   *
+   * ★ Inline, not a queued job. ExcelJS over a quarter's grid is fast and
+   * light; only the PDF path needs Chromium and a queue (CLAUDE.md §6).
+   */
+  @Get("register/export")
+  @Roles("ADMIN", "ACCOUNTANT")
+  async exportRegister(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(attendanceRegisterQuerySchema)) query: AttendanceRegisterQuery,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.service.exportRegister(actor, params.id, query);
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(buffer);
   }
 }
 

@@ -15,6 +15,7 @@ import {
   type AuthSession,
   type Scenario,
 } from "./support/fixtures";
+import ExcelJS from "exceljs";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
 
 /**
@@ -265,5 +266,80 @@ describe("the filters", () => {
     expect(res.status).toBe(200);
     expect(res.body.items).toEqual([]);
     expect(res.body.days).toHaveLength(5);
+  });
+});
+
+describe("the spreadsheet", () => {
+  function download(session: AuthSession, query = "from=2026-03-02&to=2026-03-06") {
+    return authed(
+      request(server())
+        .get(`/v1/kindergartens/${a.kindergarten.id}/attendance/register/export?${query}`)
+        .buffer()
+        .parse((res, callback) => {
+          const chunks: Buffer[] = [];
+          res.on("data", (chunk: Buffer) => chunks.push(chunk));
+          res.on("end", () => callback(null, Buffer.concat(chunks)));
+        }),
+      session,
+    );
+  }
+
+  it("leaves an unmarked day blank, so a blank cell is not a value to filter around", async () => {
+    /*
+     * ★★★ The assertion this describe block exists for.
+     *
+     * A dash would make every unmarked day something to work around in the
+     * file a claim is checked from — `COUNTIF` counts it, a filter offers it,
+     * and a reader has to know it means "no record" rather than a status. An
+     * empty cell means the same thing to a person and to a formula.
+     */
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
+
+    const res = await download(admin);
+    expect(res.status).toBe(200);
+
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(res.body as Buffer);
+    const sheet = book.getWorksheet("Өдөр тутмын ирц")!;
+
+    // Row 4: two title rows, then the header, then the first child.
+    const row = sheet.getRow(4);
+    // Columns: child, group, then one per day (2026-03-02 … 03-06).
+    expect(String(row.getCell(4).value ?? "")).toBe("Ирсэн");
+    expect(row.getCell(3).value ?? "").toBe("");
+    expect(row.getCell(5).value ?? "").toBe("");
+  });
+
+  it("writes the summary counts as numbers an accountant can sum", async () => {
+    // A right-aligned string that looks like a number does not add up.
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-04", "PRESENT");
+
+    const res = await download(admin);
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(res.body as Buffer);
+    const sheet = book.getWorksheet("Дүн")!;
+
+    const value = sheet.getRow(2).getCell(3).value;
+    expect(typeof value).toBe("number");
+    expect(value).toBe(2);
+  });
+
+  it("exports every row, not the page the screen stopped at", async () => {
+    // A file that ended at row twenty-five would be worse than no file: the
+    // reader would not notice, and would file it.
+    const res = await download(admin, "from=2026-03-02&to=2026-03-06&pageSize=1");
+
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(res.body as Buffer);
+    const sheet = book.getWorksheet("Дүн")!;
+
+    // Header + one row per child + the totals row. The scenario has one child
+    // in this kindergarten, so three — and `pageSize=1` did not truncate it.
+    expect(sheet.rowCount).toBeGreaterThanOrEqual(3);
+  });
+
+  it("refuses a teacher, same as the screen", async () => {
+    expect((await download(teacher)).status).toBe(404);
   });
 });

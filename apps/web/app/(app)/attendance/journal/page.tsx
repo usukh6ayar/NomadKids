@@ -15,6 +15,9 @@ import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
+import { Download } from "lucide-react";
+import { downloadUrl } from "@/lib/api/client";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/field";
 import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
@@ -97,13 +100,16 @@ function AttendanceJournal() {
     [from, to, groupId, statuses, search, page],
   );
 
+  const queryString = useMemo(
+    () => new URLSearchParams(Object.entries(filters).map(([k, v]) => [k, String(v)])).toString(),
+    [filters],
+  );
+
   const journal = useQuery({
     queryKey: qk.attendanceJournal(primaryKindergartenId ?? "", filters),
     queryFn: () =>
       get(
-        `/kindergartens/${primaryKindergartenId}/attendance/register?${new URLSearchParams(
-          Object.entries(filters).map(([k, v]) => [k, String(v)]),
-        ).toString()}`,
+        `/kindergartens/${primaryKindergartenId}/attendance/register?${queryString}`,
         attendanceJournalSchema,
       ),
     enabled: Boolean(primaryKindergartenId),
@@ -203,7 +209,8 @@ function AttendanceJournal() {
           </Field>
         </div>
 
-        <FilterChipRow label="Ирцийн төлөв" scroll>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <FilterChipRow label="Ирцийн төлөв" scroll>
           {STATUS_ORDER.map((status) => (
             <FilterChip
               key={status}
@@ -213,7 +220,28 @@ function AttendanceJournal() {
               {ATTENDANCE_STATUS_LABEL[status] ?? status}
             </FilterChip>
           ))}
-        </FilterChipRow>
+          </FilterChipRow>
+
+          {/*
+            ★ A link, not a fetch. The browser downloads it with the session
+            cookie it already has; fetching would buffer a spreadsheet in
+            memory only to hand it straight back — the reasoning
+            `/admin/funding` records for its own export. `disabled` does
+            nothing to an anchor, so the control is absent until there is a
+            kindergarten to point it at rather than present and inert.
+          */}
+          {primaryKindergartenId ? (
+            <Button size="sm" variant="secondary" asChild>
+              <a
+                href={downloadUrl(
+                  `/kindergartens/${primaryKindergartenId}/attendance/register/export?${queryString}`,
+                )}
+              >
+                <Download size={16} aria-hidden /> Excel татах
+              </a>
+            </Button>
+          ) : null}
+        </div>
       </Card>
 
       {journal.isError ? (

@@ -122,6 +122,22 @@ describe("the filters", () => {
     ).toBe(true);
   });
 
+  it("offers the Excel download as a link carrying the current filters", async () => {
+    // ★ A link, not a button that fetches: the browser downloads it with the
+    // session cookie it already has. The filters have to be on the href, or
+    // the file is not what was on screen.
+    const user = userEvent.setup();
+    stub();
+    renderWithProviders(<AttendanceJournalPage />);
+    await screen.findByText(/Дорж/);
+
+    await user.click(screen.getByRole("button", { name: "Өвчтэй" }));
+
+    const link = screen.getByRole("link", { name: /Excel татах/ });
+    expect(link.getAttribute("href")).toContain("attendance/register/export");
+    expect(link.getAttribute("href")).toContain("status=SICK");
+  });
+
   it("offers all six statuses — OTHER included", async () => {
     // The column holds six and the recording path accepts six as of
     // 2026-09-02; a filter row short of one would hide rows without saying so.
