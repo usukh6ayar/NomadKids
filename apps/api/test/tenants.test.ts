@@ -659,6 +659,332 @@ describe("PATCH /groups/:id", () => {
   });
 });
 
+/**
+ * Programme and hours — Order А/261, Annex 2 §1 items 5, 6, 13, 14 and 16.
+ *
+ * All five are marked "Зайлшгүй шаардлагатай", so they are pass/fail at a
+ * ministry inspection rather than nice to have. The schema could not express
+ * any of them before migration `20260901120000`: every group was implicitly the
+ * main programme on standard hours, and a kindergarten running a ger group or
+ * an extended-hours group had nowhere to say so.
+ */
+describe("group programme and hours", () => {
+  it("defaults to the main programme on standard hours", async () => {
+    // The ordinary group, created by a form that does not mention either field.
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/groups`),
+      adminA,
+    ).send({ schoolYearId: a.schoolYear.id, name: "Энгийн бүлэг", ageBand: "JUNIOR" });
+
+    expect(res.status).toBe(201);
+    const row = await db.group.findUniqueOrThrow({ where: { id: res.body.id } });
+    expect(row.programKind).toBe("MAIN");
+    expect(row.attendanceForm).toBe("STANDARD");
+  });
+
+  it("records an alternative-programme group on extended hours", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/groups`),
+      adminA,
+    ).send({
+      schoolYearId: a.schoolYear.id,
+      name: "Гэр бүлэг",
+      ageBand: "MIDDLE",
+      programKind: "ALTERNATIVE",
+      attendanceForm: "EXTENDED",
+    });
+
+    expect(res.status).toBe(201);
+    const row = await db.group.findUniqueOrThrow({ where: { id: res.body.id } });
+    expect(row.programKind).toBe("ALTERNATIVE");
+    expect(row.attendanceForm).toBe("EXTENDED");
+  });
+
+  it("rejects a programme it does not define", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/groups`),
+      adminA,
+    ).send({
+      schoolYearId: a.schoolYear.id,
+      name: "Буруу",
+      ageBand: "JUNIOR",
+      programKind: "SOMETHING_ELSE",
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects an attendance form it does not define", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/groups`),
+      adminA,
+    ).send({
+      schoolYearId: a.schoolYear.id,
+      name: "Буруу",
+      ageBand: "JUNIOR",
+      attendanceForm: "ALL_NIGHT",
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("moves an existing group onto shortened hours", async () => {
+    const res = await authed(request(server()).patch(`/v1/groups/${a.group.id}`), adminA).send({
+      attendanceForm: "SHORTENED",
+    });
+
+    expect(res.status).toBe(200);
+    const row = await db.group.findUniqueOrThrow({ where: { id: a.group.id } });
+    expect(row.attendanceForm).toBe("SHORTENED");
+    // The programme is a separate decision and must not move with it.
+    expect(row.programKind).toBe("MAIN");
+  });
+
+  /**
+   * ★ The trap `updateGroupSchema` is written to avoid.
+   *
+   * `createGroupSchema` gives both fields `.default(...)`; the update schema
+   * deliberately does not. Were the default copied across, Zod would fill in
+   * "MAIN" for a body that never mentioned the programme, and renaming a ger
+   * group would quietly convert it to the main programme — the same fault
+   * `updateSchoolYearSchema` documents for `isCurrent`.
+   */
+  it("a rename leaves the programme and the hours alone", async () => {
+    await db.group.update({
+      where: { id: a.group.id },
+      data: { programKind: "ALTERNATIVE", attendanceForm: "EXTENDED" },
+    });
+
+    const res = await authed(request(server()).patch(`/v1/groups/${a.group.id}`), adminA).send({
+      name: "Зөвхөн нэр солив",
+    });
+
+    expect(res.status).toBe(200);
+    const row = await db.group.findUniqueOrThrow({ where: { id: a.group.id } });
+    expect(row.name).toBe("Зөвхөн нэр солив");
+    expect(row.programKind).toBe("ALTERNATIVE");
+    expect(row.attendanceForm).toBe("EXTENDED");
+  });
+
+  it("lists the alternative-programme groups on their own — item 6", async () => {
+    const alternative = await createGroup(a.kindergarten.id, a.schoolYear.id, "Хувилбарт бүлэг");
+    await db.group.update({
+      where: { id: alternative.id },
+      data: { programKind: "ALTERNATIVE" },
+    });
+
+    const res = await authed(request(server()).get("/v1/groups?programKind=ALTERNATIVE"), adminA);
+
+    expect(res.status).toBe(200);
+    expect(res.body.items.map((g: { id: string }) => g.id)).toEqual([alternative.id]);
+  });
+
+  /**
+   * The filter is a filter, never a grant — the same rule the kindergarten and
+   * school-year filters on this endpoint are held to.
+   */
+  it("the programme filter does not reach another kindergarten's groups", async () => {
+    const theirs = await createGroup(b.kindergarten.id, b.schoolYear.id, "Тэдний хувилбарт");
+    await db.group.update({ where: { id: theirs.id }, data: { programKind: "ALTERNATIVE" } });
+
+    const res = await authed(request(server()).get("/v1/groups?programKind=ALTERNATIVE"), adminA);
+
+    expect(res.status).toBe(200);
+    expect(res.body.items.map((g: { id: string }) => g.id)).not.toContain(theirs.id);
+  });
+
+  it("refuses a teacher setting the programme on a group they teach", async () => {
+    const res = await authed(request(server()).patch(`/v1/groups/${a.group.id}`), teacherA).send({
+      programKind: "ALTERNATIVE",
+    });
+
+    expect(res.status).toBe(404);
+  });
+});
+
+/**
+ * `POST /groups/:id/promotions` — Order А/261, Annex 2 §1 item 9, mandatory:
+ * "Суралцагчийн анги дэвших болон давтан суралцах үйл ажиллагааг бүртгэх".
+ *
+ * There was no way to express either before this. A director moved children up
+ * a year by opening each child's edit screen and transferring them one at a
+ * time, which recorded every one of them as TRANSFERRED — the same word the
+ * register uses for a child who changed group in March. The end of a school
+ * year and a mid-year move looked identical in the archive.
+ */
+describe("POST /groups/:id/promotions", () => {
+  /**
+   * A group in next year's school year.
+   *
+   * ★ The band matters and is named at every call site. `createScenario`\'s
+   * group is MIDDLE (see `support/fixtures.ts`), so SENIOR is a promotion and
+   * MIDDLE is a repeat — and the outcome is derived from exactly that
+   * comparison, so a test that guesses the fixture\'s band tests nothing.
+   */
+  async function nextYearGroup(ageBand: "SENIOR" | "MIDDLE" = "SENIOR") {
+    const year = await createSchoolYear(a.kindergarten.id, false);
+    const group = await createGroup(a.kindergarten.id, year.id, `Бүлэг ${uniq()}`);
+    await db.group.update({ where: { id: group.id }, data: { ageBand } });
+    return group;
+  }
+
+  it("moves the whole group up and records it as a promotion", async () => {
+    const target = await nextYearGroup("SENIOR");
+
+    const res = await authed(
+      request(server()).post(`/v1/groups/${a.group.id}/promotions`),
+      adminA,
+    ).send({ toGroupId: target.id });
+
+    expect(res.status).toBe(201);
+    expect(res.body.outcome).toBe("PROMOTED");
+    expect(res.body.movedCount).toBe(1);
+
+    const rows = await db.enrollment.findMany({
+      where: { childId: a.child.id, deletedAt: null },
+      orderBy: { startedOn: "asc" },
+    });
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.status).toBe("PROMOTED");
+    expect(rows[0]!.endedOn).not.toBeNull();
+    expect(rows[1]!.status).toBe("ACTIVE");
+    expect(rows[1]!.groupId).toBe(target.id);
+  });
+
+  /**
+   * ★ The distinction the order asks for, and it is derived rather than sent.
+   *
+   * Same age band means the child stayed where they were for another year.
+   * Nothing in the request says so — the two groups do.
+   */
+  it("records a move into the same age band as repeating the year", async () => {
+    const target = await nextYearGroup("MIDDLE");
+
+    const res = await authed(
+      request(server()).post(`/v1/groups/${a.group.id}/promotions`),
+      adminA,
+    ).send({ toGroupId: target.id });
+
+    expect(res.status).toBe(201);
+    expect(res.body.outcome).toBe("REPEATED");
+
+    const ended = await db.enrollment.findUniqueOrThrow({ where: { id: a.enrollment.id } });
+    expect(ended.status).toBe("REPEATED");
+  });
+
+  it("moves only the children named, leaving the rest where they are", async () => {
+    const staying = await createChild(a.kindergarten.id, { firstName: "Үлдэх" });
+    await enrollChild(a.kindergarten.id, staying.id, a.group.id, a.schoolYear.id);
+    const target = await nextYearGroup();
+
+    const res = await authed(
+      request(server()).post(`/v1/groups/${a.group.id}/promotions`),
+      adminA,
+    ).send({ toGroupId: target.id, childIds: [a.child.id] });
+
+    expect(res.status).toBe(201);
+    expect(res.body.movedCount).toBe(1);
+
+    const left = await db.enrollment.findFirstOrThrow({
+      where: { childId: staying.id, status: "ACTIVE", deletedAt: null },
+    });
+    expect(left.groupId).toBe(a.group.id);
+  });
+
+  it("leaves every child holding exactly one active enrolment", async () => {
+    const target = await nextYearGroup();
+    await authed(request(server()).post(`/v1/groups/${a.group.id}/promotions`), adminA).send({
+      toGroupId: target.id,
+    });
+
+    const active = await db.enrollment.findMany({
+      where: { childId: a.child.id, status: "ACTIVE", deletedAt: null },
+    });
+    expect(active).toHaveLength(1);
+  });
+
+  it("writes one audit row per child, not one for the batch", async () => {
+    const target = await nextYearGroup();
+    await authed(request(server()).post(`/v1/groups/${a.group.id}/promotions`), adminA).send({
+      toGroupId: target.id,
+    });
+
+    const rows = await db.auditLog.findMany({
+      where: { objectType: "Enrollment", childId: a.child.id },
+    });
+    expect(rows.length).toBeGreaterThanOrEqual(1);
+    expect(rows.some((r) => (r.metadata as { change?: string })?.change === "promoted")).toBe(true);
+  });
+
+  it("refuses promoting a group into itself", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/groups/${a.group.id}/promotions`),
+      adminA,
+    ).send({ toGroupId: a.group.id });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("refuses a target group in another kindergarten", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/groups/${a.group.id}/promotions`),
+      adminA,
+    ).send({ toGroupId: b.group.id });
+
+    expect(res.status).toBe(400);
+
+    // And nothing moved.
+    const row = await db.enrollment.findUniqueOrThrow({ where: { id: a.enrollment.id } });
+    expect(row.status).toBe("ACTIVE");
+  });
+
+  it("refuses an empty group with a message rather than a silent success", async () => {
+    const empty = await createGroup(a.kindergarten.id, a.schoolYear.id, "Хоосон");
+    const target = await nextYearGroup();
+
+    const res = await authed(
+      request(server()).post(`/v1/groups/${empty.id}/promotions`),
+      adminA,
+    ).send({ toGroupId: target.id });
+
+    expect(res.status).toBe(400);
+  });
+
+  // ── CLAUDE.md §4.1 — the three that are mandatory for any child data ──────
+
+  it("a teacher of the group gets 404", async () => {
+    const target = await nextYearGroup();
+    const res = await authed(
+      request(server()).post(`/v1/groups/${a.group.id}/promotions`),
+      teacherA,
+    ).send({ toGroupId: target.id });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("a guardian of the child gets 404", async () => {
+    const target = await nextYearGroup();
+    const res = await authed(
+      request(server()).post(`/v1/groups/${a.group.id}/promotions`),
+      parentA,
+    ).send({ toGroupId: target.id });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("a director of another kindergarten gets 404, and nothing moves", async () => {
+    const target = await nextYearGroup();
+    const res = await authed(
+      request(server()).post(`/v1/groups/${a.group.id}/promotions`),
+      adminB,
+    ).send({ toGroupId: target.id });
+
+    expect(res.status).toBe(404);
+    const row = await db.enrollment.findUniqueOrThrow({ where: { id: a.enrollment.id } });
+    expect(row.status).toBe("ACTIVE");
+  });
+});
+
 describe("DELETE /groups/:id — archive", () => {
   it("refuses while children are still enrolled", async () => {
     // Archiving a populated group would leave its enrollments pointing at

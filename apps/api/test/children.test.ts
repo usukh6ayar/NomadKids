@@ -10,6 +10,7 @@ import {
   createGroup,
   createMembership,
   createScenario,
+  createSchoolYear,
   createUser,
   enrollChild,
   linkGuardian,
@@ -673,6 +674,35 @@ describe("enrollment history", () => {
 // The enrollment archive — "Цэцэрлэг, бүлгийн архив"
 // ═══════════════════════════════════════════════════════════════════════════
 
+describe("promotion — Order А/261, Annex 2 §1 item 9", () => {
+  /**
+   * ★ The defect this requirement exposed.
+   *
+   * `enrollChild` ends the child's previous ACTIVE enrolment only when it is in
+   * the *same* school year. `GET /groups` is not filtered by year and the
+   * transfer form lists everything it returns, so moving a child into next
+   * year's group leaves this year's row ACTIVE and the child holds two. Every
+   * reader of "the current enrolment" then picks whichever Postgres returned
+   * first — the child header, the enrolment archive, the funding count.
+   */
+  it("a child never holds two ACTIVE enrolments", async () => {
+    const nextYear = await createSchoolYear(a.kindergarten.id, false);
+    const nextGroup = await createGroup(a.kindergarten.id, nextYear.id, "Дараа жилийн бүлэг");
+
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/enrollments`),
+      adminA,
+    ).send({ groupId: nextGroup.id });
+    expect(res.status).toBe(201);
+
+    const active = await db.enrollment.findMany({
+      where: { childId: a.child.id, status: "ACTIVE", deletedAt: null },
+    });
+    expect(active).toHaveLength(1);
+    expect(active[0]!.groupId).toBe(nextGroup.id);
+  });
+});
+
 describe("enrollment archive", () => {
   const archive = (childId: string) => `/v1/children/${childId}/enrollment-archive`;
 
@@ -1154,6 +1184,84 @@ describe("roster filters", () => {
 
     expect(summary.body.total).toBe(list.body.total);
     expect(summary.body.total).toBe(2);
+  });
+});
+
+/**
+ * A child's standing — Order А/261, Annex 2 §1 item 7, "Зайлшгүй шаардлагатай".
+ *
+ * The order names four states: үргэлжлүүлэн суралцаж байгаа, түр суралцаж
+ * байгаа, чөлөөтэй, идэвхгүй. `ChildStatus` held two, so a child away for a
+ * fortnight and a child who had left the kindergarten were the same row to
+ * every query — including the ones a director answers a ministry with.
+ */
+describe("a child's standing", () => {
+  async function setStatus(status: string) {
+    return authed(request(server()).patch(`/v1/children/${a.child.id}`), adminA).send({ status });
+  }
+
+  it("records each of the four states the order names", async () => {
+    for (const status of ["TEMPORARY", "ON_LEAVE", "INACTIVE", "ACTIVE"]) {
+      const res = await setStatus(status);
+      expect(res.status).toBe(200);
+
+      const row = await db.child.findUniqueOrThrow({ where: { id: a.child.id } });
+      expect(row.status).toBe(status);
+    }
+  });
+
+  /**
+   * ★ The old name is gone, not aliased.
+   *
+   * `ARCHIVED` was renamed to `INACTIVE` in migration `20260901120000`. A
+   * client still sending the old word must be told, because the alternative —
+   * silently mapping it — would leave two spellings of one state in circulation
+   * and the second one would outlive everybody who knew about the first.
+   */
+  it("refuses the name the state used to have", async () => {
+    const res = await setStatus("ARCHIVED");
+    expect(res.status).toBe(400);
+  });
+
+  it("refuses a state it does not define", async () => {
+    expect((await setStatus("GRADUATED")).status).toBe(400);
+  });
+
+  /**
+   * The register a director reads. `status` was already a filter on this
+   * endpoint; what changed is that it can now separate the two states that
+   * used to be one.
+   */
+  it("filters the roster by standing", async () => {
+    const onLeave = await createChild(a.kindergarten.id, { firstName: "Чөлөөтэй" });
+    await enrollChild(a.kindergarten.id, onLeave.id, a.group.id, a.schoolYear.id);
+    await db.child.update({ where: { id: onLeave.id }, data: { status: "ON_LEAVE" } });
+
+    const res = await request(server())
+      .get("/v1/children?pageSize=100&status=ON_LEAVE")
+      .set("Cookie", teacherA.cookies);
+
+    expect(res.status).toBe(200);
+    const found = (res.body.items as { id: string }[]).map((c) => c.id);
+    expect(found).toEqual([onLeave.id]);
+  });
+
+  it("a guardian cannot change their own child's standing", async () => {
+    const res = await authed(request(server()).patch(`/v1/children/${a.child.id}`), parentA).send({
+      status: "ACTIVE",
+    });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("a teacher from another kindergarten gets 404, not a changed row", async () => {
+    const res = await authed(request(server()).patch(`/v1/children/${a.child.id}`), teacherB).send({
+      status: "INACTIVE",
+    });
+
+    expect(res.status).toBe(404);
+    const row = await db.child.findUniqueOrThrow({ where: { id: a.child.id } });
+    expect(row.status).toBe("ACTIVE");
   });
 });
 

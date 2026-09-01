@@ -1,7 +1,12 @@
 "use client";
 
 import { GraduationCap, Mail, Phone, UserPlus } from "lucide-react";
-import { GUARDIAN_RELATION_LABEL, type ChildDetail } from "@kinder/contracts";
+import {
+  GUARDIAN_RELATION_LABEL,
+  type ChildDetail,
+  ENROLLMENT_STATUS_LABEL,
+  ENROLLMENT_STATUS_TONE,
+} from "@kinder/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
@@ -212,13 +217,12 @@ function Enrollments({ child }: { child: ChildDetail }) {
                 </div>
 
                 {active ? (
-                  <Badge tone="mint">Одоогийн</Badge>
-                ) : enrollment.status === "GRADUATED" ? (
-                  <Badge tone="sky">Төгссөн</Badge>
-                ) : enrollment.status === "TRANSFERRED" ? (
-                  <Badge tone="sun">Шилжсэн</Badge>
+                  <Badge tone="mint">{ENROLLMENT_STATUS_LABEL.ACTIVE}</Badge>
                 ) : (
-                  <Badge tone="neutral">Дууссан</Badge>
+                  <Badge tone={ENROLLMENT_STATUS_TONE[enrollment.status ?? "ENDED"] ?? "neutral"}>
+                    {ENROLLMENT_STATUS_LABEL[enrollment.status ?? "ENDED"] ??
+                      ENROLLMENT_STATUS_LABEL.ENDED}
+                  </Badge>
                 )}
               </div>
             );

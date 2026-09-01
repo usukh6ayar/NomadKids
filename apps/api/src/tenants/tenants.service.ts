@@ -16,6 +16,7 @@ import type {
   CreateGroupDto,
   CreateSchoolYearDto,
   ListGroupsQuery,
+  PromoteGroupDto,
   UpdateGroupDto,
   UpdateKindergartenDto,
   UpdateSchoolYearDto,
@@ -181,6 +182,7 @@ export class TenantsService {
         kindergartenId: query.kindergartenId,
         schoolYearId: query.schoolYearId,
         status: query.status,
+        programKind: query.programKind,
         groupIds,
       },
       page,
@@ -218,6 +220,8 @@ export class TenantsService {
       schoolYearId: dto.schoolYearId,
       name: dto.name,
       ageBand: dto.ageBand,
+      programKind: dto.programKind,
+      attendanceForm: dto.attendanceForm,
     });
 
     await this.audit.append({
@@ -272,6 +276,75 @@ export class TenantsService {
       objectId: id,
     });
     return archived;
+  }
+
+  /**
+   * Moves a group's children into another group — Order А/261, Annex 2 §1
+   * item 9, "анги дэвших болон давтан суралцах".
+   *
+   * ★ Which of the two it was is derived, not asked for.
+   *
+   * The order distinguishes moving up from repeating a year, and a request
+   * field for it would be a second source of the same fact: a director could
+   * send `PROMOTED` while choosing a target group in the same age band, and the
+   * register would then disagree with itself. The age bands already say which
+   * happened, so they decide.
+   *
+   * ★★ Both groups are loaded through the admin scope, so a director promoting
+   * into a kindergarten they do not administer gets 404 from the load rather
+   * than a partially applied move.
+   */
+  async promoteGroup(actor: Actor, fromGroupId: string, dto: PromoteGroupDto) {
+    const from = await this.repo.findGroup(this.adminScope(actor), fromGroupId);
+    if (!from) throw new NotFoundException();
+
+    const to = await this.repo.findGroup(this.adminScope(actor), dto.toGroupId);
+    // 400 rather than 404: the *source* group is the addressed resource and the
+    // caller may reach it. The target is a value in the body, and a bad value
+    // in a body is a bad request — the same shape `createGroup` uses when the
+    // school year does not belong to the kindergarten.
+    if (!to || to.kindergartenId !== from.kindergartenId) {
+      throw new BadRequestException("Хүлээн авах бүлэг олдсонгүй");
+    }
+    if (to.id === from.id) {
+      throw new BadRequestException("Хүүхдийг байгаа бүлэгт нь дэвшүүлэх боломжгүй");
+    }
+
+    const enrollments = await this.repo.listActiveEnrollmentsInGroup(fromGroupId, dto.childIds);
+    if (enrollments.length === 0) {
+      throw new BadRequestException("Дэвшүүлэх хүүхэд олдсонгүй");
+    }
+
+    // Same band means the child stayed where they were another year.
+    const outcome = from.ageBand === to.ageBand ? "REPEATED" : "PROMOTED";
+    const on = dto.startedOn ?? new Date();
+
+    const created = await this.repo.promoteEnrollments({
+      enrollmentIds: enrollments.map((e) => e.id),
+      childIds: enrollments.map((e) => e.childId),
+      kindergartenId: from.kindergartenId,
+      toGroupId: to.id,
+      toSchoolYearId: to.schoolYearId,
+      outcome,
+      on,
+    });
+
+    // One row per child, not one for the batch. `AuditLog.objectId` names a
+    // single record, and "who moved this child, and when" is the question the
+    // log is read with — a single row naming a group cannot answer it.
+    for (const enrollment of created) {
+      await this.audit.append({
+        action: "UPDATE",
+        kindergartenId: from.kindergartenId,
+        actorUserId: actor.userId,
+        objectType: "Enrollment",
+        objectId: enrollment.id,
+        childId: enrollment.childId,
+        metadata: { change: "promoted", outcome, fromGroupId, toGroupId: to.id },
+      });
+    }
+
+    return { outcome, movedCount: created.length, groupId: to.id };
   }
 
   // ── Teacher assignments ───────────────────────────────────────────────────

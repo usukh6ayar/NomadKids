@@ -2,12 +2,28 @@
 
 import type { ReactNode } from "react";
 import { HeartPulse } from "lucide-react";
-import { SEX_LABEL, type ChildDetail } from "@kinder/contracts";
+import { CHILD_STATUS_LABEL, SEX_LABEL, type ChildDetail } from "@kinder/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { ChildAvatar } from "@/components/media/media-image";
 import { ChildPhotoButton } from "@/components/child/child-photo-button";
 import { formatAge, formatDate, fullName } from "@/lib/format";
+
+/**
+ * How each standing is tinted.
+ *
+ * `ON_LEAVE` is `sun` — "waiting on someone" in the badge's own vocabulary,
+ * which is exactly what a child on leave is. `TEMPORARY` is `sky`, purely
+ * informational: a short-term placement is not a problem, it is a fact the
+ * roster should carry. Only `INACTIVE` is grey, because only that one means
+ * the record is no longer live.
+ */
+const STATUS_TONE: Record<string, "mint" | "sky" | "sun" | "neutral"> = {
+  ACTIVE: "mint",
+  TEMPORARY: "sky",
+  ON_LEAVE: "sun",
+  INACTIVE: "neutral",
+};
 
 /**
  * Who this child is.
@@ -73,7 +89,6 @@ export function ChildHeroProfile({
   // Newest first (`startedOn: "desc"`), and ACTIVE is what "current" means —
   // a child who has left still has a most-recent enrollment.
   const current = child.enrollments?.find((e) => e.status === "ACTIVE") ?? child.enrollments?.[0];
-  const archived = child.status === "ARCHIVED";
   const hasHealthNote = showHealthAlert && Boolean(child.healthNotes);
 
   const facts = [
@@ -104,12 +119,18 @@ export function ChildHeroProfile({
               {fullName(child)}
             </h1>
 
-            {/* The label carries the state; the tint only reinforces it. */}
-            {archived ? (
-              <Badge tone="neutral">Архивласан</Badge>
-            ) : (
-              <Badge tone="mint">Идэвхтэй</Badge>
-            )}
+            {/*
+              The label carries the state; the tint only reinforces it.
+
+              ★ Four states, not a boolean. Order А/261, Annex 2 §1 item 7 asks
+              a kindergarten to distinguish a child who is away with permission
+              from one who has left, and this header used to render both as
+              "Архивласан" — the same grey badge for a child coming back on
+              Monday and a child who moved to another city.
+            */}
+            <Badge tone={STATUS_TONE[child.status ?? "ACTIVE"] ?? "neutral"}>
+              {CHILD_STATUS_LABEL[child.status ?? "ACTIVE"] ?? CHILD_STATUS_LABEL.ACTIVE}
+            </Badge>
 
             {hasHealthNote ? (
               <Badge tone="peach">

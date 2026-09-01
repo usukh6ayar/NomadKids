@@ -82,6 +82,43 @@ enum GroupStatus {
   ARCHIVED
 }
 
+/// Which of the two preschool programmes a group runs.
+///
+/// ★ Order А/261, Annex 2 §1 items 5, 6, 13 and 14 — all four mandatory. The
+/// order asks that children in the main programme and children in the
+/// alternative one be registered separately, and item 14 settles where the
+/// distinction belongs by asking for "хувилбарт сургалтын **бүлэг** бүрийг
+/// бүртгэх": it is a property of the group, not of the child. So one column
+/// here answers all four items, and a child's programme follows from the group
+/// they are enrolled in.
+enum ProgramKind {
+  /// Үндсэн сургалт
+  MAIN
+  /// Хувилбарт сургалт — ger, mobile, shift and seasonal groups.
+  ALTERNATIVE
+}
+
+/// The hours a group runs — Order А/261, Annex 2 §1 item 16, mandatory.
+///
+/// ★ Not the same thing as `AttendanceStatus.HALF_DAY`, and the difference is
+/// worth stating because the words overlap. `HALF_DAY` is what happened on one
+/// date; this is the arrangement the child is enrolled under. A kindergarten
+/// with an extended-hours group answers "уртасгасан" here every day of the
+/// year, including days when a particular child went home at noon.
+///
+/// On the group for the same reason as `ProgramKind`: Mongolian kindergartens
+/// organise extended and shortened hours as groups. If a per-child arrangement
+/// is ever needed, a column on `Enrollment` is an additive change; moving the
+/// other way would lose data.
+enum AttendanceForm {
+  /// Энгийн
+  STANDARD
+  /// Уртасгасан цаг
+  EXTENDED
+  /// Богиносгосон цаг
+  SHORTENED
+}
+
 enum TeacherRole {
   LEAD
   ASSISTANT
@@ -92,9 +129,26 @@ enum Sex {
   FEMALE
 }
 
+/// A child's standing at the kindergarten.
+///
+/// ★ Four values because Order А/261 (2024-12-19), Annex 2 §1 item 7 — a
+/// mandatory requirement — names four: "үргэлжлүүлэн суралцаж байгаа, түр
+/// суралцаж байгаа, эсхүл чөлөөтэй болон идэвхгүй". This enum held two, so a
+/// child on leave and a child who had left were recorded identically, and the
+/// register could not answer a question the ministry asks of it.
+///
+/// `ARCHIVED` was renamed to `INACTIVE` rather than joined by it. The two words
+/// meant the same thing — no longer attending — and keeping both would have
+/// left the director choosing between synonyms on every form.
 enum ChildStatus {
+  /// Үргэлжлүүлэн суралцаж байгаа
   ACTIVE
-  ARCHIVED
+  /// Түр суралцаж байгаа — a seasonal or short-term placement.
+  TEMPORARY
+  /// Чөлөөтэй — away with permission, still enrolled.
+  ON_LEAVE
+  /// Идэвхгүй — no longer attending. Formerly `ARCHIVED`.
+  INACTIVE
 }
 
 enum GuardianRelation {
@@ -116,6 +170,24 @@ enum EnrollmentStatus {
    * misleading reuse of the generic "this enrollment period ended".
    */
   GRADUATED
+
+  /// ★ Order А/261, Annex 2 §1 item 9, mandatory: "Суралцагчийн анги дэвших
+  /// болон давтан суралцах үйл ажиллагааг бүртгэх".
+  ///
+  /// Two values rather than one because the order names two activities and a
+  /// director has to be able to tell them apart afterwards. Both mean "the
+  /// year ended and the child carried on here", which is what separates them
+  /// from TRANSFERRED — a move between groups inside one year — and from
+  /// GRADUATED, where the child leaves.
+  ///
+  /// The outcome sits on the enrollment that *ended*, not on the one that
+  /// opened, because it describes how that period finished. Reading the
+  /// archive top to bottom then tells the whole story without joining rows.
+
+  /// Анги дэвшсэн — the child moved up an age band.
+  PROMOTED
+  /// Давтан суралцсан — the child stayed at the same age band another year.
+  REPEATED
 }
 
 enum ObservationSource {
@@ -547,6 +619,12 @@ model Group {
   name           String
   ageBand        AgeBand
   status         GroupStatus @default(ACTIVE)
+
+  /// Order А/261, Annex 2 §1 items 5, 6, 13, 14 and 16. Both default to the
+  /// ordinary case, so every group that existed before this migration is a
+  /// main-programme, standard-hours group — which is what they were.
+  programKind    ProgramKind    @default(MAIN)
+  attendanceForm AttendanceForm @default(STANDARD)
 
   /// RFP §3.2 — ангийн зураг, хичээлийн хуваарь, бүлгийн дүрэм.
   ///

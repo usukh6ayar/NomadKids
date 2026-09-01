@@ -18,6 +18,7 @@
 export {
   AgeBand,
   AttendanceCompanion,
+  AttendanceForm,
   AttendanceRequestStatus,
   AttendanceStatus,
   AuditAction,
@@ -41,6 +42,7 @@ export {
   MenuDayStatus,
   NotificationStatus,
   ObservationSource,
+  ProgramKind,
   IncidentKind,
   PaymentMethod,
   QpayInvoiceStatus,

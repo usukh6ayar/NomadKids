@@ -95,8 +95,15 @@ describe("бүлэг засах", () => {
     expect(calls.some((c) => c.method === "PATCH")).toBe(false);
   });
 
-  /** ★ `name` and `ageBand` only. `status` has its own control, and
-   *  `schoolYearId` is not in `updateGroupSchema` at all. */
+  /**
+   * ★ The four fields `updateGroupSchema` accepts, and no others.
+   *
+   * `status` has its own control and `schoolYearId` is not in the DTO at all.
+   * `programKind` and `attendanceForm` joined the form for Order А/261, Annex 2
+   * §1 items 6, 14 and 16, and they are sent on every save — the dialog re-seeds
+   * from the row on open, so an unchanged group posts back what it already had
+   * rather than silently resetting to the default.
+   */
   it("sends only the fields the DTO accepts", async () => {
     const { calls } = stubGroups({}, [
       { path: `/groups/${GROUP}`, method: "PATCH", body: group({ name: "Бэлтгэл" }) },
@@ -115,7 +122,12 @@ describe("бүлэг засах", () => {
       const patch = calls.find((c) => c.method === "PATCH");
       expect(patch).toBeDefined();
       expect(patch!.url).toBe(`/groups/${GROUP}`);
-      expect(patch!.body).toEqual({ name: "Бэлтгэл", ageBand: "JUNIOR" });
+      expect(patch!.body).toEqual({
+        name: "Бэлтгэл",
+        ageBand: "JUNIOR",
+        programKind: "MAIN",
+        attendanceForm: "STANDARD",
+      });
     });
   });
 

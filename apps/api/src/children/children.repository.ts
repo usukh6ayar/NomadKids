@@ -394,7 +394,7 @@ export class ChildrenRepository {
   }
 
   /**
-   * Enrolls a child, ending any active enrollment for the same school year.
+   * Enrolls a child, ending whatever active enrollment they already hold.
    *
    * ★ One transaction, and the order is forced by the database: a partial
    * unique index allows one ACTIVE enrollment per child per school year, so the
@@ -405,6 +405,26 @@ export class ChildrenRepository {
    * The old row is **ended, never deleted**. It is the history that
    * authorization reads, and it is what keeps the previous teacher's own
    * observations reachable after the child moves.
+   *
+   * ★★ Any school year, not just this one — corrected 2026-09-01.
+   *
+   * The lookup used to carry `schoolYearId: data.schoolYearId`, which matched
+   * the partial unique index and read as if the index were the rule being
+   * enforced. It is not: the index permits one ACTIVE row *per year*, so a move
+   * into next year's group ended nothing and the child held two. `GET /groups`
+   * is not filtered by year and the transfer form lists everything it returns,
+   * so this was reachable from the screen, not merely in theory.
+   *
+   * Two ACTIVE enrollments have no meaning anywhere downstream. "The current
+   * group" is `find(e => e.status === "ACTIVE")` in the child header, the
+   * enrolment archive and the general-info panel, and with two rows each picks
+   * whichever Postgres returned first. The funding register counts active
+   * enrollments, so the child is billed twice.
+   *
+   * Enrolling a child in next year's group *in advance* is a real thing to want
+   * and this is not it — that needs a start date in the future and a state that
+   * says "not yet", neither of which exists. Until it does, the honest
+   * behaviour is that enrolling a child moves them.
    */
   async enrollChild(data: {
     kindergartenId: string;
@@ -414,21 +434,13 @@ export class ChildrenRepository {
     startedOn: Date;
   }) {
     return this.prisma.$transaction(async (tx) => {
-      const previous = await tx.enrollment.findFirst({
-        where: {
-          childId: data.childId,
-          schoolYearId: data.schoolYearId,
-          status: "ACTIVE",
-          deletedAt: null,
-        },
+      // `updateMany`, not `update`: a child may already hold more than one
+      // ACTIVE row from before this was corrected, and closing one of them
+      // would leave the other to collide with the row inserted below.
+      await tx.enrollment.updateMany({
+        where: { childId: data.childId, status: "ACTIVE", deletedAt: null },
+        data: { status: "TRANSFERRED", endedOn: new Date() },
       });
-
-      if (previous) {
-        await tx.enrollment.update({
-          where: { id: previous.id },
-          data: { status: "TRANSFERRED", endedOn: new Date() },
-        });
-      }
 
       const enrollment = await tx.enrollment.create({ data });
 

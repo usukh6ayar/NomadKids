@@ -10,6 +10,7 @@ import {
   createGroupSchema,
   createSchoolYearSchema,
   listGroupsQuerySchema,
+  promoteGroupSchema,
   updateGroupSchema,
   updateKindergartenSchema,
   updateSchoolYearSchema,
@@ -17,6 +18,7 @@ import {
   type CreateGroupDto,
   type CreateSchoolYearDto,
   type ListGroupsQuery,
+  type PromoteGroupDto,
   type UpdateGroupDto,
   type UpdateKindergartenDto,
   type UpdateSchoolYearDto,
@@ -108,6 +110,20 @@ export class TenantsController {
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
   ) {
     return this.service.getGroup(actor, params.id);
+  }
+
+  /**
+   * Order А/261, Annex 2 §1 item 9. Addressed at the group the children leave,
+   * because that is the roster the director is looking at when they do this.
+   */
+  @Post("groups/:id/promotions")
+  @Roles("ADMIN")
+  async promoteGroup(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(promoteGroupSchema)) body: PromoteGroupDto,
+  ) {
+    return this.service.promoteGroup(actor, params.id, body);
   }
 
   @Post("kindergartens/:id/groups")
