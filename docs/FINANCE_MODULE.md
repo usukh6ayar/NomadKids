@@ -165,9 +165,12 @@ API нь `funding` түлхүүрийг **огт илгээхгүй**; дэлг�
 | `test/finance-report-pdf.test.ts`          | 16  | **PDF, эрхийн тусгаарлалт, бичвэр**        |
 | `test/invoice-generation.test.ts`          | 12  | **Тарифаас сар үүсгэх** — §3, §7           |
 | `test/qpay.test.ts`                        | 9   | **Хуурамч callback мөнгө үүсгэхгүй**       |
+| `test/portal-access.test.ts`               | 13  | **402 хаалт, мөн түүнийг oracle болгохгүй**|
 
 Вэб талд: `finance-dashboard.test.tsx` (самбар, §16-ийн дэлгэц, PDF товч),
-`invoices.test.tsx` ба `child-finance.test.tsx` (эцэг эхийн дэлгэц).
+`invoices.test.tsx`, `child-finance.test.tsx` (эцэг эхийн дэлгэц, хандалтын
+төлбөр) ба `child-access-gate.test.tsx` (layout нь 402-ыг барьж, 404-ыг
+нэвтрүүлдэг).
 
 ★ `test/invoice-generation.test.ts`-ийн ялгах тест нь **"нэг өдөрт нэг хоолны
 өдөр, нэг удаагийн хоолонд нэг биш"**. Өглөөний цай, үдийн хоол, үдээс хойших
