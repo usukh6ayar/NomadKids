@@ -1,8 +1,35 @@
 # QPAY_INTEGRATION.md — the online-payment boundary (нэмэлт.md §8)
 
-**Status:** built against the public v2 "Simple" API, never exercised against
-a live sandbox. There are no merchant credentials to test with yet. See §5
-for what changes when they arrive.
+**Status:** ★ **Exercised against the live merchant account, 2026-09-01.**
+Credentials arrived that day (`ӨВ БЯЦХАН НҮҮДЭЛЧИД`, invoice code
+`NOMADKIDS_INVOICE`) and the flow was run end to end on the staging VPS.
+
+What §1 below called assumed is now observed:
+
+```
+QPay POST /v2/auth/token    → 200 (423ms)
+QPay POST /v2/invoice       → 200 (118ms)   → EMV QR + 10 KB PNG
+QPay POST /v2/payment/check → 200  (55ms)   → correctly reports NOT paid
+```
+
+Every field name in §1 is confirmed: `invoice_code`, `sender_invoice_no`,
+`invoice_receiver_code`, `amount`, `callback_url` on the request;
+`invoice_id`, `qr_text`, `qr_image` on the response. `QPAY_BASE_URL` carries
+**no** `/v2` — the client appends it, and the onboarding mail's
+`https://merchant.qpay.mn/v2/auth/token` confirms the split.
+
+★★ **One correction the live account forced.** QPay's own mail says to base the
+token's life on a timestamp — "Token-ийн хугацааг timestamp-д тулгуурлан" — and
+`expires_in` on this API is an absolute epoch, not the duration the name
+implies. This client read it as seconds-from-now, which cached the token until
+the year 58,000: correct until QPay expired it server-side, then 401 on every
+call until a restart. `tokenExpiryMs` now accepts both readings. See its own
+comment.
+
+**Still not exercised:** a payment actually being made. The QR was generated and
+`checkPayment` correctly reported it unpaid; nobody has scanned one, so the
+callback and the `reconcile` → `AccessSubscription.markPaid` path remain
+unproven against real money.
 
 ---
 

@@ -103,6 +103,32 @@ describe("readiness: the ESIS boundary", () => {
     expect(res.status).toBe(200);
   });
 
+  /**
+   * ★ The same rule the ESIS block above is held to, applied to the payment
+   * gateway: presence of a password, never a value and never a length. QPay's
+   * credentials arrived on 2026-09-01 and this block was added the same day,
+   * because `VPS_DEPLOYMENT.md` had been promising it for a week while the
+   * endpoint did not have it.
+   */
+  it("reports whether QPay is configured, without disclosing the password", async () => {
+    const scenario = await createScenario("qpay-health");
+    const admin = await login(app, scenario.adminUser.username);
+
+    const res = await authed(request(app.getHttpServer()).get("/v1/health/readiness"), admin);
+
+    expect(res.status).toBe(200);
+    expect(Object.keys(res.body.qpay).sort()).toEqual([
+      "baseUrl",
+      "configured",
+      "hasPassword",
+      "invoiceCode",
+    ]);
+    // `hasPassword` is a boolean about presence — never the value, never its
+    // length. The key list above is asserted exactly so that adding a field
+    // here has to be a decision rather than an accident.
+    expect(typeof res.body.qpay.hasPassword).toBe("boolean");
+  });
+
   it("still refuses a teacher — the opt-in widens one route, not the guard", async () => {
     const scenario = await createScenario("gate");
     const teacher = await login(app, scenario.teacherUser.username);

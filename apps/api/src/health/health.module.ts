@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { EsisModule } from "../integrations/esis/esis.module";
+import { QpayModule } from "../integrations/qpay/qpay.module";
 import { ReportsModule } from "../reports/reports.module";
 import { HealthController } from "./health.controller";
 
@@ -12,7 +13,7 @@ import { HealthController } from "./health.controller";
  * consumes ESIS should have to say so.
  */
 @Module({
-  imports: [ReportsModule, EsisModule],
+  imports: [ReportsModule, EsisModule, QpayModule],
   controllers: [HealthController],
 })
 export class HealthModule {}

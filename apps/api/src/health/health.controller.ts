@@ -7,6 +7,7 @@ import { PdfRendererService } from "../reports/pdf-renderer.service";
 import { ReportsQueue } from "../reports/reports.queue";
 import { bundledFontDir, checkCyrillicFont } from "../reports/font-check";
 import { MailService } from "../mail/mail.service";
+import { QpayConfig } from "../integrations/qpay/qpay.config";
 import { EsisService } from "../integrations/esis/esis.service";
 
 /**
@@ -30,6 +31,7 @@ export class HealthController {
     private readonly queue: ReportsQueue,
     private readonly mail: MailService,
     private readonly esis: EsisService,
+    private readonly qpay: QpayConfig,
   ) {}
 
   @Public()
@@ -91,6 +93,21 @@ export class HealthController {
        * prevent.
        */
       esis: this.esis.status(),
+      /*
+       * ★ QPay, reported on exactly the same terms as ESIS and gating the
+       * status for neither. A deployment with no merchant account is a
+       * legitimate state — invoices are raised and settled by hand, and only
+       * the portal access fee (`AccessSubscription`) needs the gateway.
+       *
+       * ★★ `describe()`, never the config: presence of a password, never a
+       * value and never a length. And no live probe — asking QPay whether it
+       * answers means authenticating, which means a token request against a
+       * live merchant account every time somebody loads a health page.
+       *
+       * It was missing until 2026-09-01, when `VPS_DEPLOYMENT.md` promised
+       * this block and the endpoint did not have it.
+       */
+      qpay: this.qpay.describe(),
     };
   }
 }

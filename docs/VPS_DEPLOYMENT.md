@@ -174,6 +174,24 @@ docker compose -f docker-compose.prod.yml logs -f
 ★ `--env-file` бичихгүй байгаа нь §3.3-ын симлинк байгаа гэсэн үг. `docker
 compose config --quiet` нь анхааруулгагүй байвал зөв.
 
+★★ **`.env.production`-ыг өөрчилсний дараа `--force-recreate` заавал:**
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --force-recreate api
+```
+
+`up -d --build` нь **хангалтгүй**. Compose нь image өөрчлөгдсөнийг хардаг ч
+`env_file`-ийн агуулга өөрчлөгдсөнийг үргэлж хардаггүй — 2026-09-01-нд
+`ACCESS_FEE_AMOUNT` нэмсний дараа build амжилттай дуусаж, контейнер шинэчлэгдээд
+**хувьсагч нь хоосон хэвээр** үлдсэн. Команд амжилттай мэт харагдана, тохиргоо
+нь хуучин хэвээр байна — §3.3-ын симлинктэй яг нэг гэр бүлийн урхи.
+
+Шалгах:
+
+```bash
+docker compose -f docker-compose.prod.yml exec api sh -lc 'echo $ACCESS_FEE_AMOUNT'
+```
+
 Эхний ажиллуулалт 5–10 минут (image build). Дараалал:
 
 1. `db`, `redis`, `storage` эрүүл болтол хүлээнэ
