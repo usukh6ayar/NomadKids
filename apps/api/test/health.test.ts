@@ -2,7 +2,8 @@ import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createTestApp } from "./support/app";
-import { authed, createScenario, login } from "./support/fixtures";
+import { authed, createScenario, createUser, login } from "./support/fixtures";
+import { uniq } from "./support/db";
 
 /**
  * ★ One application for the whole file, deliberately.
@@ -82,6 +83,33 @@ describe("readiness: the ESIS boundary", () => {
   it("is not readable without an administrator session", async () => {
     const res = await request(app.getHttpServer()).get("/v1/health/readiness");
     expect(res.status).toBe(401);
+  });
+
+  /**
+   * ★ The case that made `@AllowSuperAdmin` necessary.
+   *
+   * `prisma/seed.ts` creates a superadmin belonging to no kindergarten, so on a
+   * freshly deployed system nobody holds `ADMIN` anywhere and this route — the
+   * one that answers "are the Cyrillic fonts installed", whose failure renders
+   * every PDF blank while reporting success — answered 404. It was unreachable
+   * at exactly the moment it exists for. Found on the Datacom VPS, 2026-09-01.
+   */
+  it("admits a platform operator who belongs to no kindergarten", async () => {
+    const operator = await createUser({ username: uniq("op"), isSuperAdmin: true });
+    const session = await login(app, operator.username);
+
+    const res = await authed(request(app.getHttpServer()).get("/v1/health/readiness"), session);
+
+    expect(res.status).toBe(200);
+  });
+
+  it("still refuses a teacher — the opt-in widens one route, not the guard", async () => {
+    const scenario = await createScenario("gate");
+    const teacher = await login(app, scenario.teacherUser.username);
+
+    const res = await authed(request(app.getHttpServer()).get("/v1/health/readiness"), teacher);
+
+    expect(res.status).toBe(404);
   });
 
   it("reports whether ESIS is configured, without disclosing the token", async () => {

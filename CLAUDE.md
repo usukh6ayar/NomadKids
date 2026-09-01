@@ -86,6 +86,14 @@ EXIF from every uploaded image.
 An unauthorized child, observation, media file or report returns **404**. A 403
 confirms the record exists.
 
+★ **One exception, added 2026-09-01: 402 for the portal access fee.** It is
+shown only to a guardian who has *already passed* `canAccessChild` for that
+child — someone who knows the child exists — and a 404 there would hide the one
+fact that lets them act. Authorization runs first, so a stranger still gets 404
+and the status cannot become an oracle. `authz/portal-access.ts`,
+`docs/SECURITY.md` §5.4. **Do not add a second exception without the same
+argument.**
+
 ---
 
 ## 2. Architecture rules

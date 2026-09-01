@@ -1,5 +1,6 @@
 import { Controller, Get } from "@nestjs/common";
 import { Public } from "../auth/decorators/public.decorator";
+import { AllowSuperAdmin } from "../auth/decorators/allow-super-admin.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { StorageService } from "../storage/storage.service";
 import { PdfRendererService } from "../reports/pdf-renderer.service";
@@ -47,6 +48,7 @@ export class HealthController {
    * (docs/PDF_SPIKE.md §4). That is invisible until a parent opens a portfolio.
    */
   @Roles("ADMIN")
+  @AllowSuperAdmin()
   @Get("readiness")
   async readiness() {
     const font = checkCyrillicFont(bundledFontDir());

@@ -219,28 +219,33 @@ curl -sf https://api.nomadkids.mn/v1/health     && echo " api ✅"
 
 ### 3.7 Кирилл фонтыг шалгах
 
-★★ **`GET /v1/health/readiness` нь шинээр seed хийсэн систем дээр ажиллахгүй**,
-хэдийгээр §3.6 өмнө нь тэгж бичсэн. Тэр route нь `@Roles("ADMIN")` бөгөөд
-`RolesGuard` нь эрхийг `Membership`-ээс уншдаг — seed-ийн үүсгэсэн `superadmin`
-нь ямар ч цэцэрлэгийн гишүүн биш тул **404** авна. Өөрөөр хэлбэл шалгалт нь
-хамгийн хэрэгтэй мөчид — цэцэрлэг үүсгэхээс өмнө — хүрэшгүй байдаг.
+`superadmin`-аар нэвтэрч шууд ажиллуулна:
 
-Тиймээс хамгийн үнэтэй эвдрэлийг (фонтгүй image нь **бүх PDF-ийг хоосон**
-гаргаад амжилттай гэж мэдээлдэг — `docs/PDF_SPIKE.md` §4) логоос шалгана:
+```bash
+curl -s -c cookies.txt -X POST https://<API_DOMAIN>/v1/auth/login \
+  -H 'content-type: application/json' -H 'origin: https://<WEB_DOMAIN>' \
+  -d '{"identifier":"superadmin","password":"<SEED_ADMIN_PASSWORD>"}'
+curl -s -b cookies.txt https://<API_DOMAIN>/v1/health/readiness | jq
+```
+
+Энэ нь Chromium, Redis, storage, **кирилл фонт**, SMTP, QPay бүгдийг нэрлэнэ.
+`cyrillicFont` нь `false` бол PDF хоосон гарна (`docs/PDF_SPIKE.md` §4).
+
+★★ **Энэ route 2026-09-01 хүртэл шинээр seed хийсэн систем дээр 404 буцаадаг
+байсан.** `RolesGuard` эрхийг `Membership`-ээс уншдаг, seed-ийн `superadmin` нь
+ямар ч цэцэрлэгийн гишүүн биш — тиймээс шалгалт нь хамгийн хэрэгтэй мөчид,
+цэцэрлэг үүсгэхээс өмнө, хүрэшгүй байсан. `@AllowSuperAdmin` нь тэр нэг route-ыг
+нээв; guard өөрөө өргөжөөгүй бөгөөд багш урьдын адил 404 авна
+(`test/health.test.ts`).
+
+★ Нэвтрэхийн өмнө ч фонтыг логоос шалгаж болно:
 
 ```bash
 docker compose -f docker-compose.prod.yml logs api | grep "Font check"
 # Font check passed: 4 Mongolian-capable font(s) registered
 ```
 
-Бүрэн `readiness` тайланг эхний цэцэрлэг ба түүний ADMIN хэрэглэгчийг
-үүсгэсний дараа авна:
 
-```bash
-curl -s -b cookies.txt https://<API_DOMAIN>/v1/health/readiness | jq
-```
-
-Энэ нь Chromium, Redis, storage, фонт, SMTP, QPay бүгдийг нэрлэнэ.
 
 ---
 

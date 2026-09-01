@@ -391,6 +391,38 @@ this kindergarten have a group with id Y".
 **Corollary:** an id that does not exist and an id the actor may not see must be
 **indistinguishable**, in both status code and response time.
 
+#### The one exception — 402, the portal access fee
+
+★ Added 2026-09-01 with the access-fee module. It is the only status other than
+404 an authorization failure may produce, and it is worth stating why the rule
+above does not reach it.
+
+The rule protects one fact: *whether a record exists*. A 402 is only ever shown
+to someone who has **already been authorized for that child** — one of their own
+guardians. They know the child exists; they see them every afternoon. Nothing is
+disclosed. What a 404 would do instead is hide the one thing that would let them
+act: a fee is owed, and here is where to pay it.
+
+So the order is not negotiable, and it is what makes the exception safe:
+
+```
+canAccessChild(actor, facts)   →  false  →  404      (never reaches the fee)
+                               →  true
+                                     ↓
+isPortalAccessBlocked(...)     →  true   →  402
+```
+
+A stranger is refused **before** the fee is consulted, so the 402 can never
+answer "is there a child with id X". `authz/portal-access.ts` throws a distinct
+exception type for exactly this reason — so the status cannot be widened by
+accident into a path where 404 is load-bearing — and
+`apps/api/test/portal-access.test.ts` pins the stranger's 404 both before and
+after a subscription is paid.
+
+Staff are never gated: a teacher, admin or accountant is doing the
+kindergarten's work, and locking them out because a family has not paid would
+break the classroom to punish the family.
+
 #### Why uniform, when a role gate arguably reveals nothing
 
 The narrower rule — 404 for resources, 403 for pure role gates — is defensible:

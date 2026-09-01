@@ -3,6 +3,7 @@ import { Reflector } from "@nestjs/core";
 import type { Request } from "express";
 import type { Actor } from "../../authz/actor";
 import type { Role } from "../../domain/enums";
+import { ALLOW_SUPER_ADMIN } from "../decorators/allow-super-admin.decorator";
 import { REQUIRED_ROLES } from "../decorators/roles.decorator";
 
 /**
@@ -44,7 +45,23 @@ export class RolesGuard implements CanActivate {
     if (!actor) throw new NotFoundException();
 
     const held = new Set(actor.memberships.map((m) => m.role));
-    if (!required.some((role) => held.has(role))) throw new NotFoundException();
+    if (required.some((role) => held.has(role))) return true;
+
+    /*
+     * ★ A platform operator, on a route that opted in with `@AllowSuperAdmin`.
+     *
+     * Not a general bypass: without the marker a superadmin is refused here
+     * like anyone else, because roles are held per kindergarten and a platform
+     * operator holds none. The exception exists for routes that ask about the
+     * deployment rather than about a kindergarten — see the decorator.
+     */
+    const allowSuperAdmin = this.reflector.getAllAndOverride<boolean | undefined>(
+      ALLOW_SUPER_ADMIN,
+      [context.getHandler(), context.getClass()],
+    );
+    if (allowSuperAdmin && actor.isSuperAdmin) return true;
+
+    throw new NotFoundException();
 
     return true;
   }
