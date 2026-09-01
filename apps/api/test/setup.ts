@@ -76,6 +76,13 @@ process.env.REPORTS_WORKER_ENABLED = "false";
 //
 // The paths that need a configured client stub `QpayClient` rather than
 // relying on ambient environment, which is why clearing this costs nothing.
+// ★ The portal access gate is OFF by default under test. It is a deployment
+// decision, not a property of the product, and leaving it on would make every
+// guardian-facing test in the suite depend on a subscription fixture that has
+// nothing to do with what it is testing. `test/qpay.test.ts` and
+// `test/portal-access.test.ts` set a price themselves.
+process.env.ACCESS_FEE_AMOUNT ??= "0";
+
 for (const key of [
   "QPAY_BASE_URL",
   "QPAY_USERNAME",

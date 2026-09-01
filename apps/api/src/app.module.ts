@@ -11,6 +11,7 @@ import { ArtworkModule } from "./artwork/artwork.module";
 import { DocumentsModule } from "./documents/documents.module";
 import { ConsentModule } from "./consent/consent.module";
 import { FundingModule } from "./funding/funding.module";
+import { AccessModule } from "./access/access.module";
 import { InvoicesModule } from "./invoices/invoices.module";
 import { EsisModule } from "./integrations/esis/esis.module";
 import { QpayModule } from "./integrations/qpay/qpay.module";
@@ -73,6 +74,7 @@ import { UsersModule } from "./users/users.module";
     DocumentsModule,
     ConsentModule,
     FundingModule,
+    AccessModule,
     InvoicesModule,
     EsisModule,
     QpayModule,

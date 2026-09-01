@@ -3,7 +3,8 @@ import { PrismaService } from "../../prisma/prisma.service";
 import type { Prisma } from "../../generated/prisma/client";
 
 /**
- * Persistence for `QpayInvoice` — one payment attempt against one `Invoice`.
+ * Persistence for `QpayInvoice` — one payment attempt against one
+ * `AccessSubscription`.
  *
  * CLAUDE.md §2.2: the only file in this directory that may import
  * `PrismaClient`. `QpayService` calls this; it never touches Prisma itself.
@@ -26,13 +27,13 @@ export class QpayRepository {
   }
 
   /**
-   * The most recent attempt against this invoice, any status — what both
-   * `createForInvoice` (to decide whether to reuse a live one) and `status`
-   * (to report on) read.
+   * The most recent attempt against this subscription, any status — what both
+   * `createForSubscription` (to decide whether to reuse a live QR) and
+   * `status` (to report on) read.
    */
-  async findLatestForInvoice(invoiceId: string) {
+  async findLatestForSubscription(subscriptionId: string) {
     return this.prisma.qpayInvoice.findFirst({
-      where: { invoiceId },
+      where: { subscriptionId },
       orderBy: { createdAt: "desc" },
     });
   }
@@ -66,13 +67,4 @@ export class QpayRepository {
     return result.count > 0;
   }
 
-  /**
-   * Links the `Payment` row created after a successful `claimForPayment`.
-   *
-   * A plain update, not guarded — by this point the row is exclusively ours;
-   * `claimForPayment` already proved no other caller can also be here.
-   */
-  async attachPayment(id: string, paymentId: string): Promise<void> {
-    await this.prisma.qpayInvoice.update({ where: { id }, data: { paymentId } });
-  }
 }

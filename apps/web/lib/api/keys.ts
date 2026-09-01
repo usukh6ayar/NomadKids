@@ -210,9 +210,10 @@ export const qk = {
    * just paid must not see "Төлөгдөөгүй" on the way back.
    */
   childInvoices: (childId: string, page: number) => ["child", childId, "invoices", page] as const,
-  /** The latest QPay attempt against one invoice — polled while a QR is on screen. */
-  qpayInvoice: (childId: string, invoiceId: string) =>
-    ["qpay-invoice", childId, invoiceId] as const,
+  /** Whether this child's family owes the portal access fee — нэмэлт-free, client 2026-09-01. */
+  childAccess: (childId: string) => ["child", childId, "access"] as const,
+  /** The latest QPay attempt against that fee — polled while a QR is on screen. */
+  accessQpay: (childId: string) => ["child", childId, "access", "qpay"] as const,
 
   /** The month's financial summary — `нэмэлт.md` §9. */
   financeDashboard: (kindergartenId: string, month: string) =>

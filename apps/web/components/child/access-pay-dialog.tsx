@@ -27,16 +27,14 @@ import { FormError } from "@/components/ui/states";
  * exists (`docs/reference/QPAY_INTEGRATION.md`). Shown inline rather than a
  * toast, since the dialog is already open and about the failure.
  */
-export function QpayPayDialog({
+export function AccessPayDialog({
   childId,
-  invoiceId,
   trigger,
   onPaid,
 }: {
   childId: string;
-  invoiceId: string;
   trigger: ReactNode;
-  /** Called once, the moment a poll reports PAID — refetch the invoice list. */
+  /** Called once, the moment a poll reports PAID — the gate has opened. */
   onPaid: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -45,20 +43,20 @@ export function QpayPayDialog({
 
   const create = useMutation({
     mutationFn: () =>
-      mutate(`/children/${childId}/invoices/${invoiceId}/qpay`, qpayInvoiceAttemptSchema, {
+      mutate(`/children/${childId}/access/qpay`, qpayInvoiceAttemptSchema, {
         method: "POST",
         body: {},
       }),
     onSuccess: (attempt) => {
-      queryClient.setQueryData(qk.qpayInvoice(childId, invoiceId), attempt);
+      queryClient.setQueryData(qk.accessQpay(childId), attempt);
       setAttemptId(attempt.id);
     },
   });
 
   const { data: attempt } = useQuery({
-    queryKey: qk.qpayInvoice(childId, invoiceId),
+    queryKey: qk.accessQpay(childId),
     queryFn: () =>
-      get(`/children/${childId}/invoices/${invoiceId}/qpay`, qpayInvoiceAttemptSchema),
+      get(`/children/${childId}/access/qpay`, qpayInvoiceAttemptSchema),
     enabled: Boolean(attemptId) && open,
     // Polls only while the attempt is still PENDING — the same rule
     // `ReportDialog` applies to a report job, here applied to a payment.

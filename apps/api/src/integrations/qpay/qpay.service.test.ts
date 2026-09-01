@@ -3,7 +3,7 @@ import { QpayService } from "./qpay.service";
 import type { QpayRepository } from "./qpay.repository";
 import type { QpayClient } from "./qpay.client";
 import type { QpayConfig } from "./qpay.config";
-import type { InvoicesRepository } from "../../invoices/invoices.repository";
+import type { AccessService } from "../../access/access.service";
 import type { ChildAccessService } from "../../authz/child-access.service";
 import type { AuditRepository } from "../../audit/audit.repository";
 
@@ -12,7 +12,8 @@ import type { AuditRepository } from "../../audit/audit.repository";
  *
  * ★ This is where the one property that actually matters once real money is
  * involved gets proven: two triggers (the webhook and a parent's status
- * poll) asking "has this been paid" at once must credit the invoice exactly
+ * poll) asking "has this been paid" at once must open the family's access
+ * exactly
  * once, never twice. `apps/api/test/qpay.test.ts` proves the HTTP surface —
  * authorization, ownership, the honest "not configured" message — against a
  * real database; it deliberately cannot exercise this, because there is no
@@ -27,14 +28,13 @@ function fakeRow(overrides: Partial<Record<string, unknown>> = {}): QpayInvoiceR
   return {
     id: "qpay-row-1",
     kindergartenId: "kg-1",
-    invoiceId: "invoice-1",
+    subscriptionId: "sub-1",
     amount: { toFixed: () => "195000.00" },
     qpayInvoiceId: "qpay-inv-1",
     senderInvoiceNo: "sender-1",
     qrText: "qr-text",
     qrImage: "qr-image",
     status: "PENDING",
-    paymentId: null,
     createdById: "user-1",
     expiresAt: new Date(Date.now() + 60_000),
     paidAt: null,
@@ -50,7 +50,7 @@ function harness(rowOverrides: Partial<Record<string, unknown>> = {}) {
   let claims = 0;
 
   const repo = {
-    findLatestForInvoice: vi.fn(async () => row),
+    findLatestForSubscription: vi.fn(async () => row),
     findById: vi.fn(async () => row),
     findByQpayInvoiceId: vi.fn(async () => row),
     create: vi.fn(async () => row),
@@ -69,9 +69,6 @@ function harness(rowOverrides: Partial<Record<string, unknown>> = {}) {
       row = { ...row, status: "PAID", paidAt } as QpayInvoiceRow;
       return true;
     }),
-    attachPayment: vi.fn(async (_id: string, paymentId: string) => {
-      row = { ...row, paymentId } as QpayInvoiceRow;
-    }),
   } as unknown as QpayRepository;
 
   const checkPayment = vi.fn(async () => ({
@@ -89,77 +86,71 @@ function harness(rowOverrides: Partial<Record<string, unknown>> = {}) {
 
   const config = { isConfigured: true } as unknown as QpayConfig;
 
-  const recordPayment = vi.fn(async () => ({
-    payment: { id: "real-payment-1" },
-    invoice: { id: "invoice-1", status: "PAID" },
-  }));
-  const invoices = {
-    findInvoiceRef: vi.fn(async () => ({
-      id: "invoice-1",
+  /** Models `AccessService.markPaid`, which is itself WHERE-guarded. */
+  const markPaid = vi.fn(async () => true);
+  const access = {
+    ensureForChild: vi.fn(async () => ({
+      id: "sub-1",
       kindergartenId: "kg-1",
       childId: "child-1",
-      paidAmount: "0",
-      balance: "195000.00",
       status: "UNPAID",
+      amount: { toFixed: () => "15000.00" },
+      schoolYear: { id: "year-1", name: "2026-2027", endsOn: new Date("2027-05-31") },
     })),
-    recordPayment,
-  } as unknown as InvoicesRepository;
+    markPaid,
+  } as unknown as AccessService;
 
   const childAccess = {
-    assertCanViewFinance: vi.fn(async () => ({})),
+    assertCanAccessIgnoringFee: vi.fn(async () => ({})),
   } as unknown as ChildAccessService;
 
   const audit = { append: vi.fn(async () => {}) } as unknown as AuditRepository;
 
-  const service = new QpayService(repo, client, config, invoices, childAccess, audit);
+  const service = new QpayService(repo, client, config, access, childAccess, audit);
 
-  return { service, repo, client, invoices, audit, recordPayment, checkPayment, claimsCount: () => claims };
+  return { service, repo, client, access, audit, markPaid, checkPayment, claimsCount: () => claims };
 }
 
 const actor = { userId: "guardian-1" } as never;
 
 describe("reconciling a payment", () => {
-  it("credits a PENDING invoice exactly once when QPay confirms PAID", async () => {
+  it("opens access exactly once when QPay confirms PAID", async () => {
     const h = harness();
 
-    const result = await h.service.status(actor, "child-1", "invoice-1");
+    const result = await h.service.status(actor, "child-1");
 
-    expect(h.recordPayment).toHaveBeenCalledTimes(1);
-    expect(h.recordPayment).toHaveBeenCalledWith(
-      "invoice-1",
-      expect.objectContaining({ method: "QPAY", gatewayReference: "qpay-payment-1", amount: "195000.00" }),
-    );
-    expect(h.repo.attachPayment).toHaveBeenCalledWith("qpay-row-1", "real-payment-1");
+    expect(h.markPaid).toHaveBeenCalledTimes(1);
+    expect(h.markPaid).toHaveBeenCalledWith("sub-1", expect.any(Date));
     expect(h.audit.append).toHaveBeenCalledWith(
-      expect.objectContaining({ objectType: "Payment", objectId: "real-payment-1" }),
+      expect.objectContaining({ objectType: "QpayInvoice", objectId: "qpay-row-1" }),
     );
     expect(result.status).toBe("PAID");
   });
 
-  it("is a no-op the second time — an already-PAID row is never re-checked or re-credited", async () => {
+  it("is a no-op the second time — an already-PAID row is never re-checked", async () => {
     const h = harness();
 
-    await h.service.status(actor, "child-1", "invoice-1");
+    await h.service.status(actor, "child-1");
     h.checkPayment.mockClear();
-    h.recordPayment.mockClear();
+    h.markPaid.mockClear();
 
-    const second = await h.service.status(actor, "child-1", "invoice-1");
+    const second = await h.service.status(actor, "child-1");
 
     expect(h.checkPayment).not.toHaveBeenCalled();
-    expect(h.recordPayment).not.toHaveBeenCalled();
+    expect(h.markPaid).not.toHaveBeenCalled();
     expect(second.status).toBe("PAID");
   });
 
-  it("never creates a second Payment when the claim is lost to a concurrent caller", async () => {
+  it("never settles twice when the claim is lost to a concurrent caller", async () => {
     const h = harness();
     // Simulates the webhook having already won the race a moment earlier:
     // the row is PENDING when read, but by the time this call reaches the
     // claim step, `claimForPayment` reports someone else got there first.
     (h.repo.claimForPayment as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
 
-    await h.service.status(actor, "child-1", "invoice-1");
+    await h.service.status(actor, "child-1");
 
-    expect(h.recordPayment).not.toHaveBeenCalled();
+    expect(h.markPaid).not.toHaveBeenCalled();
     // The row is re-read after losing the claim, not assumed.
     expect(h.repo.findById).toHaveBeenCalled();
   });
@@ -168,9 +159,9 @@ describe("reconciling a payment", () => {
     const h = harness();
     h.checkPayment.mockResolvedValueOnce({ count: 0, rows: [] });
 
-    const result = await h.service.status(actor, "child-1", "invoice-1");
+    const result = await h.service.status(actor, "child-1");
 
-    expect(h.recordPayment).not.toHaveBeenCalled();
+    expect(h.markPaid).not.toHaveBeenCalled();
     expect(h.repo.claimForPayment).not.toHaveBeenCalled();
     expect(result.status).toBe("PENDING");
   });
@@ -178,7 +169,7 @@ describe("reconciling a payment", () => {
   it("expires a stale row locally without calling QPay at all", async () => {
     const h = harness({ expiresAt: new Date(Date.now() - 1000) });
 
-    const result = await h.service.status(actor, "child-1", "invoice-1");
+    const result = await h.service.status(actor, "child-1");
 
     expect(h.checkPayment).not.toHaveBeenCalled();
     expect(h.repo.markExpired).toHaveBeenCalledWith("qpay-row-1");
@@ -189,9 +180,9 @@ describe("reconciling a payment", () => {
     const h = harness();
     h.checkPayment.mockRejectedValueOnce(new Error("network down"));
 
-    const result = await h.service.status(actor, "child-1", "invoice-1");
+    const result = await h.service.status(actor, "child-1");
 
-    expect(h.recordPayment).not.toHaveBeenCalled();
+    expect(h.markPaid).not.toHaveBeenCalled();
     expect(result.status).toBe("PENDING");
   });
 });
@@ -200,7 +191,7 @@ describe("starting a new attempt", () => {
   it("reuses an unexpired PENDING attempt instead of creating a second one", async () => {
     const h = harness();
 
-    const result = await h.service.createForInvoice(actor, "child-1", "invoice-1");
+    const result = await h.service.createForSubscription(actor, "child-1");
 
     expect(h.repo.create).not.toHaveBeenCalled();
     expect(result.id).toBe("qpay-row-1");
@@ -209,23 +200,23 @@ describe("starting a new attempt", () => {
   it("creates a fresh attempt when the previous one has expired", async () => {
     const h = harness({ status: "EXPIRED", expiresAt: new Date(Date.now() - 1000) });
 
-    await h.service.createForInvoice(actor, "child-1", "invoice-1");
+    await h.service.createForSubscription(actor, "child-1");
 
     expect(h.repo.create).toHaveBeenCalledTimes(1);
   });
 
-  it("refuses to start a payment for an invoice with nothing owed", async () => {
+  it("refuses to charge again for a school year already paid for", async () => {
     const h = harness();
-    (h.invoices.findInvoiceRef as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      id: "invoice-1",
+    (h.access.ensureForChild as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: "sub-1",
       kindergartenId: "kg-1",
       childId: "child-1",
-      paidAmount: "195000",
-      balance: "0.00",
-      status: "PAID",
+      status: "ACTIVE",
+      amount: { toFixed: () => "15000.00" },
+      schoolYear: { id: "year-1", name: "2026-2027", endsOn: new Date("2027-05-31") },
     });
 
-    await expect(h.service.createForInvoice(actor, "child-1", "invoice-1")).rejects.toThrow();
+    await expect(h.service.createForSubscription(actor, "child-1")).rejects.toThrow();
     expect(h.repo.create).not.toHaveBeenCalled();
   });
 });

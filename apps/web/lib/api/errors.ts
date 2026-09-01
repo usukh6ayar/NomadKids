@@ -1,6 +1,19 @@
 import { ApiError } from "./client";
 
 /**
+ * The portal access fee is unpaid — the one refusal a user can act on.
+ *
+ * ★ Every other refusal this file maps is a dead end by design: a 404 says
+ * "absent or not yours" and offers nothing, because offering something would
+ * leak which of the two it is. 402 is the deliberate exception — the caller is
+ * already known to be this child's guardian, so the screen can and must show
+ * the way out. `AccessGate` is what does that.
+ */
+export function isPaymentRequired(error: unknown): boolean {
+  return error instanceof ApiError && error.isPaymentRequired;
+}
+
+/**
  * problem+json → what the user reads.
  *
  * One mapping, used by every screen. Two things it deliberately does:
@@ -17,6 +30,7 @@ import { ApiError } from "./client";
 const STATUS_MESSAGES: Record<number, string> = {
   400: "Оруулсан мэдээлэл буруу байна. Шалгаад дахин оролдоно уу.",
   401: "Нэвтрэх хугацаа дууссан байна. Дахин нэвтэрнэ үү.",
+  402: "Энэ хүүхдийн мэдээллийг үзэхийн тулд хандалтын төлбөрөө төлнө үү.",
   403: "Хүсэлт хүчингүй байна. Хуудсыг сэргээгээд дахин оролдоно уу.",
   404: "Олдсонгүй.",
   409: "Энэ мэдээлэл аль хэдийн бүртгэгдсэн байна.",

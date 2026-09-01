@@ -1,7 +1,7 @@
 import { Module } from "@nestjs/common";
 import { loadEnv } from "../../config/env";
-import { InvoicesModule } from "../../invoices/invoices.module";
-import { ChildInvoiceQpayController, QpayCallbackController } from "./qpay.controller";
+import { AccessModule } from "../../access/access.module";
+import { ChildAccessQpayController, QpayCallbackController } from "./qpay.controller";
 import { QpayClient } from "./qpay.client";
 import { QpayConfig } from "./qpay.config";
 import { QpayRepository } from "./qpay.repository";
@@ -16,8 +16,8 @@ import { QpayService } from "./qpay.service";
  * who needs ESIS rather than each caller constructing one.
  */
 @Module({
-  imports: [InvoicesModule],
-  controllers: [ChildInvoiceQpayController, QpayCallbackController],
+  imports: [AccessModule],
+  controllers: [ChildAccessQpayController, QpayCallbackController],
   providers: [
     // A factory, same reason as `EsisModule`: `QpayConfig` takes the parsed
     // `Env`, which is a type rather than a provider, and reading it here means

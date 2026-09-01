@@ -75,6 +75,26 @@ export class AuthzRepository {
    * the group from this list, and with it the teacher's access — while the
    * GroupTeacher row survives so historical attribution still works.
    */
+  /**
+   * Whether this child has a paid, unexpired portal subscription.
+   *
+   * ★ Called only when a fee is configured — `ChildAccessService` checks that
+   * first, so the default deployment (`ACCESS_FEE_AMOUNT=0`) adds no query to
+   * the hottest authorization path in the product.
+   */
+  async loadPortalAccessActive(childId: string, asOf: Date): Promise<boolean> {
+    const row = await this.prisma.accessSubscription.findFirst({
+      where: {
+        childId,
+        deletedAt: null,
+        status: "ACTIVE",
+        expiresAt: { gte: asOf },
+      },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
   async loadActiveTeachingGroupIds(actor: Actor): Promise<string[]> {
     const membershipIds = teacherMembershipIds(actor);
     if (membershipIds.length === 0) return [];

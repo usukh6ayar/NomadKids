@@ -7,11 +7,12 @@ import { ArrowLeft } from "lucide-react";
 import { childDetailSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
-import { errorMessage, isNotFound } from "@/lib/api/errors";
+import { errorMessage, isNotFound, isPaymentRequired } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildInvoices } from "@/components/child/child-invoices";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
+import { AccessGate } from "@/components/child/access-gate";
 
 /**
  * A specific child's invoices, payment history and balance — нэмэлт.md §7,
@@ -38,6 +39,18 @@ export default function ChildFinancePage() {
   });
 
   if (child.isLoading) return <LoadingState rows={4} />;
+
+  /*
+   * ★ 402 before the generic error branch, and it is the only status handled
+   * this way. `assertCanAccess` answers 402 when this child's guardian has not
+   * paid the portal access fee — they are the right person asking about the
+   * right child, so unlike every other refusal there is something they can do,
+   * and `AccessGate` is what offers it. A stranger never reaches here: the API
+   * checks authorization first and answers them 404.
+   */
+  if (child.isError && isPaymentRequired(child.error)) {
+    return <AccessGate childId={childId} />;
+  }
 
   if (child.isError) {
     return (

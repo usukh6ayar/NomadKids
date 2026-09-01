@@ -7,6 +7,7 @@ import ChildFinancePage from "@/app/(app)/children/[childId]/finance/page";
 const CHILD_ID = "55555555-5555-4555-8555-555555555555";
 const INVOICE_ID = "66666666-6666-4666-8666-666666666666";
 const QPAY_ID = "77777777-7777-4777-8777-777777777777";
+const SUB_ID = "88888888-8888-4888-8888-888888888888";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -63,7 +64,7 @@ function invoicesPage(items: unknown[]) {
  * raw ISO string `Invoice.month` actually is on the wire.
  */
 describe("a guardian's own view of a child's finances", () => {
-  it("shows the month, status, balance and a QPay button on an unpaid bill", async () => {
+  it("shows the month, status and balance on an unpaid bill", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["PARENT"]) },
       // Longer/more specific paths first — `stubApi` matches by `startsWith`
@@ -84,10 +85,13 @@ describe("a guardian's own view of a child's finances", () => {
     // Appears twice — "Нийт төлөх дүн" and "Үлдэгдэл" agree while nothing is
     // paid yet.
     expect(screen.getAllByText("190 000₮").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "QPay-ээр төлөх" })).toBeInTheDocument();
+    // ★ No pay button. QPay charges the portal access fee and nothing else
+    // (client, 2026-09-01); a tuition bill is settled in cash or by transfer
+    // and recorded by the accountant, so this card is read-only to a parent.
+    expect(screen.queryByRole("button", { name: "QPay-ээр төлөх" })).not.toBeInTheDocument();
   });
 
-  it("offers no QPay button, and no write controls, once an invoice is paid", async () => {
+  it("offers no write controls once an invoice is paid", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["PARENT"]) },
       {
@@ -144,38 +148,77 @@ describe("a guardian's own view of a child's finances", () => {
   });
 });
 
-describe("paying an invoice through QPay", () => {
+/**
+ * The portal access fee — client instruction, 2026-09-01: QPay takes money
+ * from parents for the right to use the site, and for nothing else.
+ *
+ * ★ These tests render the same page as the block above, but the API answers
+ * **402** rather than serving the child. That status is the product's one
+ * deliberate departure from `docs/SECURITY.md` §5.4, and the reason is what
+ * these assertions pin: a 404 would be unactionable, while the person reading
+ * this is the child's own guardian and one payment away from the record.
+ */
+describe("the portal access fee", () => {
+  const accessStatus = {
+    required: true,
+    active: false,
+    amount: "15000.00",
+    subscription: {
+      id: SUB_ID,
+      status: "UNPAID",
+      amount: "15000.00",
+      expiresAt: "2027-05-31",
+      paidAt: null,
+      schoolYear: { id: "year-1", name: "2026-2027", endsOn: "2027-05-31" },
+    },
+  };
+
+  function paywalled(extra: Parameters<typeof stubApi>[0] = []) {
+    return stubApi([
+      { path: "/auth/me", body: sessionFor(["PARENT"]) },
+      ...extra,
+      { path: `/children/${CHILD_ID}/access`, method: "GET", body: accessStatus },
+      {
+        path: `/children/${CHILD_ID}`,
+        method: "GET",
+        status: 402,
+        body: {
+          type: "about:blank",
+          title: "Төлбөр төлөгдөөгүй",
+          detail: "Энэ хүүхдийн мэдээллийг үзэхийн тулд энэ хичээлийн жилийн хандалтын төлбөрийг төлнө үү.",
+          status: 402,
+          requestId: "test",
+        },
+      },
+    ]);
+  }
+
+  it("offers the way out instead of a dead end when the fee is unpaid", async () => {
+    paywalled();
+
+    renderWithProviders(<ChildFinancePage />);
+
+    expect(await screen.findByText("Хандалтын төлбөр")).toBeInTheDocument();
+    expect(screen.getByText("15 000₮")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "QPay-ээр төлөх" })).toBeInTheDocument();
+  });
+
   it("creates an attempt on click and renders the QR code it returns", async () => {
     const user = userEvent.setup();
     const attempt = {
       id: QPAY_ID,
       status: "PENDING",
-      amount: "190000.00",
+      amount: "15000.00",
       qrText: "qpay-qr-text",
       qrImage: "iVBORw0KGgo=",
       expiresAt: "2026-09-01T13:00:00.000Z",
       paidAt: null,
     };
 
-    const { calls } = stubApi([
-      { path: "/auth/me", body: sessionFor(["PARENT"]) },
-      // Most-specific paths first — see the note in the describe block above.
-      {
-        path: `/children/${CHILD_ID}/invoices/${INVOICE_ID}/qpay`,
-        method: "POST",
-        body: attempt,
-      },
-      {
-        path: `/children/${CHILD_ID}/invoices/${INVOICE_ID}/qpay`,
-        method: "GET",
-        body: attempt,
-      },
-      {
-        path: `/children/${CHILD_ID}/invoices`,
-        method: "GET",
-        body: invoicesPage([invoiceFixture()]),
-      },
-      { path: `/children/${CHILD_ID}`, method: "GET", body: childFixture() },
+    const { calls } = paywalled([
+      // Most-specific paths first — `stubApi` matches by `startsWith`.
+      { path: `/children/${CHILD_ID}/access/qpay`, method: "POST", body: attempt },
+      { path: `/children/${CHILD_ID}/access/qpay`, method: "GET", body: attempt },
     ]);
 
     renderWithProviders(<ChildFinancePage />);
@@ -183,9 +226,7 @@ describe("paying an invoice through QPay", () => {
     await user.click(await screen.findByRole("button", { name: "QPay-ээр төлөх" }));
 
     await waitFor(() =>
-      expect(
-        calls.some((c) => c.method === "POST" && c.url.includes(`${INVOICE_ID}/qpay`)),
-      ).toBe(true),
+      expect(calls.some((c) => c.method === "POST" && c.url.includes("/access/qpay"))).toBe(true),
     );
 
     const img = await screen.findByAltText("QPay QR код");
@@ -195,10 +236,9 @@ describe("paying an invoice through QPay", () => {
   it("shows a not-configured error inline rather than crashing", async () => {
     const user = userEvent.setup();
 
-    stubApi([
-      { path: "/auth/me", body: sessionFor(["PARENT"]) },
+    paywalled([
       {
-        path: `/children/${CHILD_ID}/invoices/${INVOICE_ID}/qpay`,
+        path: `/children/${CHILD_ID}/access/qpay`,
         method: "POST",
         status: 400,
         body: {
@@ -209,6 +249,21 @@ describe("paying an invoice through QPay", () => {
           requestId: "test",
         },
       },
+    ]);
+
+    renderWithProviders(<ChildFinancePage />);
+
+    await user.click(await screen.findByRole("button", { name: "QPay-ээр төлөх" }));
+
+    expect(await screen.findByText(/тохируулагдаагүй/)).toBeInTheDocument();
+  });
+
+  it("says nothing about a fee when the deployment does not charge", async () => {
+    // ★ `ACCESS_FEE_AMOUNT=0` is the default, and it must serve the portal
+    // exactly as it did before this feature existed. Nobody is locked out of
+    // their own child's records by an unset variable.
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["PARENT"]) },
       {
         path: `/children/${CHILD_ID}/invoices`,
         method: "GET",
@@ -219,71 +274,8 @@ describe("paying an invoice through QPay", () => {
 
     renderWithProviders(<ChildFinancePage />);
 
-    await user.click(await screen.findByRole("button", { name: "QPay-ээр төлөх" }));
-
-    expect(await screen.findByText("QPay холболт тохируулагдаагүй байна.")).toBeInTheDocument();
-  });
-
-  it("declares success once a poll reports the payment landed, and refetches the invoice list", async () => {
-    const user = userEvent.setup();
-    let listCalls = 0;
-
-    // Stubbed by hand, not through `stubApi`'s static routes: the invoice
-    // list must answer differently on its second call, once the payment has
-    // landed, to prove `onPaid` actually triggered a refetch rather than the
-    // dialog just rendering its own local "success" text.
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
-      const method = (init?.method ?? "GET").toUpperCase();
-      const path = url.replace(/^.*\/v1/, "");
-
-      if (path.startsWith("/auth/me")) return jsonOk(sessionFor(["PARENT"]));
-      if (path.startsWith(`/children/${CHILD_ID}/invoices/${INVOICE_ID}/qpay`) && method === "POST") {
-        return jsonOk({
-          id: QPAY_ID,
-          status: "PENDING",
-          amount: "190000.00",
-          qrText: null,
-          qrImage: null,
-          expiresAt: null,
-          paidAt: null,
-        });
-      }
-      if (path.startsWith(`/children/${CHILD_ID}/invoices/${INVOICE_ID}/qpay`) && method === "GET") {
-        return jsonOk({
-          id: QPAY_ID,
-          status: "PAID",
-          amount: "190000.00",
-          qrText: null,
-          qrImage: null,
-          expiresAt: null,
-          paidAt: "2026-09-01T12:35:00.000Z",
-        });
-      }
-      if (path.startsWith(`/children/${CHILD_ID}/invoices`)) {
-        listCalls += 1;
-        const paid = listCalls > 1;
-        return jsonOk(
-          invoicesPage([
-            invoiceFixture(
-              paid ? { status: "PAID", paidAmount: "190000", balance: "0" } : {},
-            ),
-          ]),
-        );
-      }
-      if (path.startsWith(`/children/${CHILD_ID}`)) return jsonOk(childFixture());
-      return { ok: false, status: 404, headers: new Headers(), json: async () => ({}) } as Response;
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    renderWithProviders(<ChildFinancePage />);
-
-    await user.click(await screen.findByRole("button", { name: "QPay-ээр төлөх" }));
-
-    expect(await screen.findByText("Төлбөр амжилттай хийгдлээ")).toBeInTheDocument();
-    // `onPaid` invalidated the list query behind the dialog, which is still
-    // mounted and refetches immediately rather than waiting for a remount.
-    await waitFor(() => expect(listCalls).toBeGreaterThan(1));
+    expect(await screen.findByText("2026 оны 8-р сар")).toBeInTheDocument();
+    expect(screen.queryByText("Хандалтын төлбөр")).not.toBeInTheDocument();
   });
 });
 

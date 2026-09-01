@@ -1,10 +1,9 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import Decimal from "decimal.js";
 import { AuditRepository } from "../../audit/audit.repository";
 import { ChildAccessService } from "../../authz/child-access.service";
 import type { Actor } from "../../authz/actor";
-import { InvoicesRepository } from "../../invoices/invoices.repository";
+import { AccessService } from "../../access/access.service";
 import { QpayClient, QpayError } from "./qpay.client";
 import { QpayConfig } from "./qpay.config";
 import { QpayRepository } from "./qpay.repository";
@@ -14,7 +13,7 @@ import { QpayRepository } from "./qpay.repository";
  *
  * Independent of whatever QPay's own invoice expiry is (undocumented without
  * a sandbox to inspect) — this bounds how long a *stale* row is reused by
- * `createForInvoice` and how long `status`/the callback keep polling QPay
+ * `createForSubscription` and how long `status`/the callback keep polling QPay
  * about it before giving up and reporting EXPIRED locally.
  */
 const QPAY_INVOICE_TTL_MS = 30 * 60 * 1000;
@@ -22,7 +21,8 @@ const QPAY_INVOICE_TTL_MS = 30 * 60 * 1000;
 const GENERIC_FAILURE_MESSAGE = "QPay-тай холбогдоход алдаа гарлаа. Дараа дахин оролдоно уу.";
 
 /**
- * Paying an invoice through QPay — нэмэлт.md §8.
+ * Paying the portal access fee through QPay — the only thing this gateway is
+ * used for (client, 2026-09-01).
  *
  * ★ Three entry points, one shared `reconcile()`.
  *
@@ -43,7 +43,7 @@ export class QpayService {
     private readonly repo: QpayRepository,
     private readonly client: QpayClient,
     private readonly config: QpayConfig,
-    private readonly invoices: InvoicesRepository,
+    private readonly access: AccessService,
     private readonly childAccess: ChildAccessService,
     private readonly audit: AuditRepository,
   ) {}
@@ -54,42 +54,43 @@ export class QpayService {
   }
 
   /**
-   * Starts paying one invoice through QPay, or hands back a QR already in
-   * flight for it.
+   * Draws a QR for one child's portal access fee, or hands back one already in
+   * flight.
    *
-   * ★ `assertCanViewFinance`, same predicate the child-scoped invoice list
-   * uses — a guardian pays their own child's bill, an admin or accountant may
-   * do it on a family's behalf (e.g. showing the QR in person), and a teacher
-   * is refused exactly as нэмэлт.md §13 requires.
+   * ★ Authorization is `AccessService.ensureForChild`'s, which uses
+   * `assertCanViewFinance`: guardian, admin or accountant, never a teacher,
+   * and deliberately not behind the access gate — this route has to stay
+   * reachable by the family that has not paid yet.
    */
-  async createForInvoice(actor: Actor, childId: string, invoiceId: string) {
-    await this.childAccess.assertCanViewFinance(actor, childId);
-
-    const ref = await this.invoices.findInvoiceRef(invoiceId);
-    if (!ref || ref.childId !== childId) throw new NotFoundException();
+  async createForSubscription(actor: Actor, childId: string) {
+    // ★★ Authorization FIRST, configuration second. The order is the test
+    // `refuses a teacher` and `refuses another family's guardian` exist to
+    // pin: checking `isConfigured` up front answered a stranger with "QPay is
+    // not set up here" — a 400 that confirms the child id is real, where the
+    // rule is 404 and indistinguishability (docs/SECURITY.md §5.4). Whether
+    // this deployment has QPay credentials is not a fact an unauthorized
+    // caller gets to learn.
+    const subscription = await this.access.ensureForChild(actor, childId);
 
     if (!this.isConfigured) {
       throw new BadRequestException("QPay холболт тохируулагдаагүй байна.");
     }
-    if (ref.status === "PAID" || ref.status === "REFUNDED") {
-      throw new BadRequestException("Энэ нэхэмжлэл аль хэдийн шийдэгдсэн байна.");
+
+    if (subscription.status === "ACTIVE") {
+      throw new BadRequestException("Энэ хичээлийн жилийн хандалт аль хэдийн нээгдсэн байна.");
     }
 
-    // decimal.js, not `Number()` — this figure becomes the amount frozen onto
-    // the QR a parent is handed, so it is the last place a rounding error
-    // could still be introduced before money moves.
-    const balance = new Decimal(ref.balance.toString());
-    if (!balance.gt(0)) {
-      throw new BadRequestException("Төлөх үлдэгдэл алга.");
-    }
+    // decimal.js is unnecessary here — the amount is copied, never computed.
+    // It was frozen onto the subscription at issue and is handed to QPay
+    // unchanged, so a price change cannot move a QR already in a parent's hand.
+    const amount = subscription.amount.toFixed(2);
 
     const now = new Date();
-    const latest = await this.repo.findLatestForInvoice(invoiceId);
+    const latest = await this.repo.findLatestForSubscription(subscription.id);
     if (latest && latest.status === "PENDING" && latest.expiresAt && latest.expiresAt > now) {
       return latest;
     }
 
-    const amount = balance.toFixed(2);
     const senderInvoiceNo = randomUUID();
 
     let created;
@@ -97,15 +98,15 @@ export class QpayService {
       created = await this.client.createInvoice({
         senderInvoiceNo,
         amount,
-        description: `NomadKids — нэхэмжлэл ${invoiceId.slice(0, 8)}`,
+        description: `NomadKids — хандалтын төлбөр ${subscription.schoolYear.name}`,
       });
     } catch (cause) {
       throw this.toHttpError(cause, "createInvoice");
     }
 
     const row = await this.repo.create({
-      kindergartenId: ref.kindergartenId,
-      invoiceId,
+      kindergartenId: subscription.kindergartenId,
+      subscriptionId: subscription.id,
       amount,
       qpayInvoiceId: created.invoice_id,
       senderInvoiceNo,
@@ -117,46 +118,26 @@ export class QpayService {
 
     await this.audit.append({
       action: "CREATE",
-      kindergartenId: ref.kindergartenId,
+      kindergartenId: subscription.kindergartenId,
       actorUserId: actor.userId,
       objectType: "QpayInvoice",
       objectId: row.id,
       childId,
-      metadata: { invoiceId, amount },
+      metadata: { subscriptionId: subscription.id, amount },
     });
 
     return row;
   }
 
-  /**
-   * The latest attempt's status, re-checked with QPay first if still pending.
-   *
-   * ★ This is the poll a parent's browser makes while the QR is on screen —
-   * it is what makes payment visible even when the callback never arrives.
-   */
-  async status(actor: Actor, childId: string, invoiceId: string) {
-    await this.childAccess.assertCanViewFinance(actor, childId);
+  async status(actor: Actor, childId: string) {
+    const subscription = await this.access.ensureForChild(actor, childId);
 
-    const ref = await this.invoices.findInvoiceRef(invoiceId);
-    if (!ref || ref.childId !== childId) throw new NotFoundException();
-
-    const row = await this.repo.findLatestForInvoice(invoiceId);
+    const row = await this.repo.findLatestForSubscription(subscription.id);
     if (!row) throw new NotFoundException();
 
     return this.reconcile(row);
   }
 
-  /**
-   * QPay's own callback — `@Public()`, called by their server, not a
-   * signed-in actor.
-   *
-   * ★ The request body/query is used for exactly one thing: which
-   * `qpayInvoiceId` to go check. It is never trusted for amount or status —
-   * see `reconcile()`. An unrecognised id is a silent no-op rather than a 404:
-   * this endpoint is reachable by anyone who can guess a URL, and confirming
-   * "no such invoice" to an unauthenticated caller is exactly the oracle
-   * docs/SECURITY.md §5.4 exists to deny elsewhere in this codebase.
-   */
   async handleCallback(qpayInvoiceId: string): Promise<void> {
     if (!qpayInvoiceId) return;
 
@@ -171,12 +152,10 @@ export class QpayService {
    * from both `status()` (poll) and the callback.
    *
    * ★ Never trusts a caller-supplied amount or status. Always re-asks QPay's
-   * own `checkPayment`, and only THEN, if it says PAID, creates the real
-   * `Payment` row — `InvoicesRepository.recordPayment`, the exact same
-   * repository method the accountant's manual CASH/BANK_TRANSFER flow uses,
-   * so `recomputeTotals` updates `Invoice.status`/`balance` identically
-   * either way (нэмэлт.md §8: "Төлбөр амжилттай болсны дараа invoice-ийн
-   * төлөв автоматаар шинэчлэгдэх").
+   * own `checkPayment`, and only THEN, if it says PAID, opens the family's
+   * access. No `Payment` row is written: the fee is the platform operator's
+   * revenue, and a kindergarten's ledger must not carry income its accountant
+   * will never find on their own bank statement.
    *
    * ★★ The claim-then-attach split against `QpayRepository` is what makes this
    * safe to call twice concurrently — see `claimForPayment`'s own comment.
@@ -219,27 +198,21 @@ export class QpayService {
       return (await this.repo.findById(row.id)) ?? row;
     }
 
-    const { payment } = await this.invoices.recordPayment(row.invoiceId, {
-      kindergartenId: row.kindergartenId,
-      invoiceId: row.invoiceId,
-      amount: row.amount.toFixed(2),
-      method: "QPAY",
-      gatewayReference: paidRow.payment_id,
-      recordedById: null,
-      note: "QPay-ээр автоматаар баталгаажлаа.",
-    });
-
-    await this.repo.attachPayment(row.id, payment.id);
+    // ★ No `Payment` row. An access fee is the platform operator's revenue,
+    // not a kindergarten's — putting it in the ledger §14 audits would mix the
+    // operator's income into a kindergarten's books, where an accountant
+    // reconciling against their own bank statement would never find it.
+    await this.access.markPaid(row.subscriptionId, now);
 
     await this.audit.append({
-      action: "CREATE",
+      action: "UPDATE",
       kindergartenId: row.kindergartenId,
       actorUserId: row.createdById,
       actorLabel: row.createdById ? null : "QPay (автомат баталгаажуулалт)",
-      objectType: "Payment",
-      objectId: payment.id,
+      objectType: "QpayInvoice",
+      objectId: row.id,
       metadata: {
-        after: { invoiceId: row.invoiceId, amount: row.amount.toFixed(2), method: "QPAY" },
+        after: { subscriptionId: row.subscriptionId, amount: row.amount.toFixed(2) },
         qpayInvoiceId: row.qpayInvoiceId,
         qpayPaymentId: paidRow.payment_id,
       },

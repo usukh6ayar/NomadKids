@@ -40,6 +40,10 @@ services:
       WEB_DOMAIN: ${WEB_DOMAIN}
       API_DOMAIN: ${API_DOMAIN}
       MEDIA_DOMAIN: ${MEDIA_DOMAIN}
+      # ★ Without this the Caddyfile's `email {$ACME_EMAIL}` expands to nothing
+      # and Caddy refuses the whole config with "wrong argument count after
+      # 'email'" — a restart loop with no TLS, found on the first real deploy.
+      ACME_EMAIL: ${ACME_EMAIL}
     depends_on:
       - web
       - api

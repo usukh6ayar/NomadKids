@@ -3009,6 +3009,30 @@ export type QpayInvoiceStatus = z.infer<typeof qpayInvoiceStatusSchema>;
  * One attempt to pay an `Invoice` through QPay — what
  * `ChildInvoiceQpayController`'s `create`/`status` return.
  */
+/**
+ * The portal access fee — client instruction, 2026-09-01: QPay charges parents
+ * for the right to use the site, and nothing else. Tuition and meal bills are
+ * still raised and still settled, but never through the gateway.
+ */
+export const accessSubscriptionSchema = z.object({
+  id: z.string(),
+  status: z.enum(["UNPAID", "ACTIVE", "EXPIRED"]),
+  amount: z.string(),
+  expiresAt: z.string(),
+  paidAt: z.string().nullable(),
+  schoolYear: z.object({ id: z.string(), name: z.string(), endsOn: z.string() }),
+});
+export type AccessSubscription = z.infer<typeof accessSubscriptionSchema>;
+
+/** What the unlock screen reads. `required: false` means the deployment does not charge. */
+export const accessStatusSchema = z.object({
+  required: z.boolean(),
+  active: z.boolean(),
+  amount: z.string().nullable(),
+  subscription: accessSubscriptionSchema.nullable(),
+});
+export type AccessStatus = z.infer<typeof accessStatusSchema>;
+
 export const qpayInvoiceAttemptSchema = z.object({
   id: uuidSchema,
   status: qpayInvoiceStatusSchema,

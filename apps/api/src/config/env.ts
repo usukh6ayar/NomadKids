@@ -148,6 +148,27 @@ export const envSchema = z.object({
    * credited — see `QpayService.reconcile`.
    */
   QPAY_CALLBACK_URL: z.string().default(""),
+  /**
+   * The portal access fee — one child, one school year, in tögrög.
+   *
+   * ★ **"0" means the gate is off**, and that is the default on purpose. A
+   * deployment that has not been told a price must not lock every family out
+   * of their own children's records; it serves the portal exactly as it did
+   * before this feature existed. The gate only exists once somebody sets a
+   * number.
+   *
+   * ★★ Priced per deployment, not per kindergarten. One QPay merchant serves
+   * every kindergarten (client, 2026-08-31), so the money lands in one
+   * account; prices set in many places against one account is a reconciliation
+   * problem nobody asked for.
+   *
+   * A decimal string, never a number — `docs/FINANCE_MODULE.md` §2.1.
+   */
+  ACCESS_FEE_AMOUNT: z
+    .string()
+    .regex(/^\d{1,10}(\.\d{1,2})?$/, "ACCESS_FEE_AMOUNT нь мөнгөн дүн байна (жишээ: 15000.00)")
+    .default("0"),
+
   QPAY_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(15_000),
 
   /**

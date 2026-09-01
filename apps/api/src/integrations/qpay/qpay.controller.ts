@@ -1,6 +1,5 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Query, UseGuards } from "@nestjs/common";
-import { idParamSchema, uuidSchema } from "@kinder/contracts";
-import { z } from "zod";
+import { idParamSchema } from "@kinder/contracts";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../../auth/decorators/actor.decorator";
 import { Public } from "../../auth/decorators/public.decorator";
@@ -11,37 +10,35 @@ import { QpayService } from "./qpay.service";
 const HOUR = 60 * 60 * 1000;
 const MINUTE = 60 * 1000;
 
-const childInvoiceParamsSchema = idParamSchema.extend({ invoiceId: uuidSchema });
-type ChildInvoiceParams = z.infer<typeof childInvoiceParamsSchema>;
-
 /**
- * Paying one invoice through QPay — the guardian-facing side.
+ * Paying one child's portal access fee through QPay — the guardian-facing
+ * side, and the only thing this gateway is used for (client, 2026-09-01).
  *
- * ★ No `@Roles`. `QpayService` decides via `assertCanViewFinance`, same as
- * `ChildInvoicesController` — a guardian, an admin or an accountant, never a
- * teacher.
+ * ★ No `@Roles`, and not behind the access gate. `QpayService` checks with
+ * `assertCanAccessIgnoringFee`: these are the routes a family who has not paid
+ * must be able to reach.
  */
-@Controller("children/:id/invoices/:invoiceId/qpay")
+@Controller("children/:id/access/qpay")
 @UseGuards(RateLimitGuard)
-export class ChildInvoiceQpayController {
+export class ChildAccessQpayController {
   constructor(private readonly service: QpayService) {}
 
   @Post()
   @RateLimit({ limit: 10, windowMs: HOUR, byUser: true })
   async create(
     @CurrentActor() actor: Actor,
-    @Param(new ZodValidationPipe(childInvoiceParamsSchema)) params: ChildInvoiceParams,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
   ) {
-    return this.service.createForInvoice(actor, params.id, params.invoiceId);
+    return this.service.createForSubscription(actor, params.id);
   }
 
   @Get()
   @RateLimit({ limit: 60, windowMs: 10 * MINUTE, byUser: true })
   async status(
     @CurrentActor() actor: Actor,
-    @Param(new ZodValidationPipe(childInvoiceParamsSchema)) params: ChildInvoiceParams,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
   ) {
-    return this.service.status(actor, params.id, params.invoiceId);
+    return this.service.status(actor, params.id);
   }
 }
 

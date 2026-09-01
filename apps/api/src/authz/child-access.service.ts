@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { AuthzRepository } from "./authz.repository";
+import { loadEnv } from "../config/env";
 import type { Actor } from "./actor";
+import { isPortalAccessBlocked, PaymentRequiredException } from "./portal-access";
 import {
   canAccessChild,
   canAdministerChild,
@@ -25,13 +27,54 @@ import {
  */
 @Injectable()
 export class ChildAccessService {
+  /**
+   * "0" means no gate. Read once at construction: it is a deployment setting,
+   * not something an administrator edits at runtime, and re-reading it per
+   * request would put a config parse on every child lookup.
+   */
+  private readonly feeConfigured = loadEnv().ACCESS_FEE_AMOUNT !== "0";
+
   constructor(private readonly repo: AuthzRepository) {}
 
-  /** Throws 404 unless the actor may READ this child. */
+  /**
+   * Throws 404 unless the actor may READ this child, then **402** if this is
+   * one of the child's guardians and the family's portal fee is unpaid.
+   *
+   * ★ The order matters and is not interchangeable. Authorization first: a
+   * stranger must get 404 whether or not anyone has paid, or the fee response
+   * becomes an oracle for "is there a child with this id". Only once the
+   * actor has been shown to be this child's guardian — someone who already
+   * knows the answer — does the 402 become safe to give. See
+   * `portal-access.ts`.
+   */
   async assertCanAccess(actor: Actor, childId: string): Promise<ChildAccessFacts> {
+    const facts = await this.assertCanAccessIgnoringFee(actor, childId);
+    await this.assertFeePaid(actor, facts);
+    return facts;
+  }
+
+  /**
+   * The same read check with the fee gate deliberately skipped.
+   *
+   * Exactly one caller may use this — the unlock screen itself, which has to
+   * name the child and quote the amount to a family that has not paid. Every
+   * other route must go through `assertCanAccess`, or the gate is decorative.
+   */
+  async assertCanAccessIgnoringFee(actor: Actor, childId: string): Promise<ChildAccessFacts> {
     const facts = await this.repo.loadChildAccessFacts(actor, childId);
     if (!facts || !canAccessChild(actor, facts)) throw new NotFoundException();
     return facts;
+  }
+
+  private async assertFeePaid(actor: Actor, facts: ChildAccessFacts): Promise<void> {
+    if (!this.feeConfigured) return;
+
+    const active = await this.repo.loadPortalAccessActive(facts.childId, new Date());
+    if (isPortalAccessBlocked(actor, facts, { required: true, active })) {
+      throw new PaymentRequiredException(
+        "Энэ хүүхдийн мэдээллийг үзэхийн тулд энэ хичээлийн жилийн хандалтын төлбөрийг төлнө үү.",
+      );
+    }
   }
 
   /**
@@ -46,6 +89,7 @@ export class ChildAccessService {
   async assertCanRecord(actor: Actor, childId: string): Promise<ChildAccessFacts> {
     const facts = await this.repo.loadChildAccessFacts(actor, childId);
     if (!facts || !canRecordForChild(actor, facts)) throw new NotFoundException();
+    await this.assertFeePaid(actor, facts);
     return facts;
   }
 
@@ -56,6 +100,7 @@ export class ChildAccessService {
   async assertCanContributeMedia(actor: Actor, childId: string): Promise<ChildAccessFacts> {
     const facts = await this.repo.loadChildAccessFacts(actor, childId);
     if (!facts || !canContributeMediaForChild(actor, facts)) throw new NotFoundException();
+    await this.assertFeePaid(actor, facts);
     return facts;
   }
 

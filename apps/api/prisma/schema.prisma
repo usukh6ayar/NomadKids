@@ -594,6 +594,7 @@ model Kindergarten {
   invoices              Invoice[]
   payments              Payment[]
   qpayInvoices          QpayInvoice[]
+  accessSubscriptions AccessSubscription[]
   chatMessages          ChatMessage[]
   chatReads             ChatRead[]
 
@@ -619,6 +620,7 @@ model SchoolYear {
   enrollments      Enrollment[]
   terms            Term[]
   childAgeProfiles ChildAgeProfile[]
+  accessSubscriptions AccessSubscription[]
 
   @@unique([kindergartenId, name])
   @@index([kindergartenId, isCurrent])
@@ -749,6 +751,7 @@ model Child {
   vaccinations        VaccinationRecord[]
   safetyIncidents     SafetyIncident[]
   artworkComparisons  ArtworkComparison[]
+  accessSubscriptions AccessSubscription[]
   consents            ConsentRecord[]
   mealRecords         MealRecord[]
   fundingCalculations FundingCalculation[]
@@ -1715,7 +1718,6 @@ model Invoice {
   child        Child             @relation(fields: [childId], references: [id], onDelete: Restrict)
   lineItems    InvoiceLineItem[]
   payments     Payment[]
-  qpayInvoices QpayInvoice[]
 
   /// One invoice per child per month, among live rows — mirrors
   /// `FundingCalculation`'s own `@@unique([childId, month, source])`.
@@ -1811,34 +1813,39 @@ model Payment {
   recordedBy   User?        @relation("PaymentRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
   reversalOf   Payment?     @relation("PaymentReversal", fields: [reversalOfId], references: [id], onDelete: SetNull)
   reversals    Payment[]    @relation("PaymentReversal")
-  qpayInvoice  QpayInvoice?
 
   @@index([invoiceId])
   @@index([kindergartenId, createdAt])
   @@map("payments")
 }
 
-/// нэмэлт.md §8 — one attempt to pay an `Invoice` through QPay's v2 "Simple"
-/// API. See `docs/reference/QPAY_INTEGRATION.md` for the full flow.
+/// One attempt to pay an `AccessSubscription` through QPay's v2 "Simple" API.
+/// See `docs/reference/QPAY_INTEGRATION.md` for the full flow.
 ///
-/// ★ A pending *attempt*, not a `Payment`. `Payment` represents money that has
-/// actually moved; a QR code nobody has scanned yet is not that, so it gets a
-/// row of its own instead of a `Payment` in a fictitious "pending" status —
-/// the same reasoning that keeps `REFUNDED` a person's call in
-/// `InvoicesService.markRefunded` rather than a number crossing zero.
-/// `paymentId` is set only once `QpayService.reconcile()` has independently
-/// confirmed the payment against QPay's own check API — never from the
-/// callback's request body, which this schema does not even carry a field
-/// for. `amount` is frozen at creation so a QR already in a parent's hand
-/// cannot silently change value if the invoice's balance moves underneath it.
+/// ★ A pending *attempt*, not a settled fact. A QR code nobody has scanned yet
+/// is not money, so it gets a row of its own rather than a subscription that
+/// claims to be half-paid. `AccessSubscription.status` moves to `ACTIVE` only
+/// once `QpayService.reconcile()` has independently confirmed the payment
+/// against QPay's own check API — never from the callback's request body,
+/// which this schema does not even carry a field for.
 ///
-/// ★★ Never deleted, same as `Payment` and for the same reason (нэмэлт.md
-/// §14) — a cancelled or expired attempt is a fact too, so `status` moves to
-/// `EXPIRED`/`CANCELLED` in place rather than the row disappearing.
+/// `amount` is frozen at creation, so a QR already in a parent's hand cannot
+/// silently change value if the deployment's fee is changed underneath it.
+///
+/// ★★ Never deleted — a cancelled or expired attempt is a fact too, so
+/// `status` moves to `EXPIRED`/`CANCELLED` in place rather than the row
+/// disappearing.
 model QpayInvoice {
   id             String  @id @default(uuid()) @db.Uuid
   kindergartenId String  @db.Uuid
-  invoiceId      String  @db.Uuid
+  /// ★ Points at an `AccessSubscription`, not a kindergarten `Invoice`.
+  ///
+  /// Repointed 2026-09-01 on the client's instruction: "QPay-ийг зөвхөн эцэг
+  /// эхчүүдээс энэхүү website-ийг ашиглах эрхийг нээхийн тулд мөнгө авна. Өөр
+  /// зүйлд QPay ашиглахгүй." A family's tuition and meal bills are still
+  /// invoiced and still settled — by cash or transfer, recorded by the
+  /// accountant — but never through this gateway.
+  subscriptionId String  @db.Uuid
   amount         Decimal @db.Decimal(12, 2)
 
   /// QPay's own id for this invoice — what the callback and the check API
@@ -1853,9 +1860,6 @@ model QpayInvoice {
 
   status QpayInvoiceStatus @default(PENDING)
 
-  /// Set once, by `reconcile()`, the moment a `Payment` row is created for
-  /// this attempt. `@unique` makes the pairing one-to-one in both directions.
-  paymentId String? @unique @db.Uuid
   /// Who pressed "pay" — audit's "Хэн" for a credit that, once it happens, is
   /// triggered by an unauthenticated webhook rather than a logged-in request.
   createdById String? @db.Uuid
@@ -1867,11 +1871,10 @@ model QpayInvoice {
   updatedAt DateTime @updatedAt
 
   kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
-  invoice      Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
-  payment      Payment?     @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  subscription AccessSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
   createdBy    User?        @relation("QpayInvoiceInitiatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
-  @@index([invoiceId])
+  @@index([subscriptionId])
   @@index([kindergartenId, status])
   @@map("qpay_invoices")
 }
@@ -1885,6 +1888,63 @@ enum QpayInvoiceStatus {
   PAID
   EXPIRED
   CANCELLED
+}
+
+/// Whether one child's family may use the portal for one school year.
+enum AccessSubscriptionStatus {
+  /// Raised, not yet paid. The family sees the unlock screen and nothing else.
+  UNPAID
+  /// Paid and inside its school year.
+  ACTIVE
+  /// The school year it was bought for has ended.
+  EXPIRED
+}
+
+/// One child's portal access for one school year — the only thing QPay is used
+/// for (client, 2026-09-01).
+///
+/// ★ **This is a gate on a family's view of their own child.** It is not
+/// authorization in the sense the rest of `authz/` means: a guardian who has
+/// not paid is the right person asking about the right child, and the answer
+/// is "not yet", not "no such child". That is why the refusal is **402**, not
+/// the 404 `docs/SECURITY.md` §1.7 requires everywhere else — 404 exists to
+/// avoid confirming a record's existence, and a parent already knows their own
+/// child exists. Returning 404 here would be a lie that costs the parent the
+/// one action that fixes it.
+///
+/// ★★ Priced per deployment, not per kindergarten (`ACCESS_FEE_AMOUNT`). One
+/// QPay merchant serves every kindergarten, so a per-kindergarten price would
+/// be money landing in one account against prices set in many places.
+///
+/// `amount` is frozen at issue: a price change must not rewrite what a family
+/// was already asked for.
+model AccessSubscription {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  childId        String @db.Uuid
+  schoolYearId   String @db.Uuid
+
+  amount Decimal                  @db.Decimal(12, 2)
+  status AccessSubscriptionStatus @default(UNPAID)
+
+  paidAt DateTime?
+  /// Copied from the school year's own end date at issue, so shortening a
+  /// school year later cannot retroactively cut access somebody paid for.
+  expiresAt DateTime @db.Date
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten  @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child         @relation(fields: [childId], references: [id], onDelete: Restrict)
+  schoolYear   SchoolYear    @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
+  qpayInvoices QpayInvoice[]
+
+  /// One subscription per child per school year.
+  @@unique([childId, schoolYearId])
+  @@index([kindergartenId, status])
+  @@map("access_subscriptions")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   INVOICE_LINE_TYPE_LABEL,
   INVOICE_STATUS_LABEL,
@@ -19,8 +19,6 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Pagination, ResultCount } from "@/components/ui/pagination";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { QpayPayDialog } from "@/components/child/qpay-pay-dialog";
-import { Button } from "@/components/ui/button";
 
 const listSchema = paginated(invoiceSchema);
 const PAGE_SIZE = 10;
@@ -59,7 +57,6 @@ function money(value: string | null): string {
  * inline costs nothing and saves a second round trip per invoice.
  */
 export function ChildInvoices({ childId }: { childId: string }) {
-  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
 
   const invoices = useQuery({
@@ -68,11 +65,6 @@ export function ChildInvoices({ childId }: { childId: string }) {
       get(`/children/${childId}/invoices?page=${page}&pageSize=${PAGE_SIZE}`, listSchema),
     placeholderData: (previous) => previous,
   });
-
-  /** A QPay payment lands through the webhook/poll, not this tab's own request — refetch rather than patch a cache entry locally. */
-  function refetchInvoices() {
-    void queryClient.invalidateQueries({ queryKey: ["child", childId, "invoices"] });
-  }
 
   if (invoices.isLoading) return <LoadingState rows={3} />;
   if (invoices.isError) return <ErrorState description={errorMessage(invoices.error)} />;
@@ -94,7 +86,7 @@ export function ChildInvoices({ childId }: { childId: string }) {
 
       <div className="flex flex-col gap-4">
         {data.items.map((invoice) => (
-          <InvoiceCard key={invoice.id} childId={childId} invoice={invoice} onPaid={refetchInvoices} />
+          <InvoiceCard key={invoice.id} invoice={invoice} />
         ))}
       </div>
 
@@ -114,33 +106,15 @@ function Row({ label, value, accent = false }: { label: string; value: string; a
   );
 }
 
-function InvoiceCard({
-  childId,
-  invoice,
-  onPaid,
-}: {
-  childId: string;
-  invoice: Invoice;
-  onPaid: () => void;
-}) {
-  const payable =
-    invoice.status !== "PAID" && invoice.status !== "REFUNDED" && Number(invoice.balance) > 0;
-
-  /*
-   * ★ Sticky once true, never reverts.
-   *
-   * `onPaid` invalidates this card's own invoice query — the moment QPay
-   * confirms a payment, `payable` flips false on the very next render, mid-
-   * dialog. Unmounting `QpayPayDialog` right then would tear down its "Төлбөр
-   * амжилттай хийгдлээ" success state before the guardian ever sees it. An
-   * invoice that starts already PAID/REFUNDED never sets this, so nothing pays
-   * for a dialog that will never open.
-   */
-  const [everPayable, setEverPayable] = useState(payable);
-  useEffect(() => {
-    if (payable) setEverPayable(true);
-  }, [payable]);
-
+/**
+ * ★ Read-only, and that is the change of 2026-09-01.
+ *
+ * A card used to carry a "QPay-ээр төлөх" button. QPay now charges one thing
+ * only — the portal access fee (`AccessGate`) — so a family's tuition and meal
+ * bills are shown here and settled in cash or by transfer, recorded by the
+ * accountant. Nothing on this card is actionable by a parent.
+ */
+function InvoiceCard({ invoice }: { invoice: Invoice }) {
   return (
     <Card pad="roomy" className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -187,18 +161,6 @@ function InvoiceCard({
         </div>
       ) : null}
 
-      {everPayable ? (
-        <QpayPayDialog
-          childId={childId}
-          invoiceId={invoice.id}
-          onPaid={onPaid}
-          trigger={
-            <Button size="sm" className={payable ? "self-start" : "hidden"}>
-              QPay-ээр төлөх
-            </Button>
-          }
-        />
-      ) : null}
     </Card>
   );
 }

@@ -43,6 +43,11 @@ let parent: AuthSession;
 
 const server = () => app.getHttpServer();
 
+// ★ The gate is off everywhere else in the suite (`test/setup.ts` pins
+// ACCESS_FEE_AMOUNT), so this file turns it on before the app is built —
+// `AccessService` reads the price once, at construction.
+process.env.ACCESS_FEE_AMOUNT = "15000.00";
+
 beforeAll(async () => {
   app = await createTestApp();
 }, 60_000);
@@ -66,25 +71,24 @@ beforeEach(async () => {
   parent = await login(app, a.parentUser.username);
 });
 
-async function invoiceIdFor(scenario: Scenario, actor: AuthSession): Promise<string> {
-  const res = await authed(
-    request(server()).post(`/v1/kindergartens/${scenario.kindergarten.id}/invoices`),
-    actor,
-  ).send({
-    childId: scenario.child.id,
-    month: "2026-08",
-    dueDate: "2026-09-05",
-    lineItems: [{ type: "TUITION", amount: "150000" }],
-  });
-  return res.body.id as string;
+/**
+ * ★ These routes charge the **portal access fee**, not a kindergarten invoice.
+ *
+ * Client instruction, 2026-09-01: QPay exists to take money from parents for
+ * the right to use the site, and for nothing else. Tuition and meal bills are
+ * still raised and still settled — in cash or by transfer, recorded by the
+ * accountant — but they never reach this gateway, so no invoice is set up here.
+ */
+function startPayment(childId: string, actor: AuthSession) {
+  return authed(request(server()).post(`/v1/children/${childId}/access/qpay`), actor);
 }
+
 
 describe("who may start a QPay payment", () => {
   it("passes authorization for the child's own guardian, then fails honestly because QPay is not configured here", async () => {
-    const id = await invoiceIdFor(a, accountant);
 
     const res = await authed(
-      request(server()).post(`/v1/children/${a.child.id}/invoices/${id}/qpay`),
+      request(server()).post(`/v1/children/${a.child.id}/access/qpay`),
       parent,
     );
 
@@ -96,73 +100,65 @@ describe("who may start a QPay payment", () => {
   });
 
   it("lets the accountant and admin start one too, same as the guardian", async () => {
-    const id = await invoiceIdFor(a, accountant);
 
     const res = await authed(
-      request(server()).post(`/v1/children/${a.child.id}/invoices/${id}/qpay`),
+      request(server()).post(`/v1/children/${a.child.id}/access/qpay`),
       accountant,
     );
     expect(res.status).toBe(400);
     expect(res.body.detail).toContain("тохируулагдаагүй");
   });
 
-  it("refuses a teacher — §13's exclusion, same predicate as the invoice read", async () => {
-    const id = await invoiceIdFor(a, accountant);
+  it("refuses a teacher — a family's subscription is not staff business", async () => {
 
     const res = await authed(
-      request(server()).post(`/v1/children/${a.child.id}/invoices/${id}/qpay`),
+      request(server()).post(`/v1/children/${a.child.id}/access/qpay`),
       teacher,
     );
     expect(res.status).toBe(404);
   });
 
   it("refuses another family's guardian", async () => {
-    const id = await invoiceIdFor(a, accountant);
-
     const otherParent = await login(app, b.parentUser.username);
     const res = await authed(
-      request(server()).post(`/v1/children/${a.child.id}/invoices/${id}/qpay`),
+      request(server()).post(`/v1/children/${a.child.id}/access/qpay`),
       otherParent,
     );
     expect(res.status).toBe(404);
   });
 
   /**
-   * ★ Not the same thing as "another family's guardian" above.
+   * ★★ The route a paying family must always be able to reach.
    *
-   * This actor genuinely may view *some* child's finances at `a.child.id` — a
-   * different check would stop here. What must still refuse is pairing that
-   * child with an invoice that is not theirs, which is `QpayService`'s own
-   * `ref.childId !== childId` guard, exercised for real rather than trusted
-   * from reading the source.
+   * `assertCanAccess` throws **402** for a guardian whose fee is unpaid, which
+   * is the whole point of the feature — but if that gate also covered the
+   * unlock route, a parent would meet a 402 with no way to clear it. This
+   * exercises the exemption for real rather than trusting the source comment:
+   * the guardian reaches the handler, and the refusal that comes back is
+   * QPay's own missing configuration, not the gate.
    */
-  it("refuses an invoice that belongs to a different child, even under an id the actor may otherwise reach", async () => {
-    const otherChildInvoiceId = await invoiceIdFor(b, await login(app, b.adminUser.username));
+  it("is reachable by a guardian who has not paid — the gate must not close its own exit", async () => {
+    const res = await startPayment(a.child.id, parent);
 
-    const res = await authed(
-      request(server()).post(`/v1/children/${a.child.id}/invoices/${otherChildInvoiceId}/qpay`),
-      parent,
-    );
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(400);
+    expect(res.body.detail).toContain("тохируулагдаагүй");
   });
 });
 
 describe("checking status", () => {
-  it("404s when nobody has started a QPay payment for this invoice yet", async () => {
-    const id = await invoiceIdFor(a, accountant);
+  it("404s when nobody has started a QPay payment for this child yet", async () => {
 
     const res = await authed(
-      request(server()).get(`/v1/children/${a.child.id}/invoices/${id}/qpay`),
+      request(server()).get(`/v1/children/${a.child.id}/access/qpay`),
       parent,
     );
     expect(res.status).toBe(404);
   });
 
   it("refuses a teacher reading status, same as starting one", async () => {
-    const id = await invoiceIdFor(a, accountant);
 
     const res = await authed(
-      request(server()).get(`/v1/children/${a.child.id}/invoices/${id}/qpay`),
+      request(server()).get(`/v1/children/${a.child.id}/access/qpay`),
       teacher,
     );
     expect(res.status).toBe(404);

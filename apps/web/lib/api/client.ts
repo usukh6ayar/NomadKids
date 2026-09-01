@@ -76,6 +76,20 @@ export class ApiError extends Error {
   get isUnauthenticated(): boolean {
     return this.status === 401;
   }
+
+  /**
+   * The portal access fee is unpaid — client instruction, 2026-09-01.
+   *
+   * ★ The one status the API answers that is neither "no" nor "who are you".
+   * Everywhere else an unauthorized read is 404 and indistinguishable from a
+   * missing record (§5.4); this is the deliberate exception, and it only ever
+   * reaches a guardian who has already been authorized for the child in
+   * question. A screen catching this must offer the way out — see
+   * `AccessGate` — because unlike a 404 there is something the user can do.
+   */
+  get isPaymentRequired(): boolean {
+    return this.status === 402;
+  }
 }
 
 export interface RequestOptions {

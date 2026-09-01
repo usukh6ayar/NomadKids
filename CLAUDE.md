@@ -298,12 +298,30 @@ section keeps repeating: a rule the codebase contradicts stops being read.
   hand-written invoice, the carried balance, and `POST
   …/invoices/generate-month` which bills a whole month from the `PARENT`
   tariffs × the month's attendance and meal days
-- §8 online payment — **done**: `integrations/qpay/`, QR generation, the
-  verified callback, and the parent's own screens (`/children/:id/finance`,
-  `/invoices/:id`). **One merchant serves every kindergarten** (client,
-  2026-08-31), so the credentials are deployment settings, not a column.
-  A pending attempt is a `QpayInvoice`, **not** a `Payment` in a pending
-  status — a QR nobody has scanned is not money that moved
+- §8 online payment — **built, then narrowed**. ★★ **QPay now charges one
+  thing: the portal access fee** (client, 2026-09-01 — "QPay-ийг зөвхөн эцэг
+  эхчүүдээс энэхүү website-ийг ашиглах эрхийг нээхийн тулд мөнгө авна. Өөр
+  зүйлд QPay ашиглахгүй"). A family's tuition and meal invoices are still
+  raised and still settled — cash or transfer, recorded by the accountant —
+  but never through the gateway.
+
+  `AccessSubscription` is one child × one school year, priced per deployment
+  (`ACCESS_FEE_AMOUNT`, **"0" turns the gate off** and is the default).
+  `QpayInvoice` points at it. **No `Payment` row is written** for a fee: it is
+  the platform operator's revenue, and a kindergarten's ledger must not carry
+  income its accountant will never find on their own statement.
+
+  ★ **This is the one place the product answers 402 instead of 404.** §1.7's
+  rule protects against confirming a record exists; an unpaid guardian already
+  knows their child exists, and a 404 would hide the one fact that lets them
+  fix it. Authorization still runs **first**, so a stranger gets 404 and the
+  402 can never become an oracle — `authz/portal-access.ts`,
+  `test/portal-access.test.ts`.
+
+  **One merchant serves every kindergarten** (client, 2026-08-31), so the
+  credentials and the price are deployment settings, not columns. A pending
+  attempt is a `QpayInvoice`, **not** a settled fact — a QR nobody has scanned
+  is not money that moved
 
 ★ **§7 and §8 were built twice.** `main` and `origin/main` diverged at
 `878a3a2` and each wrote the whole module into the same paths; the merge on
