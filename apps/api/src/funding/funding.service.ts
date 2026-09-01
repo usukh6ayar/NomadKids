@@ -348,7 +348,14 @@ export class FundingService {
    * differ from the one on the monitor it was read off.
    */
   private async buildRegister(actor: Actor, kindergartenId: string, query: RegisterQuery) {
-    this.tenants.assertAdmin(actor, kindergartenId);
+    // ★ `assertCanReadFinance`, not `assertAdmin` — this used to be admin-only
+    // and the controller's `@Roles("ADMIN", "ACCOUNTANT")` outran it: the
+    // guard let an accountant through and this call sent them back a 404.
+    // The register is exactly `нэмэлт.md` §13's "Улсын санхүүжилт" and
+    // "Төлбөрийн тулгалт" — the screen a transfer is reconciled against — so
+    // an accountant who cannot open it is missing the one screen that
+    // requirement names by function, not just by word.
+    this.tenants.assertCanReadFinance(actor, kindergartenId);
 
     const { first, last } = monthBounds(query.month);
     const [{ enrollments, attendance, meals, approvedRequests, calculations }, rules] =

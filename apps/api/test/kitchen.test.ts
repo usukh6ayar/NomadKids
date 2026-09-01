@@ -579,6 +579,51 @@ describe("menu integration", () => {
     ]);
   });
 
+  /**
+   * ★ `AllergyRecord.kind` is FOOD/MEDICATION/ENVIRONMENTAL, and only FOOD
+   * belongs in a menu cross-check — a repository filter added while auditing
+   * the cook role, since `allergenMatches` itself never reads `kind` and would
+   * otherwise treat a medication or environmental allergy exactly like a food
+   * one.
+   */
+  it("does not warn on a MEDICATION or ENVIRONMENTAL allergy sharing the same word", async () => {
+    const milk = await createIngredient(cookA, a.kindergarten.id, {
+      name: "Сүү",
+      unit: "MILLILITER",
+      allergenTags: ["сүү"],
+    });
+    const recipe = await createRecipe(cookA, a.kindergarten.id, "Сүүтэй будаа", 10, [
+      { ingredientId: milk.id, quantity: "1000" },
+    ]);
+    await approveRecipe(cookA, recipe.id);
+
+    for (const kind of ["MEDICATION", "ENVIRONMENTAL"]) {
+      await authed(
+        request(server()).post(`/v1/children/${a.child.id}/health/allergies`),
+        teacherA,
+      ).send({
+        kind,
+        severity: "SEVERE",
+        allergen: "сүү",
+        notedOn: "2026-01-01",
+      });
+    }
+
+    await authed(
+      request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-04-01`),
+      cookA,
+    ).send({ dishes: [{ name: "x", allergenTags: [], recipeId: recipe.id, portions: 1 }] });
+
+    const warnings = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/menu/with-warnings?from=2026-04-01&to=2026-04-01`,
+      ),
+      cookA,
+    );
+    expect(warnings.status).toBe(200);
+    expect(warnings.body[0].warnings).toEqual([]);
+  });
+
   it("approve → consume deducts stock by quantity × batch count, and refuses a second consume", async () => {
     const flour = await createIngredient(cookA, a.kindergarten.id, { name: "Гурил" });
     const milk = await createIngredient(cookA, a.kindergarten.id, {
@@ -778,6 +823,36 @@ describe("reports", () => {
 
     const flourRow = res.body.find((r: { ingredient: { id: string } }) => r.ingredient.id === flour.id);
     const milkRow = res.body.find((r: { ingredient: { id: string } }) => r.ingredient.id === milk.id);
+    expect(Number(flourRow.quantity)).toBe(1000);
+    expect(Number(milkRow.quantity)).toBe(1000);
+  });
+
+  /**
+   * ★ A negative stock adjustment — spoilage, a stocktake correction — is
+   * also `direction: "OUT"`, same as a `consume` call. The repository used to
+   * filter on `direction` alone, which folded a manual write-off into "how
+   * much food got cooked" even though the comment beside it already claimed
+   * adjustments were excluded. This is what proves they actually are.
+   */
+  it("excludes a manual stock adjustment from the consumption report", async () => {
+    const { flour, milk } = await stockedKitchen();
+
+    await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/stock/adjustments`),
+      cookA,
+    ).send({ ingredientId: flour.id, date: "2026-04-01", quantity: "-300", note: "Муудсан" });
+
+    const res = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/kitchen/reports/consumption?from=2026-04-01&to=2026-04-01`,
+      ),
+      cookA,
+    );
+    expect(res.status).toBe(200);
+
+    const flourRow = res.body.find((r: { ingredient: { id: string } }) => r.ingredient.id === flour.id);
+    const milkRow = res.body.find((r: { ingredient: { id: string } }) => r.ingredient.id === milk.id);
+    // Still 1000 from the `consume` call — the -300 adjustment must not add in.
     expect(Number(flourRow.quantity)).toBe(1000);
     expect(Number(milkRow.quantity)).toBe(1000);
   });
