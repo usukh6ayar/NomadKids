@@ -656,7 +656,12 @@ export async function seedDemoKindergarten(
     {
       title: "Эцэг эхийн хурал",
       body: "Улирлын үнэлгээний танилцуулга ирэх сарын 25-ны 18:00 цагт болно.",
-      category: "TRAINING" as const,
+      // ★ `EVENT`, not `TRAINING` — the latter is not a `NotificationCategory`
+      // and never has been. `as const` on a string literal satisfies TypeScript
+      // against the DTO's own union while telling Prisma nothing, so the whole
+      // seed died at the announcement step with "Invalid value for argument
+      // `category`" the first time it was run on a deployment (2026-09-01).
+      category: "EVENT" as const,
       isImportant: false,
     },
     {
