@@ -138,7 +138,15 @@ DNS тархсаны **дараа** Caddy ажиллуулна — өөр рүү
 ```bash
 cp .env.production.example .env.production
 chmod 600 .env.production
+ln -s .env.production .env      # ★★ энэ мөрийг алгасаж болохгүй
 ```
+
+★★★ **Симлинк нь аюулгүй байдлын алхам, тохь тухынх биш.** `docker compose`
+нь зөвхөн `.env` нэртэй файлыг өөрөө уншдаг. Түүнгүйгээр команд бүр дээр
+`--env-file .env.production` гэж бичих ёстой болох ба **нэг удаа мартвал**
+compose бүх хувьсагчийг хоосон мөр гэж үзнэ: Postgres нууц үггүй дахин
+үүсэж, MinIO-гийн түлхүүр хоосон болж, домэйнууд алга болно. Симлинк нь тэр
+алдааг гаргах боломжгүй болгоно.
 
 Дараах утгуудыг үүсгэнэ:
 
@@ -163,6 +171,9 @@ docker compose -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.prod.yml logs -f
 ```
 
+★ `--env-file` бичихгүй байгаа нь §3.3-ын симлинк байгаа гэсэн үг. `docker
+compose config --quiet` нь анхааруулгагүй байвал зөв.
+
 Эхний ажиллуулалт 5–10 минут (image build). Дараалал:
 
 1. `db`, `redis`, `storage` эрүүл болтол хүлээнэ
@@ -186,6 +197,10 @@ docker compose -f docker-compose.prod.yml exec api \
 curl -sf https://nomadkids.mn/login             > /dev/null && echo "web ✅"
 curl -sf https://api.nomadkids.mn/v1/health     && echo " api ✅"
 ```
+
+★ `ACCESS_FEE_AMOUNT` нь анхдагчаар `0` — хандалтын төлбөрийн хаалт **унтраалттай**.
+Хураамж авах бол дүнг тавина (жишээ: `15000.00`); QPay-ийн таван утга мөн
+тохируулагдсан байх ёстой, эс тэгвэл эцэг эх төлөх боломжгүй хаалттай тулна.
 
 Дараа нь ADMIN эрхээр нэвтэрч `GET /v1/health/readiness` — энэ нь Chromium,
 Redis, storage, **кирилл фонт**, SMTP, QPay бүгдийг шалгана. `cyrillicFont`
@@ -280,6 +295,7 @@ docker rm -f restore-test
 ```bash
 # Шинэ хувилбар гаргах
 git pull && docker compose -f docker-compose.prod.yml up -d --build
+# (§3.3-ын `.env` симлинк байхгүй бол энэ команд нууц үгсийг хоосон болгоно)
 
 # Лог
 docker compose -f docker-compose.prod.yml logs -f api
