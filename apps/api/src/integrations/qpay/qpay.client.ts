@@ -45,6 +45,31 @@ const BODY_EXCERPT_LIMIT = 500;
 const TOKEN_SAFETY_MARGIN_MS = 30_000;
 
 /**
+ * When the token stops being usable, in epoch milliseconds.
+ *
+ * ★ `expires_in` is **an absolute Unix timestamp on QPay's v2 API**, not the
+ * duration in seconds the field name implies everywhere else in OAuth. Their
+ * own onboarding mail says so — "Token-ийн хугацааг timestamp-д тулгуурлан ...
+ * үүсгэдэг байдлаар хөгжүүлнэ үү" — and this client read it as a duration
+ * until 2026-09-01.
+ *
+ * The consequence was not a visible failure. `now + 1.79e9 * 1000` lands in
+ * the year 58,000, so the token cached successfully and was never refreshed;
+ * everything worked until QPay expired it server-side, after which every call
+ * would 401 forever and only a restart would clear it.
+ *
+ * Both readings are accepted, because the API shape is documented but has
+ * never been exercised (`docs/reference/QPAY_INTEGRATION.md`) and guessing
+ * wrong in the other direction — treating a real duration as a timestamp —
+ * would expire the token instantly and re-authenticate on every call. A value
+ * that is already past as an epoch is a duration; anything else is a deadline.
+ */
+export function tokenExpiryMs(expiresIn: number, nowMs: number): number {
+  const asEpochMs = expiresIn * 1000;
+  return asEpochMs > nowMs ? asEpochMs : nowMs + asEpochMs;
+}
+
+/**
  * The HTTP client for QPay's v2 "Simple" merchant API.
  *
  * ★ Unlike `EsisClient`, this one has real domain methods (`createInvoice`,
@@ -129,7 +154,7 @@ export class QpayClient {
 
     this.cachedToken = {
       accessToken: parsed.access_token,
-      expiresAt: now + parsed.expires_in * 1000 - TOKEN_SAFETY_MARGIN_MS,
+      expiresAt: tokenExpiryMs(parsed.expires_in, now) - TOKEN_SAFETY_MARGIN_MS,
     };
     return parsed.access_token;
   }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { QpayClient, QpayError } from "./qpay.client";
+import { tokenExpiryMs, QpayClient, QpayError } from "./qpay.client";
 import { QpayConfig } from "./qpay.config";
 import type { Env } from "../../config/env";
 
@@ -249,5 +249,33 @@ describe("failure handling", () => {
     for (let i = 0; i < fetchMock.mock.calls.length; i++) {
       expect(callArgs(i)[0]).not.toContain(PASSWORD);
     }
+  });
+});
+
+/**
+ * `expires_in` on QPay's v2 API is an absolute Unix timestamp, not a duration
+ * — their onboarding mail says to base the token's life on it. This client
+ * read it as seconds-from-now until 2026-09-01, which cached the token until
+ * the year 58,000: correct until QPay expired it server-side, then 401 on
+ * every call until a restart.
+ */
+describe("token expiry", () => {
+  const now = Date.UTC(2026, 8, 1, 12, 0, 0);
+
+  it("reads a Unix timestamp as the deadline it is", () => {
+    const inOneHour = Math.floor(now / 1000) + 3600;
+    expect(tokenExpiryMs(inOneHour, now)).toBe(inOneHour * 1000);
+  });
+
+  it("still accepts a plain duration, in case the field ever means that", () => {
+    // ★ Kept deliberately. The API shape is documented but was never exercised
+    // against a live sandbox, and guessing wrong the other way would expire
+    // the token instantly and re-authenticate on every single call.
+    expect(tokenExpiryMs(3600, now)).toBe(now + 3600 * 1000);
+  });
+
+  it("never returns a deadline already past", () => {
+    expect(tokenExpiryMs(60, now)).toBeGreaterThan(now);
+    expect(tokenExpiryMs(Math.floor(now / 1000) + 60, now)).toBeGreaterThan(now);
   });
 });
