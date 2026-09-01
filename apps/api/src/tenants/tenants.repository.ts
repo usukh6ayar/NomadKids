@@ -2,7 +2,14 @@ import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { scopedWhere, type TenantScope } from "../common/repository/tenant-scope";
 import { toSkipTake, type PageParams } from "../common/pagination";
-import type { AgeBand, GroupStatus, TeacherRole } from "../domain/enums";
+import type {
+  AgeBand,
+  AttendanceForm,
+  EnrollmentStatus,
+  GroupStatus,
+  ProgramKind,
+  TeacherRole,
+} from "../domain/enums";
 
 /**
  * Kindergartens, school years, groups and teacher assignments.
@@ -104,6 +111,7 @@ export class TenantsRepository {
       ...(filters.kindergartenId ? { kindergartenId: filters.kindergartenId } : {}),
       ...(filters.schoolYearId ? { schoolYearId: filters.schoolYearId } : {}),
       ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.programKind ? { programKind: filters.programKind } : {}),
       // Restricts a teacher to their own groups. Undefined for admins, who see
       // every group in their kindergartens.
       ...(filters.groupIds ? { id: { in: filters.groupIds } } : {}),
@@ -140,6 +148,71 @@ export class TenantsRepository {
           },
         },
       },
+    });
+  }
+
+  /**
+   * The children a promotion would move — those actively enrolled in `groupId`.
+   *
+   * `childIds`, when given, narrows to that subset. A child named there who is
+   * not actually enrolled in this group simply does not come back, which is
+   * what lets the service report the mismatch rather than silently moving
+   * somebody else's child.
+   */
+  async listActiveEnrollmentsInGroup(groupId: string, childIds?: string[]) {
+    return this.prisma.enrollment.findMany({
+      where: {
+        groupId,
+        status: "ACTIVE",
+        deletedAt: null,
+        ...(childIds ? { childId: { in: childIds } } : {}),
+      },
+      select: { id: true, childId: true },
+    });
+  }
+
+  /**
+   * Ends each enrollment and opens its replacement, in one transaction.
+   *
+   * ★ Order is forced by the same partial unique index `enrollChild` documents:
+   * one ACTIVE row per child per school year. The old rows have to close before
+   * the new ones open, or the insert collides and the whole promotion rolls
+   * back — which is the safe failure, but a failure nonetheless.
+   *
+   * ★★ All of it or none of it. A promotion half-applied leaves some children
+   * in last year's group and some in this year's, with no record of where the
+   * run stopped, and the director's only recovery is to work out by hand which
+   * half moved.
+   */
+  async promoteEnrollments(params: {
+    enrollmentIds: string[];
+    childIds: string[];
+    kindergartenId: string;
+    toGroupId: string;
+    toSchoolYearId: string;
+    outcome: EnrollmentStatus;
+    on: Date;
+  }) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.enrollment.updateMany({
+        where: { id: { in: params.enrollmentIds } },
+        data: { status: params.outcome, endedOn: params.on },
+      });
+
+      await tx.enrollment.createMany({
+        data: params.childIds.map((childId) => ({
+          kindergartenId: params.kindergartenId,
+          childId,
+          groupId: params.toGroupId,
+          schoolYearId: params.toSchoolYearId,
+          startedOn: params.on,
+        })),
+      });
+
+      return tx.enrollment.findMany({
+        where: { groupId: params.toGroupId, childId: { in: params.childIds }, status: "ACTIVE" },
+        select: { id: true, childId: true },
+      });
     });
   }
 
@@ -238,12 +311,15 @@ export interface GroupInput {
   name: string;
   ageBand: AgeBand;
   status?: GroupStatus;
+  programKind?: ProgramKind;
+  attendanceForm?: AttendanceForm;
 }
 
 export interface GroupFilters {
   kindergartenId?: string;
   schoolYearId?: string;
   status?: GroupStatus;
+  programKind?: ProgramKind;
   /** Restricts to specific groups — how a teacher's list is narrowed. */
   groupIds?: string[];
 }

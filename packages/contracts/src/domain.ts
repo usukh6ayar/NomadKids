@@ -58,8 +58,82 @@ export const ROLE_LABEL: Record<Role, string> = {
 export const ASSIGNABLE_ROLES = ["ADMIN", "TEACHER", "PARENT", "COOK", "ACCOUNTANT"] as const;
 
 export const sexSchema = z.enum(["MALE", "FEMALE"]);
-export const childStatusSchema = z.enum(["ACTIVE", "ARCHIVED"]);
-export const enrollmentStatusSchema = z.enum(["ACTIVE", "ENDED", "TRANSFERRED", "GRADUATED"]);
+/**
+ * A child's standing — Order А/261, Annex 2 §1 item 7, mandatory.
+ *
+ * Four values, not two. `ARCHIVED` was renamed to `INACTIVE` in migration
+ * `20260901120000`; nothing outside this file spelled the old name except the
+ * child header, which now reads the label below.
+ */
+export const childStatusSchema = z.enum(["ACTIVE", "TEMPORARY", "ON_LEAVE", "INACTIVE"]);
+export type ChildStatus = z.infer<typeof childStatusSchema>;
+
+/** The words a director sees. English identifiers, Mongolian screens. */
+export const CHILD_STATUS_LABEL: Record<string, string> = {
+  ACTIVE: "Суралцаж байгаа",
+  TEMPORARY: "Түр суралцаж байгаа",
+  ON_LEAVE: "Чөлөөтэй",
+  INACTIVE: "Идэвхгүй",
+};
+
+/** Үндсэн / хувилбарт сургалт — Order А/261, Annex 2 §1 items 5, 6, 13, 14. */
+export const programKindSchema = z.enum(["MAIN", "ALTERNATIVE"]);
+export type ProgramKind = z.infer<typeof programKindSchema>;
+
+export const PROGRAM_KIND_LABEL: Record<string, string> = {
+  MAIN: "Үндсэн сургалт",
+  ALTERNATIVE: "Хувилбарт сургалт",
+};
+
+/** Сургалтын хэлбэр — Order А/261, Annex 2 §1 item 16. */
+export const attendanceFormSchema = z.enum(["STANDARD", "EXTENDED", "SHORTENED"]);
+export type AttendanceForm = z.infer<typeof attendanceFormSchema>;
+
+export const ATTENDANCE_FORM_LABEL: Record<string, string> = {
+  STANDARD: "Энгийн",
+  EXTENDED: "Уртасгасан цаг",
+  SHORTENED: "Богиносгосон цаг",
+};
+export const enrollmentStatusSchema = z.enum([
+  "ACTIVE",
+  "ENDED",
+  "TRANSFERRED",
+  "GRADUATED",
+  /** Order А/261, Annex 2 §1 item 9 — анги дэвших, давтан суралцах. */
+  "PROMOTED",
+  "REPEATED",
+]);
+
+/**
+ * How an enrollment period ended, in words and in a tint.
+ *
+ * ★ A table, because it was a nested ternary in two places.
+ *
+ * The enrollment archive and the general-info panel each carried their own
+ * `GRADUATED ? … : TRANSFERRED ? … : "Дууссан"` ladder, so any status neither
+ * of them named fell through to "Дууссан" — which is how `PROMOTED` and
+ * `REPEATED` would have rendered as "ended" on the two screens a director reads
+ * a child's history from. A ladder cannot be extended in one place; a table can.
+ */
+export const ENROLLMENT_STATUS_LABEL: Record<string, string> = {
+  ACTIVE: "Одоогийн",
+  ENDED: "Дууссан",
+  TRANSFERRED: "Шилжсэн",
+  GRADUATED: "Төгссөн",
+  PROMOTED: "Дэвшсэн",
+  REPEATED: "Давтан суралцсан",
+};
+
+export const ENROLLMENT_STATUS_TONE: Record<string, "mint" | "sky" | "sun" | "neutral"> = {
+  ACTIVE: "mint",
+  ENDED: "neutral",
+  TRANSFERRED: "sun",
+  GRADUATED: "sky",
+  // Moving up is the ordinary, good outcome — the same tint as graduating.
+  PROMOTED: "sky",
+  // Repeating is neither good nor bad, but it is the one a director looks for.
+  REPEATED: "sun",
+};
 /** Who a guardian is to the child. Set by the guardian themselves when they
  * accept their invitation — see `invitationAcceptSchema`. */
 export const guardianRelationSchema = z.enum([
@@ -1555,6 +1629,14 @@ export const groupSchema = z.object({
   ageBand: z.string().nullish(),
   kindergartenId: uuidSchema.nullish(),
   schoolYearId: uuidSchema.nullish(),
+  /**
+   * ★ `nullish`, like `ageBand` above, because this schema doubles as the bare
+   * group reference embedded in other payloads — the enrollment archive returns
+   * `{ id, name }` and nothing more. Requiring the two new fields here would
+   * make every one of those parses fail. `GET /groups` always sends them.
+   */
+  programKind: programKindSchema.nullish(),
+  attendanceForm: attendanceFormSchema.nullish(),
 });
 
 /**

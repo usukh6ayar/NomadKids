@@ -2,7 +2,7 @@ import { z } from "zod";
 import { paginationQuerySchema, uuidSchema } from "@kinder/contracts";
 
 export const sexSchema = z.enum(["MALE", "FEMALE"]);
-export const childStatusSchema = z.enum(["ACTIVE", "ARCHIVED"]);
+export const childStatusSchema = z.enum(["ACTIVE", "TEMPORARY", "ON_LEAVE", "INACTIVE"]);
 export const enrollmentStatusSchema = z.enum(["ACTIVE", "ENDED", "TRANSFERRED", "GRADUATED"]);
 export const guardianRelationSchema = z.enum([
   "MOTHER",

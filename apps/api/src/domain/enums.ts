@@ -18,6 +18,7 @@
 export {
   AgeBand,
   AttendanceCompanion,
+  AttendanceForm,
   AttendanceRequestStatus,
   AttendanceStatus,
   AuditAction,
@@ -36,6 +37,7 @@ export {
   MediaStatus,
   NotificationStatus,
   ObservationSource,
+  ProgramKind,
   IncidentKind,
   ReportStatus,
   ReportType,

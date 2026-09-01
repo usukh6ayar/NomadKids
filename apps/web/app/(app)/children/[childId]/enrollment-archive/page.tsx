@@ -15,7 +15,13 @@ import {
   Phone,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { enrollmentArchiveSchema, TEACHER_ROLE_LABEL, type EnrollmentArchive } from "@kinder/contracts";
+import {
+  enrollmentArchiveSchema,
+  TEACHER_ROLE_LABEL,
+  type EnrollmentArchive,
+  ENROLLMENT_STATUS_LABEL,
+  ENROLLMENT_STATUS_TONE,
+} from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
@@ -224,12 +230,8 @@ function HistoryDisclosure({ history }: { history: EnrollmentArchive["history"] 
                   {formatDate(entry.startedOn)} – {entry.endedOn ? formatDate(entry.endedOn) : "…"}
                 </p>
               </div>
-              <Badge tone={entry.status === "GRADUATED" ? "sky" : entry.status === "TRANSFERRED" ? "sun" : "neutral"}>
-                {entry.status === "GRADUATED"
-                  ? "Төгссөн"
-                  : entry.status === "TRANSFERRED"
-                    ? "Шилжсэн"
-                    : "Дууссан"}
+              <Badge tone={ENROLLMENT_STATUS_TONE[entry.status] ?? "neutral"}>
+                {ENROLLMENT_STATUS_LABEL[entry.status] ?? ENROLLMENT_STATUS_LABEL.ENDED}
               </Badge>
             </li>
           ))}
