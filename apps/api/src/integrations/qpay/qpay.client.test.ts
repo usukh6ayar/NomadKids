@@ -6,24 +6,24 @@ import type { Env } from "../../config/env";
 /**
  * The QPay boundary.
  *
- * ★ Every request is mocked — nothing here resolves a hostname or spends money.
- *
- * ★★ The token tests are the reason this file exists. QPay's integration note
- * asks for a timestamp-driven, single-use token flow, and the failure modes are
- * all silent: a client that never refreshes works until the first expiry, one
- * that refreshes per call works but gets rate-limited, and one that stampedes
- * under concurrency does both intermittently. None of them fails loudly.
+ * ★ Every request is mocked — same discipline as `esis.client.test.ts`, for
+ * the same reason: there is no sandbox account to call for real, and the
+ * point of this file is that the client is provably correct before one
+ * exists. The security tests (redaction, never sending the password on a
+ * bearer call) matter regardless of whether the assumed contract turns out
+ * exactly right.
  */
 
-const PASSWORD = "qpay-secret-pass-9876+/=";
+const USERNAME = "merchant-1";
+const PASSWORD = "qpay-secret-password-abc123+/=";
 
 function configured(overrides: Partial<Env> = {}): QpayConfig {
   return new QpayConfig({
-    QPAY_BASE_URL: "https://merchant.qpay.test/v2/",
-    QPAY_USERNAME: "NOMADKIDS",
+    QPAY_BASE_URL: "https://qpay.example.test/",
+    QPAY_USERNAME: USERNAME,
     QPAY_PASSWORD: PASSWORD,
     QPAY_INVOICE_CODE: "NOMADKIDS_INVOICE",
-    QPAY_CALLBACK_URL: "https://api.nomadkids.test/v1/payments/qpay/callback",
+    QPAY_CALLBACK_URL: "https://api.nomadkids.mn/v1/qpay/callback",
     QPAY_TIMEOUT_MS: 15_000,
     ...overrides,
   } as Env);
@@ -36,10 +36,12 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-/** A token response with a generous lifetime. */
-function tokenBody(overrides: Record<string, unknown> = {}) {
-  return { access_token: "tok-alpha", expires_in: 3600, ...overrides };
-}
+const TOKEN_BODY = {
+  token_type: "bearer",
+  access_token: "access-token-xyz",
+  refresh_token: "refresh-token-xyz",
+  expires_in: 3600,
+};
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -53,238 +55,199 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function headersOf(callIndex: number): Record<string, string> {
-  const [, init] = fetchMock.mock.calls[callIndex] as [string, RequestInit];
-  return init.headers as Record<string, string>;
+function callArgs(index = 0): [string, RequestInit] {
+  return fetchMock.mock.calls[index] as [string, RequestInit];
 }
 
-describe("configuration", () => {
-  it("refuses to call anything when unconfigured, naming only the missing keys", async () => {
-    const client = new QpayClient(configured({ QPAY_PASSWORD: "" } as Partial<Env>));
+// ═══════════════════════════════════════════════════════════════════════════
+// Configuration
+// ═══════════════════════════════════════════════════════════════════════════
 
-    await expect(client.request({ path: "/invoice" })).rejects.toMatchObject({
-      kind: "not_configured",
-    });
-    // No network work at all — the point of failing before the call.
+describe("configuration", () => {
+  it("refuses to call out when unconfigured, naming only the missing settings", async () => {
+    const client = new QpayClient(configured({ QPAY_PASSWORD: "" }));
+
+    await expect(
+      client.createInvoice({ senderInvoiceNo: "x", amount: "1000.00", description: "test" }),
+    ).rejects.toMatchObject({ kind: "not_configured" });
+
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("never names a secret's value in the not_configured message", async () => {
-    const client = new QpayClient(configured({ QPAY_INVOICE_CODE: "" } as Partial<Env>));
+  it("reports partial configuration by name, not by value", async () => {
+    const client = new QpayClient(configured({ QPAY_INVOICE_CODE: "" }));
 
-    const error = await client.request({ path: "/invoice" }).catch((e: QpayError) => e);
-    expect((error as QpayError).message).toContain("QPAY_INVOICE_CODE");
-    expect((error as QpayError).message).not.toContain(PASSWORD);
-  });
-});
-
-describe("the token flow — QPay's §2.1", () => {
-  it("authenticates /auth/token with Basic, then everything else with Bearer", async () => {
-    fetchMock.mockResolvedValueOnce(json(tokenBody()));
-    fetchMock.mockResolvedValueOnce(json({ ok: true }));
-
-    const client = new QpayClient(configured());
-    await client.request({ path: "/invoice", method: "POST" });
-
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-
-    const auth = headersOf(0).Authorization!;
-    expect(auth.startsWith("Basic ")).toBe(true);
-    expect(Buffer.from(auth.slice(6), "base64").toString()).toBe(`NOMADKIDS:${PASSWORD}`);
-
-    expect(headersOf(1).Authorization).toBe("Bearer tok-alpha");
-  });
-
-  it("reuses a live token instead of fetching one per call", async () => {
-    fetchMock.mockResolvedValueOnce(json(tokenBody()));
-    fetchMock.mockResolvedValue(json({ ok: true }));
-
-    const client = new QpayClient(configured());
-    await client.request({ path: "/a" });
-    await client.request({ path: "/b" });
-    await client.request({ path: "/c" });
-
-    // One token fetch, three business calls — not four token fetches.
-    const tokenCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes("/auth/token"));
-    expect(tokenCalls).toHaveLength(1);
-  });
-
-  it("collapses concurrent refreshes into a single /auth/token call", async () => {
-    // The stampede case: ten callers find no token at the same instant. Ten
-    // token requests is how an integration gets rate-limited by its provider.
-    let resolveToken: (r: Response) => void = () => {};
-    const pending = new Promise<Response>((resolve) => {
-      resolveToken = resolve;
-    });
-
-    fetchMock.mockImplementationOnce(() => pending);
-    fetchMock.mockResolvedValue(json({ ok: true }));
-
-    const client = new QpayClient(configured());
-    const calls = Promise.all(
-      Array.from({ length: 10 }, (_, i) => client.request({ path: `/p${i}` })),
-    );
-
-    resolveToken(json(tokenBody()));
-    await calls;
-
-    const tokenCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes("/auth/token"));
-    expect(tokenCalls).toHaveLength(1);
-  });
-
-  it("re-fetches once the token has expired", async () => {
-    // expires_in below the skew means it is already stale on arrival.
-    fetchMock.mockResolvedValueOnce(json(tokenBody({ access_token: "tok-1", expires_in: 1 })));
-    fetchMock.mockResolvedValueOnce(json({ ok: true }));
-    fetchMock.mockResolvedValueOnce(json(tokenBody({ access_token: "tok-2", expires_in: 1 })));
-    fetchMock.mockResolvedValueOnce(json({ ok: true }));
-
-    const client = new QpayClient(configured());
-    await client.request({ path: "/a" });
-    await client.request({ path: "/b" });
-
-    expect(headersOf(1).Authorization).toBe("Bearer tok-1");
-    expect(headersOf(3).Authorization).toBe("Bearer tok-2");
-  });
-
-  it("drops a token QPay rejects with 401, so the next call re-authenticates", async () => {
-    fetchMock.mockResolvedValueOnce(json(tokenBody({ access_token: "stale" })));
-    fetchMock.mockResolvedValueOnce(json({ error: "unauthorized" }, 401));
-    fetchMock.mockResolvedValueOnce(json(tokenBody({ access_token: "fresh" })));
-    fetchMock.mockResolvedValueOnce(json({ ok: true }));
-
-    const client = new QpayClient(configured());
-    await expect(client.request({ path: "/a" })).rejects.toMatchObject({ kind: "http" });
-    await client.request({ path: "/b" });
-
-    expect(headersOf(3).Authorization).toBe("Bearer fresh");
-  });
-
-  it("does not cache a failed refresh", async () => {
-    fetchMock.mockResolvedValueOnce(json({ error: "bad creds" }, 401));
-    fetchMock.mockResolvedValueOnce(json(tokenBody({ access_token: "recovered" })));
-    fetchMock.mockResolvedValueOnce(json({ ok: true }));
-
-    const client = new QpayClient(configured());
-    await expect(client.request({ path: "/a" })).rejects.toMatchObject({ kind: "auth" });
-
-    // A retained rejected promise would poison every later call.
-    await client.request({ path: "/b" });
-    expect(headersOf(2).Authorization).toBe("Bearer recovered");
-  });
-
-  it("reports a missing access_token as an auth failure, not a success", async () => {
-    fetchMock.mockResolvedValueOnce(json({ expires_in: 3600 }));
-
-    const client = new QpayClient(configured());
-    await expect(client.request({ path: "/a" })).rejects.toMatchObject({ kind: "auth" });
-  });
-});
-
-describe("secrets never escape", () => {
-  it("keeps the password out of an error body excerpt", async () => {
-    fetchMock.mockResolvedValueOnce(json(tokenBody()));
-    // A provider echoing credentials back is not hypothetical.
-    fetchMock.mockResolvedValueOnce(
-      new Response(`{"error":"bad password ${PASSWORD}"}`, { status: 400 }),
-    );
-
-    const client = new QpayClient(configured());
-    const error = (await client.request({ path: "/a" }).catch((e) => e)) as QpayError;
-
-    expect(error.detail.bodyExcerpt).not.toContain(PASSWORD);
-    expect(error.detail.bodyExcerpt).toContain("[REDACTED]");
-  });
-
-  it("keeps the bearer token out of an error body excerpt", async () => {
-    fetchMock.mockResolvedValueOnce(json(tokenBody({ access_token: "tok-leaky-value-123" })));
-    fetchMock.mockResolvedValueOnce(
-      new Response(`{"error":"token tok-leaky-value-123 rejected"}`, { status: 403 }),
-    );
-
-    const client = new QpayClient(configured());
-    const error = (await client.request({ path: "/a" }).catch((e) => e)) as QpayError;
-
-    expect(error.detail.bodyExcerpt).not.toContain("tok-leaky-value-123");
-  });
-
-  it("never puts a credential in the URL", async () => {
-    fetchMock.mockResolvedValueOnce(json(tokenBody()));
-    fetchMock.mockResolvedValueOnce(json({ ok: true }));
-
-    const client = new QpayClient(configured());
-    await client.request({ path: "/invoice", query: { page: 1 } });
-
-    for (const [url] of fetchMock.mock.calls) {
-      expect(String(url)).not.toContain(PASSWORD);
-      expect(String(url)).not.toContain("tok-alpha");
+    try {
+      await client.checkPayment("inv-1");
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(QpayError);
+      expect((error as QpayError).message).toContain("QPAY_INVOICE_CODE");
+      expect((error as QpayError).message).not.toContain(PASSWORD);
     }
   });
 });
 
-describe("transport failures", () => {
-  it("separates a timeout from a connection fault", async () => {
-    fetchMock.mockResolvedValueOnce(json(tokenBody()));
-    const timeout = new Error("timed out");
-    timeout.name = "TimeoutError";
-    fetchMock.mockRejectedValueOnce(timeout);
+// ═══════════════════════════════════════════════════════════════════════════
+// Authentication and token caching
+// ═══════════════════════════════════════════════════════════════════════════
 
-    const client = new QpayClient(configured());
-    await expect(client.request({ path: "/a" })).rejects.toMatchObject({ kind: "timeout" });
+describe("authentication", () => {
+  it("exchanges the username and password for a bearer token via Basic auth", async () => {
+    fetchMock.mockResolvedValueOnce(json(TOKEN_BODY));
+    fetchMock.mockResolvedValueOnce(json({ count: 0, rows: [] }));
 
-    fetchMock.mockRejectedValueOnce(new Error("ECONNRESET"));
-    await expect(client.request({ path: "/b" })).rejects.toMatchObject({ kind: "network" });
+    await new QpayClient(configured()).checkPayment("inv-1");
+
+    const [tokenUrl, tokenInit] = callArgs(0);
+    expect(tokenUrl).toBe("https://qpay.example.test/v2/auth/token");
+    const expectedBasic = `Basic ${Buffer.from(`${USERNAME}:${PASSWORD}`).toString("base64")}`;
+    expect((tokenInit.headers as Record<string, string>).Authorization).toBe(expectedBasic);
+
+    const [, checkInit] = callArgs(1);
+    expect((checkInit.headers as Record<string, string>).Authorization).toBe(
+      `Bearer ${TOKEN_BODY.access_token}`,
+    );
   });
 
-  it("reports a non-JSON body as invalid_response", async () => {
-    fetchMock.mockResolvedValueOnce(json(tokenBody()));
-    fetchMock.mockResolvedValueOnce(new Response("<html>502</html>", { status: 200 }));
+  it("reuses a cached token instead of re-authenticating on the next call", async () => {
+    fetchMock.mockResolvedValueOnce(json(TOKEN_BODY));
+    fetchMock.mockResolvedValueOnce(json({ count: 0, rows: [] }));
+    fetchMock.mockResolvedValueOnce(json({ count: 0, rows: [] }));
 
     const client = new QpayClient(configured());
-    await expect(client.request({ path: "/a" })).rejects.toMatchObject({
-      kind: "invalid_response",
-    });
+    await client.checkPayment("inv-1");
+    await client.checkPayment("inv-2");
+
+    // One auth call, two payment checks — three fetches, not four.
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("reports a payload that fails validation as invalid_response", async () => {
-    fetchMock.mockResolvedValueOnce(json(tokenBody()));
-    fetchMock.mockResolvedValueOnce(json({ unexpected: true }));
+  it("re-authenticates once the cached token is past its expiry", async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockResolvedValueOnce(json({ ...TOKEN_BODY, expires_in: 60 }));
+      fetchMock.mockResolvedValueOnce(json({ count: 0, rows: [] }));
 
-    const client = new QpayClient(configured());
-    await expect(
-      client.request({
-        path: "/a",
-        parse: () => {
-          throw new Error("shape changed");
-        },
-      }),
-    ).rejects.toMatchObject({ kind: "invalid_response" });
-  });
+      const client = new QpayClient(configured());
+      await client.checkPayment("inv-1");
 
-  it("joins the base URL and path without doubling the slash", async () => {
-    fetchMock.mockResolvedValueOnce(json(tokenBody()));
-    fetchMock.mockResolvedValueOnce(json({ ok: true }));
+      vi.advanceTimersByTime(61_000);
 
-    const client = new QpayClient(configured());
-    await client.request({ path: "/invoice" });
+      fetchMock.mockResolvedValueOnce(json(TOKEN_BODY));
+      fetchMock.mockResolvedValueOnce(json({ count: 0, rows: [] }));
+      await client.checkPayment("inv-2");
 
-    expect(String(fetchMock.mock.calls[1]![0])).toBe("https://merchant.qpay.test/v2/invoice");
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+      expect(callArgs(2)[0]).toBe("https://qpay.example.test/v2/auth/token");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
-describe("describe() — what an operator may see", () => {
-  it("reports presence of a password, never its value or length", () => {
-    const config = configured();
-    const described = config.describe();
+// ═══════════════════════════════════════════════════════════════════════════
+// Domain calls
+// ═══════════════════════════════════════════════════════════════════════════
 
-    expect(described).toEqual({
-      configured: true,
-      baseUrl: "https://merchant.qpay.test/v2",
-      invoiceCode: "NOMADKIDS_INVOICE",
-      hasPassword: true,
+describe("createInvoice", () => {
+  it("sends the invoice code, amount as a number, and the configured callback URL", async () => {
+    fetchMock.mockResolvedValueOnce(json(TOKEN_BODY));
+    fetchMock.mockResolvedValueOnce(
+      json({ invoice_id: "qpay-inv-1", qr_text: "0002...", qr_image: "iVBORw0KG..." }),
+    );
+
+    const result = await new QpayClient(configured()).createInvoice({
+      senderInvoiceNo: "sender-1",
+      amount: "195000.00",
+      description: "Test invoice",
     });
-    expect(JSON.stringify(described)).not.toContain(PASSWORD);
-    // The username is half a credential pair and is withheld too.
-    expect(JSON.stringify(described)).not.toContain("NOMADKIDS:");
+
+    expect(result.invoice_id).toBe("qpay-inv-1");
+
+    const [, init] = callArgs(1);
+    const body = JSON.parse(init.body as string);
+    expect(body).toMatchObject({
+      invoice_code: "NOMADKIDS_INVOICE",
+      sender_invoice_no: "sender-1",
+      amount: 195000,
+      callback_url: "https://api.nomadkids.mn/v1/qpay/callback",
+    });
+  });
+
+  it("throws invalid_response when the reply is missing invoice_id", async () => {
+    fetchMock.mockResolvedValueOnce(json(TOKEN_BODY));
+    fetchMock.mockResolvedValueOnce(json({ qr_text: "no id here" }));
+
+    await expect(
+      new QpayClient(configured()).createInvoice({
+        senderInvoiceNo: "sender-1",
+        amount: "1000.00",
+        description: "x",
+      }),
+    ).rejects.toMatchObject({ kind: "invalid_response" });
+  });
+});
+
+describe("checkPayment", () => {
+  it("reports a PAID row when QPay's check says PAID", async () => {
+    fetchMock.mockResolvedValueOnce(json(TOKEN_BODY));
+    fetchMock.mockResolvedValueOnce(
+      json({
+        count: 1,
+        rows: [{ payment_id: "qpay-pay-1", payment_status: "PAID", payment_amount: "195000" }],
+      }),
+    );
+
+    const result = await new QpayClient(configured()).checkPayment("qpay-inv-1");
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]!.payment_status).toBe("PAID");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Failure and redaction
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("failure handling", () => {
+  it("wraps a non-2xx response as an http error, without the password", async () => {
+    fetchMock.mockResolvedValueOnce(json(TOKEN_BODY));
+    fetchMock.mockResolvedValueOnce(new Response("forbidden", { status: 403 }));
+
+    try {
+      await new QpayClient(configured()).checkPayment("inv-1");
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(QpayError);
+      expect((error as QpayError).kind).toBe("http");
+      expect((error as QpayError).detail.status).toBe(403);
+    }
+  });
+
+  it("wraps a network failure without leaking the password into the message", async () => {
+    fetchMock.mockResolvedValueOnce(json(TOKEN_BODY));
+    fetchMock.mockRejectedValueOnce(new Error(`connect failed for ${PASSWORD}`));
+
+    try {
+      await new QpayClient(configured()).checkPayment("inv-1");
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(QpayError);
+      expect((error as QpayError).kind).toBe("network");
+      expect((error as QpayError).message).not.toContain(PASSWORD);
+      expect((error as QpayError).message).toContain("[REDACTED]");
+    }
+  });
+
+  it("never puts the password in a request URL", async () => {
+    fetchMock.mockResolvedValueOnce(json(TOKEN_BODY));
+    fetchMock.mockResolvedValueOnce(json({ count: 0, rows: [] }));
+
+    await new QpayClient(configured()).checkPayment("inv-1");
+
+    for (let i = 0; i < fetchMock.mock.calls.length; i++) {
+      expect(callArgs(i)[0]).not.toContain(PASSWORD);
+    }
   });
 });

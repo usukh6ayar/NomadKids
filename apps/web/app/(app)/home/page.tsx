@@ -152,16 +152,12 @@ export default function ParentHomePage() {
         longer have opened anything.
         Цэцэрлэг is the client's own later addition — "Цэцэрлэг, бүлгийн
         архив", the current placement, its teacher, and the family's full
-        enrollment history — sitting between Хоол and Үнэлгээ, with Санхүү
-        last in the grid.
-        Санхүү was a `ComingSoonTile` — a muted, unlinked tile — until
-        2026-08-31, because CLAUDE.md §7 kept finance in a later phase and
-        this screen did not get to pull it forward on its own. The client
-        moved it into scope, `нэмэлт.md` §7 shipped, and it is now a real
-        link to the family's own invoices. `ComingSoonTile` went with it:
-        nothing else used it, and an unused helper kept "for the next one"
-        is a component nobody can see the behaviour of. Bring the pattern
-        back from git history when a tile actually needs it.
+        enrollment history — sitting between Хоол and Үнэлгээ.
+        Санхүү was a `ComingSoonTile` (a `<div>`, not a `<Link>`) while
+        CLAUDE.md §7 kept finance a later phase; invoices are built now
+        (`нэмэлт.md` §7–§10) and it is a real `QuickTile` to
+        `/children/:id/finance`, the same route `(app)/layout.tsx`'s sidebar
+        points its own "Төлбөр" row at.
       */}
       <section aria-labelledby="board-heading">
         <SectionHeader id="board-heading" title="Түргэн холбоос" />
@@ -194,7 +190,7 @@ export default function ParentHomePage() {
           />
           <SurveyTile childId={selected.id} />
           <QuickTile
-            href={`/children/${selected.id}/invoices`}
+            href={`/children/${selected.id}/finance`}
             label="Санхүү"
             icon={<TileIcon name="finance" />}
           />

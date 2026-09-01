@@ -26,6 +26,10 @@ import {
   groupWithTeachersSchema,
   paginated,
   schoolYearSchema,
+  programKindSchema,
+  attendanceFormSchema,
+  PROGRAM_KIND_LABEL,
+  ATTENDANCE_FORM_LABEL,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
@@ -59,6 +63,19 @@ const AGE_BANDS = [
 ] as const;
 
 const BAND_LABEL = Object.fromEntries(AGE_BANDS.map((b) => [b.value, b.label]));
+
+/**
+ * Programme and hours — Order А/261, Annex 2 §1 items 6, 14 and 16, all
+ * mandatory.
+ *
+ * ★ Derived from the schemas rather than retyped, the way `SURVEY_KINDS` is on
+ * the survey screen. A hand-written list here is a list that disagrees with the
+ * API the day somebody adds a third programme: the select would offer a value
+ * the server rejects, or hide one it accepts, and neither is visible from this
+ * file.
+ */
+const PROGRAM_KINDS = programKindSchema.options;
+const ATTENDANCE_FORMS = attendanceFormSchema.options;
 
 /**
  * The list's columns.
@@ -180,6 +197,20 @@ function GroupRow({ group }: { group: z.infer<typeof groupListItemSchema> }) {
               behaving normally.
             */}
             {isArchived ? <Badge tone="neutral">Архивласан</Badge> : null}
+            {/*
+              ★ Drawn only when it differs from the ordinary case.
+
+              Most groups are main-programme and standard-hours, so badging
+              every row with "Үндсэн сургалт · Энгийн" would put two constant
+              chips on every line and teach the eye to skip the strip that the
+              exceptions live in. The default is the absence of a badge.
+            */}
+            {group.programKind === "ALTERNATIVE" ? (
+              <Badge tone="sky">{PROGRAM_KIND_LABEL.ALTERNATIVE}</Badge>
+            ) : null}
+            {group.attendanceForm && group.attendanceForm !== "STANDARD" ? (
+              <Badge tone="sun">{ATTENDANCE_FORM_LABEL[group.attendanceForm]}</Badge>
+            ) : null}
           </span>
         }
         cells={{
@@ -422,12 +453,14 @@ function EditGroupButton({ group }: { group: z.infer<typeof groupListItemSchema>
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(group.name);
   const [ageBand, setAgeBand] = useState(group.ageBand ?? "NURSERY");
+  const [programKind, setProgramKind] = useState<string>(group.programKind ?? "MAIN");
+  const [attendanceForm, setAttendanceForm] = useState<string>(group.attendanceForm ?? "STANDARD");
 
   const save = useMutation({
     mutationFn: () =>
       mutate(`/groups/${group.id}`, groupListItemSchema, {
         method: "PATCH",
-        body: { name: name.trim(), ageBand },
+        body: { name: name.trim(), ageBand, programKind, attendanceForm },
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.adminGroups() });
@@ -448,6 +481,8 @@ function EditGroupButton({ group }: { group: z.infer<typeof groupListItemSchema>
           // form still holding its mount-time values would write them back.
           setName(group.name);
           setAgeBand(group.ageBand ?? "NURSERY");
+          setProgramKind(group.programKind ?? "MAIN");
+          setAttendanceForm(group.attendanceForm ?? "STANDARD");
           save.reset();
           setOpen(true);
         }}
@@ -517,6 +552,40 @@ function EditGroupButton({ group }: { group: z.infer<typeof groupListItemSchema>
                 {AGE_BANDS.map((b) => (
                   <option key={b.value} value={b.value}>
                     {b.label}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+
+          <Field label="Сургалтын төрөл" error={errors.programKind} required>
+            {({ id, describedBy }) => (
+              <Select
+                id={id}
+                aria-describedby={describedBy}
+                value={programKind}
+                onChange={(e) => setProgramKind(e.target.value)}
+              >
+                {PROGRAM_KINDS.map((value) => (
+                  <option key={value} value={value}>
+                    {PROGRAM_KIND_LABEL[value]}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+
+          <Field label="Сургалтын хэлбэр" error={errors.attendanceForm} required>
+            {({ id, describedBy }) => (
+              <Select
+                id={id}
+                aria-describedby={describedBy}
+                value={attendanceForm}
+                onChange={(e) => setAttendanceForm(e.target.value)}
+              >
+                {ATTENDANCE_FORMS.map((value) => (
+                  <option key={value} value={value}>
+                    {ATTENDANCE_FORM_LABEL[value]}
                   </option>
                 ))}
               </Select>
@@ -897,6 +966,8 @@ function CreateGroupDialog({
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [ageBand, setAgeBand] = useState<string>("JUNIOR");
+  const [programKind, setProgramKind] = useState<string>("MAIN");
+  const [attendanceForm, setAttendanceForm] = useState<string>("STANDARD");
   const [schoolYearId, setSchoolYearId] = useState("");
 
   const years = useQuery({
@@ -912,7 +983,7 @@ function CreateGroupDialog({
     mutationFn: () =>
       mutate(`/kindergartens/${kindergartenId}/groups`, z.unknown(), {
         method: "POST",
-        body: { name, ageBand, schoolYearId: selectedYear },
+        body: { name, ageBand, schoolYearId: selectedYear, programKind, attendanceForm },
       }),
     onSuccess: () => {
       toast.success("Бүлэг үүслээ.");
@@ -970,6 +1041,34 @@ function CreateGroupDialog({
                 {AGE_BANDS.map((b) => (
                   <option key={b.value} value={b.value}>
                     {b.label}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+
+          <Field label="Сургалтын төрөл" error={errors.programKind} required>
+            {({ id }) => (
+              <Select id={id} value={programKind} onChange={(e) => setProgramKind(e.target.value)}>
+                {PROGRAM_KINDS.map((value) => (
+                  <option key={value} value={value}>
+                    {PROGRAM_KIND_LABEL[value]}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+
+          <Field label="Сургалтын хэлбэр" error={errors.attendanceForm} required>
+            {({ id }) => (
+              <Select
+                id={id}
+                value={attendanceForm}
+                onChange={(e) => setAttendanceForm(e.target.value)}
+              >
+                {ATTENDANCE_FORMS.map((value) => (
+                  <option key={value} value={value}>
+                    {ATTENDANCE_FORM_LABEL[value]}
                   </option>
                 ))}
               </Select>

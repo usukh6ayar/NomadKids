@@ -5,173 +5,102 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Огноо YYYY-MM-DD �
 const isoMonth = z.string().regex(/^\d{4}-\d{2}$/, "Сар YYYY-MM хэлбэртэй байна");
 
 /**
- * Money, as a string on the wire — the same decision as `funding.dto.ts`.
- *
- * ★ Not `z.number()`. A JSON number is an IEEE 754 double, and an amount that
- * has to reconcile against a bank statement cannot pass through one. The string
- * goes to Prisma verbatim and lands in `DECIMAL(12,2)` unchanged.
+ * Money, as a string on the wire — the exact convention `funding.dto.ts`
+ * establishes, repeated rather than imported so this module has no compile
+ * dependency on `funding/`. Not `z.number()`: JSON numbers are IEEE 754
+ * doubles, and every amount here is reconciled against a bank statement.
  */
-const money = z.string().regex(/^\d{1,10}(\.\d{1,2})?$/, "Дүн 1234.56 хэлбэртэй байна");
+const money = z.string().regex(/^-?\d{1,10}(\.\d{1,2})?$/, "Дүн 1234.56 хэлбэртэй байна");
 
-export const invoiceItemKindSchema = z.enum(["TUITION", "MEAL", "CLUB", "BUS", "EXTRA", "OTHER"]);
+const invoiceLineTypeSchema = z.enum(["TUITION", "MEAL", "CLUB", "BUS", "EXTRA", "OTHER"]);
 
-export const invoiceStatusSchema = z.enum([
-  "UNPAID",
-  "PARTIALLY_PAID",
-  "PAID",
-  "OVERDUE",
-  "REFUNDED",
-]);
-
-export const paymentMethodSchema = z.enum(["QPAY", "SOCIALPAY", "BANK_TRANSFER", "CASH", "OTHER"]);
+/** One charge — нэмэлт.md §7's six types, entered per invoice rather than assumed. */
+const invoiceLineInputSchema = z.object({
+  type: invoiceLineTypeSchema,
+  description: z.string().trim().max(200).nullable().optional(),
+  /** Positive only — a discount is its own field, not a negative line. */
+  amount: z.string().regex(/^\d{1,10}(\.\d{1,2})?$/, "Дүн 1234.56 хэлбэртэй байна"),
+});
 
 /**
- * Generating a month's invoices for a whole kindergarten — `нэмэлт.md` §7.
+ * Generating a month's invoice for one child — нэмэлт.md §7.
  *
- * ★ `childIds` is optional, and its absence means "every enrolled child".
- * Re-running for one child after fixing their attendance must not require
- * voiding the other two hundred invoices.
- */
-export const generateInvoicesSchema = z
-  .object({
-    month: isoMonth,
-    childIds: z.array(uuidSchema).max(500).optional(),
-    dueDate: isoDate.nullable().optional(),
-  })
-  .strict();
-
-export type GenerateInvoicesDto = z.infer<typeof generateInvoicesSchema>;
-
-/**
- * One invoice, typed in by hand — the case a generated one cannot cover.
+ * ★ `lineItems` is supplied by the caller, not invented here.
  *
- * A child who joined mid-month on terms nobody has written a tariff for still
- * has to be billed, and refusing that would push the kindergarten back to a
- * spreadsheet for exactly the awkward cases.
+ * Unlike `FundingCalculation`, which computes its amount from attendance and
+ * a configured rate with no human in the loop, an invoice's tuition/meal/club/
+ * bus/extra charges are the kindergarten's own price list — nothing in this
+ * codebase's schema says what a term costs. `InvoicesService.generate` still
+ * enforces the single-entry principle where it can: `previousBalance` is read
+ * from the child's own prior invoice, never re-entered.
  */
-export const createInvoiceSchema = z
+export const generateInvoiceSchema = z
   .object({
     childId: uuidSchema,
     month: isoMonth,
-    dueDate: isoDate.nullable().optional(),
+    dueDate: isoDate,
+    lineItems: z.array(invoiceLineInputSchema).min(1, "Дор хаяж нэг мөр оруулна уу"),
     discountAmount: money.optional(),
-    note: z.string().max(2000).nullable().optional(),
-    lines: z
-      .array(
-        z
-          .object({
-            kind: invoiceItemKindSchema,
-            label: z.string().trim().min(1, "Нэрийг оруулна уу").max(200),
-            quantity: z.string().regex(/^\d{1,8}(\.\d{1,2})?$/, "Тоо хэмжээ буруу байна"),
-            unitAmount: money,
-            note: z.string().max(500).nullable().optional(),
-          })
-          .strict(),
-      )
-      .min(1, "Дор хаяж нэг мөр оруулна уу")
-      .max(50),
+    note: z.string().trim().max(2000).nullable().optional(),
   })
   .strict();
+export type GenerateInvoiceDto = z.infer<typeof generateInvoiceSchema>;
 
-export type CreateInvoiceDto = z.infer<typeof createInvoiceSchema>;
+export const listInvoicesQuerySchema = z.object({
+  month: isoMonth.optional(),
+  childId: uuidSchema.optional(),
+  status: z.enum(["UNPAID", "PARTIALLY_PAID", "PAID", "OVERDUE", "REFUNDED"]).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+});
+export type ListInvoicesQuery = z.infer<typeof listInvoicesQuerySchema>;
 
-/**
- * Editing a draft — `нэмэлт.md` §7.
- *
- * ★ Deliberately cannot change `childId`, `month` or the amounts. The lines are
- * the amounts; letting a caller set `totalAmount` directly would let an invoice
- * disagree with the charges that justify it, which is the one property
- * `invoice-math.ts` exists to guarantee.
- */
+/** Correcting an unpaid invoice's note or due date — never its charges once issued. */
 export const updateInvoiceSchema = z
   .object({
-    dueDate: isoDate.nullable().optional(),
-    discountAmount: money.optional(),
-    note: z.string().max(2000).nullable().optional(),
+    dueDate: isoDate.optional(),
+    note: z.string().trim().max(2000).nullable().optional(),
   })
-  .strict();
-
+  .strict()
+  .refine((body) => Object.keys(body).length > 0, { message: "Өөрчлөх талбар алга" });
 export type UpdateInvoiceDto = z.infer<typeof updateInvoiceSchema>;
 
-/** Recording money that arrived outside a payment provider — §8. */
+/**
+ * Recording a manual payment — нэмэлт.md §7, and the non-gateway half of §8
+ * ("Банкны төлбөр" and cash in person).
+ *
+ * ★ `QPAY`/`SOCIALPAY` are deliberately not accepted here.
+ *
+ * Those two only mean something once a real gateway calls back with its own
+ * transaction reference; a person typing "QPay" into this form would be
+ * asserting a payment happened that nothing has actually verified. The schema
+ * carries all five values (`Payment.method` in schema.prisma) so a future
+ * webhook handler needs no migration — this endpoint just doesn't offer them.
+ */
 export const recordPaymentSchema = z
   .object({
-    amount: money,
-    method: paymentMethodSchema,
-    paidAt: isoDate.optional(),
-    note: z.string().max(500).nullable().optional(),
+    amount: z
+      .string()
+      .regex(/^\d{1,10}(\.\d{1,2})?$/, "Дүн 1234.56 хэлбэртэй байна")
+      .refine((v) => Number(v) > 0, "Дүн 0-ээс их байна"),
+    method: z.enum(["CASH", "BANK_TRANSFER", "OTHER"]),
+    note: z.string().trim().max(2000).nullable().optional(),
   })
   .strict();
-
 export type RecordPaymentDto = z.infer<typeof recordPaymentSchema>;
 
-/**
- * Reversing a confirmed payment — `нэмэлт.md` §14.
- *
- * ★ A reason is **required**, unlike almost every other note in the system.
- * §14 asks that a confirmed transaction is corrected rather than deleted, and a
- * correction whose reason is blank is indistinguishable from a mistake six
- * months later — which is precisely when somebody asks why the money moved.
- */
-export const reversePaymentSchema = z
+export const voidPaymentSchema = z
   .object({
-    reason: z.string().trim().min(1, "Шалтгааныг заавал бичнэ").max(500),
+    note: z.string().trim().max(2000).nullable().optional(),
   })
   .strict();
+export type VoidPaymentDto = z.infer<typeof voidPaymentSchema>;
 
-export type ReversePaymentDto = z.infer<typeof reversePaymentSchema>;
-
-/**
- * Listing a month's invoices.
- *
- * `status` arrives comma-separated for the same reason `funding.dto.ts`
- * documents: Express's query parser turns one repeated key into a string and
- * two into an array, so a filter for a single status would arrive in a
- * different shape than a filter for two.
- */
-export const listInvoicesSchema = z
+export const markRefundedSchema = z
   .object({
-    month: isoMonth.optional(),
-    childId: uuidSchema.optional(),
-    status: z
-      .string()
-      .optional()
-      .transform((value) => (value ? value.split(",").filter(Boolean) : undefined))
-      .pipe(z.array(invoiceStatusSchema).max(5).optional()),
-    page: z.coerce.number().int().min(1).default(1),
-    pageSize: z.coerce.number().int().min(1).max(100).default(20),
+    note: z.string().trim().max(2000).nullable().optional(),
   })
   .strict();
+export type MarkRefundedDto = z.infer<typeof markRefundedSchema>;
 
-export type ListInvoicesQuery = z.infer<typeof listInvoicesSchema>;
-
-/** The month a financial dashboard reports on — `нэмэлт.md` §9. */
-export const financeDashboardQuerySchema = z.object({ month: isoMonth }).strict();
-
-export type FinanceDashboardQuery = z.infer<typeof financeDashboardQuerySchema>;
-
-/**
- * Which report, and over what period — `нэмэлт.md` §16.
- *
- * ★ `period` is a plain string rather than `isoMonth`, because two of the
- * reports are not monthly: `annual` takes a school year (`2025-2026`) and
- * `unpaid` ignores the period entirely. The service validates the shape each
- * report actually needs, which is the only place that knows.
- */
-export const financeReportQuerySchema = z
-  .object({
-    report: z.enum([
-      "state-funding",
-      "child-funding",
-      "meal-days",
-      "meal-cost",
-      "parent-payments",
-      "unpaid",
-      "variance",
-      "annual",
-    ]),
-    period: z.string().min(4).max(9),
-  })
-  .strict();
-
-export type FinanceReportQuery = z.infer<typeof financeReportQuerySchema>;
+export { uuidSchema };

@@ -81,7 +81,6 @@ export class FinanceReportsRepository {
       where: {
         kindergartenId,
         deletedAt: null,
-        issuedAt: { not: null },
         ...(month ? { month } : {}),
       },
       select: {
@@ -89,10 +88,12 @@ export class FinanceReportsRepository {
         number: true,
         month: true,
         status: true,
-        subtotalAmount: true,
+        baseAmount: true,
+        mealAmount: true,
+        extraAmount: true,
         discountAmount: true,
         previousBalance: true,
-        totalAmount: true,
+        totalDue: true,
         dueDate: true,
         child: { select: { id: true, lastName: true, firstName: true } },
       },
@@ -112,7 +113,7 @@ export class FinanceReportsRepository {
      */
     const payments = await this.prisma.payment.groupBy({
       by: ["invoiceId"],
-      where: { invoiceId: { in: invoices.map((invoice) => invoice.id) }, status: "PAID" },
+      where: { invoiceId: { in: invoices.map((invoice) => invoice.id) } },
       _sum: { amount: true },
       _count: { _all: true },
     });
@@ -121,13 +122,21 @@ export class FinanceReportsRepository {
 
     return invoices.map((invoice) => {
       const paid = paidBy.get(invoice.id);
-      const paidAmount = paid?._sum.amount ?? new Prisma.Decimal(0);
+      const paidAmount = paid?._sum?.amount ?? new Prisma.Decimal(0);
 
       return {
         ...invoice,
+        // ★ `number` is nullable on the invoice — it was added after the rows
+        // that existed before it. A report is a document somebody reads, so an
+        // unnumbered invoice gets a dash rather than the word "null".
+        number: invoice.number ?? "—",
+        // The report's own vocabulary, kept stable across the invoice
+        // implementation that was merged away: `totalAmount` is what the eight
+        // report builders and their 25 tests read.
+        totalAmount: invoice.totalDue,
         paidAmount,
-        paymentCount: paid?._count._all ?? 0,
-        outstanding: invoice.totalAmount.sub(paidAmount),
+        paymentCount: paid?._count?._all ?? 0,
+        outstanding: invoice.totalDue.sub(paidAmount),
       };
     });
   }
@@ -143,14 +152,16 @@ export class FinanceReportsRepository {
     return this.prisma.payment.findMany({
       where: {
         kindergartenId,
-        status: "PAID",
-        invoice: { month, deletedAt: null, issuedAt: { not: null } },
+        invoice: { month, deletedAt: null },
       },
       select: {
         id: true,
         amount: true,
         method: true,
-        paidAt: true,
+        // ★ `createdAt`, not a separate `paidAt`. A `Payment` row exists only
+        // once money has moved — there is no pending state for a date to be
+        // waiting on — so the row's own creation is the moment it was received.
+        createdAt: true,
         reversalOfId: true,
         note: true,
         invoice: {
@@ -160,7 +171,7 @@ export class FinanceReportsRepository {
           },
         },
       },
-      orderBy: { paidAt: "asc" },
+      orderBy: { createdAt: "asc" },
       take: 5_000,
     });
   }

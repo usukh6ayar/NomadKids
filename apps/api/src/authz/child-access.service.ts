@@ -6,6 +6,7 @@ import {
   canAdministerChild,
   canContributeMediaForChild,
   canRecordForChild,
+  canViewChildFinance,
   type ChildAccessFacts,
 } from "./child-access";
 
@@ -62,6 +63,20 @@ export class ChildAccessService {
   async assertCanAdminister(actor: Actor, childId: string): Promise<ChildAccessFacts> {
     const facts = await this.repo.loadChildAccessFacts(actor, childId);
     if (!facts || !canAdministerChild(actor, facts)) throw new NotFoundException();
+    return facts;
+  }
+
+  /**
+   * Throws 404 unless the actor may read this child's money — a guardian of
+   * theirs, or an admin/accountant of a kindergarten they belong to.
+   *
+   * ★ Not `assertCanAccess` plus a role check. §13's whole point is that a
+   * teacher who legitimately passes `assertCanAccess` for their own group must
+   * still be refused here — see `canViewChildFinance`'s own comment.
+   */
+  async assertCanViewFinance(actor: Actor, childId: string): Promise<ChildAccessFacts> {
+    const facts = await this.repo.loadChildAccessFacts(actor, childId);
+    if (!facts || !canViewChildFinance(actor, facts)) throw new NotFoundException();
     return facts;
   }
 

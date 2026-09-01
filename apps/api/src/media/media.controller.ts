@@ -238,6 +238,34 @@ export class TenantImageController {
   }
 }
 
+/**
+ * A dish's photo on the weekly menu — Хоол үйлдвэрлэл.
+ *
+ * ★ Kindergarten-scoped, not day- or dish-scoped — `MenuDay.dishes` has no
+ * row of its own for a photo to attach to (see `MediaService.uploadForMenuDish`).
+ * The route still lives under `kindergartens/:id/menu` rather than a bare
+ * `POST media?purpose=MENU_DISH`, so it reads as what it is in a route list —
+ * the same reasoning `TenantImageController`'s three routes follow.
+ */
+@Controller("kindergartens/:id/menu/dish-photo")
+@UseGuards(RateLimitGuard)
+export class MenuDishMediaController {
+  constructor(private readonly service: MediaService) {}
+
+  @Post()
+  @Roles("TEACHER", "ADMIN", "COOK")
+  @RateLimit({ limit: 60, windowMs: 60 * 60 * 1000, byUser: true })
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } }))
+  async upload(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @UploadedFile() file: { buffer: Buffer; originalname: string } | undefined,
+  ) {
+    if (!file) throw new BadRequestException("Файл хавсаргаагүй байна");
+    return this.service.uploadForMenuDish(actor, params.id, file);
+  }
+}
+
 @Controller("media")
 export class MediaController {
   constructor(private readonly service: MediaService) {}

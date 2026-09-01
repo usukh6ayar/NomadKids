@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import {
   ChildMediaController,
   MediaController,
+  MenuDishMediaController,
   NotificationMediaController,
   TenantImageController,
 } from "./media.controller";
@@ -17,6 +18,7 @@ import { NotificationsModule } from "../notifications/notifications.module";
   controllers: [
     ChildMediaController,
     MediaController,
+    MenuDishMediaController,
     NotificationMediaController,
     TenantImageController,
   ],

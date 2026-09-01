@@ -26,23 +26,36 @@ import Image from "next/image";
  *
  * ★★★ Adding one is a file and a line.
  *
- * The set does not yet cover the administration screens — there is no calendar,
- * no group of children, no people, no storage and no report — so those still
- * render lucide glyphs. The names are reserved below rather than pointed at
- * files that do not exist: a key here that resolves to a 404 is worse than no
- * key, because the call site looks correct.
+ * `child`, `teacher`, `register` and `report` arrived on 2026-08-31 and are
+ * placed where the owner put them — three on the administration board's stat
+ * cards, one on the dashboard's attendance section. The rest of those screens
+ * still render lucide glyphs, and the names stay reserved rather than pointed
+ * at files that do not exist: a key here that resolves to a 404 is worse than
+ * no key, because the call site looks correct.
  *
- * Pending, in the same `icon-<name>.png` convention, 1024×1024 with a
+ * Still pending, in the same `icon-<name>.png` convention, 1024×1024 with a
  * transparent background:
  *
- *   school-year · term · group · users · child · teacher · parent
- *   storage · report · settings
+ *   school-year · term · group · users · parent · storage · settings
+ *
+ * ★★★★★ The four that landed were rebuilt, not dropped in.
+ *
+ * They arrived as 570×426 screenshots against a set that is 1024×1024 — a
+ * landscape crop of a square icon. What the crop removed is the bottom of each
+ * *tinted square*, not the drawing on it, so a square cut to the file's own
+ * height keeps every element whole; where an element reaches that edge it
+ * bleeds off it, which is how the artwork was drawn (`child`'s identity card
+ * does exactly that in the original).
+ *
+ * The fifth, a school building, is `kindergarten` already — it has been in the
+ * set since it was created, at full size, so it was placed rather than added.
  *
  * ★★★★ One family, not two.
  *
- * The thirteen below are already two styles: nine carry their own tinted
+ * The seventeen below are already two styles: thirteen carry their own tinted
  * rounded square (`kindergarten`, `attendance`, `chat-blue`, `menu`, `notice`,
- * `portfolio`, `progress`, `survey`, `finance`) and four are bare cut-outs
+ * `portfolio`, `progress`, `survey`, `finance`, `child`, `teacher`,
+ * `register`, `report`) and four are bare cut-outs
  * (`analytics`, `chat-gradient`, `chat-simple`, `checklist`). Side by side in
  * one grid the two read as different sizes, because one has a chip's worth of
  * padding baked in and the other does not. Anything added should match the
@@ -51,6 +64,7 @@ import Image from "next/image";
 const SOURCE = {
   analytics: "/icons/icon-analytics.png",
   attendance: "/icons/icon-attendance.png",
+  child: "/icons/icon-child.png",
   chatBlue: "/icons/icon-chat-blue.png",
   chatGradient: "/icons/icon-chat-gradient.png",
   chatSimple: "/icons/icon-chat-simple.png",
@@ -61,7 +75,10 @@ const SOURCE = {
   notice: "/icons/icon-notice.png",
   portfolio: "/icons/icon-portfolio.png",
   progress: "/icons/icon-progress.png",
+  register: "/icons/icon-register.png",
+  report: "/icons/icon-report.png",
   survey: "/icons/icon-survey.png",
+  teacher: "/icons/icon-teacher.png",
 } as const;
 
 export type ArtName = keyof typeof SOURCE;

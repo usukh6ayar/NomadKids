@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Put, Query } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Put, Query } from "@nestjs/common";
 import { idParamSchema } from "@kinder/contracts";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
@@ -62,6 +62,26 @@ export class MealsController {
     @Body(new ZodValidationPipe(saveMenuDaySchema)) body: SaveMenuDayDto,
   ) {
     return this.service.saveDay(actor, params.id, params.date, body);
+  }
+
+  /** Батлагдсан цэс — COOK/ADMIN only, narrower than `save` above. */
+  @Post(":date/approve")
+  @Roles("COOK", "ADMIN")
+  async approve(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(dayParamsSchema)) params: { id: string } & DateParam,
+  ) {
+    return this.service.approveDay(actor, params.id, params.date);
+  }
+
+  /** Зарцуулалт — deducts this day's cooking from stock. */
+  @Post(":date/consume")
+  @Roles("COOK", "ADMIN")
+  async consume(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(dayParamsSchema)) params: { id: string } & DateParam,
+  ) {
+    return this.service.consumeDay(actor, params.id, params.date);
   }
 }
 

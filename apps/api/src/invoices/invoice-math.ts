@@ -1,5 +1,5 @@
 import Decimal from "decimal.js";
-import type { InvoiceItemKind, InvoiceStatus } from "../domain/enums";
+import type { InvoiceLineType, InvoiceStatus } from "../domain/enums";
 
 /**
  * The arithmetic of an invoice — `нэмэлт.md` §7, §8.
@@ -33,7 +33,7 @@ export const ZERO = new Decimal(0);
 export interface Tariff {
   readonly id: string;
   readonly name: string;
-  readonly invoiceItemKind: InvoiceItemKind;
+  readonly invoiceItemKind: InvoiceLineType;
   readonly ageBand: string | null;
   readonly dailyRate: Decimal | null;
   readonly monthlyRate: Decimal | null;
@@ -48,7 +48,7 @@ export interface BillingCounts {
 }
 
 export interface DraftLine {
-  readonly kind: InvoiceItemKind;
+  readonly kind: InvoiceLineType;
   readonly label: string;
   readonly quantity: Decimal;
   readonly unitAmount: Decimal;

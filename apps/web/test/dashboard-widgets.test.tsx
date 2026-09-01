@@ -428,6 +428,7 @@ describe("хоолны цэс", () => {
           {
             id: "88888888-8888-4888-8888-888888888888",
             date: TODAY,
+            status: "DRAFT",
             dishes: [
               { name: "Сүүтэй будаа", allergenTags: ["сүү"] },
               { name: "Талх", allergenTags: [] },
@@ -472,6 +473,7 @@ describe("хоолны цэс", () => {
           {
             id: "88888888-8888-4888-8888-888888888888",
             date: TODAY,
+            status: "DRAFT",
             dishes: [{ name: "Сүүтэй будаа", allergenTags: ["сүү"] }],
             warnings: [
               {
@@ -520,6 +522,7 @@ describe("хоолны цэс", () => {
           {
             id: "88888888-8888-4888-8888-888888888888",
             date: TODAY,
+            status: "DRAFT",
             dishes: [{ name: "Ногооны шөл", allergenTags: [] }],
             warnings: [],
           },
@@ -762,6 +765,7 @@ describe("дүрслэл", () => {
           {
             id: "88888888-8888-4888-8888-888888888888",
             date: TODAY,
+            status: "DRAFT",
             dishes: [
               { name: "Ногооны шөл", allergenTags: [] },
               { name: "Сүүтэй будаа", allergenTags: ["сүү"] },
@@ -801,6 +805,7 @@ describe("дүрслэл", () => {
           {
             id: "88888888-8888-4888-8888-888888888888",
             date: TODAY,
+            status: "DRAFT",
             dishes: [
               { name: "Сүүтэй будаа", allergenTags: ["сүү"] },
               { name: "Талх", allergenTags: [] },

@@ -4,7 +4,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { z } from "zod";
-import { childDetailSchema, groupListItemSchema, paginated, SEX_LABEL } from "@kinder/contracts";
+import {
+  childDetailSchema,
+  childStatusSchema,
+  groupListItemSchema,
+  paginated,
+  CHILD_STATUS_LABEL,
+  SEX_LABEL,
+} from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
@@ -44,6 +51,26 @@ import { RequireRole } from "@/components/shell/require-role";
  * typo fix is a mis-click waiting to happen.
  */
 const groupsSchema = paginated(groupListItemSchema);
+
+/**
+ * A child's standing — Order А/261, Annex 2 §1 item 7, mandatory.
+ *
+ * ★ The column existed and no screen ever set it.
+ *
+ * `updateChildSchema` has accepted `status` since the schema was written, so
+ * every child in the database sat at the default because there was nowhere to
+ * change it. The order asks for four states to be *registered*, which means a
+ * control, not a column.
+ *
+ * ★★ Not admin-only, though the order lists it under the director's portal.
+ *
+ * `PATCH /children/:id` is `@Roles("ADMIN", "TEACHER")` and this is one field
+ * on a form both roles already use. A teacher marking a child чөлөөтэй is the
+ * same act as recording an EXCUSED day on the register, which they do daily.
+ * Carving one field out of a shared form would be a new authorization concept
+ * that no requirement asks for.
+ */
+const CHILD_STATUSES = childStatusSchema.options;
 
 export default function EditChildPage() {
   return (
@@ -103,6 +130,7 @@ function DetailsForm({
   // `<input type="date">` needs YYYY-MM-DD; the API sends a full ISO string.
   const [dateOfBirth, setDateOfBirth] = useState((child.dateOfBirth ?? "").slice(0, 10));
   const [nationalId, setNationalId] = useState(child.nationalId ?? "");
+  const [status, setStatus] = useState<string>(child.status ?? "ACTIVE");
   const [healthNotes, setHealthNotes] = useState(child.healthNotes ?? "");
 
   const save = useMutation({
@@ -116,6 +144,7 @@ function DetailsForm({
           dateOfBirth,
           // null clears it; "" would fail the two-letters-eight-digits rule.
           nationalId: nationalId.trim() ? nationalId.trim().toUpperCase() : null,
+          status,
           healthNotes: healthNotes.trim() || null,
         },
       }),
@@ -227,6 +256,23 @@ function DetailsForm({
                 onChange={(e) => setNationalId(e.target.value)}
                 placeholder="УБ12345678"
               />
+            )}
+          </Field>
+
+          <Field label="Суралцах төлөв" error={errors.status} required>
+            {({ id, describedBy }) => (
+              <Select
+                id={id}
+                aria-describedby={describedBy}
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+              >
+                {CHILD_STATUSES.map((value) => (
+                  <option key={value} value={value}>
+                    {CHILD_STATUS_LABEL[value]}
+                  </option>
+                ))}
+              </Select>
             )}
           </Field>
 

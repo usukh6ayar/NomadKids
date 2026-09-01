@@ -1,86 +1,81 @@
-/**
- * Transport and domain types for the QPay boundary.
- *
- * ★ Unlike `esis.types.ts`, this file **does** carry domain shapes — because
- * unlike ESIS, we have QPay's documentation and a real merchant account. The
- * reasoning is the same in both cases: describe exactly what is known and
- * nothing more. Inventing `EsisChild` would have been a guess; declaring
- * `QpayInvoiceResponse` is transcription.
- *
- * ★★ These are QPay's field names, in QPay's snake_case. They stop here:
- * `qpay.service.ts` returns our own shapes, so a rename on their side is a
- * one-file change (CLAUDE.md §2.1's boundary argument).
- */
-
-export type QpayMethod = "GET" | "POST" | "DELETE";
-
-export interface QpayRequest {
-  /** Path relative to `QPAY_BASE_URL`, e.g. `/invoice`. */
-  path: string;
-  method?: QpayMethod;
-  body?: unknown;
-  query?: Record<string, string | number | boolean | undefined>;
-  timeoutMs?: number;
-  parse?: (body: unknown) => unknown;
-  /**
-   * Whether to attach the bearer token.
-   *
-   * ★ `false` for `/auth/token` itself, which authenticates with HTTP Basic
-   * instead. Without this flag the client would try to fetch a token in order
-   * to fetch a token.
-   */
-  authenticated?: boolean;
-}
-
-export interface QpayResponse<T> {
-  data: T;
-  status: number;
-  durationMs: number;
-}
+import { z } from "zod";
 
 /**
- * Why a QPay call could not be made or did not succeed.
+ * Response shapes for QPay's v2 "Simple" merchant API.
  *
- * Mirrors `EsisErrorKind` deliberately — one error type per integration, one
- * catch per caller, `kind` distinguishing what needs different handling. A
- * timeout is worth retrying; a 401 means our credentials are wrong and an
- * operator must know; `invalid_response` means their contract moved.
+ * ★ Unlike `esis.types.ts`, this file DOES carry domain knowledge of the
+ * remote contract. ESIS's shape is unknown until the ministry answers
+ * `docs/ESIS_REQUEST.md`; QPay's v2 API is public
+ * (developer.qpay.mn/#/reference), and `docs/reference/QPAY_INTEGRATION.md`
+ * records exactly what is assumed here and why.
+ *
+ * ★★ Every schema uses `.passthrough()` and validates only the fields this
+ * codebase actually reads. QPay adding a field breaks nothing; QPay renaming
+ * or dropping one of the fields below fails loudly at the boundary — as a
+ * `QpayError("invalid_response", …)` — rather than silently, three layers
+ * into `QpayService`, as a wrong amount credited to the wrong invoice.
  */
+
+export const qpayTokenResponseSchema = z
+  .object({
+    token_type: z.string(),
+    access_token: z.string(),
+    refresh_token: z.string(),
+    /** Seconds. */
+    expires_in: z.number(),
+  })
+  .passthrough();
+export type QpayTokenResponse = z.infer<typeof qpayTokenResponseSchema>;
+
+export const qpayCreateInvoiceResponseSchema = z
+  .object({
+    invoice_id: z.string(),
+    qr_text: z.string().optional(),
+    /** Base64 PNG, no data: prefix. */
+    qr_image: z.string().optional(),
+    /** Deep links into banking apps that can pay this invoice directly. */
+    urls: z
+      .array(
+        z
+          .object({
+            name: z.string().optional(),
+            description: z.string().optional(),
+            logo: z.string().optional(),
+            link: z.string().optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+  })
+  .passthrough();
+export type QpayCreateInvoiceResponse = z.infer<typeof qpayCreateInvoiceResponseSchema>;
+
+const qpayPaymentRowSchema = z
+  .object({
+    payment_id: z.string(),
+    /** `"PAID"` is the only value this codebase treats as a completed payment. */
+    payment_status: z.string(),
+    payment_amount: z.union([z.string(), z.number()]),
+  })
+  .passthrough();
+
+export const qpayCheckPaymentResponseSchema = z
+  .object({
+    count: z.number(),
+    rows: z.array(qpayPaymentRowSchema).default([]),
+  })
+  .passthrough();
+export type QpayCheckPaymentResponse = z.infer<typeof qpayCheckPaymentResponseSchema>;
+
+/** Why a QPay call could not be made or did not succeed — one type, one catch. */
 export type QpayErrorKind =
+  /** Config missing — no call was attempted. */
   | "not_configured"
+  /** The request never completed: DNS, TLS, connection reset. */
   | "network"
+  /** Abandoned at the timeout. */
   | "timeout"
+  /** QPay answered with a non-2xx status. */
   | "http"
-  | "invalid_response"
-  /** `/auth/token` itself failed — no call could be authenticated. */
-  | "auth";
-
-/**
- * What QPay returns when an invoice is created.
- *
- * `qr_text` and `qr_image` render the code; `urls` are the bank deeplinks a
- * parent taps on a phone. `invoice_id` is the handle every later call uses.
- */
-export interface QpayInvoiceResponse {
-  invoice_id: string;
-  qr_text: string;
-  qr_image: string;
-  urls: { name: string; description: string; link: string }[];
-}
-
-/** One payment as QPay reports it, in a check or a callback lookup. */
-export interface QpayPaymentRow {
-  payment_id: string;
-  payment_status: string;
-  payment_amount: string;
-  payment_currency?: string;
-  payment_wallet?: string;
-  payment_date?: string;
-}
-
-/** The body of `POST /payment/check`. */
-export interface QpayPaymentCheckResponse {
-  count: number;
-  paid_amount: number;
-  rows: QpayPaymentRow[];
-}
+  /** QPay answered 2xx with a body that did not match the expected shape. */
+  | "invalid_response";

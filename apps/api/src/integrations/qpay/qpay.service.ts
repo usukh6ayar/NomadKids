@@ -1,207 +1,259 @@
-import { Injectable } from "@nestjs/common";
-import { QpayClient } from "./qpay.client";
+import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
+import Decimal from "decimal.js";
+import { AuditRepository } from "../../audit/audit.repository";
+import { ChildAccessService } from "../../authz/child-access.service";
+import type { Actor } from "../../authz/actor";
+import { InvoicesRepository } from "../../invoices/invoices.repository";
+import { QpayClient, QpayError } from "./qpay.client";
 import { QpayConfig } from "./qpay.config";
-import {
-  isPaidStatus,
-  qpayInvoiceResponseSchema,
-  qpayPaymentCheckResponseSchema,
-} from "./qpay.schemas";
+import { QpayRepository } from "./qpay.repository";
 
 /**
- * One QPay invoice, in **our** vocabulary.
+ * How long a QR stays offered before a fresh one replaces it.
  *
- * ★ Their `invoice_id` becomes `providerInvoiceId`, their `qr_text` becomes
- * `qrText`. Nothing outside `integrations/qpay/` sees a snake_case field.
+ * Independent of whatever QPay's own invoice expiry is (undocumented without
+ * a sandbox to inspect) — this bounds how long a *stale* row is reused by
+ * `createForInvoice` and how long `status`/the callback keep polling QPay
+ * about it before giving up and reporting EXPIRED locally.
  */
-export interface QpayInvoice {
-  providerInvoiceId: string;
-  qrText: string;
-  /** Base64 PNG, rendered by the parent's browser. */
-  qrImage: string;
-  /** Bank deeplinks, for tapping on a phone. */
-  links: { name: string; description: string; link: string }[];
-}
+const QPAY_INVOICE_TTL_MS = 30 * 60 * 1000;
 
-/** What QPay says about one payment, after verification. */
-export interface QpayPayment {
-  providerPaymentId: string;
-  /** The QPay invoice it settles, when their answer names one. */
-  providerInvoiceId: string | null;
-  /** True only when QPay itself reports the money as received. */
-  isPaid: boolean;
-  /** A decimal string — never parsed to a number here. */
-  amount: string;
-  wallet: string | null;
-  paidAt: Date | null;
-}
+const GENERIC_FAILURE_MESSAGE = "QPay-тай холбогдоход алдаа гарлаа. Дараа дахин оролдоно уу.";
 
 /**
- * The application-facing entry point to QPay — `нэмэлт.md` §8.
+ * Paying an invoice through QPay — нэмэлт.md §8.
  *
- * ★ Unlike `EsisService`, this has real domain methods: we have the provider's
- * documentation and a live merchant account, so there is nothing to guess. The
- * boundary rule is unchanged though — everything QPay-shaped stops here.
+ * ★ Three entry points, one shared `reconcile()`.
  *
- * ★★ **One merchant serves every kindergarten** (client, 2026-08-31). No method
- * here takes a kindergarten id, because the credentials do not vary by one.
- * Which kindergarten a payment belongs to is answered by the invoice it
- * references.
+ * `status()` (a parent's browser polling while the QR is on screen) and
+ * `handleCallback()` (QPay's own webhook) are two different triggers for the
+ * exact same question — "has this been paid yet" — and both must produce the
+ * same result whichever fires first or arrives at all. Neither is assumed
+ * reliable: a webhook can be slow, dropped, or unreachable (`localhost`
+ * during development), and a parent can close the tab before polling once. A
+ * kindergarten operating without a public callback URL configured still
+ * works correctly off polling alone.
  */
 @Injectable()
 export class QpayService {
+  private readonly logger = new Logger(QpayService.name);
+
   constructor(
+    private readonly repo: QpayRepository,
     private readonly client: QpayClient,
     private readonly config: QpayConfig,
+    private readonly invoices: InvoicesRepository,
+    private readonly childAccess: ChildAccessService,
+    private readonly audit: AuditRepository,
   ) {}
 
-  /**
-   * Whether this deployment can take an online payment at all.
-   *
-   * ★ Callers check this rather than catching `not_configured`. A deployment
-   * without QPay is an ordinary state — invoicing still works, the accountant
-   * records cash by hand — and treating it as an exception would make ordinary
-   * operation look like failure in the logs.
-   */
+  /** Whether this deployment can talk to QPay at all — the pay button's own gate. */
   get isConfigured(): boolean {
     return this.config.isConfigured;
   }
 
-  /** Safe to show an operator: no password, not even its length. */
-  status(): ReturnType<QpayConfig["describe"]> {
-    return this.config.describe();
+  /**
+   * Starts paying one invoice through QPay, or hands back a QR already in
+   * flight for it.
+   *
+   * ★ `assertCanViewFinance`, same predicate the child-scoped invoice list
+   * uses — a guardian pays their own child's bill, an admin or accountant may
+   * do it on a family's behalf (e.g. showing the QR in person), and a teacher
+   * is refused exactly as нэмэлт.md §13 requires.
+   */
+  async createForInvoice(actor: Actor, childId: string, invoiceId: string) {
+    await this.childAccess.assertCanViewFinance(actor, childId);
+
+    const ref = await this.invoices.findInvoiceRef(invoiceId);
+    if (!ref || ref.childId !== childId) throw new NotFoundException();
+
+    if (!this.isConfigured) {
+      throw new BadRequestException("QPay холболт тохируулагдаагүй байна.");
+    }
+    if (ref.status === "PAID" || ref.status === "REFUNDED") {
+      throw new BadRequestException("Энэ нэхэмжлэл аль хэдийн шийдэгдсэн байна.");
+    }
+
+    // decimal.js, not `Number()` — this figure becomes the amount frozen onto
+    // the QR a parent is handed, so it is the last place a rounding error
+    // could still be introduced before money moves.
+    const balance = new Decimal(ref.balance.toString());
+    if (!balance.gt(0)) {
+      throw new BadRequestException("Төлөх үлдэгдэл алга.");
+    }
+
+    const now = new Date();
+    const latest = await this.repo.findLatestForInvoice(invoiceId);
+    if (latest && latest.status === "PENDING" && latest.expiresAt && latest.expiresAt > now) {
+      return latest;
+    }
+
+    const amount = balance.toFixed(2);
+    const senderInvoiceNo = randomUUID();
+
+    let created;
+    try {
+      created = await this.client.createInvoice({
+        senderInvoiceNo,
+        amount,
+        description: `NomadKids — нэхэмжлэл ${invoiceId.slice(0, 8)}`,
+      });
+    } catch (cause) {
+      throw this.toHttpError(cause, "createInvoice");
+    }
+
+    const row = await this.repo.create({
+      kindergartenId: ref.kindergartenId,
+      invoiceId,
+      amount,
+      qpayInvoiceId: created.invoice_id,
+      senderInvoiceNo,
+      qrText: created.qr_text ?? null,
+      qrImage: created.qr_image ?? null,
+      createdById: actor.userId,
+      expiresAt: new Date(now.getTime() + QPAY_INVOICE_TTL_MS),
+    });
+
+    await this.audit.append({
+      action: "CREATE",
+      kindergartenId: ref.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "QpayInvoice",
+      objectId: row.id,
+      childId,
+      metadata: { invoiceId, amount },
+    });
+
+    return row;
   }
 
   /**
-   * Creates a QPay invoice and returns the QR a parent scans.
+   * The latest attempt's status, re-checked with QPay first if still pending.
    *
-   * ★ `senderInvoiceNo` is **our** invoice number, and it is what ties their
-   * record to ours. QPay echoes it back on enquiry, so a payment can be traced
-   * from their dashboard to a row here without a lookup table.
-   *
-   * ★★ The callback URL carries the invoice id as a query parameter so that a
-   * callback naming a payment we have never heard of can still be resolved. It
-   * carries no secret: the id is a UUID, and possession of it grants nothing —
-   * the callback handler verifies against QPay regardless of what arrives.
+   * ★ This is the poll a parent's browser makes while the QR is on screen —
+   * it is what makes payment visible even when the callback never arrives.
    */
-  async createInvoice(input: {
-    invoiceId: string;
-    invoiceNumber: string;
-    amount: string;
-    description: string;
-    /** Shown in the payer's bank app. */
-    payerName: string;
-  }): Promise<QpayInvoice> {
-    const callbackUrl = new URL(this.config.callbackUrl);
-    callbackUrl.searchParams.set("invoice_id", input.invoiceId);
+  async status(actor: Actor, childId: string, invoiceId: string) {
+    await this.childAccess.assertCanViewFinance(actor, childId);
 
-    const response = await this.client.request({
-      path: "/invoice",
-      method: "POST",
-      body: {
-        invoice_code: this.config.invoiceCode,
-        sender_invoice_no: input.invoiceNumber,
-        invoice_receiver_code: "terminal",
-        invoice_description: input.description,
-        sender_branch_code: "NOMADKIDS",
-        amount: input.amount,
-        callback_url: callbackUrl.toString(),
-        invoice_receiver_data: { name: input.payerName },
-      },
-      parse: (body) => qpayInvoiceResponseSchema.parse(body),
-    });
+    const ref = await this.invoices.findInvoiceRef(invoiceId);
+    if (!ref || ref.childId !== childId) throw new NotFoundException();
 
-    const data = response.data as ReturnType<typeof qpayInvoiceResponseSchema.parse>;
+    const row = await this.repo.findLatestForInvoice(invoiceId);
+    if (!row) throw new NotFoundException();
 
-    return {
-      providerInvoiceId: data.invoice_id,
-      qrText: data.qr_text,
-      qrImage: data.qr_image,
-      links: data.urls,
-    };
+    return this.reconcile(row);
   }
 
   /**
-   * Asks QPay whether a payment really happened — `нэмэлт.md` §8.
+   * QPay's own callback — `@Public()`, called by their server, not a
+   * signed-in actor.
    *
-   * ★★★ **This is the security boundary of the whole payment flow.**
-   *
-   * `QPAY_CALLBACK_URL` is public by necessity: QPay dials it, so it cannot sit
-   * behind our authentication. That means anybody can post to it claiming a
-   * payment succeeded. If the callback body were believed, a stranger could
-   * settle any invoice in the system for free.
-   *
-   * So the callback is treated as a *hint that something may have happened*,
-   * and this method is the answer. Nothing is credited until QPay itself,
-   * over an authenticated connection we opened, says the money arrived.
-   *
-   * Returns `null` when QPay knows of no such payment.
+   * ★ The request body/query is used for exactly one thing: which
+   * `qpayInvoiceId` to go check. It is never trusted for amount or status —
+   * see `reconcile()`. An unrecognised id is a silent no-op rather than a 404:
+   * this endpoint is reachable by anyone who can guess a URL, and confirming
+   * "no such invoice" to an unauthenticated caller is exactly the oracle
+   * docs/SECURITY.md §5.4 exists to deny elsewhere in this codebase.
    */
-  async checkPayment(providerPaymentId: string): Promise<QpayPayment | null> {
-    const response = await this.client.request({
-      path: "/payment/check",
-      method: "POST",
-      body: {
-        object_type: "PAYMENT",
-        object_id: providerPaymentId,
-        offset: { page_number: 1, page_limit: 10 },
-      },
-      parse: (body) => qpayPaymentCheckResponseSchema.parse(body),
-    });
+  async handleCallback(qpayInvoiceId: string): Promise<void> {
+    if (!qpayInvoiceId) return;
 
-    const data = response.data as ReturnType<typeof qpayPaymentCheckResponseSchema.parse>;
-    const row = data.rows.find((r) => r.payment_id === providerPaymentId) ?? data.rows[0];
+    const row = await this.repo.findByQpayInvoiceId(qpayInvoiceId);
+    if (!row) return;
 
-    if (!row) return null;
-
-    return toPayment(row);
+    await this.reconcile(row);
   }
 
   /**
-   * Every payment against one QPay invoice.
+   * The one place that decides "has this been paid" and credits it — called
+   * from both `status()` (poll) and the callback.
    *
-   * Used when a callback names an invoice rather than a payment, and by the
-   * "check now" button a parent presses when their bank was slow.
+   * ★ Never trusts a caller-supplied amount or status. Always re-asks QPay's
+   * own `checkPayment`, and only THEN, if it says PAID, creates the real
+   * `Payment` row — `InvoicesRepository.recordPayment`, the exact same
+   * repository method the accountant's manual CASH/BANK_TRANSFER flow uses,
+   * so `recomputeTotals` updates `Invoice.status`/`balance` identically
+   * either way (нэмэлт.md §8: "Төлбөр амжилттай болсны дараа invoice-ийн
+   * төлөв автоматаар шинэчлэгдэх").
+   *
+   * ★★ The claim-then-attach split against `QpayRepository` is what makes this
+   * safe to call twice concurrently — see `claimForPayment`'s own comment.
+   * Everything before the claim (the `checkPayment` call) may run twice
+   * harmlessly; nothing after it can.
    */
-  async paymentsForInvoice(providerInvoiceId: string): Promise<QpayPayment[]> {
-    const response = await this.client.request({
-      path: "/payment/check",
-      method: "POST",
-      body: {
-        object_type: "INVOICE",
-        object_id: providerInvoiceId,
-        offset: { page_number: 1, page_limit: 100 },
-      },
-      parse: (body) => qpayPaymentCheckResponseSchema.parse(body),
+  private async reconcile(row: NonNullable<Awaited<ReturnType<QpayRepository["findById"]>>>) {
+    if (row.status !== "PENDING") return row;
+
+    const now = new Date();
+    if (row.expiresAt && row.expiresAt <= now) {
+      await this.repo.markExpired(row.id);
+      return { ...row, status: "EXPIRED" as const };
+    }
+
+    if (!this.isConfigured) return row;
+
+    let checked;
+    try {
+      checked = await this.client.checkPayment(row.qpayInvoiceId);
+    } catch (cause) {
+      // A failed check is not a failed payment — it is "still don't know".
+      // The next poll or callback tries again; nothing about `row` changes.
+      this.logger.warn(
+        `QPay checkPayment failed for ${row.qpayInvoiceId}: ${
+          cause instanceof QpayError ? cause.message : "unknown error"
+        }`,
+      );
+      return row;
+    }
+
+    const paidRow = checked.rows.find((r) => r.payment_status === "PAID");
+    if (!paidRow) return row;
+
+    const claimed = await this.repo.claimForPayment(row.id, now);
+    if (!claimed) {
+      // Lost the race to a concurrent call (the webhook and this poll firing
+      // together, or two polls) — that call is creating the `Payment`. Read
+      // back whatever it leaves rather than creating a second one.
+      return (await this.repo.findById(row.id)) ?? row;
+    }
+
+    const { payment } = await this.invoices.recordPayment(row.invoiceId, {
+      kindergartenId: row.kindergartenId,
+      invoiceId: row.invoiceId,
+      amount: row.amount.toFixed(2),
+      method: "QPAY",
+      gatewayReference: paidRow.payment_id,
+      recordedById: null,
+      note: "QPay-ээр автоматаар баталгаажлаа.",
     });
 
-    const data = response.data as ReturnType<typeof qpayPaymentCheckResponseSchema.parse>;
+    await this.repo.attachPayment(row.id, payment.id);
 
-    return data.rows.map(toPayment);
+    await this.audit.append({
+      action: "CREATE",
+      kindergartenId: row.kindergartenId,
+      actorUserId: row.createdById,
+      actorLabel: row.createdById ? null : "QPay (автомат баталгаажуулалт)",
+      objectType: "Payment",
+      objectId: payment.id,
+      metadata: {
+        after: { invoiceId: row.invoiceId, amount: row.amount.toFixed(2), method: "QPAY" },
+        qpayInvoiceId: row.qpayInvoiceId,
+        qpayPaymentId: paidRow.payment_id,
+      },
+    });
+
+    return (await this.repo.findById(row.id)) ?? row;
   }
-}
 
-/**
- * One QPay row in our vocabulary.
- *
- * ★ The only place their field names are read, so the two call sites above
- * cannot drift apart — which they did in the first draft, where one of them
- * quietly dropped the invoice id a callback needs to find its pending row.
- */
-function toPayment(row: {
-  payment_id: string;
-  payment_status: string;
-  payment_amount: string;
-  payment_wallet?: string;
-  payment_date?: string;
-  object_id?: string;
-  invoice_id?: string;
-}): QpayPayment {
-  return {
-    providerPaymentId: row.payment_id,
-    providerInvoiceId: row.invoice_id ?? row.object_id ?? null,
-    isPaid: isPaidStatus(row.payment_status),
-    amount: row.payment_amount,
-    wallet: row.payment_wallet ?? null,
-    paidAt: row.payment_date ? new Date(row.payment_date) : null,
-  };
+  private toHttpError(cause: unknown, context: string): BadRequestException {
+    if (cause instanceof QpayError) {
+      this.logger.warn(`QPay ${context} failed (${cause.kind}): ${cause.message}`);
+    } else {
+      this.logger.warn(`QPay ${context} failed with a non-QpayError: ${String(cause)}`);
+    }
+    return new BadRequestException(GENERIC_FAILURE_MESSAGE);
+  }
 }

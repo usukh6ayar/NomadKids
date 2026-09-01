@@ -45,13 +45,13 @@ export class FinanceDashboardRepository {
   /**
    * What was billed to families this month — §9's "Эцэг эхийн нийт нэхэмжлэл".
    *
-   * ★ Issued invoices only. A draft is not a claim on anybody, and counting one
-   * would make the dashboard's total disagree with the sum of the invoices a
-   * parent can actually see.
+   * ★ `REFUNDED` is excluded: it was reversed, so it is not money the
+   * kindergarten is owed. It stays in the ledger — §14 — but not in this total.
    *
-   * ★★ `REFUNDED` is excluded for the same reason: it was reversed, so it is
-   * not money the kindergarten is owed. It stays in the ledger — §14 — but not
-   * in this total.
+   * ★★ There is no draft filter. The merged-in invoice implementation has no
+   * `issuedAt`: an invoice exists or it is soft-deleted, and the state between
+   * the two that this query used to exclude was never reachable — nothing ever
+   * created one. Soft-deleted rows are excluded by `deletedAt: null` as usual.
    */
   async invoiced(kindergartenId: string, month: Date) {
     const result = await this.prisma.invoice.aggregate({
@@ -59,16 +59,15 @@ export class FinanceDashboardRepository {
         kindergartenId,
         month,
         deletedAt: null,
-        issuedAt: { not: null },
         status: { not: "REFUNDED" },
       },
-      _sum: { totalAmount: true },
+      _sum: { totalDue: true },
       _count: { _all: true },
     });
 
     return {
-      invoices: result._count._all,
-      billed: result._sum.totalAmount ?? new Prisma.Decimal(0),
+      invoices: result._count?._all ?? 0,
+      billed: result._sum?.totalDue ?? new Prisma.Decimal(0),
     };
   }
 
@@ -82,23 +81,27 @@ export class FinanceDashboardRepository {
    *
    * Reversals subtract, because they carry a negative amount — one sum, no
    * second code path (`нэмэлт.md` §14).
+   *
+   * ★ No `status` filter on the payment. The merged-in `Payment` has no status
+   * column: a row exists once money has moved, and a void is a second row with
+   * the negated amount rather than a state change on the first. Summing every
+   * row is therefore both simpler and the only correct thing to do — filtering
+   * out voided rows would double-count, since the reversal is what cancels them.
    */
   async collected(kindergartenId: string, month: Date) {
     const result = await this.prisma.payment.aggregate({
       where: {
         kindergartenId,
-        status: "PAID",
         invoice: {
           month,
           deletedAt: null,
-          issuedAt: { not: null },
           status: { not: "REFUNDED" },
         },
       },
       _sum: { amount: true },
     });
 
-    return result._sum.amount ?? new Prisma.Decimal(0);
+    return result._sum?.amount ?? new Prisma.Decimal(0);
   }
 
   /**
@@ -120,11 +123,10 @@ export class FinanceDashboardRepository {
       where: {
         kindergartenId,
         deletedAt: null,
-        issuedAt: { not: null },
         dueDate: { lt: asOf },
         status: { notIn: ["PAID", "REFUNDED"] },
       },
-      select: { id: true, totalAmount: true },
+      select: { id: true, totalDue: true },
     });
 
     if (invoices.length === 0) {
@@ -138,18 +140,18 @@ export class FinanceDashboardRepository {
      */
     const paid = await this.prisma.payment.groupBy({
       by: ["invoiceId"],
-      where: { invoiceId: { in: invoices.map((invoice) => invoice.id) }, status: "PAID" },
+      where: { invoiceId: { in: invoices.map((invoice) => invoice.id) } },
       _sum: { amount: true },
     });
 
-    const paidByInvoice = new Map(paid.map((row) => [row.invoiceId, row._sum.amount]));
+    const paidByInvoice = new Map(paid.map((row) => [row.invoiceId, row._sum?.amount]));
 
     let amount = new Prisma.Decimal(0);
     let count = 0;
 
     for (const invoice of invoices) {
       const settled = paidByInvoice.get(invoice.id) ?? new Prisma.Decimal(0);
-      const outstanding = invoice.totalAmount.sub(settled);
+      const outstanding = invoice.totalDue.sub(settled);
 
       // A part-paid invoice counts for what is left, not for its face value.
       if (outstanding.isPositive() && !outstanding.isZero()) {
@@ -244,7 +246,7 @@ export class FinanceDashboardRepository {
   }
 
   /**
-   * What a child still owes across every issued invoice — §10's "Үлдэгдэл".
+   * What a child still owes across every invoice — §10's "Үлдэгдэл".
    *
    * ★ Not scoped to a month, unlike the dashboard's own figures: a balance is
    * a running total by definition, and one that reset each month would tell a
@@ -256,19 +258,16 @@ export class FinanceDashboardRepository {
         where: {
           childId,
           deletedAt: null,
-          issuedAt: { not: null },
           status: { not: "REFUNDED" },
         },
-        _sum: { totalAmount: true, discountAmount: true },
+        _sum: { totalDue: true, discountAmount: true },
         _count: { _all: true },
       }),
       this.prisma.payment.aggregate({
         where: {
-          status: "PAID",
           invoice: {
             childId,
             deletedAt: null,
-            issuedAt: { not: null },
             status: { not: "REFUNDED" },
           },
         },
@@ -277,16 +276,16 @@ export class FinanceDashboardRepository {
       // §10 names "Хөнгөлөлт" as a figure of its own, so it is reported rather
       // than silently folded into the total it has already reduced.
       this.prisma.invoice.aggregate({
-        where: { childId, deletedAt: null, issuedAt: { not: null } },
+        where: { childId, deletedAt: null },
         _sum: { discountAmount: true },
       }),
     ]);
 
     return {
-      invoices: billed._count._all,
-      billed: billed._sum.totalAmount ?? new Prisma.Decimal(0),
-      paid: paid._sum.amount ?? new Prisma.Decimal(0),
-      discounts: discounts._sum.discountAmount ?? new Prisma.Decimal(0),
+      invoices: billed._count?._all ?? 0,
+      billed: billed._sum?.totalDue ?? new Prisma.Decimal(0),
+      paid: paid._sum?.amount ?? new Prisma.Decimal(0),
+      discounts: discounts._sum?.discountAmount ?? new Prisma.Decimal(0),
     };
   }
 

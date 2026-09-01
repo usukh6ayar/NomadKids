@@ -112,17 +112,20 @@ export const envSchema = z.object({
   ESIS_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(15_000),
 
   /**
-   * QPay — parent payments (`нэмэлт.md` §8).
+   * QPay — нэмэлт.md §8's online payment.
    *
-   * ★ Optional as a set, like ESIS and SMTP. Without it invoicing still works
-   * in full: an accountant records cash and bank transfers by hand. Only the
-   * online-payment path reports itself unconfigured.
+   * ★ Optional as a set, exactly like ESIS above and for the same reason: a
+   * deployment with no QPay merchant credentials is a legitimate state, every
+   * existing feature keeps working, and the "QPay-ээр төлөх" button on a
+   * parent's invoice simply does not render — see `QpayConfig.isConfigured`.
    *
-   * ★★ `QPAY_PASSWORD` is a **credential** and `QPAY_USERNAME` is close to one.
-   * Neither reaches a response, a log line or the client bundle, and neither is
-   * prefixed `NEXT_PUBLIC_` — see `qpay.client.ts` for the redaction.
+   * `QPAY_PASSWORD` is a credential with the same handling `ESIS_TOKEN` gets:
+   * read only here and in `qpay.client.ts`, never logged, never
+   * `NEXT_PUBLIC_`. `docs/reference/QPAY_INTEGRATION.md` records the assumed
+   * request/response shape — it has not been exercised against a live sandbox,
+   * for lack of credentials to test with.
    *
-   * ★★★ **One merchant serves every kindergarten**, confirmed by the client on
+   * ★★ **One merchant serves every kindergarten**, confirmed by the client on
    * 2026-08-31. That is why these are deployment-level settings rather than
    * columns on `Kindergarten`: every payment lands in the operator's own
    * account, and which kindergarten a payment belongs to is answered by the
@@ -136,11 +139,13 @@ export const envSchema = z.object({
   /** The invoice code QPay assigns the merchant. Not secret, but per-environment. */
   QPAY_INVOICE_CODE: z.string().default(""),
   /**
-   * Where QPay calls back after a payment.
+   * Where QPay calls back after a payment. Must be a public HTTPS URL — QPay's
+   * servers call it, not the browser.
    *
-   * Must be publicly reachable — QPay dials it — which is exactly why its body
-   * is never trusted. The callback is a *notification*; the payment is then
-   * verified against QPay's own API before anything is credited.
+   * Publicly reachable is exactly why its body is never trusted. The callback
+   * is a *notification* naming a `qpay_invoice_id`; the payment is then
+   * verified against QPay's own API (`checkPayment`) before anything is
+   * credited — see `QpayService.reconcile`.
    */
   QPAY_CALLBACK_URL: z.string().default(""),
   QPAY_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(15_000),
@@ -241,10 +246,11 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     }
 
     /*
-     * Half-configured QPay, refused for the same reason as ESIS and SMTP: it
-     * looks configured and then fails as an authentication error from the
-     * provider rather than as our own missing setting. The stakes are higher
-     * here — the failure surfaces to a parent trying to pay.
+     * Half-configured QPay, refused for the same reason as half-configured
+     * ESIS: `QpayConfig.isConfigured` would report true on a base URL alone,
+     * and every call would then fail unauthenticated — which reads as "QPay
+     * is rejecting us" rather than "we never set the password". The stakes are
+     * higher here than for ESIS: the failure surfaces to a parent trying to pay.
      */
     const qpay = [
       ["QPAY_BASE_URL", env.QPAY_BASE_URL],
@@ -257,7 +263,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
 
     if (qpaySet.length > 0 && qpaySet.length < qpay.length) {
       const missing = qpay.filter(([, value]) => value === "").map(([name]) => name);
-      // Names only. The values of the ones that *are* set include the password.
+      // Names only — the values of the ones that *are* set include the password.
       problems.push(`QPay is partly configured — missing ${missing.join(", ")}`);
     }
     if (env.QPAY_BASE_URL && env.QPAY_BASE_URL.startsWith("http://")) {
@@ -271,6 +277,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
      */
     if (env.QPAY_CALLBACK_URL && env.QPAY_CALLBACK_URL.startsWith("http://")) {
       problems.push("QPAY_CALLBACK_URL is a plaintext http:// origin");
+    }
+    if (env.QPAY_CALLBACK_URL && env.QPAY_CALLBACK_URL.includes("localhost")) {
+      problems.push("QPAY_CALLBACK_URL is localhost — QPay's servers cannot reach it");
     }
 
     if (problems.length > 0) {
