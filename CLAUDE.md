@@ -292,7 +292,13 @@ the finance module proper — not started", and by then §4, §5 and §6 had shi
 The list is corrected rather than left standing for the reason this whole
 section keeps repeating: a rule the codebase contradicts stops being read.
 
-- §1's sixth attendance status (`OTHER`) — **done**, it had been dropped
+- §1's sixth attendance status (`OTHER`) — **done**, it had been dropped.
+  ★ It was called done on 2026-08-25 and was half true until 2026-09-02: the
+  Prisma enum had it, `ATTENDANCE_STATUS_LABEL` named it, the funding register
+  filtered on it — but `attendanceStatusSchema` and `recordAttendanceSchema`
+  both stopped at five, so the "Бусад" button the teacher's day sheet has been
+  drawing all along failed on save. A status list written out by hand in four
+  places is how that happens
 - §2 the meal register, §12's dish fields — **done**
 - §11 the allergy cross-check — **done** (it was already RFP Module 2)
 - §13 the accountant role — **done**, `Role.ACCOUNTANT`

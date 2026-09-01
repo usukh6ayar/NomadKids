@@ -391,7 +391,28 @@ export const observationTypeSchema = z.object({
 
 // ── Attendance ───────────────────────────────────────────────────────────────
 
-export const attendanceStatusSchema = z.enum(["PRESENT", "HALF_DAY", "EXCUSED", "SICK", "ABSENT"]);
+/**
+ * ★ Six, not five. `OTHER` was missing here until 2026-09-02.
+ *
+ * The Prisma enum has always had six values, `ATTENDANCE_STATUS_LABEL` below
+ * names six, `attendanceCountsSchema` counts six, and the funding register
+ * filters on six. Only this schema — and `recordAttendanceSchema`, which
+ * mirrors it — stopped at five.
+ *
+ * The failure was silent in the worst direction. The teacher's day sheet draws
+ * its buttons from `Object.entries(ATTENDANCE_STATUS_LABEL)`, so "Бусад" has
+ * been on screen the whole time; pressing it sent a status the API refused.
+ * A control that renders and then fails is worse than one that was never
+ * offered, because the teacher blames themselves.
+ */
+export const attendanceStatusSchema = z.enum([
+  "PRESENT",
+  "HALF_DAY",
+  "EXCUSED",
+  "SICK",
+  "ABSENT",
+  "OTHER",
+]);
 export type AttendanceStatus = z.infer<typeof attendanceStatusSchema>;
 
 /**
@@ -412,7 +433,6 @@ export const ATTENDANCE_STATUS_LABEL: Record<string, string> = {
   EXCUSED: "Чөлөөтэй",
   SICK: "Өвчтэй",
   ABSENT: "Тасалсан",
-  /** The sixth, which `attendanceStatusSchema` predates — see `attendanceCountsSchema`. */
   OTHER: "Бусад",
 };
 

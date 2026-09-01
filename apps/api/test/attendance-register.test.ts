@@ -214,6 +214,26 @@ describe("the filters", () => {
     expect(row.days.filter(Boolean)).toHaveLength(1);
   });
 
+  it("records and filters OTHER — the sixth status the schemas used to omit", async () => {
+    // ★ The teacher's day sheet has always drawn a "Бусад" button from
+    // `ATTENDANCE_STATUS_LABEL`; until 2026-09-02 pressing it sent a status the
+    // API refused. The button rendered, the save failed, and nothing said why.
+    const res = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/attendance/2026-03-03`),
+      admin,
+    ).send({ status: "OTHER" });
+
+    expect(res.status).toBe(200);
+
+    const filtered = await register(
+      admin,
+      a.kindergarten.id,
+      "from=2026-03-02&to=2026-03-06&status=OTHER",
+    );
+    const row = filtered.body.items.find((r: { childId: string }) => r.childId === a.child.id);
+    expect(row.counts).toEqual({ OTHER: 1 });
+  });
+
   it("accepts several statuses at once", async () => {
     await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
     await mark(a, a.enrollment.id, a.child.id, "2026-03-04", "ABSENT");

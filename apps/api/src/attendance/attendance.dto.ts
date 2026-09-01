@@ -1,6 +1,17 @@
 import { z } from "zod";
 
-const attendanceStatusValues = ["PRESENT", "HALF_DAY", "EXCUSED", "SICK", "ABSENT"] as const;
+/**
+ * ★ Six. `OTHER` was absent here until 2026-09-02 — see
+ * `attendanceStatusSchema` in `@kinder/contracts` for what that cost.
+ */
+const attendanceStatusValues = [
+  "PRESENT",
+  "HALF_DAY",
+  "EXCUSED",
+  "SICK",
+  "ABSENT",
+  "OTHER",
+] as const;
 const attendanceCompanionValues = ["MOTHER", "FATHER", "OTHER"] as const;
 /** Who, when the companion is OTHER — a category alone cannot carry a name. */
 const companionNameSchema = z.string().trim().min(1).max(100).nullable().optional();
