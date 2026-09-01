@@ -35,7 +35,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<INest
    * Everything in this suite runs against the real guards and the real
    * database. QPay is the exception because the alternative is a test that
    * spends money: verifying a payment means an authenticated call to a payment
-   * provider, and there is no sandbox available to us (docs/QPAY_INTEGRATION.md
+   * provider, and there is no sandbox available to us (docs/reference/QPAY_INTEGRATION.md
    * §5). The *client* is stubbed, never the authorization around it — the
    * callback route, its guards and `QpayPaymentsService` are all the real ones,
    * which is what the security tests need to be worth anything.

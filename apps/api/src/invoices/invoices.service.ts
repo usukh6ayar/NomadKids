@@ -5,9 +5,19 @@ import { TenantAccessService } from "../authz/tenant-access.service";
 import { ChildAccessService } from "../authz/child-access.service";
 import type { Actor } from "../authz/actor";
 import { paginate, toSkipTake, type PageParams } from "../common/pagination";
+import {
+  invoiceNumberPrefix,
+  lineFor,
+  monthBounds,
+  nextInvoiceNumber,
+  type BillingCounts,
+  type DraftLine,
+  type Tariff,
+} from "./invoice-math";
 import { InvoicesRepository } from "./invoices.repository";
 import type {
   GenerateInvoiceDto,
+  GenerateMonthDto,
   ListInvoicesQuery,
   MarkRefundedDto,
   RecordPaymentDto,
@@ -187,11 +197,19 @@ export class InvoicesService {
       return updated;
     }
 
+    // ★ Numbered only on creation. A regenerate above keeps the number the
+    // family was already given — a bill that changes its reference between the
+    // day it is issued and the day it is paid cannot be matched to a transfer.
+    const year = month.getUTCFullYear();
+    const last = await this.repo.lastInvoiceNumber(kindergartenId, invoiceNumberPrefix(year));
+    const number = nextInvoiceNumber(year, last?.number ?? null);
+
     const created = await this.repo.createInvoice(
       {
         kindergartenId,
         childId: dto.childId,
         month,
+        number,
         baseAmount,
         mealAmount,
         extraAmount,
@@ -216,6 +234,110 @@ export class InvoicesService {
     });
 
     return created;
+  }
+
+  /**
+   * A whole month's invoices, generated from the `PARENT` tariffs —
+   * `нэмэлт.md` §3, §7.
+   *
+   * ★ **Why this exists beside `generate`.** `generate` bills one child from
+   * lines somebody typed. That is the right shape for a correction, and the
+   * wrong shape for a month: a forty-child kindergarten would be forty requests
+   * and forty chances to mistype a rate that is already recorded in
+   * `FundingRule`. This route reads the rules and the month's attendance and
+   * meal-day counts and produces the lines itself.
+   *
+   * ★★ Sequential, deliberately. Each invoice reads the child's previous
+   * balance, and running them in parallel would race on it. A month's billing
+   * is not a hot path — it happens once.
+   *
+   * ★★★ An existing invoice for the month is **skipped, never overwritten**.
+   * `generate` refuses to rewrite a bill with money against it (`нэмэлт.md`
+   * §14); a bulk run is the last place that judgement should be made
+   * implicitly, so it declines to touch any month a child already has and says
+   * which ones it left alone.
+   */
+  async generateMonth(actor: Actor, kindergartenId: string, dto: GenerateMonthDto) {
+    this.tenants.assertCanReadFinance(actor, kindergartenId);
+
+    const { from, to, first } = monthBounds(dto.month);
+    const [tariffRows, inputs] = await Promise.all([
+      this.repo.parentTariffsInForce(kindergartenId, to),
+      this.repo.billingInputs(kindergartenId, from, to),
+    ]);
+
+    if (tariffRows.length === 0) {
+      // The rule table ships empty by `нэмэлт.md` §4's own instruction, so this
+      // is the expected first-run state and deserves a sentence an
+      // administrator can act on rather than an empty result.
+      throw new BadRequestException(
+        "Эцэг эхийн төлбөрийн тариф тохируулаагүй байна. Санхүүжилтийн дүрэм дээр эхлээд тариф үүсгэнэ үү.",
+      );
+    }
+
+    const tariffs = tariffRows.map(toTariff);
+    const attended = new Map(inputs.attendance.map((row) => [row.childId, row._count?._all ?? 0]));
+    const wanted = dto.childIds ? new Set(dto.childIds) : null;
+
+    const created: string[] = [];
+    const skipped: { childId: string; reason: "already_invoiced" | "nothing_to_bill" }[] = [];
+
+    for (const enrollment of inputs.enrollments) {
+      const childId = enrollment.childId;
+      if (wanted && !wanted.has(childId)) continue;
+
+      const existing = await this.repo.findByChildAndMonth(childId, first);
+      if (existing) {
+        skipped.push({ childId, reason: "already_invoiced" });
+        continue;
+      }
+
+      const counts: BillingCounts = {
+        daysAttended: attended.get(childId) ?? 0,
+        daysFed: inputs.fedDays.get(childId) ?? 0,
+      };
+
+      const lines = tariffs
+        .filter((tariff) => appliesToBand(tariff, enrollment.group?.ageBand ?? null))
+        .map((tariff) => lineFor(tariff, counts))
+        .filter((line): line is DraftLine => line !== null);
+
+      if (lines.length === 0) {
+        skipped.push({ childId, reason: "nothing_to_bill" });
+        continue;
+      }
+
+      const invoice = await this.generate(actor, kindergartenId, {
+        childId,
+        month: dto.month,
+        dueDate: dto.dueDate,
+        // ★ The surviving line model carries `description` and `amount` but no
+        // quantity or unit rate, so "20 өдөр × 3,500₮" is written into the text
+        // a parent reads rather than held as two columns. It is the one thing
+        // lost in the merge that a family would actually notice, so it is
+        // spelled out here rather than dropped.
+        lineItems: lines.map((line) => ({
+          type: line.kind,
+          description: line.quantity.equals(1)
+            ? line.label
+            : `${line.label} — ${line.quantity.toFixed(0)} × ${line.unitAmount.toFixed(2)}₮`,
+          amount: line.amount.toFixed(2),
+        })),
+      });
+
+      created.push(invoice.id);
+    }
+
+    await this.audit.append({
+      action: "CREATE",
+      kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "Invoice",
+      objectId: kindergartenId,
+      metadata: { month: dto.month, created: created.length, skipped },
+    });
+
+    return { created: created.length, invoiceIds: created, skipped };
   }
 
   async update(actor: Actor, id: string, dto: UpdateInvoiceDto) {
@@ -362,6 +484,39 @@ export class InvoicesService {
 
     return updated;
   }
+}
+
+/** A rule with no age band applies to everyone — `FundingRule.ageBand` says so. */
+function appliesToBand(tariff: Tariff, ageBand: string | null): boolean {
+  return tariff.ageBand === null || tariff.ageBand === ageBand;
+}
+
+/**
+ * A `FundingRule` row as the arithmetic sees it. `invoiceItemKind` is non-null
+ * by the time this runs — `parentTariffsInForce` filters on it — but the column
+ * is nullable for the rules that never bill a parent, so the cast is where that
+ * guarantee is stated.
+ */
+function toTariff(rule: {
+  id: string;
+  name: string;
+  invoiceItemKind: string | null;
+  ageBand: string | null;
+  dailyRate: { toString(): string } | null;
+  monthlyRate: { toString(): string } | null;
+  dependsOnAttendance: boolean;
+  dependsOnMeals: boolean;
+}): Tariff {
+  return {
+    id: rule.id,
+    name: rule.name,
+    invoiceItemKind: rule.invoiceItemKind as Tariff["invoiceItemKind"],
+    ageBand: rule.ageBand,
+    dailyRate: rule.dailyRate ? new Decimal(rule.dailyRate.toString()) : null,
+    monthlyRate: rule.monthlyRate ? new Decimal(rule.monthlyRate.toString()) : null,
+    dependsOnAttendance: rule.dependsOnAttendance,
+    dependsOnMeals: rule.dependsOnMeals,
+  };
 }
 
 function sumLines(

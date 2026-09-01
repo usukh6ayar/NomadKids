@@ -94,7 +94,29 @@ RAM, диск, Docker, порт, гадагш холболтыг шалгана.
 
 ### 3.2 DNS
 
-Гурван A бичлэгийг VPS-ийн IP рүү заана:
+⛔ **Энэ алхмыг шууд хийж болохгүй. Энэ бол цоо шинэ систем биш, шилжилт.**
+
+Энэ баримт 2026-08-31-нд, сервер байхаас өмнө бичигдсэн бөгөөд систем хоосон
+гэж үзсэн. Бодит байдал (2026-09-01-нд шалгасан):
+
+| Юу               | Хаана ажиллаж байна    |
+| ---------------- | ---------------------- |
+| `nomadkids.mn`   | **Vercel** — амьд      |
+| `api.nomadkids.mn` | **Railway** — амьд, `/v1/health` → 200 |
+| Postgres, Redis  | **Railway**            |
+| Зураг, файл      | **Cloudflare R2**      |
+| DNS              | Cloudflare (зөвхөн DNS) |
+
+Доорх гурван A бичлэгийг **одоо** VPS рүү заавал хоосон систем олон нийтэд
+гарна — Railway-гийн өгөгдлийн сан ч, R2-ийн объектууд ч тэр сервер дээр
+байхгүй.
+
+**Эхлээд түр нэрээр** бүх стекийг шалгана (`vps.`, `api-vps.`,
+`media.nomadkids.mn`), дараа нь §3.7-гийн шилжилтийг хийнэ. Cloudflare дээр
+**саарал үүл** байх ёстой — улбар шар бол Let's Encrypt-ийн HTTP-01 сорилд
+Cloudflare-ийн edge хариулж, Caddy сертификат авахгүй.
+
+Шилжилт дууссаны дараа л жинхэнэ гурван бичлэг:
 
 ```
 nomadkids.mn         A    <VPS IP>
@@ -132,7 +154,7 @@ openssl rand -base64 32   # STORAGE_SECRET_ACCESS_KEY
 refresh token нь access token болж баталгаажих нь хоёр түлхүүр байхын учрыг
 устгана.
 
-QPay-ийн таван утгыг мөн бөглөнө (`docs/QPAY_INTEGRATION.md` §7).
+QPay-ийн таван утгыг мөн бөглөнө (`docs/reference/QPAY_INTEGRATION.md` §7).
 
 ### 3.4 Ажиллуулах
 
@@ -168,6 +190,40 @@ curl -sf https://api.nomadkids.mn/v1/health     && echo " api ✅"
 Дараа нь ADMIN эрхээр нэвтэрч `GET /v1/health/readiness` — энэ нь Chromium,
 Redis, storage, **кирилл фонт**, SMTP, QPay бүгдийг шалгана. `cyrillicFont`
 нь `false` бол PDF хоосон гарна (`docs/PDF_SPIKE.md` §4).
+
+---
+
+### 3.7 Шилжилт — Vercel + Railway + R2-оос
+
+★★★ **Хоёр зүйлийг нэг цэгээс авна.**
+
+```bash
+# 1. Өгөгдлийн сан
+railway link -p NomadKids
+railway connect Postgres        # эсвэл: pg_dump "$RAILWAY_DATABASE_URL" -Fc > cutover.dump
+docker compose -f docker-compose.prod.yml exec -T db \
+  pg_restore -U kinder -d kinder --clean --if-exists < cutover.dump
+
+# 2. Файлууд — R2-оос MinIO руу
+rclone config                   # нэг удаа: r2: ба minio: гэсэн хоёр remote
+rclone sync r2:kinder-media minio:kinder-media --progress
+```
+
+Хоёулаа **нэг цэгээс** авагдаагүй бол сэргээсэн сан нь байхгүй объект руу
+заасан `storageKey`-тэй мөрүүдтэй гарна: эвдэрсэн зурагтай портфолио, 404
+буцаах медиа. §4-т бичсэн яг тэр зовлон, зөвхөн эсрэг чиглэлд.
+
+Дараалал:
+
+1. Түр нэр дээр стек ажиллаж, `/v1/health/readiness` бүрэн ногоон болсон байх
+2. Railway дээрх бичилтийг зогсоох (богино засварын цонх)
+3. `pg_dump` + `rclone sync`
+4. `.env.production` дээрх домэйнуудыг жинхэнэ нэр рүү солих, стекийг дахин
+   асаах
+5. Cloudflare дээрх A бичлэгүүдийг VPS рүү заах (саарал үүл)
+6. **Railway болон Vercel-ийг үлдээх** — эргэж буцах зам, §7-д зориудаар
+   нээлттэй үлдээсэн
+7. `scripts/backup.sh`-ыг **тэр өдөртөө** cron дээр тавих, `BACKUP_REMOTE`-той
 
 ---
 

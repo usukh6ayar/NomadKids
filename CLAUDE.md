@@ -294,13 +294,25 @@ section keeps repeating: a rule the codebase contradicts stops being read.
   table ships **empty**, by §4's own instruction that no tariff is hard-coded
 - §3 meal cost — **partial**: `dependsOnMeals` weights a funding rule, but
   there is no per-child meal cost split by source
-- §7 invoices — **done**: `Invoice`, `InvoiceLine`, `Payment`, generation from
-  the `PARENT` tariffs, a hand-written invoice, the carried balance
+- §7 invoices — **done**: `Invoice`, `InvoiceLineItem`, `Payment`, a
+  hand-written invoice, the carried balance, and `POST
+  …/invoices/generate-month` which bills a whole month from the `PARENT`
+  tariffs × the month's attendance and meal days
 - §8 online payment — **done**: `integrations/qpay/`, QR generation, the
-  verified callback, the lost-callback sync, and the parent's own screens
-  (`/children/:id/invoices`, `/invoices/:id`). **One merchant serves every
-  kindergarten** (client, 2026-08-31), so the credentials are deployment
-  settings, not a column
+  verified callback, and the parent's own screens (`/children/:id/finance`,
+  `/invoices/:id`). **One merchant serves every kindergarten** (client,
+  2026-08-31), so the credentials are deployment settings, not a column.
+  A pending attempt is a `QpayInvoice`, **not** a `Payment` in a pending
+  status — a QR nobody has scanned is not money that moved
+
+★ **§7 and §8 were built twice.** `main` and `origin/main` diverged at
+`878a3a2` and each wrote the whole module into the same paths; the merge on
+2026-09-01 kept `origin/main`'s, because that code was already live and its
+migrations were already in the production database — not because the design
+was better. Both were sound. The reasoning, the two defects fixed on the way in
+(JavaScript floats for money; a `/v2` doubled into the QPay base URL) and what
+was lost (a line no longer points at the `FundingRule` that produced it, and no
+longer carries `quantity × unitAmount`) are in `docs/FINANCE_MODULE.md` §1.
 - §9 the financial dashboard — **done**: `/kindergartens/:id/invoices/dashboard`
   and the panel at the head of `/finance`. Nine figures, none of them stored —
   every one aggregated on read from the calculations, invoices and payments

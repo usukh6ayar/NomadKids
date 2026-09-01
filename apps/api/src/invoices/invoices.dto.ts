@@ -103,6 +103,28 @@ export const markRefundedSchema = z
   .strict();
 export type MarkRefundedDto = z.infer<typeof markRefundedSchema>;
 
+/**
+ * A whole month's invoices, generated from the `PARENT` tariffs — `нэмэлт.md`
+ * §3, §7.
+ *
+ * ★ No `lineItems`. That is the entire point of this route beside
+ * `generateInvoiceSchema`: the lines come from `FundingRule` × the month's
+ * attendance and meal days, so a forty-child kindergarten is one request
+ * instead of forty hand-typed bills.
+ *
+ * `childIds` narrows it to a re-run for the few children who were missed;
+ * omitted, it bills every actively enrolled child.
+ */
+export const generateMonthSchema = z
+  .object({
+    month: isoMonth,
+    dueDate: isoDate,
+    childIds: z.array(uuidSchema).min(1).max(500).optional(),
+  })
+  .strict();
+
+export type GenerateMonthDto = z.infer<typeof generateMonthSchema>;
+
 /** The month a financial dashboard reports on — `нэмэлт.md` §9. */
 export const financeDashboardQuerySchema = z.object({ month: isoMonth }).strict();
 

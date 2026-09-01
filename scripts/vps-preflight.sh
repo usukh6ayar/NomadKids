@@ -158,11 +158,27 @@ done
 echo
 echo "Гадагш холболт:"
 
+# ★ No `-f`. The question is whether the host is REACHABLE, not whether it
+# authorises an anonymous request — and `curl -f` conflates the two.
+#
+# Docker Hub's `/v2/` answers **401** to a request with no token. That is the
+# correct, documented response and it proves the registry was reached; `-f`
+# reported it as "хүрч чадсангүй" and sent the first real deployment chasing a
+# network problem that did not exist, while `docker pull` worked fine.
+#
+# Any HTTP status at all means the connection succeeded. Only curl's own `000`
+# — no response — means it did not.
 check_host() {
-  if command -v curl >/dev/null 2>&1; then
-    if curl -fsS --max-time 8 -o /dev/null "$1" 2>/dev/null; then ok "$2"; else note "$2 — хүрч чадсангүй"; fi
-  else
+  if ! command -v curl >/dev/null 2>&1; then
     note "curl байхгүй тул $2-г шалгасангүй"
+    return
+  fi
+
+  code=$(curl -sS --max-time 8 -o /dev/null -w '%{http_code}' "$1" 2>/dev/null || true)
+  if [ -n "$code" ] && [ "$code" != "000" ]; then
+    ok "$2 — HTTP $code"
+  else
+    note "$2 — хүрч чадсангүй"
   fi
 }
 

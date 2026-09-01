@@ -7,12 +7,14 @@ import type { Actor } from "../authz/actor";
 import { InvoicesService } from "./invoices.service";
 import {
   generateInvoiceSchema,
+  generateMonthSchema,
   listInvoicesQuerySchema,
   markRefundedSchema,
   recordPaymentSchema,
   updateInvoiceSchema,
   voidPaymentSchema,
   type GenerateInvoiceDto,
+  type GenerateMonthDto,
   type ListInvoicesQuery,
   type MarkRefundedDto,
   type RecordPaymentDto,
@@ -70,6 +72,26 @@ export class KindergartenInvoicesController {
     @Body(new ZodValidationPipe(generateInvoiceSchema)) body: GenerateInvoiceDto,
   ) {
     return this.service.generate(actor, params.id, body);
+  }
+
+  /**
+   * A whole month, billed from the `PARENT` tariffs — `нэмэлт.md` §3, §7.
+   *
+   * ★ Beside `POST ""` rather than replacing it. That route bills one child
+   * from lines somebody typed, which is what a correction needs; this one reads
+   * `FundingRule` and the month's attendance and meal days, which is what a
+   * month needs. Neither is a special case of the other.
+   *
+   * Returns what it did and what it left alone — an existing invoice for the
+   * month is skipped, never overwritten.
+   */
+  @Post("generate-month")
+  async generateMonth(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(generateMonthSchema)) body: GenerateMonthDto,
+  ) {
+    return this.service.generateMonth(actor, params.id, body);
   }
 }
 

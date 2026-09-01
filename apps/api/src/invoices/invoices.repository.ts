@@ -177,8 +177,101 @@ export class InvoicesRepository {
     });
   }
 
+  /**
+   * The highest invoice number already issued in this kindergarten this year,
+   * for `nextInvoiceNumber`.
+   *
+   * ★ Soft-deleted invoices are included **on purpose**, which is the one place
+   * in this repository that departs from the base filter. A number belongs to a
+   * document that was issued; reusing it after a void would make two different
+   * bills answer to one reference a parent may already have quoted on a
+   * transfer.
+   */
+  async lastInvoiceNumber(kindergartenId: string, prefix: string) {
+    return this.prisma.invoice.findFirst({
+      where: { kindergartenId, number: { startsWith: prefix } },
+      select: { number: true },
+      orderBy: { number: "desc" },
+    });
+  }
+
   async softDeleteInvoice(id: string) {
     return this.prisma.invoice.update({ where: { id }, data: { deletedAt: new Date() } });
+  }
+
+  // ── Generating a month from the tariffs — нэмэлт.md §3, §7 ─────────────────
+
+  /**
+   * The `PARENT` funding rules in force at the end of the month being billed.
+   *
+   * ★ `invoiceItemKind: { not: null }` is the filter that makes a rule
+   * billable. A `PARENT` rule without one cannot say which kind of line it
+   * produces, so it is configuration somebody started and did not finish —
+   * skipped rather than guessed at.
+   *
+   * ★★ In force is judged at `monthEnd`, not at "now". Billing February in
+   * March must use February's prices, or a mid-March tariff change silently
+   * rewrites a month that has already happened.
+   */
+  async parentTariffsInForce(kindergartenId: string, monthEnd: Date) {
+    return this.prisma.fundingRule.findMany({
+      where: {
+        kindergartenId,
+        source: "PARENT",
+        deletedAt: null,
+        invoiceItemKind: { not: null },
+        effectiveFrom: { lte: monthEnd },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gte: monthEnd } }],
+      },
+      orderBy: { effectiveFrom: "desc" },
+    });
+  }
+
+  /**
+   * Everything a month's billing needs, in three queries rather than three per
+   * child — CLAUDE.md §3.4, in the place it would hurt most: a whole roll being
+   * billed while an accountant waits.
+   */
+  async billingInputs(kindergartenId: string, from: Date, to: Date) {
+    const [enrollments, attendance, meals] = await Promise.all([
+      this.prisma.enrollment.findMany({
+        where: { kindergartenId, status: "ACTIVE", deletedAt: null },
+        select: {
+          childId: true,
+          child: { select: { id: true, lastName: true, firstName: true } },
+          group: { select: { id: true, ageBand: true } },
+        },
+      }),
+      this.prisma.attendance.groupBy({
+        by: ["childId"],
+        where: {
+          kindergartenId,
+          deletedAt: null,
+          date: { gte: from, lte: to },
+          status: { in: ["PRESENT", "HALF_DAY"] },
+        },
+        _count: { _all: true },
+      }),
+      // ★ Grouped by the (child, date) pair — one group is one fed day, never
+      // one sitting. A child who ate breakfast, lunch and supper has one billed
+      // day; grouping by child alone would overcharge that parent threefold.
+      this.prisma.mealRecord.groupBy({
+        by: ["childId", "date"],
+        where: {
+          kindergartenId,
+          deletedAt: null,
+          date: { gte: from, lte: to },
+          status: { in: ["TAKEN", "PARTIAL", "SPECIAL"] },
+        },
+      }),
+    ]);
+
+    const fedDays = new Map<string, number>();
+    for (const group of meals) {
+      fedDays.set(group.childId, (fedDays.get(group.childId) ?? 0) + 1);
+    }
+
+    return { enrollments, attendance, fedDays };
   }
 
   // ── Payments ───────────────────────────────────────────────────────────────
