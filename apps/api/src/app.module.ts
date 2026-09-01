@@ -6,11 +6,14 @@ import { AttendanceModule } from "./attendance/attendance.module";
 import { GrowthModule } from "./growth/growth.module";
 import { HealthRecordsModule } from "./health-records/health-records.module";
 import { IncidentsModule } from "./incidents/incidents.module";
+import { KitchenModule } from "./kitchen/kitchen.module";
 import { ArtworkModule } from "./artwork/artwork.module";
 import { DocumentsModule } from "./documents/documents.module";
 import { ConsentModule } from "./consent/consent.module";
 import { FundingModule } from "./funding/funding.module";
+import { InvoicesModule } from "./invoices/invoices.module";
 import { EsisModule } from "./integrations/esis/esis.module";
+import { QpayModule } from "./integrations/qpay/qpay.module";
 import { MilestonesModule } from "./milestones/milestones.module";
 import { AuthzModule } from "./authz/authz.module";
 import { CatalogModule } from "./catalog/catalog.module";
@@ -70,7 +73,10 @@ import { UsersModule } from "./users/users.module";
     DocumentsModule,
     ConsentModule,
     FundingModule,
+    InvoicesModule,
     EsisModule,
+    QpayModule,
+    KitchenModule,
     MealsModule,
     CatalogModule,
     ChatModule,

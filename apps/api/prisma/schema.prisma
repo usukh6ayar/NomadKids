@@ -150,6 +150,13 @@ enum MediaPurpose {
   KINDERGARTEN_LOGO
   USER_PHOTO
   GROUP_PHOTO
+  /// A photograph of a served dish, on `MenuDay.dishes` — Хоол үйлдвэрлэл.
+  /// Same tenant-image reasoning: a dish photo is on the plain menu every
+  /// family reads, not staff-only, so it joins this group rather than
+  /// `DOCUMENT`'s. The dish itself is a JSON element with no row of its own,
+  /// so nothing here points back at it beyond `kindergartenId` — the menu
+  /// stores the `MediaFile.id`, not the other way around.
+  MENU_DISH
   /// A PDF in the document library, and its cover image — RFP §9. Tenant
   /// material, not child data, so membership authorises them.
   DOCUMENT
@@ -299,6 +306,12 @@ model User {
   attendanceRequested   AttendanceRequest[]       @relation("AttendanceRequestedBy")
   attendanceReviewed    AttendanceRequest[]       @relation("AttendanceReviewedBy")
   menuDaysCreated       MenuDay[]                 @relation("MenuDayCreatedBy")
+  menuDaysApproved      MenuDay[]                 @relation("MenuDayApprovedBy")
+  ingredientsCreated    Ingredient[]              @relation("IngredientCreatedBy")
+  recipesCreated        Recipe[]                  @relation("RecipeCreatedBy")
+  recipesApproved       Recipe[]                  @relation("RecipeApprovedBy")
+  foodOrdersCreated     FoodOrder[]               @relation("FoodOrderCreatedBy")
+  stockMovementsCreated StockMovement[]           @relation("StockMovementCreatedBy")
   surveysCreated        Survey[]                  @relation("SurveyCreatedBy")
   surveyResponses       SurveyResponse[]          @relation("SurveyRespondent")
   growthRecorded        GrowthMeasurement[]       @relation("GrowthRecordedBy")
@@ -312,6 +325,8 @@ model User {
   documentBookmarks     DocumentBookmark[]        @relation("DocumentBookmarkUser")
   consentsDecided       ConsentRecord[]           @relation("ConsentDecidedBy")
   mealsRecorded         MealRecord[]              @relation("MealRecordedBy")
+  paymentsRecorded      Payment[]                 @relation("PaymentRecordedBy")
+  qpayInvoicesInitiated QpayInvoice[]              @relation("QpayInvoiceInitiatedBy")
   chatMessages          ChatMessage[]             @relation("ChatAuthor")
   chatReads             ChatRead[]                @relation("ChatReader")
 
@@ -484,8 +499,16 @@ model Kindergarten {
   documentBookmarks     DocumentBookmark[]
   consents              ConsentRecord[]
   mealRecords           MealRecord[]
+  ingredients           Ingredient[]
+  recipes               Recipe[]
+  suppliers             Supplier[]
+  foodOrders            FoodOrder[]
+  stockMovements        StockMovement[]
   fundingRules          FundingRule[]
   fundingCalculations   FundingCalculation[]
+  invoices              Invoice[]
+  payments              Payment[]
+  qpayInvoices          QpayInvoice[]
   chatMessages          ChatMessage[]
   chatReads             ChatRead[]
 
@@ -638,6 +661,7 @@ model Child {
   consents            ConsentRecord[]
   mealRecords         MealRecord[]
   fundingCalculations FundingCalculation[]
+  invoices            Invoice[]
 
   @@unique([kindergartenId, nationalId])
   @@index([kindergartenId, status])
@@ -1486,6 +1510,251 @@ model FundingCalculation {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Parent invoices and payments — нэмэлт.md §7, §8
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// нэмэлт.md §7's six payment types — one line item per type actually charged
+/// on an invoice.
+enum InvoiceLineType {
+  TUITION // Сургалтын төлбөр
+  MEAL // Хоолны мөнгө
+  CLUB // Дугуйлан
+  BUS // Автобус
+  EXTRA // Нэмэлт үйлчилгээ
+  OTHER // Бусад
+}
+
+/// нэмэлт.md §8's five states — what payment (or its absence) has done to an
+/// invoice so far. `PAID`/`PARTIALLY_PAID`/`UNPAID`/`OVERDUE` are derived by
+/// `InvoicesRepository.recomputeTotals()` every time a payment is recorded or
+/// voided; `REFUNDED` is set explicitly (`InvoicesService.markRefunded`) —
+/// "the balance nets to zero" and "money was actually returned to a parent"
+/// are different facts, and only a person can tell the two apart.
+enum InvoiceStatus {
+  UNPAID // Төлөгдөөгүй
+  PARTIALLY_PAID // Хэсэгчлэн төлсөн
+  PAID // Төлсөн
+  OVERDUE // Хугацаа хэтэрсэн
+  REFUNDED // Буцаалт
+}
+
+/// One child's bill for one month — нэмэлт.md §7.
+///
+/// ★ The four charge columns are a frozen snapshot, not a live sum.
+///
+/// Same rule as `FundingCalculation` (`docs/reference/FINANCE_SCOPE.md` §4.3):
+/// once issued, an invoice reads the same way it did when the parent received
+/// it. A correction replaces `lineItems` and recomputes these columns —
+/// `InvoicesService.generate` refuses to do that once any live payment exists
+/// (`docs/reference/нэмэлт.md` §14 — money that has moved needs a reversal,
+/// not a rewritten bill). `totalDue`, `paidAmount`, `balance` and `status` are
+/// the exception: they change as payments come in, by design.
+model Invoice {
+  id             String   @id @default(uuid()) @db.Uuid
+  kindergartenId String   @db.Uuid
+  childId        String   @db.Uuid
+  /// The month this bills for, as its first day — same convention as
+  /// `FundingCalculation.month`.
+  month          DateTime @db.Date
+
+  /// Үндсэн төлбөр — this invoice's TUITION lines, summed.
+  baseAmount      Decimal  @default(0) @db.Decimal(12, 2)
+  /// Хоолны төлбөр — its MEAL lines, summed.
+  mealAmount      Decimal  @default(0) @db.Decimal(12, 2)
+  /// Нэмэлт төлбөр — everything else (CLUB/BUS/EXTRA/OTHER), summed.
+  extraAmount     Decimal  @default(0) @db.Decimal(12, 2)
+  /// Хөнгөлөлт — stored positive, subtracted when `totalDue` is computed.
+  discountAmount  Decimal  @default(0) @db.Decimal(12, 2)
+  /// Өмнөх үлдэгдэл — the previous invoice's unpaid balance, carried forward.
+  previousBalance Decimal  @default(0) @db.Decimal(12, 2)
+  /// Нийт төлөх дүн — base + meal + extra + previousBalance − discount,
+  /// frozen at generation time.
+  totalDue        Decimal  @db.Decimal(12, 2)
+  /// Төлсөн дүн — the sum of every `Payment.amount` against this invoice,
+  /// original and reversal rows alike (a reversal's negative amount is what
+  /// makes a voided payment net to zero — see `Payment`). Kept as a real
+  /// column, not derived per read, because `status` is derived from it and a
+  /// status the UI filters and sorts by has to be a real column too.
+  paidAmount      Decimal  @default(0) @db.Decimal(12, 2)
+  /// Үлдэгдэл — totalDue − paidAmount, recomputed in the same transaction as
+  /// every payment or void (`InvoicesRepository.recomputeTotals`).
+  balance         Decimal  @db.Decimal(12, 2)
+  /// Төлөх хугацаа.
+  dueDate         DateTime @db.Date
+
+  status InvoiceStatus @default(UNPAID)
+  note   String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten      @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child             @relation(fields: [childId], references: [id], onDelete: Restrict)
+  lineItems    InvoiceLineItem[]
+  payments     Payment[]
+  qpayInvoices QpayInvoice[]
+
+  /// One invoice per child per month, among live rows — mirrors
+  /// `FundingCalculation`'s own `@@unique([childId, month, source])`.
+  @@unique([childId, month])
+  @@index([kindergartenId, month])
+  @@index([kindergartenId, status])
+  @@map("invoices")
+}
+
+/// One charge on an invoice — нэмэлт.md §7's six payment types, one row per
+/// type actually billed that month.
+model InvoiceLineItem {
+  id          String          @id @default(uuid()) @db.Uuid
+  invoiceId   String          @db.Uuid
+  type        InvoiceLineType
+  description String?
+  amount      Decimal         @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@map("invoice_line_items")
+}
+
+/// How a payment moved — нэмэлт.md §8's four gateways, plus cash.
+///
+/// ★ `QPAY`/`SOCIALPAY` are valid values now so the ledger's shape never needs
+/// a migration to widen it, even though nothing can create one yet — no
+/// gateway integration exists in this codebase (confirmed: no inbound webhook
+/// anywhere in `apps/api/src`). `InvoicesController`'s manual-recording route
+/// only accepts `CASH`/`BANK_TRANSFER`/`OTHER` until that lands.
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  QPAY
+  SOCIALPAY
+  OTHER
+}
+
+/// One movement of money against an invoice — нэмэлт.md §7/§8.
+///
+/// ★ Reversed, never deleted, once it is real. `нэмэлт.md` §14, verbatim:
+/// "Баталгаажсан санхүүгийн гүйлгээг шууд устгахгүй. Залруулга эсвэл reversal
+/// transaction ашиглана." This is stricter than CLAUDE.md §3.2's ordinary soft
+/// delete — a `deletedAt` here would make real money vanish from every report
+/// while the fact that it moved stays true.
+///
+/// Voiding inserts a **second row** instead: negative `amount`,
+/// `reversalOfId` pointing at the original. `paidAmount` on `Invoice` is
+/// always `SUM(amount)` over every live row for it, unconditionally — the
+/// reversal's negative amount is what cancels the original in that sum, not a
+/// `WHERE voidedAt IS NULL` clause that would have to also touch the original.
+/// `voidedAt` on the original is therefore purely a display/guard field ("this
+/// was reversed, on this date, do not reverse it twice") — it is never part of
+/// the sum. Both rows stay visible forever, which is the whole point.
+model Payment {
+  id               String        @id @default(uuid()) @db.Uuid
+  kindergartenId   String        @db.Uuid
+  invoiceId        String        @db.Uuid
+  /// Negative on a reversal row; positive on every other one.
+  amount           Decimal       @db.Decimal(12, 2)
+  method           PaymentMethod
+  /// The gateway's own transaction id — set for QPAY/SOCIALPAY, null for a
+  /// manually recorded CASH/BANK_TRANSFER/OTHER payment.
+  gatewayReference String?
+  recordedById     String?       @db.Uuid
+  note             String?
+
+  /// Set on the original row the moment it is voided. Never set on a
+  /// reversal row. Guards against voiding the same payment twice.
+  voidedAt     DateTime?
+  /// Set only on a reversal row, pointing at the payment it cancels.
+  reversalOfId String?   @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  invoice      Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  recordedBy   User?        @relation("PaymentRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  reversalOf   Payment?     @relation("PaymentReversal", fields: [reversalOfId], references: [id], onDelete: SetNull)
+  reversals    Payment[]    @relation("PaymentReversal")
+  qpayInvoice  QpayInvoice?
+
+  @@index([invoiceId])
+  @@index([kindergartenId, createdAt])
+  @@map("payments")
+}
+
+/// нэмэлт.md §8 — one attempt to pay an `Invoice` through QPay's v2 "Simple"
+/// API. See `docs/reference/QPAY_INTEGRATION.md` for the full flow.
+///
+/// ★ A pending *attempt*, not a `Payment`. `Payment` represents money that has
+/// actually moved; a QR code nobody has scanned yet is not that, so it gets a
+/// row of its own instead of a `Payment` in a fictitious "pending" status —
+/// the same reasoning that keeps `REFUNDED` a person's call in
+/// `InvoicesService.markRefunded` rather than a number crossing zero.
+/// `paymentId` is set only once `QpayService.reconcile()` has independently
+/// confirmed the payment against QPay's own check API — never from the
+/// callback's request body, which this schema does not even carry a field
+/// for. `amount` is frozen at creation so a QR already in a parent's hand
+/// cannot silently change value if the invoice's balance moves underneath it.
+///
+/// ★★ Never deleted, same as `Payment` and for the same reason (нэмэлт.md
+/// §14) — a cancelled or expired attempt is a fact too, so `status` moves to
+/// `EXPIRED`/`CANCELLED` in place rather than the row disappearing.
+model QpayInvoice {
+  id             String  @id @default(uuid()) @db.Uuid
+  kindergartenId String  @db.Uuid
+  invoiceId      String  @db.Uuid
+  amount         Decimal @db.Decimal(12, 2)
+
+  /// QPay's own id for this invoice — what the callback and the check API
+  /// both key on.
+  qpayInvoiceId String @unique
+  /// Our reference, sent as `sender_invoice_no` — see `QpayClient.createInvoice`.
+  senderInvoiceNo String  @unique
+  qrText          String?
+  /// The base64 PNG QPay returns inline — no object-storage round trip for a
+  /// code that expires with the invoice it was drawn for.
+  qrImage String? @db.Text
+
+  status QpayInvoiceStatus @default(PENDING)
+
+  /// Set once, by `reconcile()`, the moment a `Payment` row is created for
+  /// this attempt. `@unique` makes the pairing one-to-one in both directions.
+  paymentId String? @unique @db.Uuid
+  /// Who pressed "pay" — audit's "Хэн" for a credit that, once it happens, is
+  /// triggered by an unauthenticated webhook rather than a logged-in request.
+  createdById String? @db.Uuid
+
+  expiresAt DateTime?
+  paidAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  invoice      Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  payment      Payment?     @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  createdBy    User?        @relation("QpayInvoiceInitiatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId])
+  @@index([kindergartenId, status])
+  @@map("qpay_invoices")
+}
+
+/// нэмэлт.md §8's five invoice states, narrowed to what a single attempt can
+/// actually be — `Invoice.status` (UNPAID/PARTIALLY_PAID/...) already covers
+/// the bill as a whole; this is only ever PENDING → PAID, or PENDING →
+/// EXPIRED/CANCELLED without ever reaching PAID.
+enum QpayInvoiceStatus {
+  PENDING
+  PAID
+  EXPIRED
+  CANCELLED
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Growth — RFP §7
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1876,26 +2145,43 @@ model AttendanceRequest {
 // per-child "did they eat" record is not in the RFP and is not built here.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Whether a day's plan has been signed off — "Батлагдсан цэс", the kitchen
+/// gap list's own phrase. A cook plans a day and an approval is a deliberate
+/// second act, same shape as `RecipeStatus` below.
+enum MenuDayStatus {
+  DRAFT
+  APPROVED
+}
+
 /// One row per kindergarten per day. "Weekly" is a query range over these,
 /// not its own entity — there is nothing a week needs beyond seven days.
 ///
-/// `dishes` is `Json`, an array of `{ name: string, allergenTags: string[] }`.
-/// Allergen tags are admin-typed free strings, not a lookup table: the
-/// cross-check against a child's freeform `healthNotes` is a best-effort
-/// substring match done in the UI, not a structured allergy system (that is
-/// its own, separately excluded MVP feature — CLAUDE.md §7).
+/// `dishes` is `Json`, an array of `{ name: string, allergenTags: string[] }`
+/// plus an optional `recipeId`. A dish with no `recipeId` keeps the original
+/// hand-typed shape (name/allergenTags/ingredients/calories typed by staff);
+/// one with a `recipeId` resolves its name, allergens and calories from that
+/// **approved** `Recipe` instead — `MealsService` does that resolution, never
+/// the client. Both shapes coexist so nothing written before recipes existed
+/// breaks.
 model MenuDay {
-  id             String   @id @default(uuid()) @db.Uuid
-  kindergartenId String   @db.Uuid
-  date           DateTime @db.Date
+  id             String        @id @default(uuid()) @db.Uuid
+  kindergartenId String        @db.Uuid
+  date           DateTime      @db.Date
   dishes         Json
   /// Кcal for the whole day, typed in by staff — not summed from `dishes`,
   /// which carries no per-dish figure of its own. Optional: most days will
   /// never get one, and a blank value must read as "not entered" rather than
   /// "zero calories".
   totalCalories  Int?
+  status         MenuDayStatus @default(DRAFT)
 
-  createdById String? @db.Uuid
+  createdById  String?   @db.Uuid
+  approvedById String?   @db.Uuid
+  approvedAt   DateTime?
+  /// Set once `POST .../consume` has deducted this day's recipe ingredients
+  /// from stock — guards against a second call double-deducting. Never
+  /// cleared: a correction is a `StockMovement` ADJUSTMENT row, not a re-run.
+  consumedAt   DateTime?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1903,10 +2189,261 @@ model MenuDay {
 
   kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   createdBy    User?        @relation("MenuDayCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  approvedBy   User?        @relation("MenuDayApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
 
   @@unique([kindergartenId, date])
   @@index([kindergartenId, date(sort: Desc)])
   @@map("menu_days")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Kitchen production — ingredients, technology cards, suppliers, food orders
+// and the stock ledger. The gap list's own words: "Хоол үйлдвэрлэл — хамгийн
+// том дутуу хэсэг". Everything above (MenuDay/MealRecord) is what gets served;
+// this is what it takes to produce it.
+//
+// Three conventions specific to this section:
+//
+//   1. A single base unit per ingredient (grams / millilitres / count), used
+//      everywhere — recipe lines, order lines, stock movements. No kg↔g or
+//      l↔ml conversion exists anywhere in the domain; a screen may divide by
+//      1000 for display, but nothing here stores or compares mixed units.
+//
+//   2. Nutrition and a recipe's effective allergens are DERIVED, never
+//      stored — `KitchenService` sums `RecipeIngredient.quantity ×
+//      Ingredient.*Per100 / 100` on every read, same reasoning as
+//      `MealsService.childMealSummary`'s `daysFed`: one source of truth
+//      beats a cached column that can drift from the rows it summarises.
+//
+//   3. `StockMovement` is an append-only ledger, like `AuditLog`. A wrong
+//      entry is corrected with a new `ADJUSTMENT` row, never edited in place
+//      — нэмэлт.md §14's principle applied to stock, not just money. Current
+//      stock is `SUM(IN) + SUM(ADJUSTMENT, signed) − SUM(OUT)`, computed per
+//      read rather than kept as a running balance column.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum IngredientUnit {
+  GRAM
+  MILLILITER
+  PIECE
+}
+
+/// The kitchen's own config table — CLAUDE.md §2.3: an administrator/cook
+/// edits this, so it is a table, never a TypeScript enum.
+model Ingredient {
+  id             String         @id @default(uuid()) @db.Uuid
+  kindergartenId String         @db.Uuid
+  name           String
+  unit           IngredientUnit
+  /// Nutrition per 100 of the ingredient's own `unit` — 100 g, 100 ml or 100
+  /// pieces. Nullable: a cook may not always have a label's figures to hand,
+  /// and a blank value must read as "not entered", never as zero.
+  caloriesPer100 Decimal?       @db.Decimal(8, 2)
+  proteinPer100  Decimal?       @db.Decimal(8, 2)
+  fatPer100      Decimal?       @db.Decimal(8, 2)
+  carbsPer100    Decimal?       @db.Decimal(8, 2)
+  /// Short controlled tags, same vocabulary as `MenuDish.allergenTags` and
+  /// matched by the same `allergenMatches` stem logic — сүү, самар, өндөг…
+  allergenTags   String[]       @default([])
+  note           String?
+
+  createdById String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten      Kindergarten       @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  createdBy         User?              @relation("IngredientCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  recipeIngredients RecipeIngredient[]
+  foodOrderLines    FoodOrderLine[]
+  stockMovements    StockMovement[]
+
+  /// Hand-written as a PARTIAL unique index in the migration — Postgres
+  /// treats NULLs as distinct, so the plain form would let a soft-deleted
+  /// ingredient block its own name forever. Same pattern as
+  /// `development_domains_system_code_key`.
+  @@unique([kindergartenId, name])
+  @@index([kindergartenId, deletedAt])
+  @@map("ingredients")
+}
+
+/// Технологийн карт — a recipe with real quantities, not a text field.
+model Recipe {
+  id             String       @id @default(uuid()) @db.Uuid
+  kindergartenId String       @db.Uuid
+  name           String
+  /// Which sitting it is usually served at — optional, informational only;
+  /// a menu dish still carries its own `kind`.
+  mealKind       MealKind?
+  /// How many portions this card's quantities are written for. Every
+  /// nutrition figure and every stock deduction scales off this.
+  yieldPortions  Int
+  instructions   String?
+  status         RecipeStatus @default(DRAFT)
+
+  approvedById String?   @db.Uuid
+  approvedAt   DateTime?
+  createdById  String?   @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten       @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  createdBy    User?              @relation("RecipeCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  approvedBy   User?              @relation("RecipeApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  ingredients  RecipeIngredient[]
+
+  @@index([kindergartenId, status, deletedAt])
+  @@map("recipes")
+}
+
+enum RecipeStatus {
+  DRAFT
+  APPROVED
+}
+
+/// One ingredient line on a technology card.
+model RecipeIngredient {
+  id           String  @id @default(uuid()) @db.Uuid
+  recipeId     String  @db.Uuid
+  ingredientId String  @db.Uuid
+  /// In the ingredient's own `unit` — grams, millilitres or a count.
+  quantity     Decimal @db.Decimal(10, 2)
+  position     Int     @default(0)
+
+  recipe     Recipe     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  /// Restrict, not Cascade: an ingredient in active use on a technology card
+  /// cannot vanish out from under it — the same guard `Enrollment` puts on
+  /// `Kindergarten` deletion.
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+
+  @@index([recipeId, position])
+  @@index([ingredientId])
+  @@map("recipe_ingredients")
+}
+
+/// A food supplier — нэмэлт.md's "нийлүүлэгчийн гарал үүсэл".
+model Supplier {
+  id                 String  @id @default(uuid()) @db.Uuid
+  kindergartenId     String  @db.Uuid
+  name               String
+  registrationNumber String?
+  contactPerson      String?
+  contactPhone       String?
+  address            String?
+  /// Гарал үүслийн тайлбар — free text: where the food comes from, any
+  /// certification the supplier has shown. Not a certification registry.
+  originNote         String?
+  isActive           Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  foodOrders   FoodOrder[]
+
+  @@index([kindergartenId, deletedAt])
+  @@map("suppliers")
+}
+
+enum FoodOrderStatus {
+  DRAFT
+  ORDERED
+  RECEIVED
+  CANCELLED
+}
+
+/// Хүнсний захиалга — one order to one supplier.
+model FoodOrder {
+  id             String          @id @default(uuid()) @db.Uuid
+  kindergartenId String          @db.Uuid
+  supplierId     String          @db.Uuid
+  orderDate      DateTime        @db.Date
+  status         FoodOrderStatus @default(DRAFT)
+  note           String?
+
+  createdById String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten    @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  supplier     Supplier        @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  createdBy    User?           @relation("FoodOrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  lines        FoodOrderLine[]
+
+  @@index([kindergartenId, orderDate(sort: Desc)])
+  @@index([kindergartenId, status])
+  @@map("food_orders")
+}
+
+/// One ingredient line on a food order.
+model FoodOrderLine {
+  id               String   @id @default(uuid()) @db.Uuid
+  foodOrderId      String   @db.Uuid
+  ingredientId     String   @db.Uuid
+  /// In the ingredient's own `unit`.
+  quantity         Decimal  @db.Decimal(10, 2)
+  unitPrice        Decimal  @db.Decimal(12, 2)
+  /// `quantity × unitPrice`, frozen at save — same reasoning as
+  /// `Invoice`'s frozen amount columns: a later price change on a new order
+  /// must not silently reprice an old one.
+  totalPrice       Decimal  @db.Decimal(12, 2)
+  /// Set on receive. Nullable/blank means "not yet received" — a short or
+  /// over-delivery is recorded here rather than by editing `quantity`, which
+  /// is what was ordered and stays the ordered figure.
+  receivedQuantity Decimal? @db.Decimal(10, 2)
+
+  foodOrder  FoodOrder  @relation(fields: [foodOrderId], references: [id], onDelete: Cascade)
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+
+  @@index([foodOrderId])
+  @@map("food_order_lines")
+}
+
+enum StockDirection {
+  IN
+  OUT
+  ADJUSTMENT
+}
+
+enum StockSourceType {
+  PURCHASE
+  CONSUMPTION
+  ADJUSTMENT
+}
+
+/// Зарцуулалт — the stock ledger. Append-only, like `AuditLog`: no
+/// `updatedAt`, no `deletedAt`. `sourceId` points at a `FoodOrder` (PURCHASE)
+/// or a `MenuDay` (CONSUMPTION), untyped like `AuditLog.objectId` — the two
+/// source tables don't share a base to foreign-key against cleanly, and this
+/// ledger already has a `sourceType` to disambiguate.
+model StockMovement {
+  id             String          @id @default(uuid()) @db.Uuid
+  kindergartenId String          @db.Uuid
+  ingredientId   String          @db.Uuid
+  date           DateTime        @db.Date
+  direction      StockDirection
+  /// Always stored positive; `direction` carries the sign.
+  quantity       Decimal         @db.Decimal(10, 2)
+  sourceType     StockSourceType
+  sourceId       String?         @db.Uuid
+  note           String?
+
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  ingredient   Ingredient   @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+  createdBy    User?        @relation("StockMovementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([kindergartenId, ingredientId, date])
+  @@index([kindergartenId, date])
+  @@map("stock_movements")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

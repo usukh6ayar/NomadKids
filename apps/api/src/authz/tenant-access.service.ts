@@ -69,6 +69,27 @@ export class TenantAccessService {
   }
 
   /**
+   * Throws 404 unless the actor may manage the kitchen's production data —
+   * ingredients, technology cards, suppliers, food orders and stock.
+   *
+   * ★ Narrower than `assertCanManageMeals`, deliberately.
+   *
+   * The weekly menu is a shared screen — the teacher who serves a dish
+   * answers for it too, so `assertCanManageMeals` admits TEACHER. Ingredients,
+   * recipes, suppliers, orders and the stock ledger are the kitchen's own
+   * production data — nobody outside it needs to see what a sack of flour
+   * cost or how much sits in the store room, and the client's own line for
+   * this role was "шинээр хэт их эрх олгохгүй" (`meals.service.ts`). COOK or
+   * ADMIN only.
+   */
+  assertCanManageKitchen(actor: Actor, kindergartenId: string): void {
+    const ok = actor.memberships.some(
+      (m) => m.kindergartenId === kindergartenId && (m.role === Role.COOK || m.role === Role.ADMIN),
+    );
+    if (!ok) throw new NotFoundException();
+  }
+
+  /**
    * Throws 404 unless the actor may read this kindergarten's money.
    *
    * ★ **This kindergarten's**, which is the distinction the role turns on.

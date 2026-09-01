@@ -1,10 +1,10 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, PackageMinus } from "lucide-react";
 import { useState } from "react";
 import { z } from "zod";
-import { menuDayWithWarningsSchema } from "@kinder/contracts";
+import { menuDayWithWarningsSchema, recipeSummarySchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
@@ -16,10 +16,19 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
-import { MenuDishEditor, fromDraft, toDraft, type DishDraft } from "@/components/menu/menu-dish-editor";
+import {
+  MenuDishEditor,
+  fromDraft,
+  toDraft,
+  type DishDraft,
+  type RecipeOption,
+} from "@/components/menu/menu-dish-editor";
 import { formatDate } from "@/lib/format";
 
 const weekSchema = z.array(menuDayWithWarningsSchema);
+const approvedRecipesSchema = z.array(
+  recipeSummarySchema.pick({ id: true, name: true, yieldPortions: true }),
+);
 
 /** Monday of the week `date` falls in, as `YYYY-MM-DD`. */
 function mondayOf(date: Date): string {
@@ -55,16 +64,22 @@ const WEEKDAY = ["Даваа", "Мягмар", "Лхагва", "Пүрэв", "Б
  * that is a separate route from the one a parent reads — and the cook is
  * exactly the person who can act on it. RFP Module 2.
  *
- * ★★★★ Every dish field, not just its name — fixed 2026-08-30, the same day
- * this shipped. `PUT .../menu/:date` **replaces** the day's dishes outright
- * (`meals.repository.ts`'s `upsertDay`), and `findAllergenWarnings` only ever
- * warns by reading `dish.allergenTags` — a name-only save could never trigger
- * the one warning RFP Module 2 names for this role, and it silently erased
- * any `kind`/`allergenTags`/`ingredients`/`calories`/`portions` a teacher had
- * already entered for that day through `child-menu.tsx`'s own editor. Both
- * screens now share `MenuDishEditor` (`components/menu/menu-dish-editor.tsx`)
- * for exactly that reason — one editor, so a cook's save and a teacher's save
- * cannot disagree about what a full dish record looks like.
+ * ★★★★ Every dish field, not just its name — fixed 2026-08-30. `PUT
+ * .../menu/:date` **replaces** the day's dishes outright, so this screen and
+ * `child-menu.tsx`'s own editor share one implementation
+ * (`components/menu/menu-dish-editor.tsx`) rather than risk disagreeing
+ * about what a full dish record looks like.
+ *
+ * ★★★★★ 2026-09-01 — a dish may point at an APPROVED технологийн карт
+ * ("батлагдсан цэс") and carry a photo of the plated result. Both are
+ * `MenuDishEditor`'s `kitchen` prop, which only this screen supplies —
+ * technology cards are the kitchen's own planning concept, so `child-menu.tsx`'s
+ * quick edit from inside a child's page does not offer to set one, though it
+ * still preserves one that is already there (`DishDraft` round-trips it either
+ * way). A recipe-linked dish's name/allergens/calories come frozen from the
+ * recipe (`MealsService.saveDay` resolves them, not this screen), and its
+ * `portions` is what `consume` scales the recipe's ingredients by when stock
+ * is deducted.
  */
 export default function MenuPage() {
   return (
@@ -75,8 +90,9 @@ export default function MenuPage() {
 }
 
 function WeeklyMenu() {
-  const { session } = useSession();
+  const { session, hasRole } = useSession();
   const kindergartenId = session?.memberships?.[0]?.kindergartenId ?? null;
+  const isKitchen = hasRole("COOK") || hasRole("ADMIN");
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
 
   const from = weekStart;
@@ -87,6 +103,12 @@ function WeeklyMenu() {
     queryKey: qk.weeklyMenu(kindergartenId ?? "", from),
     queryFn: () =>
       get(`/kindergartens/${kindergartenId}/menu/with-warnings?from=${from}&to=${to}`, weekSchema),
+  });
+
+  const recipes = useQuery({
+    enabled: Boolean(kindergartenId),
+    queryKey: qk.kitchen.approvedRecipes(kindergartenId ?? ""),
+    queryFn: () => get(`/kindergartens/${kindergartenId}/recipes/approved`, approvedRecipesSchema),
   });
 
   const byDate = new Map((week.data ?? []).map((day) => [day.date.slice(0, 10), day]));
@@ -138,6 +160,8 @@ function WeeklyMenu() {
                 date={date}
                 weekday={label}
                 day={byDate.get(date) ?? null}
+                recipes={recipes.data ?? []}
+                isKitchen={isKitchen}
               />
             );
           })}
@@ -168,17 +192,25 @@ function MenuDayCard({
   date,
   weekday,
   day,
+  recipes,
+  isKitchen,
 }: {
   kindergartenId: string;
   weekStart: string;
   date: string;
   weekday: string;
   day: z.infer<typeof menuDayWithWarningsSchema> | null;
+  recipes: RecipeOption[];
+  isKitchen: boolean;
 }) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const [draftDishes, setDraftDishes] = useState<DishDraft[]>(() => toDraft(day?.dishes ?? []));
   const [dirty, setDirty] = useState(false);
+
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: qk.weeklyMenu(kindergartenId, weekStart) });
+  };
 
   const save = useMutation({
     mutationFn: () =>
@@ -189,17 +221,51 @@ function MenuDayCard({
     onSuccess: () => {
       toast.success(`${weekday} гарагийн цэс хадгалагдлаа.`);
       setDirty(false);
-      void queryClient.invalidateQueries({ queryKey: qk.weeklyMenu(kindergartenId, weekStart) });
+      refresh();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const approve = useMutation({
+    mutationFn: () =>
+      mutate(`/kindergartens/${kindergartenId}/menu/${date}/approve`, z.unknown(), {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      toast.success(`${weekday} гарагийн цэс батлагдлаа.`);
+      refresh();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const consume = useMutation({
+    mutationFn: () =>
+      mutate(`/kindergartens/${kindergartenId}/menu/${date}/consume`, z.unknown(), {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      toast.success(`${weekday} гарагийн хэрэглээ нөөцөд бүртгэгдлээ.`);
+      void queryClient.invalidateQueries({ queryKey: ["kitchen", "stock"] });
+      refresh();
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
 
   const warnings = day?.warnings ?? [];
+  const isApproved = day?.status === "APPROVED";
+  const isConsumed = Boolean(day?.consumedAt);
 
   return (
     <Card pad="roomy" className="flex flex-col gap-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-lead font-semibold text-ink">{weekday}</h2>
+        <h2 className="flex items-center gap-2 text-lead font-semibold text-ink">
+          {weekday}
+          {day ? (
+            <Badge tone={isApproved ? "mint" : "neutral"}>
+              {isApproved ? "Батлагдсан" : "Ноорог"}
+            </Badge>
+          ) : null}
+        </h2>
         <div className="flex items-center gap-2">
           {day && !dirty ? <Badge tone="mint">Хадгалагдсан</Badge> : null}
           <span className="text-caption text-muted">{formatDate(date)}</span>
@@ -241,7 +307,39 @@ function MenuDayCard({
         onSave={() => save.mutate()}
         saving={save.isPending}
         error={save.isError ? errorMessage(save.error) : null}
+        kitchen={{ kindergartenId, recipes }}
       />
+
+      {isKitchen ? (
+        <div className="flex flex-wrap items-center gap-3 border-t border-border-soft pt-3">
+          {/* Батлагдсан цэс — COOK/ADMIN only, and only once saved. */}
+          {day && !dirty && !isApproved ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={approve.isPending}
+              onClick={() => approve.mutate()}
+            >
+              <CheckCircle2 size={16} aria-hidden="true" />
+              {approve.isPending ? "Батлаж байна…" : "Батлах"}
+            </Button>
+          ) : null}
+
+          {/* Зарцуулалт — deducts this day's cooking from stock. */}
+          {isApproved && !isConsumed ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={consume.isPending}
+              onClick={() => consume.mutate()}
+            >
+              <PackageMinus size={16} aria-hidden="true" />
+              {consume.isPending ? "Бүртгэж байна…" : "Хэрэглээ бүртгэх"}
+            </Button>
+          ) : null}
+          {isConsumed ? <Badge tone="sky">Нөөцөд бүртгэсэн</Badge> : null}
+        </div>
+      ) : null}
     </Card>
   );
 }

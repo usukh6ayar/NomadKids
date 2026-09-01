@@ -14,7 +14,29 @@ export class MealsRepository {
     });
   }
 
-  /** Create-or-update, keyed by the `(kindergartenId, date)` uniqueness. */
+  /** The day's approval/consumption state, for `saveDay`'s guard — cheaper
+   * than fetching the whole row when only these three fields are needed. */
+  async findDayState(kindergartenId: string, date: Date) {
+    return this.prisma.menuDay.findFirst({
+      where: { kindergartenId, date, deletedAt: null },
+      select: { id: true, status: true, consumedAt: true },
+    });
+  }
+
+  /** The whole day — `approveDay` and `consumeDay` need `dishes` too. */
+  async findDay(kindergartenId: string, date: Date) {
+    return this.prisma.menuDay.findFirst({ where: { kindergartenId, date, deletedAt: null } });
+  }
+
+  /**
+   * Create-or-update, keyed by the `(kindergartenId, date)` uniqueness.
+   *
+   * ★ A save always writes `status: DRAFT` and clears the approval.
+   *
+   * Approving a day is a deliberate second act (`approveDay`) — a plan that
+   * has just been edited is, by definition, not the plan somebody signed off
+   * on, whether it was DRAFT already or APPROVED a moment ago.
+   */
   async upsertDay(
     kindergartenId: string,
     date: Date,
@@ -25,7 +47,22 @@ export class MealsRepository {
     return this.prisma.menuDay.upsert({
       where: { kindergartenId_date: { kindergartenId, date } },
       create: { kindergartenId, date, dishes: dishes as object, totalCalories, createdById },
-      update: { dishes: dishes as object, totalCalories, createdById },
+      update: {
+        dishes: dishes as object,
+        totalCalories,
+        createdById,
+        status: "DRAFT",
+        approvedById: null,
+        approvedAt: null,
+      },
+    });
+  }
+
+  /** Signs a day off — `POST .../approve`. */
+  async approveDay(id: string, approvedById: string) {
+    return this.prisma.menuDay.update({
+      where: { id },
+      data: { status: "APPROVED", approvedById, approvedAt: new Date() },
     });
   }
 

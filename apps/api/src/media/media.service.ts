@@ -50,6 +50,9 @@ const TENANT_IMAGE_PURPOSES: ReadonlySet<MediaPurpose> = new Set<MediaPurpose>([
   "KINDERGARTEN_LOGO",
   "USER_PHOTO",
   "GROUP_PHOTO",
+  // A dish photo on the weekly menu — readable by anyone in the kindergarten,
+  // families included, exactly like the plain menu it illustrates.
+  "MENU_DISH",
 ]);
 
 /**
@@ -604,6 +607,85 @@ export class MediaService {
     });
 
     return this.toPublicShape(media);
+  }
+
+  /**
+   * A photograph of a dish on the weekly menu — Хоол үйлдвэрлэл.
+   *
+   * ★ Kindergarten-scoped, like a class photo — not tied to a `MenuDay` row or
+   * a specific dish.
+   *
+   * `MenuDay.dishes` is a JSON array with no per-dish row to attach a foreign
+   * key to (`dish-json.ts`), and a day may not even exist yet the first time a
+   * cook picks a photo for it. So this creates a standalone `MediaFile` and
+   * hands its id back; the client stores that id on the dish it is building
+   * and it is only persisted once `MealsService.saveDay` writes the day —
+   * which is also where the id gets checked against `isMenuDishPhoto` below,
+   * so a client cannot claim an arbitrary media id as a dish's photo.
+   *
+   * Same access as editing the menu itself (`assertCanManageMeals`): a
+   * teacher plates what the cook planned and may want to swap the picture.
+   */
+  async uploadForMenuDish(
+    actor: Actor,
+    kindergartenId: string,
+    file: { buffer: Buffer; originalname: string },
+  ) {
+    this.tenants.assertCanManageMeals(actor, kindergartenId);
+
+    let validated;
+    try {
+      validated = await validateImageUpload(file.buffer);
+    } catch (error) {
+      if (error instanceof UploadRejected) throw new BadRequestException(error.reason);
+      throw error;
+    }
+
+    const storageKey = this.storage.buildKindergartenKey(kindergartenId, "menu-dishes");
+    await this.storage.put(storageKey, validated.buffer, validated.mimeType);
+
+    const media = await this.repo.create({
+      kindergartenId,
+      purpose: "MENU_DISH",
+      storageKey,
+      originalName: sanitiseFilename(file.originalname),
+      mimeType: validated.mimeType,
+      sizeBytes: validated.sizeBytes,
+      width: validated.width,
+      height: validated.height,
+      uploadedById: actor.userId,
+      caption: null,
+      order: 0,
+    });
+
+    await this.audit.append({
+      action: "CREATE",
+      kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "MediaFile",
+      objectId: media.id,
+      metadata: { purpose: media.purpose, sizeBytes: media.sizeBytes },
+    });
+
+    return this.toPublicShape(media);
+  }
+
+  /**
+   * Whether `mediaId` is a real, ready `MENU_DISH` photo belonging to this
+   * kindergarten — `MealsService.saveDay` calls this for every dish carrying
+   * a `photoMediaFileId` before it is written, so a menu cannot be made to
+   * point at a file the client merely guessed the id of (a private child
+   * photo, another kindergarten's upload) — the id must have come from this
+   * kindergarten's own `uploadForMenuDish` call.
+   */
+  async isMenuDishPhoto(kindergartenId: string, mediaId: string): Promise<boolean> {
+    const media = await this.repo.findForAuthorization(mediaId);
+    return Boolean(
+      media &&
+      media.kindergartenId === kindergartenId &&
+      media.purpose === "MENU_DISH" &&
+      media.status === "READY",
+    );
   }
 
   /** Makes an already-uploaded photo the child's profile picture. */

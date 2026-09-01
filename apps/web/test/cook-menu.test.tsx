@@ -41,7 +41,12 @@ describe("the cook's weekly menu", () => {
       {
         path: `/kindergartens/${KG_ID}/menu/`,
         method: "PUT",
-        body: { id: "44444444-4444-4444-8444-444444444444", date: "2026-01-05", dishes: [], totalCalories: null },
+        body: {
+          id: "44444444-4444-4444-8444-444444444444",
+          date: "2026-01-05",
+          dishes: [],
+          totalCalories: null,
+        },
       },
     ]);
 
@@ -96,6 +101,7 @@ describe("the cook's weekly menu", () => {
             date: mondayOfThisWeek(),
             dishes: [{ name: "Самрын бялуу", allergenTags: ["самар"] }],
             totalCalories: null,
+            status: "DRAFT",
             warnings: [
               {
                 childId: "55555555-5555-4555-8555-555555555555",

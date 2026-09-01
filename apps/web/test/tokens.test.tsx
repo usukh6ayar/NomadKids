@@ -202,7 +202,16 @@ describe("the icon set", () => {
       const source = readFileSync(join(WEB_ROOT, file!), "utf8").split("\n")[Number(line) - 1]!;
       if (source.includes("data:image/svg+xml")) return false;
 
-      return !EXEMPT_FROM_SVG_BAN.some((prefix) => file!.startsWith(prefix));
+      // ★ Normalized to forward slashes before the prefix check.
+      //
+      // `join()` (and therefore `sourceFiles()`'s relative paths) uses the
+      // host's own separator, which is a backslash on Windows —
+      // `"components\\ui\\chart\\donut.tsx".startsWith("components/ui/chart/")`
+      // is false, so every file in the exempt list looked hand-rolled on
+      // that platform alone. `EXEMPT_FROM_SVG_BAN` is written with forward
+      // slashes; this normalizes the other side to match, not the reverse.
+      const normalized = file!.replace(/\\/g, "/");
+      return !EXEMPT_FROM_SVG_BAN.some((prefix) => normalized.startsWith(prefix));
     });
 
     expect(handRolled).toEqual([]);

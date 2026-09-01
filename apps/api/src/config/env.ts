@@ -112,6 +112,28 @@ export const envSchema = z.object({
   ESIS_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(15_000),
 
   /**
+   * QPay — нэмэлт.md §8's online payment.
+   *
+   * ★ Optional as a set, exactly like ESIS above and for the same reason: a
+   * deployment with no QPay merchant credentials is a legitimate state, every
+   * existing feature keeps working, and the "QPay-ээр төлөх" button on a
+   * parent's invoice simply does not render — see `QpayConfig.isConfigured`.
+   *
+   * `QPAY_PASSWORD` is a credential with the same handling `ESIS_TOKEN` gets:
+   * read only here and in `qpay.client.ts`, never logged, never
+   * `NEXT_PUBLIC_`. `docs/reference/QPAY_INTEGRATION.md` records the assumed
+   * request/response shape — it has not been exercised against a live sandbox,
+   * for lack of credentials to test with.
+   */
+  QPAY_BASE_URL: z.string().default(""),
+  QPAY_USERNAME: z.string().default(""),
+  QPAY_PASSWORD: z.string().default(""),
+  QPAY_INVOICE_CODE: z.string().default(""),
+  /** Must be a public HTTPS URL — QPay's servers call it, not the browser. */
+  QPAY_CALLBACK_URL: z.string().default(""),
+  QPAY_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(15_000),
+
+  /**
    * Whether this instance consumes the report queue.
    *
    * On by default: one container is the right shape for a kindergarten's
@@ -204,6 +226,36 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     }
     if (env.ESIS_BASE_URL && env.ESIS_BASE_URL.startsWith("http://")) {
       problems.push("ESIS_BASE_URL is a plaintext http:// origin — the token would cross it");
+    }
+
+    /*
+     * Half-configured QPay, refused for the same reason as half-configured
+     * ESIS: `QpayConfig.isConfigured` would report true on a base URL alone,
+     * and every call would then fail unauthenticated — which reads as "QPay
+     * is rejecting us" rather than "we never set the password".
+     */
+    const qpay = [
+      ["QPAY_BASE_URL", env.QPAY_BASE_URL],
+      ["QPAY_USERNAME", env.QPAY_USERNAME],
+      ["QPAY_PASSWORD", env.QPAY_PASSWORD],
+      ["QPAY_INVOICE_CODE", env.QPAY_INVOICE_CODE],
+      ["QPAY_CALLBACK_URL", env.QPAY_CALLBACK_URL],
+    ] as const;
+    const qpaySet = qpay.filter(([, value]) => value !== "");
+
+    if (qpaySet.length > 0 && qpaySet.length < qpay.length) {
+      const missing = qpay.filter(([, value]) => value === "").map(([name]) => name);
+      // Names only — the values of the ones that *are* set include the password.
+      problems.push(`QPay is partly configured — missing ${missing.join(", ")}`);
+    }
+    if (env.QPAY_BASE_URL && env.QPAY_BASE_URL.startsWith("http://")) {
+      problems.push("QPAY_BASE_URL is a plaintext http:// origin — the password would cross it");
+    }
+    if (env.QPAY_CALLBACK_URL && env.QPAY_CALLBACK_URL.startsWith("http://")) {
+      problems.push("QPAY_CALLBACK_URL is a plaintext http:// origin");
+    }
+    if (env.QPAY_CALLBACK_URL && env.QPAY_CALLBACK_URL.includes("localhost")) {
+      problems.push("QPAY_CALLBACK_URL is localhost — QPay's servers cannot reach it");
     }
 
     if (problems.length > 0) {

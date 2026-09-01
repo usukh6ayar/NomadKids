@@ -45,7 +45,9 @@ export class FundingRepository {
   async findRule(id: string) {
     return this.prisma.fundingRule.findFirst({
       where: { id, deletedAt: null },
-      select: { id: true, kindergartenId: true },
+      // Widened past {id, kindergartenId} so a caller correcting a rule can
+      // log what the field actually was, not just that it changed — §14.
+      select: { id: true, kindergartenId: true, name: true, note: true, effectiveTo: true },
     });
   }
 
@@ -203,7 +205,18 @@ export class FundingRepository {
   async findCalculation(id: string) {
     return this.prisma.fundingCalculation.findFirst({
       where: { id, deletedAt: null },
-      select: { id: true, kindergartenId: true, childId: true, month: true, source: true },
+      // Widened past the identifying columns so `settle()` can log what the
+      // approved/received figures actually were before this call — §14.
+      select: {
+        id: true,
+        kindergartenId: true,
+        childId: true,
+        month: true,
+        source: true,
+        approvedAmount: true,
+        receivedAmount: true,
+        note: true,
+      },
     });
   }
 

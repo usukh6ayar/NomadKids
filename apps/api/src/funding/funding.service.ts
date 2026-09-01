@@ -3,7 +3,8 @@ import { AuditRepository } from "../audit/audit.repository";
 import { TenantAccessService } from "../authz/tenant-access.service";
 import type { Actor } from "../authz/actor";
 import type { AttendanceCounts } from "@kinder/contracts";
-import { paginate, toSkipTake } from "../common/pagination";
+import { paginate, toSkipTake, type PageParams } from "../common/pagination";
+import { withActorLabel } from "../dashboard/audit-actor";
 import { FundingRepository } from "./funding.repository";
 import { calculateFunding, ruleAppliesOn, splitBilling, type RuleInput } from "./funding-rules";
 import { buildRegisterWorkbook } from "./register-workbook";
@@ -91,21 +92,31 @@ export class FundingService {
     this.tenants.assertCanReadFinance(actor, rule.kindergartenId);
 
     const data: Record<string, unknown> = {};
-    if (dto.name !== undefined) data.name = dto.name;
-    if (dto.note !== undefined) data.note = dto.note;
+    const before: Record<string, unknown> = {};
+    if (dto.name !== undefined) {
+      before.name = rule.name;
+      data.name = dto.name;
+    }
+    if (dto.note !== undefined) {
+      before.note = rule.note;
+      data.note = dto.note;
+    }
     if (dto.effectiveTo !== undefined) {
+      before.effectiveTo = rule.effectiveTo?.toISOString().slice(0, 10) ?? null;
       data.effectiveTo = dto.effectiveTo ? toDate(dto.effectiveTo) : null;
     }
 
     const saved = await this.repo.updateRule(id, data);
 
+    // §14: "Хэн → Хэзээ → Ямар мэдээлэл → Өмнөх утга → Шинэ утга" — `before`
+    // is read from the row fetched above the call, not reconstructed after.
     await this.audit.append({
       action: "UPDATE",
       kindergartenId: rule.kindergartenId,
       actorUserId: actor.userId,
       objectType: "FundingRule",
       objectId: id,
-      metadata: { fields: Object.keys(data) },
+      metadata: { before, after: data },
     });
 
     return saved;
@@ -234,9 +245,19 @@ export class FundingService {
     this.tenants.assertCanReadFinance(actor, calculation.kindergartenId);
 
     const data: Record<string, unknown> = {};
-    if (dto.approvedAmount !== undefined) data.approvedAmount = dto.approvedAmount;
-    if (dto.receivedAmount !== undefined) data.receivedAmount = dto.receivedAmount;
-    if (dto.note !== undefined) data.note = dto.note;
+    const before: Record<string, unknown> = {};
+    if (dto.approvedAmount !== undefined) {
+      before.approvedAmount = calculation.approvedAmount?.toString() ?? null;
+      data.approvedAmount = dto.approvedAmount;
+    }
+    if (dto.receivedAmount !== undefined) {
+      before.receivedAmount = calculation.receivedAmount?.toString() ?? null;
+      data.receivedAmount = dto.receivedAmount;
+    }
+    if (dto.note !== undefined) {
+      before.note = calculation.note;
+      data.note = dto.note;
+    }
 
     const saved = await this.repo.updateCalculation(id, data);
 
@@ -248,7 +269,7 @@ export class FundingService {
       objectType: "FundingCalculation",
       objectId: id,
       childId: calculation.childId,
-      metadata: { fields: Object.keys(data), ...data },
+      metadata: { before, after: data },
     });
 
     return saved;
@@ -541,6 +562,25 @@ export class FundingService {
       })),
       calculatedAt: calculations[0]?.createdAt.toISOString() ?? null,
     };
+  }
+
+  /**
+   * нэмэлт.md §13's "Санхүүгийн audit log" — the bug this whole finance-module
+   * pass started from. `/admin/audit` (`dashboard/audit-read.service.ts`) is
+   * ADMIN-only and reads every object type; this is the accountant's own door
+   * to the same table, narrowed to the financial slice by
+   * `AuditRepository.FINANCIAL_OBJECT_TYPES` rather than opened wide.
+   */
+  async financialAuditLog(actor: Actor, kindergartenId: string, query: PageParams) {
+    this.tenants.assertCanReadFinance(actor, kindergartenId);
+
+    const skipTake = toSkipTake(query);
+    const [items, total] = await Promise.all([
+      this.audit.listFinancial(kindergartenId, skipTake),
+      this.audit.countFinancial(kindergartenId),
+    ]);
+
+    return paginate(items.map(withActorLabel), total, query);
   }
 }
 

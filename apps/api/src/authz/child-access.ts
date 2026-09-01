@@ -94,6 +94,12 @@ export function isAdminOver(actor: Actor, facts: ChildAccessFacts): boolean {
   return kindergartenIdsForRole(actor, Role.ADMIN).some((id) => childKgs.has(id));
 }
 
+/** Is this actor an accountant of a kindergarten the child belongs to? */
+export function isAccountantOver(actor: Actor, facts: ChildAccessFacts): boolean {
+  const childKgs = childKindergartenIds(facts);
+  return kindergartenIdsForRole(actor, Role.ACCOUNTANT).some((id) => childKgs.has(id));
+}
+
 /**
  * ★ May this actor READ this child's record?
  *
@@ -103,6 +109,21 @@ export function isAdminOver(actor: Actor, facts: ChildAccessFacts): boolean {
  */
 export function canAccessChild(actor: Actor, facts: ChildAccessFacts): boolean {
   return isGuardianOf(actor, facts) || isAssignedTeacherOf(facts) || isAdminOver(actor, facts);
+}
+
+/**
+ * ★ May this actor read this child's MONEY — invoices, payment history, balance?
+ *
+ * A second axis from `canAccessChild`, deliberately not built from it.
+ * `FINANCE_SCOPE.md` §4.6 / нэмэлт.md §13: an accountant needs every child's
+ * invoice but no developmental record, and a teacher — who legitimately passes
+ * `canAccessChild` for their own group — needs the opposite: "Багш санхүүгийн
+ * бүрэн мэдээллийг харах эрхгүй байна". `isAssignedTeacherOf` is absent from
+ * this predicate on purpose; adding it back is the mistake this comment exists
+ * to catch. A guardian keeps their access — the money is theirs to owe.
+ */
+export function canViewChildFinance(actor: Actor, facts: ChildAccessFacts): boolean {
+  return isGuardianOf(actor, facts) || isAdminOver(actor, facts) || isAccountantOver(actor, facts);
 }
 
 /**

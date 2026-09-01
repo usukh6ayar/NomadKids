@@ -6,8 +6,11 @@ import { TenantAccessService } from "../authz/tenant-access.service";
 import type { Actor } from "../authz/actor";
 import type { MealKind } from "../domain/enums";
 import { HealthRecordsRepository } from "../health-records/health-records.repository";
+import { KitchenService } from "../kitchen/kitchen.service";
+import { MediaService } from "../media/media.service";
+import { parseDishes, type MenuDishLike } from "./dish-json";
 import { MealsRepository } from "./meals.repository";
-import { findAllergenWarnings, type DishLike } from "./allergen-match";
+import { findAllergenWarnings } from "./allergen-match";
 import type { RecordGroupMealsDto, SaveMenuDayDto } from "./meals.dto";
 
 @Injectable()
@@ -19,6 +22,8 @@ export class MealsService {
     private readonly childAccess: ChildAccessService,
     private readonly authz: AuthzRepository,
     private readonly audit: AuditRepository,
+    private readonly kitchen: KitchenService,
+    private readonly media: MediaService,
   ) {}
 
   /** Every role reads this — a parent's screen shows the same menu a
@@ -74,23 +79,178 @@ export class MealsService {
       // `dishes` is Json, so its shape is asserted rather than guaranteed by the
       // database — a day written before the current shape existed must not
       // crash the screen that reads it.
-      warnings: findAllergenWarnings(asDishes(day.dishes), allergies),
+      warnings: findAllergenWarnings(parseDishes(day.dishes), allergies),
     }));
   }
 
-  /** Staff only. */
+  /**
+   * Staff only. Writing the weekly menu is the cook's own work; the teacher
+   * keeps it too — they serve it and answer for it when a parent asks.
+   *
+   * ★ A dish carrying `recipeId` has its name/allergens/calories **frozen**
+   * from the (APPROVED) recipe here, not trusted from the client and not
+   * resolved live on every later read — same reasoning as `Invoice`'s frozen
+   * amount columns: what a family reads about a day already served must not
+   * change because someone edited the recipe afterwards. `Recipe` stays the
+   * live document; `MenuDay.dishes` is a dated snapshot of it.
+   *
+   * Refuses once the day has been consumed (`consumedAt` set) — the stock
+   * ledger has already been written against this plan, and editing it after
+   * the fact would leave the two silently disagreeing. A correction at that
+   * point is a stock `ADJUSTMENT`, not a rewritten plan.
+   */
   async saveDay(actor: Actor, kindergartenId: string, dateIso: string, dto: SaveMenuDayDto) {
-    // Writing the weekly menu is the cook's own work. The teacher keeps it too
-    // — they serve it and answer for it when a parent asks.
     this.tenants.assertCanManageMeals(actor, kindergartenId);
     const date = new Date(`${dateIso}T00:00:00.000Z`);
+
+    const existing = await this.repo.findDayState(kindergartenId, date);
+    if (existing?.consumedAt) {
+      throw new BadRequestException("Энэ өдрийг хэрэглээнд бүртгэсэн тул цэсийг өөрчлөх боломжгүй");
+    }
+
+    const dishes = await Promise.all(
+      dto.dishes.map(async (dish) => {
+        // ★ A photo id must be this kindergarten's own MENU_DISH upload —
+        // never trusted just because the client sent a well-formed uuid.
+        // Without this a cook could paste any media id (a private child
+        // photo, another kindergarten's file) into a dish, and it would sit
+        // on the plain menu every family in this kindergarten reads.
+        if (dish.photoMediaFileId) {
+          const ok = await this.media.isMenuDishPhoto(kindergartenId, dish.photoMediaFileId);
+          if (!ok) throw new BadRequestException("Хоолны зураг олдсонгүй");
+        }
+
+        if (!dish.recipeId) return dish;
+        const resolved = await this.kitchen.resolveApprovedRecipeForDish(
+          kindergartenId,
+          dish.recipeId,
+        );
+        return {
+          ...dish,
+          name: resolved.name,
+          allergenTags: resolved.allergenTags,
+          calories: resolved.calories,
+        };
+      }),
+    );
+
     return this.repo.upsertDay(
       kindergartenId,
       date,
-      dto.dishes,
+      dishes,
       dto.totalCalories ?? null,
       actor.userId,
     );
+  }
+
+  /**
+   * Батлагдсан цэс — signing a planned day off. COOK/ADMIN only
+   * (`assertCanManageKitchen`), narrower than `saveDay`: a teacher serves and
+   * marks the register, but approving what the kitchen is about to cook is
+   * the kitchen's own act.
+   */
+  async approveDay(actor: Actor, kindergartenId: string, dateIso: string) {
+    this.tenants.assertCanManageKitchen(actor, kindergartenId);
+    const date = new Date(`${dateIso}T00:00:00.000Z`);
+
+    const day = await this.repo.findDayState(kindergartenId, date);
+    if (!day) throw new NotFoundException();
+    if (day.status === "APPROVED") return day;
+
+    const saved = await this.repo.approveDay(day.id, actor.userId);
+
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "MenuDay",
+      objectId: day.id,
+      metadata: { approved: true, date: dateIso },
+    });
+
+    return saved;
+  }
+
+  /**
+   * Зарцуулалт — deducts this day's cooking from stock, one `StockMovement`
+   * OUT per ingredient.
+   *
+   * ★ `dish.portions` is a **batch multiplier**, not a headcount.
+   *
+   * `menuDishInputSchema.portions` predates recipes and caps at 10 — a real
+   * ceiling for "how many portions is this one plate" but not for "how many
+   * children ate it". Rather than widen a field whose existing tests already
+   * pin its meaning (`meals.test.ts`), a recipe-linked dish reuses it as *how
+   * many times the card's batch was cooked*: a technology card already states
+   * how many children one batch feeds (`yieldPortions`), so a kindergarten of
+   * eighty children against a card written for twenty is `portions: 4`, still
+   * comfortably under the cap. Ingredient deduction is therefore `quantity ×
+   * portions` directly — no division.
+   *
+   * §7's own explicit scope cut: this reads the *planned* batches on the
+   * menu, not `MealRecord` attendance — see the plan doc.
+   *
+   * A dish whose recipe has since been deleted is skipped rather than
+   * failing the whole call — its frozen name/allergens/calories are still
+   * correct; only the ingredient it would have deducted is unknown now.
+   */
+  async consumeDay(actor: Actor, kindergartenId: string, dateIso: string) {
+    this.tenants.assertCanManageKitchen(actor, kindergartenId);
+    const date = new Date(`${dateIso}T00:00:00.000Z`);
+
+    const day = await this.repo.findDay(kindergartenId, date);
+    if (!day) throw new NotFoundException();
+    if (day.status !== "APPROVED") {
+      throw new BadRequestException("Эхлээд өдрийн цэсийг батлана уу");
+    }
+    if (day.consumedAt) {
+      throw new BadRequestException("Энэ өдрийг хэрэглээнд аль хэдийн бүртгэсэн байна");
+    }
+
+    const dishes = parseDishes(day.dishes).filter(
+      (dish): dish is MenuDishLike & { recipeId: string; portions: number } =>
+        Boolean(dish.recipeId) && Boolean(dish.portions) && (dish.portions ?? 0) > 0,
+    );
+    if (dishes.length === 0) {
+      throw new BadRequestException("Технологийн картаар холбогдсон, порц бүхий хоол алга");
+    }
+
+    const deductions = new Map<string, number>();
+    for (const dish of dishes) {
+      const recipe = await this.kitchen.getRecipeIngredientLines(kindergartenId, dish.recipeId);
+      if (!recipe) continue;
+
+      for (const line of recipe.lines) {
+        deductions.set(
+          line.ingredientId,
+          (deductions.get(line.ingredientId) ?? 0) + line.quantity * dish.portions,
+        );
+      }
+    }
+
+    if (deductions.size === 0) {
+      throw new BadRequestException("Энэ өдрийн технологийн картууд олдсонгүй");
+    }
+
+    await this.kitchen.consumeForMenuDay(
+      kindergartenId,
+      day.id,
+      actor.userId,
+      date,
+      deductions,
+      `Цэс — ${dateIso}`,
+    );
+
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "MenuDay",
+      objectId: day.id,
+      metadata: { consumed: true, date: dateIso, ingredientCount: deductions.size },
+    });
+
+    return { id: day.id, ingredientCount: deductions.size };
   }
 
   // ── The meal register — нэмэлт.md §2 ───────────────────────────────────────
@@ -254,25 +414,6 @@ export class MealsService {
   }
 }
 
-/** Defensive read of a `Json` column: anything unexpected becomes no dishes. */
-function asDishes(value: unknown): DishLike[] {
-  if (!Array.isArray(value)) return [];
-
-  return value.flatMap((entry) => {
-    if (typeof entry !== "object" || entry === null) return [];
-    const dish = entry as { name?: unknown; allergenTags?: unknown };
-    if (typeof dish.name !== "string") return [];
-
-    return [
-      {
-        name: dish.name,
-        allergenTags: Array.isArray(dish.allergenTags)
-          ? dish.allergenTags.filter((tag): tag is string => typeof tag === "string")
-          : [],
-      },
-    ];
-  });
-}
 /** `YYYY-MM-DD` to the UTC midnight `@db.Date` stores. */
 function toDate(iso: string): Date {
   return new Date(`${iso}T00:00:00.000Z`);

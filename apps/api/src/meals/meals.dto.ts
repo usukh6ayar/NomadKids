@@ -31,6 +31,20 @@ const menuDishInputSchema = z.object({
   calories: z.number().int().min(0).max(3000).nullable().optional(),
   // Fractional servings are real ("half a portion"), so this is not `.int()`.
   portions: z.number().min(0).max(10).nullable().optional(),
+  /**
+   * The технологийн карт this dish is cooked from — Хоол үйлдвэрлэл's
+   * "батлагдсан цэс". `MealsService.saveDay` resolves an APPROVED recipe and
+   * freezes its name/allergenTags/calories over whatever was typed above, so
+   * a client cannot claim a dish is a recipe it is not.
+   */
+  recipeId: z.string().uuid().nullable().optional(),
+  /**
+   * A photograph of the dish as actually plated — independent of `recipeId`:
+   * a repeated recipe still gets a fresh photo of that day's serving.
+   * `MealsService.saveDay` verifies this id is a real `MENU_DISH` upload from
+   * this kindergarten (`MediaService.isMenuDishPhoto`) before it is stored.
+   */
+  photoMediaFileId: z.string().uuid().nullable().optional(),
 });
 
 export const saveMenuDaySchema = z
@@ -45,7 +59,13 @@ export type SaveMenuDayDto = z.infer<typeof saveMenuDaySchema>;
 
 // ── The meal register — нэмэлт.md §2 ─────────────────────────────────────────
 
-export const mealKindSchema = z.enum(["BREAKFAST", "MID_MORNING_SNACK", "LUNCH", "AFTERNOON_SNACK", "EXTRA"]);
+export const mealKindSchema = z.enum([
+  "BREAKFAST",
+  "MID_MORNING_SNACK",
+  "LUNCH",
+  "AFTERNOON_SNACK",
+  "EXTRA",
+]);
 export const mealStatusSchema = z.enum(["TAKEN", "NOT_TAKEN", "PARTIAL", "SPECIAL"]);
 
 /**
