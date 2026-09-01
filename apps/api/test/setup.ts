@@ -63,6 +63,29 @@ process.env.NODE_ENV = "test";
 // `ReportGeneratorService.run()`, which is the same code the worker calls.
 process.env.REPORTS_WORKER_ENABLED = "false";
 
+// ★ QPay is unconfigured under test, always — never "unconfigured if the
+// developer happens not to have filled it in".
+//
+// `.env` is loaded above so the integration suite can reach Postgres, and it
+// brings whatever else is in it. A machine with QPay credentials set would
+// make `QpayConfig.isConfigured` true, and the suite would then try to reach
+// merchant.qpay.mn over the network: slow, flaky, and on a real merchant
+// account it would create real invoices. The tests that assert the
+// unconfigured path pinned "as it is in a fresh .env" and failed on any
+// machine where it was not.
+//
+// The paths that need a configured client stub `QpayClient` rather than
+// relying on ambient environment, which is why clearing this costs nothing.
+for (const key of [
+  "QPAY_BASE_URL",
+  "QPAY_USERNAME",
+  "QPAY_PASSWORD",
+  "QPAY_INVOICE_CODE",
+  "QPAY_CALLBACK_URL",
+]) {
+  delete process.env[key];
+}
+
 if (!process.env.DATABASE_URL) {
   throw new Error(
     "DATABASE_URL is not set. Integration tests need a database:\n" +

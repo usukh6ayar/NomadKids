@@ -103,4 +103,39 @@ export const markRefundedSchema = z
   .strict();
 export type MarkRefundedDto = z.infer<typeof markRefundedSchema>;
 
+/** The month a financial dashboard reports on — `нэмэлт.md` §9. */
+export const financeDashboardQuerySchema = z.object({ month: isoMonth }).strict();
+
+export type FinanceDashboardQuery = z.infer<typeof financeDashboardQuerySchema>;
+
+/**
+ * Which report, and over what period — `нэмэлт.md` §16.
+ *
+ * ★ `period` is a plain string rather than `isoMonth`, because two of the
+ * reports are not monthly: `annual` takes a school year (`2025-2026`) and
+ * `unpaid` ignores the period entirely. The service validates the shape each
+ * report actually needs, which is the only place that knows.
+ *
+ * ★★ Eight keys, not §16's nine. "Ирц–санхүүжилтийн тулгалт" is the monthly
+ * register, which shipped with §6 and already has its own screen and export —
+ * a second answer to one question is worse than none.
+ */
+export const financeReportQuerySchema = z
+  .object({
+    report: z.enum([
+      "state-funding",
+      "child-funding",
+      "meal-days",
+      "meal-cost",
+      "parent-payments",
+      "unpaid",
+      "variance",
+      "annual",
+    ]),
+    period: z.string().min(4).max(9),
+  })
+  .strict();
+
+export type FinanceReportQuery = z.infer<typeof financeReportQuerySchema>;
+
 export { uuidSchema };

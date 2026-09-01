@@ -120,9 +120,14 @@ async function invoice(over: Record<string, unknown> = {}) {
       childId: a.child.id,
       month: MONTH_START,
       number: `2026-${String(Math.floor(Math.random() * 900000) + 100000)}`,
-      subtotalAmount: "50000.00",
-      totalAmount: "50000.00",
-      issuedAt: new Date("2026-02-01T00:00:00.000Z"),
+      baseAmount: "50000.00",
+      totalDue: "50000.00",
+      balance: "50000.00",
+      // ★ `dueDate` is NOT NULL on the surviving schema, where it used to be
+      // omitted here and left null. A far-future default reproduces exactly
+      // what null meant to `overdue()` — "not yet due" — so only the tests
+      // that set a past date deliberately are the overdue ones.
+      dueDate: new Date("2099-01-01T00:00:00.000Z"),
       ...over,
     } as never,
   });
@@ -135,8 +140,7 @@ async function payment(invoiceId: string, amount: string, over: Record<string, u
       invoiceId,
       amount,
       method: "CASH",
-      status: "PAID",
-      paidAt: date(10),
+      createdAt: date(10),
       ...over,
     } as never,
   });
@@ -206,8 +210,11 @@ describe("parent billing", () => {
     expect(res.body.parents.unpaid).toBe("30000.00");
   });
 
-  it("excludes a draft invoice — it is not a claim on anybody", async () => {
-    await invoice({ issuedAt: null });
+  // Was "excludes a draft invoice". The surviving implementation has no draft
+  // state — nothing ever created one — so the exclusion this dashboard actually
+  // has to honour is the soft delete, and that is what is pinned here.
+  it("excludes a soft-deleted invoice — it is not a claim on anybody", async () => {
+    await invoice({ deletedAt: new Date("2026-02-02T00:00:00.000Z") });
 
     const res = await dashboard(adminA);
     expect(res.body.parents.invoices).toBe(0);
@@ -234,7 +241,7 @@ describe("parent billing", () => {
     // A parent paying February's bill in March is February's income; moving it
     // would leave February permanently short.
     const one = await invoice();
-    await payment(one.id, "50000.00", { paidAt: new Date("2026-03-15T00:00:00.000Z") });
+    await payment(one.id, "50000.00", { createdAt: new Date("2026-03-15T00:00:00.000Z") });
 
     expect((await dashboard(adminA)).body.parents.paid).toBe("50000.00");
   });
@@ -247,7 +254,8 @@ describe("overdue — the figure that is deliberately not month-scoped", () => {
     await invoice({
       month: new Date("2026-01-01T00:00:00.000Z"),
       dueDate: new Date("2026-01-10T00:00:00.000Z"),
-      totalAmount: "30000.00",
+      totalDue: "30000.00",
+      balance: "30000.00",
     });
 
     const res = await dashboard(adminA);
@@ -258,7 +266,7 @@ describe("overdue — the figure that is deliberately not month-scoped", () => {
   it("counts only what is still outstanding on a part-paid invoice", async () => {
     const one = await invoice({
       dueDate: new Date("2026-02-05T00:00:00.000Z"),
-      totalAmount: "50000.00",
+      totalDue: "50000.00", balance: "50000.00",
     });
     await payment(one.id, "30000.00");
 
@@ -270,7 +278,7 @@ describe("overdue — the figure that is deliberately not month-scoped", () => {
   it("drops an invoice that has been paid in full", async () => {
     const one = await invoice({
       dueDate: new Date("2026-02-05T00:00:00.000Z"),
-      totalAmount: "50000.00",
+      totalDue: "50000.00", balance: "50000.00",
     });
     await payment(one.id, "50000.00");
 
@@ -283,7 +291,8 @@ describe("overdue — the figure that is deliberately not month-scoped", () => {
     await invoice({
       dueDate: new Date("2026-02-05T00:00:00.000Z"),
       status: "UNPAID",
-      totalAmount: "15000.00",
+      totalDue: "15000.00",
+      balance: "15000.00",
     });
 
     expect((await dashboard(adminA)).body.parents.overdueCount).toBe(1);
@@ -412,7 +421,7 @@ describe("meal cost — §3's calculation, §9's last two figures", () => {
  */
 describe("a child's finance summary — §10", () => {
   async function billed(over: Record<string, unknown> = {}) {
-    return invoice({ totalAmount: "50000.00", discountAmount: "5000.00", ...over });
+    return invoice({ totalDue: "50000.00", balance: "50000.00", discountAmount: "5000.00", ...over });
   }
 
   it("gives a guardian their own balance", async () => {
@@ -511,8 +520,8 @@ describe("a child's finance summary — §10", () => {
 
   it("keeps a running balance rather than resetting it each month", async () => {
     // A balance that reset would tell a family they owe nothing on the first.
-    await billed({ month: new Date("2026-01-01T00:00:00.000Z"), totalAmount: "30000.00" });
-    await billed({ totalAmount: "50000.00" });
+    await billed({ month: new Date("2026-01-01T00:00:00.000Z"), totalDue: "30000.00", balance: "30000.00" });
+    await billed({ totalDue: "50000.00", balance: "50000.00" });
 
     const res = await authed(
       request(app.getHttpServer()).get(`/v1/children/${a.child.id}/finance`),
@@ -524,7 +533,7 @@ describe("a child's finance summary — §10", () => {
   });
 
   it("shows a credit as a negative balance rather than hiding it", async () => {
-    const one = await billed({ totalAmount: "50000.00" });
+    const one = await billed({ totalDue: "50000.00", balance: "50000.00" });
     await payment(one.id, "60000.00");
 
     const res = await authed(
@@ -584,7 +593,8 @@ describe("financial reports — §16", () => {
     await invoice({
       month: new Date("2026-01-01T00:00:00.000Z"),
       dueDate: new Date("2026-01-10T00:00:00.000Z"),
-      totalAmount: "30000.00",
+      totalDue: "30000.00",
+      balance: "30000.00",
     });
 
     const res = await report(accountantA, "unpaid");
