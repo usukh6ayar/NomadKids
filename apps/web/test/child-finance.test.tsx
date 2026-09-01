@@ -279,12 +279,3 @@ describe("the portal access fee", () => {
   });
 });
 
-function jsonOk(body: unknown): Response {
-  return {
-    ok: true,
-    status: 200,
-    headers: new Headers({ "content-type": "application/json" }),
-    json: async () => body,
-    text: async () => JSON.stringify(body),
-  } as Response;
-}
