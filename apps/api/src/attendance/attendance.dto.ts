@@ -94,3 +94,110 @@ export const reviewAttendanceRequestSchema = z
   })
   .strict();
 export type ReviewAttendanceRequestDto = z.infer<typeof reviewAttendanceRequestSchema>;
+
+/**
+ * The kindergarten-wide attendance register — a child per row, a day per
+ * column, over any range of dates.
+ *
+ * ★ Not a month. Every attendance read in this module until now took
+ * `YYYY-MM`, which answers "how did March go" and refuses "the first half of
+ * March", "the week before the holiday", "the fortnight the claim covers".
+ * A director reconciling a funding claim works in the period the claim covers,
+ * and that period is not obliged to be a calendar month.
+ *
+ * ★★ `OTHER` is filterable even though `recordAttendanceSchema` above cannot
+ * produce it. The column is an `AttendanceStatus` and the enum has six values;
+ * a filter that silently could not name one of them would quietly hide rows.
+ * That the recording schema is short of it is a separate defect, noted where
+ * `ATTENDANCE_STATUS_LABEL` is declared.
+ */
+const registerStatusValues = [
+  "PRESENT",
+  "HALF_DAY",
+  "EXCUSED",
+  "SICK",
+  "ABSENT",
+  "OTHER",
+] as const;
+
+/**
+ * Comma-separated in the URL, a typed array by the time a service sees it.
+ *
+ * ★ The return type is spelled out rather than inferred. Left to inference the
+ * pipe widens to `string[]`, and the service then hands `string[]` to a
+ * repository expecting `AgeBand[]` — which typechecks nowhere useful and would
+ * have to be cast at the call site, once per filter, for ever.
+ */
+function commaSeparated<const T extends readonly [string, ...string[]]>(
+  values: T,
+  max: number,
+): z.ZodType<T[number][] | undefined, string | undefined> {
+  return z
+    .string()
+    .optional()
+    .transform((value) =>
+      value
+        ? value
+            .split(",")
+            .map((part) => part.trim())
+            .filter(Boolean)
+        : undefined,
+    )
+    .pipe(z.array(z.enum(values)).max(max).optional()) as z.ZodType<
+    T[number][] | undefined,
+    string | undefined
+  >;
+}
+
+/**
+ * ★ A hard ceiling on the range, and it is not arbitrary.
+ *
+ * The response is children × days: 300 children over a school year is 66,000
+ * cells, which is a slow query, a large JSON payload and a table no browser
+ * renders usefully. A quarter is the longest period anybody reconciles at
+ * once, and asking for two quarters is two requests rather than one that times
+ * out.
+ */
+const MAX_REGISTER_DAYS = 92;
+
+function dayCount(from: string, to: string): number {
+  const ms = Date.parse(`${to}T00:00:00.000Z`) - Date.parse(`${from}T00:00:00.000Z`);
+  return Math.floor(ms / 86_400_000) + 1;
+}
+
+export const attendanceRegisterQuerySchema = z
+  .object({
+    from: isoDate,
+    to: isoDate,
+
+    /** Several at once — "the two senior groups" is one question, not two. */
+    groupId: z
+      .string()
+      .optional()
+      .transform((value) => (value ? value.split(",").map((p) => p.trim()).filter(Boolean) : undefined))
+      .pipe(z.array(z.uuid()).max(50).optional()),
+
+    ageBand: commaSeparated(["NURSERY", "JUNIOR", "MIDDLE", "SENIOR"], 4),
+    programKind: z.enum(["MAIN", "ALTERNATIVE"]).optional(),
+    attendanceForm: z.enum(["STANDARD", "EXTENDED", "SHORTENED"]).optional(),
+    status: commaSeparated(registerStatusValues, 6),
+
+    /** A name fragment, matched against "<эцгийн нэр> <нэр>" case-insensitively. */
+    q: z.string().trim().max(100).optional(),
+    childStatus: commaSeparated(["ACTIVE", "TEMPORARY", "ON_LEAVE", "INACTIVE"], 4),
+
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(200).default(50),
+  })
+  .strict()
+  .refine((q) => q.from <= q.to, {
+    message: "Эхлэх огноо нь дуусах огнооноос хойш байж болохгүй",
+    path: ["from"],
+  })
+  .refine((q) => dayCount(q.from, q.to) <= MAX_REGISTER_DAYS, {
+    message: `Хугацаа хамгийн ихдээ ${MAX_REGISTER_DAYS} хоног байна`,
+    path: ["to"],
+  });
+
+export type AttendanceRegisterQuery = z.infer<typeof attendanceRegisterQuerySchema>;
+

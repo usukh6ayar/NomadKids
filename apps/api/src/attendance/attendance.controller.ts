@@ -9,6 +9,7 @@ import {
   createAttendanceRequestSchema,
   dateParamSchema,
   groupDaySheetQuerySchema,
+  attendanceRegisterQuerySchema,
   listAttendanceQuerySchema,
   recordAttendanceSchema,
   recordPickupSchema,
@@ -16,6 +17,7 @@ import {
   type CreateAttendanceRequestDto,
   type DateParam,
   type GroupDaySheetQuery,
+  type AttendanceRegisterQuery,
   type ListAttendanceQuery,
   type RecordAttendanceDto,
   type RecordPickupDto,
@@ -121,6 +123,35 @@ export class AttendanceRequestController {
 }
 
 /** The group day sheet — every enrolled child, one day. */
+/**
+ * The kindergarten-wide attendance register — the director's and the
+ * accountant's view.
+ *
+ * ★ `@Roles("ADMIN", "ACCOUNTANT")` gates the route; the service still checks
+ * the membership against the kindergarten in the URL, because the decorator
+ * alone would let an accountant employed by one kindergarten read another's
+ * register by changing the id.
+ *
+ * ★★ TEACHER is absent by design. A teacher reads their own group through
+ * `GroupAttendanceController` below — the view their job needs — and
+ * `нэмэлт.md` §13 keeps them out of the kindergarten-wide figures that feed
+ * funding.
+ */
+@Controller("kindergartens/:id/attendance")
+export class KindergartenAttendanceController {
+  constructor(private readonly service: AttendanceService) {}
+
+  @Get("register")
+  @Roles("ADMIN", "ACCOUNTANT")
+  async register(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(attendanceRegisterQuerySchema)) query: AttendanceRegisterQuery,
+  ) {
+    return this.service.register(actor, params.id, query);
+  }
+}
+
 @Controller("groups/:id/attendance")
 export class GroupAttendanceController {
   constructor(private readonly service: AttendanceService) {}
