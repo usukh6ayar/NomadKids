@@ -3,6 +3,23 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setParams, stubApi } from "./support/render";
 import ChildFinancePage from "@/app/(app)/children/[childId]/finance/page";
+import ChildLayout from "@/app/(app)/children/[childId]/layout";
+
+/**
+ * ★ Rendered through the layout, because that is where the access gate lives.
+ *
+ * The gate is a layout rather than a line in each of the fifteen screens under
+ * `/children/:id` — see its own comment. Rendering the page bare would test an
+ * arrangement that does not exist in the app, and would go on passing if the
+ * layout were deleted.
+ */
+function renderFinancePage() {
+  return renderWithProviders(
+    <ChildLayout>
+      <ChildFinancePage />
+    </ChildLayout>,
+  );
+}
 
 const CHILD_ID = "55555555-5555-4555-8555-555555555555";
 const INVOICE_ID = "66666666-6666-4666-8666-666666666666";
@@ -78,7 +95,7 @@ describe("a guardian's own view of a child's finances", () => {
       { path: `/children/${CHILD_ID}`, method: "GET", body: childFixture() },
     ]);
 
-    renderWithProviders(<ChildFinancePage />);
+    renderFinancePage();
 
     expect(await screen.findByText("2026 оны 8-р сар")).toBeInTheDocument();
     expect(screen.getByText("Төлөгдөөгүй")).toBeInTheDocument();
@@ -104,7 +121,7 @@ describe("a guardian's own view of a child's finances", () => {
       { path: `/children/${CHILD_ID}`, method: "GET", body: childFixture() },
     ]);
 
-    renderWithProviders(<ChildFinancePage />);
+    renderFinancePage();
 
     await screen.findByText("Төлсөн");
     expect(screen.queryByRole("button", { name: "QPay-ээр төлөх" })).not.toBeInTheDocument();
@@ -142,7 +159,7 @@ describe("a guardian's own view of a child's finances", () => {
       { path: `/children/${CHILD_ID}`, method: "GET", body: childFixture() },
     ]);
 
-    renderWithProviders(<ChildFinancePage />);
+    renderFinancePage();
 
     expect(await screen.findByText(/50 000₮ · Бэлнээр/)).toBeInTheDocument();
   });
@@ -196,7 +213,7 @@ describe("the portal access fee", () => {
   it("offers the way out instead of a dead end when the fee is unpaid", async () => {
     paywalled();
 
-    renderWithProviders(<ChildFinancePage />);
+    renderFinancePage();
 
     expect(await screen.findByText("Хандалтын төлбөр")).toBeInTheDocument();
     expect(screen.getByText("15 000₮")).toBeInTheDocument();
@@ -221,7 +238,7 @@ describe("the portal access fee", () => {
       { path: `/children/${CHILD_ID}/access/qpay`, method: "GET", body: attempt },
     ]);
 
-    renderWithProviders(<ChildFinancePage />);
+    renderFinancePage();
 
     await user.click(await screen.findByRole("button", { name: "QPay-ээр төлөх" }));
 
@@ -251,7 +268,7 @@ describe("the portal access fee", () => {
       },
     ]);
 
-    renderWithProviders(<ChildFinancePage />);
+    renderFinancePage();
 
     await user.click(await screen.findByRole("button", { name: "QPay-ээр төлөх" }));
 
@@ -272,7 +289,7 @@ describe("the portal access fee", () => {
       { path: `/children/${CHILD_ID}`, method: "GET", body: childFixture() },
     ]);
 
-    renderWithProviders(<ChildFinancePage />);
+    renderFinancePage();
 
     expect(await screen.findByText("2026 оны 8-р сар")).toBeInTheDocument();
     expect(screen.queryByText("Хандалтын төлбөр")).not.toBeInTheDocument();
