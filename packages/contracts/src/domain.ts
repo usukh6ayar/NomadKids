@@ -436,6 +436,60 @@ export const ATTENDANCE_STATUS_LABEL: Record<string, string> = {
   OTHER: "Бусад",
 };
 
+/**
+ * The kindergarten-wide attendance register — a child per row, a day per
+ * column, over any range of dates.
+ *
+ * ★ `days` on a row is positional: index N is `days[N]` of the response's own
+ * `days` array, and `null` means nothing was recorded. A missing mark and an
+ * absence are different facts, and the register must not merge them — the
+ * second becomes a funding claim, the first is a gap in the paperwork.
+ */
+export const attendanceJournalCellSchema = z.object({
+  status: attendanceStatusSchema,
+  note: z.string().nullable(),
+});
+
+export const attendanceJournalRowSchema = z.object({
+  childId: z.string(),
+  child: z.object({
+    id: z.string(),
+    lastName: z.string().nullable(),
+    firstName: z.string(),
+    status: z.string(),
+  }),
+  group: z.object({
+    id: z.string(),
+    name: z.string(),
+    ageBand: z.string().nullable(),
+    programKind: z.string(),
+    attendanceForm: z.string(),
+  }),
+  days: z.array(attendanceJournalCellSchema.nullable()),
+  /** Only the statuses that occur — a status with no days is simply absent. */
+  counts: z.record(z.string(), z.number()),
+  recorded: z.number(),
+});
+export type AttendanceJournalRow = z.infer<typeof attendanceJournalRowSchema>;
+
+/**
+ * ★ "Journal", not "register", and the distinction is not cosmetic.
+ *
+ * `attendanceRegisterSchema` further down is the **funding** register —
+ * нэмэлт.md §6's monthly reconciliation, one row per child with money on it.
+ * This is the raw attendance grid the director reads, and it feeds that one.
+ * Two things called the register is how somebody eventually imports the wrong
+ * schema and gets a type error at best.
+ */
+export const attendanceJournalSchema = paginated(attendanceJournalRowSchema).extend({
+  from: z.string(),
+  to: z.string(),
+  days: z.array(z.string()),
+  /** Across every matching child, not the page — a total that moved with the page would mislead. */
+  totals: z.record(z.string(), z.number()),
+});
+export type AttendanceJournal = z.infer<typeof attendanceJournalSchema>;
+
 export const attendanceRequestStatusSchema = z.enum(["PENDING", "APPROVED", "REJECTED"]);
 export type AttendanceRequestStatus = z.infer<typeof attendanceRequestStatusSchema>;
 

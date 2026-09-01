@@ -655,7 +655,10 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
       ? [
           {
             title: "Санхүү",
-            entries: [entry("Ирц ба тооцоолол", "/admin/funding")],
+            entries: [
+              entry("Ирц ба тооцоолол", "/admin/funding"),
+              entry("Ирцийн дэлгэрэнгүй", "/attendance/journal"),
+            ],
           },
         ]
       : []),
@@ -767,6 +770,14 @@ function supportSections(isCook: boolean): NavSection[] {
              * screen exists to close.
              */
             navEntry("Ирц ба тооцоолол", "/admin/funding"),
+            /*
+             * ★ The raw grid the figure above is computed from — child by
+             * child, day by day, over any range of dates. `/admin/funding`
+             * answers "what does the month come to"; this answers "who was
+             * here, and when", which is the question that precedes it and the
+             * one an accountant is asked when a number is queried.
+             */
+            navEntry("Ирцийн дэлгэрэнгүй", "/attendance/journal"),
             navEntry("Санхүүгийн аудит", "/finance/audit-log"),
           ],
     },

@@ -135,6 +135,9 @@ export const qk = {
    * invalidated with the prefix after a recalculation without naming the
    * filters the screen happened to have set.
    */
+  /** The attendance journal — child × day. Filters are part of the key. */
+  attendanceJournal: (kindergartenId: string, filters: Record<string, unknown> = {}) =>
+    ["attendance", "journal", kindergartenId, filters] as const,
   fundingRegister: (kindergartenId: string, filters: Record<string, unknown> = {}) =>
     ["funding", "register", kindergartenId, filters] as const,
 
