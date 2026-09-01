@@ -83,7 +83,7 @@ const PAGE_SIZE = 25;
  * every day folded into counts, priced against the funding rules, on a desk.
  * They share a table (`Attendance`) and nothing else — not the audience, not
  * the device, not the cadence, and not the permission (§13 keeps teachers out
- * of the money entirely, and this whole route is `ADMIN`).
+ * of the money entirely; ADMIN and ACCOUNTANT — see the third note below).
  *
  * Folding them into one screen would have put a fourteen-column financial
  * table behind a tab on the screen a teacher opens every morning on a phone,
@@ -95,10 +95,18 @@ const PAGE_SIZE = 25;
  * priced. One request serves both (`/funding/register`), because a figure and
  * its justification must never disagree about who was enrolled — see
  * `FundingService.monthlyRegister`.
+ *
+ * ★★★ `RequireRole` includes ACCOUNTANT as of 2026-09-02. The route's own
+ * comment used to say "this whole route is ADMIN", which had already stopped
+ * being true on the API side — `KindergartenFundingController` has been
+ * `@Roles("ADMIN", "ACCOUNTANT")` since the role shipped — but nobody widened
+ * the screen that reads it. `нэмэлт.md` §13 names "Улсын санхүүжилт" and
+ * "Төлбөрийн тулгалт" for the accountant explicitly, and this is that screen:
+ * the register a transfer gets reconciled against.
  */
 export default function AdminFundingPage() {
   return (
-    <RequireRole roles={["ADMIN"]}>
+    <RequireRole roles={["ADMIN", "ACCOUNTANT"]}>
       <FundingRegister />
     </RequireRole>
   );

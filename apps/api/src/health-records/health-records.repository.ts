@@ -66,7 +66,13 @@ export class HealthRecordsRepository {
    */
   async listActiveAllergiesForKindergarten(kindergartenId: string) {
     return this.prisma.allergyRecord.findMany({
-      where: { kindergartenId, deletedAt: null, endedOn: null },
+      // ★ `kind: "FOOD"` — a menu cross-check has no business reading a
+      // MEDICATION or ENVIRONMENTAL record. `AllergyLike` doesn't even carry
+      // `kind` through to `allergenMatches`, so before this filter a child's
+      // "пенициллин" or "тоос" allergy was compared against dish tags on
+      // exactly the same footing as an actual food allergy — noise at best,
+      // and the kind of warning that teaches a cook to stop reading them.
+      where: { kindergartenId, deletedAt: null, endedOn: null, kind: "FOOD" },
       select: {
         id: true,
         childId: true,

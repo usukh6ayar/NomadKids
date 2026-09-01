@@ -2,8 +2,16 @@ import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestApp } from "./support/app";
-import { resetData, testDb } from "./support/db";
-import { authed, createScenario, login, type AuthSession, type Scenario } from "./support/fixtures";
+import { resetData, testDb, uniq } from "./support/db";
+import {
+  authed,
+  createMembership,
+  createScenario,
+  createUser,
+  login,
+  type AuthSession,
+  type Scenario,
+} from "./support/fixtures";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
 import { splitBilling } from "../src/funding/funding-rules";
 
@@ -34,6 +42,8 @@ let adminA: AuthSession;
 let teacherA: AuthSession;
 let parentA: AuthSession;
 let adminB: AuthSession;
+let accountantA: AuthSession;
+let accountantB: AuthSession;
 
 /** A month in the past with no boundary subtleties. */
 const MONTH = "2026-02";
@@ -64,6 +74,14 @@ beforeEach(async () => {
   teacherA = await login(app, a.teacherUser.username);
   parentA = await login(app, a.parentUser.username);
   adminB = await login(app, b.adminUser.username);
+
+  const accUserA = await createUser({ username: uniq("acct-a") });
+  await createMembership(accUserA.id, a.kindergarten.id, "ACCOUNTANT");
+  accountantA = await login(app, accUserA.username);
+
+  const accUserB = await createUser({ username: uniq("acct-b") });
+  await createMembership(accUserB.id, b.kindergarten.id, "ACCOUNTANT");
+  accountantB = await login(app, accUserB.username);
 });
 
 async function mark(day: number, status: string, scenario: Scenario = a) {
@@ -141,6 +159,24 @@ describe("who may read the register", () => {
   });
 
   /**
+   * ★ Added while auditing the Нягтлан role against `нэмэлт.md` §13, which
+   * names "Улсын санхүүжилт" and "Төлбөрийн тулгалт" among what the
+   * accountant may reach. This is that screen — until this test existed the
+   * route answered every case above correctly and still 404'd an accountant,
+   * because `buildRegister` called `assertAdmin` while the controller's
+   * `@Roles("ADMIN", "ACCOUNTANT")` had already promised otherwise.
+   */
+  it("an accountant of the kindergarten may", async () => {
+    const res = await getRegister(accountantA);
+    expect(res.status).toBe(200);
+  });
+
+  it("an accountant employed by a different kindergarten may not", async () => {
+    const res = await getRegister(accountantB);
+    expect(res.status).toBe(404);
+  });
+
+  /**
    * ★ A teacher is refused even for their **own** kindergarten, with a 404.
    *
    * `нэмэлт.md` §13: "Багш санхүүгийн бүрэн мэдээллийг харах эрхгүй байна". The
@@ -182,6 +218,16 @@ describe("who may read the register", () => {
       teacherA,
     );
     expect(res.status).toBe(404);
+  });
+
+  it("the spreadsheet is open to the accountant, same as the screen", async () => {
+    const res = await authed(
+      request(app.getHttpServer()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/funding/register/export?month=${MONTH}`,
+      ),
+      accountantA,
+    );
+    expect(res.status).toBe(200);
   });
 });
 
