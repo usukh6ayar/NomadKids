@@ -68,7 +68,12 @@ export class KindergartenFundingController {
   /**
    * The month's register — every enrolled child, their days, and the money.
    *
-   * ★ Separate from `listMonth` above rather than replacing it.
+   * ★ Gated the same as everything else in this controller — ADMIN or
+   * ACCOUNTANT via `assertCanReadFinance` — since 2026-09-02. It used to check
+   * `assertAdmin` in the service while this decorator already said
+   * ACCOUNTANT too, so the route existed for the role and threw 404 anyway.
+   *
+   * ★★ Separate from `listMonth` above rather than replacing it.
    *
    * `listMonth` answers "what did the calculation produce", which is what a
    * reconciliation against a bank statement needs and what §6's totals are.

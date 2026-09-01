@@ -443,12 +443,20 @@ export class KitchenRepository {
 
   // ── Reports ──────────────────────────────────────────────────────────────
 
-  /** Ingredient usage over a range — OUT movements only, summed per
-   * ingredient. Purchases and adjustments are their own report/screen. */
+  /** Ingredient usage over a range — CONSUMPTION movements only, summed per
+   * ingredient. Purchases and adjustments are their own report/screen.
+   *
+   * ★ Filtered by `sourceType`, not `direction`. A negative stock adjustment
+   * (spoilage, a stocktake correction) is also `direction: "OUT"` — filtering
+   * on direction alone folded a cook's manual write-off into "how much food
+   * this range's menu actually used", the one figure `нэмэлт.md`'s food-cost
+   * reporting exists to keep honest. `recordConsumption` only ever writes
+   * `sourceType: "CONSUMPTION"`, so this is the same set of rows the comment
+   * always claimed and previously wasn't. */
   async consumptionReport(kindergartenId: string, from: Date, to: Date) {
     const rows = await this.prisma.stockMovement.groupBy({
       by: ["ingredientId"],
-      where: { kindergartenId, direction: "OUT", date: { gte: from, lte: to } },
+      where: { kindergartenId, sourceType: "CONSUMPTION", date: { gte: from, lte: to } },
       _sum: { quantity: true },
     });
 

@@ -756,6 +756,17 @@ function supportSections(isCook: boolean): NavSection[] {
         : [
             navEntry("Санхүүжилт", "/finance"),
             navEntry("Эцэг эхийн нэхэмжлэл", "/invoices"),
+            /*
+             * ★ Added 2026-09-02. `/admin/funding` widened to
+             * `RequireRole(["ADMIN", "ACCOUNTANT"])` the same day — see that
+             * page's own comment — because `нэмэлт.md` §13 names "Улсын
+             * санхүүжилт" and "Төлбөрийн тулгалт" for this role and the API
+             * had allowed it since the role shipped. A widened `RequireRole`
+             * with no row pointing at it is a page an accountant can only
+             * reach by typing the URL, which is the same kind of gap this
+             * screen exists to close.
+             */
+            navEntry("Ирц ба тооцоолол", "/admin/funding"),
             navEntry("Санхүүгийн аудит", "/finance/audit-log"),
           ],
     },
