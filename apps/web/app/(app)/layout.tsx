@@ -906,7 +906,7 @@ function parentSections(
   const selected = myChildren?.find((child) => child.id === selectedChildId) ?? myChildren?.[0];
 
   /*
-   * ★ Six rows for the selected child, not two.
+   * ★ Seven rows for the selected child, not two.
    *
    * A parent's whole product *is* their child's file, and three of its tabs —
    * Ирц, Хоол, Судалгаа — had no name anywhere in this menu even though a
@@ -917,13 +917,21 @@ function parentSections(
    * The switcher above decides *which* child; these rows decide *what about
    * them*, so they follow the selection rather than repeating per child.
    *
-   * ★★ "Цэцэрлэгийн архив" is the sixth and it comes from `main`, not from
-   * here. It is the one row that is not about a day — placement, teacher and
-   * the family's full enrollment history — so it sits last, after the five
-   * that are. Its icon stays `Building2`, the glyph `main` chose for it, but
-   * spelled with `sectionIconProps` like every other row in this list: the
-   * size is the same 18 either way, and this file already argues that writing
-   * the number inline is "the same number three times and no name for it".
+   * ★★ "Цэцэрлэгийн архив" is not the sixth any more and it still comes from
+   * `main`, not from here. It is the one row that is not about a day —
+   * placement, teacher and the family's full enrollment history — so it sits
+   * last, after the ones that are. Its icon stays `Building2`, the glyph
+   * `main` chose for it, but spelled with `sectionIconProps` like every other
+   * row in this list: the size is the same 18 either way, and this file
+   * already argues that writing the number inline is "the same number three
+   * times and no name for it".
+   *
+   * ★★★ "Төлбөр" joined 2026-09-01, once `ChildInvoicesController` and
+   * `/children/[childId]/finance` existed to point it at — see that route's
+   * own comment. It sits beside Хоол rather than after Судалгаа: both are
+   * money the family owes the kindergarten for the same reason, tuition and
+   * meals together, and a parent scanning this list reads them as one kind of
+   * thing.
    */
   const childEntries = selected
     ? [
@@ -946,6 +954,11 @@ function parentSections(
           label: "Хоол",
           href: `/children/${selected.id}/menu`,
           icon: <UtensilsCrossed {...sectionIconProps} />,
+        },
+        {
+          label: "Төлбөр",
+          href: `/children/${selected.id}/finance`,
+          icon: <Receipt {...sectionIconProps} />,
         },
         {
           label: "Судалгаа",
@@ -974,14 +987,15 @@ function parentSections(
     },
     {
       /*
-       * ★ The inert "Санхүү" row is gone.
-       *
-       * It was label-only — the reference's device for naming a feature the
-       * build has not reached — and it was the last one left in the product
-       * after `staffSections` was rewritten. Parent invoices are `нэмэлт.md`
-       * §7–§10 and not started; until they are, a family reading "Санхүү" in
-       * grey learns only that something is missing. This file argues that case
-       * three times about the staff menu and then did the opposite here.
+       * ★ The inert "Санхүү" row that used to sit here is gone for good, not
+       * merely renamed. It was label-only — the reference's device for naming
+       * a feature the build had not reached — and this file argued three
+       * times that a grey row teaches a family only that something is
+       * missing. Parent invoices are built now (`нэмэлт.md` §7–§10), so the
+       * real row lives with the rest of the selected child's own tabs above
+       * ("Төлбөр"), not here: a family's money is about a specific child, the
+       * same reason Ирц and Хоол are child rows rather than kindergarten-wide
+       * settings.
        */
       title: "Тохиргоо",
       entries: [entry("Миний бүртгэл", "/settings")],

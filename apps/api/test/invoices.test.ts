@@ -107,6 +107,64 @@ describe("who may reach an invoice", () => {
   });
 });
 
+describe("a child's own invoices — the guardian-facing read (нэмэлт.md §10)", () => {
+  it("shows a guardian their own child's invoices", async () => {
+    await generate(accountant, a.kindergarten.id, generateBody(a.child.id));
+
+    const res = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/invoices`),
+      parent,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0].child.id).toBe(a.child.id);
+    // Full shape, not the summary the kindergarten-wide list returns — a
+    // guardian's own bill comes with its payment history inline.
+    expect(res.body.items[0].lineItems).toHaveLength(3);
+  });
+
+  /**
+   * ★ The test the whole child-scoped route exists to pass.
+   *
+   * `teacher` is assigned to `a.group`, which `a.child` is enrolled in, so
+   * `canAccessChild` admits them for every other route this child has. This
+   * one must refuse anyway — `canViewChildFinance` deliberately omits
+   * `isAssignedTeacherOf`, and this is the test that would fail first if a
+   * future edit "fixed" that back in.
+   */
+  it("refuses a teacher — §13's exclusion holds even for a child they can otherwise reach", async () => {
+    await generate(accountant, a.kindergarten.id, generateBody(a.child.id));
+
+    const res = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/invoices`),
+      teacher,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("refuses another family's guardian", async () => {
+    await generate(accountant, a.kindergarten.id, generateBody(a.child.id));
+
+    const otherParent = await login(app, b.parentUser.username);
+    const res = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/invoices`),
+      otherParent,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("still lets the accountant and the admin read it through this route too", async () => {
+    await generate(accountant, a.kindergarten.id, generateBody(a.child.id));
+
+    const res = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/invoices`),
+      accountant,
+    );
+    expect(res.status).toBe(200);
+  });
+});
+
 describe("generating a month's invoice", () => {
   it("freezes the four summary columns from the line items supplied", async () => {
     const res = await generate(accountant, a.kindergarten.id, generateBody(a.child.id));

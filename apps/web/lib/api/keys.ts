@@ -201,6 +201,11 @@ export const qk = {
   invoices: (kindergartenId: string, filters: Record<string, unknown>) =>
     ["invoices", kindergartenId, filters] as const,
   invoice: (invoiceId: string) => ["invoice", invoiceId] as const,
+  /** A guardian's own read of one child's invoices — нэмэлт.md §7/§10. */
+  childInvoices: (childId: string, page: number) => ["child", childId, "invoices", page] as const,
+  /** The latest QPay attempt against one invoice — polled while a QR is on screen. */
+  qpayInvoice: (childId: string, invoiceId: string) =>
+    ["qpay-invoice", childId, invoiceId] as const,
 
   childMedia: (childId: string) => ["child", childId, "media"] as const,
   childReports: (childId: string) => ["child", childId, "reports"] as const,

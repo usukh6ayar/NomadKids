@@ -152,13 +152,12 @@ export default function ParentHomePage() {
         longer have opened anything.
         Цэцэрлэг is the client's own later addition — "Цэцэрлэг, бүлгийн
         архив", the current placement, its teacher, and the family's full
-        enrollment history — sitting between Хоол and Үнэлгээ so the one
-        `ComingSoonTile` (Санхүү) stays last in the grid.
-        Санхүү is a `ComingSoonTile`, not a link: CLAUDE.md §7 keeps finance
-        a later phase, and this screen does not get to pull it forward on
-        its own — `(app)/layout.tsx`'s sidebar makes the same call there,
-        naming it without a link rather than leaving it out entirely, which
-        is the mock-up's own request for this tile specifically.
+        enrollment history — sitting between Хоол and Үнэлгээ.
+        Санхүү was a `ComingSoonTile` (a `<div>`, not a `<Link>`) while
+        CLAUDE.md §7 kept finance a later phase; invoices are built now
+        (`нэмэлт.md` §7–§10) and it is a real `QuickTile` to
+        `/children/:id/finance`, the same route `(app)/layout.tsx`'s sidebar
+        points its own "Төлбөр" row at.
       */}
       <section aria-labelledby="board-heading">
         <SectionHeader id="board-heading" title="Түргэн холбоос" />
@@ -190,7 +189,11 @@ export default function ParentHomePage() {
             icon={<TileIcon name="progress" />}
           />
           <SurveyTile childId={selected.id} />
-          <ComingSoonTile label="Санхүү" icon={<TileIcon name="finance" />} />
+          <QuickTile
+            href={`/children/${selected.id}/finance`}
+            label="Санхүү"
+            icon={<TileIcon name="finance" />}
+          />
         </QuickTileGrid>
       </section>
     </HomeBackdrop>
@@ -276,30 +279,6 @@ function SurveyTile({ childId }: { childId: string }) {
       badge={pendingCount > 0 ? pendingCount : undefined}
       icon={<TileIcon name="survey" />}
     />
-  );
-}
-
-/**
- * A tile that names a feature without linking to it — Санхүү, currently.
- *
- * ★ The sidebar's own device (`(app)/layout.tsx`'s `parentSections` doc
- * comment), applied to a grid tile instead of a menu row: CLAUDE.md §7 keeps
- * finance a later phase, and there is no `/finance` screen for this tile to
- * open. A `<div>`, not a `<Link>` — a route that 404s teaches someone the
- * product is broken, same reasoning as every other no-dead-link spot in this
- * codebase. Muted and non-interactive (`aria-disabled`, no hover state) so it
- * reads as "not yet" rather than as a tile that failed to respond to a tap.
- */
-function ComingSoonTile({ label, icon }: { label: string; icon: ReactNode }) {
-  return (
-    <div
-      aria-disabled="true"
-      className="flex flex-col items-center gap-1.5 rounded-card border border-dashed border-border bg-canvas px-2 py-3 text-center opacity-60"
-    >
-      <span aria-hidden="true">{icon}</span>
-      <span className="text-compact font-semibold leading-tight text-ink">{label}</span>
-      <span className="text-caption text-muted">Удахгүй</span>
-    </div>
   );
 }
 

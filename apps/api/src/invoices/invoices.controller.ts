@@ -27,6 +27,28 @@ import {
  * §13 named a dedicated role for exactly this data and said plainly teachers
  * may not see full financial information.
  */
+/**
+ * A child's own invoices — the guardian-facing read.
+ *
+ * ★ No `@Roles`. Same reasoning `growth.controller.ts` gives for its own
+ * child-scoped route: the service decides who may read via
+ * `assertCanViewFinance`, which admits this child's guardian, an admin, or an
+ * accountant — and deliberately not a teacher (нэмэлт.md §13).
+ */
+@Controller("children/:id/invoices")
+export class ChildInvoicesController {
+  constructor(private readonly service: InvoicesService) {}
+
+  @Get()
+  async list(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(listInvoicesQuerySchema)) query: ListInvoicesQuery,
+  ) {
+    return this.service.listForChild(actor, params.id, query);
+  }
+}
+
 @Controller("kindergartens/:id/invoices")
 @Roles("ADMIN", "ACCOUNTANT")
 export class KindergartenInvoicesController {

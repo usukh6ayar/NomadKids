@@ -326,6 +326,7 @@ model User {
   consentsDecided       ConsentRecord[]           @relation("ConsentDecidedBy")
   mealsRecorded         MealRecord[]              @relation("MealRecordedBy")
   paymentsRecorded      Payment[]                 @relation("PaymentRecordedBy")
+  qpayInvoicesInitiated QpayInvoice[]              @relation("QpayInvoiceInitiatedBy")
   chatMessages          ChatMessage[]             @relation("ChatAuthor")
   chatReads             ChatRead[]                @relation("ChatReader")
 
@@ -507,6 +508,7 @@ model Kindergarten {
   fundingCalculations   FundingCalculation[]
   invoices              Invoice[]
   payments              Payment[]
+  qpayInvoices          QpayInvoice[]
   chatMessages          ChatMessage[]
   chatReads             ChatRead[]
 
@@ -1591,6 +1593,7 @@ model Invoice {
   child        Child             @relation(fields: [childId], references: [id], onDelete: Restrict)
   lineItems    InvoiceLineItem[]
   payments     Payment[]
+  qpayInvoices QpayInvoice[]
 
   /// One invoice per child per month, among live rows — mirrors
   /// `FundingCalculation`'s own `@@unique([childId, month, source])`.
@@ -1675,10 +1678,80 @@ model Payment {
   recordedBy   User?        @relation("PaymentRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
   reversalOf   Payment?     @relation("PaymentReversal", fields: [reversalOfId], references: [id], onDelete: SetNull)
   reversals    Payment[]    @relation("PaymentReversal")
+  qpayInvoice  QpayInvoice?
 
   @@index([invoiceId])
   @@index([kindergartenId, createdAt])
   @@map("payments")
+}
+
+/// нэмэлт.md §8 — one attempt to pay an `Invoice` through QPay's v2 "Simple"
+/// API. See `docs/reference/QPAY_INTEGRATION.md` for the full flow.
+///
+/// ★ A pending *attempt*, not a `Payment`. `Payment` represents money that has
+/// actually moved; a QR code nobody has scanned yet is not that, so it gets a
+/// row of its own instead of a `Payment` in a fictitious "pending" status —
+/// the same reasoning that keeps `REFUNDED` a person's call in
+/// `InvoicesService.markRefunded` rather than a number crossing zero.
+/// `paymentId` is set only once `QpayService.reconcile()` has independently
+/// confirmed the payment against QPay's own check API — never from the
+/// callback's request body, which this schema does not even carry a field
+/// for. `amount` is frozen at creation so a QR already in a parent's hand
+/// cannot silently change value if the invoice's balance moves underneath it.
+///
+/// ★★ Never deleted, same as `Payment` and for the same reason (нэмэлт.md
+/// §14) — a cancelled or expired attempt is a fact too, so `status` moves to
+/// `EXPIRED`/`CANCELLED` in place rather than the row disappearing.
+model QpayInvoice {
+  id             String  @id @default(uuid()) @db.Uuid
+  kindergartenId String  @db.Uuid
+  invoiceId      String  @db.Uuid
+  amount         Decimal @db.Decimal(12, 2)
+
+  /// QPay's own id for this invoice — what the callback and the check API
+  /// both key on.
+  qpayInvoiceId String @unique
+  /// Our reference, sent as `sender_invoice_no` — see `QpayClient.createInvoice`.
+  senderInvoiceNo String  @unique
+  qrText          String?
+  /// The base64 PNG QPay returns inline — no object-storage round trip for a
+  /// code that expires with the invoice it was drawn for.
+  qrImage String? @db.Text
+
+  status QpayInvoiceStatus @default(PENDING)
+
+  /// Set once, by `reconcile()`, the moment a `Payment` row is created for
+  /// this attempt. `@unique` makes the pairing one-to-one in both directions.
+  paymentId String? @unique @db.Uuid
+  /// Who pressed "pay" — audit's "Хэн" for a credit that, once it happens, is
+  /// triggered by an unauthenticated webhook rather than a logged-in request.
+  createdById String? @db.Uuid
+
+  expiresAt DateTime?
+  paidAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  invoice      Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  payment      Payment?     @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  createdBy    User?        @relation("QpayInvoiceInitiatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId])
+  @@index([kindergartenId, status])
+  @@map("qpay_invoices")
+}
+
+/// нэмэлт.md §8's five invoice states, narrowed to what a single attempt can
+/// actually be — `Invoice.status` (UNPAID/PARTIALLY_PAID/...) already covers
+/// the bill as a whole; this is only ever PENDING → PAID, or PENDING →
+/// EXPIRED/CANCELLED without ever reaching PAID.
+enum QpayInvoiceStatus {
+  PENDING
+  PAID
+  EXPIRED
+  CANCELLED
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

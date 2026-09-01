@@ -51,12 +51,51 @@ export class InvoicesRepository {
     });
   }
 
-  /** Ownership + existence in one query, for authorization checks that only need the ids. */
+  /**
+   * Ownership + existence in one query, for authorization checks and for
+   * `QpayService`'s "how much is actually owed right now" check — `balance`
+   * is included for that second use, not just the fields authorization needs.
+   */
   async findInvoiceRef(id: string) {
     return this.prisma.invoice.findFirst({
       where: { id, deletedAt: null },
-      select: { id: true, kindergartenId: true, childId: true, paidAmount: true, status: true },
+      select: {
+        id: true,
+        kindergartenId: true,
+        childId: true,
+        paidAmount: true,
+        balance: true,
+        status: true,
+      },
     });
+  }
+
+  /**
+   * One child's own invoices, full shape — the guardian-facing read.
+   *
+   * ★ `INVOICE_INCLUDE`, not the summary the kindergarten-wide list uses.
+   *
+   * A parent looking at their own child has at most a handful of invoices ever
+   * — one a month — so there is no cost to returning line items and payment
+   * history inline, and doing so saves a second round trip per invoice that
+   * `/invoices` (many families, summary rows, drill in for detail) correctly
+   * avoids at its own scale.
+   */
+  async listForChild(childId: string, page: { skip: number; take: number }) {
+    const where: Prisma.InvoiceWhereInput = { childId, deletedAt: null };
+
+    const [items, total] = await Promise.all([
+      this.prisma.invoice.findMany({
+        where,
+        orderBy: { month: "desc" },
+        skip: page.skip,
+        take: page.take,
+        include: INVOICE_INCLUDE,
+      }),
+      this.prisma.invoice.count({ where }),
+    ]);
+
+    return { items, total };
   }
 
   async listInvoices(

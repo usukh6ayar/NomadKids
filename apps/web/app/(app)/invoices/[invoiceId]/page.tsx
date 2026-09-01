@@ -15,7 +15,7 @@ import {
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
-import { formatDate, formatRelative } from "@/lib/format";
+import { formatDate, formatMonthLabel, formatRelative } from "@/lib/format";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
@@ -117,7 +117,9 @@ function InvoiceDetail() {
 
       <PageHeader
         title={`${data.child.lastName ? `${data.child.lastName} ` : ""}${data.child.firstName}`}
-        lede={`${data.month} сарын нэхэмжлэл`}
+        // `month` comes back as an ISO date (`DateTime @db.Date` — see the
+        // model's own comment) — sliced to `YYYY-MM` for `formatMonthLabel`.
+        lede={`${formatMonthLabel(data.month.slice(0, 7))} сарын нэхэмжлэл`}
         actions={<Badge tone={STATUS_TONE[data.status]}>{INVOICE_STATUS_LABEL[data.status]}</Badge>}
       />
 

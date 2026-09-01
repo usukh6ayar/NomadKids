@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { AuditRepository } from "../audit/audit.repository";
 import { TenantAccessService } from "../authz/tenant-access.service";
+import { ChildAccessService } from "../authz/child-access.service";
 import type { Actor } from "../authz/actor";
 import { paginate, toSkipTake, type PageParams } from "../common/pagination";
 import { InvoicesRepository } from "./invoices.repository";
@@ -20,8 +21,28 @@ export class InvoicesService {
   constructor(
     private readonly repo: InvoicesRepository,
     private readonly tenants: TenantAccessService,
+    private readonly childAccess: ChildAccessService,
     private readonly audit: AuditRepository,
   ) {}
+
+  /**
+   * One child's own invoices — the guardian-facing read, нэмэлт.md §7/§10.
+   *
+   * ★ `assertCanViewFinance`, not `assertCanReadFinance` — a different
+   * predicate on purpose. The kindergarten-wide list above is for the
+   * accountant and the admin; this one additionally admits the child's own
+   * guardian and, unlike every other route in this file, deliberately does
+   * NOT admit a teacher even though a teacher may otherwise read this child's
+   * record — see `canViewChildFinance`'s own comment.
+   */
+  async listForChild(actor: Actor, childId: string, query: ListInvoicesQuery) {
+    await this.childAccess.assertCanViewFinance(actor, childId);
+
+    const page: PageParams = { page: query.page, pageSize: query.pageSize };
+    const { items, total } = await this.repo.listForChild(childId, toSkipTake(page));
+
+    return paginate(items, total, page);
+  }
 
   /**
    * ★ The accountant and the administrator, throughout this service — the

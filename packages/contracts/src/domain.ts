@@ -2907,3 +2907,24 @@ export type Invoice = z.infer<typeof invoiceSchema>;
 /** The list view — no line items or payments, one row per invoice. */
 export const invoiceSummarySchema = invoiceSchema.omit({ lineItems: true, payments: true });
 export type InvoiceSummary = z.infer<typeof invoiceSummarySchema>;
+
+// ── QPay — нэмэлт.md §8's online-payment attempt ─────────────────────────────
+
+export const qpayInvoiceStatusSchema = z.enum(["PENDING", "PAID", "EXPIRED", "CANCELLED"]);
+export type QpayInvoiceStatus = z.infer<typeof qpayInvoiceStatusSchema>;
+
+/**
+ * One attempt to pay an `Invoice` through QPay — what
+ * `ChildInvoiceQpayController`'s `create`/`status` return.
+ */
+export const qpayInvoiceAttemptSchema = z.object({
+  id: uuidSchema,
+  status: qpayInvoiceStatusSchema,
+  amount: z.string(),
+  qrText: z.string().nullable(),
+  /** Base64 PNG, no `data:` prefix — see `QpayClient`'s own comment. */
+  qrImage: z.string().nullable(),
+  expiresAt: z.string().nullable(),
+  paidAt: z.string().nullable(),
+});
+export type QpayInvoiceAttempt = z.infer<typeof qpayInvoiceAttemptSchema>;

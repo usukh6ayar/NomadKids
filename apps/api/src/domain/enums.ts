@@ -43,6 +43,7 @@ export {
   ObservationSource,
   IncidentKind,
   PaymentMethod,
+  QpayInvoiceStatus,
   RecipeStatus,
   ReportStatus,
   ReportType,
