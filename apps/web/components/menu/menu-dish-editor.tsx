@@ -434,6 +434,28 @@ export function MenuDishEditor({
                           )
                         }
                       </Field>
+                    ) : dish.useRecipe ? (
+                      /*
+                       * ★ A recipe-linked dish on a screen with no `kitchen`
+                       * prop — `child-menu.tsx`'s quick edit from inside a
+                       * child's page. It reads the name, it does not offer to
+                       * change it.
+                       *
+                       * An editable input here would be a form that lies:
+                       * `MealsService.saveDay` re-freezes a recipe-linked
+                       * dish's name from the card, so a teacher could type over
+                       * it, press Хадгалах, get a success toast, and watch the
+                       * old name come back. That is the same class of bug as
+                       * the silently dropped dish above — the save reports
+                       * success and does something else.
+                       */
+                      <Field label="Хоолны нэр">
+                        {() => (
+                          <p className="flex h-12 items-center text-body text-ink">
+                            {recipe?.name ?? dish.name}
+                          </p>
+                        )}
+                      </Field>
                     ) : (
                       <Field label="Хоолны нэр">
                         {({ id }) => (

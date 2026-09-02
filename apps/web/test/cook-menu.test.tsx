@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, selectOption, sessionFor, stubApi } from "./support/render";
 import MenuPage from "@/app/(app)/menu/page";
+import { MenuDishEditor, toDraft } from "@/components/menu/menu-dish-editor";
 
 const KG_ID = "33333333-3333-4333-8333-333333333333";
 
@@ -226,5 +227,78 @@ describe("the cook's weekly menu", () => {
       "true",
     );
     expect(screen.getAllByLabelText("Хоолны нэр")[0]!).toBeInTheDocument();
+  });
+});
+
+/**
+ * The editor on a screen that has no kitchen — `child-menu.tsx`'s quick edit
+ * from inside a child's page.
+ *
+ * ★ There was no test over this at all, which is how the regression these
+ * guard against reached a commit: `cook-menu.test.tsx` above always supplies
+ * `kitchen`, and `menu.test.tsx` is the action-menu dropdown, not this. 488
+ * tests passed with the bug in place.
+ */
+describe("the dish editor without a kitchen", () => {
+  const linkedDish = [
+    {
+      name: "Гурилтай шөл",
+      kind: "LUNCH" as const,
+      allergenTags: ["гурил"],
+      ingredients: null,
+      calories: 320,
+      portions: 1,
+      note: null,
+      recipeId: "66666666-6666-4666-8666-666666666666",
+      photoMediaFileId: null,
+    },
+  ];
+
+  it("shows a recipe-linked dish's name as text, never as an input", () => {
+    renderWithProviders(
+      <MenuDishEditor
+        draftDishes={toDraft(linkedDish)}
+        onChange={() => {}}
+        onSave={() => {}}
+        saving={false}
+        error={null}
+      />,
+    );
+
+    /*
+     * An input here would be a form that lies: `MealsService.saveDay` freezes a
+     * recipe-linked dish's name from the card, so anything typed is discarded
+     * and the save still reports success.
+     */
+    expect(screen.queryByRole("textbox", { name: "Хоолны нэр" })).not.toBeInTheDocument();
+    expect(screen.getByText("Гурилтай шөл")).toBeInTheDocument();
+  });
+
+  it("offers no mode switch — there is nothing to switch to", () => {
+    renderWithProviders(
+      <MenuDishEditor
+        draftDishes={toDraft(linkedDish)}
+        onChange={() => {}}
+        onSave={() => {}}
+        saving={false}
+        error={null}
+      />,
+    );
+
+    expect(screen.queryByRole("group", { name: "Хоолыг хэрхэн оруулах" })).not.toBeInTheDocument();
+  });
+
+  it("a free-text dish is still editable", () => {
+    renderWithProviders(
+      <MenuDishEditor
+        draftDishes={toDraft([{ ...linkedDish[0]!, recipeId: null, name: "Гар хоол" }])}
+        onChange={() => {}}
+        onSave={() => {}}
+        saving={false}
+        error={null}
+      />,
+    );
+
+    expect(screen.getByRole("textbox", { name: "Хоолны нэр" })).toHaveValue("Гар хоол");
   });
 });
