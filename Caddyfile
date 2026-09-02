@@ -27,10 +27,11 @@
 # host-only, and a parent who logs in at www and then follows a link to the
 # apex is logged out with no explanation. One canonical host, one cookie.
 #
-# 308, not 301: it preserves the method, so a POST that lands here is not
-# silently turned into a GET.
+# 308, not 301, and `permanent` is not the way to say it — Caddy's `permanent`
+# emits 301, which browsers may rewrite to GET. Written out as the number so
+# the code says what the comment says.
 {$WWW_DOMAIN} {
-	redir https://{$WWW_REDIRECT_TO}{uri} permanent
+	redir https://{$WWW_REDIRECT_TO}{uri} 308
 }
 
 # ── The web app ──────────────────────────────────────────────────────────────
