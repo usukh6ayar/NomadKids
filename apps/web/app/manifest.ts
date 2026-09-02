@@ -30,7 +30,14 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "/",
     scope: "/",
     display: "standalone",
-    orientation: "portrait",
+    /*
+     * ★ No `orientation`. Declaring `"portrait"` would lock an installed app to
+     * portrait, and the attendance journal is a wide table with a sticky name
+     * column — a teacher with a tablet in a stand is the case it was drawn for.
+     * Leaving the field out lets the device decide, which is what every screen
+     * in the product already assumes: `display: "standalone"` and CLAUDE.md §5's
+     * mobile-first rule are unaffected either way.
+     */
     background_color: "#ffffff",
     // --color-primary. The same blue the shell uses, so the splash screen and
     // the Android task-switcher bar do not announce a different product.
