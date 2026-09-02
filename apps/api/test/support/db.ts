@@ -61,6 +61,17 @@ export async function closeTestDb(): Promise<void> {
  * share into a 120% total. Any future table with no tenant relation needs the
  * same line.
  */
+/**
+ * Truncates everything between tests.
+ *
+ * ★ The table list is hand-maintained and looks like it rots — it names about
+ * thirty tables and the schema has sixty-five. It does not rot, because of
+ * `CASCADE`: every table not named here reaches one that is through a foreign
+ * key. Verified empirically on 2026-09-02 by truncating and then counting rows
+ * in all sixty-five — none survived. If a future table is ever added with no FK
+ * path to a kindergarten, a child or a user, it will leak between test files
+ * and that check is how to find it.
+ */
 export async function resetData(): Promise<void> {
   const db = testDb();
   await db.$executeRawUnsafe(`

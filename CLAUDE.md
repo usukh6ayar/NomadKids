@@ -233,6 +233,37 @@ Run them, show the output. If they fail, say so immediately.
 A generator returning 1 MB of blank pages passes every "did it produce a file"
 check. See `docs/PDF_SPIKE.md` §4.
 
+### 4.4 A full-suite failure that passes alone is not automatically noise
+
+Three times on 2026-09-02 a test failed in `pnpm --filter api test` and passed
+when its file was run alone: `catalog.test.ts` (two authorization cases),
+`query-counts.test.ts` (an N+1 guard) and `children.test.ts` (cross-kindergarten
+isolation — the most serious kind there is).
+
+**The cause is not known.** What is ruled out, with evidence, so nobody repeats
+the search:
+
+| Hypothesis | Why not |
+| --- | --- |
+| Test files run in parallel | `vitest.config.mts` sets `fileParallelism: false` |
+| Login rate limiter exhausted | `createTestApp` compiles a fresh module per file, so the limiter is per-file — it cannot produce a failure that only appears in a full run |
+| Report worker / maintenance scheduler | Both gated on `REPORTS_WORKER_ENABLED`, which `test/setup.ts` sets to `"false"` |
+| Leaked apps holding connections | All 46 files call `app.close()` in `afterAll`; Postgres `max_connections` is 100 and the suite sits near 8 |
+| `resetData` missing a table | Verified by truncating and counting rows in all 65 tables — none survive |
+
+★ It **is** real, and one instance had a real cause: `attendance-register.test.ts`
+did 21 tests × 5 logins against a 60-per-15-minutes limit and got 429s that read
+as register defects. `RateLimitService.resetAll()` in `beforeEach` fixes that
+class, and every high-login file already does it.
+
+★★ **Do not treat the rest as flake and move on.** A cross-kindergarten
+isolation failure is the one result in this suite that must never be waved
+through: the code is right by construction there — `visible` is the first term
+of the `AND`, so a group filter narrows it and cannot widen it — but "the code
+looks right" is what everybody says before a leak. If it recurs, capture the
+full reporter output rather than the summary line, which is where this
+investigation stalled.
+
 ---
 
 ## 5. UI rules
