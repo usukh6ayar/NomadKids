@@ -7,6 +7,7 @@ import { z } from "zod";
 import {
   KINDERGARTEN_APPLICATION_STATUS_LABEL,
   CONTRACT_STATUS_LABEL,
+  applicationApprovalSchema,
   kindergartenApplicationSchema,
   paginated,
   type KindergartenApplication,
@@ -15,6 +16,7 @@ import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireSuperAdmin } from "@/components/shell/require-role";
+import { InvitationHandover } from "@/components/admin/invitation-handover";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -230,6 +232,7 @@ function ReviewDialog({
   const queryClient = useQueryClient();
 
   const thisYear = new Date().getUTCFullYear();
+  const [adminUsername, setAdminUsername] = useState("");
   const [annualFee, setAnnualFee] = useState("300000");
   const [perChildMonthlyFee, setPerChildMonthlyFee] = useState("1500");
   const [startsOn, setStartsOn] = useState(`${thisYear}-09-01`);
@@ -241,9 +244,10 @@ function ReviewDialog({
 
   const approve = useMutation({
     mutationFn: () =>
-      mutate(`/platform/applications/${application.id}/approve`, kindergartenApplicationSchema, {
+      mutate(`/platform/applications/${application.id}/approve`, applicationApprovalSchema, {
         method: "POST",
         body: {
+          adminUsername: adminUsername.trim(),
           annualFee,
           perChildMonthlyFee,
           startsOn,
@@ -251,10 +255,8 @@ function ReviewDialog({
           ...(reviewNote.trim() ? { reviewNote: reviewNote.trim() } : {}),
         },
       }),
-    onSuccess: (result) => {
-      toast.success(`Батлагдлаа. Гэрээ №${result.contract?.number ?? ""} үүслээ.`);
+    onSuccess: () => {
       refresh();
-      onClose();
     },
   });
 
@@ -275,6 +277,52 @@ function ReviewDialog({
   const busy = approve.isPending || reject.isPending;
   const errors = fieldErrors(approve.error);
 
+  /*
+    ★★★ The invitation is shown **once**, and the dialog stays open to show it.
+
+    The token exists in plaintext for exactly this moment — it is stored hashed
+    — so closing the dialog on success, as the reject path does, would destroy
+    the one thing the operator has to hand over. This is the same handover
+    `PlatformService.create` has always required; making it a screen rather
+    than a JSON field is the whole UX difference.
+  */
+  if (approve.isSuccess) {
+    const approved = approve.data;
+    return (
+      <FormDialog
+        open
+        onOpenChange={(next) => !next && onClose()}
+        busy={false}
+        title="Батлагдлаа"
+        // ★ No footer: `InvitationHandover` renders its own close button, and
+        // two "Хаах" buttons in one dialog is a dialog nobody trusts.
+      >
+        <div className="flex flex-col gap-4">
+          <Card pad="roomy" tone="mint" className="flex flex-col gap-1">
+            <p className="text-body font-semibold text-ink">Гэрээ №{approved.contract?.number}</p>
+            <p className="text-caption text-muted">
+              PDF дараалалд орлоо. Хэдхэн секундын дараа “PDF татах” товч гарч ирнэ.
+            </p>
+          </Card>
+
+          {/*
+            ★ `InvitationHandover`, not a second handover screen. It already
+            draws the QR locally — never sending the token to an image service
+            to be rendered — shows the link for reading out over the phone, and
+            says in as many words that this appears once. Two components doing
+            this would be two places to get a credential's presentation wrong.
+          */}
+          <InvitationHandover
+            token={approved.invitationToken}
+            title={`${application.kindergartenName} — эрхлэгчийн урилга`}
+            subtitle={`Нэвтрэх нэр: ${approved.adminUsername}`}
+            onClose={onClose}
+          />
+        </div>
+      </FormDialog>
+    );
+  }
+
   return (
     <FormDialog
       open
@@ -293,7 +341,12 @@ function ReviewDialog({
             <X size={16} aria-hidden="true" />
             Татгалзах
           </Button>
-          <Button type="submit" form="review-form" size="sm" disabled={busy}>
+          <Button
+            type="submit"
+            form="review-form"
+            size="sm"
+            disabled={busy || adminUsername.trim().length < 3}
+          >
             <Check size={16} aria-hidden="true" />
             {approve.isPending ? "Батлаж байна…" : "Батлах"}
           </Button>
@@ -316,9 +369,28 @@ function ReviewDialog({
         />
 
         <p className="text-body text-muted">
-          Батласнаар цэцэрлэг үүсч, гэрээ дугаарлагдаж, PDF дараалалд орно. Доорх дүнгүүд гэрээн
-          дээр хэвлэгдэж, дараа нь өөрчлөгдөхгүй.
+          Батласнаар <strong>цэцэрлэг, эрхлэгчийн бүртгэл, гэрээ</strong> гурав зэрэг үүснэ. Доорх
+          дүнгүүд гэрээн дээр хэвлэгдэж, дараа нь өөрчлөгдөхгүй.
         </p>
+
+        <Field
+          label="Админы нэвтрэх нэр"
+          error={errors.adminUsername}
+          hint="Латин үсэг, тоо, . _ - · Эрхлэгч энэ нэрээр нэвтэрнэ"
+          required
+        >
+          {({ id, describedBy, invalid }) => (
+            <Input
+              id={id}
+              aria-describedby={describedBy}
+              invalid={invalid}
+              value={adminUsername}
+              onChange={(event) => setAdminUsername(event.target.value)}
+              placeholder="жишээ: azjargal"
+              autoFocus
+            />
+          )}
+        </Field>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Суурь хураамж (жилд)" error={errors.annualFee} required>

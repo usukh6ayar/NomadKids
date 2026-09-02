@@ -117,12 +117,34 @@ export class OnboardingRepository {
    *
    * ★ The PDF job is **not** enqueued here — CLAUDE.md §3.5. The caller does it
    * after this resolves, or the worker would start before the rows are visible.
+   *
+   * ☆ **The admin inserts mirror `PlatformRepository.createWithAdmin`**, and
+   * the duplication is deliberate rather than missed. Prisma has no nested
+   * transactions, so calling that method from inside this one is not possible,
+   * and splitting the tenant from its contract across two transactions would
+   * allow the state this method exists to prevent — a kindergarten nobody
+   * agreed to. The *policy* (hashing, token generation, uniqueness checks)
+   * still lives in one place: the service, which does it before calling this.
+   * If a third caller ever needs it, extract the body rather than copy it
+   * again.
    */
   async approve(params: {
     applicationId: string;
     reviewedById: string;
     reviewNote: string | null;
     kindergartenName: string;
+    kindergartenAddress: string;
+    kindergartenPhone: string;
+    kindergartenEmail: string;
+    admin: {
+      username: string;
+      email: string;
+      lastName: string;
+      firstName: string;
+      passwordHash: string;
+      invitationTokenHash: string;
+      invitationExpiresAt: Date;
+    };
     number: string;
     childCount: number;
     annualFee: string;
@@ -132,8 +154,39 @@ export class OnboardingRepository {
   }) {
     return this.prisma.$transaction(async (tx) => {
       const kindergarten = await tx.kindergarten.create({
-        data: { name: params.kindergartenName, isActive: true },
+        data: {
+          name: params.kindergartenName,
+          address: params.kindergartenAddress,
+          phone: params.kindergartenPhone,
+          email: params.kindergartenEmail,
+          isActive: true,
+        },
         select: { id: true },
+      });
+
+      const admin = await tx.user.create({
+        data: {
+          username: params.admin.username,
+          email: params.admin.email,
+          lastName: params.admin.lastName,
+          firstName: params.admin.firstName,
+          passwordHash: params.admin.passwordHash,
+        },
+        select: { id: true, username: true },
+      });
+
+      await tx.membership.create({
+        data: { userId: admin.id, kindergartenId: kindergarten.id, role: "ADMIN" },
+      });
+
+      await tx.authToken.create({
+        data: {
+          userId: admin.id,
+          purpose: "INVITATION",
+          tokenHash: params.admin.invitationTokenHash,
+          expiresAt: params.admin.invitationExpiresAt,
+          requestedIp: null,
+        },
       });
 
       await tx.kindergartenApplication.update({
@@ -161,7 +214,7 @@ export class OnboardingRepository {
         select: { id: true, number: true },
       });
 
-      return { kindergartenId: kindergarten.id, contract };
+      return { kindergartenId: kindergarten.id, admin, contract };
     });
   }
 

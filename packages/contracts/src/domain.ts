@@ -3419,3 +3419,18 @@ export const kindergartenApplicationSchema = z.object({
     .nullable(),
 });
 export type KindergartenApplication = z.infer<typeof kindergartenApplicationSchema>;
+
+/**
+ * What approving an application answers with.
+ *
+ * ★★ The application, plus the first administrator's **one-time invitation
+ * token**. `PlatformService.create` returns one the same way and for the same
+ * reason: the kindergarten has no account yet, so there is nobody the product
+ * can email it to. The operator hands it over. It is never logged, and it is
+ * the only moment it exists in plaintext.
+ */
+export const applicationApprovalSchema = kindergartenApplicationSchema.extend({
+  invitationToken: z.string(),
+  adminUsername: z.string(),
+});
+export type ApplicationApproval = z.infer<typeof applicationApprovalSchema>;

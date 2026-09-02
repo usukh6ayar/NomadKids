@@ -4,6 +4,8 @@ import { AuthzModule } from "../authz/authz.module";
 import { PrismaModule } from "../prisma/prisma.module";
 import { ReportsModule } from "../reports/reports.module";
 import { StorageModule } from "../storage/storage.module";
+import { AuthModule } from "../auth/auth.module";
+import { UsersModule } from "../users/users.module";
 import {
   ApplicationsController,
   PlatformApplicationsController,
@@ -20,7 +22,15 @@ import { OnboardingService } from "./onboarding.service";
  * ~2.5 seconds and never happens inside a request.
  */
 @Module({
-  imports: [PrismaModule, AuthzModule, AuditModule, ReportsModule, StorageModule],
+  imports: [
+    PrismaModule,
+    AuthzModule,
+    AuditModule,
+    ReportsModule,
+    StorageModule,
+    AuthModule,
+    UsersModule,
+  ],
   controllers: [
     ApplicationsController,
     PlatformApplicationsController,

@@ -61,6 +61,26 @@ export type SubmitApplicationDto = z.infer<typeof submitApplicationSchema>;
  */
 export const approveApplicationSchema = z
   .object({
+    /**
+     * The first administrator's login name.
+     *
+     * ★★★ Asked for, not derived. Approving used to create a `Kindergarten`
+     * and nothing else, which left a tenant **nobody could sign in to** — the
+     * flow dead-ended at step 3. `POST /platform/kindergartens`, the older
+     * direct path, has always created the admin and an invitation alongside
+     * the tenant; approval now does the same thing, so there is one definition
+     * of "a kindergarten exists" rather than two that disagree.
+     *
+     * It is a field rather than a slug of the kindergarten's name because a
+     * login name is something a person has to be able to type and remember,
+     * and Mongolian names do not transliterate to one obvious latin form.
+     */
+    adminUsername: z
+      .string()
+      .trim()
+      .min(3, "Нэвтрэх нэр дор хаяж 3 тэмдэгт байх ёстой")
+      .max(64)
+      .regex(/^[a-zA-Z0-9._-]+$/, "Нэвтрэх нэр латин үсэг, тоо, . _ - агуулна"),
     annualFee: money,
     perChildMonthlyFee: money,
     startsOn: isoDate,

@@ -57,6 +57,7 @@ const FORM = {
 };
 
 const TERMS = {
+  adminUsername: "azjargal-admin",
   annualFee: "300000",
   perChildMonthlyFee: "1500",
   startsOn: "2026-09-01",
@@ -214,10 +215,22 @@ describe("the review queue", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("approval", () => {
+  /**
+   * ★ The email varies with the registration number, and it has to.
+   *
+   * Approving creates the kindergarten's first administrator from the
+   * application's own email, and `User.email` is globally unique — so three
+   * different kindergartens sharing one contact address is a 409, correctly.
+   * Three real kindergartens do not share an inbox.
+   */
   async function apply(registrationNumber = FORM.registrationNumber) {
     const res = await request(server())
       .post("/v1/applications")
-      .send({ ...FORM, registrationNumber })
+      .send({
+        ...FORM,
+        registrationNumber,
+        email: `kg-${registrationNumber}@example.mn`,
+      })
       .expect(201);
     return res.body.id as string;
   }
@@ -304,10 +317,13 @@ describe("approval", () => {
    * reuses the ninth's number.
    */
   it("issues contract numbers in sequence", async () => {
-    for (const registration of ["9012341", "9012342", "9012343"]) {
+    for (const [index, registration] of ["9012341", "9012342", "9012343"].entries()) {
       const id = await apply(registration);
       await authed(request(server()).post(`/v1/platform/applications/${id}/approve`), operator)
-        .send(TERMS)
+        // ★ A distinct login name per kindergarten. `User.username` is globally
+        // unique, so reusing one would fail the second approval — which is
+        // correct behaviour and not what this test is about.
+        .send({ ...TERMS, adminUsername: `azjargal-admin-${index}` })
         .expect(200);
     }
 
@@ -392,5 +408,77 @@ describe("GET /platform/contracts/:id/download", () => {
     );
 
     expect(res.status).toBe(400);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The first administrator
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * ★★★ Approving used to create a `Kindergarten` and nothing else, which left a
+ * tenant **nobody could sign in to** — the flow dead-ended at step 3 and the
+ * defect was invisible from the API, because every endpoint answered correctly
+ * about a kindergarten that simply had no members.
+ *
+ * `POST /platform/kindergartens`, the older direct path, has always created the
+ * admin and an invitation alongside the tenant. These assert the two paths now
+ * agree about what "a kindergarten exists" means.
+ */
+describe("the first administrator", () => {
+  async function applyAndApprove(overrides: Record<string, unknown> = {}) {
+    const application = await request(server()).post("/v1/applications").send(FORM).expect(201);
+
+    return authed(
+      request(server()).post(`/v1/platform/applications/${application.body.id}/approve`),
+      operator,
+    ).send({ ...TERMS, ...overrides });
+  }
+
+  it("creates an ADMIN membership so somebody can sign in", async () => {
+    const res = await applyAndApprove();
+    expect(res.status).toBe(200);
+
+    const membership = await db.membership.findFirst({
+      where: { kindergartenId: res.body.kindergartenId, role: "ADMIN" },
+      include: { user: { select: { username: true, email: true } } },
+    });
+
+    expect(membership).not.toBeNull();
+    expect(membership?.user.username).toBe(TERMS.adminUsername);
+    expect(membership?.user.email).toBe(FORM.email);
+  });
+
+  it("issues a one-time invitation, and returns it once", async () => {
+    const res = await applyAndApprove();
+
+    expect(res.body.invitationToken).toBeTruthy();
+    expect(res.body.adminUsername).toBe(TERMS.adminUsername);
+
+    const membership = await db.membership.findFirstOrThrow({
+      where: { kindergartenId: res.body.kindergartenId, role: "ADMIN" },
+    });
+    const token = await db.authToken.findFirst({
+      where: { userId: membership.userId, purpose: "INVITATION" },
+    });
+
+    expect(token).not.toBeNull();
+    // ★ Stored hashed. The plaintext exists only in the response above.
+    expect(token?.tokenHash).not.toBe(res.body.invitationToken);
+  });
+
+  /**
+   * ★ Refused before anything is written, not as a constraint violation
+   * halfway through the transaction — which would leave the operator with a
+   * 500 and no idea which field was the problem.
+   */
+  it("refuses a username that is already taken, and creates nothing", async () => {
+    const before = await db.kindergarten.count();
+
+    const res = await applyAndApprove({ adminUsername: scenario.adminUser.username });
+
+    expect(res.status).toBe(409);
+    expect(await db.kindergarten.count()).toBe(before);
+    expect(await db.contract.count()).toBe(0);
   });
 });

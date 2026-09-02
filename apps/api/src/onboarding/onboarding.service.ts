@@ -1,6 +1,20 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
+import { randomBytes } from "node:crypto";
 import { StorageService } from "../storage/storage.service";
-import type { ApplicationReceipt, KindergartenApplication } from "@kinder/contracts";
+import { PasswordService } from "../auth/password.service";
+import { TokenService } from "../auth/token.service";
+import { UsersRepository } from "../users/users.repository";
+import type {
+  ApplicationApproval,
+  ApplicationReceipt,
+  KindergartenApplication,
+} from "@kinder/contracts";
 import type { Actor } from "../authz/actor";
 import { PlatformAccessService } from "../authz/platform-access.service";
 import { AuditRepository } from "../audit/audit.repository";
@@ -22,6 +36,10 @@ import type {
  * `submit` below is called from a `@Public()` route, and every decision in it
  * is shaped by that.
  */
+/** Matches `PlatformService` and `UsersService` — an invitation is an
+ * invitation wherever it is issued. */
+const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 @Injectable()
 export class OnboardingService {
   private readonly logger = new Logger(OnboardingService.name);
@@ -33,6 +51,9 @@ export class OnboardingService {
     private readonly reports: ReportsRepository,
     private readonly queue: ReportsQueue,
     private readonly storage: StorageService,
+    private readonly users: UsersRepository,
+    private readonly passwords: PasswordService,
+    private readonly tokens: TokenService,
   ) {}
 
   /**
@@ -160,7 +181,7 @@ export class OnboardingService {
     actor: Actor,
     id: string,
     dto: ApproveApplicationDto,
-  ): Promise<KindergartenApplication> {
+  ): Promise<ApplicationApproval> {
     this.platform.assertSuperAdmin(actor);
 
     const application = await this.repo.findApplication(id);
@@ -169,21 +190,69 @@ export class OnboardingService {
       throw new BadRequestException("Энэ хүсэлт аль хэдийн шийдэгдсэн байна");
     }
 
+    /*
+     * ★★★ Checked before anything is written. Approving used to create a
+     * kindergarten and nothing else, leaving a tenant **nobody could sign in
+     * to**; it now creates the first administrator too, and a username already
+     * taken must fail here rather than as a constraint violation halfway
+     * through the transaction.
+     */
+    if (await this.users.findByUsername(dto.adminUsername)) {
+      throw new ConflictException("Энэ нэвтрэх нэр аль хэдийн бүртгэлтэй байна");
+    }
+    if (await this.users.findByEmail(application.email)) {
+      throw new ConflictException("Энэ и-мэйл аль хэдийн бүртгэлтэй байна");
+    }
+
+    /*
+     * Hashing outside the transaction, exactly as `PlatformService.create`
+     * does: argon2 takes hundreds of milliseconds and a transaction held open
+     * for it is a transaction holding locks for it.
+     */
+    const passwordHash = await this.passwords.hash(randomBytes(32).toString("hex"));
+    const { token, hash } = this.tokens.createOneTimeToken();
+    const [lastName, ...rest] = application.directorName.trim().split(/\s+/);
+
     const year = new Date().getUTCFullYear();
     const last = await this.repo.lastContractNumber(contractNumberPrefix(year));
     const number = nextContractNumber(year, last);
 
-    const { kindergartenId, contract } = await this.repo.approve({
+    const { kindergartenId, admin, contract } = await this.repo.approve({
       applicationId: id,
       reviewedById: actor.userId,
       reviewNote: dto.reviewNote ?? null,
       kindergartenName: application.kindergartenName,
+      kindergartenAddress: application.address,
+      kindergartenPhone: application.phone,
+      kindergartenEmail: application.email,
+      admin: {
+        username: dto.adminUsername,
+        email: application.email,
+        // ★ The director's name as written, split on the first space. Mongolian
+        // convention puts the family name first, which is the order `lastName`
+        // then `firstName` expects. A single-word name becomes the surname with
+        // an empty given name, so the fallback keeps `firstName` non-empty.
+        lastName: lastName ?? application.directorName,
+        firstName: rest.join(" ") || application.directorName,
+        passwordHash,
+        invitationTokenHash: hash,
+        invitationExpiresAt: new Date(Date.now() + INVITATION_TTL_MS),
+      },
       number,
       childCount: application.childCount,
       annualFee: dto.annualFee,
       perChildMonthlyFee: dto.perChildMonthlyFee,
       startsOn: new Date(`${dto.startsOn}T00:00:00.000Z`),
       endsOn: new Date(`${dto.endsOn}T00:00:00.000Z`),
+    });
+
+    await this.audit.append({
+      kindergartenId,
+      actorUserId: actor.userId,
+      action: "INVITE",
+      objectType: "User",
+      objectId: admin.id,
+      metadata: { role: "ADMIN", username: admin.username },
     });
 
     await this.audit.append({
@@ -215,7 +284,17 @@ export class OnboardingService {
     });
     await this.queue.enqueue(job.id);
 
-    return this.get(actor, id);
+    /*
+     * ★ The invitation token is returned so the operator can hand it over —
+     * exactly as `PlatformService.create` does, and for the same reason: the
+     * kindergarten has no account yet, so there is nobody to email it to
+     * through the product's own notification path. Never logged.
+     */
+    return {
+      ...(await this.get(actor, id)),
+      invitationToken: token,
+      adminUsername: admin.username,
+    };
   }
 
   async reject(
