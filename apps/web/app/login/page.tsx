@@ -174,6 +174,19 @@ function LoginForm() {
           Нууц үгээ мартсан уу?
         </Link>
       </p>
+
+      {/*
+        ★ Step 1 of the onboarding flow (`docs/CONTRACT_ONBOARDING.md`) is
+        literally "a kindergarten presses this". Without a link on the one page
+        an unregistered kindergarten will ever reach, the public form exists and
+        nobody can find it.
+      */}
+      <p className="mt-3 border-t border-border pt-4 text-body text-muted">
+        Цэцэрлэг манайд бүртгүүлэх үү?{" "}
+        <Link href="/register" className="font-semibold text-primary hover:underline">
+          Байгууллагын бүртгэл
+        </Link>
+      </p>
     </AuthShell>
   );
 }

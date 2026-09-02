@@ -137,6 +137,55 @@ export class ReportsRepository {
    * `attached: false` means the job already had a result and this render lost
    * the race. The caller deletes the object it just uploaded.
    */
+  /**
+   * A contract and the application behind it, for the PDF template.
+   *
+   * ★ It lives here rather than in `OnboardingRepository` to avoid a module
+   * cycle: `OnboardingModule` imports `ReportsModule` to enqueue the job, so
+   * `ReportsModule` cannot import back the other way. The alternative — a
+   * shared "contracts-read" module for one query — is more structure than the
+   * problem deserves.
+   */
+  async contractForPdf(contractId: string) {
+    return this.prisma.contract.findFirst({
+      where: { id: contractId, deletedAt: null },
+      select: {
+        id: true,
+        number: true,
+        version: true,
+        childCount: true,
+        annualFee: true,
+        perChildMonthlyFee: true,
+        startsOn: true,
+        endsOn: true,
+        application: {
+          select: {
+            kindergartenName: true,
+            registrationNumber: true,
+            address: true,
+            directorName: true,
+            phone: true,
+            email: true,
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * Points the contract at its rendered PDF.
+   *
+   * ★ Ignores a second call rather than throwing. `pdfMediaFileId` is `@unique`,
+   * so a redelivered BullMQ job re-attaching a different file would fail the
+   * constraint and mark a job errored that in fact succeeded.
+   */
+  async attachContractPdf(contractId: string, mediaFileId: string) {
+    await this.prisma.contract.updateMany({
+      where: { id: contractId, pdfMediaFileId: null },
+      data: { pdfMediaFileId: mediaFileId },
+    });
+  }
+
   async completeJob(
     id: string,
     result: {

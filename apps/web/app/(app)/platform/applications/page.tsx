@@ -1,0 +1,367 @@
+"use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, FileText, X } from "lucide-react";
+import { useState } from "react";
+import {
+  KINDERGARTEN_APPLICATION_STATUS_LABEL,
+  CONTRACT_STATUS_LABEL,
+  kindergartenApplicationSchema,
+  paginated,
+  type KindergartenApplication,
+} from "@kinder/contracts";
+import { get, mutate } from "@/lib/api/browser";
+import { errorMessage, fieldErrors } from "@/lib/api/errors";
+import { PageHeader } from "@/components/shell/app-shell";
+import { RequireSuperAdmin } from "@/components/shell/require-role";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Field, Input, Textarea } from "@/components/ui/field";
+import { FormDialog } from "@/components/ui/form-dialog";
+import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { useToast } from "@/components/ui/toast";
+import { formatDate } from "@/lib/format";
+
+const listSchema = paginated(kindergartenApplicationSchema);
+
+const TABS = [
+  { value: "PENDING", label: "Хүлээгдэж буй" },
+  { value: "APPROVED", label: "Батлагдсан" },
+  { value: "REJECTED", label: "Татгалзсан" },
+] as const;
+
+/**
+ * Байгууллагын хүсэлт — `docs/CONTRACT_ONBOARDING.md` steps 3–4.
+ *
+ * ★★ The screen where a person decides whether a stranger's form becomes a
+ * tenant. Nothing before this point creates a `Kindergarten`, and that is the
+ * whole safety argument for having a public registration form at all.
+ *
+ * ★ Superadmin only, and the endpoints answer **404** rather than 403 to
+ * everybody else — a 403 would confirm the queue exists.
+ */
+export default function ApplicationsPage() {
+  return (
+    <RequireSuperAdmin>
+      <Applications />
+    </RequireSuperAdmin>
+  );
+}
+
+function Applications() {
+  const [status, setStatus] = useState<(typeof TABS)[number]["value"]>("PENDING");
+  const [reviewing, setReviewing] = useState<KindergartenApplication | null>(null);
+
+  const list = useQuery({
+    queryKey: ["platform", "applications", status],
+    queryFn: () => get(`/platform/applications?status=${status}&page=1&pageSize=50`, listSchema),
+  });
+
+  const items = list.data?.items ?? [];
+
+  return (
+    <div className="flex flex-col gap-5 lg:gap-6">
+      <PageHeader
+        title="Байгууллагын хүсэлт"
+        lede="Цэцэрлэгүүдийн нэгдэх хүсэлт. Батласнаар цэцэрлэг болон гэрээ үүснэ."
+      />
+
+      <div className="flex flex-wrap gap-2">
+        {TABS.map((tab) => (
+          <button
+            key={tab.value}
+            type="button"
+            onClick={() => setStatus(tab.value)}
+            className={`min-h-[40px] rounded-pill border px-3.5 text-body font-medium transition-colors ${
+              status === tab.value
+                ? "border-primary bg-primary-soft text-primary"
+                : "border-border bg-surface text-muted hover:bg-canvas"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {list.isLoading ? <LoadingState rows={3} /> : null}
+      {list.isError ? <ErrorState description={errorMessage(list.error)} /> : null}
+
+      {list.data && items.length === 0 ? (
+        <EmptyState
+          title="Хүсэлт алга"
+          description="Цэцэрлэг nomadkids.mn дээрх “Байгууллагын бүртгэл”-ээр хүсэлт илгээхэд энд харагдана."
+        />
+      ) : null}
+
+      <div className="flex flex-col gap-4">
+        {items.map((application) => (
+          <ApplicationCard
+            key={application.id}
+            application={application}
+            onReview={() => setReviewing(application)}
+          />
+        ))}
+      </div>
+
+      {reviewing ? (
+        <ReviewDialog application={reviewing} onClose={() => setReviewing(null)} />
+      ) : null}
+    </div>
+  );
+}
+
+function ApplicationCard({
+  application,
+  onReview,
+}: {
+  application: KindergartenApplication;
+  onReview: () => void;
+}) {
+  return (
+    <Card pad="roomy" className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="flex flex-wrap items-center gap-2">
+            <span className="text-lead font-semibold text-ink">{application.kindergartenName}</span>
+            <Badge tone={application.status === "PENDING" ? "sun" : "neutral"}>
+              {KINDERGARTEN_APPLICATION_STATUS_LABEL[application.status]}
+            </Badge>
+          </p>
+          <p className="text-caption text-muted">
+            РД {application.registrationNumber} · {application.childCount} хүүхэд ·{" "}
+            {formatDate(application.createdAt)}
+          </p>
+        </div>
+
+        {application.status === "PENDING" ? (
+          <Button size="sm" onClick={onReview}>
+            Шалгах
+          </Button>
+        ) : null}
+      </div>
+
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-body sm:grid-cols-2">
+        <Detail label="Эрхлэгч" value={application.directorName} />
+        <Detail label="Утас" value={application.phone} />
+        <Detail label="И-мэйл" value={application.email} />
+        <Detail label="Хаяг" value={application.address} />
+      </dl>
+
+      {application.note ? <p className="text-body text-muted">{application.note}</p> : null}
+
+      {application.reviewNote ? (
+        <p className="rounded-row bg-canvas px-3 py-2 text-caption text-muted">
+          Шийдвэрийн тэмдэглэл: {application.reviewNote}
+        </p>
+      ) : null}
+
+      {/*
+        ★ The contract appears here the moment it is created — step 4. The PDF
+        is rendered on the queue (CLAUDE.md §6), so `pdfMediaFileId` is null for
+        the first couple of seconds and the row says so rather than showing a
+        dead link.
+      */}
+      {application.contract ? (
+        <div className="flex flex-wrap items-center gap-2 border-t border-border-soft pt-3">
+          <FileText size={16} aria-hidden="true" className="text-muted" />
+          <span className="text-body font-medium text-ink">
+            Гэрээ №{application.contract.number}
+          </span>
+          <Badge tone="sky">{CONTRACT_STATUS_LABEL[application.contract.status]}</Badge>
+          <span className="text-caption text-muted">
+            {application.contract.pdfMediaFileId ? "PDF бэлэн" : "PDF бэлтгэгдэж байна…"}
+          </span>
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex gap-2">
+      <dt className="shrink-0 text-muted">{label}:</dt>
+      <dd className="min-w-0 truncate text-ink">{value}</dd>
+    </div>
+  );
+}
+
+/**
+ * The decision.
+ *
+ * ★★★ The prices are typed in here and **frozen onto the contract row**. They
+ * are not read from a settings table, now or ever: a contract is a document two
+ * parties sign, and if its figures were live then changing a price would
+ * silently rewrite every contract already printed and sealed.
+ */
+function ReviewDialog({
+  application,
+  onClose,
+}: {
+  application: KindergartenApplication;
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+
+  const thisYear = new Date().getUTCFullYear();
+  const [annualFee, setAnnualFee] = useState("300000");
+  const [perChildMonthlyFee, setPerChildMonthlyFee] = useState("1500");
+  const [startsOn, setStartsOn] = useState(`${thisYear}-09-01`);
+  const [endsOn, setEndsOn] = useState(`${thisYear + 1}-05-31`);
+  const [reviewNote, setReviewNote] = useState("");
+
+  const refresh = () =>
+    void queryClient.invalidateQueries({ queryKey: ["platform", "applications"] });
+
+  const approve = useMutation({
+    mutationFn: () =>
+      mutate(`/platform/applications/${application.id}/approve`, kindergartenApplicationSchema, {
+        method: "POST",
+        body: {
+          annualFee,
+          perChildMonthlyFee,
+          startsOn,
+          endsOn,
+          ...(reviewNote.trim() ? { reviewNote: reviewNote.trim() } : {}),
+        },
+      }),
+    onSuccess: (result) => {
+      toast.success(`Батлагдлаа. Гэрээ №${result.contract?.number ?? ""} үүслээ.`);
+      refresh();
+      onClose();
+    },
+  });
+
+  const reject = useMutation({
+    mutationFn: () =>
+      mutate(`/platform/applications/${application.id}/reject`, kindergartenApplicationSchema, {
+        method: "POST",
+        body: { reviewNote: reviewNote.trim() },
+      }),
+    onSuccess: () => {
+      toast.success("Хүсэлтээс татгалзлаа.");
+      refresh();
+      onClose();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const busy = approve.isPending || reject.isPending;
+  const errors = fieldErrors(approve.error);
+
+  return (
+    <FormDialog
+      open
+      onOpenChange={(next) => !next && onClose()}
+      busy={busy}
+      title={`${application.kindergartenName} — шалгах`}
+      footer={
+        <>
+          <Button
+            type="button"
+            variant="danger"
+            size="sm"
+            disabled={busy || reviewNote.trim().length < 4}
+            onClick={() => reject.mutate()}
+          >
+            <X size={16} aria-hidden="true" />
+            Татгалзах
+          </Button>
+          <Button type="submit" form="review-form" size="sm" disabled={busy}>
+            <Check size={16} aria-hidden="true" />
+            {approve.isPending ? "Батлаж байна…" : "Батлах"}
+          </Button>
+        </>
+      }
+    >
+      <form
+        id="review-form"
+        className="flex flex-col gap-4"
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!busy) approve.mutate();
+        }}
+      >
+        <FormError
+          message={
+            approve.isError && Object.keys(errors).length === 0 ? errorMessage(approve.error) : null
+          }
+        />
+
+        <p className="text-body text-muted">
+          Батласнаар цэцэрлэг үүсч, гэрээ дугаарлагдаж, PDF дараалалд орно. Доорх дүнгүүд гэрээн
+          дээр хэвлэгдэж, дараа нь өөрчлөгдөхгүй.
+        </p>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="Суурь хураамж (жилд)" error={errors.annualFee} required>
+            {({ id, invalid }) => (
+              <Input
+                id={id}
+                invalid={invalid}
+                inputMode="numeric"
+                value={annualFee}
+                onChange={(event) => setAnnualFee(event.target.value)}
+              />
+            )}
+          </Field>
+
+          <Field label="Хүүхэд/сар" error={errors.perChildMonthlyFee} required>
+            {({ id, invalid }) => (
+              <Input
+                id={id}
+                invalid={invalid}
+                inputMode="numeric"
+                value={perChildMonthlyFee}
+                onChange={(event) => setPerChildMonthlyFee(event.target.value)}
+              />
+            )}
+          </Field>
+
+          <Field label="Эхлэх огноо" error={errors.startsOn} required>
+            {({ id, invalid }) => (
+              <Input
+                id={id}
+                invalid={invalid}
+                type="date"
+                value={startsOn}
+                onChange={(event) => setStartsOn(event.target.value)}
+              />
+            )}
+          </Field>
+
+          <Field label="Дуусах огноо" error={errors.endsOn} required>
+            {({ id, invalid }) => (
+              <Input
+                id={id}
+                invalid={invalid}
+                type="date"
+                value={endsOn}
+                onChange={(event) => setEndsOn(event.target.value)}
+              />
+            )}
+          </Field>
+        </div>
+
+        <Field
+          label="Тэмдэглэл"
+          hint="Татгалзахад заавал — цэцэрлэгт шалтгааныг хэлнэ"
+          error={errors.reviewNote}
+        >
+          {({ id, describedBy }) => (
+            <Textarea
+              id={id}
+              aria-describedby={describedBy}
+              rows={2}
+              value={reviewNote}
+              onChange={(event) => setReviewNote(event.target.value)}
+            />
+          )}
+        </Field>
+      </form>
+    </FormDialog>
+  );
+}

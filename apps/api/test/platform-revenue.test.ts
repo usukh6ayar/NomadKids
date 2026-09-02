@@ -43,7 +43,13 @@ const server = () => app.getHttpServer();
 const MONTH = "2026-08";
 const FIRST = new Date(Date.UTC(2026, 7, 1));
 
-/** A funding row, as `calculateMonth` would have written it. */
+/**
+ * A funding row, as `calculateMonth` would have written it.
+ *
+ * ★ This is the **kindergarten's** money — what the state paid them. It is
+ * deliberately not what a revenue share is computed from; `payAccessFee` below
+ * is. See the correction note on `distribution` further down.
+ */
 async function fund(
   scenario: Scenario,
   amounts: { calculated: string; approved?: string; received?: string },
@@ -60,6 +66,32 @@ async function fund(
       calculatedAmount: amounts.calculated,
       approvedAmount: amounts.approved ?? null,
       receivedAmount: amounts.received ?? null,
+    },
+  });
+}
+
+/**
+ * A paid portal access fee — the **platform's** own income.
+ *
+ * ★ `paidAt` inside the month under test, and `status` left as whatever the
+ * subscription's school year implies. The aggregate filters on `paidAt`, not
+ * on status, precisely so that an `EXPIRED` subscription still counts towards
+ * the month its money actually arrived in.
+ */
+async function payAccessFee(
+  scenario: Scenario,
+  amount: string,
+  paidAt = new Date(Date.UTC(2026, 7, 15)),
+) {
+  return db.accessSubscription.create({
+    data: {
+      kindergartenId: scenario.kindergarten.id,
+      childId: scenario.child.id,
+      schoolYearId: scenario.schoolYear.id,
+      amount,
+      status: "ACTIVE",
+      paidAt,
+      expiresAt: new Date(Date.UTC(2027, 5, 30)),
     },
   });
 }
@@ -139,9 +171,11 @@ describe("access", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("GET /platform/revenue", () => {
-  it("totals every kindergarten's month, most received first", async () => {
+  it("reports the two pots separately — the platform's own income, and the state's", async () => {
     await fund(a, { calculated: "500000", approved: "500000", received: "500000" });
     await fund(b, { calculated: "900000", approved: "900000", received: "900000" });
+    await payAccessFee(a, "15000");
+    await payAccessFee(b, "9000");
 
     const res = await authed(
       request(server()).get(`/v1/platform/revenue?month=${MONTH}`),
@@ -150,7 +184,23 @@ describe("GET /platform/revenue", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.kindergartens).toHaveLength(2);
-    expect(res.body.kindergartens[0].name).toBe(b.kindergarten.name);
+
+    /*
+      ★★★ The correction of 2026-09-02.
+
+      `state` is what the state paid the kindergartens — their money.
+      `platform` is what the platform itself earned — access fees. They used to
+      be one set of figures called `totals`, and the payout list divided the
+      state's. A partner was being shown a share of income the platform never
+      receives, while the income it does receive was on no screen at all.
+    */
+    expect(res.body.state.received).toBe("1400000.00");
+    expect(res.body.platform.accessFees).toBe("24000.00");
+    expect(res.body.platform.accessPayments).toBe(2);
+
+    // Ordered by what each kindergarten paid **us**, not by their state transfer.
+    expect(res.body.kindergartens[0].name).toBe(a.kindergarten.name);
+    expect(res.body.kindergartens[0].accessFees).toBe("15000");
     /*
       ★ Two decimals, always — the totals and the distribution now agree.
 
@@ -160,7 +210,6 @@ describe("GET /platform/revenue", () => {
       which exists because §2.2 refuses a Prisma import in a service — see its
       own note. The client's `money()` trims the fraction for display.
     */
-    expect(res.body.totals.received).toBe("1400000.00");
   });
 
   /**
@@ -191,7 +240,9 @@ describe("GET /platform/revenue", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.kindergartens).toEqual([]);
-    expect(res.body.totals.received).toBe("0.00");
+    expect(res.body.state.received).toBe("0.00");
+    expect(res.body.platform.accessFees).toBe("0.00");
+    expect(res.body.platform.accessPayments).toBe(0);
   });
 
   it("refuses a malformed month", async () => {
@@ -311,8 +362,9 @@ describe("GET /platform/revenue/distribution", () => {
       .expect(201);
   }
 
-  it("divides the received income by the agreed shares", async () => {
-    await fund(a, { calculated: "1000000", approved: "1000000", received: "1000000" });
+  it("divides the platform's access-fee income by the agreed shares", async () => {
+    await payAccessFee(a, "600000");
+    await payAccessFee(b, "400000");
     await share("Ганбат", "60");
     await share("Сараа", "40");
 
@@ -322,7 +374,8 @@ describe("GET /platform/revenue/distribution", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(res.body.received).toBe("1000000.00");
+    expect(res.body.accessFees).toBe("1000000.00");
+    expect(res.body.accessPayments).toBe(2);
     expect(res.body.shares).toHaveLength(2);
     expect(res.body.shares.find((s: { name: string }) => s.name === "Ганбат").amount).toBe(
       "600000.00",
@@ -334,14 +387,15 @@ describe("GET /platform/revenue/distribution", () => {
   });
 
   /**
-   * ★ From **received**, not from calculated or approved.
+   * ★★★ The whole correction, as one assertion.
    *
-   * A share of money that has not arrived is a promise, and paying it out is
-   * the platform lending its own cash against a state transfer that can still
-   * be revised.
+   * A kindergarten that received a million in state funding and has paid the
+   * platform nothing produces a payout of **zero**. Before 2026-09-02 this
+   * test would have paid the partner 500,000₮ out of money the platform never
+   * touched.
    */
-  it("ignores money that was calculated but has not arrived", async () => {
-    await fund(a, { calculated: "1000000", approved: "1000000" });
+  it("does not divide the state's funding — that is the kindergarten's money", async () => {
+    await fund(a, { calculated: "1000000", approved: "1000000", received: "1000000" });
     await share("Ганбат", "50");
 
     const res = await authed(
@@ -349,8 +403,69 @@ describe("GET /platform/revenue/distribution", () => {
       operator,
     );
 
-    expect(res.body.received).toBe("0.00");
+    expect(res.body.accessFees).toBe("0.00");
     expect(res.body.shares[0].amount).toBe("0.00");
+  });
+
+  /**
+   * ★ Only money that has arrived.
+   *
+   * An `UNPAID` subscription is a fee that was raised, not one that was paid —
+   * `нэмэлт.md` §8's own rule that a QR nobody has scanned is not money that
+   * moved. `paidAt` is null on one, and the aggregate filters on `paidAt`.
+   */
+  it("ignores an access fee that was raised but never paid", async () => {
+    await db.accessSubscription.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        childId: a.child.id,
+        schoolYearId: a.schoolYear.id,
+        amount: "1000000",
+        status: "UNPAID",
+        paidAt: null,
+        expiresAt: new Date(Date.UTC(2027, 5, 30)),
+      },
+    });
+    await share("Ганбат", "50");
+
+    const res = await authed(
+      request(server()).get(`/v1/platform/revenue/distribution?month=${MONTH}`),
+      operator,
+    );
+
+    expect(res.body.accessFees).toBe("0.00");
+    expect(res.body.shares[0].amount).toBe("0.00");
+  });
+
+  /**
+   * ★★ Filtered on `paidAt`, never on `status`.
+   *
+   * A subscription becomes `EXPIRED` when its school year ends. Filtering on
+   * `ACTIVE` would make last year's income vanish out of last year's report
+   * the moment the year turned over — a partner's past payout silently
+   * rewritten by the passage of time.
+   */
+  it("still counts a fee whose subscription has since expired", async () => {
+    await db.accessSubscription.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        childId: a.child.id,
+        schoolYearId: a.schoolYear.id,
+        amount: "50000",
+        status: "EXPIRED",
+        paidAt: new Date(Date.UTC(2026, 7, 10)),
+        expiresAt: new Date(Date.UTC(2026, 7, 20)),
+      },
+    });
+    await share("Ганбат", "100");
+
+    const res = await authed(
+      request(server()).get(`/v1/platform/revenue/distribution?month=${MONTH}`),
+      operator,
+    );
+
+    expect(res.body.accessFees).toBe("50000.00");
+    expect(res.body.shares[0].amount).toBe("50000.00");
   });
 
   /**
@@ -361,7 +476,7 @@ describe("GET /platform/revenue/distribution", () => {
    * find it missing from a bank reconciliation later.
    */
   it("reports the unallocated remainder when the shares are under 100%", async () => {
-    await fund(a, { calculated: "1000000", received: "1000000" });
+    await payAccessFee(a, "1000000");
     await share("Ганбат", "70");
 
     const res = await authed(
@@ -375,7 +490,7 @@ describe("GET /platform/revenue/distribution", () => {
   });
 
   it("has nothing to divide, and says so, when no share is agreed", async () => {
-    await fund(a, { calculated: "500000", received: "500000" });
+    await payAccessFee(a, "500000");
 
     const res = await authed(
       request(server()).get(`/v1/platform/revenue/distribution?month=${MONTH}`),
@@ -388,7 +503,7 @@ describe("GET /platform/revenue/distribution", () => {
 
   /** A share that had already ended does not take a cut of a later month. */
   it("excludes a share that closed before the month", async () => {
-    await fund(a, { calculated: "500000", received: "500000" });
+    await payAccessFee(a, "500000");
     const created = await share("Ганбат", "50");
     await authed(request(server()).patch(`/v1/platform/partners/${created.body.id}`), operator)
       .send({ effectiveTo: "2026-07-31" })

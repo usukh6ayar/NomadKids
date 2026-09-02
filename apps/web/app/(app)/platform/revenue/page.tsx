@@ -116,16 +116,48 @@ function PlatformRevenue() {
       {revenue.data ? (
         <>
           {/*
-            ★ Three figures, in the order money actually moves: what the rules
-            computed, what the state approved, what arrived. The gap between
-            the first and the last is the operator's real question, and putting
-            them side by side is what makes it visible without arithmetic.
+            ★★★ The platform's own income, first and alone — corrected
+            2026-09-02.
+
+            This screen used to open on three figures from `FundingCalculation`
+            with "Орж ирсэн" marked as the real money. Every one of them is
+            **state funding paid to the kindergartens**. The platform does not
+            receive it and has no share in it, yet the payout list below divided
+            exactly that number among the revenue partners.
+
+            The operator's own income — paid portal access fees — was on no
+            screen at all. It leads now, because it is the only figure on this
+            page a partner's percentage is taken from.
           */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Total label="Тооцсон" value={revenue.data.totals.calculated} />
-            <Total label="Баталгаажсан" value={revenue.data.totals.approved} />
-            <Total label="Орж ирсэн" value={revenue.data.totals.received} accent />
-          </div>
+          <Card pad="roomy" tone="mint" className="flex flex-col gap-1">
+            <p className="text-caption font-medium text-mint-ink">
+              Платформын орлого — хандалтын төлбөр
+            </p>
+            <p className="text-display font-semibold tabular-nums text-ink">
+              {money(revenue.data.platform.accessFees)}
+            </p>
+            <p className="text-caption text-muted">
+              {revenue.data.platform.accessPayments} төлөлт · хуваарилалт үүнээс бодогдоно
+            </p>
+          </Card>
+
+          {/*
+            Kept, under an honest heading. An operator does want to know which
+            kindergartens are running and how much the state moved through
+            them — they must simply never read it as their own income again.
+          */}
+          <section aria-labelledby="state-heading">
+            <SectionHeader
+              id="state-heading"
+              title="Улсаас цэцэрлэгүүдэд"
+              lede="Цэцэрлэгүүдийн мөнгө — платформын орлого биш. Ажиллагааны хэмжүүр."
+            />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <Total label="Тооцсон" value={revenue.data.state.calculated} />
+              <Total label="Баталгаажсан" value={revenue.data.state.approved} />
+              <Total label="Орж ирсэн" value={revenue.data.state.received} />
+            </div>
+          </section>
 
           <IncomeByKindergarten rows={revenue.data.kindergartens} />
         </>
@@ -172,8 +204,7 @@ function IncomeByKindergarten({
       {rows.length === 0 ? (
         <Card pad="roomy">
           <p className="text-body text-muted">
-            Энэ сард тооцоо хийгдээгүй байна. Цэцэрлэгийн админ сарын тооцоог гүйцэтгэсний дараа энд
-            харагдана.
+            Энэ сард хандалтын төлбөр төлөгдөөгүй, сарын тооцоо ч хийгдээгүй байна.
           </p>
         </Card>
       ) : (
@@ -190,11 +221,26 @@ function IncomeByKindergarten({
                   the page component. "12 бүртгэл" says how much work the figure
                   rests on without naming a single child.
                 */}
-                <p className="text-caption text-muted">{row.entries} бүртгэл</p>
+                <p className="text-caption text-muted">
+                  {row.accessPayments} төлөлт · {row.entries} санхүүжилтийн бүртгэл
+                </p>
               </div>
+              {/*
+                ★ Two columns, and the emphasised one is the platform's.
+                `received` is the kindergarten's state transfer and stays as
+                context in muted type; `accessFees` is what this kindergarten
+                actually paid us, which is the column a partner checks.
+              */}
               <div className="flex shrink-0 items-baseline gap-4 tabular-nums">
-                <span className="text-caption text-muted">{money(row.calculated)}</span>
-                <span className="text-body font-semibold text-primary">{money(row.received)}</span>
+                <span className="text-caption text-muted" title="Улсаас цэцэрлэгт">
+                  {money(row.received)}
+                </span>
+                <span
+                  className="text-body font-semibold text-primary"
+                  title="Хандалтын төлбөр — платформын орлого"
+                >
+                  {money(row.accessFees)}
+                </span>
               </div>
             </div>
           ))}
@@ -221,7 +267,7 @@ function Distribution({ data }: { data: z.infer<typeof revenueDistributionSchema
       <SectionHeader
         id="distribution-heading"
         title="Хуваарилалт"
-        lede="Орж ирсэн орлогоос, тохирсон хувиар."
+        lede="Хандалтын төлбөрийн орлогоос, тохирсон хувиар."
       />
 
       <Card pad="roomy" className="flex flex-col gap-3">

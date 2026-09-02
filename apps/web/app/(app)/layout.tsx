@@ -35,6 +35,7 @@ import {
   UserCog,
   UtensilsCrossed,
   Users,
+  FileSignature,
   Wallet,
   // `X` was the picker modal's close button and went with it. The type stays:
   // `ICON_FOR` below is keyed by href and annotated with it.
@@ -299,6 +300,7 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
   "/admin/funding": Wallet,
   "/platform": Building2,
   "/platform/revenue": Wallet,
+  "/platform/applications": FileSignature,
 
   /*
    * ★ The seven administration screens, which had no icons because they had no
@@ -814,6 +816,18 @@ function platformNav(): NavItem[] {
       and this is the one addition the client asked for.
     */
     { href: "/platform/revenue", label: "Санхүү", icon: <Wallet {...iconProps} /> },
+    /*
+      ★ The onboarding queue — `docs/CONTRACT_ONBOARDING.md` step 3. It sits
+      below the money because approving an application is occasional work and
+      reading the month's income is not, but it is on the sidebar rather than
+      buried: an application nobody looks at is a kindergarten that filled in a
+      form and never heard back.
+    */
+    {
+      href: "/platform/applications",
+      label: "Байгууллагын хүсэлт",
+      icon: <FileSignature {...iconProps} />,
+    },
     { href: "/settings", label: "Профайл", icon: <Settings {...iconProps} /> },
   ];
 }
