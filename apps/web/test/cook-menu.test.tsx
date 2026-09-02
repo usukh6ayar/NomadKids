@@ -122,4 +122,109 @@ describe("the cook's weekly menu", () => {
     expect(await screen.findByText("Харшлын анхааруулга")).toBeInTheDocument();
     expect(screen.getByText(/Батаа Золбоо — Самар/)).toBeInTheDocument();
   });
+
+  /**
+   * ★★ The silent drop, fixed 2026-09-02.
+   *
+   * `fromDraft` filters out any row whose `name` is blank, and
+   * `menuDishInputSchema` requires `name.min(1)`. Picking a технологийн карт
+   * set `recipeId` and nothing else, so a freshly added row with a card chosen
+   * and no typing had an empty name — and was **removed from the PUT body**.
+   * The cook picked a dish, pressed Хадгалах, got a success toast, and the day
+   * came back empty.
+   *
+   * It is the shape of bug this file was created for: the save succeeded, so
+   * nothing anywhere reported a problem.
+   */
+  it("a dish picked from a технологийн карт is saved, not dropped for having no typed name", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["COOK"]) },
+      { path: `/kindergartens/${KG_ID}/menu/with-warnings`, body: [] },
+      {
+        path: `/kindergartens/${KG_ID}/recipes/approved`,
+        body: [
+          {
+            id: "66666666-6666-4666-8666-666666666666",
+            name: "Гурилтай шөл",
+            yieldPortions: 20,
+            mealKind: "LUNCH",
+          },
+        ],
+      },
+      {
+        path: `/kindergartens/${KG_ID}/menu/`,
+        method: "PUT",
+        body: {
+          id: "44444444-4444-4444-8444-444444444444",
+          date: "2026-01-05",
+          dishes: [],
+          totalCalories: null,
+        },
+      },
+    ]);
+
+    renderWithProviders(<MenuPage />);
+
+    const addButtons = await screen.findAllByRole("button", { name: "Хоол нэмэх" });
+    await user.click(addButtons[0]!);
+
+    // A new row opens on "Бэлэн хоол" once there is an approved card to pick.
+    await selectOption(user, "Бэлэн хоол", "Гурилтай шөл");
+
+    const saveButtons = screen.getAllByRole("button", { name: /Хадгалах/ });
+    await user.click(saveButtons[0]!);
+
+    await waitFor(() => expect(calls.some((c) => c.method === "PUT")).toBe(true));
+
+    const put = calls.find((c) => c.method === "PUT")!;
+    expect(put.body).toEqual({
+      dishes: [
+        {
+          name: "Гурилтай шөл",
+          // The card names its sitting, so the row follows it.
+          kind: "LUNCH",
+          allergenTags: [],
+          ingredients: null,
+          calories: null,
+          portions: 1,
+          recipeId: "66666666-6666-4666-8666-666666666666",
+        },
+      ],
+    });
+  });
+
+  /**
+   * ★ Discoverability, not capability.
+   *
+   * The picker used to render only when `recipes.length > 0`. A kindergarten
+   * seeded from `kitchen-reference.ts` starts with eight **DRAFT** cards, so
+   * `/recipes/approved` is empty and the control was absent entirely — the
+   * cook had no way to learn that ready dishes exist. CLAUDE.md §5: an empty
+   * state says what to do next.
+   */
+  it("with no approved card, the picker still appears and says where to make one", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["COOK"]) },
+      { path: `/kindergartens/${KG_ID}/menu/with-warnings`, body: [] },
+      { path: `/kindergartens/${KG_ID}/recipes/approved`, body: [] },
+    ]);
+
+    renderWithProviders(<MenuPage />);
+
+    const addButtons = await screen.findAllByRole("button", { name: "Хоол нэмэх" });
+    await user.click(addButtons[0]!);
+
+    const readyButtons = await screen.findAllByRole("button", { name: /Бэлэн хоол/ });
+    // Offered, and visibly unavailable — rather than missing with no explanation.
+    expect(readyButtons[0]!).toBeDisabled();
+
+    // Free text is the working path meanwhile, and it is the one selected.
+    expect(screen.getAllByRole("button", { name: /Өөрөө бичих/ })[0]!).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getAllByLabelText("Хоолны нэр")[0]!).toBeInTheDocument();
+  });
 });

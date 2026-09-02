@@ -26,8 +26,13 @@ import {
 import { formatDate } from "@/lib/format";
 
 const weekSchema = z.array(menuDayWithWarningsSchema);
+/*
+ * ★ `mealKind` joined the picked fields on 2026-09-02 so the picker can group
+ * its options by sitting. `listApprovedRecipes` has always selected it — the
+ * client was simply throwing it away.
+ */
 const approvedRecipesSchema = z.array(
-  recipeSummarySchema.pick({ id: true, name: true, yieldPortions: true }),
+  recipeSummarySchema.pick({ id: true, name: true, yieldPortions: true, mealKind: true }),
 );
 
 /** Monday of the week `date` falls in, as `YYYY-MM-DD`. */

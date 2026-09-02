@@ -264,6 +264,16 @@ looks right" is what everybody says before a leak. If it recurs, capture the
 full reporter output rather than the summary line, which is where this
 investigation stalled.
 
+★★★ **The web suite did it once too, on 2026-09-02**, which is worth recording
+because it widens the picture: `admin-users.test.tsx > "reports how many
+accounts the filter matched"` failed in `pnpm --filter web test` and passed
+alone. It then passed **four consecutive full runs** and has not recurred, and
+the reporter output was not captured — so this is a data point, not a
+diagnosis. What it rules out is the tempting explanation that this is a
+database-fixture problem specific to the api suite: the web suite has no
+database, no shared Nest app and no rate limiter. Whatever it is, it is not
+those. Capture the full output if it happens again.
+
 ---
 
 ## 5. UI rules
