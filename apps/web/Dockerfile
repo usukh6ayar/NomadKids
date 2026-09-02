@@ -45,9 +45,14 @@ RUN pnpm --filter contracts build
 # goes to `http://localhost:3001` from the visitor's own browser.
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_MEDIA_URL
+# ★ `metadataBase` in `app/layout.tsx` reads this. Unset, Next resolves the
+# OpenGraph image against `http://localhost:3000` and warns at build time only —
+# the deploy is green and every shared link previews a URL nobody can fetch.
+ARG NEXT_PUBLIC_SITE_URL
 
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
     NEXT_PUBLIC_MEDIA_URL=$NEXT_PUBLIC_MEDIA_URL \
+    NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL \
     NEXT_TELEMETRY_DISABLED=1
 
 RUN pnpm --filter @kinder/web build

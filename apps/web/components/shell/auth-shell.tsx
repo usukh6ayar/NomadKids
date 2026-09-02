@@ -31,10 +31,10 @@ export function AuthShell({ children }: { children: ReactNode }) {
         <main className="w-full max-w-[440px] rounded-card border border-border bg-surface px-7 py-8 [overflow-wrap:anywhere] min-[900px]:shadow-sm">
           <div className="mb-[22px] flex items-center gap-3.5">
             <Image
-              src="/logo-160.png"
+              src="/logo.png"
               alt="Бяцхан нүүдэлчид"
               width={54}
-              height={54}
+              height={58}
               className="w-[54px] shrink-0"
               style={{ height: "auto" }}
               priority
@@ -67,16 +67,22 @@ export function AuthShell({ children }: { children: ReactNode }) {
       >
         <div>
           {/*
-            Capped at the source file's own width. It is 160px tall, and scaling
-            it to 380 was visibly soft — a blurred logo on the first screen
-            anyone sees is worse than a small sharp one.
+            ★ This was capped at 210px, and the cap was a workaround, not a
+            design: the old `/logo-160.png` was 149px wide, so 380 rendered
+            visibly soft and a blurred logo on the first screen anyone sees is
+            worse than a small sharp one.
+
+            `/logo.png` is regenerated from the 1254² original, so the cap has
+            nothing left to protect against and the panel gets the size it was
+            drawn for. 300 on a 2× display asks for 600 source pixels; there are
+            1071.
           */}
           <Image
-            src="/logo-160.png"
+            src="/logo.png"
             alt=""
-            width={210}
-            height={210}
-            className="mx-auto w-[210px] max-w-full"
+            width={300}
+            height={322}
+            className="mx-auto w-[300px] max-w-full"
             style={{ height: "auto" }}
           />
           <p className="mt-6 text-title font-semibold text-ink">Хүүхэд бүрийн хөгжлийн түүх</p>

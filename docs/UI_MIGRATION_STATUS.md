@@ -101,7 +101,7 @@ two-column split with a branded card.
 | ---------------- | ------------------------------------- | --------------------------------------------------------------------------- |
 | Container        | bare form on canvas                   | white card, 440px, 18px radius, hairline border, soft shadow ≥900px         |
 | Desktop layout   | single centred column                 | two columns — card left, illustration panel right                           |
-| Brand            | text "NomadKids"                      | `logo-160.png` beside the uppercase two-line product title                  |
+| Brand            | text "NomadKids"                      | `logo.png` beside the uppercase two-line product title                      |
 | Subtitle         | "Хүүхдийн хөгжлийн цахим хавтас"      | "Багш, эцэг эх, администраторт зориулсан аюулгүй нэвтрэх систем."           |
 | Section heading  | absent                                | "Нэвтрэх", 1.35rem bold                                                     |
 | Role tabs        | absent                                | Багш / Эцэг эх / Админ segmented control                                    |
@@ -227,7 +227,7 @@ screen is inside it.
 | --------------- | -------------------------- | -------------------------------------------------- |
 | Sidebar width   | 232px                      | **244px**                                          |
 | Sidebar padding | `px-3 py-5`                | **18px 14px**                                      |
-| Brand           | `NK` square + "NomadKids"  | `mark-96.png` in a **40px `#f1efff`** rounded tile |
+| Brand           | `NK` square + "NomadKids"  | `mark.png` in a **40px `#f1efff`** rounded tile    |
 | Brand text      | one line                   | **two lines** — product name, then "Багшийн хэсэг" |
 | Nav item        | `text-sm`, `gap-2.5`       | **.92rem, 11px gap, 10px 12px padding**            |
 | Identity        | in the top bar             | **`whoami` block pinned to the sidebar foot**      |
@@ -319,7 +319,7 @@ this work. Recorded as a structural difference, not a styling mismatch.
 | `apps/web/app/(app)/layout.tsx`                               | the reference's five sections and quick links             |
 | `apps/web/components/ui/card.tsx`                             | `SectionHeader` takes a `lede`                            |
 | `apps/web/app/globals.css`                                    | `--color-faint`                                           |
-| `apps/web/public/logo-160.png` · `mark-96.png`                | brand assets, copied from the reference                   |
+| `apps/web/public/logo.png` · `mark.png`                       | brand assets, regenerated from `assets/logo.jpeg` (1254²) |
 | `apps/web/test/flows.test.tsx` · `csrf.test.tsx`              | identifier label updated                                  |
 | `apps/api/prisma/seed-demo.ts`                                | new — local-only demo data (§5)                           |
 | `apps/api/package.json`                                       | `seed:demo` script                                        |
