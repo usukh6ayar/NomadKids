@@ -205,6 +205,37 @@ docker compose -f docker-compose.prod.yml up -d --force-recreate api
 docker compose -f docker-compose.prod.yml exec api sh -lc 'echo $ACCESS_FEE_AMOUNT'
 ```
 
+★★★ **`*_DOMAIN` бол Caddy-ийн хаягийн жагсаалт, URL биш.**
+
+Cutover-ын үед `WEB_DOMAIN` болон `API_DOMAIN` таслалтай жагсаалт болсон —
+`nomadkids.mn, vps.nomadkids.mn` — учир нь нэг сервер хоёр нэрээр зэрэг хариулах
+ёстой байсан. Caddy үүнийг зөв уншина. Гэвч compose нь мөн тэр хувьсагчийг
+`NEXT_PUBLIC_API_URL: https://${API_DOMAIN}` гэж web build-д дамжуулж байсан тул
+браузерын bundle-д `https://api.nomadkids.mn, api-vps.nomadkids.mn` гэсэн
+**URL биш** мөр шигдэх болсон.
+
+★ Энэ нь **эвдрээгүй**, зөвхөн нэг шалтгаанаар: cutover-оос хойш web image
+дахин баригдаагүй байсан тул ажиллаж буй bundle нь өмнөх build-ийн ганц нэрийг
+хадгалсаар байв. Өөрөөр хэлбэл алдаа нь **дараагийн** деплойд, огт өөр шалтгаанаар
+хийгдсэн build дээр л илрэх байсан. Тохиргооны өөрчлөлт нь хараахан ажиллаагүй
+build дотор мина булж орхих нь хамгийн муу төрлийн эвдрэл юм.
+
+Тиймээс одоо тусгаарлагдсан (`.env.production.example`):
+
+| Хувьсагч | Утга | Хэн уншдаг |
+| --- | --- | --- |
+| `WEB_DOMAIN`, `API_DOMAIN`, `MEDIA_DOMAIN` | таслалтай жагсаалт байж **болно** | зөвхөн Caddy |
+| `WEB_ORIGIN`, `API_ORIGIN`, `MEDIA_ORIGIN` | яг **нэг** origin | web build (`NEXT_PUBLIC_*`), API |
+
+Хоёуланг нь буцааж нэг хувьсагч болгож нэгтгэх ёсгүй. Build-ийн дараа шалгах:
+
+```bash
+docker compose -f docker-compose.prod.yml exec web sh -lc \
+  'grep -rhoE "https://[a-zA-Z0-9._-]+nomadkids\.mn" apps/web/.next/static/chunks/ | sort -u'
+```
+
+Гарц нь ганц мөр, таслалгүй байх ёстой.
+
 Эхний ажиллуулалт 5–10 минут (image build). Дараалал:
 
 1. `db`, `redis`, `storage` эрүүл болтол хүлээнэ

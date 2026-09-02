@@ -6,6 +6,35 @@ import "./globals.css";
 
 const DESCRIPTION = "Цэцэрлэгийн хүүхдийн хөгжлийн цахим бүртгэл.";
 
+const FALLBACK_ORIGIN = "http://localhost:3000";
+
+/**
+ * The site's own origin, or the localhost default if the setting is missing or
+ * unparseable.
+ *
+ * ★ The `try` is not decoration. `new URL()` throws on a malformed value, this
+ * runs while the root layout's metadata is being built, and a throw there is
+ * every page in the product returning 500 — not a missing preview image.
+ *
+ * That is not hypothetical. The deployment's `API_DOMAIN` had become
+ * `api.nomadkids.mn, api-vps.nomadkids.mn` during the cutover, because Caddy
+ * takes a comma-separated list of site addresses, and compose was interpolating
+ * that same variable into a URL. The settings are separated now
+ * (`.env.production.example`), but the same shape of mistake is one careless
+ * edit away and the cost of surviving it is four lines.
+ *
+ * `middleware.ts` guards `NEXT_PUBLIC_MEDIA_URL` the same way and for the same
+ * stated reason: a typo in an environment variable should cost a missing photo,
+ * not the whole site.
+ */
+function siteOrigin(): URL {
+  try {
+    return new URL(process.env.NEXT_PUBLIC_SITE_URL ?? FALLBACK_ORIGIN);
+  } catch {
+    return new URL(FALLBACK_ORIGIN);
+  }
+}
+
 /**
  * ★ `metadataBase` is the setting that decides whether a shared link previews.
  *
@@ -26,7 +55,7 @@ const DESCRIPTION = "Цэцэрлэгийн хүүхдийн хөгжлийн ц
  * Listing them in `metadata.icons` as well would emit each tag twice.
  */
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
+  metadataBase: siteOrigin(),
   title: BRAND,
   description: DESCRIPTION,
   applicationName: BRAND,
