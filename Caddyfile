@@ -18,6 +18,21 @@
 	email {$ACME_EMAIL}
 }
 
+# ── www → the canonical host ─────────────────────────────────────────────────
+#
+# ★ A redirect, not a second copy of the site.
+#
+# Serving the app under both names is the easier config and it breaks sessions:
+# `COOKIE_DOMAIN` is empty on purpose (docs/SECURITY.md §3.1), so the cookie is
+# host-only, and a parent who logs in at www and then follows a link to the
+# apex is logged out with no explanation. One canonical host, one cookie.
+#
+# 308, not 301: it preserves the method, so a POST that lands here is not
+# silently turned into a GET.
+{$WWW_DOMAIN} {
+	redir https://{$WWW_REDIRECT_TO}{uri} permanent
+}
+
 # ── The web app ──────────────────────────────────────────────────────────────
 {$WEB_DOMAIN} {
 	encode zstd gzip

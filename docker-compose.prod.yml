@@ -44,6 +44,8 @@ services:
       # and Caddy refuses the whole config with "wrong argument count after
       # 'email'" — a restart loop with no TLS, found on the first real deploy.
       ACME_EMAIL: ${ACME_EMAIL}
+      WWW_DOMAIN: ${WWW_DOMAIN}
+      WWW_REDIRECT_TO: ${WWW_REDIRECT_TO}
     depends_on:
       - web
       - api
