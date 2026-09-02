@@ -202,6 +202,26 @@ export class OnboardingRepository {
     });
   }
 
+  /**
+   * A contract and the object its PDF lives in.
+   *
+   * ★ `pdf` is selected through the relation rather than looked up by id in the
+   * service, so the storage key can only be reached via a contract row — there
+   * is no method here that turns an arbitrary media id into a storage key.
+   */
+  async findContractWithPdf(id: string) {
+    return this.prisma.contract.findFirst({
+      where: { ...this.live, id },
+      select: {
+        id: true,
+        number: true,
+        kindergartenId: true,
+        pdfMediaFileId: true,
+        pdf: { select: { storageKey: true, originalName: true } },
+      },
+    });
+  }
+
   async findContract(id: string) {
     return this.prisma.contract.findFirst({
       where: { ...this.live, id },

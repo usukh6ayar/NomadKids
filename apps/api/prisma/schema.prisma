@@ -3056,6 +3056,7 @@ model MediaFile {
   kindergartenLogoOf Kindergarten?       @relation("KindergartenLogo")
   userPhotoOf        User?               @relation("UserPhoto")
   groupPhotoOf       Group?              @relation("GroupPhoto")
+  contractPdf        Contract?           @relation("ContractPdf")
 
   @@index([childId, purpose, uploadedAt(sort: Desc)])
   @@index([kindergartenId, uploadedAt(sort: Desc)])
@@ -3550,6 +3551,7 @@ model Contract {
   deletedAt DateTime?
 
   application  KindergartenApplication @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  pdf          MediaFile?              @relation("ContractPdf", fields: [pdfMediaFileId], references: [id], onDelete: SetNull)
   kindergarten Kindergarten?           @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
 
   @@index([status, createdAt(sort: Desc)])

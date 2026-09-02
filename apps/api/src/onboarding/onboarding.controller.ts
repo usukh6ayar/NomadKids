@@ -103,6 +103,13 @@ export class PlatformApplicationsController {
     return this.service.approve(actor, params.id, body);
   }
 
+  /**
+   * The generated contract, as a 302 to a presigned URL.
+   *
+   * ★ Under `platform/contracts`, not `platform/applications/:id`, because the
+   * id is the **contract's**. A route whose parameter means a different entity
+   * from the path it sits under is how the wrong id ends up being looked up.
+   */
   @Post(":id/reject")
   @HttpCode(HttpStatus.OK)
   async reject(
@@ -111,5 +118,20 @@ export class PlatformApplicationsController {
     @Body(new ZodValidationPipe(rejectApplicationSchema)) body: RejectApplicationDto,
   ) {
     return this.service.reject(actor, params.id, body);
+  }
+}
+
+/** Step 4's output — the contract PDF, superadmin only. */
+@Controller("platform/contracts")
+@SuperAdmin()
+export class PlatformContractsController {
+  constructor(private readonly service: OnboardingService) {}
+
+  @Get(":id/download")
+  async download(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.contractPdfUrl(actor, params.id);
   }
 }

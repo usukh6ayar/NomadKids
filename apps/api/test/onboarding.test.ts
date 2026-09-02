@@ -344,3 +344,53 @@ describe("approval", () => {
     expect(res.status).toBe(400);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Step 4's output — the contract PDF link
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("GET /platform/contracts/:id/download", () => {
+  async function approvedContract() {
+    const application = await request(server()).post("/v1/applications").send(FORM).expect(201);
+
+    await authed(
+      request(server()).post(`/v1/platform/applications/${application.body.id}/approve`),
+      operator,
+    )
+      .send(TERMS)
+      .expect(200);
+
+    const contract = await db.contract.findFirstOrThrow({
+      where: { applicationId: application.body.id },
+    });
+    return contract.id;
+  }
+
+  it("is 404 for a kindergarten admin, not 403", async () => {
+    const id = await approvedContract();
+
+    const res = await authed(
+      request(server()).get(`/v1/platform/contracts/${id}/download`),
+      adminA,
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  /**
+   * ★ The worker is off in tests (`REPORTS_WORKER_ENABLED=false`), so the PDF
+   * never renders and `pdfMediaFileId` stays null. That is the state a real
+   * operator sees for the couple of seconds after approving, and it must be a
+   * clear 400 rather than a presigned URL for an object that does not exist.
+   */
+  it("refuses a download before the PDF has been rendered", async () => {
+    const id = await approvedContract();
+
+    const res = await authed(
+      request(server()).get(`/v1/platform/contracts/${id}/download`),
+      operator,
+    );
+
+    expect(res.status).toBe(400);
+  });
+});

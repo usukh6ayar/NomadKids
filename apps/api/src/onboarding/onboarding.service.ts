@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { StorageService } from "../storage/storage.service";
 import type { ApplicationReceipt, KindergartenApplication } from "@kinder/contracts";
 import type { Actor } from "../authz/actor";
 import { PlatformAccessService } from "../authz/platform-access.service";
@@ -31,6 +32,7 @@ export class OnboardingService {
     private readonly audit: AuditRepository,
     private readonly reports: ReportsRepository,
     private readonly queue: ReportsQueue,
+    private readonly storage: StorageService,
   ) {}
 
   /**
@@ -87,6 +89,45 @@ export class OnboardingService {
     });
 
     return created;
+  }
+
+  /**
+   * A short-lived link to the generated contract — step 4's output.
+   *
+   * ★★ Authorization runs **strictly before** the URL is minted. A presigned
+   * URL is a bearer credential: generating one for an unauthorized caller has
+   * already leaked the object, whatever the response then says. The same
+   * ordering `MediaService.getDownloadUrl` and `FinanceReportPdfService`
+   * document, restated because getting it backwards is silent.
+   *
+   * ★ Superadmin only for now. Step 5 — the kindergarten downloading its own
+   * contract — is second wave and needs its own authorization path, not a
+   * widened version of this one.
+   */
+  async contractPdfUrl(actor: Actor, contractId: string) {
+    this.platform.assertSuperAdmin(actor);
+
+    const contract = await this.repo.findContractWithPdf(contractId);
+    if (!contract) throw new NotFoundException();
+    if (!contract.pdf) {
+      throw new BadRequestException("Гэрээний PDF хараахан бэлэн болоогүй байна");
+    }
+
+    await this.audit.append({
+      kindergartenId: contract.kindergartenId,
+      actorUserId: actor.userId,
+      action: "DOWNLOAD",
+      objectType: "Contract",
+      objectId: contract.id,
+      metadata: { number: contract.number },
+    });
+
+    const url = await this.storage.presignedGetUrl(
+      contract.pdf.storageKey,
+      contract.pdf.originalName,
+    );
+
+    return { url };
   }
 
   async list(actor: Actor, query: ListApplicationsQuery) {

@@ -3,7 +3,12 @@ import { AuditModule } from "../audit/audit.module";
 import { AuthzModule } from "../authz/authz.module";
 import { PrismaModule } from "../prisma/prisma.module";
 import { ReportsModule } from "../reports/reports.module";
-import { ApplicationsController, PlatformApplicationsController } from "./onboarding.controller";
+import { StorageModule } from "../storage/storage.module";
+import {
+  ApplicationsController,
+  PlatformApplicationsController,
+  PlatformContractsController,
+} from "./onboarding.controller";
 import { OnboardingRepository } from "./onboarding.repository";
 import { OnboardingService } from "./onboarding.service";
 
@@ -15,8 +20,12 @@ import { OnboardingService } from "./onboarding.service";
  * ~2.5 seconds and never happens inside a request.
  */
 @Module({
-  imports: [PrismaModule, AuthzModule, AuditModule, ReportsModule],
-  controllers: [ApplicationsController, PlatformApplicationsController],
+  imports: [PrismaModule, AuthzModule, AuditModule, ReportsModule, StorageModule],
+  controllers: [
+    ApplicationsController,
+    PlatformApplicationsController,
+    PlatformContractsController,
+  ],
   providers: [OnboardingRepository, OnboardingService],
   exports: [OnboardingService],
 })

@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, FileText, X } from "lucide-react";
 import { useState } from "react";
+import { z } from "zod";
 import {
   KINDERGARTEN_APPLICATION_STATUS_LABEL,
   CONTRACT_STATUS_LABEL,
@@ -169,13 +170,36 @@ function ApplicationCard({
             Гэрээ №{application.contract.number}
           </span>
           <Badge tone="sky">{CONTRACT_STATUS_LABEL[application.contract.status]}</Badge>
-          <span className="text-caption text-muted">
-            {application.contract.pdfMediaFileId ? "PDF бэлэн" : "PDF бэлтгэгдэж байна…"}
-          </span>
+          {application.contract.pdfMediaFileId ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void openContractPdf(application.contract!.id)}
+            >
+              PDF татах
+            </Button>
+          ) : (
+            <span className="text-caption text-muted">PDF бэлтгэгдэж байна…</span>
+          )}
         </div>
       ) : null}
     </Card>
   );
+}
+
+/**
+ * Opens the contract PDF.
+ *
+ * ★ The link is fetched and followed rather than rendered as an `<a href>`,
+ * because it is minted per click and lives for minutes. A presigned URL sitting
+ * in the DOM is a bearer credential in a page somebody may leave open.
+ */
+async function openContractPdf(contractId: string): Promise<void> {
+  const { url } = await get(
+    `/platform/contracts/${contractId}/download`,
+    z.object({ url: z.string() }),
+  );
+  window.open(url, "_blank", "noopener");
 }
 
 function Detail({ label, value }: { label: string; value: string }) {
