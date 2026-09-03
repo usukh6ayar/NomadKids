@@ -213,7 +213,7 @@ function ModeSwitch({
   onChange: (useRecipe: boolean) => void;
 }) {
   const base =
-    "min-h-[40px] flex-1 rounded-control px-3 text-body font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-55";
+    "min-h-[44px] flex-1 rounded-control px-3 text-body font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-55";
   const on = "bg-surface text-primary shadow-sm";
   const off = "text-muted hover:text-ink";
 

@@ -82,7 +82,7 @@ function TermReport({ childId }: { childId: string }) {
   if (child.isError) return <ErrorState description={errorMessage(child.error)} />;
 
   return (
-    <div className="flex flex-col gap-6 lg:gap-8">
+    <div className="page-band">
       <PageHeader
         title="Улирлын тайлан"
         lede={`${child.data!.lastName} ${child.data!.firstName}`}

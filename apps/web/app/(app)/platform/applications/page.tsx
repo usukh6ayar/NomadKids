@@ -76,7 +76,7 @@ function Applications() {
             key={tab.value}
             type="button"
             onClick={() => setStatus(tab.value)}
-            className={`min-h-[40px] rounded-pill border px-3.5 text-body font-medium transition-colors ${
+            className={`min-h-[44px] rounded-pill border px-3.5 text-body font-medium transition-colors ${
               status === tab.value
                 ? "border-primary bg-primary-soft text-primary"
                 : "border-border bg-surface text-muted hover:bg-canvas"

@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, FileText, Images, Sprout, User } from "lucide-react";
+import { ArrowLeft, ChevronRight, FileText, Images, Sprout, User } from "lucide-react";
 import { childDetailSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -118,7 +118,12 @@ export default function PortfolioPage() {
  */
 function PortfolioHubNav({ childId }: { childId: string }) {
   const items: { href: string; label: string; tone: "mint" | "sky"; Icon: typeof User }[] = [
-    { href: `/children/${childId}/portfolio/about-me`, label: "Миний тухай", tone: "mint", Icon: User },
+    {
+      href: `/children/${childId}/portfolio/about-me`,
+      label: "Миний тухай",
+      tone: "mint",
+      Icon: User,
+    },
     { href: `/children/${childId}/portfolio/growth`, label: "Хөгжил", tone: "mint", Icon: Sprout },
     // The bottom bar's own "Зураг" destination (`layout.tsx`'s `parentNav`) —
     // see this page's own doc comment for why it is the same route rather
@@ -126,25 +131,44 @@ function PortfolioHubNav({ childId }: { childId: string }) {
     { href: `/children/${childId}/overview`, label: "Зургийн цомог", tone: "sky", Icon: Images },
   ];
 
+  /*
+    ★ REDESIGN 2026-09-03 — the tiles became cards.
+
+    This is the emotional centre of the family's experience and the brief asks
+    it to carry the most design care, but the row was three loose glyphs on the
+    page background with a caption under each — visually the weakest element on
+    a screen that should be the warmest. They now sit on real surfaces with the
+    product's interactive treatment, a generous 64px tinted disc, and a chevron
+    that says the tile opens something.
+
+    The tint stays warm and restrained — the accent is the *disc*, not the card,
+    so the row reads as friendly rather than as three coloured rectangles. Card
+    surfaces stay white, which is what keeps this from tipping into the
+    "childish / game-like" register the direction explicitly rules out.
+
+    `items-stretch` on the grid so all three cards match height whatever their
+    label wraps to — "Зургийн цомог" wraps at 375px and the other two do not.
+  */
   return (
     <nav aria-label="Цахим хавтасны хэсгүүд">
-      <ul className="grid grid-cols-3 gap-2">
+      <ul className="grid grid-cols-3 items-stretch gap-2 sm:gap-3">
         {items.map(({ href, label, tone, Icon }) => (
-          <li key={href}>
+          <li key={href} className="flex">
             <Link
               href={href}
-              className="flex flex-col items-center gap-2 rounded-control px-2 py-3 text-center transition-transform hover:-translate-y-0.5"
+              className="card-interactive flex w-full flex-col items-center gap-2.5 rounded-card border border-border bg-surface px-2 py-4 text-center shadow-sm sm:px-3 sm:py-5"
             >
               <span
                 aria-hidden="true"
                 className={cn(
-                  "flex size-14 items-center justify-center rounded-card",
+                  "flex size-16 items-center justify-center rounded-card",
                   tone === "mint" ? "bg-mint text-mint-ink" : "bg-sky text-sky-ink",
                 )}
               >
-                <Icon size={26} />
+                <Icon size={28} />
               </span>
-              <span className="text-caption font-semibold leading-tight text-ink">{label}</span>
+              <span className="text-body font-semibold leading-snug text-ink">{label}</span>
+              <ChevronRight size={16} aria-hidden="true" className="text-faint" />
             </Link>
           </li>
         ))}

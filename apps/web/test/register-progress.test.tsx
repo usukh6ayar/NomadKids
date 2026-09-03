@@ -50,6 +50,31 @@ describe("бүртгэлийн явц", () => {
     expect(screen.queryByText("Тасалсан")).not.toBeInTheDocument();
   });
 
+  /**
+   * ★ The sixth status counts.
+   *
+   * `/groups/:id/attendance` built this breakdown from
+   * `ATTENDANCE_STATUS_ORDER`, which is five — it predates `OTHER` — while the
+   * buttons on the same screen render all six from `ATTENDANCE_STATUS_LABEL`
+   * and the API has accepted `OTHER` since 2026-09-02. So "Бусад" saved
+   * correctly and then went missing from the totals: `recorded` counted the
+   * child, the chips beneath did not, and the two disagreed by one on screen.
+   *
+   * Asserted here rather than in the page's own test because this strip is the
+   * shared surface all three registers report through.
+   */
+  it("reports Бусад when it has been used", () => {
+    render(
+      <RegisterProgress
+        recorded={15}
+        total={18}
+        breakdown={[...BREAKDOWN, { key: "OTHER", label: "Бусад", count: 1, tone: "sky" as const }]}
+      />,
+    );
+
+    expect(screen.getByText("Бусад")).toBeInTheDocument();
+  });
+
   it("keeps the caller's order rather than sorting by size", () => {
     render(<RegisterProgress recorded={14} total={18} breakdown={BREAKDOWN} />);
 

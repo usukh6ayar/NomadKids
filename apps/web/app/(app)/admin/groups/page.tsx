@@ -1084,7 +1084,7 @@ function ManageTeachersDialog({
             {assigned.map((t) => (
               <span
                 key={t.id}
-                className="inline-flex min-h-[40px] items-center gap-1.5 rounded-pill border border-border bg-canvas py-1 pl-3 pr-1.5 text-body"
+                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-pill border border-border bg-canvas py-1 pl-3 pr-1.5 text-body"
               >
                 <span className="text-ink">{fullName(t.membership?.user)}</span>
                 {t.role === "ASSISTANT" ? <Badge tone="sky">Туслах</Badge> : null}
@@ -1109,7 +1109,7 @@ function ManageTeachersDialog({
                     type="button"
                     onClick={() => setRemovingId(t.id)}
                     aria-label={`${fullName(t.membership?.user)}-г бүлгээс хасах`}
-                    className="grid size-9 place-items-center rounded-pill text-muted hover:bg-surface hover:text-danger"
+                    className="grid size-11 place-items-center rounded-pill text-muted hover:bg-surface hover:text-danger"
                   >
                     <UserMinus size={15} />
                   </button>

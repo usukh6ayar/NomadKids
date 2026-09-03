@@ -497,7 +497,7 @@ function AddPartnerDialog({
               type="button"
               onClick={onClose}
               aria-label="Хаах"
-              className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
+              className="grid size-11 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
             >
               <X size={18} aria-hidden="true" />
             </button>

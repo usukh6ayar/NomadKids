@@ -189,7 +189,7 @@ export function ChildMenu({
                 type="button"
                 onClick={() => setMonday((cur) => addDays(cur, -7))}
                 aria-label="Өмнөх долоо хоног"
-                className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
+                className="grid size-11 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
               >
                 <ChevronLeft size={18} aria-hidden="true" />
               </button>
@@ -200,7 +200,7 @@ export function ChildMenu({
                 type="button"
                 onClick={() => setMonday((cur) => addDays(cur, 7))}
                 aria-label="Дараах долоо хоног"
-                className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
+                className="grid size-11 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
               >
                 <ChevronRight size={18} aria-hidden="true" />
               </button>
@@ -233,7 +233,7 @@ export function ChildMenu({
               onClick={onClick}
               aria-pressed={quickView === value}
               className={cn(
-                "min-h-[40px] rounded-control text-caption font-semibold transition-colors",
+                "min-h-[44px] rounded-control text-caption font-semibold transition-colors",
                 quickView === value
                   ? "bg-primary text-primary-ink shadow-sm"
                   : "text-muted hover:text-ink",

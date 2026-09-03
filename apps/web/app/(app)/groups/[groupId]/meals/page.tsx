@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { RegisterProgress } from "@/components/register/register-progress";
+import { RegisterSaveBar } from "@/components/register/save-bar";
 import type { Tone } from "@/components/ui/tone";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
@@ -281,7 +282,7 @@ function GroupMeals() {
         ) : null}
       </Card>
 
-      {sheet.isLoading ? <LoadingState rows={5} /> : null}
+      {sheet.isLoading ? <LoadingState rows={6} shape="register" /> : null}
 
       {sheet.isError ? (
         <ErrorState
@@ -336,26 +337,12 @@ function GroupMeals() {
             which records what it is measured from and why a literal went stale.
           */}
           {isDirty ? (
-            <div className="sticky bottom-[var(--size-bottom-nav)] z-10 lg:bottom-4">
-              <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 shadow-lg">
-                <p className="min-w-0 text-body text-ink" aria-live="polite">
-                  {pendingCount} хүүхдийн бүртгэл хадгалагдаагүй байна
-                </p>
-                <div className="flex gap-2">
-                  <Button size="sm" disabled={save.isPending} onClick={() => save.mutate()}>
-                    {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    disabled={save.isPending}
-                    onClick={() => setDraft({})}
-                  >
-                    Болих
-                  </Button>
-                </div>
-              </Card>
-            </div>
+            <RegisterSaveBar
+              message={`${pendingCount} хүүхдийн бүртгэл хадгалагдаагүй байна`}
+              saving={save.isPending}
+              onSave={() => save.mutate()}
+              onCancel={() => setDraft({})}
+            />
           ) : null}
         </>
       ) : null}
@@ -436,11 +423,11 @@ function SittingPicker({
               title={locked && !active ? "Эхлээд хадгална уу эсвэл болино уу." : undefined}
               onClick={() => onChange(s.value)}
               className={cn(
-                "min-h-[44px] shrink-0 rounded-pill border px-4 text-body font-medium transition-colors",
+                "min-h-[44px] shrink-0 rounded-pill border px-4 text-body font-medium transition-all duration-150 active:translate-y-[1px]",
                 "disabled:cursor-not-allowed disabled:opacity-50",
                 active
                   ? "border-primary bg-primary-soft text-primary"
-                  : "border-border bg-surface text-muted hover:bg-canvas hover:text-ink",
+                  : "border-border bg-surface text-muted hover:border-faint hover:bg-canvas hover:text-ink",
               )}
             >
               {/* The full name where it fits, an abbreviation on a phone. */}
@@ -538,10 +525,10 @@ function ChildRow({
               aria-checked={selected}
               onClick={() => onSelect(s.value)}
               className={cn(
-                "min-h-[44px] flex-1 rounded-control border px-3 text-body font-medium transition-colors sm:flex-none",
+                "min-h-[44px] flex-1 rounded-control border px-3 text-body font-medium transition-all duration-150 active:translate-y-[1px] sm:flex-none",
                 selected
-                  ? s.selected
-                  : "border-border bg-surface text-muted hover:bg-canvas hover:text-ink",
+                  ? cn(s.selected, "font-semibold shadow-sm")
+                  : "border-border bg-surface text-muted hover:border-faint hover:bg-canvas hover:text-ink",
               )}
             >
               {s.label}

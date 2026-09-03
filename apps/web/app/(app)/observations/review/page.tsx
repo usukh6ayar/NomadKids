@@ -49,7 +49,7 @@ function ReviewQueue() {
   });
 
   return (
-    <div className="flex flex-col gap-6 lg:gap-8">
+    <div className="page-band">
       <PageHeader
         title="Эцэг эхийн ажиглалт — хянах"
         lede="Гэрээс хуваалцсан бичлэгүүдийг хянаж, хавтаст нэмнэ."
@@ -62,7 +62,7 @@ function ReviewQueue() {
         }
       />
 
-      {isLoading ? <LoadingState rows={3} /> : null}
+      {isLoading ? <LoadingState rows={2} shape="cards" /> : null}
 
       {isError ? (
         <ErrorState
