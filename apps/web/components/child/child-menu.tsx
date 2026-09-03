@@ -46,7 +46,10 @@ const MEAL_KIND_STYLE: Record<MealKind, { icon: ReactNode; tone: string }> = {
     tone: "bg-primary-soft text-primary",
   },
   LUNCH: { icon: <UtensilsCrossed size={22} aria-hidden="true" />, tone: "bg-mint text-mint-ink" },
-  AFTERNOON_SNACK: { icon: <Cookie size={22} aria-hidden="true" />, tone: "bg-peach text-peach-ink" },
+  AFTERNOON_SNACK: {
+    icon: <Cookie size={22} aria-hidden="true" />,
+    tone: "bg-peach text-peach-ink",
+  },
   EXTRA: { icon: <Soup size={22} aria-hidden="true" />, tone: "bg-sky text-sky-ink" },
 };
 
@@ -156,7 +159,8 @@ export function ChildMenu({
   // whichever segment matches what's actually showing, so paging the week
   // with the chevrons and landing back on today re-lights it on its own
   // instead of the two going out of sync.
-  const quickView = activeDate === todayIso ? "today" : activeDate === tomorrowIso ? "tomorrow" : "week";
+  const quickView =
+    activeDate === todayIso ? "today" : activeDate === tomorrowIso ? "tomorrow" : "week";
 
   const menu = useQuery({
     queryKey: ["kindergarten", kindergartenId, "menu", from, to],
@@ -189,7 +193,7 @@ export function ChildMenu({
                 type="button"
                 onClick={() => setMonday((cur) => addDays(cur, -7))}
                 aria-label="Өмнөх долоо хоног"
-                className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
+                className="grid size-11 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
               >
                 <ChevronLeft size={18} aria-hidden="true" />
               </button>
@@ -200,7 +204,7 @@ export function ChildMenu({
                 type="button"
                 onClick={() => setMonday((cur) => addDays(cur, 7))}
                 aria-label="Дараах долоо хоног"
-                className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
+                className="grid size-11 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
               >
                 <ChevronRight size={18} aria-hidden="true" />
               </button>
@@ -222,8 +226,22 @@ export function ChildMenu({
         >
           {(
             [
-              ["today", "Өнөөдөр", () => { setMonday(mondayOf(now)); setSelectedOffset(mondayFirstIndex(now)); }],
-              ["tomorrow", "Маргааш", () => { setMonday(mondayOf(tomorrow)); setSelectedOffset(mondayFirstIndex(tomorrow)); }],
+              [
+                "today",
+                "Өнөөдөр",
+                () => {
+                  setMonday(mondayOf(now));
+                  setSelectedOffset(mondayFirstIndex(now));
+                },
+              ],
+              [
+                "tomorrow",
+                "Маргааш",
+                () => {
+                  setMonday(mondayOf(tomorrow));
+                  setSelectedOffset(mondayFirstIndex(tomorrow));
+                },
+              ],
               ["week", "7 хоног", () => setMonday(mondayOf(now))],
             ] as const
           ).map(([value, label, onClick]) => (
@@ -233,7 +251,7 @@ export function ChildMenu({
               onClick={onClick}
               aria-pressed={quickView === value}
               className={cn(
-                "min-h-[40px] rounded-control text-caption font-semibold transition-colors",
+                "min-h-[44px] rounded-control text-caption font-semibold transition-colors",
                 quickView === value
                   ? "bg-primary text-primary-ink shadow-sm"
                   : "text-muted hover:text-ink",

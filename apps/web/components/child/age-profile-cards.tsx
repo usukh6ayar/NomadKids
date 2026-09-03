@@ -235,7 +235,9 @@ export function FavoritesCard({
           }}
         >
           <FormError
-            message={save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null}
+            message={
+              save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null
+            }
           />
           <div className="grid gap-4 sm:grid-cols-2">
             {AGE_FIELDS.filter((f) => FAVORITE_KEYS.includes(f.key)).map((field) => (
@@ -328,7 +330,9 @@ function PresetCard({
           }}
         >
           <FormError
-            message={save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null}
+            message={
+              save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null
+            }
           />
           <Field label={title} error={errors[fieldKey]}>
             {({ id, describedBy, invalid }) => (
@@ -348,7 +352,15 @@ function PresetCard({
   );
 }
 
-export function SkillsCard({ childId, age, profile }: { childId: string; age: Age; profile: Profile }) {
+export function SkillsCard({
+  childId,
+  age,
+  profile,
+}: {
+  childId: string;
+  age: Age;
+  profile: Profile;
+}) {
   return (
     <PresetCard
       childId={childId}
@@ -474,7 +486,9 @@ export function CharacterCard({
           }}
         >
           <FormError
-            message={save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null}
+            message={
+              save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null
+            }
           />
           <Field label="Зан чанар" error={errors.personality}>
             {({ id, describedBy, invalid }) => (

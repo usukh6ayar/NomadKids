@@ -27,7 +27,13 @@ import { isPresent } from "@/lib/utils";
 const ageProfilesSchema = z.array(ageProfileSchema);
 
 /** RFP fields the favourites table doesn't already cover — see this page's own doc comment. */
-const OTHER_FIELD_KEYS = ["personality", "emotionalTraits", "learningInterest", "newSkills", "familyMembers"] as const;
+const OTHER_FIELD_KEYS = [
+  "personality",
+  "emotionalTraits",
+  "learningInterest",
+  "newSkills",
+  "familyMembers",
+] as const;
 
 /**
  * "Хөгжлийн харьцуулалт" — client reference screenshot, 2026-08-30. Every
@@ -148,12 +154,12 @@ export default function GrowthComparePage() {
       <section aria-labelledby="character-compare-heading">
         <SectionHeader id="character-compare-heading" title="Хувь хүний онцлог" />
         <AgeTable
-          rows={AGE_FIELDS.filter((f) => (OTHER_FIELD_KEYS as readonly string[]).includes(f.key)).map(
-            (field) => ({
-              label: field.label,
-              cells: PORTFOLIO_AGES.map((age) => String(profileFor(age)?.[field.key] ?? "—")),
-            }),
-          )}
+          rows={AGE_FIELDS.filter((f) =>
+            (OTHER_FIELD_KEYS as readonly string[]).includes(f.key),
+          ).map((field) => ({
+            label: field.label,
+            cells: PORTFOLIO_AGES.map((age) => String(profileFor(age)?.[field.key] ?? "—")),
+          }))}
         />
       </section>
     </div>

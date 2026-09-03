@@ -41,7 +41,9 @@ afterAll(async () => {
 });
 
 async function createCook(kindergartenId: string, label: string): Promise<AuthSession> {
-  const user = await createUser({ username: `cook-${label}-${Math.random().toString(36).slice(2, 8)}` });
+  const user = await createUser({
+    username: `cook-${label}-${Math.random().toString(36).slice(2, 8)}`,
+  });
   await createMembership(user.id, kindergartenId, "COOK");
   return login(app, user.username);
 }
@@ -161,7 +163,10 @@ describe("authorization", () => {
 
   it("a cook from another kindergarten cannot patch kindergarten A's ingredient by id", async () => {
     const ingredient = await createIngredient(cookA, a.kindergarten.id);
-    const res = await authed(request(server()).patch(`/v1/ingredients/${ingredient.id}`), cookB).send({
+    const res = await authed(
+      request(server()).patch(`/v1/ingredients/${ingredient.id}`),
+      cookB,
+    ).send({
       name: "Хулгайлсан нэр",
     });
     expect(res.status).toBe(404);
@@ -171,9 +176,10 @@ describe("authorization", () => {
   });
 
   it("only COOK/ADMIN may approve or consume a menu day — a teacher gets 404", async () => {
-    await authed(request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-04-01`), teacherA).send(
-      { dishes: [{ name: "x", allergenTags: [] }] },
-    );
+    await authed(
+      request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-04-01`),
+      teacherA,
+    ).send({ dishes: [{ name: "x", allergenTags: [] }] });
     const approve = await authed(
       request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-04-01/approve`),
       teacherA,
@@ -267,7 +273,12 @@ describe("recipes", () => {
     expect(detail.status).toBe(200);
     // 500g flour + 500ml milk against yieldPortions 10 — see kitchen.test.ts's
     // own comment block in the plan doc for the arithmetic.
-    expect(detail.body.nutritionTotal).toEqual({ calories: 2050, protein: 65, fat: 20, carbs: 375 });
+    expect(detail.body.nutritionTotal).toEqual({
+      calories: 2050,
+      protein: 65,
+      fat: 20,
+      carbs: 375,
+    });
     expect(detail.body.nutritionPerPortion).toEqual({
       calories: 205,
       protein: 6.5,
@@ -382,13 +393,18 @@ describe("food orders", () => {
       request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/stock`),
       cookA,
     );
-    const flourLevel = levels.body.find((l: { ingredient: { id: string } }) => l.ingredient.id === flour.id);
+    const flourLevel = levels.body.find(
+      (l: { ingredient: { id: string } }) => l.ingredient.id === flour.id,
+    );
     expect(Number(flourLevel.onHand)).toBe(5000);
   });
 
   it("a short delivery is recorded with the override, not the ordered quantity", async () => {
     const supplier = await createSupplier();
-    const milk = await createIngredient(cookA, a.kindergarten.id, { name: "Сүү", unit: "MILLILITER" });
+    const milk = await createIngredient(cookA, a.kindergarten.id, {
+      name: "Сүү",
+      unit: "MILLILITER",
+    });
 
     const order = await authed(
       request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/food-orders`),
@@ -410,7 +426,9 @@ describe("food orders", () => {
       request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/stock`),
       cookA,
     );
-    const milkLevel = level.body.find((l: { ingredient: { id: string } }) => l.ingredient.id === milk.id);
+    const milkLevel = level.body.find(
+      (l: { ingredient: { id: string } }) => l.ingredient.id === milk.id,
+    );
     expect(Number(milkLevel.onHand)).toBe(1900);
   });
 
@@ -466,7 +484,9 @@ describe("stock", () => {
       request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/stock`),
       cookA,
     );
-    const level = levels.body.find((l: { ingredient: { id: string } }) => l.ingredient.id === flour.id);
+    const level = levels.body.find(
+      (l: { ingredient: { id: string } }) => l.ingredient.id === flour.id,
+    );
     expect(Number(level.onHand)).toBe(800);
   });
 
@@ -641,7 +661,10 @@ describe("menu integration", () => {
 
     // Stock the pantry first.
     const supplier = (
-      await authed(request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/suppliers`), cookA).send({
+      await authed(
+        request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/suppliers`),
+        cookA,
+      ).send({
         name: "Нийлүүлэгч",
       })
     ).body;
@@ -694,8 +717,12 @@ describe("menu integration", () => {
       request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/stock`),
       cookA,
     );
-    const flourLevel = levels.body.find((l: { ingredient: { id: string } }) => l.ingredient.id === flour.id);
-    const milkLevel = levels.body.find((l: { ingredient: { id: string } }) => l.ingredient.id === milk.id);
+    const flourLevel = levels.body.find(
+      (l: { ingredient: { id: string } }) => l.ingredient.id === flour.id,
+    );
+    const milkLevel = levels.body.find(
+      (l: { ingredient: { id: string } }) => l.ingredient.id === milk.id,
+    );
     // 5000 received − (1000 × 2 batches) consumed.
     expect(Number(flourLevel.onHand)).toBe(3000);
     // 5000 received − (1000 × 1 batch) consumed.
@@ -767,7 +794,10 @@ describe("reports", () => {
     await approveRecipe(cookA, milkRecipe.id);
 
     const supplier = (
-      await authed(request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/suppliers`), cookA).send({
+      await authed(
+        request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/suppliers`),
+        cookA,
+      ).send({
         name: "Нийлүүлэгч",
       })
     ).body;
@@ -821,8 +851,12 @@ describe("reports", () => {
     );
     expect(res.status).toBe(200);
 
-    const flourRow = res.body.find((r: { ingredient: { id: string } }) => r.ingredient.id === flour.id);
-    const milkRow = res.body.find((r: { ingredient: { id: string } }) => r.ingredient.id === milk.id);
+    const flourRow = res.body.find(
+      (r: { ingredient: { id: string } }) => r.ingredient.id === flour.id,
+    );
+    const milkRow = res.body.find(
+      (r: { ingredient: { id: string } }) => r.ingredient.id === milk.id,
+    );
     expect(Number(flourRow.quantity)).toBe(1000);
     expect(Number(milkRow.quantity)).toBe(1000);
   });
@@ -850,8 +884,12 @@ describe("reports", () => {
     );
     expect(res.status).toBe(200);
 
-    const flourRow = res.body.find((r: { ingredient: { id: string } }) => r.ingredient.id === flour.id);
-    const milkRow = res.body.find((r: { ingredient: { id: string } }) => r.ingredient.id === milk.id);
+    const flourRow = res.body.find(
+      (r: { ingredient: { id: string } }) => r.ingredient.id === flour.id,
+    );
+    const milkRow = res.body.find(
+      (r: { ingredient: { id: string } }) => r.ingredient.id === milk.id,
+    );
     // Still 1000 from the `consume` call — the -300 adjustment must not add in.
     expect(Number(flourRow.quantity)).toBe(1000);
     expect(Number(milkRow.quantity)).toBe(1000);

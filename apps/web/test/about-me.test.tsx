@@ -1,6 +1,12 @@
 import { screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderWithProviders, sessionFor, setParams, setSearchParams, stubApi } from "./support/render";
+import {
+  renderWithProviders,
+  sessionFor,
+  setParams,
+  setSearchParams,
+  stubApi,
+} from "./support/render";
 import AboutMePage from "@/app/(app)/children/[childId]/portfolio/about-me/page";
 
 const CHILD_ID = "44444444-4444-4444-8444-444444444444";

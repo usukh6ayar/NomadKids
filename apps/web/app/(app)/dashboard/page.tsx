@@ -9,7 +9,7 @@ import { errorMessage } from "@/lib/api/errors";
 import { formatDate } from "@/lib/format";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
-import { ErrorState, LoadingState } from "@/components/ui/states";
+import { ErrorState, LoadingState, Skeleton } from "@/components/ui/states";
 import { AttendanceToday } from "@/components/dashboard/attendance-today";
 import { TodayMenu } from "@/components/dashboard/today-menu";
 import { SurveySummary } from "@/components/dashboard/survey-summary";
@@ -142,7 +142,7 @@ function Home() {
 
   if (hasRole("ADMIN") && !hasRole("TEACHER")) {
     return (
-      <div className="flex flex-col gap-5 py-2">
+      <div className="page-band py-2">
         <PageHeader title="Удирдлагын самбар" lede="Цэцэрлэгийн өнөөдрийн байдал." />
         <AdminOverview />
       </div>
@@ -193,16 +193,29 @@ function TeacherDashboard() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-6 lg:gap-8">
+      <div className="page-band">
         {header("Ачаалж байна…")}
-        <LoadingState rows={4} />
+        {/*
+          ★ Card-shaped, and paired at the top like the real thing.
+
+          The skeleton used to be four identical 72px bars for a screen whose
+          first band is two square tiles and whose rest is a stack of card
+          bands — so the page visibly rearranged itself when the query landed.
+          §4.1 asks loading and error to share the header so nothing shifts;
+          the body has to hold up its half of that.
+        */}
+        <div className="grid grid-cols-2 gap-3 md:gap-4 lg:gap-5">
+          <Skeleton className="h-[168px] w-full rounded-card" />
+          <Skeleton className="h-[168px] w-full rounded-card" />
+        </div>
+        <LoadingState rows={3} shape="cards" />
       </div>
     );
   }
 
   if (isError) {
     return (
-      <div className="flex flex-col gap-6 lg:gap-8">
+      <div className="page-band">
         {header("Мэдээлэл ачаалж чадсангүй")}
         <ErrorState
           description={errorMessage(error)}
@@ -242,7 +255,7 @@ function TeacherDashboard() {
     // 20px between bands on a phone, 24px from `lg` — the brief's own section
     // rhythm, and a step above the 16/20px gap between cards inside a band so
     // the grouping is visible without a divider.
-    <div className="flex flex-col gap-5 lg:gap-6">
+    <div className="page-band">
       {header(
         /*
           Group · date, per the sketch — but only where naming one group is

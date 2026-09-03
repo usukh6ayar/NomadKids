@@ -154,7 +154,7 @@ function ProfileForm() {
 
   const errors = fieldErrors(save.error);
 
-  if (isLoading) return <LoadingState rows={3} />;
+  if (isLoading) return <LoadingState rows={4} shape="text" />;
   if (isError) return <ErrorState description={errorMessage(error)} />;
 
   return (

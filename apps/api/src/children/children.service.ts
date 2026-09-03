@@ -388,9 +388,7 @@ export class ChildrenService {
     if (!child) throw new NotFoundException();
 
     const active = child.enrollments.find((e) => e.status === "ACTIVE") ?? null;
-    const teachers = active?.group
-      ? await this.repo.listActiveGroupTeachers(active.group.id)
-      : [];
+    const teachers = active?.group ? await this.repo.listActiveGroupTeachers(active.group.id) : [];
 
     return {
       child: { id: child.id, firstName: child.firstName, lastName: child.lastName },

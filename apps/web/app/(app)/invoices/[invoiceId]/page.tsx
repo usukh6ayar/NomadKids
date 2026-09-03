@@ -131,7 +131,9 @@ function InvoiceDetail() {
           {data.lineItems.map((line) => (
             <div key={line.id} className="flex items-center justify-between gap-3 px-4 py-3">
               <div className="min-w-0">
-                <p className="text-body font-medium text-ink">{INVOICE_LINE_TYPE_LABEL[line.type]}</p>
+                <p className="text-body font-medium text-ink">
+                  {INVOICE_LINE_TYPE_LABEL[line.type]}
+                </p>
                 {line.description ? (
                   <p className="text-caption text-muted">{line.description}</p>
                 ) : null}
@@ -161,7 +163,9 @@ function Row({ label, value, accent = false }: { label: string; value: string; a
   return (
     <div className="flex items-baseline justify-between gap-2">
       <dt className="text-caption text-muted">{label}</dt>
-      <dd className={`text-body font-semibold tabular-nums ${accent ? "text-primary" : "text-ink"}`}>
+      <dd
+        className={`text-body font-semibold tabular-nums ${accent ? "text-primary" : "text-ink"}`}
+      >
         {value}
       </dd>
     </div>
@@ -267,10 +271,15 @@ function PaymentsSection({
       ) : (
         <Card className="mb-3 divide-y divide-border-soft">
           {invoice.payments.map((payment) => (
-            <div key={payment.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+            <div
+              key={payment.id}
+              className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+            >
               <div className="min-w-0">
                 <p className="flex flex-wrap items-center gap-2">
-                  <span className={`text-body font-medium ${payment.voidedAt ? "text-muted line-through" : "text-ink"}`}>
+                  <span
+                    className={`text-body font-medium ${payment.voidedAt ? "text-muted line-through" : "text-ink"}`}
+                  >
                     {money(payment.amount)}
                   </span>
                   <Badge tone="sky">{PAYMENT_METHOD_LABEL[payment.method]}</Badge>

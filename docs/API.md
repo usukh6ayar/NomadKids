@@ -205,20 +205,20 @@ list, so the header cannot report a total the rows beneath it contradict.
 
 ## 5. Children, guardianships, enrollment
 
-| Method | Route                       | Role           | Ownership           | Request                                                            | Response                              |
-| ------ | --------------------------- | -------------- | ------------------- | ------------------------------------------------------------------ | ------------------------------------- |
-| GET    | `/children`                 | any            | actor's visible set | `?q&groupId&schoolYearId&status&sex&ageMin&ageMax&sort&order&page` | paginated summaries                   |
-| POST   | `/children`                 | admin, teacher | kg                  | names, sex, dateOfBirth, groupId                                   | created child + first enrollment      |
-| GET    | `/children/:id`             | any            | child               | —                                                                  | detail + current group + guardians    |
-| PATCH  | `/children/:id`             | admin, teacher | child:write         | names, dob, health notes, status                                   | updated                               |
-| POST   | `/children/:id/photo`       | admin, teacher | child:write         | multipart image                                                    | MediaFile ref                         |
-| GET    | `/children/:id/guardians`   | any            | child               | —                                                                  | guardians + relation                  |
-| POST   | `/children/:id/guardians`   | admin          | kg:admin            | userId or new-user fields, relation                                | guardianship                          |
-| PATCH  | `/guardianships/:id`        | admin          | kg:admin            | relation, isPrimary, **canView**                                   | updated                               |
-| GET    | `/children/:id/enrollments` | any            | child               | —                                                                  | full history, newest first            |
-| GET    | `/children/:id/enrollment-archive` | any     | child               | —                                                                  | current placement + teachers + past history |
-| POST   | `/children/:id/enrollments` | admin          | kg:admin            | groupId, schoolYearId, startedOn                                   | created; ends the previous active one |
-| PATCH  | `/enrollments/:id`          | admin          | kg:admin            | endedOn, status                                                    | updated                               |
+| Method | Route                              | Role           | Ownership           | Request                                                            | Response                                    |
+| ------ | ---------------------------------- | -------------- | ------------------- | ------------------------------------------------------------------ | ------------------------------------------- |
+| GET    | `/children`                        | any            | actor's visible set | `?q&groupId&schoolYearId&status&sex&ageMin&ageMax&sort&order&page` | paginated summaries                         |
+| POST   | `/children`                        | admin, teacher | kg                  | names, sex, dateOfBirth, groupId                                   | created child + first enrollment            |
+| GET    | `/children/:id`                    | any            | child               | —                                                                  | detail + current group + guardians          |
+| PATCH  | `/children/:id`                    | admin, teacher | child:write         | names, dob, health notes, status                                   | updated                                     |
+| POST   | `/children/:id/photo`              | admin, teacher | child:write         | multipart image                                                    | MediaFile ref                               |
+| GET    | `/children/:id/guardians`          | any            | child               | —                                                                  | guardians + relation                        |
+| POST   | `/children/:id/guardians`          | admin          | kg:admin            | userId or new-user fields, relation                                | guardianship                                |
+| PATCH  | `/guardianships/:id`               | admin          | kg:admin            | relation, isPrimary, **canView**                                   | updated                                     |
+| GET    | `/children/:id/enrollments`        | any            | child               | —                                                                  | full history, newest first                  |
+| GET    | `/children/:id/enrollment-archive` | any            | child               | —                                                                  | current placement + teachers + past history |
+| POST   | `/children/:id/enrollments`        | admin          | kg:admin            | groupId, schoolYearId, startedOn                                   | created; ends the previous active one       |
+| PATCH  | `/enrollments/:id`                 | admin          | kg:admin            | endedOn, status                                                    | updated                                     |
 
 `GET /children` returns the actor's visible set — a parent sees only their own
 children, a teacher only their groups' children, an admin their kindergartens'.

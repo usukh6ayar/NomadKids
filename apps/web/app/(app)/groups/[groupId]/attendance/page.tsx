@@ -19,6 +19,7 @@ import { ChildAvatar } from "@/components/media/media-image";
 import { RegisterProgress } from "@/components/register/register-progress";
 import { AttendanceRequestQueue } from "@/components/attendance/request-queue";
 import { AttendanceMonthPanel } from "@/components/attendance/month-panel";
+import { TONE_SURFACE } from "@/components/ui/tone";
 import {
   ATTENDANCE_STATUS_CHART_TONE,
   ATTENDANCE_STATUS_LABEL,
@@ -119,7 +120,31 @@ function GroupAttendance() {
    */
   const rows = sheet.data ?? [];
   const recorded = rows.filter((row) => row.record).length;
-  const breakdown = ATTENDANCE_STATUS_ORDER.map((status) => ({
+
+  /*
+   * ★ Six statuses, not the five in `ATTENDANCE_STATUS_ORDER`.
+   *
+   * That constant predates `OTHER` (CLAUDE.md §7 records the sixth status
+   * being half-built: the enum, the label map and the funding register had it
+   * while the two schemas stopped at five). The buttons below this already
+   * render all six — they map `ATTENDANCE_STATUS_LABEL`, which has always
+   * named "Бусад" — and the schema accepts it since 2026-09-02. Only this
+   * summary was still counting five, so a child marked "Бусад" saved
+   * correctly and then vanished from the totals: `recorded` counted them,
+   * the chips underneath did not, and the two disagreed by one on screen.
+   *
+   * `OTHER` is appended rather than added to the shared constant because the
+   * other three readers of that constant each want the five deliberately —
+   * `month-panel.tsx` says so in its own comment and special-cases the sixth
+   * exactly like this, and the funding register's columns are a settled
+   * report format.
+   *
+   * ★★ No zero-guard is needed here, unlike in `month-panel.tsx`.
+   * `RegisterProgress` already drops a status with a count of nought
+   * (`register-progress.test.tsx`: "shows only the statuses that happened"), so
+   * "Бусад" appears on the days it was used and on no others.
+   */
+  const breakdown = [...ATTENDANCE_STATUS_ORDER, "OTHER" as const].map((status) => ({
     key: status,
     label: ATTENDANCE_STATUS_LABEL[status] ?? status,
     count: rows.filter((row) => row.record?.status === status).length,
@@ -127,7 +152,7 @@ function GroupAttendance() {
   }));
 
   return (
-    <div className="flex flex-col gap-6 lg:gap-8">
+    <div className="page-band">
       <PageHeader title="Ирц" lede={group.data?.name} />
 
       <GroupSwitcher
@@ -174,7 +199,7 @@ function GroupAttendance() {
 
       <FormError message={record.isError ? errorMessage(record.error) : null} />
 
-      {sheet.isLoading ? <LoadingState rows={5} /> : null}
+      {sheet.isLoading ? <LoadingState rows={6} shape="register" /> : null}
 
       {sheet.isError ? <ErrorState description={errorMessage(sheet.error)} /> : null}
 
@@ -231,10 +256,10 @@ function ChildRow({
   onSelect: (status: string) => void;
 }) {
   return (
-    <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:gap-4">
+    <div className="flex flex-col gap-3 px-4 py-3.5 transition-colors hover:bg-sunken sm:flex-row sm:items-center sm:gap-4">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <ChildAvatar child={child} size={40} />
-        <span className="min-w-0 truncate font-medium text-ink">{fullName(child)}</span>
+        <span className="min-w-0 truncate text-lead font-semibold text-ink">{fullName(child)}</span>
       </div>
 
       <div
@@ -253,10 +278,35 @@ function ChildRow({
               disabled={pending}
               onClick={() => onSelect(value)}
               className={cn(
-                "min-h-11 rounded-control border px-3 text-body font-medium transition-colors disabled:opacity-60",
+                /*
+                  ★ REDESIGN 2026-09-03 — the chosen status is coloured for what
+                  it *means*, not filled with the brand blue.
+
+                  Every selected pill was `bg-primary`, so a register of thirty
+                  children read as thirty identical blue buttons and the one
+                  fact a teacher scans this sheet for — who is missing — could
+                  only be got by reading each label. The tint ramp is what the
+                  design direction asks for ("Ирсэн filled mint, Өвчтэй filled
+                  peach") and it makes the exceptions findable at a glance.
+
+                  `ATTENDANCE_STATUS_CHART_TONE` is reused rather than a second
+                  map: the same status must not be mint on the register and
+                  peach on the month panel beside it. `TONE_SURFACE` pairs each
+                  tint with an ink measured at 4.5:1 or better
+                  (`ui-foundation.test.tsx`), which a hand-picked pastel would
+                  not be.
+
+                  Colour is not the only signal — `aria-checked` carries the
+                  state, and the selected pill also takes a heavier weight and
+                  a matching border.
+                */
+                "min-h-11 rounded-control border px-3 text-body font-medium transition-all duration-150 active:translate-y-[1px] disabled:opacity-60",
                 selected
-                  ? "border-primary bg-primary text-primary-ink"
-                  : "border-border bg-surface text-muted hover:bg-canvas hover:text-ink",
+                  ? cn(
+                      TONE_SURFACE[ATTENDANCE_STATUS_CHART_TONE[value] ?? "sky"],
+                      "border-transparent font-semibold shadow-sm",
+                    )
+                  : "border-border bg-surface text-muted hover:border-faint hover:bg-canvas hover:text-ink",
               )}
             >
               {label}

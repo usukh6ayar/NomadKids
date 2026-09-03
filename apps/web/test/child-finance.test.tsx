@@ -59,8 +59,18 @@ function invoiceFixture(overrides: Record<string, unknown> = {}) {
     note: null,
     child: { id: CHILD_ID, lastName: "Ганболд", firstName: "Төгөлдөр" },
     lineItems: [
-      { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1", type: "TUITION", description: null, amount: "150000" },
-      { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2", type: "MEAL", description: null, amount: "40000" },
+      {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+        type: "TUITION",
+        description: null,
+        amount: "150000",
+      },
+      {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2",
+        type: "MEAL",
+        description: null,
+        amount: "40000",
+      },
     ],
     payments: [],
     createdAt: "2026-08-01T00:00:00.000Z",
@@ -202,7 +212,8 @@ describe("the portal access fee", () => {
         body: {
           type: "about:blank",
           title: "Төлбөр төлөгдөөгүй",
-          detail: "Энэ хүүхдийн мэдээллийг үзэхийн тулд энэ хичээлийн жилийн хандалтын төлбөрийг төлнө үү.",
+          detail:
+            "Энэ хүүхдийн мэдээллийг үзэхийн тулд энэ хичээлийн жилийн хандалтын төлбөрийг төлнө үү.",
           status: 402,
           requestId: "test",
         },
@@ -295,4 +306,3 @@ describe("the portal access fee", () => {
     expect(screen.queryByText("Хандалтын төлбөр")).not.toBeInTheDocument();
   });
 });
-

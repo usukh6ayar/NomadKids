@@ -212,6 +212,8 @@ describe("an invoice's own page", () => {
     await user.click(await screen.findByRole("button", { name: "Тийм, цуцлах" }));
 
     await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true));
-    expect(calls.find((c) => c.method === "PATCH")!.url).toBe("/payments/88888888-8888-4888-8888-888888888888/void");
+    expect(calls.find((c) => c.method === "PATCH")!.url).toBe(
+      "/payments/88888888-8888-4888-8888-888888888888/void",
+    );
   });
 });

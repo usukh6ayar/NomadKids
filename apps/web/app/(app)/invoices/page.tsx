@@ -167,18 +167,28 @@ function Invoices() {
                       {invoice.child.lastName ? `${invoice.child.lastName} ` : ""}
                       {invoice.child.firstName}
                     </span>
-                    <Badge tone={STATUS_TONE[invoice.status]}>{INVOICE_STATUS_LABEL[invoice.status]}</Badge>
+                    <Badge tone={STATUS_TONE[invoice.status]}>
+                      {INVOICE_STATUS_LABEL[invoice.status]}
+                    </Badge>
                   </p>
-                  <p className="text-caption text-muted">Төлөх хугацаа: {formatDate(invoice.dueDate)}</p>
+                  <p className="text-caption text-muted">
+                    Төлөх хугацаа: {formatDate(invoice.dueDate)}
+                  </p>
                 </div>
                 <div className="flex shrink-0 items-baseline gap-4 tabular-nums">
                   <span className="text-caption text-muted">Нийт {money(invoice.totalDue)}</span>
-                  <span className="text-body font-semibold text-ink">Үлдэгдэл {money(invoice.balance)}</span>
+                  <span className="text-body font-semibold text-ink">
+                    Үлдэгдэл {money(invoice.balance)}
+                  </span>
                 </div>
               </Link>
             ))}
           </Card>
-          <Pagination page={invoices.data.page} totalPages={invoices.data.totalPages} onPage={setPage} />
+          <Pagination
+            page={invoices.data.page}
+            totalPages={invoices.data.totalPages}
+            onPage={setPage}
+          />
         </>
       ) : null}
 
@@ -269,7 +279,11 @@ function GenerateInvoiceDialog({
       busy={generate.isPending}
       footer={
         <>
-          <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={generate.isPending}>
+          <Button
+            variant="secondary"
+            onClick={() => onOpenChange(false)}
+            disabled={generate.isPending}
+          >
             Цуцлах
           </Button>
           <Button
@@ -307,7 +321,12 @@ function GenerateInvoiceDialog({
         <div className="grid grid-cols-2 gap-3">
           <Field label="Сар">
             {({ id }) => (
-              <Input id={id} type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
+              <Input
+                id={id}
+                type="month"
+                value={month}
+                onChange={(e) => setMonth(e.target.value)}
+              />
             )}
           </Field>
           <Field label="Төлөх хугацаа">

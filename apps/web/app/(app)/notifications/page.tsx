@@ -245,7 +245,7 @@ export default function NotificationsPage() {
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   return (
-    <div className="flex flex-col gap-6 lg:gap-8">
+    <div className="page-band">
       <PageHeader
         title={tab === "news" ? "Мэдээ" : "Судалгаа"}
         lede={
@@ -740,7 +740,7 @@ function SurveysTab({
                 aria-pressed={active}
                 onClick={() => onSelectChild(child.id)}
                 className={cn(
-                  "flex min-h-[40px] shrink-0 items-center gap-2 rounded-pill border px-3 py-1.5 text-body font-medium transition-colors",
+                  "flex min-h-[44px] shrink-0 items-center gap-2 rounded-pill border px-3 py-1.5 text-body font-medium transition-colors",
                   active
                     ? "border-primary bg-primary-soft text-primary"
                     : "border-border bg-surface text-muted hover:text-ink",
@@ -930,11 +930,27 @@ function NotificationRow({
       already opened is still a notice they may need to re-read. What changes
       is the surface it sits on, not its legibility.
     */
+    /*
+      ★ REDESIGN 2026-09-03 — unread gains a brand edge and elevation.
+
+      The two states were "white card, grey border" versus "grey card, paler
+      border", which inverts correctly but is a very quiet difference in a
+      scrolling feed: on a canvas that is itself off-white, an unread notice
+      and a read one were about one step of grey apart. §4.9 asks for unread to
+      be marked three ways and the brief calls out that a dot alone is not
+      enough.
+
+      Unread now carries a 3px brand rule down its leading edge plus the
+      resting card shadow, so it reads as raised and flagged; read notices lose
+      the shadow and sit flat on the canvas. Together with the heavier title,
+      the "Шинэ" badge and the `sr-only` "Уншаагүй" already present, that is
+      four signals and none of them is colour alone.
+    */
     <article
       className={cn(
-        "flex flex-col gap-2.5 rounded-card border p-4 transition-colors",
+        "flex flex-col gap-2.5 rounded-card border p-4 transition-all duration-150",
         isUnread
-          ? "border-border bg-surface hover:border-primary"
+          ? "border-l-[3px] border-border border-l-primary bg-surface shadow-sm hover:border-primary/50 hover:border-l-primary hover:shadow-md"
           : "border-border-soft bg-canvas hover:border-border",
       )}
     >
@@ -992,7 +1008,23 @@ function NotificationRow({
           Important leads, because it is the one that changes what a family
           does about the notice; new only says they have not seen it yet.
         */}
-        <span className="flex shrink-0 items-center gap-1.5">
+        {/*
+          ★ `flex-wrap`, and no `shrink-0` — found in browser QA, 2026-09-03.
+
+          This row holds a category badge, "Чухал", "Шинэ" and two 44px icon
+          buttons, and it was `shrink-0` on one unwrappable line. A category is
+          administrator-editable text: "Сургалт, үйл ажиллагаа" made the row
+          **405px wide inside a 390px viewport**, so every notification card
+          pushed the whole document to 441px and the page overflowed
+          horizontally — hidden by `html { overflow-x: hidden }` rather than
+          scrollable, so the edit and delete buttons were simply off-screen.
+
+          Constraint 2 is exactly this: never assume a Mongolian label fits on
+          one line. Wrapping is the fix; `justify-end` keeps the badges against
+          the card's right edge when they do fit, so nothing moves at the widths
+          where the row was already fine.
+        */}
+        <span className="flex flex-wrap items-center justify-end gap-1.5">
           {/*
             ★ The category, which the note above this component said could not
             be rendered — until 2026-08-30 it was right.
@@ -1029,7 +1061,7 @@ function NotificationRow({
             <Link
               href={`/notifications/${notification.id}/edit`}
               aria-label="Постыг засах"
-              className="grid size-9 place-items-center rounded-control text-muted transition-colors hover:bg-canvas hover:text-ink"
+              className="grid size-11 place-items-center rounded-control text-muted transition-colors hover:bg-canvas hover:text-ink"
             >
               <Pencil size={16} aria-hidden="true" />
             </Link>
@@ -1047,7 +1079,7 @@ function NotificationRow({
                 <button
                   type="button"
                   aria-label="Постыг устгах"
-                  className="grid size-9 place-items-center rounded-control text-muted transition-colors hover:bg-canvas hover:text-danger"
+                  className="grid size-11 place-items-center rounded-control text-muted transition-colors hover:bg-canvas hover:text-danger"
                 >
                   <Trash2 size={16} aria-hidden="true" />
                 </button>
@@ -1107,12 +1139,21 @@ function NotificationRow({
             isUnread ? "font-semibold" : "font-medium",
           )}
         >
+          {/*
+            ★ 44px of target, and no extra space — browser QA, 2026-09-03.
+
+            Measured at **18px tall**: this link is the primary way to open a
+            notice, and it was one line of text. `inline-block` with 13px of
+            vertical padding takes it to the 44px floor, and the matching
+            negative margin cancels the padding's effect on layout — so the
+            card looks exactly as it did and the thumb gets something to hit.
+          */}
           <Link
             href={`/notifications/${notification.id}`}
             onClick={() => {
               if (isUnread) markRead.mutate();
             }}
-            className="hover:underline"
+            className="-my-[13px] inline-block py-[13px] hover:underline"
           >
             {notification.title ?? excerpt(notification.body ?? "", 80)}
             {/*

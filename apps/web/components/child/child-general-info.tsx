@@ -132,7 +132,7 @@ function Guardians({ child, childId }: { child: ChildDetail; childId: string }) 
                         // teacher reaching for a parent's number is on a phone.
                         <a
                           href={`tel:${guardianship.guardian.phone}`}
-                          className="flex min-h-[24px] items-center gap-1.5 hover:text-primary-strong"
+                          className="flex min-h-[44px] items-center gap-1.5 hover:text-primary-strong"
                         >
                           <Phone size={14} aria-hidden="true" />
                           {guardianship.guardian.phone}
@@ -141,7 +141,7 @@ function Guardians({ child, childId }: { child: ChildDetail; childId: string }) 
                       {guardianship.guardian?.email ? (
                         <a
                           href={`mailto:${guardianship.guardian.email}`}
-                          className="flex min-h-[24px] min-w-0 items-center gap-1.5 hover:text-primary-strong"
+                          className="flex min-h-[44px] min-w-0 items-center gap-1.5 hover:text-primary-strong"
                         >
                           <Mail size={14} aria-hidden="true" />
                           <span className="truncate">{guardianship.guardian.email}</span>

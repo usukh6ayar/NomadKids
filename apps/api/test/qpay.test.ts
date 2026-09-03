@@ -83,10 +83,8 @@ function startPayment(childId: string, actor: AuthSession) {
   return authed(request(server()).post(`/v1/children/${childId}/access/qpay`), actor);
 }
 
-
 describe("who may start a QPay payment", () => {
   it("passes authorization for the child's own guardian, then fails honestly because QPay is not configured here", async () => {
-
     const res = await authed(
       request(server()).post(`/v1/children/${a.child.id}/access/qpay`),
       parent,
@@ -100,7 +98,6 @@ describe("who may start a QPay payment", () => {
   });
 
   it("lets the accountant and admin start one too, same as the guardian", async () => {
-
     const res = await authed(
       request(server()).post(`/v1/children/${a.child.id}/access/qpay`),
       accountant,
@@ -110,7 +107,6 @@ describe("who may start a QPay payment", () => {
   });
 
   it("refuses a teacher — a family's subscription is not staff business", async () => {
-
     const res = await authed(
       request(server()).post(`/v1/children/${a.child.id}/access/qpay`),
       teacher,
@@ -147,7 +143,6 @@ describe("who may start a QPay payment", () => {
 
 describe("checking status", () => {
   it("404s when nobody has started a QPay payment for this child yet", async () => {
-
     const res = await authed(
       request(server()).get(`/v1/children/${a.child.id}/access/qpay`),
       parent,
@@ -156,7 +151,6 @@ describe("checking status", () => {
   });
 
   it("refuses a teacher reading status, same as starting one", async () => {
-
     const res = await authed(
       request(server()).get(`/v1/children/${a.child.id}/access/qpay`),
       teacher,

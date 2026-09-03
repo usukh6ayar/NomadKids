@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Download, Plus, Search, Upload } from "lucide-react";
+import { ChevronRight, Download, Plus, Search, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
 import { childSummarySchema, paginated, rosterSummarySchema, SEX_LABEL } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
@@ -124,7 +124,7 @@ function StaffChildren() {
   });
 
   return (
-    <div className="flex flex-col gap-6 lg:gap-8">
+    <div className="page-band">
       <PageHeader
         title="Хүүхдүүд"
         lede="Хариуцсан бүлгийн хүүхдүүд."
@@ -221,7 +221,7 @@ function StaffChildren() {
         />
       </div>
 
-      {isLoading ? <LoadingState rows={5} /> : null}
+      {isLoading ? <LoadingState rows={6} shape="rows" /> : null}
 
       {isError ? (
         <ErrorState
@@ -527,20 +527,32 @@ function ChildRow({
   return (
     <Link
       href={`/children/${child.id}/general`}
-      // The whole row is one card and one link. `hover:border-primary` is the
-      // reference's `.kidrow:hover` — the affordance is the border moving to
-      // the brand colour, not a background wash.
-      className="flex min-h-[64px] items-center gap-2.5 rounded-row border border-border bg-surface px-3 py-2.5 transition-colors hover:border-primary md:gap-3 md:px-4 md:py-3"
+      /*
+        ★ REDESIGN 2026-09-03 — the row lifts, and it has a chevron.
+
+        The whole row is one card and one link. The affordance was a border
+        moving to the brand colour on hover, which is invisible on a phone —
+        where this screen is mostly used, and where hover does not exist — so
+        a tappable roster looked exactly like a read-only list.
+
+        `card-interactive` (globals.css) is the product's one answer for a
+        clickable surface: a 1px lift, one step of shadow, a tinted border, and
+        a return to rest on press, so the press registers under a thumb. The
+        chevron is the part that works with no pointer at all — it says "this
+        opens" while sitting still.
+      */
+      className="card-interactive flex min-h-[68px] items-center gap-3 rounded-row border border-border bg-surface px-3 py-3 shadow-sm md:px-4"
     >
       <ChildAvatar child={child} size={44} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-lead font-semibold leading-[1.35] text-ink">
           {fullName(child)}
         </span>
-        <span className="mt-px block truncate text-compact text-muted">
+        <span className="mt-0.5 block truncate text-compact text-muted">
           {[group, formatAge(child.dateOfBirth)].filter(Boolean).join(" · ")}
         </span>
       </span>
+      <ChevronRight size={18} aria-hidden="true" className="shrink-0 text-faint" />
     </Link>
   );
 }
@@ -616,7 +628,7 @@ function MyChildren() {
   const { setSelectedChildId } = useSelectedChild();
 
   return (
-    <div className="flex flex-col gap-6 lg:gap-8">
+    <div className="page-band">
       <PageHeader title={MY_CHILDREN} lede="Таны бүртгэлтэй хүүхдүүд." />
 
       {isLoading ? <LoadingState rows={2} /> : null}

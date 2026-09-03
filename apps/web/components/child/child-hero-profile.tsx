@@ -106,8 +106,24 @@ export function ChildHeroProfile({
           context; `ChildAvatar` itself is unchanged and still used flat in the
           roster, the feeds and the birthday list.
         */}
+        {/*
+          ★ REDESIGN 2026-09-03 — 72px → 88px, with a ring.
+
+          This is the one screen that is about a *person*, and the brief calls
+          the portfolio hanging off it the emotional centre of the product. A
+          72px avatar sitting inline with the badges made the header read like
+          a database row with a thumbnail. The larger portrait plus a soft
+          brand ring gives the child top billing, which is the hierarchy this
+          screen should have.
+
+          The ring is `ring-*` rather than a border so it does not change the
+          avatar's layout box — `ChildAvatar` is used flat at five other sizes
+          across the product and none of them should move.
+        */}
         <div className="relative shrink-0">
-          <ChildAvatar child={child} size={72} />
+          <div className="rounded-pill ring-4 ring-primary-soft">
+            <ChildAvatar child={child} size={88} />
+          </div>
           {canEditPhoto ? (
             <ChildPhotoButton childId={child.id} childName={fullName(child)} />
           ) : null}
@@ -115,7 +131,12 @@ export function ChildHeroProfile({
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <h1 className="min-w-0 truncate text-title font-semibold text-ink sm:text-heading">
+            {/*
+              `break-words`, not `truncate`. A Mongolian full name is long and
+              this is the one place it must be readable in full — the header
+              whose entire job is to say which child you are looking at.
+            */}
+            <h1 className="min-w-0 break-words text-heading font-semibold tracking-[-.01em] text-ink sm:text-display">
               {fullName(child)}
             </h1>
 

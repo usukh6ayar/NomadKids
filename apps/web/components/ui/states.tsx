@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { AlertTriangle } from "lucide-react";
+import type { CSSProperties, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Card } from "./card";
 
@@ -18,28 +19,80 @@ import { Card } from "./card";
  * individually are noise, so the *status* is announced once and the shapes are
  * hidden.
  */
-export function Skeleton({ className }: { className?: string }) {
+export function Skeleton({ className, style }: { className?: string; style?: CSSProperties }) {
   return (
-    <div aria-hidden="true" className={cn("animate-pulse rounded-control bg-canvas", className)} />
+    <div
+      aria-hidden="true"
+      className={cn("animate-pulse rounded-control bg-sunken", className)}
+      style={style}
+    />
   );
 }
+
+/**
+ * What a loading screen is shaped like.
+ *
+ * ★ REDESIGN 2026-09-03. `LoadingState` painted `rows` identical 72px grey
+ * rectangles for every screen in the product — the dashboard's card bands, the
+ * roster's child rows and the assessment grid all loaded as the same stack of
+ * blocks, and then the real content arrived with a different shape and the page
+ * jumped.
+ *
+ * The brief asks the opposite twice: §4.1 wants loading and error to "share the
+ * same header so nothing shifts when the query resolves", and constraint 12
+ * asks for skeletons rather than spinners. A skeleton whose shape is unrelated
+ * to what is coming is a spinner drawn as rectangles.
+ *
+ * These are the four shapes the product actually loads. Anything genuinely
+ * one-off keeps composing `Skeleton` directly — a variant per screen is how a
+ * scale becomes a list.
+ */
+const SHAPES = {
+  /** A stack of list rows — the roster, notifications, the review queue. */
+  rows: "h-[76px] w-full rounded-row",
+  /** Full-width card bands — the dashboard, a detail screen's sections. */
+  cards: "h-[152px] w-full rounded-card",
+  /** A register: a name and a control per line, tighter than a card. */
+  register: "h-[64px] w-full rounded-row",
+  /** Short lines of prose — a form, a narrative report. */
+  text: "h-[20px] w-full rounded-control",
+} as const;
 
 export function LoadingState({
   label = "Ачаалж байна…",
   rows = 3,
+  shape = "rows",
+  className,
 }: {
   label?: string;
   rows?: number;
+  /** Which of the product's four loading shapes this screen is about to show. */
+  shape?: keyof typeof SHAPES;
+  className?: string;
 }) {
   return (
-    <div>
+    <div className={className}>
       {/* Announced once, politely — not on every skeleton row. */}
       <p role="status" className="sr-only">
         {label}
       </p>
-      <div className="flex flex-col gap-3">
+      <div className="card-stack">
         {Array.from({ length: rows }, (_, i) => (
-          <Skeleton key={i} className="h-[72px] w-full" />
+          <Skeleton
+            key={i}
+            className={cn(
+              SHAPES[shape],
+              /*
+                ★ The last row is short, and the stagger is not decoration.
+                A block of identical full-width bars reads as a rendering
+                fault; one ragged edge is what makes it read as text that has
+                not arrived yet. The delay does the same for the pulse — all
+                rows breathing in unison looks mechanical.
+              */
+              shape === "text" && i === rows - 1 && "w-3/5",
+            )}
+            style={{ animationDelay: `${i * 90}ms` }}
+          />
         ))}
       </div>
     </div>
@@ -89,13 +142,35 @@ export function EmptyState({
    */
   illustration?: ReactNode;
 }) {
+  /*
+   * ★ REDESIGN 2026-09-03 — the glyph sits in a tinted disc, and the type has
+   * a hierarchy.
+   *
+   * This was a centred paragraph in a white box: a bare grey icon, then a
+   * medium-weight line, then a muted line, all at nearly the same size. An
+   * empty state is the *first* thing a teacher sees on a screen they have not
+   * used yet, and constraint 15 asks it to say what to do next — which it
+   * cannot do if the eye has nothing to land on.
+   *
+   * The disc gives the glyph a home and picks up the brand tint, so an empty
+   * screen reads as part of the product rather than as a failure. The title
+   * steps up to `text-title` semibold, and the description is given a measure
+   * (`max-w-sm`) so it wraps as a paragraph rather than a full-width line —
+   * which matters more in Mongolian, where the compounds are long.
+   */
   return (
-    <Card className="flex flex-col items-center gap-2 px-6 py-10 text-center">
-      {illustration ? <div className="mb-1">{illustration}</div> : null}
-      {!illustration && icon ? <div className="mb-2 text-muted">{icon}</div> : null}
-      <p className="font-medium text-ink">{title}</p>
-      {description ? <p className="max-w-sm text-body text-muted">{description}</p> : null}
-      {action ? <div className="mt-3">{action}</div> : null}
+    <Card className="flex flex-col items-center gap-2 px-6 py-12 text-center">
+      {illustration ? <div className="mb-2">{illustration}</div> : null}
+      {!illustration && icon ? (
+        <div className="mb-3 flex size-14 items-center justify-center rounded-pill bg-primary-soft text-primary">
+          {icon}
+        </div>
+      ) : null}
+      <p className="text-title font-semibold tracking-[-.01em] text-ink">{title}</p>
+      {description ? (
+        <p className="max-w-sm text-body leading-relaxed text-muted">{description}</p>
+      ) : null}
+      {action ? <div className="mt-4">{action}</div> : null}
     </Card>
   );
 }
@@ -116,14 +191,31 @@ export function ErrorState({
   description?: string;
   action?: ReactNode;
 }) {
+  /*
+   * ★ REDESIGN 2026-09-03 — the same composition as `EmptyState`, in the
+   * danger register.
+   *
+   * The two were built separately and looked it: one had a glyph in a disc and
+   * a title, the other was two lines of centred text on a pink field. They
+   * appear in the same slot on the same screens — the dashboard renders one or
+   * the other into the identical position under the identical header — so the
+   * page visibly changed shape depending on whether a request had failed.
+   * Matching them is what lets the header's promise ("nothing shifts when the
+   * query resolves") hold for the error branch too.
+   */
   return (
     <Card
       role="alert"
-      className="flex flex-col items-center gap-2 border-danger/30 bg-danger-soft px-6 py-10 text-center"
+      className="flex flex-col items-center gap-2 border-danger/25 bg-danger-soft px-6 py-12 text-center"
     >
-      <p className="font-medium text-danger">{title}</p>
-      {description ? <p className="max-w-sm text-body text-ink/70">{description}</p> : null}
-      {action ? <div className="mt-3">{action}</div> : null}
+      <div className="mb-3 flex size-14 items-center justify-center rounded-pill bg-danger/10 text-danger">
+        <AlertTriangle size={24} aria-hidden="true" />
+      </div>
+      <p className="text-title font-semibold tracking-[-.01em] text-danger">{title}</p>
+      {description ? (
+        <p className="max-w-sm text-body leading-relaxed text-ink/70">{description}</p>
+      ) : null}
+      {action ? <div className="mt-4">{action}</div> : null}
     </Card>
   );
 }

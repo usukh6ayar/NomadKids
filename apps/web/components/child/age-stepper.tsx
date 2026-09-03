@@ -71,7 +71,9 @@ export function AgeStepper({
         {stops.map((stop) => {
           const active = stop.key === current;
           const dotColor =
-            stop.key === "compare" ? "var(--color-sun-ink)" : TONE_VAR[DOT_TONE[AGE_TONE[stop.key]]];
+            stop.key === "compare"
+              ? "var(--color-sun-ink)"
+              : TONE_VAR[DOT_TONE[AGE_TONE[stop.key]]];
 
           return (
             <li key={stop.key} className="flex justify-center">

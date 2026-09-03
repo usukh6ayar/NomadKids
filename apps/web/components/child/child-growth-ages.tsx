@@ -242,7 +242,9 @@ function AgeSection({
                 />
               ) : null}
 
-              {otherNote ? <NoteBlock label={otherNoteLabel} text={otherNote} tone="other" /> : null}
+              {otherNote ? (
+                <NoteBlock label={otherNoteLabel} text={otherNote} tone="other" />
+              ) : null}
             </div>
           ) : (
             <EmptyState
@@ -345,7 +347,12 @@ function AgeSection({
 
 function NoteBlock({ label, text, tone }: { label: string; text: string; tone: "own" | "other" }) {
   return (
-    <div className={cn("rounded-control px-3.5 py-3", tone === "own" ? "bg-primary-soft" : "bg-canvas")}>
+    <div
+      className={cn(
+        "rounded-control px-3.5 py-3",
+        tone === "own" ? "bg-primary-soft" : "bg-canvas",
+      )}
+    >
       <p className="text-caption font-medium text-muted">{label}</p>
       <p className="mt-0.5 whitespace-pre-wrap text-body text-ink">{text}</p>
     </div>

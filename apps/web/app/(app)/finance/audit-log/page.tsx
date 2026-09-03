@@ -4,7 +4,12 @@ import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
-import { AUDIT_ACTION_LABEL, AUDIT_OBJECT_LABEL, auditEntrySchema, paginated } from "@kinder/contracts";
+import {
+  AUDIT_ACTION_LABEL,
+  AUDIT_OBJECT_LABEL,
+  auditEntrySchema,
+  paginated,
+} from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
@@ -90,7 +95,11 @@ function FinancialAuditLog() {
             ))}
           </RowList>
 
-          <Pagination page={entries.data.page} totalPages={entries.data.totalPages} onPage={setPage} />
+          <Pagination
+            page={entries.data.page}
+            totalPages={entries.data.totalPages}
+            onPage={setPage}
+          />
         </>
       ) : null}
     </div>

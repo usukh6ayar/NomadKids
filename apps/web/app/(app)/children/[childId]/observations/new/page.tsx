@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { ChevronLeft } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { z } from "zod";
@@ -18,8 +19,26 @@ import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field"
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ObservationPhotos } from "@/components/observations/observation-photos";
 import { fullName, todayLocal } from "@/lib/format";
+import { readDraft, useDraftAutosave } from "@/lib/use-form-draft";
 
 const typesSchema = z.array(observationTypeSchema);
+
+/**
+ * What survives a Back button. Flat strings and booleans — see
+ * `lib/use-form-draft.ts` for why the shape is deliberately this narrow.
+ */
+interface ObservationDraft {
+  typeId: string;
+  activityName: string;
+  situation: string;
+  childDid: string;
+  childSaid: string;
+  teacherComment: string;
+  nextSteps: string;
+  visibleToParents: boolean;
+  includeInReport: boolean;
+  [key: string]: string | boolean;
+}
 
 /**
  * Record one observation.
@@ -44,10 +63,33 @@ const typesSchema = z.array(observationTypeSchema);
  */
 export default function NewObservationPage() {
   return (
-    <Suspense fallback={<LoadingState rows={4} />}>
-      <NewObservationForm />
+    <Suspense fallback={<LoadingState rows={5} shape="text" />}>
+      <KnownAudience />
     </Suspense>
   );
+}
+
+/**
+ * Holds the form back until the signed-in person's roles are known.
+ *
+ * ★ Not a loading nicety — the draft depends on it.
+ *
+ * `isStaff` decides which of two different forms this is, and therefore which
+ * `localStorage` key the draft restores from. Roles arrive with `/auth/me`, so
+ * on the very first render `hasRole` answers `false` for everybody, including
+ * a teacher. The restore happens in a `useState` initialiser — once, on that
+ * first render — so without this gate a teacher's form would read the *parent*
+ * key every time: their own draft would never come back, and a "Гэрийн мөч"
+ * shared from the same device would open inside the teacher's form under
+ * headings it was not written for.
+ *
+ * Mounting the form only once the answer is known costs one frame and removes
+ * the whole class of problem, rather than teaching each field to re-key itself.
+ */
+function KnownAudience() {
+  const { isLoading } = useSession();
+  if (isLoading) return <LoadingState rows={5} shape="text" />;
+  return <NewObservationForm />;
 }
 
 function NewObservationForm() {
@@ -85,16 +127,58 @@ function NewObservationForm() {
     simply leaves the field empty, which is the same state as arriving with no
     parameter at all — no validation branch needed for a stale bookmark.
   */
-  const [typeId, setTypeId] = useState(searchParams.get("typeId") ?? "");
+  /*
+   * ★ The draft, restored before the first paint.
+   *
+   * The brief's constraint 13 — "Observations autosave a draft. Losing typed
+   * text is the worst failure that screen can have" — and §4.4, which calls a
+   * tapped Back button the worst thing that can happen here. This screen held
+   * everything in `useState` alone, so a Back button, a reload or a phone
+   * discarding a backgrounded tab lost every paragraph written into it.
+   *
+   * Keyed by child *and* by audience: the two forms have different fields
+   * (`isStaff` decides), and a parent's short "Гэрийн мөч" draft restoring into
+   * a teacher's long form would put text under headings it was not written for.
+   */
+  const draftKey = `nomadkids:observation-draft:${isStaff ? "staff" : "parent"}:${childId}`;
+  const [draft] = useState(() => readDraft<ObservationDraft>(draftKey));
+
+  /*
+   * `?typeId=` still wins over the draft: arriving from the assessment sheet's
+   * type buttons is an explicit choice made *now*, and a stale draft should not
+   * quietly override the button just pressed.
+   */
+  const [typeId, setTypeId] = useState(searchParams.get("typeId") ?? draft?.typeId ?? "");
+  // The date is not restored. A draft opened the next morning should be filed
+  // under the day it is being written, not the day it was abandoned.
   const [observedOn, setObservedOn] = useState(todayLocal());
-  const [activityName, setActivityName] = useState("");
-  const [situation, setSituation] = useState("");
-  const [childDid, setChildDid] = useState("");
-  const [childSaid, setChildSaid] = useState("");
-  const [teacherComment, setTeacherComment] = useState("");
-  const [nextSteps, setNextSteps] = useState("");
-  const [visibleToParents, setVisibleToParents] = useState(false);
-  const [includeInReport, setIncludeInReport] = useState(true);
+  const [activityName, setActivityName] = useState(draft?.activityName ?? "");
+  const [situation, setSituation] = useState(draft?.situation ?? "");
+  const [childDid, setChildDid] = useState(draft?.childDid ?? "");
+  const [childSaid, setChildSaid] = useState(draft?.childSaid ?? "");
+  const [teacherComment, setTeacherComment] = useState(draft?.teacherComment ?? "");
+  const [nextSteps, setNextSteps] = useState(draft?.nextSteps ?? "");
+  const [visibleToParents, setVisibleToParents] = useState(draft?.visibleToParents ?? false);
+  const [includeInReport, setIncludeInReport] = useState(draft?.includeInReport ?? true);
+
+  /*
+   * ★ Only the text is persisted, plus the two visibility choices.
+   *
+   * Photos are not: they are attached to an observation that already exists
+   * (`ObservationPhotos` runs after the save), so there is nothing to restore
+   * and a draft cannot hold a `File` anyway.
+   */
+  const { clear: clearDraft, resume: resumeDraft } = useDraftAutosave<ObservationDraft>(draftKey, {
+    typeId,
+    activityName,
+    situation,
+    childDid,
+    childSaid,
+    teacherComment,
+    nextSteps,
+    visibleToParents,
+    includeInReport,
+  });
 
   /** Set once the observation exists, so photos can be attached to it. */
   const [savedId, setSavedId] = useState<string | null>(null);
@@ -148,6 +232,15 @@ function NewObservationForm() {
         `onError` below is the half that was genuinely missing.
       */
       setSavedId(observation.id);
+      /*
+        ★ The draft is discarded here and nowhere else.
+
+        Only a successful POST means the text is safe somewhere other than this
+        browser. Clearing on submit, or on unmount, would throw the draft away
+        on exactly the failures it exists for — a rejected save, a dropped
+        connection, a closed tab mid-request.
+      */
+      clearDraft();
       // Prefix invalidation: everything under this child is now stale.
       void queryClient.invalidateQueries({ queryKey: qk.child(childId) });
       void queryClient.invalidateQueries({ queryKey: qk.dashboard.teacher() });
@@ -157,7 +250,7 @@ function NewObservationForm() {
 
   const errors = fieldErrors(save.error);
 
-  if (child.isLoading) return <LoadingState rows={4} />;
+  if (child.isLoading) return <LoadingState rows={5} shape="text" />;
 
   if (child.isError) {
     return (
@@ -202,6 +295,10 @@ function NewObservationForm() {
               // several observations in one sitting.
               setSavedId(null);
               save.reset();
+              // The blank form is a new observation and drafts again from here.
+              // Without this the autosave stays latched off from the first save
+              // onward — see `resume` in `lib/use-form-draft.ts`.
+              resumeDraft();
               setSituation("");
               setChildDid("");
               setChildSaid("");
@@ -218,19 +315,31 @@ function NewObservationForm() {
   }
 
   return (
-    <div className="flex flex-col gap-5 py-2">
+    /*
+      ★ REDESIGN 2026-09-03 — a reading measure on the writing screen.
+
+      This is the one page in the product that is mostly prose: six textareas a
+      teacher writes paragraphs into. It ran the full 1400px content column, so
+      on a desktop a line of Mongolian could be 1300px wide — far past the
+      45–75 character measure text stays readable at, and the width at which
+      the eye loses its place returning to the next line. Capping at `4xl`
+      (56rem) and centring is what makes it feel like a document rather than a
+      database form. Below that breakpoint nothing changes.
+    */
+    <div className="page-band mx-auto w-full max-w-4xl py-2">
       <header>
         <Link
           href={`/children/${childId}/general`}
-          className="inline-flex min-h-[44px] items-center text-body text-primary underline underline-offset-4"
+          className="-ml-1 inline-flex min-h-[44px] items-center gap-1 rounded-control px-1 text-body font-medium text-muted transition-colors hover:text-primary"
         >
-          ← {fullName(child.data)}
+          <ChevronLeft size={16} aria-hidden="true" />
+          {fullName(child.data)}
         </Link>
-        <h1 className="mt-1 text-heading font-semibold text-ink">
+        <h1 className="mt-1 text-heading font-semibold tracking-[-.01em] text-ink md:text-display">
           {isStaff ? "Шинэ ажиглалт" : "Гэрийн мөч хуваалцах"}
         </h1>
         {!isStaff ? (
-          <p className="mt-1 text-body text-muted">Таны бичсэнийг багш хянаад хавтаст нэмнэ.</p>
+          <p className="mt-1.5 text-body text-muted">Таны бичсэнийг багш хянаад хавтаст нэмнэ.</p>
         ) : null}
       </header>
 
@@ -248,6 +357,21 @@ function NewObservationForm() {
             save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null
           }
         />
+
+        {/*
+          ★ The restore is announced, not silent.
+
+          Text appearing in a form nobody remembers filling is indistinguishable
+          from the wrong child's record having opened — the one thing this
+          screen must never look like. `role="status"` so it is read out rather
+          than only seen, and it names what happened rather than congratulating
+          anyone.
+        */}
+        {draft ? (
+          <p role="status" className="text-body text-muted">
+            Хадгалаагүй ноорог сэргээгдлээ.
+          </p>
+        ) : null}
 
         <Card pad="roomy" className="flex flex-col gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -402,13 +526,25 @@ function NewObservationForm() {
           </>
         ) : null}
 
-        <div className="flex flex-wrap gap-2">
-          <Button type="submit" size="lg" disabled={save.isPending}>
-            {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
-          </Button>
-          <Button asChild variant="secondary" size="lg">
-            <Link href={`/children/${childId}/general`}>Цуцлах</Link>
-          </Button>
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" size="lg" disabled={save.isPending}>
+              {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
+            </Button>
+            <Button asChild variant="secondary" size="lg">
+              <Link href={`/children/${childId}/general`}>Цуцлах</Link>
+            </Button>
+          </div>
+
+          {/*
+            ★ The autosave says so, quietly and permanently.
+
+            "Цуцлах" is a link away from a page holding unsaved paragraphs, and
+            the guarantee that makes pressing it safe is invisible otherwise.
+            One faint line beside the button is what turns the draft from a
+            mechanism into something the teacher can rely on.
+          */}
+          <p className="text-caption text-faint">Бичсэн зүйл ноорогт автоматаар хадгалагдана.</p>
         </div>
       </form>
     </div>
