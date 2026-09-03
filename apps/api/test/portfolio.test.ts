@@ -443,10 +443,9 @@ describe("guardian-editable identity fields", () => {
   });
 
   it("a guardian still cannot reach the broader child-edit endpoint", async () => {
-    const res = await authed(
-      request(server()).patch(`/v1/children/${a.child.id}`),
-      parentA,
-    ).send({ firstName: "Дахин" });
+    const res = await authed(request(server()).patch(`/v1/children/${a.child.id}`), parentA).send({
+      firstName: "Дахин",
+    });
 
     // The coarse assertCanRecord gate — unchanged, and still 404.
     expect(res.status).toBe(404);

@@ -32,7 +32,7 @@ async function main(): Promise<void> {
   if (!kindergartenId) {
     throw new Error(
       "KINDERGARTEN_ID is not set.\n" +
-        "  Find one with: select id, name from kindergartens where \"deletedAt\" is null;",
+        '  Find one with: select id, name from kindergartens where "deletedAt" is null;',
     );
   }
 
@@ -77,7 +77,9 @@ async function main(): Promise<void> {
     createdIngredients += 1;
   }
 
-  console.log(`  ingredients: ${createdIngredients} created, ${REFERENCE_INGREDIENTS.length - createdIngredients} already there`);
+  console.log(
+    `  ingredients: ${createdIngredients} created, ${REFERENCE_INGREDIENTS.length - createdIngredients} already there`,
+  );
 
   // ── Recipes ────────────────────────────────────────────────────────────────
   let createdRecipes = 0;
@@ -125,7 +127,9 @@ async function main(): Promise<void> {
     createdRecipes += 1;
   }
 
-  console.log(`  recipes:     ${createdRecipes} created (DRAFT), ${REFERENCE_RECIPES.length - createdRecipes - skipped.length} already there`);
+  console.log(
+    `  recipes:     ${createdRecipes} created (DRAFT), ${REFERENCE_RECIPES.length - createdRecipes - skipped.length} already there`,
+  );
   if (skipped.length > 0) {
     console.log(`  SKIPPED (unresolved ingredients):\n    ${skipped.join("\n    ")}`);
   }

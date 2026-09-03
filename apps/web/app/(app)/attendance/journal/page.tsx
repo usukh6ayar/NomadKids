@@ -211,15 +211,15 @@ function AttendanceJournal() {
 
         <div className="flex flex-wrap items-end justify-between gap-3">
           <FilterChipRow label="Ирцийн төлөв" scroll>
-          {STATUS_ORDER.map((status) => (
-            <FilterChip
-              key={status}
-              active={statuses.includes(status)}
-              onClick={() => toggleStatus(status)}
-            >
-              {ATTENDANCE_STATUS_LABEL[status] ?? status}
-            </FilterChip>
-          ))}
+            {STATUS_ORDER.map((status) => (
+              <FilterChip
+                key={status}
+                active={statuses.includes(status)}
+                onClick={() => toggleStatus(status)}
+              >
+                {ATTENDANCE_STATUS_LABEL[status] ?? status}
+              </FilterChip>
+            ))}
           </FilterChipRow>
 
           {/*
@@ -257,11 +257,7 @@ function AttendanceJournal() {
         <>
           <Totals totals={data.totals} />
           <Grid rows={data.items} days={data.days} />
-          <Pagination
-            page={data.page}
-            totalPages={data.totalPages}
-            onPage={setPage}
-          />
+          <Pagination page={data.page} totalPages={data.totalPages} onPage={setPage} />
         </>
       )}
     </div>

@@ -46,7 +46,10 @@ const MEAL_KIND_STYLE: Record<MealKind, { icon: ReactNode; tone: string }> = {
     tone: "bg-primary-soft text-primary",
   },
   LUNCH: { icon: <UtensilsCrossed size={22} aria-hidden="true" />, tone: "bg-mint text-mint-ink" },
-  AFTERNOON_SNACK: { icon: <Cookie size={22} aria-hidden="true" />, tone: "bg-peach text-peach-ink" },
+  AFTERNOON_SNACK: {
+    icon: <Cookie size={22} aria-hidden="true" />,
+    tone: "bg-peach text-peach-ink",
+  },
   EXTRA: { icon: <Soup size={22} aria-hidden="true" />, tone: "bg-sky text-sky-ink" },
 };
 
@@ -156,7 +159,8 @@ export function ChildMenu({
   // whichever segment matches what's actually showing, so paging the week
   // with the chevrons and landing back on today re-lights it on its own
   // instead of the two going out of sync.
-  const quickView = activeDate === todayIso ? "today" : activeDate === tomorrowIso ? "tomorrow" : "week";
+  const quickView =
+    activeDate === todayIso ? "today" : activeDate === tomorrowIso ? "tomorrow" : "week";
 
   const menu = useQuery({
     queryKey: ["kindergarten", kindergartenId, "menu", from, to],
@@ -222,8 +226,22 @@ export function ChildMenu({
         >
           {(
             [
-              ["today", "Өнөөдөр", () => { setMonday(mondayOf(now)); setSelectedOffset(mondayFirstIndex(now)); }],
-              ["tomorrow", "Маргааш", () => { setMonday(mondayOf(tomorrow)); setSelectedOffset(mondayFirstIndex(tomorrow)); }],
+              [
+                "today",
+                "Өнөөдөр",
+                () => {
+                  setMonday(mondayOf(now));
+                  setSelectedOffset(mondayFirstIndex(now));
+                },
+              ],
+              [
+                "tomorrow",
+                "Маргааш",
+                () => {
+                  setMonday(mondayOf(tomorrow));
+                  setSelectedOffset(mondayFirstIndex(tomorrow));
+                },
+              ],
               ["week", "7 хоног", () => setMonday(mondayOf(now))],
             ] as const
           ).map(([value, label, onClick]) => (

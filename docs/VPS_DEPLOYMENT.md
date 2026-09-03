@@ -99,13 +99,13 @@ RAM, диск, Docker, порт, гадагш холболтыг шалгана.
 Энэ баримт 2026-08-31-нд, сервер байхаас өмнө бичигдсэн бөгөөд систем хоосон
 гэж үзсэн. Бодит байдал (2026-09-01-нд шалгасан):
 
-| Юу               | Хаана ажиллаж байна    |
-| ---------------- | ---------------------- |
-| `nomadkids.mn`   | **Vercel** — амьд      |
+| Юу                 | Хаана ажиллаж байна                    |
+| ------------------ | -------------------------------------- |
+| `nomadkids.mn`     | **Vercel** — амьд                      |
 | `api.nomadkids.mn` | **Railway** — амьд, `/v1/health` → 200 |
-| Postgres, Redis  | **Railway**            |
-| Зураг, файл      | **Cloudflare R2**      |
-| DNS              | Cloudflare (зөвхөн DNS) |
+| Postgres, Redis    | **Railway**                            |
+| Зураг, файл        | **Cloudflare R2**                      |
+| DNS                | Cloudflare (зөвхөн DNS)                |
 
 Доорх гурван A бичлэгийг **одоо** VPS рүү заавал хоосон систем олон нийтэд
 гарна — Railway-гийн өгөгдлийн сан ч, R2-ийн объектууд ч тэр сервер дээр
@@ -222,10 +222,10 @@ build дотор мина булж орхих нь хамгийн муу төр�
 
 Тиймээс одоо тусгаарлагдсан (`.env.production.example`):
 
-| Хувьсагч | Утга | Хэн уншдаг |
-| --- | --- | --- |
-| `WEB_DOMAIN`, `API_DOMAIN`, `MEDIA_DOMAIN` | таслалтай жагсаалт байж **болно** | зөвхөн Caddy |
-| `WEB_ORIGIN`, `API_ORIGIN`, `MEDIA_ORIGIN` | яг **нэг** origin | web build (`NEXT_PUBLIC_*`), API |
+| Хувьсагч                                   | Утга                              | Хэн уншдаг                       |
+| ------------------------------------------ | --------------------------------- | -------------------------------- |
+| `WEB_DOMAIN`, `API_DOMAIN`, `MEDIA_DOMAIN` | таслалтай жагсаалт байж **болно** | зөвхөн Caddy                     |
+| `WEB_ORIGIN`, `API_ORIGIN`, `MEDIA_ORIGIN` | яг **нэг** origin                 | web build (`NEXT_PUBLIC_*`), API |
 
 Хоёуланг нь буцааж нэг хувьсагч болгож нэгтгэх ёсгүй. Build-ийн дараа шалгах:
 
@@ -306,8 +306,6 @@ curl -s -b cookies.txt https://<API_DOMAIN>/v1/health/readiness | jq
 docker compose -f docker-compose.prod.yml logs api | grep "Font check"
 # Font check passed: 4 Mongolian-capable font(s) registered
 ```
-
-
 
 ---
 

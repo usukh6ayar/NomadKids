@@ -76,10 +76,15 @@ function generateBody(childId: string, month = "2026-08") {
   };
 }
 
-async function generate(session: AuthSession, kindergartenId: string, body: ReturnType<typeof generateBody>) {
-  return authed(request(server()).post(`/v1/kindergartens/${kindergartenId}/invoices`), session).send(
-    body,
-  );
+async function generate(
+  session: AuthSession,
+  kindergartenId: string,
+  body: ReturnType<typeof generateBody>,
+) {
+  return authed(
+    request(server()).post(`/v1/kindergartens/${kindergartenId}/invoices`),
+    session,
+  ).send(body);
 }
 
 describe("who may reach an invoice", () => {
@@ -111,10 +116,7 @@ describe("a child's own invoices — the guardian-facing read (нэмэлт.md �
   it("shows a guardian their own child's invoices", async () => {
     await generate(accountant, a.kindergarten.id, generateBody(a.child.id));
 
-    const res = await authed(
-      request(server()).get(`/v1/children/${a.child.id}/invoices`),
-      parent,
-    );
+    const res = await authed(request(server()).get(`/v1/children/${a.child.id}/invoices`), parent);
 
     expect(res.status).toBe(200);
     expect(res.body.items).toHaveLength(1);
@@ -136,10 +138,7 @@ describe("a child's own invoices — the guardian-facing read (нэмэлт.md �
   it("refuses a teacher — §13's exclusion holds even for a child they can otherwise reach", async () => {
     await generate(accountant, a.kindergarten.id, generateBody(a.child.id));
 
-    const res = await authed(
-      request(server()).get(`/v1/children/${a.child.id}/invoices`),
-      teacher,
-    );
+    const res = await authed(request(server()).get(`/v1/children/${a.child.id}/invoices`), teacher);
     expect(res.status).toBe(404);
   });
 
@@ -188,7 +187,11 @@ describe("generating a month's invoice", () => {
 
   it("carries the previous month's balance forward, not re-entered", async () => {
     await generate(accountant, a.kindergarten.id, generateBody(a.child.id, "2026-07"));
-    const second = await generate(accountant, a.kindergarten.id, generateBody(a.child.id, "2026-08"));
+    const second = await generate(
+      accountant,
+      a.kindergarten.id,
+      generateBody(a.child.id, "2026-08"),
+    );
 
     // July's invoice was never paid, so its whole balance (195000) is
     // August's previousBalance — the single-entry principle, нэмэлт.md §17.
@@ -220,7 +223,10 @@ describe("recording and voiding a manual payment", () => {
   it("updates balance and status when fully paid", async () => {
     const id = await invoiceId();
 
-    const paid = await authed(request(server()).post(`/v1/invoices/${id}/payments`), accountant).send({
+    const paid = await authed(
+      request(server()).post(`/v1/invoices/${id}/payments`),
+      accountant,
+    ).send({
       amount: "195000",
       method: "CASH",
     });
@@ -234,7 +240,10 @@ describe("recording and voiding a manual payment", () => {
   it("marks partial payment correctly", async () => {
     const id = await invoiceId();
 
-    const paid = await authed(request(server()).post(`/v1/invoices/${id}/payments`), accountant).send({
+    const paid = await authed(
+      request(server()).post(`/v1/invoices/${id}/payments`),
+      accountant,
+    ).send({
       amount: "100000",
       method: "BANK_TRANSFER",
     });
@@ -245,7 +254,10 @@ describe("recording and voiding a manual payment", () => {
 
   it("refuses QPAY/SOCIALPAY through the manual-recording route", async () => {
     const id = await invoiceId();
-    const res = await authed(request(server()).post(`/v1/invoices/${id}/payments`), accountant).send({
+    const res = await authed(
+      request(server()).post(`/v1/invoices/${id}/payments`),
+      accountant,
+    ).send({
       amount: "1000",
       method: "QPAY",
     });
@@ -265,7 +277,10 @@ describe("recording and voiding a manual payment", () => {
 
   it("voids a payment via a reversal row — the original stays, it does not disappear", async () => {
     const id = await invoiceId();
-    const paid = await authed(request(server()).post(`/v1/invoices/${id}/payments`), accountant).send({
+    const paid = await authed(
+      request(server()).post(`/v1/invoices/${id}/payments`),
+      accountant,
+    ).send({
       amount: "195000",
       method: "CASH",
     });
@@ -273,9 +288,10 @@ describe("recording and voiding a manual payment", () => {
 
     const paymentId = (await db.payment.findFirstOrThrow({ where: { invoiceId: id } })).id;
 
-    const voided = await authed(request(server()).patch(`/v1/payments/${paymentId}/void`), accountant).send(
-      { note: "Буруу бүртгэсэн" },
-    );
+    const voided = await authed(
+      request(server()).patch(`/v1/payments/${paymentId}/void`),
+      accountant,
+    ).send({ note: "Буруу бүртгэсэн" });
 
     expect(voided.status).toBe(200);
     expect(Number(voided.body.paidAmount)).toBe(0);
@@ -301,9 +317,10 @@ describe("recording and voiding a manual payment", () => {
     const paymentId = (await db.payment.findFirstOrThrow({ where: { invoiceId: id } })).id;
 
     await authed(request(server()).patch(`/v1/payments/${paymentId}/void`), accountant).send({});
-    const second = await authed(request(server()).patch(`/v1/payments/${paymentId}/void`), accountant).send(
-      {},
-    );
+    const second = await authed(
+      request(server()).patch(`/v1/payments/${paymentId}/void`),
+      accountant,
+    ).send({});
 
     expect(second.status).toBe(404);
   });
@@ -333,10 +350,9 @@ describe("the financial audit log — нэмэлт.md §13", () => {
     });
     expect(created.status).toBe(201);
 
-    await authed(
-      request(server()).patch(`/v1/funding-rules/${created.body.id}`),
-      accountant,
-    ).send({ name: "Шинэчилсэн тариф" });
+    await authed(request(server()).patch(`/v1/funding-rules/${created.body.id}`), accountant).send({
+      name: "Шинэчилсэн тариф",
+    });
 
     const log = await authed(
       request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/financial-audit-log`),
@@ -345,7 +361,8 @@ describe("the financial audit log — нэмэлт.md §13", () => {
 
     expect(log.status).toBe(200);
     const updateEntry = log.body.items.find(
-      (e: { action: string; objectType: string }) => e.action === "UPDATE" && e.objectType === "FundingRule",
+      (e: { action: string; objectType: string }) =>
+        e.action === "UPDATE" && e.objectType === "FundingRule",
     );
     expect(updateEntry).toBeTruthy();
     expect(updateEntry.metadata.before.name).toBe("Энгийн тариф");
@@ -354,7 +371,10 @@ describe("the financial audit log — нэмэлт.md §13", () => {
 
   it("also carries invoice and payment entries, not just funding ones", async () => {
     const invoice = await generate(accountant, a.kindergarten.id, generateBody(a.child.id));
-    await authed(request(server()).post(`/v1/invoices/${invoice.body.id}/payments`), accountant).send({
+    await authed(
+      request(server()).post(`/v1/invoices/${invoice.body.id}/payments`),
+      accountant,
+    ).send({
       amount: "1000",
       method: "CASH",
     });

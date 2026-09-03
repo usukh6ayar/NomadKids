@@ -33,11 +33,7 @@ function journal(overrides: Record<string, unknown> = {}) {
           programKind: "MAIN",
           attendanceForm: "STANDARD",
         },
-        days: [
-          { status: "PRESENT", note: null },
-          null,
-          { status: "SICK", note: null },
-        ],
+        days: [{ status: "PRESENT", note: null }, null, { status: "SICK", note: null }],
         counts: { PRESENT: 1, SICK: 1 },
         recorded: 2,
       },

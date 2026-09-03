@@ -99,7 +99,9 @@ function Row({ label, value, accent = false }: { label: string; value: string; a
   return (
     <div className="flex items-baseline justify-between gap-2">
       <dt className="text-caption text-muted">{label}</dt>
-      <dd className={`text-body font-semibold tabular-nums ${accent ? "text-primary" : "text-ink"}`}>
+      <dd
+        className={`text-body font-semibold tabular-nums ${accent ? "text-primary" : "text-ink"}`}
+      >
         {value}
       </dd>
     </div>
@@ -130,7 +132,11 @@ function InvoiceCard({ invoice }: { invoice: Invoice }) {
 
       <dl className="grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3">
         {invoice.lineItems.map((line) => (
-          <Row key={line.id} label={INVOICE_LINE_TYPE_LABEL[line.type]} value={money(line.amount)} />
+          <Row
+            key={line.id}
+            label={INVOICE_LINE_TYPE_LABEL[line.type]}
+            value={money(line.amount)}
+          />
         ))}
         <Row label="Хөнгөлөлт" value={`− ${money(invoice.discountAmount)}`} />
         <Row label="Өмнөх үлдэгдэл" value={money(invoice.previousBalance)} />
@@ -160,7 +166,6 @@ function InvoiceCard({ invoice }: { invoice: Invoice }) {
           ))}
         </div>
       ) : null}
-
     </Card>
   );
 }

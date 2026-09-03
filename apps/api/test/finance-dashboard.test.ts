@@ -266,7 +266,8 @@ describe("overdue — the figure that is deliberately not month-scoped", () => {
   it("counts only what is still outstanding on a part-paid invoice", async () => {
     const one = await invoice({
       dueDate: new Date("2026-02-05T00:00:00.000Z"),
-      totalDue: "50000.00", balance: "50000.00",
+      totalDue: "50000.00",
+      balance: "50000.00",
     });
     await payment(one.id, "30000.00");
 
@@ -278,7 +279,8 @@ describe("overdue — the figure that is deliberately not month-scoped", () => {
   it("drops an invoice that has been paid in full", async () => {
     const one = await invoice({
       dueDate: new Date("2026-02-05T00:00:00.000Z"),
-      totalDue: "50000.00", balance: "50000.00",
+      totalDue: "50000.00",
+      balance: "50000.00",
     });
     await payment(one.id, "50000.00");
 
@@ -423,7 +425,12 @@ describe("meal cost — §3's calculation, §9's last two figures", () => {
  */
 describe("a child's finance summary — §10", () => {
   async function billed(over: Record<string, unknown> = {}) {
-    return invoice({ totalDue: "50000.00", balance: "50000.00", discountAmount: "5000.00", ...over });
+    return invoice({
+      totalDue: "50000.00",
+      balance: "50000.00",
+      discountAmount: "5000.00",
+      ...over,
+    });
   }
 
   it("gives a guardian their own balance", async () => {
@@ -522,7 +529,11 @@ describe("a child's finance summary — §10", () => {
 
   it("keeps a running balance rather than resetting it each month", async () => {
     // A balance that reset would tell a family they owe nothing on the first.
-    await billed({ month: new Date("2026-01-01T00:00:00.000Z"), totalDue: "30000.00", balance: "30000.00" });
+    await billed({
+      month: new Date("2026-01-01T00:00:00.000Z"),
+      totalDue: "30000.00",
+      balance: "30000.00",
+    });
     await billed({ totalDue: "50000.00", balance: "50000.00" });
 
     const res = await authed(

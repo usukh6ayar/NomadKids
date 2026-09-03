@@ -108,7 +108,16 @@ function harness(rowOverrides: Partial<Record<string, unknown>> = {}) {
 
   const service = new QpayService(repo, client, config, access, childAccess, audit);
 
-  return { service, repo, client, access, audit, markPaid, checkPayment, claimsCount: () => claims };
+  return {
+    service,
+    repo,
+    client,
+    access,
+    audit,
+    markPaid,
+    checkPayment,
+    claimsCount: () => claims,
+  };
 }
 
 const actor = { userId: "guardian-1" } as never;

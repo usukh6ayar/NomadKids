@@ -397,7 +397,7 @@ this kindergarten have a group with id Y".
 404 an authorization failure may produce, and it is worth stating why the rule
 above does not reach it.
 
-The rule protects one fact: *whether a record exists*. A 402 is only ever shown
+The rule protects one fact: _whether a record exists_. A 402 is only ever shown
 to someone who has **already been authorized for that child** — one of their own
 guardians. They know the child exists; they see them every afternoon. Nothing is
 disclosed. What a 404 would do instead is hide the one thing that would let them

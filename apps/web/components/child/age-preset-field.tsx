@@ -36,7 +36,11 @@ export function AgePresetField({
 }) {
   return (
     <div className="flex flex-col gap-2.5">
-      <div role="radiogroup" aria-label="Санал болгож буй сонголтууд" className="flex flex-wrap gap-2">
+      <div
+        role="radiogroup"
+        aria-label="Санал болгож буй сонголтууд"
+        className="flex flex-wrap gap-2"
+      >
         {options.map((option) => {
           const active = value.trim() === option;
           return (

@@ -5,9 +5,7 @@ import { dateOfBirthSchema, sexSchema } from "../children/children.dto";
 const yearAnimalCodeSchema = z.enum(
   YEAR_ANIMALS.map((animal) => animal.code) as [string, ...string[]],
 );
-const zodiacCodeSchema = z.enum(
-  ZODIAC_SIGNS.map((sign) => sign.code) as [string, ...string[]],
-);
+const zodiacCodeSchema = z.enum(ZODIAC_SIGNS.map((sign) => sign.code) as [string, ...string[]]);
 
 /**
  * Portfolio request schemas.

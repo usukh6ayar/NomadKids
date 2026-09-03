@@ -280,6 +280,8 @@ export class QpayClient {
   }
 
   private logFailure(path: string, kind: QpayErrorKind, durationMs: number, status?: number): void {
-    this.logger.warn(`QPay POST ${path} failed (${kind}${status ? ` ${status}` : ""}) after ${durationMs}ms`);
+    this.logger.warn(
+      `QPay POST ${path} failed (${kind}${status ? ` ${status}` : ""}) after ${durationMs}ms`,
+    );
   }
 }

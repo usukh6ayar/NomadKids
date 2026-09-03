@@ -87,7 +87,11 @@ async function mark(
   });
 }
 
-function register(session: AuthSession, kindergartenId: string, query = "from=2026-03-02&to=2026-03-06") {
+function register(
+  session: AuthSession,
+  kindergartenId: string,
+  query = "from=2026-03-02&to=2026-03-06",
+) {
   return authed(
     request(server()).get(`/v1/kindergartens/${kindergartenId}/attendance/register?${query}`),
     session,
@@ -207,7 +211,11 @@ describe("the filters", () => {
     await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
     await mark(a, a.enrollment.id, a.child.id, "2026-03-05", "SICK");
 
-    const res = await register(admin, a.kindergarten.id, "from=2026-03-02&to=2026-03-06&status=SICK");
+    const res = await register(
+      admin,
+      a.kindergarten.id,
+      "from=2026-03-02&to=2026-03-06&status=SICK",
+    );
     const row = res.body.items.find((r: { childId: string }) => r.childId === a.child.id);
 
     expect(row).toBeDefined();
@@ -261,7 +269,11 @@ describe("the filters", () => {
   });
 
   it("returns an empty register rather than an error when nothing matches", async () => {
-    const res = await register(admin, a.kindergarten.id, "from=2026-03-02&to=2026-03-06&q=zzzznobody");
+    const res = await register(
+      admin,
+      a.kindergarten.id,
+      "from=2026-03-02&to=2026-03-06&q=zzzznobody",
+    );
 
     expect(res.status).toBe(200);
     expect(res.body.items).toEqual([]);
