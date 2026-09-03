@@ -165,7 +165,72 @@
    * did not match. A token nobody reads is worse than no token — it looks like
    * the single source of truth while two other values are what actually ship.
    * The design system names `shadow-sm`, so that is what both spell now.
+   *
+   * ★★ REDESIGN 2026-09-03 — `shadow-sm` is now *this product's* value, not
+   * Tailwind's default.
+   *
+   * The name stays (`card.tsx` spells `shadow-sm`, and `ui-foundation.test.tsx`
+   * asserts it does) while the value becomes a two-layer, slate-tinted shadow:
+   * a 1px contact edge plus a wide, very light diffusion. Tailwind's default is
+   * a neutral black at 10% — on an off-white canvas that reads grey and slightly
+   * dirty, which is the single thing that made these cards look like a stock
+   * admin template rather than a designed surface.
+   *
+   * Tinting with slate-900 rather than pure black is what keeps it *calm*: the
+   * shadow now belongs to the same colour family as the ink and the borders,
+   * so a card looks lifted rather than smudged. The brief asks for "very soft
+   * elevation only" and this is quieter than what it replaces, not heavier.
+   *
+   * Three steps, because the product genuinely has three depths: a resting
+   * card, something raised on hover or a popover, and a modal over a scrim.
+   * `--shadow-ring` is the pressed/focused inset, kept here so a control cannot
+   * invent its own.
    */
+  --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.04), 0 2px 8px -2px rgb(15 23 42 / 0.05);
+  --shadow-md: 0 2px 4px -1px rgb(15 23 42 / 0.05), 0 8px 20px -4px rgb(15 23 42 / 0.08);
+  --shadow-lg: 0 4px 8px -2px rgb(15 23 42 / 0.05), 0 16px 40px -8px rgb(15 23 42 / 0.12);
+
+  /*
+   * ★ A sunken surface — slate-50 against the card's white.
+   *
+   * The product had exactly two greys to build with, `--color-canvas` (the
+   * page) and `--color-surface` (a card), so a panel *inside* a card had
+   * nowhere to go: every nested block was either another white rectangle with
+   * a hairline round it or a tinted accent that claimed a meaning it did not
+   * have. Both are why dense screens read as a pile of boxes.
+   *
+   * This is the third ground — a quiet inset for a nested summary, a stat
+   * well, a disabled control, the sidebar's own footer. Deliberately the same
+   * value as `--color-canvas`: a card sitting on the page and a well sitting
+   * in a card are the same one-step relationship, and inventing a fourth grey
+   * to distinguish them is how a palette starts drifting.
+   */
+  --color-sunken: #f8fafc;
+
+  /*
+   * ★ The vertical rhythm, as tokens rather than as a habit.
+   *
+   * Nothing enforces spacing the way `tokens.test.tsx` enforces type and radii,
+   * and it shows: `gap-5 lg:gap-6`, `gap-3 md:gap-4 lg:gap-5`, `mb-2.5 md:mb-3`
+   * and `p-3 md:px-4 md:py-3.5` all ship today, each defensible alone and no
+   * two agreeing. The result is that no two screens share a rhythm, which a
+   * reader perceives as "unfinished" long before they could name why.
+   *
+   * Two names carry almost all of it. A *band* is the distance between the
+   * labelled modules of a page; a *stack* is the distance between items inside
+   * one. Keeping band strictly larger than stack is what makes grouping visible
+   * without drawing a single divider.
+   *
+   * ★★ The band values are the rhythm 22 screens already shared
+   * (`gap-6 lg:gap-8`), not a new number. That majority was never the problem —
+   * the outliers were, `/dashboard` among them at `gap-5 lg:gap-6`. Picking a
+   * third value here would have made the token the twenty-third opinion
+   * instead of the name for the existing one.
+   */
+  --space-stack: 0.75rem;
+  --space-stack-lg: 1rem;
+  --space-band: 1.5rem;
+  --space-band-lg: 2rem;
 
   /* Sizing floors */
   --size-control: 48px;
@@ -230,13 +295,33 @@
    * from this scale on a control would beat that element rule — which is
    * exactly how the header's search field ended up at 14px.
    */
+  /*
+   * ★ REDESIGN 2026-09-03: `body` 14px → 15px, and the top of the scale opened
+   * up.
+   *
+   * The brief's TYPOGRAPHY section specifies body at 15px and a 24px page
+   * title. Body was 14px — one step under spec for over half the text in the
+   * product — while `heading` (21.6px) and `display` (24px) sat 2.4px apart,
+   * so a page title and a screen heading read as the same size and the
+   * hierarchy had to be carried by weight alone.
+   *
+   * `lead` moves to 16px rather than colliding with the new body, keeping the
+   * seven steps distinct. The gaps now widen as they go up — 12, 13, 15, 16,
+   * 18, 23, 28 — which is what makes a heading read as a heading at a glance
+   * instead of on inspection.
+   *
+   * ★★ Watch constraint 2 when touching these. Mongolian compounds wrap at
+   * almost every width, and a 1px rise is enough to push a filter chip or a
+   * dense row's label onto a second line. That is a layout to accommodate, not
+   * a reason to keep body under spec.
+   */
   --text-caption: 0.75rem;
   --text-compact: 0.8125rem;
-  --text-body: 0.875rem;
-  --text-lead: 0.9375rem;
-  --text-title: 1.0625rem;
-  --text-heading: 1.35rem;
-  --text-display: 1.5rem;
+  --text-body: 0.9375rem;
+  --text-lead: 1rem;
+  --text-title: 1.125rem;
+  --text-heading: 1.4375rem;
+  --text-display: 1.75rem;
 
   /*
    * ★ The one step above `display`, for a statistic that *is* the content.
@@ -309,11 +394,22 @@ html {
   overflow-x: hidden;
 }
 
-/* A single, consistent focus ring. Never removed, only restyled. */
+/*
+ * A single, consistent focus ring. Never removed, only restyled.
+ *
+ * ★ The `border-radius: 4px` that used to be here is gone, and it was a bug
+ * rather than a style.
+ *
+ * `border-radius` in this rule applies to the *element*, not to the outline —
+ * so focusing anything rounded snapped its corners from 18px (a card), 14px (a
+ * row) or 12px (a button) down to 4px for exactly as long as it held focus. A
+ * keyboard user watched every control they touched change shape. Modern
+ * browsers already draw the outline following the element's own radius, which
+ * is what the line was reaching for and what removing it gets.
+ */
 :focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
-  border-radius: 4px;
 }
 
 /*
@@ -326,6 +422,30 @@ input,
 textarea,
 select {
   font-size: 16px;
+}
+
+/*
+ * ★ `fieldset` must be allowed to shrink. Found in browser QA, 2026-09-03.
+ *
+ * Every user agent gives `fieldset` `min-width: min-content`, which is not a
+ * value any normal element has and which flex/grid cannot override from the
+ * outside. The effect is that a fieldset refuses to be narrower than its widest
+ * unbroken content, and it drags the page with it.
+ *
+ * Measured on `/notifications/new` at 375px: the "Мэдээний төрөл" chip row is a
+ * horizontal scroller inside a `<fieldset>`, and the fieldset had grown to
+ * **1115px inside a 375px viewport**. That is not merely an overflow — the
+ * scroller was 1147px wide with `scrollWidth` 1148, so it reported
+ * `canScroll: false` and every category chip past the first was laid out
+ * off-screen with **no way to reach it**. `html { overflow-x: hidden }` above
+ * hid the damage instead of revealing it: the page could not be scrolled
+ * sideways to find them either.
+ *
+ * `min-width: 0` restores ordinary shrinking, the fieldset takes the viewport
+ * width, and the scroller inside it starts scrolling as it was written to.
+ */
+fieldset {
+  min-width: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -351,6 +471,69 @@ select {
  * The content stays reachable by keyboard and by wheel — this hides the bar,
  * not the overflow.
  */
+/*
+ * The page rhythm, as two utilities.
+ *
+ * ★ `band` between the labelled modules of a screen, `stack` between items
+ * inside one — and band is always the larger of the two, which is what makes
+ * grouping legible without a divider. Both step up once at `lg`, where the
+ * space exists.
+ *
+ * Utilities rather than raw `gap-*`, because the whole problem being fixed is
+ * that a call site choosing its own number is how the product ended up with
+ * four rhythms. A screen now says which *kind* of gap it means.
+ */
+@utility page-band {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-band);
+
+  @media (width >= 64rem) {
+    gap: var(--space-band-lg);
+  }
+}
+
+@utility card-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-stack);
+
+  @media (width >= 64rem) {
+    gap: var(--space-stack-lg);
+  }
+}
+
+/*
+ * A card that is a link.
+ *
+ * ★ One definition, because "how does a clickable row respond" was being
+ * answered per screen — some moved the border to the brand colour, some
+ * changed the background, most did nothing at all, and a list you could click
+ * looked identical to one you could not.
+ *
+ * The lift is 1px and the shadow steps up one level. Small enough to read as
+ * responsiveness rather than motion, and it returns to rest on `:active` so a
+ * press feels like a press. `prefers-reduced-motion` already flattens the
+ * transition globally.
+ */
+@utility card-interactive {
+  transition:
+    box-shadow 150ms ease,
+    transform 150ms ease,
+    border-color 150ms ease;
+
+  &:hover {
+    border-color: color-mix(in oklab, var(--color-primary) 28%, var(--color-border));
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    box-shadow: var(--shadow-sm);
+    transform: translateY(0);
+  }
+}
+
 @utility scrollbar-none {
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* old Edge */

@@ -87,20 +87,37 @@ export function ChildTabs({ tabs, paramName = "tab" }: { tabs: ChildTab[]; param
         labels under the 16px floor. `-mx-4 px-4` lets the strip bleed to the
         screen edge so it is visibly scrollable rather than looking clipped.
       */}
+      {/*
+        ★ REDESIGN 2026-09-03 — a segmented control, not an underline.
+
+        The tabs were four underlined text labels on a hairline, which is the
+        weakest treatment available: the active one differed by a 2px rule and
+        a colour, so on a phone — where the strip scrolls and only two and a
+        half labels are visible — a teacher could not tell at a glance which
+        section they were in, only that one word was blue.
+
+        A tinted well with the active tab as a raised white pill reads
+        instantly and matches how every other selected thing in the redesigned
+        product now behaves (the register pills, the sidebar's active row): a
+        filled surface with elevation. It also removes the double-line problem
+        the `-mb-px` hack existed to solve.
+
+        Still three signals, not colour alone: `data-[state=active]` drives the
+        white fill, the shadow *and* a heavier weight, and Radix puts
+        `aria-selected` on the trigger.
+      */}
       <TabsPrimitive.List
         aria-label="Хүүхдийн мэдээллийн хэсгүүд"
-        className="-mx-4 flex gap-1 overflow-x-auto border-b border-border px-4 [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden"
+        className="-mx-4 flex gap-1 overflow-x-auto rounded-control bg-sunken p-1 px-4 [scrollbar-width:none] sm:mx-0 sm:px-1 [&::-webkit-scrollbar]:hidden"
       >
         {tabs.map((tab) => (
           <TabsPrimitive.Trigger
             key={tab.value}
             value={tab.value}
             className={cn(
-              // -1px pulls the underline onto the list's own border so the two
-              // read as one rule rather than as a double line.
-              "relative -mb-px min-h-[44px] shrink-0 whitespace-nowrap border-b-2 px-3.5 text-body font-medium transition-colors",
-              "border-transparent text-muted hover:text-ink",
-              "data-[state=active]:border-primary data-[state=active]:text-primary-strong",
+              "relative min-h-[44px] shrink-0 whitespace-nowrap rounded-control px-3.5 text-body font-medium transition-all duration-150",
+              "text-muted hover:text-ink",
+              "data-[state=active]:bg-surface data-[state=active]:font-semibold data-[state=active]:text-primary-strong data-[state=active]:shadow-sm",
             )}
           >
             {tab.label}

@@ -78,9 +78,33 @@ export function Field({
   );
 }
 
+/*
+ * ★ REDESIGN 2026-09-03 — a control now looks like something you type into.
+ *
+ * It was a white box with a slate-200 hairline, identical at rest to the card
+ * behind it, and on focus the border changed to blue with the global 2px
+ * outline over the top. Two things were wrong with that:
+ *
+ *  - **At rest a form read as a list of outlines.** A field on a white card
+ *    with a white fill has only its 1px border to say "this is editable", and
+ *    on the observation screen — six textareas stacked — that is a page of
+ *    empty rectangles. `bg-sunken` inverts the relationship the way every
+ *    considered form does: the *input* is the recessed thing, the card is the
+ *    surface. It also makes the placeholder legible as placeholder.
+ *
+ *  - **The focus state was doing the work twice.** The border went blue *and*
+ *    the global focus ring drew 2px outside it, so a focused field grew a
+ *    double blue edge. The fill now lifts to white on focus — the field
+ *    "opens" — and the ring alone marks focus.
+ *
+ * `placeholder:text-faint` rather than `text-muted`: muted is secondary *text*,
+ * and a placeholder set at the same weight as a filled value is how a form
+ * looks pre-filled when it is empty.
+ */
 const controlBase =
-  "w-full rounded-control border bg-surface px-3.5 text-ink placeholder:text-muted " +
-  "transition-colors disabled:opacity-60 disabled:bg-canvas";
+  "w-full rounded-control border bg-sunken px-3.5 text-ink placeholder:text-faint " +
+  "transition-colors duration-150 focus:bg-surface " +
+  "disabled:cursor-not-allowed disabled:opacity-60 disabled:bg-border-soft";
 
 export function Input({
   className,
@@ -93,7 +117,7 @@ export function Input({
       className={cn(
         controlBase,
         "h-[48px]",
-        invalid ? "border-danger" : "border-border focus:border-primary",
+        invalid ? "border-danger" : "border-border focus:border-faint",
         className,
       )}
       {...props}
@@ -112,7 +136,7 @@ export function Textarea({
       className={cn(
         controlBase,
         "min-h-[112px] resize-y py-3 leading-relaxed",
-        invalid ? "border-danger" : "border-border focus:border-primary",
+        invalid ? "border-danger" : "border-border focus:border-faint",
         className,
       )}
       {...props}
@@ -255,8 +279,10 @@ export function Select({
         className={cn(
           controlBase,
           "flex h-[48px] items-center justify-between gap-2 outline-none",
-          "data-[placeholder]:text-muted",
-          invalid ? "border-danger" : "border-border data-[state=open]:border-primary",
+          // Open, the trigger takes the surface fill its own popup has, so the
+          // two read as one object rather than as a grey box under a white one.
+          "data-[state=open]:bg-surface data-[placeholder]:text-faint",
+          invalid ? "border-danger" : "border-border data-[state=open]:border-faint",
           className,
         )}
       >
@@ -272,7 +298,11 @@ export function Select({
           sideOffset={6}
           className={cn(
             "z-[100] overflow-hidden rounded-row border border-border bg-surface py-1",
-            "shadow-[0_8px_28px_rgba(15,23,42,.12)]",
+            // ★ Was a hand-rolled `shadow-[0_8px_28px_…]` — the exact thing
+            // globals.css argues against, since it put a fourth elevation in
+            // the product that no token knew about. `shadow-lg` is the popover
+            // step and every raised surface now spells one of three names.
+            "shadow-lg",
             "w-[var(--radix-select-trigger-width)] max-h-[var(--radix-select-content-available-height)]",
           )}
         >

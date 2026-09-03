@@ -10,6 +10,7 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { FormError } from "@/components/ui/states";
+import { cn } from "@/lib/utils";
 import { formatFileSize } from "@/lib/format";
 import { PORTFOLIO } from "@/lib/vocabulary";
 
@@ -199,15 +200,47 @@ function ReportProgress({ job, onRetry }: { job?: ReportJob; onRetry: () => void
   });
 
   if (!job || job.status === "QUEUED" || job.status === "RUNNING") {
+    /*
+      ★ REDESIGN 2026-09-03 — the two waiting states now look different.
+
+      A PDF is a queued job (constraint 16), and it passes through two stages
+      that mean genuinely different things: waiting for a worker to pick it up,
+      and a worker actually rendering it. Both drew the same spinner and one
+      line of grey text, so the only way to tell "the queue is backed up" from
+      "it is being made right now" was to read the sentence — and on a slow
+      afternoon that sentence changing was the sole evidence anything was
+      happening at all.
+
+      A determinate two-step strip carries it instead: the first segment fills
+      on QUEUED, both fill on RUNNING. The stage is named beside it, so the
+      progress is not the only signal, and `role="status"` still announces the
+      wording rather than the bars.
+    */
+    const running = job?.status === "RUNNING";
+
     return (
-      <div role="status" className="flex items-center gap-3 rounded-control bg-canvas px-4 py-3.5">
-        <span
-          aria-hidden="true"
-          className="size-4 shrink-0 animate-spin rounded-pill border-2 border-primary border-t-transparent"
-        />
-        <span className="text-body text-ink">
-          {job?.status === "RUNNING" ? "Бэлтгэж байна…" : "Дараалалд орлоо…"}
-        </span>
+      <div role="status" className="flex flex-col gap-2.5 rounded-row bg-sunken px-4 py-3.5">
+        <div className="flex items-center gap-3">
+          <span
+            aria-hidden="true"
+            className="size-4 shrink-0 animate-spin rounded-pill border-2 border-primary border-t-transparent"
+          />
+          <span className="text-body font-medium text-ink">
+            {running ? "Бэлтгэж байна…" : "Дараалалд орлоо…"}
+          </span>
+        </div>
+
+        <div aria-hidden="true" className="flex gap-1.5">
+          <span className="h-1.5 flex-1 rounded-pill bg-primary" />
+          <span
+            className={cn(
+              "h-1.5 flex-1 rounded-pill transition-colors duration-300",
+              running ? "bg-primary" : "bg-track",
+            )}
+          />
+        </div>
+
+        <p className="text-caption text-muted">Тайлан бэлэн болмогц энд татах холбоос гарч ирнэ.</p>
       </div>
     );
   }

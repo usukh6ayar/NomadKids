@@ -12,9 +12,29 @@ import { cn } from "@/lib/utils";
  *
  * `sm` is 44px, not 36px. It is "less wide", not "less tappable".
  */
+/*
+ * ★ REDESIGN 2026-09-03 — a button now responds to being pressed.
+ *
+ * Every variant was `transition-colors` and a hover fill, which is the whole
+ * interaction: no press state, no elevation, no weight behind the primary
+ * action. On a touch screen — where this product mostly lives — hover does not
+ * exist at all, so the primary action of every screen was giving the teacher
+ * no feedback whatsoever between tap and response.
+ *
+ * What changed:
+ *  - The filled variants carry `--shadow-sm` at rest and lift to `--shadow-md`
+ *    on hover, so the page's primary action is visibly the primary action.
+ *  - All variants translate down 1px and drop their shadow on `:active`. That
+ *    is the press, and it is the part that works under a thumb.
+ *  - `transition-colors` became `transition-all` at 150ms so the shadow and
+ *    transform are animated too. `prefers-reduced-motion` flattens it globally.
+ *  - `active:` states are listed after `hover:` deliberately: a finger produces
+ *    both at once on many touch stacks, and the press must win.
+ */
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 rounded-control font-medium " +
-    "transition-colors disabled:pointer-events-none disabled:opacity-50 " +
+    "transition-all duration-150 disabled:pointer-events-none disabled:opacity-50 " +
+    "disabled:shadow-none active:translate-y-[1px] " +
     "[&_svg]:size-[18px] [&_svg]:shrink-0",
   {
     variants: {
@@ -25,11 +45,17 @@ const buttonVariants = cva(
         //
         // `font-medium` is on the shared base above, so the label weight is the
         // same on every variant.
-        primary: "bg-primary text-primary-ink hover:bg-primary-hover",
-        secondary: "bg-surface text-ink border border-border hover:bg-canvas",
-        ghost: "text-ink hover:bg-canvas",
-        danger: "bg-danger text-white hover:opacity-90",
-        link: "text-primary underline underline-offset-4 hover:opacity-80",
+        primary:
+          "bg-primary text-primary-ink shadow-sm hover:bg-primary-hover hover:shadow-md active:shadow-none",
+        secondary:
+          "bg-surface text-ink border border-border shadow-sm hover:bg-canvas hover:border-faint active:shadow-none",
+        ghost: "text-ink hover:bg-canvas active:bg-border-soft",
+        danger:
+          "bg-danger text-white shadow-sm hover:opacity-90 hover:shadow-md active:shadow-none",
+        // A link is text. It gets no elevation and no press displacement —
+        // both would be a button pretending, and the base's `active:translate`
+        // is cancelled here rather than inherited.
+        link: "text-primary underline underline-offset-4 hover:opacity-80 active:translate-y-0",
       },
       size: {
         // 48px — the height of a primary action, matching text inputs so a

@@ -41,10 +41,25 @@ import { TONE_CARD, type Tone } from "@/components/ui/tone";
  * the content — a Mongolian compound that wraps at almost every width — is what
  * has to give. Desktop keeps the roomier value, where the space exists.
  */
+/*
+ * ★ REDESIGN 2026-09-03 — `roomy` got roomier on desktop.
+ *
+ * `p-4 md:px-5 md:py-5` is 20px of breathing room around content on a 1440px
+ * screen, which is what made dense screens read as cramped and cheap: the card
+ * had a generous 18px radius and then crowded its own corners. `md:p-6` (24px)
+ * is the step the brief's own geometry implies and costs nothing on a phone,
+ * where the mobile-first `p-4` is unchanged and deliberately so — 24px inside a
+ * card that already sits 16px from a 375px edge spends a quarter of the width
+ * on nothing.
+ *
+ * `p-4` stays literally present in the string because `ui-foundation.test.tsx`
+ * asserts it, and that assertion is about the mobile-first floor rather than
+ * about the desktop value.
+ */
 const PADDING = {
   none: "",
-  compact: "p-3 md:px-4 md:py-3.5",
-  roomy: "p-4 md:px-5 md:py-5",
+  compact: "p-3 md:px-4 md:py-4",
+  roomy: "p-4 md:p-6",
 } as const;
 
 export function Card({
@@ -95,11 +110,31 @@ export function Card({
  * and the larger radius eats its corners. Hovering moves the border to the
  * brand colour, which is the reference's affordance for "this row is a link".
  */
-export function RowCard({ className, ...props }: ComponentProps<"div">) {
+export function RowCard({
+  className,
+  interactive = false,
+  ...props
+}: ComponentProps<"div"> & {
+  /**
+   * The row is a link or a button.
+   *
+   * ★ REDESIGN 2026-09-03. Rows used to carry a bare `transition-colors` and
+   * nothing to transition, so a roster you can tap through looked exactly like
+   * a read-only list. `card-interactive` (globals.css) is the one answer to
+   * "what does a clickable surface do" — a 1px lift, one step of shadow, a
+   * brand-tinted border, and a return to rest on press.
+   *
+   * Opt-in rather than the default: `RowCard` is also used for rows that are
+   * genuinely inert, and a surface that lifts under the cursor while doing
+   * nothing is a worse lie than a flat one.
+   */
+  interactive?: boolean;
+}) {
   return (
     <div
       className={cn(
-        "rounded-row border border-border bg-surface px-4 py-3 transition-colors",
+        "rounded-row border border-border bg-surface px-4 py-3.5 shadow-sm",
+        interactive && "card-interactive cursor-pointer",
         className,
       )}
       {...props}
@@ -107,9 +142,30 @@ export function RowCard({ className, ...props }: ComponentProps<"div">) {
   );
 }
 
-/** The column those rows sit in. 8px gap, per `.kidlist`. */
+/** The column those rows sit in. Uses the shared stack rhythm. */
 export function RowList({ className, ...props }: ComponentProps<"div">) {
-  return <div className={cn("flex flex-col gap-2", className)} {...props} />;
+  return <div className={cn("card-stack", className)} {...props} />;
+}
+
+/**
+ * A quiet inset inside a card — a summary well, a stat block, a nested panel.
+ *
+ * ★ REDESIGN 2026-09-03, and it exists because the product had nowhere to put
+ * one.
+ *
+ * There were exactly two grounds, the canvas and a card, so anything nested
+ * inside a card became either a second white rectangle with its own hairline —
+ * a box in a box, which is what made dense screens read as clutter — or an
+ * accent tint borrowed from the status palette, which claimed a meaning
+ * ("done", "needs attention") the content did not have. `--color-sunken` is
+ * the third ground and this is the component that spells it.
+ *
+ * No border and no shadow: it recedes rather than stacking another edge on
+ * screen. The radius is the row's 14px, since a well is nested inside an 18px
+ * card and matching it would leave no visible corner.
+ */
+export function SunkenPanel({ className, ...props }: ComponentProps<"div">) {
+  return <div className={cn("rounded-row bg-sunken p-4", className)} {...props} />;
 }
 
 /**
@@ -190,13 +246,19 @@ export function SectionHeader({
         {icon ? <span className="shrink-0">{icon}</span> : null}
 
         <div className="min-w-0">
+          {/*
+            ★ `tracking-[-.01em]` matches `PageHeader`'s h1. Mongolian
+            compounds are long and set at 18px they read a touch loose; the
+            same optical correction the page title already carried keeps the
+            two headings looking like one family.
+          */}
           <Tag
             id={id}
-            className="text-lead font-semibold leading-[1.3] text-ink md:text-title md:leading-[1.35]"
+            className="text-lead font-semibold leading-[1.3] tracking-[-.01em] text-ink md:text-title md:leading-[1.35]"
           >
             {title}
           </Tag>
-          {lede ? <p className="mt-0.5 text-caption text-muted md:text-body">{lede}</p> : null}
+          {lede ? <p className="mt-1 text-caption text-muted md:text-body">{lede}</p> : null}
         </div>
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
