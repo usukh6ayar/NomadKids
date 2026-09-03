@@ -274,6 +274,22 @@ database-fixture problem specific to the api suite: the web suite has no
 database, no shared Nest app and no rate limiter. Whatever it is, it is not
 those. Capture the full output if it happens again.
 
+★★★★ **It happened again on 2026-09-03, and again in the web suite:**
+`funding-register.test.tsx > "prices the same children on the funding tab"`
+failed in `pnpm --filter web test` and passed alone (12/12). It then passed
+**four consecutive full runs**.
+
+The full reporter output was **not** captured — the run was filtered to the
+summary lines, which is the exact mistake the paragraph above warns about, so
+this is a third data point and still not a diagnosis. What is now recorded:
+the failure took **1313 ms**, so it was not a timeout, and it is a *third*
+distinct web file (`admin-users`, now `funding-register`), which weakens
+"one bad test" and strengthens "something about the full-run environment".
+
+Both web occurrences are in files that render a **table of money** filtered by
+a control. If it recurs, run the full suite with `--reporter=verbose` writing
+to a file *before* grepping, so the assertion survives.
+
 ---
 
 ## 5. UI rules

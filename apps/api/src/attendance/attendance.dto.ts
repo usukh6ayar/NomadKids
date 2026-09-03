@@ -116,11 +116,15 @@ export type ReviewAttendanceRequestDto = z.infer<typeof reviewAttendanceRequestS
  * A director reconciling a funding claim works in the period the claim covers,
  * and that period is not obliged to be a calendar month.
  *
- * ★★ `OTHER` is filterable even though `recordAttendanceSchema` above cannot
- * produce it. The column is an `AttendanceStatus` and the enum has six values;
- * a filter that silently could not name one of them would quietly hide rows.
- * That the recording schema is short of it is a separate defect, noted where
- * `ATTENDANCE_STATUS_LABEL` is declared.
+ * ★★ `OTHER` is filterable. The column is an `AttendanceStatus` and the enum
+ * has six values; a filter that silently could not name one of them would
+ * quietly hide rows.
+ *
+ * This used to add "even though `recordAttendanceSchema` above cannot produce
+ * it … a separate defect". That defect was fixed on 2026-09-02 —
+ * `attendanceStatusValues` at the head of this file has had all six since, and
+ * says so. The note is corrected rather than left standing: a comment naming a
+ * defect that no longer exists sends the next reader looking for it.
  */
 const registerStatusValues = [
   "PRESENT",
