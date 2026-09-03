@@ -391,10 +391,10 @@ Bottom right, the floating circular brand-blue chat button.
 
 - Generate **Block 0 + one prompt at a time**. Batching produces mush.
 - If the output looks like a generic dark SaaS dashboard, add to the prompt:
-  *"light background #f8fafc, white cards, no dark theme, no navy header, no
-  purple, warm and friendly not corporate."*
-- If cards stretch edge to edge on the desktop shots, add: *"content is a
-  centred 1400px column with visible empty margin on both sides."*
+  _"light background #f8fafc, white cards, no dark theme, no navy header, no
+  purple, warm and friendly not corporate."_
+- If cards stretch edge to edge on the desktop shots, add: _"content is a
+  centred 1400px column with visible empty margin on both sides."_
 - To iterate on one image, ask for a variation rather than a fresh generation —
   it keeps the palette.
 - Once a layout is right, ask ChatGPT for the same screen as **HTML + Tailwind**;

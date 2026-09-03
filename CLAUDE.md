@@ -87,7 +87,7 @@ An unauthorized child, observation, media file or report returns **404**. A 403
 confirms the record exists.
 
 ★ **One exception, added 2026-09-01: 402 for the portal access fee.** It is
-shown only to a guardian who has *already passed* `canAccessChild` for that
+shown only to a guardian who has _already passed_ `canAccessChild` for that
 child — someone who knows the child exists — and a 404 there would hide the one
 fact that lets them act. Authorization runs first, so a stranger still gets 404
 and the status cannot become an oracle. `authz/portal-access.ts`,
@@ -243,13 +243,13 @@ isolation — the most serious kind there is).
 **The cause is not known.** What is ruled out, with evidence, so nobody repeats
 the search:
 
-| Hypothesis | Why not |
-| --- | --- |
-| Test files run in parallel | `vitest.config.mts` sets `fileParallelism: false` |
-| Login rate limiter exhausted | `createTestApp` compiles a fresh module per file, so the limiter is per-file — it cannot produce a failure that only appears in a full run |
-| Report worker / maintenance scheduler | Both gated on `REPORTS_WORKER_ENABLED`, which `test/setup.ts` sets to `"false"` |
-| Leaked apps holding connections | All 46 files call `app.close()` in `afterAll`; Postgres `max_connections` is 100 and the suite sits near 8 |
-| `resetData` missing a table | Verified by truncating and counting rows in all 65 tables — none survive |
+| Hypothesis                            | Why not                                                                                                                                    |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Test files run in parallel            | `vitest.config.mts` sets `fileParallelism: false`                                                                                          |
+| Login rate limiter exhausted          | `createTestApp` compiles a fresh module per file, so the limiter is per-file — it cannot produce a failure that only appears in a full run |
+| Report worker / maintenance scheduler | Both gated on `REPORTS_WORKER_ENABLED`, which `test/setup.ts` sets to `"false"`                                                            |
+| Leaked apps holding connections       | All 46 files call `app.close()` in `afterAll`; Postgres `max_connections` is 100 and the suite sits near 8                                 |
+| `resetData` missing a table           | Verified by truncating and counting rows in all 65 tables — none survive                                                                   |
 
 ★ It **is** real, and one instance had a real cause: `attendance-register.test.ts`
 did 21 tests × 5 logins against a 60-per-15-minutes limit and got 429s that read
@@ -282,13 +282,13 @@ failed in `pnpm --filter web test` and passed alone (12/12). It then passed
 The full reporter output was **not** captured — the run was filtered to the
 summary lines, which is the exact mistake the paragraph above warns about, so
 this is a third data point and still not a diagnosis. What is now recorded:
-the failure took **1313 ms**, so it was not a timeout, and it is a *third*
+the failure took **1313 ms**, so it was not a timeout, and it is a _third_
 distinct web file (`admin-users`, now `funding-register`), which weakens
 "one bad test" and strengthens "something about the full-run environment".
 
 Both web occurrences are in files that render a **table of money** filtered by
 a control. If it recurs, run the full suite with `--reporter=verbose` writing
-to a file *before* grepping, so the assertion survives.
+to a file _before_ grepping, so the assertion survives.
 
 ---
 
@@ -367,7 +367,7 @@ section keeps repeating: a rule the codebase contradicts stops being read.
   there is no per-child meal cost split by source
 - §7 invoices — **done**: `Invoice`, `InvoiceLineItem`, `Payment`, a
   hand-written invoice, the carried balance, and `POST
-  …/invoices/generate-month` which bills a whole month from the `PARENT`
+…/invoices/generate-month` which bills a whole month from the `PARENT`
   tariffs × the month's attendance and meal days
 - §8 online payment — **built, then narrowed**. ★★ **QPay now charges one
   thing: the portal access fee** (client, 2026-09-01 — "QPay-ийг зөвхөн эцэг
@@ -402,6 +402,7 @@ was better. Both were sound. The reasoning, the two defects fixed on the way in
 (JavaScript floats for money; a `/v2` doubled into the QPay base URL) and what
 was lost (a line no longer points at the `FundingRule` that produced it, and no
 longer carries `quantity × unitAmount`) are in `docs/FINANCE_MODULE.md` §1.
+
 - §9 the financial dashboard — **done**: `/kindergartens/:id/invoices/dashboard`
   and the panel at the head of `/finance`. Nine figures, none of them stored —
   every one aggregated on read from the calculations, invoices and payments

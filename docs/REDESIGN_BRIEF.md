@@ -36,19 +36,19 @@ The design principle the product was built on, and which should survive:
 
 - No landing pages whose only job is to link elsewhere — navigation already does
   that.
-- No dashboard that is a wall of statistics. A dashboard answers *what needs my
-  attention today*, or it is not built.
+- No dashboard that is a wall of statistics. A dashboard answers _what needs my
+  attention today_, or it is not built.
 - No screen that exists because a database table exists.
 
 ### 1.1 The people who use it
 
-| Role | Mongolian label | What they are |
-| --- | --- | --- |
-| `TEACHER` | Багш | Teaches one group. The primary audience of this document. |
-| `ADMIN` | Админ / Захирал | Runs one kindergarten. Very often *also* a teacher. |
-| `PARENT` | Эцэг эх | A guardian of one or more children. |
-| `COOK` | Тогооч | The kitchen and the weekly menu. |
-| `ACCOUNTANT` | Нягтлан | That kindergarten's own funding, invoices and reconciliation. |
+| Role              | Mongolian label      | What they are                                                          |
+| ----------------- | -------------------- | ---------------------------------------------------------------------- |
+| `TEACHER`         | Багш                 | Teaches one group. The primary audience of this document.              |
+| `ADMIN`           | Админ / Захирал      | Runs one kindergarten. Very often _also_ a teacher.                    |
+| `PARENT`          | Эцэг эх              | A guardian of one or more children.                                    |
+| `COOK`            | Тогооч               | The kitchen and the weekly menu.                                       |
+| `ACCOUNTANT`      | Нягтлан              | That kindergarten's own funding, invoices and reconciliation.          |
 | Platform operator | Платформын удирдлага | Superadmin across every kindergarten. Not a member of any one of them. |
 
 A person can hold more than one role. When the shell has to name one role, it
@@ -93,7 +93,7 @@ never client-side hiding.
   the only part that scrolls; a soft fade at its bottom edge signals more rows
   below.
 - **Sidebar footer** — avatar initials, the person's full name (a link to
-  `/settings`), and under it their *context*: a teacher with exactly one group
+  `/settings`), and under it their _context_: a teacher with exactly one group
   sees the group's name; everyone else sees their role. A 44px "Гарах" button
   beside it.
 - **Sticky desktop header** above the content: the teacher's group as a chip
@@ -128,13 +128,13 @@ never client-side hiding.
 
 ### 3.1 Phone bottom bar — five tabs
 
-| Label | Destination |
-| --- | --- |
-| **Самбар** | `/dashboard` |
-| **Мэдээ** | `/notifications` (carries the unread badge) |
-| **Явцын үнэлгээ** | the teacher's group assessment sheet |
-| **Судалгаа** | `/surveys` |
-| **Цэс** | opens the drawer |
+| Label             | Destination                                 |
+| ----------------- | ------------------------------------------- |
+| **Самбар**        | `/dashboard`                                |
+| **Мэдээ**         | `/notifications` (carries the unread badge) |
+| **Явцын үнэлгээ** | the teacher's group assessment sheet        |
+| **Судалгаа**      | `/surveys`                                  |
+| **Цэс**           | opens the drawer                            |
 
 "Явцын үнэлгээ" is two words and **wraps to two lines** in a tab. That is why
 the bar is 60px tall, not 56.
@@ -150,30 +150,36 @@ No branch is a dead link and none opens a screen whose first act is a question.
 ### 3.2 Sidebar sections — exact labels
 
 **Хүүхдийн хөгжил ба үнэлгээ**
+
 - Хүүхдүүд → `/children`
 - Явцын үнэлгээ → group assessment
 - Ажиглалт хянах → `/observations/review`
 - Чөлөөний хүсэлт хянах → `/attendance-requests/review`
 
 **Өдөр тутмын бүртгэл**
+
 - Ирц → group attendance
 - Хоол ба цэс → group meals
 
 **Харилцаа холбоо**
+
 - Ангийн самбар / Мэдээ → `/notifications`
 - Судалгаа → `/surveys`
 - Чат → `/chat`
 
-**Санхүү** *(administrators only — a teacher has no financial access at all)*
+**Санхүү** _(administrators only — a teacher has no financial access at all)_
+
 - Ирц ба тооцоолол → `/admin/funding`
 - Ирцийн дэлгэрэнгүй → `/attendance/journal`
 
 **Санхүү ба баримт бичиг**
+
 - Баримт бичгийн сан → `/documents`
 
 **Багш ба байгууллага**
+
 - Багшийн мэдээлэл → `/settings`
-- *(administrators only, six more rows)* Цэцэрлэгийн мэдээлэл · Хэрэглэгч ба
+- _(administrators only, six more rows)_ Цэцэрлэгийн мэдээлэл · Хэрэглэгч ба
   эрх · Хичээлийн жил · Улирал · Үнэлгээний тохиргоо · Аудит
 
 Two rules the menu follows:
@@ -191,14 +197,14 @@ Two rules the menu follows:
 
 ### 4.1 `/dashboard` — "Ангийн самбар"
 
-*Job: know the state of my class this morning.*
+_Job: know the state of my class this morning._
 
 Header: title **"Ангийн самбар"**, lede = the group name and today's date
 (`Дэлбээ бүлэг · 2026.09.03`). A teacher covering more than one group, or an
 admin, gets the active term instead.
 
 The same URL renders **"Удирдлагын самбар"** with lede "Цэцэрлэгийн өнөөдрийн
-байдал." for an administrator who does not teach. An admin who *also* teaches
+байдал." for an administrator who does not teach. An admin who _also_ teaches
 gets the class board — they have a register to take this morning.
 
 Cards, in order:
@@ -222,7 +228,7 @@ than show four zeros.
 
 ### 4.2 `/children` — "Хүүхдүүд"
 
-*Job: find a child.*
+_Job: find a child._
 
 Lede: **"Хариуцсан бүлгийн хүүхдүүд."**
 
@@ -245,17 +251,17 @@ A parent reaching the same route sees their own children with the lede "Таны
 
 ### 4.3 `/children/{id}/general` — the child record
 
-*Job: understand and work on this child.*
+_Job: understand and work on this child._
 
 An identity header (photo, name, group, age, status badges such as
 "Архивласан"), then **four tabs**:
 
-| Tab | Contents |
-| --- | --- |
-| **Ерөнхий** | Identity, guardians and contacts, enrolment |
-| **Өсөлт** | Height/weight measurements and charts |
-| **Эрүүл мэнд** | Health notes, allergies, medication, vaccination |
-| **Аюулгүй байдал** | Safety incidents |
+| Tab                | Contents                                         |
+| ------------------ | ------------------------------------------------ |
+| **Ерөнхий**        | Identity, guardians and contacts, enrolment      |
+| **Өсөлт**          | Height/weight measurements and charts            |
+| **Эрүүл мэнд**     | Health notes, allergies, medication, vaccination |
+| **Аюулгүй байдал** | Safety incidents                                 |
 
 Header actions: **"Ажиглалт"** (record an observation — a parent viewing their
 own child sees "Хуваалцах" instead), the portfolio, and an overflow menu
@@ -282,29 +288,33 @@ staff, and never for a stranger — see constraints 17–18.
 
 ### 4.4 `/children/{id}/observations/new` — "Шинэ ажиглалт"
 
-*Job: record one observation.* **This is the screen a teacher spends the most
+_Job: record one observation._ **This is the screen a teacher spends the most
 time in.**
 
 A full page, never a modal — teachers write several paragraphs here. Fields, in
 the order and under the headings they appear:
 
 Top block
+
 - **Ажиглалтын төрөл** (required) — the observation type, which is
   administrator-configurable data, not a fixed list
 - **Огноо** (required)
 - **Үйл ажиллагааны нэр**
 
 **"Юу болсон бэ?"**
+
 - **Нөхцөл байдал** — placeholder "Хаана, хэзээ, ямар нөхцөлд болсон бэ?"
 - **Хүүхэд юу хийсэн бэ?**
 - **Хүүхэд юу хэлсэн бэ?**
 
-**"Багшийн дүгнэлт"** *(staff only — a parent's version of this form does not
-have it)*
+**"Багшийн дүгнэлт"** _(staff only — a parent's version of this form does not
+have it)_
+
 - **Тайлбар**
 - **Дараагийн алхам**
 
-**"Хэн харах вэ?"** *(staff only)*
+**"Хэн харах вэ?"** _(staff only)_
+
 - Checkbox **"Эцэг эх харах боломжтой"** — description: "Тэмдэглэхгүй бол
   зөвхөн багш нар харна."
 - Checkbox **"Цахим хувийн хавтасны PDF-д оруулах"**
@@ -323,7 +333,7 @@ teacher's review queue.
 
 ### 4.5 `/observations/review` — "Эцэг эхийн ажиглалт — хянах"
 
-*Job: process what families submitted.*
+_Job: process what families submitted._
 
 One submission at a time, not a table. Approve — **"Батлаад эцэг эхэд харуулах"**
 — or return it with a **"Буцаах шалтгаан"** note. Toasts: "Ажиглалт
@@ -333,7 +343,7 @@ Empty state: "Хянах зүйл алга" — "Эцэг эхээс шинэ а
 
 ### 4.6 `/groups/{groupId}/assessment` — "Явцын үнэлгээ"
 
-*Job: assess a group.* **The densest screen in the product and the one that must
+_Job: assess a group._ **The densest screen in the product and the one that must
 feel fastest.**
 
 Header lede is the group's name. Two selectors above the grid:
@@ -378,7 +388,7 @@ Empty states: "Улирал тохируулаагүй байна", "Бүлэг�
 
 ### 4.7 `/groups/{groupId}/attendance` — "Ирц"
 
-*Job: take today's register.*
+_Job: take today's register._
 
 - A **Огноо** field at the top; the group's name is the lede.
 - One row per child under the heading "Бүлгийн ирц", with **six statuses**:
@@ -387,7 +397,7 @@ Empty states: "Улирал тохируулаагүй байна", "Бүлэг�
   worse than one never offered, because the teacher blames themselves.
 - Toast on save: "Ирц бүртгэгдлээ."
 - Below the register, **"Эцэг эхийн мэдэгдэл"** — the queue of parent-submitted
-  absence notices and leave requests, rendered *inside* this screen. Approving
+  absence notices and leave requests, rendered _inside_ this screen. Approving
   one writes the very attendance rows this sheet is about, so it belongs here
   rather than on a separate page a teacher would have to remember to check
   before marking an absence by hand. (It also has its own route,
@@ -396,7 +406,7 @@ Empty states: "Улирал тохируулаагүй байна", "Бүлэг�
 
 ### 4.8 `/groups/{groupId}/meals` — "Хоолны бүртгэл"
 
-*Job: record who ate what.*
+_Job: record who ate what._
 
 - **Огноо** field; the group's name as lede.
 - Four sittings, each its own section: **Өглөөний цай** (short: Өглөө),
@@ -414,7 +424,7 @@ Empty states: "Улирал тохируулаагүй байна", "Бүлэг�
 
 ### 4.9 `/notifications` — "Ангийн самбар / Мэдээ"
 
-*Job: read and post to the class board.*
+_Job: read and post to the class board._
 
 A feed with unread state. Unread rows are marked three ways — a brand tint on
 the row, a heavier title, and an `sr-only` "Уншаагүй" — because a 8px dot alone
@@ -422,6 +432,7 @@ is not enough.
 
 Composing (`/notifications/new`, "Шинэ мэдэгдэл", lede "Ангийн самбарт зар
 нийтлэх."):
+
 - **Гарчиг (заавал биш)**
 - **Мэдээний төрөл** — a chip row (e.g. "Зарлал"), the same vocabulary the feed
   filters by
@@ -432,7 +443,7 @@ Composing (`/notifications/new`, "Шинэ мэдэгдэл", lede "Ангийн
 
 ### 4.10 `/surveys` — "Судалгаа"
 
-*Job: ask families a question and read the answers.*
+_Job: ask families a question and read the answers._
 
 Lede "Гэр бүлээс санал асуулга авах."
 
@@ -447,7 +458,7 @@ Lede "Гэр бүлээс санал асуулга авах."
 
 ### 4.11 `/chat` — "Чат"
 
-*Job: talk to the group's teachers and parents.*
+_Job: talk to the group's teachers and parents._
 
 Lede: "Бүлгийнхээ багш, эцэг эхтэй шууд харилцах."
 
@@ -461,7 +472,7 @@ summarisation.
 
 ### 4.12 `/documents` — "Баримт бичгийн сан"
 
-*Job: find the curriculum, methodology and internal rules.*
+_Job: find the curriculum, methodology and internal rules._
 
 Lede "Хөтөлбөр, арга зүй, дотоод журам." Search, category filter, and a
 bookmarked-only filter. Staff only — it never appears for parents. Empty states:
@@ -469,7 +480,7 @@ bookmarked-only filter. Staff only — it never appears for parents. Empty state
 
 ### 4.13 `/children/{id}/portfolio` — "Цахим хувийн хавтас"
 
-*Job: manage the child's portfolio.* Three tiles under "Цахим хавтасны хэсгүүд":
+_Job: manage the child's portfolio._ Three tiles under "Цахим хавтасны хэсгүүд":
 
 - **Миний тухай** — identity, birth facts and birthday notes, favourites
 - **Хөгжил** — itself three tabs under "Хөгжлийн хэсгүүд":
@@ -490,7 +501,7 @@ design care. Download-as-PDF lives here.
 
 ### 4.14 `/children/{id}/term-report` — "Улирлын тайлан"
 
-*Job: read (and, for staff, write) the term's narrative report.*
+_Job: read (and, for staff, write) the term's narrative report._
 
 Sections per development domain with the term's level and the teacher's
 narrative. Empty states: "Улирал бүртгэгдээгүй байна", "Тайлан хараахан бэлэн
@@ -517,7 +528,7 @@ Own profile and password.
 
 ## 5. Other roles, briefly
 
-*Named for context. This document does not spec them.*
+_Named for context. This document does not spec them._
 
 **Administrator (Захирал)** — everything a teacher has, plus "Удирдлагын самбар"
 (kindergarten-wide figures), and seven administration screens: Цэцэрлэгийн
@@ -565,27 +576,27 @@ Two more, each used everywhere:
 
 ## 7. Vocabulary reference
 
-| Mongolian | Meaning |
-| --- | --- |
-| Цэцэрлэг | kindergarten |
-| Бүлэг | group / class |
-| Хүүхэд, Хүүхдүүд | child, children |
-| Багш | teacher |
-| Эцэг эх | parent / guardian |
-| Ажиглалт | observation |
-| Явцын үнэлгээ | progress assessment |
-| Хөгжлийн чиглэл | development domain |
-| Улирал | term |
-| Хичээлийн жил | school year |
-| Ирц | attendance |
-| Хоол ба цэс | meals and menu |
+| Mongolian           | Meaning                       |
+| ------------------- | ----------------------------- |
+| Цэцэрлэг            | kindergarten                  |
+| Бүлэг               | group / class                 |
+| Хүүхэд, Хүүхдүүд    | child, children               |
+| Багш                | teacher                       |
+| Эцэг эх             | parent / guardian             |
+| Ажиглалт            | observation                   |
+| Явцын үнэлгээ       | progress assessment           |
+| Хөгжлийн чиглэл     | development domain            |
+| Улирал              | term                          |
+| Хичээлийн жил       | school year                   |
+| Ирц                 | attendance                    |
+| Хоол ба цэс         | meals and menu                |
 | Цахим хувийн хавтас | the child's digital portfolio |
-| Ангийн самбар | the class board |
-| Судалгаа | survey |
-| Мэдэгдэл | notification |
-| Баримт бичиг | document |
-| Санхүүжилт | funding |
-| Нэхэмжлэл | invoice |
+| Ангийн самбар       | the class board               |
+| Судалгаа            | survey                        |
+| Мэдэгдэл            | notification                  |
+| Баримт бичиг        | document                      |
+| Санхүүжилт          | funding                       |
+| Нэхэмжлэл           | invoice                       |
 
 ---
 
@@ -619,7 +630,7 @@ These are not preferences. Each one has a failure behind it.
 **Mobile**
 
 10. **Mobile-first.** It works on a phone before it works anywhere else. The
-    teacher's shell is desktop-*first* in emphasis but must remain fully usable
+    teacher's shell is desktop-_first_ in emphasis but must remain fully usable
     on a phone; the parent's is phone-first outright.
 11. Tap targets are at least 44px. The bottom bar clears the iOS home indicator
     and page content clears the bottom bar (`pb-24` on mobile), or the last row

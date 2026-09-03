@@ -126,14 +126,7 @@ export type ReviewAttendanceRequestDto = z.infer<typeof reviewAttendanceRequestS
  * says so. The note is corrected rather than left standing: a comment naming a
  * defect that no longer exists sends the next reader looking for it.
  */
-const registerStatusValues = [
-  "PRESENT",
-  "HALF_DAY",
-  "EXCUSED",
-  "SICK",
-  "ABSENT",
-  "OTHER",
-] as const;
+const registerStatusValues = ["PRESENT", "HALF_DAY", "EXCUSED", "SICK", "ABSENT", "OTHER"] as const;
 
 /**
  * Comma-separated in the URL, a typed array by the time a service sees it.
@@ -189,7 +182,14 @@ export const attendanceRegisterQuerySchema = z
     groupId: z
       .string()
       .optional()
-      .transform((value) => (value ? value.split(",").map((p) => p.trim()).filter(Boolean) : undefined))
+      .transform((value) =>
+        value
+          ? value
+              .split(",")
+              .map((p) => p.trim())
+              .filter(Boolean)
+          : undefined,
+      )
       .pipe(z.array(z.uuid()).max(50).optional()),
 
     ageBand: commaSeparated(["NURSERY", "JUNIOR", "MIDDLE", "SENIOR"], 4),
@@ -215,4 +215,3 @@ export const attendanceRegisterQuerySchema = z
   });
 
 export type AttendanceRegisterQuery = z.infer<typeof attendanceRegisterQuerySchema>;
-
