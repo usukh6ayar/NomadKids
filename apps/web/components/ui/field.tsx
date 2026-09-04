@@ -2,11 +2,12 @@
 
 import * as LabelPrimitive from "@radix-ui/react-label";
 import * as SelectPrimitive from "@radix-ui/react-select";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, Eye, EyeOff } from "lucide-react";
 import {
   Children,
   isValidElement,
   useId,
+  useState,
   type ChangeEvent,
   type ComponentProps,
   type OptionHTMLAttributes,
@@ -122,6 +123,60 @@ export function Input({
       )}
       {...props}
     />
+  );
+}
+
+/**
+ * A password field you can read back.
+ *
+ * ★ Added 2026-09-04, at the client's request: "password-оо hide/show хийж
+ * хардаг байх".
+ *
+ * Every password input in the product was a bare `type="password"` — eight of
+ * them across four screens — so the only way to check what you had typed was
+ * to delete it and start again. That matters more here than in most products:
+ * the passwords are **Mongolian Cyrillic** (`Нууцүг123` is the documented
+ * example), typed on a phone keyboard that switches layouts, by parents at
+ * pick-up time. A typo you cannot see is a lockout you cannot explain.
+ *
+ * ★★ The toggle is a real `<button>`, not an icon with a click handler.
+ *
+ * It is reachable by keyboard, it announces its state, and its label says what
+ * pressing it will *do* rather than what is currently true — "Нууц үг харуулах"
+ * while hidden. `tabIndex={-1}` deliberately keeps it out of the tab order
+ * between the two password fields on the change-password form: somebody
+ * tabbing from "new password" expects to land on "repeat", not on a toggle.
+ * It stays clickable and stays announced.
+ *
+ * ★★★ `pr-12` on the input, so the text never runs under the button. The
+ * button is 44px (the tap floor) inside a 48px control, centred.
+ */
+export function PasswordInput({
+  className,
+  invalid,
+  ...props
+}: Omit<ComponentProps<"input">, "type"> & { invalid?: boolean }) {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <div className="relative">
+      <Input
+        {...props}
+        invalid={invalid}
+        type={visible ? "text" : "password"}
+        className={cn("pr-12", className)}
+      />
+      <button
+        type="button"
+        tabIndex={-1}
+        onClick={() => setVisible((v) => !v)}
+        aria-pressed={visible}
+        aria-label={visible ? "Нууц үг нуух" : "Нууц үг харуулах"}
+        className="absolute right-1 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-control text-muted transition-colors hover:text-ink"
+      >
+        {visible ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
+      </button>
+    </div>
   );
 }
 

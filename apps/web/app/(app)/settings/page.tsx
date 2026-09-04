@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Pencil } from "lucide-react";
 import { z } from "zod";
-import { userProfileSchema, validatePasswordStrength } from "@kinder/contracts";
+import { PASSWORD_RULES, userProfileSchema, validatePasswordStrength } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
@@ -12,7 +12,7 @@ import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useLogout } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
-import { Field, Input, Textarea } from "@/components/ui/field";
+import { Field, Input, PasswordInput, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { ChildAvatar } from "@/components/media/media-image";
@@ -466,13 +466,35 @@ function PasswordForm() {
             </p>
           ) : null}
 
+          {/*
+            ★ The rules, before anything is typed — 2026-09-04.
+
+            This form has always *checked* `validatePasswordStrength` and never
+            *shown* what it checks, so the only way to learn the rules was to
+            fail them: type a password, submit, read a red line naming what was
+            wrong, try again. The client's report was exactly that — "алдаа
+            байнга гараад байна".
+
+            `/invitation/:token` and `/reset-password/:token` already listed
+            them (`password-policy.test.tsx` pins both). This screen is the
+            third place a password is set and was the one that did not — which
+            is why it is where the errors came from.
+
+            Same `PASSWORD_RULES` the server enforces, so the list cannot drift
+            from the check.
+          */}
+          <ul className="list-disc space-y-1 pl-5 text-body text-muted">
+            {PASSWORD_RULES.map((rule) => (
+              <li key={rule}>{rule}</li>
+            ))}
+          </ul>
+
           <Field label="Одоогийн нууц үг" error={errors.currentPassword} required>
             {({ id, describedBy, invalid }) => (
-              <Input
+              <PasswordInput
                 id={id}
                 aria-describedby={describedBy}
                 invalid={invalid}
-                type="password"
                 autoComplete="current-password"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
@@ -483,11 +505,10 @@ function PasswordForm() {
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Шинэ нууц үг" error={errors.newPassword} required>
               {({ id, describedBy, invalid }) => (
-                <Input
+                <PasswordInput
                   id={id}
                   aria-describedby={describedBy}
                   invalid={invalid}
-                  type="password"
                   autoComplete="new-password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
@@ -497,10 +518,9 @@ function PasswordForm() {
 
             <Field label="Шинэ нууц үг давтах" required>
               {({ id, describedBy }) => (
-                <Input
+                <PasswordInput
                   id={id}
                   aria-describedby={describedBy}
-                  type="password"
                   autoComplete="new-password"
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}

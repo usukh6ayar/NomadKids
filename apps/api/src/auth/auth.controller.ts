@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Param,
   Post,
   Req,
   Res,
@@ -207,6 +208,24 @@ export class AuthController {
    * standing between a guesser and a new account, so the endpoint must not be
    * cheap to hammer.
    */
+  /**
+   * What an invitation is for, so the form can ask the right questions and can
+   * report an expired link before the password is typed twice.
+   *
+   * Public for the same reason `accept` is: the person cannot log in yet.
+   * Rate-limited more loosely than the acceptance — this reads nothing and
+   * changes nothing — but limited all the same, so it cannot become a cheap
+   * oracle for whether a token is live.
+   */
+  @Public()
+  @Get("invitation/:token")
+  @RateLimit({ limit: 30, windowMs: HOUR })
+  async describeInvitation(
+    @Param("token") token: string,
+  ): Promise<{ valid: boolean; kind: "staff" | "guardian" }> {
+    return this.auth.describeInvitation(token);
+  }
+
   @Public()
   @Post("invitation/accept")
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -219,7 +238,13 @@ export class AuthController {
     await this.auth.acceptInvitation(
       body.token,
       body.password,
-      { firstName: body.firstName, phone: body.phone, relation: body.relation },
+      {
+        firstName: body.firstName,
+        phone: body.phone,
+        relation: body.relation,
+        lastName: body.lastName,
+        email: body.email,
+      },
       context(req),
     );
     // Any session this account had was revoked server-side; clear the browser's
