@@ -497,10 +497,10 @@ export type MealKind = z.infer<typeof mealKindSchema>;
 
 export const MEAL_KIND_LABEL: Record<string, string> = {
   BREAKFAST: "Өглөөний цай",
-  MID_MORNING_SNACK: "2-р цай",
-  LUNCH: "Үдийн хоол",
-  AFTERNOON_SNACK: "Үдээс хойших цай",
-  EXTRA: "Нэмэлт хоол",
+  MID_MORNING_SNACK: "Жүүс",
+  LUNCH: "Өдрийн хоол",
+  AFTERNOON_SNACK: "Их үдийн цай",
+  EXTRA: "Оройн хоол",
 };
 
 /** Whether a child ate — `нэмэлт.md` §2. */
@@ -1651,6 +1651,15 @@ export const MEDIA_CATEGORIES = [
    * `category=BIRTHDAY&age=4` is the whole birthday section's photograph.
    */
   "BIRTHDAY",
+  /**
+   * ★★ Added 2026-09-05, on the client's instruction, for the two fixed
+   * galleries the overview page grew beside the age-filtered one: a child has
+   * exactly one first day and, eventually, one graduation — `EVENT` would mix
+   * these in with every concert and Цагаан сар the same way `BIRTHDAY` would
+   * have, which is the same argument that added `BIRTHDAY` in the first place.
+   */
+  "FIRST_DAY",
+  "GRADUATION",
 ] as const;
 
 export const mediaCategorySchema = z.enum(MEDIA_CATEGORIES);
@@ -1662,6 +1671,8 @@ export const MEDIA_CATEGORY_LABEL: Record<string, string> = {
   DAILY: "Өдөр тутам",
   PORTRAIT: "Хөрөг",
   BIRTHDAY: "Төрсөн өдөр",
+  FIRST_DAY: "Цэцэрлэгийн анхны өдөр",
+  GRADUATION: "Төгсөлт",
 };
 
 export const mediaSchema = z.object({
@@ -2196,6 +2207,34 @@ export const adminDashboardSchema = z.object({
   ),
 });
 export type AdminDashboard = z.infer<typeof adminDashboardSchema>;
+
+/**
+ * The cook's dashboard — "what needs my attention today", the same rule the
+ * teacher and admin screens follow (`dashboard.service.ts`).
+ *
+ * ★ `attendanceToday`/`attendanceByGroup` share the admin dashboard's shapes
+ * exactly, deliberately: both are aggregate counts with no child's name in
+ * them, so exposing them to `COOK` needed no new authorization rule, only a
+ * route that calls the same repository methods for a single day. A cook reads
+ * them as headcount for tomorrow's portions, not as a register.
+ */
+export const cookDashboardSchema = z.object({
+  attendanceToday: z.object({
+    expected: z.number(),
+    recorded: z.number(),
+    present: z.number(),
+  }),
+  attendanceByGroup: z.array(
+    z.object({
+      groupId: uuidSchema,
+      name: z.string(),
+      counts: z.record(z.string(), z.number()),
+    }),
+  ),
+  /** Orders still `DRAFT` or `ORDERED` — placed but nothing has arrived yet. */
+  pendingFoodOrders: z.number(),
+});
+export type CookDashboard = z.infer<typeof cookDashboardSchema>;
 
 /**
  * One audit row, as the browser screen reads it — RFP §2.1.
