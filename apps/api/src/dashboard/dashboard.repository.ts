@@ -784,6 +784,26 @@ export class DashboardRepository {
     }));
   }
 
+  // ── Cook ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Orders still `DRAFT` or `ORDERED` — placed with a supplier but nothing has
+   * arrived yet. The cook's dashboard flags this as a count, not a list: the
+   * detail already lives at `/kitchen/orders`, so this answers only "is there
+   * anything waiting on me".
+   */
+  async pendingFoodOrders(kindergartenIds: string[]): Promise<number> {
+    if (kindergartenIds.length === 0) return 0;
+
+    return this.prisma.foodOrder.count({
+      where: {
+        kindergartenId: { in: kindergartenIds },
+        deletedAt: null,
+        status: { in: ["DRAFT", "ORDERED"] },
+      },
+    });
+  }
+
   /**
    * Every group's mean level per development domain, for the term — the
    * sketch's "Бүлгүүдийн явцын үнэлгээ" radar.

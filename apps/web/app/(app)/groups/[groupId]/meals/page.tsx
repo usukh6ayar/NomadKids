@@ -37,9 +37,9 @@ const savedSchema = z.array(mealRecordSchema);
 /** The four sittings `MealKind` defines — `нэмэлт.md` §2, in serving order. */
 const SITTINGS: { value: MealKind; label: string; short: string }[] = [
   { value: "BREAKFAST", label: "Өглөөний цай", short: "Өглөө" },
-  { value: "LUNCH", label: "Үдийн хоол", short: "Үд" },
-  { value: "AFTERNOON_SNACK", label: "Үдээс хойших цай", short: "Үдээс хойш" },
-  { value: "EXTRA", label: "Нэмэлт хоол", short: "Нэмэлт" },
+  { value: "LUNCH", label: "Өдрийн хоол", short: "Өдөр" },
+  { value: "AFTERNOON_SNACK", label: "Их үдийн цай", short: "Их үд" },
+  { value: "EXTRA", label: "Оройн хоол", short: "Орой" },
 ];
 
 /**

@@ -289,11 +289,13 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
   "/finance": Wallet,
   "/invoices": Receipt,
   "/finance/audit-log": ScrollText,
+  "/kitchen/dashboard": LayoutGrid,
   "/kitchen/ingredients": Carrot,
   "/kitchen/recipes": ChefHat,
   "/kitchen/suppliers": Truck,
   "/kitchen/orders": ShoppingCart,
   "/kitchen/stock": Boxes,
+  "/kitchen/attendance": CalendarCheck,
   "/kitchen/reports": BarChart3,
   "/admin": ShieldCheck,
   "/admin/funding": Wallet,
@@ -707,20 +709,24 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
  *
  * ★ One function for both, because they differ by exactly one destination.
  *
- * Each has a screen of their own (the weekly menu, the kindergarten's funding),
- * the news every employee reads, and their profile. Chat is the floating
- * widget, which is on every screen already and needs no tab.
+ * Each has a screen of their own, the news every employee reads, and their
+ * profile. Chat is the floating widget, which is on every screen already and
+ * needs no tab.
  *
- * Самбар is deliberately absent. `/dashboard` is `RequireRole
- * ["TEACHER","ADMIN"]` and every widget on it is about children — a cook
- * opening it would meet a permission wall on the first screen of the app. The
- * client's list has "Самбар" for both roles, and it is the one line of their
- * sketch that describes a screen neither role can see.
+ * ★★ Самбар replaced the cook's `Цэс` tab on 2026-09-04. It used to be
+ * deliberately absent — `/dashboard` is `RequireRole ["TEACHER","ADMIN"]` and
+ * every widget on it is about children, so a cook opening it met a permission
+ * wall on the first screen of the app. That argument was against reusing the
+ * *teacher's* dashboard, not against a cook having one: `/kitchen/dashboard`
+ * is its own `RequireRole ["COOK","ADMIN"]` screen, built on the aggregate,
+ * no-child-PII queries `dashboard.service.ts`'s `cook()` already had reason to
+ * expose. The tab it replaced pointed at `/menu`, which the sidebar's own
+ * "Хоолны цэс" row already opens — two nav entries for one page.
  */
 function supportNav(isCook: boolean): NavItem[] {
   return [
     isCook
-      ? { href: "/menu", label: "Цэс", icon: <UtensilsCrossed {...iconProps} /> }
+      ? { href: "/kitchen/dashboard", label: "Самбар", icon: <LayoutGrid {...iconProps} /> }
       : { href: "/finance", label: "Санхүү", icon: <Wallet {...iconProps} /> },
     { href: "/notifications", label: "Мэдээ", icon: <Newspaper {...iconProps} /> },
     { href: "/settings", label: "Профайл", icon: <Settings {...iconProps} /> },
@@ -745,12 +751,13 @@ function supportSections(isCook: boolean): NavSection[] {
       title: isCook ? "Гал тогоо" : "Санхүү",
       entries: isCook
         ? [
-            navEntry("Долоо хоногийн цэс", "/menu"),
-            navEntry("Орц, түүхий эд", "/kitchen/ingredients"),
+            navEntry("Хоолны цэс", "/menu"),
+            navEntry("Түүхий эд", "/kitchen/ingredients"),
             navEntry("Технологийн карт", "/kitchen/recipes"),
             navEntry("Нийлүүлэгч", "/kitchen/suppliers"),
             navEntry("Хүнсний захиалга", "/kitchen/orders"),
             navEntry("Нөөц", "/kitchen/stock"),
+            navEntry("Ирц", "/kitchen/attendance"),
             navEntry("Тайлан", "/kitchen/reports"),
           ]
         : [

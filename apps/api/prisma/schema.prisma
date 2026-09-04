@@ -1424,10 +1424,10 @@ enum MealKind {
   BREAKFAST // Өглөөний цай
   /// Added 2026-08-28, on the client's instruction — нэмэлт.md §2 names four
   /// sittings; a fifth, between breakfast and lunch, is this one.
-  MID_MORNING_SNACK // 2-р цай
-  LUNCH // Үдийн хоол
-  AFTERNOON_SNACK // Үдээс хойших цай
-  EXTRA // Нэмэлт хоол
+  MID_MORNING_SNACK // Жүүс
+  LUNCH // Өдрийн хоол
+  AFTERNOON_SNACK // Их үдийн цай
+  EXTRA // Оройн хоол
 }
 
 /// Whether the child ate — `нэмэлт.md` §2.

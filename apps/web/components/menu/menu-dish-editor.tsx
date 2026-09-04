@@ -228,12 +228,23 @@ export function MenuDishEditor({
                             id={id}
                             value={dish.recipeId}
                             onChange={(e) => {
-                              // Default to one batch of the card — a cook
-                              // doubling or tripling it for a bigger group
-                              // edits the number in place.
+                              const recipeId = e.target.value;
+                              const picked = kitchen.recipes.find((r) => r.id === recipeId);
+                              // `name` must be set here, not left for the
+                              // read-only label below to paper over — once a
+                              // card is picked this field has no input for a
+                              // cook to fill it in, and `fromDraft` drops any
+                              // dish whose `name` is still blank before the
+                              // save request is even built, silently losing
+                              // the whole dish.
+                              //
+                              // Default portions to one batch of the card —
+                              // a cook doubling or tripling it for a bigger
+                              // group edits the number in place.
                               update(i, {
-                                recipeId: e.target.value,
-                                portions: e.target.value ? dish.portions || "1" : "",
+                                recipeId,
+                                name: picked ? picked.name : dish.name,
+                                portions: recipeId ? dish.portions || "1" : "",
                               });
                             }}
                           >

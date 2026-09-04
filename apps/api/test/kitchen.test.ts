@@ -734,6 +734,31 @@ describe("menu integration", () => {
     expect(row.status).toBe("DRAFT");
     expect(row.approvedAt).toBeNull();
   });
+
+  /**
+   * Same rule `approveRecipe` already applies to an ingredient-less
+   * technology card — see that describe block above. Before this, a day
+   * saved with `dishes: []` (the recipe-picker bug that shipped alongside
+   * this test — see `menu-dish-editor.tsx`) could still be marked
+   * "Батлагдсан", which is indistinguishable in the UI from a day whose
+   * dishes had been entered and then lost.
+   */
+  it("refuses to approve a day with no dishes", async () => {
+    await authed(
+      request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-04-01`),
+      cookA,
+    ).send({ dishes: [] });
+
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-04-01/approve`),
+      cookA,
+    );
+
+    expect(res.status).toBe(400);
+
+    const row = await db.menuDay.findFirstOrThrow({ where: { kindergartenId: a.kindergarten.id } });
+    expect(row.status).toBe("DRAFT");
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

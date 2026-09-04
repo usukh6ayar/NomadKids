@@ -21,6 +21,7 @@ export const qk = {
     teacher: () => ["dashboard", "teacher"] as const,
     parent: () => ["dashboard", "parent"] as const,
     admin: () => ["dashboard", "admin"] as const,
+    cook: () => ["dashboard", "cook"] as const,
   },
 
   children: (filters: Record<string, unknown> = {}) => ["children", "list", filters] as const,
@@ -161,9 +162,13 @@ export const qk = {
   platformDistribution: (month: string) => ["platform", "distribution", month] as const,
   platformPartners: () => ["platform", "partners"] as const,
 
-  /** The kitchen's week, keyed by its Monday. */
-  weeklyMenu: (kindergartenId: string, weekStart: string) =>
-    ["menu", "week", kindergartenId, weekStart] as const,
+  /** The kitchen's menu, keyed by the fetched date range — a single day
+   * (Өнөөдөр/Маргааш) and the Mon–Fri week share this key shape, and must
+   * both appear in it: "today" can land on the same date a week view's
+   * Monday does, and a `from`-only key would then serve one's cache to the
+   * other. */
+  weeklyMenu: (kindergartenId: string, from: string, to: string) =>
+    ["menu", "week", kindergartenId, from, to] as const,
 
   /** Хоол үйлдвэрлэл — ingredients, technology cards, suppliers, food
    * orders, stock and reports. Its own namespace, one per sub-domain. */
@@ -226,7 +231,18 @@ export const qk = {
   /** One queued PDF job — polled while Chromium works. */
   financeReportJob: (jobId: string) => ["finance-report-job", jobId] as const,
 
-  childMedia: (childId: string) => ["child", childId, "media"] as const,
+  /**
+   * ★ Filters are an optional trailing element, not always present like
+   * `childObservations`'s — `["child", id, "media"]` has to stay a true
+   * structural prefix of every filtered variant so the three call sites that
+   * invalidate it with no filters (a delete, an upload, a profile-photo pick)
+   * clear every one of the overview page's filtered galleries too, not just
+   * the unfiltered one.
+   */
+  childMedia: (childId: string, filters?: Record<string, unknown>) =>
+    filters && Object.keys(filters).length > 0
+      ? (["child", childId, "media", filters] as const)
+      : (["child", childId, "media"] as const),
   childReports: (childId: string) => ["child", childId, "reports"] as const,
   report: (jobId: string) => ["report", jobId] as const,
   /** Admin lists. Filters are part of the key so a search does not reuse a page. */

@@ -148,14 +148,23 @@ export class MealsService {
    * (`assertCanManageKitchen`), narrower than `saveDay`: a teacher serves and
    * marks the register, but approving what the kitchen is about to cook is
    * the kitchen's own act.
+   *
+   * ★ Refuses a day with no dishes — the same rule `approveRecipe` already
+   * applies to a technology card with no ingredients. There is nothing to
+   * sign off on, and a "Батлагдсан" badge over an empty day previously read
+   * as data that had been entered and then lost, when in fact nothing had
+   * ever been saved for it.
    */
   async approveDay(actor: Actor, kindergartenId: string, dateIso: string) {
     this.tenants.assertCanManageKitchen(actor, kindergartenId);
     const date = new Date(`${dateIso}T00:00:00.000Z`);
 
-    const day = await this.repo.findDayState(kindergartenId, date);
+    const day = await this.repo.findDay(kindergartenId, date);
     if (!day) throw new NotFoundException();
     if (day.status === "APPROVED") return day;
+    if (parseDishes(day.dishes).length === 0) {
+      throw new BadRequestException("Хоол оруулаагүй өдрийг батлах боломжгүй");
+    }
 
     const saved = await this.repo.approveDay(day.id, actor.userId);
 

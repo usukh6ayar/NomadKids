@@ -55,6 +55,12 @@ export class DashboardController {
     return this.service.admin(actor);
   }
 
+  @Get("cook")
+  @Roles("COOK", "ADMIN")
+  async cook(@CurrentActor() actor: Actor) {
+    return this.service.cook(actor);
+  }
+
   /**
    * No `@Roles("PARENT")`.
    *

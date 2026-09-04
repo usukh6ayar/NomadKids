@@ -10,12 +10,13 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-/** Mirrors `(app)/menu/page.tsx`'s own `mondayOf` — the page's Monday card, not "today". */
-function mondayOfThisWeek(): string {
+/** Mirrors `(app)/menu/page.tsx`'s own `todayIso` — the page opens on its
+ * "Өнөөдөр" quick view by default, not the Monday-anchored week. */
+function todayIso(): string {
   const now = new Date();
-  const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
-  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
-  return d.toISOString().slice(0, 10);
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
+    .toISOString()
+    .slice(0, 10);
 }
 
 /**
@@ -52,7 +53,7 @@ describe("the cook's weekly menu", () => {
 
     renderWithProviders(<MenuPage />);
 
-    // Every day starts empty until seeded — first in DOM order is Monday.
+    // The page opens on "Өнөөдөр" by default — one empty day, one button.
     const addButtons = await screen.findAllByRole("button", { name: "Хоол нэмэх" });
     await user.click(addButtons[0]!);
 
@@ -68,7 +69,7 @@ describe("the cook's weekly menu", () => {
     const portionInputs = screen.getAllByLabelText("Порц");
     await user.type(portionInputs[0]!, "1");
 
-    await selectOption(user, "Хоолны цаг", "Үдийн хоол");
+    await selectOption(user, "Хоолны цаг", "Өдрийн хоол");
 
     const saveButtons = screen.getAllByRole("button", { name: /Хадгалах/ });
     await user.click(saveButtons[0]!);
@@ -90,6 +91,68 @@ describe("the cook's weekly menu", () => {
     });
   });
 
+  /**
+   * ★ Regression for 2026-09-04: picking a технологийн карт leaves `name`'s
+   * only input replaced by a read-only label (`recipe?.name`), so if the
+   * picker's own `onChange` never wrote a `name` into the draft, the dish had
+   * no way to ever get one back. `fromDraft` drops any dish whose `name` is
+   * still blank before the request is even built (same filter the "blank
+   * names are dropped" doc comment on it describes) — so the save silently
+   * went out with an empty `dishes: []`, and a `Батлах` after it approved a
+   * day that had never actually kept the dish. A cook watching the card after
+   * a refresh read that as data lost on restart; it was a dish that was never
+   * sent.
+   */
+  it("saves a recipe-linked dish under the technology card's own name", async () => {
+    const user = userEvent.setup();
+    const RECIPE_ID = "66666666-6666-4666-8666-666666666666";
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["COOK"]) },
+      { path: `/kindergartens/${KG_ID}/menu/with-warnings`, body: [] },
+      {
+        path: `/kindergartens/${KG_ID}/recipes/approved`,
+        body: [{ id: RECIPE_ID, name: "Сүүтэй будаа", yieldPortions: 20 }],
+      },
+      {
+        path: `/kindergartens/${KG_ID}/menu/`,
+        method: "PUT",
+        body: {
+          id: "44444444-4444-4444-8444-444444444444",
+          date: "2026-01-05",
+          dishes: [],
+          totalCalories: null,
+        },
+      },
+    ]);
+
+    renderWithProviders(<MenuPage />);
+
+    const addButtons = await screen.findAllByRole("button", { name: "Хоол нэмэх" });
+    await user.click(addButtons[0]!);
+
+    await selectOption(user, "Технологийн карт", "Сүүтэй будаа");
+
+    const saveButtons = screen.getAllByRole("button", { name: /Хадгалах/ });
+    await user.click(saveButtons[0]!);
+
+    await waitFor(() => expect(calls.some((c) => c.method === "PUT")).toBe(true));
+
+    const put = calls.find((c) => c.method === "PUT")!;
+    expect(put.body).toEqual({
+      dishes: [
+        {
+          name: "Сүүтэй будаа",
+          kind: "BREAKFAST",
+          allergenTags: [],
+          ingredients: null,
+          calories: null,
+          portions: 1,
+          recipeId: RECIPE_ID,
+        },
+      ],
+    });
+  });
+
   it("shows the allergy warning the cross-check names, per dish", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["COOK"]) },
@@ -98,7 +161,7 @@ describe("the cook's weekly menu", () => {
         body: [
           {
             id: "44444444-4444-4444-8444-444444444444",
-            date: mondayOfThisWeek(),
+            date: todayIso(),
             dishes: [{ name: "Самрын бялуу", allergenTags: ["самар"] }],
             totalCalories: null,
             status: "DRAFT",

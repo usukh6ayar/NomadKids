@@ -218,14 +218,14 @@ describe("хоолны цаг", () => {
     renderWithProviders(<GroupMealsPage />);
 
     await screen.findByText("Батбаяр Ганболд");
-    await u.click(screen.getByRole("button", { name: /Үдээс хойш/ }));
+    await u.click(screen.getByRole("button", { name: /Их үд/ }));
 
     await waitFor(() =>
       expect(calls.some((c) => c.method === "GET" && c.url.includes("kind=AFTERNOON_SNACK"))).toBe(
         true,
       ),
     );
-    expect(await screen.findByRole("heading", { name: "Үдээс хойших цай" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Их үдийн цай" })).toBeInTheDocument();
   });
 
   /** All four `MealKind` members, including `EXTRA`. */
@@ -235,7 +235,7 @@ describe("хоолны цаг", () => {
 
     const picker = await screen.findByRole("group", { name: "Хоолны цаг" });
     expect(within(picker).getAllByRole("button")).toHaveLength(4);
-    expect(within(picker).getByRole("button", { name: /Нэмэлт/ })).toBeInTheDocument();
+    expect(within(picker).getByRole("button", { name: /Орой/ })).toBeInTheDocument();
   });
 });
 
@@ -376,13 +376,13 @@ describe("хадгалаагүй өөрчлөлт", () => {
       ),
     );
 
-    expect(screen.getByRole("button", { name: /Үд$/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Өдөр/ })).toBeDisabled();
     expect(screen.getByLabelText(/Огноо/)).toBeDisabled();
     // The one that is already selected stays pressable — it is a no-op.
     expect(screen.getByRole("button", { name: /Өглөө/ })).toBeEnabled();
 
     await u.click(screen.getByRole("button", { name: "Болих" }));
-    expect(screen.getByRole("button", { name: /Үд$/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Өдөр/ })).toBeEnabled();
   });
 });
 
