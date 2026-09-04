@@ -9,7 +9,7 @@ import { PASSWORD_RULES, validatePasswordStrength } from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
-import { Field, Input, Select } from "@/components/ui/field";
+import { Field, Input, PasswordInput, Select } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { AuthShell } from "@/components/shell/auth-shell";
 
@@ -203,11 +203,10 @@ export default function AcceptInvitationPage() {
 
         <Field label="Нууц үг" error={errors.password} required>
           {({ id, describedBy, invalid }) => (
-            <Input
+            <PasswordInput
               id={id}
               aria-describedby={describedBy}
               invalid={invalid}
-              type="password"
               autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -217,10 +216,9 @@ export default function AcceptInvitationPage() {
 
         <Field label="Нууц үгээ давтан оруулна уу" required>
           {({ id, describedBy }) => (
-            <Input
+            <PasswordInput
               id={id}
               aria-describedby={describedBy}
-              type="password"
               autoComplete="new-password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}

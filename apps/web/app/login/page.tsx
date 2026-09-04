@@ -10,7 +10,7 @@ import { rememberCsrfToken } from "@/lib/api/csrf";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { Button } from "@/components/ui/button";
-import { Field, Input } from "@/components/ui/field";
+import { Field, Input, PasswordInput } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { AuthShell } from "@/components/shell/auth-shell";
 
@@ -143,12 +143,11 @@ function LoginForm() {
 
         <Field label="Нууц үг" error={errors.password} required>
           {({ id, describedBy, invalid }) => (
-            <Input
+            <PasswordInput
               id={id}
               aria-describedby={describedBy}
               invalid={invalid}
               name="password"
-              type="password"
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

@@ -88,7 +88,76 @@ describe("invitation — first password", () => {
   });
 });
 
+/** The profile the settings screen loads before either form can render. */
+const PROFILE = {
+  id: "11111111-1111-4111-8111-111111111111",
+  username: "bagsh",
+  email: null,
+  phone: null,
+  lastName: "Ганбат",
+  firstName: "Болд",
+  specialization: null,
+  education: null,
+  bio: null,
+  photoMediaFileId: null,
+};
+
 describe("settings — changing a password", () => {
+  /**
+   * ★ The third screen that sets a password, and the one that did not say how.
+   *
+   * `/invitation/:token` and `/reset-password/:token` have listed the rules
+   * since they were written; this form only ever *checked* them. So the one way
+   * to learn the policy here was to fail it — type, submit, read a red line,
+   * try again — which is exactly the report that prompted this
+   * ("алдаа байнга гараад байна", 2026-09-04).
+   */
+  it("lists the rules before anything is typed, like the other two forms", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: "/me/profile", body: PROFILE },
+    ]);
+
+    renderWithProviders(<SettingsPage />);
+
+    await screen.findByLabelText(/^Одоогийн нууц үг/);
+    const rules = screen.getAllByRole("listitem").map((li) => li.textContent ?? "");
+
+    expect(rules.join(" ")).toMatch(/8/);
+    expect(rules.join(" ")).toMatch(/үсэг/);
+    expect(rules.join(" ")).toMatch(/тоо/);
+  });
+
+  /**
+   * ★ Reading back what you typed.
+   *
+   * The passwords in this product are Mongolian Cyrillic, typed on a phone
+   * keyboard that switches layouts. A typo you cannot see is a lockout nobody
+   * can explain, so every password field carries a toggle — and the assertion
+   * is on the input's `type`, which is the thing that actually reveals the
+   * characters.
+   */
+  it("reveals and re-hides the password", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: "/me/profile", body: PROFILE },
+    ]);
+
+    renderWithProviders(<SettingsPage />);
+
+    const field = await screen.findByLabelText(/^Одоогийн нууц үг/);
+    expect(field).toHaveAttribute("type", "password");
+
+    // Each password field has its own toggle; the first belongs to this one.
+    const [toggle] = screen.getAllByRole("button", { name: "Нууц үг харуулах" });
+    await user.click(toggle!);
+    expect(field).toHaveAttribute("type", "text");
+
+    await user.click(screen.getAllByRole("button", { name: "Нууц үг нуух" })[0]!);
+    expect(field).toHaveAttribute("type", "password");
+  });
+
   it("refuses a weak new password without calling the API", async () => {
     const user = userEvent.setup();
     const { calls } = stubApi([

@@ -9,7 +9,7 @@ import { PASSWORD_RULES, validatePasswordStrength } from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
-import { Field, Input } from "@/components/ui/field";
+import { Field, PasswordInput } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { AuthShell } from "@/components/shell/auth-shell";
 
@@ -111,11 +111,10 @@ export default function ResetPasswordPage() {
 
         <Field label="Шинэ нууц үг" error={errors.password} required>
           {({ id, describedBy, invalid }) => (
-            <Input
+            <PasswordInput
               id={id}
               aria-describedby={describedBy}
               invalid={invalid}
-              type="password"
               autoComplete="new-password"
               autoFocus
               value={password}
@@ -126,10 +125,9 @@ export default function ResetPasswordPage() {
 
         <Field label="Нууц үгээ давтан оруулна уу" required>
           {({ id, describedBy }) => (
-            <Input
+            <PasswordInput
               id={id}
               aria-describedby={describedBy}
-              type="password"
               autoComplete="new-password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
