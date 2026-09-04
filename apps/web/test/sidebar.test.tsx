@@ -129,12 +129,15 @@ describe("navigation icons", () => {
       "Хоол ба цэс",
       "Ангийн самбар / Мэдээ",
       "Судалгаа",
-      // The seven that used to sit behind the "Удирдлага" hub, which no longer
-      // has a row of its own — see "does not repeat the administration hub".
+      // The screens that used to sit behind the "Удирдлага" hub, which no
+      // longer has a row of its own — see "does not repeat the administration
+      // hub". "Бүлгүүд" joined them on 2026-09-04, when the hub page stopped
+      // carrying tiles and it became the one destination with no other way in.
       "Цэцэрлэгийн мэдээлэл",
       "Хэрэглэгч ба эрх",
       "Хичээлийн жил",
       "Улирал",
+      "Бүлгүүд",
       "Үнэлгээний тохиргоо",
       "Аудит",
       "Баримт бичгийн сан",
@@ -228,28 +231,53 @@ describe("role-based navigation", () => {
   });
 
   /**
-   * ★ The three rows the client asked for by name, and this assertion has now
-   * been written in both directions on the same day.
+   * ★ The review queues are NOT rows, and this assertion has now been written
+   * in both directions — twice.
    *
-   * The case against them is real and is recorded in `(app)/layout.tsx`:
-   * Чөлөөний хүсэлт renders inside Ирц, where approving one writes the very
-   * rows the day sheet is about; Ажиглалт хянах is reached from the dashboard
-   * alert that counts what is waiting; and the chat widget floats over every
-   * screen already.
+   * The case against them was always recorded in `(app)/layout.tsx`: Чөлөөний
+   * хүсэлт renders inside Ирц, where approving one writes the very rows the day
+   * sheet is about; Ажиглалт хянах is reached from the dashboard alert that
+   * counts what is waiting. Both rows were nonetheless asserted *present* here
+   * until 2026-09-04, because the client had listed them by name and the owner
+   * chose the client's list over the tidier argument.
    *
-   * The owner settled it on the client's written list rather than on the
-   * stronger argument, deliberately — the reasoning on both sides is about
-   * which menu is tidier, while the request is about what somebody was
-   * promised. The test asserts presence so the next tidy-up has to come back
-   * here and read that before removing them a third time.
+   * The client then asked for both to go — "ажиглалт, чөлөөний хүсэлт 2 огт
+   * хэрэггүй" — which settles it in the direction the reasoning always pointed.
+   * The assertion flips with the decision rather than being deleted, so a
+   * future tidy-up finds a recorded choice instead of an absence.
+   *
+   * ★★ Чат keeps its row and its own assertion, unchanged: the same client list
+   * carried it and the same client has not asked for it back.
    */
-  it("shows the review queues and chat in the menu", async () => {
+  it("keeps the review queues out of the menu, and chat in it", async () => {
     renderShell(["TEACHER", "ADMIN"]);
     const nav = await sidebar();
 
-    expect(within(nav).getByRole("link", { name: "Ажиглалт хянах" })).toBeInTheDocument();
-    expect(within(nav).getByRole("link", { name: "Чөлөөний хүсэлт хянах" })).toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Ажиглалт хянах" })).not.toBeInTheDocument();
+    expect(
+      within(nav).queryByRole("link", { name: "Чөлөөний хүсэлт хянах" }),
+    ).not.toBeInTheDocument();
     expect(within(nav).getByRole("link", { name: "Чат" })).toHaveAttribute("href", "/chat");
+  });
+
+  /**
+   * ★ Бүлгүүд moved under Хүүхдүүд on 2026-09-04, at the client's request.
+   *
+   * It had been filed with the setup screens in "Багш ба байгууллага", among
+   * the things configured once a year. A group is a list of children with two
+   * teachers on it, and the question that sends somebody here is the one the
+   * row above answers for the whole kindergarten.
+   */
+  it("puts Бүлгүүд directly under Хүүхдүүд", async () => {
+    renderShell(["ADMIN"]);
+    const nav = await sidebar();
+
+    const links = within(nav).getAllByRole("link");
+    const children = links.findIndex((link) => link.textContent?.includes("Хүүхдүүд"));
+    const groups = links.findIndex((link) => link.textContent?.includes("Бүлгүүд"));
+
+    expect(children).toBeGreaterThanOrEqual(0);
+    expect(groups).toBe(children + 1);
   });
 
   /**
@@ -270,6 +298,7 @@ describe("role-based navigation", () => {
       "Хэрэглэгч ба эрх",
       "Хичээлийн жил",
       "Улирал",
+      "Бүлгүүд",
       "Үнэлгээний тохиргоо",
       "Аудит",
     ]) {
@@ -304,6 +333,7 @@ describe("role-based navigation", () => {
       ["Хэрэглэгч ба эрх", "/admin/users"],
       ["Хичээлийн жил", "/admin/school-years"],
       ["Улирал", "/admin/terms"],
+      ["Бүлгүүд", "/admin/groups"],
       ["Үнэлгээний тохиргоо", "/admin/assessment-config"],
       ["Аудит", "/admin/audit"],
       ["Ирц ба тооцоолол", "/admin/funding"],
@@ -315,11 +345,12 @@ describe("role-based navigation", () => {
   /**
    * ★ No hub row, and that is deliberate rather than an omission.
    *
-   * Every screen the "Удирдлага" tile page lists has its own row above this
-   * assertion, so the hub's only remaining job was to name what the menu
-   * already names. `/admin` is still where the root redirect lands an
-   * administrator (`app/page.tsx`), so the screen is not orphaned by losing
-   * the line.
+   * Every screen the "Удирдлага" tile page used to list has its own row above
+   * this assertion, so the hub's only remaining job was to name what the menu
+   * already names — and on 2026-09-04 the tiles went too, leaving `/admin` as
+   * the administrator's dashboard rather than a list of links. It is still
+   * where the root redirect lands an administrator (`app/page.tsx`), so the
+   * screen is not orphaned by losing the line.
    */
   it("does not repeat the administration hub as a row", async () => {
     renderShell(["TEACHER", "ADMIN"]);

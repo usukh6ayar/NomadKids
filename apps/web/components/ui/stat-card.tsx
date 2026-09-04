@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { TONE_SURFACE, type Tone } from "@/components/ui/tone";
@@ -19,12 +21,33 @@ import { TONE_SURFACE, type Tone } from "@/components/ui/tone";
  * screen reader announcing "picture of two children, total children, 245" is
  * worse than the number alone. Cards with and without art still align in a row,
  * because the figure column is what sets the height.
+ *
+ * ★★★ `href` makes the whole card the link — 2026-09-04.
+ *
+ * A figure on a dashboard is a question half-answered: "245 children" is read
+ * and then acted on, and the act is always "show me them". Linking the card
+ * rather than adding a "Харах" button under it keeps the target the size of the
+ * thing being pointed at, which is what a thumb needs.
+ *
+ * The accessible name is the card's own text — "Нийт хүүхэд 245 хүүхэд" — which
+ * is a better link name than any label that could be invented for it, and the
+ * art stays `aria-hidden` so it does not join in.
+ *
+ * ★★★★ The chevron is not decoration, and it is why hover is not enough.
+ *
+ * A border that lights on hover says "this is a link" only once the pointer is
+ * already on it, which on a touch screen is never. That argument would apply to
+ * any linked surface; what makes it decisive *here* is that these cards appear
+ * in mixed rows — `admin-overview.tsx` has four that navigate and two that do
+ * not, because no screen exists for stored files or report jobs. Without a mark
+ * on the card itself, a reader learns which cards do something by tapping them.
  */
 export function StatCard({
   label,
   value,
   unit,
   art,
+  href,
   tone = "sky",
   size = "normal",
   trend,
@@ -37,6 +60,15 @@ export function StatCard({
   /** "хүүхэд", "%" — the words under the figure. */
   unit?: string;
   art?: ReactNode;
+  /**
+   * Where this figure is explained in full — `/children` for a child count.
+   *
+   * Omitted when no such screen exists. An unlinked card is the honest state,
+   * not a gap to be filled with the nearest plausible route: the admin hub was
+   * deleted for listing destinations the sidebar already named, and inventing a
+   * target here would be the same mistake one card at a time.
+   */
+  href?: string;
   tone?: Tone;
   /** `wide` spans two columns and gives the art real room. */
   size?: "normal" | "wide";
@@ -52,12 +84,17 @@ export function StatCard({
   footer?: ReactNode;
   className?: string;
 }) {
-  return (
+  const card = (
     <Card
       pad="roomy"
       className={cn(
         "flex items-start gap-3 overflow-hidden",
         size === "wide" && "sm:col-span-2",
+        // `h-full` only when linked: the `<Link>` wrapper becomes the grid
+        // item, so without it the card no longer stretches to the row's height
+        // and a linked card sits shorter than the unlinked one beside it.
+        href &&
+          "h-full transition-colors group-hover:border-primary/40 group-hover:bg-primary-soft/40",
         className,
       )}
     >
@@ -122,7 +159,35 @@ export function StatCard({
 
         {footer ? <div className="mt-1.5">{footer}</div> : null}
       </div>
+
+      {/*
+        Aligned to the label rather than centred: the card's height is set by
+        whatever the caller passed below the figure — a trend, a bar, neither —
+        so a vertically centred chevron would sit at a different place on every
+        card in the row.
+      */}
+      {href ? (
+        <ChevronRight
+          size={18}
+          aria-hidden="true"
+          className="mt-0.5 shrink-0 text-faint transition-colors group-hover:text-primary"
+        />
+      ) : null}
     </Card>
+  );
+
+  if (!href) return card;
+
+  return (
+    <Link
+      href={href}
+      // `block` and `h-full` so the anchor fills its grid cell and the card
+      // inside it can stretch; `rounded-card` so the global `:focus-visible`
+      // outline follows the corner it is drawn around rather than boxing it.
+      className={cn("group block h-full rounded-card", size === "wide" && "sm:col-span-2")}
+    >
+      {card}
+    </Link>
   );
 }
 

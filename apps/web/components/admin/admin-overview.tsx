@@ -11,27 +11,25 @@ import {
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
-import { formatLongDate } from "@/lib/format";
+import { formatFileSize, formatLongDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/lib/auth/session";
+import { PageHeader } from "@/components/shell/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { StatCard, StatTrend } from "@/components/ui/stat-card";
 import { IconChip } from "@/components/ui/icon-chip";
 import { Art } from "@/components/ui/art";
-import { SurveySummary } from "./survey-summary";
+import { SurveySummary } from "@/components/dashboard/survey-summary";
 import { BarRow } from "@/components/ui/chart/bar-row";
 import { ColumnChart } from "@/components/ui/chart/columns";
 import { Donut } from "@/components/ui/chart/donut";
 import { Ring } from "@/components/ui/chart/ring";
 import { SERIES_TONES } from "@/components/ui/chart/chart-tokens";
 import { TONE_VAR, type Tone } from "@/components/ui/tone";
-import { GraduationCap, PieChart } from "lucide-react";
-import {
-  AssessmentCoverageSection,
-  RecentActivitySection,
-} from "@/components/admin/dashboard-sections";
+import { GraduationCap, HardDrive, PieChart } from "lucide-react";
+import { AssessmentCoverageSection, RecentActivitySection } from "./dashboard-sections";
 
 /**
  * The administrator's own dashboard — RFP §12.2, and the reference system's
@@ -48,12 +46,35 @@ import {
  * kindergarten-scoped. Neither half was wrong; the screen was being shown to
  * the wrong person.
  *
- * So the URL stays and the content follows the viewer. `/dashboard` means
- * "your home"; what home *is* depends on whether you run a class or a
- * kindergarten. The reference system reached the same arrangement — its
- * `/hyanalt/` renders "Удирдлагын самбар" for an admin.
+ * ★★ It renders at `/admin`, and did not always — 2026-09-04.
  *
- * ★★ What it does NOT include, and why that is deliberate.
+ * The first fix branched inside `/dashboard`: same URL, class board for a
+ * teacher, this for an administrator. That was sound while `/admin` was a page
+ * of tiles, and stopped being sound the day `/admin` grew figures of its own.
+ * The product then had **two** administrator dashboards reading one endpoint —
+ * `qk.dashboard.admin()` in both — and the login redirect only ever reached
+ * the poorer of them, because `primaryDashboard()` sends an ADMIN to `/admin`
+ * before it considers TEACHER. The branch inside `/dashboard` was unreachable
+ * for the person it had been written for.
+ *
+ * So the richer screen moved to the URL that already receives them, and the
+ * branch went. What is left is one rule with no second copy to disagree with:
+ * `/dashboard` is the class board and requires TEACHER, so an administrator
+ * who does not teach is redirected off it by `RequireRole`, through `/`, back
+ * to here — the same place they would have landed by signing in.
+ *
+ * ★★★ An administrator who *also* teaches lands here, not on the class board.
+ *
+ * `primaryDashboard()` checks ADMIN before TEACHER, so signing in brings them
+ * here and the register is one click away rather than the other way round.
+ * The branch this replaced took the opposite view — its note argued that "a
+ * director who has taken a group is a teacher for the purposes of this screen"
+ * — but that branch was never reached, so the opinion was never in force and
+ * moving it here would be a change of behaviour disguised as a refactor.
+ * **The ordering is an open question for the client**, recorded rather than
+ * silently decided: one line in `dashboard.service.ts` reverses it.
+ *
+ * ★★★★ What it does NOT include, and why that is deliberate.
  *
  * The reference's version carries two more panels. **Багш нарын гүйцэтгэл** is
  * an empty skeleton there and stays absent here: ranking teachers by a number
@@ -70,18 +91,43 @@ export function AdminOverview() {
     queryFn: () => get("/dashboard/admin", adminDashboardSchema),
   });
 
-  if (isLoading) return <LoadingState rows={4} />;
+  /*
+    ★ All three branches render the same `PageHeader`, on the class board's own
+    reasoning (`app/(app)/dashboard/page.tsx`): a title hand-rolled per branch
+    is a different size from the one `PageHeader` renders, so it changes in
+    place the moment the query resolves. Only the lede differs, and it is never
+    empty, because a line that appears late moves everything below it.
+
+    ★★ The lede is the active term, which `/admin` carried before this screen
+    moved onto it. It is not decoration: "Улирал тохируулаагүй" is the state in
+    which the assessment panels below have nothing to report, and an
+    administrator who has not created one needs to read that at the top rather
+    than infer it from an empty section further down.
+  */
+  const header = (lede: string) => <PageHeader title="Удирдлагын самбар" lede={lede} />;
+
+  if (isLoading) {
+    return (
+      <>
+        {header("Ачаалж байна…")}
+        <LoadingState rows={4} />
+      </>
+    );
+  }
 
   if (isError) {
     return (
-      <ErrorState
-        description={errorMessage(error)}
-        action={
-          <Button variant="secondary" onClick={() => void refetch()}>
-            Дахин оролдох
-          </Button>
-        }
-      />
+      <>
+        {header("Мэдээлэл ачаалж чадсангүй.")}
+        <ErrorState
+          description={errorMessage(error)}
+          action={
+            <Button variant="secondary" onClick={() => void refetch()}>
+              Дахин оролдох
+            </Button>
+          }
+        />
+      </>
     );
   }
 
@@ -94,69 +140,148 @@ export function AdminOverview() {
     recentActivity,
     currentTerm,
     childrenAMonthAgo,
+    storage,
   } = data!;
 
   return (
-    <div className="flex flex-col gap-6">
-      {/*
-        ★ Four figures, and the register is one of them rather than a panel.
+    <>
+      {/* Outside the gap column below: `PageHeader` carries its own `mb-4
+          lg:mb-6`, and inside it that margin would stack with `gap-6`. */}
+      {header(
+        currentTerm ? `${currentTerm.name} · идэвхтэй улирал` : "Идэвхтэй улирал тохируулаагүй",
+      )}
+
+      <div className="flex flex-col gap-6">
+        {/*
+        ★ The register is one of the figures rather than a panel.
 
         The reference puts "Өнөөдрийн ирц" in the same row as the three counts,
         which is right: at nine in the morning it is the number an administrator
         opens this screen for, and by eleven it is context like the others.
-      */}
-      <section aria-label="Товч мэдээлэл" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard
-          label="Нийт хүүхэд"
-          value={counts.children}
-          unit="хүүхэд"
-          tone="cornflower"
-          art={<Art name="child" size={36} />}
-          trend={
-            <StatTrend
-              current={counts.children}
-              previous={childrenAMonthAgo}
-              since="сүүлийн 30 хоногт"
-            />
-          }
-        />
-        <StatCard
-          label="Өнөөдрийн ирц"
-          value={
-            <>
-              {attendanceToday.present}
-              <span className="text-muted"> / {attendanceToday.expected}</span>
-            </>
-          }
-          unit={
-            attendanceToday.recorded >= attendanceToday.expected && attendanceToday.expected > 0
-              ? "бүртгэл бүрэн"
-              : `${Math.max(0, attendanceToday.expected - attendanceToday.recorded)} бүртгээгүй`
-          }
-          tone={
-            attendanceToday.recorded >= attendanceToday.expected && attendanceToday.expected > 0
-              ? "mint"
-              : "sun"
-          }
-          art={<Art name="register" size={36} />}
-        />
-        <StatCard
-          label="Бүлэг"
-          value={counts.groups}
-          unit="идэвхтэй"
-          tone="mint"
-          art={<Art name="kindergarten" size={36} />}
-        />
-        <StatCard
-          label="Багш, ажилтан"
-          value={counts.staff}
-          unit={`${counts.guardians} эцэг эх`}
-          tone="sky"
-          art={<Art name="teacher" size={36} />}
-        />
-      </section>
 
-      {/*
+        ★★ Six when the storage figures are there, four when they are not, and
+        the column count follows — 2026-09-04.
+
+        The two storage cards came from `/admin`'s own row when this screen
+        moved onto that URL. `storage` is `.nullish()` in the contract for a
+        deployed client talking to an older API, so the count is genuinely
+        variable, and one fixed `lg:grid-cols-4` would orphan two cards in the
+        six case while `lg:grid-cols-3` orphans one in the four case. Both
+        counts divide by two, so the phone layout never changes; only the wide
+        breakpoint has to choose, and it chooses by what it actually has.
+
+        This is the arithmetic `/admin`'s tile grid used to do by hand, kept
+        because the reasoning survived the move even though the tiles did not.
+
+        ★★★ Four of the six navigate, and the two that do not are not an
+        oversight — 2026-09-04.
+
+        Each figure links to the screen that explains it: the children list, the
+        kindergarten-wide register, the groups, the user list. `Хадгалсан файл`
+        and `Тайлан` have no destination because the product has no screen for
+        either — files are reached through the child they belong to, and a
+        `ReportJob` is only ever seen in the dialog that started it
+        (`components/reports/report-dialog.tsx`). Pointing them at the nearest
+        plausible route would be the dead navigation the hub page was deleted
+        for, one card at a time. They stay figures until a screen exists.
+      */}
+        <section
+          aria-label="Товч мэдээлэл"
+          className={cn("grid grid-cols-2 gap-3", storage ? "lg:grid-cols-3" : "lg:grid-cols-4")}
+        >
+          <StatCard
+            label="Нийт хүүхэд"
+            value={counts.children}
+            unit="хүүхэд"
+            href="/children"
+            tone="cornflower"
+            art={<Art name="child" size={36} />}
+            trend={
+              <StatTrend
+                current={counts.children}
+                previous={childrenAMonthAgo}
+                since="сүүлийн 30 хоногт"
+              />
+            }
+          />
+          <StatCard
+            label="Өнөөдрийн ирц"
+            value={
+              <>
+                {attendanceToday.present}
+                <span className="text-muted"> / {attendanceToday.expected}</span>
+              </>
+            }
+            unit={
+              attendanceToday.recorded >= attendanceToday.expected && attendanceToday.expected > 0
+                ? "бүртгэл бүрэн"
+                : `${Math.max(0, attendanceToday.expected - attendanceToday.recorded)} бүртгээгүй`
+            }
+            tone={
+              attendanceToday.recorded >= attendanceToday.expected && attendanceToday.expected > 0
+                ? "mint"
+                : "sun"
+            }
+            art={<Art name="register" size={36} />}
+            href="/attendance/journal"
+          />
+          <StatCard
+            label="Бүлэг"
+            value={counts.groups}
+            unit="идэвхтэй"
+            href="/admin/groups"
+            tone="mint"
+            art={<Art name="kindergarten" size={36} />}
+          />
+          <StatCard
+            label="Багш, ажилтан"
+            value={counts.staff}
+            unit={`${counts.guardians} эцэг эх`}
+            href="/admin/users"
+            tone="sky"
+            art={<Art name="teacher" size={36} />}
+          />
+
+          {/*
+          RFP §12.2 — "Хадгалалтын хэмжээ" and "Тайлангийн статистик". Absent
+          rather than zero when the API has not sent them: "0 MB" would be a
+          claim about the bucket rather than a slower card.
+        */}
+          {storage ? (
+            <>
+              {/*
+              ★ The figure counts files; the size is the caption under it.
+
+              It was the other way round, and on a kindergarten that has not
+              uploaded anything the card read "—" over "0 файл":
+              `formatFileSize` returns an em dash for zero bytes, which is right
+              where a size is unknown and wrong where it is known to be nothing.
+              The label says "файл", so the number under it should be files —
+              and a size has no honest zero to show, while a count does.
+            */}
+              <StatCard
+                label="Хадгалсан файл"
+                value={storage.fileCount}
+                unit={storage.totalBytes > 0 ? formatFileSize(storage.totalBytes) : "хоосон"}
+                tone="teal"
+                art={<HardDrive size={28} aria-hidden />}
+              />
+              <StatCard
+                label="Тайлан"
+                value={storage.reports.done}
+                unit={
+                  storage.reports.failed > 0
+                    ? `${storage.reports.total} нийт · ${storage.reports.failed} амжилтгүй`
+                    : `${storage.reports.total} нийт`
+                }
+                tone="sun"
+                art={<Art name="report" size={36} />}
+              />
+            </>
+          ) : null}
+        </section>
+
+        {/*
         ★ These two are paired because they are the same shape, not because
         they are the same subject.
 
@@ -170,7 +295,7 @@ export function AdminOverview() {
         wrapping a Mongolian group name — so they stack rather than shrink, the
         same trade `/admin`'s tile grid makes at the same breakpoint.
       */}
-      {/*
+        {/*
         ★ A dial and a ring, because these two questions have different shapes.
 
         Every panel on this screen was a horizontal bar, and a screen where
@@ -185,27 +310,27 @@ export function AdminOverview() {
 
         Neither was reachable while both were `BarRow`.
       */}
-      <div className="grid items-start gap-6 xl:grid-cols-2">
-        <TodayDial today={attendanceToday} />
-        <AttendanceMix groups={attendanceByGroup} />
-      </div>
+        <div className="grid items-start gap-6 xl:grid-cols-2">
+          <TodayDial today={attendanceToday} />
+          <AttendanceMix groups={attendanceByGroup} />
+        </div>
 
-      <div className="grid items-start gap-6 xl:grid-cols-2">
-        <AttendanceByGroup groups={attendanceByGroup} />
+        <div className="grid items-start gap-6 xl:grid-cols-2">
+          <AttendanceByGroup groups={attendanceByGroup} />
 
-        <AssessmentCoverageSection
-          coverage={assessmentCoverage}
-          hasCurrentTerm={Boolean(currentTerm)}
-          href={(groupId) => `/groups/${groupId}/assessment`}
-        />
-      </div>
+          <AssessmentCoverageSection
+            coverage={assessmentCoverage}
+            hasCurrentTerm={Boolean(currentTerm)}
+            href={(groupId) => `/groups/${groupId}/assessment`}
+          />
+        </div>
 
-      {/* Full width: a column per domain plus a row of bars per group is the
+        {/* Full width: a column per domain plus a row of bars per group is the
           tallest panel here, and halving its width truncates every Mongolian
           domain name. */}
-      <DomainAverages groups={domainAveragesByGroup} hasCurrentTerm={Boolean(currentTerm)} />
+        <DomainAverages groups={domainAveragesByGroup} hasCurrentTerm={Boolean(currentTerm)} />
 
-      {/*
+        {/*
         ★ The teacher board's own survey panel, unchanged, on the director's
         board too.
 
@@ -221,12 +346,13 @@ export function AdminOverview() {
         `BoardCard` sized for the teacher board's two-column grid and stretching
         it across this page would leave a bar chart in a field of white.
       */}
-      <div className="grid items-start gap-6 xl:grid-cols-2">
-        <SurveySummary />
-      </div>
+        <div className="grid items-start gap-6 xl:grid-cols-2">
+          <SurveySummary />
+        </div>
 
-      <RecentActivitySection entries={recentActivity} auditHref="/admin/audit" />
-    </div>
+        <RecentActivitySection entries={recentActivity} auditHref="/admin/audit" />
+      </div>
+    </>
   );
 }
 

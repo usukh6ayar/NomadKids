@@ -298,6 +298,7 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
   "/kitchen/reports": BarChart3,
   "/admin": ShieldCheck,
   "/admin/funding": Wallet,
+  "/attendance/daily": CalendarCheck,
   "/platform": Building2,
   "/platform/revenue": Wallet,
   "/platform/applications": FileSignature,
@@ -412,14 +413,18 @@ function staffNav(isAdmin: boolean, groupId: string | null): NavItem[] {
  * merge. The one that shipped stays. What that second pass added *besides* the
  * names is kept below, because none of it depends on them.
  *
- * **The seven administration screens are rows now.** They were all behind a
- * single "Удирдлага" hub, so a director looking for "Улирал" read one word that
- * did not say it and had to open a page to find out. The reference names its
+ * **The administration screens are rows now.** They were all behind a single
+ * "Удирдлага" hub, so a director looking for "Улирал" read one word that did
+ * not say it and had to open a page to find out. The reference names its
  * destinations directly and it is right to: a menu whose job is to say what is
- * in the product should not make you open a screen to read the menu. The hub
- * keeps its row — it carries kindergarten-wide figures an admin who also
- * teaches cannot get from `/dashboard`, which gives that person the class
- * board — and now sits above the screens it used to hide.
+ * in the product should not make you open a screen to read the menu.
+ *
+ * The hub kept its own row for a day and then lost that too, and on 2026-09-04
+ * lost its tiles as well — `/admin` is the administrator's dashboard now, not a
+ * list of links to what this menu already names. `Бүлгүүд` joined the rows in
+ * the same pass, being the one destination the tiles carried that these rows
+ * did not — and moved up under Хүүхдүүд the same day, where the question it
+ * answers actually belongs.
  *
  * **"Багшийн удирдлага" is not a second row.** The reference has a teacher
  * module beside its user module; here both are `/admin/users`, one screen with
@@ -560,13 +565,26 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
       title: "Хүүхдийн хөгжил ба үнэлгээ",
       entries: [
         entry("Хүүхдүүд", "/children"),
+        /*
+         * ★ Directly under Хүүхдүүд, moved there 2026-09-04 at the client's
+         * request — and it is the right place for it.
+         *
+         * It sat in "Багш ба байгууллага" with the setup screens, among the
+         * things you configure once a year. But a group is a list of children
+         * with two teachers on it, and the question that sends somebody here —
+         * "who is in Дэлбээ?" — is the same question the row above answers for
+         * the whole kindergarten. Setup screens are what you visit in August;
+         * this one is visited all year.
+         */
+        ...adminEntry("Бүлгүүд", "/admin/groups"),
         {
           label: "Явцын үнэлгээ",
           href: scoped("assessment"),
           icon: <ClipboardCheck {...sectionIconProps} />,
         },
         /*
-         * ★ Neither review queue is a menu row, decided twice now.
+         * ★ Neither review queue is a menu row — settled 2026-09-04, and this
+         * time by the client rather than by the argument.
          *
          * **Чөлөөний хүсэлт** is the attendance register read from the other
          * end: approving a request writes the very `Attendance` rows the day
@@ -579,24 +597,25 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
          * what is waiting. A menu row says nothing about whether there is
          * anything in the queue, so it is a row somebody opens to find out.
          *
-         * ★★ Both rows are in the menu, and this note is the third entry in
-         * an argument that has now been settled by the person who gets to
-         * settle it.
+         * ★★ The history, because this row has now moved four times.
          *
-         * They were removed on 2026-08-30 for the reasons above, restored on
-         * 2026-08-31 because the client listed both by name in a written list
-         * of the destinations the menu must carry, and removed again the same
-         * day by `1513f7e` — whose case is the one written above and is a good
-         * one: an empty queue is exactly the day nobody needs to open it.
+         * Removed 2026-08-30 for the reasons above; restored 2026-08-31
+         * because the client listed both by name among the destinations the
+         * menu must carry; removed again the same day by `1513f7e`; restored
+         * again when the owner chose the client's list over the tidier
+         * argument. On 2026-09-04 the client asked for both to go — "ажиглалт,
+         * чөлөөний хүсэлт 2 огт хэрэггүй" — which settles it in the same
+         * direction the reasoning always pointed.
          *
-         * The owner chose the client's list. That is the tie-breaker rather
-         * than the stronger argument, and deliberately so: the reasoning on
-         * both sides is about which is tidier, while the request is about what
-         * somebody was promised. Recorded in full so the next person reads a
-         * decision instead of a flip-flop.
+         * ★★★ **The rows go; the screens and the endpoints stay.**
+         *
+         * `/observations/review` and `/attendance-requests/review` still
+         * render, and both are still linked from where they are actually
+         * needed — the dashboard's waiting-count alert, `AttendanceRequestQueue`
+         * inside Ирц, and `/admin/funding`. Deleting them would take the
+         * guardian's own "Чөлөө хүсэх" with it, which is a parent-facing
+         * feature nobody asked to remove.
          */
-        entry("Ажиглалт хянах", "/observations/review"),
-        entry("Чөлөөний хүсэлт хянах", "/attendance-requests/review"),
       ],
     },
     {
@@ -610,7 +629,27 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
        */
       title: "Өдөр тутмын бүртгэл",
       entries: [
-        { label: "Ирц", href: scoped("attendance"), icon: <CalendarCheck {...sectionIconProps} /> },
+        /*
+         * ★ "Ирц" means two different screens, and which one you get is the
+         * job you have — 2026-09-04.
+         *
+         * A teacher lands on their group's day sheet, where a child is a row
+         * and six buttons record the morning. An administrator lands on
+         * `/attendance/daily`, which is the same register at the grain they
+         * asked for: one row per group per day, counts only, nothing to press.
+         * The client was explicit — "ерөөсөө захирал тэнд ирсэн, хагас өдөр
+         * гэх мэт тийм товчнуудыг дарахгүй".
+         *
+         * ★★ An administrator who also teaches gets the director's screen,
+         * because that is the one their `isAdmin` says they can read. Their
+         * own group's sheet is a click away from any row of it — the group
+         * name on each row links to that group's day sheet.
+         */
+        {
+          label: "Ирц",
+          href: isAdmin ? "/attendance/daily" : scoped("attendance"),
+          icon: <CalendarCheck {...sectionIconProps} />,
+        },
         {
           label: "Хоол ба цэс",
           href: scoped("meals"),
@@ -622,9 +661,9 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
       /*
        * ★ What you set up once, and what you look up afterwards.
        *
-       * The seven administration screens were behind the "Удирдлага" hub until
-       * 2026-08-30; the hub keeps its row and now sits above them rather than
-       * instead of them.
+       * The administration screens were behind the "Удирдлага" hub until
+       * 2026-08-30. They are rows of their own now, and the hub is no longer a
+       * hub at all — see the note above `adminEntry` below.
        *
        * A notice goes on a board a family reads at home; a survey asks them a
        * question. Neither is something a teacher does *to* a record, which is
@@ -680,21 +719,26 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
       entries: [
         entry("Багшийн мэдээлэл", "/settings"),
         /*
-         * ★ The seven administration screens, named — and no "Удирдлага" row
-         * above them any more.
+         * ★ The administration screens, named — and no "Удирдлага" row above
+         * them any more.
          *
          * Reaching "Аудит" used to mean opening the hub and finding it among
          * seven tiles: two steps for a screen a director opens daily. Once
-         * every one of those screens has its own row, the hub is a row whose
-         * only remaining job is to list what is already listed directly
+         * every one of those screens has its own row, the hub was a row whose
+         * only remaining job was to list what is already listed directly
          * beneath it.
          *
          * `/admin` itself stays, and losing its row orphans nothing: signing
          * in *lands* an administrator on it (`app/page.tsx` redirects the root
          * by role), so the row pointed at the page they had just arrived from.
-         * It carries kindergarten-wide figures an administrator who also
-         * teaches cannot get from `/dashboard`; it is the sidebar line, not the
-         * screen, that had stopped earning itself.
+         *
+         * ★★ And on 2026-09-04 the page stopped being a hub too. Its tiles
+         * were the same six destinations these rows name, so it was listing
+         * the menu beside it; `AdminOverview` moved onto the URL instead, from
+         * a branch inside `/dashboard` that the login redirect never reached.
+         * What is left there is the kindergarten-wide dashboard — figures no
+         * row here can carry — which is what makes the missing row correct
+         * rather than merely tolerable.
          */
         ...adminEntry("Цэцэрлэгийн мэдээлэл", "/admin/kindergarten"),
         ...adminEntry("Хэрэглэгч ба эрх", "/admin/users"),

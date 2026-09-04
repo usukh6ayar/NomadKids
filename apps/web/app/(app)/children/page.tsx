@@ -4,9 +4,16 @@ import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ChevronRight, Download, Plus, Search, Upload } from "lucide-react";
+import { ChevronRight, Download, Plus, Search, SlidersHorizontal, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
-import { childSummarySchema, paginated, rosterSummarySchema, SEX_LABEL } from "@kinder/contracts";
+import {
+  CHILD_STATUS_LABEL,
+  childSummarySchema,
+  paginated,
+  rosterSummarySchema,
+  SEX_LABEL,
+  type ChildSummary,
+} from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
 import { useSwitchableGroups } from "@/components/shell/group-switcher";
@@ -17,13 +24,16 @@ import { RequireRole } from "@/components/shell/require-role";
 import { downloadUrl } from "@/lib/api/client";
 import { useDebounced } from "@/lib/use-debounced";
 import { Button } from "@/components/ui/button";
-import { Card, RowList } from "@/components/ui/card";
+import { Card, RowList, SectionHeader } from "@/components/ui/card";
 import { Pagination } from "@/components/ui/pagination";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
+import { SelectBox, SelectionBar, useSelection } from "@/components/ui/selection";
+import { TableShell, Td, Th } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { useSelectedChild } from "@/lib/selected-child";
-import { formatAge, formatAgeFromMonths, fullName } from "@/lib/format";
+import { formatAge, formatAgeFromMonths, formatDate, fullName } from "@/lib/format";
 import { MY_CHILDREN } from "@/lib/vocabulary";
 import { z } from "zod";
 
@@ -94,6 +104,20 @@ function StaffChildren() {
   const [facets, setFacets] = useState<RosterFacets>(NO_FACETS);
   const search = useDebounced(query.trim());
 
+  /*
+    How many narrowings are in force — the sort is not one of them, since a
+    roster is always in *some* order and calling that a filter would leave the
+    badge permanently at one.
+  */
+  const activeFilterCount = [
+    facets.groupId,
+    facets.sex,
+    facets.ageMin !== undefined ? "age" : undefined,
+    facets.ageMax !== undefined ? "age" : undefined,
+  ].filter(Boolean).length;
+
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
   // Only when `?q=` itself changes — arriving from the header, or Back to an
   // earlier search. Local typing does not touch `urlQuery`, so this does not
   // fight the input on every keystroke.
@@ -122,6 +146,35 @@ function StaffChildren() {
     // keystroke.
     placeholderData: (previous) => previous,
   });
+
+  /*
+   * ★ Ticking rows, so an export can be a hand-picked set — 2026-09-04.
+   *
+   * The export has always carried the filters on screen, which answers "give
+   * me this group" and "give me the five-year-olds" but not "give me these
+   * nine", and the ninth question is the one a director actually asks before a
+   * trip or a medical visit. A filter cannot express an arbitrary set.
+   *
+   * ★★ Scoped to the page, because `useSelection` prunes to what is visible.
+   *
+   * Paging to page three drops the ticks from page one rather than carrying
+   * them invisibly — see `selection.tsx`. That is a real limit and the honest
+   * one: a hidden selection is how somebody exports rows they had forgotten
+   * they chose. Twenty-five at a time is also the size of set a person picks
+   * by hand.
+   */
+  const selection = useSelection((data?.items ?? []).map((child) => child.id));
+
+  /*
+   * The selected ids as the same `?ids=` the export endpoint filters on. It is
+   * ANDed into the roster's own `where` after `visibleChildrenWhere`, so this
+   * can only ever narrow what the caller may already download.
+   */
+  const selectedExportQuery = (() => {
+    const params = rosterParams(search, facets);
+    params.set("ids", selection.ids.join(","));
+    return `?${params}`;
+  })();
 
   return (
     <div className="page-band">
@@ -188,15 +241,48 @@ function StaffChildren() {
 
       <RosterSummary search={search} facets={facets} />
 
-      <RosterFilters
-        facets={facets}
-        onChange={(next) => {
-          setFacets(next);
-          // A narrowed roster starts at page 1 — otherwise filtering from page
-          // three shows an empty result that reads as "no such children".
-          setPage(1);
-        }}
-      />
+      {/*
+        ★ "Дэлгэрэнгүй" — the filters fold away, 2026-09-04.
+        The client's reference screen puts them behind one control beside the
+        search box, and it is right for a roster somebody opens twenty times a
+        day to look one child up: three selects permanently above the list are
+        three rows of chrome between the search field and the answer.
+
+        ★★ Open whenever a filter is set, and the button says how many.
+
+        This is the one thing a collapsed filter panel gets wrong — a teacher
+        concludes half their group has vanished because a narrowing they set
+        yesterday is now invisible. `filtersOpen` starts as "is anything set",
+        and the count on the button stays visible even when the panel is shut,
+        so the state is never hidden. That is the `RosterFilters` note's own
+        objection to a drawer, answered rather than ignored.
+      */}
+      <div className="flex flex-col gap-2">
+        <button
+          type="button"
+          onClick={() => setFiltersOpen((open) => !open)}
+          aria-expanded={filtersOpen}
+          aria-controls="roster-filters"
+          className="flex min-h-11 items-center gap-2 self-start rounded-control border border-border bg-surface px-3 text-body font-medium text-ink transition-colors hover:border-primary/40"
+        >
+          <SlidersHorizontal size={16} aria-hidden />
+          Дэлгэрэнгүй
+          {activeFilterCount > 0 ? <Badge tone="sky">{activeFilterCount}</Badge> : null}
+        </button>
+
+        <div id="roster-filters" hidden={!filtersOpen}>
+          <RosterFilters
+            facets={facets}
+            onChange={(next) => {
+              setFacets(next);
+              // A narrowed roster starts at page 1 — otherwise filtering from
+              // page three shows an empty result that reads as "no such
+              // children".
+              setPage(1);
+            }}
+          />
+        </div>
+      </div>
 
       <div className="relative">
         <Search
@@ -252,11 +338,132 @@ function StaffChildren() {
             not one card with dividers. Every list screen in this product now
             reads the same way.
           */}
-          <RowList className={isPlaceholderData ? "opacity-60" : ""} aria-busy={isPlaceholderData}>
-            {data.items.map((child) => (
-              <ChildRow key={child.id} child={child} />
-            ))}
-          </RowList>
+          {/*
+            ★ A heading over the list — 2026-09-04.
+
+            The roster went straight from a row of stat cards into rows of
+            children, so nothing said where the summary stopped and the list
+            began. The lede carries the page position because the count in the
+            cards above is the *filtered total* and this list is twenty-five of
+            it — two numbers that would otherwise appear to disagree.
+          */}
+          <SectionHeader
+            title="Хүүхдийн жагсаалт"
+            lede={`${data.total} хүүхдээс ${data.items.length} харагдаж байна · ${data.page} / ${data.totalPages} хуудас`}
+          />
+
+          {/*
+            ★ "Select all" means this page, and says so.
+
+            `useSelection` cannot tick a row it cannot see, and a control
+            labelled "Бүгдийг сонгох" over a paginated list would promise the
+            whole roster. The label names the page instead of the promise being
+            broken quietly.
+          */}
+          <div className="flex items-center gap-2 px-1 pb-1 lg:hidden">
+            <SelectBox
+              checked={selection.allSelected}
+              indeterminate={selection.someSelected}
+              onChange={selection.toggleAll}
+              label="Энэ хуудсын бүх хүүхдийг сонгох"
+            />
+            <span className="text-caption text-muted">Энэ хуудсыг сонгох</span>
+          </div>
+
+          {/*
+            ★ A table on a desktop, the card rows on a phone — 2026-09-04.
+
+            The client's reference screen is a twelve-column table and they are
+            right that it suits this screen: a roster is compared *across* —
+            "who has no регистр", "who is in Дэлбээ" — and those are answered by
+            running an eye down a column, which a stack of cards cannot offer.
+
+            ★★ Both, rather than one replacing the other, because CLAUDE.md §5
+            is mobile-first and a twelve-column table on a 375px screen is a
+            horizontal scroll nobody scrolls. `RowList` keeps the phone honest;
+            `TableShell` gives the desk the density it asked for. One query, one
+            selection, two shapes — the rows are the same objects in both, so
+            there is no second source of truth to drift.
+          */}
+          <div className={isPlaceholderData ? "opacity-60" : ""} aria-busy={isPlaceholderData}>
+            <RowList className="lg:hidden">
+              {data.items.map((child) => (
+                <ChildRow
+                  key={child.id}
+                  child={child}
+                  checked={selection.has(child.id)}
+                  onToggle={() => selection.toggle(child.id)}
+                />
+              ))}
+            </RowList>
+
+            <div className="hidden lg:block">
+              <TableShell caption="Хүүхдийн жагсаалт" minWidth="min-w-[900px]">
+                <thead>
+                  <tr>
+                    <Th className="w-10">
+                      <SelectBox
+                        checked={selection.allSelected}
+                        indeterminate={selection.someSelected}
+                        onChange={selection.toggleAll}
+                        label="Энэ хуудсын бүх хүүхдийг сонгох"
+                      />
+                    </Th>
+                    <Th numeric className="w-12">
+                      №
+                    </Th>
+                    <Th>Хүүхэд</Th>
+                    <Th>Регистр</Th>
+                    <Th>Хүйс</Th>
+                    <Th>Бүлэг</Th>
+                    <Th>Нас</Th>
+                    <Th>Төрсөн огноо</Th>
+                    <Th>Төлөв</Th>
+                    <Th className="w-10">
+                      <span className="sr-only">Нээх</span>
+                    </Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.items.map((child, index) => (
+                    <ChildTableRow
+                      key={child.id}
+                      child={child}
+                      /* Continues across pages, so row 26 is the first of page two
+                         rather than a second row 1. */
+                      index={(data.page - 1) * 25 + index + 1}
+                      checked={selection.has(child.id)}
+                      onToggle={() => selection.toggle(child.id)}
+                    />
+                  ))}
+                </tbody>
+              </TableShell>
+            </div>
+          </div>
+
+          {/*
+            Excel only, and that is the whole action list for now.
+
+            Moving a set of children to another group and archiving them are
+            both real bulk operations, and both are enrollment decisions with
+            dates and history behind them — `POST /children/:id/enrollments`
+            per child is not the same act as "transfer these nine". Offering
+            the button before that endpoint exists is the dead navigation this
+            product deletes screens over.
+          */}
+          <SelectionBar count={selection.count} onClear={selection.clear}>
+            {primaryKindergartenId ? (
+              <Button asChild size="sm" variant="secondary">
+                <a
+                  href={downloadUrl(
+                    `/kindergartens/${primaryKindergartenId}/children/export${selectedExportQuery}`,
+                  )}
+                >
+                  <Download size={16} aria-hidden /> Сонгосныг Excel
+                </a>
+              </Button>
+            ) : null}
+          </SelectionBar>
 
           <Pagination page={data.page} totalPages={data.totalPages} onPage={setPage} />
         </>
@@ -512,6 +719,8 @@ const AGE_CHOICES = [1, 2, 3, 4, 5, 6, 7] as const;
  */
 function ChildRow({
   child,
+  checked,
+  onToggle,
 }: {
   child: {
     id: string;
@@ -521,39 +730,58 @@ function ChildRow({
     photoMediaFileId?: string | null;
     enrollments?: { group?: { name: string } | null }[];
   };
+  checked: boolean;
+  onToggle: () => void;
 }) {
   const group = child.enrollments?.[0]?.group?.name;
 
   return (
-    <Link
-      href={`/children/${child.id}/general`}
-      /*
-        ★ REDESIGN 2026-09-03 — the row lifts, and it has a chevron.
+    /*
+      ★ REDESIGN 2026-09-03 — the row lifts, and it has a chevron.
 
-        The whole row is one card and one link. The affordance was a border
-        moving to the brand colour on hover, which is invisible on a phone —
-        where this screen is mostly used, and where hover does not exist — so
-        a tappable roster looked exactly like a read-only list.
+      The affordance was a border moving to the brand colour on hover, which is
+      invisible on a phone — where this screen is mostly used, and where hover
+      does not exist — so a tappable roster looked exactly like a read-only
+      list.
 
-        `card-interactive` (globals.css) is the product's one answer for a
-        clickable surface: a 1px lift, one step of shadow, a tinted border, and
-        a return to rest on press, so the press registers under a thumb. The
-        chevron is the part that works with no pointer at all — it says "this
-        opens" while sitting still.
-      */
-      className="card-interactive flex min-h-[68px] items-center gap-3 rounded-row border border-border bg-surface px-3 py-3 shadow-sm md:px-4"
-    >
-      <ChildAvatar child={child} size={44} />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-lead font-semibold leading-[1.35] text-ink">
-          {fullName(child)}
+      `card-interactive` (globals.css) is the product's one answer for a
+      clickable surface: a 1px lift, one step of shadow, a tinted border, and a
+      return to rest on press, so the press registers under a thumb. The chevron
+      is the part that works with no pointer at all — it says "this opens" while
+      sitting still.
+
+      ★★ 2026-09-04 — the card is a `div` and the link is inside it.
+
+      The whole row used to be one `<a>`. A checkbox inside an anchor is an
+      interactive element inside an interactive element: invalid HTML, and in
+      practice a tap that both ticks the box and navigates away from the list
+      the tick was for. So the card became the container, the checkbox and the
+      link became siblings, and the link kept everything that is genuinely
+      "open this child".
+
+      The lift still belongs to the whole card rather than to the link alone —
+      the row is one object to the eye and splitting the hover would make the
+      checkbox look detached from the name beside it.
+    */
+    <div className="card-interactive flex min-h-[68px] items-center gap-3 rounded-row border border-border bg-surface px-3 py-3 shadow-sm md:px-4">
+      <SelectBox checked={checked} onChange={onToggle} label={`${fullName(child)} — сонгох`} />
+
+      <Link
+        href={`/children/${child.id}/general`}
+        className="flex min-w-0 flex-1 items-center gap-3 rounded-row"
+      >
+        <ChildAvatar child={child} size={44} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-lead font-semibold leading-[1.35] text-ink">
+            {fullName(child)}
+          </span>
+          <span className="mt-0.5 block truncate text-compact text-muted">
+            {[group, formatAge(child.dateOfBirth)].filter(Boolean).join(" · ")}
+          </span>
         </span>
-        <span className="mt-0.5 block truncate text-compact text-muted">
-          {[group, formatAge(child.dateOfBirth)].filter(Boolean).join(" · ")}
-        </span>
-      </span>
-      <ChevronRight size={18} aria-hidden="true" className="shrink-0 text-faint" />
-    </Link>
+        <ChevronRight size={18} aria-hidden="true" className="shrink-0 text-faint" />
+      </Link>
+    </div>
   );
 }
 
@@ -576,6 +804,95 @@ function ChildRow({
  * answers both over the whole filtered roster, and the endpoint shares its
  * `where` with the list so the header cannot contradict the rows.
  */
+/**
+ * One roster row as a table row — the desktop half of the list.
+ *
+ * ★ The link is on the name cell, not on the `<tr>`.
+ *
+ * A whole row cannot be an anchor: `<tr>` may only contain `<td>`, so wrapping
+ * it is invalid, and making the row clickable with `onClick` gives a keyboard
+ * user nothing to focus and a reader nothing to middle-click. The name is what
+ * somebody aims at anyway, and the trailing chevron is a second, wider target
+ * on the same href.
+ *
+ * ★★ An em dash where a fact is missing, never an empty cell.
+ *
+ * A blank in a grid reads as "this column does not apply here"; a dash says the
+ * value is absent. `nationalId` genuinely is absent for a newly arrived child —
+ * see `childSummarySchema` — and that is the state a director scans this column
+ * to find.
+ */
+function ChildTableRow({
+  child,
+  index,
+  checked,
+  onToggle,
+}: {
+  child: ChildSummary;
+  index: number;
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  const group = child.enrollments?.[0]?.group?.name;
+  const href = `/children/${child.id}/general`;
+
+  return (
+    <tr className="transition-colors hover:bg-sunken">
+      <Td>
+        <SelectBox checked={checked} onChange={onToggle} label={`${fullName(child)} — сонгох`} />
+      </Td>
+      <Td numeric className="text-caption text-muted">
+        {index}
+      </Td>
+      <Td>
+        <Link href={href} className="flex min-w-0 items-center gap-2.5">
+          <ChildAvatar child={child} size={32} />
+          <span className="min-w-0 truncate font-medium text-ink">{fullName(child)}</span>
+        </Link>
+      </Td>
+      {/*
+        ★ A foreign child's own identifier, marked as such.
+
+        Their `nationalId` is null and always will be — the Mongolian format
+        cannot express one — so an unmarked "—" here would read exactly like a
+        child whose регистр nobody has typed in yet. The first is finished; the
+        second is a to-do, and this column is where a director looks for the
+        second.
+      */}
+      <Td className="whitespace-nowrap text-muted">
+        {child.isForeign ? (
+          <span className="flex items-center gap-1.5">
+            <Badge tone="sky">Гадаад</Badge>
+            <span className="tabular-nums">{child.foreignId ?? "—"}</span>
+          </span>
+        ) : (
+          <span className="tabular-nums">{child.nationalId ?? "—"}</span>
+        )}
+      </Td>
+      <Td className="whitespace-nowrap text-muted">
+        {child.sex ? (SEX_LABEL[child.sex] ?? child.sex) : "—"}
+      </Td>
+      <Td className="text-muted">{group ?? "—"}</Td>
+      <Td className="whitespace-nowrap text-muted">{formatAge(child.dateOfBirth)}</Td>
+      <Td className="whitespace-nowrap tabular-nums text-muted">{formatDate(child.dateOfBirth)}</Td>
+      <Td>
+        {child.status ? (
+          <Badge tone={child.status === "ACTIVE" ? "mint" : "sky"}>
+            {CHILD_STATUS_LABEL[child.status] ?? child.status}
+          </Badge>
+        ) : (
+          "—"
+        )}
+      </Td>
+      <Td>
+        <Link href={href} aria-label={`${fullName(child)} — нээх`} className="block">
+          <ChevronRight size={18} aria-hidden="true" className="text-faint" />
+        </Link>
+      </Td>
+    </tr>
+  );
+}
+
 function RosterSummary({ search, facets }: { search: string; facets: RosterFacets }) {
   const filters = { q: search || undefined, ...facets };
 

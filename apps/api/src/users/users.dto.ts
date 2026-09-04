@@ -62,3 +62,24 @@ export const addMembershipSchema = z.object({
   role: roleSchema,
 });
 export type AddMembershipDto = z.infer<typeof addMembershipSchema>;
+
+/**
+ * Moving a member of staff from one role to another — "албан тушаал солих",
+ * requested 2026-09-04.
+ *
+ * ★ One request, not a revoke followed by a grant.
+ *
+ * Those two endpoints already existed and a client could have called them in
+ * order, which is exactly the problem: between them the person holds no role
+ * at all, and a failure on the second leaves a teacher who has been demoted to
+ * nothing. `Membership` is also `@@unique([userId, kindergartenId, role])`, so
+ * the target row may already exist in a revoked state — a naive "update the
+ * role column" would collide with a membership somebody deactivated last year.
+ * The service resolves both inside one transaction.
+ *
+ * ★★ No `kindergartenId`: the membership names it, and taking one from the
+ * caller would let a request name a different kindergarten from the row it is
+ * about. The service reads it off the record it just authorized.
+ */
+export const changeMembershipRoleSchema = z.object({ role: roleSchema });
+export type ChangeMembershipRoleDto = z.infer<typeof changeMembershipRoleSchema>;

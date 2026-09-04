@@ -663,3 +663,172 @@ describe("POST /auth/invitation/accept", () => {
     expect(res.status).toBe(401);
   });
 });
+
+/**
+ * Changing a member of staff's role — "албан тушаал солих", `PATCH
+ * /memberships/:id`, added 2026-09-04.
+ *
+ * ★ Why it is one endpoint rather than the two that already existed.
+ *
+ * A client could have called `DELETE /memberships/:id` then `POST
+ * /users/:id/memberships`. Between those two the person holds no role at all,
+ * and a failure on the second leaves a teacher demoted to nothing. These
+ * assertions pin the properties that make the single call worth having: the
+ * old role ends, the new one is live, and the group assignments that belonged
+ * to the old role do not survive it.
+ */
+describe("PATCH /memberships/:id — албан тушаал солих", () => {
+  it("ends the old role and grants the new one", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/memberships/${a.teacherMembership.id}`),
+      adminA,
+    ).send({ role: "COOK" });
+
+    expect(res.status).toBe(200);
+
+    const memberships = await db.membership.findMany({
+      where: { userId: a.teacherUser.id, kindergartenId: a.kindergarten.id },
+    });
+
+    const teacher = memberships.find((m) => m.role === "TEACHER");
+    const cook = memberships.find((m) => m.role === "COOK");
+
+    // ★ The old row survives, deactivated — CLAUDE.md §3.2. An audit trail that
+    // asks "what was this person before" needs the record, not its absence.
+    expect(teacher?.isActive).toBe(false);
+    expect(cook?.isActive).toBe(true);
+  });
+
+  /**
+   * ★ The group assignments go with the old role.
+   *
+   * `revokeMembership` already ends them, on the reasoning that reactivating a
+   * membership later must not silently restore groups nobody re-granted. A
+   * role change is a revocation plus a grant, so it inherits that rule — a
+   * teacher who becomes a cook must not keep the class they taught.
+   */
+  it("ends the group assignments the old role carried", async () => {
+    const before = await db.groupTeacher.findMany({
+      where: { membershipId: a.teacherMembership.id, endedOn: null, deletedAt: null },
+    });
+    expect(before.length).toBeGreaterThan(0);
+
+    await authed(request(server()).patch(`/v1/memberships/${a.teacherMembership.id}`), adminA).send(
+      { role: "ACCOUNTANT" },
+    );
+
+    const after = await db.groupTeacher.findMany({
+      where: { membershipId: a.teacherMembership.id, endedOn: null, deletedAt: null },
+    });
+    expect(after).toHaveLength(0);
+  });
+
+  /**
+   * ★ Reuses a revoked row rather than colliding with it.
+   *
+   * `Membership` is unique on (userId, kindergartenId, role), so moving somebody
+   * back into a role they once held cannot create a second row — the naive
+   * "update the role column" version fails here with a constraint error.
+   */
+  it("reactivates a role the person previously held", async () => {
+    await authed(request(server()).patch(`/v1/memberships/${a.teacherMembership.id}`), adminA).send(
+      { role: "COOK" },
+    );
+
+    const cook = await db.membership.findFirstOrThrow({
+      where: { userId: a.teacherUser.id, role: "COOK" },
+    });
+
+    const back = await authed(request(server()).patch(`/v1/memberships/${cook.id}`), adminA).send({
+      role: "TEACHER",
+    });
+
+    expect(back.status).toBe(200);
+
+    const rows = await db.membership.findMany({
+      where: { userId: a.teacherUser.id, kindergartenId: a.kindergarten.id, role: "TEACHER" },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.isActive).toBe(true);
+  });
+
+  /** Pressing save on an unchanged select is not a mistake worth an error. */
+  it("accepts the role the person already holds as a no-op", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/memberships/${a.teacherMembership.id}`),
+      adminA,
+    ).send({ role: "TEACHER" });
+
+    expect(res.status).toBe(200);
+
+    const rows = await db.membership.findMany({
+      where: { userId: a.teacherUser.id, kindergartenId: a.kindergarten.id },
+    });
+    expect(rows.filter((m) => m.isActive)).toHaveLength(1);
+  });
+
+  /**
+   * ★ SUPERADMIN is a `Role` the column can hold and not one an administrator
+   * may hand out — the distinction `ASSIGNABLE_ROLES` exists for. Validating it
+   * in the schema would have meant narrowing the enum that `Membership` itself
+   * uses.
+   */
+  it("refuses a role an administrator may not assign", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/memberships/${a.teacherMembership.id}`),
+      adminA,
+    ).send({ role: "SUPERADMIN" });
+
+    expect([400, 422]).toContain(res.status);
+  });
+
+  it("refuses another kindergarten's membership with 404", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/memberships/${b.teacherMembership.id}`),
+      adminA,
+    ).send({ role: "COOK" });
+
+    expect(res.status).toBe(404);
+
+    const untouched = await db.membership.findUniqueOrThrow({
+      where: { id: b.teacherMembership.id },
+    });
+    expect(untouched.isActive).toBe(true);
+  });
+
+  /**
+   * ★ 404, not 403 — `RolesGuard` throws `NotFoundException` on a role
+   * mismatch, deliberately (CLAUDE.md §1.7). A 403 would confirm the
+   * membership id names a real row, which is the oracle the rule closes.
+   */
+  it("refuses a teacher with 404, and changes nothing", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/memberships/${a.teacherMembership.id}`),
+      teacherA,
+    ).send({ role: "ADMIN" });
+
+    expect(res.status).toBe(404);
+
+    const untouched = await db.membership.findUniqueOrThrow({
+      where: { id: a.teacherMembership.id },
+    });
+    expect(untouched.role).toBe("TEACHER");
+    expect(untouched.isActive).toBe(true);
+  });
+
+  /** §14 wants "өмнөх утга → шинэ утга"; a role change is exactly that shape. */
+  it("records both ends of the change in the audit log", async () => {
+    await authed(request(server()).patch(`/v1/memberships/${a.teacherMembership.id}`), adminA).send(
+      { role: "COOK" },
+    );
+
+    const rows = await db.auditLog.findMany({
+      where: { action: "PERMISSION_CHANGE", objectType: "Membership" },
+    });
+
+    const change = rows.find(
+      (row) => (row.metadata as { change?: string } | null)?.change === "role_changed",
+    );
+    expect(change?.metadata).toMatchObject({ from: "TEACHER", to: "COOK" });
+  });
+});

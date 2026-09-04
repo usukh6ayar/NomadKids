@@ -1,5 +1,11 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { randomBytes } from "node:crypto";
+import { ASSIGNABLE_ROLES } from "@kinder/contracts";
 import { AuditRepository } from "../audit/audit.repository";
 import { AuthRepository } from "../auth/auth.repository";
 import { PasswordService } from "../auth/password.service";
@@ -10,6 +16,7 @@ import { paginate, type PageParams } from "../common/pagination";
 import { UsersRepository } from "./users.repository";
 import type {
   AddMembershipDto,
+  ChangeMembershipRoleDto,
   CreateUserDto,
   ListUsersQuery,
   UpdateProfileDto,
@@ -233,6 +240,59 @@ export class UsersService {
       metadata: { change: "granted", role: dto.role },
     });
     return membership;
+  }
+
+  /**
+   * Changes a member of staff's role — "албан тушаал солих".
+   *
+   * ★ The two guards are the same pair every membership write uses: the row
+   * must be in a kindergarten this actor administers (`adminKindergartenIds`,
+   * which is what makes the 404 honest), and the *target* role must be one an
+   * administrator may hand out at all.
+   *
+   * ★★ `ASSIGNABLE_ROLES` is checked here rather than in the schema.
+   *
+   * `roleSchema` is the full enum, and it has to be — it is what a `Membership`
+   * row can hold, including roles this endpoint must not create. Validating
+   * against the assignable list is a policy question, and policy belongs beside
+   * the audit row that records the decision.
+   *
+   * ★★★ Changing to the role somebody already actively holds is a no-op, not a
+   * conflict. An administrator pressing save on an unchanged select has not
+   * made a mistake worth an error message.
+   */
+  async changeMembershipRole(actor: Actor, membershipId: string, dto: ChangeMembershipRoleDto) {
+    const membership = await this.repo.findMembership(
+      membershipId,
+      this.tenants.adminKindergartenIds(actor),
+    );
+    if (!membership) throw new NotFoundException();
+
+    if (!ASSIGNABLE_ROLES.includes(dto.role as (typeof ASSIGNABLE_ROLES)[number])) {
+      throw new BadRequestException("Энэ эрхийг олгох боломжгүй");
+    }
+
+    if (membership.role === dto.role && membership.isActive) return membership;
+
+    const updated = await this.repo.changeMembershipRole(
+      membership.id,
+      membership.userId,
+      membership.kindergartenId,
+      dto.role,
+    );
+
+    await this.audit.append({
+      action: "PERMISSION_CHANGE",
+      kindergartenId: membership.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "Membership",
+      objectId: updated.id,
+      // §14 asks for "өмнөх утга → шинэ утга"; a role change is exactly that
+      // shape, so both ends are recorded rather than only where it landed.
+      metadata: { change: "role_changed", from: membership.role, to: dto.role },
+    });
+
+    return updated;
   }
 
   /**

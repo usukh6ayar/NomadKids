@@ -67,6 +67,54 @@ export type ListAttendanceQuery = z.infer<typeof listAttendanceQuerySchema>;
 export const groupDaySheetQuerySchema = z.object({ date: isoDate });
 export type GroupDaySheetQuery = z.infer<typeof groupDaySheetQuerySchema>;
 
+/**
+ * Many children, one status, one request — `PUT /groups/:id/attendance`.
+ *
+ * ★ Shaped after `recordGroupMealsSchema`, deliberately.
+ *
+ * The meal register has taken a whole sitting in one call since it shipped;
+ * the attendance register beside it fired one `PUT /children/:id/attendance/
+ * :date` per tap, so a teacher marking twenty-four children sent twenty-four
+ * requests and could end the morning with half a register written. Two
+ * group-scoped batch writes over the same roster should not be two different
+ * shapes, so this one is the same: a date, then `entries`.
+ *
+ * ★★ `status` is per entry rather than one field for the whole call.
+ *
+ * "Mark these six present" is the common case and would fit a single status,
+ * but the register's other use is a correction pass — three sick, one excused
+ * — and a per-call status would make that three round trips again. The client
+ * sends the same value in every entry when that is what it means.
+ *
+ * ★★★ No `note`, `arrivedWith` or `arrivedAt`, which `recordAttendanceSchema`
+ * all carry.
+ *
+ * Each of those is a fact about one child: who dropped them off, at what time,
+ * why they are away. There is no such thing as a note that is true of six
+ * children at once, and a batch that accepted one would write the same
+ * sentence onto six records as if somebody had meant it about each. The
+ * per-child endpoint stays for exactly that work, and `upsertForChild` leaves
+ * a drop-off already recorded alone when this call does not send one.
+ */
+export const recordGroupAttendanceSchema = z
+  .object({
+    date: isoDate,
+    entries: z
+      .array(
+        z.object({
+          childId: z.string().uuid(),
+          status: z.enum(attendanceStatusValues),
+        }),
+      )
+      .min(1, "Хүүхэд сонгоно уу")
+      // The register is one group's day. A hundred is well above any real
+      // group and low enough that the transaction below stays a transaction
+      // rather than a batch job.
+      .max(100),
+  })
+  .strict();
+export type RecordGroupAttendanceDto = z.infer<typeof recordGroupAttendanceSchema>;
+
 export const createAttendanceRequestSchema = z
   .object({
     dateFrom: isoDate,
@@ -173,6 +221,30 @@ function dayCount(from: string, to: string): number {
   return Math.floor(ms / 86_400_000) + 1;
 }
 
+/**
+ * "Ирц илгээх" — the group-days a director is declaring final.
+ *
+ * ★ The payload carries identity only: a group and a date, never a count.
+ *
+ * The service rebuilds the register and reads the figures from it. A body that
+ * supplied its own `childCount` would let a caller record a submission over
+ * numbers nobody can reproduce — and the whole value of a submission row is
+ * that it is a snapshot of what the system itself computed.
+ *
+ * ★★ Capped at 200 group-days: a month of twelve groups is 264 cells and a
+ * director submits a day or a week, not a term. The cap is the same shape as
+ * `MAX_REGISTER_DAYS` — a bound on how much one request may do.
+ */
+export const submitAttendanceSchema = z
+  .object({
+    entries: z
+      .array(z.object({ groupId: z.string().uuid(), date: isoDate }))
+      .min(1, "Илгээх өдөр сонгоно уу")
+      .max(200),
+  })
+  .strict();
+export type SubmitAttendanceDto = z.infer<typeof submitAttendanceSchema>;
+
 export const attendanceRegisterQuerySchema = z
   .object({
     from: isoDate,
@@ -191,6 +263,30 @@ export const attendanceRegisterQuerySchema = z
           : undefined,
       )
       .pipe(z.array(z.uuid()).max(50).optional()),
+
+    /**
+     * An explicit set of children — what the journal's checkboxes select.
+     *
+     * ★ A filter like every other one here, ANDed into the same enrolment
+     * `where`. The register is already gated by `assertCanReadFinance` against
+     * the kindergarten in the URL, and this narrows within that: naming a child
+     * from another kindergarten returns fewer rows, never somebody else's.
+     *
+     * Capped at 200 for the same reason `MAX_REGISTER_DAYS` exists — the
+     * response is children × days, and a selection is made by hand on a page.
+     */
+    childId: z
+      .string()
+      .optional()
+      .transform((value) =>
+        value
+          ? value
+              .split(",")
+              .map((p) => p.trim())
+              .filter(Boolean)
+          : undefined,
+      )
+      .pipe(z.array(z.uuid()).max(200).optional()),
 
     ageBand: commaSeparated(["NURSERY", "JUNIOR", "MIDDLE", "SENIOR"], 4),
     programKind: z.enum(["MAIN", "ALTERNATIVE"]).optional(),

@@ -18,12 +18,23 @@ import { ChildIncidents } from "@/components/child/child-incidents";
 import { ChildGeneralInfo } from "@/components/child/child-general-info";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { ChildTabs } from "@/components/child/child-tabs";
+import { ChildEnrollmentArchive } from "@/components/child/enrollment-archive";
 import { PORTFOLIO } from "@/lib/vocabulary";
 
 const GENERAL = "general";
 const GROWTH = "growth";
 const HEALTH = "health";
 const INCIDENTS = "incidents";
+/**
+ * ★ "Шилжилт хөдөлгөөн" — added 2026-09-04 at the client's request.
+ *
+ * The placement history already existed at `/children/:id/enrollment-archive`,
+ * which a parent reached from their home tile and staff reached only by typing
+ * the URL. Making it a tab puts it where somebody looking at a child actually
+ * is. `ChildEnrollmentArchive` is the same component the route renders, with
+ * its hero suppressed — the name is already above this strip.
+ */
+const PLACEMENT = "placement";
 
 /**
  * The child's record — identity, actions, and the "Ерөнхий" panel.
@@ -127,6 +138,11 @@ export default function ChildGeneralPage() {
             value: INCIDENTS,
             label: "Аюулгүй байдал",
             content: <ChildIncidents childId={childId} isStaff={isStaff} />,
+          },
+          {
+            value: PLACEMENT,
+            label: "Шилжилт хөдөлгөөн",
+            content: <ChildEnrollmentArchive childId={childId} showHero={false} />,
           },
         ]}
       />

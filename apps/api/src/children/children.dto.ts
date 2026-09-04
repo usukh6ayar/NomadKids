@@ -36,10 +36,28 @@ export const dateOfBirthSchema = z.coerce
   .refine((d) => d < new Date(), { message: "Төрсөн огноо ирээдүйд байж болохгүй" })
   .refine((d) => d > new Date("2005-01-01"), { message: "Төрсөн огноо буруу байна" });
 
+/**
+ * Гадаад иргэн — the flag and the identifier that goes with it.
+ *
+ * ★ `foreignId` is free text, and refusing to validate it is the point.
+ *
+ * `nationalIdSchema` above enforces two Cyrillic letters and eight digits,
+ * which is exactly what a foreign child cannot produce — that mismatch is why
+ * the flag exists at all. A passport number, a residence permit or a foreign
+ * national id each has its own shape, and imposing one of them would push
+ * staff into typing a placeholder, which is the failure `nationalIdSchema`'s
+ * own note already records for the Mongolian case.
+ */
+const foreignFields = {
+  isForeign: z.boolean().optional(),
+  foreignId: z.string().trim().max(64).nullable().optional(),
+};
+
 export const createChildSchema = z.object({
   lastName: z.string().min(1, "Овгийг оруулна уу").max(100),
   firstName: z.string().min(1, "Нэрийг оруулна уу").max(100),
   nationalId: nationalIdSchema.optional(),
+  ...foreignFields,
   sex: sexSchema,
   dateOfBirth: dateOfBirthSchema,
   healthNotes: z.string().max(2000).nullable().optional(),
@@ -52,6 +70,7 @@ export const updateChildSchema = z.object({
   lastName: z.string().min(1).max(100).optional(),
   firstName: z.string().min(1).max(100).optional(),
   nationalId: nationalIdSchema.optional(),
+  ...foreignFields,
   sex: sexSchema.optional(),
   dateOfBirth: dateOfBirthSchema.optional(),
   healthNotes: z.string().max(2000).nullable().optional(),
@@ -95,6 +114,37 @@ export const listChildrenQuerySchema = paginationQuerySchema
     ageMax: ageBoundSchema.optional(),
     sort: childSortSchema.default("name"),
     order: z.enum(["asc", "desc"]).default("asc"),
+
+    /**
+     * An explicit set of children — what the roster's checkboxes select.
+     *
+     * ★ A filter like every other one here, which is the point.
+     *
+     * It is ANDed into the same `childWhere` as `q` and `groupId`, and that
+     * expression's first term is `visibleChildrenWhere(actor)`. So a caller
+     * who puts somebody else's child id in this list gets a narrower result,
+     * never a wider one — the id is intersected with what they may see rather
+     * than trusted as a lookup key. That property is why this could be a query
+     * parameter at all instead of a new endpoint that fetches by id and then
+     * has to remember to check each one.
+     *
+     * ★★ Comma-separated, matching `attendanceRegisterQuerySchema.groupId`
+     * rather than inventing repeated `?ids=` params, and capped at 200: the
+     * export itself stops at 2000 rows, and a selection is made by hand on a
+     * page of 25.
+     */
+    ids: z
+      .string()
+      .optional()
+      .transform((value) =>
+        value
+          ? value
+              .split(",")
+              .map((part) => part.trim())
+              .filter(Boolean)
+          : undefined,
+      )
+      .pipe(z.array(uuidSchema).max(200).optional()),
   })
   .refine((q) => q.ageMin === undefined || q.ageMax === undefined || q.ageMin <= q.ageMax, {
     // Silently swapping them would answer a question nobody asked. An inverted

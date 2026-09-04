@@ -7,15 +7,26 @@ import ExcelJS from "exceljs";
  * becomes "Хагас хоног" on one surface.
  */
 import { ATTENDANCE_STATUS_LABEL } from "@kinder/contracts";
+import { summariseDays, type SubmissionFact } from "./daily-summary";
 
 export interface JournalCell {
   status: string;
   note: string | null;
+  /**
+   * Provenance, for the day sheet's "Үүссэн" and "Үүсгэсэн хэрэглэгч" columns.
+   *
+   * Optional because the grid and summary sheets never read them, and the two
+   * callers that build a `JournalCell` for those sheets should not have to
+   * invent values they do not use.
+   */
+  createdAt?: Date;
+  recordedBy?: { lastName: string | null; firstName: string } | null;
 }
 
 export interface JournalRow {
   child: { lastName: string | null; firstName: string };
   group: { name: string };
+  schoolYear?: { name: string } | null;
   days: (JournalCell | null)[];
   counts: Record<string, number>;
 }
@@ -27,6 +38,8 @@ export interface JournalWorkbookInput {
   days: string[];
   rows: JournalRow[];
   totals: Record<string, number>;
+  /** What has already been submitted — the "Илгээсэн" column on the day sheet. */
+  submissions?: SubmissionFact[];
 }
 
 /** The six the column can hold. Order is the one the screen uses. */
@@ -55,6 +68,7 @@ export async function buildJournalWorkbook(input: JournalWorkbookInput): Promise
 
   gridSheet(book, input);
   summarySheet(book, input);
+  daySheet(book, input);
 
   return (await book.xlsx.writeBuffer()) as unknown as Buffer;
 }
@@ -132,4 +146,79 @@ function summarySheet(book: ExcelJS.Workbook, input: JournalWorkbookInput): void
     recorded: Object.values(input.totals).reduce((sum, n) => sum + n, 0),
   });
   total.font = { bold: true };
+}
+
+/**
+ * "Өдрийн дүн" — a row per group per day.
+ *
+ * ★ The arithmetic is `summariseDays`, not a second copy of it.
+ *
+ * The same rows are drawn on `/attendance/daily`, and a "Ирц бүрэн" that
+ * counted the roster on the screen and the recorded rows in the file would be
+ * a disagreement nobody notices until an inspection. This function is layout
+ * only: it decides column widths and how a missing value is written.
+ *
+ * ★★ **`Илгээсэн` is always an em dash, and that is not an oversight.**
+ *
+ * `summariseDays` returns `sentAt: null` for every row because this system
+ * cannot send anything to ESIS yet — `docs/ESIS_API_READINESS.md` §1
+ * records that access is a contract with the ministry rather than a signup.
+ * The column is present so the file's shape matches the register it is compared
+ * against, and empty rather than invented: a "Тийм" here would be a claim about
+ * a submission that never happened.
+ */
+function daySheet(book: ExcelJS.Workbook, input: JournalWorkbookInput): void {
+  const sheet = book.addWorksheet("Өдрийн дүн");
+
+  sheet.columns = [
+    { header: "Хичээлийн жил", key: "schoolYear", width: 16 },
+    { header: "Сургууль, цэцэрлэг", key: "kindergarten", width: 24 },
+    { header: "Анги", key: "group", width: 16 },
+    { header: "Огноо", key: "date", width: 12 },
+    { header: "Ирц бүртгээгүй", key: "unrecorded", width: 15 },
+    { header: "Ирц бүрэн", key: "complete", width: 11 },
+    { header: "Сурагчийн тоо", key: "expected", width: 14 },
+    { header: "Ирсэн", key: "present", width: 9 },
+    { header: "Чөлөөтэй", key: "excused", width: 11 },
+    { header: "Өвчтэй", key: "sick", width: 10 },
+    { header: "Тасалсан", key: "absent", width: 11 },
+    { header: "Илгээсэн", key: "sent", width: 11 },
+    { header: "Үүссэн", key: "createdAt", width: 18 },
+    { header: "Үүсгэсэн хэрэглэгч (Web)", key: "createdBy", width: 24 },
+  ];
+  sheet.getRow(1).font = { bold: true };
+
+  for (const row of summariseDays(input.rows, input.days, input.submissions ?? [])) {
+    sheet.addRow({
+      schoolYear: row.schoolYear,
+      kindergarten: input.kindergartenName,
+      group: row.group,
+      date: row.date,
+      unrecorded: row.unrecorded,
+      complete: row.complete ? "Тийм" : "Үгүй",
+      expected: row.expected,
+      present: row.present,
+      excused: row.excused,
+      sick: row.sick,
+      absent: row.absent,
+      sent: row.sentAt ? formatStamp(new Date(row.sentAt)) : EM_DASH,
+      createdAt: row.createdAt ? formatStamp(new Date(row.createdAt)) : EM_DASH,
+      createdBy: row.createdBy.length > 0 ? row.createdBy.join(", ") : EM_DASH,
+    });
+  }
+}
+
+/** What an absent value reads as. A blank cell reads as "not applicable". */
+const EM_DASH = "—";
+
+/**
+ * `YYYY-MM-DD HH:mm`, in UTC.
+ *
+ * ★ Not the server's local zone. The file is read next to a register whose
+ * dates are UTC day keys throughout this module, and a stamp an hour off from
+ * the day it sits beside is worse than a coarse one.
+ */
+function formatStamp(at: Date): string {
+  const iso = at.toISOString();
+  return `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
 }

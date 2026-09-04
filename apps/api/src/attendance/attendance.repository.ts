@@ -174,6 +174,8 @@ export class AttendanceRepository {
       from: Date;
       to: Date;
       groupIds?: string[];
+      /** An explicit set — the journal's checkboxes. Narrows, never widens. */
+      childIds?: string[];
       ageBands?: AgeBand[];
       programKind?: ProgramKind;
       attendanceForm?: AttendanceForm;
@@ -194,6 +196,7 @@ export class AttendanceRepository {
       deletedAt: null,
       status: "ACTIVE",
       ...(filters.groupIds?.length ? { groupId: { in: filters.groupIds } } : {}),
+      ...(filters.childIds?.length ? { childId: { in: filters.childIds } } : {}),
       group: groupWhere,
       child: {
         deletedAt: null,
@@ -218,6 +221,9 @@ export class AttendanceRepository {
         group: {
           select: { id: true, name: true, ageBand: true, programKind: true, attendanceForm: true },
         },
+        /* The export's first column — a register belongs to a school year, and
+           a file with no year on it cannot be filed. */
+        schoolYear: { select: { id: true, name: true } },
       },
       orderBy: [{ group: { name: "asc" } }, { child: { lastName: "asc" } }],
     });
@@ -232,7 +238,24 @@ export class AttendanceRepository {
         enrollmentId: { in: enrollments.map((e) => e.id) },
         ...(filters.statuses?.length ? { status: { in: filters.statuses } } : {}),
       },
-      select: { enrollmentId: true, date: true, status: true, note: true },
+      /*
+        ★ `createdAt` and the recorder's name are selected for the export's
+        "Үүссэн" and "Үүсгэсэн хэрэглэгч" columns — 2026-09-04.
+
+        They are on the record rather than derived: who filled a day in and
+        when they did it is the provenance an inspector asks for, and it cannot
+        be recovered from the statuses afterwards. `recordedBy` is a `select`
+        of three scalars rather than an `include`, so this stays two queries —
+        the N+1 the note above this method exists to prevent.
+      */
+      select: {
+        enrollmentId: true,
+        date: true,
+        status: true,
+        note: true,
+        createdAt: true,
+        recordedBy: { select: { id: true, lastName: true, firstName: true } },
+      },
     });
 
     return { enrollments, records };
@@ -273,6 +296,138 @@ export class AttendanceRepository {
       }
 
       return tx.attendance.create({ data });
+    });
+  }
+
+  /**
+   * Many children's status for one day, in one transaction.
+   *
+   * ★ All or nothing, which is the whole reason this exists.
+   *
+   * The screen used to loop `upsertForChild` — one transaction per child — so
+   * a failure on the nineteenth of twenty-four left eighteen written and the
+   * register half-true, with nothing on screen saying which half. A teacher
+   * then cannot tell "I have not marked them" from "the save dropped them".
+   *
+   * ★★ The same read-then-write per row as `upsertForChild`, inside one `tx`
+   * rather than `createMany`.
+   *
+   * `Attendance` has no unique constraint on (`enrollmentId`, `date`) that
+   * survives the soft-delete filter — a deleted row for that day still
+   * occupies the pair — so an upsert has to look first. `createMany` with
+   * `skipDuplicates` would silently drop the corrections, which are the
+   * second half of what the register is for.
+   *
+   * ★★★ `status` and `recordedById` only.
+   *
+   * The batch carries nothing per child but a status (see
+   * `recordGroupAttendanceSchema`), so a drop-off, a pickup or a note already
+   * on the row is left exactly as it was. `upsertForChild`'s `undefined`
+   * guards say the same thing one field at a time; here there is nothing to
+   * guard because there is nothing to send.
+   */
+  async recordGroupAttendance(
+    rows: {
+      kindergartenId: string;
+      childId: string;
+      enrollmentId: string;
+      date: Date;
+      status: AttendanceStatus;
+      recordedById: string;
+    }[],
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const saved = [];
+
+      for (const row of rows) {
+        const existing = await tx.attendance.findFirst({
+          where: { enrollmentId: row.enrollmentId, date: row.date, deletedAt: null },
+        });
+
+        saved.push(
+          existing
+            ? await tx.attendance.update({
+                where: { id: existing.id },
+                data: { status: row.status, recordedById: row.recordedById },
+              })
+            : await tx.attendance.create({ data: row }),
+        );
+      }
+
+      return saved;
+    });
+  }
+
+  /**
+   * Which of these group-days have already been submitted.
+   *
+   * ★ One query over the whole range, keyed back by the caller.
+   *
+   * The register draws hundreds of group-days at once, and asking per row would
+   * be the N+1 this repository refuses. The service maps the result onto its
+   * own rows.
+   */
+  async findSubmissions(kindergartenId: string, from: Date, to: Date, groupIds?: string[]) {
+    return this.prisma.attendanceSubmission.findMany({
+      where: {
+        kindergartenId,
+        deletedAt: null,
+        date: { gte: from, lte: to },
+        ...(groupIds?.length ? { groupId: { in: groupIds } } : {}),
+      },
+      select: {
+        groupId: true,
+        date: true,
+        submittedAt: true,
+        childCount: true,
+        submittedBy: { select: { lastName: true, firstName: true } },
+      },
+    });
+  }
+
+  /**
+   * Records a submission for each group-day, in one transaction.
+   *
+   * ★ Idempotent: re-submitting a day already sent updates the existing row
+   * rather than failing on the partial unique index or writing a second one.
+   *
+   * A director pressing Илгээх twice has not made a mistake, and the second
+   * press is often deliberate — the register was corrected and is being sent
+   * again. `submittedAt` and `submittedById` move to the latest act, which is
+   * what "when was this last submitted" should answer.
+   */
+  async submitDays(
+    rows: {
+      kindergartenId: string;
+      groupId: string;
+      date: Date;
+      submittedById: string;
+      childCount: number;
+    }[],
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const saved = [];
+
+      for (const row of rows) {
+        const existing = await tx.attendanceSubmission.findFirst({
+          where: { groupId: row.groupId, date: row.date, deletedAt: null },
+        });
+
+        saved.push(
+          existing
+            ? await tx.attendanceSubmission.update({
+                where: { id: existing.id },
+                data: {
+                  submittedById: row.submittedById,
+                  submittedAt: new Date(),
+                  childCount: row.childCount,
+                },
+              })
+            : await tx.attendanceSubmission.create({ data: row }),
+        );
+      }
+
+      return saved;
     });
   }
 

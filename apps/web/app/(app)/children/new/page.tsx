@@ -11,7 +11,7 @@ import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Field, Input, Select, Textarea } from "@/components/ui/field";
+import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
@@ -65,6 +65,18 @@ function NewChild() {
   const [sex, setSex] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [nationalId, setNationalId] = useState("");
+  /*
+   * ★ Гадаад иргэн — 2026-09-04.
+   *
+   * `nationalId` is validated as two Cyrillic letters and eight digits, which
+   * a foreign child cannot produce, so registering one meant leaving the field
+   * blank with nothing on the record saying why. The checkbox swaps which
+   * identifier the form asks for rather than adding a second one beside it:
+   * a child has one, and showing both invites staff to fill in whichever is
+   * nearest.
+   */
+  const [isForeign, setIsForeign] = useState(false);
+  const [foreignId, setForeignId] = useState("");
   const [groupId, setGroupId] = useState("");
   const [healthNotes, setHealthNotes] = useState("");
 
@@ -84,7 +96,20 @@ function NewChild() {
           dateOfBirth,
           // Omitted rather than sent empty: the register number has a format
           // rule, and "" fails it instead of meaning "not recorded yet".
-          ...(nationalId.trim() ? { nationalId: nationalId.trim().toUpperCase() } : {}),
+          /*
+            ★ Only the identifier that matches the flag is sent.
+
+            A form that has been toggled back and forth holds text in both
+            boxes; sending both would put a регистр on a child marked foreign,
+            and the roster's Регистр column would then contradict the flag
+            beside it.
+          */
+          isForeign,
+          ...(isForeign
+            ? { foreignId: foreignId.trim() || null }
+            : nationalId.trim()
+              ? { nationalId: nationalId.trim().toUpperCase() }
+              : {}),
           ...(groupId ? { groupId } : {}),
           healthNotes: healthNotes.trim() || null,
         },
@@ -177,23 +202,49 @@ function NewChild() {
             </Field>
           </div>
 
+          <Checkbox
+            label="Гадаад иргэн"
+            description="Монгол регистрийн дугааргүй хүүхэд. Паспорт эсвэл оршин суух үнэмлэхийн дугаарыг бичнэ."
+            checked={isForeign}
+            onChange={(e) => setIsForeign(e.target.checked)}
+          />
+
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field
-              label="Регистрийн дугаар"
-              error={errors.nationalId}
-              hint="Хоёр үсэг, найман орон. Жишээ: УБ12345678"
-            >
-              {({ id, describedBy, invalid }) => (
-                <Input
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  value={nationalId}
-                  onChange={(e) => setNationalId(e.target.value)}
-                  placeholder="УБ12345678"
-                />
-              )}
-            </Field>
+            {isForeign ? (
+              <Field
+                label="Гадаад бичиг баримтын дугаар"
+                error={errors.foreignId}
+                hint="Паспорт, оршин суух үнэмлэх — хэлбэрийг шалгахгүй."
+              >
+                {({ id, describedBy, invalid }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    value={foreignId}
+                    onChange={(e) => setForeignId(e.target.value)}
+                    placeholder="E01234567"
+                  />
+                )}
+              </Field>
+            ) : (
+              <Field
+                label="Регистрийн дугаар"
+                error={errors.nationalId}
+                hint="Хоёр үсэг, найман орон. Жишээ: УБ12345678"
+              >
+                {({ id, describedBy, invalid }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    value={nationalId}
+                    onChange={(e) => setNationalId(e.target.value)}
+                    placeholder="УБ12345678"
+                  />
+                )}
+              </Field>
+            )}
 
             <Field
               label="Бүлэг"

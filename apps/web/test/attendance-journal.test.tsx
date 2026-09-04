@@ -69,9 +69,21 @@ describe("the grid", () => {
     renderWithProviders(<AttendanceJournalPage />);
 
     expect(await screen.findByText(/Дорж/)).toBeInTheDocument();
-    // Day-of-month headers, not full dates — the range is in the filters above.
-    expect(screen.getByRole("columnheader", { name: "2" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "4" })).toBeInTheDocument();
+
+    /*
+      ★ The accessible name is the full date; the cell shows "Да 2".
+
+      It was the day-of-month alone, in the header and in the accessible name
+      both, and that was two mistakes at once. On screen a column of bare
+      numbers said nothing about what it was a column of — the client's own
+      complaint — so the weekday sits above the number now. And a screen reader
+      announcing "2" is worse still: it has no filter row to glance back at.
+      `aria-label` carries the date and the visible text carries what fits.
+    */
+    expect(screen.getByRole("columnheader", { name: "2026-03-02" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "2026-03-04" })).toBeInTheDocument();
+    // Weekday and day-of-month are what a sighted reader actually sees.
+    expect(screen.getByText("Да")).toBeInTheDocument();
   });
 
   it("distinguishes a day nobody marked from a recorded absence", async () => {

@@ -18,11 +18,13 @@ import type { Actor } from "../authz/actor";
 import { UsersService } from "./users.service";
 import {
   addMembershipSchema,
+  changeMembershipRoleSchema,
   createUserSchema,
   listUsersQuerySchema,
   updateProfileSchema,
   updateUserSchema,
   type AddMembershipDto,
+  type ChangeMembershipRoleDto,
   type CreateUserDto,
   type ListUsersQuery,
   type UpdateProfileDto,
@@ -99,6 +101,23 @@ export class UsersController {
     @Body(new ZodValidationPipe(addMembershipSchema)) body: AddMembershipDto,
   ) {
     return this.service.addMembership(actor, params.id, body);
+  }
+
+  /**
+   * Moves a member of staff to another role — "албан тушаал солих".
+   *
+   * ★ `PATCH` on the membership rather than a delete-then-post pair from the
+   * client: between those two calls the person holds no role at all, and a
+   * failure on the second leaves them with none. See `changeMembershipRole`.
+   */
+  @Patch("memberships/:id")
+  @Roles("ADMIN")
+  async changeMembershipRole(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(changeMembershipRoleSchema)) body: ChangeMembershipRoleDto,
+  ) {
+    return this.service.changeMembershipRole(actor, params.id, body);
   }
 
   /** Deactivates, never deletes — the record of the role has to survive. */

@@ -145,6 +145,8 @@ export class ChildrenService {
       lastName: dto.lastName,
       firstName: dto.firstName,
       nationalId: dto.nationalId ?? null,
+      isForeign: dto.isForeign ?? false,
+      foreignId: dto.foreignId ?? null,
       sex: dto.sex,
       dateOfBirth: dto.dateOfBirth,
       healthNotes: dto.healthNotes ?? null,
@@ -786,5 +788,6 @@ function childFilters(query: ListChildrenQuery) {
     sex: query.sex,
     ageMin: query.ageMin,
     ageMax: query.ageMax,
+    ids: query.ids,
   };
 }

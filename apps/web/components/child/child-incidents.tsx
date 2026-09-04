@@ -12,7 +12,7 @@ import { formatRelative } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
-import { Field, Input, Select, Textarea } from "@/components/ui/field";
+import { CheckControl, Field, Input, Select, Textarea } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 
 const listSchema = z.array(incidentSchema);
@@ -412,9 +412,21 @@ function IncidentForm({ childId, onDone }: { childId: string; onDone: () => void
           mean nothing within a week.
         */}
         <label className="flex min-h-[44px] cursor-pointer items-center gap-2.5">
-          <input
-            type="checkbox"
-            className="size-4 accent-danger"
+          {/*
+            ★ `CheckControl`, not a bare `<input>` — 2026-09-04.
+
+            This was the last hand-rolled checkbox in the product and it had
+            drifted twice over: 16px where every other one is 20px, and square
+            where they are now rounded. One drawing, so a control cannot look
+            like a different kind of control depending on which screen it is on.
+
+            The danger tone survives the move. It is the one checkbox here whose
+            colour carries meaning — this flag pages the director — and
+            `cn`'s tailwind-merge lets the checked colours be overridden without
+            the component growing a `tone` prop for a single call site.
+          */}
+          <CheckControl
+            className="checked:border-danger checked:bg-danger"
             checked={isHighPriority}
             onChange={(e) => setIsHighPriority(e.target.checked)}
           />

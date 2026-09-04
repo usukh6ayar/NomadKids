@@ -395,6 +395,7 @@ model User {
   attendanceRecorded    Attendance[]              @relation("AttendanceRecordedBy")
   attendanceRequested   AttendanceRequest[]       @relation("AttendanceRequestedBy")
   attendanceReviewed    AttendanceRequest[]       @relation("AttendanceReviewedBy")
+  attendanceSubmitted   AttendanceSubmission[]    @relation("AttendanceSubmittedBy")
   menuDaysCreated       MenuDay[]                 @relation("MenuDayCreatedBy")
   menuDaysApproved      MenuDay[]                 @relation("MenuDayApprovedBy")
   ingredientsCreated    Ingredient[]              @relation("IngredientCreatedBy")
@@ -573,6 +574,7 @@ model Kindergarten {
   reportJobs            ReportJob[]
   auditLogs             AuditLog[]
   attendanceRecords     Attendance[]
+  attendanceSubmissions AttendanceSubmission[]
   attendanceRequests    AttendanceRequest[]
   menuDays              MenuDay[]
   surveys               Survey[]
@@ -662,13 +664,14 @@ model Group {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  photo               MediaFile?           @relation("GroupPhoto", fields: [photoMediaFileId], references: [id], onDelete: SetNull)
-  kindergarten        Kindergarten         @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
-  schoolYear          SchoolYear           @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
-  teachers            GroupTeacher[]
-  enrollments         Enrollment[]
-  chatMessages        ChatMessage[]
-  notificationTargets NotificationTarget[]
+  photo                 MediaFile?             @relation("GroupPhoto", fields: [photoMediaFileId], references: [id], onDelete: SetNull)
+  kindergarten          Kindergarten           @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  schoolYear            SchoolYear             @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
+  teachers              GroupTeacher[]
+  enrollments           Enrollment[]
+  chatMessages          ChatMessage[]
+  notificationTargets   NotificationTarget[]
+  attendanceSubmissions AttendanceSubmission[]
 
   @@unique([schoolYearId, name])
   @@index([kindergartenId, status])
@@ -726,6 +729,24 @@ model Child {
   sex         Sex
   dateOfBirth DateTime    @db.Date
   status      ChildStatus @default(ACTIVE)
+
+  /// Гадаад иргэн — a child who is not a Mongolian citizen.
+  ///
+  /// ★ A flag rather than a citizenship/country field, and that is deliberate.
+  ///
+  /// The question the kindergarten actually answers is "does this child have a
+  /// Mongolian регистр": `nationalId` matches `^[А-ЯӨҮ]{2}\d{8}$`, which a
+  /// foreign child has no way to satisfy, so registration used to force staff
+  /// to leave it blank with nothing on the record saying why. A country column
+  /// would be a second, richer fact nobody has asked for and nobody would fill
+  /// in consistently — and the state reports this feeds (Order А/261) count
+  /// foreign children, they do not break them down by nationality.
+  ///
+  /// `foreignId` carries whatever identifier they do have — a passport number,
+  /// a residence permit — as free text, because its shape is not ours to
+  /// validate.
+  isForeign Boolean @default(false)
+  foreignId String?
 
   healthNotes String?
 
@@ -3557,4 +3578,62 @@ model Contract {
   @@index([status, createdAt(sort: Desc)])
   @@index([kindergartenId])
   @@map("contracts")
+}
+
+/// One group's register for one day, submitted — "Ирц илгээх".
+///
+/// ★ What "sent" means today, and what it will mean later.
+///
+/// The client asked for an Илгээх button and an Илгээсэн column, and the
+/// eventual destination is ESIS. That transport does not exist yet:
+/// `docs/ESIS_API_READINESS.md` §1 records that access is a contract
+/// with the ministry rather than a signup, and §3 that even the login request's
+/// field names are unconfirmed.
+///
+/// What *is* ours today is the act: a director declaring "this group's Tuesday
+/// is final and has been submitted". That declaration is worth recording on its
+/// own — it is who signed off a register and when, which is the first thing
+/// asked when a figure is disputed — and it is exactly the row an ESIS call
+/// will later hang off. So the submission is stored now and the transport is
+/// added to it, rather than the button waiting for a contract.
+///
+/// ★★ A row per group per day, not a flag on `Attendance`.
+///
+/// The unit submitted is the day sheet, not a child: submitting "Дэлбээ, 3rd
+/// March" is one act over twenty rows, and a flag on each would let nineteen of
+/// them be sent and one not. It also gives the unsubmitted state a shape —
+/// no row means not sent, which needs no backfill over every attendance record
+/// ever written.
+///
+/// ★★★ `@@unique` is partial on `deletedAt`, matching `Attendance` itself: a
+/// day whose submission was withdrawn and made again must not collide with the
+/// soft-deleted row only the database still remembers.
+model AttendanceSubmission {
+  id             String   @id @default(uuid()) @db.Uuid
+  kindergartenId String   @db.Uuid
+  groupId        String   @db.Uuid
+  date           DateTime @db.Date
+
+  submittedById String   @db.Uuid
+  submittedAt   DateTime @default(now())
+
+  /// How many children the register covered when it was submitted.
+  ///
+  /// ★ Stored, not recomputed. A roster changes — a child transfers in next
+  /// week — and "what was submitted" must not silently become a different
+  /// number afterwards. The live figures stay on the screen; this is the
+  /// snapshot the submission was made from.
+  childCount Int
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  group        Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  submittedBy  User         @relation("AttendanceSubmittedBy", fields: [submittedById], references: [id], onDelete: Restrict)
+
+  @@index([kindergartenId, date])
+  @@index([groupId, date])
+  @@map("attendance_submissions")
 }

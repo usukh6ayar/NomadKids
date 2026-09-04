@@ -1,0 +1,92 @@
+import type { ComponentProps, ReactNode } from "react";
+import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
+
+/**
+ * A real `<table>`, for the screens whose content is a grid of facts.
+ *
+ * ★ Extracted from `/admin/funding` on 2026-09-04, when the roster needed one.
+ *
+ * These three pieces were written there for the funding register and its own
+ * note makes the case better than a general one could: card rows exist because
+ * an admin row is one name and two actions, and a table exists because eleven
+ * columns are compared **downwards** — "who has the most absences" is answered
+ * by scanning a column, which a stack of cards makes impossible. The roster's
+ * table is the same shape of question, so it is the same three components
+ * rather than a second set that drifts a padding step away.
+ *
+ * ★★ The horizontal scroll lives on the wrapper, never on the page.
+ *
+ * A wide table inside `overflow-x-auto` scrolls itself; a wide table in the
+ * page flow makes the whole body scroll sideways on a phone, which moves the
+ * navigation out from under the reader's thumb.
+ */
+export function TableShell({
+  children,
+  caption,
+  minWidth = "min-w-[860px]",
+  className,
+}: {
+  children: ReactNode;
+  /** Screen-reader only — what this table is of. */
+  caption: string;
+  /** Below this the wrapper scrolls rather than the columns squeezing. */
+  minWidth?: string;
+  className?: string;
+}) {
+  return (
+    <Card className={cn("overflow-hidden p-0", className)}>
+      <div className="overflow-x-auto">
+        <table className={cn("w-full border-collapse text-body", minWidth)}>
+          <caption className="sr-only">{caption}</caption>
+          {children}
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * A column heading.
+ *
+ * ★ It reads as a heading now, and did not before — 2026-09-04.
+ *
+ * It was `text-muted` on the card's own white, separated from the first row by
+ * the same hairline that separates every other row. So the top row of a table
+ * looked like a quieter data row, which is what the client hit on the
+ * attendance journal: "дээд гарчиг шиг хэсэг ялгагдахгүй". The fix is the one
+ * that grid took — a `bg-sunken` band, ink rather than muted, and a doubled
+ * rule underneath — applied here so `/children`, `/attendance/daily` and
+ * `/admin/funding` all get it rather than one of them drifting ahead.
+ *
+ * ★★ Still `text-caption`. The weight and the ground do the separating; making
+ * the header *bigger* than the data it labels is how a table starts shouting.
+ */
+export function Th({ numeric, className, ...props }: ComponentProps<"th"> & { numeric?: boolean }) {
+  return (
+    <th
+      scope="col"
+      className={cn(
+        "whitespace-nowrap border-b-2 border-border bg-sunken px-3 py-2.5 text-caption font-semibold text-ink",
+        numeric ? "text-right" : "text-left",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export function Td({ numeric, className, ...props }: ComponentProps<"td"> & { numeric?: boolean }) {
+  return (
+    <td
+      className={cn(
+        "border-b border-border px-3 py-2.5 align-middle",
+        // `tabular-nums` on numeric cells so a column of figures lines up on
+        // the decimal rather than wobbling with the glyph widths.
+        numeric ? "text-right tabular-nums" : "text-left",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
