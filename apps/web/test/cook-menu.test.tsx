@@ -11,7 +11,6 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-/** Mirrors `(app)/menu/page.tsx`'s own `mondayOf` — the page's Monday card, not "today". */
 /**
  * Today, in UTC.
  *
@@ -61,7 +60,7 @@ describe("the cook's weekly menu", () => {
 
     renderWithProviders(<MenuPage />);
 
-    // Every day starts empty until seeded — first in DOM order is Monday.
+    // The page opens on "Өнөөдөр" by default — one empty day, one button.
     const addButtons = await screen.findAllByRole("button", { name: "Хоол нэмэх" });
     await user.click(addButtons[0]!);
 
