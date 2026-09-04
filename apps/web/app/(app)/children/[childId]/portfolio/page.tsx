@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
 /**
  * The portfolio — RFP §4.3.
  *
- * ★ A hero card and three doors, not a single long scroll — 2026-08-29, on
+ * ★ A hero card and doors, not a single long scroll — 2026-08-29, on
  * the client's instruction, with a reference screenshot of exactly this hub.
  * Everything the old single-scroll page rendered inline still exists; it
  * moved to whichever door now owns it:
@@ -33,6 +33,11 @@ import { cn } from "@/lib/utils";
  *  - "Зургийн цомог" → `/overview`, the same destination the bottom bar's
  *    own "Зураг" tab already used — one album, reached two ways, rather than
  *    a second screen that happens to show the same photographs.
+ *  - "Насны харьцуулалт" → `portfolio/growth/compare/page.tsx` — added
+ *    2026-09-04, on the client's instruction, when the age pills and "Бүх
+ *    насыг харьцуулах" bar were pulled out of `about-me/page.tsx`'s merged
+ *    card. This tile is now the one door in; `AgeStepper` carries a visitor
+ *    on from there to any of the five age/compare pages.
  *
  * The PDF button stays here: `type: "CHILD_PORTFOLIO"` exports this whole
  * record, not any one door of it, so it belongs on the hub the doors share
@@ -109,13 +114,26 @@ export default function PortfolioPage() {
 }
 
 /**
- * Миний тухай / Хөгжил / Зургийн цомог — three real routes, on the client's
- * instruction, with a reference screenshot of this exact tile row.
+ * Миний тухай / Хөгжил / Зургийн цомог / Насны харьцуулалт — real routes, on
+ * the client's instruction, with a reference screenshot of this exact tile
+ * row (the fourth tile added 2026-09-04, see this file's own doc comment).
  *
  * ★ Routes, not in-page anchors. This nav used to hold `#about-me`/`#growth`/
  * `#gallery` — anchors into the sections it now replaces — with a doc comment
  * noting dedicated routes were "follow-up work the client asked for
  * separately". That follow-up is this change.
+ *
+ * ★★ `grid-cols-2`, not `grid-cols-3` — CLAUDE.md §5's mobile-first rule.
+ * Four labels this long ("Насны харьцуулалт") lose their two-line balance in
+ * three narrow columns on a 375px screen; two wider ones keep every label
+ * readable without truncation.
+ *
+ * ★★★ All four destinations' own back buttons return here now — unified
+ * 2026-09-04, on the client's instruction, after each had drifted to a
+ * different target (`/home`, `growth/page.tsx`, this hub, or nothing at all).
+ * `overview/page.tsx` is the one exception that still branches: it is also
+ * the bottom nav bar's own "Зураг" tab, so `?from=portfolio` on the href
+ * above is how it tells the two entrances apart — see its own doc comment.
  */
 function PortfolioHubNav({ childId }: { childId: string }) {
   const items: { href: string; label: string; tone: Tone; Icon: typeof User }[] = [
