@@ -178,6 +178,24 @@ export class AuthRepository {
     });
   }
 
+  /**
+   * What kind of account an invitation is for, so the acceptance form can ask
+   * the right questions.
+   *
+   * ★ `isSuperAdmin` or any `Membership` means staff. A guardian holds neither:
+   * they reach a child through `Guardianship`, never through a membership
+   * (CLAUDE.md §1.1). That makes the distinction a property of the account
+   * rather than a flag on the token, so it cannot be set wrongly at invite
+   * time and cannot drift from what the account actually is.
+   */
+  async findInvitedAccountKind(userId: string): Promise<"staff" | "guardian"> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSuperAdmin: true, _count: { select: { memberships: true } } },
+    });
+    return user?.isSuperAdmin || (user?._count.memberships ?? 0) > 0 ? "staff" : "guardian";
+  }
+
   async consumeAuthToken(id: string): Promise<void> {
     await this.prisma.authToken.update({ where: { id }, data: { usedAt: new Date() } });
   }
@@ -208,7 +226,15 @@ export class AuthRepository {
    */
   async completeInvitedProfile(
     userId: string,
-    profile: { firstName?: string; phone?: string; relation?: string },
+    profile: {
+      firstName?: string;
+      phone?: string;
+      relation?: string;
+      /** Staff only — a guardian gives a given name and no surname. */
+      lastName?: string;
+      /** Staff only. What an invited operator logs in with. */
+      email?: string;
+    },
   ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       /*
@@ -217,12 +243,14 @@ export class AuthRepository {
         kindergarten was registered, and overwriting it with `undefined` would
         be this endpoint erasing a fact it was never given.
       */
-      if (profile.firstName || profile.phone) {
+      if (profile.firstName || profile.phone || profile.lastName || profile.email) {
         await tx.user.update({
           where: { id: userId },
           data: {
             ...(profile.firstName ? { firstName: profile.firstName } : {}),
             ...(profile.phone ? { phone: profile.phone } : {}),
+            ...(profile.lastName ? { lastName: profile.lastName } : {}),
+            ...(profile.email ? { email: profile.email } : {}),
           },
         });
       }

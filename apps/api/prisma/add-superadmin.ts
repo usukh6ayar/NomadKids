@@ -70,14 +70,37 @@ function createOneTimeToken(): { token: string; hash: string } {
 }
 
 async function main(): Promise<void> {
+  /*
+   * ★ Only the handle is required — 2026-09-04.
+   *
+   * The name and the e-mail used to be required here, which meant whoever ran
+   * the script typed three facts about somebody else: their surname, their
+   * given name and the address they would log in with. Getting any of them
+   * wrong produced an account that could not be corrected without creating a
+   * second one, because `username` and `email` are both unique.
+   *
+   * They are optional now, and the person fills them in when they accept the
+   * invitation — the same construction guardians have always used
+   * (`createPlaceholderGuardianAccount`, then `completeInvitedProfile`). Pass
+   * them if you know them; leave them out and the account carries a
+   * placeholder until its owner replaces it.
+   *
+   * ★★ The handle stays required, and stays ours to choose. It is unique, so
+   * letting an unauthenticated form pick one turns the acceptance endpoint
+   * into a "is this name taken" oracle. It costs the invitee nothing:
+   * `findByIdentifier` accepts a username, an e-mail **or** a phone, so
+   * somebody invited this way signs in with the e-mail they set themselves.
+   */
   const username = required("USERNAME");
-  const lastName = required("LAST_NAME");
-  const firstName = required("FIRST_NAME");
-  const email = required("EMAIL");
+  const lastName = process.env.LAST_NAME || "Платформын";
+  const firstName = process.env.FIRST_NAME || "оператор";
+  const email = process.env.EMAIL || null;
   const webOrigin = process.env.WEB_ORIGIN ?? "https://nomadkids.mn";
 
   const existing = await prisma.user.findFirst({
-    where: { OR: [{ username }, { email }] },
+    // `email` is only part of the check when there is one — `{ email: null }`
+    // would match every account that has not set one.
+    where: { OR: email ? [{ username }, { email }] : [{ username }] },
     select: { id: true, username: true, isSuperAdmin: true },
   });
   if (existing) {
@@ -143,7 +166,10 @@ async function main(): Promise<void> {
       `${lastName} ${firstName} — платформын оператор`,
       `Нэвтрэх нэр: ${username}`,
       "",
-      "Дараах холбоосоор орж нууц үгээ өөрөө тохируулна уу.",
+      email
+        ? "Дараах холбоосоор орж нууц үгээ өөрөө тохируулна уу."
+        : "Дараах холбоосоор орж овог, нэр, и-мэйл, нууц үгээ өөрөө бөглөнө үү.",
+      email ? "" : "Бүртгэсний дараа и-мэйл хаягаараа нэвтэрнэ.",
       "Холбоос 7 хоног хүчинтэй, зөвхөн нэг удаа ажиллана.",
       "",
       `${webOrigin}/invitation/${token}`,

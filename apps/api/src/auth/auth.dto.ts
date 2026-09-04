@@ -70,6 +70,23 @@ export const invitationAcceptSchema = z.object({
   firstName: z.string().trim().min(1, "Нэрээ оруулна уу").max(100).optional(),
   phone: z.string().trim().min(6, "Утасны дугаараа оруулна уу").max(32).optional(),
   relation: guardianRelationSchema.optional(),
+  /*
+   * ★ Staff-shaped invitations, added 2026-09-04.
+   *
+   * A guardian gives a given name only — the client asked for that explicitly
+   * ("эцэг эхийн овог хэрэггүй"). A member of staff needs a surname, because
+   * a register and an audit row name them in full, and an e-mail, because it
+   * is what they will log in with: `findByIdentifier` accepts username, e-mail
+   * or phone, and an operator invited this way has a generated username they
+   * never see.
+   *
+   * Optional here rather than in a second schema: the endpoint is one route
+   * that writes only what it was given (`completeInvitedProfile`), and a
+   * `.strict()` schema that refused these would make the guardian and staff
+   * paths two endpoints with one purpose.
+   */
+  lastName: z.string().trim().min(1, "Овгоо оруулна уу").max(100).optional(),
+  email: z.string().trim().email("И-мэйл хаяг буруу байна").max(200).optional(),
 });
 export type InvitationAcceptDto = z.infer<typeof invitationAcceptSchema>;
 

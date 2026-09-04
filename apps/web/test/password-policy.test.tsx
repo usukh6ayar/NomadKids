@@ -209,3 +209,77 @@ describe("password reset — new password", () => {
     expect(calls.filter((c) => c.url.startsWith("/auth/password-reset/confirm"))).toHaveLength(0);
   });
 });
+
+/**
+ * The two audiences an invitation can be for.
+ *
+ * ★ A guardian gives a given name, a phone and a relationship. A member of
+ * staff gives a surname and an e-mail — a register names them in full, and the
+ * e-mail is what they log in with, because an operator invited this way has a
+ * generated handle they never see (`prisma/add-superadmin.ts`).
+ *
+ * The shape comes from `GET /auth/invitation/:token` rather than from the URL:
+ * a query parameter would let whoever holds the link decide which questions
+ * they are asked.
+ */
+describe("invitation — who is accepting", () => {
+  it("asks a guardian for a phone and a relationship", async () => {
+    stubApi([{ path: "/auth/invitation/", body: { valid: true, kind: "guardian" } }]);
+
+    renderWithProviders(<AcceptInvitationPage />);
+
+    expect(await screen.findByLabelText(/^Утасны дугаар/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Хүүхдийн юу нь болох/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Овог/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^И-мэйл хаяг/)).not.toBeInTheDocument();
+  });
+
+  it("asks a member of staff for a surname and an e-mail", async () => {
+    stubApi([{ path: "/auth/invitation/", body: { valid: true, kind: "staff" } }]);
+
+    renderWithProviders(<AcceptInvitationPage />);
+
+    expect(await screen.findByLabelText(/^Овог/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^И-мэйл хаяг/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Утасны дугаар/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Хүүхдийн юу нь болох/)).not.toBeInTheDocument();
+  });
+
+  /**
+   * ★ Only the fields this audience was asked for reach the API.
+   *
+   * The accept schema requires `.min(1)` on every optional it does receive, so
+   * sending an empty `phone` for a staff member would fail validation — and
+   * sending the other audience's fields would write facts nobody was asked to
+   * give.
+   */
+  it("sends the staff fields and none of the guardian's", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubApi([
+      { path: "/auth/invitation/", body: { valid: true, kind: "staff" } },
+      { path: "/auth/invitation/accept", method: "POST", status: 204 },
+    ]);
+
+    renderWithProviders(<AcceptInvitationPage />);
+
+    await user.type(await screen.findByLabelText(/^Овог/), "Сосорбурам");
+    await user.type(screen.getByLabelText(/^Таны нэр/), "Бямбарааш");
+    await user.type(screen.getByLabelText(/^И-мэйл хаяг/), "b@example.mn");
+    await user.type(screen.getByLabelText(/^Нууц үг \*/), STRONG);
+    await user.type(screen.getByLabelText(/давтан/), STRONG);
+    await user.click(screen.getByRole("button", { name: /Бүртгэл/ }));
+
+    await waitFor(() =>
+      expect(calls.filter((c) => c.method === "POST" && c.url.includes("accept"))).toHaveLength(1),
+    );
+
+    const sent = calls.find((c) => c.method === "POST" && c.url.includes("accept"))!.body as Record<
+      string,
+      unknown
+    >;
+    expect(sent.lastName).toBe("Сосорбурам");
+    expect(sent.email).toBe("b@example.mn");
+    expect(sent).not.toHaveProperty("phone");
+    expect(sent).not.toHaveProperty("relation");
+  });
+});
