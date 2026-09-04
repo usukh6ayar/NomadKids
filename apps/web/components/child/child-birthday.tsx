@@ -3,7 +3,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { z } from "zod";
-import { Cake, ChevronDown, Pencil, Sun } from "lucide-react";
+import { ChevronDown, Pencil, Sun } from "lucide-react";
 import { birthdayNoteSchema, birthdaySectionSchema } from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -14,15 +14,22 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Textarea } from "@/components/ui/field";
 import { FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
-import { formatDate } from "@/lib/format";
 import { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
 import { YEAR_ANIMAL_ICON, ZODIAC_ICON } from "@/lib/zodiac-icons";
 
 /**
- * The four facts RFP §4.2 asks for above the notes: the birth date, the age,
- * the өрнийн орд and the монгол жилийн амьтан.
+ * The three facts RFP §4.2 asks for beside the identity tiles: the age, the
+ * өрнийн орд and the монгол жилийн амьтан. The fourth, the birth date itself,
+ * is dropped here — `AboutMeSummaryCard`'s own identity tiles already show
+ * "Төрсөн өдөр", and this component has rendered inside that same merged card
+ * since 2026-09-04, so repeating it would name the same fact twice in one
+ * card.
  *
- * ★ The lunar-new-year caveat is rendered, not hidden.
+ * ★ No `<Card>` of its own, for the same 2026-09-04 merge — `about-me/page.tsx`
+ * renders this as a sub-section of the shared "Миний тухай" card rather than
+ * a card of its own.
+ *
+ * ★★ The lunar-new-year caveat is rendered, not hidden.
  *
  * The animal year turns at Цагаан сар, which falls between late January and
  * early March and moves every year. For a child born inside that window the API
@@ -33,11 +40,6 @@ import { YEAR_ANIMAL_ICON, ZODIAC_ICON } from "@/lib/zodiac-icons";
  */
 export function ChildBirthdayFacts({ section }: { section: z.infer<typeof birthdaySectionSchema> }) {
   const facts = [
-    {
-      icon: <Cake size={14} aria-hidden="true" className="shrink-0" />,
-      label: "Төрсөн огноо",
-      value: formatDate(section.dateOfBirth),
-    },
     {
       icon: <Sun size={14} aria-hidden="true" className="shrink-0" />,
       label: "Нас",
@@ -56,8 +58,8 @@ export function ChildBirthdayFacts({ section }: { section: z.infer<typeof birthd
   ];
 
   return (
-    <Card pad="roomy">
-      <dl className="grid grid-cols-2 gap-4 md:grid-cols-4">
+    <div>
+      <dl className="grid grid-cols-3 gap-4">
         {facts.map(({ icon, label, value }) => (
           <div key={label} className="flex flex-col gap-1">
             <dt className="flex items-center gap-1.5 text-caption text-muted">
@@ -75,7 +77,7 @@ export function ChildBirthdayFacts({ section }: { section: z.infer<typeof birthd
           баталгаажуулна уу.
         </p>
       ) : null}
-    </Card>
+    </div>
   );
 }
 

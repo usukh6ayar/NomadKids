@@ -38,8 +38,12 @@ const ageProfilesSchema = z.array(ageProfileSchema);
  * ★★ Guardian-only, same as `ParentGrowthLauncher`. Staff keep editing every
  * one of these fields through `ChildGrowthAges`'s accordion on
  * `growth/page.tsx` — this route has no staff branch of its own and nothing
- * links here for a teacher. `AgeStepper`, `AboutMeSummaryCard`'s pills and
- * the "Бүх насыг харьцуулах" bar are the only doors in.
+ * links here for a teacher. `AgeStepper` carries a visitor between the five
+ * age/compare pages once they've arrived; the one door in from elsewhere is
+ * the portfolio hub's "Насны харьцуулалт" tile (`portfolio/page.tsx`'s
+ * `PortfolioHubNav`), which lands on the compare page — `AboutMeSummaryCard`
+ * carried the pills that used to point here directly until they were pulled
+ * out of "Миний тухай" on 2026-09-04.
  */
 export default function AgeProfilePage() {
   const params = useParams<{ childId: string; age: string }>();

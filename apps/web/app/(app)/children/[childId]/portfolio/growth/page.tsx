@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/button";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { ChildGrowthAges } from "@/components/child/child-growth-ages";
-import { ChildMilestones } from "@/components/child/child-milestones";
 import { ChildArtwork } from "@/components/child/child-artwork";
 import { ParentGrowthLauncher } from "@/components/child/parent-growth-launcher";
 import { PORTFOLIO } from "@/lib/vocabulary";
@@ -71,9 +70,22 @@ const TONE_CLASS: Record<string, string> = {
  * for that audience. Staff still see everything on this page exactly as
  * before: RFP §4.3's age-2–5 profile fields (`ChildGrowthAges`) are a
  * professional editing surface a family does not use the same way a teacher
- * does, and nothing here asked for that to change. `ChildMilestones` moved
- * into `ParentGrowthLauncher` itself rather than disappearing for parents —
- * it has no other route pointing at it, unlike Ажиглалт and Бүтээл.
+ * does, and nothing here asked for that to change.
+ *
+ * ★★★★ `ChildMilestones` ("Насны онцлог" tab's own "Онцгой үйл явдал")
+ * dropped from this tab on 2026-09-04, on the client's instruction, at the
+ * same time it came off `ParentGrowthLauncher`. Milestone data and its PDF
+ * export are unaffected — this was the last screen in the product that could
+ * create or edit one, so the feature is API-only until it resurfaces
+ * somewhere.
+ *
+ * ★★★★★ The parent branch's own back button used to be a bespoke underlined
+ * link to `/home` — the mockup's own back target for that screen alone. It
+ * now matches the staff branch's: the same `Button`/`ArrowLeft` markup, back
+ * to `PORTFOLIO` (Цахим хувийн хавтас), same as the other three of
+ * `PortfolioHubNav`'s tiles (`about-me/page.tsx`, `overview/page.tsx`,
+ * `growth/compare/page.tsx`) — unified 2026-09-04, on the client's
+ * instruction, after all four had drifted to different destinations.
  */
 export default function GrowthPage() {
   const params = useParams<{ childId: string }>();
@@ -141,16 +153,14 @@ export default function GrowthPage() {
   if (!isStaff) {
     return (
       <div className="flex flex-col gap-6 py-2">
-        <ParentGrowthLauncher child={data} />
+        <Button asChild variant="ghost" size="sm" className="-ml-2 self-start">
+          <Link href={`/children/${childId}/portfolio`}>
+            <ArrowLeft size={18} />
+            {PORTFOLIO}
+          </Link>
+        </Button>
 
-        {/* The mockup's own back target — a parent's launch pad, not the hub. */}
-        <Link
-          href="/home"
-          className="inline-flex min-h-11 w-fit items-center gap-1.5 text-body text-primary underline underline-offset-4"
-        >
-          <ArrowLeft size={16} aria-hidden="true" />
-          Нүүр хуудас руу буцах
-        </Link>
+        <ParentGrowthLauncher child={data} />
       </div>
     );
   }
@@ -195,10 +205,7 @@ export default function GrowthPage() {
         </TabsPrimitive.List>
 
         <TabsPrimitive.Content value="ages" className="pt-5 focus-visible:outline-none">
-          <div className="flex flex-col gap-6">
-            <ChildGrowthAges childId={childId} isGuardian={isGuardian} currentAge={currentAge} />
-            <ChildMilestones childId={childId} isStaff={isStaff} />
-          </div>
+          <ChildGrowthAges childId={childId} isGuardian={isGuardian} currentAge={currentAge} />
         </TabsPrimitive.Content>
 
         <TabsPrimitive.Content value="observations" className="pt-5 focus-visible:outline-none">

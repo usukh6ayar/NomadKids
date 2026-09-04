@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import { useState } from "react";
 import { useParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { birthdaySectionSchema, childDetailSchema } from "@kinder/contracts";
@@ -9,12 +10,12 @@ import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { AboutMeSummaryCard } from "@/components/child/about-me-summary-card";
 import { ChildAboutMe, aboutMeResponseSchema } from "@/components/child/child-about-me";
-import { ChildBirthdayFacts, ChildBirthdayNotes } from "@/components/child/child-birthday";
+import { ChildBirthdayFacts } from "@/components/child/child-birthday";
 import { PORTFOLIO } from "@/lib/vocabulary";
-import { ageInYears } from "@/lib/format";
 
 /**
  * "Миний тухай" — RFP §4.1, its own page since 2026-08-29.
@@ -22,25 +23,45 @@ import { ageInYears } from "@/lib/format";
  * ★ Split off the single-scroll portfolio, on the client's instruction, with
  * a reference screenshot of a dedicated hub tile row (`PortfolioHubNav`, on
  * `portfolio/page.tsx`). Everything a family or a teacher would call "who
- * this child is" lives here now: the identity fields, and — moved down from
+ * this child is" lives here now: the identity fields and — moved down from
  * where they used to sit above the age timeline — the birth-date facts
- * (Монгол жил / Одны орд) and the birthday notes. Reached only from that
- * tile, so the back button returns to the hub rather than to
- * "Хүүхдийн бүртгэл" the way a standalone route normally would.
+ * (Монгол жил / Одны орд). Reached only from that tile, so the back button
+ * returns to the hub rather than to "Хүүхдийн бүртгэл" the way a standalone
+ * route normally would.
  *
  * ★★ `AboutMeSummaryCard`, not `ChildHeroProfile`, leads this page —
  * 2026-08-30, another client reference screenshot, this time of the top card
  * alone. `ChildHeroProfile` is the identity block every other per-child page
- * shares; this page's own job (name/DOB/sex, then a launcher into the age
- * content and the artwork comparison) earned it a purpose-built card instead.
- * Everything below — `ChildAboutMe`'s story fields, the birthday facts and
- * notes — is unchanged; the screenshot was the top of the page, not all of
- * it. `ChildAboutMe`'s own heading dropped from `h1` to `h2` for exactly that
- * reason: `AboutMeSummaryCard` now carries the page's one `h1`.
+ * shares; this page's own job (name/DOB/sex) earned it a purpose-built card
+ * instead. `AboutMeSummaryCard` carries the page's one `h1`; `ChildAboutMe`
+ * has had no heading of its own since the follow-up merge below.
+ *
+ * ★★★ `AboutMeSummaryCard` and `ChildAboutMe` share one `<Card>` here as of
+ * 2026-09-04, on the client's instruction — the page used to render each in
+ * its own card, and now reads as a single "Миний тухай" surface with a
+ * hairline divider between the identity tiles and the detailed fields. The
+ * age pills and "Бүх насыг харьцуулах" bar that `AboutMeSummaryCard` used to
+ * carry moved out at the same time, to their own tile on the portfolio hub
+ * (`portfolio/page.tsx`'s `PortfolioHubNav`) — age browsing is not "about
+ * this child" the way the identity and story fields are, and the client asked
+ * for it out of this page rather than folded into the merged card.
+ *
+ * ★★★★ `ChildBirthdayFacts` (нас/орд/жил) joined the same merged card the
+ * same day — it used to sit below it as its own card. `ChildBirthdayNotes`
+ * moved the other way, off this page entirely, to
+ * `portfolio/growth/compare/page.tsx` — a birthday note is written per age,
+ * the same axis the comparison page already organises everything else by,
+ * where this page no longer has an age axis of its own to hang it on.
+ *
+ * ★★★★★ `editing` lives here, not inside `ChildAboutMe`, as of a same-week
+ * follow-up — `AboutMeSummaryCard`'s "…" button is the merged card's one edit
+ * entry now, so the flag it flips has to be visible to both components rather
+ * than local to the one that used to own its own "Засах" button.
  */
 export default function AboutMePage() {
   const params = useParams<{ childId: string }>();
   const childId = params.childId;
+  const [editing, setEditing] = useState(false);
 
   const child = useQuery({
     queryKey: qk.child(childId),
@@ -80,7 +101,6 @@ export default function AboutMePage() {
   }
 
   const data = child.data!;
-  const currentAge = ageInYears(data.dateOfBirth);
 
   return (
     <div className="flex flex-col gap-6 py-2">
@@ -91,26 +111,25 @@ export default function AboutMePage() {
         </Link>
       </Button>
 
-      <AboutMeSummaryCard child={data} childId={childId} />
+      <Card pad="roomy" className="flex flex-col gap-5">
+        <AboutMeSummaryCard child={data} editing={editing} onEdit={() => setEditing(true)} />
 
-      <ChildAboutMe
-        childId={childId}
-        child={data}
-        data={aboutMe.data}
-        isLoading={aboutMe.isLoading}
-        error={aboutMe.error}
-      />
+        {!birthdays.isLoading && birthdays.data ? (
+          <ChildBirthdayFacts section={birthdays.data} />
+        ) : null}
 
-      {!birthdays.isLoading && birthdays.data ? (
-        <ChildBirthdayFacts section={birthdays.data} />
-      ) : null}
+        <div className="border-t border-border" />
 
-      <ChildBirthdayNotes
-        childId={childId}
-        section={birthdays.data ?? null}
-        isLoading={birthdays.isLoading}
-        currentAge={currentAge}
-      />
+        <ChildAboutMe
+          childId={childId}
+          child={data}
+          data={aboutMe.data}
+          isLoading={aboutMe.isLoading}
+          error={aboutMe.error}
+          editing={editing}
+          onEditingChange={setEditing}
+        />
+      </Card>
     </div>
   );
 }
