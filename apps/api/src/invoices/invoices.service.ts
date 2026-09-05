@@ -3,6 +3,7 @@ import Decimal from "decimal.js";
 import { AuditRepository } from "../audit/audit.repository";
 import { TenantAccessService } from "../authz/tenant-access.service";
 import { ChildAccessService } from "../authz/child-access.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import type { Actor } from "../authz/actor";
 import { paginate, toSkipTake, type PageParams } from "../common/pagination";
 import {
@@ -30,6 +31,21 @@ const EXTRA_LINE_TYPES = new Set(["CLUB", "BUS", "EXTRA", "OTHER"]);
 /** Shared zero, so no call site builds one from a literal number. */
 const ZERO = new Decimal(0);
 
+/**
+ * How long a reminder must stand before another may be sent for the same
+ * invoice — Phase 14's "avoid duplicate accidental sends", enforced against
+ * `AuditLog` rather than a new column so nothing else has to stay in sync
+ * with it.
+ */
+const REMINDER_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+/** `"126900.00"` → `"126 900₮"` — the report template's own `money()`, repeated because this module cannot import across that boundary either. */
+function money(value: string): string {
+  const [whole = "0", cents] = value.split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return cents && cents !== "00" ? `${grouped}.${cents}₮` : `${grouped}₮`;
+}
+
 @Injectable()
 export class InvoicesService {
   constructor(
@@ -37,6 +53,7 @@ export class InvoicesService {
     private readonly tenants: TenantAccessService,
     private readonly childAccess: ChildAccessService,
     private readonly audit: AuditRepository,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -484,6 +501,66 @@ export class InvoicesService {
 
     return updated;
   }
+
+  /**
+   * A manual payment reminder — Phase 14's "safest manual reminder flow
+   * first". Reuses the announcement board's delivery (`NotificationsService`)
+   * rather than a second notification system; see that method's own comment
+   * on why it skips the board's usual staff check.
+   */
+  async sendReminder(actor: Actor, invoiceId: string) {
+    const invoice = await this.repo.findInvoice(invoiceId);
+    if (!invoice) throw new NotFoundException();
+    this.tenants.assertCanReadFinance(actor, invoice.kindergartenId);
+
+    if (invoice.status === "PAID" || invoice.status === "REFUNDED") {
+      throw new BadRequestException(
+        "Энэ нэхэмжлэл төлөгдсөн тул сануулга илгээх шаардлагагүй.",
+      );
+    }
+    if (new Decimal(invoice.balance.toString()).lte(ZERO)) {
+      throw new BadRequestException("Үлдэгдэлгүй нэхэмжлэлд сануулга илгээх боломжгүй.");
+    }
+
+    // ★ Throttled against the audit trail, not a new column — see
+    // `REMINDER_COOLDOWN_MS`. A second click a moment after the first must not
+    // page the same family twice.
+    const recent = await this.audit.findLatest("InvoiceReminder", invoiceId);
+    if (recent && Date.now() - recent.createdAt.getTime() < REMINDER_COOLDOWN_MS) {
+      throw new BadRequestException(
+        "Энэ нэхэмжлэлд сануулга саяхан илгээгдсэн. Дараа дахин оролдоно уу.",
+      );
+    }
+
+    const body =
+      `${invoice.number ? `${invoice.number} дугаартай нэхэмжлэлийн` : "Нэхэмжлэлийн"} ` +
+      `${money(invoice.balance.toString())} үлдэгдлийг ${formatDueDate(invoice.dueDate)}-ний дотор төлнө үү.`;
+
+    await this.notifications.createSystemNotice(invoice.kindergartenId, actor.userId, {
+      category: "OTHER",
+      title: "Төлбөрийн сануулга",
+      body,
+      childId: invoice.childId,
+    });
+
+    await this.audit.append({
+      action: "CREATE",
+      kindergartenId: invoice.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "InvoiceReminder",
+      objectId: invoiceId,
+      childId: invoice.childId,
+      metadata: { balance: invoice.balance.toString(), dueDate: invoice.dueDate.toISOString() },
+    });
+
+    return { sent: true };
+  }
+}
+
+function formatDueDate(dueDate: Date): string {
+  return `${dueDate.getUTCFullYear()}.${String(dueDate.getUTCMonth() + 1).padStart(2, "0")}.${String(
+    dueDate.getUTCDate(),
+  ).padStart(2, "0")}`;
 }
 
 /** A rule with no age band applies to everyone — `FundingRule.ageBand` says so. */

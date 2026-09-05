@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { NotificationsModule } from "../notifications/notifications.module";
 import { ReportsModule } from "../reports/reports.module";
 import {
   ChildFinanceController,
@@ -33,7 +34,7 @@ import { InvoicesService } from "./invoices.service";
  * arrow runs one way — see that module's own comment.
  */
 @Module({
-  imports: [FinanceReportsModule, ReportsModule],
+  imports: [FinanceReportsModule, ReportsModule, NotificationsModule],
   controllers: [
     ChildInvoicesController,
     KindergartenInvoicesController,
