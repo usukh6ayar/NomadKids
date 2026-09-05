@@ -62,11 +62,30 @@ beforeEach(async () => {
   parent = await login(app, a.parentUser.username);
 });
 
+/**
+ * A due date that is always in the future.
+ *
+ * ★ This was the literal `"2026-09-05"`, and on 2026-09-05 it went off:
+ * `invoiceStatus` treats a due date that has arrived as overdue, so two tests
+ * asserting `PARTIALLY_PAID` and `UNPAID` began receiving `OVERDUE`. Nothing
+ * about the payment logic changed — the fixture simply aged into a state it
+ * was never written to describe.
+ *
+ * Relative, so it cannot expire again. A test that asserts on a status which
+ * is *not* overdue has to own a date that is not, and a hard-coded one only
+ * ever postpones the failure.
+ */
+function futureDueDate(): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + 30);
+  return d.toISOString().slice(0, 10);
+}
+
 function generateBody(childId: string, month = "2026-08") {
   return {
     childId,
     month,
-    dueDate: "2026-09-05",
+    dueDate: futureDueDate(),
     lineItems: [
       { type: "TUITION", amount: "150000" },
       { type: "MEAL", amount: "40000" },

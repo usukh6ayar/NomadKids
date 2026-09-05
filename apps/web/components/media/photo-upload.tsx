@@ -64,6 +64,8 @@ export function PhotoUpload({
   purpose,
   observationId,
   milestoneId,
+  category,
+  age,
   multiple = true,
   label = "Зураг нэмэх",
   hint,
@@ -77,6 +79,10 @@ export function PhotoUpload({
   observationId?: string;
   /** Attaches the upload to a remembered first — RFP §4.5. */
   milestoneId?: string;
+  /** Pre-tags every file in this upload with the album's "ангилал" facet — the overview page's fixed galleries. */
+  category?: string;
+  /** Pre-tags every file with the album's "нас" facet — the overview page's age-filtered gallery. */
+  age?: number;
   multiple?: boolean;
   label?: string;
   /** Replaces the default "JPEG, PNG or WebP…" line. Pass `null` for none. */
@@ -107,6 +113,8 @@ export function PhotoUpload({
       if (observationId) form.append("observationId", observationId);
       if (milestoneId) form.append("milestoneId", milestoneId);
       if (purpose) form.append("purpose", purpose);
+      if (category) form.append("category", category);
+      if (age) form.append("age", String(age));
       // No Content-Type is set: the browser must add the multipart boundary.
       return mutate(`/children/${childId}/media`, uploadResultSchema, {
         method: "POST",

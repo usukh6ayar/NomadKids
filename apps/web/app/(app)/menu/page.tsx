@@ -24,6 +24,7 @@ import {
   type RecipeOption,
 } from "@/components/menu/menu-dish-editor";
 import { formatDate } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 const weekSchema = z.array(menuDayWithWarningsSchema);
 /*
@@ -34,6 +35,14 @@ const weekSchema = z.array(menuDayWithWarningsSchema);
 const approvedRecipesSchema = z.array(
   recipeSummarySchema.pick({ id: true, name: true, yieldPortions: true, mealKind: true }),
 );
+
+/** Today, as `YYYY-MM-DD`, in UTC — matches how every other date here is keyed. */
+function todayIso(): string {
+  const now = new Date();
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
+    .toISOString()
+    .slice(0, 10);
+}
 
 /** Monday of the week `date` falls in, as `YYYY-MM-DD`. */
 function mondayOf(date: Date): string {
@@ -50,7 +59,15 @@ function addDays(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-const WEEKDAY = ["Даваа", "Мягмар", "Лхагва", "Пүрэв", "Баасан"];
+const WEEKDAY_BY_INDEX = ["Ням", "Даваа", "Мягмар", "Лхагва", "Пүрэв", "Баасан", "Бямба"];
+
+/** The Mongolian weekday name for any date — not just the Mon–Fri five the
+ * week view sticks to, so "Өнөөдөр"/"Маргааш" still label themselves
+ * correctly on a weekend. */
+function weekdayLabel(iso: string): string {
+  const d = new Date(`${iso}T00:00:00.000Z`);
+  return WEEKDAY_BY_INDEX[d.getUTCDay()]!;
+}
 
 /**
  * Долоо хоногийн цэс — the kitchen's own screen.
@@ -98,14 +115,23 @@ function WeeklyMenu() {
   const { session, hasRole } = useSession();
   const kindergartenId = session?.memberships?.[0]?.kindergartenId ?? null;
   const isKitchen = hasRole("COOK") || hasRole("ADMIN");
-  const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
 
-  const from = weekStart;
-  const to = addDays(weekStart, 4);
+  const today = todayIso();
+  const tomorrow = addDays(today, 1);
+
+  const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
+  // Its own state, not derived from `weekStart` — see `child-menu.tsx`'s
+  // identical `quickView` for why: "7 хоног" is a way back to the current
+  // week, not a third destination, and deriving this from the date would
+  // make it do nothing when the open week already contains today.
+  const [quickView, setQuickView] = useState<"today" | "tomorrow" | "week">("today");
+
+  const from = quickView === "week" ? weekStart : quickView === "today" ? today : tomorrow;
+  const to = quickView === "week" ? addDays(weekStart, 4) : from;
 
   const week = useQuery({
     enabled: Boolean(kindergartenId),
-    queryKey: qk.weeklyMenu(kindergartenId ?? "", from),
+    queryKey: qk.weeklyMenu(kindergartenId ?? "", from, to),
     queryFn: () =>
       get(`/kindergartens/${kindergartenId}/menu/with-warnings?from=${from}&to=${to}`, weekSchema),
   });
@@ -117,32 +143,41 @@ function WeeklyMenu() {
   });
 
   const byDate = new Map((week.data ?? []).map((day) => [day.date.slice(0, 10), day]));
+  const weekDates = Array.from({ length: 5 }, (_, i) => addDays(weekStart, i));
 
   return (
     <div className="flex flex-col gap-5 lg:gap-6">
       <PageHeader
         title="Долоо хоногийн цэс"
-        lede="Өдөр бүрийн хоол, хоолны цаг, орц найрлага. Харшлын анхааруулга доор нь харагдана."
         actions={
           <div className="flex items-center gap-2">
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => setWeekStart(addDays(weekStart, -7))}
+              onClick={() => {
+                setWeekStart(addDays(weekStart, -7));
+                setQuickView("week");
+              }}
             >
               Өмнөх
             </Button>
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => setWeekStart(mondayOf(new Date()))}
+              onClick={() => {
+                setWeekStart(mondayOf(new Date()));
+                setQuickView("week");
+              }}
             >
               Энэ долоо хоног
             </Button>
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => setWeekStart(addDays(weekStart, 7))}
+              onClick={() => {
+                setWeekStart(addDays(weekStart, 7));
+                setQuickView("week");
+              }}
             >
               Дараах
             </Button>
@@ -150,26 +185,57 @@ function WeeklyMenu() {
         }
       />
 
-      {week.isLoading ? <LoadingState rows={5} /> : null}
+      {/* Same 3-way quick view as a parent's own menu tab
+          (`child-menu.tsx`) — "Өнөөдөр"/"Маргааш" jump straight to that day
+          regardless of which week the nav buttons above have open; "7 хоног"
+          is the way back to the full Mon–Fri week. */}
+      <div
+        role="group"
+        aria-label="Хугацаа сонгох"
+        className="grid grid-cols-3 gap-1 rounded-control bg-canvas p-1"
+      >
+        {(
+          [
+            ["today", "Өнөөдөр"],
+            ["tomorrow", "Маргааш"],
+            ["week", "7 хоног"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setQuickView(value)}
+            aria-pressed={quickView === value}
+            className={cn(
+              "min-h-[40px] rounded-control text-caption font-semibold transition-colors",
+              quickView === value
+                ? "bg-primary text-primary-ink shadow-sm"
+                : "text-muted hover:text-ink",
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {week.isLoading ? <LoadingState rows={quickView === "week" ? 5 : 1} /> : null}
       {week.isError ? <ErrorState description={errorMessage(week.error)} /> : null}
 
       {kindergartenId && !week.isLoading ? (
         <div className="flex flex-col gap-4">
-          {WEEKDAY.map((label, index) => {
-            const date = addDays(weekStart, index);
-            return (
-              <MenuDayCard
-                key={date}
-                kindergartenId={kindergartenId}
-                weekStart={weekStart}
-                date={date}
-                weekday={label}
-                day={byDate.get(date) ?? null}
-                recipes={recipes.data ?? []}
-                isKitchen={isKitchen}
-              />
-            );
-          })}
+          {(quickView === "week" ? weekDates : [from]).map((date) => (
+            <MenuDayCard
+              key={date}
+              kindergartenId={kindergartenId}
+              queryFrom={from}
+              queryTo={to}
+              date={date}
+              weekday={weekdayLabel(date)}
+              day={byDate.get(date) ?? null}
+              recipes={recipes.data ?? []}
+              isKitchen={isKitchen}
+            />
+          ))}
         </div>
       ) : null}
     </div>
@@ -193,7 +259,8 @@ function WeeklyMenu() {
  */
 function MenuDayCard({
   kindergartenId,
-  weekStart,
+  queryFrom,
+  queryTo,
   date,
   weekday,
   day,
@@ -201,7 +268,8 @@ function MenuDayCard({
   isKitchen,
 }: {
   kindergartenId: string;
-  weekStart: string;
+  queryFrom: string;
+  queryTo: string;
   date: string;
   weekday: string;
   day: z.infer<typeof menuDayWithWarningsSchema> | null;
@@ -214,7 +282,9 @@ function MenuDayCard({
   const [dirty, setDirty] = useState(false);
 
   const refresh = () => {
-    void queryClient.invalidateQueries({ queryKey: qk.weeklyMenu(kindergartenId, weekStart) });
+    void queryClient.invalidateQueries({
+      queryKey: qk.weeklyMenu(kindergartenId, queryFrom, queryTo),
+    });
   };
 
   const save = useMutation({

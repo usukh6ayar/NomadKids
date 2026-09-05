@@ -1,28 +1,24 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { z } from "zod";
 import { Eye, Images, MessageCircle, X } from "lucide-react";
-import { assessmentSchema, observationSchema, type ChildDetail } from "@kinder/contracts";
-import { get, mutate } from "@/lib/api/browser";
+import { observationSchema, type ChildDetail } from "@kinder/contracts";
+import { mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/field";
-import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { FormError } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
-import { ChildMilestones } from "@/components/child/child-milestones";
+import { SharedMomentsTeaser } from "@/components/child/child-observations";
 import { PortfolioHero, GradientUnderline } from "@/components/child/portfolio-hero";
 import { ObservationPhotos } from "@/components/observations/observation-photos";
 import { GRADIENT_TONE_STYLE, type GradientTone } from "@/lib/gradient-tones";
 import type { Tone } from "@/components/ui/tone";
 import { todayLocal } from "@/lib/format";
 import { cn } from "@/lib/utils";
-
-const assessmentsSchema = z.array(assessmentSchema);
 
 /**
  * The three quick-share doors — client reference screenshot, 2026-08-30.
@@ -78,6 +74,18 @@ const CARD_TONE_FOR_BUCKET: Record<GradientTone, Tone> = {
  * unchanged to staff, who still fill in the age-2–5 profile fields RFP §4.3
  * requires). A parent's job here is narrower: share what happened, and see
  * what the teacher has shared back.
+ *
+ * ★ `ChildMilestones` ("Онцгой үйл явдал") and the assessments-based
+ * "Хүүхдийн тэмдэглэлүүд" both came off this page on 2026-09-04, on the
+ * client's instruction. `SharedMomentsTeaser` (`child-observations.tsx`)
+ * replaces the latter — the client's own description of what should sit
+ * here, "багшийн зурагтай коммент, багшийн бичсэн, эцэг эхийн бичсэн нь
+ * улирлаараа", is closer to a photo-grouped-by-quarter view over
+ * `Observation` than it ever was to the assessment scores the old teaser
+ * actually showed. Milestones has no replacement UI anywhere in the app as
+ * of this change — the data and its PDF export are untouched, only every
+ * screen that could create or edit one is gone; a future pass gets to decide
+ * where it resurfaces rather than this one guessing.
  */
 export function ParentGrowthLauncher({ child }: { child: ChildDetail }) {
   const [open, setOpen] = useState<BucketKey | null>(null);
@@ -88,7 +96,6 @@ export function ParentGrowthLauncher({ child }: { child: ChildDetail }) {
         child={child}
         overline="БИ ЦЭЦЭРЛЭГТЭЭ"
         title={`${child.firstName}-ийн өхөөрдөм ахиц`}
-        subtitle="Багшийн хуваалцсан ажиглалт, яриа, бүтээлийг нэг дороос хараарай."
       />
 
       <div className="grid gap-2.5 sm:grid-cols-3">
@@ -110,16 +117,7 @@ export function ParentGrowthLauncher({ child }: { child: ChildDetail }) {
         />
       ) : null}
 
-      {/*
-        RFP §4.5 — carried over from the old "Насны онцлог" tab, which
-        rendered this alongside `ChildGrowthAges`. It has no other route
-        pointing at it (unlike Ажиглалт and Бүтээл, both linked from
-        elsewhere), so removing that tab for parents would have made it
-        unreachable rather than merely relocated.
-      */}
-      <ChildMilestones childId={child.id} isStaff={false} />
-
-      <SharedNotesTeaser childId={child.id} />
+      <SharedMomentsTeaser childId={child.id} />
     </div>
   );
 }
@@ -309,63 +307,5 @@ function QuickShareForm({
         </form>
       )}
     </Card>
-  );
-}
-
-/**
- * "Хүүхдийн тэмдэглэлүүд" — the assessments a teacher has published to this
- * family. Reuses `GET /children/:id/assessments` wholesale: it already
- * answers only `visibleToParents: true` rows for a guardian actor
- * (`assessment.repository.ts`), so there is nothing left for this component
- * to filter.
- */
-function SharedNotesTeaser({ childId }: { childId: string }) {
-  const assessments = useQuery({
-    queryKey: qk.childAssessments(childId),
-    queryFn: () => get(`/children/${childId}/assessments`, assessmentsSchema),
-  });
-
-  return (
-    <section aria-labelledby="shared-notes-heading">
-      <h2 id="shared-notes-heading" className="text-lead font-semibold text-ink">
-        Хүүхдийн тэмдэглэлүүд
-      </h2>
-      <GradientUnderline className="mt-1.5" />
-      <p className="mt-2 mb-3 text-body text-muted">
-        Багш болон эцэг эхийн тэмдэглэлийг улирал, сараар харуулж байна.
-      </p>
-
-      {assessments.isPending ? <LoadingState rows={2} /> : null}
-      {assessments.isError ? <ErrorState description={errorMessage(assessments.error)} /> : null}
-
-      {!assessments.isPending && !assessments.isError ? (
-        assessments.data.length === 0 ? (
-          <EmptyState
-            title="Одоогоор хуваалцсан үнэлгээ алга"
-            description="Багш явцын үнэлгээг хуваалцах үед энэ хэсэгт автоматаар орж ирнэ."
-          />
-        ) : (
-          <Card className="divide-y divide-border">
-            {assessments.data.slice(0, 5).map((assessment) => (
-              <Link
-                key={assessment.id}
-                href={`/children/${childId}/assessments`}
-                className="flex min-h-15 items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-canvas"
-              >
-                <div className="min-w-0">
-                  <p className="truncate font-medium text-ink">
-                    {assessment.domain?.name ?? "Хөгжлийн чиглэл"}
-                  </p>
-                  <p className="truncate text-body text-muted">{assessment.term?.name}</p>
-                </div>
-                <span className="shrink-0 text-body font-semibold text-primary">
-                  {assessment.level?.label}
-                </span>
-              </Link>
-            ))}
-          </Card>
-        )
-      ) : null}
-    </section>
   );
 }

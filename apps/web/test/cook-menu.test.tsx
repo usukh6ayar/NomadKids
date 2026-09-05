@@ -12,11 +12,19 @@ beforeEach(() => {
 });
 
 /** Mirrors `(app)/menu/page.tsx`'s own `mondayOf` — the page's Monday card, not "today". */
-function mondayOfThisWeek(): string {
+/**
+ * Today, in UTC.
+ *
+ * ★ The week view opens on **today**, not on Monday — `menu/page.tsx` gained
+ * `todayIso()` and its weekday labels so a cook lands on the day they are
+ * actually cooking. A fixture keyed to Monday is only the day being shown one
+ * morning in seven, so anything asserting on the rendered day keys to this.
+ */
+function todayIso(): string {
   const now = new Date();
-  const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
-  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
-  return d.toISOString().slice(0, 10);
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
+    .toISOString()
+    .slice(0, 10);
 }
 
 /**
@@ -69,7 +77,7 @@ describe("the cook's weekly menu", () => {
     const portionInputs = screen.getAllByLabelText("Порц");
     await user.type(portionInputs[0]!, "1");
 
-    await selectOption(user, "Хоолны цаг", "Үдийн хоол");
+    await selectOption(user, "Хоолны цаг", "Өдрийн хоол");
 
     const saveButtons = screen.getAllByRole("button", { name: /Хадгалах/ });
     await user.click(saveButtons[0]!);
@@ -99,7 +107,7 @@ describe("the cook's weekly menu", () => {
         body: [
           {
             id: "44444444-4444-4444-8444-444444444444",
-            date: mondayOfThisWeek(),
+            date: todayIso(),
             dishes: [{ name: "Самрын бялуу", allergenTags: ["самар"] }],
             totalCalories: null,
             status: "DRAFT",

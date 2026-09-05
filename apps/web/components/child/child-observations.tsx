@@ -10,10 +10,13 @@ import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, SectionHeader } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
+import { MediaThumb } from "@/components/media/media-image";
 import { ObservationRow } from "@/components/observations/observation-row";
+import { excerpt, formatDate } from "@/lib/format";
 
 const observationsSchema = paginated(observationSchema);
 const termsSchema = z.array(termSchema);
@@ -21,7 +24,7 @@ const termsSchema = z.array(termSchema);
 type Observation = z.infer<typeof observationSchema>;
 
 /** One quarter and the notes that fall inside it. */
-interface Quarter {
+export interface Quarter {
   key: string;
   label: string;
   items: Observation[];
@@ -209,7 +212,10 @@ function QuarterSection({ quarter, isStaff }: { quarter: Quarter; isStaff: boole
  * costs a tap to discover there is nothing behind it; the client's drawing
  * shows counts precisely so a reader can skip.
  */
-function groupByQuarter(items: Observation[], terms: z.infer<typeof termsSchema>): Quarter[] {
+export function groupByQuarter(
+  items: Observation[],
+  terms: z.infer<typeof termsSchema>,
+): Quarter[] {
   const dated = terms
     .filter((term) => term.startsOn && term.endsOn)
     .sort((a, b) => String(a.startsOn).localeCompare(String(b.startsOn)));
@@ -273,4 +279,124 @@ function groupByQuarter(items: Observation[], terms: z.infer<typeof termsSchema>
   }
 
   return quarters;
+}
+
+/**
+ * "Хуваалцсан мөчүүд" — a photo-forward teaser for the parent's "Хөгжил"
+ * page, replacing the assessments-based "Хүүхдийн тэмдэглэлүүд" (removed
+ * 2026-09-04, on the client's instruction — that section's own subtitle had
+ * promised "багш, эцэг эхийн тэмдэглэл", which it never actually showed;
+ * this one does). Reuses `groupByQuarter` rather than a second grouping, and
+ * `Observation.source` for the same teacher/parent distinction
+ * `ObservationRow` already draws — just badged on every card instead of only
+ * the parent-authored ones, since here the badge is the point of the card
+ * rather than the exception in a list.
+ *
+ * ★ Only the current quarter, and only observations with a photo — a teaser,
+ * not the list. The full, ungrouped history is `/observations`, already one
+ * tap away via this page's own "Ажиглалт" quick action; showing every
+ * quarter here again would be the same "route and tab both show the same
+ * thing" duplication `growth/page.tsx`'s own doc comment already avoids for
+ * staff.
+ */
+export function SharedMomentsTeaser({ childId }: { childId: string }) {
+  const { primaryKindergartenId } = useSession();
+
+  const observations = useQuery({
+    queryKey: qk.childObservations(childId, { pageSize: MAX_PAGE_SIZE }),
+    queryFn: () =>
+      get(`/children/${childId}/observations?page=1&pageSize=${MAX_PAGE_SIZE}`, observationsSchema),
+  });
+
+  const terms = useQuery({
+    queryKey: qk.terms(primaryKindergartenId ?? ""),
+    queryFn: () => get(`/kindergartens/${primaryKindergartenId}/terms`, termsSchema),
+    enabled: Boolean(primaryKindergartenId),
+    staleTime: 5 * 60_000,
+  });
+
+  return (
+    <section aria-labelledby="moments-heading">
+      <SectionHeader
+        id="moments-heading"
+        title="Хуваалцсан мөчүүд"
+        lede="Багш, эцэг эхийн бичсэн зурагтай тэмдэглэлийг улирлаар харуулж байна."
+      />
+
+      {observations.isPending ? <LoadingState rows={2} /> : null}
+      {observations.isError ? <ErrorState description={errorMessage(observations.error)} /> : null}
+
+      {!observations.isPending && !observations.isError ? (
+        <MomentsFeed childId={childId} items={observations.data.items} terms={terms.data ?? []} />
+      ) : null}
+    </section>
+  );
+}
+
+function MomentsFeed({
+  childId,
+  items,
+  terms,
+}: {
+  childId: string;
+  items: Observation[];
+  terms: z.infer<typeof termsSchema>;
+}) {
+  const withPhotos = items.filter((observation) => observation.media.length > 0);
+
+  if (withPhotos.length === 0) {
+    return (
+      <EmptyState
+        title="Одоогоор зурагтай мөч алга"
+        description="Багшийн хуваалцсан ажиглалт, бүтээл энд харагдана."
+      />
+    );
+  }
+
+  const quarters = groupByQuarter(withPhotos, terms);
+  const current = quarters.find((quarter) => quarter.current) ?? quarters.at(-1);
+  // No terms configured yet — the same fallback `ChildObservations` uses:
+  // newest first, uncapped by a quarter nothing has drawn boundaries for.
+  const shown = current
+    ? current.items
+    : [...withPhotos].sort((a, b) => (a.observedOn < b.observedOn ? 1 : -1));
+
+  return (
+    <div className="flex flex-col gap-3">
+      {current ? <p className="text-caption text-muted">{current.label}</p> : null}
+
+      <ul className="flex gap-3 overflow-x-auto pb-1">
+        {shown.slice(0, 8).map((observation) => (
+          <li key={observation.id} className="w-36 shrink-0">
+            <MomentCard observation={observation} />
+          </li>
+        ))}
+      </ul>
+
+      <Link
+        href={`/children/${childId}/observations`}
+        className="self-start text-body font-semibold text-primary underline underline-offset-4"
+      >
+        Бүгдийг харах
+      </Link>
+    </div>
+  );
+}
+
+function MomentCard({ observation }: { observation: Observation }) {
+  const photo = observation.media[0]!;
+  const comment = observation.teacherComment || observation.situation || observation.childDid || "";
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <MediaThumb mediaId={photo.id} caption={photo.caption ?? comment} className="h-32 w-full" />
+      <div className="flex items-center gap-1.5">
+        <Badge tone={observation.source === "PARENT" ? "sky" : "mint"}>
+          {observation.source === "PARENT" ? "Эцэг эх" : "Багш"}
+        </Badge>
+        <span className="text-caption text-muted">{formatDate(observation.observedOn)}</span>
+      </div>
+      {comment ? <p className="text-caption text-ink">{excerpt(comment, 60)}</p> : null}
+    </div>
+  );
 }

@@ -31,7 +31,8 @@ export function PortfolioHero({
   icon?: ReactNode;
   overline: string;
   title: string;
-  subtitle: string;
+  /** Optional as of 2026-09-04 — `ParentGrowthLauncher` dropped its own on the client's instruction. */
+  subtitle?: string;
 }) {
   return (
     <Card
@@ -63,7 +64,7 @@ export function PortfolioHero({
         <p className="text-caption font-bold tracking-wide text-primary-strong">{overline}</p>
         <h1 className="mt-0.5 truncate text-heading font-semibold text-ink">{title}</h1>
         <GradientUnderline className="mt-1.5" />
-        <p className="mt-2 text-body text-muted">{subtitle}</p>
+        {subtitle ? <p className="mt-2 text-body text-muted">{subtitle}</p> : null}
       </div>
     </Card>
   );

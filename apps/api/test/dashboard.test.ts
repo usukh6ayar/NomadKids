@@ -582,6 +582,122 @@ describe("admin dashboard — kindergarten-wide figures", () => {
   });
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Cook dashboard
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * "Самбар" — the screen the bottom bar's `Цэс` tab used to point at
+ * (`app/(app)/layout.tsx`). It answers a narrower question than the admin
+ * screen it borrows its queries from: today's headcount for meal quantities
+ * and whether anything is waiting on the kitchen, not a 30-day trend.
+ */
+describe("cook dashboard", () => {
+  const today = new Date(
+    Date.UTC(
+      new Date().getUTCFullYear(),
+      new Date().getUTCMonth(),
+      new Date().getUTCDate(),
+      0,
+      0,
+      0,
+      0,
+    ),
+  );
+
+  async function cookSession(kindergartenId: string) {
+    const user = await createUser({ username: uniq("cook") });
+    await createMembership(user.id, kindergartenId, "COOK");
+    return login(app, user.username);
+  }
+
+  it("reports today's headcount, per group", async () => {
+    const cookA = await cookSession(a.kindergarten.id);
+
+    await db.attendance.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        enrollmentId: a.enrollment.id,
+        childId: a.child.id,
+        date: today,
+        status: "PRESENT",
+      },
+    });
+
+    const res = await request(server()).get("/v1/dashboard/cook").set("Cookie", cookA.cookies);
+
+    expect(res.status).toBe(200);
+    expect(res.body.attendanceToday.present).toBe(1);
+    const group = res.body.attendanceByGroup.find(
+      (g: { groupId: string }) => g.groupId === a.group.id,
+    );
+    expect(group.counts.PRESENT).toBe(1);
+  });
+
+  it("★ never counts another kindergarten's register or orders", async () => {
+    const cookA = await cookSession(a.kindergarten.id);
+
+    await db.attendance.create({
+      data: {
+        kindergartenId: b.kindergarten.id,
+        enrollmentId: b.enrollment.id,
+        childId: b.child.id,
+        date: today,
+        status: "PRESENT",
+      },
+    });
+
+    const res = await request(server()).get("/v1/dashboard/cook").set("Cookie", cookA.cookies);
+    expect(res.body.attendanceToday.recorded).toBe(0);
+    expect(
+      res.body.attendanceByGroup.some((g: { groupId: string }) => g.groupId === b.group.id),
+    ).toBe(false);
+  });
+
+  it("counts orders still DRAFT or ORDERED, not ones already RECEIVED", async () => {
+    const cookA = await cookSession(a.kindergarten.id);
+
+    const supplier = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/suppliers`),
+      cookA,
+    ).send({ name: "Ногоон эрдэнэ ХХК" });
+    const ingredient = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/ingredients`),
+      cookA,
+    ).send({ name: "Гурил", unit: "GRAM", allergenTags: [] });
+
+    const order = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/food-orders`),
+      cookA,
+    ).send({
+      supplierId: supplier.body.id,
+      orderDate: "2026-04-01",
+      lines: [{ ingredientId: ingredient.body.id, quantity: "1000", unitPrice: "1" }],
+    });
+    expect(order.body.status).toBe("ORDERED");
+
+    const before = await request(server()).get("/v1/dashboard/cook").set("Cookie", cookA.cookies);
+    expect(before.body.pendingFoodOrders).toBe(1);
+
+    await authed(request(server()).post(`/v1/food-orders/${order.body.id}/receive`), cookA).send({
+      lines: [],
+    });
+
+    const after = await request(server()).get("/v1/dashboard/cook").set("Cookie", cookA.cookies);
+    expect(after.body.pendingFoodOrders).toBe(0);
+  });
+
+  it("an admin may also open it", async () => {
+    const res = await request(server()).get("/v1/dashboard/cook").set("Cookie", adminA.cookies);
+    expect(res.status).toBe(200);
+  });
+
+  it("a teacher cannot open it", async () => {
+    const res = await request(server()).get("/v1/dashboard/cook").set("Cookie", teacherA.cookies);
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("audit log", () => {
   it("is admin only", async () => {
     expect((await request(server()).get("/v1/audit").set("Cookie", teacherA.cookies)).status).toBe(

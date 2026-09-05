@@ -244,6 +244,30 @@ export class DashboardService {
   }
 
   /**
+   * The cook's dashboard — "what needs my attention today", the same rule
+   * `teacher()` and `admin()` follow.
+   *
+   * ★ `attendanceToday`/`attendanceByGroup` are the admin dashboard's own
+   * queries, called with `from === to === today` for the per-group figure
+   * rather than the admin's 30-day window — a cook plans one day's portions,
+   * not a month's trend. Both return counts only, never a child's name, which
+   * is what let this ship as a new route rather than a new authorization rule:
+   * `docs/SECURITY.md`'s child-visibility filter never enters the query.
+   */
+  async cook(actor: Actor) {
+    const kindergartenIds = this.tenants.memberKindergartenIds(actor);
+    const today = startOfDay(new Date());
+
+    const [attendanceToday, attendanceByGroup, pendingFoodOrders] = await Promise.all([
+      this.repo.attendanceToday(kindergartenIds, today),
+      this.repo.attendanceByGroup(kindergartenIds, today, today),
+      this.repo.pendingFoodOrders(kindergartenIds),
+    ]);
+
+    return { attendanceToday, attendanceByGroup, pendingFoodOrders };
+  }
+
+  /**
    * The parent home — "what happened recently".
    *
    * A single reverse-chronological feed, not a dashboard. The observation

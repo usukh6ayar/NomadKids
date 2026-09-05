@@ -3,6 +3,10 @@ node_modules/
 .env.local
 .DS_Store
 
+# Claude Code's own local session/tool state — permission allowlists and a
+# scheduled-tasks lock file, both machine-specific, neither application code.
+.claude/
+
 # Next.js / Nest build output (once the apps exist)
 .next/
 dist/

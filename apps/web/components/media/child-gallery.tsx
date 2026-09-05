@@ -3,15 +3,22 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import { Star, Trash2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { z } from "zod";
-import { mediaListSchema } from "@kinder/contracts";
+import {
+  mediaListSchema,
+  mediaSchema,
+  MEDIA_CATEGORIES,
+  MEDIA_CATEGORY_LABEL,
+} from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { mediaUrl } from "@/lib/api/client";
 import { qk } from "@/lib/api/keys";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
+import { Field, Select } from "@/components/ui/field";
 import { GALLERY } from "@/lib/vocabulary";
+import { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { MediaThumb } from "@/components/media/media-image";
 import { PhotoUpload } from "@/components/media/photo-upload";
@@ -43,12 +50,29 @@ const GALLERY_PAGE_SIZE = 100;
  *
  * Deleting archives rather than removing: `DELETE /media/:id` sets a status, so
  * a photo taken out of the gallery still exists for the audit trail.
+ *
+ * ★★★ `category`/`age` turn this into a filtered album view — added
+ * 2026-09-05 for the overview page's age-filtered and fixed (first day,
+ * graduation) galleries, on the client's instruction. A second, parallel
+ * gallery component was the alternative; reusing this one instead means the
+ * upload flow, the delete confirmation and the pagination footnote stay one
+ * implementation rather than three that can drift. `sectionId` exists only
+ * so more than one instance on a page does not collide on `id="gallery"`.
  */
 export function ChildGallery({
   childId,
   childName,
   canEdit,
   photoMediaFileId,
+  sectionId = "gallery",
+  title = GALLERY,
+  lede = "Ажиглалтад хавсаргасан болон тусад нь нэмсэн бүх зураг.",
+  category,
+  age,
+  emptyTitle = "Зураг алга",
+  emptyDescription,
+  uploadLabel = "Зураг нэмэх",
+  uploadHint,
 }: {
   childId: string;
   childName?: string;
@@ -56,13 +80,30 @@ export function ChildGallery({
   canEdit: boolean;
   /** The current profile picture, so it can be marked and not offered again. */
   photoMediaFileId?: string | null;
+  sectionId?: string;
+  title?: string;
+  lede?: string;
+  /** Filters to one album "ангилал" — omit for every category at once. */
+  category?: string;
+  /** Filters to one "нас" — omit for every age at once. */
+  age?: number;
+  emptyTitle?: string;
+  emptyDescription?: string;
+  uploadLabel?: string;
+  uploadHint?: ReactNode | null;
 }) {
   const queryClient = useQueryClient();
   const [viewing, setViewing] = useState<string | null>(null);
+  const filters = { pageSize: GALLERY_PAGE_SIZE, category, age };
 
   const photos = useQuery({
-    queryKey: qk.childMedia(childId),
-    queryFn: () => get(`/children/${childId}/media?pageSize=${GALLERY_PAGE_SIZE}`, mediaListSchema),
+    queryKey: qk.childMedia(childId, filters),
+    queryFn: () => {
+      const params = new URLSearchParams({ pageSize: String(GALLERY_PAGE_SIZE) });
+      if (category) params.set("category", category);
+      if (age) params.set("age", String(age));
+      return get(`/children/${childId}/media?${params}`, mediaListSchema);
+    },
   });
 
   const setProfile = useMutation({
@@ -86,18 +127,26 @@ export function ChildGallery({
     },
   });
 
+  /** The tag editor — album `category`/`age`, RFP §4.4. */
+  const update = useMutation({
+    mutationFn: ({
+      mediaId,
+      patch,
+    }: {
+      mediaId: string;
+      patch: { category?: string | null; age?: number | null };
+    }) => mutate(`/media/${mediaId}`, mediaSchema, { method: "PATCH", body: patch }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: qk.childMedia(childId) }),
+  });
+
   const items = photos.data?.items ?? [];
   const total = photos.data?.total ?? 0;
   const truncated = total > items.length;
+  const viewingPhoto = items.find((p) => p.id === viewing);
 
   return (
-    <section id="gallery" aria-labelledby="gallery-heading" className="scroll-mt-20">
-      <SectionHeader
-        id="gallery-heading"
-        title={GALLERY}
-        lede="Ажиглалтад хавсаргасан болон тусад нь нэмсэн бүх зураг."
-        as="h2"
-      />
+    <section id={sectionId} aria-labelledby={`${sectionId}-heading`} className="scroll-mt-20">
+      <SectionHeader id={`${sectionId}-heading`} title={title} lede={lede} as="h2" />
 
       <Card pad="roomy" className="flex flex-col gap-4">
         {photos.isLoading ? <LoadingState rows={2} /> : null}
@@ -107,11 +156,12 @@ export function ChildGallery({
         {photos.data && items.length === 0 ? (
           <EmptyState
             icon={<Image src="/background/mascot-girl-purple.webp" alt="" width={96} height={96} />}
-            title="Зураг алга"
+            title={emptyTitle}
             description={
-              canEdit
+              emptyDescription ??
+              (canEdit
                 ? "Хүүхдийн бүтээл, тоглож буй мөчийг нэмж эхлээрэй."
-                : "Багш зураг нэмэхэд энд харагдана."
+                : "Багш зураг нэмэхэд энд харагдана.")
             }
           />
         ) : null}
@@ -161,23 +211,32 @@ export function ChildGallery({
           <PhotoUpload
             childId={childId}
             purpose="CHILD_PHOTO"
-            label="Зураг нэмэх"
-            hint="Бүтээл, зурсан зураг, тоглож буй мөч. JPEG, PNG эсвэл WebP, 10 MB хүртэл."
+            category={category}
+            age={age}
+            label={uploadLabel}
+            hint={
+              uploadHint ??
+              "Бүтээл, зурсан зураг, тоглож буй мөч. JPEG, PNG эсвэл WebP, 10 MB хүртэл."
+            }
           />
         ) : null}
       </Card>
 
-      {viewing ? (
+      {viewing && viewingPhoto ? (
         <PhotoViewer
           mediaId={viewing}
           childName={childName}
-          caption={items.find((p) => p.id === viewing)?.caption}
+          caption={viewingPhoto.caption}
           canEdit={canEdit}
           isProfile={viewing === photoMediaFileId}
+          currentCategory={viewingPhoto.category ?? null}
+          currentAge={viewingPhoto.age ?? null}
           onClose={() => setViewing(null)}
           onSetProfile={() => setProfile.mutate(viewing)}
           onRemove={() => remove.mutate(viewing)}
+          onUpdate={(patch) => update.mutate({ mediaId: viewing, patch })}
           busy={setProfile.isPending || remove.isPending}
+          updating={update.isPending}
         />
       ) : null}
     </section>
@@ -198,20 +257,29 @@ function PhotoViewer({
   caption,
   canEdit,
   isProfile,
+  currentCategory,
+  currentAge,
   onClose,
   onSetProfile,
   onRemove,
+  onUpdate,
   busy,
+  updating,
 }: {
   mediaId: string;
   childName?: string;
   caption?: string | null;
   canEdit: boolean;
   isProfile: boolean;
+  /** The album's current "ангилал"/"нас" facets — `null` when never tagged. */
+  currentCategory: string | null;
+  currentAge: number | null;
   onClose: () => void;
   onSetProfile: () => void;
   onRemove: () => void;
+  onUpdate: (patch: { category?: string | null; age?: number | null }) => void;
   busy: boolean;
+  updating: boolean;
 }) {
   const [confirming, setConfirming] = useState(false);
 
@@ -264,43 +332,102 @@ function PhotoViewer({
         />
       </div>
 
-      <div className="relative z-10 flex flex-wrap items-center justify-between gap-3 rounded-row bg-surface px-4 py-3">
-        <p className="min-w-0 flex-1 text-body text-ink">
-          {caption || <span className="text-muted">Тэмдэглэлгүй</span>}
-        </p>
-
+      <div className="relative z-10 flex flex-col gap-3 rounded-row bg-surface px-4 py-3">
+        {/*
+          ★ The album's "нас"/"ангилал" facets — RFP §4.4 — editable here
+          rather than at upload time. `PhotoUpload` pre-tags a *whole batch*
+          with one age or category (the age-filtered and fixed galleries pass
+          it as a prop), but a single photo already in the album needs its own
+          correction without re-uploading it, the same reason `caption` has
+          never been upload-only either.
+        */}
         {canEdit ? (
-          <div className="flex flex-wrap items-center gap-2">
-            {isProfile ? (
-              <span className="text-caption font-semibold text-primary">Хувийн зураг</span>
-            ) : (
-              <Button variant="secondary" size="sm" onClick={onSetProfile} disabled={busy}>
-                <Star size={16} />
-                Хувийн зураг болгох
-              </Button>
-            )}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Ангилал">
+              {({ id, describedBy }) => (
+                <Select
+                  id={id}
+                  aria-describedby={describedBy}
+                  disabled={updating}
+                  value={currentCategory ?? ""}
+                  onChange={(e) => onUpdate({ category: e.target.value || null })}
+                >
+                  <option value="">Байхгүй</option>
+                  {MEDIA_CATEGORIES.map((code) => (
+                    <option key={code} value={code}>
+                      {MEDIA_CATEGORY_LABEL[code]}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
 
-            {confirming ? (
-              // Confirmed inline rather than in a second dialog — CLAUDE.md §5
-              // asks for a confirmation before a delete, not for a dialog on
-              // top of a dialog.
-              <span className="flex items-center gap-2">
-                <span className="text-caption text-muted">Устгах уу?</span>
-                <Button variant="danger" size="sm" onClick={onRemove} disabled={busy}>
-                  Тийм
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
-                  Үгүй
-                </Button>
-              </span>
-            ) : (
-              <Button variant="ghost" size="sm" onClick={() => setConfirming(true)} disabled={busy}>
-                <Trash2 size={16} />
-                Устгах
-              </Button>
-            )}
+            <Field label="Нас">
+              {({ id, describedBy }) => (
+                <Select
+                  id={id}
+                  aria-describedby={describedBy}
+                  disabled={updating}
+                  value={currentAge ? String(currentAge) : ""}
+                  onChange={(e) =>
+                    onUpdate({ age: e.target.value ? Number(e.target.value) : null })
+                  }
+                >
+                  <option value="">Байхгүй</option>
+                  {PORTFOLIO_AGES.map((age) => (
+                    <option key={age} value={age}>
+                      {age} нас
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
           </div>
         ) : null}
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="min-w-0 flex-1 text-body text-ink">
+            {caption || <span className="text-muted">Тэмдэглэлгүй</span>}
+          </p>
+
+          {canEdit ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {isProfile ? (
+                <span className="text-caption font-semibold text-primary">Хувийн зураг</span>
+              ) : (
+                <Button variant="secondary" size="sm" onClick={onSetProfile} disabled={busy}>
+                  <Star size={16} />
+                  Хувийн зураг болгох
+                </Button>
+              )}
+
+              {confirming ? (
+                // Confirmed inline rather than in a second dialog — CLAUDE.md §5
+                // asks for a confirmation before a delete, not for a dialog on
+                // top of a dialog.
+                <span className="flex items-center gap-2">
+                  <span className="text-caption text-muted">Устгах уу?</span>
+                  <Button variant="danger" size="sm" onClick={onRemove} disabled={busy}>
+                    Тийм
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
+                    Үгүй
+                  </Button>
+                </span>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setConfirming(true)}
+                  disabled={busy}
+                >
+                  <Trash2 size={16} />
+                  Устгах
+                </Button>
+              )}
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );

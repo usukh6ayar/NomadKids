@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, ChevronRight, FileText, Images, Sprout, User } from "lucide-react";
+import { ArrowLeft, BarChart3, ChevronRight, FileText, Images, Sprout, User } from "lucide-react";
 import { childDetailSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -15,6 +15,7 @@ import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { ReportDialog } from "@/components/reports/report-dialog";
 import { useSession } from "@/lib/auth/session";
 import { PORTFOLIO } from "@/lib/vocabulary";
+import { TONE_SURFACE, type Tone } from "@/components/ui/tone";
 import { cn } from "@/lib/utils";
 
 /**
@@ -117,7 +118,7 @@ export default function PortfolioPage() {
  * separately". That follow-up is this change.
  */
 function PortfolioHubNav({ childId }: { childId: string }) {
-  const items: { href: string; label: string; tone: "mint" | "sky"; Icon: typeof User }[] = [
+  const items: { href: string; label: string; tone: Tone; Icon: typeof User }[] = [
     {
       href: `/children/${childId}/portfolio/about-me`,
       label: "Миний тухай",
@@ -127,8 +128,22 @@ function PortfolioHubNav({ childId }: { childId: string }) {
     { href: `/children/${childId}/portfolio/growth`, label: "Хөгжил", tone: "mint", Icon: Sprout },
     // The bottom bar's own "Зураг" destination (`layout.tsx`'s `parentNav`) —
     // see this page's own doc comment for why it is the same route rather
-    // than a second one.
-    { href: `/children/${childId}/overview`, label: "Зургийн цомог", tone: "sky", Icon: Images },
+    // than a second one. `?from=portfolio` tells the album's own back button
+    // which of its two entrances this was.
+    {
+      href: `/children/${childId}/overview?from=portfolio`,
+      label: "Зургийн цомог",
+      tone: "sky",
+      Icon: Images,
+    },
+    // Moved out of `about-me`'s merged card. `AgeStepper` on the destination
+    // carries a visitor on to any of the four per-age pages from here.
+    {
+      href: `/children/${childId}/portfolio/growth/compare`,
+      label: "Насны харьцуулалт",
+      tone: "peach",
+      Icon: BarChart3,
+    },
   ];
 
   /*
@@ -151,7 +166,16 @@ function PortfolioHubNav({ childId }: { childId: string }) {
   */
   return (
     <nav aria-label="Цахим хавтасны хэсгүүд">
-      <ul className="grid grid-cols-3 items-stretch gap-2 sm:gap-3">
+      {/*
+        ★★ Two across on a phone, four from `sm` — 2026-09-04, when the
+        comparison tile made this a row of four.
+
+        Three columns at 375px gave each tile about 108px, and "Насны
+        харьцуулалт" is two words that wrap to three lines in it. Two columns
+        is 168px, which holds the longest label on two lines and keeps the
+        64px disc from crowding it.
+      */}
+      <ul className="grid grid-cols-2 items-stretch gap-2 sm:grid-cols-4 sm:gap-3">
         {items.map(({ href, label, tone, Icon }) => (
           <li key={href} className="flex">
             <Link
@@ -162,7 +186,10 @@ function PortfolioHubNav({ childId }: { childId: string }) {
                 aria-hidden="true"
                 className={cn(
                   "flex size-16 items-center justify-center rounded-card",
-                  tone === "mint" ? "bg-mint text-mint-ink" : "bg-sky text-sky-ink",
+                  // `TONE_SURFACE` rather than a ternary: it knew two tones and
+                  // there are three now. Every pairing in that map is measured
+                  // at 4.5:1 or better (`ui-foundation.test.tsx`).
+                  TONE_SURFACE[tone],
                 )}
               >
                 <Icon size={28} />

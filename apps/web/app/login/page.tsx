@@ -82,9 +82,10 @@ function LoginForm() {
               : // The screen each support role exists for. Neither can open
                 // `/dashboard` — every widget on it is about children — so
                 // sending them there would meet a permission wall on the first
-                // screen after signing in.
+                // screen after signing in. The cook has its own `/kitchen/dashboard`
+                // instead (`app/(app)/layout.tsx`'s `supportNav`), not `/dashboard`.
                 primary.dashboard === "cook"
-                ? "/menu"
+                ? "/kitchen/dashboard"
                 : primary.dashboard === "accountant"
                   ? "/finance"
                   : primary.dashboard === "parent"

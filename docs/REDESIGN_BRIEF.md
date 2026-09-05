@@ -410,8 +410,17 @@ _Job: record who ate what._
 
 - **Огноо** field; the group's name as lede.
 - Four sittings, each its own section: **Өглөөний цай** (short: Өглөө),
-  **Үдийн хоол** (Үд), **Үдээс хойших цай** (Үдээс хойш), **Нэмэлт хоол**
-  (Нэмэлт).
+  **Өдрийн хоол** (Өдөр), **Их үдийн цай** (Их үд), **Оройн хоол** (Орой).
+
+  ★ **Renamed 2026-09-04**, from Үдийн хоол / Үдээс хойших цай / Нэмэлт хоол,
+  "to match how staff actually refer to each sitting". Both label sets moved
+  together — `MEAL_KIND_LABEL` in `@kinder/contracts`, which the cook's menu
+  and the recipe screens read, and the `SITTINGS` array in the teacher's own
+  register — so the two surfaces cannot disagree about what a sitting is
+  called. Recorded here because constraint 1 says to use these strings
+  verbatim, and a brief that still quoted the old ones would send the next
+  reader to change the code back.
+
 - Per child, per sitting, a status: **Авсан** · **Аваагүй** · **Хэсэгчлэн** ·
   **Тусгай хоол**.
 - An optional note per row, max 500 characters — "Тэмдэглэл 500 тэмдэгтээс

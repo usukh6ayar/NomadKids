@@ -7,6 +7,7 @@ import { z } from "zod";
 import { ArrowLeft, BarChart3 } from "lucide-react";
 import {
   ageProfileSchema,
+  birthdaySectionSchema,
   childDetailSchema,
   growthChartSchema,
   type GrowthPoint,
@@ -20,8 +21,11 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { AgeStepper } from "@/components/child/age-stepper";
 import { PortfolioHero } from "@/components/child/portfolio-hero";
 import { AGE_FIELDS } from "@/components/child/child-growth-ages";
+import { ChildBirthdayNotes } from "@/components/child/child-birthday";
 import { GrowthChartFigure } from "@/components/child/growth-chart";
 import { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
+import { PORTFOLIO } from "@/lib/vocabulary";
+import { ageInYears } from "@/lib/format";
 import { isPresent } from "@/lib/utils";
 
 const ageProfilesSchema = z.array(ageProfileSchema);
@@ -50,6 +54,21 @@ const OTHER_FIELD_KEYS = [
  * drawing new charts — it already plots height and weight against age, and a
  * second hand-rolled chart for the same two quantities would be a second
  * implementation of a component this product already has.
+ *
+ * ★★★ `ChildBirthdayNotes` moved here from `about-me/page.tsx` on 2026-09-04,
+ * on the client's instruction — a birthday note is written per age, the same
+ * axis every other section on this page already compares by, and it stopped
+ * having a home on "Миний тухай" once that page's own age-comparison door
+ * moved out to the portfolio hub. `birthdays` is fetched the same way
+ * `about-me/page.tsx` used to: not part of the blocking loading/error state
+ * above, since `ChildBirthdayNotes` already renders its own loading rows.
+ *
+ * ★★★★ The back button points at the portfolio hub, not `growth/page.tsx` —
+ * unified 2026-09-04, on the client's instruction, with the other three of
+ * `PortfolioHubNav`'s tiles (`about-me/page.tsx`, `growth/page.tsx`,
+ * `overview/page.tsx`), all of which had drifted to different back
+ * destinations. `AgeStepper` still moves a visitor between this page and
+ * `growth/age/[age]/page.tsx` without touching either's own back button.
  */
 export default function GrowthComparePage() {
   const params = useParams<{ childId: string }>();
@@ -68,6 +87,11 @@ export default function GrowthComparePage() {
   const growth = useQuery({
     queryKey: qk.growth(childId),
     queryFn: () => get(`/children/${childId}/growth`, growthChartSchema),
+  });
+
+  const birthdays = useQuery({
+    queryKey: qk.birthdayNotes(childId),
+    queryFn: () => get(`/children/${childId}/birthday-notes`, birthdaySectionSchema),
   });
 
   if (child.isLoading || ageProfiles.isLoading || growth.isLoading) {
@@ -90,13 +114,14 @@ export default function GrowthComparePage() {
   const profiles = ageProfiles.data!;
   const profileFor = (age: number) => profiles.find((p) => p.age === age);
   const byAge = latestMeasurementPerAge(growth.data!.points);
+  const currentAge = ageInYears(data.dateOfBirth);
 
   return (
     <div className="flex flex-col gap-6 py-2">
       <Button asChild variant="ghost" size="sm" className="-ml-2 self-start">
-        <Link href={`/children/${childId}/portfolio/growth`}>
+        <Link href={`/children/${childId}/portfolio`}>
           <ArrowLeft size={18} />
-          Насны мэдээлэл
+          {PORTFOLIO}
         </Link>
       </Button>
 
@@ -162,6 +187,13 @@ export default function GrowthComparePage() {
           }))}
         />
       </section>
+
+      <ChildBirthdayNotes
+        childId={childId}
+        section={birthdays.data ?? null}
+        isLoading={birthdays.isLoading}
+        currentAge={currentAge}
+      />
     </div>
   );
 }
