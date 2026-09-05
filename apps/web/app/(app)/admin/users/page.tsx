@@ -41,6 +41,7 @@ import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { InvitationHandover } from "@/components/admin/invitation-handover";
+import { StaffRecordsButton } from "@/components/admin/staff-records-dialog";
 
 const listSchema = paginated(adminUserSchema);
 
@@ -328,6 +329,7 @@ function AdminUsers() {
               actions={
                 <>
                   <EditUserButton user={user} />
+                  <StaffRecordsButton user={user} kindergartenId={primaryKindergartenId} />
                   <AddMembershipButton user={user} />
                 </>
               }

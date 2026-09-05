@@ -56,7 +56,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await resetData();
-  app.get(RateLimitService).resetAll();
+  await app.get(RateLimitService).resetAll();
 });
 
 const server = () => app.getHttpServer();

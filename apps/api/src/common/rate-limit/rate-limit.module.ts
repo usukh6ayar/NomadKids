@@ -14,6 +14,11 @@ import { RateLimitService } from "./rate-limit.service";
  * instance while logins accumulated in the other until they hit 429. In
  * production it would have been quieter and worse: a documented limit of 5
  * login attempts silently behaving like 10.
+ *
+ * ★ Still global now that the counter lives in Redis, and for a smaller
+ * reason: each instance opens its own connection, so two of them would be two
+ * sockets and two shutdown hooks for one job. The correctness argument above
+ * has moved to Redis — which is the point of the change.
  */
 @Global()
 @Module({

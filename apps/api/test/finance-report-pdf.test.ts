@@ -82,7 +82,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await resetData();
-  app.get(RateLimitService).resetAll();
+  await app.get(RateLimitService).resetAll();
 
   a = await createScenario("a");
   b = await createScenario("b");

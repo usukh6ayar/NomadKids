@@ -36,7 +36,7 @@ beforeEach(async () => {
   await resetData();
   // The limiter is in-process and would otherwise carry counts between tests,
   // making later cases fail depending on what ran before them.
-  app.get(RateLimitService).resetAll();
+  await app.get(RateLimitService).resetAll();
 });
 
 const server = () => app.getHttpServer();

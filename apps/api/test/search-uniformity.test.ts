@@ -39,6 +39,8 @@ let b: Scenario;
 let adminA: AuthSession;
 let cookA: AuthSession;
 let teacherA: AuthSession;
+let adminB: AuthSession;
+let cookB: AuthSession;
 
 const server = () => app.getHttpServer();
 
@@ -55,7 +57,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await resetData();
-  app.get(RateLimitService).resetAll();
+  await app.get(RateLimitService).resetAll();
 
   a = await createScenario("a");
   b = await createScenario("b");
@@ -63,9 +65,16 @@ beforeEach(async () => {
   adminA = await login(app, a.adminUser.username);
   teacherA = await login(app, a.teacherUser.username);
 
-  const cook = await createUser({ username: `cook-${Math.random().toString(36).slice(2, 8)}` });
-  await createMembership(cook.id, a.kindergarten.id, "COOK");
-  cookA = await login(app, cook.username);
+  adminB = await login(app, b.adminUser.username);
+
+  for (const [kindergartenId, assign] of [
+    [a.kindergarten.id, (s: AuthSession) => (cookA = s)],
+    [b.kindergarten.id, (s: AuthSession) => (cookB = s)],
+  ] as const) {
+    const cook = await createUser({ username: `cook-${Math.random().toString(36).slice(2, 8)}` });
+    await createMembership(cook.id, kindergartenId, "COOK");
+    assign(await login(app, cook.username));
+  }
 });
 
 /**
@@ -82,6 +91,16 @@ interface Searchable {
   path: () => string;
   session: () => AuthSession;
   seed: () => Promise<void>;
+  /**
+   * The identical row, in kindergarten B.
+   *
+   * ★ Without this the cross-tenant case below asserts nothing: "A's search
+   * found one row" is true whether or not B has any, because B's rows are
+   * different text. Seeding the *same* term on both sides is what makes a
+   * leak show up as two results instead of one — and a leak that produced a
+   * plausible-looking row is exactly the kind nobody notices.
+   */
+  seedOther: () => Promise<void>;
 }
 
 async function post(session: AuthSession, path: string, body: unknown) {
@@ -108,6 +127,14 @@ const LISTS: Searchable[] = [
         dateOfBirth: "2022-05-05",
       });
     },
+    seedOther: async () => {
+      await post(adminB, `/kindergartens/${b.kindergarten.id}/children`, {
+        lastName: TERM,
+        firstName: "Болд",
+        sex: "MALE",
+        dateOfBirth: "2022-05-05",
+      });
+    },
   },
   {
     name: "хэрэглэгч",
@@ -117,6 +144,13 @@ const LISTS: Searchable[] = [
       const user = await createUser({ username: `u-${Math.random().toString(36).slice(2, 8)}` });
       await createMembership(user.id, a.kindergarten.id, "TEACHER");
       await authed(request(server()).patch(`/v1/users/${user.id}`), adminA).send({
+        lastName: TERM,
+      });
+    },
+    seedOther: async () => {
+      const user = await createUser({ username: `ub-${Math.random().toString(36).slice(2, 8)}` });
+      await createMembership(user.id, b.kindergarten.id, "TEACHER");
+      await authed(request(server()).patch(`/v1/users/${user.id}`), adminB).send({
         lastName: TERM,
       });
     },
@@ -135,6 +169,15 @@ const LISTS: Searchable[] = [
         .attach("file", PDF, "дүрэм.pdf");
       if (res.status !== 201) throw new Error(`seed documents: ${res.status} ${res.text}`);
     },
+    seedOther: async () => {
+      const res = await authed(
+        request(server()).post(`/v1/kindergartens/${b.kindergarten.id}/documents`),
+        adminB,
+      )
+        .field("title", `${TERM} — дүрэм`)
+        .attach("file", PDF, "дүрэм.pdf");
+      if (res.status !== 201) throw new Error(`seed documents (b): ${res.status} ${res.text}`);
+    },
   },
   {
     name: "орц",
@@ -142,6 +185,12 @@ const LISTS: Searchable[] = [
     session: () => cookA,
     seed: async () => {
       await post(cookA, `/kindergartens/${a.kindergarten.id}/ingredients`, {
+        name: TERM,
+        unit: "GRAM",
+      });
+    },
+    seedOther: async () => {
+      await post(cookB, `/kindergartens/${b.kindergarten.id}/ingredients`, {
         name: TERM,
         unit: "GRAM",
       });
@@ -162,6 +211,17 @@ const LISTS: Searchable[] = [
         ingredients: [{ ingredientId: ingredient.id, quantity: "100" }],
       });
     },
+    seedOther: async () => {
+      const ingredient = await post(cookB, `/kindergartens/${b.kindergarten.id}/ingredients`, {
+        name: `Гурил-${Math.random().toString(36).slice(2, 6)}`,
+        unit: "GRAM",
+      });
+      await post(cookB, `/kindergartens/${b.kindergarten.id}/recipes`, {
+        name: TERM,
+        yieldPortions: 10,
+        ingredients: [{ ingredientId: ingredient.id, quantity: "100" }],
+      });
+    },
   },
   {
     name: "нийлүүлэгч",
@@ -169,6 +229,9 @@ const LISTS: Searchable[] = [
     session: () => cookA,
     seed: async () => {
       await post(cookA, `/kindergartens/${a.kindergarten.id}/suppliers`, { name: TERM });
+    },
+    seedOther: async () => {
+      await post(cookB, `/kindergartens/${b.kindergarten.id}/suppliers`, { name: TERM });
     },
   },
 ];
@@ -252,18 +315,24 @@ describe("хайлтын жигд байдал", () => {
        * ★★★ Search narrows the tenant filter; it can never widen it.
        *
        * `searchWhere` returns a fragment a repository places *beside* its base
-       * filter, never instead of it. This seeds the identical text in
-       * kindergarten B and asserts A's search cannot reach it — the failure
-       * this whole layering exists to prevent (CLAUDE.md §2.2).
+       * filter, never instead of it. So this seeds the **identical text** in
+       * kindergarten B and asserts A still sees exactly one row.
+       *
+       * ★ The identical text is the whole point, and an earlier version of
+       * this test did not do it: it asserted "A found one row" while B's rows
+       * said something else entirely, which is true whether the tenant filter
+       * works or not. A leak that surfaced a plausible-looking row is exactly
+       * the kind nobody notices (CLAUDE.md §2.2).
        */
       it("never reaches another kindergarten's rows", async () => {
+        await list.seedOther();
+
         const res = await search(list, "Тэмдэг");
         const items = res.body.items as { id: string }[];
 
-        // Whatever it found belongs to A. `b` exists in the fixture with its
-        // own rows; none of them may appear here whatever the term.
         expect(res.status).toBe(200);
         expect(items).toHaveLength(1);
+        expect(res.body.total).toBe(1);
       });
 
       it("refuses a term longer than the schema allows", async () => {

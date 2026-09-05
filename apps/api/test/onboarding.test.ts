@@ -80,7 +80,7 @@ beforeEach(async () => {
    * endpoint counts by identifier. Without this the file passes alone and
    * fails in a full run, which CLAUDE.md §4.4 records happening before.
    */
-  app.get(RateLimitService).resetAll();
+  await app.get(RateLimitService).resetAll();
 
   scenario = await createScenario("onboarding");
   const superUser = await createUser({ username: "platform-onboarding", isSuperAdmin: true });

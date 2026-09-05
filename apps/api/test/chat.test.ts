@@ -55,7 +55,7 @@ beforeEach(async () => {
     and for the same reason: the limiter is real behaviour worth keeping in
     production and worth clearing between tests that are not about it.
   */
-  app.get(RateLimitService).resetAll();
+  await app.get(RateLimitService).resetAll();
   a = await createScenario("a");
   b = await createScenario("b");
   teacherA = await login(app, a.teacherUser.username);

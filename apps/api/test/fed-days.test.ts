@@ -58,7 +58,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await resetData();
-  app.get(RateLimitService).resetAll();
+  await app.get(RateLimitService).resetAll();
 
   a = await createScenario("a");
   teacherA = await login(app, a.teacherUser.username);

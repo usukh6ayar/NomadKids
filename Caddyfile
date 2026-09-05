@@ -57,7 +57,23 @@
 {$API_DOMAIN} {
 	encode zstd gzip
 
-	reverse_proxy api:3001 {
+	# ★ A dynamic upstream, not `reverse_proxy api:3001`.
+	#
+	# Since 2026-09-05 the API runs as several replicas (А/261 шалгуур 6).
+	# Docker's embedded DNS returns one A record per replica, but Caddy resolves
+	# a static upstream **once at startup** — so a plain `api:3001` would pin
+	# every request to whichever container answered first, and the other
+	# replicas would sit idle while the first one saturated its core. That is
+	# the failure mode where scaling out changes nothing and nobody can see why.
+	#
+	# `refresh 10s` is what picks up a replica that restarted with a new IP.
+	reverse_proxy {
+		dynamic a {
+			name api
+			port 3001
+			refresh 10s
+		}
+
 		header_up X-Forwarded-Proto {scheme}
 		header_up X-Forwarded-Host {host}
 

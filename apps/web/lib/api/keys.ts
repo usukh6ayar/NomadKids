@@ -60,6 +60,10 @@ export const qk = {
   specialNeedsCategories: (childId: string) =>
     ["child", childId, "special-needs-categories"] as const,
   incidents: (childId: string) => ["child", childId, "incidents"] as const,
+  /** Ажилтны хувийн хэрэг — А/261 шалгуур 51. Keyed by both ids because a
+   * person may work at two kindergartens and each keeps its own file. */
+  staffRecords: (kindergartenId: string, userId: string) =>
+    ["admin", "staff-records", kindergartenId, userId] as const,
   artwork: (childId: string) => ["child", childId, "artwork"] as const,
   consent: (childId: string) => ["child", childId, "consent"] as const,
   audit: (filters: Record<string, unknown> = {}) => ["admin", "audit", filters] as const,

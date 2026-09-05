@@ -72,6 +72,24 @@ services:
       NODE_ENV: production
     networks: [internal]
 
+  # ── The API ────────────────────────────────────────────────────────────────
+  #
+  # ★ Runs as N processes since 2026-09-05 — Order А/261, criterion 6 (20,000
+  # concurrent users). `docs/LOAD_TEST.md` measured the ceiling and named the
+  # cause: one Node process is one core, whatever the machine has.
+  #
+  # Two things had to be true before this was safe, and both now are:
+  #
+  #   1. **Rate limiting counts in Redis**, not in process memory. In memory,
+  #      N processes meant N× the configured limit — a documented 5 login
+  #      attempts silently behaving like 10. `rate-limit.service.ts`.
+  #   2. **PDF generation moved to its own container** (below). Chromium's 1 GB
+  #      floor is a poor reason to size every API instance for it, which is the
+  #      split `reports.queue.ts` was written to make possible.
+  #
+  # Migrations are safe under replicas: the entrypoint runs `prisma migrate
+  # deploy`, which takes an advisory lock, so the second replica waits and then
+  # finds nothing to do.
   api:
     build:
       context: .
@@ -92,6 +110,13 @@ services:
       STORAGE_ENDPOINT: ${MEDIA_ORIGIN}
       NODE_ENV: production
       PORT: "3001"
+      # ★ Explicitly off, overriding whatever `.env.production` carries.
+      #
+      # It shipped as `true` when one container did everything, and a copied
+      # value surviving into a replica is the failure this whole block exists
+      # to avoid: N Chromiums in N 512 MB containers, each OOM-killed mid-render
+      # and restarted, on a queue that never drains.
+      REPORTS_WORKER_ENABLED: "false"
     depends_on:
       db:
         condition: service_healthy
@@ -99,10 +124,62 @@ services:
         condition: service_healthy
       storage:
         condition: service_healthy
-    # ★★ Chromium's floor is measured, not guessed: 384 MB fails, 512 MB works,
-    # 1 GB is the documented requirement (docs/PDF_SPIKE.md §3). The API runs
-    # the report worker in-process (REPORTS_WORKER_ENABLED), so this limit is
-    # what stands between a PDF render and an OOM kill of the whole API.
+    # ★ 512 MB per replica, not 2 GB.
+    #
+    # The old limit existed because this container also rendered PDFs; Chromium
+    # needs 1 GB (docs/PDF_SPIKE.md §3) and an OOM kill would have taken the
+    # API with it. That work now lives in `reports-worker`, so an API replica
+    # is sized for what it actually does — serving requests.
+    #
+    # ★★ `API_REPLICAS` defaults to 2, which is what the current VPS has room
+    # for. Raising it is the lever criterion 6 asks for: `docs/LOAD_TEST.md`
+    # measured a single process, and the ceiling scales with cores until
+    # Postgres becomes the limit. Re-measure before claiming a number.
+    deploy:
+      replicas: ${API_REPLICAS:-2}
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    networks: [internal]
+
+  # ── The report worker ──────────────────────────────────────────────────────
+  #
+  # ★ The same image as the API, with the queue consumer switched on and the
+  # HTTP surface unused. `reports.queue.ts` predicted this container: "Split
+  # from the worker so that the API can enqueue without ever running a job.
+  # That separation is what makes it a configuration change rather than a
+  # rewrite when PDF generation needs its own container."
+  #
+  # ★★ **Exactly one replica, on purpose.** BullMQ hands a job to one consumer,
+  # so several would be correct — but each holds a Chromium, and 1 GB apiece is
+  # the whole reason this is not part of the API. Reports are minutes-tolerant;
+  # a queue that drains slightly slower is the right trade against a machine
+  # that swaps.
+  reports-worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=public
+      REDIS_URL: redis://redis:6379
+      STORAGE_ENDPOINT: ${MEDIA_ORIGIN}
+      NODE_ENV: production
+      PORT: "3001"
+      # ★ The one setting that distinguishes this container from `api`.
+      REPORTS_WORKER_ENABLED: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      storage:
+        condition: service_healthy
+    # Chromium's floor is measured, not guessed: 384 MB fails, 512 MB works,
+    # 1 GB is the documented requirement (docs/PDF_SPIKE.md §3).
     deploy:
       resources:
         limits:

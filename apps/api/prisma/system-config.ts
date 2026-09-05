@@ -82,6 +82,18 @@ export const SYSTEM_SPECIAL_NEEDS_CATEGORIES = [
  * on `(code) WHERE "kindergartenId" IS NULL` turn a duplicate into a database
  * error rather than a silent second row.
  *
+ * ★ **Two queries per table, not two per row.**
+ *
+ * It used to be a `findFirst` plus a `create` for each of the fourteen system
+ * rows, which was tolerable until the special-needs categories made it
+ * twenty-three — forty-six round trips. That matters because `resetData()`
+ * calls this **before every integration test**: `TRUNCATE ... CASCADE` empties
+ * these tables too (they have no kindergarten to cascade from), so the config
+ * is restored between every case in a suite of eighteen hundred. The three
+ * `beforeEach` hook timeouts on 2026-09-05 were traced to contention rather
+ * than to this, but a 10-second hook budget should not be spent on round trips
+ * that one `createMany` covers.
+ *
  * Typed loosely because it is shared between the seed script and the test
  * helpers, which construct their Prisma clients separately.
  */
@@ -91,65 +103,74 @@ export async function applySystemConfig(db: {
   observationType: SystemTable;
   specialNeedsCategory: SystemTable;
 }): Promise<void> {
-  for (const d of SYSTEM_DOMAINS) {
-    const existing = await db.developmentDomain.findFirst({
-      where: { kindergartenId: null, code: d.code },
-    });
-    if (existing) {
-      await db.developmentDomain.update({
-        where: { id: existing.id },
-        data: { name: d.name, color: d.color, order: d.order },
-      });
-    } else {
-      await db.developmentDomain.create({ data: { ...d, kindergartenId: null } });
+  await syncSystemRows(db.developmentDomain, SYSTEM_DOMAINS, "code", (d) => ({
+    code: d.code,
+    name: d.name,
+    color: d.color,
+    order: d.order,
+  }));
+
+  await syncSystemRows(db.assessmentLevel, SYSTEM_LEVELS, "value", (l) => ({
+    value: l.value,
+    label: l.label,
+    color: l.color,
+    description: l.description,
+    order: l.value,
+  }));
+
+  await syncSystemRows(db.observationType, SYSTEM_OBSERVATION_TYPES, "code", (t) => ({
+    code: t.code,
+    name: t.name,
+    order: t.order,
+  }));
+
+  await syncSystemRows(db.specialNeedsCategory, SYSTEM_SPECIAL_NEEDS_CATEGORIES, "code", (c) => ({
+    code: c.code,
+    name: c.name,
+    order: c.order,
+  }));
+}
+
+/**
+ * Reads what is there, inserts what is missing in one statement, and updates
+ * only the rows whose values actually changed.
+ *
+ * ★ The update is skipped when nothing differs, which is the common case and
+ * the one that runs eighteen hundred times. `resetData()` has just truncated,
+ * so every row is missing and this is exactly one `findMany` and one
+ * `createMany`; the seed on a live database usually finds everything present
+ * and unchanged and issues neither.
+ */
+async function syncSystemRows<T>(
+  table: SystemTable,
+  rows: readonly T[],
+  keyField: string,
+  dataOf: (row: T) => Record<string, unknown>,
+): Promise<void> {
+  const existing = await table.findMany({ where: { kindergartenId: null } });
+  const byKey = new Map(existing.map((row) => [String(row[keyField]), row]));
+
+  const missing: Record<string, unknown>[] = [];
+
+  for (const row of rows) {
+    const data = dataOf(row);
+    const found = byKey.get(String(data[keyField]));
+
+    if (!found) {
+      missing.push({ ...data, kindergartenId: null });
+      continue;
     }
+    // Only when a value actually moved — a no-op UPDATE is still a round trip
+    // and still takes a row lock.
+    const changed = Object.entries(data).some(([key, value]) => found[key] !== value);
+    if (changed) await table.update({ where: { id: String(found.id) }, data });
   }
 
-  for (const l of SYSTEM_LEVELS) {
-    const existing = await db.assessmentLevel.findFirst({
-      where: { kindergartenId: null, value: l.value },
-    });
-    if (existing) {
-      await db.assessmentLevel.update({
-        where: { id: existing.id },
-        data: { label: l.label, color: l.color, description: l.description, order: l.value },
-      });
-    } else {
-      await db.assessmentLevel.create({ data: { ...l, order: l.value, kindergartenId: null } });
-    }
-  }
-
-  for (const t of SYSTEM_OBSERVATION_TYPES) {
-    const existing = await db.observationType.findFirst({
-      where: { kindergartenId: null, code: t.code },
-    });
-    if (existing) {
-      await db.observationType.update({
-        where: { id: existing.id },
-        data: { name: t.name, order: t.order },
-      });
-    } else {
-      await db.observationType.create({ data: { ...t, kindergartenId: null } });
-    }
-  }
-
-  for (const c of SYSTEM_SPECIAL_NEEDS_CATEGORIES) {
-    const existing = await db.specialNeedsCategory.findFirst({
-      where: { kindergartenId: null, code: c.code },
-    });
-    if (existing) {
-      await db.specialNeedsCategory.update({
-        where: { id: existing.id },
-        data: { name: c.name, order: c.order },
-      });
-    } else {
-      await db.specialNeedsCategory.create({ data: { ...c, kindergartenId: null } });
-    }
-  }
+  if (missing.length > 0) await table.createMany({ data: missing });
 }
 
 interface SystemTable {
-  findFirst(args: { where: Record<string, unknown> }): Promise<{ id: string } | null>;
-  create(args: { data: Record<string, unknown> }): Promise<unknown>;
+  findMany(args: { where: Record<string, unknown> }): Promise<Record<string, unknown>[]>;
+  createMany(args: { data: Record<string, unknown>[] }): Promise<unknown>;
   update(args: { where: { id: string }; data: Record<string, unknown> }): Promise<unknown>;
 }

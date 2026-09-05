@@ -108,7 +108,7 @@ beforeEach(async () => {
   await resetData(db);
   // Four logins per test against a limiter that counts by identifier — the
   // same reset `artwork.test.ts` and `chat.test.ts` do, and for the same reason.
-  app.get(RateLimitService).resetAll();
+  await app.get(RateLimitService).resetAll();
 
   a = await createScenario("a");
   b = await createScenario("b");

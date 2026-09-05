@@ -29,7 +29,14 @@ export class RateLimitGuard implements CanActivate {
     private readonly limiter: RateLimitService,
   ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  /**
+   * ★ `async` since 2026-09-05, because the limiter counts in Redis.
+   *
+   * Nest awaits a guard that returns a promise, so this is the whole cost of
+   * moving the counter out of process memory — which is what the service's
+   * previous docblock predicted and what criterion 6 needed.
+   */
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const options = this.reflector.getAllAndOverride<RateLimitOptions | undefined>(RATE_LIMIT, [
       context.getHandler(),
       context.getClass(),
@@ -43,7 +50,7 @@ export class RateLimitGuard implements CanActivate {
       options.byUser && request.actor ? `user:${request.actor.userId}` : `ip:${clientIp(request)}`;
     const key = `${request.method}:${request.route?.path ?? request.path}:${subject}`;
 
-    const result = this.limiter.hit(key, options.limit, options.windowMs);
+    const result = await this.limiter.hit(key, options.limit, options.windowMs);
     response.setHeader("X-RateLimit-Remaining", String(result.remaining));
 
     if (!result.allowed) {

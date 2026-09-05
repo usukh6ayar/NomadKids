@@ -54,7 +54,7 @@ beforeEach(async () => {
   // ★ Five logins per test, sixteen tests. Without this the login limiter
   // starts answering 429 partway through the file and the failures read as
   // register defects.
-  app.get(RateLimitService).resetAll();
+  await app.get(RateLimitService).resetAll();
 
   a = await createScenario("a");
   b = await createScenario("b");

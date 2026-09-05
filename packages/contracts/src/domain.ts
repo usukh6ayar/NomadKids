@@ -2225,6 +2225,39 @@ export const adminUserSchema = z.object({
     .default([]),
 });
 
+/**
+ * Ажилтны туршлага, гэрчилгээ, зэрэг — Order А/261, шалгуур 51.
+ *
+ * ★ One shape for all three kinds, mirroring the one table.
+ *
+ * A discriminated union per kind would refuse an `issuer` on an EXPERIENCE
+ * row, and "Багшийн хөгжлийн төв" is exactly what somebody writes there when
+ * the post was a secondment. Unused fields are left blank, as on the paper
+ * form.
+ */
+export const staffRecordKindSchema = z.enum(["EXPERIENCE", "CERTIFICATE", "QUALIFICATION"]);
+
+export const STAFF_RECORD_KIND_LABEL: Record<string, string> = {
+  EXPERIENCE: "Ажлын туршлага",
+  CERTIFICATE: "Гэрчилгээ",
+  QUALIFICATION: "Боловсрол, зэрэг",
+};
+
+export const staffRecordSchema = z.object({
+  id: uuidSchema,
+  kind: staffRecordKindSchema,
+  title: z.string(),
+  issuer: z.string().nullish(),
+  documentNo: z.string().nullish(),
+  note: z.string().nullish(),
+  startedOn: z.string(),
+  /** `null` means "still current" — an open-ended post, or a certificate that
+   * does not expire. */
+  endedOn: z.string().nullish(),
+  createdBy: personRefSchema.nullish(),
+});
+export type StaffRecord = z.infer<typeof staffRecordSchema>;
+
 /** `POST /kindergartens/:id/users` — the account plus the token to hand over. */
 export const invitedUserSchema = z.object({
   user: adminUserSchema.partial({ memberships: true }),

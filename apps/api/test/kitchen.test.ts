@@ -50,7 +50,7 @@ async function createCook(kindergartenId: string, label: string): Promise<AuthSe
 
 beforeEach(async () => {
   await resetData();
-  app.get(RateLimitService).resetAll();
+  await app.get(RateLimitService).resetAll();
 
   a = await createScenario("a");
   b = await createScenario("b");
