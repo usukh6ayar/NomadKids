@@ -162,13 +162,28 @@ export function statusFor(input: {
     return "PAID";
   }
 
-  const overdue = input.dueDate !== null && input.now > input.dueDate;
+  const overdue = input.dueDate !== null && isPastDue(input.dueDate, input.now);
 
   if (input.paidAmount.isPositive() && !input.paidAmount.isZero()) {
     return overdue ? "OVERDUE" : "PARTIALLY_PAID";
   }
 
   return overdue ? "OVERDUE" : "UNPAID";
+}
+
+/**
+ * Whether a bill due on `dueDate` is now overdue.
+ *
+ * ★ `dueDate` is a `@db.Date` column — Postgres and Prisma both hand it back
+ * as UTC midnight of that calendar day. Comparing it to a full timestamp with
+ * a plain `now > dueDate` therefore made every invoice overdue from the first
+ * instant of its own due date, giving a family paying on the day it was due
+ * no grace at all. This waits for that whole day to elapse — overdue starts
+ * the following midnight, not the due date's.
+ */
+export function isPastDue(dueDate: Date, now: Date): boolean {
+  const endOfDueDate = new Date(dueDate.getTime() + 24 * 60 * 60 * 1000);
+  return now >= endOfDueDate;
 }
 
 /**
