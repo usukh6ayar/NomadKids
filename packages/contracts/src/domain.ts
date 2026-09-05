@@ -315,6 +315,34 @@ export const enrollmentArchiveSchema = z.object({
 });
 export type EnrollmentArchive = z.infer<typeof enrollmentArchiveSchema>;
 
+/**
+ * Which of the three basic facts a child's record is still missing.
+ *
+ * ★ Booleans, never the values themselves.
+ *
+ * "Is there a health note" is a safe thing to put in a roster of thirty
+ * children; the note itself is not, and a list endpoint that carried it would
+ * be handing every teacher the text of every child's medical history to render
+ * a percentage. The same argument covers the guardian's phone number.
+ *
+ * ★★ Three, matching the reference system's own check — photograph, health
+ * information, a guardian who can be reached. They are the three a teacher is
+ * chased for and the three that are useless to discover on the morning they
+ * are needed.
+ */
+export const childProfileCompletionSchema = z.object({
+  photo: z.boolean(),
+  health: z.boolean(),
+  guardianContact: z.boolean(),
+});
+export type ChildProfileCompletion = z.infer<typeof childProfileCompletionSchema>;
+
+/** How many of the three are done. Shared so the label cannot drift from the ring. */
+export function completionPercent(c: ChildProfileCompletion): number {
+  const done = [c.photo, c.health, c.guardianContact].filter(Boolean).length;
+  return Math.round((done / 3) * 100);
+}
+
 export const childSummarySchema = z.object({
   id: uuidSchema,
   lastName: z.string(),
@@ -345,6 +373,15 @@ export const childSummarySchema = z.object({
   // `/children/mine` returns a slimmer row with no enrollments at all, so this
   // defaults rather than being required.
   enrollments: z.array(enrollmentSummarySchema).default([]),
+  /*
+   * ★ Optional, and staff-only in practice.
+   *
+   * The paginated `/children` roster computes it; `/children/mine` does not,
+   * so a guardian is never told their own child's record is "67% complete" —
+   * that is a message for whoever can act on it, and most of what is missing
+   * is the kindergarten's to fill in, not theirs.
+   */
+  profile: childProfileCompletionSchema.optional(),
 });
 export type ChildSummary = z.infer<typeof childSummarySchema>;
 

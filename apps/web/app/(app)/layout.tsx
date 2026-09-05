@@ -35,6 +35,7 @@ import {
   UserCog,
   UtensilsCrossed,
   Users,
+  FileBarChart,
   FileSignature,
   Wallet,
   // `X` was the picker modal's close button and went with it. The type stays:
@@ -237,6 +238,9 @@ function AuthenticatedShell({
       sections={
         isStaff ? staffSections(isAdmin, groupId) : parentSections(myChildren, selectedChildId)
       }
+      // Staff only. A parent's menu is four rows about one child; a shortcut
+      // box over it would repeat most of it.
+      shortcuts={isStaff ? staffShortcuts(isAdmin, groupId) : undefined}
       variant={isStaff ? "teacher" : "parent"}
       isAdmin={isAdmin}
       childSwitcher={childSwitcher}
@@ -301,6 +305,7 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
   "/admin": ShieldCheck,
   "/admin/funding": Wallet,
   "/attendance/daily": CalendarCheck,
+  "/reports": FileBarChart,
   "/platform": Building2,
   "/platform/revenue": Wallet,
   "/platform/applications": FileSignature,
@@ -373,6 +378,44 @@ function routeIcon(href: string | undefined) {
  * `/children`, where assessment can still be reached per child. No branch is a
  * dead link, and none of them opens a screen whose first act is "which group?".
  */
+/**
+ * "Түргэн холбоос" — the three a teacher opens every morning.
+ *
+ * ★ The client asked for this box back on 2026-09-05, having compared the two
+ * products side by side. `NavShortcuts` carries the argument on both sides;
+ * what belongs here is why *these three*.
+ *
+ * They are the reference system's own choice — Хүүхдүүд, Ирц, Ангийн самбар —
+ * and they are the three that are opened on a schedule rather than looked up:
+ * the register every morning, the board every time something is posted, the
+ * roster whenever a parent asks about a child. Everything else in the menu is
+ * reached when there is a reason to, which is what a section is for.
+ *
+ * ★★ Ирц resolves the same way the section below does — a teacher gets their
+ * own group's day sheet, an administrator gets `/attendance/daily`. A shortcut
+ * that led somewhere different from the menu row of the same name would be
+ * worse than no shortcut.
+ *
+ * ★★★ A teacher with no group gets **no** Ирц shortcut rather than one
+ * pointing at a picker. `scoped()` returns null there, and a quick link whose
+ * first act is a question is not quick.
+ */
+function staffShortcuts(isAdmin: boolean, groupId: string | null): NavItem[] {
+  const attendanceHref = isAdmin
+    ? "/attendance/daily"
+    : groupId
+      ? `/groups/${groupId}/attendance`
+      : null;
+
+  return [
+    { href: "/children", label: "Хүүхдүүд", icon: <Users {...sectionIconProps} /> },
+    ...(attendanceHref
+      ? [{ href: attendanceHref, label: "Ирц", icon: <CalendarCheck {...sectionIconProps} /> }]
+      : []),
+    { href: "/notifications", label: "Ангийн самбар", icon: <Newspaper {...sectionIconProps} /> },
+  ];
+}
+
 function staffNav(isAdmin: boolean, groupId: string | null): NavItem[] {
   const assessmentHref = groupId
     ? `/groups/${groupId}/assessment`
@@ -584,6 +627,22 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
           href: scoped("assessment"),
           icon: <ClipboardCheck {...sectionIconProps} />,
         },
+        /*
+         * ★ "Тайлан" — added 2026-09-05, at the client's request, after they
+         * compared this menu with the reference system's.
+         *
+         * It goes here because that is where the reference puts it: under the
+         * development-and-assessment heading, below Явцын үнэлгээ. It is the
+         * teacher's own group read by the month, which is what a teacher means
+         * by a report — the director's cross-group view is Ирц, and one child's
+         * narrative is on the child.
+         *
+         * ★★ The screen was built rather than the row pointed at something
+         * adjacent. `/attendance/daily` is ADMIN/ACCOUNTANT and `term-report`
+         * is per child, so there was no existing destination — and a row that
+         * 404s is exactly what rule 1 above forbids.
+         */
+        entry("Тайлан", "/reports"),
         /*
          * ★ Neither review queue is a menu row — settled 2026-09-04, and this
          * time by the client rather than by the argument.
