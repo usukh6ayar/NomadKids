@@ -36,6 +36,7 @@ export function ConfirmDialog({
   trigger,
   title,
   description,
+  body,
   confirmLabel,
   cancelLabel = "Болих",
   pendingLabel,
@@ -48,6 +49,20 @@ export function ConfirmDialog({
   title: string;
   /** What actually happens, in a sentence. Name the record where you can. */
   description: string;
+  /**
+   * One control the confirmation itself needs — a select, a reason field.
+   *
+   * ★ Optional, and most dialogs should stay without one.
+   *
+   * A confirmation asks "are you sure"; a form asks "with what". Putting a
+   * whole form in here would turn every destructive prompt into a modal editor,
+   * which is the thing `archive-button.tsx` avoids by keeping its errors on the
+   * page. It exists for the case where the confirmation *is* the choice —
+   * changing a role, where "yes" is meaningless without "to what" — and it sits
+   * between the description and the buttons so the sentence explaining the
+   * consequence is read first.
+   */
+  body?: ReactNode;
   confirmLabel: string;
   cancelLabel?: string;
   /** Shown on the confirm button while `pending`. Falls back to `confirmLabel`. */
@@ -112,6 +127,8 @@ export function ConfirmDialog({
           <Dialog.Description id={descriptionId} className="mt-1.5 text-body text-muted">
             {description}
           </Dialog.Description>
+
+          {body ? <div className="mt-4">{body}</div> : null}
 
           {/*
             Cancel first in the DOM, so it is what `Tab` reaches first and what

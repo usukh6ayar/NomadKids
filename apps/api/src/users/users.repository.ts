@@ -191,6 +191,48 @@ export class UsersRepository {
   }
 
   /**
+   * Moves a member of staff from one role to another, atomically.
+   *
+   * ★ One transaction, because the intermediate state is a person with no role.
+   *
+   * `Membership` is unique on (`userId`, `kindergartenId`, `role`), so this
+   * cannot be an update of the `role` column when a row for the target role
+   * already exists — which it does whenever somebody held that role before and
+   * it was revoked. Both branches live here rather than in the service so that
+   * the "deactivate the old, activate or create the new" pair can never be
+   * half-applied.
+   *
+   * ★★ Group assignments end with the old role, on `revokeMembership`'s own
+   * reasoning: a teacher who becomes a cook must not keep the groups their
+   * teaching membership carried, and `GroupTeacher` rows left `endedOn: null`
+   * would silently restore them if the teaching role were ever granted again.
+   */
+  async changeMembershipRole(
+    membershipId: string,
+    userId: string,
+    kindergartenId: string,
+    role: Role,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.membership.update({ where: { id: membershipId }, data: { isActive: false } });
+      await tx.groupTeacher.updateMany({
+        where: { membershipId, endedOn: null, deletedAt: null },
+        data: { endedOn: new Date() },
+      });
+
+      const existing = await tx.membership.findFirst({
+        where: { userId, kindergartenId, role, deletedAt: null },
+      });
+
+      if (existing) {
+        return tx.membership.update({ where: { id: existing.id }, data: { isActive: true } });
+      }
+
+      return tx.membership.create({ data: { userId, kindergartenId, role } });
+    });
+  }
+
+  /**
    * Ends every group assignment attached to a membership.
    *
    * Deactivating a teacher's membership must also end their assignments, or the

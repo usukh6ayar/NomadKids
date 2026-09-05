@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { z } from "zod";
 import { attendanceRecordSchema, groupAttendanceRowSchema, groupSchema } from "@kinder/contracts";
@@ -16,6 +16,7 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
+import { SelectBox, SelectionBar, useSelection } from "@/components/ui/selection";
 import { RegisterProgress } from "@/components/register/register-progress";
 import { AttendanceRequestQueue } from "@/components/attendance/request-queue";
 import { AttendanceMonthPanel } from "@/components/attendance/month-panel";
@@ -65,7 +66,23 @@ function GroupAttendance() {
   const params = useParams<{ groupId: string }>();
   const groupId = params.groupId;
   const queryClient = useQueryClient();
-  const [date, setDate] = useState(today());
+
+  /*
+   * ★ `?date=` seeds the picker — 2026-09-04.
+   *
+   * The director's register (`/attendance/daily`) links each row here, and a
+   * row is a group *on a day*: landing on today's sheet after clicking a row
+   * about last Tuesday would silently answer a different question, and the
+   * reader would have to notice the date field to find out. Seeded rather than
+   * controlled, so changing the picker afterwards does not fight the URL.
+   */
+  const search = useSearchParams();
+  const [date, setDate] = useState(() => {
+    const requested = search.get("date");
+    return requested && /^\d{4}-\d{2}-\d{2}$/.test(requested) && requested <= today()
+      ? requested
+      : today();
+  });
 
   /*
    * ★ The same key the other two registers use, so switching from Ирц to
@@ -105,6 +122,43 @@ function GroupAttendance() {
       }),
     onSuccess: () => {
       toast.success("Ирц бүртгэгдлээ.");
+      void queryClient.invalidateQueries({ queryKey: qk.groupAttendance(groupId, date) });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  /*
+   * ★ Ticking many children and marking them in one request — 2026-09-04.
+   *
+   * The register was one `PUT /children/:id/attendance/:date` per tap, so a
+   * teacher with twenty-four children made twenty-four writes every morning
+   * and could finish with a register that was half saved and looked complete.
+   * The meal register beside it has taken a whole sitting in one call since it
+   * shipped; `PUT /groups/:id/attendance` is that endpoint for this screen.
+   *
+   * ★★ The per-child buttons stay, and are still the fast path.
+   *
+   * Most of the register is "everybody came except two", which is two taps on
+   * the exceptions after one bulk mark — not twenty-four ticks. The rows keep
+   * their own status pills for that, and for the corrections that carry a note
+   * or a drop-off, which the batch endpoint deliberately cannot send.
+   */
+  const selection = useSelection((sheet.data ?? []).map((row) => row.child.id));
+
+  const recordMany = useMutation({
+    mutationFn: (status: string) =>
+      mutate(`/groups/${groupId}/attendance`, z.array(attendanceRecordSchema), {
+        method: "PUT",
+        body: {
+          date,
+          entries: selection.ids.map((childId) => ({ childId, status })),
+        },
+      }),
+    onSuccess: (saved) => {
+      toast.success(`${saved.length} хүүхдийн ирц бүртгэгдлээ.`);
+      // Cleared only on success: a failed batch leaves the ticks where they
+      // were, so the teacher can retry rather than re-select twenty-four rows.
+      selection.clear();
       void queryClient.invalidateQueries({ queryKey: qk.groupAttendance(groupId, date) });
     },
     onError: (error) => toast.error(errorMessage(error)),
@@ -207,7 +261,19 @@ function GroupAttendance() {
         <>
           <SectionHeader
             title="Бүлгийн ирц"
-            action={<span className="text-body text-muted">{sheet.data.length} хүүхэд</span>}
+            action={
+              <span className="flex items-center gap-2">
+                <span className="text-body text-muted">{sheet.data.length} хүүхэд</span>
+                {sheet.data.length > 0 ? (
+                  <SelectBox
+                    checked={selection.allSelected}
+                    indeterminate={selection.someSelected}
+                    onChange={selection.toggleAll}
+                    label="Бүх хүүхдийг сонгох"
+                  />
+                ) : null}
+              </span>
+            }
           />
 
           {sheet.data.length === 0 ? (
@@ -224,10 +290,38 @@ function GroupAttendance() {
                   status={row.record?.status ?? null}
                   pending={record.isPending && record.variables?.childId === row.child.id}
                   onSelect={(status) => record.mutate({ childId: row.child.id, status })}
+                  checked={selection.has(row.child.id)}
+                  onToggle={() => selection.toggle(row.child.id)}
                 />
               ))}
             </Card>
           )}
+
+          {/*
+            ★ The same six statuses as the rows, in the same order and the same
+            tints, because they mean the same thing.
+
+            A second, shorter set here — "Ирсэн" and nothing else — would be the
+            common case at the cost of making the register's other half (a
+            correction pass: three sick, one excused) go back to one tap per
+            child. `ATTENDANCE_STATUS_LABEL` is the one source both read.
+          */}
+          <SelectionBar count={selection.count} onClear={selection.clear}>
+            {Object.entries(STATUS_LABEL).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                disabled={recordMany.isPending}
+                onClick={() => recordMany.mutate(value)}
+                className={cn(
+                  "min-h-11 rounded-control border border-transparent px-3 text-body font-semibold transition-all duration-150 active:translate-y-[1px] disabled:opacity-60",
+                  TONE_SURFACE[ATTENDANCE_STATUS_CHART_TONE[value] ?? "sky"],
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </SelectionBar>
         </>
       ) : null}
 
@@ -249,15 +343,25 @@ function ChildRow({
   status,
   pending,
   onSelect,
+  checked,
+  onToggle,
 }: {
   child: { id: string; lastName: string; firstName: string };
   status: string | null;
   pending: boolean;
   onSelect: (status: string) => void;
+  checked: boolean;
+  onToggle: () => void;
 }) {
   return (
     <div className="flex flex-col gap-3 px-4 py-3.5 transition-colors hover:bg-sunken sm:flex-row sm:items-center sm:gap-4">
       <div className="flex min-w-0 flex-1 items-center gap-3">
+        {/*
+          Leading the row, before the avatar: a column of boxes down the left
+          edge is scannable as a column, and one tucked between the face and
+          the name is not.
+        */}
+        <SelectBox checked={checked} onChange={onToggle} label={`${fullName(child)} — сонгох`} />
         <ChildAvatar child={child} size={40} />
         <span className="min-w-0 truncate text-lead font-semibold text-ink">{fullName(child)}</span>
       </div>

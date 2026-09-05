@@ -18,11 +18,14 @@ import { RequireRole } from "@/components/shell/require-role";
 import { Download } from "lucide-react";
 import { downloadUrl } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/field";
 import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
 import { Pagination } from "@/components/ui/pagination";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
+import { SelectBox, SelectionBar, useSelection } from "@/components/ui/selection";
+import { formatDate } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 /**
  * Ирцийн дэлгэрэнгүй — the whole kindergarten, a child per row and a day per
@@ -140,6 +143,17 @@ function AttendanceJournal() {
 
   const data = journal.data;
 
+  /*
+   * ★ Ticking rows so the export can be a hand-picked set — 2026-09-04.
+   *
+   * The filters answer "this group", "the five-year-olds", "the sick days";
+   * none of them answers "these nine children", which is what somebody
+   * assembling a file for one inspection is actually choosing. `useSelection`
+   * prunes to the rows on screen, so paging or changing the date range clears
+   * the ticks rather than carrying an invisible selection into a download.
+   */
+  const selection = useSelection((data?.items ?? []).map((row) => row.childId));
+
   return (
     <div className="flex flex-col gap-4 py-2">
       <PageHeader
@@ -255,8 +269,52 @@ function AttendanceJournal() {
         />
       ) : (
         <>
+          <SectionHeader
+            title="Хугацааны дүн"
+            lede={`${formatDate(data.from)} — ${formatDate(data.to)}, ${data.total} хүүхэд`}
+          />
           <Totals totals={data.totals} />
-          <Grid rows={data.items} days={data.days} />
+
+          {/*
+            ★ A heading over the grid, added 2026-09-04.
+
+            The table simply appeared under a card of figures, so nothing said
+            where the summary stopped and the register began — the client's
+            "дээд гарчиг шиг хэсэг ялгагдахгүй". Two headings turn one long
+            scroll into two named sections, and the lede repeats the range
+            because the grid's columns are days and the reader needs to know
+            which days without scrolling back to the filter.
+          */}
+          <SectionHeader
+            title="Ирцийн бүртгэл"
+            lede="Хүүхэд бүрийн өдөр тутмын ирц. Мөрийг сонгож Excel-ээр татаж болно."
+          />
+          <Grid rows={data.items} days={data.days} selection={selection} />
+
+          {/*
+            ★ The register's own export, narrowed to the ticked rows.
+
+            `?childId=` is a filter like `groupId` — it is ANDed into the same
+            enrolment `where` behind `assertCanReadFinance`, so it can only ever
+            return fewer children than the unticked export beside it. That is
+            what makes "these nine" expressible at all: no filter can name an
+            arbitrary set, and a director assembling a file for one inspection
+            is picking by hand.
+          */}
+          <SelectionBar count={selection.count} onClear={selection.clear}>
+            {primaryKindergartenId ? (
+              <Button size="sm" variant="secondary" asChild>
+                <a
+                  href={downloadUrl(
+                    `/kindergartens/${primaryKindergartenId}/attendance/register/export?${queryString}&childId=${selection.ids.join(",")}`,
+                  )}
+                >
+                  <Download size={16} aria-hidden /> Сонгосныг Excel
+                </a>
+              </Button>
+            ) : null}
+          </SelectionBar>
+
           <Pagination page={data.page} totalPages={data.totalPages} onPage={setPage} />
         </>
       )}
@@ -288,74 +346,279 @@ function Totals({ totals }: { totals: Record<string, number> }) {
  * first column scrolls away is unreadable at exactly the width it is most
  * needed — a director on a laptop looking at a month.
  */
-function Grid({ rows, days }: { rows: AttendanceJournalRow[]; days: string[] }) {
+/**
+ * ★ Four total columns, not one — 2026-09-04.
+ *
+ * The grid ended in a single "Ирсэн" figure, so the two questions a director
+ * opens this register with — "who is off sick" and "who is on leave" — could
+ * only be answered by counting coloured squares across a month. These are the
+ * client's own column names, and the same four the export's "Өдрийн дүн" sheet
+ * carries, so the screen and the file agree.
+ *
+ * `HALF_DAY` counts towards Ирсэн: a half day is a child who came, the reading
+ * the admin dashboard already uses. `OTHER` is deliberately in none of them —
+ * folding an unexplained status into Тасалсан is a policy call that moves a
+ * funding figure, and it is not this table's to make. The four therefore need
+ * not sum to the days in the range.
+ */
+const TOTAL_COLUMNS = [
+  { key: "Ирсэн", of: ["PRESENT", "HALF_DAY"] },
+  { key: "Чөлөөтэй", of: ["EXCUSED"] },
+  { key: "Өвчтэй", of: ["SICK"] },
+  { key: "Тасалсан", of: ["ABSENT"] },
+] as const;
+
+/**
+ * Дугаарлагдсан толгой — "Да 1", "Мя 2".
+ *
+ * ★ A bare column of numbers was the complaint, and it was fair.
+ *
+ * The header printed `1 2 3 …` with nothing saying they were days of a month,
+ * so a reader arriving at a grid of coloured letters had to work back from the
+ * date filter above to know what a column meant. The weekday sits above the
+ * number because that is the fact that explains a gap: an empty Saturday is a
+ * closed kindergarten, and an empty Wednesday is a register nobody filled in.
+ */
+const WEEKDAY_SHORT = ["Ня", "Да", "Мя", "Лх", "Пү", "Ба", "Бя"];
+
+/** UTC throughout — the day keys are UTC and a local `getDay()` drifts by one. */
+function weekdayOf(day: string): number {
+  return new Date(`${day}T00:00:00.000Z`).getUTCDay();
+}
+
+function isWeekend(day: string): boolean {
+  const d = weekdayOf(day);
+  return d === 0 || d === 6;
+}
+
+/**
+ * The whole-kindergarten register — a child per row, a day per column.
+ *
+ * ★ Rebuilt 2026-09-04 after the client could not read it: "ялгагдахгүй … 1 2 3
+ * гэсэн юун мэдэгдэхгүй". Four things were wrong and they compounded.
+ *
+ * **The header did not read as a header.** `text-muted` on the same `bg-surface`
+ * as the body, separated by one hairline. It is `bg-sunken` now, with the
+ * heavier rule under it that a table's first row earns.
+ *
+ * **The days were bare numbers.** They carry their weekday now, and weekends
+ * are tinted — so an empty Saturday reads as "closed" rather than as a register
+ * somebody forgot.
+ *
+ * **The dashes floated.** Every cell now renders the same 24px box whether it
+ * holds a status or not, so the marks line up in columns instead of sitting at
+ * whatever height the glyph happened to want. "Not recorded" is a hollow box
+ * rather than an en dash — the *shape* says "nothing here" without competing
+ * with the letters beside it.
+ *
+ * **The frozen name column merged into the grid.** It scrolls under the days
+ * and had nothing but a matching background to say so; it has a right border
+ * and a shadow now, which is what makes a frozen column look frozen.
+ *
+ * ★★ The letters are explained on the page rather than in a tooltip.
+ *
+ * И, Х, Ч, Ө, Т, Б were readable only by hovering each square. A legend under
+ * the grid costs one line and answers the question once for the whole table —
+ * and it reads on a touch screen, where there is no hover at all.
+ */
+function Grid({
+  rows,
+  days,
+  selection,
+}: {
+  rows: AttendanceJournalRow[];
+  days: string[];
+  selection: ReturnType<typeof useSelection>;
+}) {
   return (
-    <Card pad="none" className="overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="min-w-full border-collapse text-caption">
-          <thead>
-            <tr className="border-b border-line">
-              <th
-                scope="col"
-                className="sticky left-0 z-10 bg-surface px-3 py-2 text-left font-medium text-muted"
-              >
-                Хүүхэд
-              </th>
-              {days.map((day) => (
-                <th key={day} scope="col" className="px-1 py-2 text-center font-medium text-muted">
-                  {/* Day of month only — the year and month are in the filter above. */}
-                  {Number(day.slice(8, 10))}
-                </th>
-              ))}
-              <th scope="col" className="px-3 py-2 text-right font-medium text-muted">
-                Ирсэн
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.childId} className="border-b border-line last:border-0">
+    <div className="flex flex-col gap-2">
+      <Card pad="none" className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full border-collapse text-caption">
+            <thead>
+              <tr className="border-b-2 border-border bg-sunken">
                 <th
-                  scope="row"
-                  className="sticky left-0 z-10 max-w-[12rem] truncate bg-surface px-3 py-2 text-left font-normal text-ink"
+                  scope="col"
+                  className="sticky left-0 z-20 border-r border-border bg-sunken px-3 py-2 text-left font-semibold text-ink shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]"
                 >
-                  {row.child.lastName} {row.child.firstName}
-                  <span className="block text-caption text-muted">{row.group.name}</span>
+                  {/*
+                    The select-all sits inside the sticky name header rather
+                    than in a column of its own: a separate sticky column would
+                    need a second `left` offset kept in step with this one's
+                    width at every breakpoint.
+                  */}
+                  <span className="flex items-center gap-2">
+                    <SelectBox
+                      checked={selection.allSelected}
+                      indeterminate={selection.someSelected}
+                      onChange={selection.toggleAll}
+                      label="Энэ хуудсын бүх хүүхдийг сонгох"
+                    />
+                    Хүүхэд
+                  </span>
                 </th>
 
-                {row.days.map((cell, index) => (
-                  <td key={days[index]} className="px-1 py-2 text-center">
-                    {cell ? (
-                      <span
-                        title={`${days[index]} — ${ATTENDANCE_STATUS_LABEL[cell.status] ?? cell.status}`}
-                        aria-label={`${days[index]} — ${ATTENDANCE_STATUS_LABEL[cell.status] ?? cell.status}`}
-                        className={`inline-flex h-6 w-6 items-center justify-center rounded-control ${
-                          STATUS_TONE[cell.status] ?? "bg-canvas text-muted"
-                        }`}
-                      >
-                        {STATUS_SHORT[cell.status] ?? "?"}
-                      </span>
-                    ) : (
-                      // ★ A dash, not an empty cell and not "absent". Nothing
-                      // was recorded that day, which is a different fact from
-                      // a recorded absence — and the one that becomes a
-                      // funding claim if they are confused.
-                      <span aria-label={`${days[index]} — бүртгэлгүй`} className="text-muted">
-                        –
-                      </span>
+                {days.map((day) => (
+                  <th
+                    key={day}
+                    scope="col"
+                    /* The full date is the accessible name; the cell shows the
+                       two facts that fit — a screen reader gets "2026-09-03"
+                       rather than "Лх 3". */
+                    aria-label={day}
+                    className={cn(
+                      "px-1 py-1.5 text-center font-medium",
+                      isWeekend(day) ? "bg-canvas text-faint" : "text-muted",
                     )}
-                  </td>
+                  >
+                    <span className="block text-caption font-normal leading-tight">
+                      {WEEKDAY_SHORT[weekdayOf(day)]}
+                    </span>
+                    <span className="block text-caption font-semibold tabular-nums leading-tight text-ink">
+                      {Number(day.slice(8, 10))}
+                    </span>
+                  </th>
                 ))}
 
-                <td className="px-3 py-2 text-right text-ink">
-                  {(row.counts.PRESENT ?? 0) + (row.counts.HALF_DAY ?? 0)}
-                </td>
+                {TOTAL_COLUMNS.map((column, index) => (
+                  <th
+                    key={column.key}
+                    scope="col"
+                    className={cn(
+                      "whitespace-nowrap px-3 py-2 text-right font-semibold text-ink",
+                      // A rule where the days end and the totals begin: without
+                      // it the last day and the first total read as neighbours.
+                      index === 0 && "border-l border-border",
+                    )}
+                  >
+                    {column.key}
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Card>
+            </thead>
+
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.childId} className="border-b border-line last:border-0">
+                  <th
+                    scope="row"
+                    className="sticky left-0 z-10 max-w-[14rem] border-r border-border bg-surface px-3 py-2 text-left font-normal text-ink shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]"
+                  >
+                    <span className="flex items-center gap-2">
+                      <SelectBox
+                        checked={selection.has(row.childId)}
+                        onChange={() => selection.toggle(row.childId)}
+                        label={`${row.child.lastName ?? ""} ${row.child.firstName} — сонгох`}
+                      />
+                      <span className="min-w-0 truncate">
+                        {row.child.lastName} {row.child.firstName}
+                        <span className="block text-caption text-muted">{row.group.name}</span>
+                      </span>
+                    </span>
+                  </th>
+
+                  {row.days.map((cell, index) => {
+                    const day = days[index]!;
+                    const label = cell
+                      ? `${day} — ${ATTENDANCE_STATUS_LABEL[cell.status] ?? cell.status}`
+                      : `${day} — бүртгэлгүй`;
+
+                    return (
+                      <td
+                        key={day}
+                        className={cn("px-1 py-1.5 text-center", isWeekend(day) && "bg-canvas")}
+                      >
+                        {/*
+                          ★ One 24px box per cell, filled or hollow.
+
+                          A recorded status and an unrecorded day used to render
+                          two different shapes at two different heights — a
+                          tinted square and a floating en dash — so the marks
+                          did not line up and the dashes read as debris. The box
+                          is the same either way; only what is inside it
+                          changes.
+
+                          ★★ Hollow, not empty, and not "absent". Nothing was
+                          recorded that day, which is a different fact from a
+                          recorded absence — and it is the one that becomes a
+                          funding claim if the two are confused.
+                        */}
+                        <span
+                          title={label}
+                          aria-label={label}
+                          className={cn(
+                            "inline-flex h-6 w-6 items-center justify-center rounded-control text-caption font-semibold",
+                            cell
+                              ? (STATUS_TONE[cell.status] ?? "bg-canvas text-muted")
+                              : "border border-dashed border-border text-transparent",
+                          )}
+                        >
+                          {cell ? (STATUS_SHORT[cell.status] ?? "?") : "·"}
+                        </span>
+                      </td>
+                    );
+                  })}
+
+                  {TOTAL_COLUMNS.map((column, index) => (
+                    <td
+                      key={column.key}
+                      className={cn(
+                        "px-3 py-2 text-right tabular-nums text-ink",
+                        index === 0 && "border-l border-border",
+                      )}
+                    >
+                      {column.of.reduce((sum, status) => sum + (row.counts[status] ?? 0), 0)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <StatusLegend />
+    </div>
+  );
+}
+
+/**
+ * What the letters mean, once, under the grid.
+ *
+ * ★ Not a tooltip. Each square already carries its status in a `title`, which
+ * is a hover away on a desktop and unreachable on a phone — and hovering
+ * thirty squares to learn six letters is not reading a table. The legend is
+ * one line and answers it for the whole screen.
+ *
+ * The tones come from `STATUS_TONE`, so a legend swatch cannot drift from the
+ * colour it is explaining.
+ */
+function StatusLegend() {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-caption text-muted">
+      {Object.entries(STATUS_SHORT).map(([status, short]) => (
+        <span key={status} className="flex items-center gap-1.5">
+          <span
+            aria-hidden="true"
+            className={cn(
+              "inline-flex h-5 w-5 items-center justify-center rounded-control text-caption font-semibold",
+              STATUS_TONE[status] ?? "bg-canvas text-muted",
+            )}
+          >
+            {short}
+          </span>
+          {ATTENDANCE_STATUS_LABEL[status] ?? status}
+        </span>
+      ))}
+
+      <span className="flex items-center gap-1.5">
+        <span
+          aria-hidden="true"
+          className="inline-flex h-5 w-5 items-center justify-center rounded-control border border-dashed border-border"
+        />
+        Бүртгэлгүй
+      </span>
+    </div>
   );
 }
 

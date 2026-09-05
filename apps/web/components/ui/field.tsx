@@ -2,11 +2,13 @@
 
 import * as LabelPrimitive from "@radix-ui/react-label";
 import * as SelectPrimitive from "@radix-ui/react-select";
-import { Check, ChevronDown, Eye, EyeOff } from "lucide-react";
+import { Check, ChevronDown, Eye, EyeOff, Minus } from "lucide-react";
 import {
   Children,
   isValidElement,
+  useEffect,
   useId,
+  useRef,
   useState,
   type ChangeEvent,
   type ComponentProps,
@@ -391,6 +393,85 @@ export function Select({
   );
 }
 
+/**
+ * The box itself — one drawing, every checkbox in the product.
+ *
+ * ★ Restyled, and this reverses a decision recorded a few lines below.
+ *
+ * `Checkbox` used to argue for the bare native control: "a restyled one loses
+ * the platform's own focus ring and checked state". That was a real cost and it
+ * is paid back here rather than ignored — the client asked for rounded boxes on
+ * 2026-09-04, and a native checkbox cannot be rounded at all, because
+ * `border-radius` does not apply to a control the browser paints itself.
+ *
+ * What the note was protecting is kept:
+ *
+ *   · It is still `<input type="checkbox">`. Assistive tech, form submission,
+ *     the space bar, `indeterminate` and label association are the browser's,
+ *     not a `role="checkbox"` div's — which is the version of "restyled" that
+ *     actually loses things.
+ *   · The focus ring comes back explicitly. `globals.css` sets a 2px
+ *     `:focus-visible` outline on everything, and `appearance-none` does not
+ *     remove it — so a keyboard user still sees the same ring they see on every
+ *     other control, following this box's own corners.
+ *   · The checked state is drawn rather than assumed: a tick at 3px stroke on
+ *     `--color-primary`, which `ui-foundation.test.tsx` measures for contrast
+ *     against `--color-surface`.
+ *
+ * ★★ `indeterminate` is a DOM property with no HTML attribute, so it can only
+ * be set imperatively — there is no JSX prop for it, and the effect below is
+ * the only way to reach it.
+ *
+ * ★★★ The tick and the dash are siblings of the input, not children.
+ *
+ * An `<input>` is a void element and cannot contain anything, so the mark is
+ * positioned over it and made `pointer-events-none` — a click that landed on
+ * the tick instead of the box would do nothing at all.
+ */
+export function CheckControl({
+  indeterminate = false,
+  className,
+  ...props
+}: ComponentProps<"input"> & {
+  /** Renders the dash: some of the things below this are checked, not all. */
+  indeterminate?: boolean;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = indeterminate && !props.checked;
+  }, [indeterminate, props.checked]);
+
+  return (
+    <span className="relative inline-flex shrink-0">
+      <input
+        ref={ref}
+        type="checkbox"
+        className={cn(
+          "peer size-5 shrink-0 appearance-none rounded-check border-2 border-border bg-surface transition-colors",
+          "checked:border-primary checked:bg-primary",
+          "indeterminate:border-primary indeterminate:bg-primary",
+          "hover:border-faint checked:hover:border-primary",
+          "disabled:cursor-not-allowed disabled:opacity-50",
+          className,
+        )}
+        {...props}
+      />
+
+      <Check
+        aria-hidden="true"
+        strokeWidth={3}
+        className="pointer-events-none absolute inset-0 m-auto hidden size-3.5 text-surface peer-checked:block"
+      />
+      <Minus
+        aria-hidden="true"
+        strokeWidth={3}
+        className="pointer-events-none absolute inset-0 m-auto hidden size-3.5 text-surface peer-indeterminate:block"
+      />
+    </span>
+  );
+}
+
 /** A checkbox with its label as one 44px target. */
 export function Checkbox({
   label,
@@ -417,7 +498,7 @@ export function Checkbox({
         className,
       )}
     >
-      <input id={id} type="checkbox" className="mt-1 size-5 shrink-0 accent-primary" {...props} />
+      <CheckControl id={id} className="mt-1" {...props} />
       <span className="text-body leading-snug">
         <span className="font-medium text-ink">{label}</span>
         {description ? (

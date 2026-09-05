@@ -156,6 +156,18 @@
   --radius-card: 18px;
   --radius-row: 14px;
   --radius-pill: 999px;
+  /*
+   * ★ 6px, for the 20px checkbox and nothing larger — added 2026-09-04 when
+   * the client asked for rounded boxes.
+   *
+   * `--radius-control` is 12px, which is right on a 44px button and wrong on a
+   * 20px square: 12px corners on a 20px box very nearly meet, so the control
+   * renders as a circle and reads as a radio — "pick one of these" instead of
+   * "pick any of these". That is a meaning, not a style, and it is the one
+   * thing a checkbox must not borrow. 6px is visibly rounded and unmistakably
+   * still a box.
+   */
+  --radius-check: 6px;
 
   /*
    * ★ Removed 2026-08-23. Cards use Tailwind's `shadow-sm`.

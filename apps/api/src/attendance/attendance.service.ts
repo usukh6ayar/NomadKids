@@ -9,10 +9,13 @@ import { paginate } from "../common/pagination";
 import { isFutureDate, isValidRange } from "./attendance-rules";
 import { AttendanceRepository } from "./attendance.repository";
 import { buildJournalWorkbook } from "./journal-workbook";
+import { summariseDays } from "./daily-summary";
 import type { AttendanceRegisterQuery } from "./attendance.dto";
 import type {
   CreateAttendanceRequestDto,
   RecordAttendanceDto,
+  RecordGroupAttendanceDto,
+  SubmitAttendanceDto,
   RecordPickupDto,
   ReviewAttendanceRequestDto,
 } from "./attendance.dto";
@@ -64,6 +67,181 @@ export class AttendanceService {
   }
 
   /**
+   * "Өдөр тутмын ирц" — the director's register, one row per group per day.
+   *
+   * ★ Not paginated, and that is a decision rather than an omission.
+   *
+   * `register()` pages over *children* because its response is children × days
+   * and a page that cut the date range would be a register with an invisible
+   * hole in it. This response is groups × days: a kindergarten with twelve
+   * groups over a month is 264 rows, which is one screen's worth of scrolling
+   * and well inside the same 92-day ceiling the query schema already enforces.
+   * Paging it would split a month across two screens for no benefit.
+   *
+   * ★★ It reuses `buildRegister` rather than querying its own way.
+   *
+   * The figures here are the ones the grid is made of, so a second query would
+   * be a second chance to disagree about what "recorded" means — and the same
+   * two queries answer both. `summariseDays` is shared with the Excel sheet for
+   * the same reason.
+   */
+  async dailySummary(actor: Actor, kindergartenId: string, query: AttendanceRegisterQuery) {
+    const built = await this.buildRegister(actor, kindergartenId, query);
+    const [kindergarten, submissions] = await Promise.all([
+      this.authz.loadKindergartenNames(actor),
+      this.repo.findSubmissions(
+        kindergartenId,
+        toUtcDate(query.from),
+        toUtcDate(query.to),
+        query.groupId,
+      ),
+    ]);
+
+    const rows = summariseDays(built.rows, built.days, submissions);
+
+    return {
+      kindergartenName: kindergarten[kindergartenId] ?? "",
+      from: query.from,
+      to: query.to,
+      items: rows,
+      /*
+        Across every row on screen, so a director reading the foot of the table
+        gets the period's totals without adding up a month by eye.
+      */
+      totals: {
+        expected: rows.reduce((sum, row) => sum + row.expected, 0),
+        unrecorded: rows.reduce((sum, row) => sum + row.unrecorded, 0),
+        present: rows.reduce((sum, row) => sum + row.present, 0),
+        excused: rows.reduce((sum, row) => sum + row.excused, 0),
+        sick: rows.reduce((sum, row) => sum + row.sick, 0),
+        absent: rows.reduce((sum, row) => sum + row.absent, 0),
+        /** How many group-days are fully filled in — the figure that drives a chase. */
+        complete: rows.filter((row) => row.complete).length,
+        /** How many are already submitted — what the Илгээх button has left to do. */
+        sent: rows.filter((row) => row.sentAt).length,
+        days: rows.length,
+      },
+    };
+  }
+
+  /**
+   * "Ирц илгээх" — marks group-days as submitted.
+   *
+   * ★ What this does today, and what it will do.
+   *
+   * The client asked for a button that sends the register, and the eventual
+   * destination is ESIS. That transport does not exist:
+   * `docs/ESIS_API_READINESS.md` §1 lists the three blockers — the API
+   * documentation has not been received, the data-sharing agreement is not
+   * signed, and no token has been issued. So this records the act — who
+   * declared a register final, when, and over how many children — which is
+   * worth storing on its own and is exactly the row the ESIS call will hang off
+   * when it arrives. The button works; the wire is the part still missing.
+   *
+   * ★★ An incomplete register is refused, not silently sent.
+   *
+   * `unrecorded > 0` means a teacher has not finished, and submitting a day
+   * with children missing from it is the mistake this endpoint most needs to
+   * prevent — the resulting figure feeds a funding claim. The error names the
+   * count rather than saying "invalid", so the director knows what to chase.
+   *
+   * ★★★ `childCount` is taken from the register as it stands right now.
+   *
+   * Not recomputed later: a roster changes, and "what was submitted" must not
+   * become a different number next week. The live figures stay on the screen;
+   * this is the snapshot the submission was made from.
+   */
+  async submitDays(actor: Actor, kindergartenId: string, dto: SubmitAttendanceDto) {
+    this.tenants.assertCanReadFinance(actor, kindergartenId);
+
+    /*
+      The summary is rebuilt rather than trusted from the client: the request
+      carries a group and a date, never counts. A payload that supplied its own
+      `childCount` would let a caller record a submission over figures nobody
+      can reproduce.
+    */
+    const dates = dto.entries.map((entry) => entry.date).sort();
+    const built = await this.buildRegister(actor, kindergartenId, {
+      from: dates[0]!,
+      to: dates[dates.length - 1]!,
+      // The unfiltered register: a submission is about whole group-days, so
+      // narrowing by status or age band here would compute `complete` from a
+      // subset and declare a half-empty register finished.
+      groupId: undefined,
+      childId: undefined,
+      ageBand: undefined,
+      status: undefined,
+      childStatus: undefined,
+      programKind: undefined,
+      attendanceForm: undefined,
+      q: undefined,
+      // `buildRegister` ignores both — it is `register()` that pages the rows
+      // it returns — but the query type carries them.
+      page: 1,
+      pageSize: 1,
+    });
+
+    const summary = new Map(
+      summariseDays(built.rows, built.days).map((row) => [`${row.groupId} ${row.date}`, row]),
+    );
+
+    const rows = [];
+    const incomplete: string[] = [];
+
+    for (const entry of dto.entries) {
+      const row = summary.get(`${entry.groupId} ${entry.date}`);
+      // A group-day that is not in the register is not this kindergarten's, or
+      // has no active enrolments. Skipped rather than refused, on the group
+      // batch's own reasoning: one stale row must not discard the rest.
+      if (!row) continue;
+
+      if (!row.complete) {
+        incomplete.push(`${row.group} (${row.date})`);
+        continue;
+      }
+
+      rows.push({
+        kindergartenId,
+        groupId: entry.groupId,
+        date: new Date(`${entry.date}T00:00:00.000Z`),
+        submittedById: actor.userId,
+        childCount: row.expected,
+      });
+    }
+
+    if (incomplete.length > 0) {
+      throw new BadRequestException(
+        `Ирц бүрэн бүртгэгдээгүй байна: ${incomplete.join(", ")}. Бүртгэлийг дуусгасны дараа илгээнэ үү.`,
+      );
+    }
+
+    if (rows.length === 0) throw new BadRequestException("Илгээх бүртгэл олдсонгүй");
+
+    const saved = await this.repo.submitDays(rows);
+
+    /*
+      One audit row for the batch — the act a director performed. The same
+      choice `recordGroupMeals` and the attendance batch made, and for the same
+      reason: a row per group-day would describe the loop rather than the
+      decision.
+    */
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "AttendanceSubmission",
+      objectId: kindergartenId,
+      metadata: { count: saved.length, dates: [...new Set(dto.entries.map((e) => e.date))] },
+    });
+
+    return saved.map((row) => ({
+      groupId: row.groupId,
+      date: row.date.toISOString().slice(0, 10),
+      submittedAt: row.submittedAt.toISOString(),
+    }));
+  }
+
+  /**
    * The same register as a spreadsheet — every row, not the page on screen.
    *
    * ★ A file is what somebody attaches to a claim or opens beside a bank
@@ -74,9 +252,18 @@ export class AttendanceService {
    */
   async exportRegister(actor: Actor, kindergartenId: string, query: AttendanceRegisterQuery) {
     const built = await this.buildRegister(actor, kindergartenId, query);
-    const kindergarten = await this.authz.loadKindergartenNames(actor);
+    const [kindergarten, submissions] = await Promise.all([
+      this.authz.loadKindergartenNames(actor),
+      this.repo.findSubmissions(
+        kindergartenId,
+        toUtcDate(query.from),
+        toUtcDate(query.to),
+        query.groupId,
+      ),
+    ]);
 
     const buffer = await buildJournalWorkbook({
+      submissions,
       kindergartenName: kindergarten[kindergartenId] ?? "",
       from: query.from,
       to: query.to,
@@ -107,6 +294,7 @@ export class AttendanceService {
       from,
       to,
       groupIds: query.groupId,
+      childIds: query.childId,
       ageBands: query.ageBand,
       programKind: query.programKind,
       attendanceForm: query.attendanceForm,
@@ -118,7 +306,7 @@ export class AttendanceService {
     // One pass over the records, keyed by enrolment and day — the alternative
     // is a find() per cell, which is the N+1 moved out of the database and
     // into the process.
-    const byEnrollment = new Map<string, Map<string, { status: string; note: string | null }>>();
+    const byEnrollment = new Map<string, Map<string, JournalCellFacts>>();
     for (const record of records) {
       const day = record.date.toISOString().slice(0, 10);
       let days = byEnrollment.get(record.enrollmentId);
@@ -126,7 +314,15 @@ export class AttendanceService {
         days = new Map();
         byEnrollment.set(record.enrollmentId, days);
       }
-      days.set(day, { status: record.status, note: record.note });
+      days.set(day, {
+        status: record.status,
+        note: record.note,
+        // Provenance, for the export's "Үүссэн" and "Үүсгэсэн хэрэглэгч"
+        // columns. The screen ignores both; carrying them here keeps the file
+        // and the grid on one query rather than two that can disagree.
+        createdAt: record.createdAt,
+        recordedBy: record.recordedBy,
+      });
     }
 
     const days = eachDay(from, to);
@@ -142,6 +338,7 @@ export class AttendanceService {
         childId: enrollment.childId,
         child: enrollment.child,
         group: enrollment.group,
+        schoolYear: enrollment.schoolYear,
         // `null` where nothing was recorded — a day nobody marked is not the
         // same fact as a day marked absent, and the register must not invent
         // the difference away.
@@ -258,6 +455,87 @@ export class AttendanceService {
     });
 
     return record;
+  }
+
+  /**
+   * Many children of one group, one day, one call.
+   *
+   * ★ `assertCanReadGroup` guards a write here, and that is not a slip.
+   *
+   * It is the same predicate the meal register's batch uses — admin of this
+   * kindergarten, or a teacher actively assigned to this group — and its name
+   * is about where it started rather than what it decides. The alternative,
+   * `assertCanRecord` per child, would be the same question asked twenty-four
+   * times against a group membership that cannot differ between them.
+   *
+   * ★★ It runs before the date check, on `recordGroupMeals`'s own reasoning:
+   * validating first would answer an unassigned teacher 400 for a future date
+   * and 404 otherwise, and that difference tells them the group exists —
+   * exactly the oracle CLAUDE.md §1.7 closes.
+   *
+   * ★★★ A child in `entries` who is not enrolled in this group is skipped,
+   * not refused.
+   *
+   * The roster can change between the sheet being drawn and the teacher
+   * pressing save — a transfer, an archive — and failing the whole call would
+   * discard twenty-three good marks over one stale row. Skipping is also what
+   * keeps the endpoint from being usable to write attendance for a child
+   * outside the group: `byChild` is built from *this group's* active
+   * enrollments, so an id that is not in it has no enrollment to write
+   * against and falls out here rather than being checked for separately.
+   */
+  async recordGroupAttendance(actor: Actor, groupId: string, dto: RecordGroupAttendanceDto) {
+    await this.assertCanReadGroup(actor, groupId);
+
+    const date = new Date(`${dto.date}T00:00:00.000Z`);
+    if (isFutureDate(date)) {
+      throw new BadRequestException("Ирээдүйн огноонд ирц бүртгэх боломжгүй");
+    }
+
+    const group = await this.repo.findGroup(groupId, this.tenants.memberKindergartenIds(actor));
+    if (!group) throw new NotFoundException();
+
+    const { enrollments } = await this.repo.groupDaySheet(groupId, date);
+    const byChild = new Map(enrollments.map((e) => [e.childId, e.id]));
+
+    const rows = dto.entries.flatMap((entry) => {
+      const enrollmentId = byChild.get(entry.childId);
+      if (!enrollmentId) return [];
+
+      return [
+        {
+          kindergartenId: group.kindergartenId,
+          childId: entry.childId,
+          enrollmentId,
+          date,
+          status: entry.status,
+          recordedById: actor.userId,
+        },
+      ];
+    });
+
+    if (rows.length === 0) throw new BadRequestException("Бүртгэх хүүхэд олдсонгүй");
+
+    const saved = await this.repo.recordGroupAttendance(rows);
+
+    /*
+      One audit row for the batch, not one per child — the same choice
+      `recordGroupMeals` made and for the same reason: marking a group present
+      is one act a teacher performed, and twenty-four rows a second apart
+      describe the loop rather than the decision. The per-child endpoint still
+      writes one row per call, so a single correction is still traceable to
+      the child it was about.
+    */
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId: group.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "Attendance",
+      objectId: groupId,
+      metadata: { date: dto.date, count: saved.length },
+    });
+
+    return saved;
   }
 
   /**
@@ -517,6 +795,14 @@ export class AttendanceService {
       if (!assigned.includes(groupId)) throw new NotFoundException();
     }
   }
+}
+
+/** One filled-in cell of the register, with the provenance the export needs. */
+interface JournalCellFacts {
+  status: string;
+  note: string | null;
+  createdAt: Date;
+  recordedBy: { id: string; lastName: string | null; firstName: string } | null;
 }
 
 /** The six statuses, all present and zeroed — a missing key reads as a gap. */

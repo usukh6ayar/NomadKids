@@ -153,6 +153,16 @@ export function ChildHeroProfile({
               {CHILD_STATUS_LABEL[child.status ?? "ACTIVE"] ?? CHILD_STATUS_LABEL.ACTIVE}
             </Badge>
 
+            {/*
+              ★ Гадаад иргэн, beside the status rather than buried in a field.
+              It changes which identifier the record carries — a foreign child
+              has no регистр and never will — so it belongs where somebody sees
+              it before they go looking for one.
+            */}
+            {child.isForeign ? (
+              <Badge tone="sky">Гадаад иргэн{child.foreignId ? ` · ${child.foreignId}` : ""}</Badge>
+            ) : null}
+
             {hasHealthNote ? (
               <Badge tone="peach">
                 <HeartPulse size={13} aria-hidden="true" />

@@ -726,3 +726,221 @@ describe("group month summary", () => {
     expect(res.status).toBe(200);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The register's batch save — PUT /groups/:id/attendance
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Many children, one status, one request.
+ *
+ * ★ Why it exists: the register used to send one `PUT /children/:id/
+ * attendance/:date` per tap, so a teacher marking twenty-four children made
+ * twenty-four independent writes and could end the morning with a register
+ * that was half saved and looked finished. The meal register beside it has
+ * taken a whole sitting in one transactional call since it shipped; these
+ * assertions hold the two to the same behaviour.
+ *
+ * ★★ The authorization cases are the ones CLAUDE.md §4.1 requires, through
+ * HTTP against the real route. A batch write is where a group check is most
+ * tempting to skip — the ids are "already known to be in the group" — and
+ * `recordGroupMeals` had exactly that omission for a while.
+ */
+describe("group batch recording", () => {
+  const DATE = "2026-02-10";
+  const url = (groupId: string) => `/v1/groups/${groupId}/attendance`;
+
+  it("an assigned teacher records the whole group in one request", async () => {
+    const second = await createChild(a.kindergarten.id, { firstName: "Хоёрдугаар" });
+    await enrollChild(a.kindergarten.id, second.id, a.group.id, a.schoolYear.id);
+
+    const res = await authed(request(server()).put(url(a.group.id)), teacherA).send({
+      date: DATE,
+      entries: [
+        { childId: a.child.id, status: "PRESENT" },
+        { childId: second.id, status: "SICK" },
+      ],
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(2);
+
+    const rows = await db.attendance.findMany({
+      where: { date: new Date(`${DATE}T00:00:00.000Z`), deletedAt: null },
+    });
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.recordedById === a.teacherUser.id)).toBe(true);
+    expect(rows.find((r) => r.childId === second.id)?.status).toBe("SICK");
+  });
+
+  it("an admin records without being assigned to the group", async () => {
+    const res = await authed(
+      request(server()).put(url(a.group.id)),
+      await login(app, a.adminUser.username),
+    ).send({ date: DATE, entries: [{ childId: a.child.id, status: "PRESENT" }] });
+
+    expect(res.status).toBe(200);
+  });
+
+  /** A correction pass is the second half of what the register is for. */
+  it("a second save updates in place rather than duplicating", async () => {
+    const put = () => authed(request(server()).put(url(a.group.id)), teacherA);
+
+    await put().send({ date: DATE, entries: [{ childId: a.child.id, status: "PRESENT" }] });
+    const res = await put().send({
+      date: DATE,
+      entries: [{ childId: a.child.id, status: "ABSENT" }],
+    });
+
+    expect(res.status).toBe(200);
+
+    const rows = await db.attendance.findMany({
+      where: { childId: a.child.id, date: new Date(`${DATE}T00:00:00.000Z`), deletedAt: null },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.status).toBe("ABSENT");
+  });
+
+  /**
+   * ★ The batch carries no `arrivedWith`, so a drop-off recorded earlier the
+   * same day must survive it — the guard `upsertForChild` spells out one field
+   * at a time, held here for the path that sends none of them.
+   */
+  it("leaves a drop-off already recorded that morning alone", async () => {
+    await authed(
+      request(server()).put(`/v1/children/${a.child.id}/attendance/${DATE}`),
+      teacherA,
+    ).send({ status: "PRESENT", arrivedWith: "MOTHER" });
+
+    await authed(request(server()).put(url(a.group.id)), teacherA).send({
+      date: DATE,
+      entries: [{ childId: a.child.id, status: "HALF_DAY" }],
+    });
+
+    const row = await db.attendance.findFirst({
+      where: { childId: a.child.id, date: new Date(`${DATE}T00:00:00.000Z`), deletedAt: null },
+    });
+    expect(row?.status).toBe("HALF_DAY");
+    expect(row?.arrivedWith).toBe("MOTHER");
+  });
+
+  /**
+   * ★ A stale id is skipped, not fatal.
+   *
+   * The roster can change between the sheet being drawn and save being pressed.
+   * Failing the call would discard every good mark over one transferred child.
+   */
+  it("skips a child who is not enrolled in this group and saves the rest", async () => {
+    const res = await authed(request(server()).put(url(a.group.id)), teacherA).send({
+      date: DATE,
+      entries: [
+        { childId: a.child.id, status: "PRESENT" },
+        { childId: b.child.id, status: "PRESENT" },
+      ],
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+
+    // ★★ And the skip is the isolation guarantee, not a convenience: the other
+    // kindergarten's child must have no row at all.
+    const foreign = await db.attendance.findMany({ where: { childId: b.child.id } });
+    expect(foreign).toHaveLength(0);
+  });
+
+  it("rejects a batch in which no entry is enrolled here", async () => {
+    const res = await authed(request(server()).put(url(a.group.id)), teacherA).send({
+      date: DATE,
+      entries: [{ childId: b.child.id, status: "PRESENT" }],
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a future date", async () => {
+    const res = await authed(request(server()).put(url(a.group.id)), teacherA).send({
+      date: "2099-01-01",
+      entries: [{ childId: a.child.id, status: "PRESENT" }],
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects an empty batch", async () => {
+    const res = await authed(request(server()).put(url(a.group.id)), teacherA).send({
+      date: DATE,
+      entries: [],
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  // ── Authorization — CLAUDE.md §4.1 ────────────────────────────────────────
+
+  it("a teacher not assigned to the group gets 404", async () => {
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Өөр бүлэг");
+    const child = await createChild(a.kindergarten.id, { firstName: "Хол" });
+    await enrollChild(a.kindergarten.id, child.id, other.id, a.schoolYear.id);
+
+    const res = await authed(request(server()).put(url(other.id)), teacherA).send({
+      date: DATE,
+      entries: [{ childId: child.id, status: "PRESENT" }],
+    });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("a teacher from another kindergarten gets 404", async () => {
+    const res = await authed(
+      request(server()).put(url(a.group.id)),
+      await login(app, b.teacherUser.username),
+    ).send({ date: DATE, entries: [{ childId: a.child.id, status: "PRESENT" }] });
+
+    expect(res.status).toBe(404);
+  });
+
+  /**
+   * ★ 404, not 403 — CLAUDE.md §1.7, and the same answer the meal register
+   * gives a parent (`meal-register.test.ts`: "a parent can neither read nor
+   * write the group register").
+   *
+   * A 403 here would confirm that this group id names a real group, which is
+   * the oracle the rule closes. The route is `@Roles("TEACHER", "ADMIN")` and
+   * a guardian holds neither, so `RolesGuard` refuses it before the service
+   * runs — and that guard throws `NotFoundException` rather than a forbidden,
+   * which is where the uniform 404 actually comes from.
+   */
+  it("a guardian gets 404, and writes nothing", async () => {
+    const res = await authed(request(server()).put(url(a.group.id)), parentA).send({
+      date: DATE,
+      entries: [{ childId: a.child.id, status: "PRESENT" }],
+    });
+
+    expect(res.status).toBe(404);
+    expect(await db.attendance.count()).toBe(0);
+  });
+
+  /**
+   * ★ One row for the batch, not one per child — the act the teacher performed.
+   * `recordGroupMeals` made the same choice; a per-child loop would describe
+   * the loop rather than the decision.
+   */
+  it("writes a single audit row naming the group and the count", async () => {
+    const second = await createChild(a.kindergarten.id, { firstName: "Хоёрдугаар" });
+    await enrollChild(a.kindergarten.id, second.id, a.group.id, a.schoolYear.id);
+
+    await authed(request(server()).put(url(a.group.id)), teacherA).send({
+      date: DATE,
+      entries: [
+        { childId: a.child.id, status: "PRESENT" },
+        { childId: second.id, status: "PRESENT" },
+      ],
+    });
+
+    const rows = await db.auditLog.findMany({
+      where: { objectType: "Attendance", objectId: a.group.id },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.metadata).toMatchObject({ date: DATE, count: 2 });
+  });
+});

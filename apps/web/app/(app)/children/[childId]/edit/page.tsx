@@ -19,7 +19,7 @@ import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { Card, SectionHeader } from "@/components/ui/card";
-import { Field, Input, Select, Textarea } from "@/components/ui/field";
+import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
 import { ArchiveButton } from "@/components/ui/archive-button";
@@ -130,6 +130,17 @@ function DetailsForm({
   // `<input type="date">` needs YYYY-MM-DD; the API sends a full ISO string.
   const [dateOfBirth, setDateOfBirth] = useState((child.dateOfBirth ?? "").slice(0, 10));
   const [nationalId, setNationalId] = useState(child.nationalId ?? "");
+  /*
+   * ★ Гадаад иргэн — the same pair the registration form carries.
+   *
+   * Without it here, a child registered as foreign could never be corrected and
+   * a Mongolian child mistakenly flagged could never be un-flagged: the only
+   * screen that could set the field was the one that creates the record. A
+   * field that can be written once and never again is the shape a support
+   * request is made of.
+   */
+  const [isForeign, setIsForeign] = useState(Boolean(child.isForeign));
+  const [foreignId, setForeignId] = useState(child.foreignId ?? "");
   const [status, setStatus] = useState<string>(child.status ?? "ACTIVE");
   const [healthNotes, setHealthNotes] = useState(child.healthNotes ?? "");
 
@@ -142,8 +153,18 @@ function DetailsForm({
           firstName: firstName.trim(),
           sex,
           dateOfBirth,
-          // null clears it; "" would fail the two-letters-eight-digits rule.
-          nationalId: nationalId.trim() ? nationalId.trim().toUpperCase() : null,
+          /*
+            ★ Only the identifier matching the flag is sent, and the other is
+            cleared.
+
+            A record toggled from citizen to foreign must not keep a регистр
+            that no longer applies — the roster's Регистр column would then
+            contradict the "Гадаад" badge beside it. `null` clears; "" would
+            fail the two-letters-eight-digits rule.
+          */
+          isForeign,
+          nationalId: !isForeign && nationalId.trim() ? nationalId.trim().toUpperCase() : null,
+          foreignId: isForeign && foreignId.trim() ? foreignId.trim() : null,
           status,
           healthNotes: healthNotes.trim() || null,
         },
@@ -242,22 +263,48 @@ function DetailsForm({
             </Field>
           </div>
 
-          <Field
-            label="Регистрийн дугаар"
-            error={errors.nationalId}
-            hint="Хоёр үсэг, найман орон. Хоосон орхивол устгана."
-          >
-            {({ id, describedBy, invalid }) => (
-              <Input
-                id={id}
-                aria-describedby={describedBy}
-                invalid={invalid}
-                value={nationalId}
-                onChange={(e) => setNationalId(e.target.value)}
-                placeholder="УБ12345678"
-              />
-            )}
-          </Field>
+          <Checkbox
+            label="Гадаад иргэн"
+            description="Монгол регистрийн дугааргүй хүүхэд. Паспорт эсвэл оршин суух үнэмлэхийн дугаарыг бичнэ."
+            checked={isForeign}
+            onChange={(e) => setIsForeign(e.target.checked)}
+          />
+
+          {isForeign ? (
+            <Field
+              label="Гадаад бичиг баримтын дугаар"
+              error={errors.foreignId}
+              hint="Паспорт, оршин суух үнэмлэх — хэлбэрийг шалгахгүй. Хоосон орхивол устгана."
+            >
+              {({ id, describedBy, invalid }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  value={foreignId}
+                  onChange={(e) => setForeignId(e.target.value)}
+                  placeholder="E01234567"
+                />
+              )}
+            </Field>
+          ) : (
+            <Field
+              label="Регистрийн дугаар"
+              error={errors.nationalId}
+              hint="Хоёр үсэг, найман орон. Хоосон орхивол устгана."
+            >
+              {({ id, describedBy, invalid }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  value={nationalId}
+                  onChange={(e) => setNationalId(e.target.value)}
+                  placeholder="УБ12345678"
+                />
+              )}
+            </Field>
+          )}
 
           <Field label="Суралцах төлөв" error={errors.status} required>
             {({ id, describedBy }) => (

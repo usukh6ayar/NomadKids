@@ -1333,3 +1333,208 @@ describe("roster sorting", () => {
     expect(res.status).toBe(400);
   });
 });
+
+/**
+ * `?ids=` — the roster's checkboxes, added 2026-09-04 so the Excel export can
+ * be a hand-picked set rather than whatever the filters happen to describe.
+ *
+ * ★ The property under test is that it **narrows and cannot widen**.
+ *
+ * It is a filter ANDed into `childWhere`, whose first term is
+ * `visibleChildrenWhere(actor)` — so an id the caller may not see drops out
+ * instead of being fetched. The alternative shape, "fetch these ids then check
+ * each one", is one forgotten check away from the cross-tenant read this file
+ * exists to prevent, and there is no check here to forget.
+ *
+ * The list endpoint is asserted rather than the export because they share the
+ * same `where` and the same `childFilters()` — one expression, two callers —
+ * and a JSON body can be read without parsing a spreadsheet.
+ */
+describe("the ?ids= selection filter", () => {
+  it("narrows the roster to the named children", async () => {
+    const res = await authed(request(server()).get(`/v1/children?ids=${a.child.id}`), teacherA);
+
+    expect(res.status).toBe(200);
+    expect(res.body.items.map((c: { id: string }) => c.id)).toEqual([a.child.id]);
+  });
+
+  /**
+   * ★★ The discriminating case. Naming another kindergarten's child returns
+   * nothing, not that child — the id is intersected with what this teacher may
+   * already list, never trusted as a lookup key.
+   */
+  it("cannot reach another kindergarten's child by naming its id", async () => {
+    const res = await authed(request(server()).get(`/v1/children?ids=${b.child.id}`), teacherA);
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(0);
+  });
+
+  /** A mixed list yields only the visible half, silently — a filter, not an error. */
+  it("returns only the visible half of a mixed list", async () => {
+    const res = await authed(
+      request(server()).get(`/v1/children?ids=${a.child.id},${b.child.id}`),
+      teacherA,
+    );
+
+    expect(res.body.items.map((c: { id: string }) => c.id)).toEqual([a.child.id]);
+  });
+
+  it("rejects a value that is not a uuid rather than ignoring it", async () => {
+    const res = await authed(request(server()).get("/v1/children?ids=not-a-uuid"), teacherA);
+    expect(res.status).toBe(400);
+  });
+
+  /**
+   * ★ `nationalId` is on the list rows now, for the roster table's Регистр
+   * column. It used to be detail-only; the note on `childDetailSchema` records
+   * why that changed and why the exposure it was guarding against does not
+   * apply to a staff-only, already-authorized list.
+   */
+  it("carries the national id on list rows", async () => {
+    const res = await authed(request(server()).get("/v1/children"), teacherA);
+
+    expect(res.status).toBe(200);
+    expect(res.body.items[0]).toHaveProperty("nationalId");
+  });
+});
+
+/**
+ * Гадаад иргэн — the flag and its identifier, added 2026-09-04.
+ *
+ * ★ Why a flag exists at all: `nationalIdSchema` is two Cyrillic letters and
+ * eight digits, which a foreign child cannot produce. Registering one meant
+ * leaving the field blank with nothing on the record saying why, and the state
+ * reports this feeds count foreign children.
+ */
+describe("гадаад иргэн хүүхэд", () => {
+  it("registers a foreign child with a free-text identifier and no регистр", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/children`),
+      teacherA,
+    ).send({
+      lastName: "Kim",
+      firstName: "Minjun",
+      sex: "MALE",
+      dateOfBirth: "2021-05-04",
+      isForeign: true,
+      foreignId: "M12345678",
+    });
+
+    expect(res.status).toBe(201);
+
+    const child = await db.child.findUniqueOrThrow({ where: { id: res.body.id } });
+    expect(child.isForeign).toBe(true);
+    expect(child.foreignId).toBe("M12345678");
+    // ★ No регистр invented for them — the whole reason the flag exists.
+    expect(child.nationalId).toBeNull();
+  });
+
+  /** The default, so every row that predates the column reads as a citizen. */
+  it("defaults to a Mongolian citizen when the flag is not sent", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/children`),
+      teacherA,
+    ).send({ lastName: "Бат", firstName: "Болд", sex: "MALE", dateOfBirth: "2021-05-04" });
+
+    expect(res.status).toBe(201);
+    const child = await db.child.findUniqueOrThrow({ where: { id: res.body.id } });
+    expect(child.isForeign).toBe(false);
+    expect(child.foreignId).toBeNull();
+  });
+
+  it("lets an existing child be marked foreign afterwards", async () => {
+    const res = await authed(request(server()).patch(`/v1/children/${a.child.id}`), teacherA).send({
+      isForeign: true,
+      foreignId: "E0987654",
+    });
+
+    expect(res.status).toBe(200);
+    const child = await db.child.findUniqueOrThrow({ where: { id: a.child.id } });
+    expect(child.isForeign).toBe(true);
+    expect(child.foreignId).toBe("E0987654");
+  });
+
+  /**
+   * ★ The identifier is not validated, deliberately — a passport number, a
+   * residence permit and a foreign national id each have their own shape, and
+   * imposing one would push staff into typing a placeholder. Only the length
+   * is bounded.
+   */
+  it("accepts any shape of foreign identifier, but bounds its length", async () => {
+    const ok = await authed(request(server()).patch(`/v1/children/${a.child.id}`), teacherA).send({
+      isForeign: true,
+      foreignId: "AB-1234/567",
+    });
+    expect(ok.status).toBe(200);
+
+    const tooLong = await authed(
+      request(server()).patch(`/v1/children/${a.child.id}`),
+      teacherA,
+    ).send({ isForeign: true, foreignId: "x".repeat(65) });
+    expect(tooLong.status).toBe(400);
+  });
+});
+
+/**
+ * ★ The flag has to survive a round trip, not just a write.
+ *
+ * The first version of this feature set `isForeign` on create and nowhere else:
+ * the edit form could not change it and no list carried it, so a child
+ * registered as foreign looked identical to one whose регистр nobody had typed
+ * in. These assertions pin the two halves that make the field real — it comes
+ * back on a list row, and it can be corrected afterwards.
+ */
+describe("гадаад иргэн — round trip", () => {
+  it("carries the flag and the identifier on list rows", async () => {
+    const created = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/children`),
+      teacherA,
+    ).send({
+      lastName: "Kim",
+      firstName: "Minjun",
+      sex: "MALE",
+      dateOfBirth: "2021-05-04",
+      isForeign: true,
+      foreignId: "M12345678",
+      groupId: a.group.id,
+    });
+    expect(created.status).toBe(201);
+
+    const list = await authed(request(server()).get("/v1/children?q=Minjun"), teacherA);
+    const row = list.body.items.find((c: { id: string }) => c.id === created.body.id);
+
+    expect(row.isForeign).toBe(true);
+    expect(row.foreignId).toBe("M12345678");
+    expect(row.nationalId).toBeNull();
+  });
+
+  /**
+   * ★ Un-flagging clears the foreign identifier and lets a регистр back in.
+   *
+   * The edit form sends whichever identifier matches the flag and nulls the
+   * other; without that, a corrected record would carry both and the roster's
+   * Регистр column would contradict the badge beside it.
+   */
+  it("can be corrected back to a Mongolian citizen", async () => {
+    await authed(request(server()).patch(`/v1/children/${a.child.id}`), teacherA).send({
+      isForeign: true,
+      foreignId: "E0987654",
+      nationalId: null,
+    });
+
+    const back = await authed(request(server()).patch(`/v1/children/${a.child.id}`), teacherA).send(
+      {
+        isForeign: false,
+        foreignId: null,
+        nationalId: "УБ11112222",
+      },
+    );
+    expect(back.status).toBe(200);
+
+    const child = await db.child.findUniqueOrThrow({ where: { id: a.child.id } });
+    expect(child.isForeign).toBe(false);
+    expect(child.foreignId).toBeNull();
+    expect(child.nationalId).toBe("УБ11112222");
+  });
+});

@@ -112,6 +112,7 @@ export class ChildrenRepository {
       AND: [
         visible,
         {
+          ...(filters.ids ? { id: { in: filters.ids } } : {}),
           ...(filters.status ? { status: filters.status } : {}),
           ...(filters.sex ? { sex: filters.sex } : {}),
           ...ageRangeWhere(filters.ageMin, filters.ageMax),
@@ -161,6 +162,9 @@ export class ChildrenRepository {
           id: true,
           lastName: true,
           firstName: true,
+          nationalId: true,
+          isForeign: true,
+          foreignId: true,
           sex: true,
           dateOfBirth: true,
           status: true,
@@ -629,6 +633,13 @@ export interface ChildFilters {
   /** Whole years, inclusive at both ends — RFP §11. */
   ageMin?: number;
   ageMax?: number;
+  /**
+   * An explicit set, ANDed with everything else rather than replacing it.
+   *
+   * Narrowing only: `childWhere` puts `visible` first, so ids the caller may
+   * not see drop out instead of being fetched. See `listChildrenQuerySchema`.
+   */
+  ids?: string[];
 }
 
 export interface ChildSorting {
@@ -641,6 +652,9 @@ export interface CreateChildData {
   lastName: string;
   firstName: string;
   nationalId?: string | null;
+  /** Гадаад иргэн — see the `isForeign` note on `model Child`. */
+  isForeign?: boolean;
+  foreignId?: string | null;
   sex: Sex;
   dateOfBirth: Date;
   healthNotes?: string | null;
@@ -650,6 +664,8 @@ export interface UpdateChildData {
   lastName?: string;
   firstName?: string;
   nationalId?: string | null;
+  isForeign?: boolean;
+  foreignId?: string | null;
   sex?: Sex;
   dateOfBirth?: Date;
   healthNotes?: string | null;

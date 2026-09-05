@@ -355,3 +355,380 @@ describe("the spreadsheet", () => {
     expect((await download(teacher)).status).toBe(404);
   });
 });
+
+/**
+ * `?childId=` — the journal's checkboxes, added 2026-09-04.
+ *
+ * ★ The property worth a test is that it **narrows and cannot widen**.
+ *
+ * It is a filter ANDed into the same enrolment `where` that
+ * `assertCanReadFinance` already gates by kindergarten, not a lookup by id. An
+ * endpoint that fetched the named children and then checked each one would be
+ * one forgotten check away from a cross-tenant read; this shape has no such
+ * check to forget, and the assertion below is what pins that.
+ */
+describe("the ?childId= selection filter", () => {
+  it("narrows the register to the named children", async () => {
+    const other = await createChild(a.kindergarten.id, { firstName: "Сараа" });
+    await enrollChild(a.kindergarten.id, other.id, a.group.id, a.schoolYear.id);
+
+    const res = await register(
+      admin,
+      a.kindergarten.id,
+      `from=2026-03-02&to=2026-03-06&childId=${a.child.id}`,
+    );
+
+    const ids = res.body.items.map((r: { childId: string }) => r.childId);
+    expect(ids).toEqual([a.child.id]);
+    expect(ids).not.toContain(other.id);
+  });
+
+  /**
+   * ★★ The discriminating case: naming another kindergarten's child returns
+   * nothing rather than that child. The id is intersected with what the caller
+   * may already read, so it is not a way in.
+   */
+  it("cannot reach another kindergarten's child by naming its id", async () => {
+    const res = await register(
+      admin,
+      a.kindergarten.id,
+      `from=2026-03-02&to=2026-03-06&childId=${b.child.id}`,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(0);
+  });
+
+  it("still refuses the whole register to someone who may not read it", async () => {
+    const res = await register(
+      teacher,
+      a.kindergarten.id,
+      `from=2026-03-02&to=2026-03-06&childId=${a.child.id}`,
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  /** A cap, for the same reason `MAX_REGISTER_DAYS` exists: children × days. */
+  it("refuses more ids than a person picks by hand", async () => {
+    const many = Array.from({ length: 201 }, () => a.child.id).join(",");
+
+    const res = await register(
+      admin,
+      a.kindergarten.id,
+      `from=2026-03-02&to=2026-03-06&childId=${many}`,
+    );
+
+    expect(res.status).toBe(400);
+  });
+});
+
+/**
+ * "Өдөр тутмын ирц" — `GET /kindergartens/:id/attendance/daily`, 2026-09-04.
+ *
+ * ★ The director's register: one row per group per day, counts only.
+ *
+ * It exists because the client said a director does not press the day sheet's
+ * status buttons — "цаанаасаа бүртгэлтэй тэр нь тоонууд зэрэг нь л харагдна".
+ * What these assertions protect is the arithmetic behind that sentence, and one
+ * distinction in particular: `Ирц бүртгээгүй` counts the roster against what was
+ * written, so it can tell "nobody filled this in" from "nobody came in". A
+ * single ratio cannot, and those are the two states that matter at nine in the
+ * morning.
+ */
+describe("GET /kindergartens/:id/attendance/daily", () => {
+  function daily(
+    session: AuthSession,
+    kindergartenId: string,
+    query = "from=2026-03-02&to=2026-03-06",
+  ) {
+    return authed(
+      request(server()).get(`/v1/kindergartens/${kindergartenId}/attendance/daily?${query}`),
+      session,
+    );
+  }
+
+  it("counts the roster against what was recorded", async () => {
+    const second = await createChild(a.kindergarten.id, { firstName: "Хоёрдугаар" });
+    await enrollChild(a.kindergarten.id, second.id, a.group.id, a.schoolYear.id);
+
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
+
+    const res = await daily(admin, a.kindergarten.id);
+    expect(res.status).toBe(200);
+
+    const row = res.body.items.find(
+      (r: { groupId: string; date: string }) => r.groupId === a.group.id && r.date === "2026-03-03",
+    );
+
+    expect(row.expected).toBe(2);
+    expect(row.recorded).toBe(1);
+    // ★ The discriminating figure. One of two children marked is not "half
+    // present" — it is a register somebody has to finish.
+    expect(row.unrecorded).toBe(1);
+    expect(row.complete).toBe(false);
+    expect(row.present).toBe(1);
+  });
+
+  it("reports a fully recorded day as complete", async () => {
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "SICK");
+
+    const res = await daily(admin, a.kindergarten.id);
+    const row = res.body.items.find(
+      (r: { groupId: string; date: string }) => r.groupId === a.group.id && r.date === "2026-03-03",
+    );
+
+    expect(row.unrecorded).toBe(0);
+    expect(row.complete).toBe(true);
+    expect(row.sick).toBe(1);
+  });
+
+  /**
+   * ★ A half day is a child who came — the same reading the admin dashboard
+   * uses for its present figure, so the two screens cannot disagree.
+   */
+  it("counts a half day as present", async () => {
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-04", "HALF_DAY");
+
+    const res = await daily(admin, a.kindergarten.id);
+    const row = res.body.items.find(
+      (r: { groupId: string; date: string }) => r.groupId === a.group.id && r.date === "2026-03-04",
+    );
+
+    expect(row.present).toBe(1);
+    expect(row.absent).toBe(0);
+  });
+
+  /**
+   * Who filled it in, and when it was started — the file's provenance columns.
+   *
+   * ★ Recorded through the real endpoint rather than the `mark` fixture above.
+   *
+   * That fixture writes the row straight to the database and leaves
+   * `recordedById` null, which is fine for the count assertions but would make
+   * this one pass for the wrong reason — or, as it did first, fail for one. The
+   * name only exists because `record()` puts the actor on the row, so the test
+   * has to go through `record()`.
+   */
+  it("names the recorder and the moment the register was started", async () => {
+    const written = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/attendance/2026-03-05`),
+      teacher,
+    ).send({ status: "PRESENT" });
+    expect(written.status).toBe(200);
+
+    const res = await daily(admin, a.kindergarten.id);
+    const row = res.body.items.find(
+      (r: { groupId: string; date: string }) => r.groupId === a.group.id && r.date === "2026-03-05",
+    );
+
+    expect(row.createdAt).toBeTruthy();
+    expect(row.createdBy).toContain(
+      `${a.teacherUser.lastName ?? ""} ${a.teacherUser.firstName}`.trim(),
+    );
+  });
+
+  /**
+   * ★ `sentAt` is null on every row, and this test says so on purpose.
+   *
+   * It means "submitted to ESIS", and `docs/ESIS_API_READINESS.md` §1
+   * records that access is a contract with the ministry rather than a signup.
+   * Null rather than `false`: "not yet sent" and "there is no way to send" are
+   * different facts. When the integration lands, this assertion is the one that
+   * has to be rewritten — deliberately.
+   */
+  it("reports nothing as sent to ESIS, because nothing can be", async () => {
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
+
+    const res = await daily(admin, a.kindergarten.id);
+    expect(res.body.items.every((r: { sentAt: string | null }) => r.sentAt === null)).toBe(true);
+  });
+
+  it("narrows to one group", async () => {
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Бэлтгэл");
+    const child = await createChild(a.kindergarten.id, { firstName: "Сараа" });
+    await enrollChild(a.kindergarten.id, child.id, other.id, a.schoolYear.id);
+
+    const res = await daily(
+      admin,
+      a.kindergarten.id,
+      `from=2026-03-02&to=2026-03-06&groupId=${other.id}`,
+    );
+
+    const groupIds = new Set(res.body.items.map((r: { groupId: string }) => r.groupId));
+    expect([...groupIds]).toEqual([other.id]);
+  });
+
+  it("totals the period across every row on screen", async () => {
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-04", "ABSENT");
+
+    const res = await daily(admin, a.kindergarten.id);
+
+    expect(res.body.totals.present).toBe(1);
+    expect(res.body.totals.absent).toBe(1);
+    expect(res.body.totals.days).toBe(res.body.items.length);
+  });
+
+  // ── Authorization — the same gate as the detailed register ────────────────
+
+  it("an accountant may read it", async () => {
+    const res = await daily(accountant, a.kindergarten.id);
+    expect(res.status).toBe(200);
+  });
+
+  /**
+   * ★ A teacher is refused, and that is not an oversight: this is a summary of
+   * the kindergarten-wide figures that feed funding, and `нэмэлт.md` §13 keeps
+   * teachers out of those. A summary of restricted figures is still restricted.
+   */
+  it("a teacher gets 404", async () => {
+    const res = await daily(teacher, a.kindergarten.id);
+    expect(res.status).toBe(404);
+  });
+
+  it("a parent gets 404", async () => {
+    const res = await daily(parent, a.kindergarten.id);
+    expect(res.status).toBe(404);
+  });
+
+  it("an admin of another kindergarten gets 404", async () => {
+    const res = await daily(adminB, a.kindergarten.id);
+    expect(res.status).toBe(404);
+  });
+});
+
+/**
+ * "Ирц илгээх" — `POST /kindergartens/:id/attendance/daily/submit`, 2026-09-04.
+ *
+ * ★ What a submission is, given ESIS does not exist yet.
+ *
+ * `docs/ESIS_API_READINESS.md` §1 records that access to ESIS is a
+ * contract with the ministry rather than a signup. What this system can witness
+ * today is the act — a director declaring a register final — and that is worth
+ * recording on its own: it is who signed off a figure and when, the first thing
+ * asked when one is disputed. The ESIS call attaches to the same row later.
+ */
+describe("POST /kindergartens/:id/attendance/daily/submit", () => {
+  function submit(
+    session: AuthSession,
+    kindergartenId: string,
+    entries: { groupId: string; date: string }[],
+  ) {
+    return authed(
+      request(server()).post(`/v1/kindergartens/${kindergartenId}/attendance/daily/submit`),
+      session,
+    ).send({ entries });
+  }
+
+  it("records a submission for a fully recorded day", async () => {
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
+
+    const res = await submit(admin, a.kindergarten.id, [
+      { groupId: a.group.id, date: "2026-03-03" },
+    ]);
+
+    expect(res.status).toBe(201);
+
+    const row = await db.attendanceSubmission.findFirstOrThrow({
+      where: { groupId: a.group.id, deletedAt: null },
+    });
+    expect(row.submittedById).toBe(a.adminUser.id);
+    // ★ The roster as it stood, stored rather than recomputed — a transfer next
+    // week must not change what was submitted this week.
+    expect(row.childCount).toBe(1);
+  });
+
+  it("shows up as Илгээсэн on the register afterwards", async () => {
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
+    await submit(admin, a.kindergarten.id, [{ groupId: a.group.id, date: "2026-03-03" }]);
+
+    const res = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/attendance/daily?from=2026-03-02&to=2026-03-06`,
+      ),
+      admin,
+    );
+
+    const row = res.body.items.find(
+      (r: { groupId: string; date: string }) => r.groupId === a.group.id && r.date === "2026-03-03",
+    );
+    expect(row.sentAt).toBeTruthy();
+    expect(row.sentBy).toBeTruthy();
+    expect(res.body.totals.sent).toBe(1);
+  });
+
+  /**
+   * ★ The discriminating case, and the one this endpoint most needs to refuse.
+   *
+   * A day with children still unmarked is an unfinished register, and the
+   * figure it produces feeds a funding claim. The error names which group and
+   * which date so a director knows who to chase — a generic 400 would not.
+   */
+  it("refuses an incomplete register and names it", async () => {
+    const second = await createChild(a.kindergarten.id, { firstName: "Хоёрдугаар" });
+    await enrollChild(a.kindergarten.id, second.id, a.group.id, a.schoolYear.id);
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
+
+    const res = await submit(admin, a.kindergarten.id, [
+      { groupId: a.group.id, date: "2026-03-03" },
+    ]);
+
+    expect(res.status).toBe(400);
+    expect(res.body.detail ?? res.body.title).toContain(a.group.name);
+    expect(await db.attendanceSubmission.count()).toBe(0);
+  });
+
+  /** Pressing the button twice is not a mistake — the register was corrected. */
+  it("re-submitting updates the existing row rather than duplicating", async () => {
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
+
+    await submit(admin, a.kindergarten.id, [{ groupId: a.group.id, date: "2026-03-03" }]);
+    const again = await submit(admin, a.kindergarten.id, [
+      { groupId: a.group.id, date: "2026-03-03" },
+    ]);
+
+    expect(again.status).toBe(201);
+    expect(await db.attendanceSubmission.count({ where: { deletedAt: null } })).toBe(1);
+  });
+
+  /** A group-day outside this kindergarten is skipped, never submitted. */
+  it("cannot submit another kindergarten's group", async () => {
+    const res = await submit(admin, a.kindergarten.id, [
+      { groupId: b.group.id, date: "2026-03-03" },
+    ]);
+
+    expect(res.status).toBe(400);
+    expect(await db.attendanceSubmission.count()).toBe(0);
+  });
+
+  it("a teacher gets 404", async () => {
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
+    const res = await submit(teacher, a.kindergarten.id, [
+      { groupId: a.group.id, date: "2026-03-03" },
+    ]);
+    expect(res.status).toBe(404);
+  });
+
+  it("an admin of another kindergarten gets 404", async () => {
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
+    const res = await submit(adminB, a.kindergarten.id, [
+      { groupId: a.group.id, date: "2026-03-03" },
+    ]);
+    expect(res.status).toBe(404);
+  });
+
+  it("records one audit row for the batch, not one per day", async () => {
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-04", "PRESENT");
+
+    await submit(admin, a.kindergarten.id, [
+      { groupId: a.group.id, date: "2026-03-03" },
+      { groupId: a.group.id, date: "2026-03-04" },
+    ]);
+
+    const rows = await db.auditLog.findMany({ where: { objectType: "AttendanceSubmission" } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.metadata).toMatchObject({ count: 2 });
+  });
+});

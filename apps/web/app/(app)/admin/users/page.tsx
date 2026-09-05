@@ -3,7 +3,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { z } from "zod";
-import { GraduationCap, Pencil, ShieldPlus, UserPlus, Users, UsersRound, X } from "lucide-react";
+import {
+  GraduationCap,
+  Pencil,
+  ShieldPlus,
+  UserCog,
+  UserPlus,
+  Users,
+  UsersRound,
+  X,
+} from "lucide-react";
 import {
   ASSIGNABLE_ROLES,
   ROLE_LABEL,
@@ -292,6 +301,11 @@ function AdminUsers() {
                           <Badge tone={m.role === "ADMIN" ? "peach" : "sky"}>
                             {ROLE_LABEL[m.role] ?? m.role}
                           </Badge>
+                          <ChangeRoleButton
+                            membershipId={m.id}
+                            currentRole={m.role}
+                            label={fullName(user)}
+                          />
                           <RevokeMembershipButton
                             membershipId={m.id}
                             label={`${fullName(user)} — ${ROLE_LABEL[m.role] ?? m.role}`}
@@ -524,6 +538,88 @@ function InviteUserDialog({
  * a badge among several. The confirmation names which person and which role,
  * so a mis-click on a user with two memberships is not silently the wrong one.
  */
+/**
+ * Moving a member of staff to another role — "албан тушаал солих", 2026-09-04.
+ *
+ * ★ One request, not revoke-then-grant.
+ *
+ * Both of those endpoints existed and this screen could have called them in
+ * order. It must not: between the two calls the person holds no role at all,
+ * and a failure on the second leaves a teacher demoted to nothing. `PATCH
+ * /memberships/:id` does the pair inside one transaction — see
+ * `users.repository.ts`.
+ *
+ * ★★ Confirmed, unlike the plain edit form on this screen.
+ *
+ * That form's note reserves `ConfirmDialog` for what is destructive or hard to
+ * undo and argues that a prompt in front of a typo fix teaches people to click
+ * through prompts. A role change is on the other side of that line: it ends
+ * every group assignment the old role carried, and re-granting the role does
+ * not bring them back — the same consequence, and the same sentence, the
+ * revoke dialog beside it already warns about.
+ */
+function ChangeRoleButton({
+  membershipId,
+  currentRole,
+  label,
+}: {
+  membershipId: string;
+  currentRole: Role;
+  label: string;
+}) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [role, setRole] = useState<string>(currentRole);
+
+  const change = useMutation({
+    mutationFn: () =>
+      mutate(`/memberships/${membershipId}`, z.unknown(), { method: "PATCH", body: { role } }),
+    onSuccess: () => {
+      toast.success("Албан тушаалыг өөрчиллөө.");
+      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  return (
+    <ConfirmDialog
+      trigger={
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={`${label} — албан тушаал солих`}
+          disabled={change.isPending}
+          className="text-muted hover:bg-primary-soft hover:text-primary"
+        >
+          <UserCog size={16} aria-hidden />
+        </Button>
+      }
+      title="Албан тушаал солих"
+      description={
+        `${label} — одоогийн эрх: ${ROLE_LABEL[currentRole] ?? currentRole}. ` +
+        "Шинэ эрх сонгоно уу. Хуучин эрхэд харьяалагдах бүлгийн хуваарилалт дуусна."
+      }
+      body={
+        <Field label="Шинэ албан тушаал">
+          {({ id }) => (
+            <Select id={id} value={role} onChange={(e) => setRole(e.target.value)}>
+              {ROLES.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+      }
+      confirmLabel="Солих"
+      pendingLabel="Солиж байна…"
+      pending={change.isPending}
+      onConfirm={() => change.mutate()}
+    />
+  );
+}
+
 function RevokeMembershipButton({ membershipId, label }: { membershipId: string; label: string }) {
   const toast = useToast();
   const queryClient = useQueryClient();

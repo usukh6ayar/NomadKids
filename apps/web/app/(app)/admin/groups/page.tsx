@@ -22,6 +22,7 @@ import {
 import { z } from "zod";
 import {
   adminUserSchema,
+  childSummarySchema,
   groupListItemSchema,
   uuidSchema,
   groupWithTeachersSchema,
@@ -40,6 +41,7 @@ import { fullName } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataList, DataRow } from "@/components/ui/data-list";
+import { SelectBox, useSelection } from "@/components/ui/selection";
 import { StatCard } from "@/components/ui/stat-card";
 import { BarRow } from "@/components/ui/chart/bar-row";
 import { Card, SectionHeader } from "@/components/ui/card";
@@ -53,6 +55,8 @@ import { SingleImageUpload } from "@/components/media/single-image-upload";
 import { RequireRole } from "@/components/shell/require-role";
 
 const groupsSchema = paginated(groupListItemSchema);
+/** The promote dialog's roster — the group's own children, to pick from. */
+const childListSchema = paginated(childSummarySchema);
 const yearsSchema = z.array(schoolYearSchema);
 const usersSchema = paginated(adminUserSchema);
 
@@ -160,8 +164,16 @@ function AdminGroups() {
 
       {items.length > 0 ? <GroupsOverview groups={items} /> : null}
 
+      {/*
+        ★ 300px, down from 352 — 2026-09-04.
+
+        352 was sized for eight buttons on one nominal line, which is not what
+        they did: they wrapped into three ragged lines. Two short rows need
+        less, and the 52px goes back to the name column, where the badges were
+        being squeezed against the group's own name.
+      */}
       {items.length > 0 ? (
-        <DataList columns={GROUP_COLUMNS} leadWidth={null} actionsWidth="w-[352px]">
+        <DataList columns={GROUP_COLUMNS} leadWidth={null} actionsWidth="w-[300px]">
           {items.map((group) => (
             <GroupRow key={group.id} group={group} />
           ))}
@@ -262,58 +274,81 @@ function GroupRow({ group }: { group: z.infer<typeof groupListItemSchema> }) {
           ),
         }}
         actions={
-          <>
+          /*
+            ★ Two rows, and the split is by what the control *is* — 2026-09-04.
+
+            Eight `size="sm"` buttons were sharing a 352px gutter, so every row
+            wrapped into three ragged lines and no two rows wrapped the same
+            way: the eye had nothing to run down. The client called it
+            "шаваарлалдсан" and they were right.
+
+            The eight are not one list. Three of them open the group — its
+            register, its meals, its assessment — and five of them act on the
+            group as a record. Splitting on that line gives two short rows that
+            land in the same place on every row of the table, which is the
+            property a column of controls needs and a wrapped pile cannot have.
+
+            ★★ The top row keeps its words; the bottom row is icons.
+
+            Ирц, Хоол and Үнэлгээ are opened daily and are the reason an
+            administrator is on this screen, so they stay legible at a glance.
+            The management five are occasional, their glyphs are distinct, and
+            each carries an `aria-label` and a `title` — so the label is one
+            hover or one screen reader away rather than absent. At 44px they are
+            still thumb-sized (`button.tsx`: "Square icon button. Still 44px"),
+            which is the floor the 28px revoke control once broke.
+          */
+          <div className="flex flex-col items-end gap-1.5">
             {/*
               ★ The group's three daily registers.
 
               `/groups/:id/attendance`, `/groups/:id/meals` and
               `/groups/:id/assessment` have never had a top-level menu entry,
               deliberately: none can start without a group, so a sidebar item
-              would open a screen whose first act is "which group?". They were
-              reached from the teacher dashboard's `GroupsSection`, which the
-              2026-08-28 redesign removed from that page.
-
-              A teacher gets them back in the sidebar under "Бүлгийн бүртгэл",
-              scoped to the one group they are assigned. An **admin** cannot:
-              `GET /groups` returns every group in the kindergarten, so there is
-              no single id to scope a menu entry to. This list is the admin's own
-              answer to "which group?", so the links belong on its rows — which
-              is what `GroupsSection`'s multi-group branch used to render.
-
-              `group-meals.test.tsx` warns about exactly this ("Someone tidying
-              that card must fail a test, not ship a feature nobody can open")
-              but renders `GroupsSection` in isolation, so it would have stayed
-              green while all three routes went dark for every administrator.
+              would open a screen whose first act is "which group?". A teacher
+              gets them scoped to their one group; an **admin** cannot, because
+              `GET /groups` returns every group and there is no single id to
+              scope to. This list is the admin's own answer to "which group?",
+              so the links belong on its rows.
             */}
-            <Button asChild variant="ghost" size="sm">
-              <Link href={`/groups/${group.id}/attendance`}>
-                <CalendarCheck size={16} />
-                Ирц
-              </Link>
-            </Button>
-            <Button asChild variant="ghost" size="sm">
-              <Link href={`/groups/${group.id}/meals`}>
-                <UtensilsCrossed size={16} />
-                Хоол
-              </Link>
-            </Button>
-            <Button asChild variant="ghost" size="sm">
-              <Link href={`/groups/${group.id}/assessment`}>
-                <ClipboardCheck size={16} />
-                Үнэлгээ
-              </Link>
-            </Button>
+            <span className="flex items-center gap-1">
+              <Button asChild variant="ghost" size="sm">
+                <Link href={`/groups/${group.id}/attendance`}>
+                  <CalendarCheck size={16} />
+                  Ирц
+                </Link>
+              </Button>
+              <Button asChild variant="ghost" size="sm">
+                <Link href={`/groups/${group.id}/meals`}>
+                  <UtensilsCrossed size={16} />
+                  Хоол
+                </Link>
+              </Button>
+              <Button asChild variant="ghost" size="sm">
+                <Link href={`/groups/${group.id}/assessment`}>
+                  <ClipboardCheck size={16} />
+                  Үнэлгээ
+                </Link>
+              </Button>
+            </span>
 
-            <Button variant="secondary" size="sm" onClick={() => setManaging(true)}>
-              <UserPlus size={16} />
-              Багш
-            </Button>
+            <span className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={`${group.name} — багш хуваарилах`}
+                title="Багш хуваарилах"
+                onClick={() => setManaging(true)}
+              >
+                <UserPlus size={16} aria-hidden />
+              </Button>
 
-            <PromoteGroupButton group={group} enrolled={children} />
-            <EditGroupButton group={group} />
-            <ArchiveToggleButton group={group} />
-            <DeleteGroupButton group={group} enrolled={children} />
-          </>
+              <PromoteGroupButton group={group} enrolled={children} />
+              <EditGroupButton group={group} />
+              <ArchiveToggleButton group={group} />
+              <DeleteGroupButton group={group} enrolled={children} />
+            </span>
+          </div>
         }
       />
 
@@ -511,6 +546,41 @@ function PromoteGroupButton({
   });
 
   /*
+   * ★ The group's roster, so the promotion can be a subset — 2026-09-04.
+   *
+   * `promoteGroupSchema.childIds` has been optional since the endpoint
+   * shipped — "its absence means everyone" — and nothing on this screen could
+   * express the other case. A director keeping two children back a year had to
+   * promote the whole group and then move those two individually, which writes
+   * the wrong thing into their archive: a дэвшсэн row followed by a correction,
+   * rather than no promotion at all.
+   *
+   * Fetched only while the dialog is open. Twenty-five is the roster's own page
+   * size elsewhere; a group is smaller than that in practice, and `pageSize=100`
+   * is the same bound the target list above uses.
+   */
+  const roster = useQuery({
+    queryKey: qk.children({ groupId: group.id, pageSize: 100 }),
+    queryFn: () => get(`/children?groupId=${group.id}&page=1&pageSize=100`, childListSchema),
+    enabled: open,
+  });
+
+  const rosterItems = roster.data?.items ?? [];
+
+  /*
+   * ★ "Everyone" is the default and is *not* the same request as "all of them
+   * ticked".
+   *
+   * Sending no `childIds` means "every active enrolment at the moment the
+   * server runs"; sending a list of ids fixes the set at what the dialog
+   * happened to have loaded. Those differ if a child is enrolled between the
+   * two, and the first is the honest reading of "бүлгээр дэвшүүлэх". So the
+   * mode is explicit rather than inferred from the selection being full.
+   */
+  const [mode, setMode] = useState<"all" | "some">("all");
+  const selection = useSelection(rosterItems.map((child) => child.id));
+
+  /*
     Every other group, newest school year first. A promotion nearly always
     targets next year, and a director with four years of history should not
     have to scroll past 2023 to find it.
@@ -526,7 +596,8 @@ function PromoteGroupButton({
     mutationFn: () =>
       mutate(`/groups/${group.id}/promotions`, promotionResultSchema, {
         method: "POST",
-        body: { toGroupId },
+        // Omitted entirely in "all" mode — see the note on `mode` above.
+        body: mode === "all" ? { toGroupId } : { toGroupId, childIds: selection.ids },
       }),
     onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: qk.adminGroups() });
@@ -546,19 +617,23 @@ function PromoteGroupButton({
     <>
       <Button
         variant="ghost"
-        size="sm"
+        size="icon"
         disabled={enrolled === 0}
+        aria-label={`${group.name} — бүлгээр дэвшүүлэх`}
         /* A group with nobody in it has nobody to promote, and the API says so
-           with a 400. Refusing here means the director never meets it. */
-        title={enrolled === 0 ? "Энэ бүлэгт хүүхэд бүртгэлгүй байна" : undefined}
+           with a 400. Refusing here means the director never meets it. The
+           title carries the label when it is enabled and the reason when it is
+           not — an icon button must never be a glyph with no explanation. */
+        title={enrolled === 0 ? "Энэ бүлэгт хүүхэд бүртгэлгүй байна" : "Бүлгээр дэвшүүлэх"}
         onClick={() => {
           setToGroupId("");
+          setMode("all");
+          selection.clear();
           promote.reset();
           setOpen(true);
         }}
       >
         <TrendingUp size={16} aria-hidden="true" />
-        Дэвшүүлэх
       </Button>
 
       <FormDialog
@@ -595,7 +670,11 @@ function PromoteGroupButton({
           noValidate
           onSubmit={(e) => {
             e.preventDefault();
-            if (toGroupId && !promote.isPending) promote.mutate();
+            // "some" with nothing ticked would post an empty `childIds`, which
+            // the schema refuses with a 400 — refused here so the director
+            // never meets it.
+            const ready = mode === "all" || selection.count > 0;
+            if (toGroupId && ready && !promote.isPending) promote.mutate();
           }}
         >
           <FormError
@@ -625,6 +704,89 @@ function PromoteGroupButton({
           </Field>
 
           {/*
+            ★ Everyone, or a chosen few — 2026-09-04, at the client's request.
+
+            Two radios rather than a checkbox list that starts full: "бүлгээр
+            дэвшүүлэх" is the ordinary case and it should take one click, and
+            the two are genuinely different requests (see the note on `mode`).
+            The list only appears once somebody has said they want to choose,
+            so the dialog stays short for the case that is almost always right.
+          */}
+          <fieldset className="flex flex-col gap-2">
+            <legend className="mb-1 text-body font-medium text-ink">Хэнийг дэвшүүлэх вэ</legend>
+
+            <label className="flex min-h-[44px] cursor-pointer items-center gap-2.5">
+              <input
+                type="radio"
+                name={`promote-mode-${group.id}`}
+                className="size-5 accent-primary"
+                checked={mode === "all"}
+                onChange={() => setMode("all")}
+              />
+              <span className="text-body text-ink">
+                Бүх хүүхэд
+                <span className="text-muted"> · {enrolled} хүүхэд</span>
+              </span>
+            </label>
+
+            <label className="flex min-h-[44px] cursor-pointer items-center gap-2.5">
+              <input
+                type="radio"
+                name={`promote-mode-${group.id}`}
+                className="size-5 accent-primary"
+                checked={mode === "some"}
+                onChange={() => setMode("some")}
+              />
+              <span className="text-body text-ink">Сонгосон хүүхдүүд</span>
+            </label>
+          </fieldset>
+
+          {mode === "some" ? (
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-caption text-muted">
+                  {selection.count} / {rosterItems.length} сонгосон
+                </span>
+                <button
+                  type="button"
+                  onClick={selection.toggleAll}
+                  className="min-h-11 text-caption font-medium text-primary hover:underline"
+                >
+                  {selection.allSelected ? "Сонголтыг цуцлах" : "Бүгдийг сонгох"}
+                </button>
+              </div>
+
+              {/*
+                Scrolls at about six rows. A group of twenty inside a dialog
+                that grows to fit them pushes the confirm button off the bottom
+                of a laptop screen, which is the control the reader is heading
+                for.
+              */}
+              <div className="max-h-[240px] overflow-y-auto rounded-control border border-border">
+                {roster.isPending ? (
+                  <p className="px-3 py-3 text-body text-muted">Ачаалж байна…</p>
+                ) : rosterItems.length === 0 ? (
+                  <p className="px-3 py-3 text-body text-muted">Бүлэгт хүүхэд бүртгэлгүй байна.</p>
+                ) : (
+                  rosterItems.map((child) => (
+                    <label
+                      key={child.id}
+                      className="flex min-h-[44px] cursor-pointer items-center gap-2.5 border-b border-border-soft px-3 last:border-0 hover:bg-sunken"
+                    >
+                      <SelectBox
+                        checked={selection.has(child.id)}
+                        onChange={() => selection.toggle(child.id)}
+                        label={`${fullName(child)} — сонгох`}
+                      />
+                      <span className="min-w-0 truncate text-body text-ink">{fullName(child)}</span>
+                    </label>
+                  ))
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {/*
             ★ What is about to be written, in words, before it is written.
 
             The two outcomes are recorded differently and read differently in a
@@ -649,7 +811,16 @@ function PromoteGroupButton({
                 correct for every name anyone can enter.
               */}
               <span className="text-ink">«{group.name}»</span> →{" "}
-              <span className="text-ink">«{target.name}»</span>. {enrolled} хүүхэд шилжинэ.{" "}
+              <span className="text-ink">«{target.name}»</span>.{" "}
+              {/*
+                ★ The preview counts what will actually move.
+
+                It said `enrolled` unconditionally, which was right while the
+                only option was the whole group. With a subset selected it would
+                promise twenty and move three — and the sentence beside it is
+                the last thing read before the button is pressed.
+              */}
+              {mode === "all" ? enrolled : selection.count} хүүхэд шилжинэ.{" "}
               {outcome === "REPEATED" ? (
                 <>
                   Насны бүлэг ижил тул <span className="text-ink">давтан суралцсан</span> гэж
@@ -696,7 +867,9 @@ function EditGroupButton({ group }: { group: z.infer<typeof groupListItemSchema>
     <>
       <Button
         variant="ghost"
-        size="sm"
+        size="icon"
+        aria-label={`${group.name} — засах`}
+        title="Засах"
         onClick={() => {
           // Re-seeded on open: the list refetches while this is closed, and a
           // form still holding its mount-time values would write them back.
@@ -709,7 +882,6 @@ function EditGroupButton({ group }: { group: z.infer<typeof groupListItemSchema>
         }}
       >
         <Pencil size={16} aria-hidden="true" />
-        Засах
       </Button>
 
       <FormDialog
@@ -855,17 +1027,36 @@ function ArchiveToggleButton({ group }: { group: z.infer<typeof groupListItemSch
 
   return (
     <span className="inline-flex flex-col items-end gap-1">
-      <Button variant="ghost" size="sm" disabled={change.isPending} onClick={() => change.mutate()}>
+      {/*
+        ★ The pending text moved into the `title`, and that is a real loss the
+        icon form has to pay for.
+
+        "Архивлаж байна…" used to be the button's own label, so the wait was
+        visible without a hover. `disabled` still says the press registered, and
+        the list refetches on success — but a slow archive is now quieter than
+        it was. Accepted because the alternative was this control keeping a
+        90px label and pushing the row back into three wrapped lines.
+      */}
+      <Button
+        variant="ghost"
+        size="icon"
+        disabled={change.isPending}
+        aria-label={`${group.name} — ${isArchived ? "сэргээх" : "архивлах"}`}
+        title={
+          change.isPending
+            ? isArchived
+              ? "Сэргээж байна…"
+              : "Архивлаж байна…"
+            : isArchived
+              ? "Сэргээх"
+              : "Архивлах"
+        }
+        onClick={() => change.mutate()}
+      >
         {isArchived ? (
-          <>
-            <RotateCcw size={16} aria-hidden="true" />
-            {change.isPending ? "Сэргээж байна…" : "Сэргээх"}
-          </>
+          <RotateCcw size={16} aria-hidden="true" />
         ) : (
-          <>
-            <Archive size={16} aria-hidden="true" />
-            {change.isPending ? "Архивлаж байна…" : "Архивлах"}
-          </>
+          <Archive size={16} aria-hidden="true" />
         )}
       </Button>
 
@@ -930,13 +1121,16 @@ function DeleteGroupButton({
         trigger={
           <Button
             variant="ghost"
-            size="sm"
+            size="icon"
             disabled={remove.isPending || enrolled > 0}
             aria-label={`${group.name} — устгах`}
+            /* `size="icon"` since 2026-09-04 — it was already glyph-only, so
+               `sm`'s `px-4` was padding around nothing. The title carries the
+               label when enabled and the reason when not. */
             title={
               enrolled > 0
                 ? "Бүлэгт хүүхэд бүртгэлтэй байна. Эхлээд өөр бүлэгт шилжүүлнэ үү."
-                : undefined
+                : "Устгах"
             }
             className="text-muted hover:bg-danger-soft hover:text-danger"
           >

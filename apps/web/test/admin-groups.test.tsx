@@ -108,7 +108,7 @@ describe("бүлгээр дэвшүүлэх", () => {
     stubTwoGroups();
     renderWithProviders(<AdminGroupsPage />);
 
-    const buttons = await screen.findAllByRole("button", { name: "Дэвшүүлэх" });
+    const buttons = await screen.findAllByRole("button", { name: /бүлгээр дэвшүүлэх/ });
     expect(buttons[0]).toBeEnabled();
   });
 
@@ -118,7 +118,7 @@ describe("бүлгээр дэвшүүлэх", () => {
     stubGroups({ _count: { enrollments: 0 } });
     renderWithProviders(<AdminGroupsPage />);
 
-    expect(await screen.findByRole("button", { name: "Дэвшүүлэх" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: /бүлгээр дэвшүүлэх/ })).toBeDisabled();
   });
 
   it("says the move will be recorded as a promotion when the bands differ", async () => {
@@ -126,7 +126,7 @@ describe("бүлгээр дэвшүүлэх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click((await screen.findAllByRole("button", { name: "Дэвшүүлэх" }))[0]!);
+    await u.click((await screen.findAllByRole("button", { name: /бүлгээр дэвшүүлэх/ }))[0]!);
     await selectOption(u, /Хүлээн авах бүлэг/, /Бэлтгэл бүлэг/);
 
     const dialog = await screen.findByRole("dialog");
@@ -140,7 +140,7 @@ describe("бүлгээр дэвшүүлэх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click((await screen.findAllByRole("button", { name: "Дэвшүүлэх" }))[0]!);
+    await u.click((await screen.findAllByRole("button", { name: /бүлгээр дэвшүүлэх/ }))[0]!);
     await selectOption(u, /Хүлээн авах бүлэг/, /Бэлтгэл бүлэг/);
 
     const dialog = await screen.findByRole("dialog");
@@ -158,7 +158,7 @@ describe("бүлгээр дэвшүүлэх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click((await screen.findAllByRole("button", { name: "Дэвшүүлэх" }))[0]!);
+    await u.click((await screen.findAllByRole("button", { name: /бүлгээр дэвшүүлэх/ }))[0]!);
     await selectOption(u, /Хүлээн авах бүлэг/, /Бэлтгэл бүлэг/);
     const dialog = await screen.findByRole("dialog");
     await u.click(within(dialog).getByRole("button", { name: "Дэвшүүлэх" }));
@@ -178,7 +178,7 @@ describe("бүлгээр дэвшүүлэх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click((await screen.findAllByRole("button", { name: "Дэвшүүлэх" }))[0]!);
+    await u.click((await screen.findAllByRole("button", { name: /бүлгээр дэвшүүлэх/ }))[0]!);
     const dialog = await screen.findByRole("dialog");
 
     expect(within(dialog).getByRole("button", { name: "Дэвшүүлэх" })).toBeDisabled();
@@ -200,7 +200,7 @@ describe("бүлгээр дэвшүүлэх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click((await screen.findAllByRole("button", { name: "Дэвшүүлэх" }))[0]!);
+    await u.click((await screen.findAllByRole("button", { name: /бүлгээр дэвшүүлэх/ }))[0]!);
     await u.click(await screen.findByLabelText(/Хүлээн авах бүлэг/));
 
     const option = await screen.findByRole("option", { name: /Бэлтгэл бүлэг/ });
@@ -215,7 +215,7 @@ describe("бүлгээр дэвшүүлэх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click((await screen.findAllByRole("button", { name: "Дэвшүүлэх" }))[0]!);
+    await u.click((await screen.findAllByRole("button", { name: /бүлгээр дэвшүүлэх/ }))[0]!);
     await u.click(await screen.findByLabelText(/Хүлээн авах бүлэг/));
 
     expect(await screen.findByRole("option", { name: /Нар/ })).toHaveTextContent(
@@ -230,7 +230,7 @@ describe("бүлгээр дэвшүүлэх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click((await screen.findAllByRole("button", { name: "Дэвшүүлэх" }))[0]!);
+    await u.click((await screen.findAllByRole("button", { name: /бүлгээр дэвшүүлэх/ }))[0]!);
     await u.click(await screen.findByLabelText(/Хүлээн авах бүлэг/));
 
     expect(await screen.findByRole("option", { name: /Бэлтгэл бүлэг/ })).toBeInTheDocument();
@@ -243,7 +243,7 @@ describe("бүлэг засах", () => {
     stubGroups();
     renderWithProviders(<AdminGroupsPage />);
 
-    expect(await screen.findByRole("button", { name: "Засах" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /— засах/ })).toBeInTheDocument();
   });
 
   it("prefills the name and age band", async () => {
@@ -251,7 +251,7 @@ describe("бүлэг засах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Засах" }));
+    await u.click(await screen.findByRole("button", { name: /— засах/ }));
     const dialog = await screen.findByRole("dialog");
 
     expect(within(dialog).getByLabelText(/Бүлгийн нэр/)).toHaveValue("Дунд бүлэг");
@@ -263,7 +263,7 @@ describe("бүлэг засах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Засах" }));
+    await u.click(await screen.findByRole("button", { name: /— засах/ }));
     await u.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Болих" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -286,7 +286,7 @@ describe("бүлэг засах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Засах" }));
+    await u.click(await screen.findByRole("button", { name: /— засах/ }));
     const dialog = await screen.findByRole("dialog");
     const name = within(dialog).getByLabelText(/Бүлгийн нэр/);
     await u.clear(name);
@@ -313,7 +313,7 @@ describe("бүлэг засах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Засах" }));
+    await u.click(await screen.findByRole("button", { name: /— засах/ }));
     await selectOption(u, /Насны бүлэг/, "Бэлтгэл бүлэг");
     await u.click(
       within(await screen.findByRole("dialog")).getByRole("button", { name: "Хадгалах" }),
@@ -331,7 +331,7 @@ describe("бүлэг засах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Засах" }));
+    await u.click(await screen.findByRole("button", { name: /— засах/ }));
     await u.click(
       within(await screen.findByRole("dialog")).getByRole("button", { name: "Хадгалах" }),
     );
@@ -363,7 +363,7 @@ describe("бүлэг засах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Засах" }));
+    await u.click(await screen.findByRole("button", { name: /— засах/ }));
     const dialog = await screen.findByRole("dialog");
     await u.click(within(dialog).getByRole("button", { name: "Хадгалах" }));
 
@@ -382,7 +382,7 @@ describe("архивлах ба сэргээх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click(await screen.findByRole("button", { name: /Архивлах/ }));
+    await u.click(await screen.findByRole("button", { name: /архивлах/i }));
 
     expect(screen.queryByRole("dialog")).toBeNull();
     await waitFor(() => {
@@ -398,8 +398,8 @@ describe("архивлах ба сэргээх", () => {
     renderWithProviders(<AdminGroupsPage />);
 
     expect(await screen.findByText("Архивласан")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Сэргээх/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Архивлах/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /сэргээх/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /архивлах/i })).toBeNull();
   });
 
   /** ★★ The backend takes `status` both ways, so the UI must not be one-way. */
@@ -410,7 +410,7 @@ describe("архивлах ба сэргээх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click(await screen.findByRole("button", { name: /Сэргээх/ }));
+    await u.click(await screen.findByRole("button", { name: /сэргээх/i }));
 
     await waitFor(() =>
       expect(calls.find((c) => c.method === "PATCH")!.body).toEqual({ status: "ACTIVE" }),
@@ -430,7 +430,7 @@ describe("архивлах ба сэргээх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click(await screen.findByRole("button", { name: /Архивлах/ }));
+    await u.click(await screen.findByRole("button", { name: /архивлах/i }));
     expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
 });
@@ -491,7 +491,7 @@ describe("бүлгийг устгах", () => {
 
     expect(await screen.findByRole("button", { name: "Дунд бүлэг — устгах" })).toBeDisabled();
     // Archiving is still available — it has no enrolment guard.
-    expect(screen.getByRole("button", { name: /Архивлах/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /архивлах/i })).toBeEnabled();
   });
 
   /** ★★ The 409 names the count and says what to do next, so it stays on the
@@ -539,7 +539,78 @@ describe("эрх", () => {
     ]);
     renderWithProviders(<AdminGroupsPage />);
 
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Засах" })).toBeNull());
-    expect(screen.queryByRole("button", { name: /Архивлах/ })).toBeNull();
+    await waitFor(() => expect(screen.queryByRole("button", { name: /— засах/ })).toBeNull());
+    expect(screen.queryByRole("button", { name: /архивлах/i })).toBeNull();
+  });
+});
+
+/**
+ * Дэвшүүлэх — everyone, or a chosen few (2026-09-04).
+ *
+ * ★ The two modes are different *requests*, not the same one with a fuller list.
+ *
+ * Omitting `childIds` means "every active enrolment at the moment the server
+ * runs"; sending ids fixes the set at what this dialog had loaded. Those differ
+ * if a child is enrolled in between, and the first is the honest reading of
+ * "бүлгээр дэвшүүлэх". These hold that distinction, because the tempting
+ * simplification — always send ids, ticked by default — looks identical on
+ * screen and is not the same call.
+ */
+describe("дэвшүүлэх — бүгд эсвэл сонгосон", () => {
+  const NEXT = "66666666-6666-4666-8666-666666666666";
+
+  function stubForPromotion(extra: Parameters<typeof stubApi>[0] = []) {
+    const source = group({ _count: { enrollments: 2 } });
+    const target = { ...group(), id: NEXT, name: "Бэлтгэл бүлэг", ageBand: "SENIOR" };
+
+    return stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      ...extra,
+      {
+        path: "/groups",
+        body: { items: [source, target], page: 1, pageSize: 20, total: 2, totalPages: 1 },
+      },
+    ]);
+  }
+
+  it("sends no childIds when the whole group is promoted", async () => {
+    const u = userEvent.setup();
+    const { calls } = stubForPromotion([
+      {
+        path: "/groups/" + GROUP + "/promotions",
+        method: "POST",
+        body: { outcome: "PROMOTED", movedCount: 2 },
+      },
+    ]);
+    renderWithProviders(<AdminGroupsPage />);
+
+    await u.click((await screen.findAllByRole("button", { name: /бүлгээр дэвшүүлэх/ }))[0]!);
+    await selectOption(u, /Хүлээн авах бүлэг/, /Бэлтгэл бүлэг/);
+
+    const dialog = await screen.findByRole("dialog");
+    await u.click(within(dialog).getByRole("button", { name: "Дэвшүүлэх" }));
+
+    await waitFor(() => {
+      const posted = calls.find((c) => c.method === "POST" && c.url.includes("/promotions"));
+      expect(posted).toBeTruthy();
+      // ★ The whole assertion: no `childIds` key at all, not an empty array and
+      // not every id.
+      expect(posted!.body).toEqual({ toGroupId: NEXT });
+    });
+  });
+
+  /** The roster stays out of the way until somebody asks to choose. */
+  it("shows the roster only once «Сонгосон хүүхдүүд» is picked", async () => {
+    const u = userEvent.setup();
+    stubForPromotion();
+    renderWithProviders(<AdminGroupsPage />);
+
+    await u.click((await screen.findAllByRole("button", { name: /бүлгээр дэвшүүлэх/ }))[0]!);
+    const dialog = await screen.findByRole("dialog");
+
+    expect(within(dialog).queryByText(/сонгосон$/)).toBeNull();
+
+    await u.click(within(dialog).getByLabelText("Сонгосон хүүхдүүд"));
+    expect(await within(dialog).findByText(/сонгосон$/)).toBeInTheDocument();
   });
 });

@@ -139,6 +139,9 @@ export const qk = {
   /** The attendance journal — child × day. Filters are part of the key. */
   attendanceJournal: (kindergartenId: string, filters: Record<string, unknown> = {}) =>
     ["attendance", "journal", kindergartenId, filters] as const,
+  /** The director's register — group × day. A different grain, so a different key. */
+  attendanceDaily: (kindergartenId: string, filters: Record<string, unknown> = {}) =>
+    ["attendance", "daily", kindergartenId, filters] as const,
   fundingRegister: (kindergartenId: string, filters: Record<string, unknown> = {}) =>
     ["funding", "register", kindergartenId, filters] as const,
 

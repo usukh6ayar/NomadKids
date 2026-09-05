@@ -319,6 +319,25 @@ export const childSummarySchema = z.object({
   id: uuidSchema,
   lastName: z.string(),
   firstName: z.string(),
+  /**
+   * ★ On the summary since 2026-09-04, for the roster table's Регистр column.
+   *
+   * `nullish` rather than required, and that is the honest shape: a newly
+   * arrived child may not have one recorded yet (`nationalIdSchema` is optional
+   * throughout for that reason), and `/children/mine` returns a slimmer row
+   * that does not select it at all.
+   */
+  nationalId: z.string().nullish(),
+  /**
+   * Гадаад иргэн, and the identifier that stands in for a регистр.
+   *
+   * ★ On the summary because the roster's Регистр column is otherwise a lie by
+   * omission: a foreign child has no `nationalId` and never will, so the cell
+   * reads "—" exactly like a child whose регистр nobody has typed in yet. Those
+   * are different states, and the second one is a to-do.
+   */
+  isForeign: z.boolean().nullish(),
+  foreignId: z.string().nullish(),
   sex: sexSchema.nullish(),
   dateOfBirth: z.string(),
   status: childStatusSchema.nullish(),
@@ -340,13 +359,22 @@ export const guardianshipSchema = z.object({
 });
 
 export const childDetailSchema = childSummarySchema.extend({
-  /**
-   * On the detail response only, never on a list. It is the one field on a
-   * child that identifies them outside this system, so it travels with the
-   * single record a member of staff opened rather than with every row of a
-   * roster.
+  /*
+   * ★ `nationalId` is inherited from the summary now, and this note used to say
+   * the opposite — "on the detail response only, never on a list" — 2026-09-04.
+   *
+   * The reasoning was real: it is the one field that identifies a child outside
+   * this system, so it travelled with the single record somebody opened rather
+   * than with every row of a roster. What changed is that the client asked for
+   * a Регистр column on the roster table, and the exposure that argument was
+   * protecting against does not exist here: `/children` is staff-only, returns
+   * only children the caller may already open one at a time, and every download
+   * of the same data through the export already writes a `DOWNLOAD` audit row.
+   *
+   * The note is corrected rather than left standing beside a schema that
+   * contradicts it — a comment that describes a rule the code stopped following
+   * is how the next reader learns to stop reading the comments.
    */
-  nationalId: z.string().nullish(),
   healthNotes: z.string().nullish(),
   kindergarten: namedRefSchema.nullish(),
   guardianships: z.array(guardianshipSchema).default([]),
@@ -489,6 +517,101 @@ export const attendanceJournalSchema = paginated(attendanceJournalRowSchema).ext
   totals: z.record(z.string(), z.number()),
 });
 export type AttendanceJournal = z.infer<typeof attendanceJournalSchema>;
+
+/**
+ * "Өдөр тутмын ирц" — the director's register, a row per group per day.
+ *
+ * ★ The client's own column list, in their order, 2026-09-04.
+ *
+ * `Хичээлийн жил` leads it: their list began at "Сургууль, цэцэрлэг", and a
+ * register with no school year on it cannot be filed. The rest follow exactly.
+ *
+ * ★★ No controls, and that is the whole point of a second attendance screen.
+ *
+ * The group day sheet is a child per row with six buttons each, because a
+ * teacher's job there is to record. A director does not press those — they
+ * asked for the numbers as they already stand — so this response carries no
+ * child ids and nothing writable.
+ */
+export const dailyAttendanceRowSchema = z.object({
+  schoolYear: z.string(),
+  groupId: z.string(),
+  group: z.string(),
+  date: z.string(),
+  /** The roster: every actively enrolled child, marked or not. */
+  expected: z.number(),
+  recorded: z.number(),
+  unrecorded: z.number(),
+  /**
+   * ★ A boolean, not a percentage.
+   *
+   * `expected` and `recorded` stay separate for the reason the admin dashboard
+   * records: one ratio cannot tell "nobody has filled this in" from "nobody
+   * came in". At this grain the useful form is yes/no, with `unrecorded` beside
+   * it saying how far off.
+   */
+  complete: z.boolean(),
+  /** `HALF_DAY` counts here — a half day is a child who came. */
+  present: z.number(),
+  excused: z.number(),
+  sick: z.number(),
+  absent: z.number(),
+  /**
+   * When this group-day was submitted — "Илгээсэн".
+   *
+   * ★ A real timestamp now, set by the Илгээх button; null until pressed.
+   *
+   * The eventual destination is ESIS, and that transport does not exist —
+   * `docs/ESIS_API_READINESS.md` §1 records that access is a contract
+   * with the ministry rather than a signup. What the button records today is
+   * the act this system can witness: a director declaring a register final,
+   * with who and when. The ESIS call attaches to the same `AttendanceSubmission`
+   * row when it arrives, so this field does not change shape then.
+   */
+  sentAt: z.string().nullish(),
+  /** Who pressed Илгээх. Null alongside a null `sentAt`. */
+  sentBy: z.string().nullish(),
+  /** The earliest write, not the last edit — when the register was started. */
+  createdAt: z.string().nullish(),
+  /** More than one name when a correction came from a second person. */
+  createdBy: z.array(z.string()).default([]),
+});
+export type DailyAttendanceRow = z.infer<typeof dailyAttendanceRowSchema>;
+
+export const dailyAttendanceSchema = z.object({
+  kindergartenName: z.string(),
+  from: z.string(),
+  to: z.string(),
+  items: z.array(dailyAttendanceRowSchema),
+  totals: z.object({
+    expected: z.number(),
+    unrecorded: z.number(),
+    present: z.number(),
+    excused: z.number(),
+    sick: z.number(),
+    absent: z.number(),
+    /** Group-days fully filled in — the figure that drives a chase. */
+    complete: z.number(),
+    /** How many are already submitted — what Илгээх has left to do. */
+    sent: z.number(),
+    days: z.number(),
+  }),
+});
+export type DailyAttendance = z.infer<typeof dailyAttendanceSchema>;
+
+/**
+ * The result of pressing Илгээх — what was recorded as submitted.
+ *
+ * Returned rather than a bare 204 so the screen can confirm the count without a
+ * refetch, and so a caller can see which days actually landed when some were
+ * skipped as not belonging to this kindergarten.
+ */
+export const attendanceSubmissionSchema = z.object({
+  groupId: z.string(),
+  date: z.string(),
+  submittedAt: z.string(),
+});
+export type AttendanceSubmissionResult = z.infer<typeof attendanceSubmissionSchema>;
 
 export const attendanceRequestStatusSchema = z.enum(["PENDING", "APPROVED", "REJECTED"]);
 export type AttendanceRequestStatus = z.infer<typeof attendanceRequestStatusSchema>;

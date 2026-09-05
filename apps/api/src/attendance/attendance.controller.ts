@@ -13,6 +13,8 @@ import {
   attendanceRegisterQuerySchema,
   listAttendanceQuerySchema,
   recordAttendanceSchema,
+  recordGroupAttendanceSchema,
+  submitAttendanceSchema,
   recordPickupSchema,
   reviewAttendanceRequestSchema,
   type CreateAttendanceRequestDto,
@@ -21,6 +23,8 @@ import {
   type AttendanceRegisterQuery,
   type ListAttendanceQuery,
   type RecordAttendanceDto,
+  type RecordGroupAttendanceDto,
+  type SubmitAttendanceDto,
   type RecordPickupDto,
   type ReviewAttendanceRequestDto,
 } from "./attendance.dto";
@@ -153,6 +157,46 @@ export class KindergartenAttendanceController {
   }
 
   /**
+   * "Өдөр тутмын ирц" — the director's read-only register.
+   *
+   * ★ Same roles and same query schema as `register` above, deliberately.
+   *
+   * It is the same data at a coarser grain, so it must not be reachable by
+   * anybody the detailed grid is not: `нэмэлт.md` §13 keeps teachers out of the
+   * kindergarten-wide figures that feed funding, and a summary of those figures
+   * is still those figures.
+   */
+  @Get("daily")
+  @Roles("ADMIN", "ACCOUNTANT")
+  async daily(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(attendanceRegisterQuerySchema)) query: AttendanceRegisterQuery,
+  ) {
+    return this.service.dailySummary(actor, params.id, query);
+  }
+
+  /**
+   * "Ирц илгээх" — declares a set of group-days final and submitted.
+   *
+   * ★ `POST`, not `PUT`, even though re-submitting is idempotent.
+   *
+   * The resource created is a submission, and the request names which days to
+   * submit rather than the state a collection should end in. Pressing the
+   * button twice updates the existing row (see `submitDays`), which makes the
+   * *effect* idempotent without making the request a replacement.
+   */
+  @Post("daily/submit")
+  @Roles("ADMIN", "ACCOUNTANT")
+  async submitDaily(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(submitAttendanceSchema)) body: SubmitAttendanceDto,
+  ) {
+    return this.service.submitDays(actor, params.id, body);
+  }
+
+  /**
    * The same register as a spreadsheet — нэмэлт.md §16's "Excel экспорт".
    *
    * ★ Inline, not a queued job. ExcelJS over a quarter's grid is fast and
@@ -189,6 +233,29 @@ export class GroupAttendanceController {
     @Query(new ZodValidationPipe(groupDaySheetQuerySchema)) query: GroupDaySheetQuery,
   ) {
     return this.service.groupDaySheet(actor, params.id, query.date);
+  }
+
+  /**
+   * Many children, one status, one request — the register's batch save.
+   *
+   * ★ `@Put()` on the bare group path, mirroring `GroupMealsController`.
+   *
+   * Idempotent by construction: sending the same entries twice leaves the same
+   * six rows saying the same thing, which is what a teacher correcting a
+   * mis-tap actually does. That is `PUT`, not `POST`.
+   *
+   * The per-child `PUT /children/:id/attendance/:date` stays and is not
+   * superseded: it is the one that carries a note, a drop-off and an arrival
+   * time, none of which are true of six children at once.
+   */
+  @Put()
+  @Roles("TEACHER", "ADMIN")
+  async recordGroup(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(recordGroupAttendanceSchema)) body: RecordGroupAttendanceDto,
+  ) {
+    return this.service.recordGroupAttendance(actor, params.id, body);
   }
 
   /**
