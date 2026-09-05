@@ -56,11 +56,19 @@ function renderShell(
    * хүүхэд алга" and there is nothing to assert against.
    */
   ownChildren: unknown[] = [],
+  /*
+   * ★ Overridable since 2026-09-05, for the shortcut box.
+   *
+   * A teacher with no group is a real state — a new hire before an assignment
+   * — and it is the one where a quick link to Ирц would have nowhere to go.
+   * Testing that needs a roster with no groups in it.
+   */
+  groups: unknown = GROUPS,
 ) {
   setPathname(pathname);
   stubApi([
     { path: "/auth/me", body: sessionFor(roles) },
-    { path: "/groups", body: GROUPS },
+    { path: "/groups", body: groups },
     { path: "/children/mine", body: ownChildren },
     { path: "/notifications/unread-count", body: { count: 0 } },
   ]);
@@ -75,6 +83,19 @@ function renderShell(
 /** The desktop sidebar, by its accessible name. */
 async function sidebar(): Promise<HTMLElement> {
   return waitFor(() => screen.getByRole("navigation", { name: "Үндсэн цэс" }));
+}
+
+/**
+ * The collapsible sections, without the "Түргэн холбоос" box above them.
+ *
+ * ★ Two rows are deliberately in the sidebar twice as of 2026-09-05 —
+ * "Хүүхдүүд" and "Ирц" are shortcuts *and* section entries, which is what a
+ * shortcut is. An assertion about the section menu has to say which of the two
+ * it means, or it fails on the duplication rather than on anything real.
+ */
+async function sections(): Promise<HTMLElement> {
+  const nav = await sidebar();
+  return within(nav).getByTestId("nav-sections");
 }
 
 beforeEach(() => {
@@ -115,7 +136,7 @@ describe("the brand header", () => {
 describe("navigation icons", () => {
   it("gives every staff section entry an icon", async () => {
     renderShell(["TEACHER", "ADMIN"]);
-    const nav = await sidebar();
+    const nav = await sections();
 
     /*
       The client's 2026-08-30 labels. "Үнэлгээ" is "Явцын үнэлгээ" and "Мэдээ"
@@ -200,7 +221,7 @@ describe("the active route", () => {
 
   it("leaves other entries unmarked", async () => {
     renderShell(["TEACHER"], "/surveys");
-    const nav = await sidebar();
+    const nav = await sections();
 
     expect(within(nav).getByRole("link", { name: "Хүүхдүүд" })).not.toHaveAttribute("aria-current");
   });
@@ -223,7 +244,7 @@ describe("the active route", () => {
 describe("role-based navigation", () => {
   it("shows a teacher their sections and no admin entry", async () => {
     renderShell(["TEACHER"]);
-    const nav = await sidebar();
+    const nav = await sections();
 
     expect(within(nav).getByRole("link", { name: "Хүүхдүүд" })).toBeInTheDocument();
     expect(within(nav).getByRole("link", { name: "Ирц" })).toBeInTheDocument();
@@ -270,7 +291,7 @@ describe("role-based navigation", () => {
    */
   it("puts Бүлгүүд directly under Хүүхдүүд", async () => {
     renderShell(["ADMIN"]);
-    const nav = await sidebar();
+    const nav = await sections();
 
     const links = within(nav).getAllByRole("link");
     const children = links.findIndex((link) => link.textContent?.includes("Хүүхдүүд"));
@@ -527,5 +548,52 @@ describe("mobile navigation", () => {
     // guard on that staying true rather than an aspiration.
     expect(hrefs).toContain("/children");
     expect(hrefs).toContain("/notifications");
+  });
+});
+
+/**
+ * "Түргэн холбоос" — the box that returned on 2026-09-05.
+ *
+ * ★ What is worth pinning is not that it renders, but the two things that make
+ * it safe: it is a landmark of its own so it can be told apart from the menu
+ * under it, and it never offers a link a teacher cannot follow.
+ */
+describe("Түргэн холбоос", () => {
+  it("is its own landmark, so it is distinguishable from the section menu", async () => {
+    renderShell(["TEACHER"]);
+
+    const box = await waitFor(() => screen.getByRole("navigation", { name: "Түргэн холбоос" }));
+    expect(within(box).getByRole("link", { name: "Хүүхдүүд" })).toHaveAttribute(
+      "href",
+      "/children",
+    );
+    expect(within(box).getByRole("link", { name: "Ангийн самбар" })).toHaveAttribute(
+      "href",
+      "/notifications",
+    );
+  });
+
+  /**
+   * ★ A teacher with no group gets no Ирц shortcut at all.
+   *
+   * `scoped()` has nothing to build a href from, and the alternative — linking
+   * to a picker — is a quick link whose first act is a question. The section
+   * menu makes the same choice for the same reason; the shortcut must not
+   * disagree with it.
+   */
+  it("omits Ирц when the teacher has no group rather than linking to a picker", async () => {
+    renderShell(["TEACHER"], "/dashboard", [], { items: [], total: 0, page: 1, pageSize: 100 });
+
+    const box = await waitFor(() => screen.getByRole("navigation", { name: "Түргэн холбоос" }));
+    expect(within(box).queryByRole("link", { name: "Ирц" })).not.toBeInTheDocument();
+    expect(within(box).getByRole("link", { name: "Хүүхдүүд" })).toBeInTheDocument();
+  });
+
+  /** A parent's menu is four rows about one child; a shortcut box repeats it. */
+  it("is not drawn for a parent", async () => {
+    renderShell(["PARENT"]);
+
+    await waitFor(() => screen.getByRole("navigation", { name: "Үндсэн цэс" }));
+    expect(screen.queryByRole("navigation", { name: "Түргэн холбоос" })).not.toBeInTheDocument();
   });
 });

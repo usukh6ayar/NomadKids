@@ -178,12 +178,48 @@ export class ChildrenRepository {
             },
             take: 1,
           },
+          /*
+            ★ Read to be counted, never to be returned — see the mapping below.
+
+            `healthNotes` is a child's medical history and a guardian's phone
+            number is personal data; both are legitimately on the detail
+            endpoint behind `canAccessChild`, and neither belongs in a payload
+            whose job is to draw thirty rows. They are selected here so the
+            three booleans can be computed on the server and the values
+            dropped before anything leaves it.
+
+            ★★ `take: 1` on the guardianships, and `phone` is the only field.
+            One reachable guardian is what the check asks; loading all of them
+            to answer a yes/no would be a bigger query for no more answer.
+          */
+          healthNotes: true,
+          guardianships: {
+            where: { deletedAt: null, guardian: { phone: { not: null } } },
+            select: { id: true },
+            take: 1,
+          },
         },
       }),
       this.prisma.child.count({ where }),
     ]);
 
-    return { items, total };
+    /*
+     * ★ The sensitive fields are stripped here, not trusted to a DTO downstream.
+     *
+     * A `select` that reads `healthNotes` and a response that omits it are two
+     * different files, and the one that forgets is the one that ships. Doing it
+     * in the same function that asked for them keeps the two edits together.
+     */
+    const rows = items.map(({ healthNotes, guardianships, ...child }) => ({
+      ...child,
+      profile: {
+        photo: Boolean(child.photoMediaFileId),
+        health: Boolean(healthNotes?.trim()),
+        guardianContact: guardianships.length > 0,
+      },
+    }));
+
+    return { items: rows, total };
   }
 
   /**

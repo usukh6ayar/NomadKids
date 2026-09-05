@@ -560,6 +560,7 @@ function NotificationBellList({
 export function AppShell({
   nav,
   sections,
+  shortcuts,
   children,
   variant = "teacher",
   isAdmin = false,
@@ -568,6 +569,8 @@ export function AppShell({
   nav: NavItem[];
   /** Desktop sidebar sections. Without them the sidebar renders `nav` flat. */
   sections?: NavSection[];
+  /** "Түргэн холбоос" — see `NavShortcuts`. Omitted, nothing is drawn. */
+  shortcuts?: NavItem[];
   children: ReactNode;
   variant?: Variant;
   /**
@@ -639,6 +642,7 @@ export function AppShell({
         <Sidebar
           nav={nav}
           sections={sections}
+          shortcuts={shortcuts}
           subtitle={subtitle}
           variant={variant}
           isAdmin={isAdmin}
@@ -699,6 +703,7 @@ export function AppShell({
         onOpenChange={setMenuOpen}
         nav={nav}
         sections={sections}
+        shortcuts={shortcuts}
         subtitle={subtitle}
         variant={variant}
         isAdmin={isAdmin}
@@ -1000,6 +1005,7 @@ function WhoAmI({ variant, isAdmin }: { variant: Variant; isAdmin: boolean }) {
 function SidebarContent({
   nav,
   sections,
+  shortcuts,
   subtitle,
   variant,
   isAdmin,
@@ -1007,6 +1013,8 @@ function SidebarContent({
 }: {
   nav: NavItem[];
   sections?: NavSection[];
+  /** "Түргэн холбоос" — see `NavShortcuts`. Omitted, nothing is drawn. */
+  shortcuts?: NavItem[];
   /** The brand's second line — which part of the product this is. */
   subtitle: string;
   variant: Variant;
@@ -1057,20 +1065,31 @@ function SidebarContent({
         <div className="-mr-1.5 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1.5">
           {primary ? <NavLink item={primary} pathname={pathname} orientation="vertical" /> : null}
 
-          {sections?.length
-            ? sections.map((section) => (
+          {shortcuts?.length ? <NavShortcuts items={shortcuts} pathname={pathname} /> : null}
+
+          {sections?.length ? (
+            /*
+                ★ `display: contents`, so the wrapper is in the DOM but not in
+                the layout — the sections keep the parent's own `gap-0.5`
+                rhythm rather than becoming one flex child with none.
+
+                It exists because "Хүүхдүүд" and "Ирц" appear twice in this
+                sidebar since the shortcut box returned (2026-09-05), and an
+                assertion about the *section* menu needs to be able to say so.
+                `sidebar.test.tsx` scopes to it.
+              */
+            <div data-testid="nav-sections" className="contents">
+              {sections.map((section) => (
                 <NavGroup key={section.title} section={section} pathname={pathname} />
+              ))}
+            </div>
+          ) : (
+            nav
+              .slice(1)
+              .map((item) => (
+                <NavLink key={item.label} item={item} pathname={pathname} orientation="vertical" />
               ))
-            : nav
-                .slice(1)
-                .map((item) => (
-                  <NavLink
-                    key={item.label}
-                    item={item}
-                    pathname={pathname}
-                    orientation="vertical"
-                  />
-                ))}
+          )}
         </div>
 
         <div
@@ -1103,6 +1122,7 @@ function SidebarContent({
 function Sidebar({
   nav,
   sections,
+  shortcuts,
   subtitle,
   variant,
   isAdmin,
@@ -1110,6 +1130,7 @@ function Sidebar({
 }: {
   nav: NavItem[];
   sections?: NavSection[];
+  shortcuts?: NavItem[];
   subtitle: string;
   variant: Variant;
   isAdmin: boolean;
@@ -1134,6 +1155,7 @@ function Sidebar({
       <SidebarContent
         nav={nav}
         sections={sections}
+        shortcuts={shortcuts}
         subtitle={subtitle}
         variant={variant}
         isAdmin={isAdmin}
@@ -1192,6 +1214,7 @@ function MobileMenuDrawer({
   onOpenChange,
   nav,
   sections,
+  shortcuts,
   subtitle,
   variant,
   isAdmin,
@@ -1214,6 +1237,7 @@ function MobileMenuDrawer({
   variant: Variant;
   isAdmin: boolean;
   childSwitcher?: ChildSwitcher;
+  shortcuts?: NavItem[];
 }) {
   const closeOnLinkClick = (event: MouseEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest("a")) onOpenChange(false);
@@ -1239,6 +1263,7 @@ function MobileMenuDrawer({
             <SidebarContent
               nav={nav}
               sections={sections}
+              shortcuts={shortcuts}
               subtitle={subtitle}
               variant={variant}
               isAdmin={isAdmin}
@@ -1251,17 +1276,66 @@ function MobileMenuDrawer({
   );
 }
 
-/*
- * ★ The quick-links box ("Түргэн холбоос") was removed on 2026-08-23.
+/**
+ * "Түргэн холбоос" — the two or three destinations opened every morning.
  *
- * Its three icons were Хүүхдүүд, Хянах and Самбар — all three already one line
- * below in the sections, and all three already in the bottom bar on a phone. A
- * tinted grid repeating what the menu underneath it says is the widget that
- * makes a sidebar look like an admin template, and removing it is what lets the
- * remaining sections read as the whole menu rather than as the part below the
- * shortcuts. The `NavShortcut` type and `shortcuts` prop went with it: a prop
- * nothing passes is the next person's puzzle.
+ * ★ This was removed on 2026-08-23 and is back on 2026-09-05, at the client's
+ * request, after they compared the two products side by side. Both arguments
+ * are recorded here because the next person will meet them again.
+ *
+ * **Why it went:** its rows repeat entries that are one line below in the
+ * sections, and on a phone they are in the bottom bar as well. A tinted grid
+ * restating the menu underneath it is the widget that makes a sidebar look
+ * like an admin template.
+ *
+ * **Why it is back:** repetition is the point of a shortcut. A teacher opens
+ * Ирц every morning and should not read down four collapsed sections to find
+ * it, and the reference system this product is modelled on puts the same box
+ * in the same place. The duplication argument is true and was judged to cost
+ * less than the daily scan.
+ *
+ * ★★ It renders **nothing** when it is not passed, so no audience gets an
+ * empty tinted box, and a caller that has no obvious top three simply does not
+ * pass any. `layout.tsx` builds the teacher's; every other role is left alone.
+ *
+ * ★★★ `aria-hidden` is deliberately NOT set. These are real links to real
+ * destinations — a screen reader user gets them twice, once here and once in
+ * the section, which is the same bargain a sighted user is being offered.
+ * Hiding them would make the shortcut a sighted-only affordance.
  */
+function NavShortcuts({ items, pathname }: { items: NavItem[]; pathname: string }) {
+  return (
+    <nav aria-label="Түргэн холбоос" className="rounded-row border border-border bg-sunken p-2">
+      <p className="px-1.5 pb-1.5 text-caption font-semibold uppercase tracking-[.06em] text-faint">
+        Түргэн холбоос
+      </p>
+      <ul className="flex flex-col gap-0.5">
+        {items.map((item) => {
+          const active = item.href
+            ? pathname === item.href || pathname.startsWith(`${item.href}/`)
+            : false;
+          return (
+            <li key={item.label}>
+              <Link
+                href={item.href ?? "#"}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "flex min-h-[44px] items-center gap-2.5 rounded-control px-2 text-compact font-medium transition-colors",
+                  active
+                    ? "bg-surface text-primary shadow-sm"
+                    : "text-muted hover:bg-surface hover:text-ink",
+                )}
+              >
+                <span className="shrink-0">{item.icon}</span>
+                <span className="min-w-0 leading-snug">{item.label}</span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+}
 
 /**
  * A collapsible section.

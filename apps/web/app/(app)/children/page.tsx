@@ -4,14 +4,24 @@ import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ChevronRight, Download, Plus, Search, SlidersHorizontal, Upload } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronRight,
+  Download,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  Upload,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   CHILD_STATUS_LABEL,
   childSummarySchema,
+  completionPercent,
   paginated,
   rosterSummarySchema,
   SEX_LABEL,
+  type ChildProfileCompletion,
   type ChildSummary,
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
@@ -729,6 +739,8 @@ function ChildRow({
     dateOfBirth: string;
     photoMediaFileId?: string | null;
     enrollments?: { group?: { name: string } | null }[];
+    /** Staff rosters only — `/children/mine` does not compute it. */
+    profile?: ChildProfileCompletion;
   };
   checked: boolean;
   onToggle: () => void;
@@ -779,9 +791,54 @@ function ChildRow({
             {[group, formatAge(child.dateOfBirth)].filter(Boolean).join(" · ")}
           </span>
         </span>
+
+        {child.profile ? <ProfileCompletion profile={child.profile} /> : null}
+
         <ChevronRight size={18} aria-hidden="true" className="shrink-0 text-faint" />
       </Link>
     </div>
+  );
+}
+
+/**
+ * How much of a child's record is filled in.
+ *
+ * ★ Only when something is missing.
+ *
+ * A complete record draws nothing. Thirty rows each carrying a green "100%"
+ * is thirty pieces of noise saying there is nothing to do, and it would bury
+ * the two rows that do need attention — which is the entire purpose of the
+ * indicator. So the finished ones are silent and the unfinished ones are not.
+ *
+ * ★★ It names what is missing, not only how much.
+ *
+ * "67%" tells a teacher there is a problem and not what to do about it. The
+ * `title` and the screen-reader text list the actual gaps, because "Цээж зураг
+ * дутуу" is a task and a percentage is a score.
+ *
+ * ★★★ Not a link. The row already opens the child, and a second target inside
+ * it competes with the first for the same tap.
+ */
+function ProfileCompletion({ profile }: { profile: ChildProfileCompletion }) {
+  const missing = [
+    !profile.photo ? "Цээж зураг" : null,
+    !profile.health ? "Эрүүл мэндийн мэдээлэл" : null,
+    !profile.guardianContact ? "Асран хамгаалагчийн холбоо барих" : null,
+  ].filter((v): v is string => v !== null);
+
+  if (missing.length === 0) return null;
+
+  const percent = completionPercent(profile);
+  const detail = `${missing.join(", ")} дутуу`;
+
+  return (
+    <span
+      title={detail}
+      className="hidden shrink-0 items-center gap-1.5 rounded-pill bg-sun px-2.5 py-1 text-caption font-semibold text-sun-ink sm:inline-flex"
+    >
+      <AlertTriangle size={13} aria-hidden="true" />
+      {percent}%<span className="sr-only"> бүрдсэн. {detail}.</span>
+    </span>
   );
 }
 

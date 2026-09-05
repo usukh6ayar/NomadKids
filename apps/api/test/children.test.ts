@@ -1538,3 +1538,64 @@ describe("гадаад иргэн — round trip", () => {
     expect(child.nationalId).toBe("УБ11112222");
   });
 });
+
+/**
+ * The roster's "мэдээллийн бүрдэлт" — three booleans, computed on the server.
+ *
+ * ★ What these protect is the *shape* of the answer, not the arithmetic.
+ *
+ * The three facts behind it are a photograph, a health note and a guardian who
+ * can be reached. Two of those are sensitive: `healthNotes` is a child's
+ * medical history and a guardian's phone is personal data, and both are read
+ * to compute the flags. A list endpoint that let either escape would be
+ * handing every teacher thirty children's medical text to draw a percentage —
+ * so the first test below is the one that matters.
+ */
+describe("мэдээллийн бүрдэлт", () => {
+  it("never returns the values it counts, only whether they are set", async () => {
+    const res = await authed(request(server()).get("/v1/children"), teacherA);
+
+    expect(res.status).toBe(200);
+    const row = res.body.items.find((c: { id: string }) => c.id === a.child.id);
+    expect(row).toBeDefined();
+
+    // The flags are there …
+    expect(row.profile).toEqual({
+      photo: expect.any(Boolean),
+      health: expect.any(Boolean),
+      guardianContact: expect.any(Boolean),
+    });
+
+    // … and nothing they were derived from came with them.
+    expect(row).not.toHaveProperty("healthNotes");
+    expect(row).not.toHaveProperty("guardianships");
+    expect(JSON.stringify(res.body)).not.toContain("healthNotes");
+  });
+
+  it("reports a health note once one exists, without disclosing it", async () => {
+    const secret = "Пенициллинд харшилтай";
+    await authed(request(server()).patch(`/v1/children/${a.child.id}`), teacherA).send({
+      healthNotes: secret,
+    });
+
+    const res = await authed(request(server()).get("/v1/children"), teacherA);
+    const row = res.body.items.find((c: { id: string }) => c.id === a.child.id);
+
+    expect(row.profile.health).toBe(true);
+    expect(JSON.stringify(res.body)).not.toContain(secret);
+  });
+
+  /**
+   * ★ A guardian is never told their own child's record is incomplete.
+   *
+   * Most of what is missing is the kindergarten's to fill in, and a percentage
+   * a parent cannot act on is a worry rather than a task. `/children/mine` is
+   * a different endpoint and does not compute it.
+   */
+  it("is absent from a guardian's own list", async () => {
+    const res = await authed(request(server()).get("/v1/children/mine"), parentA);
+
+    expect(res.status).toBe(200);
+    for (const row of res.body) expect(row.profile).toBeUndefined();
+  });
+});
