@@ -2782,6 +2782,7 @@ export const AUDIT_OBJECT_LABEL: Record<string, string> = {
   Guardianship: "Асран хамгаалагч",
   Invoice: "Нэхэмжлэл",
   InvoiceLineItem: "Нэхэмжлэлийн мөр",
+  InvoiceReminder: "Төлбөрийн сануулга",
   Kindergarten: "Цэцэрлэг",
   MealRecord: "Хоолны бүртгэл",
   MediaFile: "Файл",

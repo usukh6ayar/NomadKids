@@ -36,6 +36,8 @@ function money(value: string | null): string {
 
 type Invoice = z.infer<typeof invoiceSchema>;
 
+const remindResultSchema = z.object({ sent: z.boolean() });
+
 /**
  * One invoice — нэмэлт.md §7, §8.
  *
@@ -191,6 +193,15 @@ function Summary({
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  const remind = useMutation({
+    mutationFn: () =>
+      mutate(`/invoices/${invoice.id}/remind`, remindResultSchema, { method: "POST", body: {} }),
+    onSuccess: () => toast.success("Эцэг эхэд сануулга илгээлээ."),
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const owesMoney = Number(invoice.balance) > 0;
+
   return (
     <Card pad="roomy" className="flex flex-col gap-3">
       <dl className="grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3">
@@ -208,21 +219,34 @@ function Summary({
       </div>
       {invoice.note ? <p className="text-caption text-muted">{invoice.note}</p> : null}
 
-      {invoice.status !== "REFUNDED" ? (
-        <ConfirmDialog
-          trigger={
-            <Button variant="secondary" size="sm" className="self-start">
-              Буцаалт болгож тэмдэглэх
-            </Button>
-          }
-          title="Нэхэмжлэлийг буцаалт болгож тэмдэглэх үү?"
-          description="Энэ нь мөнгө буцаагдсаныг тэмдэглэнэ. Төлбөрийг цуцлах бол доорх төлбөрийн жагсаалтаас цуцална уу."
-          confirmLabel="Тийм, буцаалт"
-          pendingLabel="Тэмдэглэж байна…"
-          onConfirm={() => refund.mutate()}
-          pending={refund.isPending}
-        />
-      ) : null}
+      <div className="flex flex-wrap gap-2">
+        {invoice.status !== "PAID" && invoice.status !== "REFUNDED" && owesMoney ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={remind.isPending}
+            onClick={() => remind.mutate()}
+          >
+            {remind.isPending ? "Илгээж байна…" : "Сануулга илгээх"}
+          </Button>
+        ) : null}
+
+        {invoice.status !== "REFUNDED" ? (
+          <ConfirmDialog
+            trigger={
+              <Button variant="secondary" size="sm">
+                Буцаалт болгож тэмдэглэх
+              </Button>
+            }
+            title="Нэхэмжлэлийг буцаалт болгож тэмдэглэх үү?"
+            description="Энэ нь мөнгө буцаагдсаныг тэмдэглэнэ. Төлбөрийг цуцлах бол доорх төлбөрийн жагсаалтаас цуцална уу."
+            confirmLabel="Тийм, буцаалт"
+            pendingLabel="Тэмдэглэж байна…"
+            onConfirm={() => refund.mutate()}
+            pending={refund.isPending}
+          />
+        ) : null}
+      </div>
     </Card>
   );
 }

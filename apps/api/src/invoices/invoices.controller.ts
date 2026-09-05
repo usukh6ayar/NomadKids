@@ -142,6 +142,15 @@ export class InvoicesController {
   ) {
     return this.service.markRefunded(actor, params.id, body);
   }
+
+  /** A manual payment reminder to the child's guardian — Phase 14. */
+  @Post(":id/remind")
+  async remind(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.sendReminder(actor, params.id);
+  }
 }
 
 @Controller("payments")
