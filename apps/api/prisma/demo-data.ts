@@ -103,6 +103,15 @@ export const DEMO_ACCOUNTS = [
   { username: "bagsh1", role: "TEACHER", note: "Багш — Дунд бүлэг" },
   { username: "bagsh2", role: "TEACHER", note: "Багш — Ахлах бүлэг" },
   { username: "etseg1", role: "PARENT", note: "Эцэг эх — хоёр хүүхэдтэй" },
+  /*
+   * ★ Added 2026-09-02. Both roles shipped after this file was written — COOK
+   * with the kitchen module, ACCOUNTANT with the finance one — and neither got
+   * a demo account, so their screens could only be reached by an admin who
+   * happens to hold every role at once. A walkthrough that never signs in as
+   * the cook never finds out what the cook cannot see.
+   */
+  { username: "togooch", role: "COOK", note: "Тогооч — цэс, орц, технологийн карт" },
+  { username: "nyagtlan", role: "ACCOUNTANT", note: "Нягтлан — санхүүжилт, нэхэмжлэл, ирц" },
 ] as const;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -475,6 +484,18 @@ export async function seedDemoKindergarten(
     firstName: "Золжаргал",
     email: "bagsh2@nomadkids.mn",
   });
+  const cook = await makeUser({
+    username: "togooch",
+    lastName: "Лхагвасүрэн",
+    firstName: "Оюунтуяа",
+    email: "togooch@nomadkids.mn",
+  });
+  const accountant = await makeUser({
+    username: "nyagtlan",
+    lastName: "Мөнхбат",
+    firstName: "Ганчимэг",
+    email: "nyagtlan@nomadkids.mn",
+  });
 
   const memberships = await Promise.all([
     prisma.membership.create({
@@ -485,6 +506,19 @@ export async function seedDemoKindergarten(
     }),
     prisma.membership.create({
       data: { userId: teacherB.id, kindergartenId: kg.id, role: "TEACHER" },
+    }),
+    /*
+     * ★ One role each, deliberately. The interesting thing about both is what
+     * they are refused: the cook cannot open a child's record, and the
+     * accountant cannot either (`нэмэлт.md` §13) though they may read the
+     * money attached to one. An account carrying a second role would hide
+     * exactly the boundary a walkthrough is meant to show.
+     */
+    prisma.membership.create({
+      data: { userId: cook.id, kindergartenId: kg.id, role: "COOK" },
+    }),
+    prisma.membership.create({
+      data: { userId: accountant.id, kindergartenId: kg.id, role: "ACCOUNTANT" },
     }),
   ]);
 

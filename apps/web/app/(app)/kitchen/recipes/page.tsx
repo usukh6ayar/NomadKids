@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, X } from "lucide-react";
+import { Check, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import {
@@ -93,7 +93,7 @@ function Recipes() {
             key={tab.value}
             type="button"
             onClick={() => setStatus(tab.value)}
-            className={`min-h-[40px] rounded-pill border px-3.5 text-body font-medium transition-colors ${
+            className={`min-h-[44px] rounded-pill border px-3.5 text-body font-medium transition-colors ${
               status === tab.value
                 ? "border-primary bg-primary-soft text-primary"
                 : "border-border bg-surface text-muted hover:bg-canvas"
@@ -141,6 +141,11 @@ function Recipes() {
                   </span>
                 ),
               }}
+              actions={
+                recipe.status === "DRAFT" && kindergartenId ? (
+                  <ApproveButton recipeId={recipe.id} name={recipe.name} />
+                ) : null
+              }
             />
           ))}
         </DataList>
@@ -150,6 +155,48 @@ function Recipes() {
         <CreateRecipeDialog kindergartenId={kindergartenId} onClose={() => setCreating(false)} />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Батлах, from the list rather than only from the card's own page.
+ *
+ * ★ A DRAFT card is invisible to the menu — `/recipes/approved` filters on
+ * `status: "APPROVED"`, so until a card is approved the cook's menu screen has
+ * nothing to offer them. A kindergarten seeded from `kitchen-reference.ts`
+ * starts with **eight** drafts, and approving them one at a time meant eight
+ * navigations into and back out of a detail page to press the same button.
+ *
+ * ★★ It is not a bulk "approve everything". Approval is the cook saying they
+ * have read the card and it matches what this kitchen actually does — a single
+ * button that waves through eight recipes' allergen lists would make that
+ * signature meaningless, and allergens are the one thing in this module that
+ * reaches a child. One press per card, in one place.
+ */
+function ApproveButton({ recipeId, name }: { recipeId: string; name: string }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+
+  const approve = useMutation({
+    mutationFn: () =>
+      mutate(`/recipes/${recipeId}/approve`, recipeSummarySchema, { method: "POST" }),
+    onSuccess: () => {
+      toast.success(`“${name}” батлагдлаа. Цэсэнд сонгох боломжтой боллоо.`);
+      void queryClient.invalidateQueries({ queryKey: ["kitchen", "recipes"] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  return (
+    <Button
+      variant="secondary"
+      size="sm"
+      disabled={approve.isPending}
+      onClick={() => approve.mutate()}
+    >
+      <Check size={16} aria-hidden="true" />
+      {approve.isPending ? "Батлаж байна…" : "Батлах"}
+    </Button>
   );
 }
 

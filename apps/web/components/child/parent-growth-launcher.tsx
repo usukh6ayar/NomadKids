@@ -212,9 +212,7 @@ function QuickShareForm({
         <div className="min-w-0">
           <h2 className="text-lead font-semibold text-ink">{bucket.verb}</h2>
           <GradientUnderline className="mt-1" />
-          <p className="mt-2 text-body text-muted">
-            Аав, ээжийн ажигласан мөчийг тэмдэглээрэй.
-          </p>
+          <p className="mt-2 text-body text-muted">Аав, ээжийн ажигласан мөчийг тэмдэглээрэй.</p>
         </div>
         <Button variant="ghost" size="icon" aria-label="Хаах" onClick={onClose}>
           <X size={18} aria-hidden="true" />
@@ -241,7 +239,9 @@ function QuickShareForm({
           noValidate
         >
           <FormError
-            message={save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null}
+            message={
+              save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null
+            }
           />
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -309,4 +309,3 @@ function QuickShareForm({
     </Card>
   );
 }
-

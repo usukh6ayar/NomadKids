@@ -153,9 +153,7 @@ function KitchenDashboard() {
               hint="Бүх захиалга хүлээн авсан байна."
             />
           ) : (
-            <p className="text-body text-muted">
-              Нийлүүлэгчээс хараахан хүлээн аваагүй захиалга.
-            </p>
+            <p className="text-body text-muted">Нийлүүлэгчээс хараахан хүлээн аваагүй захиалга.</p>
           )}
         </BoardCard>
       </div>

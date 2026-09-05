@@ -10,7 +10,7 @@ import { rememberCsrfToken } from "@/lib/api/csrf";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { Button } from "@/components/ui/button";
-import { Field, Input } from "@/components/ui/field";
+import { Field, Input, PasswordInput } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { AuthShell } from "@/components/shell/auth-shell";
 
@@ -144,12 +144,11 @@ function LoginForm() {
 
         <Field label="Нууц үг" error={errors.password} required>
           {({ id, describedBy, invalid }) => (
-            <Input
+            <PasswordInput
               id={id}
               aria-describedby={describedBy}
               invalid={invalid}
               name="password"
-              type="password"
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -173,6 +172,19 @@ function LoginForm() {
           className="inline-flex min-h-[44px] items-center text-body font-semibold text-primary hover:underline"
         >
           Нууц үгээ мартсан уу?
+        </Link>
+      </p>
+
+      {/*
+        ★ Step 1 of the onboarding flow (`docs/CONTRACT_ONBOARDING.md`) is
+        literally "a kindergarten presses this". Without a link on the one page
+        an unregistered kindergarten will ever reach, the public form exists and
+        nobody can find it.
+      */}
+      <p className="mt-3 border-t border-border pt-4 text-body text-muted">
+        Цэцэрлэг манайд бүртгүүлэх үү?{" "}
+        <Link href="/register" className="font-semibold text-primary hover:underline">
+          Байгууллагын бүртгэл
         </Link>
       </p>
     </AuthShell>

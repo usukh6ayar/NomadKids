@@ -1,9 +1,9 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Calculator, Receipt, ScrollText } from "lucide-react";
+import { Calculator, ChevronRight, Receipt, ScrollText } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { z } from "zod";
 import {
   FUNDING_SOURCE_LABEL,
@@ -19,7 +19,7 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, SectionHeader } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
@@ -57,6 +57,19 @@ function thisMonth(): string {
  * because reconciling a transfer means knowing who was funded for how many
  * days — and `assertCanReadFinance` keeps it to the two roles whose job that
  * is.
+ *
+ * ★★★ **Rearranged 2026-09-02, on the client's report that it was too much
+ * at once.** It used to paint seven blocks with equal weight — тойм, totals,
+ * the run button, a hundred per-child rows, eight reports and the tariff list
+ * — leaving the accountant to work out which of them was their job today. It
+ * now opens on one question ("энэ сарын тооцоо хийгдсэн үү") and the button
+ * that answers it, then the §9 summary. The register, the reports and the
+ * tariffs are all still here and are all one press away; none of them is work
+ * that happens on every visit.
+ *
+ * Nothing about **what** is fetched or **who** may read it changed: the
+ * payloads, `assertCanReadFinance` and §10's rule that a guardian never
+ * receives `funding` are all untouched. This is layout.
  */
 export default function FinancePage() {
   return (
@@ -83,6 +96,9 @@ function Finance() {
     queryKey: qk.fundingRules(kindergartenId ?? ""),
     queryFn: () => get(`/kindergartens/${kindergartenId}/funding/rules`, rulesSchema),
   });
+
+  const items = funding.data?.items ?? [];
+  const totals = funding.data?.totals ?? [];
 
   return (
     <div className="flex flex-col gap-5 lg:gap-6">
@@ -118,44 +134,115 @@ function Finance() {
         }
       />
 
+      {funding.isLoading ? <LoadingState rows={3} /> : null}
+      {funding.isError ? <ErrorState description={errorMessage(funding.error)} /> : null}
+
       {/*
-        ★ The dashboard leads — `нэмэлт.md` §9. It answers "how is the month
-        going" from the same rows the register below prices child by child, so
-        it is the summary of what follows rather than a second source. It loads
-        independently: a slow aggregate must not hold up the register, and a
-        failing one must not blank the screen.
+        ★ The month's one action, above everything that reports on it.
+
+        An accountant opening this screen has exactly one recurring job — run
+        the month once the registers are complete — and it used to sit fourth,
+        below two summaries that are both blank until it has been pressed.
+      */}
+      {kindergartenId && funding.data ? (
+        <RunMonth
+          kindergartenId={kindergartenId}
+          month={month}
+          hasRules={(rules.data ?? []).length > 0}
+          done={totals.length > 0}
+          children_={totals.reduce((sum, total) => sum + total.children, 0)}
+        />
+      ) : null}
+
+      {/*
+        ★★ The §9 dashboard. It loads independently: a slow aggregate must not
+        hold up the register, and a failing one must not blank the screen.
       */}
       {kindergartenId ? (
         <FinanceDashboardPanel kindergartenId={kindergartenId} month={month} />
       ) : null}
 
-      {funding.isLoading ? <LoadingState rows={3} /> : null}
-      {funding.isError ? <ErrorState description={errorMessage(funding.error)} /> : null}
+      {/*
+        ★★★ Everything below opens closed.
 
+        Each is real work, and none of it is *this visit's* work. The register
+        is what a transfer is reconciled against — needed on the day a payment
+        lands, not on the day the month is run. The reports are produced from a
+        month that is already right. The tariffs are read-only reference.
+      */}
       {funding.data ? (
-        <>
-          <Totals totals={funding.data.totals} />
-          {kindergartenId ? (
-            <RunMonth
-              kindergartenId={kindergartenId}
-              month={month}
-              hasRules={(rules.data ?? []).length > 0}
-            />
-          ) : null}
-          <MonthRows items={funding.data.items} />
-        </>
+        <Disclosure
+          title="Хүүхэд тус бүрээр"
+          hint={items.length > 0 ? `${items.length} мөр` : "Тооцоо хийгдээгүй"}
+          disabled={items.length === 0}
+        >
+          <div className="flex flex-col gap-4">
+            <Totals totals={totals} />
+            <MonthRows items={items} />
+          </div>
+        </Disclosure>
       ) : null}
 
-      {/*
-        ★ §16's reports sit below the register rather than above it. The
-        register is the month's working document — the thing an accountant
-        opens daily and reconciles against — and the reports are what they
-        produce from it once it is right.
-      */}
-      {kindergartenId ? <FinanceReports kindergartenId={kindergartenId} /> : null}
+      {kindergartenId ? (
+        <Disclosure title="Тайлан" hint="Excel, PDF">
+          <FinanceReports kindergartenId={kindergartenId} />
+        </Disclosure>
+      ) : null}
 
-      <Rules rules={rules} />
+      <Disclosure title="Тариф" hint={rules.data ? `${rules.data.length} дүрэм` : undefined}>
+        <Rules rules={rules} />
+      </Disclosure>
     </div>
+  );
+}
+
+/**
+ * A section that opens on demand.
+ *
+ * ★ A native `<details>`, not a scripted accordion. It opens with no
+ * JavaScript, the browser gives it the right ARIA for free, and — the reason
+ * that matters here — the browser's own "find in page" expands it to reveal a
+ * match inside. An accountant searching a hundred-row register for one child's
+ * name is a real thing to do, and a `useState` accordion silently fails it.
+ *
+ * ★★ `disabled` renders the row without a toggle rather than as a `<details>`
+ * that opens onto nothing. "Тооцоо хийгдээгүй" beside it says why, which is
+ * the same information the empty panel would have carried and one press
+ * cheaper — CLAUDE.md §5, an empty state says what to do next.
+ */
+function Disclosure({
+  title,
+  hint,
+  disabled = false,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  disabled?: boolean;
+  children: ReactNode;
+}) {
+  if (disabled) {
+    return (
+      <Card pad="roomy" className="flex items-center justify-between gap-3">
+        <span className="text-lead font-semibold text-faint">{title}</span>
+        {hint ? <span className="text-caption text-muted">{hint}</span> : null}
+      </Card>
+    );
+  }
+
+  return (
+    <details className="group rounded-card border border-border bg-surface">
+      <summary className="flex min-h-[60px] cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+        <ChevronRight
+          size={18}
+          aria-hidden="true"
+          className="shrink-0 text-muted transition-transform group-open:rotate-90"
+        />
+        <span className="flex-1 text-lead font-semibold text-ink">{title}</span>
+        {hint ? <span className="shrink-0 text-caption text-muted">{hint}</span> : null}
+      </summary>
+      <div className="border-t border-border-soft px-4 py-4">{children}</div>
+    </details>
   );
 }
 
@@ -166,24 +253,16 @@ function Finance() {
  * gap between the first and the last is the accountant's real question.
  */
 function Totals({ totals }: { totals: z.infer<typeof fundingMonthSchema>["totals"] }) {
-  if (totals.length === 0) {
-    return (
-      <Card pad="roomy">
-        <p className="text-body text-muted">
-          Энэ сарын тооцоо хийгдээгүй байна. Доорх товчоор гүйцэтгэнэ.
-        </p>
-      </Card>
-    );
-  }
+  if (totals.length === 0) return null;
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {totals.map((total) => (
         <Card key={total.source} pad="roomy" className="flex flex-col gap-2">
           <div className="flex items-baseline justify-between gap-2">
-            <h2 className="text-lead font-semibold text-ink">
+            <h3 className="text-lead font-semibold text-ink">
               {FUNDING_SOURCE_LABEL[total.source]}
-            </h2>
+            </h3>
             <span className="text-caption text-muted">{total.children} хүүхэд</span>
           </div>
           <dl className="flex flex-col gap-1">
@@ -216,16 +295,23 @@ function Row({ label, value, accent = false }: { label: string; value: string; a
  * ★ It recalculates from the registers every time and supersedes the previous
  * run rather than overwriting it — `replaceMonth` soft-deletes the old rows so
  * a figure somebody already submitted stays traceable. That is why this is a
- * button an accountant may press twice without fear.
+ * button an accountant may press twice without fear, and why the label changes
+ * to "Дахин тооцох" rather than the button disappearing once it is done.
  */
 function RunMonth({
   kindergartenId,
   month,
   hasRules,
+  done,
+  children_,
 }: {
   kindergartenId: string;
   month: string;
   hasRules: boolean;
+  done: boolean;
+  /** How many children the month's rows cover — the one figure that says the
+   * run actually did something. Trailing underscore: `children` is React's. */
+  children_: number;
 }) {
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -257,35 +343,56 @@ function RunMonth({
   });
 
   return (
-    <Card pad="roomy" className="flex flex-wrap items-end gap-3">
-      <Field label="Эх үүсвэр">
-        {({ id }) => (
-          <Select
-            id={id}
-            value={source}
-            onChange={(event) => setSource(event.target.value as FundingSource)}
-            className="w-[180px]"
-          >
-            {Object.entries(FUNDING_SOURCE_LABEL).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </Select>
+    <Card pad="roomy" className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-lead font-semibold text-ink">Энэ сарын тооцоо</h2>
+        {done ? (
+          <Badge tone="mint">Хийгдсэн · {children_} хүүхэд</Badge>
+        ) : (
+          <Badge tone="neutral">Хийгдээгүй</Badge>
         )}
-      </Field>
+      </div>
 
-      <Button disabled={run.isPending || !hasRules} onClick={() => run.mutate()}>
-        <Calculator size={16} aria-hidden="true" />
-        {run.isPending ? "Бодож байна…" : "Сарын тооцоо хийх"}
-      </Button>
+      <p className="text-body text-muted">
+        {done
+          ? "Ирц, хоолны бүртгэл өөрчлөгдсөн бол дахин тооцоолоорой. Өмнөх тооцоо архивт үлдэнэ."
+          : "Ирц болон хоолны бүртгэлээс хүүхэд тус бүрийн дүнг бодно."}
+      </p>
+
+      <div className="flex flex-wrap items-end gap-3">
+        <Field label="Эх үүсвэр">
+          {({ id }) => (
+            <Select
+              id={id}
+              value={source}
+              onChange={(event) => setSource(event.target.value as FundingSource)}
+              className="w-[180px]"
+            >
+              {Object.entries(FUNDING_SOURCE_LABEL).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+
+        <Button disabled={run.isPending || !hasRules} onClick={() => run.mutate()}>
+          <Calculator size={16} aria-hidden="true" />
+          {run.isPending ? "Бодож байна…" : done ? "Дахин тооцох" : "Сарын тооцоо хийх"}
+        </Button>
+      </div>
 
       {/*
         The API answers "Энэ сард хүчинтэй санхүүжилтийн дүрэм алга" with a 400.
         Saying it before the press is the same information, one round trip
         earlier — and it names the fix.
       */}
-      {!hasRules ? <p className="text-caption text-muted">Эхлээд доор тариф үүсгэнэ үү.</p> : null}
+      {!hasRules ? (
+        <p className="text-caption text-muted">
+          Эхлээд тариф үүсгэнэ үү — доорх “Тариф” хэсгээс харна.
+        </p>
+      ) : null}
     </Card>
   );
 }
@@ -308,46 +415,40 @@ function MonthRows({ items }: { items: z.infer<typeof fundingMonthSchema>["items
   );
 
   return (
-    <section aria-labelledby="rows-heading">
-      <SectionHeader id="rows-heading" title="Хүүхэд тус бүрээр" />
-      <Card className="divide-y divide-border-soft">
-        {sorted.map((item) => (
-          <div
-            key={item.id}
-            className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
-          >
-            <div className="min-w-0">
-              {/*
-                ★ The source is on the row, not only in the totals above.
+    <Card className="divide-y divide-border-soft">
+      {sorted.map((item) => (
+        <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+          <div className="min-w-0">
+            {/*
+              ★ The source is on the row, not only in the totals above.
 
-                A child appears once per funding source — the state pays a
-                subsidy and the family pays a fee for the same fourteen days —
-                so without this badge the list reads as each name duplicated at
-                two different rates, which is exactly what it looked like the
-                first time this screen rendered real data.
-              */}
-              <p className="flex flex-wrap items-center gap-2">
-                <span className="truncate text-body font-medium text-ink">
-                  {item.child.lastName ? `${item.child.lastName} ` : ""}
-                  {item.child.firstName}
-                </span>
-                <Badge tone="sky">{FUNDING_SOURCE_LABEL[item.source]}</Badge>
-              </p>
-              <p className="text-caption text-muted">
-                {item.daysAttended} хоног ирсэн
-                {item.dailyRate ? ` · ${money(item.dailyRate)}/хоног` : ""}
-              </p>
-            </div>
-            <div className="flex shrink-0 items-baseline gap-4 tabular-nums">
-              <span className="text-caption text-muted">{money(item.calculatedAmount)}</span>
-              <span className="text-body font-semibold text-primary">
-                {money(item.receivedAmount)}
+              A child appears once per funding source — the state pays a
+              subsidy and the family pays a fee for the same fourteen days —
+              so without this badge the list reads as each name duplicated at
+              two different rates, which is exactly what it looked like the
+              first time this screen rendered real data.
+            */}
+            <p className="flex flex-wrap items-center gap-2">
+              <span className="truncate text-body font-medium text-ink">
+                {item.child.lastName ? `${item.child.lastName} ` : ""}
+                {item.child.firstName}
               </span>
-            </div>
+              <Badge tone="sky">{FUNDING_SOURCE_LABEL[item.source]}</Badge>
+            </p>
+            <p className="text-caption text-muted">
+              {item.daysAttended} хоног ирсэн
+              {item.dailyRate ? ` · ${money(item.dailyRate)}/хоног` : ""}
+            </p>
           </div>
-        ))}
-      </Card>
-    </section>
+          <div className="flex shrink-0 items-baseline gap-4 tabular-nums">
+            <span className="text-caption text-muted">{money(item.calculatedAmount)}</span>
+            <span className="text-body font-semibold text-primary">
+              {money(item.receivedAmount)}
+            </span>
+          </div>
+        </div>
+      ))}
+    </Card>
   );
 }
 
@@ -365,9 +466,7 @@ function MonthRows({ items }: { items: z.infer<typeof fundingMonthSchema>["items
  */
 function Rules({ rules }: { rules: ReturnType<typeof useQuery<z.infer<typeof rulesSchema>>> }) {
   return (
-    <section aria-labelledby="rules-heading">
-      <SectionHeader id="rules-heading" title="Тариф" lede="Хүчинтэй санхүүжилтийн дүрмүүд." />
-
+    <>
       {rules.isLoading ? <LoadingState rows={2} /> : null}
 
       {rules.data && rules.data.length === 0 ? (
@@ -404,6 +503,6 @@ function Rules({ rules }: { rules: ReturnType<typeof useQuery<z.infer<typeof rul
           ))}
         </Card>
       ) : null}
-    </section>
+    </>
   );
 }

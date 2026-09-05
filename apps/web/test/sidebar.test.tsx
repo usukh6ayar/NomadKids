@@ -93,8 +93,11 @@ describe("the brand header", () => {
 
     const mark = within(nav).getByAltText("Бяцхан нүүдэлчид");
     expect(mark).toBeInTheDocument();
-    // The asset that already ships — this task introduced no new logo file.
-    expect(mark.getAttribute("src")).toContain("mark-96");
+    // `/mark.png` — the brand mark regenerated from the 1254² original. The
+    // filename is asserted rather than merely "some image", because the sidebar
+    // renders it through next/image and a missing public asset is a 404 the
+    // component itself never notices.
+    expect(mark.getAttribute("src")).toContain("mark.png");
   });
 
   it("links the brand home", async () => {

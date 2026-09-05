@@ -55,8 +55,7 @@ export function AccessPayDialog({
 
   const { data: attempt } = useQuery({
     queryKey: qk.accessQpay(childId),
-    queryFn: () =>
-      get(`/children/${childId}/access/qpay`, qpayInvoiceAttemptSchema),
+    queryFn: () => get(`/children/${childId}/access/qpay`, qpayInvoiceAttemptSchema),
     enabled: Boolean(attemptId) && open,
     // Polls only while the attempt is still PENDING — the same rule
     // `ReportDialog` applies to a report job, here applied to a payment.
@@ -96,8 +95,13 @@ export function AccessPayDialog({
         >
           <div className="mb-3 flex items-start justify-between gap-3">
             <div>
-              <Dialog.Title className="text-lead font-semibold text-ink">QPay-ээр төлөх</Dialog.Title>
-              <Dialog.Description id="qpay-dialog-description" className="mt-1 text-body text-muted">
+              <Dialog.Title className="text-lead font-semibold text-ink">
+                QPay-ээр төлөх
+              </Dialog.Title>
+              <Dialog.Description
+                id="qpay-dialog-description"
+                className="mt-1 text-body text-muted"
+              >
                 QR кодыг банкны аппаараа уншуулж төлнө үү.
               </Dialog.Description>
             </div>
@@ -110,7 +114,11 @@ export function AccessPayDialog({
 
           <FormError message={create.isError ? errorMessage(create.error) : null} />
 
-          <QpayProgress attempt={attempt} pending={create.isPending} onRetry={() => create.mutate()} />
+          <QpayProgress
+            attempt={attempt}
+            pending={create.isPending}
+            onRetry={() => create.mutate()}
+          />
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

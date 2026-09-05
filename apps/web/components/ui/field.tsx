@@ -2,11 +2,12 @@
 
 import * as LabelPrimitive from "@radix-ui/react-label";
 import * as SelectPrimitive from "@radix-ui/react-select";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, Eye, EyeOff } from "lucide-react";
 import {
   Children,
   isValidElement,
   useId,
+  useState,
   type ChangeEvent,
   type ComponentProps,
   type OptionHTMLAttributes,
@@ -78,9 +79,33 @@ export function Field({
   );
 }
 
+/*
+ * ★ REDESIGN 2026-09-03 — a control now looks like something you type into.
+ *
+ * It was a white box with a slate-200 hairline, identical at rest to the card
+ * behind it, and on focus the border changed to blue with the global 2px
+ * outline over the top. Two things were wrong with that:
+ *
+ *  - **At rest a form read as a list of outlines.** A field on a white card
+ *    with a white fill has only its 1px border to say "this is editable", and
+ *    on the observation screen — six textareas stacked — that is a page of
+ *    empty rectangles. `bg-sunken` inverts the relationship the way every
+ *    considered form does: the *input* is the recessed thing, the card is the
+ *    surface. It also makes the placeholder legible as placeholder.
+ *
+ *  - **The focus state was doing the work twice.** The border went blue *and*
+ *    the global focus ring drew 2px outside it, so a focused field grew a
+ *    double blue edge. The fill now lifts to white on focus — the field
+ *    "opens" — and the ring alone marks focus.
+ *
+ * `placeholder:text-faint` rather than `text-muted`: muted is secondary *text*,
+ * and a placeholder set at the same weight as a filled value is how a form
+ * looks pre-filled when it is empty.
+ */
 const controlBase =
-  "w-full rounded-control border bg-surface px-3.5 text-ink placeholder:text-muted " +
-  "transition-colors disabled:opacity-60 disabled:bg-canvas";
+  "w-full rounded-control border bg-sunken px-3.5 text-ink placeholder:text-faint " +
+  "transition-colors duration-150 focus:bg-surface " +
+  "disabled:cursor-not-allowed disabled:opacity-60 disabled:bg-border-soft";
 
 export function Input({
   className,
@@ -93,11 +118,65 @@ export function Input({
       className={cn(
         controlBase,
         "h-[48px]",
-        invalid ? "border-danger" : "border-border focus:border-primary",
+        invalid ? "border-danger" : "border-border focus:border-faint",
         className,
       )}
       {...props}
     />
+  );
+}
+
+/**
+ * A password field you can read back.
+ *
+ * ★ Added 2026-09-04, at the client's request: "password-оо hide/show хийж
+ * хардаг байх".
+ *
+ * Every password input in the product was a bare `type="password"` — eight of
+ * them across four screens — so the only way to check what you had typed was
+ * to delete it and start again. That matters more here than in most products:
+ * the passwords are **Mongolian Cyrillic** (`Нууцүг123` is the documented
+ * example), typed on a phone keyboard that switches layouts, by parents at
+ * pick-up time. A typo you cannot see is a lockout you cannot explain.
+ *
+ * ★★ The toggle is a real `<button>`, not an icon with a click handler.
+ *
+ * It is reachable by keyboard, it announces its state, and its label says what
+ * pressing it will *do* rather than what is currently true — "Нууц үг харуулах"
+ * while hidden. `tabIndex={-1}` deliberately keeps it out of the tab order
+ * between the two password fields on the change-password form: somebody
+ * tabbing from "new password" expects to land on "repeat", not on a toggle.
+ * It stays clickable and stays announced.
+ *
+ * ★★★ `pr-12` on the input, so the text never runs under the button. The
+ * button is 44px (the tap floor) inside a 48px control, centred.
+ */
+export function PasswordInput({
+  className,
+  invalid,
+  ...props
+}: Omit<ComponentProps<"input">, "type"> & { invalid?: boolean }) {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <div className="relative">
+      <Input
+        {...props}
+        invalid={invalid}
+        type={visible ? "text" : "password"}
+        className={cn("pr-12", className)}
+      />
+      <button
+        type="button"
+        tabIndex={-1}
+        onClick={() => setVisible((v) => !v)}
+        aria-pressed={visible}
+        aria-label={visible ? "Нууц үг нуух" : "Нууц үг харуулах"}
+        className="absolute right-1 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-control text-muted transition-colors hover:text-ink"
+      >
+        {visible ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
+      </button>
+    </div>
   );
 }
 
@@ -112,7 +191,7 @@ export function Textarea({
       className={cn(
         controlBase,
         "min-h-[112px] resize-y py-3 leading-relaxed",
-        invalid ? "border-danger" : "border-border focus:border-primary",
+        invalid ? "border-danger" : "border-border focus:border-faint",
         className,
       )}
       {...props}
@@ -146,6 +225,73 @@ function isOptionElement(
   return isValidElement(node) && node.type === "option";
 }
 
+function isOptGroupElement(
+  node: ReactNode,
+): node is ReactElement<{ label?: string; children?: ReactNode }> {
+  return isValidElement(node) && node.type === "optgroup";
+}
+
+type OptionEl = ReactElement<OptionHTMLAttributes<HTMLOptionElement>>;
+type SelectEntry =
+  { kind: "option"; option: OptionEl } | { kind: "group"; label: string; options: OptionEl[] };
+
+/**
+ * Flattens the children into options and labelled groups.
+ *
+ * ★ `<optgroup>` support was added 2026-09-02, and the reason is worth
+ * stating: before it, this component filtered children with
+ * `node.type === "option"` at the top level only, so an `<optgroup>` was
+ * **silently dropped along with every option inside it**. A caller who wrote
+ * grouped markup — as `<select>` has always allowed — got a picker containing
+ * only its placeholder, with no error anywhere. A shared control that quietly
+ * discards valid children is worse than one that never accepted them.
+ *
+ * Ungrouped call sites are untouched: every existing `<Select>` passes bare
+ * `<option>` children and takes the first branch, exactly as before.
+ */
+function readEntries(children: ReactNode): SelectEntry[] {
+  const entries: SelectEntry[] = [];
+  for (const node of Children.toArray(children)) {
+    if (isOptionElement(node)) {
+      entries.push({ kind: "option", option: node });
+    } else if (isOptGroupElement(node)) {
+      const options = Children.toArray(node.props.children).filter(isOptionElement);
+      if (options.length > 0) {
+        entries.push({ kind: "group", label: node.props.label ?? "", options });
+      }
+    }
+  }
+  return entries;
+}
+
+/** An `<option>`'s value, falling back to its own text as a native select does. */
+function valueOf(option: OptionEl): string {
+  const raw = option.props.value;
+  return raw === null || raw === undefined ? String(option.props.children) : String(raw);
+}
+
+const keyFor = (option: OptionEl, index: number) => valueOf(option) || index;
+
+function SelectItem({ option }: { option: OptionEl }) {
+  return (
+    <SelectPrimitive.Item
+      value={toRadixValue(valueOf(option))}
+      disabled={option.props.disabled}
+      className={cn(
+        "flex min-h-[44px] cursor-pointer select-none items-center justify-between gap-2",
+        "rounded-control px-3 py-2 text-body text-ink outline-none",
+        "data-[highlighted]:bg-canvas data-[state=checked]:font-medium",
+        "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      )}
+    >
+      <SelectPrimitive.ItemText>{option.props.children}</SelectPrimitive.ItemText>
+      <SelectPrimitive.ItemIndicator className="shrink-0 text-primary">
+        <Check size={16} aria-hidden />
+      </SelectPrimitive.ItemIndicator>
+    </SelectPrimitive.Item>
+  );
+}
+
 export function Select({
   className,
   invalid,
@@ -160,7 +306,7 @@ export function Select({
   "aria-label": ariaLabel,
   "aria-describedby": ariaDescribedBy,
 }: ComponentProps<"select"> & { invalid?: boolean }) {
-  const options = Children.toArray(children).filter(isOptionElement);
+  const entries = readEntries(children);
 
   return (
     <SelectPrimitive.Root
@@ -188,8 +334,10 @@ export function Select({
         className={cn(
           controlBase,
           "flex h-[48px] items-center justify-between gap-2 outline-none",
-          "data-[placeholder]:text-muted",
-          invalid ? "border-danger" : "border-border data-[state=open]:border-primary",
+          // Open, the trigger takes the surface fill its own popup has, so the
+          // two read as one object rather than as a grey box under a white one.
+          "data-[state=open]:bg-surface data-[placeholder]:text-faint",
+          invalid ? "border-danger" : "border-border data-[state=open]:border-faint",
           className,
         )}
       >
@@ -205,7 +353,11 @@ export function Select({
           sideOffset={6}
           className={cn(
             "z-[100] overflow-hidden rounded-row border border-border bg-surface py-1",
-            "shadow-[0_8px_28px_rgba(15,23,42,.12)]",
+            // ★ Was a hand-rolled `shadow-[0_8px_28px_…]` — the exact thing
+            // globals.css argues against, since it put a fourth elevation in
+            // the product that no token knew about. `shadow-lg` is the popover
+            // step and every raised surface now spells one of three names.
+            "shadow-lg",
             "w-[var(--radix-select-trigger-width)] max-h-[var(--radix-select-content-available-height)]",
           )}
         >
@@ -214,29 +366,20 @@ export function Select({
           </SelectPrimitive.ScrollUpButton>
 
           <SelectPrimitive.Viewport className="p-1">
-            {options.map((option, index) => {
-              const raw = option.props.value;
-              const itemValue =
-                raw === null || raw === undefined ? String(option.props.children) : String(raw);
-              return (
-                <SelectPrimitive.Item
-                  key={itemValue || index}
-                  value={toRadixValue(itemValue)}
-                  disabled={option.props.disabled}
-                  className={cn(
-                    "flex min-h-[44px] cursor-pointer select-none items-center justify-between gap-2",
-                    "rounded-control px-3 py-2 text-body text-ink outline-none",
-                    "data-[highlighted]:bg-canvas data-[state=checked]:font-medium",
-                    "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-                  )}
-                >
-                  <SelectPrimitive.ItemText>{option.props.children}</SelectPrimitive.ItemText>
-                  <SelectPrimitive.ItemIndicator className="shrink-0 text-primary">
-                    <Check size={16} aria-hidden />
-                  </SelectPrimitive.ItemIndicator>
-                </SelectPrimitive.Item>
-              );
-            })}
+            {entries.map((entry, index) =>
+              entry.kind === "option" ? (
+                <SelectItem key={keyFor(entry.option, index)} option={entry.option} />
+              ) : (
+                <SelectPrimitive.Group key={`group-${entry.label}-${index}`}>
+                  <SelectPrimitive.Label className="px-3 pb-1 pt-2.5 text-caption font-semibold uppercase tracking-wide text-faint">
+                    {entry.label}
+                  </SelectPrimitive.Label>
+                  {entry.options.map((option, i) => (
+                    <SelectItem key={keyFor(option, i)} option={option} />
+                  ))}
+                </SelectPrimitive.Group>
+              ),
+            )}
           </SelectPrimitive.Viewport>
 
           <SelectPrimitive.ScrollDownButton className="flex h-6 items-center justify-center text-muted">

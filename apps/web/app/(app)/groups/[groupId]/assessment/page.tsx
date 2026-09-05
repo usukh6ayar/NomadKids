@@ -27,7 +27,8 @@ const observationTypesSchema = z.array(observationTypeSchema);
 import { Card, SectionHeader } from "@/components/ui/card";
 import { GroupCoverage } from "@/components/assessment/group-coverage";
 import { RegisterProgress } from "@/components/register/register-progress";
-import type { Tone } from "@/components/ui/tone";
+import { RegisterSaveBar } from "@/components/register/save-bar";
+import { TONE_SURFACE, type Tone } from "@/components/ui/tone";
 import { Field, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
@@ -324,7 +325,7 @@ function GroupAssessment() {
         />
       ) : null}
 
-      {column.isLoading ? <LoadingState rows={5} /> : null}
+      {column.isLoading ? <LoadingState rows={6} shape="register" /> : null}
 
       {column.isError ? (
         <ErrorState
@@ -373,21 +374,12 @@ function GroupAssessment() {
             from wherever the teacher just tapped.
           */}
           {pendingCount > 0 ? (
-            <div className="sticky bottom-[var(--size-bottom-nav)] z-10 lg:bottom-4">
-              <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 shadow-lg">
-                <p className="text-body text-ink" aria-live="polite">
-                  {pendingCount} хүүхдийн үнэлгээ хадгалагдаагүй байна
-                </p>
-                <div className="flex gap-2">
-                  <Button size="sm" disabled={save.isPending} onClick={() => save.mutate()}>
-                    {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
-                  </Button>
-                  <Button variant="secondary" size="sm" onClick={() => setDraft({})}>
-                    Болих
-                  </Button>
-                </div>
-              </Card>
-            </div>
+            <RegisterSaveBar
+              message={`${pendingCount} хүүхдийн үнэлгээ хадгалагдаагүй байна`}
+              saving={save.isPending}
+              onSave={() => save.mutate()}
+              onCancel={() => setDraft({})}
+            />
           ) : null}
 
           {/*
@@ -444,7 +436,7 @@ function ChildRow({
         aria-label={`${fullName(child)} — үнэлгээний түвшин`}
         className="flex flex-wrap gap-2"
       >
-        {levels.map((level) => {
+        {levels.map((level, index) => {
           const selected = level.id === selectedLevelId;
           return (
             <button
@@ -454,10 +446,38 @@ function ChildRow({
               aria-checked={selected}
               onClick={() => onSelect(level.id)}
               className={cn(
-                "min-h-[44px] rounded-control border px-3 text-body font-medium transition-colors",
+                /*
+                  ★ REDESIGN 2026-09-03 — the chosen level takes its position's
+                  tint instead of one flat brand blue.
+
+                  This is the densest screen in the product and the one that
+                  must read fastest. Every selected pill was `bg-primary`, so a
+                  sheet of thirty-five assessed children was thirty-five
+                  identical blue rectangles: "how is this group doing" could
+                  only be answered by reading every label, one row at a time.
+                  With the ramp, a column of mint and a column of peach are
+                  distinguishable without reading anything — which is the whole
+                  job of the screen.
+
+                  `levelTone(index, levels.length)` is the *same* function the
+                  breakdown chips above the roster already use, so a level is
+                  the same colour in the summary and in the row it came from.
+                  It walks the ramp by proportion, so this holds for three
+                  levels or six, whatever a kindergarten has named them —
+                  nothing here hard-codes a count, a name or a colour (§2.3,
+                  constraint 20).
+
+                  State is still not carried by colour alone: `aria-checked` is
+                  on the control and the selected pill also gains weight and
+                  elevation.
+                */
+                "min-h-[44px] rounded-control border px-3 text-body font-medium transition-all duration-150 active:translate-y-[1px]",
                 selected
-                  ? "border-primary bg-primary text-primary-ink"
-                  : "border-border bg-surface text-muted hover:bg-canvas hover:text-ink",
+                  ? cn(
+                      TONE_SURFACE[levelTone(index, levels.length)],
+                      "border-transparent font-semibold shadow-sm",
+                    )
+                  : "border-border bg-surface text-muted hover:border-faint hover:bg-canvas hover:text-ink",
               )}
             >
               {level.label}

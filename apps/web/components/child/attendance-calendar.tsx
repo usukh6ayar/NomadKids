@@ -88,7 +88,7 @@ export function AttendanceCalendar({ childId }: { childId: string }) {
               type="button"
               onClick={() => setMonth((cur) => shiftMonth(cur, -1))}
               aria-label="Өмнөх сар"
-              className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
+              className="grid size-11 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
             >
               <ChevronLeft size={18} aria-hidden="true" />
             </button>
@@ -100,7 +100,7 @@ export function AttendanceCalendar({ childId }: { childId: string }) {
               onClick={() => setMonth((cur) => shiftMonth(cur, 1))}
               aria-label="Дараах сар"
               disabled={month >= monthKey(now.getFullYear(), now.getMonth())}
-              className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink disabled:pointer-events-none disabled:opacity-30"
+              className="grid size-11 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink disabled:pointer-events-none disabled:opacity-30"
             >
               <ChevronRight size={18} aria-hidden="true" />
             </button>

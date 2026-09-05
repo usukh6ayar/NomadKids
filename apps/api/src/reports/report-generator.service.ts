@@ -16,6 +16,7 @@ import {
 } from "./annual-report-template";
 import { reportAudience, type ReportJobParams } from "./report-params";
 import { financeReportChrome, renderFinanceReportHtml } from "./finance-report-template";
+import { contractChrome, renderContractHtml } from "./contract-template";
 import { FinanceReportsService } from "../invoices/finance-reports.service";
 
 /** How long a generated file stays downloadable before the sweep removes it. */
@@ -69,8 +70,15 @@ export class ReportGeneratorService {
      * unrenderable.
      */
     const isFinance = job?.type === "FINANCE_REPORT";
+    /*
+     * ★ `CONTRACT` joins `FINANCE_REPORT` as a type with **no child**, and the
+     * guard below has to know: it refuses a job with neither a `childId` nor a
+     * recognised childless type, which is what keeps a malformed child report
+     * from rendering as an empty document.
+     */
+    const isContract = job?.type === "CONTRACT";
 
-    if (!job || (!job.childId && !isFinance)) {
+    if (!job || (!job.childId && !isFinance && !isContract)) {
       // Not re-thrown: a job whose row is gone will never succeed, and retrying
       // it three times with backoff only delays the inevitable.
       this.logger.warn(`Report job ${jobId} not found; nothing to generate`);
@@ -92,13 +100,15 @@ export class ReportGeneratorService {
 
     try {
       const params = job.params as unknown as ReportJobParams;
-      const { html, chrome, filename } = isFinance
-        ? await this.buildFinanceReport(job.kindergartenId, params)
-        : job.type === "TERM_REPORT"
-          ? await this.buildTermReport(job.childId!, params)
-          : job.type === "ANNUAL_REPORT"
-            ? await this.buildAnnualReport(job.childId!, params)
-            : await this.buildPortfolio(job.childId!, params);
+      const { html, chrome, filename } = isContract
+        ? await this.buildContract(params)
+        : isFinance
+          ? await this.buildFinanceReport(job.kindergartenId, params)
+          : job.type === "TERM_REPORT"
+            ? await this.buildTermReport(job.childId!, params)
+            : job.type === "ANNUAL_REPORT"
+              ? await this.buildAnnualReport(job.childId!, params)
+              : await this.buildPortfolio(job.childId!, params);
 
       const pdf = await this.renderer.render(html, chrome);
 
@@ -108,7 +118,7 @@ export class ReportGeneratorService {
       // The object exists before anything points at it: a crash between the two
       // leaves a collectable orphan rather than a row that 404s for ever. The
       // same ordering as MediaService.upload.
-      const { attached } = await this.repo.completeJob(jobId, {
+      const { attached, mediaFileId } = await this.repo.completeJob(jobId, {
         kindergartenId: job.kindergartenId,
         childId: job.childId,
         storageKey,
@@ -117,6 +127,16 @@ export class ReportGeneratorService {
         pageCount: countPages(pdf),
         expiresAt: new Date(Date.now() + RESULT_TTL_DAYS * 24 * 60 * 60 * 1000),
       });
+
+      /*
+       * ★ The contract row is pointed at its PDF only once the media file
+       * exists and this run is the one that attached it. On a redelivery
+       * `attached` is false and the row already points at the first render —
+       * re-pointing it would orphan a document somebody may already hold.
+       */
+      if (attached && isContract && params.contractId) {
+        await this.repo.attachContractPdf(params.contractId, mediaFileId);
+      }
 
       if (!attached) {
         // A concurrent delivery got there first. Remove what this run wrote,
@@ -329,6 +349,44 @@ export class ReportGeneratorService {
    * ★★ The same `ReportTable` the screen and the spreadsheet use, so a column
    * added to a report reaches all three without being written three times.
    */
+  /**
+   * The onboarding contract — `docs/CONTRACT_ONBOARDING.md` step 4.
+   *
+   * ★★ Every figure is read from the `Contract` row, which froze them at
+   * approval time. Nothing here consults a live price. Re-rendering a contract
+   * signed in March must produce March's prices or the PDF disagrees with the
+   * sealed paper in the kindergarten's file.
+   */
+  private async buildContract(params: ReportJobParams) {
+    if (!params.contractId) throw new Error("Contract job has no contractId");
+
+    const contract = await this.repo.contractForPdf(params.contractId);
+    if (!contract) throw new Error(`Contract ${params.contractId} not found`);
+
+    return {
+      html: renderContractHtml({
+        number: contract.number,
+        version: contract.version,
+        kindergartenName: contract.application.kindergartenName,
+        registrationNumber: contract.application.registrationNumber,
+        address: contract.application.address,
+        directorName: contract.application.directorName,
+        phone: contract.application.phone,
+        email: contract.application.email,
+        childCount: contract.childCount,
+        // ★ `.toString()`, never `Number()` — the decimal crosses as a string,
+        // which is the whole reason the column is `Decimal` (§2.2).
+        annualFee: contract.annualFee.toString(),
+        perChildMonthlyFee: contract.perChildMonthlyFee.toString(),
+        startsOn: contract.startsOn,
+        endsOn: contract.endsOn,
+        generatedAt: new Date(),
+      }),
+      chrome: contractChrome(contract.number, contract.application.kindergartenName),
+      filename: `${contract.number}.pdf`,
+    };
+  }
+
   private async buildFinanceReport(kindergartenId: string, params: ReportJobParams) {
     if (!params.financeReport || !params.financePeriod) {
       throw new Error("Finance report requires a report key and a period");

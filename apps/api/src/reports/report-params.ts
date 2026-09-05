@@ -45,6 +45,16 @@ export interface ReportJobParams {
    */
   financeReport?: string;
   financePeriod?: string;
+
+  /**
+   * Which contract to render — `docs/CONTRACT_ONBOARDING.md` step 4.
+   *
+   * ★ Only set for `CONTRACT`, which like `FINANCE_REPORT` carries no
+   * `childId`. The figures are **not** copied onto the job: they are frozen on
+   * the `Contract` row itself, so the render reads them from there and two
+   * renders of the same contract cannot disagree.
+   */
+  contractId?: string;
 }
 
 /**

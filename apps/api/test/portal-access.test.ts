@@ -188,7 +188,10 @@ describe("the unlock screen stays reachable", () => {
 
   it("raises exactly one subscription per child per school year, however often it is asked", async () => {
     const first = await authed(request(server()).post(`/v1/children/${a.child.id}/access`), parent);
-    const second = await authed(request(server()).post(`/v1/children/${a.child.id}/access`), parent);
+    const second = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/access`),
+      parent,
+    );
 
     expect(first.status).toBe(201);
     expect(second.body.id).toBe(first.body.id);

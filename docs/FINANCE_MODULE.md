@@ -9,15 +9,15 @@
 
 ## 1. Юу хаана байна вэ
 
-| §   | Юу                        | Сервер                                        | Дэлгэц                            |
-| --- | ------------------------- | --------------------------------------------- | --------------------------------- |
-| §7  | Нэхэмжлэл                 | `invoices/invoices.*`                         | `/children/:id/finance`           |
-| §7  | Сарыг тарифаас үүсгэх     | `POST …/invoices/generate-month`              | `/finance`                        |
-| §8  | Онлайн төлбөр             | `access/`, `integrations/qpay/`               | `AccessGate` дээрх QR цонх        |
-| §9  | Санхүүгийн самбар         | `invoices/finance-dashboard.*`                | `/finance` хуудасны толгойд       |
-| §10 | Хүүхдийн санхүүгийн хэсэг | `GET /children/:id/finance`                   | `/children/:id/finance`           |
+| §   | Юу                        | Сервер                                               | Дэлгэц                            |
+| --- | ------------------------- | ---------------------------------------------------- | --------------------------------- |
+| §7  | Нэхэмжлэл                 | `invoices/invoices.*`                                | `/children/:id/finance`           |
+| §7  | Сарыг тарифаас үүсгэх     | `POST …/invoices/generate-month`                     | `/finance`                        |
+| §8  | Онлайн төлбөр             | `access/`, `integrations/qpay/`                      | `AccessGate` дээрх QR цонх        |
+| §9  | Санхүүгийн самбар         | `invoices/finance-dashboard.*`                       | `/finance` хуудасны толгойд       |
+| §10 | Хүүхдийн санхүүгийн хэсэг | `GET /children/:id/finance`                          | `/children/:id/finance`           |
 | §14 | Буцаалт                   | `Payment.voidedAt` + `reversalOfId`, `voidPayment()` | `/invoices/:id` төлбөрийн түүхэнд |
-| §16 | Санхүүгийн тайлан         | `invoices/finance-report*`, `finance.controller.ts` | `/finance` доод хэсэгт      |
+| §16 | Санхүүгийн тайлан         | `invoices/finance-report*`, `finance.controller.ts`  | `/finance` доод хэсэгт            |
 
 ★★★ **QPay-ийн хамрах хүрээ 2026-09-01-нд өөрчлөгдсөн.** Захиалагчийн заавар:
 "QPay-ийг зөвхөн эцэг эхчүүдээс энэхүү website-ийг ашиглах эрхийг нээхийн тулд
@@ -25,13 +25,13 @@
 
 Тиймээс §8 нь **нэхэмжлэх төлөх** биш, **хандалтын эрх нээх** болов:
 
-| | |
-| --- | --- |
-| `AccessSubscription` | нэг хүүхэд × нэг хичээлийн жил |
-| Үнэ | `ACCESS_FEE_AMOUNT`, deployment-ийн тохиргоо. **"0" бол хаалт унтарна** |
-| `QpayInvoice` | одоо `Invoice` биш, `AccessSubscription` руу заана |
-| `Payment` мөр | **үүсэхгүй** — хураамж нь платформын орлого, цэцэрлэгийн дэвтэрт биш |
-| Хаалт | `authz/portal-access.ts` — **402**, 404 биш |
+|                      |                                                                         |
+| -------------------- | ----------------------------------------------------------------------- |
+| `AccessSubscription` | нэг хүүхэд × нэг хичээлийн жил                                          |
+| Үнэ                  | `ACCESS_FEE_AMOUNT`, deployment-ийн тохиргоо. **"0" бол хаалт унтарна** |
+| `QpayInvoice`        | одоо `Invoice` биш, `AccessSubscription` руу заана                      |
+| `Payment` мөр        | **үүсэхгүй** — хураамж нь платформын орлого, цэцэрлэгийн дэвтэрт биш    |
+| Хаалт                | `authz/portal-access.ts` — **402**, 404 биш                             |
 
 ★★ **2026-09-01-нд амьд мерчант дансаар батлагдсан.** Staging VPS дээр
 `auth/token` → `invoice` → `payment/check` гурвуулаа 200 буцааж, бодит EMV QR
@@ -162,17 +162,17 @@ API нь `funding` түлхүүрийг **огт илгээхгүй**; дэлг�
 2026-09-01-нд нэгтгэсний дараа хэмжсэн — санхүүгийн есөн файлд **171 тест**,
 бүгд ногоон. API-ийн бүтэн багц 1,605 давсан, 1 алгассан, 0 унасан.
 
-| Файл                                       | Тоо | Юуг барьдаг                                |
-| ------------------------------------------ | --- | ------------------------------------------ |
-| `test/finance-dashboard.test.ts`           | 42  | §9 нэгтгэл, §10 эрхийн ялгаа               |
-| `src/invoices/invoice-math.test.ts`        | 25  | Тооцооллын цэвэр функцууд                  |
-| `src/invoices/finance-reports.test.ts`     | 25  | §16-ийн тайлан бүрийн тодорхойлолт         |
-| `test/invoices.test.ts`                    | 22  | §7 урсгал, §14 буцаалт, эрх                |
-| `src/integrations/qpay/*.test.ts`          | 20  | Токен кэш, нууцлалын халхлалт, `reconcile` |
-| `test/finance-report-pdf.test.ts`          | 16  | **PDF, эрхийн тусгаарлалт, бичвэр**        |
-| `test/invoice-generation.test.ts`          | 12  | **Тарифаас сар үүсгэх** — §3, §7           |
-| `test/qpay.test.ts`                        | 9   | **Хуурамч callback мөнгө үүсгэхгүй**       |
-| `test/portal-access.test.ts`               | 13  | **402 хаалт, мөн түүнийг oracle болгохгүй**|
+| Файл                                   | Тоо | Юуг барьдаг                                 |
+| -------------------------------------- | --- | ------------------------------------------- |
+| `test/finance-dashboard.test.ts`       | 42  | §9 нэгтгэл, §10 эрхийн ялгаа                |
+| `src/invoices/invoice-math.test.ts`    | 25  | Тооцооллын цэвэр функцууд                   |
+| `src/invoices/finance-reports.test.ts` | 25  | §16-ийн тайлан бүрийн тодорхойлолт          |
+| `test/invoices.test.ts`                | 22  | §7 урсгал, §14 буцаалт, эрх                 |
+| `src/integrations/qpay/*.test.ts`      | 20  | Токен кэш, нууцлалын халхлалт, `reconcile`  |
+| `test/finance-report-pdf.test.ts`      | 16  | **PDF, эрхийн тусгаарлалт, бичвэр**         |
+| `test/invoice-generation.test.ts`      | 12  | **Тарифаас сар үүсгэх** — §3, §7            |
+| `test/qpay.test.ts`                    | 9   | **Хуурамч callback мөнгө үүсгэхгүй**        |
+| `test/portal-access.test.ts`           | 13  | **402 хаалт, мөн түүнийг oracle болгохгүй** |
 
 Вэб талд: `finance-dashboard.test.tsx` (самбар, §16-ийн дэлгэц, PDF товч),
 `invoices.test.tsx`, `child-finance.test.tsx` (эцэг эхийн дэлгэц, хандалтын

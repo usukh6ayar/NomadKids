@@ -4,6 +4,7 @@ import {
   ChildAttendanceController,
   ChildAttendanceRequestController,
   GroupAttendanceController,
+  KindergartenAttendanceController,
 } from "./attendance.controller";
 import { AttendanceRepository } from "./attendance.repository";
 import { AttendanceService } from "./attendance.service";
@@ -14,6 +15,7 @@ import { AttendanceService } from "./attendance.service";
     ChildAttendanceRequestController,
     AttendanceRequestController,
     GroupAttendanceController,
+    KindergartenAttendanceController,
   ],
   providers: [AttendanceService, AttendanceRepository],
   exports: [AttendanceService, AttendanceRepository],

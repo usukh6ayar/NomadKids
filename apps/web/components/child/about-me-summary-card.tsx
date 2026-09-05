@@ -72,7 +72,12 @@ export function AboutMeSummaryCard({
       </div>
 
       <div className="grid gap-2.5 sm:grid-cols-3">
-        <IdentityTile icon={<User size={16} aria-hidden="true" />} tone="sky" label="Нэр" value={child.firstName} />
+        <IdentityTile
+          icon={<User size={16} aria-hidden="true" />}
+          tone="sky"
+          label="Нэр"
+          value={child.firstName}
+        />
         <IdentityTile
           icon={<CalendarDays size={16} aria-hidden="true" />}
           tone="peach"

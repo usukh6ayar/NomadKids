@@ -87,7 +87,7 @@ An unauthorized child, observation, media file or report returns **404**. A 403
 confirms the record exists.
 
 ★ **One exception, added 2026-09-01: 402 for the portal access fee.** It is
-shown only to a guardian who has *already passed* `canAccessChild` for that
+shown only to a guardian who has _already passed_ `canAccessChild` for that
 child — someone who knows the child exists — and a 404 there would hide the one
 fact that lets them act. Authorization runs first, so a stranger still gets 404
 and the status cannot become an oracle. `authz/portal-access.ts`,
@@ -233,6 +233,63 @@ Run them, show the output. If they fail, say so immediately.
 A generator returning 1 MB of blank pages passes every "did it produce a file"
 check. See `docs/PDF_SPIKE.md` §4.
 
+### 4.4 A full-suite failure that passes alone is not automatically noise
+
+Three times on 2026-09-02 a test failed in `pnpm --filter api test` and passed
+when its file was run alone: `catalog.test.ts` (two authorization cases),
+`query-counts.test.ts` (an N+1 guard) and `children.test.ts` (cross-kindergarten
+isolation — the most serious kind there is).
+
+**The cause is not known.** What is ruled out, with evidence, so nobody repeats
+the search:
+
+| Hypothesis                            | Why not                                                                                                                                    |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Test files run in parallel            | `vitest.config.mts` sets `fileParallelism: false`                                                                                          |
+| Login rate limiter exhausted          | `createTestApp` compiles a fresh module per file, so the limiter is per-file — it cannot produce a failure that only appears in a full run |
+| Report worker / maintenance scheduler | Both gated on `REPORTS_WORKER_ENABLED`, which `test/setup.ts` sets to `"false"`                                                            |
+| Leaked apps holding connections       | All 46 files call `app.close()` in `afterAll`; Postgres `max_connections` is 100 and the suite sits near 8                                 |
+| `resetData` missing a table           | Verified by truncating and counting rows in all 65 tables — none survive                                                                   |
+
+★ It **is** real, and one instance had a real cause: `attendance-register.test.ts`
+did 21 tests × 5 logins against a 60-per-15-minutes limit and got 429s that read
+as register defects. `RateLimitService.resetAll()` in `beforeEach` fixes that
+class, and every high-login file already does it.
+
+★★ **Do not treat the rest as flake and move on.** A cross-kindergarten
+isolation failure is the one result in this suite that must never be waved
+through: the code is right by construction there — `visible` is the first term
+of the `AND`, so a group filter narrows it and cannot widen it — but "the code
+looks right" is what everybody says before a leak. If it recurs, capture the
+full reporter output rather than the summary line, which is where this
+investigation stalled.
+
+★★★ **The web suite did it once too, on 2026-09-02**, which is worth recording
+because it widens the picture: `admin-users.test.tsx > "reports how many
+accounts the filter matched"` failed in `pnpm --filter web test` and passed
+alone. It then passed **four consecutive full runs** and has not recurred, and
+the reporter output was not captured — so this is a data point, not a
+diagnosis. What it rules out is the tempting explanation that this is a
+database-fixture problem specific to the api suite: the web suite has no
+database, no shared Nest app and no rate limiter. Whatever it is, it is not
+those. Capture the full output if it happens again.
+
+★★★★ **It happened again on 2026-09-03, and again in the web suite:**
+`funding-register.test.tsx > "prices the same children on the funding tab"`
+failed in `pnpm --filter web test` and passed alone (12/12). It then passed
+**four consecutive full runs**.
+
+The full reporter output was **not** captured — the run was filtered to the
+summary lines, which is the exact mistake the paragraph above warns about, so
+this is a third data point and still not a diagnosis. What is now recorded:
+the failure took **1313 ms**, so it was not a timeout, and it is a _third_
+distinct web file (`admin-users`, now `funding-register`), which weakens
+"one bad test" and strengthens "something about the full-run environment".
+
+Both web occurrences are in files that render a **table of money** filtered by
+a control. If it recurs, run the full suite with `--reporter=verbose` writing
+to a file _before_ grepping, so the assertion survives.
+
 ---
 
 ## 5. UI rules
@@ -292,7 +349,13 @@ the finance module proper — not started", and by then §4, §5 and §6 had shi
 The list is corrected rather than left standing for the reason this whole
 section keeps repeating: a rule the codebase contradicts stops being read.
 
-- §1's sixth attendance status (`OTHER`) — **done**, it had been dropped
+- §1's sixth attendance status (`OTHER`) — **done**, it had been dropped.
+  ★ It was called done on 2026-08-25 and was half true until 2026-09-02: the
+  Prisma enum had it, `ATTENDANCE_STATUS_LABEL` named it, the funding register
+  filtered on it — but `attendanceStatusSchema` and `recordAttendanceSchema`
+  both stopped at five, so the "Бусад" button the teacher's day sheet has been
+  drawing all along failed on save. A status list written out by hand in four
+  places is how that happens
 - §2 the meal register, §12's dish fields — **done**
 - §11 the allergy cross-check — **done** (it was already RFP Module 2)
 - §13 the accountant role — **done**, `Role.ACCOUNTANT`
@@ -304,7 +367,7 @@ section keeps repeating: a rule the codebase contradicts stops being read.
   there is no per-child meal cost split by source
 - §7 invoices — **done**: `Invoice`, `InvoiceLineItem`, `Payment`, a
   hand-written invoice, the carried balance, and `POST
-  …/invoices/generate-month` which bills a whole month from the `PARENT`
+…/invoices/generate-month` which bills a whole month from the `PARENT`
   tariffs × the month's attendance and meal days
 - §8 online payment — **built, then narrowed**. ★★ **QPay now charges one
   thing: the portal access fee** (client, 2026-09-01 — "QPay-ийг зөвхөн эцэг
@@ -339,6 +402,7 @@ was better. Both were sound. The reasoning, the two defects fixed on the way in
 (JavaScript floats for money; a `/v2` doubled into the QPay base URL) and what
 was lost (a line no longer points at the `FundingRule` that produced it, and no
 longer carries `quantity × unitAmount`) are in `docs/FINANCE_MODULE.md` §1.
+
 - §9 the financial dashboard — **done**: `/kindergartens/:id/invoices/dashboard`
   and the panel at the head of `/finance`. Nine figures, none of them stored —
   every one aggregated on read from the calculations, invoices and payments

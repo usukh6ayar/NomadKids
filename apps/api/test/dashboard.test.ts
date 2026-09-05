@@ -649,9 +649,9 @@ describe("cook dashboard", () => {
 
     const res = await request(server()).get("/v1/dashboard/cook").set("Cookie", cookA.cookies);
     expect(res.body.attendanceToday.recorded).toBe(0);
-    expect(res.body.attendanceByGroup.some((g: { groupId: string }) => g.groupId === b.group.id)).toBe(
-      false,
-    );
+    expect(
+      res.body.attendanceByGroup.some((g: { groupId: string }) => g.groupId === b.group.id),
+    ).toBe(false);
   });
 
   it("counts orders still DRAFT or ORDERED, not ones already RECEIVED", async () => {
@@ -676,9 +676,7 @@ describe("cook dashboard", () => {
     });
     expect(order.body.status).toBe("ORDERED");
 
-    const before = await request(server())
-      .get("/v1/dashboard/cook")
-      .set("Cookie", cookA.cookies);
+    const before = await request(server()).get("/v1/dashboard/cook").set("Cookie", cookA.cookies);
     expect(before.body.pendingFoodOrders).toBe(1);
 
     await authed(request(server()).post(`/v1/food-orders/${order.body.id}/receive`), cookA).send({

@@ -44,6 +44,8 @@ services:
       # and Caddy refuses the whole config with "wrong argument count after
       # 'email'" — a restart loop with no TLS, found on the first real deploy.
       ACME_EMAIL: ${ACME_EMAIL}
+      WWW_DOMAIN: ${WWW_DOMAIN}
+      WWW_REDIRECT_TO: ${WWW_REDIRECT_TO}
     depends_on:
       - web
       - api
@@ -57,8 +59,14 @@ services:
       args:
         # ★ Build arguments, not environment. Next inlines NEXT_PUBLIC_* into
         # the bundle at build time — setting them below would change nothing.
-        NEXT_PUBLIC_API_URL: https://${API_DOMAIN}
-        NEXT_PUBLIC_MEDIA_URL: https://${MEDIA_DOMAIN}
+        #
+        # ★★ The canonical origins, **not** `https://${API_DOMAIN}`.
+        # `*_DOMAIN` are Caddy site addresses and may be comma-separated lists;
+        # a list interpolated here produces `https://a.example, b.example`,
+        # which is not a URL. See `.env.production.example`.
+        NEXT_PUBLIC_API_URL: ${API_ORIGIN}
+        NEXT_PUBLIC_MEDIA_URL: ${MEDIA_ORIGIN}
+        NEXT_PUBLIC_SITE_URL: ${WEB_ORIGIN}
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -78,7 +86,10 @@ services:
       # ★ The API signs presigned URLs against the PUBLIC hostname, because the
       # browser is what follows them. `http://storage:9000` would be signed
       # correctly and unreachable from anywhere but this network.
-      STORAGE_ENDPOINT: https://${MEDIA_DOMAIN}
+      # ★★ `MEDIA_ORIGIN`, not `https://${MEDIA_DOMAIN}` — a signature is
+      # computed over the host, so a comma-separated Caddy list here would be
+      # signed faithfully and then rejected by every browser that followed it.
+      STORAGE_ENDPOINT: ${MEDIA_ORIGIN}
       NODE_ENV: production
       PORT: "3001"
     depends_on:

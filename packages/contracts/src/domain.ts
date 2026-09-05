@@ -391,7 +391,28 @@ export const observationTypeSchema = z.object({
 
 // ── Attendance ───────────────────────────────────────────────────────────────
 
-export const attendanceStatusSchema = z.enum(["PRESENT", "HALF_DAY", "EXCUSED", "SICK", "ABSENT"]);
+/**
+ * ★ Six, not five. `OTHER` was missing here until 2026-09-02.
+ *
+ * The Prisma enum has always had six values, `ATTENDANCE_STATUS_LABEL` below
+ * names six, `attendanceCountsSchema` counts six, and the funding register
+ * filters on six. Only this schema — and `recordAttendanceSchema`, which
+ * mirrors it — stopped at five.
+ *
+ * The failure was silent in the worst direction. The teacher's day sheet draws
+ * its buttons from `Object.entries(ATTENDANCE_STATUS_LABEL)`, so "Бусад" has
+ * been on screen the whole time; pressing it sent a status the API refused.
+ * A control that renders and then fails is worse than one that was never
+ * offered, because the teacher blames themselves.
+ */
+export const attendanceStatusSchema = z.enum([
+  "PRESENT",
+  "HALF_DAY",
+  "EXCUSED",
+  "SICK",
+  "ABSENT",
+  "OTHER",
+]);
 export type AttendanceStatus = z.infer<typeof attendanceStatusSchema>;
 
 /**
@@ -412,9 +433,62 @@ export const ATTENDANCE_STATUS_LABEL: Record<string, string> = {
   EXCUSED: "Чөлөөтэй",
   SICK: "Өвчтэй",
   ABSENT: "Тасалсан",
-  /** The sixth, which `attendanceStatusSchema` predates — see `attendanceCountsSchema`. */
   OTHER: "Бусад",
 };
+
+/**
+ * The kindergarten-wide attendance register — a child per row, a day per
+ * column, over any range of dates.
+ *
+ * ★ `days` on a row is positional: index N is `days[N]` of the response's own
+ * `days` array, and `null` means nothing was recorded. A missing mark and an
+ * absence are different facts, and the register must not merge them — the
+ * second becomes a funding claim, the first is a gap in the paperwork.
+ */
+export const attendanceJournalCellSchema = z.object({
+  status: attendanceStatusSchema,
+  note: z.string().nullable(),
+});
+
+export const attendanceJournalRowSchema = z.object({
+  childId: z.string(),
+  child: z.object({
+    id: z.string(),
+    lastName: z.string().nullable(),
+    firstName: z.string(),
+    status: z.string(),
+  }),
+  group: z.object({
+    id: z.string(),
+    name: z.string(),
+    ageBand: z.string().nullable(),
+    programKind: z.string(),
+    attendanceForm: z.string(),
+  }),
+  days: z.array(attendanceJournalCellSchema.nullable()),
+  /** Only the statuses that occur — a status with no days is simply absent. */
+  counts: z.record(z.string(), z.number()),
+  recorded: z.number(),
+});
+export type AttendanceJournalRow = z.infer<typeof attendanceJournalRowSchema>;
+
+/**
+ * ★ "Journal", not "register", and the distinction is not cosmetic.
+ *
+ * `attendanceRegisterSchema` further down is the **funding** register —
+ * нэмэлт.md §6's monthly reconciliation, one row per child with money on it.
+ * This is the raw attendance grid the director reads, and it feeds that one.
+ * Two things called the register is how somebody eventually imports the wrong
+ * schema and gets a type error at best.
+ */
+export const attendanceJournalSchema = paginated(attendanceJournalRowSchema).extend({
+  from: z.string(),
+  to: z.string(),
+  days: z.array(z.string()),
+  /** Across every matching child, not the page — a total that moved with the page would mislead. */
+  totals: z.record(z.string(), z.number()),
+});
+export type AttendanceJournal = z.infer<typeof attendanceJournalSchema>;
 
 export const attendanceRequestStatusSchema = z.enum(["PENDING", "APPROVED", "REJECTED"]);
 export type AttendanceRequestStatus = z.infer<typeof attendanceRequestStatusSchema>;
@@ -2603,16 +2677,65 @@ export const kindergartenRevenueSchema = z.object({
   calculated: z.string(),
   approved: z.string(),
   received: z.string(),
+  /**
+   * ★ The platform's **own** income from this kindergarten — paid portal
+   * access fees. Added 2026-09-02; see `platformRevenueSchema` below for why
+   * it had to be, and why it is not the same money as `received`.
+   */
+  accessFees: z.string(),
+  /** How many access fees were paid. Never which children. */
+  accessPayments: z.number(),
 });
 export type KindergartenRevenue = z.infer<typeof kindergartenRevenueSchema>;
 
+/**
+ * The platform operator's screen — and it reports **two different pots of
+ * money**, which is the whole point of this shape.
+ *
+ * ★★★ **Corrected 2026-09-02, and the correction matters to real people's
+ * money.**
+ *
+ * This screen used to report one set of figures — `calculated`/`approved`/
+ * `received` from `FundingCalculation` — and `/platform/revenue/distribution`
+ * divided the last of them among the revenue partners. Every one of those is
+ * **state funding paid to a kindergarten**. It is the kindergarten's money.
+ * The platform does not receive it, cannot receive it, and has no share in it.
+ *
+ * The platform's actual income is the **portal access fee** (CLAUDE.md §7 §8 —
+ * "it is the platform operator's revenue", which is precisely why no `Payment`
+ * row is written for one). That money appeared nowhere on this screen: a
+ * repo-wide search for `accessSubscription` under `src/platform/` returned
+ * nothing.
+ *
+ * So a partner checking their agreed percentage was reading a share of money
+ * the platform never earned, while the money it did earn was invisible. Both
+ * halves of that are now fixed: `platform` below is the operator's own income,
+ * and `distribution` divides **that**.
+ *
+ * ★ `state` keeps the old figures under an honest name. They are worth showing
+ * — an operator does want to know which kindergartens are running — but never
+ * again under a heading that implies the platform is owed a slice.
+ */
 export const platformRevenueSchema = z.object({
   month: z.string(),
   kindergartens: z.array(kindergartenRevenueSchema).default([]),
-  totals: z.object({
+  /**
+   * State funding that reached the kindergartens. **Not the platform's.**
+   * Named `state` rather than `totals` so no future reader can mistake it for
+   * income again — the rename is deliberate and is what forces every call site
+   * to be re-read.
+   */
+  state: z.object({
     calculated: z.string(),
     approved: z.string(),
     received: z.string(),
+  }),
+  /** The operator's own income for the month — what a share is taken from. */
+  platform: z.object({
+    /** Paid portal access fees. */
+    accessFees: z.string(),
+    /** How many fees were paid. */
+    accessPayments: z.number(),
   }),
 });
 export type PlatformRevenue = z.infer<typeof platformRevenueSchema>;
@@ -2631,17 +2754,29 @@ export type RevenuePartner = z.infer<typeof revenuePartnerSchema>;
 /**
  * The month's income divided by the agreed shares.
  *
- * ★ Computed from **received**, not from calculated or approved.
+ * ★ Computed from **paid access fees** — the platform's own income.
  *
- * A share of money that has not arrived is a promise, and paying it out is the
- * platform lending its own cash against a state transfer that may still be
- * revised. `unallocated` is what is left when the shares do not add to 100 —
- * shown rather than hidden, because a split that quietly loses 8% of a month
- * is the failure this screen exists to prevent.
+ * It used to be computed from `FundingCalculation.receivedAmount`, which is
+ * state money belonging to the kindergartens. See `platformRevenueSchema`
+ * above for the full correction. The field is renamed `accessFees` rather than
+ * left as `received` **on purpose**: the same name holding a different meaning
+ * is how a reader keeps the old assumption without noticing, and this
+ * codebase has already paid for that once (`previousBalance`,
+ * `docs/FINANCE_MODULE.md` §1).
+ *
+ * ★★ Only money that has actually **arrived**. A share of an unpaid QPay
+ * invoice is a share of a QR code nobody scanned.
+ *
+ * `unallocated` is what is left when the shares do not add to 100 — shown
+ * rather than hidden, because a split that quietly loses 8% of a month is the
+ * failure this screen exists to prevent.
  */
 export const revenueDistributionSchema = z.object({
   month: z.string(),
-  received: z.string(),
+  /** Paid portal access fees for the month — the sum being divided. */
+  accessFees: z.string(),
+  /** How many payments made it up, so the figure can be checked against QPay. */
+  accessPayments: z.number(),
   allocatedPercent: z.string(),
   unallocated: z.string(),
   shares: z
@@ -3258,3 +3393,83 @@ export const financeReportDownloadSchema = z.object({
   url: z.string(),
   expiresIn: z.number(),
 });
+
+// ── Onboarding — цэцэрлэгтэй гэрээ байгуулах (docs/CONTRACT_ONBOARDING.md) ────
+
+export const kindergartenApplicationStatusSchema = z.enum(["PENDING", "APPROVED", "REJECTED"]);
+export type KindergartenApplicationStatus = z.infer<typeof kindergartenApplicationStatusSchema>;
+
+export const KINDERGARTEN_APPLICATION_STATUS_LABEL: Record<KindergartenApplicationStatus, string> =
+  {
+    PENDING: "Хүлээгдэж буй",
+    APPROVED: "Батлагдсан",
+    REJECTED: "Татгалзсан",
+  };
+
+export const contractStatusSchema = z.enum(["PENDING_SIGNATURE", "SIGNED", "ACTIVE", "CANCELLED"]);
+export type ContractStatus = z.infer<typeof contractStatusSchema>;
+
+export const CONTRACT_STATUS_LABEL: Record<ContractStatus, string> = {
+  PENDING_SIGNATURE: "Гарын үсэг хүлээгдэж буй",
+  SIGNED: "Гарын үсэг зурсан",
+  ACTIVE: "Идэвхтэй",
+  CANCELLED: "Цуцалсан",
+};
+
+/**
+ * What the public form gets back.
+ *
+ * ★★ Deliberately thin: an id and a status, nothing else. The response to an
+ * unauthenticated write must not become a way to read anything — and in
+ * particular it must look **identical** whether or not the registration number
+ * was already on file, or the form becomes a tool for asking "is this
+ * kindergarten registered with you".
+ */
+export const applicationReceiptSchema = z.object({
+  id: uuidSchema,
+  status: kindergartenApplicationStatusSchema,
+});
+export type ApplicationReceipt = z.infer<typeof applicationReceiptSchema>;
+
+/** One application, as the platform operator reviews it. */
+export const kindergartenApplicationSchema = z.object({
+  id: uuidSchema,
+  kindergartenName: z.string(),
+  registrationNumber: z.string(),
+  address: z.string(),
+  directorName: z.string(),
+  phone: z.string(),
+  email: z.string(),
+  childCount: z.number(),
+  note: z.string().nullable(),
+  status: kindergartenApplicationStatusSchema,
+  reviewedAt: z.string().nullable(),
+  reviewNote: z.string().nullable(),
+  kindergartenId: uuidSchema.nullable(),
+  createdAt: z.string(),
+  contract: z
+    .object({
+      id: uuidSchema,
+      number: z.string(),
+      version: z.number(),
+      status: contractStatusSchema,
+      pdfMediaFileId: uuidSchema.nullable(),
+    })
+    .nullable(),
+});
+export type KindergartenApplication = z.infer<typeof kindergartenApplicationSchema>;
+
+/**
+ * What approving an application answers with.
+ *
+ * ★★ The application, plus the first administrator's **one-time invitation
+ * token**. `PlatformService.create` returns one the same way and for the same
+ * reason: the kindergarten has no account yet, so there is nobody the product
+ * can email it to. The operator hands it over. It is never logged, and it is
+ * the only moment it exists in plaintext.
+ */
+export const applicationApprovalSchema = kindergartenApplicationSchema.extend({
+  invitationToken: z.string(),
+  adminUsername: z.string(),
+});
+export type ApplicationApproval = z.infer<typeof applicationApprovalSchema>;

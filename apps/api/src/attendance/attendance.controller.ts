@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, Query } from "@nestjs/common";
+import type { Response } from "express";
+import { Body, Controller, Get, Param, Patch, Post, Put, Query, Res } from "@nestjs/common";
 import { idParamSchema, paginationQuerySchema } from "@kinder/contracts";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
@@ -9,6 +10,7 @@ import {
   createAttendanceRequestSchema,
   dateParamSchema,
   groupDaySheetQuerySchema,
+  attendanceRegisterQuerySchema,
   listAttendanceQuerySchema,
   recordAttendanceSchema,
   recordPickupSchema,
@@ -16,6 +18,7 @@ import {
   type CreateAttendanceRequestDto,
   type DateParam,
   type GroupDaySheetQuery,
+  type AttendanceRegisterQuery,
   type ListAttendanceQuery,
   type RecordAttendanceDto,
   type RecordPickupDto,
@@ -121,6 +124,59 @@ export class AttendanceRequestController {
 }
 
 /** The group day sheet — every enrolled child, one day. */
+/**
+ * The kindergarten-wide attendance register — the director's and the
+ * accountant's view.
+ *
+ * ★ `@Roles("ADMIN", "ACCOUNTANT")` gates the route; the service still checks
+ * the membership against the kindergarten in the URL, because the decorator
+ * alone would let an accountant employed by one kindergarten read another's
+ * register by changing the id.
+ *
+ * ★★ TEACHER is absent by design. A teacher reads their own group through
+ * `GroupAttendanceController` below — the view their job needs — and
+ * `нэмэлт.md` §13 keeps them out of the kindergarten-wide figures that feed
+ * funding.
+ */
+@Controller("kindergartens/:id/attendance")
+export class KindergartenAttendanceController {
+  constructor(private readonly service: AttendanceService) {}
+
+  @Get("register")
+  @Roles("ADMIN", "ACCOUNTANT")
+  async register(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(attendanceRegisterQuerySchema)) query: AttendanceRegisterQuery,
+  ) {
+    return this.service.register(actor, params.id, query);
+  }
+
+  /**
+   * The same register as a spreadsheet — нэмэлт.md §16's "Excel экспорт".
+   *
+   * ★ Inline, not a queued job. ExcelJS over a quarter's grid is fast and
+   * light; only the PDF path needs Chromium and a queue (CLAUDE.md §6).
+   */
+  @Get("register/export")
+  @Roles("ADMIN", "ACCOUNTANT")
+  async exportRegister(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(attendanceRegisterQuerySchema)) query: AttendanceRegisterQuery,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.service.exportRegister(actor, params.id, query);
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(buffer);
+  }
+}
+
 @Controller("groups/:id/attendance")
 export class GroupAttendanceController {
   constructor(private readonly service: AttendanceService) {}

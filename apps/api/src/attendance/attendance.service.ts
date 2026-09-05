@@ -8,6 +8,8 @@ import type { Actor } from "../authz/actor";
 import { paginate } from "../common/pagination";
 import { isFutureDate, isValidRange } from "./attendance-rules";
 import { AttendanceRepository } from "./attendance.repository";
+import { buildJournalWorkbook } from "./journal-workbook";
+import type { AttendanceRegisterQuery } from "./attendance.dto";
 import type {
   CreateAttendanceRequestDto,
   RecordAttendanceDto,
@@ -24,6 +26,143 @@ export class AttendanceService {
     private readonly authz: AuthzRepository,
     private readonly audit: AuditRepository,
   ) {}
+
+  /**
+   * The kindergarten-wide register — `A/261` Хавсралт 2 §1's "ирцийн бүртгэл",
+   * as the director and the accountant actually need to read it.
+   *
+   * ★ Everything before this answered about one group on one day, or one child
+   * in one month. Neither shape answers "how did the whole kindergarten do over
+   * the period this claim covers", which is the question that precedes both a
+   * funding claim and a parent's invoice.
+   *
+   * ★★ `assertCanReadFinance` — ADMIN and ACCOUNTANT, never TEACHER. Not a
+   * misuse of the name: `FundingService` already treats it as "may touch
+   * finance", attendance is the input every funding figure is computed from,
+   * and `нэмэлт.md` §13 excludes teachers from exactly this. A teacher still
+   * reads their own group's sheet through `groupDaySheet`, which is the view
+   * their job needs. A second predicate naming the same two roles would be a
+   * distinction with no difference — the reasoning `InvoicesService` records.
+   *
+   * ★★★ Pagination is over **children**, never over days. A page that cut the
+   * date range would be a register with a hole in it, and the hole would be
+   * invisible: every row would look complete. So a page is fifty children with
+   * all their days, and the days are bounded by the query schema instead.
+   */
+  async register(actor: Actor, kindergartenId: string, query: AttendanceRegisterQuery) {
+    const built = await this.buildRegister(actor, kindergartenId, query);
+    const { page, pageSize } = query;
+    const start = (page - 1) * pageSize;
+
+    return {
+      ...paginate(built.rows.slice(start, start + pageSize), built.rows.length, query),
+      from: query.from,
+      to: query.to,
+      days: built.days,
+      totals: built.totals,
+    };
+  }
+
+  /**
+   * The same register as a spreadsheet — every row, not the page on screen.
+   *
+   * ★ A file is what somebody attaches to a claim or opens beside a bank
+   * statement, and one that stopped at row twenty-five because that is where
+   * the screen stopped would be worse than no file — the reasoning
+   * `FundingService.exportRegister` records for its own export. It takes the
+   * same filters, so what is downloaded is what was being looked at.
+   */
+  async exportRegister(actor: Actor, kindergartenId: string, query: AttendanceRegisterQuery) {
+    const built = await this.buildRegister(actor, kindergartenId, query);
+    const kindergarten = await this.authz.loadKindergartenNames(actor);
+
+    const buffer = await buildJournalWorkbook({
+      kindergartenName: kindergarten[kindergartenId] ?? "",
+      from: query.from,
+      to: query.to,
+      days: built.days,
+      rows: built.rows,
+      totals: built.totals,
+    });
+
+    return { buffer, filename: `irts-${query.from}-${query.to}.xlsx` };
+  }
+
+  /**
+   * The grid itself, shared by the screen and the file so they cannot answer
+   * differently — the same "one expression, two callers" the children
+   * repository records for its own roster filter.
+   */
+  private async buildRegister(
+    actor: Actor,
+    kindergartenId: string,
+    query: AttendanceRegisterQuery,
+  ) {
+    this.tenants.assertCanReadFinance(actor, kindergartenId);
+
+    const from = toUtcDate(query.from);
+    const to = toUtcDate(query.to);
+
+    const { enrollments, records } = await this.repo.registerRows(kindergartenId, {
+      from,
+      to,
+      groupIds: query.groupId,
+      ageBands: query.ageBand,
+      programKind: query.programKind,
+      attendanceForm: query.attendanceForm,
+      statuses: query.status,
+      q: query.q,
+      childStatuses: query.childStatus,
+    });
+
+    // One pass over the records, keyed by enrolment and day — the alternative
+    // is a find() per cell, which is the N+1 moved out of the database and
+    // into the process.
+    const byEnrollment = new Map<string, Map<string, { status: string; note: string | null }>>();
+    for (const record of records) {
+      const day = record.date.toISOString().slice(0, 10);
+      let days = byEnrollment.get(record.enrollmentId);
+      if (!days) {
+        days = new Map();
+        byEnrollment.set(record.enrollmentId, days);
+      }
+      days.set(day, { status: record.status, note: record.note });
+    }
+
+    const days = eachDay(from, to);
+
+    const rows = enrollments.map((enrollment) => {
+      const marked = byEnrollment.get(enrollment.id) ?? new Map();
+      const counts: Record<string, number> = {};
+      for (const value of marked.values()) {
+        counts[value.status] = (counts[value.status] ?? 0) + 1;
+      }
+
+      return {
+        childId: enrollment.childId,
+        child: enrollment.child,
+        group: enrollment.group,
+        // `null` where nothing was recorded — a day nobody marked is not the
+        // same fact as a day marked absent, and the register must not invent
+        // the difference away.
+        days: days.map((day) => marked.get(day) ?? null),
+        counts,
+        recorded: marked.size,
+      };
+    });
+
+    return {
+      rows,
+      days,
+      /** Across every matching child, never just a page — a total that moved with the page would mislead. */
+      totals: rows.reduce<Record<string, number>>((acc, row) => {
+        for (const [status, count] of Object.entries(row.counts)) {
+          acc[status] = (acc[status] ?? 0) + count;
+        }
+        return acc;
+      }, {}),
+    };
+  }
 
   // ── Reading — staff and guardians alike ─────────────────────────────────
 
@@ -404,4 +543,26 @@ function* eachDate(from: Date, to: Date): Generator<Date> {
     yield new Date(cursor);
     cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
+}
+
+/** `YYYY-MM-DD` to midnight UTC, matching a `@db.Date` column. */
+function toUtcDate(iso: string): Date {
+  return new Date(`${iso}T00:00:00.000Z`);
+}
+
+/**
+ * Every day in the range, inclusive of both ends.
+ *
+ * ★ Calendar days, not working days. Which days a kindergarten is open is a
+ * question the register must not answer on its own — a Saturday with an
+ * attendance record on it is a fact worth seeing, not a row to hide, and
+ * `FundingService` already owns the working-day calculation for the months
+ * where it matters.
+ */
+function eachDay(from: Date, to: Date): string[] {
+  const days: string[] = [];
+  for (let t = from.getTime(); t <= to.getTime(); t += 86_400_000) {
+    days.push(new Date(t).toISOString().slice(0, 10));
+  }
+  return days;
 }

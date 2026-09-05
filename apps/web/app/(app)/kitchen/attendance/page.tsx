@@ -45,9 +45,7 @@ function KitchenAttendance() {
     queryFn: () => get("/dashboard/cook", cookDashboardSchema),
   });
 
-  const header = (lede: string) => (
-    <PageHeader title="Ирц" lede={lede} />
-  );
+  const header = (lede: string) => <PageHeader title="Ирц" lede={lede} />;
 
   if (isLoading) {
     return (
@@ -132,28 +130,31 @@ function KitchenAttendance() {
           ) : (
             <Card className="divide-y divide-border">
               {withRows.map((group) => (
-                <div key={group.groupId} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                <div
+                  key={group.groupId}
+                  className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                >
                   <span className="min-w-0 truncate text-body font-medium text-ink">
                     {group.name}
                   </span>
                   <ul className="flex flex-wrap gap-1.5">
-                    {ATTENDANCE_STATUS_ORDER.filter((status) => (group.counts[status] ?? 0) > 0).map(
-                      (status) => (
-                        <li
-                          key={status}
-                          className="flex items-center gap-1.5 rounded-pill border border-border bg-surface px-2.5 py-1 text-caption text-muted"
-                        >
-                          <span
-                            aria-hidden="true"
-                            className={`size-2 rounded-pill ${ATTENDANCE_STATUS_BG[status]}`}
-                          />
-                          {ATTENDANCE_STATUS_LABEL[status] ?? status}
-                          <span className="font-semibold tabular-nums text-ink">
-                            {group.counts[status]}
-                          </span>
-                        </li>
-                      ),
-                    )}
+                    {ATTENDANCE_STATUS_ORDER.filter(
+                      (status) => (group.counts[status] ?? 0) > 0,
+                    ).map((status) => (
+                      <li
+                        key={status}
+                        className="flex items-center gap-1.5 rounded-pill border border-border bg-surface px-2.5 py-1 text-caption text-muted"
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={`size-2 rounded-pill ${ATTENDANCE_STATUS_BG[status]}`}
+                        />
+                        {ATTENDANCE_STATUS_LABEL[status] ?? status}
+                        <span className="font-semibold tabular-nums text-ink">
+                          {group.counts[status]}
+                        </span>
+                      </li>
+                    ))}
                   </ul>
                 </div>
               ))}

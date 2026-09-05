@@ -3,7 +3,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Apple,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Cookie,
@@ -15,7 +14,7 @@ import {
   UtensilsCrossed,
 } from "lucide-react";
 import Image from "next/image";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { z } from "zod";
 import { menuDaySchema, MEAL_KIND_LABEL, type MealKind, type MenuDish } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
@@ -47,7 +46,10 @@ const MEAL_KIND_STYLE: Record<MealKind, { icon: ReactNode; tone: string }> = {
     tone: "bg-primary-soft text-primary",
   },
   LUNCH: { icon: <UtensilsCrossed size={22} aria-hidden="true" />, tone: "bg-mint text-mint-ink" },
-  AFTERNOON_SNACK: { icon: <Cookie size={22} aria-hidden="true" />, tone: "bg-peach text-peach-ink" },
+  AFTERNOON_SNACK: {
+    icon: <Cookie size={22} aria-hidden="true" />,
+    tone: "bg-peach text-peach-ink",
+  },
   EXTRA: { icon: <Soup size={22} aria-hidden="true" />, tone: "bg-sky text-sky-ink" },
 };
 
@@ -147,19 +149,18 @@ export function ChildMenu({
   // same weekday selected (Wednesday stays Wednesday) instead of always
   // resetting to Monday.
   const [selectedOffset, setSelectedOffset] = useState(mondayFirstIndex(now));
-  // ★ Its own state, not derived from `activeDate` — "7 хоног" only reveals
-  // the weekday strip, it does not have to move `activeDate` off today's
-  // date to do it. Deriving this from the date meant pressing "7 хоног"
-  // while still viewing today did nothing, because the date it would have
-  // matched against had not changed. Paging the week with the chevrons still
-  // switches into "week" (below), so landing back on today via the strip
-  // itself reads the same as it always did.
-  const [quickView, setQuickView] = useState<"today" | "tomorrow" | "week">("today");
 
   const weekDates = Array.from({ length: 7 }, (_, i) => toIso(addDays(monday, i)));
   const from = weekDates[0]!;
   const to = weekDates[6]!;
   const activeDate = weekDates[selectedOffset]!;
+
+  // Derived from the selected date, not its own state — "Өнөөдөр" is
+  // whichever segment matches what's actually showing, so paging the week
+  // with the chevrons and landing back on today re-lights it on its own
+  // instead of the two going out of sync.
+  const quickView =
+    activeDate === todayIso ? "today" : activeDate === tomorrowIso ? "tomorrow" : "week";
 
   const menu = useQuery({
     queryKey: ["kindergarten", kindergartenId, "menu", from, to],
@@ -190,12 +191,9 @@ export function ChildMenu({
             <div className="flex items-center gap-1">
               <button
                 type="button"
-                onClick={() => {
-                  setMonday((cur) => addDays(cur, -7));
-                  setQuickView("week");
-                }}
+                onClick={() => setMonday((cur) => addDays(cur, -7))}
                 aria-label="Өмнөх долоо хоног"
-                className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
+                className="grid size-11 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
               >
                 <ChevronLeft size={18} aria-hidden="true" />
               </button>
@@ -204,12 +202,9 @@ export function ChildMenu({
               </span>
               <button
                 type="button"
-                onClick={() => {
-                  setMonday((cur) => addDays(cur, 7));
-                  setQuickView("week");
-                }}
+                onClick={() => setMonday((cur) => addDays(cur, 7))}
                 aria-label="Дараах долоо хоног"
-                className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
+                className="grid size-11 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
               >
                 <ChevronRight size={18} aria-hidden="true" />
               </button>
@@ -231,9 +226,23 @@ export function ChildMenu({
         >
           {(
             [
-              ["today", "Өнөөдөр", () => { setMonday(mondayOf(now)); setSelectedOffset(mondayFirstIndex(now)); setQuickView("today"); }],
-              ["tomorrow", "Маргааш", () => { setMonday(mondayOf(tomorrow)); setSelectedOffset(mondayFirstIndex(tomorrow)); setQuickView("tomorrow"); }],
-              ["week", "7 хоног", () => { setMonday(mondayOf(now)); setQuickView("week"); }],
+              [
+                "today",
+                "Өнөөдөр",
+                () => {
+                  setMonday(mondayOf(now));
+                  setSelectedOffset(mondayFirstIndex(now));
+                },
+              ],
+              [
+                "tomorrow",
+                "Маргааш",
+                () => {
+                  setMonday(mondayOf(tomorrow));
+                  setSelectedOffset(mondayFirstIndex(tomorrow));
+                },
+              ],
+              ["week", "7 хоног", () => setMonday(mondayOf(now))],
             ] as const
           ).map(([value, label, onClick]) => (
             <button
@@ -242,7 +251,7 @@ export function ChildMenu({
               onClick={onClick}
               aria-pressed={quickView === value}
               className={cn(
-                "min-h-[40px] rounded-control text-caption font-semibold transition-colors",
+                "min-h-[44px] rounded-control text-caption font-semibold transition-colors",
                 quickView === value
                   ? "bg-primary text-primary-ink shadow-sm"
                   : "text-muted hover:text-ink",
@@ -254,43 +263,38 @@ export function ChildMenu({
         </div>
 
         <Card pad="roomy" className="flex flex-col gap-4">
-          {/* The weekday strip is what "7 хоног" means — Өнөөдөр/Маргааш
-              jump straight to a day without it, so it only shows once that's
-              the actual quick view selected. */}
-          {quickView === "week" ? (
-            <div className="grid grid-cols-7 gap-1.5">
-              {weekDates.map((date, i) => {
-                const day = byDate.get(date);
-                const filled = (day?.dishes.length ?? 0) > 0;
-                const isToday = date === todayIso;
-                const active = i === selectedOffset;
+          <div className="grid grid-cols-7 gap-1.5">
+            {weekDates.map((date, i) => {
+              const day = byDate.get(date);
+              const filled = (day?.dishes.length ?? 0) > 0;
+              const isToday = date === todayIso;
+              const active = i === selectedOffset;
 
-                return (
-                  <button
-                    key={date}
-                    type="button"
-                    aria-pressed={active}
-                    aria-label={`${WEEKDAYS[i]}, ${formatDayMonth(date)}${filled ? " — цэстэй" : ""}`}
-                    onClick={() => setSelectedOffset(i)}
-                    className={cn(
-                      "flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-row border px-1 py-2 text-caption font-semibold transition-colors",
-                      active
-                        ? "border-primary bg-primary-soft text-primary-strong"
-                        : "border-border bg-surface text-ink hover:border-primary",
-                      isToday && !active && "border-primary/50",
-                    )}
-                  >
-                    <span className="text-faint">{WEEKDAYS[i]}</span>
-                    <span>{Number(date.slice(8, 10))}</span>
-                    <span
-                      aria-hidden="true"
-                      className={cn("size-1.5 rounded-pill", filled ? "bg-mint" : "bg-transparent")}
-                    />
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
+              return (
+                <button
+                  key={date}
+                  type="button"
+                  aria-pressed={active}
+                  aria-label={`${WEEKDAYS[i]}, ${formatDayMonth(date)}${filled ? " — цэстэй" : ""}`}
+                  onClick={() => setSelectedOffset(i)}
+                  className={cn(
+                    "flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-row border px-1 py-2 text-caption font-semibold transition-colors",
+                    active
+                      ? "border-primary bg-primary-soft text-primary-strong"
+                      : "border-border bg-surface text-ink hover:border-primary",
+                    isToday && !active && "border-primary/50",
+                  )}
+                >
+                  <span className="text-faint">{WEEKDAYS[i]}</span>
+                  <span>{Number(date.slice(8, 10))}</span>
+                  <span
+                    aria-hidden="true"
+                    className={cn("size-1.5 rounded-pill", filled ? "bg-mint" : "bg-transparent")}
+                  />
+                </button>
+              );
+            })}
+          </div>
 
           {!isStaff && !hasAnyDish ? (
             <EmptyState
@@ -302,7 +306,6 @@ export function ChildMenu({
             />
           ) : (
             <DayDetail
-              key={activeDate}
               kindergartenId={kindergartenId}
               date={activeDate}
               day={byDate.get(activeDate)}
@@ -333,13 +336,6 @@ function DayDetail({
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [draftDishes, setDraftDishes] = useState<DishDraft[]>(() => toDraft(day?.dishes ?? []));
-  // The sitting picked in the "Хоолны цаг" dropdown below — every sitting's
-  // card is always on screen, this just says which one to jump to and
-  // highlight. Reset by React itself — `ChildMenu` keys this component on
-  // `date`, so switching days remounts it rather than carrying a highlight
-  // over to a day that may not have that sitting at all.
-  const [pickedKind, setPickedKind] = useState<MealKind | null>(null);
-  const cardRefs = useRef<Partial<Record<MealKind, HTMLDivElement | null>>>({});
 
   const save = useMutation({
     mutationFn: () =>
@@ -356,11 +352,6 @@ function DayDetail({
   const dishes = day?.dishes ?? [];
   const byKind = groupByKind(dishes);
   const kindsPresent = MEAL_KIND_ORDER.filter((kind) => (byKind[kind]?.length ?? 0) > 0);
-
-  function jumpTo(kind: MealKind) {
-    setPickedKind(kind);
-    cardRefs.current[kind]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }
 
   return (
     <div className="flex flex-col gap-3 border-t border-border pt-4">
@@ -393,17 +384,8 @@ function DayDetail({
         <p className="text-body text-muted">Хоол оруулаагүй.</p>
       ) : (
         <div className="flex flex-col gap-3">
-          <MealTimePicker kinds={kindsPresent} selected={pickedKind} onSelect={jumpTo} />
-
           {kindsPresent.map((kind) => (
-            <div key={kind} ref={(el) => { cardRefs.current[kind] = el; }}>
-              <MealCard
-                kind={kind}
-                dishes={byKind[kind]!}
-                healthNotes={healthNotes}
-                highlighted={kind === pickedKind}
-              />
-            </div>
+            <MealCard key={kind} kind={kind} dishes={byKind[kind]!} healthNotes={healthNotes} />
           ))}
 
           {/*
@@ -427,96 +409,6 @@ function DayDetail({
 }
 
 /**
- * "Хоолны цаг" — narrows a day down to one sitting at a time rather than
- * stacking every `MealCard` the day has. Hand-written rather than pulling in
- * a Radix menu, the same call `components/ui/menu.tsx` makes for its own
- * dropdown: a handful of in-page choices does not earn the dependency, but
- * still gets the same accessibility contract — `aria-haspopup`/`aria-expanded`
- * on the trigger, `role="menu"`/`menuitem` on the list, outside-press and
- * Escape to close.
- */
-function MealTimePicker({
-  kinds,
-  selected,
-  onSelect,
-}: {
-  kinds: MealKind[];
-  selected: MealKind | null;
-  onSelect: (kind: MealKind) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
-
-  return (
-    <div ref={root} className="relative">
-      <button
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((was) => !was)}
-        className="flex w-full items-center justify-between gap-2 rounded-row border border-border bg-surface px-3.5 py-2.5 text-left hover:border-primary"
-      >
-        <span className="text-body text-ink">
-          <span className="font-semibold">Хоолны цаг</span>
-          {selected ? <span className="text-muted"> — {MEAL_KIND_LABEL[selected]}</span> : null}
-        </span>
-        <ChevronDown
-          size={18}
-          className={cn("shrink-0 text-muted transition-transform", open && "rotate-180")}
-          aria-hidden="true"
-        />
-      </button>
-
-      {open ? (
-        <div
-          role="menu"
-          aria-label="Хоолны цаг сонгох"
-          className="absolute left-0 right-0 z-30 mt-2 overflow-hidden rounded-row border border-border bg-surface py-1 shadow-[0_8px_28px_rgba(15,23,42,.12)]"
-        >
-          {kinds.map((kind) => (
-            <button
-              key={kind}
-              type="button"
-              role="menuitem"
-              aria-current={kind === selected}
-              onClick={() => {
-                onSelect(kind);
-                setOpen(false);
-              }}
-              className={cn(
-                "flex w-full items-center gap-3 px-3.5 py-2.5 text-left text-body hover:bg-canvas focus:bg-canvas focus:outline-none",
-                kind === selected ? "font-semibold text-primary" : "text-ink",
-              )}
-            >
-              <span className={cn("grid size-8 shrink-0 place-items-center rounded-control", MEAL_KIND_STYLE[kind].tone)}>
-                {MEAL_KIND_STYLE[kind].icon}
-              </span>
-              {MEAL_KIND_LABEL[kind]}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-/**
  * One sitting — an icon, its dishes, and what they add up to.
  *
  * ★ Portions is a representative figure, not a sum. Every dish in one
@@ -530,14 +422,10 @@ function MealCard({
   kind,
   dishes,
   healthNotes,
-  highlighted,
 }: {
   kind: MealKind;
   dishes: MenuDish[];
   healthNotes: string | null | undefined;
-  /** Just jumped to from the "Хоолны цаг" dropdown — a ring, not a filter,
-   * since every sitting's card stays on screen either way. */
-  highlighted?: boolean;
 }) {
   const style = MEAL_KIND_STYLE[kind];
   const allergens = matchedAllergens(dishes, healthNotes);
@@ -547,13 +435,7 @@ function MealCard({
   const hasPortions = portions !== undefined;
 
   return (
-    <Card
-      pad="roomy"
-      className={cn(
-        "flex flex-col gap-3 transition-shadow",
-        highlighted && "ring-2 ring-primary ring-offset-2 ring-offset-canvas",
-      )}
-    >
+    <Card pad="roomy" className="flex flex-col gap-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex items-center gap-3">
           <span

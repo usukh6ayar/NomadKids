@@ -84,9 +84,7 @@ function extractQpayInvoiceId(query: Record<string, unknown>, body: unknown): st
     query.invoice_id,
     query.object_id,
     query.id,
-    ...(isRecord(body)
-      ? [body.qpay_invoice_id, body.invoice_id, body.object_id, body.id]
-      : []),
+    ...(isRecord(body) ? [body.qpay_invoice_id, body.invoice_id, body.object_id, body.id] : []),
   ];
 
   for (const candidate of candidates) {

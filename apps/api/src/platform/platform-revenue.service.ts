@@ -44,49 +44,95 @@ export class PlatformRevenueService {
     private readonly audit: AuditRepository,
   ) {}
 
-  /** What each kindergarten produced in a month, and the sum. */
+  /**
+   * A month, in two pots: what the state paid the kindergartens, and what the
+   * platform itself earned.
+   *
+   * ★★★ The second pot was missing entirely until 2026-09-02. See
+   * `platformRevenueSchema` in the contracts — a partner checking their agreed
+   * percentage was reading a share of money the platform never receives.
+   *
+   * ★ A kindergarten that paid an access fee but ran no funding calculation
+   * (or the reverse) must still appear. The two aggregates are therefore
+   * unioned by id rather than joined onto the funding rows, which would have
+   * silently dropped exactly the kindergartens whose only relationship with
+   * the platform is that they pay it.
+   */
   async monthRevenue(actor: Actor, month: string): Promise<PlatformRevenue> {
     this.platform.assertSuperAdmin(actor);
 
-    const { first } = monthBounds(month);
-    const rows = await this.repo.monthByKindergarten(first);
-    const names = new Map(
-      (await this.repo.kindergartenNames(rows.map((r) => r.kindergartenId))).map((k) => [
-        k.id,
-        k.name,
-      ]),
-    );
+    const { first, last } = monthBounds(month);
+    const [rows, fees] = await Promise.all([
+      this.repo.monthByKindergarten(first),
+      this.repo.accessFeesByKindergarten(first, last),
+    ]);
 
-    const kindergartens = rows
-      .map((row) => ({ ...row, name: names.get(row.kindergartenId) ?? "—" }))
+    const feeById = new Map(fees.map((row) => [row.kindergartenId, row]));
+    const ids = [...new Set([...rows.map((r) => r.kindergartenId), ...feeById.keys()])];
+
+    const names = new Map((await this.repo.kindergartenNames(ids)).map((k) => [k.id, k.name]));
+
+    const fundingById = new Map(rows.map((row) => [row.kindergartenId, row]));
+
+    const kindergartens = ids
+      .map((kindergartenId) => {
+        const funding = fundingById.get(kindergartenId);
+        const fee = feeById.get(kindergartenId);
+        return {
+          kindergartenId,
+          name: names.get(kindergartenId) ?? "—",
+          entries: funding?.entries ?? 0,
+          calculated: funding?.calculated ?? "0",
+          approved: funding?.approved ?? "0",
+          received: funding?.received ?? "0",
+          accessFees: fee?.accessFees ?? "0",
+          accessPayments: fee?.accessPayments ?? 0,
+        };
+      })
       /*
-        Most received first: the operator's question is "who paid", and a list
-        ordered by id answers nothing. Compared as scaled integers rather than
-        with `Number(a.received)` — the sort is the one place a float would be
-        harmless, and using two different notions of "how much" in one file is
-        how the harmless one ends up somewhere it is not.
+        ★ Sorted by **access fees** now, not by state funding.
+
+        The operator's question on their own screen is "who is paying us", and
+        the previous ordering answered "who received the largest state
+        transfer" — which is the kindergarten's business, not the platform's.
+        Compared as scaled integers rather than with `Number(...)`: the sort is
+        the one place a float would be harmless, and using two different
+        notions of "how much" in one file is how the harmless one ends up
+        somewhere it is not.
       */
       .sort(
-        (a, b) => parseMoney(b.received) - parseMoney(a.received) || a.name.localeCompare(b.name),
+        (a, b) =>
+          parseMoney(b.accessFees) - parseMoney(a.accessFees) ||
+          parseMoney(b.received) - parseMoney(a.received) ||
+          a.name.localeCompare(b.name),
       );
 
     return {
       month,
       kindergartens,
-      totals: {
+      state: {
         calculated: formatMoney(sumMoney(rows.map((r) => r.calculated))),
         approved: formatMoney(sumMoney(rows.map((r) => r.approved))),
         received: formatMoney(sumMoney(rows.map((r) => r.received))),
+      },
+      platform: {
+        accessFees: formatMoney(sumMoney(fees.map((r) => r.accessFees))),
+        accessPayments: fees.reduce((sum, row) => sum + row.accessPayments, 0),
       },
     };
   }
 
   /**
-   * The month's received income, divided by the shares in force.
+   * The month's income, divided by the shares in force.
    *
-   * ★ From **received**, never calculated or approved. A share of money that
-   * has not arrived is a promise, and paying it out is the platform lending
-   * its own cash against a state transfer that can still be revised.
+   * ★ From **paid access fees** — the platform's own income, and the only
+   * money on this screen a share can honestly be taken from. Until 2026-09-02
+   * it divided `FundingCalculation.receivedAmount`, which is the state's
+   * transfer to a kindergarten.
+   *
+   * ★★★ Only money that has **arrived**: the aggregate filters on `paidAt`, so
+   * an access fee that was raised and never paid divides to nothing. A share of
+   * an unpaid QPay invoice is a share of a QR code nobody scanned.
    *
    * ★★ Rounded to two decimals per partner, and the remainder is reported
    * rather than absorbed. 33.33% of 1,000,000 three ways leaves ₮1 that belongs
@@ -97,19 +143,28 @@ export class PlatformRevenueService {
     this.platform.assertSuperAdmin(actor);
 
     const { first, last } = monthBounds(month);
-    const [rows, partners] = await Promise.all([
-      this.repo.monthByKindergarten(first),
+    const [fees, partners] = await Promise.all([
+      /*
+       * ★★★ Access fees, **not** `monthByKindergarten`.
+       *
+       * That call returns `FundingCalculation` — state money paid to the
+       * kindergartens — and this method divided it among the platform's
+       * partners until 2026-09-02. It was a share of income the platform never
+       * received, while its actual income was on no screen at all.
+       */
+      this.repo.accessFeesByKindergarten(first, last),
       this.repo.partnersInForce(last),
     ]);
 
-    const received = sumMoney(rows.map((row) => row.received));
+    const accessFees = sumMoney(fees.map((row) => row.accessFees));
+    const accessPayments = fees.reduce((sum, row) => sum + row.accessPayments, 0);
     const allocated = sumMoney(partners.map((p) => p.sharePercent));
 
     const shares = partners.map((partner) => ({
       partnerId: partner.id,
       name: partner.name,
       sharePercent: partner.sharePercent,
-      amount: formatMoney(percentOf(received, partner.sharePercent)),
+      amount: formatMoney(percentOf(accessFees, partner.sharePercent)),
     }));
 
     /*
@@ -122,9 +177,10 @@ export class PlatformRevenueService {
 
     return {
       month,
-      received: formatMoney(received),
+      accessFees: formatMoney(accessFees),
+      accessPayments,
       allocatedPercent: formatPercent(allocated),
-      unallocated: formatMoney(received - paidOut),
+      unallocated: formatMoney(accessFees - paidOut),
       shares,
     };
   }

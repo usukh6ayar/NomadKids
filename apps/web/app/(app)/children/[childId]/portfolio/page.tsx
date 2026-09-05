@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, BarChart3, FileText, Images, Sprout, User } from "lucide-react";
+import { ArrowLeft, BarChart3, ChevronRight, FileText, Images, Sprout, User } from "lucide-react";
 import { childDetailSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -15,12 +15,13 @@ import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { ReportDialog } from "@/components/reports/report-dialog";
 import { useSession } from "@/lib/auth/session";
 import { PORTFOLIO } from "@/lib/vocabulary";
+import { TONE_SURFACE, type Tone } from "@/components/ui/tone";
 import { cn } from "@/lib/utils";
 
 /**
  * The portfolio — RFP §4.3.
  *
- * ★ A hero card and doors, not a single long scroll — 2026-08-29, on
+ * ★ A hero card and three doors, not a single long scroll — 2026-08-29, on
  * the client's instruction, with a reference screenshot of exactly this hub.
  * Everything the old single-scroll page rendered inline still exists; it
  * moved to whichever door now owns it:
@@ -32,11 +33,6 @@ import { cn } from "@/lib/utils";
  *  - "Зургийн цомог" → `/overview`, the same destination the bottom bar's
  *    own "Зураг" tab already used — one album, reached two ways, rather than
  *    a second screen that happens to show the same photographs.
- *  - "Насны харьцуулалт" → `portfolio/growth/compare/page.tsx` — added
- *    2026-09-04, on the client's instruction, when the age pills and "Бүх
- *    насыг харьцуулах" bar were pulled out of `about-me/page.tsx`'s merged
- *    card. This tile is now the one door in; `AgeStepper` carries a visitor
- *    on from there to any of the five age/compare pages.
  *
  * The PDF button stays here: `type: "CHILD_PORTFOLIO"` exports this whole
  * record, not any one door of it, so it belongs on the hub the doors share
@@ -112,57 +108,36 @@ export default function PortfolioPage() {
   );
 }
 
-const HUB_TONE_CLASS = {
-  mint: "bg-mint text-mint-ink",
-  sky: "bg-sky text-sky-ink",
-  peach: "bg-peach text-peach-ink",
-} as const;
-
 /**
- * Миний тухай / Хөгжил / Зургийн цомог / Насны харьцуулалт — real routes, on
- * the client's instruction, with a reference screenshot of this exact tile
- * row (the fourth tile added 2026-09-04, see this file's own doc comment).
+ * Миний тухай / Хөгжил / Зургийн цомог — three real routes, on the client's
+ * instruction, with a reference screenshot of this exact tile row.
  *
  * ★ Routes, not in-page anchors. This nav used to hold `#about-me`/`#growth`/
  * `#gallery` — anchors into the sections it now replaces — with a doc comment
  * noting dedicated routes were "follow-up work the client asked for
  * separately". That follow-up is this change.
- *
- * ★★ `grid-cols-2`, not `grid-cols-3` — CLAUDE.md §5's mobile-first rule.
- * Four labels this long ("Насны харьцуулалт") lose their two-line balance in
- * three narrow columns on a 375px screen; two wider ones keep every label
- * readable without truncation.
- *
- * ★★★ All four destinations' own back buttons return here now — unified
- * 2026-09-04, on the client's instruction, after each had drifted to a
- * different target (`/home`, `growth/page.tsx`, this hub, or nothing at all).
- * `overview/page.tsx` is the one exception that still branches: it is also
- * the bottom nav bar's own "Зураг" tab, so `?from=portfolio` on the href
- * above is how it tells the two entrances apart — see its own doc comment.
  */
 function PortfolioHubNav({ childId }: { childId: string }) {
-  const items: {
-    href: string;
-    label: string;
-    tone: keyof typeof HUB_TONE_CLASS;
-    Icon: typeof User;
-  }[] = [
-    { href: `/children/${childId}/portfolio/about-me`, label: "Миний тухай", tone: "mint", Icon: User },
+  const items: { href: string; label: string; tone: Tone; Icon: typeof User }[] = [
+    {
+      href: `/children/${childId}/portfolio/about-me`,
+      label: "Миний тухай",
+      tone: "mint",
+      Icon: User,
+    },
     { href: `/children/${childId}/portfolio/growth`, label: "Хөгжил", tone: "mint", Icon: Sprout },
     // The bottom bar's own "Зураг" destination (`layout.tsx`'s `parentNav`) —
     // see this page's own doc comment for why it is the same route rather
-    // than a second one. `?from=portfolio` is how that shared route tells
-    // its own back button which of its two entrances this was — see
-    // `overview/page.tsx`'s doc comment.
+    // than a second one. `?from=portfolio` tells the album's own back button
+    // which of its two entrances this was.
     {
       href: `/children/${childId}/overview?from=portfolio`,
       label: "Зургийн цомог",
       tone: "sky",
       Icon: Images,
     },
-    // Moved out of `about-me/page.tsx`'s merged card — see this file's own
-    // doc comment. `AgeStepper` on the destination page carries a visitor on
-    // to any of the four per-age pages from here.
+    // Moved out of `about-me`'s merged card. `AgeStepper` on the destination
+    // carries a visitor on to any of the four per-age pages from here.
     {
       href: `/children/${childId}/portfolio/growth/compare`,
       label: "Насны харьцуулалт",
@@ -171,25 +146,56 @@ function PortfolioHubNav({ childId }: { childId: string }) {
     },
   ];
 
+  /*
+    ★ REDESIGN 2026-09-03 — the tiles became cards.
+
+    This is the emotional centre of the family's experience and the brief asks
+    it to carry the most design care, but the row was three loose glyphs on the
+    page background with a caption under each — visually the weakest element on
+    a screen that should be the warmest. They now sit on real surfaces with the
+    product's interactive treatment, a generous 64px tinted disc, and a chevron
+    that says the tile opens something.
+
+    The tint stays warm and restrained — the accent is the *disc*, not the card,
+    so the row reads as friendly rather than as three coloured rectangles. Card
+    surfaces stay white, which is what keeps this from tipping into the
+    "childish / game-like" register the direction explicitly rules out.
+
+    `items-stretch` on the grid so all three cards match height whatever their
+    label wraps to — "Зургийн цомог" wraps at 375px and the other two do not.
+  */
   return (
     <nav aria-label="Цахим хавтасны хэсгүүд">
-      <ul className="grid grid-cols-2 gap-2">
+      {/*
+        ★★ Two across on a phone, four from `sm` — 2026-09-04, when the
+        comparison tile made this a row of four.
+
+        Three columns at 375px gave each tile about 108px, and "Насны
+        харьцуулалт" is two words that wrap to three lines in it. Two columns
+        is 168px, which holds the longest label on two lines and keeps the
+        64px disc from crowding it.
+      */}
+      <ul className="grid grid-cols-2 items-stretch gap-2 sm:grid-cols-4 sm:gap-3">
         {items.map(({ href, label, tone, Icon }) => (
-          <li key={href}>
+          <li key={href} className="flex">
             <Link
               href={href}
-              className="flex flex-col items-center gap-2 rounded-control px-2 py-3 text-center transition-transform hover:-translate-y-0.5"
+              className="card-interactive flex w-full flex-col items-center gap-2.5 rounded-card border border-border bg-surface px-2 py-4 text-center shadow-sm sm:px-3 sm:py-5"
             >
               <span
                 aria-hidden="true"
                 className={cn(
-                  "flex size-14 items-center justify-center rounded-card",
-                  HUB_TONE_CLASS[tone],
+                  "flex size-16 items-center justify-center rounded-card",
+                  // `TONE_SURFACE` rather than a ternary: it knew two tones and
+                  // there are three now. Every pairing in that map is measured
+                  // at 4.5:1 or better (`ui-foundation.test.tsx`).
+                  TONE_SURFACE[tone],
                 )}
               >
-                <Icon size={26} />
+                <Icon size={28} />
               </span>
-              <span className="text-caption font-semibold leading-tight text-ink">{label}</span>
+              <span className="text-body font-semibold leading-snug text-ink">{label}</span>
+              <ChevronRight size={16} aria-hidden="true" className="text-faint" />
             </Link>
           </li>
         ))}

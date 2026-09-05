@@ -479,7 +479,10 @@ export class InvoicesService {
       objectType: "Invoice",
       objectId: invoiceId,
       childId: ref.childId,
-      metadata: { before: { status: before }, after: { status: "REFUNDED", note: dto.note ?? null } },
+      metadata: {
+        before: { status: before },
+        after: { status: "REFUNDED", note: dto.note ?? null },
+      },
     });
 
     return updated;

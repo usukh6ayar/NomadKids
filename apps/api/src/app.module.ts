@@ -28,6 +28,7 @@ import { MediaModule } from "./media/media.module";
 import { ObservationsModule } from "./observations/observations.module";
 import { ChatModule } from "./chat/chat.module";
 import { NotificationsModule } from "./notifications/notifications.module";
+import { OnboardingModule } from "./onboarding/onboarding.module";
 import { PlatformModule } from "./platform/platform.module";
 import { PortfolioModule } from "./portfolio/portfolio.module";
 import { ReportsModule } from "./reports/reports.module";
@@ -57,6 +58,7 @@ import { UsersModule } from "./users/users.module";
     HealthModule,
     MaintenanceModule,
     TenantsModule,
+    OnboardingModule,
     PlatformModule,
     UsersModule,
     ChildrenModule,

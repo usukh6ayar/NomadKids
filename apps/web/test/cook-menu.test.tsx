@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, selectOption, sessionFor, stubApi } from "./support/render";
 import MenuPage from "@/app/(app)/menu/page";
+import { MenuDishEditor, toDraft } from "@/components/menu/menu-dish-editor";
 
 const KG_ID = "33333333-3333-4333-8333-333333333333";
 
@@ -10,8 +11,15 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-/** Mirrors `(app)/menu/page.tsx`'s own `todayIso` — the page opens on its
- * "Өнөөдөр" quick view by default, not the Monday-anchored week. */
+/** Mirrors `(app)/menu/page.tsx`'s own `mondayOf` — the page's Monday card, not "today". */
+/**
+ * Today, in UTC.
+ *
+ * ★ The week view opens on **today**, not on Monday — `menu/page.tsx` gained
+ * `todayIso()` and its weekday labels so a cook lands on the day they are
+ * actually cooking. A fixture keyed to Monday is only the day being shown one
+ * morning in seven, so anything asserting on the rendered day keys to this.
+ */
 function todayIso(): string {
   const now = new Date();
   return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
@@ -53,7 +61,7 @@ describe("the cook's weekly menu", () => {
 
     renderWithProviders(<MenuPage />);
 
-    // The page opens on "Өнөөдөр" by default — one empty day, one button.
+    // Every day starts empty until seeded — first in DOM order is Monday.
     const addButtons = await screen.findAllByRole("button", { name: "Хоол нэмэх" });
     await user.click(addButtons[0]!);
 
@@ -91,68 +99,6 @@ describe("the cook's weekly menu", () => {
     });
   });
 
-  /**
-   * ★ Regression for 2026-09-04: picking a технологийн карт leaves `name`'s
-   * only input replaced by a read-only label (`recipe?.name`), so if the
-   * picker's own `onChange` never wrote a `name` into the draft, the dish had
-   * no way to ever get one back. `fromDraft` drops any dish whose `name` is
-   * still blank before the request is even built (same filter the "blank
-   * names are dropped" doc comment on it describes) — so the save silently
-   * went out with an empty `dishes: []`, and a `Батлах` after it approved a
-   * day that had never actually kept the dish. A cook watching the card after
-   * a refresh read that as data lost on restart; it was a dish that was never
-   * sent.
-   */
-  it("saves a recipe-linked dish under the technology card's own name", async () => {
-    const user = userEvent.setup();
-    const RECIPE_ID = "66666666-6666-4666-8666-666666666666";
-    const { calls } = stubApi([
-      { path: "/auth/me", body: sessionFor(["COOK"]) },
-      { path: `/kindergartens/${KG_ID}/menu/with-warnings`, body: [] },
-      {
-        path: `/kindergartens/${KG_ID}/recipes/approved`,
-        body: [{ id: RECIPE_ID, name: "Сүүтэй будаа", yieldPortions: 20 }],
-      },
-      {
-        path: `/kindergartens/${KG_ID}/menu/`,
-        method: "PUT",
-        body: {
-          id: "44444444-4444-4444-8444-444444444444",
-          date: "2026-01-05",
-          dishes: [],
-          totalCalories: null,
-        },
-      },
-    ]);
-
-    renderWithProviders(<MenuPage />);
-
-    const addButtons = await screen.findAllByRole("button", { name: "Хоол нэмэх" });
-    await user.click(addButtons[0]!);
-
-    await selectOption(user, "Технологийн карт", "Сүүтэй будаа");
-
-    const saveButtons = screen.getAllByRole("button", { name: /Хадгалах/ });
-    await user.click(saveButtons[0]!);
-
-    await waitFor(() => expect(calls.some((c) => c.method === "PUT")).toBe(true));
-
-    const put = calls.find((c) => c.method === "PUT")!;
-    expect(put.body).toEqual({
-      dishes: [
-        {
-          name: "Сүүтэй будаа",
-          kind: "BREAKFAST",
-          allergenTags: [],
-          ingredients: null,
-          calories: null,
-          portions: 1,
-          recipeId: RECIPE_ID,
-        },
-      ],
-    });
-  });
-
   it("shows the allergy warning the cross-check names, per dish", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["COOK"]) },
@@ -184,5 +130,183 @@ describe("the cook's weekly menu", () => {
 
     expect(await screen.findByText("Харшлын анхааруулга")).toBeInTheDocument();
     expect(screen.getByText(/Батаа Золбоо — Самар/)).toBeInTheDocument();
+  });
+
+  /**
+   * ★★ The silent drop, fixed 2026-09-02.
+   *
+   * `fromDraft` filters out any row whose `name` is blank, and
+   * `menuDishInputSchema` requires `name.min(1)`. Picking a технологийн карт
+   * set `recipeId` and nothing else, so a freshly added row with a card chosen
+   * and no typing had an empty name — and was **removed from the PUT body**.
+   * The cook picked a dish, pressed Хадгалах, got a success toast, and the day
+   * came back empty.
+   *
+   * It is the shape of bug this file was created for: the save succeeded, so
+   * nothing anywhere reported a problem.
+   */
+  it("a dish picked from a технологийн карт is saved, not dropped for having no typed name", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["COOK"]) },
+      { path: `/kindergartens/${KG_ID}/menu/with-warnings`, body: [] },
+      {
+        path: `/kindergartens/${KG_ID}/recipes/approved`,
+        body: [
+          {
+            id: "66666666-6666-4666-8666-666666666666",
+            name: "Гурилтай шөл",
+            yieldPortions: 20,
+            mealKind: "LUNCH",
+          },
+        ],
+      },
+      {
+        path: `/kindergartens/${KG_ID}/menu/`,
+        method: "PUT",
+        body: {
+          id: "44444444-4444-4444-8444-444444444444",
+          date: "2026-01-05",
+          dishes: [],
+          totalCalories: null,
+        },
+      },
+    ]);
+
+    renderWithProviders(<MenuPage />);
+
+    const addButtons = await screen.findAllByRole("button", { name: "Хоол нэмэх" });
+    await user.click(addButtons[0]!);
+
+    // A new row opens on "Бэлэн хоол" once there is an approved card to pick.
+    await selectOption(user, "Бэлэн хоол", "Гурилтай шөл");
+
+    const saveButtons = screen.getAllByRole("button", { name: /Хадгалах/ });
+    await user.click(saveButtons[0]!);
+
+    await waitFor(() => expect(calls.some((c) => c.method === "PUT")).toBe(true));
+
+    const put = calls.find((c) => c.method === "PUT")!;
+    expect(put.body).toEqual({
+      dishes: [
+        {
+          name: "Гурилтай шөл",
+          // The card names its sitting, so the row follows it.
+          kind: "LUNCH",
+          allergenTags: [],
+          ingredients: null,
+          calories: null,
+          portions: 1,
+          recipeId: "66666666-6666-4666-8666-666666666666",
+        },
+      ],
+    });
+  });
+
+  /**
+   * ★ Discoverability, not capability.
+   *
+   * The picker used to render only when `recipes.length > 0`. A kindergarten
+   * seeded from `kitchen-reference.ts` starts with eight **DRAFT** cards, so
+   * `/recipes/approved` is empty and the control was absent entirely — the
+   * cook had no way to learn that ready dishes exist. CLAUDE.md §5: an empty
+   * state says what to do next.
+   */
+  it("with no approved card, the picker still appears and says where to make one", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["COOK"]) },
+      { path: `/kindergartens/${KG_ID}/menu/with-warnings`, body: [] },
+      { path: `/kindergartens/${KG_ID}/recipes/approved`, body: [] },
+    ]);
+
+    renderWithProviders(<MenuPage />);
+
+    const addButtons = await screen.findAllByRole("button", { name: "Хоол нэмэх" });
+    await user.click(addButtons[0]!);
+
+    const readyButtons = await screen.findAllByRole("button", { name: /Бэлэн хоол/ });
+    // Offered, and visibly unavailable — rather than missing with no explanation.
+    expect(readyButtons[0]!).toBeDisabled();
+
+    // Free text is the working path meanwhile, and it is the one selected.
+    expect(screen.getAllByRole("button", { name: /Өөрөө бичих/ })[0]!).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getAllByLabelText("Хоолны нэр")[0]!).toBeInTheDocument();
+  });
+});
+
+/**
+ * The editor on a screen that has no kitchen — `child-menu.tsx`'s quick edit
+ * from inside a child's page.
+ *
+ * ★ There was no test over this at all, which is how the regression these
+ * guard against reached a commit: `cook-menu.test.tsx` above always supplies
+ * `kitchen`, and `menu.test.tsx` is the action-menu dropdown, not this. 488
+ * tests passed with the bug in place.
+ */
+describe("the dish editor without a kitchen", () => {
+  const linkedDish = [
+    {
+      name: "Гурилтай шөл",
+      kind: "LUNCH" as const,
+      allergenTags: ["гурил"],
+      ingredients: null,
+      calories: 320,
+      portions: 1,
+      note: null,
+      recipeId: "66666666-6666-4666-8666-666666666666",
+      photoMediaFileId: null,
+    },
+  ];
+
+  it("shows a recipe-linked dish's name as text, never as an input", () => {
+    renderWithProviders(
+      <MenuDishEditor
+        draftDishes={toDraft(linkedDish)}
+        onChange={() => {}}
+        onSave={() => {}}
+        saving={false}
+        error={null}
+      />,
+    );
+
+    /*
+     * An input here would be a form that lies: `MealsService.saveDay` freezes a
+     * recipe-linked dish's name from the card, so anything typed is discarded
+     * and the save still reports success.
+     */
+    expect(screen.queryByRole("textbox", { name: "Хоолны нэр" })).not.toBeInTheDocument();
+    expect(screen.getByText("Гурилтай шөл")).toBeInTheDocument();
+  });
+
+  it("offers no mode switch — there is nothing to switch to", () => {
+    renderWithProviders(
+      <MenuDishEditor
+        draftDishes={toDraft(linkedDish)}
+        onChange={() => {}}
+        onSave={() => {}}
+        saving={false}
+        error={null}
+      />,
+    );
+
+    expect(screen.queryByRole("group", { name: "Хоолыг хэрхэн оруулах" })).not.toBeInTheDocument();
+  });
+
+  it("a free-text dish is still editable", () => {
+    renderWithProviders(
+      <MenuDishEditor
+        draftDishes={toDraft([{ ...linkedDish[0]!, recipeId: null, name: "Гар хоол" }])}
+        onChange={() => {}}
+        onSave={() => {}}
+        saving={false}
+        error={null}
+      />,
+    );
+
+    expect(screen.getByRole("textbox", { name: "Хоолны нэр" })).toHaveValue("Гар хоол");
   });
 });

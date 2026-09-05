@@ -99,7 +99,7 @@ function KitchenReports() {
             key={t.value}
             type="button"
             onClick={() => setTab(t.value)}
-            className={`min-h-[40px] rounded-pill border px-3.5 text-body font-medium transition-colors ${
+            className={`min-h-[44px] rounded-pill border px-3.5 text-body font-medium transition-colors ${
               tab === t.value
                 ? "border-primary bg-primary-soft text-primary"
                 : "border-border bg-surface text-muted hover:bg-canvas"

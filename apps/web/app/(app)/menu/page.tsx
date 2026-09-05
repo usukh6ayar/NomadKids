@@ -27,8 +27,13 @@ import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const weekSchema = z.array(menuDayWithWarningsSchema);
+/*
+ * ★ `mealKind` joined the picked fields on 2026-09-02 so the picker can group
+ * its options by sitting. `listApprovedRecipes` has always selected it — the
+ * client was simply throwing it away.
+ */
 const approvedRecipesSchema = z.array(
-  recipeSummarySchema.pick({ id: true, name: true, yieldPortions: true }),
+  recipeSummarySchema.pick({ id: true, name: true, yieldPortions: true, mealKind: true }),
 );
 
 /** Today, as `YYYY-MM-DD`, in UTC — matches how every other date here is keyed. */
@@ -277,7 +282,9 @@ function MenuDayCard({
   const [dirty, setDirty] = useState(false);
 
   const refresh = () => {
-    void queryClient.invalidateQueries({ queryKey: qk.weeklyMenu(kindergartenId, queryFrom, queryTo) });
+    void queryClient.invalidateQueries({
+      queryKey: qk.weeklyMenu(kindergartenId, queryFrom, queryTo),
+    });
   };
 
   const save = useMutation({

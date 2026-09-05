@@ -38,7 +38,11 @@ import { YEAR_ANIMAL_ICON, ZODIAC_ICON } from "@/lib/zodiac-icons";
  * which two it lies between. Five births in six are outside the window and get
  * no note at all.
  */
-export function ChildBirthdayFacts({ section }: { section: z.infer<typeof birthdaySectionSchema> }) {
+export function ChildBirthdayFacts({
+  section,
+}: {
+  section: z.infer<typeof birthdaySectionSchema>;
+}) {
   const facts = [
     {
       icon: <Sun size={14} aria-hidden="true" className="shrink-0" />,

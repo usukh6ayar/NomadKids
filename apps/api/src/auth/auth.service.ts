@@ -336,10 +336,45 @@ export class AuthService {
    * "expired". Each of those tells someone holding a guessed token something
    * about it.
    */
+  /**
+   * What an invitation is for, before anybody types anything.
+   *
+   * ★ Public by necessity and deliberately thin.
+   *
+   * The acceptance form has to know whether to ask a guardian for a given name
+   * and a relationship, or a member of staff for a surname and an e-mail. It
+   * cannot know that from an opaque token, and encoding the answer in the URL
+   * would let it be flipped by whoever holds the link.
+   *
+   * It also lets an expired invitation be reported *before* the password is
+   * typed twice, which is the difference between "this link has expired" and a
+   * red banner after the work.
+   *
+   * ★★ It returns a shape and a validity, never a name, an e-mail or a
+   * kindergarten. An invitation token is 32 random bytes, so enumerating one is
+   * not a real attack; leaking who it belongs to would be.
+   */
+  async describeInvitation(token: string): Promise<{ valid: boolean; kind: "staff" | "guardian" }> {
+    const row = await this.repo.findAuthToken(hashToken(token), "INVITATION");
+    const valid = Boolean(row && !row.usedAt && row.expiresAt.getTime() >= Date.now());
+
+    // The kind of an invalid token is not knowledge worth handing out, and
+    // "guardian" is the safer default for a form: it asks for less.
+    if (!row || !valid) return { valid: false, kind: "guardian" };
+
+    return { valid: true, kind: await this.repo.findInvitedAccountKind(row.userId) };
+  }
+
   async acceptInvitation(
     token: string,
     password: string,
-    profile: { firstName?: string; phone?: string; relation?: GuardianRelation },
+    profile: {
+      firstName?: string;
+      phone?: string;
+      relation?: GuardianRelation;
+      lastName?: string;
+      email?: string;
+    },
     ctx: RequestContext,
   ) {
     const errors = validatePasswordStrength(password);
@@ -366,7 +401,13 @@ export class AuthService {
       father in both, and the invitation they just accepted is the only place
       they will ever be asked.
     */
-    if (profile.firstName || profile.phone || profile.relation) {
+    if (
+      profile.firstName ||
+      profile.phone ||
+      profile.relation ||
+      profile.lastName ||
+      profile.email
+    ) {
       await this.repo.completeInvitedProfile(row.userId, profile);
     }
 

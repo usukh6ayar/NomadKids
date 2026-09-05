@@ -1,10 +1,15 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { toSkipTake, type PageParams } from "../common/pagination";
+import type { Prisma } from "../generated/prisma/client";
 import type {
+  AgeBand,
   AttendanceCompanion,
+  AttendanceForm,
   AttendanceRequestStatus,
   AttendanceStatus,
+  ChildStatus,
+  ProgramKind,
 } from "../domain/enums";
 
 /**
@@ -147,6 +152,92 @@ export class AttendanceRepository {
    * find-then-write does not need an arbiter and works with either index
    * shape.
    */
+  /**
+   * The kindergarten-wide register — every enrolment that matches the filters,
+   * and every attendance row inside the date range for those enrolments.
+   *
+   * ★ **Two queries, whatever the shape of the answer.** 300 children over a
+   * quarter is 27,600 cells; a query per child, or per day, is the N+1
+   * CLAUDE.md §3.4 forbids, in the place it hurts most — a director waiting on
+   * a screen while the database does thousands of round trips. The service
+   * pivots these two flat lists into the grid.
+   *
+   * ★★ The status filter is applied to the **records**, not to the children.
+   * Filtering by `SICK` must not drop a child from the register; it leaves
+   * them in with only their sick days filled in, because "who was sick, and
+   * when" is the question, and a child with no sick days is part of that
+   * answer.
+   */
+  async registerRows(
+    kindergartenId: string,
+    filters: {
+      from: Date;
+      to: Date;
+      groupIds?: string[];
+      ageBands?: AgeBand[];
+      programKind?: ProgramKind;
+      attendanceForm?: AttendanceForm;
+      statuses?: AttendanceStatus[];
+      q?: string;
+      childStatuses?: ChildStatus[];
+    },
+  ) {
+    const groupWhere: Prisma.GroupWhereInput = {
+      deletedAt: null,
+      ...(filters.ageBands?.length ? { ageBand: { in: filters.ageBands } } : {}),
+      ...(filters.programKind ? { programKind: filters.programKind } : {}),
+      ...(filters.attendanceForm ? { attendanceForm: filters.attendanceForm } : {}),
+    };
+
+    const enrollmentWhere: Prisma.EnrollmentWhereInput = {
+      kindergartenId,
+      deletedAt: null,
+      status: "ACTIVE",
+      ...(filters.groupIds?.length ? { groupId: { in: filters.groupIds } } : {}),
+      group: groupWhere,
+      child: {
+        deletedAt: null,
+        ...(filters.childStatuses?.length ? { status: { in: filters.childStatuses } } : {}),
+        ...(filters.q
+          ? {
+              OR: [
+                { firstName: { contains: filters.q, mode: "insensitive" as const } },
+                { lastName: { contains: filters.q, mode: "insensitive" as const } },
+              ],
+            }
+          : {}),
+      },
+    };
+
+    const enrollments = await this.prisma.enrollment.findMany({
+      where: enrollmentWhere,
+      select: {
+        id: true,
+        childId: true,
+        child: { select: { id: true, lastName: true, firstName: true, status: true } },
+        group: {
+          select: { id: true, name: true, ageBand: true, programKind: true, attendanceForm: true },
+        },
+      },
+      orderBy: [{ group: { name: "asc" } }, { child: { lastName: "asc" } }],
+    });
+
+    if (enrollments.length === 0) return { enrollments, records: [] };
+
+    const records = await this.prisma.attendance.findMany({
+      where: {
+        kindergartenId,
+        deletedAt: null,
+        date: { gte: filters.from, lte: filters.to },
+        enrollmentId: { in: enrollments.map((e) => e.id) },
+        ...(filters.statuses?.length ? { status: { in: filters.statuses } } : {}),
+      },
+      select: { enrollmentId: true, date: true, status: true, note: true },
+    });
+
+    return { enrollments, records };
+  }
+
   async upsertForChild(data: RecordAttendanceData) {
     return this.prisma.$transaction(async (tx) => {
       const existing = await tx.attendance.findFirst({

@@ -212,7 +212,10 @@ function QuarterSection({ quarter, isStaff }: { quarter: Quarter; isStaff: boole
  * costs a tap to discover there is nothing behind it; the client's drawing
  * shows counts precisely so a reader can skip.
  */
-export function groupByQuarter(items: Observation[], terms: z.infer<typeof termsSchema>): Quarter[] {
+export function groupByQuarter(
+  items: Observation[],
+  terms: z.infer<typeof termsSchema>,
+): Quarter[] {
   const dated = terms
     .filter((term) => term.startsOn && term.endsOn)
     .sort((a, b) => String(a.startsOn).localeCompare(String(b.startsOn)));

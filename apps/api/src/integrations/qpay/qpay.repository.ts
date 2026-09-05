@@ -66,5 +66,4 @@ export class QpayRepository {
     });
     return result.count > 0;
   }
-
 }

@@ -51,6 +51,43 @@ export class PlatformRevenueRepository {
     }));
   }
 
+  /**
+   * The platform's **own** income for a month — paid portal access fees, per
+   * kindergarten.
+   *
+   * ★★★ This is the money a revenue share is actually a share of, and until
+   * 2026-09-02 nothing on the platform side read it. `monthByKindergarten`
+   * above returns state funding paid *to* the kindergartens, and
+   * `distribution` was dividing that. See `platformRevenueSchema` in the
+   * contracts for the full correction.
+   *
+   * ★ Filtered on **`paidAt`, not `status`.** A subscription is `ACTIVE` while
+   * its school year runs and `EXPIRED` afterwards, so a status filter would
+   * make last year's income disappear from last year's report the moment the
+   * year turned over. The fact being counted is "money arrived on this date",
+   * and `paidAt` is the only column that records it.
+   *
+   * ★★ `AccessSubscription`, not `QpayInvoice`. CLAUDE.md §7 §8: a pending
+   * `QpayInvoice` is an attempt, not a settled fact — a QR nobody scanned is
+   * not money that moved. The subscription is what becomes paid, so it is the
+   * ledger. `QpayInvoice` stays the audit trail of how it was paid.
+   */
+  async accessFeesByKindergarten(from: Date, to: Date) {
+    const rows = await this.prisma.accessSubscription.groupBy({
+      by: ["kindergartenId"],
+      where: { deletedAt: null, paidAt: { gte: from, lte: to } },
+      _sum: { amount: true },
+      _count: { _all: true },
+    });
+
+    // Decimals become strings here, for the same §2.2 reason as above.
+    return rows.map((row) => ({
+      kindergartenId: row.kindergartenId,
+      accessPayments: row._count._all,
+      accessFees: row._sum.amount?.toString() ?? "0",
+    }));
+  }
+
   /** Names for the ids the aggregate returned. Never the whole table. */
   async kindergartenNames(ids: string[]) {
     if (ids.length === 0) return [];

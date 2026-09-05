@@ -858,8 +858,26 @@ describe("нарийвчилсан байрлал", () => {
    * the bar's height one edit instead of four — and `globals.css` is where the
    * measurement is written down.
    */
+  /*
+   * ★★ Read from `components/register/save-bar.tsx`, not from this page —
+   * 2026-09-03.
+   *
+   * The bar was copied markup in all three registers, which is what let them
+   * drift apart on padding and on whether "Болих" disables while saving. It is
+   * one component now (§6 asks these three to stay one pattern, and a pattern
+   * that lives as three copies is one until somebody edits a copy).
+   *
+   * The assertion follows the code rather than the page, and it covers *more*
+   * than it did: proving the shared bar clears the navigation proves it for
+   * Ирц, Хоол ба цэс and Явцын үнэлгээ at once, where this file could only
+   * ever speak for meals.
+   */
   it("floats the save bar clear of the mobile navigation", () => {
-    expect(PAGE).toMatch(/sticky bottom-\[var\(--size-bottom-nav\)\] z-10 lg:bottom-4/);
+    const saveBar = readFileSync(
+      join(__dirname, "..", "components", "register", "save-bar.tsx"),
+      "utf8",
+    );
+    expect(saveBar).toMatch(/sticky bottom-\[var\(--size-bottom-nav\)\] z-10 lg:bottom-4/);
     expect(GLOBALS_CSS).toMatch(/--size-bottom-nav:\s*5rem/);
   });
 });

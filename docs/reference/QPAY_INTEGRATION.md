@@ -52,11 +52,11 @@ the public documentation and what is still unverified.
 
 QPay's v2 "Simple" merchant API, base URL `QPAY_BASE_URL`:
 
-| Call            | Method + path         | Auth                          | Used for                                    |
-| ---------------- | ---------------------- | ------------------------------ | -------------------------------------------- |
-| Token exchange   | `POST /v2/auth/token`  | `Authorization: Basic` (user:pass) | Getting a bearer token — `QpayClient.getAccessToken` |
-| Create invoice   | `POST /v2/invoice`     | `Authorization: Bearer`       | Starting a payment — `QpayClient.createInvoice` |
-| Check payment    | `POST /v2/payment/check` | `Authorization: Bearer`     | Confirming payment — `QpayClient.checkPayment` |
+| Call           | Method + path            | Auth                               | Used for                                             |
+| -------------- | ------------------------ | ---------------------------------- | ---------------------------------------------------- |
+| Token exchange | `POST /v2/auth/token`    | `Authorization: Basic` (user:pass) | Getting a bearer token — `QpayClient.getAccessToken` |
+| Create invoice | `POST /v2/invoice`       | `Authorization: Bearer`            | Starting a payment — `QpayClient.createInvoice`      |
+| Check payment  | `POST /v2/payment/check` | `Authorization: Bearer`            | Confirming payment — `QpayClient.checkPayment`       |
 
 Request/response fields this codebase actually reads are declared as Zod
 schemas in `apps/api/src/integrations/qpay/qpay.types.ts`, with
@@ -79,7 +79,7 @@ property this integration relies on does not depend on it:
 
 **The callback's own request body is never trusted for amount or status.**
 QPay calls `QPAY_CALLBACK_URL` after a payment, but that call only tells this
-system *which* `qpay_invoice_id` to go check — `QpayCallbackController`
+system _which_ `qpay_invoice_id` to go check — `QpayCallbackController`
 extracts an id from a handful of plausible field names (query or body; the
 exact one QPay uses is itself unconfirmed) and does nothing else with the
 payload. The actual question — "was this paid, and for how much" — is always
@@ -94,7 +94,7 @@ webhook calls `POST /qpay/callback` independently. Both end up in
 `UPDATE … WHERE status = 'PENDING'` — guarantees only one of them ever creates
 the real `Payment` row, even if both observe QPay's `checkPayment` as PAID at
 the same moment. See that method's own comment for why the claim has to
-happen *before* the `Payment` is created, not after.
+happen _before_ the `Payment` is created, not after.
 
 **A kindergarten with no public callback URL still works.** `QPAY_CALLBACK_URL`
 must be a real public HTTPS endpoint (QPay's servers cannot reach

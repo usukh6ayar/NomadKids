@@ -378,7 +378,7 @@ function NotificationBell() {
             <Dialog.Title className="text-lead font-semibold text-ink">Мэдэгдэл</Dialog.Title>
             <Dialog.Close
               aria-label="Хаах"
-              className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
+              className="grid size-11 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
             >
               <X size={18} aria-hidden="true" />
             </Dialog.Close>
@@ -837,7 +837,7 @@ function Brand({ subtitle }: { subtitle: string }) {
       */}
       <span className="grid size-10 shrink-0 place-items-center rounded-control bg-primary-soft p-0.5">
         <Image
-          src="/mark-96.png"
+          src="/mark.png"
           alt="Бяцхан нүүдэлчид"
           width={36}
           height={26}
@@ -917,9 +917,22 @@ function WhoAmI({ variant, isAdmin }: { variant: Variant; isAdmin: boolean }) {
       negative margin makes the rule span the panel's full width rather than
       stopping at this card's own inset.
     */
+    /*
+      ★ REDESIGN 2026-09-03 — the footer reads as an account card.
+
+      It was a flat `bg-canvas` strip with a 28px initials dot, which at the
+      foot of a white panel was barely distinguishable from the nav rows above
+      it. A bordered sunken card with a 36px avatar gives the identity a
+      surface of its own, which is what makes "this is you, and this is the way
+      out" legible at a glance rather than on inspection.
+
+      `bg-sunken` and not a tint: this is chrome, not content, and a coloured
+      footer would be the loudest thing in a panel whose active row is supposed
+      to be.
+    */
     <div className="-mx-3.5 shrink-0 border-t border-border px-3.5 pt-3">
-      <div className="flex min-h-[44px] items-center gap-2 rounded-row bg-canvas px-3 py-2">
-        <span className="grid size-7 shrink-0 place-items-center rounded-pill bg-primary-soft text-caption font-bold text-primary">
+      <div className="flex min-h-[44px] items-center gap-2.5 rounded-row border border-border bg-sunken px-2.5 py-2.5">
+        <span className="grid size-9 shrink-0 place-items-center rounded-pill bg-primary-soft text-compact font-bold text-primary">
           {initials(session?.user)}
         </span>
 
@@ -939,9 +952,18 @@ function WhoAmI({ variant, isAdmin }: { variant: Variant; isAdmin: boolean }) {
           name to reach your own account is the conventional affordance anyway,
           and it costs no width, so the column keeps ~140px.
         */}
+        {/*
+          ★ `min-h-[44px]` and centred — measured at 33.6px in browser QA,
+          2026-09-03.
+
+          The row around it carries the 44px floor, but this link is the actual
+          tap target for `/settings` and it was only as tall as its own two
+          lines of text. `justify-center` keeps the name optically centred in
+          the taller box rather than pinned to its top.
+        */}
         <Link
           href="/settings"
-          className="min-w-0 flex-1 rounded-control hover:opacity-80"
+          className="flex min-h-[44px] min-w-0 flex-1 flex-col justify-center rounded-control hover:opacity-80"
           aria-label={`${fullName(session?.user)} — тохиргоо`}
         >
           <span className="block truncate text-compact font-semibold leading-[1.2] text-ink">
@@ -954,7 +976,7 @@ function WhoAmI({ variant, isAdmin }: { variant: Variant; isAdmin: boolean }) {
           type="button"
           onClick={() => void logout()}
           aria-label="Гарах"
-          className="grid size-11 shrink-0 place-items-center rounded-control text-muted hover:bg-surface hover:text-primary"
+          className="grid size-11 shrink-0 place-items-center rounded-control text-muted transition-colors hover:bg-surface hover:text-danger"
         >
           <LogOut size={18} aria-hidden="true" />
         </button>
@@ -1208,7 +1230,7 @@ function MobileMenuDrawer({
           <Dialog.Title className="sr-only">Цэс</Dialog.Title>
           <Dialog.Close
             aria-label="Хаах"
-            className="absolute right-3 top-3 grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
+            className="absolute right-3 top-3 grid size-11 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
           >
             <X size={18} aria-hidden="true" />
           </Dialog.Close>
@@ -1267,12 +1289,27 @@ function NavGroup({ section, pathname }: { section: NavSection; pathname: string
       open
       className="border-b border-border last:border-b-0 [&[open]>summary>svg]:rotate-180"
     >
-      <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between px-2.5 py-2 text-compact font-semibold text-ink [&::-webkit-details-marker]:hidden">
-        {section.title}
+      {/*
+        ★ REDESIGN 2026-09-03 — the section title is a label, not a heading in
+        disguise.
+
+        It was `text-compact font-semibold text-ink`, the same weight and
+        colour as an *active* entry beneath it, so a collapsed group heading
+        competed with the one row on screen that was meant to stand out.
+        Uppercase at `text-caption` with tracking is the conventional treatment
+        for a group label and it settles the hierarchy: headings recede, the
+        current page is the loudest thing in the panel.
+
+        `items-start` and `gap-2` for the same reason the entries have them —
+        "Хүүхдийн хөгжил ба үнэлгээ" is the longest string in the menu and
+        wraps to two lines at 244px.
+      */}
+      <summary className="flex min-h-[44px] cursor-pointer list-none items-start justify-between gap-2 px-2.5 py-3 text-caption font-semibold uppercase tracking-[.06em] text-faint transition-colors hover:text-muted [&::-webkit-details-marker]:hidden">
+        <span className="min-w-0 leading-snug">{section.title}</span>
         <ChevronDown
           size={16}
           aria-hidden="true"
-          className="shrink-0 text-faint transition-transform"
+          className="mt-px shrink-0 text-faint transition-transform"
         />
       </summary>
 
@@ -1296,7 +1333,24 @@ function NavGroup({ section, pathname }: { section: NavSection; pathname: string
             href={entry.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "relative ml-3 flex min-h-[44px] items-center gap-2 rounded-control px-2.5 py-1.5 text-compact transition-colors",
+              /*
+                ★ REDESIGN 2026-09-03 — `items-center` → `items-start` with
+                `py-2.5`, because these labels wrap and used to be truncated.
+
+                The label carried `truncate`, which is exactly what brief
+                constraint 2 forbids: "Чөлөөний хүсэлт хянах" and "Ангийн
+                самбар / Мэдээ" do not fit 244px minus an icon and padding at
+                any weight, so the two longest entries in a teacher's menu were
+                rendering as "Чөлөөний хүсэлт х…". A menu that hides the end of
+                its own words is the first thing that reads as unfinished, and
+                it is the one place the product can least afford ambiguity.
+
+                Wrapping needs the row to grow, so the height is a `min-h`
+                floor with real vertical padding rather than a fixed centre,
+                and the icon gets `mt-px` to sit on the first line's optical
+                centre instead of the block's.
+              */
+              "relative ml-3 flex min-h-[44px] items-start gap-2.5 rounded-control px-2.5 py-2.5 text-compact leading-snug transition-colors",
               active
                 ? // The blue-700 rule is the active marker; the tint and the
                   // weight are what make it readable. Three signals, because
@@ -1305,8 +1359,8 @@ function NavGroup({ section, pathname }: { section: NavSection; pathname: string
                 : "text-muted hover:bg-canvas hover:text-ink",
             )}
           >
-            {entry.icon}
-            <span className="truncate">{entry.label}</span>
+            <span className="mt-px shrink-0">{entry.icon}</span>
+            <span className="min-w-0">{entry.label}</span>
           </Link>
         );
       })}
@@ -1336,7 +1390,7 @@ function MobileHeader({ subtitle }: { subtitle: string }) {
       <Link href="/" className="flex min-h-[44px] items-center gap-3">
         <span className="grid size-[34px] shrink-0 place-items-center rounded-control bg-primary-soft p-0.5">
           <Image
-            src="/mark-96.png"
+            src="/mark.png"
             alt="Бяцхан нүүдэлчид"
             width={30}
             height={22}
@@ -1387,7 +1441,16 @@ function BottomBar({ nav, hideOnDesktop }: { nav: NavItem[]; hideOnDesktop: bool
        */
       aria-label="Доод цэс"
       className={cn(
-        "fixed inset-x-0 bottom-0 z-20 flex items-stretch justify-around border-t border-border bg-surface",
+        /*
+          ★ REDESIGN 2026-09-03 — a shadow above the bar, not just a hairline.
+
+          The bar sat on a 1px border, so content scrolling underneath ran
+          right up to it and, on a white list, the two merged: the tabs looked
+          like part of the page rather than like chrome floating over it. An
+          upward shadow separates them at every scroll position, which a
+          border cannot do.
+        */
+        "fixed inset-x-0 bottom-0 z-20 flex items-stretch justify-around border-t border-border bg-surface shadow-[0_-2px_12px_-4px_rgb(15_23_42_/_0.08)]",
         // `env(safe-area-inset-bottom)` keeps the tabs above the iPhone home
         // indicator, which otherwise overlaps the last few pixels of the row.
         "pb-[env(safe-area-inset-bottom)]",
@@ -1467,11 +1530,15 @@ function NavLink({
     <>
       <span
         className={cn(
-          "relative flex items-center justify-center transition-colors",
+          // ★ `transition-all` and a slight scale on the active well — the tab
+          // now visibly *settles* when it becomes current instead of the tint
+          // appearing instantly. 150ms, and `prefers-reduced-motion` flattens
+          // it globally, so it stays a cue rather than an animation.
+          "relative flex items-center justify-center transition-all duration-150",
           // The tinted well the drawing puts behind the active glyph. Sized so
           // a 20px icon sits in a 40×28 rounded rectangle, as drawn.
           horizontal && "h-7 w-10 rounded-control",
-          horizontal && active && "bg-primary-soft",
+          horizontal && active && "scale-105 bg-primary-soft",
         )}
       >
         {item.icon}

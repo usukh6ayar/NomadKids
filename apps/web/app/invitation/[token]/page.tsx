@@ -1,15 +1,15 @@
 "use client";
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { z } from "zod";
 import { PASSWORD_RULES, validatePasswordStrength } from "@kinder/contracts";
-import { mutate } from "@/lib/api/browser";
+import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
-import { Field, Input, Select } from "@/components/ui/field";
+import { Field, Input, PasswordInput, Select } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { AuthShell } from "@/components/shell/auth-shell";
 
@@ -58,11 +58,40 @@ export default function AcceptInvitationPage() {
   const router = useRouter();
 
   const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [relation, setRelation] = useState<string>("MOTHER");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
+
+  /*
+    ★ What kind of person is accepting this — 2026-09-04.
+
+    A guardian gives a given name, a phone and how they are related to the
+    child. A member of staff gives a surname and an e-mail, because a register
+    names them in full and the e-mail is what they will log in with (an
+    operator invited this way has a generated handle they never see).
+
+    The token is opaque, so the shape has to come from the server. Putting it
+    in the URL instead would let whoever holds the link flip it.
+
+    ★★ It also answers "is this link still good" before anything is typed. An
+    expired invitation used to be discovered *after* the password had been
+    entered twice.
+  */
+  const invitation = useQuery({
+    queryKey: ["invitation", params.token],
+    queryFn: () =>
+      get(
+        `/auth/invitation/${params.token}`,
+        z.object({ valid: z.boolean(), kind: z.enum(["staff", "guardian"]) }),
+      ),
+    retry: false,
+  });
+
+  const isStaff = invitation.data?.kind === "staff";
 
   const accept = useMutation({
     mutationFn: () =>
@@ -72,8 +101,12 @@ export default function AcceptInvitationPage() {
           token: params.token,
           password,
           firstName: firstName.trim(),
-          phone: phone.trim(),
-          relation,
+          // Only the fields this audience was asked for. Sending an empty
+          // string would fail the schema's `.min(1)`; sending the other
+          // audience's fields would write facts nobody was asked to give.
+          ...(isStaff
+            ? { lastName: lastName.trim(), email: email.trim() }
+            : { phone: phone.trim(), relation }),
         },
       }),
     onSuccess: () => {
@@ -155,6 +188,22 @@ export default function AcceptInvitationPage() {
           зөвхөн нэр нь байхад болно". A form finished in a corridor on a phone
           should ask for what is needed and stop.
         */}
+        {isStaff ? (
+          <Field label="Овог" error={errors.lastName} required>
+            {({ id, describedBy, invalid }) => (
+              <Input
+                id={id}
+                aria-describedby={describedBy}
+                invalid={invalid}
+                autoComplete="family-name"
+                autoFocus
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+              />
+            )}
+          </Field>
+        ) : null}
+
         <Field label="Таны нэр" error={errors.firstName} required>
           {({ id, describedBy, invalid }) => (
             <Input
@@ -162,52 +211,72 @@ export default function AcceptInvitationPage() {
               aria-describedby={describedBy}
               invalid={invalid}
               autoComplete="given-name"
-              autoFocus
+              autoFocus={!isStaff}
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
             />
           )}
         </Field>
 
-        <Field label="Утасны дугаар" error={errors.phone} required>
-          {({ id, describedBy, invalid }) => (
-            <Input
-              id={id}
-              aria-describedby={describedBy}
-              invalid={invalid}
-              type="tel"
-              inputMode="tel"
-              autoComplete="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-          )}
-        </Field>
+        {isStaff ? (
+          <Field label="И-мэйл хаяг" error={errors.email} hint="Энэ хаягаараа нэвтэрнэ." required>
+            {({ id, describedBy, invalid }) => (
+              <Input
+                id={id}
+                aria-describedby={describedBy}
+                invalid={invalid}
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            )}
+          </Field>
+        ) : null}
 
-        <Field label="Хүүхдийн юу нь болох" error={errors.relation} required>
-          {({ id, describedBy }) => (
-            <Select
-              id={id}
-              aria-describedby={describedBy}
-              value={relation}
-              onChange={(e) => setRelation(e.target.value)}
-            >
-              {RELATIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
+        {!isStaff ? (
+          <>
+            <Field label="Утасны дугаар" error={errors.phone} required>
+              {({ id, describedBy, invalid }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
+              )}
+            </Field>
+
+            <Field label="Хүүхдийн юу нь болох" error={errors.relation} required>
+              {({ id, describedBy }) => (
+                <Select
+                  id={id}
+                  aria-describedby={describedBy}
+                  value={relation}
+                  onChange={(e) => setRelation(e.target.value)}
+                >
+                  {RELATIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          </>
+        ) : null}
 
         <Field label="Нууц үг" error={errors.password} required>
           {({ id, describedBy, invalid }) => (
-            <Input
+            <PasswordInput
               id={id}
               aria-describedby={describedBy}
               invalid={invalid}
-              type="password"
               autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -217,10 +286,9 @@ export default function AcceptInvitationPage() {
 
         <Field label="Нууц үгээ давтан оруулна уу" required>
           {({ id, describedBy }) => (
-            <Input
+            <PasswordInput
               id={id}
               aria-describedby={describedBy}
-              type="password"
               autoComplete="new-password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
