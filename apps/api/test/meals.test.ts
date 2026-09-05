@@ -303,6 +303,93 @@ describe("isolation", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Excel export — client request, 2026-09-05
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("exporting to Excel", () => {
+  async function fetchWorkbook(session: AuthSession, from: string, to: string) {
+    const res = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/menu/export?from=${from}&to=${to}`,
+      ),
+      session,
+    )
+      .buffer(true)
+      .parse((r, cb) => {
+        const chunks: Buffer[] = [];
+        r.on("data", (c: Buffer) => chunks.push(c));
+        r.on("end", () => cb(null, Buffer.concat(chunks)));
+      });
+    return res;
+  }
+
+  it("a saved day's dish appears in the downloaded file, not just 'a file'", async () => {
+    const saved = await authed(
+      request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-03-02`),
+      teacherA,
+    ).send({
+      // `portions` caps at 10 (`menuDishInputSchema`) — it is not a headcount.
+      dishes: [
+        {
+          name: "Будаатай шөл",
+          allergenTags: ["сүү"],
+          kind: "LUNCH",
+          calories: 320,
+          portions: 4,
+        },
+      ],
+    });
+    expect(saved.status).toBe(200);
+
+    // Narrowed to exactly the saved day: exportMenu now fills every date in
+    // the range with a row (see the next test), so a wider range would push
+    // this dish past row 2 with an unplanned-day placeholder ahead of it.
+    const res = await fetchWorkbook(teacherA, "2026-03-02", "2026-03-02");
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toContain("spreadsheetml");
+
+    const ExcelJS = (await import("exceljs")).default;
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(res.body);
+    const sheet = book.getWorksheet("Хоолны цэс")!;
+
+    // `sheet.columns`'s `key` is an in-memory ExcelJS convenience that does not
+    // round-trip through the xlsx format — `Row.getCell` on a *reloaded*
+    // workbook needs the spreadsheet letter (or 1-based index), not the key
+    // the columns were defined with. A=date, C=kind, D=name, E=portions,
+    // F=calories, G=allergenTags, per `menu-workbook.ts`'s column order.
+    const row = sheet.getRow(2);
+    expect(row.getCell("A").text).toBe("2026-03-02");
+    expect(row.getCell("C").text).toBe("Өдрийн хоол");
+    expect(row.getCell("D").text).toBe("Будаатай шөл");
+    expect(row.getCell("E").text).toBe("4");
+    expect(row.getCell("F").text).toBe("320");
+    expect(row.getCell("G").text).toBe("сүү");
+  });
+
+  it("a day nobody planned still gets a row saying so, rather than a silent gap", async () => {
+    const res = await fetchWorkbook(teacherA, "2026-05-04", "2026-05-04");
+    expect(res.status).toBe(200);
+
+    const ExcelJS = (await import("exceljs")).default;
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(res.body);
+    const row = book.getWorksheet("Хоолны цэс")!.getRow(2);
+    expect(row.getCell("D").text).toBe("Цэс төлөвлөгдөөгүй");
+  });
+
+  it("a guardian gets 404 — same restriction as the on-screen warnings view", async () => {
+    const res = await fetchWorkbook(parentA, "2026-03-01", "2026-03-07");
+    expect(res.status).toBe(404);
+  });
+
+  it("a teacher from another kindergarten gets 404", async () => {
+    const res = await fetchWorkbook(await login(app, b.teacherUser.username), "2026-03-01", "2026-03-07");
+    expect(res.status).toBe(404);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // The meal register — нэмэлт.md §2
 // ═══════════════════════════════════════════════════════════════════════════
 

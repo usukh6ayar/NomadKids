@@ -64,7 +64,6 @@ function KitchenReports() {
     <div className="flex flex-col gap-5 lg:gap-6">
       <PageHeader
         title="Гал тогооны тайлан"
-        lede="Орцны зарцуулалт, шим тэжээлийн дундаж, худалдан авалт."
         actions={
           <div className="flex flex-wrap items-end gap-3">
             <Field label="Эхлэх">

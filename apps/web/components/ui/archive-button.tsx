@@ -35,10 +35,11 @@ export function ArchiveButton({
   invalidate,
   redirectTo,
   variant = "secondary",
+  iconOnly = false,
 }: {
   /** API path, without `/v1`. */
   path: string;
-  /** The visible button text. */
+  /** The visible button text — or, with `iconOnly`, the `aria-label`. */
   label: string;
   /** What the confirmation asks. Names the record, so a mis-click is caught. */
   confirmation: string;
@@ -47,6 +48,10 @@ export function ArchiveButton({
   /** Where to send the user, for a record whose own page is about to 404. */
   redirectTo?: string;
   variant?: "secondary" | "ghost";
+  /** Just the trash icon, `label` moved to `aria-label` — for a row too tight
+   * for text, like a `DataList` action gutter. The confirmation dialog still
+   * names the record in full. */
+  iconOnly?: boolean;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -95,12 +100,13 @@ export function ArchiveButton({
           <Button
             type="button"
             variant={variant}
-            size="sm"
+            size={iconOnly ? "icon" : "sm"}
             disabled={archive.isPending}
+            aria-label={iconOnly ? label : undefined}
             className="text-danger hover:bg-danger-soft"
           >
-            <Trash2 size={18} />
-            {archive.isPending ? "Архивлаж байна…" : label}
+            <Trash2 size={18} aria-hidden={iconOnly || undefined} />
+            {iconOnly ? null : archive.isPending ? "Архивлаж байна…" : label}
           </Button>
         }
       />

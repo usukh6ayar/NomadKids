@@ -59,7 +59,6 @@ function Suppliers() {
     <div className="flex flex-col gap-5 lg:gap-6">
       <PageHeader
         title="Нийлүүлэгч"
-        lede="Хүнсний захиалга өгөх байгууллагууд, тэдгээрийн гарал үүсэл."
         actions={
           kindergartenId ? (
             <Button size="sm" onClick={() => setCreating(true)}>

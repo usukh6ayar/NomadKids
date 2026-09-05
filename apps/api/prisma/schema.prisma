@@ -397,6 +397,7 @@ model User {
   recipesApproved       Recipe[]                  @relation("RecipeApprovedBy")
   foodOrdersCreated     FoodOrder[]               @relation("FoodOrderCreatedBy")
   stockMovementsCreated StockMovement[]           @relation("StockMovementCreatedBy")
+  mealServingsRecorded  MealServing[]             @relation("MealServingRecordedBy")
   surveysCreated        Survey[]                  @relation("SurveyCreatedBy")
   surveyResponses       SurveyResponse[]          @relation("SurveyRespondent")
   growthRecorded        GrowthMeasurement[]       @relation("GrowthRecordedBy")
@@ -589,6 +590,7 @@ model Kindergarten {
   suppliers             Supplier[]
   foodOrders            FoodOrder[]
   stockMovements        StockMovement[]
+  mealServings          MealServing[]
   fundingRules          FundingRule[]
   fundingCalculations   FundingCalculation[]
   invoices              Invoice[]
@@ -661,6 +663,7 @@ model Group {
   enrollments         Enrollment[]
   chatMessages        ChatMessage[]
   notificationTargets NotificationTarget[]
+  mealServings        MealServing[]
 
   @@unique([schoolYearId, name])
   @@index([kindergartenId, status])
@@ -2428,6 +2431,9 @@ model Ingredient {
   kindergartenId String         @db.Uuid
   name           String
   unit           IngredientUnit
+  /// A closed vocabulary enforced by the form, not an enum — same pattern as
+  /// `Document.category`. See `INGREDIENT_CATEGORIES` in @kinder/contracts.
+  category       String?
   /// Nutrition per 100 of the ingredient's own `unit` — 100 g, 100 ml or 100
   /// pieces. Nullable: a cook may not always have a label's figures to hand,
   /// and a blank value must read as "not entered", never as zero.
@@ -2458,6 +2464,7 @@ model Ingredient {
   /// `development_domains_system_code_key`.
   @@unique([kindergartenId, name])
   @@index([kindergartenId, deletedAt])
+  @@index([kindergartenId, category])
   @@map("ingredients")
 }
 
@@ -2637,6 +2644,43 @@ model StockMovement {
   @@index([kindergartenId, ingredientId, date])
   @@index([kindergartenId, date])
   @@map("stock_movements")
+}
+
+/// Тараалт — whether a group's food for one sitting has gone out. Client
+/// request, 2026-09-05: the cook's "Ирц" screen already shows how many
+/// children are in each group, for portioning; this is the other half —
+/// checking off that the portioned food actually reached that classroom.
+///
+/// ★ One row per group, per day, per sitting — not per child. `MealRecord`
+/// already answers "did this child eat"; this answers "has the kitchen sent
+/// food to this room yet", which a cook marks once per sitting regardless of
+/// headcount. Conflating the two would let one late child's missing record
+/// keep the whole group's row from ever reading "тарааcан".
+model MealServing {
+  id             String   @id @default(uuid()) @db.Uuid
+  kindergartenId String   @db.Uuid
+  groupId        String   @db.Uuid
+  date           DateTime @db.Date
+  kind           MealKind
+
+  servedById String?  @db.Uuid
+  servedAt   DateTime @default(now())
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  group        Group        @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  servedBy     User?        @relation("MealServingRecordedBy", fields: [servedById], references: [id], onDelete: SetNull)
+
+  /// One live mark per group/day/sitting. Hand-written as a **partial** unique
+  /// index in the migration — same reason as `MealRecord`: Postgres treats
+  /// NULLs as distinct, so the plain form would let an undone mark block that
+  /// sitting from ever being marked again.
+  @@unique([groupId, date, kind])
+  @@index([kindergartenId, date])
+  @@map("meal_servings")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

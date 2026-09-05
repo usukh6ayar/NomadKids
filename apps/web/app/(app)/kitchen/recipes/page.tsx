@@ -70,7 +70,6 @@ function Recipes() {
     <div className="flex flex-col gap-5 lg:gap-6">
       <PageHeader
         title="Технологийн карт"
-        lede="Орц, порц, шим тэжээлийн тооцоо бүхий батлагдсан жор."
         actions={
           kindergartenId ? (
             <Button size="sm" onClick={() => setCreating(true)}>

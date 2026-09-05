@@ -481,6 +481,122 @@ describe("stock", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Meal servings (Тараалт) — a group's sitting, marked as distributed
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("meal servings", () => {
+  it("a cook marks a sitting as served and it appears in the day's list", async () => {
+    const mark = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/meal-servings`),
+      cookA,
+    ).send({ groupId: a.group.id, date: "2026-04-01", kind: "LUNCH" });
+    expect(mark.status).toBe(201);
+    expect(mark.body.groupId).toBe(a.group.id);
+    expect(mark.body.kind).toBe("LUNCH");
+    expect(mark.body.servedBy.id).toBeDefined();
+
+    const list = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/meal-servings?date=2026-04-01`,
+      ),
+      cookA,
+    );
+    expect(list.status).toBe(200);
+    expect(list.body).toHaveLength(1);
+    expect(list.body[0].id).toBe(mark.body.id);
+  });
+
+  it("marking the same sitting twice updates one row rather than duplicating it", async () => {
+    const first = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/meal-servings`),
+      cookA,
+    ).send({ groupId: a.group.id, date: "2026-04-01", kind: "BREAKFAST" });
+
+    const second = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/meal-servings`),
+      cookA,
+    ).send({ groupId: a.group.id, date: "2026-04-01", kind: "BREAKFAST" });
+
+    expect(second.body.id).toBe(first.body.id);
+    expect(
+      await db.mealServing.count({ where: { groupId: a.group.id, kind: "BREAKFAST" } }),
+    ).toBe(1);
+  });
+
+  it("unmarking removes it from the list, and marking again revives the same row", async () => {
+    const marked = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/meal-servings`),
+      cookA,
+    ).send({ groupId: a.group.id, date: "2026-04-01", kind: "LUNCH" });
+
+    const undone = await authed(request(server()).delete(`/v1/meal-servings/${marked.body.id}`), cookA);
+    expect(undone.status).toBe(200);
+
+    const emptyList = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/meal-servings?date=2026-04-01`,
+      ),
+      cookA,
+    );
+    expect(emptyList.body).toHaveLength(0);
+
+    const revived = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/meal-servings`),
+      cookA,
+    ).send({ groupId: a.group.id, date: "2026-04-01", kind: "LUNCH" });
+    expect(revived.body.id).toBe(marked.body.id);
+
+    // The partial unique index is the thing this whole revive path exists to
+    // satisfy — one live row for (groupId, date, kind), soft-deleted history
+    // notwithstanding.
+    expect(
+      await db.mealServing.count({ where: { groupId: a.group.id, kind: "LUNCH" } }),
+    ).toBe(1);
+  });
+
+  it("a teacher gets 404 — marking a sitting is kitchen-only", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/meal-servings`),
+      teacherA,
+    ).send({ groupId: a.group.id, date: "2026-04-01", kind: "LUNCH" });
+    expect(res.status).toBe(404);
+  });
+
+  it("a cook from another kindergarten gets 404 marking kindergarten A's group", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/meal-servings`),
+      cookB,
+    ).send({ groupId: a.group.id, date: "2026-04-01", kind: "LUNCH" });
+    expect(res.status).toBe(404);
+  });
+
+  it("a groupId from another kindergarten is rejected even for that kindergarten's own cook", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/meal-servings`),
+      cookA,
+    ).send({ groupId: b.group.id, date: "2026-04-01", kind: "LUNCH" });
+    expect(res.status).toBe(404);
+  });
+
+  it("a cook from another kindergarten gets 404 undoing kindergarten A's mark, and it survives", async () => {
+    const marked = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/meal-servings`),
+      cookA,
+    ).send({ groupId: a.group.id, date: "2026-04-01", kind: "LUNCH" });
+
+    const blocked = await authed(
+      request(server()).delete(`/v1/meal-servings/${marked.body.id}`),
+      cookB,
+    );
+    expect(blocked.status).toBe(404);
+
+    expect(
+      (await db.mealServing.findUniqueOrThrow({ where: { id: marked.body.id } })).deletedAt,
+    ).toBeNull();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Menu integration — recipe-linked dishes, approval, consumption
 // ═══════════════════════════════════════════════════════════════════════════
 

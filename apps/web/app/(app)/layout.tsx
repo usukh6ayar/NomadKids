@@ -705,32 +705,48 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
 }
 
 /**
- * The cook's and the accountant's bottom bar — 2026-08-30.
+ * The cook's and the accountant's bottom bar.
  *
- * ★ One function for both, because they differ by exactly one destination.
+ * ★ One function for both — kept together because they used to differ by
+ * exactly one destination. They now differ in shape as well as content, which
+ * is why each branch returns its own array rather than sharing one built from
+ * per-position ternaries.
  *
- * Each has a screen of their own, the news every employee reads, and their
- * profile. Chat is the floating widget, which is on every screen already and
- * needs no tab.
+ * ★★ The cook's bar went from three tabs to the four-tab shape `staffNav` and
+ * `parentNav` already use — Самбар · Хоолны цэс · Технологийн карт · Цэс —
+ * 2026-09-05, on the client's own drawing for this role. The last tab opens
+ * `MobileMenuDrawer` rather than navigating: `AppShell`'s `bottomNav` mapping
+ * matches on the `/settings` href, not the label, so renaming "Профайл" to
+ * "Цэс" and its icon to `Menu` is enough to make it read as the same hamburger
+ * button every other role's last tab already is. The drawer is where
+ * everything this bar has no room for still lives — Түүхий эд, Нийлүүлэгч,
+ * Хүнсний захиалга, Нөөц, Ирц, Тайлан, Чат — unchanged from `supportSections`.
  *
- * ★★ Самбар replaced the cook's `Цэс` tab on 2026-09-04. It used to be
- * deliberately absent — `/dashboard` is `RequireRole ["TEACHER","ADMIN"]` and
- * every widget on it is about children, so a cook opening it met a permission
- * wall on the first screen of the app. That argument was against reusing the
- * *teacher's* dashboard, not against a cook having one: `/kitchen/dashboard`
- * is its own `RequireRole ["COOK","ADMIN"]` screen, built on the aggregate,
- * no-child-PII queries `dashboard.service.ts`'s `cook()` already had reason to
- * expose. The tab it replaced pointed at `/menu`, which the sidebar's own
- * "Хоолны цэс" row already opens — two nav entries for one page.
+ * This does put `/menu` and `/kitchen/recipes` on two surfaces at once, both
+ * already reachable from the sidebar. The 2026-09-04 note this replaced
+ * argued against exactly that, but for a *second bottom-bar tab* pointing at
+ * a route the first tab already opened — the same route was never a bottom
+ * bar's *only* door in this file: `staffNav`'s Самбар and `parentNav`'s Хоол
+ * duplicate a sidebar row on purpose, because the bar's whole job is a
+ * one-tap phone route to what the drawer would otherwise cost a tap to reach.
+ *
+ * The accountant's bar is untouched — still Санхүү, Мэдээ, Профайл from
+ * 2026-08-30. Nothing asked for it to change, and none of its three tabs are
+ * cook-specific enough to justify moving without being asked.
  */
 function supportNav(isCook: boolean): NavItem[] {
-  return [
-    isCook
-      ? { href: "/kitchen/dashboard", label: "Самбар", icon: <LayoutGrid {...iconProps} /> }
-      : { href: "/finance", label: "Санхүү", icon: <Wallet {...iconProps} /> },
-    { href: "/notifications", label: "Мэдээ", icon: <Newspaper {...iconProps} /> },
-    { href: "/settings", label: "Профайл", icon: <Settings {...iconProps} /> },
-  ];
+  return isCook
+    ? [
+        { href: "/kitchen/dashboard", label: "Самбар", icon: <LayoutGrid {...iconProps} /> },
+        { href: "/menu", label: "Хоолны цэс", icon: <UtensilsCrossed {...iconProps} /> },
+        { href: "/kitchen/recipes", label: "Технологийн карт", icon: <ChefHat {...iconProps} /> },
+        { href: "/settings", label: "Цэс", icon: <Menu {...iconProps} /> },
+      ]
+    : [
+        { href: "/finance", label: "Санхүү", icon: <Wallet {...iconProps} /> },
+        { href: "/notifications", label: "Мэдээ", icon: <Newspaper {...iconProps} /> },
+        { href: "/settings", label: "Профайл", icon: <Settings {...iconProps} /> },
+      ];
 }
 
 /**
@@ -754,7 +770,11 @@ function supportSections(isCook: boolean): NavSection[] {
             navEntry("Хоолны цэс", "/menu"),
             navEntry("Түүхий эд", "/kitchen/ingredients"),
             navEntry("Технологийн карт", "/kitchen/recipes"),
-            navEntry("Нийлүүлэгч", "/kitchen/suppliers"),
+            // ★ "Нийлүүлэгч" (/kitchen/suppliers) taken off the sidebar,
+            // 2026-09-05 — not needed for now. The route and its data are
+            // untouched; a food order still names a supplier, this just stops
+            // promoting the management screen for it. Re-add the row here to
+            // bring it back.
             navEntry("Хүнсний захиалга", "/kitchen/orders"),
             navEntry("Нөөц", "/kitchen/stock"),
             navEntry("Ирц", "/kitchen/attendance"),
@@ -778,8 +798,18 @@ function supportSections(isCook: boolean): NavSection[] {
           ],
     },
     {
+      /*
+       * ★ Чат, not "Ангийн самбар / Мэдээ" — 2026-09-05.
+       *
+       * The row pointed at `/notifications`, which is a class's board: posts
+       * scoped to a group a cook or an accountant does not belong to. Neither
+       * role had a full-page door onto chat before this — only the floating
+       * widget (`chat-widget.tsx`) — while `staffSections` has carried one
+       * beside its own notifications row since 2026-08-31. This gives them
+       * that same page, in the one slot this section has.
+       */
       title: "Харилцаа холбоо",
-      entries: [navEntry("Ангийн самбар / Мэдээ", "/notifications")],
+      entries: [navEntry("Чат", "/chat")],
     },
     {
       title: "Миний мэдээлэл",

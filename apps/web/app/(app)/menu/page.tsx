@@ -1,11 +1,12 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, PackageMinus } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Download, PackageMinus } from "lucide-react";
 import { useState } from "react";
 import { z } from "zod";
 import { menuDayWithWarningsSchema, recipeSummarySchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
+import { downloadUrl } from "@/lib/api/client";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
@@ -14,6 +15,7 @@ import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Menu, type MenuItem } from "@/components/ui/menu";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -23,7 +25,7 @@ import {
   type DishDraft,
   type RecipeOption,
 } from "@/components/menu/menu-dish-editor";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatMonthLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const weekSchema = z.array(menuDayWithWarningsSchema);
@@ -52,6 +54,14 @@ function addDays(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00.000Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+/** The first and last day of the calendar month `date` falls in — for the
+ * "Сараар" export, always this month rather than whatever week is open. */
+function monthRange(date: Date): { from: string; to: string } {
+  const first = new Date(Date.UTC(date.getFullYear(), date.getMonth(), 1));
+  const last = new Date(Date.UTC(date.getFullYear(), date.getMonth() + 1, 0));
+  return { from: first.toISOString().slice(0, 10), to: last.toISOString().slice(0, 10) };
 }
 
 const WEEKDAY_BY_INDEX = ["Ням", "Даваа", "Мягмар", "Лхагва", "Пүрэв", "Баасан", "Бямба"];
@@ -114,7 +124,10 @@ function WeeklyMenu() {
   const today = todayIso();
   const tomorrow = addDays(today, 1);
 
-  const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
+  // A constant, not state — there is no control left that moves it off "this
+  // week" (the Өмнөх/Энэ долоо хоног/Дараах row was removed 2026-09-05; see
+  // the header's own comment below).
+  const weekStart = mondayOf(new Date());
   // Its own state, not derived from `weekStart` — see `child-menu.tsx`'s
   // identical `quickView` for why: "7 хоног" is a way back to the current
   // week, not a third destination, and deriving this from the date would
@@ -140,50 +153,71 @@ function WeeklyMenu() {
   const byDate = new Map((week.data ?? []).map((day) => [day.date.slice(0, 10), day]));
   const weekDates = Array.from({ length: 5 }, (_, i) => addDays(weekStart, i));
 
+  const weekEnd = addDays(weekStart, 4);
+  const month = monthRange(new Date());
+
+  /*
+   * ★ One icon button, not three text ones — client request, 2026-09-05.
+   *
+   * The Өмнөх/Энэ долоо хоног/Дараах row that used to sit here duplicated the
+   * tri-toggle below it (both moved between "today"/"this week") without
+   * adding a destination of its own once "7 хоног" already means *this*
+   * week — it was removed rather than kept for a "previous week" case
+   * nothing else on the screen offers. This slot is Excel instead: the three
+   * ranges from a fixed period each, not from whatever `quickView` happens to
+   * be showing, same reasoning `menu-workbook.ts`'s doc comment gives.
+   */
+  const exportItems: MenuItem[] = kindergartenId
+    ? [
+        {
+          href: downloadUrl(
+            `/kindergartens/${kindergartenId}/menu/export?from=${today}&to=${today}`,
+          ),
+          label: "Өдрөөр",
+          hint: formatDate(today),
+        },
+        {
+          href: downloadUrl(
+            `/kindergartens/${kindergartenId}/menu/export?from=${weekStart}&to=${weekEnd}`,
+          ),
+          label: "7 хоногоор",
+          hint: `${formatDate(weekStart)} – ${formatDate(weekEnd)}`,
+        },
+        {
+          href: downloadUrl(
+            `/kindergartens/${kindergartenId}/menu/export?from=${month.from}&to=${month.to}`,
+          ),
+          label: "Сараар",
+          hint: formatMonthLabel(month.from.slice(0, 7)),
+        },
+      ]
+    : [];
+
   return (
     <div className="flex flex-col gap-5 lg:gap-6">
       <PageHeader
         title="Долоо хоногийн цэс"
         actions={
-          <div className="flex items-center gap-2">
-            <Button
+          kindergartenId ? (
+            <Menu
               variant="secondary"
-              size="sm"
-              onClick={() => {
-                setWeekStart(addDays(weekStart, -7));
-                setQuickView("week");
-              }}
-            >
-              Өмнөх
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setWeekStart(mondayOf(new Date()));
-                setQuickView("week");
-              }}
-            >
-              Энэ долоо хоног
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setWeekStart(addDays(weekStart, 7));
-                setQuickView("week");
-              }}
-            >
-              Дараах
-            </Button>
-          </div>
+              ariaLabel="Excel татах"
+              items={exportItems}
+              label={
+                <>
+                  <Download size={18} aria-hidden="true" />
+                  <span className="sr-only">Excel татах</span>
+                </>
+              }
+            />
+          ) : null
         }
       />
 
-      {/* Same 3-way quick view as a parent's own menu tab
-          (`child-menu.tsx`) — "Өнөөдөр"/"Маргааш" jump straight to that day
-          regardless of which week the nav buttons above have open; "7 хоног"
-          is the way back to the full Mon–Fri week. */}
+      {/* Same 3-way quick view as a parent's own menu tab (`child-menu.tsx`)
+          — "Өнөөдөр"/"Маргааш" jump straight to that day; "7 хоног" opens the
+          full Mon–Fri week starting this Monday, the only week this screen
+          shows now that there is no control left to move `weekStart` off it. */}
       <div
         role="group"
         aria-label="Хугацаа сонгох"

@@ -4,9 +4,24 @@ import { Prisma } from "../generated/prisma/client";
 import type {
   FoodOrderStatus,
   IngredientUnit,
+  MealKind,
   RecipeStatus,
   StockDirection,
 } from "../domain/enums";
+
+const servedByRefSelect = {
+  select: { id: true, firstName: true, lastName: true },
+} as const;
+
+/** Every `MealServing` read shapes the row the same way — `select` here once
+ * rather than at each of the four call sites below. */
+const mealServingSelect = {
+  id: true,
+  groupId: true,
+  kind: true,
+  servedAt: true,
+  servedBy: servedByRefSelect,
+} as const;
 
 const unitRefSelect = {
   select: { id: true, name: true, unit: true },
@@ -37,8 +52,18 @@ export class KitchenRepository {
 
   // ── Ingredients ──────────────────────────────────────────────────────────
 
-  async listIngredients(kindergartenId: string, skip: number, take: number) {
-    const where = { kindergartenId, deletedAt: null };
+  async listIngredients(
+    kindergartenId: string,
+    skip: number,
+    take: number,
+    filters: { q?: string; category?: string } = {},
+  ) {
+    const where = {
+      kindergartenId,
+      deletedAt: null,
+      ...(filters.category ? { category: filters.category } : {}),
+      ...(filters.q ? { name: { contains: filters.q, mode: "insensitive" as const } } : {}),
+    };
     const [items, total] = await Promise.all([
       this.prisma.ingredient.findMany({ where, orderBy: { name: "asc" }, skip, take }),
       this.prisma.ingredient.count({ where }),
@@ -526,6 +551,58 @@ export class KitchenRepository {
       orderCount: row.orderCount,
       totalAmount: row.total.toFixed(2),
     }));
+  }
+
+  // ── Meal servings (Тараалт) ────────────────────────────────────────────
+
+  /** For validating a `groupId` in a request body belongs to this
+   * kindergarten — the same tenant check `assertIngredientsBelong` makes for
+   * a recipe/order line. */
+  async findGroupForKitchen(groupId: string, kindergartenId: string) {
+    return this.prisma.group.findFirst({
+      where: { id: groupId, kindergartenId, deletedAt: null },
+      select: { id: true },
+    });
+  }
+
+  async listMealServings(kindergartenId: string, date: Date) {
+    return this.prisma.mealServing.findMany({
+      where: { kindergartenId, date, deletedAt: null },
+      select: mealServingSelect,
+    });
+  }
+
+  /** Includes a soft-deleted row — marking a previously-undone sitting
+   * revives it (`reviveMealServing`) rather than colliding with the partial
+   * unique index on (`groupId`, `date`, `kind`). */
+  async findMealServingByKey(groupId: string, date: Date, kind: MealKind) {
+    return this.prisma.mealServing.findFirst({ where: { groupId, date, kind } });
+  }
+
+  async findMealServing(id: string) {
+    return this.prisma.mealServing.findFirst({ where: { id, deletedAt: null } });
+  }
+
+  async createMealServing(data: {
+    kindergartenId: string;
+    groupId: string;
+    date: Date;
+    kind: MealKind;
+    servedById: string;
+  }) {
+    return this.prisma.mealServing.create({ data, select: mealServingSelect });
+  }
+
+  async reviveMealServing(id: string, servedById: string) {
+    return this.prisma.mealServing.update({
+      where: { id },
+      data: { deletedAt: null, servedById, servedAt: new Date() },
+      select: mealServingSelect,
+    });
+  }
+
+  async softDeleteMealServing(id: string) {
+    return this.prisma.mealServing.update({ where: { id }, data: { deletedAt: new Date() } });
   }
 }
 
