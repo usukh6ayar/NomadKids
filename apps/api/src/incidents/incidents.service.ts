@@ -50,7 +50,11 @@ export class IncidentsService {
     const { skip, take } = toSkipTake(page);
     const { items, total } = await this.repo.listForKindergarten(
       kindergartenId,
-      { unreportedOnly: query.unreportedOnly, highPriorityOnly: query.highPriorityOnly },
+      {
+        unreportedOnly: query.unreportedOnly,
+        highPriorityOnly: query.highPriorityOnly,
+        q: query.q,
+      },
       { skip, take },
     );
 

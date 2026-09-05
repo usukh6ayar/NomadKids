@@ -127,6 +127,7 @@ export class ObservationsService {
         source: query.source,
         reviewStatus: query.reviewStatus,
         domainId: query.domainId,
+        q: query.q,
         from: query.from,
         to: query.to,
       },

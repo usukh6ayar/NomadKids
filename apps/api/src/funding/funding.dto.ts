@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { uuidSchema } from "@kinder/contracts";
+import { searchTermSchema } from "../common/repository/search";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Огноо YYYY-MM-DD хэлбэртэй байна");
 const isoMonth = z.string().regex(/^\d{4}-\d{2}$/, "Сар YYYY-MM хэлбэртэй байна");
@@ -110,7 +111,7 @@ export const registerQuerySchema = z.object({
   source: fundingSourceSchema.optional(),
   groupId: uuidSchema.optional(),
   /** A name fragment. Matched against "<эцгийн нэр> <нэр>", case-insensitively. */
-  q: z.string().trim().max(100).optional(),
+  q: searchTermSchema,
   status: z
     .string()
     .optional()

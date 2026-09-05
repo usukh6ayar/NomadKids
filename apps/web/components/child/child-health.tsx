@@ -2,13 +2,15 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { AlertTriangle, Pill, Syringe, Trash2 } from "lucide-react";
+import { Accessibility, AlertTriangle, Pill, Syringe, Trash2 } from "lucide-react";
 import { z } from "zod";
 import {
   ALLERGY_KIND_LABEL,
   ALLERGY_SEVERITY_LABEL,
   childHealthSchema,
+  specialNeedsCategorySchema,
   type Allergy,
+  type SpecialNeed,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -22,6 +24,10 @@ import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 import { useSession } from "@/lib/auth/session";
+
+/** The picker's list — an array, not a page: the reference table is small and
+ * the endpoint returns it whole. */
+const specialNeedsCategoryListSchema = z.array(specialNeedsCategorySchema);
 
 /**
  * A child's health record — RFP Module 2.
@@ -54,8 +60,9 @@ export function ChildHealth({ childId, isStaff }: { childId: string; isStaff: bo
   if (health.isPending) return <LoadingState rows={4} />;
   if (health.isError) return <ErrorState description={errorMessage(health.error)} />;
 
-  const { allergies, medications, vaccinations, healthNotes } = health.data;
+  const { allergies, medications, vaccinations, specialNeeds, healthNotes } = health.data;
   const live = allergies.filter((allergy) => !allergy.endedOn);
+  const liveNeeds = specialNeeds.filter((need) => !need.endedOn);
 
   return (
     <div className="flex flex-col gap-6">
@@ -117,6 +124,68 @@ export function ChildHealth({ childId, isStaff }: { childId: string; isStaff: bo
                     */
                     canEdit={isStaff}
                   />
+                ))}
+            </ul>
+          </details>
+        ) : null}
+      </section>
+
+      {/*
+        Тусгай хэрэгцээ — А/261, цэцэрлэгийн шалгуур 11.
+
+        ★ Between the allergies and the medication, which is where it belongs
+        rather than at the foot of the screen: it is read at the same moment
+        the allergies are — when a teacher is working out what this child needs
+        today — and not at the moment a dose is due.
+
+        ★★ A family reads it and does not write it, the split the allergy
+        section already makes. The category is counted by the state in a return
+        the kindergarten signs, and the person who can be asked which
+        commission decision it came from is a member of staff. The API answers
+        404 to a guardian who posts one, so offering them the form would be
+        offering a control that always fails.
+      */}
+      <section aria-labelledby="special-needs-heading" className="flex flex-col gap-3">
+        <SectionHeader
+          id="special-needs-heading"
+          title="Тусгай хэрэгцээ"
+          lede={isStaff ? "Комиссын шийдвэрийн дагуу бүртгэнэ." : undefined}
+        />
+
+        {isStaff ? <SpecialNeedForm childId={childId} /> : null}
+
+        {liveNeeds.length === 0 ? (
+          <EmptyState
+            title="Бүртгэгдсэн тусгай хэрэгцээ алга"
+            description={
+              isStaff
+                ? "Комиссын шийдвэр гарсан бол ангиллыг нь энд бүртгэнэ үү."
+                : "Хүүхэд тань тусгай дэмжлэг шаардлагатай бол багштайгаа ярилцана уу."
+            }
+          />
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {liveNeeds.map((need) => (
+              <SpecialNeedRow key={need.id} childId={childId} need={need} canEdit={isStaff} />
+            ))}
+          </ul>
+        )}
+
+        {/*
+          Ended needs are kept and shown separately, for the ended allergies'
+          reason: support that was withdrawn was still once in place, and a
+          teacher reading the history needs to know it was considered.
+        */}
+        {specialNeeds.length > liveNeeds.length ? (
+          <details className="group">
+            <summary className="inline-flex min-h-[44px] cursor-pointer list-none items-center text-caption font-medium text-primary hover:underline [&::-webkit-details-marker]:hidden">
+              Дууссан бүртгэл ({specialNeeds.length - liveNeeds.length})
+            </summary>
+            <ul className="mt-2 flex flex-col gap-2">
+              {specialNeeds
+                .filter((need) => need.endedOn)
+                .map((need) => (
+                  <SpecialNeedRow key={need.id} childId={childId} need={need} canEdit={isStaff} />
                 ))}
             </ul>
           </details>
@@ -435,6 +504,243 @@ function AllergyRow({
         ) : null}
       </Card>
     </li>
+  );
+}
+
+/**
+ * One recorded special need — А/261, шалгуур 11.
+ *
+ * ★ The note is the load-bearing half, not the category.
+ *
+ * "Хэл яриа" tells a teacher which box the state counts this child in; "Долоо
+ * хоногт 2 удаа ганцаарчилсан хичээл" tells them what to do on Monday. The
+ * category is what makes the national aggregate possible, so it is a closed
+ * list — but the row is rendered so the note is read, not buried.
+ */
+function SpecialNeedRow({
+  childId,
+  need,
+  canEdit,
+}: {
+  childId: string;
+  need: SpecialNeed;
+  canEdit: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+
+  const end = useMutation({
+    mutationFn: () =>
+      mutate(`/special-needs/${need.id}`, z.unknown(), {
+        method: "PATCH",
+        body: { endedOn: new Date().toISOString().slice(0, 10) },
+      }),
+    onSuccess: () => {
+      setConfirming(false);
+      void queryClient.invalidateQueries({ queryKey: qk.health(childId) });
+    },
+  });
+
+  return (
+    <li>
+      <Card pad="compact" className="flex flex-col gap-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <Accessibility size={16} aria-hidden="true" className="shrink-0 text-muted" />
+          <span className="text-body font-medium text-ink">{need.category.name}</span>
+          {need.documentNo ? <Badge tone="neutral">{need.documentNo}</Badge> : null}
+
+          {need.endedOn ? (
+            <span className="text-caption text-muted">Дууссан: {formatDate(need.endedOn)}</span>
+          ) : null}
+
+          {/* "Дуусгах" hides once ended; the delete stays, for `AllergyRow`'s reason. */}
+          {canEdit ? (
+            <span className="ml-auto flex items-center gap-1">
+              {!need.endedOn ? (
+                confirming ? (
+                  <span className="flex items-center gap-2">
+                    <span className="text-caption text-muted">Дуусгах уу?</span>
+                    <Button size="sm" disabled={end.isPending} onClick={() => end.mutate()}>
+                      Тийм
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
+                      Үгүй
+                    </Button>
+                  </span>
+                ) : (
+                  <Button size="sm" variant="ghost" onClick={() => setConfirming(true)}>
+                    Дуусгах
+                  </Button>
+                )
+              ) : null}
+              <DeleteHealthRecord
+                childId={childId}
+                path={`/special-needs/${need.id}`}
+                recordLabel={need.category.name}
+                title="Тусгай хэрэгцээний бүртгэлийг устгах"
+                description={`"${need.category.name}" — бүртгэлийг бүрмөсөн устгах уу? Дэмжлэг зогссон бол устгахын оронд "Дуусгах"-ыг сонговол түүх хадгалагдана.`}
+              />
+            </span>
+          ) : null}
+        </div>
+
+        {need.note ? <p className="whitespace-pre-wrap text-body text-muted">{need.note}</p> : null}
+        <p className="text-caption text-muted">Тогтоосон: {formatDate(need.assessedOn)}</p>
+      </Card>
+    </li>
+  );
+}
+
+function SpecialNeedForm({ childId }: { childId: string }) {
+  const queryClient = useQueryClient();
+  const today = new Date().toISOString().slice(0, 10);
+
+  const [open, setOpen] = useState(false);
+  const [categoryId, setCategoryId] = useState("");
+  const [note, setNote] = useState("");
+  const [documentNo, setDocumentNo] = useState("");
+  const [assessedOn, setAssessedOn] = useState(today);
+
+  /*
+   * ★ Fetched only once the form is open.
+   *
+   * The categories are a picker's worth of rows behind the same 404 the rest
+   * of this tab is behind, and a guardian never opens this form at all — so
+   * requesting them on every health-tab render would be a request most readers
+   * have no use for.
+   */
+  const categories = useQuery({
+    queryKey: qk.specialNeedsCategories(childId),
+    queryFn: () =>
+      get(`/children/${childId}/health/special-needs/categories`, specialNeedsCategoryListSchema),
+    enabled: open,
+  });
+
+  const save = useMutation({
+    mutationFn: () =>
+      mutate(`/children/${childId}/health/special-needs`, z.unknown(), {
+        method: "POST",
+        body: {
+          categoryId,
+          note: note.trim() || null,
+          documentNo: documentNo.trim() || null,
+          assessedOn,
+        },
+      }),
+    onSuccess: () => {
+      setCategoryId("");
+      setNote("");
+      setDocumentNo("");
+      setAssessedOn(today);
+      setOpen(false);
+      void queryClient.invalidateQueries({ queryKey: qk.health(childId) });
+    },
+  });
+
+  const errors = fieldErrors(save.error);
+
+  if (!open) {
+    return (
+      <Button variant="secondary" size="sm" className="self-start" onClick={() => setOpen(true)}>
+        Тусгай хэрэгцээ нэмэх
+      </Button>
+    );
+  }
+
+  return (
+    <Card pad="roomy">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!save.isPending && categoryId) save.mutate();
+        }}
+        className="flex flex-col gap-4"
+        noValidate
+      >
+        <FormError
+          message={
+            save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null
+          }
+        />
+
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field label="Ангилал" error={errors.categoryId} required>
+            {({ id, describedBy, invalid }) => (
+              <Select
+                id={id}
+                aria-describedby={describedBy}
+                invalid={invalid}
+                value={categoryId}
+                disabled={categories.isPending}
+                onChange={(e) => setCategoryId(e.target.value)}
+              >
+                {/*
+                  An empty first option, deliberately. A pre-selected "Хараа"
+                  is a classification nobody chose, and this one goes into a
+                  return the kindergarten signs.
+                */}
+                <option value="">
+                  {categories.isPending ? "Ачаалж байна…" : "— Сонгоно уу —"}
+                </option>
+                {(categories.data ?? []).map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+
+          <Field label="Тогтоосон огноо" error={errors.assessedOn} required>
+            {({ id, describedBy, invalid }) => (
+              <Input
+                id={id}
+                type="date"
+                max={today}
+                aria-describedby={describedBy}
+                invalid={invalid}
+                value={assessedOn}
+                onChange={(e) => setAssessedOn(e.target.value)}
+              />
+            )}
+          </Field>
+
+          <Field label="Шийдвэрийн дугаар" error={errors.documentNo}>
+            {({ id, describedBy, invalid }) => (
+              <Input
+                id={id}
+                aria-describedby={describedBy}
+                invalid={invalid}
+                value={documentNo}
+                onChange={(e) => setDocumentNo(e.target.value)}
+              />
+            )}
+          </Field>
+        </div>
+
+        <Field label="Шаардлагатай дэмжлэг" error={errors.note}>
+          {({ id, describedBy, invalid }) => (
+            <Textarea
+              id={id}
+              rows={3}
+              aria-describedby={describedBy}
+              invalid={invalid}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+          )}
+        </Field>
+
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit" size="sm" disabled={save.isPending || !categoryId}>
+            {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>
+            Болих
+          </Button>
+        </div>
+      </form>
+    </Card>
   );
 }
 

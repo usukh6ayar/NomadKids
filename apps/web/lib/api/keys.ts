@@ -50,6 +50,15 @@ export const qk = {
   growth: (childId: string) => ["child", childId, "growth"] as const,
   milestones: (childId: string) => ["child", childId, "milestones"] as const,
   health: (childId: string) => ["child", childId, "health"] as const,
+  /**
+   * ★ Deliberately not nested under `health(childId)`.
+   *
+   * The reference list does not change when a child's records do, and nesting
+   * it would make every save on the health tab invalidate the categories too —
+   * refetching rows that were already correct.
+   */
+  specialNeedsCategories: (childId: string) =>
+    ["child", childId, "special-needs-categories"] as const,
   incidents: (childId: string) => ["child", childId, "incidents"] as const,
   artwork: (childId: string) => ["child", childId, "artwork"] as const,
   consent: (childId: string) => ["child", childId, "consent"] as const,

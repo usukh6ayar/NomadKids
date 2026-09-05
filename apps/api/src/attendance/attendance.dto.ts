@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { searchTermSchema } from "../common/repository/search";
 
 /**
  * ★ Six. `OTHER` was absent here until 2026-09-02 — see
@@ -294,7 +295,7 @@ export const attendanceRegisterQuerySchema = z
     status: commaSeparated(registerStatusValues, 6),
 
     /** A name fragment, matched against "<эцгийн нэр> <нэр>" case-insensitively. */
-    q: z.string().trim().max(100).optional(),
+    q: searchTermSchema,
     childStatus: commaSeparated(["ACTIVE", "TEMPORARY", "ON_LEAVE", "INACTIVE"], 4),
 
     page: z.coerce.number().int().min(1).default(1),

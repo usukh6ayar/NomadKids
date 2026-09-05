@@ -151,6 +151,52 @@ export class TenantAccessService {
     if (!ok) throw new NotFoundException();
   }
 
+  /**
+   * Whether the actor may read a member of staff's own file — experience,
+   * certificates, grades. Order А/261, criterion 51.
+   *
+   * ★ **A predicate, not an assertion, because two audiences reach it.**
+   *
+   * The kindergarten's administrator reads anybody's file: they typed it, they
+   * report it to the ministry, and they answer for it. A member of staff reads
+   * their **own** and nobody else's — a teacher has no business knowing which
+   * grade the teacher next door holds, and "everyone is staff, so everyone
+   * sees it" is how a personnel file becomes a staff-room noticeboard.
+   *
+   * Split from `assertStaff` for exactly that reason: this is the one place
+   * where "is a colleague" is not the question and "is this person" is.
+   */
+  canReadStaffRecords(actor: Actor, kindergartenId: string, subjectUserId: string): boolean {
+    if (actor.userId === subjectUserId) {
+      // Still scoped: a person reads their own file *at a kindergarten they
+      // belong to*, so a stale id in a URL cannot fetch a record filed by an
+      // employer they have since left.
+      return actor.memberships.some((m) => m.kindergartenId === kindergartenId);
+    }
+    return this.isAdmin(actor, kindergartenId);
+  }
+
+  assertCanReadStaffRecords(actor: Actor, kindergartenId: string, subjectUserId: string): void {
+    if (!this.canReadStaffRecords(actor, kindergartenId, subjectUserId)) {
+      throw new NotFoundException();
+    }
+  }
+
+  /**
+   * Throws 404 unless the actor may **write** a staff file.
+   *
+   * ★ Administrator only — deliberately narrower than reading it.
+   *
+   * Criterion 51 is about data the kindergarten submits to the ministry, and a
+   * record somebody wrote about themselves is not evidence of anything. A
+   * teacher who has earned a new grade brings the certificate to the office;
+   * the administrator records it and can be asked what they saw. This is the
+   * same split `createAllergy` makes between who is told and who records.
+   */
+  assertCanManageStaffRecords(actor: Actor, kindergartenId: string): void {
+    if (!this.isAdmin(actor, kindergartenId)) throw new NotFoundException();
+  }
+
   isAdmin(actor: Actor, kindergartenId: string): boolean {
     return hasRoleIn(actor, Role.ADMIN, kindergartenId);
   }

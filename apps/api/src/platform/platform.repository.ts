@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { toSkipTake, type PageParams } from "../common/pagination";
+import { searchWhere } from "../common/repository/search";
 
 /**
  * Platform-level kindergarten queries.
@@ -80,7 +81,7 @@ export class PlatformRepository {
     const where = {
       deletedAt: null,
       ...(filters.isActive !== undefined ? { isActive: filters.isActive } : {}),
-      ...(filters.q ? { name: { contains: filters.q, mode: "insensitive" as const } } : {}),
+      ...(searchWhere(filters.q, ["name"]) ?? {}),
     };
 
     const [items, total] = await Promise.all([

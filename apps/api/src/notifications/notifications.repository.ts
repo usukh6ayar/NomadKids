@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import type { NotificationCategory } from "../domain/enums";
 import { toSkipTake, type PageParams } from "../common/pagination";
+import { searchWhere } from "../common/repository/search";
 
 /**
  * Announcements, their targeting, and read receipts.
@@ -97,14 +98,8 @@ export class NotificationsRepository {
         ],
       });
     }
-    if (q) {
-      extra.push({
-        OR: [
-          { title: { contains: q, mode: "insensitive" as const } },
-          { body: { contains: q, mode: "insensitive" as const } },
-        ],
-      });
-    }
+    const search = searchWhere(q, ["title", "body"]);
+    if (search) extra.push(search);
     // One kind of notice. A plain equality rather than the group filter's
     // `some OR none` — a category is a column on the notice itself, so there
     // is no "aimed at nobody" case to fold in.

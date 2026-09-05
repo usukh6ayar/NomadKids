@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { Prisma } from "../generated/prisma/client";
 import type { InvoiceStatus } from "../domain/enums";
+import { anyOf, searchRelation, searchWhere } from "../common/repository/search";
 
 const CHILD_SELECT = { id: true, lastName: true, firstName: true } as const;
 
@@ -100,7 +101,7 @@ export class InvoicesRepository {
 
   async listInvoices(
     kindergartenId: string,
-    filters: { month?: Date; childId?: string; status?: InvoiceStatus },
+    filters: { month?: Date; childId?: string; status?: InvoiceStatus; q?: string },
     page: { skip: number; take: number },
   ) {
     const where: Prisma.InvoiceWhereInput = {
@@ -109,6 +110,17 @@ export class InvoicesRepository {
       ...(filters.month ? { month: filters.month } : {}),
       ...(filters.childId ? { childId: filters.childId } : {}),
       ...(filters.status ? { status: filters.status } : {}),
+      /*
+       * ★ The invoice number and the child it belongs to.
+       *
+       * An accountant works from one or the other — a number read off a
+       * receipt, or a family who has telephoned. Making them pick the right
+       * field first is a puzzle, not a search box.
+       */
+      ...(anyOf(
+        searchWhere(filters.q, ["number", "note"]),
+        searchRelation(filters.q, "child", ["lastName", "firstName"]),
+      ) ?? {}),
     };
 
     const [items, total] = await Promise.all([

@@ -11,11 +11,13 @@ import {
   RECIPE_STATUS_LABEL,
   recipeSchema,
   type Recipe,
+  type RecipeCost,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
+import { formatTugrug } from "@/lib/funding-meta";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { ArchiveButton } from "@/components/ui/archive-button";
@@ -114,6 +116,20 @@ function RecipeDetail() {
           <p className="text-caption text-muted">{data.yieldPortions} порцын жороор бодов.</p>
         </Card>
 
+        {/*
+          Нэг хүүхдэд ногдох өртөг — А/261, цэцэрлэгийн шалгуур 38.
+
+          ★ Beside the nutrition card, not below the ingredient list, because
+          the criterion names them in one breath: "нэг хүүхдэд ногдох хүнсний
+          түүхий эд, бүтээгдэхүүний өртөг, шим тэжээл, илчлэг". A reader
+          checking a card against the order reads both figures together.
+
+          ★★ Only the cook and the administrator ever get here — the route is
+          `RequireRole roles={["COOK", "ADMIN"]}` and the endpoint behind it is
+          `assertCanManageKitchen`. A teacher must not see a price at all.
+        */}
+        {data.cost ? <CostCard cost={data.cost} portions={data.yieldPortions} /> : null}
+
         <Card pad="roomy" className="flex flex-col gap-3">
           <SectionHeader title="Харшлын шошго" lede="Орцноос автоматаар тодорхойлогдоно." />
           {data.allergenTags.length > 0 ? (
@@ -159,6 +175,69 @@ function RecipeDetail() {
         />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Нэг хүүхдэд ногдох өртөг.
+ *
+ * ★ The unpriced case is the whole design of this card.
+ *
+ * `null` never means free — it means an ingredient has no purchase history, so
+ * the total cannot be known. Rendering "₮0" there would be a confident lie
+ * nobody can see through, which is why the empty state names the ingredients
+ * to go and buy instead of showing a figure.
+ */
+function CostCard({ cost, portions }: { cost: RecipeCost; portions: number }) {
+  const missing = cost.unpricedIngredients;
+
+  return (
+    <Card pad="roomy" className="flex flex-col gap-3">
+      <SectionHeader title="Өртөг (1 порц)" lede="Хамгийн сүүлийн худалдан авалтын үнээр бодов." />
+
+      {cost.perPortion === null ? (
+        <>
+          <p className="text-body text-muted">
+            {missing.length > 0
+              ? "Дараах орцын худалдан авалт бүртгэгдээгүй тул өртөг тооцох боломжгүй:"
+              : "Орц бүртгэгдээгүй тул өртөг тооцох боломжгүй."}
+          </p>
+          {missing.length > 0 ? (
+            <span className="flex flex-wrap gap-1.5">
+              {missing.map((name) => (
+                <Badge key={name} tone="sun">
+                  {name}
+                </Badge>
+              ))}
+            </span>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <dl className="grid grid-cols-2 gap-3">
+            <div>
+              <dt className="text-caption text-muted">1 порц</dt>
+              <dd className="text-lead font-semibold tabular-nums text-ink">
+                {formatTugrug(cost.perPortion)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-caption text-muted">Бүх багц ({portions} порц)</dt>
+              <dd className="text-lead font-semibold tabular-nums text-ink">
+                {formatTugrug(cost.total)}
+              </dd>
+            </div>
+          </dl>
+          {/*
+            The date is not decoration. A cost moves every time the kitchen
+            buys, so a figure with no date attached reads as a property of the
+            recipe rather than of the market — and the two disagree by the time
+            anybody checks.
+          */}
+          <p className="text-caption text-muted">{cost.pricedOn}-ний үнээр бодов.</p>
+        </>
+      )}
+    </Card>
   );
 }
 

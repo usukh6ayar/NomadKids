@@ -25,6 +25,8 @@ import { FormDialog } from "@/components/ui/form-dialog";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { Pagination, ResultCount } from "@/components/ui/pagination";
 import { useToast } from "@/components/ui/toast";
+import { SearchField } from "@/components/ui/search-field";
+import { useDebounced } from "@/lib/use-debounced";
 
 const ingredientsSchema = paginated(ingredientSchema);
 
@@ -52,15 +54,17 @@ function Ingredients() {
   const kindergartenId = session?.memberships?.[0]?.kindergartenId ?? null;
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
+  const [query, setQuery] = useState("");
+  const q = useDebounced(query);
 
   const list = useQuery({
     enabled: Boolean(kindergartenId),
-    queryKey: qk.kitchen.ingredients(kindergartenId ?? "", { page }),
-    queryFn: () =>
-      get(
-        `/kindergartens/${kindergartenId}/ingredients?page=${page}&pageSize=25`,
-        ingredientsSchema,
-      ),
+    queryKey: qk.kitchen.ingredients(kindergartenId ?? "", { page, q }),
+    queryFn: () => {
+      const params = new URLSearchParams({ page: String(page), pageSize: "25" });
+      if (q) params.set("q", q);
+      return get(`/kindergartens/${kindergartenId}/ingredients?${params}`, ingredientsSchema);
+    },
   });
 
   const items = list.data?.items ?? [];
@@ -79,6 +83,27 @@ function Ingredients() {
           ) : null
         }
       />
+
+      {/*
+        ★ Rendered above the loading state, so it never disappears mid-typing.
+        A search box that unmounts while its own request is in flight takes the
+        caret with it.
+      */}
+      {kindergartenId ? (
+        <div className="flex flex-wrap items-end gap-3">
+          <SearchField
+            label="Орцын нэр, тэмдэглэлээр хайх"
+            placeholder="Нэрээр хайх"
+            value={query}
+            onChange={(value) => {
+              // Page 1: a term that narrows the list to three rows must not
+              // leave the reader stranded on page four of the old result.
+              setPage(1);
+              setQuery(value);
+            }}
+          />
+        </div>
+      ) : null}
 
       {list.isLoading ? <LoadingState rows={4} /> : null}
       {list.isError ? <ErrorState description={errorMessage(list.error)} /> : null}

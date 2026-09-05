@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { paginationQuerySchema, uuidSchema } from "@kinder/contracts";
+import { searchTermSchema } from "../common/repository/search";
 
 const text = (max: number) => z.string().max(max).nullable().optional();
 
@@ -71,6 +72,12 @@ export const listObservationsQuerySchema = paginationQuerySchema.extend({
   reviewStatus: z.enum(["PENDING", "APPROVED", "RETURNED"]).optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
+  /*
+   * ★ Added 2026-09-05 — А/261 шалгуур 21. This list had five filters and no
+   * free-text search, so a teacher looking for "the one about the puzzle" had
+   * to page through a term's worth of entries.
+   */
+  q: searchTermSchema,
 });
 export type ListObservationsQuery = z.infer<typeof listObservationsQuerySchema>;
 

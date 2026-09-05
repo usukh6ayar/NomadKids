@@ -11,6 +11,7 @@ import type {
   ChildStatus,
   ProgramKind,
 } from "../domain/enums";
+import { searchWhere } from "../common/repository/search";
 
 /**
  * Attendance records and the guardian requests that precede them.
@@ -201,14 +202,7 @@ export class AttendanceRepository {
       child: {
         deletedAt: null,
         ...(filters.childStatuses?.length ? { status: { in: filters.childStatuses } } : {}),
-        ...(filters.q
-          ? {
-              OR: [
-                { firstName: { contains: filters.q, mode: "insensitive" as const } },
-                { lastName: { contains: filters.q, mode: "insensitive" as const } },
-              ],
-            }
-          : {}),
+        ...(searchWhere(filters.q, ["firstName", "lastName"]) ?? {}),
       },
     };
 

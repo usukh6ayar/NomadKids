@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { paginationQuerySchema } from "@kinder/contracts";
+import { searchTermSchema } from "../common/repository/search";
 
 export const createDocumentSchema = z
   .object({
@@ -18,7 +19,7 @@ export type UpdateDocumentDto = z.infer<typeof updateDocumentSchema>;
 
 /** RFP §9 — "Ангиллаар шүүх", "Нэрээр хайх", "Bookmark хийх". */
 export const listDocumentsQuerySchema = paginationQuerySchema.extend({
-  q: z.string().max(100).optional(),
+  q: searchTermSchema,
   category: z.string().max(80).optional(),
   bookmarkedOnly: z.coerce.boolean().optional(),
 });

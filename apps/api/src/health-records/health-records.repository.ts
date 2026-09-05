@@ -25,8 +25,13 @@ export class HealthRecordsRepository {
    * the note — or the reverse — would be missing half of what a family told
    * the kindergarten.
    */
+  /** What a special-need record carries its category as, everywhere. */
+  private readonly categorySelect = {
+    select: { id: true, name: true, code: true, order: true, isActive: true, kindergartenId: true },
+  };
+
   async loadForChild(childId: string) {
-    const [child, allergies, medications, vaccinations] = await Promise.all([
+    const [child, allergies, specialNeeds, medications, vaccinations] = await Promise.all([
       this.prisma.child.findFirst({
         where: { id: childId, deletedAt: null },
         select: { id: true, healthNotes: true },
@@ -37,6 +42,17 @@ export class HealthRecordsRepository {
         // anaphylaxis before a mild pollen reaction, whatever the dates.
         orderBy: [{ endedOn: { sort: "asc", nulls: "first" } }, { severity: "desc" }],
         include: { recordedBy: this.person },
+      }),
+      this.prisma.specialNeedRecord.findMany({
+        where: { childId, deletedAt: null },
+        // Live needs first, then the category's own order — so the support
+        // currently in place is read before the history of what used to be.
+        orderBy: [
+          { endedOn: { sort: "asc", nulls: "first" } },
+          { category: { order: "asc" } },
+          { assessedOn: "desc" },
+        ],
+        include: { category: this.categorySelect, recordedBy: this.person },
       }),
       this.prisma.medicationAuthorisation.findMany({
         where: { childId, deletedAt: null },
@@ -50,7 +66,71 @@ export class HealthRecordsRepository {
       }),
     ]);
 
-    return { child, allergies, medications, vaccinations };
+    return { child, allergies, specialNeeds, medications, vaccinations };
+  }
+
+  // ── Special needs ──────────────────────────────────────────────────────────
+
+  /**
+   * The categories one kindergarten may file a child under: its own, plus the
+   * system rows every kindergarten inherits.
+   *
+   * ★ The `OR` is also the guard, not only a convenience — the same shape
+   * `catalog.repository.ts` uses for the other three reference tables. A
+   * category id belonging to a *different* kindergarten simply is not in the
+   * result, so `createSpecialNeed` cannot be talked into accepting one by
+   * having its uuid copied out of another tenant's response.
+   */
+  async listSpecialNeedsCategories(kindergartenId: string, activeOnly = true) {
+    return this.prisma.specialNeedsCategory.findMany({
+      where: {
+        OR: [{ kindergartenId }, { kindergartenId: null }],
+        deletedAt: null,
+        ...(activeOnly ? { isActive: true } : {}),
+      },
+      orderBy: [{ order: "asc" }, { name: "asc" }],
+      ...this.categorySelect,
+    });
+  }
+
+  async findSpecialNeedsCategory(id: string, kindergartenId: string) {
+    return this.prisma.specialNeedsCategory.findFirst({
+      where: {
+        id,
+        OR: [{ kindergartenId }, { kindergartenId: null }],
+        deletedAt: null,
+      },
+      select: { id: true, isActive: true },
+    });
+  }
+
+  async createSpecialNeed(data: Record<string, unknown>) {
+    return this.prisma.specialNeedRecord.create({
+      data: data as never,
+      include: { category: this.categorySelect, recordedBy: this.person },
+    });
+  }
+
+  async findSpecialNeed(id: string) {
+    return this.prisma.specialNeedRecord.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true, childId: true, kindergartenId: true },
+    });
+  }
+
+  async updateSpecialNeed(id: string, data: Record<string, unknown>) {
+    return this.prisma.specialNeedRecord.update({
+      where: { id },
+      data,
+      include: { category: this.categorySelect, recordedBy: this.person },
+    });
+  }
+
+  async softDeleteSpecialNeed(id: string) {
+    return this.prisma.specialNeedRecord.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
   }
 
   /**

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { paginationQuerySchema, uuidSchema } from "@kinder/contracts";
+import { searchTermSchema } from "../common/repository/search";
 
 export const roleSchema = z.enum(["ADMIN", "TEACHER", "PARENT", "COOK", "ACCOUNTANT"]);
 
@@ -53,7 +54,7 @@ export const listUsersQuerySchema = paginationQuerySchema.extend({
   kindergartenId: uuidSchema.optional(),
   role: roleSchema.optional(),
   isActive: z.coerce.boolean().optional(),
-  q: z.string().max(100).optional(),
+  q: searchTermSchema,
 });
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 

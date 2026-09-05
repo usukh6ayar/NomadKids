@@ -1387,6 +1387,41 @@ export const vaccinationSchema = z.object({
 export type Vaccination = z.infer<typeof vaccinationSchema>;
 
 /**
+ * The special-needs classification — Order А/261, kindergarten criterion 11.
+ *
+ * ★ A reference row, not a free-text label — the opposite of `allergen` two
+ * schemas up, and for the opposite reason. An allergen is matched against
+ * whatever a cook typed on a dish, so a closed list would make a real allergy
+ * unrecordable. A category is *counted by the state*, so free text would give
+ * every kindergarten its own spelling of the same one and make the aggregate
+ * meaningless.
+ */
+export const specialNeedsCategorySchema = z.object({
+  id: uuidSchema,
+  name: z.string(),
+  code: z.string(),
+  order: z.number().int().default(0),
+  isActive: z.boolean().default(true),
+  /** `null` marks a system row every kindergarten inherits and may not edit. */
+  kindergartenId: uuidSchema.nullish(),
+});
+export type SpecialNeedsCategory = z.infer<typeof specialNeedsCategorySchema>;
+
+export const specialNeedSchema = z.object({
+  id: uuidSchema,
+  category: specialNeedsCategorySchema,
+  /** What support this child needs, in the staff's own words. */
+  note: z.string().nullish(),
+  /** The commission decision's number, once the paperwork has arrived. */
+  documentNo: z.string().nullish(),
+  assessedOn: z.string(),
+  /** Ended rather than deleted, for `allergySchema.endedOn`'s reason. */
+  endedOn: z.string().nullish(),
+  recordedBy: personRefSchema.nullish(),
+});
+export type SpecialNeed = z.infer<typeof specialNeedSchema>;
+
+/**
  * Everything a teacher needs before a meal or a nap, in one response.
  *
  * ★ One request, not three. The child's header renders a red badge from
@@ -1398,6 +1433,19 @@ export const childHealthSchema = z.object({
   allergies: z.array(allergySchema),
   medications: z.array(medicationSchema),
   vaccinations: z.array(vaccinationSchema),
+  /**
+   * The special-needs classification — Order А/261, kindergarten criterion 11.
+   *
+   * ★ Defaulted, not required, unlike the three arrays above.
+   *
+   * This field arrived after the screen did, and `childHealthSchema.parse` runs
+   * on every health response the browser receives. Without the default, a tab
+   * still holding the bundle from before the deploy would fail to parse a
+   * payload it otherwise understands — and the failure would take the allergy
+   * badge down with it, which is the one thing on this screen that must never
+   * go missing.
+   */
+  specialNeeds: z.array(specialNeedSchema).default([]),
   /** RFP §3.4's free-text note, carried here so one screen shows all of it. */
   healthNotes: z.string().nullish(),
 });
@@ -1509,6 +1557,32 @@ export type Nutrition = z.infer<typeof nutritionSchema>;
  * are derived from `ingredients` on every read, not stored columns — see the
  * schema comment on `Recipe` in `schema.prisma` for why.
  */
+/**
+ * Нэг хүүхдэд ногдох өртөг — Order А/261, kindergarten criterion 38.
+ *
+ * ★ Amounts are **strings**, like every other money field in these contracts.
+ * `0.1 + 0.2 !== 0.3`, and a cost that disagrees with the order it was derived
+ * from by a tögrög is the kind of discrepancy that destroys confidence in the
+ * whole card. The API rounds with `decimal.js`; the client formats, never
+ * arithmetics.
+ *
+ * ★★ `null` means **not priceable**, never free. It appears the moment one
+ * ingredient has no purchase history, and `unpricedIngredients` names which —
+ * so the screen can say what to buy rather than showing a confidently-too-low
+ * figure nobody can tell is wrong.
+ */
+export const recipeCostSchema = z.object({
+  /** For the whole batch, or `null` if any ingredient is unpriced. */
+  total: z.string().nullable(),
+  /** `total` divided by `yieldPortions` — what criterion 38 asks for. */
+  perPortion: z.string().nullable(),
+  /** The ingredients with no purchase history, by name. */
+  unpricedIngredients: z.array(z.string()).default([]),
+  /** `YYYY-MM-DD` — the date the prices were read as of. */
+  pricedOn: z.string(),
+});
+export type RecipeCost = z.infer<typeof recipeCostSchema>;
+
 export const recipeSchema = z.object({
   id: uuidSchema,
   name: z.string(),
@@ -1522,6 +1596,14 @@ export const recipeSchema = z.object({
   nutritionTotal: nutritionSchema,
   /** `nutritionTotal` divided by `yieldPortions`. */
   nutritionPerPortion: nutritionSchema,
+  /**
+   * ★ Optional, and only the single-card endpoint sends it.
+   *
+   * Costing needs a price lookup per card, so a list of forty would be forty
+   * queries — the N+1 CLAUDE.md §3.4 forbids. Criterion 38 asks for the cost
+   * *on the technology card*, so it is paid for once, there.
+   */
+  cost: recipeCostSchema.optional(),
   /** The union of every line ingredient's `allergenTags` — what feeds the
    * menu's allergy cross-check when a dish points at this recipe. */
   allergenTags: z.array(z.string()).default([]),
@@ -1529,8 +1611,12 @@ export const recipeSchema = z.object({
 });
 export type Recipe = z.infer<typeof recipeSchema>;
 
-/** The list view — no ingredient lines or instructions, one row per card. */
-export const recipeSummarySchema = recipeSchema.omit({ ingredients: true, instructions: true });
+/** The list view — no ingredient lines, instructions or cost; one row per card. */
+export const recipeSummarySchema = recipeSchema.omit({
+  ingredients: true,
+  instructions: true,
+  cost: true,
+});
 export type RecipeSummary = z.infer<typeof recipeSummarySchema>;
 
 // ── Suppliers ────────────────────────────────────────────────────────────────

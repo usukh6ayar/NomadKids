@@ -25,6 +25,8 @@ import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
+import { SearchField } from "@/components/ui/search-field";
+import { useDebounced } from "@/lib/use-debounced";
 
 const recipesSchema = paginated(recipeSummarySchema);
 const ingredientsSchema = paginated(ingredientSchema);
@@ -53,13 +55,16 @@ function Recipes() {
   const kindergartenId = session?.memberships?.[0]?.kindergartenId ?? null;
   const [status, setStatus] = useState<"" | "DRAFT" | "APPROVED">("");
   const [creating, setCreating] = useState(false);
+  const [query, setQuery] = useState("");
+  const q = useDebounced(query);
 
   const list = useQuery({
     enabled: Boolean(kindergartenId),
-    queryKey: qk.kitchen.recipes(kindergartenId ?? "", { status }),
+    queryKey: qk.kitchen.recipes(kindergartenId ?? "", { status, q }),
     queryFn: () => {
       const params = new URLSearchParams({ page: "1", pageSize: "100" });
       if (status) params.set("status", status);
+      if (q) params.set("q", q);
       return get(`/kindergartens/${kindergartenId}/recipes?${params}`, recipesSchema);
     },
   });
@@ -103,6 +108,17 @@ function Recipes() {
           </button>
         ))}
       </div>
+
+      {kindergartenId ? (
+        <div className="flex flex-wrap items-end gap-3">
+          <SearchField
+            label="Картын нэр, зааврын үгээр хайх"
+            placeholder="Нэрээр хайх"
+            value={query}
+            onChange={setQuery}
+          />
+        </div>
+      ) : null}
 
       {list.isLoading ? <LoadingState rows={4} /> : null}
       {list.isError ? <ErrorState description={errorMessage(list.error)} /> : null}

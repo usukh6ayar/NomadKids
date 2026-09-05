@@ -19,6 +19,8 @@ import { FormDialog } from "@/components/ui/form-dialog";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { Pagination, ResultCount } from "@/components/ui/pagination";
 import { useToast } from "@/components/ui/toast";
+import { SearchField } from "@/components/ui/search-field";
+import { useDebounced } from "@/lib/use-debounced";
 
 const suppliersSchema = paginated(supplierSchema);
 
@@ -45,12 +47,17 @@ function Suppliers() {
   const kindergartenId = session?.memberships?.[0]?.kindergartenId ?? null;
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
+  const [query, setQuery] = useState("");
+  const q = useDebounced(query);
 
   const list = useQuery({
     enabled: Boolean(kindergartenId),
-    queryKey: qk.kitchen.suppliers(kindergartenId ?? "", { page }),
-    queryFn: () =>
-      get(`/kindergartens/${kindergartenId}/suppliers?page=${page}&pageSize=25`, suppliersSchema),
+    queryKey: qk.kitchen.suppliers(kindergartenId ?? "", { page, q }),
+    queryFn: () => {
+      const params = new URLSearchParams({ page: String(page), pageSize: "25" });
+      if (q) params.set("q", q);
+      return get(`/kindergartens/${kindergartenId}/suppliers?${params}`, suppliersSchema);
+    },
   });
 
   const items = list.data?.items ?? [];
@@ -69,6 +76,17 @@ function Suppliers() {
           ) : null
         }
       />
+
+      {kindergartenId ? (
+        <div className="flex flex-wrap items-end gap-3">
+          <SearchField
+            label="Нийлүүлэгчийн нэр, регистр, холбоо барих хүнээр хайх"
+            placeholder="Нэр эсвэл регистрээр хайх"
+            value={query}
+            onChange={setQuery}
+          />
+        </div>
+      ) : null}
 
       {list.isLoading ? <LoadingState rows={3} /> : null}
       {list.isError ? <ErrorState description={errorMessage(list.error)} /> : null}

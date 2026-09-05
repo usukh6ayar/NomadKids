@@ -64,6 +64,33 @@ export const createMedicationSchema = z
   });
 export type CreateMedicationDto = z.infer<typeof createMedicationSchema>;
 
+// ── Special needs — Order А/261, kindergarten criterion 11 ───────────────────
+
+export const createSpecialNeedSchema = z
+  .object({
+    /**
+     * The category, by id. The service checks it belongs to this kindergarten
+     * or is a system row — a raw uuid here would otherwise let one kindergarten
+     * file a child under another's private category.
+     */
+    categoryId: z.string().uuid("Ангиллыг сонгоно уу"),
+    note: z.string().max(2000).nullable().optional(),
+    documentNo: z.string().trim().max(120).nullable().optional(),
+    assessedOn: isoDate,
+  })
+  .strict();
+export type CreateSpecialNeedDto = z.infer<typeof createSpecialNeedSchema>;
+
+export const updateSpecialNeedSchema = createSpecialNeedSchema
+  .partial()
+  .extend({
+    /** Ending it, rather than deleting: the support history survives. */
+    endedOn: isoDate.nullable().optional(),
+  })
+  .strict()
+  .refine((body) => Object.keys(body).length > 0, { message: "Өөрчлөх талбар алга" });
+export type UpdateSpecialNeedDto = z.infer<typeof updateSpecialNeedSchema>;
+
 // ── Vaccination ──────────────────────────────────────────────────────────────
 
 export const createVaccinationSchema = z

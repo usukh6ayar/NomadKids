@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { paginationQuerySchema, uuidSchema } from "@kinder/contracts";
+import { searchTermSchema } from "../common/repository/search";
 
 /**
  * Targeting — §8.1.
@@ -97,7 +98,7 @@ export type UpdateNotificationDto = z.infer<typeof updateNotificationSchema>;
  */
 export const listNotificationsQuerySchema = paginationQuerySchema.extend({
   unread: z.coerce.boolean().optional(),
-  q: z.string().max(100).optional(),
+  q: searchTermSchema,
   /**
    * The board for one group — §8.1's targeting, read back.
    *

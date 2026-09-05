@@ -11,6 +11,7 @@ import type { Actor } from "../authz/actor";
 import { paginate, toSkipTake } from "../common/pagination";
 import { parseDishes } from "../meals/dish-json";
 import { KitchenRepository } from "./kitchen.repository";
+import { costOfRecipe } from "./recipe-cost";
 import type {
   CreateFoodOrderDto,
   CreateIngredientDto,
@@ -50,7 +51,7 @@ export class KitchenService {
   async listIngredients(actor: Actor, kindergartenId: string, query: ListIngredientsQuery) {
     this.tenants.assertCanManageKitchen(actor, kindergartenId);
     const { skip, take } = toSkipTake(query);
-    const { items, total } = await this.repo.listIngredients(kindergartenId, skip, take);
+    const { items, total } = await this.repo.listIngredients(kindergartenId, query.q, skip, take);
     return paginate(items, total, query);
   }
 
@@ -124,7 +125,13 @@ export class KitchenService {
   async listRecipes(actor: Actor, kindergartenId: string, query: ListRecipesQuery) {
     this.tenants.assertCanManageKitchen(actor, kindergartenId);
     const { skip, take } = toSkipTake(query);
-    const { items, total } = await this.repo.listRecipes(kindergartenId, query.status, skip, take);
+    const { items, total } = await this.repo.listRecipes(
+      kindergartenId,
+      query.status,
+      query.q,
+      skip,
+      take,
+    );
     return paginate(items.map(toRecipeResponse), total, query);
   }
 
@@ -138,11 +145,59 @@ export class KitchenService {
     return this.repo.listApprovedRecipes(kindergartenId);
   }
 
+  /**
+   * ★ The cost is attached here and nowhere else.
+   *
+   * `toRecipeResponse` is also what the list endpoint shapes, and a cost figure
+   * on a list of forty cards would be forty price lookups — the N+1 §3.4
+   * forbids. Criterion 38 asks for the cost *on the technology card*, which is
+   * this endpoint, so the extra query is paid once by the reader who wants it.
+   *
+   * ★★ It stays behind `assertCanManageKitchen` (COOK or ADMIN), which is the
+   * gate the rest of this module already uses, and the gate is not widened for
+   * it. A teacher gets 404 here today and must keep getting one: cost is money,
+   * and "Багш санхүүгийн бүрэн мэдээллийг харах эрхгүй" is the client's own
+   * instruction. The cook already types these prices in on the order form, so
+   * showing them the arithmetic reveals nothing they did not enter.
+   */
   async getRecipe(actor: Actor, id: string) {
     const recipe = await this.repo.findRecipe(id);
     if (!recipe) throw new NotFoundException();
     this.tenants.assertCanManageKitchen(actor, recipe.kindergartenId);
-    return toRecipeResponse(recipe);
+
+    const cost = await this.recipeCost(recipe.kindergartenId, recipe);
+    return { ...toRecipeResponse(recipe), cost };
+  }
+
+  /**
+   * What one portion of this card costs, at the prices in force on `asOf`.
+   *
+   * Defaults to today. `nutritionReport`'s cost twin passes each day's own
+   * date so that a month already reported does not change under the reader —
+   * see `latestIngredientPrices`.
+   */
+  private async recipeCost(kindergartenId: string, recipe: RecipeRow, asOf = new Date()) {
+    const lines = recipe.ingredients.map((line) => ({
+      ingredientId: line.ingredient.id,
+      ingredientName: line.ingredient.name,
+      quantity: new Decimal((line.quantity as { toString(): string }).toString()),
+    }));
+
+    const rows = await this.repo.latestIngredientPrices(
+      kindergartenId,
+      lines.map((line) => line.ingredientId),
+      asOf,
+    );
+    const prices = new Map(
+      rows.map((row) => [row.ingredientId, new Decimal(row.unitPrice.toString())]),
+    );
+
+    return costOfRecipe({
+      lines,
+      yieldPortions: recipe.yieldPortions,
+      prices,
+      pricedOn: asOf.toISOString().slice(0, 10),
+    });
   }
 
   async createRecipe(actor: Actor, kindergartenId: string, dto: CreateRecipeDto) {
@@ -370,7 +425,7 @@ export class KitchenService {
   async listSuppliers(actor: Actor, kindergartenId: string, query: ListSuppliersQuery) {
     this.tenants.assertCanManageKitchen(actor, kindergartenId);
     const { skip, take } = toSkipTake(query);
-    const { items, total } = await this.repo.listSuppliers(kindergartenId, skip, take);
+    const { items, total } = await this.repo.listSuppliers(kindergartenId, query.q, skip, take);
     return paginate(items, total, query);
   }
 
@@ -435,6 +490,7 @@ export class KitchenService {
     const { items, total } = await this.repo.listFoodOrders(
       kindergartenId,
       query.status,
+      query.q,
       skip,
       take,
     );

@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { toSkipTake, type PageParams } from "../common/pagination";
+import { searchWhere } from "../common/repository/search";
 
 /**
  * The document library — RFP §9.
@@ -35,14 +36,7 @@ export class DocumentsRepository {
       kindergartenId,
       deletedAt: null,
       ...(filters.category ? { category: filters.category } : {}),
-      ...(filters.q
-        ? {
-            OR: [
-              { title: { contains: filters.q, mode: "insensitive" as const } },
-              { description: { contains: filters.q, mode: "insensitive" as const } },
-            ],
-          }
-        : {}),
+      ...(searchWhere(filters.q, ["title", "description"]) ?? {}),
       ...(filters.bookmarkedOnly ? { bookmarks: { some: { userId } } } : {}),
     };
 

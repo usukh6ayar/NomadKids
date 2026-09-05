@@ -408,6 +408,9 @@ model User {
   growthRecorded        GrowthMeasurement[]       @relation("GrowthRecordedBy")
   milestonesRecorded    Milestone[]               @relation("MilestoneRecordedBy")
   allergiesRecorded     AllergyRecord[]           @relation("AllergyRecordedBy")
+  specialNeedsRecorded  SpecialNeedRecord[]       @relation("SpecialNeedRecordedBy")
+  staffRecords          StaffRecord[]             @relation("StaffRecordSubject")
+  staffRecordsCreated   StaffRecord[]             @relation("StaffRecordCreatedBy")
   medicationsAuthorised MedicationAuthorisation[] @relation("MedicationAuthorisedBy")
   vaccinationsRecorded  VaccinationRecord[]       @relation("VaccinationRecordedBy")
   incidentsRecorded     SafetyIncident[]          @relation("IncidentRecordedBy")
@@ -584,6 +587,9 @@ model Kindergarten {
   growthMeasurements    GrowthMeasurement[]
   milestones            Milestone[]
   allergies             AllergyRecord[]
+  specialNeedsCategories SpecialNeedsCategory[]
+  specialNeeds          SpecialNeedRecord[]
+  staffRecords          StaffRecord[]
   medications           MedicationAuthorisation[]
   vaccinations          VaccinationRecord[]
   safetyIncidents       SafetyIncident[]
@@ -776,6 +782,7 @@ model Child {
   growthMeasurements  GrowthMeasurement[]
   milestones          Milestone[]
   allergies           AllergyRecord[]
+  specialNeeds        SpecialNeedRecord[]
   medications         MedicationAuthorisation[]
   vaccinations        VaccinationRecord[]
   safetyIncidents     SafetyIncident[]
@@ -1098,6 +1105,174 @@ model AllergyRecord {
   /// The menu cross-check: every live allergy in one kindergarten, at once.
   @@index([kindergartenId, endedOn])
   @@map("allergy_records")
+}
+
+/// The special-needs classification — Order А/261, kindergarten criterion 11.
+///
+/// ★ A table, not a TypeScript enum, because CLAUDE.md §2.3 says so and this
+/// is the case the rule exists for: the ministry's category list is theirs to
+/// revise, and a revision must not be a deployment. `kindergartenId = NULL`
+/// rows are the system list every kindergarten inherits; a kindergarten may
+/// add its own without touching them. Same shape and the same partial unique
+/// index as `ObservationType`, which this deliberately mirrors rather than
+/// inventing a second pattern for the same job.
+///
+/// ★★ Not `AllergyRecord`'s free-text `allergen` treatment, and the reason is
+/// the opposite of that one's. An allergen is matched against whatever a cook
+/// typed on a dish, so a closed list would make a real allergy unrecordable.
+/// A special-needs category is *reported to the state*, which counts them —
+/// free text would give every kindergarten its own spelling of the same
+/// category and make the aggregate meaningless.
+model SpecialNeedsCategory {
+  id             String  @id @default(uuid()) @db.Uuid
+  kindergartenId String? @db.Uuid
+  name           String
+  code           String
+  order          Int     @default(0)
+  isActive       Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten?       @relation(fields: [kindergartenId], references: [id], onDelete: Cascade)
+  records      SpecialNeedRecord[]
+
+  @@unique([kindergartenId, code])
+  @@index([kindergartenId, isActive, order])
+  @@map("special_needs_categories")
+}
+
+/// One child's recorded special need.
+///
+/// ★ `endedOn` rather than a delete, for `AllergyRecord`'s reason: a need that
+/// no longer applies is part of the child's history, and the teacher reading
+/// back through it needs to know the support was once in place.
+///
+/// ★★ `documentNo` is free text and nullable. The commission decision that
+/// establishes a category has a number, but a kindergarten is often told the
+/// category before the paperwork reaches them — requiring it would mean the
+/// child's actual need goes unrecorded until an office posts a form.
+model SpecialNeedRecord {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  childId        String @db.Uuid
+  categoryId     String @db.Uuid
+
+  /// What support this child actually needs, in the staff's own words. The
+  /// category says which kind; this says what to do on Monday morning.
+  note       String?
+  documentNo String?
+
+  assessedOn DateTime  @db.Date
+  endedOn    DateTime? @db.Date
+
+  recordedById String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten         @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child                @relation(fields: [childId], references: [id], onDelete: Cascade)
+  /// Restrict: a category with children recorded against it cannot be deleted
+  /// out from under them — the same guard `RecipeIngredient` puts on
+  /// `Ingredient`.
+  category     SpecialNeedsCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  recordedBy   User?                @relation("SpecialNeedRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  /// The child's health screen: every live need for one child.
+  @@index([childId, endedOn])
+  /// The state return: every live need in one kindergarten, counted by category.
+  @@index([kindergartenId, endedOn])
+  @@index([categoryId])
+  @@map("special_need_records")
+}
+
+/// What kind of thing a `StaffRecord` records.
+///
+/// ★ An enum, not a table, and that is §2.3's line rather than an exception to
+/// it: "anything an administrator can edit is a table; system-level values may
+/// be enums". These three are the *shape* of the record — an experience row has
+/// a date range and an employer, a qualification row has an issuer and an
+/// expiry — so adding a fourth is a schema change and a form, not a row an
+/// administrator types. `SpecialNeedsCategory` beside it is the opposite case
+/// and is a table for the opposite reason.
+enum StaffRecordKind {
+  /// Ажлын туршлага — a post held, here or elsewhere.
+  EXPERIENCE
+  /// Гэрчилгээ — a certificate, licence or award.
+  CERTIFICATE
+  /// Боловсрол, зэрэг — a degree or a professional grade (заслагч, тэргүүлэх…).
+  QUALIFICATION
+}
+
+/// A member of staff's experience, certificates and grades — Order А/261,
+/// criterion 51.
+///
+/// ★ **Rows against `User`, not a new `Staff` model.**
+///
+/// The compliance note asked for "тусдаа `Staff` модель", and a second model
+/// for a person the system already has would be the mistake, not the fix: a
+/// teacher is a `User` with a `Membership`, and every screen, every audit row
+/// and every authorization path already says so. A parallel `Staff` table would
+/// need its own identity, its own link back to the login, and its own answer to
+/// "which of these two names is right" — for the sake of three lists that hang
+/// off a person.
+///
+/// ★★ **`kindergartenId` as well as `userId`** (§3.1). A certificate belongs to
+/// the person, but the *record* belongs to the kindergarten that collected it
+/// and reports it to the ministry: it is their return to file, their
+/// administrator who typed it, and their business only. A teacher who moves
+/// takes the paper and the new kindergarten records it themselves, which is
+/// also what happens off-screen.
+///
+/// ★★★ One table with a `kind` rather than three. The three share every column
+/// that matters — a title, an issuer, a date range, a document number — and the
+/// screen is one list a reader scans in one pass. Three tables would be three
+/// repositories, three authorization paths and three migrations to add the
+/// field all of them turn out to need.
+model StaffRecord {
+  id             String          @id @default(uuid()) @db.Uuid
+  kindergartenId String          @db.Uuid
+  userId         String          @db.Uuid
+  kind           StaffRecordKind
+
+  /// The post, the certificate's name, the degree. Required — a record with no
+  /// title is a row nobody can read back.
+  title String
+  /// Where it came from: the employer for EXPERIENCE, the awarding body
+  /// otherwise. Free text, because the state keeps no register we can validate
+  /// against.
+  issuer String?
+  /// Гэрчилгээний дугаар, дипломын дугаар.
+  documentNo String?
+  note       String?
+
+  /// ★ `startedOn` is required and `endedOn` is not, so "2019 оноос одоог
+  /// хүртэл" is expressible. A certificate uses `startedOn` as its issue date
+  /// and `endedOn` as its expiry — which is what makes "renewal due" a query
+  /// against one column rather than a rule per kind.
+  startedOn DateTime  @db.Date
+  endedOn   DateTime? @db.Date
+
+  createdById String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  /// Cascade: the records describe this person and mean nothing without them.
+  user         User         @relation("StaffRecordSubject", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("StaffRecordCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  /// One person's file, newest first.
+  @@index([userId, kindergartenId, startedOn(sort: Desc)])
+  /// The kindergarten's own return — every certificate it has on file, and the
+  /// expiry sweep that asks which lapse this term.
+  @@index([kindergartenId, kind, endedOn])
+  @@map("staff_records")
 }
 
 /// A guardian's instruction to give medicine — RFP Module 2, "Эм хэрэглээний

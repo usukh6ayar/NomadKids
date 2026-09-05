@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { searchTermSchema } from "../common/repository/search";
 
 export const INCIDENT_KINDS = [
   "INJURY",
@@ -77,5 +78,7 @@ export const listIncidentsQuerySchema = z.object({
   /** The unreported queue — Module 2.1's reason for `reportedAt` being null. */
   unreportedOnly: z.coerce.boolean().optional(),
   highPriorityOnly: z.coerce.boolean().optional(),
+  /** А/261 шалгуур 21 — added 2026-09-05 with the rest of the sweep. */
+  q: searchTermSchema,
 });
 export type ListIncidentsQuery = z.infer<typeof listIncidentsQuerySchema>;

@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { toSkipTake, type PageParams } from "../common/pagination";
 import type { Role } from "../domain/enums";
+import { searchWhere } from "../common/repository/search";
 
 /**
  * Users and their memberships.
@@ -36,15 +37,7 @@ export class UsersRepository {
           ...(filters.isActive !== undefined ? { isActive: filters.isActive } : {}),
         },
       },
-      ...(filters.q
-        ? {
-            OR: [
-              { lastName: { contains: filters.q, mode: "insensitive" as const } },
-              { firstName: { contains: filters.q, mode: "insensitive" as const } },
-              { username: { contains: filters.q, mode: "insensitive" as const } },
-            ],
-          }
-        : {}),
+      ...(searchWhere(filters.q, ["lastName", "firstName", "username"]) ?? {}),
     };
 
     const [items, total] = await Promise.all([

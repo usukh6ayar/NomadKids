@@ -953,3 +953,270 @@ describe("reports", () => {
     expect(row.totalAmount).toBe("18500.00");
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Recipe cost — Order А/261, kindergarten criterion 38
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Нэг хүүхдэд ногдох өртөг.
+ *
+ * ★ Exercised through HTTP against real orders rather than against
+ * `costOfRecipe` directly, because the arithmetic is the easy half. The part
+ * that can actually leak is *which* prices the query picks: the newest one as
+ * of a date, from this kindergarten only, ignoring drafts and cancellations.
+ * A unit test over a hand-built price map would pass with every one of those
+ * wrong.
+ */
+describe("recipe cost", () => {
+  async function supplierFor(session: AuthSession, kindergartenId: string) {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${kindergartenId}/suppliers`),
+      session,
+    ).send({ name: `Нийлүүлэгч-${Math.random().toString(36).slice(2, 8)}` });
+    if (res.status !== 201) throw new Error(`createSupplier failed: ${res.status} ${res.text}`);
+    return res.body as { id: string };
+  }
+
+  /** Places an order, which is what gives an ingredient a price. */
+  async function order(
+    session: AuthSession,
+    kindergartenId: string,
+    supplierId: string,
+    orderDate: string,
+    lines: { ingredientId: string; quantity: string; unitPrice: string }[],
+  ) {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${kindergartenId}/food-orders`),
+      session,
+    ).send({ supplierId, orderDate, lines });
+    if (res.status !== 201) throw new Error(`order failed: ${res.status} ${res.text}`);
+    return res.body as { id: string };
+  }
+
+  async function costOf(session: AuthSession, recipeId: string) {
+    const res = await authed(request(server()).get(`/v1/recipes/${recipeId}`), session);
+    if (res.status !== 200) throw new Error(`getRecipe failed: ${res.status} ${res.text}`);
+    return res.body.cost as {
+      total: string | null;
+      perPortion: string | null;
+      unpricedIngredients: string[];
+      pricedOn: string;
+    };
+  }
+
+  it("prices a card from its ingredients and divides by the yield", async () => {
+    const supplier = await supplierFor(cookA, a.kindergarten.id);
+    const flour = await createIngredient(cookA, a.kindergarten.id, { name: "Гурил" });
+    const sugar = await createIngredient(cookA, a.kindergarten.id, { name: "Элсэн чихэр" });
+
+    // 2.5₮/g and 4₮/g, in the ingredients' own unit — the same unit
+    // `FoodOrderLine.quantity` is denominated in.
+    await order(cookA, a.kindergarten.id, supplier.id, "2026-04-01", [
+      { ingredientId: flour.id, quantity: "5000", unitPrice: "2.5" },
+      { ingredientId: sugar.id, quantity: "1000", unitPrice: "4" },
+    ]);
+
+    const recipe = await createRecipe(cookA, a.kindergarten.id, "Бялуу", 20, [
+      { ingredientId: flour.id, quantity: "400" }, // 400 × 2.5 = 1000
+      { ingredientId: sugar.id, quantity: "100" }, // 100 × 4   =  400
+    ]);
+
+    const cost = await costOf(cookA, recipe.id);
+    expect(Number(cost.total)).toBe(1400);
+    expect(Number(cost.perPortion)).toBe(70); // 1400 / 20
+    expect(cost.unpricedIngredients).toEqual([]);
+  });
+
+  /**
+   * ★ The one that matters most.
+   *
+   * An unpriced ingredient nulls the whole figure instead of contributing
+   * zero. A card that says 1000₮ when one of its two ingredients was silently
+   * skipped is worse than one that says nothing, because nobody can see it is
+   * wrong — and this is a number an inspector reads.
+   */
+  it("refuses to price a card with an ingredient nobody has bought", async () => {
+    const supplier = await supplierFor(cookA, a.kindergarten.id);
+    const flour = await createIngredient(cookA, a.kindergarten.id, { name: "Гурил" });
+    const saffron = await createIngredient(cookA, a.kindergarten.id, { name: "Гүргэм" });
+
+    await order(cookA, a.kindergarten.id, supplier.id, "2026-04-01", [
+      { ingredientId: flour.id, quantity: "5000", unitPrice: "2.5" },
+    ]);
+
+    const recipe = await createRecipe(cookA, a.kindergarten.id, "Гүргэмтэй будаа", 10, [
+      { ingredientId: flour.id, quantity: "400" },
+      { ingredientId: saffron.id, quantity: "2" },
+    ]);
+
+    const cost = await costOf(cookA, recipe.id);
+    expect(cost.total).toBeNull();
+    expect(cost.perPortion).toBeNull();
+    // Named, so the screen can say which one to go and buy.
+    expect(cost.unpricedIngredients).toEqual(["Гүргэм"]);
+  });
+
+  it("uses the most recent order's price, not the first or the cheapest", async () => {
+    const supplier = await supplierFor(cookA, a.kindergarten.id);
+    const flour = await createIngredient(cookA, a.kindergarten.id, { name: "Гурил" });
+
+    await order(cookA, a.kindergarten.id, supplier.id, "2026-04-01", [
+      { ingredientId: flour.id, quantity: "1000", unitPrice: "2" },
+    ]);
+    await order(cookA, a.kindergarten.id, supplier.id, "2026-06-01", [
+      { ingredientId: flour.id, quantity: "1000", unitPrice: "3" },
+    ]);
+    // Out of date order on purpose: the query must sort by `orderDate`, not by
+    // the order rows happen to have been inserted in.
+    await order(cookA, a.kindergarten.id, supplier.id, "2026-05-01", [
+      { ingredientId: flour.id, quantity: "1000", unitPrice: "9" },
+    ]);
+
+    const recipe = await createRecipe(cookA, a.kindergarten.id, "Талх", 10, [
+      { ingredientId: flour.id, quantity: "1000" },
+    ]);
+
+    const cost = await costOf(cookA, recipe.id);
+    expect(Number(cost.total)).toBe(3000); // 1000 × 3, June's price
+  });
+
+  /**
+   * ★ A draft is a number somebody typed and has not committed to.
+   *
+   * `POST /food-orders` creates an `ORDERED` row, so the draft here is written
+   * directly — there is no endpoint that leaves one in `DRAFT`, which is
+   * exactly why the filter needs a test rather than being assumed unreachable.
+   */
+  it("ignores draft and cancelled orders", async () => {
+    const supplier = await supplierFor(cookA, a.kindergarten.id);
+    const flour = await createIngredient(cookA, a.kindergarten.id, { name: "Гурил" });
+
+    await order(cookA, a.kindergarten.id, supplier.id, "2026-04-01", [
+      { ingredientId: flour.id, quantity: "1000", unitPrice: "2" },
+    ]);
+
+    for (const status of ["DRAFT", "CANCELLED"] as const) {
+      const ignored = await db.foodOrder.create({
+        data: {
+          kindergartenId: a.kindergarten.id,
+          supplierId: supplier.id,
+          orderDate: new Date("2026-08-01T00:00:00.000Z"),
+          status,
+        },
+      });
+      await db.foodOrderLine.create({
+        data: {
+          foodOrderId: ignored.id,
+          ingredientId: flour.id,
+          quantity: "1000",
+          unitPrice: "50",
+          totalPrice: "50000",
+        },
+      });
+    }
+
+    const recipe = await createRecipe(cookA, a.kindergarten.id, "Талх", 10, [
+      { ingredientId: flour.id, quantity: "1000" },
+    ]);
+
+    const cost = await costOf(cookA, recipe.id);
+    // April's committed 2₮, not August's uncommitted 50₮.
+    expect(Number(cost.total)).toBe(2000);
+  });
+
+  /**
+   * ★ `FoodOrderLine` carries no `kindergartenId` — it reaches its tenant
+   * through `FoodOrder`. So the join condition in `latestIngredientPrices` is
+   * the only thing standing between one kitchen's costs and another's, which
+   * makes it worth a test of its own rather than trusting the base filter that
+   * does not exist on this table.
+   *
+   * Both kindergartens are given an ingredient of the same name, because a
+   * cross-tenant leak here would look like a plausible number rather than an
+   * error.
+   */
+  it("never prices a card from another kindergarten's orders", async () => {
+    const supplierB = await supplierFor(cookB, b.kindergarten.id);
+    const flourB = await createIngredient(cookB, b.kindergarten.id, { name: "Гурил" });
+    await order(cookB, b.kindergarten.id, supplierB.id, "2026-04-01", [
+      { ingredientId: flourB.id, quantity: "1000", unitPrice: "7" },
+    ]);
+
+    const flourA = await createIngredient(cookA, a.kindergarten.id, { name: "Гурил" });
+    const recipe = await createRecipe(cookA, a.kindergarten.id, "Талх", 10, [
+      { ingredientId: flourA.id, quantity: "1000" },
+    ]);
+
+    const cost = await costOf(cookA, recipe.id);
+    expect(cost.total).toBeNull();
+    expect(cost.unpricedIngredients).toEqual(["Гурил"]);
+  });
+
+  /**
+   * ★ Cost is money, and a teacher has none of it.
+   *
+   * `getRecipe` is already behind `assertCanManageKitchen`, so this passes
+   * today — it is here so that widening that gate later, for some unrelated
+   * reason, cannot quietly put a price in front of a teacher. "Багш санхүүгийн
+   * бүрэн мэдээллийг харах эрхгүй" is the client's own instruction.
+   */
+  it("a teacher gets 404 on the card, so never sees its cost", async () => {
+    const flour = await createIngredient(cookA, a.kindergarten.id, { name: "Гурил" });
+    const recipe = await createRecipe(cookA, a.kindergarten.id, "Талх", 10, [
+      { ingredientId: flour.id, quantity: "1000" },
+    ]);
+
+    const res = await authed(request(server()).get(`/v1/recipes/${recipe.id}`), teacherA);
+    expect(res.status).toBe(404);
+  });
+
+  /**
+   * ★ A card with no lines costs nothing *knowable*, not nothing.
+   *
+   * `POST /recipes` refuses an empty `ingredients` array — "Дор хаяж нэг орц
+   * оруулна уу" — so this state is not reachable through the API and the test
+   * that tried was wrong about the product. It is still reachable in the
+   * database, which is what makes the guard worth keeping: `0₮` on a card
+   * whose lines have gone reads as "this meal is free" rather than "there is
+   * nothing here to price", and the two need different actions.
+   */
+  it("does not price a card with no ingredient lines as free", async () => {
+    const flour = await createIngredient(cookA, a.kindergarten.id, { name: "Гурил" });
+    const recipe = await createRecipe(cookA, a.kindergarten.id, "Шинэ карт", 10, [
+      { ingredientId: flour.id, quantity: "1000" },
+    ]);
+
+    const empty = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/recipes`),
+      cookA,
+    ).send({
+      name: "Хоосон",
+      yieldPortions: 10,
+      ingredients: [],
+    });
+    expect(empty.status).toBe(400);
+
+    await db.recipeIngredient.deleteMany({ where: { recipeId: recipe.id } });
+
+    const cost = await costOf(cookA, recipe.id);
+    expect(cost.total).toBeNull();
+    expect(cost.perPortion).toBeNull();
+    expect(cost.unpricedIngredients).toEqual([]);
+  });
+
+  /** The list stays one query — costing forty cards would be forty lookups. */
+  it("omits the cost from the list view", async () => {
+    const flour = await createIngredient(cookA, a.kindergarten.id, { name: "Гурил" });
+    await createRecipe(cookA, a.kindergarten.id, "Талх", 10, [
+      { ingredientId: flour.id, quantity: "1000" },
+    ]);
+
+    const res = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/recipes`),
+      cookA,
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.items[0].cost).toBeUndefined();
+  });
+});

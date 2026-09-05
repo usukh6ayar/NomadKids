@@ -7,6 +7,7 @@ import type {
   RecipeStatus,
   StockDirection,
 } from "../domain/enums";
+import { anyOf, searchRelation, searchWhere } from "../common/repository/search";
 
 const unitRefSelect = {
   select: { id: true, name: true, unit: true },
@@ -37,8 +38,8 @@ export class KitchenRepository {
 
   // ── Ingredients ──────────────────────────────────────────────────────────
 
-  async listIngredients(kindergartenId: string, skip: number, take: number) {
-    const where = { kindergartenId, deletedAt: null };
+  async listIngredients(kindergartenId: string, q: string | undefined, skip: number, take: number) {
+    const where = { kindergartenId, deletedAt: null, ...(searchWhere(q, ["name", "note"]) ?? {}) };
     const [items, total] = await Promise.all([
       this.prisma.ingredient.findMany({ where, orderBy: { name: "asc" }, skip, take }),
       this.prisma.ingredient.count({ where }),
@@ -85,10 +86,16 @@ export class KitchenRepository {
   async listRecipes(
     kindergartenId: string,
     status: RecipeStatus | undefined,
+    q: string | undefined,
     skip: number,
     take: number,
   ) {
-    const where = { kindergartenId, deletedAt: null, ...(status ? { status } : {}) };
+    const where = {
+      kindergartenId,
+      deletedAt: null,
+      ...(status ? { status } : {}),
+      ...(searchWhere(q, ["name", "instructions"]) ?? {}),
+    };
     const [items, total] = await Promise.all([
       this.prisma.recipe.findMany({
         where,
@@ -110,6 +117,55 @@ export class KitchenRepository {
       orderBy: { name: "asc" },
       select: { id: true, name: true, yieldPortions: true, mealKind: true },
     });
+  }
+
+  /**
+   * The most recent purchase price for each of these ingredients, as of a
+   * date — what a technology card's cost is calculated from (Order А/261,
+   * kindergarten criterion 38).
+   *
+   * ★ **As of a date, not "the latest overall".**
+   *
+   * Pricing a March menu with today's newest order would make last month's
+   * cost report change every time somebody places an order. `FoodOrderLine`
+   * already makes this argument one level down — its `totalPrice` is "frozen
+   * at save … a later price change on a new order must not silently reprice an
+   * old one" — and a report over a range is the same rule applied to the
+   * range's own dates.
+   *
+   * ★★ **Tenant-scoped through `FoodOrder`, because the line itself is not.**
+   *
+   * `FoodOrderLine` carries no `kindergartenId` (CLAUDE.md §3.1 is about
+   * tenant-scoped tables; this one reaches its tenant through its order). So
+   * the join condition is load-bearing: without `o."kindergartenId" = $1` a
+   * neighbouring kindergarten's supplier price would price this kitchen's
+   * food. The soft-delete filter on the order is there for the same reason.
+   *
+   * ★★★ **`DRAFT` and `CANCELLED` are excluded.** A draft price is a number
+   * somebody typed and has not committed to, and a cancelled order is one that
+   * never happened; neither is evidence of what an ingredient costs. `ORDERED`
+   * counts because the kindergarten is contractually buying at that price
+   * whether or not the delivery has arrived.
+   *
+   * `DISTINCT ON` rather than fetching every line and picking in JavaScript:
+   * an ingredient bought weekly for three years is 150 rows, and this is
+   * called once per recipe.
+   */
+  async latestIngredientPrices(kindergartenId: string, ingredientIds: string[], asOf: Date) {
+    if (ingredientIds.length === 0) return [];
+
+    return this.prisma.$queryRaw<{ ingredientId: string; unitPrice: Prisma.Decimal }[]>`
+      SELECT DISTINCT ON (l."ingredientId")
+             l."ingredientId", l."unitPrice"
+      FROM food_order_lines l
+      JOIN food_orders o ON o.id = l."foodOrderId"
+      WHERE o."kindergartenId" = ${kindergartenId}::uuid
+        AND o."deletedAt" IS NULL
+        AND o.status IN ('ORDERED', 'RECEIVED')
+        AND o."orderDate" <= ${asOf}
+        AND l."ingredientId" = ANY(${ingredientIds}::uuid[])
+      ORDER BY l."ingredientId", o."orderDate" DESC, o."createdAt" DESC
+    `;
   }
 
   async findRecipe(id: string) {
@@ -201,8 +257,12 @@ export class KitchenRepository {
 
   // ── Suppliers ────────────────────────────────────────────────────────────
 
-  async listSuppliers(kindergartenId: string, skip: number, take: number) {
-    const where = { kindergartenId, deletedAt: null };
+  async listSuppliers(kindergartenId: string, q: string | undefined, skip: number, take: number) {
+    const where = {
+      kindergartenId,
+      deletedAt: null,
+      ...(searchWhere(q, ["name", "registrationNumber", "contactPerson", "contactPhone"]) ?? {}),
+    };
     const [items, total] = await Promise.all([
       this.prisma.supplier.findMany({ where, orderBy: { name: "asc" }, skip, take }),
       this.prisma.supplier.count({ where }),
@@ -236,10 +296,22 @@ export class KitchenRepository {
   async listFoodOrders(
     kindergartenId: string,
     status: FoodOrderStatus | undefined,
+    q: string | undefined,
     skip: number,
     take: number,
   ) {
-    const where = { kindergartenId, deletedAt: null, ...(status ? { status } : {}) };
+    const where = {
+      kindergartenId,
+      deletedAt: null,
+      ...(status ? { status } : {}),
+      /*
+       * ★ The supplier's name, through the relation — not only the note.
+       *
+       * "Хүнс ХХК" is how a cook refers to an order; its own columns are a
+       * date and a status, neither of which anybody types into a search box.
+       */
+      ...(anyOf(searchWhere(q, ["note"]), searchRelation(q, "supplier", ["name"])) ?? {}),
+    };
     const [items, total] = await Promise.all([
       this.prisma.foodOrder.findMany({
         where,

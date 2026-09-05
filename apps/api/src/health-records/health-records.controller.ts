@@ -8,12 +8,16 @@ import { HealthRecordsService } from "./health-records.service";
 import {
   createAllergySchema,
   createMedicationSchema,
+  createSpecialNeedSchema,
   createVaccinationSchema,
   updateAllergySchema,
+  updateSpecialNeedSchema,
   type CreateAllergyDto,
   type CreateMedicationDto,
+  type CreateSpecialNeedDto,
   type CreateVaccinationDto,
   type UpdateAllergyDto,
+  type UpdateSpecialNeedDto,
 } from "./health-records.dto";
 
 /**
@@ -62,6 +66,34 @@ export class ChildHealthController {
     return this.service.createMedication(actor, params.id, body);
   }
 
+  /**
+   * The categories this child may be filed under — Order А/261, criterion 11.
+   *
+   * ★ Hung off the child rather than the kindergarten, unlike the other
+   * reference lists in `catalog.controller.ts`. Those are an administrator
+   * editing configuration; this is the picker on the health screen, and the
+   * caller there has a child id and no reason to know a kindergarten id.
+   */
+  @Get("special-needs/categories")
+  @Roles("TEACHER", "ADMIN")
+  async listSpecialNeedsCategories(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.listSpecialNeedsCategories(actor, params.id);
+  }
+
+  /** Staff only — a classification is something other people act on. */
+  @Post("special-needs")
+  @Roles("TEACHER", "ADMIN")
+  async createSpecialNeed(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(createSpecialNeedSchema)) body: CreateSpecialNeedDto,
+  ) {
+    return this.service.createSpecialNeed(actor, params.id, body);
+  }
+
   @Post("vaccinations")
   @Roles("TEACHER", "ADMIN")
   async createVaccination(
@@ -94,6 +126,25 @@ export class HealthRecordsController {
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
   ) {
     return this.service.removeAllergy(actor, params.id);
+  }
+
+  @Patch("special-needs/:id")
+  @Roles("TEACHER", "ADMIN")
+  async updateSpecialNeed(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(updateSpecialNeedSchema)) body: UpdateSpecialNeedDto,
+  ) {
+    return this.service.updateSpecialNeed(actor, params.id, body);
+  }
+
+  @Delete("special-needs/:id")
+  @Roles("TEACHER", "ADMIN")
+  async removeSpecialNeed(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.removeSpecialNeed(actor, params.id);
   }
 
   /** The guardian who authorised it, or staff — see the service. */

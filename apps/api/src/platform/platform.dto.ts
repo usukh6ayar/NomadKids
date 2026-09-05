@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { paginationQuerySchema } from "@kinder/contracts";
 import { createUserSchema } from "../users/users.dto";
+import { searchTermSchema } from "../common/repository/search";
 
 /**
  * The first director, created with the kindergarten.
@@ -22,7 +23,7 @@ export const createKindergartenSchema = z.object({
 export type CreateKindergartenDto = z.infer<typeof createKindergartenSchema>;
 
 export const listPlatformKindergartensQuerySchema = paginationQuerySchema.extend({
-  q: z.string().max(100).optional(),
+  q: searchTermSchema,
   /**
    * ★ `z.stringbool()`, NOT `z.coerce.boolean()`.
    *

@@ -7,6 +7,7 @@ import { childKey } from "./child-import";
 import { toSkipTake, type PageParams } from "../common/pagination";
 import type { VisibleChildrenFilter } from "../authz/authz.repository";
 import type { ChildStatus, EnrollmentStatus, GuardianRelation, Sex } from "../domain/enums";
+import { searchWhere } from "../common/repository/search";
 
 /**
  * An age range, as a birth-date range — RFP §11's "нас … шүүх".
@@ -116,14 +117,7 @@ export class ChildrenRepository {
           ...(filters.status ? { status: filters.status } : {}),
           ...(filters.sex ? { sex: filters.sex } : {}),
           ...ageRangeWhere(filters.ageMin, filters.ageMax),
-          ...(filters.q
-            ? {
-                OR: [
-                  { lastName: { contains: filters.q, mode: "insensitive" as const } },
-                  { firstName: { contains: filters.q, mode: "insensitive" as const } },
-                ],
-              }
-            : {}),
+          ...(searchWhere(filters.q, ["lastName", "firstName"]) ?? {}),
           // Group and school-year filters go through enrollments, so a child
           // who has moved group still matches the group they are in *now*.
           ...(filters.groupId || filters.schoolYearId

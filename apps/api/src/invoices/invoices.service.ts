@@ -75,6 +75,7 @@ export class InvoicesService {
         month: query.month ? toMonthDate(query.month) : undefined,
         childId: query.childId,
         status: query.status,
+        q: query.q,
       },
       toSkipTake(page),
     );

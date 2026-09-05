@@ -667,3 +667,261 @@ describe("menu versus allergies", () => {
     expect(res.body[0].warnings).toHaveLength(0);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Special needs — Order А/261, kindergarten criterion 11
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * The special-needs classification.
+ *
+ * ★ What these protect is that the *category* is a closed, shared vocabulary
+ * while the note beside it is free text. The state counts these categories, so
+ * a kindergarten that could invent one — or borrow another kindergarten's —
+ * would quietly make the national aggregate wrong rather than fail loudly.
+ */
+describe("special needs", () => {
+  /** The system list every kindergarten inherits, by code. */
+  async function categories(session: AuthSession, childId: string) {
+    const res = await authed(
+      request(server()).get(`/v1/children/${childId}/health/special-needs/categories`),
+      session,
+    );
+    return res;
+  }
+
+  async function codeToId(session: AuthSession, childId: string, code: string): Promise<string> {
+    const res = await categories(session, childId);
+    const found = (res.body as { id: string; code: string }[]).find((c) => c.code === code);
+    if (!found) throw new Error(`Ангилал алга: ${code}`);
+    return found.id;
+  }
+
+  it("offers the nine system categories the seed installs", async () => {
+    const res = await categories(teacherA, a.child.id);
+
+    expect(res.status).toBe(200);
+    expect(res.body.map((c: { code: string }) => c.code)).toEqual([
+      "vision",
+      "hearing",
+      "speech",
+      "mobility",
+      "intellectual",
+      "psychosocial",
+      "autism",
+      "multiple",
+      "other",
+    ]);
+    // A system row: no kindergarten owns it, so no kindergarten may edit it.
+    expect(res.body[0].kindergartenId).toBeNull();
+  });
+
+  it("records a classification and reads it back on the health screen", async () => {
+    const categoryId = await codeToId(teacherA, a.child.id, "speech");
+
+    const created = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/health/special-needs`),
+      teacherA,
+    ).send({
+      categoryId,
+      note: "Ганцаарчилсан хичээл долоо хоногт 2 удаа",
+      documentNo: "КОМ-2026/114",
+      assessedOn: inDays(-60),
+    });
+
+    expect(created.status).toBe(201);
+    expect(created.body.category.code).toBe("speech");
+
+    const health = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/health`),
+      teacherA,
+    );
+    expect(health.status).toBe(200);
+    expect(health.body.specialNeeds).toHaveLength(1);
+    expect(health.body.specialNeeds[0].category.name).toBe("Хэл яриа");
+    expect(health.body.specialNeeds[0].documentNo).toBe("КОМ-2026/114");
+    // `@db.Date` round-trips as the date recorded, not a timestamp.
+    expect(health.body.specialNeeds[0].assessedOn).toBe(inDays(-60));
+    expect(health.body.specialNeeds[0].endedOn).toBeNull();
+  });
+
+  /**
+   * ★ The cross-tenant case this endpoint actually has, and it is not the
+   * usual one.
+   *
+   * `categoryId` is a uuid in the request body, so it never passes through
+   * `canAccessChild` — the child is A's and the check passes. Nothing stops a
+   * caller pasting an id they read from their *own* kindergarten's private
+   * category list into a request about a child in another. The service
+   * re-resolves the category against the child's kindergarten, which turns
+   * that into a 400 instead of a row filed under a category the receiving
+   * kindergarten cannot see.
+   */
+  it("refuses a category belonging to another kindergarten", async () => {
+    const foreign = await db.specialNeedsCategory.create({
+      data: { kindergartenId: b.kindergarten.id, name: "Б-гийн ангилал", code: "b-only", order: 1 },
+    });
+
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/health/special-needs`),
+      teacherA,
+    ).send({ categoryId: foreign.id, assessedOn: inDays(-1) });
+
+    expect(res.status).toBe(400);
+
+    // And it is genuinely absent from A's picker, not merely rejected on write.
+    const list = await categories(teacherA, a.child.id);
+    expect(list.body.map((c: { code: string }) => c.code)).not.toContain("b-only");
+  });
+
+  it("refuses an inactive category", async () => {
+    const retired = await db.specialNeedsCategory.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        name: "Хуучирсан",
+        code: "retired",
+        order: 99,
+        isActive: false,
+      },
+    });
+
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/health/special-needs`),
+      teacherA,
+    ).send({ categoryId: retired.id, assessedOn: inDays(-1) });
+
+    expect(res.status).toBe(400);
+  });
+
+  /**
+   * ★ Ended, not deleted — `AllergyRecord`'s rule, for the same reason.
+   *
+   * A child whose speech support was withdrawn still had it, and the teacher
+   * reading back through the record needs to know it was once in place.
+   */
+  it("ends a record rather than losing the history", async () => {
+    const categoryId = await codeToId(teacherA, a.child.id, "vision");
+    const created = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/health/special-needs`),
+      teacherA,
+    ).send({ categoryId, assessedOn: inDays(-100) });
+
+    const ended = await authed(
+      request(server()).patch(`/v1/special-needs/${created.body.id}`),
+      teacherA,
+    ).send({ endedOn: inDays(-1) });
+    expect(ended.status).toBe(200);
+
+    const health = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/health`),
+      teacherA,
+    );
+    expect(health.body.specialNeeds).toHaveLength(1);
+    expect(health.body.specialNeeds[0].endedOn).toBe(inDays(-1));
+  });
+
+  it("removes a record with a soft delete", async () => {
+    const categoryId = await codeToId(teacherA, a.child.id, "autism");
+    const created = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/health/special-needs`),
+      teacherA,
+    ).send({ categoryId, assessedOn: inDays(-10) });
+
+    const removed = await authed(
+      request(server()).delete(`/v1/special-needs/${created.body.id}`),
+      teacherA,
+    );
+    expect(removed.status).toBe(200);
+
+    const row = await db.specialNeedRecord.findUnique({ where: { id: created.body.id } });
+    expect(row?.deletedAt).not.toBeNull();
+
+    const health = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/health`),
+      teacherA,
+    );
+    expect(health.body.specialNeeds).toHaveLength(0);
+  });
+
+  // ── Authorization — CLAUDE.md §4.1 ────────────────────────────────────────
+
+  it("a teacher from another kindergarten gets 404 writing a classification", async () => {
+    const teacherB = await login(app, b.teacherUser.username);
+    const categoryId = await codeToId(teacherB, b.child.id, "hearing");
+
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/health/special-needs`),
+      teacherB,
+    ).send({ categoryId, assessedOn: inDays(-1) });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("a teacher from another kindergarten gets 404 on the category list", async () => {
+    const teacherB = await login(app, b.teacherUser.username);
+    const res = await categories(teacherB, a.child.id);
+    expect(res.status).toBe(404);
+  });
+
+  it("a guardian of another child gets 404", async () => {
+    const res = await categories(parentB, a.child.id);
+    expect(res.status).toBe(404);
+  });
+
+  /**
+   * ★ A guardian **reads** their own child's classification but does not
+   * write it — the split `createAllergy` already makes, and for the same
+   * reason. Order А/261 counts these categories in a return the kindergarten
+   * signs, and the person who can be asked which commission decision they were
+   * reading from is a member of staff.
+   *
+   * ★★ The refusal is **404, not 403**, and this test asserted 403 until the
+   * run proved otherwise. 404 is the right answer and the assertion was the
+   * thing that was wrong: §1.7 says child data returns 404 precisely so that a
+   * status code cannot confirm a record exists, and a guardian who is told
+   * "403" about the special-needs endpoint learns the endpoint has something
+   * to say about their child. That the role guard already behaves this way is
+   * the rule working, not a coincidence to paper over.
+   */
+  it("a guardian reads their own child's classification but cannot write one", async () => {
+    const categoryId = await codeToId(teacherA, a.child.id, "mobility");
+    await authed(
+      request(server()).post(`/v1/children/${a.child.id}/health/special-needs`),
+      teacherA,
+    ).send({ categoryId, assessedOn: inDays(-5) });
+
+    const health = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/health`),
+      parentA,
+    );
+    expect(health.status).toBe(200);
+    expect(health.body.specialNeeds[0].category.code).toBe("mobility");
+
+    const write = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/health/special-needs`),
+      parentA,
+    ).send({ categoryId, assessedOn: inDays(-5) });
+    expect(write.status).toBe(404);
+  });
+
+  it("a teacher from another kindergarten gets 404 editing a record", async () => {
+    const categoryId = await codeToId(teacherA, a.child.id, "intellectual");
+    const created = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/health/special-needs`),
+      teacherA,
+    ).send({ categoryId, assessedOn: inDays(-5) });
+
+    const teacherB = await login(app, b.teacherUser.username);
+    const patched = await authed(
+      request(server()).patch(`/v1/special-needs/${created.body.id}`),
+      teacherB,
+    ).send({ note: "өөрчлөв" });
+    expect(patched.status).toBe(404);
+
+    const deleted = await authed(
+      request(server()).delete(`/v1/special-needs/${created.body.id}`),
+      teacherB,
+    );
+    expect(deleted.status).toBe(404);
+  });
+});

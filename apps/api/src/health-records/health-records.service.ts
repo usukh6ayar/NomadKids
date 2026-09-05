@@ -7,8 +7,10 @@ import { HealthRecordsRepository } from "./health-records.repository";
 import type {
   CreateAllergyDto,
   CreateMedicationDto,
+  CreateSpecialNeedDto,
   CreateVaccinationDto,
   UpdateAllergyDto,
+  UpdateSpecialNeedDto,
 } from "./health-records.dto";
 
 @Injectable()
@@ -29,7 +31,8 @@ export class HealthRecordsService {
   async get(actor: Actor, childId: string) {
     await this.childAccess.assertCanAccess(actor, childId);
 
-    const { child, allergies, medications, vaccinations } = await this.repo.loadForChild(childId);
+    const { child, allergies, specialNeeds, medications, vaccinations } =
+      await this.repo.loadForChild(childId);
     if (!child) throw new NotFoundException();
 
     const today = todayIso();
@@ -40,6 +43,11 @@ export class HealthRecordsService {
         ...a,
         notedOn: dateOnly(a.notedOn),
         endedOn: a.endedOn ? dateOnly(a.endedOn) : null,
+      })),
+      specialNeeds: specialNeeds.map((n) => ({
+        ...n,
+        assessedOn: dateOnly(n.assessedOn),
+        endedOn: n.endedOn ? dateOnly(n.endedOn) : null,
       })),
       medications: medications.map((m) => ({
         ...m,
@@ -146,6 +154,130 @@ export class HealthRecordsService {
       objectType: "AllergyRecord",
       objectId: id,
       childId: allergy.childId,
+    });
+
+    return { id };
+  }
+
+  // ── Special needs — Order А/261, kindergarten criterion 11 ─────────────────
+
+  /**
+   * The categories this kindergarten may file a child under.
+   *
+   * ★ Scoped to a child, not to a kindergarten id from the URL.
+   *
+   * The caller is already on the child's health screen, so the kindergarten is
+   * resolved from the child through `assertCanRecord` rather than trusted from
+   * a parameter — one fewer id a client can substitute, and it keeps the list
+   * consistent with the ids `createSpecialNeed` will actually accept.
+   */
+  async listSpecialNeedsCategories(actor: Actor, childId: string) {
+    const facts = await this.childAccess.assertCanRecord(actor, childId);
+    return this.repo.listSpecialNeedsCategories(facts.childKindergartenId);
+  }
+
+  /**
+   * ★ Staff only, on `createAllergy`'s reasoning rather than a new one.
+   *
+   * A special-need record changes what other people do — which teacher sits
+   * beside the child, what the group plans around — and Order А/261 counts it
+   * in a return the kindergarten signs. A family tells the kindergarten; a
+   * member of staff records it, and can be asked afterwards which commission
+   * decision they were reading from.
+   *
+   * ★★ The category is re-checked against the kindergarten here even though
+   * the DTO validated its shape. A uuid is guessable in the sense that matters:
+   * it can be *copied* from another kindergarten's response by anyone who has
+   * one, and `findSpecialNeedsCategory` is what makes that a 400 rather than a
+   * cross-tenant write.
+   */
+  async createSpecialNeed(actor: Actor, childId: string, dto: CreateSpecialNeedDto) {
+    const facts = await this.childAccess.assertCanRecord(actor, childId);
+
+    const category = await this.repo.findSpecialNeedsCategory(
+      dto.categoryId,
+      facts.childKindergartenId,
+    );
+    if (!category) throw new BadRequestException("Ангилал олдсонгүй");
+    if (!category.isActive) throw new BadRequestException("Идэвхгүй ангилал сонгосон байна");
+
+    const saved = await this.repo.createSpecialNeed({
+      childId,
+      kindergartenId: facts.childKindergartenId,
+      categoryId: dto.categoryId,
+      note: dto.note ?? null,
+      documentNo: dto.documentNo ?? null,
+      assessedOn: toDate(dto.assessedOn),
+      recordedById: actor.userId,
+    });
+
+    await this.audit.append({
+      action: "CREATE",
+      kindergartenId: facts.childKindergartenId,
+      actorUserId: actor.userId,
+      objectType: "SpecialNeedRecord",
+      objectId: saved.id,
+      childId,
+      /*
+       * The category code, not the note. The audit trail should say which
+       * classification was applied — the note is clinical detail about a
+       * child, and copying it into an append-only table nobody can correct is
+       * a second permanent home for it that no rule asked for.
+       */
+      metadata: { categoryCode: saved.category.code },
+    });
+
+    return saved;
+  }
+
+  async updateSpecialNeed(actor: Actor, id: string, dto: UpdateSpecialNeedDto) {
+    const record = await this.repo.findSpecialNeed(id);
+    if (!record) throw new NotFoundException();
+    await this.childAccess.assertCanRecord(actor, record.childId);
+
+    const data: Record<string, unknown> = {};
+    if (dto.categoryId !== undefined) {
+      const category = await this.repo.findSpecialNeedsCategory(
+        dto.categoryId,
+        record.kindergartenId,
+      );
+      if (!category) throw new BadRequestException("Ангилал олдсонгүй");
+      data.categoryId = dto.categoryId;
+    }
+    if (dto.note !== undefined) data.note = dto.note;
+    if (dto.documentNo !== undefined) data.documentNo = dto.documentNo;
+    if (dto.assessedOn !== undefined) data.assessedOn = toDate(dto.assessedOn);
+    // `null` reopens a need the child turned out to still have.
+    if (dto.endedOn !== undefined) data.endedOn = dto.endedOn ? toDate(dto.endedOn) : null;
+
+    const saved = await this.repo.updateSpecialNeed(id, data);
+
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId: record.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "SpecialNeedRecord",
+      objectId: id,
+      childId: record.childId,
+      metadata: { fields: Object.keys(data) },
+    });
+
+    return saved;
+  }
+
+  async removeSpecialNeed(actor: Actor, id: string) {
+    const record = await this.repo.findSpecialNeed(id);
+    if (!record) throw new NotFoundException();
+    await this.childAccess.assertCanRecord(actor, record.childId);
+
+    await this.repo.softDeleteSpecialNeed(id);
+    await this.audit.append({
+      action: "DELETE",
+      kindergartenId: record.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "SpecialNeedRecord",
+      objectId: id,
+      childId: record.childId,
     });
 
     return { id };

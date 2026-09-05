@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { uuidSchema } from "@kinder/contracts";
+import { searchTermSchema } from "../common/repository/search";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Огноо YYYY-MM-DD хэлбэртэй байна");
 const isoMonth = z.string().regex(/^\d{4}-\d{2}$/, "Сар YYYY-MM хэлбэртэй байна");
@@ -50,6 +51,8 @@ export const listInvoicesQuerySchema = z.object({
   month: isoMonth.optional(),
   childId: uuidSchema.optional(),
   status: z.enum(["UNPAID", "PARTIALLY_PAID", "PAID", "OVERDUE", "REFUNDED"]).optional(),
+  /** А/261 шалгуур 21 — added 2026-09-05 with the rest of the sweep. */
+  q: searchTermSchema,
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });

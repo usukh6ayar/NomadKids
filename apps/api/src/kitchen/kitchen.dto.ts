@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { paginationQuerySchema } from "@kinder/contracts";
+import { searchTermSchema } from "../common/repository/search";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Огноо YYYY-MM-DD хэлбэртэй байна");
 
@@ -65,7 +66,15 @@ export const updateIngredientSchema = z
   .refine((body) => Object.keys(body).length > 0, { message: "Өөрчлөх талбар алга" });
 export type UpdateIngredientDto = z.infer<typeof updateIngredientSchema>;
 
-export const listIngredientsQuerySchema = paginationQuerySchema;
+/*
+ * ★ `q` added 2026-09-05 — А/261 шалгуур 21 ("Хайлт … бүх төрлийн талбарын
+ * утгаар"). The kitchen's four lists had a status filter and no search at all,
+ * which is the inconsistency the criterion names: a cook who learns that
+ * typing a name works on the children list finds it does nothing here.
+ */
+export const listIngredientsQuerySchema = paginationQuerySchema.extend({
+  q: searchTermSchema,
+});
 export type ListIngredientsQuery = z.infer<typeof listIngredientsQuerySchema>;
 
 // ── Recipes (технологийн карт) ────────────────────────────────────────────
@@ -108,6 +117,7 @@ export type UpdateRecipeDto = z.infer<typeof updateRecipeSchema>;
 
 export const listRecipesQuerySchema = paginationQuerySchema.extend({
   status: z.enum(["DRAFT", "APPROVED"]).optional(),
+  q: searchTermSchema,
 });
 export type ListRecipesQuery = z.infer<typeof listRecipesQuerySchema>;
 
@@ -140,7 +150,9 @@ export const updateSupplierSchema = z
   .refine((body) => Object.keys(body).length > 0, { message: "Өөрчлөх талбар алга" });
 export type UpdateSupplierDto = z.infer<typeof updateSupplierSchema>;
 
-export const listSuppliersQuerySchema = paginationQuerySchema;
+export const listSuppliersQuerySchema = paginationQuerySchema.extend({
+  q: searchTermSchema,
+});
 export type ListSuppliersQuery = z.infer<typeof listSuppliersQuerySchema>;
 
 // ── Food orders (Хүнсний захиалга) ────────────────────────────────────────
@@ -188,6 +200,7 @@ export type ReceiveFoodOrderDto = z.infer<typeof receiveFoodOrderSchema>;
 
 export const listFoodOrdersQuerySchema = paginationQuerySchema.extend({
   status: z.enum(["DRAFT", "ORDERED", "RECEIVED", "CANCELLED"]).optional(),
+  q: searchTermSchema,
 });
 export type ListFoodOrdersQuery = z.infer<typeof listFoodOrdersQuerySchema>;
 

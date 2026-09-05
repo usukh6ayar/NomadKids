@@ -54,6 +54,30 @@ export const SYSTEM_OBSERVATION_TYPES = [
 ] as const;
 
 /**
+ * The special-needs categories — Order А/261, kindergarten criterion 11.
+ *
+ * ★ The eight of the Law on the Rights of Persons with Disabilities, in the
+ * order the state's own return lists them, plus "бусад".
+ *
+ * `other` is last and exists on purpose: a closed list with no escape makes
+ * staff record a child under the nearest wrong category, which is worse for
+ * the aggregate than an honest "бусад" the ministry can ask about. It is not
+ * a licence to skip classifying — the note field beside it is where the real
+ * answer goes.
+ */
+export const SYSTEM_SPECIAL_NEEDS_CATEGORIES = [
+  { code: "vision", name: "Хараа", order: 1 },
+  { code: "hearing", name: "Сонсгол", order: 2 },
+  { code: "speech", name: "Хэл яриа", order: 3 },
+  { code: "mobility", name: "Хөдөлгөөн, тулгуур эрхтэн", order: 4 },
+  { code: "intellectual", name: "Оюун ухаан", order: 5 },
+  { code: "psychosocial", name: "Сэтгэц, зан үйл", order: 6 },
+  { code: "autism", name: "Аутизмын хүрээний эмгэг", order: 7 },
+  { code: "multiple", name: "Олон талт бэрхшээл", order: 8 },
+  { code: "other", name: "Бусад", order: 9 },
+] as const;
+
+/**
  * Creates or updates the system rows. Idempotent — the partial unique indexes
  * on `(code) WHERE "kindergartenId" IS NULL` turn a duplicate into a database
  * error rather than a silent second row.
@@ -65,6 +89,7 @@ export async function applySystemConfig(db: {
   developmentDomain: SystemTable;
   assessmentLevel: SystemTable;
   observationType: SystemTable;
+  specialNeedsCategory: SystemTable;
 }): Promise<void> {
   for (const d of SYSTEM_DOMAINS) {
     const existing = await db.developmentDomain.findFirst({
@@ -105,6 +130,20 @@ export async function applySystemConfig(db: {
       });
     } else {
       await db.observationType.create({ data: { ...t, kindergartenId: null } });
+    }
+  }
+
+  for (const c of SYSTEM_SPECIAL_NEEDS_CATEGORIES) {
+    const existing = await db.specialNeedsCategory.findFirst({
+      where: { kindergartenId: null, code: c.code },
+    });
+    if (existing) {
+      await db.specialNeedsCategory.update({
+        where: { id: existing.id },
+        data: { name: c.name, order: c.order },
+      });
+    } else {
+      await db.specialNeedsCategory.create({ data: { ...c, kindergartenId: null } });
     }
   }
 }

@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { toSkipTake, type PageParams } from "../common/pagination";
 import type { ObservationSource, ReviewStatus } from "../domain/enums";
+import { searchWhere } from "../common/repository/search";
 
 /**
  * Observations and their development-domain links.
@@ -65,6 +66,21 @@ export class ObservationsRepository {
               }
             : {}),
           ...(filters.domainId ? { domains: { some: { domainId: filters.domainId } } } : {}),
+          /*
+           * ★ Every narrative field, not just one.
+           *
+           * An observation's text is spread across six optional columns
+           * because the form asks six questions; a reader remembers what was
+           * written, not which box it went in.
+           */
+          ...(searchWhere(filters.q, [
+            "activityName",
+            "situation",
+            "childDid",
+            "childSaid",
+            "teacherComment",
+            "nextSteps",
+          ]) ?? {}),
         },
       ],
     };
@@ -408,6 +424,7 @@ export interface ObservationFilters {
   domainId?: string;
   from?: Date;
   to?: Date;
+  q?: string;
 }
 
 export interface CreateObservationData {

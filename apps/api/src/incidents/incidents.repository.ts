@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { anyOf, searchRelation, searchWhere } from "../common/repository/search";
 
 /**
  * Safety incidents — RFP Module 2.1.
@@ -42,7 +43,7 @@ export class IncidentsRepository {
    */
   async listForKindergarten(
     kindergartenId: string,
-    filters: { unreportedOnly?: boolean; highPriorityOnly?: boolean },
+    filters: { unreportedOnly?: boolean; highPriorityOnly?: boolean; q?: string },
     page: { skip: number; take: number },
   ) {
     const where = {
@@ -50,6 +51,15 @@ export class IncidentsRepository {
       deletedAt: null,
       ...(filters.unreportedOnly ? { reportedAt: null } : {}),
       ...(filters.highPriorityOnly ? { isHighPriority: true } : {}),
+      /*
+       * ★ The child's name as well as the incident's own text — a director
+       * reading this log is usually looking for a particular child, and the
+       * incident's columns never carry their name.
+       */
+      ...(anyOf(
+        searchWhere(filters.q, ["description", "location", "bodyPart", "firstAid", "followUp"]),
+        searchRelation(filters.q, "child", ["lastName", "firstName"]),
+      ) ?? {}),
     };
 
     const [items, total] = await Promise.all([

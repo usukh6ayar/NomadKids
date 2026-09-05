@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { paginationQuerySchema, uuidSchema } from "@kinder/contracts";
+import { searchTermSchema } from "../common/repository/search";
 
 export const sexSchema = z.enum(["MALE", "FEMALE"]);
 export const childStatusSchema = z.enum(["ACTIVE", "TEMPORARY", "ON_LEAVE", "INACTIVE"]);
@@ -105,7 +106,7 @@ const ageBoundSchema = z.coerce.number().int().min(1).max(7);
 
 export const listChildrenQuerySchema = paginationQuerySchema
   .extend({
-    q: z.string().max(100).optional(),
+    q: searchTermSchema,
     status: childStatusSchema.optional(),
     groupId: uuidSchema.optional(),
     schoolYearId: uuidSchema.optional(),

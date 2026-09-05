@@ -26,6 +26,8 @@ import { FormDialog } from "@/components/ui/form-dialog";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { formatDate } from "@/lib/format";
 import { useToast } from "@/components/ui/toast";
+import { SearchField } from "@/components/ui/search-field";
+import { useDebounced } from "@/lib/use-debounced";
 
 const ordersSchema = paginated(foodOrderSummarySchema);
 const suppliersSchema = paginated(supplierSchema);
@@ -64,12 +66,17 @@ function FoodOrders() {
   const { session } = useSession();
   const kindergartenId = session?.memberships?.[0]?.kindergartenId ?? null;
   const [creating, setCreating] = useState(false);
+  const [query, setQuery] = useState("");
+  const q = useDebounced(query);
 
   const list = useQuery({
     enabled: Boolean(kindergartenId),
-    queryKey: qk.kitchen.foodOrders(kindergartenId ?? ""),
-    queryFn: () =>
-      get(`/kindergartens/${kindergartenId}/food-orders?page=1&pageSize=25`, ordersSchema),
+    queryKey: qk.kitchen.foodOrders(kindergartenId ?? "", { q }),
+    queryFn: () => {
+      const params = new URLSearchParams({ page: "1", pageSize: "25" });
+      if (q) params.set("q", q);
+      return get(`/kindergartens/${kindergartenId}/food-orders?${params}`, ordersSchema);
+    },
   });
 
   const items = list.data?.items ?? [];
@@ -88,6 +95,17 @@ function FoodOrders() {
           ) : null
         }
       />
+
+      {kindergartenId ? (
+        <div className="flex flex-wrap items-end gap-3">
+          <SearchField
+            label="Нийлүүлэгч, тэмдэглэлээр хайх"
+            placeholder="Нийлүүлэгчээр хайх"
+            value={query}
+            onChange={setQuery}
+          />
+        </div>
+      ) : null}
 
       {list.isLoading ? <LoadingState rows={3} /> : null}
       {list.isError ? <ErrorState description={errorMessage(list.error)} /> : null}

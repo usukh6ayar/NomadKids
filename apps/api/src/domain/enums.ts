@@ -52,6 +52,7 @@ export {
   ReviewStatus,
   Role,
   Sex,
+  StaffRecordKind,
   StockDirection,
   StockSourceType,
   SurveyKind,
