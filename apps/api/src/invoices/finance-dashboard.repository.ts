@@ -123,7 +123,10 @@ export class FinanceDashboardRepository {
       where: {
         kindergartenId,
         deletedAt: null,
-        dueDate: { lt: asOf },
+        // `startOfDay`, not `asOf` itself — `dueDate` is a bare calendar day
+        // (`@db.Date`), and comparing it to the full current instant made a
+        // bill due today count as overdue from today's first second.
+        dueDate: { lt: startOfDay(asOf) },
         status: { notIn: ["PAID", "REFUNDED"] },
       },
       select: { id: true, totalDue: true },
@@ -345,4 +348,16 @@ export class FinanceDashboardRepository {
       bySource: [...bySource].map(([source, amount]) => ({ source, amount })),
     };
   }
+}
+
+/**
+ * Midnight UTC for the given instant — same reason and same helper
+ * `dashboard.service.ts` and `growth.service.ts` each carry: `dueDate` is a
+ * bare calendar day (`@db.Date`), so matching it against a local midnight
+ * would miss by the timezone offset.
+ */
+function startOfDay(value: Date): Date {
+  return new Date(
+    Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate(), 0, 0, 0, 0),
+  );
 }

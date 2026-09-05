@@ -18,8 +18,19 @@ import { dirname, resolve } from "node:path";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
+/**
+ * One instance, reused by every test.
+ *
+ * ★ Each call used to build its own `ESLint`, which re-resolves the monorepo's
+ * flat config from disk every time — seven cold loads for seven tests. The
+ * first of those routinely blew past the default 5s test timeout on a slower
+ * filesystem, failing whichever test happened to run first rather than
+ * anything the rule actually got wrong. `lintText` on a shared instance is
+ * exactly how ESLint expects to be reused across many files.
+ */
+const eslint = new ESLint({ cwd: repoRoot });
+
 function lintAs(filePath: string, code: string) {
-  const eslint = new ESLint({ cwd: repoRoot });
   return eslint.lintText(code, { filePath: resolve(repoRoot, filePath) });
 }
 
@@ -31,7 +42,10 @@ const IMPORT_GENERATED = `import { PrismaClient } from "../generated/prisma/clie
 const IMPORT_PACKAGE = `import { PrismaClient } from "@prisma/client";\nexport const c = PrismaClient;\n`;
 const INJECT_SERVICE = `import { PrismaService } from "../prisma/prisma.service";\nexport class S { constructor(readonly p: PrismaService) {} }\n`;
 
-describe("Prisma repository boundary", () => {
+// ★ A generous per-test timeout on top of the shared instance above — the
+// very first `lintText` call still has to resolve the flat config from disk
+// once, and that alone can pass 5s on a cold cache.
+describe("Prisma repository boundary", { timeout: 20_000 }, () => {
   it("rejects the generated client in a service", async () => {
     const [result] = await lintAs("apps/api/src/children/children.service.ts", IMPORT_GENERATED);
     const errors = restricted(result!);

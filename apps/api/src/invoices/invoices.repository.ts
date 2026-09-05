@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { Prisma } from "../generated/prisma/client";
 import type { InvoiceStatus } from "../domain/enums";
+import { isPastDue } from "./invoice-math";
 
 const CHILD_SELECT = { id: true, lastName: true, firstName: true } as const;
 
@@ -356,7 +357,10 @@ async function recomputeTotals(tx: Prisma.TransactionClient, invoiceId: string) 
   // one-tögrög discrepancy casts doubt on every other figure beside it.
   const paid = sum._sum.amount ?? new Prisma.Decimal(0);
   const balance = invoice.totalDue.sub(paid);
-  const overdue = new Date() > invoice.dueDate;
+  // ★ Grace through the whole due date — see `isPastDue`'s own comment. Not
+  // a plain `new Date() > invoice.dueDate`, which made every invoice OVERDUE
+  // from the first instant of the day it was actually due.
+  const overdue = isPastDue(invoice.dueDate, new Date());
 
   let status: InvoiceStatus = invoice.status;
   if (status !== "REFUNDED") {
