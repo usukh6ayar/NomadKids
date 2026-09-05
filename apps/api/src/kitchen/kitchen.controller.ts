@@ -13,9 +13,11 @@ import {
   kitchenReportsQuerySchema,
   listFoodOrdersQuerySchema,
   listIngredientsQuerySchema,
+  listMealServingsQuerySchema,
   listRecipesQuerySchema,
   listStockMovementsQuerySchema,
   listSuppliersQuerySchema,
+  markMealServedSchema,
   receiveFoodOrderSchema,
   stockAdjustmentSchema,
   updateFoodOrderSchema,
@@ -29,9 +31,11 @@ import {
   type KitchenReportsQuery,
   type ListFoodOrdersQuery,
   type ListIngredientsQuery,
+  type ListMealServingsQuery,
   type ListRecipesQuery,
   type ListStockMovementsQuery,
   type ListSuppliersQuery,
+  type MarkMealServedDto,
   type ReceiveFoodOrderDto,
   type StockAdjustmentDto,
   type UpdateFoodOrderDto,
@@ -342,5 +346,45 @@ export class KitchenReportsController {
     @Query(new ZodValidationPipe(kitchenReportsQuerySchema)) query: KitchenReportsQuery,
   ) {
     return this.service.purchaseReport(actor, params.id, query);
+  }
+}
+
+// ── Meal servings (Тараалт) ─────────────────────────────────────────────
+
+@Controller("kindergartens/:id/meal-servings")
+@Roles("COOK", "ADMIN")
+export class KindergartenMealServingsController {
+  constructor(private readonly service: KitchenService) {}
+
+  @Get()
+  async list(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: IdParam,
+    @Query(new ZodValidationPipe(listMealServingsQuerySchema)) query: ListMealServingsQuery,
+  ) {
+    return this.service.listMealServings(actor, params.id, query);
+  }
+
+  @Post()
+  async mark(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: IdParam,
+    @Body(new ZodValidationPipe(markMealServedSchema)) body: MarkMealServedDto,
+  ) {
+    return this.service.markMealServed(actor, params.id, body);
+  }
+}
+
+@Controller("meal-servings")
+@Roles("COOK", "ADMIN")
+export class MealServingsController {
+  constructor(private readonly service: KitchenService) {}
+
+  @Delete(":id")
+  async unmark(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: IdParam,
+  ) {
+    return this.service.unmarkMealServed(actor, params.id);
   }
 }

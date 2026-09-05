@@ -41,6 +41,9 @@ export const createIngredientSchema = z
   .object({
     name: z.string().trim().min(1, "Орцны нэрийг оруулна уу").max(200),
     unit: ingredientUnitSchema,
+    /** One of `INGREDIENT_CATEGORIES` — a string column, not an enum, same
+     * reasoning as `documents.dto.ts`'s `category`. */
+    category: z.string().trim().max(100).nullable().optional(),
     caloriesPer100: nutritionValue,
     proteinPer100: nutritionValue,
     fatPer100: nutritionValue,
@@ -55,6 +58,7 @@ export const updateIngredientSchema = z
   .object({
     name: z.string().trim().min(1).max(200).optional(),
     unit: ingredientUnitSchema.optional(),
+    category: z.string().trim().max(100).nullable().optional(),
     caloriesPer100: nutritionValue,
     proteinPer100: nutritionValue,
     fatPer100: nutritionValue,
@@ -71,9 +75,13 @@ export type UpdateIngredientDto = z.infer<typeof updateIngredientSchema>;
  * утгаар"). The kitchen's four lists had a status filter and no search at all,
  * which is the inconsistency the criterion names: a cook who learns that
  * typing a name works on the children list finds it does nothing here.
+ *
+ * `category` matches one of `INGREDIENT_CATEGORIES` exactly — same shape as
+ * `documents.dto.ts`'s list query.
  */
 export const listIngredientsQuerySchema = paginationQuerySchema.extend({
   q: searchTermSchema,
+  category: z.string().max(100).optional(),
 });
 export type ListIngredientsQuery = z.infer<typeof listIngredientsQuerySchema>;
 
@@ -230,6 +238,23 @@ export const listStockMovementsQuerySchema = paginationQuerySchema.extend({
   ingredientId: z.string().uuid().optional(),
 });
 export type ListStockMovementsQuery = z.infer<typeof listStockMovementsQuerySchema>;
+
+// ── Meal servings (Тараалт) ─────────────────────────────────────────────────
+
+/** One group, one day, one sitting. Not paginated — a kindergarten's own
+ * groups times five sittings is never large enough to need it, same
+ * reasoning as `CatalogService`'s config lists. */
+export const listMealServingsQuerySchema = z.object({ date: isoDate });
+export type ListMealServingsQuery = z.infer<typeof listMealServingsQuerySchema>;
+
+export const markMealServedSchema = z
+  .object({
+    groupId: z.string().uuid(),
+    date: isoDate,
+    kind: mealKindSchema,
+  })
+  .strict();
+export type MarkMealServedDto = z.infer<typeof markMealServedSchema>;
 
 // ── Reports ────────────────────────────────────────────────────────────────
 

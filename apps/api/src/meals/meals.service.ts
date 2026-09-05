@@ -11,6 +11,7 @@ import { MediaService } from "../media/media.service";
 import { parseDishes, type MenuDishLike } from "./dish-json";
 import { MealsRepository } from "./meals.repository";
 import { findAllergenWarnings } from "./allergen-match";
+import { buildMenuWorkbook } from "./menu-workbook";
 import type { RecordGroupMealsDto, SaveMenuDayDto } from "./meals.dto";
 
 @Injectable()
@@ -81,6 +82,57 @@ export class MealsService {
       // crash the screen that reads it.
       warnings: findAllergenWarnings(parseDishes(day.dishes), allergies),
     }));
+  }
+
+  /**
+   * The visible week/month as a spreadsheet — client request, 2026-09-05.
+   *
+   * ★ Not a new query. `listWithAllergenWarnings` already assembles exactly
+   * what this exports, so calling it is what keeps the file and the screen
+   * from ever disagreeing about a dish, a calorie figure or a warning — and
+   * it is what carries this endpoint's authorization: COOK/TEACHER/ADMIN,
+   * same as the screen the file is downloaded from.
+   *
+   * ★★ Every date in the range gets a row, not just the ones with a saved
+   * `MenuDay`. `findInRange` only returns rows that exist, so a week nobody
+   * has planned yet would otherwise export as a handful of rows with no
+   * indication that Wednesday and Thursday are missing rather than closed —
+   * the file's whole point is to be read away from the screen that could
+   * otherwise say "нет цэс энд алга" for the gap.
+   */
+  async exportMenu(actor: Actor, kindergartenId: string, from: string, to: string) {
+    const dates = eachDateIso(from, to);
+    if (dates.length > MAX_EXPORT_DAYS) {
+      throw new BadRequestException(`Дээд тал нь ${MAX_EXPORT_DAYS} өдрийг нэг дор татаж авна`);
+    }
+
+    const [days, kindergartenName] = await Promise.all([
+      this.listWithAllergenWarnings(actor, kindergartenId, from, to),
+      this.repo.kindergartenName(kindergartenId),
+    ]);
+
+    await this.audit.append({
+      action: "DOWNLOAD",
+      kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "MenuExport",
+      objectId: kindergartenId,
+      metadata: { from, to, days: days.length },
+    });
+
+    const byDate = new Map(days.map((day) => [day.date.toISOString().slice(0, 10), day]));
+    const buffer = await buildMenuWorkbook(
+      dates.map((iso) => {
+        const day = byDate.get(iso);
+        return day
+          ? { date: day.date, dishes: parseDishes(day.dishes), warnings: day.warnings }
+          : { date: toDate(iso), dishes: [], warnings: [] };
+      }),
+      kindergartenName,
+      from === to ? from : `${from} — ${to}`,
+    );
+
+    return { buffer, filename: `khoolnii-tses_${from}_${to}.xlsx` };
   }
 
   /**
@@ -426,4 +478,20 @@ export class MealsService {
 /** `YYYY-MM-DD` to the UTC midnight `@db.Date` stores. */
 function toDate(iso: string): Date {
   return new Date(`${iso}T00:00:00.000Z`);
+}
+
+/** A generous ceiling on `exportMenu`'s range — a school year and then some,
+ * not a guess. Rejecting past this is what keeps "every date gets a row"
+ * from turning an accidental multi-year range into a multi-thousand-row file. */
+const MAX_EXPORT_DAYS = 366;
+
+/** Every `YYYY-MM-DD` from `from` to `to`, inclusive. Empty if `to` precedes
+ * `from` — a degenerate range renders as an empty sheet rather than an error. */
+function eachDateIso(from: string, to: string): string[] {
+  const dates: string[] = [];
+  const end = toDate(to).getTime();
+  for (let t = toDate(from).getTime(); t <= end; t += 24 * 60 * 60 * 1000) {
+    dates.push(new Date(t).toISOString().slice(0, 10));
+  }
+  return dates;
 }

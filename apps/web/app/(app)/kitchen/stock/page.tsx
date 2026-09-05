@@ -72,7 +72,6 @@ function Stock() {
     <div className="flex flex-col gap-5 lg:gap-6">
       <PageHeader
         title="Нөөц"
-        lede="Одоогийн нөөц болон орлого, зарлагын хөдөлгөөн."
         actions={
           kindergartenId ? (
             <Button size="sm" onClick={() => setAdjusting(true)}>

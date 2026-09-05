@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Post, Put, Query } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Put, Query, Res } from "@nestjs/common";
+import type { Response } from "express";
 import { idParamSchema } from "@kinder/contracts";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
@@ -52,6 +53,34 @@ export class MealsController {
     @Query(new ZodValidationPipe(listMenuQuerySchema)) query: ListMenuQuery,
   ) {
     return this.service.listWithAllergenWarnings(actor, params.id, query.from, query.to);
+  }
+
+  /**
+   * The same range as a spreadsheet — "өдрөөр, 7 хоногоор, сараар татаж
+   * авах". One route for all three: the frontend picks `from`/`to`, this
+   * does not know or care which button was pressed.
+   */
+  @Get("export")
+  @Roles("TEACHER", "ADMIN", "COOK")
+  async export(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(listMenuQuerySchema)) query: ListMenuQuery,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.service.exportMenu(
+      actor,
+      params.id,
+      query.from,
+      query.to,
+    );
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(buffer);
   }
 
   @Put(":date")

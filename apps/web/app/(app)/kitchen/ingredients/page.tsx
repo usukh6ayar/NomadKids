@@ -2,8 +2,9 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Plus } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  INGREDIENT_CATEGORIES,
   INGREDIENT_UNIT_LABEL,
   ingredientSchema,
   paginated,
@@ -14,6 +15,7 @@ import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
+import { useDebounced } from "@/lib/use-debounced";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { ArchiveButton } from "@/components/ui/archive-button";
@@ -26,20 +28,20 @@ import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui
 import { Pagination, ResultCount } from "@/components/ui/pagination";
 import { useToast } from "@/components/ui/toast";
 import { SearchField } from "@/components/ui/search-field";
-import { useDebounced } from "@/lib/use-debounced";
 
 const ingredientsSchema = paginated(ingredientSchema);
 
 const COLUMNS = [
+  { key: "category", label: "Ангилал", className: "md:w-[180px]" },
   { key: "unit", label: "Нэгж", className: "md:w-[80px]" },
-  { key: "calories", label: "Ккал/100", className: "md:w-[110px]" },
-  { key: "allergens", label: "Харшил", className: "md:w-[220px]" },
+  { key: "calories", label: "Ккал/100", className: "md:w-[100px]" },
+  { key: "allergens", label: "Харшил", className: "md:w-[190px]" },
 ];
 
 /**
- * Орц — the kitchen's ingredient catalog. Every technology card's ingredient
- * lines and its nutrition figure are drawn from these rows, so this is the
- * screen everything else in Хоол үйлдвэрлэл is built on.
+ * Түүхий эд — the kitchen's ingredient catalog. Every technology card's
+ * ingredient lines and its nutrition figure are drawn from these rows, so
+ * this is the screen everything else in Хоол үйлдвэрлэл is built on.
  */
 export default function IngredientsPage() {
   return (
@@ -53,21 +55,30 @@ function Ingredients() {
   const { session } = useSession();
   const kindergartenId = session?.memberships?.[0]?.kindergartenId ?? null;
   const [page, setPage] = useState(1);
-  const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState("");
-  const q = useDebounced(query);
+  const [category, setCategory] = useState("");
+  const [creating, setCreating] = useState(false);
+  const search = useDebounced(query.trim());
+
+  // A filter change lands on a page that may no longer exist — back to the
+  // first page rather than an empty screen with a working pager beside it.
+  useEffect(() => setPage(1), [search, category]);
+
+  const filters = { page, q: search || undefined, category: category || undefined };
 
   const list = useQuery({
     enabled: Boolean(kindergartenId),
-    queryKey: qk.kitchen.ingredients(kindergartenId ?? "", { page, q }),
+    queryKey: qk.kitchen.ingredients(kindergartenId ?? "", filters),
     queryFn: () => {
       const params = new URLSearchParams({ page: String(page), pageSize: "25" });
-      if (q) params.set("q", q);
+      if (search) params.set("q", search);
+      if (category) params.set("category", category);
       return get(`/kindergartens/${kindergartenId}/ingredients?${params}`, ingredientsSchema);
     },
   });
 
   const items = list.data?.items ?? [];
+  const filtered = Boolean(search || category);
 
   return (
     <div className="flex flex-col gap-5 lg:gap-6">
@@ -94,14 +105,23 @@ function Ingredients() {
           <SearchField
             label="Орцын нэр, тэмдэглэлээр хайх"
             placeholder="Нэрээр хайх"
+            className="min-w-[200px]"
             value={query}
-            onChange={(value) => {
-              // Page 1: a term that narrows the list to three rows must not
-              // leave the reader stranded on page four of the old result.
-              setPage(1);
-              setQuery(value);
-            }}
+            onChange={setQuery}
           />
+
+          <Field label="Ангилал" className="min-w-[200px]">
+            {({ id }) => (
+              <Select id={id} value={category} onChange={(e) => setCategory(e.target.value)}>
+                <option value="">Бүгд</option>
+                {INGREDIENT_CATEGORIES.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
         </div>
       ) : null}
 
@@ -110,15 +130,19 @@ function Ingredients() {
 
       {list.data && items.length === 0 ? (
         <EmptyState
-          title="Орц бүртгэгдээгүй байна"
-          description="Технологийн карт үүсгэхийн өмнө орцоо бүртгэнэ үү."
+          title={filtered ? "Олдсонгүй" : "Орц бүртгэгдээгүй байна"}
+          description={
+            filtered
+              ? "Өөр нэр эсвэл ангиллаар хайж үзнэ үү."
+              : "Технологийн карт үүсгэхийн өмнө орцоо бүртгэнэ үү."
+          }
         />
       ) : null}
 
       {items.length > 0 ? (
         <>
           <ResultCount total={list.data?.total ?? 0} noun="орц" />
-          <DataList columns={COLUMNS} leadWidth={null} actionsWidth="w-[164px]">
+          <DataList columns={COLUMNS} leadWidth={null} actionsWidth="w-[96px]">
             {items.map((ingredient) => (
               <IngredientRow
                 key={ingredient.id}
@@ -157,6 +181,11 @@ function IngredientRow({
         title={ingredient.name}
         subtitle={ingredient.note ?? undefined}
         cells={{
+          category: ingredient.category ? (
+            <Badge tone="sky">{ingredient.category}</Badge>
+          ) : (
+            <span className="text-body text-faint">—</span>
+          ),
           unit: (
             <span className="text-body text-ink">{INGREDIENT_UNIT_LABEL[ingredient.unit]}</span>
           ),
@@ -180,9 +209,13 @@ function IngredientRow({
         }}
         actions={
           <>
-            <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
-              <Pencil size={16} aria-hidden="true" />
-              Засах
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setEditing(true)}
+              aria-label={`"${ingredient.name}" засах`}
+            >
+              <Pencil size={18} aria-hidden="true" />
             </Button>
             <ArchiveButton
               path={`/ingredients/${ingredient.id}`}
@@ -190,6 +223,7 @@ function IngredientRow({
               confirmation={`"${ingredient.name}" орцыг архивлах уу?`}
               invalidate={[["kitchen", "ingredients"]]}
               variant="ghost"
+              iconOnly
             />
           </>
         }
@@ -224,6 +258,7 @@ function IngredientFormDialog({
 
   const [name, setName] = useState(ingredient?.name ?? "");
   const [unit, setUnit] = useState<IngredientUnit>(ingredient?.unit ?? "GRAM");
+  const [category, setCategory] = useState(ingredient?.category ?? "");
   const [calories, setCalories] = useState(ingredient?.caloriesPer100 ?? "");
   const [protein, setProtein] = useState(ingredient?.proteinPer100 ?? "");
   const [fat, setFat] = useState(ingredient?.fatPer100 ?? "");
@@ -236,6 +271,7 @@ function IngredientFormDialog({
       const body = {
         name: name.trim(),
         unit,
+        category: category || null,
         caloriesPer100: calories.trim() || null,
         proteinPer100: protein.trim() || null,
         fatPer100: fat.trim() || null,
@@ -314,21 +350,36 @@ function IngredientFormDialog({
           )}
         </Field>
 
-        <Field label="Хэмжих нэгж" error={errors.unit} required>
-          {({ id }) => (
-            <Select
-              id={id}
-              value={unit}
-              onChange={(e) => setUnit(e.target.value as IngredientUnit)}
-            >
-              {Object.entries(INGREDIENT_UNIT_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Хэмжих нэгж" error={errors.unit} required>
+            {({ id }) => (
+              <Select
+                id={id}
+                value={unit}
+                onChange={(e) => setUnit(e.target.value as IngredientUnit)}
+              >
+                {Object.entries(INGREDIENT_UNIT_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+
+          <Field label="Ангилал" error={errors.category}>
+            {({ id }) => (
+              <Select id={id} value={category} onChange={(e) => setCategory(e.target.value)}>
+                <option value="">Сонгоогүй</option>
+                {INGREDIENT_CATEGORIES.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Ккал / 100" error={errors.caloriesPer100} hint="Тоо">

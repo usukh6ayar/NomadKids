@@ -204,4 +204,13 @@ export class MealsRepository {
       select: { id: true, kindergartenId: true },
     });
   }
+
+  /** The kindergarten's name, for the exported workbook's Тайлбар sheet. */
+  async kindergartenName(kindergartenId: string) {
+    const row = await this.prisma.kindergarten.findFirst({
+      where: { id: kindergartenId, deletedAt: null },
+      select: { name: true },
+    });
+    return row?.name ?? "";
+  }
 }
