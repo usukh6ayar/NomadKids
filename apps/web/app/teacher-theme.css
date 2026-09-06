@@ -110,6 +110,24 @@ body:has([data-app-theme="finance"]) {
   --workspace-background: linear-gradient(120deg, #f3fafa 0%, #eef6fc 100%);
 }
 
+body:has([data-app-theme="platform"]) {
+  --color-canvas: #f5f7fa;
+  --color-sunken: #edf1f5;
+  --color-border: #d8e0e8;
+  --color-border-soft: #e8edf2;
+  --color-ink: #293b50;
+  --color-primary: #49647f;
+  --color-primary-strong: #33495f;
+  --color-primary-hover: #3c566f;
+  --color-primary-soft: #eaf0f5;
+  --workspace-accent: #49647f;
+  --workspace-accent-secondary: #2582eb;
+  --workspace-button-start: #49647f;
+  --workspace-button-end: #607f9c;
+  --workspace-button-hover: #33495f;
+  --workspace-background: linear-gradient(120deg, #f5f7fa 0%, #eef5fb 100%);
+}
+
 [data-app-theme] {
   background: var(--workspace-background);
   color: var(--color-ink);
