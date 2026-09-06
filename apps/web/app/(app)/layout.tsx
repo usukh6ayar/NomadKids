@@ -148,7 +148,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   // business seeing.
   if (isSuperAdmin) {
     return (
-      <AppShell nav={platformNav()} variant="platform">
+      <AppShell nav={platformNav()} variant="platform" workspaceTheme="platform">
         {children}
       </AppShell>
     );
