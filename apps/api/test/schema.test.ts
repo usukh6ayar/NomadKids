@@ -60,12 +60,25 @@ beforeEach(async () => {
 });
 
 describe("system configuration rows", () => {
-  it("seeds five development domains, four levels and five observation types", async () => {
+  it("seeds five development domains, four levels and four observation types", async () => {
     // These are created by the seed and survive resetData(). If they are
     // missing, the database was not seeded and every other test is unreliable.
     expect(await db.developmentDomain.count({ where: { kindergartenId: null } })).toBe(5);
     expect(await db.assessmentLevel.count({ where: { kindergartenId: null } })).toBe(4);
-    expect(await db.observationType.count({ where: { kindergartenId: null } })).toBe(5);
+
+    /*
+      ★ Four, not five, since 2026-09-06 — see `SYSTEM_OBSERVATION_TYPES`.
+
+      The five invented names were replaced by the client's three (Ажиглалт,
+      Ярилцлага, Бүтээл) plus the family's own, and `applySystemConfig` now
+      soft-deletes system types the list no longer names. Filtered on
+      `deletedAt` deliberately: on a database that has run both versions of the
+      seed the retired rows are still there, and the property under test is how
+      many kinds a teacher may file under — not how many rows exist.
+    */
+    expect(
+      await db.observationType.count({ where: { kindergartenId: null, deletedAt: null } }),
+    ).toBe(4);
   });
 
   it("refuses a duplicate system domain code", async () => {

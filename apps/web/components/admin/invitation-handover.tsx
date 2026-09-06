@@ -27,18 +27,33 @@ export function InvitationHandover({
   title,
   subtitle,
   onClose,
+  path = "/invitation",
+  validity = "Урилга 7 хоног хүчинтэй.",
 }: {
   token: string;
   title: string;
   subtitle: string;
   onClose: () => void;
+  /**
+   * Which screen the link lands on.
+   *
+   * ★ Parameterised 2026-09-06, when an administrator gained a second thing to
+   * hand over: a password-reset link for a member of staff who is locked out
+   * (`POST /users/:id/password-reset`). That token is the same shape, is
+   * one-time in the same way, and must be handed over with the same care — so
+   * it is the same screen with a different destination, not a second copy of
+   * this one that could drift from it on the parts that matter.
+   */
+  path?: string;
+  /** How long it lasts, in a sentence — a reset link is an hour, not a week. */
+  validity?: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [copied, setCopied] = useState(false);
 
   // `window.location.origin`, so the link works on whichever host this is being
   // used from — localhost in development, the real domain in production.
-  const url = typeof window === "undefined" ? "" : `${window.location.origin}/invitation/${token}`;
+  const url = typeof window === "undefined" ? "" : `${window.location.origin}${path}/${token}`;
 
   useEffect(() => {
     if (!canvasRef.current || !url) return;
@@ -53,10 +68,8 @@ export function InvitationHandover({
       </div>
 
       <div className="grid place-items-center rounded-row border border-border bg-canvas p-4">
-        <canvas ref={canvasRef} aria-label="Урилгын QR код" role="img" />
-        <p className="mt-2 text-center text-caption text-muted">
-          Утсаараа уншуулна уу. Урилга 7 хоног хүчинтэй.
-        </p>
+        <canvas ref={canvasRef} aria-label="Холбоосын QR код" role="img" />
+        <p className="mt-2 text-center text-caption text-muted">Утсаараа уншуулна уу. {validity}</p>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -83,7 +96,7 @@ export function InvitationHandover({
       </div>
 
       <p className="rounded-control bg-sun px-3 py-2 text-caption leading-relaxed text-sun-ink">
-        Энэ QR-ыг дахин харуулах боломжгүй. Хаасны дараа шаардлагатай бол шинэ урилга үүсгэнэ үү.
+        Энэ QR-ыг дахин харуулах боломжгүй. Хаасны дараа шаардлагатай бол шинийг үүсгэнэ үү.
       </p>
 
       <div className="border-t border-border pt-4">

@@ -613,7 +613,7 @@ export function AppShell({
   const subtitle =
     variant === "teacher"
       ? isAdmin
-        ? "Захирлын хэсэг"
+        ? "Удирдлагын хэсэг"
         : (SUPPORT_SUBTITLE[highestRole(session?.memberships)] ?? "Багшийн хэсэг")
       : variant === "platform"
         ? "Платформын удирдлага"
@@ -966,24 +966,42 @@ function WhoAmI({ variant, isAdmin }: { variant: Variant; isAdmin: boolean }) {
           lines of text. `justify-center` keeps the name optically centred in
           the taller box rather than pinned to its top.
         */}
-        <Link
-          href="/settings"
-          className="flex min-h-[44px] min-w-0 flex-1 flex-col justify-center rounded-control hover:opacity-80"
-          aria-label={`${fullName(session?.user)} — тохиргоо`}
-        >
+        {/*
+          ★ Not a link any more — 2026-09-06, at the client's request.
+
+          It pointed at `/settings`, and by the time it did, `/settings` had
+          three other doors: `DesktopHeader`'s profile menu at the top right,
+          the "Хувийн тохиргоо" row in this very menu, and the phone's bottom
+          bar. Four ways into one screen is not four affordances, it is a
+          reader wondering whether they differ — the client's words were
+          "хэт олон profile болоод байна".
+
+          What the foot of the sidebar is *for* is the one thing no other
+          chrome carries: the way out. So the identity is now plain text that
+          answers "who am I signed in as", and the only control in the card
+          logs you out.
+        */}
+        <div className="flex min-h-[44px] min-w-0 flex-1 flex-col justify-center">
           <span className="block truncate text-compact font-semibold leading-[1.2] text-ink">
             {fullName(session?.user)}
           </span>
           <span className="block truncate text-caption text-muted">{context}</span>
-        </Link>
+        </div>
 
+        {/*
+          Icon *and* label: the square with a glyph in it read as "settings" to
+          about as many people as it read as "log out", and this is the one
+          control in the shell that must not be pressed by accident or missed
+          when wanted. `shrink-0` keeps the word whole and lets the name above
+          truncate instead, which is the right thing to give up at 244px.
+        */}
         <button
           type="button"
           onClick={() => void logout()}
-          aria-label="Гарах"
-          className="grid size-11 shrink-0 place-items-center rounded-control text-muted transition-colors hover:bg-surface hover:text-danger"
+          className="flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-control px-2.5 text-caption font-medium text-muted transition-colors hover:bg-surface hover:text-danger"
         >
-          <LogOut size={18} aria-hidden="true" />
+          <LogOut size={16} aria-hidden="true" />
+          Гарах
         </button>
       </div>
     </div>

@@ -27,16 +27,34 @@ export class SurveysRepository {
     createdById: string;
     schoolYear?: string | null;
     period?: SurveyPeriod | null;
+    /** Null is every group — see `Survey.groupId`. */
+    groupId?: string | null;
     clonedFromSurveyId?: string | null;
   }) {
     return this.prisma.survey.create({ data });
+  }
+
+  /**
+   * A group, only if it is this kindergarten's.
+   *
+   * ★ The tenant filter is the whole point of the method: `create` uses it to
+   * refuse an audience from another kindergarten, so a bare `findUnique` by id
+   * would defeat the check it exists to make.
+   */
+  async findGroupInKindergarten(groupId: string, kindergartenId: string) {
+    return this.prisma.group.findFirst({
+      where: { id: groupId, kindergartenId, deletedAt: null },
+      select: { id: true },
+    });
   }
 
   async findForKindergarten(kindergartenId: string) {
     return this.prisma.survey.findMany({
       where: { kindergartenId, deletedAt: null },
       orderBy: { createdAt: "desc" },
-      include: { questions: { orderBy: questionOrder } },
+      // `group` so the staff list can say which group a survey is aimed at
+      // without a second request per row.
+      include: { questions: { orderBy: questionOrder }, group: { select: { id: true, name: true } } },
     });
   }
 
@@ -109,13 +127,49 @@ export class SurveysRepository {
 
   // ── Reading (parent + staff) ─────────────────────────────────────────────
 
-  /** Published, still-open surveys relevant to a child's kindergarten. */
-  async findActiveForKindergarten(kindergartenId: string) {
+  /**
+   * Published, still-open surveys relevant to a child's kindergarten.
+   *
+   * ★ Narrowed by the child's group since 2026-09-06.
+   *
+   * A survey with no `groupId` is for every group and is always included; one
+   * naming a group reaches only that group's families. `groupId` here is the
+   * child's *current* group — a family should see the questionnaire their
+   * child's group is being asked, not one aimed at the group they left in
+   * June. A child with no active enrollment sees only the kindergarten-wide
+   * ones, which is the correct answer rather than a special case.
+   */
+  async findActiveForKindergarten(kindergartenId: string, groupId: string | null) {
     return this.prisma.survey.findMany({
-      where: { kindergartenId, deletedAt: null, status: "PUBLISHED" },
+      where: {
+        kindergartenId,
+        deletedAt: null,
+        status: "PUBLISHED",
+        OR: groupId ? [{ groupId: null }, { groupId }] : [{ groupId: null }],
+      },
       orderBy: { publishedAt: "desc" },
-      include: { questions: { orderBy: questionOrder, where: { deletedAt: null } } },
+      include: {
+        questions: { orderBy: questionOrder, where: { deletedAt: null } },
+        group: { select: { id: true, name: true } },
+      },
     });
+  }
+
+  /**
+   * The group a child is enrolled in right now, or null.
+   *
+   * Read here rather than off `ChildAccessFacts`: those enrollments are the
+   * whole history with no status on them, deliberately — `child-access.ts`
+   * explains why authorization must read history. "Which group is this child
+   * in today" is a different question and needs the current row.
+   */
+  async activeGroupIdForChild(childId: string): Promise<string | null> {
+    const enrollment = await this.prisma.enrollment.findFirst({
+      where: { childId, status: "ACTIVE", deletedAt: null },
+      orderBy: { startedOn: "desc" },
+      select: { groupId: true },
+    });
+    return enrollment?.groupId ?? null;
   }
 
   async findResponse(surveyId: string, respondentId: string, childId: string | null) {

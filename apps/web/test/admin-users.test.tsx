@@ -72,6 +72,22 @@ beforeEach(() => {
 });
 
 /**
+ * Opens a row's "⋯" menu and chooses an entry.
+ *
+ * ★ Every row action moved behind one menu on 2026-09-06, at the client's
+ * request — "3 цэг буюу цэсээр оруулаад засах устгах эрх нэмэх гэх мэт".
+ *
+ * The tests below are unchanged in what they assert: the dialogs, the request
+ * bodies and the error handling are the contract, and none of that moved. What
+ * changed is that reaching the dialog is now two clicks, so it is one helper
+ * rather than a rewritten expectation in eighteen places.
+ */
+async function rowAction(u: ReturnType<typeof userEvent.setup>, label: string) {
+  await u.click(await screen.findByRole("button", { name: /— үйлдэл$/ }));
+  await u.click(await screen.findByRole("menuitem", { name: label }));
+}
+
+/**
  * ★ The list has always been paginated and the screen always rendered page one.
  *
  * `pageSize` was hardcoded to 50 and `total`/`totalPages` were both discarded,
@@ -95,7 +111,7 @@ describe("хуудаслалт", () => {
     stubPaged(1, 3);
     renderWithProviders(<AdminUsersPage />);
 
-    expect(await screen.findByText("Нийт 120 хэрэглэгч")).toBeInTheDocument();
+    expect(await screen.findByText("Нийт 120 ажилтан")).toBeInTheDocument();
   });
 
   it("offers paging when there is more than one page", async () => {
@@ -159,9 +175,12 @@ describe("хуудаслалт", () => {
 describe("хэрэглэгч засах", () => {
   it("offers an edit action on the row", async () => {
     stubUsers();
+    const u = userEvent.setup();
     renderWithProviders(<AdminUsersPage />);
 
-    expect(await screen.findByRole("button", { name: "Засах" })).toBeInTheDocument();
+    // The row carries one control; "Засах" lives inside it.
+    await u.click(await screen.findByRole("button", { name: /— үйлдэл$/ }));
+    expect(await screen.findByRole("menuitem", { name: "Засах" })).toBeInTheDocument();
   });
 
   it("prefills the form from the row", async () => {
@@ -169,7 +188,7 @@ describe("хэрэглэгч засах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminUsersPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Засах" }));
+    await rowAction(u, "Засах");
     const dialog = await screen.findByRole("dialog");
 
     expect(within(dialog).getByLabelText(/Овог/)).toHaveValue("Дорж");
@@ -187,7 +206,7 @@ describe("хэрэглэгч засах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminUsersPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Засах" }));
+    await rowAction(u, "Засах");
     const dialog = await screen.findByRole("dialog");
 
     expect(within(dialog).getByText(/Нэвтрэх нэр: bagsh9/)).toBeInTheDocument();
@@ -199,7 +218,7 @@ describe("хэрэглэгч засах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminUsersPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Засах" }));
+    await rowAction(u, "Засах");
     await u.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Болих" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -213,7 +232,7 @@ describe("хэрэглэгч засах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminUsersPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Засах" }));
+    await rowAction(u, "Засах");
     const dialog = await screen.findByRole("dialog");
     const phone = within(dialog).getByLabelText(/Утас/);
     await u.clear(phone);
@@ -243,7 +262,7 @@ describe("хэрэглэгч засах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminUsersPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Засах" }));
+    await rowAction(u, "Засах");
     const dialog = await screen.findByRole("dialog");
     await u.clear(within(dialog).getByLabelText(/И-мэйл/));
     await u.click(within(dialog).getByRole("button", { name: "Хадгалах" }));
@@ -260,7 +279,7 @@ describe("хэрэглэгч засах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminUsersPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Засах" }));
+    await rowAction(u, "Засах");
     const dialog = await screen.findByRole("dialog");
     await u.click(within(dialog).getByLabelText(/Идэвхтэй/));
     await u.click(within(dialog).getByRole("button", { name: "Хадгалах" }));
@@ -275,7 +294,7 @@ describe("хэрэглэгч засах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminUsersPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Засах" }));
+    await rowAction(u, "Засах");
     await u.click(
       within(await screen.findByRole("dialog")).getByRole("button", { name: "Хадгалах" }),
     );
@@ -317,7 +336,7 @@ describe("хэрэглэгч засах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminUsersPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Засах" }));
+    await rowAction(u, "Засах");
     const dialog = await screen.findByRole("dialog");
     await u.click(within(dialog).getByRole("button", { name: "Хадгалах" }));
 
@@ -353,7 +372,7 @@ describe("хэрэглэгч засах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminUsersPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Засах" }));
+    await rowAction(u, "Засах");
     const dialog = await screen.findByRole("dialog");
     await u.click(within(dialog).getByRole("button", { name: "Хадгалах" }));
 
@@ -368,7 +387,7 @@ describe("эрх нэмэх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminUsersPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Эрх нэмэх" }));
+    await rowAction(u, "Эрх нэмэх");
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByLabelText(/^Эрх \*/)).toBeInTheDocument();
   });
@@ -384,7 +403,7 @@ describe("эрх нэмэх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminUsersPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Эрх нэмэх" }));
+    await rowAction(u, "Эрх нэмэх");
     const dialog = await screen.findByRole("dialog");
     await selectOption(u, /^Эрх \*/, "Админ");
     await u.click(within(dialog).getByRole("button", { name: "Эрх нэмэх" }));
@@ -405,7 +424,7 @@ describe("эрх нэмэх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminUsersPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Эрх нэмэх" }));
+    await rowAction(u, "Эрх нэмэх");
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).queryByLabelText(/Цэцэрлэг/)).toBeNull();
   });
@@ -426,7 +445,7 @@ describe("эрх нэмэх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminUsersPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Эрх нэмэх" }));
+    await rowAction(u, "Эрх нэмэх");
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText(/Багш \(хураасан\)/)).toBeInTheDocument();
   });
@@ -454,7 +473,7 @@ describe("эрх нэмэх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminUsersPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Эрх нэмэх" }));
+    await rowAction(u, "Эрх нэмэх");
     const dialog = await screen.findByRole("dialog");
     await u.click(within(dialog).getByRole("button", { name: "Эрх нэмэх" }));
 
@@ -467,7 +486,7 @@ describe("эрх нэмэх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminUsersPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Эрх нэмэх" }));
+    await rowAction(u, "Эрх нэмэх");
     await u.click(await screen.findByLabelText(/^Эрх \*/));
 
     /*
@@ -502,7 +521,7 @@ describe("эрхгүй тохиолдол", () => {
 
     // `RequireRole roles={["ADMIN"]}` keeps a teacher off the screen entirely,
     // which is the stronger guarantee and the one worth asserting.
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Эрх нэмэх" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("button", { name: /— үйлдэл$/ })).toBeNull());
   });
 
   it("does not offer a kindergarten this admin does not administer", async () => {
@@ -510,7 +529,7 @@ describe("эрхгүй тохиолдол", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminUsersPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Эрх нэмэх" }));
+    await rowAction(u, "Эрх нэмэх");
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).queryByText("Өөр цэцэрлэг")).toBeNull();
   });

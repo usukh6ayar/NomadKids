@@ -10,7 +10,6 @@ import {
   Download,
   Plus,
   Search,
-  SlidersHorizontal,
   Upload,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -43,7 +42,7 @@ import { SelectBox, SelectionBar, useSelection } from "@/components/ui/selection
 import { TableShell, Td, Th } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useSelectedChild } from "@/lib/selected-child";
-import { formatAge, formatAgeFromMonths, formatDate, fullName } from "@/lib/format";
+import { formatAge, formatDate, fullName } from "@/lib/format";
 import { MY_CHILDREN } from "@/lib/vocabulary";
 import { z } from "zod";
 
@@ -104,6 +103,9 @@ export default function ChildrenPage() {
  * per character — and it is not needed, because the only thing that has to
  * survive a navigation is the term someone arrived with.
  */
+/** Rows per page — see the note beside `filters` in `StaffChildren`. */
+const PAGE_SIZE = 20;
+
 function StaffChildren() {
   const { primaryKindergartenId } = useSession();
   const searchParams = useSearchParams();
@@ -114,20 +116,6 @@ function StaffChildren() {
   const [facets, setFacets] = useState<RosterFacets>(NO_FACETS);
   const search = useDebounced(query.trim());
 
-  /*
-    How many narrowings are in force — the sort is not one of them, since a
-    roster is always in *some* order and calling that a filter would leave the
-    badge permanently at one.
-  */
-  const activeFilterCount = [
-    facets.groupId,
-    facets.sex,
-    facets.ageMin !== undefined ? "age" : undefined,
-    facets.ageMax !== undefined ? "age" : undefined,
-  ].filter(Boolean).length;
-
-  const [filtersOpen, setFiltersOpen] = useState(false);
-
   // Only when `?q=` itself changes — arriving from the header, or Back to an
   // earlier search. Local typing does not touch `urlQuery`, so this does not
   // fight the input on every keystroke.
@@ -136,7 +124,17 @@ function StaffChildren() {
     setPage(1);
   }, [urlQuery]);
 
-  const filters = { q: search || undefined, ...facets, page, pageSize: 25 };
+  /*
+   * ★ Twenty a page — the client's number, 2026-09-06: "20 хүүхэд болоход
+   * хангалттай".
+   *
+   * It was 25. The figure matters in two places beyond the query, and both are
+   * kept in step by this constant rather than by three literals agreeing:
+   * `useSelection` prunes ticks to what is visible, so a page *is* the set
+   * somebody can hand-pick, and the export's "these nine" case is bounded by
+   * it.
+   */
+  const filters = { q: search || undefined, ...facets, page, pageSize: PAGE_SIZE };
 
   // The same filters the list is showing, minus pagination — the export is
   // "what I am looking at", not "page one of it".
@@ -148,7 +146,7 @@ function StaffChildren() {
     queryFn: () => {
       const params = rosterParams(search, facets);
       params.set("page", String(page));
-      params.set("pageSize", "25");
+      params.set("pageSize", String(PAGE_SIZE));
       return get(`/children?${params}`, listSchema);
     },
     // Keeps the previous page visible while the next loads, so the list does
@@ -170,8 +168,8 @@ function StaffChildren() {
    * Paging to page three drops the ticks from page one rather than carrying
    * them invisibly — see `selection.tsx`. That is a real limit and the honest
    * one: a hidden selection is how somebody exports rows they had forgotten
-   * they chose. Twenty-five at a time is also the size of set a person picks
-   * by hand.
+   * they chose. Twenty at a time is also the size of set a person picks by
+   * hand.
    */
   const selection = useSelection((data?.items ?? []).map((child) => child.id));
 
@@ -252,47 +250,33 @@ function StaffChildren() {
       <RosterSummary search={search} facets={facets} />
 
       {/*
-        ★ "Дэлгэрэнгүй" — the filters fold away, 2026-09-04.
-        The client's reference screen puts them behind one control beside the
-        search box, and it is right for a roster somebody opens twenty times a
-        day to look one child up: three selects permanently above the list are
-        three rows of chrome between the search field and the answer.
+        ★ The filters are on the page again — 2026-09-06, at the client's
+        request: "делгэрэнгүйг дардаг биш зүгээр болиулаад филтерийг нь тогтмол
+        байлгах".
 
-        ★★ Open whenever a filter is set, and the button says how many.
+        They folded behind a "Дэлгэрэнгүй" button from 2026-09-04, and that
+        note's argument was a real one — three selects above a roster somebody
+        opens twenty times a day are three rows of chrome between the search
+        box and the answer. What it did not weigh is that the fold has a cost
+        on every *use* of the filters, not just on the reading of the screen:
+        narrowing by group is the common case here, and behind a toggle it is
+        two clicks and a guess about where the control went.
 
-        This is the one thing a collapsed filter panel gets wrong — a teacher
-        concludes half their group has vanished because a narrowing they set
-        yesterday is now invisible. `filtersOpen` starts as "is anything set",
-        and the count on the button stays visible even when the panel is shut,
-        so the state is never hidden. That is the `RosterFilters` note's own
-        objection to a drawer, answered rather than ignored.
+        The objection the fold existed to answer is answered by the panel
+        instead. `RosterFilters` is one row of three controls, not a stacked
+        block, so the list still starts near the top of the screen; and a
+        narrowing in force is now visible without being counted on a badge,
+        because the selects themselves show it.
       */}
-      <div className="flex flex-col gap-2">
-        <button
-          type="button"
-          onClick={() => setFiltersOpen((open) => !open)}
-          aria-expanded={filtersOpen}
-          aria-controls="roster-filters"
-          className="flex min-h-11 items-center gap-2 self-start rounded-control border border-border bg-surface px-3 text-body font-medium text-ink transition-colors hover:border-primary/40"
-        >
-          <SlidersHorizontal size={16} aria-hidden />
-          Дэлгэрэнгүй
-          {activeFilterCount > 0 ? <Badge tone="sky">{activeFilterCount}</Badge> : null}
-        </button>
-
-        <div id="roster-filters" hidden={!filtersOpen}>
-          <RosterFilters
-            facets={facets}
-            onChange={(next) => {
-              setFacets(next);
-              // A narrowed roster starts at page 1 — otherwise filtering from
-              // page three shows an empty result that reads as "no such
-              // children".
-              setPage(1);
-            }}
-          />
-        </div>
-      </div>
+      <RosterFilters
+        facets={facets}
+        onChange={(next) => {
+          setFacets(next);
+          // A narrowed roster starts at page 1 — otherwise filtering from page
+          // three shows an empty result that reads as "no such children".
+          setPage(1);
+        }}
+      />
 
       <div className="relative">
         <Search
@@ -971,23 +955,84 @@ function RosterSummary({ search, facets }: { search: string; facets: RosterFacet
 
   if (!data) return null;
 
+  /*
+    Not `data.total`: a child whose sex has not been recorded is in the roster
+    and in neither figure, so a bar drawn against the roster would show a gap
+    that stands for nothing. `gender-ratio.tsx` on the dashboard divides by the
+    same sum for the same reason.
+  */
+  const counted = data.boys + data.girls;
+
   return (
-    <section aria-label="Товч тоо" className="grid grid-cols-2 gap-2 md:gap-3">
-      <Card pad="compact">
-        <p className="text-body text-muted">Нийт хүүхэд</p>
-        <p className="mt-1 text-display font-semibold tabular-nums text-ink">{data.total}</p>
-      </Card>
-      <Card pad="compact">
-        <p className="text-body text-muted">Дундаж нас</p>
-        <p className="mt-1 text-display font-semibold tabular-nums text-ink">
-          {/*
-            Months, formatted as the product formats every other age. A mean of
-            41 months is "3 нас 5 сар"; rounded to whole years it would read "3"
-            for most of a school year and stop moving.
-          */}
-          {data.averageAgeMonths === null ? "—" : formatAgeFromMonths(data.averageAgeMonths)}
-        </p>
-      </Card>
+    <section aria-label="Товч тоо" className="flex flex-col gap-2 md:gap-3">
+      {/*
+        ★ "Дундаж нас" went and the sex split arrived — 2026-09-06, at the
+        client's request: "дундаж нас хэрэггүй арилга, нэмэлтээр хүйсийн
+        харьцаагийн dashboard нэм".
+
+        The mean age was a number nobody acted on. Six children aged 2 and six
+        aged 5 average to the same figure as twelve aged 3½, and the roster's
+        own age filter answers the question that was actually being asked of
+        it. The split is the figure a director is asked for — by the ministry,
+        on every annual return — and it is one the roster can answer exactly.
+
+        ★★ It narrows with the filters, because it is `RosterSummary`'s own
+        data. Selecting a group gives that group's split, which is what makes
+        it worth having on this screen rather than only on the dashboard.
+      */}
+      <div className="grid grid-cols-3 gap-2 md:gap-3">
+        <Card pad="compact">
+          <p className="text-body text-muted">Нийт хүүхэд</p>
+          <p className="mt-1 text-display font-semibold tabular-nums text-ink">{data.total}</p>
+        </Card>
+        <Card pad="compact">
+          <p className="text-body text-muted">Охид</p>
+          <p className="mt-1 text-display font-semibold tabular-nums text-ink">{data.girls}</p>
+        </Card>
+        <Card pad="compact">
+          <p className="text-body text-muted">Хөвгүүд</p>
+          <p className="mt-1 text-display font-semibold tabular-nums text-ink">{data.boys}</p>
+        </Card>
+      </div>
+
+      {/*
+        The ratio itself, as one bar.
+
+        Two counts answer "how many"; a length answers "how does it split", and
+        the eye reads the second off a bar faster than off a pair of numerals.
+        Percentages are printed beside it rather than inside the segments — a
+        one-child segment has no room for a label, and a bar whose text vanishes
+        at small values is a bar that fails exactly when it is most surprising.
+
+        Hidden when nobody's sex is recorded: an empty rule reads as a
+        rendering fault, and the three cards above already say so by showing
+        zeroes.
+      */}
+      {counted > 0 ? (
+        <Card pad="compact" className="flex flex-col gap-2">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="text-body text-muted">Хүйсийн харьцаа</p>
+            <p className="text-body tabular-nums text-muted">
+              {Math.round((data.girls / counted) * 100)}% · {Math.round((data.boys / counted) * 100)}%
+            </p>
+          </div>
+          <div
+            role="img"
+            aria-label={`${data.girls} охин, ${data.boys} хүү`}
+            className="flex h-2.5 overflow-hidden rounded-pill bg-border-soft"
+          >
+            {/* Inline widths: the split is data, and a Tailwind class cannot
+                express an arbitrary percentage. */}
+            <span className="bg-peach" style={{ width: `${(data.girls / counted) * 100}%` }} />
+            <span className="bg-primary" style={{ width: `${(data.boys / counted) * 100}%` }} />
+          </div>
+          {counted < data.total ? (
+            <p className="text-caption text-muted">
+              {data.total - counted} хүүхдийн хүйс бүртгэгдээгүй.
+            </p>
+          ) : null}
+        </Card>
+      ) : null}
     </section>
   );
 }

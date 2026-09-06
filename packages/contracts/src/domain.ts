@@ -951,6 +951,17 @@ export const surveySchema = z.object({
   /** Which wave: RFP Module 1.1's эхний/завсрын/жилийн эцсийн үнэлгээ. */
   period: surveyPeriodSchema.nullish(),
   clonedFromSurveyId: uuidSchema.nullish(),
+  /**
+   * Which group the survey is for — null is every group.
+   *
+   * ★ Added 2026-09-06. Null and "every group listed" are deliberately not the
+   * same thing: a survey aimed at everyone keeps reaching families who enrol
+   * after it was published. `Survey.groupId` in the schema states the rule and
+   * `notifications.dto.ts` states the same one for notices.
+   */
+  groupId: uuidSchema.nullish(),
+  /** The group's name, for the staff list. Absent when `groupId` is null. */
+  group: namedRefSchema.nullish(),
   questions: z.array(surveyQuestionSchema).default([]),
   /** Set only on the child-facing list — has this guardian already answered
    * for this child (or, for a KINDERGARTEN-scope survey, at all)? */
@@ -2135,6 +2146,16 @@ export const documentSchema = z.object({
   coverMediaFileId: uuidSchema.nullish(),
   publishedAt: z.string().nullish(),
   publishedBy: personRefSchema.nullish(),
+  /**
+   * Which group's teachers this is for — null is all staff.
+   *
+   * ★ Added 2026-09-06. A teacher's list is already filtered by it on the
+   * server, so this is for *display*: an administrator needs to see who a
+   * document went to, and a teacher benefits from knowing a circular is theirs
+   * rather than the kindergarten's.
+   */
+  groupId: uuidSchema.nullish(),
+  group: namedRefSchema.nullish(),
   /** This reader's own bookmark, flattened from the join — RFP §9. */
   isBookmarked: z.boolean().default(false),
 });

@@ -678,6 +678,8 @@ model Group {
   chatMessages          ChatMessage[]
   notificationTargets   NotificationTarget[]
   attendanceSubmissions AttendanceSubmission[]
+  surveys               Survey[]               @relation("SurveyGroup")
+  documents             Document[]             @relation("DocumentGroup")
 
   @@unique([schoolYearId, name])
   @@index([kindergartenId, status])
@@ -1522,7 +1524,31 @@ model Document {
   category       String?
   description    String?
   /// "Хувилбар" — e.g. "2026.1". A label, not an ordering key.
+  ///
+  /// ★ No longer offered by the publish form as of 2026-09-06 — the client
+  /// asked for it to go ("хувилбар гэдэг нь хэрэггүй арилга"). The column
+  /// stays: `POST /documents/:id/file` writes it when a PDF is replaced, which
+  /// is the one place a version label is a fact rather than something somebody
+  /// typed, and existing rows carry values a delete would destroy.
   version        String?
+
+  /// Which group's teachers this document is for — NULL means all staff.
+  ///
+  /// ★ Added 2026-09-06, at the client's request: "захирал pdf оруулахад
+  /// багшийн нэрээр нь биш бүлгээр нь choose хийнэ, тэгээд зөвхөн тэр багш руу
+  /// нь л явна".
+  ///
+  /// By group and not by teacher, which is the client's own distinction and
+  /// the right one: a teacher is assigned to a group and assignments change, so
+  /// a document addressed to a person would follow them out of the group and
+  /// would not follow their replacement in. `GroupTeacher` already answers
+  /// "who teaches this group" on every request (§1.3), so this stays correct
+  /// without anybody re-filing anything.
+  ///
+  /// NULL is every group, the same convention `Survey.groupId` uses — a
+  /// document for all staff keeps reaching a teacher hired next month.
+  /// Administrators see every document regardless: they are the ones filing.
+  groupId String? @db.Uuid
 
   /// The PDF itself. Required: a library entry with no document is a title.
   fileMediaFileId  String  @unique @db.Uuid
@@ -1540,9 +1566,12 @@ model Document {
   file         MediaFile          @relation("DocumentFile", fields: [fileMediaFileId], references: [id], onDelete: Restrict)
   cover        MediaFile?         @relation("DocumentCover", fields: [coverMediaFileId], references: [id], onDelete: SetNull)
   publishedBy  User?              @relation("DocumentPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+  group        Group?             @relation("DocumentGroup", fields: [groupId], references: [id], onDelete: Restrict)
   bookmarks    DocumentBookmark[]
 
   @@index([kindergartenId, category])
+  /// A teacher's library: their groups' documents, plus the kindergarten's.
+  @@index([kindergartenId, groupId])
   @@index([kindergartenId, publishedAt(sort: Desc)])
   @@map("documents")
 }
@@ -2959,18 +2988,46 @@ model Survey {
   /// note on `indicatorKey`.
   clonedFromSurveyId String? @db.Uuid
 
+  /// Which group this survey is for — NULL means every group.
+  ///
+  /// ★ Added 2026-09-06, at the client's request: the "Хэнд зориулагдсан"
+  /// control should offer "бүх бүлэг" or a chosen one.
+  ///
+  /// **NULL is the whole kindergarten, and it is not the same as every group
+  /// listed.** A survey aimed that way keeps reaching families who enrol after
+  /// it was published; naming groups freezes the audience at the moment of
+  /// writing. The notification module draws exactly this distinction and states
+  /// it in `notifications.dto.ts` — one convention for both, so "everyone"
+  /// means one thing in this product.
+  ///
+  /// ★★ A column rather than a `SurveyTarget` join table, unlike notifications.
+  ///
+  /// A notice can be aimed at several groups *and* named children at once, so
+  /// its targets are rows. The client asked for one group or all of them here,
+  /// and a join table for a cardinality of one is a second query on every read
+  /// of the parent's survey list. It widens to a table the day the requirement
+  /// widens; a column that has to become one is a migration, not a redesign.
+  ///
+  /// `onDelete: Restrict` for the reason every tenant relation here uses it:
+  /// groups are soft-deleted (§3.2), so a real delete cascading through a
+  /// published survey is not a case that should be reachable at all.
+  groupId String? @db.Uuid
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
   kindergarten Kindergarten     @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   createdBy    User?            @relation("SurveyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  group        Group?           @relation("SurveyGroup", fields: [groupId], references: [id], onDelete: Restrict)
   questions    SurveyQuestion[]
   responses    SurveyResponse[]
   clonedFrom   Survey?          @relation("SurveyClone", fields: [clonedFromSurveyId], references: [id], onDelete: SetNull)
   clones       Survey[]         @relation("SurveyClone")
 
   @@index([kindergartenId, status])
+  /// The parent's list: published surveys for their child's group, or for all.
+  @@index([kindergartenId, groupId])
   /// "This year's waves, in order" — what Module 1.2 asks for.
   @@index([kindergartenId, schoolYear, period])
   @@map("surveys")

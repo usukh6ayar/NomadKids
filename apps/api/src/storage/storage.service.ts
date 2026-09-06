@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
 import {
   DeleteObjectCommand,
   GetObjectCommand,
@@ -60,15 +60,48 @@ export class StorageService {
     return `${prefix}/${kindergartenId}/${randomUUID()}`;
   }
 
+  /**
+   * Stores an object, and says so plainly when it cannot.
+   *
+   * ★ A storage outage is a 503 with a sentence, not a bare 500 — 2026-09-06.
+   *
+   * Every upload in this product funnels through here: a child's photograph, a
+   * kindergarten's logo, a PDF for the document library. When the object store
+   * was unreachable the AWS SDK threw a raw `AggregateError` with no message,
+   * which `ProblemExceptionFilter` correctly reported as an unhandled 500 —
+   * and 500 renders as "Алдаа гарлаа", which tells the person uploading
+   * nothing and tells whoever they report it to nothing either. The client hit
+   * exactly this trying to add a PDF ("баримт бичгийн санд жишээ pdf оруулах
+   * гэхээр server алда гээд байх юм").
+   *
+   * A 503 is also the honest status. Nothing was wrong with the request: the
+   * file was valid, the person was allowed to send it, and repeating it once
+   * the store is back will work. `titleFor` in the filter has no case for 503,
+   * so the message carried here is what the reader sees.
+   *
+   * ★★ The endpoint is logged and never returned. It is deployment
+   * configuration, and an error body naming the internal host of the object
+   * store is a small piece of infrastructure handed to whoever provoked the
+   * error.
+   */
   async put(key: string, body: Buffer, contentType: string): Promise<void> {
-    await this.client.send(
-      new PutObjectCommand({
-        Bucket: this.env.STORAGE_BUCKET,
-        Key: key,
-        Body: body,
-        ContentType: contentType,
-      }),
-    );
+    try {
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.env.STORAGE_BUCKET,
+          Key: key,
+          Body: body,
+          ContentType: contentType,
+        }),
+      );
+    } catch (error) {
+      this.logger.error(
+        `Storage PUT failed for ${key} at ${this.env.STORAGE_ENDPOINT}: ${(error as Error).message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Файл хадгалах сан руу холбогдож чадсангүй. Түр хүлээгээд дахин оролдоно уу.",
+      );
+    }
   }
 
   /**

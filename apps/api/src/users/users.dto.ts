@@ -50,9 +50,31 @@ export const updateProfileSchema = z.object({
 });
 export type UpdateProfileDto = z.infer<typeof updateProfileSchema>;
 
+/**
+ * A comma-separated role list — "roles=ADMIN,TEACHER,COOK,ACCOUNTANT".
+ *
+ * ★ Added 2026-09-06 so `/admin/users` can ask for staff and mean it.
+ *
+ * The screen is a staff directory: the client's instruction was "хэрэглэгч эрх
+ * дотор ерөөсөө эцэг эх байхгүй". Filtering guardians out in the browser is
+ * the wrong instrument for a paginated endpoint — page one of fifty rows would
+ * come back with the parents removed and the count still counting them, so the
+ * list would shrink, the pager would lie, and pages would appear half empty.
+ * The exclusion has to happen in the `where`, which means the query has to be
+ * able to say it.
+ *
+ * A list rather than a `not`: naming what you want survives a sixth role being
+ * added, where "everything except PARENT" would silently start including it.
+ */
+const rolesSchema = z
+  .string()
+  .transform((value) => value.split(",").map((part) => part.trim()).filter(Boolean))
+  .pipe(z.array(roleSchema).min(1).max(8));
+
 export const listUsersQuerySchema = paginationQuerySchema.extend({
   kindergartenId: uuidSchema.optional(),
   role: roleSchema.optional(),
+  roles: rolesSchema.optional(),
   isActive: z.coerce.boolean().optional(),
   q: searchTermSchema,
 });

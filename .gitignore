@@ -36,3 +36,7 @@ apps/api/src/generated/
 # secrets ends up existing on one laptop and nowhere else.
 !.env.example
 !.env.production.example
+
+# Local object storage, for a machine running MinIO without Docker.
+# See scripts/storage-dev.sh — the bytes are uploads, not source.
+.minio-data/

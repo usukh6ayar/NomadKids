@@ -778,7 +778,18 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
     {
       title: "Багш ба байгууллага",
       entries: [
-        entry("Багшийн мэдээлэл", "/settings"),
+        /*
+         * ★ "Хувийн тохиргоо", not "Багшийн мэдээлэл" — renamed 2026-09-06 at
+         * the client's request.
+         *
+         * The row points at `/settings`, which is the signed-in person's *own*
+         * account: their name, their contact details, their password. It is
+         * not a directory of the kindergarten's teachers — that is
+         * "Хэрэглэгч ба эрх" one row below, and the old name promised this row
+         * was it. A cook and an accountant share this menu too, so "Багшийн"
+         * was wrong for them in a second way.
+         */
+        entry("Хувийн тохиргоо", "/settings"),
         /*
          * ★ The administration screens, named — and no "Удирдлага" row above
          * them any more.
@@ -805,8 +816,21 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         ...adminEntry("Хэрэглэгч ба эрх", "/admin/users"),
         ...adminEntry("Хичээлийн жил", "/admin/school-years"),
         ...adminEntry("Улирал", "/admin/terms"),
-        ...adminEntry("Үнэлгээний тохиргоо", "/admin/assessment-config"),
-        ...adminEntry("Аудит", "/admin/audit"),
+        /*
+         * ★ "Үнэлгээний тохиргоо" and "Аудит" lost their rows on 2026-09-06,
+         * at the client's request — and, as with the two review queues above,
+         * **the rows go and the screens stay.**
+         *
+         * `/admin/assessment-config` and `/admin/audit` still render, still
+         * carry their own `RequireRole`, and are still reached from where the
+         * question actually arises: the assessment configuration from
+         * `/admin` overview, and the audit trail from the same place plus
+         * `/finance`'s own "Аудит" link. Neither is a screen a director opens
+         * daily — the configuration is August work and the audit log is
+         * something you go to *because* of a question — so a permanent row
+         * for each was two of the eight rows in this section spent on
+         * occasional work.
+         */
       ],
     },
   ];

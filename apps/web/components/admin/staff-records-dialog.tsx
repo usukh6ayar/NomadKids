@@ -69,7 +69,7 @@ export function StaffRecordsButton({
   );
 }
 
-function StaffRecordsDialog({
+export function StaffRecordsDialog({
   user,
   kindergartenId,
   onClose,

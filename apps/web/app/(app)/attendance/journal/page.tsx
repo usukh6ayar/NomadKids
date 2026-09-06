@@ -14,7 +14,9 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { PageHeader } from "@/components/shell/app-shell";
+import { useSearchParams } from "next/navigation";
 import { RequireRole } from "@/components/shell/require-role";
+import { AttendanceViewSwitch } from "@/components/attendance/view-switch";
 import { Download } from "lucide-react";
 import { downloadUrl } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
@@ -71,21 +73,46 @@ const STATUS_SHORT: Record<string, string> = {
   OTHER: "Б",
 };
 
+/**
+ * ★ Fixed 2026-09-06: every cell in this grid was uncoloured.
+ *
+ * These were `bg-success-soft text-success-strong` and four more of the same
+ * shape, and not one of those tokens exists — `globals.css` defines the stat
+ * tints as mint/sky/sun/peach plus `--color-danger`, and there is no
+ * `success`, `info` or `warning` scale anywhere in the product. Tailwind
+ * emits nothing for a class it cannot resolve and reports nothing either, so
+ * the grid rendered every status in the same grey and the letters were the
+ * only thing telling them apart. It surfaced now because the client asked for
+ * the child-grained register to be reachable from the day sheet
+ * (`AttendanceViewSwitch`), which is the first time anybody had reason to
+ * read it closely.
+ *
+ * The tones are the ones the rest of the attendance screens use, so a status
+ * is the same colour here as it is on the day sheet and in the summary bar.
+ * `HALF_DAY` and `SICK` deliberately share `sun`: both mean "here, but not a
+ * full day of care", which is the distinction the funding register draws.
+ */
 const STATUS_TONE: Record<string, string> = {
-  PRESENT: "bg-success-soft text-success-strong",
-  HALF_DAY: "bg-warning-soft text-warning-strong",
-  EXCUSED: "bg-info-soft text-info-strong",
-  SICK: "bg-warning-soft text-warning-strong",
-  ABSENT: "bg-danger-soft text-danger-strong",
+  PRESENT: "bg-mint text-mint-ink",
+  HALF_DAY: "bg-sun text-sun-ink",
+  EXCUSED: "bg-sky text-sky-ink",
+  SICK: "bg-sun text-sun-ink",
+  ABSENT: "bg-peach text-peach-ink",
   OTHER: "bg-canvas text-muted",
 };
 
 function AttendanceJournal() {
   const { primaryKindergartenId } = useSession();
 
-  const [from, setFrom] = useState(() => firstOfMonth());
-  const [to, setTo] = useState(() => today());
-  const [groupId, setGroupId] = useState("");
+  /*
+   * Seeded from the URL so `AttendanceViewSwitch` can carry the period over
+   * from the group-grained register — see that component's note. Read once, at
+   * mount: the filters below own the state from then on.
+   */
+  const searchParams = useSearchParams();
+  const [from, setFrom] = useState(() => searchParams.get("from") || firstOfMonth());
+  const [to, setTo] = useState(() => searchParams.get("to") || today());
+  const [groupId, setGroupId] = useState(() => searchParams.get("groupId") ?? "");
   const [statuses, setStatuses] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -159,6 +186,7 @@ function AttendanceJournal() {
       <PageHeader
         title="Ирцийн дэлгэрэнгүй"
         lede="Хүүхэд бүрийн өдөр тутмын ирц, сонгосон хугацаагаар"
+        actions={<AttendanceViewSwitch current="child" from={from} to={to} groupId={groupId} />}
       />
 
       <Card pad="roomy" className="flex flex-col gap-4">

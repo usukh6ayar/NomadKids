@@ -102,6 +102,26 @@ const PROFILE = {
   photoMediaFileId: null,
 };
 
+/**
+ * ★ The password form is the last section of the profile's *edit* form since
+ * 2026-09-06, folded shut. Every test here now opens the profile for editing
+ * and then unfolds it.
+ *
+ * The client asked for both steps, in two passes: first that the form stop
+ * being permanently on screen ("нууц үг солих гээд тогтмол харагдаад
+ * байхгүйгээр"), then that a modal opened from a second header button was the
+ * wrong answer ("шал сонин байна") and it belongs inside the profile's own
+ * edit — "profile дотроо edit гэхэд нь".
+ *
+ * What is under test is unchanged — the rules are listed, the fields reveal,
+ * and a weak password never reaches the API — so the tests gained two clicks
+ * rather than an assertion.
+ */
+async function openPasswordForm(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole("button", { name: "Засах" }));
+  await user.click(await screen.findByRole("button", { name: "Нууц үг солих" }));
+}
+
 describe("settings — changing a password", () => {
   /**
    * ★ The third screen that sets a password, and the one that did not say how.
@@ -113,12 +133,14 @@ describe("settings — changing a password", () => {
    * ("алдаа байнга гараад байна", 2026-09-04).
    */
   it("lists the rules before anything is typed, like the other two forms", async () => {
+    const user = userEvent.setup();
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
       { path: "/me/profile", body: PROFILE },
     ]);
 
     renderWithProviders(<SettingsPage />);
+    await openPasswordForm(user);
 
     await screen.findByLabelText(/^Одоогийн нууц үг/);
     const rules = screen.getAllByRole("listitem").map((li) => li.textContent ?? "");
@@ -145,6 +167,7 @@ describe("settings — changing a password", () => {
     ]);
 
     renderWithProviders(<SettingsPage />);
+    await openPasswordForm(user);
 
     const field = await screen.findByLabelText(/^Одоогийн нууц үг/);
     expect(field).toHaveAttribute("type", "password");
@@ -181,11 +204,12 @@ describe("settings — changing a password", () => {
     ]);
 
     renderWithProviders(<SettingsPage />);
+    await openPasswordForm(user);
 
     await user.type(await screen.findByLabelText(/^Одоогийн нууц үг/), "Whatever123");
     await user.type(screen.getByLabelText(/^Шинэ нууц үг \*/), WEAK);
     await user.type(screen.getByLabelText(/^Шинэ нууц үг давтах/), WEAK);
-    await user.click(screen.getByRole("button", { name: "Нууц үг солих" }));
+    await user.click(screen.getByRole("button", { name: "Нууц үг шинэчлэх" }));
 
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent(/том үсэг|тоо байх ёстой/),

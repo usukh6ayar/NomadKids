@@ -1,10 +1,12 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
 import { z } from "zod";
 import { uuidSchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
+import { mediaUrl } from "@/lib/api/client";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
@@ -64,6 +66,27 @@ function AdminKindergarten() {
 
   const [form, setForm] = useState<Partial<Detail>>({});
 
+  /*
+   * ★ Read first, edit on purpose — 2026-09-06, at the client's request.
+   *
+   * Every field on this screen was a live input the moment the page loaded, so
+   * the kindergarten's own name — the string that prints on every PDF it
+   * issues and heads every parent's app — sat one stray keystroke from being
+   * changed. Nothing here is edited more than a few times a year, which is
+   * exactly the shape that should not be permanently armed: "шууд ингэж ил
+   * байлгаж болохгүй, ирээдүйд буруу зүйл хийхээс урьдчилан сэргийлэх".
+   *
+   * The gate is a mode, not a confirmation dialog. A dialog asks "are you
+   * sure?" *after* the damage is typed and is answered reflexively; a mode
+   * means the damage cannot be typed at all until somebody says they came here
+   * to change something.
+   *
+   * ★★ There is deliberately no delete. Removing a kindergarten is the
+   * platform operator's decision, for the same reason `isActive` is not
+   * offered here — see the docblock at the top of this file.
+   */
+  const [editing, setEditing] = useState(false);
+
   // The form is only seeded once the record arrives; typing before that would
   // be overwritten the moment it did.
   useEffect(() => {
@@ -91,6 +114,7 @@ function AdminKindergarten() {
         },
       }),
     onSuccess: () => {
+      setEditing(false);
       void queryClient.invalidateQueries({ queryKey: ["admin", "kindergarten"] });
       // The shell prints the kindergarten's name under the logo, so a rename
       // that did not refresh the session would show the old one until reload.
@@ -124,7 +148,26 @@ function AdminKindergarten() {
       <PageHeader
         title="Цэцэрлэгийн мэдээлэл"
         lede="Эцэг эхэд харагдах нэр, хаяг, холбоо барих мэдээлэл."
+        actions={
+          editing ? null : (
+            <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
+              <Pencil aria-hidden="true" />
+              Засах
+            </Button>
+          )
+        }
       />
+
+      {/*
+        The saved confirmation lives outside the form now: the form unmounts on
+        success (the screen returns to its reading state), so a status rendered
+        inside it would flash and vanish with the thing that raised it.
+      */}
+      {save.isSuccess && !editing ? (
+        <p role="status" className="rounded-control bg-mint px-3.5 py-2.5 text-body text-mint-ink">
+          Хадгалагдлаа.
+        </p>
+      ) : null}
 
       {/*
         RFP §3.2 asks for the logo, and §10.3 puts it on every generated PDF —
@@ -137,120 +180,186 @@ function AdminKindergarten() {
         to have somebody upload a logo and then wonder why "Хадгалах" is
         greyed out.
       */}
+      {/*
+        ★ The logo is behind the same gate, and it is the field that needed it
+        most: `SingleImageUpload` saves on selection, with no Хадгалах between
+        the file picker and the mark on every report the kindergarten issues.
+        Out of edit mode the current logo is shown and nothing can replace it.
+      */}
       <Card pad="roomy">
         <SectionHeader title="Лого" />
-        <SingleImageUpload
-          endpoint={`/kindergartens/${primaryKindergartenId}/logo`}
-          currentMediaId={data?.logoMediaFileId}
-          label="Лого нэмэх"
-          alt={`${data?.name ?? "Цэцэрлэг"}-ийн лого`}
-          hint="Тайлан, PDF бүрд хэвлэгдэнэ. JPEG, PNG эсвэл WebP."
-          invalidateKeys={[qk.adminKindergarten(primaryKindergartenId ?? ""), qk.session()]}
-        />
-      </Card>
-
-      <Card pad="roomy">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!save.isPending) save.mutate();
-          }}
-          className="flex flex-col gap-4"
-          noValidate
-        >
-          <FormError
-            message={
-              save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null
-            }
+        {editing ? (
+          <SingleImageUpload
+            endpoint={`/kindergartens/${primaryKindergartenId}/logo`}
+            currentMediaId={data?.logoMediaFileId}
+            label="Лого нэмэх"
+            alt={`${data?.name ?? "Цэцэрлэг"}-ийн лого`}
+            hint="Тайлан, PDF бүрд хэвлэгдэнэ. JPEG, PNG эсвэл WebP."
+            invalidateKeys={[qk.adminKindergarten(primaryKindergartenId ?? ""), qk.session()]}
           />
-
-          {save.isSuccess ? (
-            <p
-              role="status"
-              className="rounded-control bg-mint px-3.5 py-2.5 text-body text-mint-ink"
-            >
-              Хадгалагдлаа.
-            </p>
-          ) : null}
-
-          <Field label="Цэцэрлэгийн нэр" error={errors.name} required>
-            {({ id, describedBy, invalid }) => (
-              <Input
-                id={id}
-                aria-describedby={describedBy}
-                invalid={invalid}
-                value={form.name ?? ""}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              />
-            )}
-          </Field>
-
-          <Field label="Хаяг" error={errors.address}>
-            {({ id, describedBy, invalid }) => (
-              <Input
-                id={id}
-                aria-describedby={describedBy}
-                invalid={invalid}
-                value={form.address ?? ""}
-                onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
-              />
-            )}
-          </Field>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Утас" error={errors.phone}>
-              {({ id, describedBy, invalid }) => (
-                <Input
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  type="tel"
-                  inputMode="tel"
-                  value={form.phone ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                />
-              )}
-            </Field>
-
-            <Field label="И-мэйл" error={errors.email}>
-              {({ id, describedBy, invalid }) => (
-                <Input
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  type="email"
-                  inputMode="email"
-                  value={form.email ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                />
-              )}
-            </Field>
-          </div>
-
-          <Field
-            label="Танилцуулга"
-            error={errors.description}
-            hint="Эцэг эхэд цэцэрлэгээ танилцуулах богино тайлбар."
-          >
-            {({ id, describedBy, invalid }) => (
-              <Textarea
-                id={id}
-                aria-describedby={describedBy}
-                invalid={invalid}
-                rows={4}
-                value={form.description ?? ""}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-              />
-            )}
-          </Field>
-
-          <div className="flex justify-end">
-            <Button type="submit" disabled={save.isPending}>
-              {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
-            </Button>
-          </div>
-        </form>
+        ) : data?.logoMediaFileId ? (
+          // `/media/:id` 302s to a presigned URL, which `next/image` cannot
+          // follow — every other media surface in this product uses a plain
+          // <img> for the same reason.
+          <img
+            src={mediaUrl(data.logoMediaFileId)}
+            alt={`${data.name}-ийн лого`}
+            className="h-24 w-auto rounded-control object-contain"
+          />
+        ) : (
+          <p className="text-body text-muted">Лого оруулаагүй байна.</p>
+        )}
       </Card>
+
+      {editing ? (
+        <Card pad="roomy">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!save.isPending) save.mutate();
+            }}
+            className="flex flex-col gap-4"
+            noValidate
+          >
+            <FormError
+              message={
+                save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null
+              }
+            />
+
+            <Field label="Цэцэрлэгийн нэр" error={errors.name} required>
+              {({ id, describedBy, invalid }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  value={form.name ?? ""}
+                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              )}
+            </Field>
+
+            <Field label="Хаяг" error={errors.address}>
+              {({ id, describedBy, invalid }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  value={form.address ?? ""}
+                  onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+                />
+              )}
+            </Field>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Утас" error={errors.phone}>
+                {({ id, describedBy, invalid }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    type="tel"
+                    inputMode="tel"
+                    value={form.phone ?? ""}
+                    onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                  />
+                )}
+              </Field>
+
+              <Field label="И-мэйл" error={errors.email}>
+                {({ id, describedBy, invalid }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    type="email"
+                    inputMode="email"
+                    value={form.email ?? ""}
+                    onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                  />
+                )}
+              </Field>
+            </div>
+
+            <Field
+              label="Танилцуулга"
+              error={errors.description}
+              hint="Эцэг эхэд цэцэрлэгээ танилцуулах богино тайлбар."
+            >
+              {({ id, describedBy, invalid }) => (
+                <Textarea
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  rows={4}
+                  value={form.description ?? ""}
+                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                />
+              )}
+            </Field>
+
+            <div className="flex justify-end gap-2">
+              {/*
+                Болих restores the record's own values rather than merely closing
+                the form: without the reset, re-opening it would show whatever
+                was half-typed before the reader changed their mind, which reads
+                as unsaved work the screen intends to keep.
+              */}
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={save.isPending}
+                onClick={() => {
+                  setEditing(false);
+                  save.reset();
+                  if (data) {
+                    setForm({
+                      name: data.name,
+                      address: data.address ?? "",
+                      phone: data.phone ?? "",
+                      email: data.email ?? "",
+                      description: data.description ?? "",
+                    });
+                  }
+                }}
+              >
+                Болих
+              </Button>
+              <Button type="submit" disabled={save.isPending}>
+                {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
+              </Button>
+            </div>
+          </form>
+        </Card>
+      ) : (
+        <Card pad="roomy">
+          <dl className="flex flex-col gap-4">
+            <DetailRow label="Цэцэрлэгийн нэр" value={data?.name} />
+            <DetailRow label="Хаяг" value={data?.address} />
+            <DetailRow label="Утас" value={data?.phone} />
+            <DetailRow label="И-мэйл" value={data?.email} />
+            <DetailRow label="Танилцуулга" value={data?.description} />
+          </dl>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One label/value pair in the reading state.
+ *
+ * An empty field says so rather than rendering a blank line: "—" on its own
+ * leaves the reader unsure whether the value is missing or the screen failed
+ * to load it, and this form has four optional fields.
+ */
+function DetailRow({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <dt className="text-caption text-muted">{label}</dt>
+      <dd className={value ? "text-body text-ink" : "text-body text-faint"}>
+        {value || "Бөглөөгүй"}
+      </dd>
     </div>
   );
 }

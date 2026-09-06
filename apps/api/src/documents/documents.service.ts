@@ -36,10 +36,33 @@ export class DocumentsService {
   async list(actor: Actor, kindergartenId: string, query: ListDocumentsQuery, page: PageParams) {
     this.tenants.assertStaff(actor, kindergartenId);
 
+    /*
+      ★ A teacher sees their groups' documents; an administrator sees all —
+      2026-09-06.
+
+      The client asked that a document filed against a group reach "зөвхөн тэр
+      багш руу н л". An administrator is exempt because they are the one
+      filing: a director who could not see what they had just published to
+      Дэлбээ could not check it, and every route in this module is already
+      `assertStaff`-gated to the kindergarten.
+
+      `null` here means "no narrowing"; `[]` means "narrowed to nothing but the
+      kindergarten-wide documents", which is what an unassigned teacher should
+      get. See `DocumentsRepository.list`.
+    */
+    const visibleGroupIds = this.tenants.isAdmin(actor, kindergartenId)
+      ? null
+      : await this.repo.teachingGroupIds(actor.userId, kindergartenId);
+
     const { items, total } = await this.repo.list(
       kindergartenId,
       actor.userId,
-      { q: query.q, category: query.category, bookmarkedOnly: query.bookmarkedOnly },
+      {
+        q: query.q,
+        category: query.category,
+        bookmarkedOnly: query.bookmarkedOnly,
+        visibleGroupIds,
+      },
       page,
     );
 
@@ -74,6 +97,17 @@ export class DocumentsService {
   ) {
     this.tenants.assertStaff(actor, kindergartenId);
 
+    /*
+      The audience id comes from a client, so it is checked against this
+      kindergarten before it is stored — otherwise a document could be filed
+      against another kindergarten's group and would be invisible to everyone.
+      §1.1's rule: the screen narrows, the server decides.
+    */
+    if (dto.groupId) {
+      const group = await this.repo.findGroupInKindergarten(dto.groupId, kindergartenId);
+      if (!group) throw new BadRequestException("Бүлэг олдсонгүй");
+    }
+
     const validated = await this.validatePdf(file);
     const storageKey = this.storage.buildKindergartenKey(kindergartenId, "documents");
     await this.storage.put(storageKey, validated.buffer, validated.mimeType);
@@ -100,6 +134,8 @@ export class DocumentsService {
       category: dto.category ?? null,
       description: dto.description ?? null,
       version: dto.version ?? null,
+      // Null is every group — see `Document.groupId`.
+      groupId: dto.groupId ?? null,
       fileMediaFileId: fileMedia.id,
       coverMediaFileId: coverMediaId,
       publishedById: actor.userId,
@@ -125,6 +161,18 @@ export class DocumentsService {
     if (dto.category !== undefined) data.category = dto.category;
     if (dto.description !== undefined) data.description = dto.description;
     if (dto.version !== undefined) data.version = dto.version;
+    if (dto.groupId !== undefined) {
+      // Re-checked on every write, not only on create: an edit can change the
+      // audience, and the id is as much a client's claim here as it was there.
+      if (dto.groupId) {
+        const group = await this.repo.findGroupInKindergarten(
+          dto.groupId,
+          document.kindergartenId,
+        );
+        if (!group) throw new BadRequestException("Бүлэг олдсонгүй");
+      }
+      data.groupId = dto.groupId;
+    }
 
     const saved = await this.repo.update(id, data);
 

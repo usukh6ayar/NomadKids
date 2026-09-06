@@ -8,6 +8,7 @@ import {
   assessmentConfigSchema,
   groupColumnSchema,
   groupSchema,
+  schoolYearSchema,
   termSchema,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
@@ -15,11 +16,13 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { PageHeader } from "@/components/shell/app-shell";
-import { GroupSwitcher, useSwitchableGroups } from "@/components/shell/group-switcher";
+import { useSwitchableGroups } from "@/components/shell/group-switcher";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import Link from "next/link";
+import { Eye, Images, MessageCircle } from "lucide-react";
+import { GRADIENT_TONE_STYLE, type GradientTone } from "@/lib/gradient-tones";
 import { observationTypeSchema } from "@kinder/contracts";
 
 /** The kindergarten's configured record kinds — one shortcut button each. */
@@ -32,10 +35,11 @@ import { TONE_SURFACE, type Tone } from "@/components/ui/tone";
 import { Field, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
-import { fullName } from "@/lib/format";
+import { formatDate, fullName } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const termsSchema = z.array(termSchema);
+const yearsSchema = z.array(schoolYearSchema);
 const savedSchema = z.object({ saved: z.number() });
 
 /**
@@ -109,6 +113,38 @@ function GroupAssessment() {
     queryFn: () => get(`/kindergartens/${kindergartenId}/terms`, termsSchema),
     enabled: Boolean(kindergartenId),
   });
+
+  /*
+   * ★ The school years, by name and by date — 2026-09-06.
+   *
+   * The term picker was one flat list reading "Өмнөх жил · Улирал 1", and the
+   * client's report was exactly that: "явцын үнэлгээ-д өмнөх жил гэх мэт зүйлс
+   * байна (огноотой болгох)". A year called "Өмнөх жил" tells a teacher
+   * nothing in September and something wrong in January, and a kindergarten
+   * that has run for four years has four such names in one dropdown.
+   *
+   * `term.schoolYear` is a `namedRefSchema` — an id and a name, no dates — so
+   * the dates come from the years endpoint and are joined on the id here.
+   */
+  const years = useQuery({
+    queryKey: qk.schoolYears(kindergartenId),
+    queryFn: () => get(`/kindergartens/${kindergartenId}/school-years`, yearsSchema),
+    enabled: Boolean(kindergartenId),
+    staleTime: 5 * 60_000,
+  });
+
+  const yearById = new Map((years.data ?? []).map((year) => [year.id, year]));
+
+  /*
+   * Which year's terms the term picker offers. Derived from the chosen term
+   * rather than held separately: one piece of state cannot drift from the
+   * other, and a URL carrying only `termId` still opens on the right year.
+   */
+  const selectedTerm = (terms.data ?? []).find((term) => term.id === termId);
+  const yearId = selectedTerm?.schoolYear?.id ?? "";
+  const termsInYear = (terms.data ?? []).filter(
+    (term) => !yearId || term.schoolYear?.id === yearId,
+  );
 
   // Default to the first term and domain once they are known, rather than
   // rendering an empty grid with two unset selects.
@@ -230,7 +266,16 @@ function GroupAssessment() {
   }));
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-6">
+    /*
+      ★ `gap-4` — 2026-09-06. It was `gap-5 lg:gap-6`.
+
+      The client's report on this screen was that it wastes vertical space
+      ("хэт их хэрэггүй зай эзэлж байна"), and the gap was the cheapest half of
+      it: six stacked blocks at 24px apart is 144px of nothing on a screen a
+      teacher scrolls through twenty children on. The other half was the three
+      separate narrowing controls, now one card.
+    */
+    <div className="flex flex-col gap-4">
       {/*
         ★ `PageHeader`, not a hand-rolled `<header>` — 2026-08-29.
 
@@ -242,12 +287,6 @@ function GroupAssessment() {
         records fixing in its own three branches.
       */}
       <PageHeader title="Явцын үнэлгээ" lede={group.data?.name ?? "Бүлгийн үнэлгээ"} />
-
-      <GroupSwitcher
-        groups={switchable.data?.items ?? []}
-        activeGroupId={groupId}
-        href={(id) => `/groups/${id}/assessment`}
-      />
 
       {/*
         ★ The client's 2026-08-31 top strip: pick a child, then start a record.
@@ -268,8 +307,78 @@ function GroupAssessment() {
       {/* `pad="roomy"` rather than four inline padding values — `card.tsx`
           documents the two named steps and why call sites stopped inventing
           their own. */}
+      {/*
+        ★ Four dropdowns in one card — 2026-09-06, at the client's request:
+        "хичээлийн жил бүлэг сонгох нь choose хийдэг байх хэрэгтэй".
+
+        The group used to be `GroupSwitcher`'s row of chips above this card,
+        and the school year was not a control at all — it was a prefix on the
+        term's own name. So the screen had three ways of narrowing, drawn three
+        different ways, in three places, and the one a director changes most
+        (the group) was the one that looked least like a control.
+
+        ★★ Changing the group still navigates. That was `GroupSwitcher`'s
+        strongest argument and it survives the change of drawing: the group is
+        in the URL (`/groups/:id/assessment`), which is what makes a register
+        linkable and what lets the back button walk the groups somebody looked
+        at. A select that swapped the data underneath one address would break
+        both — so this select pushes a route, and the chips are gone rather
+        than the addressing.
+      */}
       <Card pad="roomy" className="flex flex-col gap-4">
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Field label="Бүлэг">
+            {({ id }) => (
+              <Select
+                id={id}
+                value={groupId}
+                onChange={(e) => router.push(`/groups/${e.target.value}/assessment`)}
+                disabled={switchable.isLoading}
+              >
+                {(switchable.data?.items ?? []).map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+
+          {/*
+            ★ Choosing a year jumps to that year's first term.
+
+            The year is not stored separately — it is read off the chosen term
+            (see `yearId` above) — so "select a year" has to mean "select a
+            term within it", and the first is the only defensible one to land
+            on. Without this the picker would be a control that changes
+            nothing until a second one is touched.
+          */}
+          <Field label="Хичээлийн жил">
+            {({ id }) => (
+              <Select
+                id={id}
+                value={yearId}
+                onChange={(e) => {
+                  const first = (terms.data ?? []).find(
+                    (term) => term.schoolYear?.id === e.target.value,
+                  );
+                  if (first) setSelection({ termId: first.id });
+                }}
+                disabled={terms.isLoading}
+              >
+                {[...new Map(
+                  (terms.data ?? [])
+                    .filter((term) => term.schoolYear)
+                    .map((term) => [term.schoolYear!.id, term.schoolYear!]),
+                ).values()].map((year) => (
+                  <option key={year.id} value={year.id}>
+                    {yearLabel(year.name, yearById.get(year.id))}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+
           <Field label="Улирал">
             {({ id }) => (
               <Select
@@ -278,10 +387,9 @@ function GroupAssessment() {
                 onChange={(e) => setSelection({ termId: e.target.value })}
                 disabled={terms.isLoading}
               >
-                {(terms.data ?? []).map((term) => (
+                {termsInYear.map((term) => (
                   <option key={term.id} value={term.id}>
-                    {term.schoolYear ? `${term.schoolYear.name} · ` : ""}
-                    {term.name}
+                    {termLabel(term)}
                   </option>
                 ))}
               </Select>
@@ -534,24 +642,101 @@ function levelTone(index: number, count: number): Tone {
 /**
  * Pick a child, then start a record about them.
  *
- * ★ One button per *configured* observation type, not three hard-coded ones.
+ * ★ Three doors, drawn the way the family's own screen draws them —
+ * 2026-09-06, at the client's request.
  *
- * The client's drawing names Ажиглалт, Ярилцлага and Бүтээл — which are the
- * three rows the catalogue ships with. Reading the catalogue rather than
- * spelling those three here means a kindergarten that adds a fourth type gets a
- * fourth button, and one that renames "Бүтээл" sees the new name. Types are a
- * table precisely so they are not a TypeScript literal (§2.3).
+ * They found the shape they wanted already in the product and said so by
+ * naming the path to it: эцэг эх → home → Цахим хуудас → Хөгжил, which is
+ * `parent-growth-launcher.tsx` — Ажиглалт, Ярилцлага and Бүтээл as three
+ * large, tinted, unmistakable doors. This screen offered the same idea as a
+ * row of small grey secondary buttons carrying five invented names
+ * ("Үйл ажиллагааны ажиглалт", "Анхаарал шаардсан"), which is the "ойлгомжгүй"
+ * in their report. The names are fixed in the catalogue
+ * (`prisma/system-config.ts`); the drawing is fixed here.
  *
- * ★★ The types are fetched against the group's first child, and any child would
- * do: `GET /children/:id/observations/types` is scoped to the child's
+ * ★★ Still one door per *configured* type, not three literals.
+ *
+ * That was the previous note's argument and it is still right: types are a
+ * table so an administrator can rename or add one (§2.3), and hard-coding the
+ * three would make `/admin/assessment-config` a screen that edits nothing. What
+ * changed is the catalogue's contents, not this component's contract.
+ *
+ * ★★★ `parent` is filtered out. A note from a family arrives through the
+ * family's own screen, which files it under that code
+ * (`ObservationsService.parentObservationType`). A teacher choosing the label
+ * "Гэр бүлээс ирсэн" for something they wrote themselves would make the one
+ * field that says where a note came from unreliable.
+ *
+ * ★★★★ The types are fetched against the group's first child, and any child
+ * would do: `GET /children/:id/observations/types` is scoped to the child's
  * kindergarten, and every child in this group shares one. It is child-addressed
  * because that is the endpoint's authorization path, not because the answer
  * varies per child.
  *
- * ★★★ Defaults to nobody rather than to the first child. "Шинэ тэмдэглэл"
+ * ★★★★★ Defaults to nobody rather than to the first child. "Шинэ тэмдэглэл"
  * against a name the teacher did not choose is how a note lands on the wrong
  * child, and this control's only job is to make that choice explicit.
  */
+
+/**
+ * A school year, with the dates that say which one it is.
+ *
+ * ★ The reason this exists: a kindergarten's years are named by hand, and the
+ * names go stale. "Өмнөх жил" is the client's own example — accurate for a
+ * year, then wrong forever, and unusable the moment there are two of them.
+ * The dates are the fact; the name is a label somebody typed.
+ *
+ * Falls back to the bare name when the year carries no dates, rather than
+ * printing an empty bracket.
+ */
+function yearLabel(name: string, year?: { startsOn?: string | null; endsOn?: string | null }) {
+  const range = dateRange(year?.startsOn, year?.endsOn);
+  return range ? `${name} · ${range}` : name;
+}
+
+/** A term, with its own dates for the same reason. */
+function termLabel(term: { name: string; startsOn?: string | null; endsOn?: string | null }) {
+  const range = dateRange(term.startsOn, term.endsOn);
+  return range ? `${term.name} · ${range}` : term.name;
+}
+
+/**
+ * `2025.09.01 — 2025.12.31`, or one end of it, or nothing.
+ *
+ * `formatDate` is the product's own formatter; an open-ended range prints the
+ * end it knows rather than a dash against a blank, which reads as a rendering
+ * fault.
+ */
+function dateRange(startsOn?: string | null, endsOn?: string | null): string | null {
+  if (startsOn && endsOn) return `${formatDate(startsOn)} — ${formatDate(endsOn)}`;
+  if (startsOn) return `${formatDate(startsOn)}-ээс`;
+  if (endsOn) return `${formatDate(endsOn)} хүртэл`;
+  return null;
+}
+
+/**
+ * The three kinds, drawn exactly as the family's own screen draws them.
+ *
+ * ★ Same gradients, same icons, same order — `parent-growth-launcher.tsx`'s
+ * `BUCKETS`, keyed here by the catalogue's `code` instead of by a literal.
+ *
+ * The client asked for parity by naming the path to the screen they meant
+ * (эцэг эх → home → Цахим хуудас → Хөгжил), and parity means the *same
+ * picture*: a saturated bar, a white circle with a glyph in it, "+ Ажиглалт".
+ * A quieter version in the product's own tints would have been the same idea
+ * drawn differently, which is what "яг л тийм болгох" rules out.
+ *
+ * `GRADIENT_TONE_STYLE` is shared with that file, so the two cannot drift.
+ */
+const KIND_STYLE: Record<string, { tone: GradientTone; Icon: typeof Eye }> = {
+  daily: { tone: "green", Icon: Eye },
+  conversation: { tone: "blue", Icon: MessageCircle },
+  artwork: { tone: "orange", Icon: Images },
+};
+
+/** A kind an administrator invented. It gets a door, in the fifth gradient. */
+const KIND_FALLBACK = { tone: "purple" as GradientTone, Icon: Eye };
+
 function NewRecordStrip({
   children,
 }: {
@@ -568,46 +753,87 @@ function NewRecordStrip({
   });
 
   const selected = children.find((child) => child.childId === childId);
+  const doors = (types.data ?? []).filter((type) => type.code !== "parent");
 
   if (children.length === 0) return null;
 
   return (
-    <Card pad="roomy" className="flex flex-col gap-3">
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr),auto] sm:items-end">
-        <Field label="Хүүхэд">
-          {({ id }) => (
-            <Select id={id} value={childId} onChange={(e) => setChildId(e.target.value)}>
-              <option value="">Хүүхэд сонгох…</option>
-              {children.map((child) => (
-                <option key={child.childId} value={child.childId}>
-                  {child.lastName ? `${child.lastName} ` : ""}
-                  {child.firstName}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
+    <Card pad="roomy" className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-lead font-semibold text-ink">Шинэ тэмдэглэл</h2>
+        <p className="mt-0.5 text-body text-muted">
+          Хүүхдээ сонгоод, ямар төрлийн тэмдэглэл хөтлөхөө сонгоно уу.
+        </p>
+      </div>
 
-        {/*
-          Disabled, not hidden, while no child is chosen. A row of buttons that
-          appears once a select is touched changes the screen's shape underneath
-          somebody; a disabled button with a reason under it says what to do.
-        */}
-        <div className="flex flex-wrap gap-2">
-          {(types.data ?? []).map((type) =>
-            selected ? (
-              <Button key={type.id} asChild size="sm" variant="secondary">
-                <Link href={`/children/${selected.childId}/observations/new?typeId=${type.id}`}>
-                  {type.name}
-                </Link>
-              </Button>
-            ) : (
-              <Button key={type.id} size="sm" variant="secondary" disabled>
-                {type.name}
-              </Button>
-            ),
-          )}
-        </div>
+      <Field label="Хүүхэд">
+        {({ id }) => (
+          <Select id={id} value={childId} onChange={(e) => setChildId(e.target.value)}>
+            <option value="">Хүүхэд сонгох…</option>
+            {children.map((child) => (
+              <option key={child.childId} value={child.childId}>
+                {child.lastName ? `${child.lastName} ` : ""}
+                {child.firstName}
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
+
+      {/*
+        ★ Rendered as a door whether or not a child is chosen, and inert until
+        one is.
+
+        Hiding them until the select is touched would change the screen's shape
+        underneath somebody; three dimmed doors with one line underneath saying
+        what to do first is the version that explains itself. `aria-disabled`
+        and no `href`, rather than a `<Link>` to nowhere.
+      */}
+      <div className="grid gap-2.5 sm:grid-cols-3">
+        {doors.map((type) => {
+          const style = KIND_STYLE[type.code ?? ""] ?? KIND_FALLBACK;
+          const gradient = GRADIENT_TONE_STYLE[style.tone];
+
+          const content = (
+            <>
+              <span
+                aria-hidden="true"
+                className="flex size-9 shrink-0 items-center justify-center rounded-pill bg-white/25"
+              >
+                <style.Icon size={18} aria-hidden="true" />
+              </span>
+              <span className="min-w-0 flex-1 truncate text-body font-semibold">
+                + {type.name}
+              </span>
+            </>
+          );
+
+          const className = cn(
+            "flex min-h-13 items-center gap-3 rounded-card px-3.5 py-3 text-left text-white",
+            gradient.gradient,
+            gradient.shadow,
+          );
+
+          return selected ? (
+            <Link
+              key={type.id}
+              href={`/children/${selected.childId}/observations/new?typeId=${type.id}`}
+              className={cn(className, "transition-transform hover:scale-[1.01]")}
+            >
+              {content}
+            </Link>
+          ) : (
+            /*
+              Dimmed rather than greyed: the colour is how the three are told
+              apart, and washing it out would leave three identical grey bars
+              that say nothing about which is which while you read the line
+              telling you to pick a child.
+            */
+            <div key={type.id} aria-disabled="true" className={cn(className, "opacity-45")}>
+              {content}
+            </div>
+          );
+        })}
       </div>
 
       {!selected ? (

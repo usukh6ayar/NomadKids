@@ -27,7 +27,22 @@ export class DocumentsRepository {
   async list(
     kindergartenId: string,
     userId: string,
-    filters: { q?: string; category?: string; bookmarkedOnly?: boolean },
+    filters: {
+      q?: string;
+      category?: string;
+      bookmarkedOnly?: boolean;
+      /**
+       * The groups whose documents this reader may see, or `null` for "all".
+       *
+       * ★ `null` and `[]` are different and both are reachable.
+       *
+       * `null` is an administrator, who sees every document in the
+       * kindergarten. `[]` is a teacher assigned to no group — they see the
+       * kindergarten-wide documents and nothing addressed to a group, which is
+       * the correct answer and not an empty result.
+       */
+      visibleGroupIds?: string[] | null;
+    },
     page: PageParams,
   ) {
     const { skip, take } = toSkipTake(page);
@@ -35,6 +50,14 @@ export class DocumentsRepository {
     const where = {
       kindergartenId,
       deletedAt: null,
+      /*
+        A document with no `groupId` is for all staff; one naming a group
+        reaches that group's teachers. Applied as an `AND`ed `OR`, so it can
+        only ever narrow what the tenant filter above already allows.
+      */
+      ...(filters.visibleGroupIds
+        ? { OR: [{ groupId: null }, { groupId: { in: filters.visibleGroupIds } }] }
+        : {}),
       ...(filters.category ? { category: filters.category } : {}),
       ...(searchWhere(filters.q, ["title", "description"]) ?? {}),
       ...(filters.bookmarkedOnly ? { bookmarks: { some: { userId } } } : {}),
@@ -48,6 +71,7 @@ export class DocumentsRepository {
         take,
         include: {
           publishedBy: { select: { id: true, lastName: true, firstName: true } },
+          group: { select: { id: true, name: true } },
           bookmarks: { where: { userId }, select: { id: true } },
         },
       }),
@@ -55,6 +79,36 @@ export class DocumentsRepository {
     ]);
 
     return { items, total };
+  }
+
+  /**
+   * The groups this person is actively assigned to teach in one kindergarten.
+   *
+   * ★ `endedOn: null` — a finished assignment is not a current one. Restoring
+   * a teacher to a group they left last year would otherwise hand them that
+   * group's documents again without anybody re-assigning them.
+   */
+  async teachingGroupIds(userId: string, kindergartenId: string): Promise<string[]> {
+    const rows = await this.prisma.groupTeacher.findMany({
+      where: {
+        endedOn: null,
+        deletedAt: null,
+        membership: { userId, kindergartenId, isActive: true, deletedAt: null },
+      },
+      select: { groupId: true },
+    });
+    return [...new Set(rows.map((row) => row.groupId))];
+  }
+
+  /**
+   * A group, only if it is this kindergarten's — the tenant check `create` and
+   * `update` make before storing an audience id that came from a client.
+   */
+  async findGroupInKindergarten(groupId: string, kindergartenId: string) {
+    return this.prisma.group.findFirst({
+      where: { id: groupId, kindergartenId, deletedAt: null },
+      select: { id: true },
+    });
   }
 
   /** The distinct categories in use — what the filter chips are built from. */
@@ -80,7 +134,10 @@ export class DocumentsRepository {
   async create(data: Record<string, unknown>) {
     return this.prisma.document.create({
       data: data as never,
-      include: { publishedBy: { select: { id: true, lastName: true, firstName: true } } },
+      include: {
+        publishedBy: { select: { id: true, lastName: true, firstName: true } },
+        group: { select: { id: true, name: true } },
+      },
     });
   }
 
@@ -88,7 +145,10 @@ export class DocumentsRepository {
     return this.prisma.document.update({
       where: { id },
       data,
-      include: { publishedBy: { select: { id: true, lastName: true, firstName: true } } },
+      include: {
+        publishedBy: { select: { id: true, lastName: true, firstName: true } },
+        group: { select: { id: true, name: true } },
+      },
     });
   }
 

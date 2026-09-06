@@ -108,17 +108,29 @@ describe("бүлгээр дэвшүүлэх", () => {
     stubTwoGroups();
     renderWithProviders(<AdminGroupsPage />);
 
-    const buttons = await screen.findAllByRole("button", { name: /бүлгээр дэвшүүлэх/ });
-    expect(buttons[0]).toBeEnabled();
+    const u = userEvent.setup();
+    const entries = await openRowMenu(u);
+    expect(entries.map((e) => e.textContent)).toEqual(
+      expect.arrayContaining([expect.stringContaining("Бүлгээр дэвшүүлэх")]),
+    );
   });
 
-  /** An empty group has nobody to promote and the API answers 400. The screen
-   *  refuses first, so the director never meets that error. */
-  it("disables the action on an empty group", async () => {
+  /**
+   * An empty group has nobody to promote and the API answers 400. The screen
+   * refuses first, so the director never meets that error.
+   *
+   * ★ Omitted rather than disabled, since the controls became a menu.
+   * `RowMenuItem` has no disabled state on purpose — an entry that cannot be
+   * chosen is a line to read and then be refused by. It returns the moment a
+   * child is enrolled, which the test above covers.
+   */
+  it("omits the action on an empty group", async () => {
     stubGroups({ _count: { enrollments: 0 } });
+    const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    expect(await screen.findByRole("button", { name: /бүлгээр дэвшүүлэх/ })).toBeDisabled();
+    const entries = await openRowMenu(u);
+    expect(entries.map((e) => e.textContent ?? "").join(" ")).not.toContain("Бүлгээр дэвшүүлэх");
   });
 
   it("says the move will be recorded as a promotion when the bands differ", async () => {
@@ -126,7 +138,7 @@ describe("бүлгээр дэвшүүлэх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click((await screen.findAllByRole("button", { name: /бүлгээр дэвшүүлэх/ }))[0]!);
+    await rowAction(u, /Бүлгээр дэвшүүлэх/);
     await selectOption(u, /Хүлээн авах бүлэг/, /Бэлтгэл бүлэг/);
 
     const dialog = await screen.findByRole("dialog");
@@ -140,7 +152,7 @@ describe("бүлгээр дэвшүүлэх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click((await screen.findAllByRole("button", { name: /бүлгээр дэвшүүлэх/ }))[0]!);
+    await rowAction(u, /Бүлгээр дэвшүүлэх/);
     await selectOption(u, /Хүлээн авах бүлэг/, /Бэлтгэл бүлэг/);
 
     const dialog = await screen.findByRole("dialog");
@@ -158,7 +170,7 @@ describe("бүлгээр дэвшүүлэх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click((await screen.findAllByRole("button", { name: /бүлгээр дэвшүүлэх/ }))[0]!);
+    await rowAction(u, /Бүлгээр дэвшүүлэх/);
     await selectOption(u, /Хүлээн авах бүлэг/, /Бэлтгэл бүлэг/);
     const dialog = await screen.findByRole("dialog");
     await u.click(within(dialog).getByRole("button", { name: "Дэвшүүлэх" }));
@@ -178,7 +190,7 @@ describe("бүлгээр дэвшүүлэх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click((await screen.findAllByRole("button", { name: /бүлгээр дэвшүүлэх/ }))[0]!);
+    await rowAction(u, /Бүлгээр дэвшүүлэх/);
     const dialog = await screen.findByRole("dialog");
 
     expect(within(dialog).getByRole("button", { name: "Дэвшүүлэх" })).toBeDisabled();
@@ -200,7 +212,7 @@ describe("бүлгээр дэвшүүлэх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click((await screen.findAllByRole("button", { name: /бүлгээр дэвшүүлэх/ }))[0]!);
+    await rowAction(u, /Бүлгээр дэвшүүлэх/);
     await u.click(await screen.findByLabelText(/Хүлээн авах бүлэг/));
 
     const option = await screen.findByRole("option", { name: /Бэлтгэл бүлэг/ });
@@ -215,7 +227,7 @@ describe("бүлгээр дэвшүүлэх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click((await screen.findAllByRole("button", { name: /бүлгээр дэвшүүлэх/ }))[0]!);
+    await rowAction(u, /Бүлгээр дэвшүүлэх/);
     await u.click(await screen.findByLabelText(/Хүлээн авах бүлэг/));
 
     expect(await screen.findByRole("option", { name: /Нар/ })).toHaveTextContent(
@@ -230,7 +242,7 @@ describe("бүлгээр дэвшүүлэх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click((await screen.findAllByRole("button", { name: /бүлгээр дэвшүүлэх/ }))[0]!);
+    await rowAction(u, /Бүлгээр дэвшүүлэх/);
     await u.click(await screen.findByLabelText(/Хүлээн авах бүлэг/));
 
     expect(await screen.findByRole("option", { name: /Бэлтгэл бүлэг/ })).toBeInTheDocument();
@@ -243,7 +255,9 @@ describe("бүлэг засах", () => {
     stubGroups();
     renderWithProviders(<AdminGroupsPage />);
 
-    expect(await screen.findByRole("button", { name: /— засах/ })).toBeInTheDocument();
+    const u = userEvent.setup();
+    const entries = await openRowMenu(u);
+    expect(entries.map((e) => e.textContent ?? "").join(" ")).toContain("Засах");
   });
 
   it("prefills the name and age band", async () => {
@@ -251,7 +265,7 @@ describe("бүлэг засах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click(await screen.findByRole("button", { name: /— засах/ }));
+    await rowAction(u, /^Засах/);
     const dialog = await screen.findByRole("dialog");
 
     expect(within(dialog).getByLabelText(/Бүлгийн нэр/)).toHaveValue("Дунд бүлэг");
@@ -263,7 +277,7 @@ describe("бүлэг засах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click(await screen.findByRole("button", { name: /— засах/ }));
+    await rowAction(u, /^Засах/);
     await u.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Болих" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -286,7 +300,7 @@ describe("бүлэг засах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click(await screen.findByRole("button", { name: /— засах/ }));
+    await rowAction(u, /^Засах/);
     const dialog = await screen.findByRole("dialog");
     const name = within(dialog).getByLabelText(/Бүлгийн нэр/);
     await u.clear(name);
@@ -313,7 +327,7 @@ describe("бүлэг засах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click(await screen.findByRole("button", { name: /— засах/ }));
+    await rowAction(u, /^Засах/);
     await selectOption(u, /Насны бүлэг/, "Бэлтгэл бүлэг");
     await u.click(
       within(await screen.findByRole("dialog")).getByRole("button", { name: "Хадгалах" }),
@@ -331,7 +345,7 @@ describe("бүлэг засах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click(await screen.findByRole("button", { name: /— засах/ }));
+    await rowAction(u, /^Засах/);
     await u.click(
       within(await screen.findByRole("dialog")).getByRole("button", { name: "Хадгалах" }),
     );
@@ -363,7 +377,7 @@ describe("бүлэг засах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click(await screen.findByRole("button", { name: /— засах/ }));
+    await rowAction(u, /^Засах/);
     const dialog = await screen.findByRole("dialog");
     await u.click(within(dialog).getByRole("button", { name: "Хадгалах" }));
 
@@ -382,7 +396,7 @@ describe("архивлах ба сэргээх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click(await screen.findByRole("button", { name: /архивлах/i }));
+    await rowAction(u, /^Архивлах/);
 
     expect(screen.queryByRole("dialog")).toBeNull();
     await waitFor(() => {
@@ -397,9 +411,12 @@ describe("архивлах ба сэргээх", () => {
     stubGroups({ status: "ARCHIVED" });
     renderWithProviders(<AdminGroupsPage />);
 
+    const u = userEvent.setup();
     expect(await screen.findByText("Архивласан")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /сэргээх/i })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /архивлах/i })).toBeNull();
+    const entries = await openRowMenu(u);
+    const names = entries.map((e) => e.textContent ?? "").join(" ");
+    expect(names).toContain("Сэргээх");
+    expect(names).not.toContain("Архивлах");
   });
 
   /** ★★ The backend takes `status` both ways, so the UI must not be one-way. */
@@ -410,7 +427,7 @@ describe("архивлах ба сэргээх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click(await screen.findByRole("button", { name: /сэргээх/i }));
+    await rowAction(u, /^Сэргээх/);
 
     await waitFor(() =>
       expect(calls.find((c) => c.method === "PATCH")!.body).toEqual({ status: "ACTIVE" }),
@@ -418,7 +435,16 @@ describe("архивлах ба сэргээх", () => {
     expect(await screen.findByText(/сэргээгдлээ/)).toBeInTheDocument();
   });
 
-  it("keeps an archive failure visible on the row", async () => {
+  /**
+   * ★ A toast since 2026-09-06, where this was an inline message beside the
+   * archive button.
+   *
+   * The row's controls are one overflow menu, which closes when an entry is
+   * chosen — so there is no longer a control for a message to sit beside. What
+   * must not change is that a failed archive is *reported*: a mutation that
+   * silently does nothing is the state this test exists to prevent.
+   */
+  it("reports an archive failure", async () => {
     stubGroups({}, [
       {
         path: `/groups/${GROUP}`,
@@ -430,8 +456,8 @@ describe("архивлах ба сэргээх", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click(await screen.findByRole("button", { name: /архивлах/i }));
-    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    await rowAction(u, /^Архивлах/);
+    expect(await screen.findByText(/Алдаа|дахин/i)).toBeInTheDocument();
   });
 });
 
@@ -441,7 +467,7 @@ describe("бүлгийг устгах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Дунд бүлэг — устгах" }));
+    await rowAction(u, /^Устгах/);
     const dialog = await screen.findByRole("dialog");
 
     expect(within(dialog).getByText(/Буцаах боломжгүй/)).toBeInTheDocument();
@@ -453,7 +479,7 @@ describe("бүлгийг устгах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Дунд бүлэг — устгах" }));
+    await rowAction(u, /^Устгах/);
     await u.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Болих" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -467,7 +493,7 @@ describe("бүлгийг устгах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Дунд бүлэг — устгах" }));
+    await rowAction(u, /^Устгах/);
     await u.click(
       within(await screen.findByRole("dialog")).getByRole("button", { name: "Устгах" }),
     );
@@ -485,18 +511,41 @@ describe("бүлгийг устгах", () => {
    * bypassed. The disabled button is a courtesy — the count in the list can be
    * stale, so the server is still the one that decides.
    */
-  it("disables delete while the list shows enrolled children", async () => {
+  /**
+   * ★ Warned rather than disabled, since the controls became a menu.
+   *
+   * The button carried the reason in a `title` — a tooltip a touch screen never
+   * shows — and was disabled from a count the list may have fetched minutes
+   * ago. The entry now states the condition on its own second line and the
+   * server still decides, which is the arrangement the note below always
+   * described: "the disabled button is a courtesy — the count in the list can
+   * be stale".
+   */
+  it("warns that enrolled children block a delete, and still offers archiving", async () => {
     stubGroups({ _count: { enrollments: 12 } });
+    const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    expect(await screen.findByRole("button", { name: "Дунд бүлэг — устгах" })).toBeDisabled();
+    const names = (await openRowMenu(u)).map((e) => e.textContent ?? "").join(" ");
+    expect(names).toContain("Эхлээд хүүхдүүдийг шилжүүлнэ");
     // Archiving is still available — it has no enrolment guard.
-    expect(screen.getByRole("button", { name: /архивлах/i })).toBeEnabled();
+    expect(names).toContain("Архивлах");
   });
 
   /** ★★ The 409 names the count and says what to do next, so it stays on the
    *  page instead of disappearing on a timer. */
-  it("leaves the enrolment conflict on screen as an actionable message", async () => {
+  /**
+   * ★★ The 409 names the count and says what to do next, and it is a toast
+   * since 2026-09-06 — see `DeleteGroupDialog`'s own note.
+   *
+   * It was an inline message beside the delete button, kept there deliberately
+   * so an instruction would not slide away on a timer. Two things took that
+   * place away: the row's controls became one overflow menu, and
+   * `ConfirmDialog` closes on both outcomes by design. What this still pins is
+   * the part that matters — the server's sentence reaches the reader **verbatim**
+   * rather than as a generic failure, and a refused delete never reports success.
+   */
+  it("reports the enrolment conflict with the server's own instruction", async () => {
     stubGroups({}, [
       {
         path: `/groups/${GROUP}`,
@@ -514,14 +563,13 @@ describe("бүлгийг устгах", () => {
     const u = userEvent.setup();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click(await screen.findByRole("button", { name: "Дунд бүлэг — устгах" }));
+    await rowAction(u, /^Устгах/);
     await u.click(
       within(await screen.findByRole("dialog")).getByRole("button", { name: "Устгах" }),
     );
 
-    const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent(/өөр бүлэгт шилжүүлнэ үү/);
-    // Not swallowed by a toast that would take the instruction away.
+    expect(await screen.findByText(/өөр бүлэгт шилжүүлнэ үү/)).toBeInTheDocument();
+    // And it is not reported as a success.
     expect(screen.queryByText(/устгагдлаа/)).toBeNull();
   });
 });
@@ -556,6 +604,33 @@ describe("эрх", () => {
  * simplification — always send ids, ticked by default — looks identical on
  * screen and is not the same call.
  */
+/**
+ * Opens a row's "⋯" menu and chooses an entry.
+ *
+ * ★ Every control on this row moved behind one menu on 2026-09-06, at the
+ * client's request — "тэр ард нь баахан шаваарлалдсан icon-той дардаг хэсэг".
+ *
+ * What these tests pin is unchanged: the dialogs, the request bodies, the
+ * enrolment guard and the error handling. Only reaching them costs a click, so
+ * that is one helper rather than a rewritten expectation in twenty places.
+ *
+ * `name` picks a row when the fixture renders more than one.
+ */
+async function rowAction(
+  u: ReturnType<typeof userEvent.setup>,
+  label: string | RegExp,
+  name = "Дунд бүлэг",
+) {
+  await u.click(await screen.findByRole("button", { name: `${name} — үйлдэл` }));
+  await u.click(await screen.findByRole("menuitem", { name: label }));
+}
+
+/** The entries a row's menu offers, without choosing any of them. */
+async function openRowMenu(u: ReturnType<typeof userEvent.setup>, name = "Дунд бүлэг") {
+  await u.click(await screen.findByRole("button", { name: `${name} — үйлдэл` }));
+  return screen.findAllByRole("menuitem");
+}
+
 describe("дэвшүүлэх — бүгд эсвэл сонгосон", () => {
   const NEXT = "66666666-6666-4666-8666-666666666666";
 
@@ -584,7 +659,7 @@ describe("дэвшүүлэх — бүгд эсвэл сонгосон", () => {
     ]);
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click((await screen.findAllByRole("button", { name: /бүлгээр дэвшүүлэх/ }))[0]!);
+    await rowAction(u, /Бүлгээр дэвшүүлэх/);
     await selectOption(u, /Хүлээн авах бүлэг/, /Бэлтгэл бүлэг/);
 
     const dialog = await screen.findByRole("dialog");
@@ -605,7 +680,7 @@ describe("дэвшүүлэх — бүгд эсвэл сонгосон", () => {
     stubForPromotion();
     renderWithProviders(<AdminGroupsPage />);
 
-    await u.click((await screen.findAllByRole("button", { name: /бүлгээр дэвшүүлэх/ }))[0]!);
+    await rowAction(u, /Бүлгээр дэвшүүлэх/);
     const dialog = await screen.findByRole("dialog");
 
     expect(within(dialog).queryByText(/сонгосон$/)).toBeNull();

@@ -45,12 +45,50 @@ export const SYSTEM_LEVELS = [
   },
 ] as const;
 
+/**
+ * The kinds of note a teacher files — "Явцын үнэлгээ".
+ *
+ * ★ Rewritten 2026-09-06 to the client's three, plus the family's own.
+ *
+ * It was five names invented here: Өдөр тутмын ажиглалт, Үйл ажиллагааны
+ * ажиглалт, Онцлох ахиц, Анхаарал шаардсан, Гэр бүлээс ирсэн. The client's
+ * report was that the teacher's screen is unreadable — "одоо байгаа юмнууд
+ * ойлгомжгүй байна" — and they named the three the product should offer, by
+ * pointing at the screen that already offers them: the parent's Хөгжил page
+ * (`parent-growth-launcher.tsx`), whose three doors are Ажиглалт, Ярилцлага
+ * and Бүтээл.
+ *
+ * Those three were **presentational there and stored nowhere.** That file says
+ * so in its own docblock: all three post the same `CreateParentObservationDto`,
+ * and "a later pass can give Ярилцлага/Бүтээл their own stored distinction if
+ * the client asks for one". They have asked. This is that row in the table.
+ *
+ * ★★ `daily` keeps its code and gains the name "Ажиглалт".
+ *
+ * The code is what every existing `Observation` points at and what six API
+ * tests look the type up by; renaming a row is a rename, where a new code
+ * beside a retired one would strand every note ever filed. The other two are
+ * new codes because they are new kinds.
+ *
+ * ★★★ `parent` stays, and is not one of the three.
+ *
+ * `ObservationsService.parentObservationType` resolves it by code and falls
+ * back to `types[0]`, so dropping it would silently file every family's note
+ * as an "Ажиглалт" by a teacher. It is deliberately absent from the teacher's
+ * own picker — see `NewRecordStrip` — because a note from a family arrives
+ * through the family's screen, not by a teacher choosing that label.
+ *
+ * ★★★★ The three retired codes are swept below rather than left behind.
+ * `Observation.typeId` is a foreign key, so the rows cannot be deleted without
+ * taking history with them; they are soft-deleted, which keeps every existing
+ * note readable under the name it was filed with and stops any new one being
+ * filed under a kind the product no longer offers.
+ */
 export const SYSTEM_OBSERVATION_TYPES = [
-  { code: "daily", name: "Өдөр тутмын ажиглалт", order: 1 },
-  { code: "activity", name: "Үйл ажиллагааны ажиглалт", order: 2 },
-  { code: "milestone", name: "Онцлох ахиц", order: 3 },
-  { code: "concern", name: "Анхаарал шаардсан", order: 4 },
-  { code: "parent", name: "Гэр бүлээс ирсэн", order: 5 },
+  { code: "daily", name: "Ажиглалт", order: 1 },
+  { code: "conversation", name: "Ярилцлага", order: 2 },
+  { code: "artwork", name: "Бүтээл", order: 3 },
+  { code: "parent", name: "Гэр бүлээс ирсэн", order: 4 },
 ] as const;
 
 /**
@@ -129,6 +167,35 @@ export async function applySystemConfig(db: {
     name: c.name,
     order: c.order,
   }));
+
+  /*
+   * ★ System observation types this list no longer names are retired —
+   * 2026-09-06, when the client named their own three (Ажиглалт · Ярилцлага ·
+   * Бүтээл).
+   *
+   * Without this, changing the list only ever *adds*: the three kinds dropped
+   * (`activity`, `milestone`, `concern`) would have stayed in every picker,
+   * and the screen the change was made to simplify would have gone from five
+   * confusing options to seven.
+   *
+   * Soft-deleted, never deleted — CLAUDE.md §3.2, and here the rule has teeth
+   * beyond the principle: `Observation.typeId` is a foreign key, so a hard
+   * delete either fails or takes years of notes with it. A retired row keeps
+   * every existing observation readable under the name it was filed with.
+   *
+   * Scoped to `kindergartenId: null`. A type a kindergarten added for itself
+   * is that administrator's to retire, on `/admin/assessment-config`.
+   *
+   * ★★ Only this table gets a sweep. Retiring a development domain or an
+   * assessment level would change what a *finished* term's report means, and
+   * retiring a special-needs category would break a figure the state counts —
+   * none of those are edits a list change should make silently.
+   */
+  const systemCodes = SYSTEM_OBSERVATION_TYPES.map((t) => t.code);
+  await db.observationType.updateMany({
+    where: { kindergartenId: null, deletedAt: null, code: { notIn: [...systemCodes] } },
+    data: { deletedAt: new Date() },
+  });
 }
 
 /**
@@ -153,7 +220,15 @@ async function syncSystemRows<T>(
   const missing: Record<string, unknown>[] = [];
 
   for (const row of rows) {
-    const data = dataOf(row);
+    /*
+     * ★ `deletedAt: null` on every write — a code can come **back**.
+     *
+     * The sweep in `applySystemConfig` retires a system row this list no
+     * longer names. If the client later asks for it again, adding the code
+     * back has to make it usable rather than leave it silently soft-deleted
+     * and invisible in every picker.
+     */
+    const data = { ...dataOf(row), deletedAt: null };
     const found = byKey.get(String(data[keyField]));
 
     if (!found) {
@@ -173,4 +248,5 @@ interface SystemTable {
   findMany(args: { where: Record<string, unknown> }): Promise<Record<string, unknown>[]>;
   createMany(args: { data: Record<string, unknown>[] }): Promise<unknown>;
   update(args: { where: { id: string }; data: Record<string, unknown> }): Promise<unknown>;
+  updateMany(args: { where: Record<string, unknown>; data: Record<string, unknown> }): Promise<unknown>;
 }

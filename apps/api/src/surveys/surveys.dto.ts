@@ -35,6 +35,19 @@ export const createSurveySchema = z
     // would put it in a comparison it has no business in.
     schoolYear: schoolYearSchema.nullable().optional(),
     period: surveyPeriodSchema.nullable().optional(),
+    /*
+      ★ Which group the survey is for — 2026-09-06, the client's "бүх бүлэг /
+      бүлэг сонгох".
+
+      Null (and omitted) is every group, which is the same convention the
+      notification module uses for an empty target list and is stated on
+      `Survey.groupId` in the schema: an audience named as "everyone" keeps
+      reaching families who enrol later, where naming a group freezes it.
+
+      Optional so every existing caller — the clone endpoint, the seeds,
+      `surveys.test.ts` — keeps compiling and keeps meaning what it meant.
+    */
+    groupId: uuidSchema.nullable().optional(),
   })
   .strict();
 export type CreateSurveyDto = z.infer<typeof createSurveySchema>;
