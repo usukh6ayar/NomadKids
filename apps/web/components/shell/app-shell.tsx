@@ -5,8 +5,48 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, ChevronDown, LogOut, Search, SunMedium, X } from "lucide-react";
-import { useId, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
+import {
+  BarChart3,
+  Bell,
+  Boxes,
+  Building2,
+  CalendarCheck,
+  CalendarRange,
+  Carrot,
+  ChefHat,
+  ChevronDown,
+  ClipboardCheck,
+  FileBarChart,
+  FileSignature,
+  FileText,
+  Images,
+  LayoutGrid,
+  LogOut,
+  MessageCircle,
+  Newspaper,
+  Receipt,
+  Search,
+  Settings,
+  ShieldAlert,
+  ShoppingCart,
+  Sprout,
+  Truck,
+  UserCog,
+  Users,
+  UtensilsCrossed,
+  Wallet,
+  X,
+  type LucideIcon,
+} from "lucide-react";
+import {
+  createContext,
+  useContext,
+  useId,
+  useState,
+  type FormEvent,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import {
   ROLE_LABEL,
   notificationSchema,
@@ -26,12 +66,15 @@ import { BRAND } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
 import { ChatWidget } from "@/components/chat/chat-widget";
+import { IconChip } from "@/components/ui/icon-chip";
+import type { Tone } from "@/components/ui/tone";
 
 /** The bell panel reads five rows; the feed reads fifteen and paginates. */
 const bellListSchema = paginated(notificationSchema);
 
 /** Which audience this shell is rendering for. */
 export type Variant = "teacher" | "parent" | "platform";
+export type WorkspaceTheme = "teacher" | "admin" | "parent" | "kitchen" | "finance" | "platform";
 
 export interface NavItem {
   /**
@@ -93,6 +136,67 @@ export interface ChildSwitcher {
   children: ChildSummary[];
   selectedId: string;
   onSelect: (id: string) => void;
+}
+
+const WorkspaceThemeContext = createContext<WorkspaceTheme | null>(null);
+
+const WORKSPACE_PAGE_ICONS: { match: string[]; Icon: LucideIcon; tone: Tone }[] = [
+  { match: ["хүүхд"], Icon: Users, tone: "sky" },
+  { match: ["ирц"], Icon: CalendarCheck, tone: "mint" },
+  { match: ["үнэлгээ"], Icon: ClipboardCheck, tone: "peach" },
+  { match: ["хоол", "цэс"], Icon: UtensilsCrossed, tone: "sun" },
+  { match: ["мэдээ", "самбар", "зарлал"], Icon: Newspaper, tone: "mint" },
+  { match: ["судалгаа"], Icon: BarChart3, tone: "sun" },
+  { match: ["чат"], Icon: MessageCircle, tone: "sky" },
+  { match: ["баримт"], Icon: FileText, tone: "cornflower" },
+  { match: ["тохиргоо"], Icon: Settings, tone: "cornflower" },
+  { match: ["тайлан"], Icon: FileBarChart, tone: "sky" },
+  { match: ["аюулгүй", "тохиолдол"], Icon: ShieldAlert, tone: "peach" },
+  { match: ["хэрэглэгч", "эрх"], Icon: UserCog, tone: "cornflower" },
+  { match: ["цэцэрлэг", "байгууллага", "платформ"], Icon: Building2, tone: "sky" },
+  { match: ["хичээлийн жил", "улирал"], Icon: CalendarRange, tone: "sky" },
+  { match: ["гал тогоо", "жор"], Icon: ChefHat, tone: "sun" },
+  { match: ["орц", "материал"], Icon: Carrot, tone: "mint" },
+  { match: ["нийлүүлэгч"], Icon: Truck, tone: "cornflower" },
+  { match: ["захиалга"], Icon: ShoppingCart, tone: "sun" },
+  { match: ["агуулах", "үлдэгдэл"], Icon: Boxes, tone: "mint" },
+  { match: ["нэхэмжлэх", "нэхэмжлэл"], Icon: Receipt, tone: "sun" },
+  { match: ["санхүү", "төлбөр"], Icon: Wallet, tone: "mint" },
+  { match: ["өргөдөл", "хүсэлт"], Icon: FileSignature, tone: "cornflower" },
+  { match: ["өсөлт", "хөгжил"], Icon: Sprout, tone: "mint" },
+  { match: ["зураг", "цомог"], Icon: Images, tone: "sky" },
+];
+
+function workspacePageIcon(title: string) {
+  const normalized = title.toLocaleLowerCase("mn-MN");
+  if (normalized === "самбар" || normalized.includes("удирдлагын самбар")) {
+    return { Icon: LayoutGrid, tone: "sky" as const };
+  }
+  return (
+    WORKSPACE_PAGE_ICONS.find(({ match }) => match.some((word) => normalized.includes(word))) ?? {
+      Icon: LayoutGrid,
+      tone: "sky" as const,
+    }
+  );
+}
+
+function navIconTone(label: string) {
+  const normalized = label.toLocaleLowerCase("mn-MN");
+  if (normalized.includes("ирц") || normalized.includes("хүүхд")) {
+    return "bg-sky text-sky-ink";
+  }
+  if (normalized.includes("үнэлгээ") || normalized.includes("тайлан")) {
+    return "bg-peach text-peach-ink";
+  }
+  if (normalized.includes("хоол") || normalized.includes("цэс")) return "bg-sun text-sun-ink";
+  if (
+    normalized.includes("мэдээ") ||
+    normalized.includes("чат") ||
+    normalized.includes("судалгаа")
+  ) {
+    return "bg-mint text-mint-ink";
+  }
+  return "bg-cornflower text-primary";
 }
 
 /**
@@ -166,8 +270,14 @@ export function PageHeader({
    */
   meta?: ReactNode;
 }) {
+  const workspaceTheme = useContext(WorkspaceThemeContext);
+  const pageIdentity = workspaceTheme && !icon ? workspacePageIcon(title) : null;
+
   return (
-    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 lg:mb-6">
+    <div
+      data-ui="page-header"
+      className="mb-4 flex flex-wrap items-center justify-between gap-3 lg:mb-6"
+    >
       {/* No `flex-1`: the search below centres itself with auto margins, and a
           title that grew to fill the row would leave those margins nothing to
           absorb. `min-w-0` still lets a long title shrink rather than push. */}
@@ -178,6 +288,15 @@ export function PageHeader({
       */}
       <div className="flex min-w-0 items-start gap-3">
         {icon ? <div className="mt-0.5 shrink-0">{icon}</div> : null}
+        {pageIdentity ? (
+          <div className="teacher-page-icon mt-0.5 shrink-0">
+            <IconChip
+              icon={<pageIdentity.Icon size={22} strokeWidth={2.2} />}
+              tone={pageIdentity.tone}
+              size="lg"
+            />
+          </div>
+        ) : null}
 
         <div className="min-w-0">
           {/*
@@ -566,6 +685,7 @@ export function AppShell({
   isAdmin = false,
   childSwitcher,
   teacherTheme = false,
+  workspaceTheme,
 }: {
   nav: NavItem[];
   /** Desktop sidebar sections. Without them the sidebar renders `nav` flat. */
@@ -576,6 +696,8 @@ export function AppShell({
   variant?: Variant;
   /** Login palette, enabled only by the teacher workspace. */
   teacherTheme?: boolean;
+  /** Role-specific colour and surface vocabulary for the authenticated workspace. */
+  workspaceTheme?: WorkspaceTheme;
   /**
    * Whether this person administers the kindergarten.
    *
@@ -590,6 +712,9 @@ export function AppShell({
   childSwitcher?: ChildSwitcher;
 }) {
   const { session } = useSession();
+  const resolvedTheme = workspaceTheme ?? (teacherTheme ? "teacher" : null);
+  const isTeacherWorkspace = resolvedTheme === "teacher";
+  const hasDedicatedChatNavigation = resolvedTheme === "teacher" || resolvedTheme === "admin";
 
   // Every role gets the sidebar from `lg` up; only the bottom bar is
   // role-dependent (mobile-only, all three variants).
@@ -640,22 +765,24 @@ export function AppShell({
   );
 
   return (
-    <div className="min-h-dvh bg-canvas" data-app-theme={teacherTheme ? "teacher" : undefined}>
-      {desktopSidebar ? (
-        <Sidebar
-          nav={nav}
-          sections={sections}
-          shortcuts={shortcuts}
-          subtitle={subtitle}
-          variant={variant}
-          isAdmin={isAdmin}
-          childSwitcher={childSwitcher}
-        />
-      ) : null}
+    <WorkspaceThemeContext.Provider value={resolvedTheme}>
+      <div className="min-h-dvh bg-canvas" data-app-theme={resolvedTheme ?? undefined}>
+        {desktopSidebar ? (
+          <Sidebar
+            nav={nav}
+            sections={sections}
+            shortcuts={shortcuts}
+            subtitle={subtitle}
+            variant={variant}
+            isAdmin={isAdmin}
+            childSwitcher={childSwitcher}
+            teacherTheme={isTeacherWorkspace}
+          />
+        ) : null}
 
-      <MobileHeader subtitle={subtitle} />
+        <MobileHeader subtitle={subtitle} />
 
-      {/*
+        {/*
         ★ Padding on the frame, a capped column inside it — not a margin.
 
         This was one element carrying `mx-auto max-w-[1200px]` *and*
@@ -673,10 +800,12 @@ export function AppShell({
         centres the content in the space the sidebar leaves over, at every
         width.
       */}
-      <div className={cn(desktopSidebar && "lg:pl-[232px]")}>
-        <DesktopHeader variant={variant} isAdmin={isAdmin} />
+        <div
+          className={cn(desktopSidebar && (isTeacherWorkspace ? "lg:pl-[276px]" : "lg:pl-[232px]"))}
+        >
+          <DesktopHeader variant={variant} isAdmin={isAdmin} />
 
-        {/*
+          {/*
           `pb-24` on mobile clears the fixed bottom bar. Without it the last row
           of every list sits underneath the navigation and cannot be tapped —
           which only shows up when a list is long enough to scroll to the end.
@@ -686,33 +815,33 @@ export function AppShell({
           that have room to give. `lg:pt-8` rather than the old `lg:pt-10`
           because `DesktopHeader` now sits above this and supplies the lead-in.
         */}
-        <main className="mx-auto w-full max-w-[1420px] px-4 pb-24 pt-4 sm:px-6 lg:px-7 lg:pb-16 lg:pt-6 2xl:px-8">
-          {children}
-        </main>
+          <main className="mx-auto w-full max-w-[1420px] px-4 pb-24 pt-4 sm:px-6 lg:px-7 lg:pb-16 lg:pt-6 2xl:px-8">
+            {children}
+          </main>
+        </div>
+
+        <BottomBar nav={bottomNav} hideOnDesktop={desktopSidebar} />
+
+        {/*
+          Teachers already have Chat in the sidebar, the mobile menu and the
+          dashboard preview. The floating trigger covered register actions and
+          form controls, so it stays only for audiences without that navigation.
+        */}
+        {!hasDedicatedChatNavigation ? <ChatWidget /> : null}
+
+        <MobileMenuDrawer
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+          nav={nav}
+          sections={sections}
+          shortcuts={shortcuts}
+          subtitle={subtitle}
+          variant={variant}
+          isAdmin={isAdmin}
+          childSwitcher={childSwitcher}
+        />
       </div>
-
-      <BottomBar nav={bottomNav} hideOnDesktop={desktopSidebar} />
-
-      {/*
-        ★ Mounted here, so it is on every authenticated screen and on none of
-        the unauthenticated ones — `AuthShell` wraps login and the invitation
-        pages and never renders this. One instance for the app, which is what
-        keeps the panel's open state from resetting on every navigation.
-      */}
-      <ChatWidget />
-
-      <MobileMenuDrawer
-        open={menuOpen}
-        onOpenChange={setMenuOpen}
-        nav={nav}
-        sections={sections}
-        shortcuts={shortcuts}
-        subtitle={subtitle}
-        variant={variant}
-        isAdmin={isAdmin}
-        childSwitcher={childSwitcher}
-      />
-    </div>
+    </WorkspaceThemeContext.Provider>
   );
 }
 
@@ -725,15 +854,12 @@ export function AppShell({
  * own copy of a control that never varies, and a screen that forgot to use
  * `PageHeader` silently had no bell at all.
  *
- * ★★ Context on the left, and it is deliberately not a *selector*.
+ * ★★ Search on the left for a teacher.
  *
- * The brief asks for a "kindergarten/group selector where applicable", and for
- * a teacher there is no applicable choice: `use-my-group.ts` and `WhoAmI` both
- * record that this product assigns a teacher exactly one group and that a
- * switcher "would invent a choice the product does not offer". So the group is
- * stated, as a chip, and the date sits beside it — the two facts that scope
- * every number on a teacher's screen. An admin sees every group, so naming one
- * of them would be a lie; they get the date alone, as does a parent.
+ * The dashboard mockup puts child search in the workspace chrome so it remains
+ * available as the teacher moves between registers. The teacher's one group is
+ * stated by each scoped screen and in `WhoAmI`; repeating it here would spend
+ * the only useful header space on context already visible nearby.
  *
  * ★★★ The profile area is an avatar, not a second name.
  *
@@ -755,8 +881,6 @@ function DesktopHeader({ variant, isAdmin }: { variant: Variant; isAdmin: boolea
     times a page load, to fill a chip that was never going to have a value.
   */
   const isTeacher = variant === "teacher" && !isAdmin && hasRole("TEACHER");
-  const { group, count } = useMyGroup({ enabled: isTeacher });
-
   return (
     <header
       data-print-hide
@@ -798,11 +922,7 @@ function DesktopHeader({ variant, isAdmin }: { variant: Variant; isAdmin: boolea
           other thirty-three screens have nowhere else to get.
         */}
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
-          {isTeacher && count === 1 && group ? (
-            <span className="shrink-0 rounded-pill bg-surface px-3 py-1 text-caption font-semibold text-primary shadow-sm">
-              {group.name}
-            </span>
-          ) : null}
+          {isTeacher ? <HeaderSearch className="mr-auto lg:mx-0 lg:w-[320px]" /> : null}
         </div>
 
         <NotificationBell />
@@ -847,12 +967,6 @@ function Brand({ subtitle }: { subtitle: string }) {
         data-brand-mark
         className="grid size-10 shrink-0 place-items-center rounded-control bg-primary-soft p-0.5"
       >
-        <SunMedium
-          className="hidden teacher-brand-sun"
-          size={28}
-          strokeWidth={2.2}
-          aria-hidden="true"
-        />
         <Image
           src="/mark.png"
           alt={BRAND}
@@ -1040,6 +1154,7 @@ function SidebarContent({
   variant,
   isAdmin,
   childSwitcher,
+  showTeacherArt = false,
 }: {
   nav: NavItem[];
   sections?: NavSection[];
@@ -1051,6 +1166,7 @@ function SidebarContent({
   /** Whether the signed-in person administers this kindergarten. */
   isAdmin: boolean;
   childSwitcher?: ChildSwitcher;
+  showTeacherArt?: boolean;
 }) {
   const pathname = usePathname();
 
@@ -1128,6 +1244,23 @@ function SidebarContent({
         />
       </div>
 
+      {showTeacherArt ? (
+        <div className="relative hidden h-36 shrink-0 overflow-hidden rounded-card bg-mint/70 xl:block">
+          <p className="relative z-[1] max-w-[116px] px-3 pt-4 text-caption font-semibold leading-relaxed text-ink">
+            Жижиг алхам том ирээдүй
+          </p>
+          <Image
+            src="/illustrations/nomadkids-cta-boy.png"
+            alt=""
+            fill
+            priority
+            unoptimized
+            sizes="264px"
+            className="object-cover object-[68%_43%]"
+          />
+        </div>
+      ) : null}
+
       {/*
         ★ Both sides of this conflict were carrying a real improvement, and the
         merge keeps both rather than picking one.
@@ -1157,6 +1290,7 @@ function Sidebar({
   variant,
   isAdmin,
   childSwitcher,
+  teacherTheme = false,
 }: {
   nav: NavItem[];
   sections?: NavSection[];
@@ -1165,6 +1299,7 @@ function Sidebar({
   variant: Variant;
   isAdmin: boolean;
   childSwitcher?: ChildSwitcher;
+  teacherTheme?: boolean;
 }) {
   return (
     <nav
@@ -1180,7 +1315,10 @@ function Sidebar({
        * scrolled off the screen. The brand and the identity are fixed now, and
        * the nav between them takes the overflow.
        */
-      className="fixed inset-y-0 left-0 z-20 hidden w-[220px] flex-col gap-5 overflow-hidden border-r border-border-soft bg-surface/92 px-3.5 py-[18px] shadow-[8px_0_28px_-22px_rgb(29_78_216_/_0.28)] backdrop-blur lg:flex"
+      className={cn(
+        "fixed inset-y-0 left-0 z-20 hidden flex-col gap-5 overflow-hidden border-r border-border-soft bg-surface/92 px-3.5 py-[18px] shadow-[8px_0_28px_-22px_rgb(29_78_216_/_0.28)] backdrop-blur lg:flex",
+        teacherTheme ? "w-[264px]" : "w-[220px]",
+      )}
     >
       <SidebarContent
         nav={nav}
@@ -1190,6 +1328,7 @@ function Sidebar({
         variant={variant}
         isAdmin={isAdmin}
         childSwitcher={childSwitcher}
+        showTeacherArt={teacherTheme}
       />
     </nav>
   );
@@ -1356,7 +1495,15 @@ function NavShortcuts({ items, pathname }: { items: NavItem[]; pathname: string 
                     : "text-muted hover:bg-surface hover:text-ink",
                 )}
               >
-                <span className="shrink-0">{item.icon}</span>
+                <span
+                  data-nav-icon
+                  className={cn(
+                    "grid size-8 shrink-0 place-items-center rounded-control",
+                    navIconTone(item.label),
+                  )}
+                >
+                  {item.icon}
+                </span>
                 <span className="min-w-0 leading-snug">{item.label}</span>
               </Link>
             </li>
@@ -1463,7 +1610,15 @@ function NavGroup({ section, pathname }: { section: NavSection; pathname: string
                 : "text-muted hover:bg-canvas hover:text-ink",
             )}
           >
-            <span className="mt-px shrink-0">{entry.icon}</span>
+            <span
+              data-nav-icon
+              className={cn(
+                "mt-px grid size-8 shrink-0 place-items-center rounded-control",
+                navIconTone(entry.label),
+              )}
+            >
+              {entry.icon}
+            </span>
             <span className="min-w-0">{entry.label}</span>
           </Link>
         );
@@ -1496,12 +1651,6 @@ function MobileHeader({ subtitle }: { subtitle: string }) {
           data-brand-mark
           className="grid size-[34px] shrink-0 place-items-center rounded-control bg-primary-soft p-0.5"
         >
-          <SunMedium
-            className="hidden teacher-brand-sun"
-            size={26}
-            strokeWidth={2.2}
-            aria-hidden="true"
-          />
           <Image
             src="/mark.png"
             alt={BRAND}
@@ -1642,6 +1791,7 @@ function NavLink({
   const content = (
     <>
       <span
+        data-nav-icon
         className={cn(
           // ★ `transition-all` and a slight scale on the active well — the tab
           // now visibly *settles* when it becomes current instead of the tint
@@ -1650,7 +1800,8 @@ function NavLink({
           "relative flex items-center justify-center transition-all duration-150",
           // The tinted well the drawing puts behind the active glyph. Sized so
           // a 20px icon sits in a 40×28 rounded rectangle, as drawn.
-          horizontal && "h-7 w-10 rounded-control",
+          horizontal ? "h-7 w-10 rounded-control" : navIconTone(item.label),
+          !horizontal && "size-9 rounded-control",
           horizontal && active && "scale-105 bg-primary-soft",
         )}
       >

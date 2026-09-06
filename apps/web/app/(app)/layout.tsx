@@ -28,6 +28,7 @@ import {
   ScrollText,
   Settings,
   Shapes,
+  ShieldAlert,
   ShieldCheck,
   ShoppingCart,
   SlidersHorizontal,
@@ -153,13 +154,16 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  // Ahead of the provider for the same reason the superadmin branch is: a cook
-  // and an accountant are staff, so `/children/mine` never ran for them and
-  // there is no selected child to provide. Their shell is the two screens their
-  // role has and nothing else.
+  // Ahead of the provider for the same reason the superadmin branch is. A cook
+  // and an accountant have no selected child to provide; their shell contains
+  // only the operational screens for their role.
   if (isCook || isAccountant) {
     return (
-      <AppShell nav={supportNav(isCook)} sections={supportSections(isCook)} variant="teacher">
+      <AppShell
+        nav={supportNav(isCook)}
+        sections={supportSections(isCook)}
+        variant="teacher"
+      >
         {children}
       </AppShell>
     );
@@ -243,6 +247,7 @@ function AuthenticatedShell({
       shortcuts={isStaff ? staffShortcuts(isAdmin, groupId) : undefined}
       variant={isStaff ? "teacher" : "parent"}
       teacherTheme={isStaff && !isAdmin}
+      workspaceTheme={!isAdmin && isStaff ? "teacher" : undefined}
       isAdmin={isAdmin}
       childSwitcher={childSwitcher}
     >
@@ -307,6 +312,7 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
   "/admin/funding": Wallet,
   "/attendance/daily": CalendarCheck,
   "/reports": FileBarChart,
+  "/incidents": ShieldAlert,
   "/platform": Building2,
   "/platform/revenue": Wallet,
   "/platform/applications": FileSignature,
@@ -717,6 +723,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
           href: scoped("meals"),
           icon: <UtensilsCrossed {...sectionIconProps} />,
         },
+        entry("Аюулгүй байдал", "/incidents"),
       ],
     },
     {
