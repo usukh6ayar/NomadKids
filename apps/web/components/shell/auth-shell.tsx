@@ -33,7 +33,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
             ★ The drawn logo carries the name; no wordmark is set beside it.
 
             `logo.png` has "БЯЦХАН НҮҮДЭЛЧИД" lettered into the artwork. Setting
-            "NomadKids" next to it would put two names for one product on the
+            another wordmark next to it would put two names for one product on the
             first screen anybody sees, so the heading below is the logo itself —
             `alt` is what a screen reader announces, and it is the only place
             the name appears in text here.

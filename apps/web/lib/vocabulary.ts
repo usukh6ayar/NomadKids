@@ -30,26 +30,16 @@
 /**
  * The product, in the sidebar and the phone header.
  *
- * ★ **The platform's name, not a kindergarten's** — changed 2026-09-06.
- *
- * It read "Бяцхан нүүдэлчид", which is the name of the first kindergarten to
- * use the system. That was right while there was one; it is wrong now that the
- * product is sold to others, because a second kindergarten's staff would open
- * the app and be greeted by a competitor's name. `nomadkids.mn` was already the
- * domain, so this makes the name in the header agree with the name in the
- * address bar.
- *
- * ★★ It stays a **Latin** wordmark in an otherwise Mongolian interface, which
- * is deliberate rather than an oversight: it is a proper noun, the same one the
- * domain and the invoices carry, and transliterating it would create a second
- * name for one product. Every other string a user reads is still Mongolian.
+ * The supplied system logo carries this Mongolian wordmark. Keeping the same
+ * name in metadata, navigation and accessible text prevents the interface from
+ * presenting a second brand beside the artwork.
  *
  * ★★★ The brand before that was a description — "Хүүхдийн хөгжлийн цахим хувийн
  * хавтас" — which put the word "хавтас" in the one place a user cannot navigate
  * away from, competing with the section actually called that. A name rather
  * than a feature leaves the noun free, and that reasoning still holds.
  */
-export const BRAND = "NomadKids";
+export const BRAND = "Бяцхан нүүдэлчид";
 
 /** The RFP §4 record: "Миний тухай", ages 2–5, the album, the birthday notes. */
 export const PORTFOLIO = "Цахим хувийн хавтас";

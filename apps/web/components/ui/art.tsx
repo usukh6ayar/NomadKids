@@ -52,11 +52,10 @@ import Image from "next/image";
  *
  * ★★★★ One family, not two.
  *
- * The seventeen below are already two styles: thirteen carry their own tinted
- * rounded square (`kindergarten`, `attendance`, `chat-blue`, `menu`, `notice`,
+ * The thirteen below are already two styles: twelve carry their own tinted
+ * rounded square (`kindergarten`, `attendance`, `menu`, `notice`,
  * `portfolio`, `progress`, `survey`, `finance`, `child`, `teacher`,
- * `register`, `report`) and four are bare cut-outs
- * (`analytics`, `chat-gradient`, `chat-simple`, `checklist`). Side by side in
+ * `register`, `report`) and `analytics` is a bare cut-out. Side by side in
  * one grid the two read as different sizes, because one has a chip's worth of
  * padding baked in and the other does not. Anything added should match the
  * family it will sit beside rather than the set as a whole.
@@ -65,10 +64,6 @@ const SOURCE = {
   analytics: "/icons/icon-analytics.png",
   attendance: "/icons/icon-attendance.png",
   child: "/icons/icon-child.png",
-  chatBlue: "/icons/icon-chat-blue.png",
-  chatGradient: "/icons/icon-chat-gradient.png",
-  chatSimple: "/icons/icon-chat-simple.png",
-  checklist: "/icons/icon-checklist.png",
   finance: "/icons/icon-finance.png",
   kindergarten: "/icons/icon-kindergarten.png",
   menu: "/icons/icon-menu.png",
