@@ -171,6 +171,43 @@ export class AssessmentRepository {
   }
 
   /**
+   * The same children's levels in the **previous term** of the same year, for
+   * the same domain — RFP §6.3's "өмнөх үнэлгээтэй харьцуулах".
+   *
+   * ★ One query for the whole roster, not one per row. `loadGroupColumn`
+   * beside it makes the same promise, and this screen is the one a teacher
+   * opens most often (§3.4).
+   *
+   * ★★ The previous term is `number - 1` **within the same school year**, not
+   * "the most recent assessment before this one". A child assessed in the
+   * third term of last year has not been assessed *recently*; showing that as
+   * "өмнөх" would invite a comparison across a summer and a change of group.
+   * The caller skips this entirely when `number` is 1, so the first term of a
+   * year costs no query at all.
+   */
+  async loadPreviousLevels(
+    childIds: string[],
+    schoolYearId: string,
+    previousTermNumber: number,
+    domainId: string,
+  ) {
+    if (childIds.length === 0) return [];
+
+    return this.prisma.assessment.findMany({
+      where: {
+        childId: { in: childIds },
+        domainId,
+        deletedAt: null,
+        term: { schoolYearId, number: previousTermNumber, deletedAt: null },
+      },
+      select: {
+        childId: true,
+        level: { select: { id: true, value: true, label: true, color: true } },
+      },
+    });
+  }
+
+  /**
    * The cohort a radar compares against: every assessment in one group, one term.
    *
    * ★ One query, whatever the group size — the same rule `loadGroupColumn`

@@ -1133,6 +1133,21 @@ export const groupColumnSchema = z.object({
           visibleToParents: z.boolean().nullish(),
         })
         .nullish(),
+      /**
+       * The level this child was given for the **same domain in the previous
+       * term of the same year** — RFP §6.3's "өмнөх үнэлгээтэй харьцуулах".
+       *
+       * ★ `null` in the first term, and `null` for a child nobody assessed
+       * last term. The screen shows "—" for both: a teacher cannot act on the
+       * difference, and spelling it out would put two kinds of nothing on the
+       * densest screen in the product.
+       *
+       * ★★ Carries `value` and `label`, not just an id. The level may since
+       * have been renamed or retired by an administrator (§2.3), and this is a
+       * record of what was said at the time — resolving the id against today's
+       * list would silently relabel history.
+       */
+      previous: z.object({ id: uuidSchema, value: z.number(), label: z.string() }).nullish(),
     }),
   ),
 });

@@ -355,6 +355,7 @@ function GroupAssessment() {
                 <ChildRow
                   key={child.childId}
                   child={child}
+                  previous={child.previous ?? null}
                   levels={column.data!.levels}
                   selectedLevelId={draft[child.childId] ?? child.assessment?.levelId ?? null}
                   isDirty={Boolean(draft[child.childId])}
@@ -405,6 +406,7 @@ function GroupAssessment() {
  */
 function ChildRow({
   child,
+  previous,
   levels,
   selectedLevelId,
   isDirty,
@@ -416,6 +418,8 @@ function ChildRow({
     firstName: string;
     photoMediaFileId?: string | null;
   };
+  /** The same domain, the previous term of the same year — RFP §6.3. */
+  previous: { id: string; value: number; label: string } | null;
   levels: { id: string; label: string; value: number; color?: string | null }[];
   selectedLevelId: string | null;
   isDirty: boolean;
@@ -427,6 +431,26 @@ function ChildRow({
         <ChildAvatar child={child} size={40} />
         <span className="min-w-0">
           <span className="block truncate font-medium text-ink">{fullName(child)}</span>
+
+          {/*
+            ★ RFP §6.3 — "өмнөх үнэлгээтэй харьцуулах".
+
+            Under the name rather than in a column of its own. The reference
+            system draws this as a four-column grid, which is a desktop shape:
+            this screen is mobile-first (§5), and a third column at 390 px
+            would push the level chips onto their own line and halve how many
+            children fit on a screen.
+
+            ★★ Rendered even when there is nothing — "Өмнөх: —". A row that
+            simply omits it reads as a row where the teacher forgot to look,
+            and the whole point of the line is to be scanned down the column.
+            The first term of a year has no previous term at all and every row
+            says "—", which is honest and costs no query (the service skips it).
+          */}
+          <span className="block truncate text-caption text-muted">
+            Өмнөх: {previous ? `${previous.value}. ${previous.label}` : "—"}
+          </span>
+
           {isDirty ? <span className="text-caption text-primary">Хадгалаагүй</span> : null}
         </span>
       </div>

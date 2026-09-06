@@ -939,3 +939,180 @@ describe("the radar", () => {
     expect(res.status).toBe(400);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Өмнөх үнэлгээтэй харьцуулах — RFP §6.3
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * The previous term's level, beside this term's chips.
+ *
+ * ★ What these pin is *which* previous — the same domain, one term back,
+ * **within the same school year**. "The most recent assessment before this
+ * one" is the tempting alternative and it is wrong: a child assessed in last
+ * year's third term has not been assessed recently, and showing it as "өмнөх"
+ * invites a comparison across a summer and a change of group.
+ */
+describe("★ previous term", () => {
+  /** A term in the same year, at `number`. */
+  async function makeTerm(number: number) {
+    return db.term.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        schoolYearId: a.schoolYear.id,
+        number,
+        name: `${number} улирал`,
+        startsOn: new Date(`2025-${String(number).padStart(2, "0")}-01`),
+        endsOn: new Date(`2025-${String(number).padStart(2, "0")}-28`),
+      },
+    });
+  }
+
+  async function column(termIdArg: string) {
+    return request(server())
+      .get(`/v1/groups/${a.group.id}/assessments?termId=${termIdArg}&domainId=${domainId}`)
+      .set("Cookie", teacherA.cookies);
+  }
+
+  /** The first term has no previous term at all. */
+  it("is null in the first term of the year", async () => {
+    const res = await column(termId);
+
+    expect(res.status).toBe(200);
+    expect(res.body.children[0].previous).toBeNull();
+  });
+
+  it("carries the level given one term back, with its label", async () => {
+    const second = await makeTerm(2);
+
+    // Assess in term 1…
+    await authed(request(server()).put(`/v1/groups/${a.group.id}/assessments`), teacherA).send({
+      termId,
+      domainId,
+      entries: [{ childId: a.child.id, levelId: levelIds[2]! }],
+    });
+
+    // …and read term 2, where it should appear as "previous".
+    const res = await column(second.id);
+    expect(res.status).toBe(200);
+
+    const level = await db.assessmentLevel.findUniqueOrThrow({ where: { id: levelIds[2]! } });
+    expect(res.body.children[0].previous).toMatchObject({
+      id: level.id,
+      value: level.value,
+      label: level.label,
+    });
+  });
+
+  /**
+   * ★ The label is a snapshot, not a lookup.
+   *
+   * `AssessmentLevel` is a table an administrator edits (§2.3). The response
+   * carries `value` and `label` rather than only an id so a client cannot
+   * resolve last term's level against today's list and silently relabel what
+   * was actually said. This is the read that would break if it ever became an
+   * id alone.
+   */
+  it("names the level rather than leaving the client to resolve an id", async () => {
+    const second = await makeTerm(2);
+    await authed(request(server()).put(`/v1/groups/${a.group.id}/assessments`), teacherA).send({
+      termId,
+      domainId,
+      entries: [{ childId: a.child.id, levelId: levelIds[1]! }],
+    });
+
+    const res = await column(second.id);
+    expect(typeof res.body.children[0].previous.label).toBe("string");
+    expect(res.body.children[0].previous.label.length).toBeGreaterThan(0);
+  });
+
+  /** A child nobody assessed last term reads as nothing, not as an error. */
+  it("is null for a child who was not assessed last term", async () => {
+    const second = await makeTerm(2);
+    const res = await column(second.id);
+
+    expect(res.status).toBe(200);
+    expect(res.body.children[0].previous).toBeNull();
+  });
+
+  /**
+   * ★★ One term back, not "any earlier term".
+   *
+   * Term 3's previous is term 2. A child assessed in term 1 and left alone in
+   * term 2 has no previous level to show — reaching further back would present
+   * a two-term-old judgement as the most recent one.
+   */
+  it("does not reach back further than one term", async () => {
+    const second = await makeTerm(2);
+    const third = await makeTerm(3);
+
+    await authed(request(server()).put(`/v1/groups/${a.group.id}/assessments`), teacherA).send({
+      termId,
+      domainId,
+      entries: [{ childId: a.child.id, levelId: levelIds[0]! }],
+    });
+
+    expect((await column(second.id)).body.children[0].previous).not.toBeNull();
+    expect((await column(third.id)).body.children[0].previous).toBeNull();
+  });
+
+  /**
+   * ★★★ The same domain, not any domain.
+   *
+   * A child assessed on "Хэл яриа" last term tells you nothing about their
+   * "Бие бялдар" this term, and showing it in that column would be a number
+   * that looks like a comparison and is not one.
+   */
+  it("does not borrow another domain's level", async () => {
+    const second = await makeTerm(2);
+
+    await authed(request(server()).put(`/v1/groups/${a.group.id}/assessments`), teacherA).send({
+      termId,
+      domainId: otherDomainId,
+      entries: [{ childId: a.child.id, levelId: levelIds[3]! }],
+    });
+
+    const res = await column(second.id);
+    expect(res.body.children[0].previous).toBeNull();
+  });
+
+  /**
+   * ★ Still a fixed number of queries, whatever the group size.
+   *
+   * §3.4, and the same property `loadGroupColumn` is already pinned for. The
+   * previous term is one more read for the whole roster — never one per child.
+   */
+  it("costs one query for the roster, not one per child", async () => {
+    async function countPreviousQueries(groupSize: number): Promise<number> {
+      await resetData();
+      const s = await createScenario(`p${groupSize}`);
+      const domain = await db.developmentDomain.findFirstOrThrow({
+        where: { kindergartenId: null },
+      });
+
+      const childIds: string[] = [s.child.id];
+      for (let i = 1; i < groupSize; i++) {
+        const child = await createChild(s.kindergarten.id, { firstName: `Хүүхэд${i}` });
+        await enrollChild(s.kindergarten.id, child.id, s.group.id, s.schoolYear.id);
+        childIds.push(child.id);
+      }
+
+      let queries = 0;
+      const counted = db.$extends({
+        query: {
+          $allOperations({ args, query }) {
+            queries += 1;
+            return query(args);
+          },
+        },
+      });
+
+      const repo = new AssessmentRepository(counted as unknown as PrismaService);
+      await repo.loadPreviousLevels(childIds, s.schoolYear.id, 1, domain.id);
+      return queries;
+    }
+
+    expect(await countPreviousQueries(2)).toBe(1);
+    expect(await countPreviousQueries(20)).toBe(1);
+  });
+});

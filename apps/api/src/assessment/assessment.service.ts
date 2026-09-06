@@ -289,6 +289,34 @@ export class AssessmentService {
 
     const byChild = new Map(assessments.map((a) => [a.childId, a]));
 
+    /*
+     * ★ RFP §6.3 — "өмнөх үнэлгээтэй харьцуулах".
+     *
+     * Sequential rather than inside the `Promise.all` above, because it needs
+     * the roster to know which children to ask about. That is one extra round
+     * trip on a screen that already does two, and none at all in the first
+     * term — where there is no previous term to compare with, and asking would
+     * be a query guaranteed to return nothing.
+     */
+    const previousByChild = new Map<string, { id: string; value: number; label: string }>();
+    if (term.number > 1) {
+      const rows = await this.repo.loadPreviousLevels(
+        enrollments.map((e) => e.child.id),
+        term.schoolYearId,
+        term.number - 1,
+        query.domainId,
+      );
+      for (const row of rows) {
+        if (row.level) {
+          previousByChild.set(row.childId, {
+            id: row.level.id,
+            value: row.level.value,
+            label: row.level.label,
+          });
+        }
+      }
+    }
+
     return {
       group: { id: group.id, name: group.name },
       term: { id: term.id, number: term.number, name: term.name },
@@ -306,6 +334,12 @@ export class AssessmentService {
               visibleToParents: byChild.get(e.child.id)!.visibleToParents,
             }
           : null,
+        /*
+         * `null` for a child who was not assessed last term, which is not the
+         * same as one who has no previous term at all — the screen says "—"
+         * either way, and the difference is not one a teacher can act on.
+         */
+        previous: previousByChild.get(e.child.id) ?? null,
       })),
     };
   }
