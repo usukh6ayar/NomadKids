@@ -216,6 +216,27 @@ describe("navigation is built from the session's roles", () => {
     );
     expect(calls.some((call) => call.url.startsWith("/children/mine"))).toBe(false);
   });
+
+  it("gives accountants their theme without loading parent children", async () => {
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["ACCOUNTANT"]) },
+      { path: "/notifications/unread-count", body: { count: 0 } },
+    ]);
+
+    const { container } = renderWithProviders(
+      <AppLayout>
+        <div>агуулга</div>
+      </AppLayout>,
+    );
+
+    await waitFor(() =>
+      expect(container.querySelector("[data-app-theme]")).toHaveAttribute(
+        "data-app-theme",
+        "finance",
+      ),
+    );
+    expect(calls.some((call) => call.url.startsWith("/children/mine"))).toBe(false);
+  });
 });
 
 /**
