@@ -74,6 +74,24 @@ body:has([data-app-theme="parent"]) {
   --workspace-background: linear-gradient(120deg, #fff8f7 0%, #f3fbf8 100%);
 }
 
+body:has([data-app-theme="kitchen"]) {
+  --color-canvas: #f5faf6;
+  --color-sunken: #edf6ef;
+  --color-border: #d7e6d9;
+  --color-border-soft: #e8f1e9;
+  --color-ink: #244936;
+  --color-primary: #2d8055;
+  --color-primary-strong: #205f3f;
+  --color-primary-hover: #256d48;
+  --color-primary-soft: #e8f5ec;
+  --workspace-accent: #2d8055;
+  --workspace-accent-secondary: #e1a321;
+  --workspace-button-start: #2d8055;
+  --workspace-button-end: #4a9c68;
+  --workspace-button-hover: #205f3f;
+  --workspace-background: linear-gradient(120deg, #f5faf6 0%, #fff9e8 100%);
+}
+
 [data-app-theme] {
   background: var(--workspace-background);
   color: var(--color-ink);
