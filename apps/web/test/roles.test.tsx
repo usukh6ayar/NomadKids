@@ -153,6 +153,27 @@ describe("navigation is built from the session's roles", () => {
       ),
     );
   });
+
+  it("gives administrators the admin workspace theme", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: "/notifications/unread-count", body: { count: 0 } },
+      { path: "/groups", body: { items: [], total: 0, page: 1, pageSize: 20, totalPages: 0 } },
+    ]);
+
+    const { container } = renderWithProviders(
+      <AppLayout>
+        <div>агуулга</div>
+      </AppLayout>,
+    );
+
+    await waitFor(() =>
+      expect(container.querySelector("[data-app-theme]")).toHaveAttribute(
+        "data-app-theme",
+        "admin",
+      ),
+    );
+  });
 });
 
 /**
