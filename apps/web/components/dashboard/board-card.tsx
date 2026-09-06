@@ -1,5 +1,13 @@
 import type { ReactNode } from "react";
-import { BarChart3, CalendarCheck, Cake, ClipboardList, Newspaper, Users } from "lucide-react";
+import {
+  BarChart3,
+  CalendarCheck,
+  Cake,
+  ClipboardList,
+  MessageCircle,
+  Newspaper,
+  Users,
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -94,11 +102,13 @@ function BoardIcon({ title }: { title: string }) {
         ? { icon: Users, className: "bg-primary-soft text-primary" }
         : title.includes("Төрсөн")
           ? { icon: Cake, className: "bg-sun text-sun-ink" }
-          : title.includes("Судалгаа")
-            ? { icon: BarChart3, className: "bg-sun text-sun-ink" }
-            : title.includes("нийтлэл")
-              ? { icon: Newspaper, className: "bg-mint text-mint-ink" }
-              : { icon: ClipboardList, className: "bg-peach text-peach-ink" };
+          : title.includes("чат")
+            ? { icon: MessageCircle, className: "bg-sky text-sky-ink" }
+            : title.includes("Судалгаа")
+              ? { icon: BarChart3, className: "bg-sun text-sun-ink" }
+              : title.includes("нийтлэл")
+                ? { icon: Newspaper, className: "bg-mint text-mint-ink" }
+                : { icon: ClipboardList, className: "bg-peach text-peach-ink" };
   const Icon = match.icon;
 
   return (

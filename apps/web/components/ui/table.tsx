@@ -35,7 +35,7 @@ export function TableShell({
   className?: string;
 }) {
   return (
-    <Card className={cn("overflow-hidden p-0", className)}>
+    <Card data-ui-table="true" className={cn("overflow-hidden p-0", className)}>
       <div className="overflow-x-auto">
         <table className={cn("w-full border-collapse text-body", minWidth)}>
           <caption className="sr-only">{caption}</caption>

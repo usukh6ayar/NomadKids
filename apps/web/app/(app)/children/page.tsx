@@ -8,9 +8,12 @@ import {
   AlertTriangle,
   ChevronRight,
   Download,
+  Mars,
   Plus,
   Search,
   Upload,
+  UsersRound,
+  Venus,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
@@ -41,6 +44,7 @@ import { ChildAvatar } from "@/components/media/media-image";
 import { SelectBox, SelectionBar, useSelection } from "@/components/ui/selection";
 import { TableShell, Td, Th } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { StatCard } from "@/components/ui/stat-card";
 import { useSelectedChild } from "@/lib/selected-child";
 import { formatAge, formatDate, fullName } from "@/lib/format";
 import { MY_CHILDREN } from "@/lib/vocabulary";
@@ -980,19 +984,31 @@ function RosterSummary({ search, facets }: { search: string; facets: RosterFacet
         data. Selecting a group gives that group's split, which is what makes
         it worth having on this screen rather than only on the dashboard.
       */}
-      <div className="grid grid-cols-3 gap-2 md:gap-3">
-        <Card pad="compact">
-          <p className="text-body text-muted">Нийт хүүхэд</p>
-          <p className="mt-1 text-display font-semibold tabular-nums text-ink">{data.total}</p>
-        </Card>
-        <Card pad="compact">
-          <p className="text-body text-muted">Охид</p>
-          <p className="mt-1 text-display font-semibold tabular-nums text-ink">{data.girls}</p>
-        </Card>
-        <Card pad="compact">
-          <p className="text-body text-muted">Хөвгүүд</p>
-          <p className="mt-1 text-display font-semibold tabular-nums text-ink">{data.boys}</p>
-        </Card>
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3">
+        <StatCard
+          label="Нийт хүүхэд"
+          value={data.total}
+          unit="хүүхэд"
+          art={<UsersRound size={22} />}
+          tone="sky"
+          className="teacher-stat-card teacher-stat-sky col-span-2 md:col-span-1"
+        />
+        <StatCard
+          label="Охид"
+          value={data.girls}
+          unit="хүүхэд"
+          art={<Venus size={22} />}
+          tone="peach"
+          className="teacher-stat-card teacher-stat-peach"
+        />
+        <StatCard
+          label="Хөвгүүд"
+          value={data.boys}
+          unit="хүүхэд"
+          art={<Mars size={22} />}
+          tone="mint"
+          className="teacher-stat-card teacher-stat-mint"
+        />
       </div>
 
       {/*
@@ -1013,7 +1029,8 @@ function RosterSummary({ search, facets }: { search: string; facets: RosterFacet
           <div className="flex items-baseline justify-between gap-3">
             <p className="text-body text-muted">Хүйсийн харьцаа</p>
             <p className="text-body tabular-nums text-muted">
-              {Math.round((data.girls / counted) * 100)}% · {Math.round((data.boys / counted) * 100)}%
+              {Math.round((data.girls / counted) * 100)}% ·{" "}
+              {Math.round((data.boys / counted) * 100)}%
             </p>
           </div>
           <div

@@ -1,5 +1,14 @@
-/* Login's palette is opt-in. Matching on the live shell also covers Radix
+/* Workspace palettes are opt-in. Matching on the live shell also covers Radix
    dialogs and menus portaled to body, and resets automatically on logout. */
+body:has([data-app-theme]) {
+  --radius-card: 12px;
+  --radius-row: 10px;
+  --radius-control: 9px;
+  --shadow-sm: 0 2px 4px rgb(44 91 135 / 0.02), 0 10px 32px rgb(44 91 135 / 0.07);
+  --shadow-md: 0 4px 8px rgb(44 91 135 / 0.04), 0 14px 40px rgb(44 91 135 / 0.11);
+  --shadow-lg: 0 22px 70px rgb(44 91 135 / 0.13);
+}
+
 body:has([data-app-theme="teacher"]) {
   --color-canvas: #f6fbff;
   --color-sunken: #f2f8ff;
@@ -21,65 +30,61 @@ body:has([data-app-theme="teacher"]) {
   --color-peach-ink: #b45628;
   --color-cornflower: #f2ecff;
   --color-teal: #e4faf3;
-  --radius-card: 22px;
-  --shadow-sm: 0 2px 4px rgb(44 91 135 / 0.02), 0 10px 32px rgb(44 91 135 / 0.07);
-  --shadow-md: 0 4px 8px rgb(44 91 135 / 0.04), 0 14px 40px rgb(44 91 135 / 0.11);
-  --shadow-lg: 0 22px 70px rgb(44 91 135 / 0.13);
+  --workspace-accent: #2582eb;
+  --workspace-accent-secondary: #58bf91;
+  --workspace-button-start: #2582eb;
+  --workspace-button-end: #3d9cf5;
+  --workspace-button-hover: #1d73d3;
+  --workspace-background: linear-gradient(120deg, #f6fbff 0%, #eff9ff 55%, #f3fbef 100%);
 }
 
-[data-app-theme="teacher"] {
-  background: linear-gradient(120deg, #f6fbff 0%, #eff9ff 55%, #f3fbef 100%);
+[data-app-theme] {
+  background: var(--workspace-background);
   color: var(--color-ink);
 }
 
-body:has([data-app-theme="teacher"]) :is(h1, h2, h3) {
-  color: #102f5d;
+body:has([data-app-theme]) :is(h1, h2, h3) {
+  color: var(--color-ink);
   font-weight: 800;
-  letter-spacing: -0.025em;
+  letter-spacing: 0;
 }
 
 /* Keep primary fills bright like login, with darker ink on text-only links. */
-body:has([data-app-theme="teacher"]) .text-primary {
+body:has([data-app-theme]) .text-primary {
   color: var(--color-primary-strong);
 }
 
-body:has([data-app-theme="teacher"]) :is(button, a).bg-primary {
-  background-image: linear-gradient(100deg, #2582eb, #3d9cf5);
+body:has([data-app-theme]) :is(button, a).bg-primary {
+  background-image: linear-gradient(
+    100deg,
+    var(--workspace-button-start),
+    var(--workspace-button-end)
+  );
   font-weight: 700;
-  box-shadow: 0 8px 24px rgb(37 130 235 / 0.2);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--workspace-accent) 20%, transparent);
 }
 
-body:has([data-app-theme="teacher"]) :is(button, a).bg-primary:hover {
-  background-image: linear-gradient(100deg, #1d73d3, #2582eb);
+body:has([data-app-theme]) :is(button, a).bg-primary:hover {
+  background-image: linear-gradient(100deg, var(--workspace-button-hover), var(--workspace-accent));
 }
 
-body:has([data-app-theme="teacher"]) :is(button, a).bg-primary:active,
-body:has([data-app-theme="teacher"]) button.bg-primary:disabled {
+body:has([data-app-theme]) :is(button, a).bg-primary:active,
+body:has([data-app-theme]) button.bg-primary:disabled {
   box-shadow: none;
 }
 
-[data-app-theme="teacher"] > nav[aria-label="Үндсэн цэс"] {
-  background: linear-gradient(180deg, #ffffff 65%, #f2f9ff 100%);
+[data-app-theme] > nav[aria-label="Үндсэн цэс"] {
+  background: linear-gradient(180deg, #ffffff 65%, var(--color-primary-soft) 100%);
   border-color: var(--color-border);
 }
 
-[data-app-theme="teacher"] header {
+[data-app-theme] header {
   background-color: rgb(255 255 255 / 0.94);
   backdrop-filter: blur(12px);
 }
 
 body:has([data-app-theme="teacher"]) [data-brand-mark] {
-  background: #fff0b8;
-  color: #f4ad21;
-  border-radius: 999px;
-}
-
-body:has([data-app-theme="teacher"]) [data-brand-mark] img {
-  display: none;
-}
-
-body:has([data-app-theme="teacher"]) .teacher-brand-sun {
-  display: block;
+  background: #ffffff;
 }
 
 body:has([data-app-theme="teacher"]) [data-brand-mark] + span > span:first-child {
@@ -87,43 +92,180 @@ body:has([data-app-theme="teacher"]) [data-brand-mark] + span > span:first-child
   font-weight: 800;
 }
 
-body:has([data-app-theme="teacher"]) nav a[aria-current="page"] {
-  background: linear-gradient(100deg, #eaf6ff, #f2f9ff);
-  color: #1767bc;
-  border-color: #d4e9fc;
+body:has([data-app-theme]) nav a[aria-current="page"] {
+  background: linear-gradient(100deg, var(--color-primary-soft), #ffffff);
+  color: var(--color-primary-strong);
+  border-color: color-mix(in srgb, var(--workspace-accent) 24%, white);
+}
+
+/* Every role workspace opens with the same hierarchy, in its own palette. */
+[data-app-theme] main [data-ui="page-header"] {
+  position: relative;
+  margin-bottom: 0;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+[data-app-theme] main [data-ui="page-header"]::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 72px;
+  height: 3px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, var(--workspace-accent), var(--workspace-accent-secondary));
+}
+
+[data-app-theme] .teacher-page-icon > span {
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--workspace-accent) 14%, transparent);
+}
+
+/* Shared surfaces stay quiet, while their hierarchy becomes more explicit. */
+[data-app-theme] main [data-ui="card"],
+[data-app-theme] main [data-ui="row-card"] {
+  border-color: var(--color-border);
+  background-color: rgb(255 255 255 / 0.96);
+}
+
+[data-app-theme] main [data-ui="row-card"]:hover {
+  border-color: color-mix(in srgb, var(--workspace-accent) 34%, white);
+}
+
+/* Dashboard-like metric bands on the list and report screens. */
+[data-app-theme] main [data-ui="card"].teacher-stat-card {
+  min-height: 112px;
+  align-items: center;
+}
+
+[data-app-theme] main [data-ui="card"].teacher-stat-sky {
+  background-color: #edf8ff;
+}
+
+[data-app-theme] main [data-ui="card"].teacher-stat-mint {
+  background-color: #ecfaf2;
+}
+
+[data-app-theme] main [data-ui="card"].teacher-stat-sun {
+  background-color: #fff8dc;
+}
+
+[data-app-theme] main [data-ui="card"].teacher-stat-peach {
+  background-color: #fff2ec;
+}
+
+[data-app-theme] main [data-ui="sunken-panel"] {
+  background-color: var(--color-sunken);
+}
+
+[data-app-theme] main [data-ui="section-header"] > div:first-child::before {
+  content: "";
+  width: 4px;
+  height: 28px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: var(--workspace-accent-secondary);
+}
+
+[data-app-theme] main [data-ui="field"] > label {
+  color: var(--color-ink);
+  font-weight: 650;
+}
+
+[data-app-theme] main [data-ui-table="true"] thead th {
+  background-color: color-mix(in srgb, var(--workspace-accent) 10%, white);
+  color: var(--color-primary-strong);
+}
+
+[data-app-theme] main [data-ui-table="true"] tbody tr {
+  transition: background-color 150ms ease;
+}
+
+[data-app-theme] main [data-ui-table="true"] tbody tr:hover {
+  background-color: color-mix(in srgb, var(--workspace-accent) 5%, white);
+}
+
+body:has([data-app-theme]) [data-nav-icon] {
+  transition:
+    transform 150ms ease,
+    box-shadow 150ms ease;
+}
+
+body:has([data-app-theme]) a:hover [data-nav-icon],
+body:has([data-app-theme]) button:hover [data-nav-icon] {
+  transform: translateY(-1px);
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--workspace-accent) 14%, transparent);
 }
 
 [data-app-theme="teacher"] .teacher-dashboard-header {
-  position: relative;
-  overflow: hidden;
-  padding: 24px;
-  border: 1px solid rgb(255 255 255 / 0.85);
-  border-radius: var(--radius-card);
-  background: linear-gradient(115deg, #eaf6ff, #eff9ff 55%, #eefbea);
-  box-shadow: var(--shadow-sm);
+  display: grid;
+  align-items: stretch;
+  gap: 16px;
 }
 
 [data-app-theme="teacher"] .teacher-dashboard-header > div {
-  position: relative;
-  z-index: 1;
   margin-bottom: 0;
 }
 
-@media (min-width: 640px) {
-  [data-app-theme="teacher"] .teacher-dashboard-header {
-    padding: 32px;
-    padding-right: 160px;
-  }
+[data-app-theme="teacher"] .teacher-dashboard-header [data-ui="page-header"] {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
 
-  [data-app-theme="teacher"] .teacher-dashboard-mascot {
-    display: block;
-    position: absolute;
-    right: 32px;
-    bottom: 0;
-    width: 96px;
-    height: 112px;
-    object-fit: contain;
-    object-position: bottom;
+[data-app-theme="teacher"] .teacher-dashboard-header [data-ui="page-header"]::after {
+  display: none;
+}
+
+[data-app-theme="teacher"] .teacher-dashboard-header .teacher-page-icon {
+  display: none;
+}
+
+[data-app-theme="teacher"] .teacher-dashboard-banner {
+  position: relative;
+  min-height: 132px;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.9);
+  border-radius: var(--radius-card);
+  background: #eaf6ff;
+  box-shadow: var(--shadow-sm);
+}
+
+[data-app-theme="teacher"] .teacher-dashboard-banner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgb(234 246 255 / 0.98) 0%,
+    rgb(234 246 255 / 0.86) 40%,
+    transparent 70%
+  );
+}
+
+[data-app-theme="teacher"] .teacher-dashboard-banner img {
+  object-position: 58% 49%;
+}
+
+[data-app-theme="teacher"] .teacher-dashboard-banner p {
+  position: relative;
+  z-index: 1;
+  max-width: 170px;
+  padding: 28px 0 0 24px;
+  color: #173e70;
+  font-size: var(--text-title);
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+@media (min-width: 640px) {
+  [data-app-theme="teacher"] .teacher-dashboard-banner {
+    min-height: 150px;
+  }
+}
+
+@media (min-width: 1280px) {
+  [data-app-theme="teacher"] .teacher-dashboard-header {
+    grid-template-columns: minmax(0, 1.6fr) minmax(360px, 0.9fr);
   }
 }
 
@@ -134,7 +276,7 @@ body:has([data-app-theme="teacher"]) nav a[aria-current="page"] {
     box-shadow: none;
   }
 
-  [data-app-theme="teacher"] .teacher-dashboard-mascot {
+  [data-app-theme="teacher"] .teacher-dashboard-banner {
     display: none;
   }
 }
