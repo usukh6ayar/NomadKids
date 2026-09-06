@@ -143,7 +143,6 @@ export function ChildMenu({
   const now = new Date();
   const todayIso = toIso(now);
   const tomorrow = addDays(now, 1);
-  const tomorrowIso = toIso(tomorrow);
 
   const [monday, setMonday] = useState(() => mondayOf(now));
   // An offset into the week, not a stored date — so paging a week keeps the
