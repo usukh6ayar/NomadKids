@@ -87,6 +87,7 @@ export function Card({
 }) {
   return (
     <div
+      data-ui="card"
       className={cn(
         "rounded-card border shadow-sm",
         // Untinted stays byte-for-byte what it was.
@@ -132,6 +133,7 @@ export function RowCard({
 }) {
   return (
     <div
+      data-ui="row-card"
       className={cn(
         "rounded-row border border-border bg-surface px-4 py-3.5 shadow-sm",
         interactive && "card-interactive cursor-pointer",
@@ -144,7 +146,7 @@ export function RowCard({
 
 /** The column those rows sit in. Uses the shared stack rhythm. */
 export function RowList({ className, ...props }: ComponentProps<"div">) {
-  return <div className={cn("card-stack", className)} {...props} />;
+  return <div data-ui="row-list" className={cn("card-stack", className)} {...props} />;
 }
 
 /**
@@ -165,7 +167,9 @@ export function RowList({ className, ...props }: ComponentProps<"div">) {
  * card and matching it would leave no visible corner.
  */
 export function SunkenPanel({ className, ...props }: ComponentProps<"div">) {
-  return <div className={cn("rounded-row bg-sunken p-4", className)} {...props} />;
+  return (
+    <div data-ui="sunken-panel" className={cn("rounded-row bg-sunken p-4", className)} {...props} />
+  );
 }
 
 /**
@@ -231,6 +235,7 @@ export function SectionHeader({
 }) {
   return (
     <div
+      data-ui="section-header"
       className={cn(
         "mb-2.5 flex flex-wrap items-start justify-between gap-x-3 gap-y-2 md:mb-3",
         className,

@@ -110,6 +110,8 @@ export const qk = {
     ["kindergarten", kindergartenId, "menu", "with-warnings", from, to] as const,
   attendanceReviewQueue: (filters: Record<string, unknown> = {}) =>
     ["attendance-requests", "review-queue", filters] as const,
+  kindergartenIncidents: (kindergartenId: string, filters: Record<string, unknown> = {}) =>
+    ["kindergarten", kindergartenId, "incidents", filters] as const,
 
   childSurveys: (childId: string) => ["child", childId, "surveys"] as const,
   kindergartenSurveys: (kindergartenId: string) =>

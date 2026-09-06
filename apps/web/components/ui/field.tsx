@@ -54,7 +54,7 @@ export function Field({
     [error ? errorId : null, hint ? hintId : null].filter(Boolean).join(" ") || undefined;
 
   return (
-    <div className={cn("flex flex-col gap-1.5", className)}>
+    <div data-ui="field" className={cn("flex flex-col gap-1.5", className)}>
       <LabelPrimitive.Root htmlFor={id} className="text-body font-medium text-ink">
         {label}
         {required ? (

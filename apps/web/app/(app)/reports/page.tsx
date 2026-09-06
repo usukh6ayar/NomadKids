@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { CalendarDays, CheckCircle2, Percent, UsersRound } from "lucide-react";
 import { useState } from "react";
 import { groupAttendanceSummarySchema, type GroupAttendanceSummary } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
@@ -20,6 +21,7 @@ import {
   ATTENDANCE_STATUS_ORDER,
 } from "@/lib/attendance-meta";
 import { fullName } from "@/lib/format";
+import { StatCard } from "@/components/ui/stat-card";
 
 /**
  * "Тайлан" — a teacher's own group, a month at a time.
@@ -169,24 +171,37 @@ function MonthReport({ data }: { data: GroupAttendanceSummary }) {
   return (
     <>
       <section aria-label="Сарын дүн" className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
-        <Card pad="compact">
-          <p className="text-body text-muted">Бүртгэсэн өдөр</p>
-          <p className="mt-1 text-display font-semibold tabular-nums text-ink">{recordedDays}</p>
-        </Card>
-        <Card pad="compact">
-          <p className="text-body text-muted">Ирцийн хувь</p>
-          <p className="mt-1 text-display font-semibold tabular-nums text-ink">
-            {rate === null ? "—" : `${rate}%`}
-          </p>
-        </Card>
-        <Card pad="compact">
-          <p className="text-body text-muted">Ирсэн тэмдэглэгээ</p>
-          <p className="mt-1 text-display font-semibold tabular-nums text-ink">{present}</p>
-        </Card>
-        <Card pad="compact">
-          <p className="text-body text-muted">Бүлгийн хүүхэд</p>
-          <p className="mt-1 text-display font-semibold tabular-nums text-ink">{data.roster}</p>
-        </Card>
+        <StatCard
+          label="Бүртгэсэн өдөр"
+          value={recordedDays}
+          unit="өдөр"
+          art={<CalendarDays size={22} />}
+          tone="sky"
+          className="teacher-stat-card teacher-stat-sky"
+        />
+        <StatCard
+          label="Ирцийн хувь"
+          value={rate === null ? "—" : `${rate}%`}
+          art={<Percent size={22} />}
+          tone="mint"
+          className="teacher-stat-card teacher-stat-mint"
+        />
+        <StatCard
+          label="Ирсэн тэмдэглэгээ"
+          value={present}
+          unit="удаа"
+          art={<CheckCircle2 size={22} />}
+          tone="sun"
+          className="teacher-stat-card teacher-stat-sun"
+        />
+        <StatCard
+          label="Бүлгийн хүүхэд"
+          value={data.roster}
+          unit="хүүхэд"
+          art={<UsersRound size={22} />}
+          tone="peach"
+          className="teacher-stat-card teacher-stat-peach"
+        />
       </section>
 
       <section aria-labelledby="breakdown-heading">
