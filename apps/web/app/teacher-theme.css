@@ -1,0 +1,140 @@
+/* Login's palette is opt-in. Matching on the live shell also covers Radix
+   dialogs and menus portaled to body, and resets automatically on logout. */
+body:has([data-app-theme="teacher"]) {
+  --color-canvas: #f6fbff;
+  --color-sunken: #f2f8ff;
+  --color-border: #dce6f1;
+  --color-border-soft: #edf3f9;
+  --color-ink: #173e70;
+  --color-primary: #2582eb;
+  --color-primary-strong: #1767bc;
+  --color-primary-hover: #1d73d3;
+  --color-primary-soft: #eaf6ff;
+  --color-track: #edf3f9;
+  --color-sky: #eaf6ff;
+  --color-sky-ink: #246bb2;
+  --color-mint: #e9f9f1;
+  --color-mint-ink: #28794e;
+  --color-sun: #fff2c8;
+  --color-sun-ink: #8a6418;
+  --color-peach: #fff1e8;
+  --color-peach-ink: #b45628;
+  --color-cornflower: #f2ecff;
+  --color-teal: #e4faf3;
+  --radius-card: 22px;
+  --shadow-sm: 0 2px 4px rgb(44 91 135 / 0.02), 0 10px 32px rgb(44 91 135 / 0.07);
+  --shadow-md: 0 4px 8px rgb(44 91 135 / 0.04), 0 14px 40px rgb(44 91 135 / 0.11);
+  --shadow-lg: 0 22px 70px rgb(44 91 135 / 0.13);
+}
+
+[data-app-theme="teacher"] {
+  background: linear-gradient(120deg, #f6fbff 0%, #eff9ff 55%, #f3fbef 100%);
+  color: var(--color-ink);
+}
+
+body:has([data-app-theme="teacher"]) :is(h1, h2, h3) {
+  color: #102f5d;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+/* Keep primary fills bright like login, with darker ink on text-only links. */
+body:has([data-app-theme="teacher"]) .text-primary {
+  color: var(--color-primary-strong);
+}
+
+body:has([data-app-theme="teacher"]) :is(button, a).bg-primary {
+  background-image: linear-gradient(100deg, #2582eb, #3d9cf5);
+  font-weight: 700;
+  box-shadow: 0 8px 24px rgb(37 130 235 / 0.2);
+}
+
+body:has([data-app-theme="teacher"]) :is(button, a).bg-primary:hover {
+  background-image: linear-gradient(100deg, #1d73d3, #2582eb);
+}
+
+body:has([data-app-theme="teacher"]) :is(button, a).bg-primary:active,
+body:has([data-app-theme="teacher"]) button.bg-primary:disabled {
+  box-shadow: none;
+}
+
+[data-app-theme="teacher"] > nav[aria-label="Үндсэн цэс"] {
+  background: linear-gradient(180deg, #ffffff 65%, #f2f9ff 100%);
+  border-color: var(--color-border);
+}
+
+[data-app-theme="teacher"] header {
+  background-color: rgb(255 255 255 / 0.94);
+  backdrop-filter: blur(12px);
+}
+
+body:has([data-app-theme="teacher"]) [data-brand-mark] {
+  background: #fff0b8;
+  color: #f4ad21;
+  border-radius: 999px;
+}
+
+body:has([data-app-theme="teacher"]) [data-brand-mark] img {
+  display: none;
+}
+
+body:has([data-app-theme="teacher"]) .teacher-brand-sun {
+  display: block;
+}
+
+body:has([data-app-theme="teacher"]) [data-brand-mark] + span > span:first-child {
+  color: #143d72;
+  font-weight: 800;
+}
+
+body:has([data-app-theme="teacher"]) nav a[aria-current="page"] {
+  background: linear-gradient(100deg, #eaf6ff, #f2f9ff);
+  color: #1767bc;
+  border-color: #d4e9fc;
+}
+
+[data-app-theme="teacher"] .teacher-dashboard-header {
+  position: relative;
+  overflow: hidden;
+  padding: 24px;
+  border: 1px solid rgb(255 255 255 / 0.85);
+  border-radius: var(--radius-card);
+  background: linear-gradient(115deg, #eaf6ff, #eff9ff 55%, #eefbea);
+  box-shadow: var(--shadow-sm);
+}
+
+[data-app-theme="teacher"] .teacher-dashboard-header > div {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 0;
+}
+
+@media (min-width: 640px) {
+  [data-app-theme="teacher"] .teacher-dashboard-header {
+    padding: 32px;
+    padding-right: 160px;
+  }
+
+  [data-app-theme="teacher"] .teacher-dashboard-mascot {
+    display: block;
+    position: absolute;
+    right: 32px;
+    bottom: 0;
+    width: 96px;
+    height: 112px;
+    object-fit: contain;
+    object-position: bottom;
+  }
+}
+
+@media print {
+  [data-app-theme="teacher"],
+  [data-app-theme="teacher"] .teacher-dashboard-header {
+    background: white;
+    box-shadow: none;
+  }
+
+  [data-app-theme="teacher"] .teacher-dashboard-mascot {
+    display: none;
+  }
+}

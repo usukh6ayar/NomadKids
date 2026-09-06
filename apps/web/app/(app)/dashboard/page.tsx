@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { teacherDashboardSchema } from "@kinder/contracts";
@@ -176,7 +177,16 @@ function TeacherDashboard() {
   const teacherName = fullName(session?.user);
   const greetingName = teacherName === "—" ? "багш" : teacherName;
   const header = (lede: string) => (
-    <PageHeader title={`Сайн байна уу, ${greetingName} 👋`} lede={lede} search />
+    <div className="teacher-dashboard-header">
+      <PageHeader title={`Сайн байна уу, ${greetingName} 👋`} lede={lede} search />
+      <Image
+        src="/background/mascot-teacher.webp"
+        alt=""
+        width={96}
+        height={120}
+        className="teacher-dashboard-mascot hidden"
+      />
+    </div>
   );
 
   if (isLoading) {

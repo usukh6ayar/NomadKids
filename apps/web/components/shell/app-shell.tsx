@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, ChevronDown, LogOut, Search, X } from "lucide-react";
+import { Bell, ChevronDown, LogOut, Search, SunMedium, X } from "lucide-react";
 import { useId, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import {
   ROLE_LABEL,
@@ -565,6 +565,7 @@ export function AppShell({
   variant = "teacher",
   isAdmin = false,
   childSwitcher,
+  teacherTheme = false,
 }: {
   nav: NavItem[];
   /** Desktop sidebar sections. Without them the sidebar renders `nav` flat. */
@@ -573,6 +574,8 @@ export function AppShell({
   shortcuts?: NavItem[];
   children: ReactNode;
   variant?: Variant;
+  /** Login palette, enabled only by the teacher workspace. */
+  teacherTheme?: boolean;
   /**
    * Whether this person administers the kindergarten.
    *
@@ -637,7 +640,7 @@ export function AppShell({
   );
 
   return (
-    <div className="min-h-dvh bg-canvas">
+    <div className="min-h-dvh bg-canvas" data-app-theme={teacherTheme ? "teacher" : undefined}>
       {desktopSidebar ? (
         <Sidebar
           nav={nav}
@@ -840,7 +843,16 @@ function Brand({ subtitle }: { subtitle: string }) {
         colour did. It is also the arbitrary-colour mistake the token system
         exists to prevent, sitting in the shell.
       */}
-      <span className="grid size-10 shrink-0 place-items-center rounded-control bg-primary-soft p-0.5">
+      <span
+        data-brand-mark
+        className="grid size-10 shrink-0 place-items-center rounded-control bg-primary-soft p-0.5"
+      >
+        <SunMedium
+          className="hidden teacher-brand-sun"
+          size={28}
+          strokeWidth={2.2}
+          aria-hidden="true"
+        />
         <Image
           src="/mark.png"
           alt={BRAND}
@@ -1480,7 +1492,16 @@ function MobileHeader({ subtitle }: { subtitle: string }) {
       )}
     >
       <Link href="/" className="flex min-h-[44px] items-center gap-3">
-        <span className="grid size-[34px] shrink-0 place-items-center rounded-control bg-primary-soft p-0.5">
+        <span
+          data-brand-mark
+          className="grid size-[34px] shrink-0 place-items-center rounded-control bg-primary-soft p-0.5"
+        >
+          <SunMedium
+            className="hidden teacher-brand-sun"
+            size={26}
+            strokeWidth={2.2}
+            aria-hidden="true"
+          />
           <Image
             src="/mark.png"
             alt={BRAND}
