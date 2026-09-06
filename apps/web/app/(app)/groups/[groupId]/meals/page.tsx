@@ -31,6 +31,7 @@ import { Field, Input, Textarea } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
+import { useSession } from "@/lib/auth/session";
 
 const sheetSchema = z.array(groupMealRowSchema);
 const savedSchema = z.array(mealRecordSchema);
@@ -136,6 +137,23 @@ function GroupMeals() {
   const groupId = params.groupId;
   const queryClient = useQueryClient();
   const toast = useToast();
+
+  /*
+   * ★ A director reads the meal register; they do not mark it — 2026-09-06.
+   *
+   * The client's words: "хоолны хэсэгт авсан аваагүй гэхгүй, багшаас ирсэн
+   * дата л харагдна, ерөөсөө захирал гараар өөрөө оруулахгүй". Same reasoning
+   * as the attendance day sheet beside it, and it matters more here: a meal
+   * record is what the kitchen's portion count and the food-cost split are
+   * built from, and two people marking the same sitting from two screens is
+   * how a day ends up counted twice.
+   *
+   * Held against ADMIN-without-TEACHER for the reason that page records: a
+   * director who also teaches has a group whose register somebody has to
+   * write, and their `Membership` is what says which they are.
+   */
+  const { hasRole } = useSession();
+  const readOnly = hasRole("ADMIN") && !hasRole("TEACHER");
 
   const [date, setDate] = useState(today());
   const [kind, setKind] = useState<MealKind>("BREAKFAST");
@@ -249,7 +267,14 @@ function GroupMeals() {
 
   return (
     <div className="flex flex-col gap-5 py-2">
-      <PageHeader title="Хоолны бүртгэл" lede={group.data?.name} />
+      <PageHeader
+        title="Хоолны бүртгэл"
+        lede={
+          readOnly
+            ? `${group.data?.name ?? ""} — багшийн бүртгэсэн хоол. Зөвхөн харна.`.trim()
+            : group.data?.name
+        }
+      />
 
       <GroupSwitcher
         groups={switchable.data?.items ?? []}
@@ -318,6 +343,7 @@ function GroupMeals() {
                   key={row.enrollmentId}
                   child={row.child}
                   status={statusFor(row)}
+                  readOnly={readOnly}
                   note={draft[row.child.id]?.note ?? row.record?.note ?? ""}
                   isDirty={Boolean(draft[row.child.id])}
                   onSelect={(status) => setStatus(row, status)}
@@ -455,6 +481,7 @@ function SittingPicker({
 function ChildRow({
   child,
   status,
+  readOnly,
   note,
   isDirty,
   onSelect,
@@ -462,6 +489,8 @@ function ChildRow({
 }: {
   child: { id: string; lastName: string; firstName: string };
   status: MealStatus | null;
+  /** A director's view — see the note in `GroupMeals`. */
+  readOnly: boolean;
   note: string;
   isDirty: boolean;
   onSelect: (status: MealStatus) => void;
@@ -490,19 +519,41 @@ function ChildRow({
           )}
         </span>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          disabled={status === null}
-          aria-label={`${name} — тэмдэглэл`}
-          title={
-            status === null ? "Эхлээд хоолны төлөвийг сонгоно уу." : note ? note : "Тэмдэглэл нэмэх"
-          }
-          onClick={onOpenNote}
-          className={cn("shrink-0", note ? "text-primary" : "text-muted")}
-        >
-          <NotebookPen size={18} aria-hidden="true" />
-        </Button>
+        {/*
+          Read-only keeps the note *visible* and drops the editor: the teacher's
+          "Гэрээсээ хоолтой ирсэн" is exactly the kind of thing a director opens
+          this screen for, and hiding it with the control that writes it would
+          remove the explanation along with the ability to change it.
+        */}
+        {readOnly ? (
+          note ? (
+            <span
+              title={note}
+              className="inline-flex shrink-0 items-center gap-1.5 text-caption text-muted"
+            >
+              <NotebookPen size={16} aria-hidden="true" />
+              <span className="max-w-[180px] truncate">{note}</span>
+            </span>
+          ) : null
+        ) : (
+          <Button
+            variant="ghost"
+            size="icon"
+            disabled={status === null}
+            aria-label={`${name} — тэмдэглэл`}
+            title={
+              status === null
+                ? "Эхлээд хоолны төлөвийг сонгоно уу."
+                : note
+                  ? note
+                  : "Тэмдэглэл нэмэх"
+            }
+            onClick={onOpenNote}
+            className={cn("shrink-0", note ? "text-primary" : "text-muted")}
+          >
+            <NotebookPen size={18} aria-hidden="true" />
+          </Button>
+        )}
       </div>
 
       {/*
@@ -510,6 +561,30 @@ function ChildRow({
         390px line, so the statuses take their own row under the child rather
         than squeezing the name to three characters.
       */}
+      {/*
+        ★ One tinted chip instead of four buttons when this is being read — the
+        same substitution the attendance day sheet makes, and for the same
+        reason: four disabled controls still say "press these later", and there
+        is no later for a director here.
+      */}
+      {readOnly ? (
+        <div className="flex basis-full flex-wrap gap-2 sm:basis-auto sm:justify-end">
+          {status ? (
+            <span
+              className={cn(
+                "inline-flex min-h-9 items-center rounded-control px-3 text-body font-semibold",
+                STATUSES.find((s) => s.value === status)?.selected,
+              )}
+            >
+              {STATUS_LABEL[status]}
+            </span>
+          ) : (
+            <span className="inline-flex min-h-9 items-center rounded-control border border-dashed border-border px-3 text-body text-faint">
+              Бүртгээгүй
+            </span>
+          )}
+        </div>
+      ) : (
       <div
         role="radiogroup"
         aria-label={`${name} — хоол`}
@@ -536,6 +611,7 @@ function ChildRow({
           );
         })}
       </div>
+      )}
     </div>
   );
 }

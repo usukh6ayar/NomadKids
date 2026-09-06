@@ -26,6 +26,17 @@ import type {
 /** Invitation links last a week — long enough for a parent to notice the SMS. */
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * An administrator-issued reset link lasts an hour — the same window
+ * `AuthService.requestPasswordReset` gives the self-service one.
+ *
+ * ★ Deliberately not the invitation's week. An invitation is delivered to
+ * somebody who does not have an account yet and may take days to act; this is
+ * handed over in person or read out down a telephone, and the whole reason it
+ * exists is that the person is in front of you now.
+ */
+const ADMIN_PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -48,7 +59,7 @@ export class UsersService {
     const page: PageParams = { page: query.page, pageSize: query.pageSize };
     const { items, total } = await this.repo.list(
       scope,
-      { role: query.role, isActive: query.isActive, q: query.q },
+      { role: query.role, roles: query.roles, isActive: query.isActive, q: query.q },
       page,
     );
     return paginate(items, total, page);
@@ -206,6 +217,63 @@ export class UsersService {
       metadata: { fields: Object.keys(dto) },
     });
     return updated;
+  }
+
+  /**
+   * Issues a password-reset link for a member of staff — "нууц үг солих",
+   * requested 2026-09-06.
+   *
+   * ★ It issues a link. It does **not** set a password.
+   *
+   * That is the same rule `createInvitedAccount` states and for the same
+   * reason: an administrator who types a password for somebody else knows that
+   * password, and a "temporary" one is permanent in practice. What a director
+   * actually needs when a teacher is locked out is a way back in for that
+   * teacher, and a one-time link is it — the teacher chooses the password and
+   * nobody else ever holds it.
+   *
+   * ★★ Unlike `AuthService.requestPasswordReset`, this one 404s for a user it
+   * cannot find. That endpoint is unauthenticated and must not become a
+   * user-enumeration API, so it pretends to succeed for everyone; this one is
+   * `@Roles("ADMIN")` and scoped to the kindergartens the actor administers,
+   * so the caller already knows who is on their own staff list. Pretending
+   * here would only hide a genuine mistake — a stale row, the wrong id — behind
+   * a token that resets nobody.
+   *
+   * ★★★ Outstanding reset tokens for that user are invalidated first, exactly
+   * as the self-service path does: a link issued to an address the person has
+   * since lost control of stops working the moment a new one is made.
+   */
+  async issuePasswordReset(actor: Actor, id: string) {
+    const scope = this.tenants.adminKindergartenIds(actor);
+    const user = await this.repo.findInScope(id, scope);
+    if (!user) throw new NotFoundException();
+
+    await this.auth.invalidateAuthTokens(user.id, "PASSWORD_RESET");
+
+    const { token, hash } = this.tokens.createOneTimeToken();
+    await this.auth.createAuthToken({
+      userId: user.id,
+      purpose: "PASSWORD_RESET",
+      tokenHash: hash,
+      expiresAt: new Date(Date.now() + ADMIN_PASSWORD_RESET_TTL_MS),
+      requestedIp: null,
+    });
+
+    /*
+      The actor is the administrator, not the account being reset — the
+      distinction the self-service audit row cannot make and this one must.
+      The token itself is never audited and never logged.
+    */
+    await this.audit.append({
+      action: "PASSWORD_RESET",
+      actorUserId: actor.userId,
+      objectType: "User",
+      objectId: user.id,
+      metadata: { stage: "issued_by_admin" },
+    });
+
+    return { user, resetToken: token };
   }
 
   async addMembership(actor: Actor, userId: string, dto: AddMembershipDto) {

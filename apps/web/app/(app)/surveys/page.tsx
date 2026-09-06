@@ -9,6 +9,8 @@ import { ListChecks, Plus, Search, Users } from "lucide-react";
 import {
   SURVEY_KIND_HINT,
   SURVEY_KIND_LABEL,
+  groupListItemSchema,
+  paginated,
   surveyKindSchema,
   surveySchema,
   type SurveyKind,
@@ -34,6 +36,7 @@ import { SURVEY_TONE_BG, SURVEY_TYPE_META } from "@/lib/survey-meta";
 import { cn } from "@/lib/utils";
 
 const surveysSchema = z.array(surveySchema);
+const groupsSchema = paginated(groupListItemSchema);
 
 const STATUS_LABEL: Record<string, string> = {
   DRAFT: "Ноорог",
@@ -357,8 +360,20 @@ function SurveyCard({ survey }: { survey: z.infer<typeof surveySchema> }) {
           last moved.
         */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border-soft pt-3 text-caption text-muted">
+          {/*
+            ★ The audience, before the answering shape — 2026-09-06.
+
+            A survey aimed at one group is a different thing from a survey the
+            whole kindergarten is being asked, and until `groupId` existed the
+            list could not say which this was. It leads the footer because it
+            is the question a teacher scans for; the scope follows it.
+          */}
           <span className="inline-flex items-center gap-1.5">
             <Users size={14} aria-hidden="true" />
+            {survey.group?.name ?? "Бүх бүлэг"}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <ListChecks size={14} aria-hidden="true" />
             {SCOPE_LABEL[survey.scope]}
           </span>
           <span className="inline-flex items-center gap-1.5">
@@ -382,12 +397,28 @@ function CreateSurveyDialog({
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [scope, setScope] = useState<"CHILD" | "KINDERGARTEN">("CHILD");
+  /**
+   * Which group the survey is for — "" is every group.
+   *
+   * ★ Added 2026-09-06, at the client's request: "хэнд зориулсан гэхэд бүх
+   * бүлэг / бүлэг сонгох болгох". `Survey.groupId` carries it, and null there
+   * means every group rather than a frozen list of the ones that exist today.
+   */
+  const [groupId, setGroupId] = useState("");
   const [kind, setKind] = useState<SurveyKind>("POLL");
   /**
    * The optional closing date, as the `yyyy-mm-dd` an `<input type="date">`
    * produces. Empty means no deadline, which the client asked to keep possible.
    */
   const [closesOn, setClosesOn] = useState("");
+
+  // The audience options. Same key every register uses, so this normally reads
+  // a cache the shell has already filled.
+  const groups = useQuery({
+    queryKey: qk.groups({ pageSize: 100 }),
+    queryFn: () => get("/groups?page=1&pageSize=100", groupsSchema),
+    staleTime: 60_000,
+  });
 
   const create = useMutation({
     mutationFn: () =>
@@ -407,6 +438,9 @@ function CreateSurveyDialog({
             what "хаагдах огноо: 9-р сарын 15" means to the person typing it.
           */
           closesAt: closesOn ? new Date(`${closesOn}T23:59:59`).toISOString() : null,
+          // "" is the whole kindergarten, which the API stores as a null
+          // column rather than as every group listed.
+          groupId: groupId || null,
         },
       }),
     onSuccess: (survey) => router.push(`/surveys/${survey.id}`),
@@ -491,8 +525,39 @@ function CreateSurveyDialog({
             )}
           </Field>
 
+          {/*
+            ★ Two questions, not one — and the label that used to cover both
+            now covers the one it was actually about.
+
+            "Хэнд зориулагдсан" named the *scope* control, which chooses how
+            many times one family answers. That is a real question and it is
+            not the one the client meant by the words: they meant the audience —
+            "бүх бүлэг эсвэл бүлэг сонгох". Both are here now, in that order,
+            each with the label that describes it.
+          */}
           <Field
             label="Хэнд зориулагдсан"
+            hint="Сонгосон бүлгийн эцэг эхэд л харагдана."
+          >
+            {({ id, describedBy }) => (
+              <Select
+                id={id}
+                aria-describedby={describedBy}
+                value={groupId}
+                onChange={(e) => setGroupId(e.target.value)}
+              >
+                <option value="">Бүх бүлэг</option>
+                {(groups.data?.items ?? []).map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+
+          <Field
+            label="Хариулах хэлбэр"
             hint="Хүүхэд тус бүрээр гэвэл эцэг эх хүүхдийнхээ нэрээр хариулна."
           >
             {({ id, describedBy }) => (

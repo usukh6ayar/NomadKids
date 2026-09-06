@@ -12,7 +12,12 @@ import {
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
-import { AudiencePicker } from "@/components/notifications/audience-picker";
+import {
+  AudiencePicker,
+  audienceToTargets,
+  targetsToAudience,
+  type Audience,
+} from "@/components/notifications/audience-picker";
 import { NoticePhotoUpload } from "@/components/notifications/notice-photo-upload";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -66,7 +71,8 @@ function EditNotice() {
   const [category, setCategory] = useState<NotificationCategory>("OTHER");
   const [body, setBody] = useState("");
   const [isImportant, setIsImportant] = useState(false);
-  const [childIds, setChildIds] = useState<string[] | null>(null);
+  /** Null means everyone — see `AudiencePicker`. */
+  const [audience, setAudience] = useState<Audience>(null);
   /** Photos added during this edit, so the count below reflects them at once. */
   const [addedMedia, setAddedMedia] = useState<{ id: string }[]>([]);
   const [ready, setReady] = useState(false);
@@ -88,15 +94,17 @@ function EditNotice() {
     setBody(data.body ?? "");
     setIsImportant(Boolean(data.isImportant));
     /*
-      No targets is "Бүх хүүхэд" — the same `null`-means-everyone contract the
-      composer uses, read back off the row. A post aimed at named children
-      returns them under `targets`, and only the child ones matter here: the
-      picker lists children, and a group target has no checkbox to restore.
+      No targets is "Бүх бүлэг" — the same `null`-means-everyone contract the
+      composer uses, read back off the row.
+
+      ★ Group targets are restored too, since 2026-09-06. This used to keep
+      only the child ones with the note "a group target has no checkbox to
+      restore" — true then, and the consequence was silent data loss: opening a
+      group-targeted notice and pressing Хадгалах rewrote its audience to
+      everyone. The picker has group checkboxes now, and `targetsToAudience` is
+      the one place that reads the API's shape back.
     */
-    const named = (data.targets ?? [])
-      .map((target) => target.childId)
-      .filter((value): value is string => Boolean(value));
-    setChildIds(named.length > 0 ? named : null);
+    setAudience(targetsToAudience(data.targets ?? []));
     setReady(true);
   }, [notice.data, ready]);
 
@@ -109,7 +117,7 @@ function EditNotice() {
           category,
           body,
           isImportant,
-          targets: childIds ? childIds.map((childId) => ({ childId })) : [],
+          targets: audienceToTargets(audience),
         },
       }),
     onSuccess: async () => {
@@ -210,7 +218,7 @@ function EditNotice() {
             )}
           </Field>
 
-          <AudiencePicker value={childIds} onChange={setChildIds} disabled={busy} />
+          <AudiencePicker value={audience} onChange={setAudience} disabled={busy} />
 
           {/*
             ★ Photographs can be added here but not removed, and the copy says

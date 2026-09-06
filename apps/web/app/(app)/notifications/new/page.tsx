@@ -10,7 +10,11 @@ import {
   notificationSchema,
   type NotificationCategory,
 } from "@kinder/contracts";
-import { AudiencePicker } from "@/components/notifications/audience-picker";
+import {
+  AudiencePicker,
+  audienceToTargets,
+  type Audience,
+} from "@/components/notifications/audience-picker";
 import { mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
@@ -68,8 +72,14 @@ function ComposeNotice() {
     oruulah shig engiin hyalbar bolgo").
   */
   const [category, setCategory] = useState<NotificationCategory>("OTHER");
-  /** Null means everyone — the API reads an empty `targets` array the same way. */
-  const [childIds, setChildIds] = useState<string[] | null>(null);
+  /**
+   * Null means everyone — the API reads an empty `targets` array the same way.
+   *
+   * ★ A groups-and-children pair since 2026-09-06, not a list of child ids.
+   * See `AudiencePicker`: a director writing to Дэлбээ should target the group,
+   * so that a child enrolled next week is included rather than frozen out.
+   */
+  const [audience, setAudience] = useState<Audience>(null);
   const [body, setBody] = useState("");
   const [isImportant, setIsImportant] = useState(false);
   /**
@@ -134,8 +144,8 @@ function ComposeNotice() {
               body,
               isImportant,
               // No selection is the whole kindergarten, which the API spells as
-              // no targets at all rather than as every child listed.
-              targets: childIds ? childIds.map((childId) => ({ childId })) : [],
+              // no targets at all rather than as every group listed.
+              targets: audienceToTargets(audience),
             },
           },
         );
@@ -269,7 +279,7 @@ function ComposeNotice() {
             )}
           </Field>
 
-          <AudiencePicker value={childIds} onChange={setChildIds} disabled={busy} />
+          <AudiencePicker value={audience} onChange={setAudience} disabled={busy} />
 
           {/* Photographs, chosen here and sent when the post is. */}
           <div className="flex flex-col gap-2">

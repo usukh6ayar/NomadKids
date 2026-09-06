@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Pencil } from "lucide-react";
+import { KeyRound, Pencil } from "lucide-react";
 import { z } from "zod";
 import { PASSWORD_RULES, userProfileSchema, validatePasswordStrength } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
@@ -16,7 +16,7 @@ import { Field, Input, PasswordInput, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { ChildAvatar } from "@/components/media/media-image";
-import { SingleImageUpload } from "@/components/media/single-image-upload";
+import { PhotoBadgeButton } from "@/components/media/photo-badge-button";
 
 const profileSchema = userProfileSchema.extend({
   specialization: z.string().nullish(),
@@ -33,7 +33,16 @@ const profileSchema = userProfileSchema.extend({
 export default function SettingsPage() {
   return (
     /*
-      ★ Capped, then split — one column becomes two where there is room.
+      ★ Capped, and one column again — 2026-09-06.
+
+      It was two columns from `xl`: the profile on the left, the password form
+      and the sign-out row on the right. That split existed because there were
+      two forms; there is one now. "Нууц үг солих" is a dialog opened from the
+      profile card (see `PasswordDialog`), so the right-hand column held a
+      single sign-out row — a column of chrome beside a column of content.
+
+      The reasoning the old note recorded, kept because it is still the reason
+      for the 760px cap:
 
       A form at 1336px is a label on the far left with its field running to the
       far right, and the eye has to travel the whole width to connect them. So
@@ -45,28 +54,15 @@ export default function SettingsPage() {
       screen — and it does not, because a cap is a limit on a *line*, not a
       layout for a page.
 
-      These are two independent forms plus a sign-out row, and nothing about
-      changing a password depends on the profile above it. From `xl` they sit
-      side by side: each column keeps a form-shaped width, and the page uses the
-      space instead of leaving a margin the width of the sidebar.
-
-      Below `xl` they stack and the cap comes back — at 1024px two columns would
-      put the profile's name-and-email pair at about 250px each, which is the
-      squeeze the 760px cap was chosen to avoid in the first place.
+      A cap is a limit on a *line*, not a layout for a page — but with one form
+      on the page, the line is the page.
     */
     <div className="flex w-full flex-col gap-6 lg:gap-8">
-      <PageHeader title="Профайл" lede="Хувийн мэдээлэл, нэвтрэх нууц үг." />
+      <PageHeader title="Хувийн тохиргоо" lede="Хувийн мэдээлэл, нэвтрэх нууц үг." />
 
-      <div className="grid w-full max-w-[760px] items-start gap-6 lg:gap-8 xl:max-w-none xl:grid-cols-2">
+      <div className="flex w-full max-w-[760px] flex-col gap-6 lg:gap-8">
         <ProfileForm />
-
-        {/* The password form and the sign-out row are one column: both are
-            about the session rather than about the person, and neither is tall
-            enough to hold a column of its own. */}
-        <div className="flex flex-col gap-6 lg:gap-8">
-          <PasswordForm />
-          <SignOutCard />
-        </div>
+        <SignOutCard />
       </div>
     </div>
   );
@@ -159,18 +155,7 @@ function ProfileForm() {
 
   return (
     <section aria-labelledby="profile-heading">
-      <SectionHeader
-        id="profile-heading"
-        title="Хувийн мэдээлэл"
-        action={
-          editing ? undefined : (
-            <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
-              <Pencil size={16} aria-hidden="true" />
-              Засах
-            </Button>
-          )
-        }
-      />
+      <SectionHeader id="profile-heading" title="Хувийн мэдээлэл" />
 
       {!editing ? (
         /*
@@ -193,47 +178,63 @@ function ProfileForm() {
         */
         <Card pad="roomy" className="flex flex-col gap-5">
           {/*
-            ★ The avatar the rest of the product draws, not the uploader's
-            dashed placeholder.
+            ★ The picture is the control — 2026-09-06, at the client's request:
+            "зураг нэмэх гэж тусдаа button байхгүй, камерын зурагтай тэнд нь
+            дардаг болгоё".
 
-            `SingleImageUpload` renders an 80px dashed ring when there is no
-            picture — correct on a form, where it is the drop target and the
-            dashes say "put something here". At the top of a profile it reads as
-            a broken image: a grey outline where a face should be.
+            A "Зураг нэмэх" button sat under the name and took a line of its
+            own to say what the avatar beside it already showed. The camera
+            badge is the affordance every product uses for this, it is on the
+            thing being changed, and it costs no layout — the same argument
+            `child-photo-button.tsx` made for a child's portrait, now shared as
+            `PhotoBadgeButton`.
 
-            `ChildAvatar` is what every other surface in this product uses for a
-            person, and it draws their initials on a tinted circle when there is
-            no photograph — a name is a real answer where a dashed outline is an
-            absence.
+            `ChildAvatar` draws the picture, or the person's initials on a
+            tinted circle when there is none — a name is a real answer where
+            `SingleImageUpload`'s dashed ring reads as a broken image.
 
-            RFP §3.3 — профайл зураг. The uploader keeps its job and loses its
-            preview: it sits under the name as a plain control, which is where a
-            profile header puts it. It stays outside the form because it saves on
-            selection, and a picture chosen inside a form with a Save button reads
-            as unsaved until one is pressed. Only ever the signed-in user's own —
-            the API refuses any other id.
+            ★★ The badge stays outside the form and works in both states,
+            because this endpoint saves on selection: a picture chosen inside a
+            form with a Хадгалах button reads as unsaved until one is pressed.
+            Only ever the signed-in user's own — the API refuses any other id.
           */}
           <div className="flex flex-wrap items-center gap-4 border-b border-border-soft pb-5">
-            <ChildAvatar child={data ?? {}} size={72} />
+            <span className="relative shrink-0">
+              <ChildAvatar child={data ?? {}} size={72} />
+              <PhotoBadgeButton
+                endpoint={`/users/${data?.id}/photo`}
+                label="Профайл зураг солих"
+                invalidateKeys={[qk.profile(), qk.session()]}
+              />
+            </span>
 
             <div className="min-w-0 flex-1">
               <p className="truncate text-title font-semibold text-ink">
                 {[data?.lastName, data?.firstName].filter(Boolean).join(" ") || "—"}
               </p>
               <p className="truncate text-body text-muted">{data?.email || "И-мэйл оруулаагүй"}</p>
-
-              <div className="mt-2">
-                <SingleImageUpload
-                  endpoint={`/users/${data?.id}/photo`}
-                  currentMediaId={data?.photoMediaFileId}
-                  label="Зураг нэмэх"
-                  alt="Таны профайл зураг"
-                  shape="round"
-                  hidePreview
-                  invalidateKeys={[qk.profile(), qk.session()]}
-                />
-              </div>
             </div>
+
+            {/*
+              ★ Засах moved off the page header and into the card — same
+              request, second half: "тэр edit-ийг нь дээр нь байхгүйгээр box-ын
+              дотор нь оруулж гоё байрлуулж өгөх".
+
+              It belongs to this record, not to the screen, and the screen's
+              header is above a card that is now the only thing on the page —
+              so a control up there was pointing down at the one object beneath
+              it from outside its own box. On the identity row it sits opposite
+              the name it edits, which is where a profile puts it.
+            */}
+            <Button
+              variant="secondary"
+              size="sm"
+              className="shrink-0"
+              onClick={() => setEditing(true)}
+            >
+              <Pencil size={16} aria-hidden="true" />
+              Засах
+            </Button>
           </div>
 
           {/*
@@ -265,19 +266,26 @@ function ProfileForm() {
         </Card>
       ) : (
         <Card pad="roomy" className="flex flex-col gap-5">
-          {/* The uploader stays outside the form and above it, for the reason
-              its own note gives: it saves on selection, and a picture chosen
-              inside a form with a Save button reads as unsaved until you press
-              one. */}
-          <div className="border-b border-border-soft pb-5">
-            <SingleImageUpload
-              endpoint={`/users/${data?.id}/photo`}
-              currentMediaId={data?.photoMediaFileId}
-              label="Зураг"
-              alt="Таны профайл зураг"
-              shape="round"
-              invalidateKeys={[qk.profile(), qk.session()]}
-            />
+          {/*
+            The same identity row as the read view, so pressing Засах changes
+            what is editable and not where anything is. The badge stays outside
+            the form below it, for the reason its own note gives: this endpoint
+            saves on selection, and a picture chosen inside a form with a
+            Хадгалах button reads as unsaved until one is pressed.
+          */}
+          <div className="flex flex-wrap items-center gap-4 border-b border-border-soft pb-5">
+            <span className="relative shrink-0">
+              <ChildAvatar child={data ?? {}} size={72} />
+              <PhotoBadgeButton
+                endpoint={`/users/${data?.id}/photo`}
+                label="Профайл зураг солих"
+                invalidateKeys={[qk.profile(), qk.session()]}
+              />
+            </span>
+
+            <p className="min-w-0 flex-1 text-body text-muted">
+              Зургаа солихдоо камерын тэмдэг дээр дарна уу.
+            </p>
           </div>
 
           <form
@@ -380,6 +388,36 @@ function ProfileForm() {
               </Button>
             </div>
           </form>
+
+          {/*
+            ★ The password lives inside the edit card — corrected 2026-09-06,
+            twice.
+
+            It began as a permanently open card beside the profile: four policy
+            rules and three password fields on screen every time anybody came to
+            check their own telephone number, for a thing people do once a year.
+            The client asked for that to stop.
+
+            The first correction moved it into a dialog opened from a second
+            header button, and the client's answer was "шал сонин байна" — fair,
+            and the reason is legible in hindsight: two buttons where the screen
+            had one, and a modal for a form that belongs to the record already
+            open behind it. Changing your password is *editing your account*,
+            not a separate errand.
+
+            So it is the last section of the edit form, under a rule, folded
+            shut. You press Засах, and the way to change your password is where
+            you would look for it — "profile дотроо edit гэхэд нь".
+
+            ★★ Its own submit, and that is not an oversight.
+
+            `PATCH /me/profile` and `POST /auth/password` are two endpoints with
+            two outcomes, and the second signs every other device out. One
+            "Хадгалах" spanning both would make a name correction capable of
+            ending somebody's sessions, and would have to decide what "half
+            saved" means when one call succeeds and the other does not.
+          */}
+          <PasswordSection />
         </Card>
       )}
     </section>
@@ -406,7 +444,26 @@ function ReadField({
   );
 }
 
-function PasswordForm() {
+/**
+ * Changing your own password — `POST /auth/password`.
+ *
+ * ★ The last section of the profile's edit form, folded shut. See the note at
+ * its call site for the two attempts this replaces.
+ *
+ * ★★ The fields exist only while the section is open.
+ *
+ * Not `hidden`, not disabled — unmounted. A "current password" input sitting
+ * in the DOM of a page somebody left open is a credential a password manager
+ * will offer to fill and a shoulder will read; there is no reason for it to be
+ * there before somebody has said they are changing their password, and closing
+ * the section clears whatever was typed.
+ *
+ * ★★★ The success line stays until the section is closed, deliberately. It
+ * says every other device has been signed out, which is a consequence somebody
+ * needs to read *after* the change rather than a toast that slides away.
+ */
+function PasswordSection() {
+  const [open, setOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -427,12 +484,51 @@ function PasswordForm() {
 
   const errors = fieldErrors(change.error);
 
-  return (
-    <section aria-labelledby="password-heading">
-      <SectionHeader id="password-heading" title="Нууц үг солих" />
+  function close() {
+    setOpen(false);
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirm("");
+    setLocalError(null);
+    change.reset();
+  }
 
-      <Card pad="roomy">
+  return (
+    <div className="mt-5 border-t border-border-soft pt-5">
+      {/*
+        The row that is always there: what this section is, and one control.
+        Under a rule, so it reads as a second subject rather than a seventh
+        field of the profile above it.
+      */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-body font-medium text-ink">Нэвтрэх нууц үг</p>
+          <p className="text-caption text-muted">
+            Солисны дараа бусад төхөөрөмжөөс автоматаар гарна.
+          </p>
+        </div>
+
+        {open ? (
+          <Button type="button" variant="ghost" size="sm" onClick={close}>
+            Болих
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            aria-expanded={false}
+            onClick={() => setOpen(true)}
+          >
+            <KeyRound size={16} aria-hidden="true" />
+            Нууц үг солих
+          </Button>
+        )}
+      </div>
+
+      {open ? (
         <form
+          className="mt-4 flex flex-col gap-4"
           onSubmit={(e) => {
             e.preventDefault();
             if (change.isPending) return;
@@ -452,7 +548,6 @@ function PasswordForm() {
             setLocalError(null);
             change.mutate();
           }}
-          className="flex flex-col gap-4"
           noValidate
         >
           <FormError message={localError ?? (change.isError ? errorMessage(change.error) : null)} />
@@ -529,14 +624,22 @@ function PasswordForm() {
             </Field>
           </div>
 
-          <div>
+          <div className="flex flex-wrap gap-2">
             <Button type="submit" disabled={change.isPending}>
-              {change.isPending ? "Солиж байна…" : "Нууц үг солих"}
+              {change.isPending ? "Солиж байна…" : "Нууц үг шинэчлэх"}
+            </Button>
+            {/*
+              "Хаах" once it has worked, "Болих" before: the same control, and
+              the word says which of the two it is. The success line above stays
+              on screen until this is pressed — see the docblock.
+            */}
+            <Button type="button" variant="ghost" onClick={close} disabled={change.isPending}>
+              {change.isSuccess ? "Хаах" : "Болих"}
             </Button>
           </div>
         </form>
-      </Card>
-    </section>
+      ) : null}
+    </div>
   );
 }
 

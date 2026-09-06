@@ -1,12 +1,13 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Archive,
   CalendarCheck,
   ClipboardCheck,
+  ChevronRight,
   Gauge,
   Pencil,
   Plus,
@@ -41,6 +42,7 @@ import { fullName } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataList, DataRow } from "@/components/ui/data-list";
+import { RowMenu, type RowMenuItem } from "@/components/ui/menu";
 import { SelectBox, useSelection } from "@/components/ui/selection";
 import { StatCard } from "@/components/ui/stat-card";
 import { BarRow } from "@/components/ui/chart/bar-row";
@@ -165,15 +167,19 @@ function AdminGroups() {
       {items.length > 0 ? <GroupsOverview groups={items} /> : null}
 
       {/*
-        ★ 300px, down from 352 — 2026-09-04.
+        ★ 56px, and the number has now come down twice — 352 → 300 → 56.
 
-        352 was sized for eight buttons on one nominal line, which is not what
-        they did: they wrapped into three ragged lines. Two short rows need
-        less, and the 52px goes back to the name column, where the badges were
-        being squeezed against the group's own name.
+        `actionsWidth` reserves the same strip in the header and on every row so
+        the columns line up beneath their own labels, so it has to match what
+        the gutter actually holds. 352 was sized for eight buttons on one
+        nominal line, which is not what they did — they wrapped into three
+        ragged lines; 300 was sized for the two short rows that replaced them.
+        The gutter is one "⋯" now (see `GroupRow`), and the ~250px it gives
+        back goes to the name column, where the badges were being squeezed
+        against the group's own name.
       */}
       {items.length > 0 ? (
-        <DataList columns={GROUP_COLUMNS} leadWidth={null} actionsWidth="w-[300px]">
+        <DataList columns={GROUP_COLUMNS} leadWidth={null} actionsWidth="w-[56px]">
           {items.map((group) => (
             <GroupRow key={group.id} group={group} />
           ))}
@@ -190,17 +196,120 @@ function AdminGroups() {
   );
 }
 
+/** Which of the row's dialogs is open. `null` is none. */
+type GroupDialog = "teachers" | "promote" | "edit" | "delete" | null;
+
 function GroupRow({ group }: { group: z.infer<typeof groupListItemSchema> }) {
-  const [managing, setManaging] = useState(false);
+  const [dialog, setDialog] = useState<GroupDialog>(null);
   const children = group._count?.enrollments ?? 0;
-  const isArchived = group.status === "ARCHIVED";
+  const archive = useArchiveToggle(group);
+  const isArchived = archive.isArchived;
+
+  const menuItems: RowMenuItem[] = [
+    {
+      label: "Ирц",
+      href: `/groups/${group.id}/attendance`,
+      icon: <CalendarCheck size={16} aria-hidden />,
+    },
+    {
+      label: "Хоол",
+      href: `/groups/${group.id}/meals`,
+      icon: <UtensilsCrossed size={16} aria-hidden />,
+    },
+    {
+      label: "Явцын үнэлгээ",
+      href: `/groups/${group.id}/assessment`,
+      icon: <ClipboardCheck size={16} aria-hidden />,
+    },
+    {
+      label: "Багш хуваарилах",
+      separated: true,
+      icon: <UserPlus size={16} aria-hidden />,
+      onSelect: () => setDialog("teachers"),
+    },
+    /*
+      ★ Omitted, not disabled, when the group is empty.
+
+      `POST /groups/:id/promotions` answers 400 for a group with nobody in it,
+      and the icon button this replaces carried that reason in a `title` — a
+      tooltip nobody on a touch screen ever saw. A menu has room to say it, but
+      `RowMenuItem` has no disabled state on purpose: an entry that cannot be
+      chosen is a line to read and then be refused by. It comes back the moment
+      a child is enrolled.
+    */
+    ...(children > 0
+      ? [
+          {
+            label: "Бүлгээр дэвшүүлэх",
+            hint: `${children} хүүхэд`,
+            icon: <TrendingUp size={16} aria-hidden />,
+            onSelect: () => setDialog("promote"),
+          },
+        ]
+      : []),
+    { label: "Засах", icon: <Pencil size={16} aria-hidden />, onSelect: () => setDialog("edit") },
+    {
+      label: isArchived ? "Сэргээх" : "Архивлах",
+      hint: isArchived ? undefined : "Түр хаана. Буцаах боломжтой.",
+      icon: isArchived ? <RotateCcw size={16} aria-hidden /> : <Archive size={16} aria-hidden />,
+      onSelect: archive.toggle,
+    },
+    {
+      label: "Устгах",
+      // The server refuses while children are enrolled and its 409 is the
+      // instruction — see `DeleteGroupDialog`. The hint says so first.
+      hint: children > 0 ? "Эхлээд хүүхдүүдийг шилжүүлнэ" : undefined,
+      icon: <Trash2 size={16} aria-hidden />,
+      tone: "danger",
+      onSelect: () => setDialog("delete"),
+    },
+  ];
+
+  const close = () => setDialog(null);
 
   return (
     <>
       <DataRow
         title={
           <span className="flex flex-wrap items-center gap-2">
-            <span className="min-w-0 truncate">{group.name}</span>
+            {/*
+              ★ The name is the way in — 2026-09-06, at the client's request:
+              "нэр гэдэг хэсэгт дэлгэрэнгүй харуулдаг хэсэг байх, дараад орохоор
+              дотор нь ирц гэх мэтийг нь засаж болдог".
+
+              Eight controls in this row's gutter opened eight things and the
+              name opened nothing, which is the wrong way round: the name is
+              the largest, leftmost, most obviously clickable thing on the row,
+              and everybody tries it first. `/groups/:id` is the group's own
+              page — its teachers, its roster, and the three registers as
+              doors.
+            */}
+            {/*
+              ★★ It has to *look* like a way in at rest — corrected 2026-09-06.
+
+              The first attempt made the name a link that was black text and
+              underlined on hover, which on the row is indistinguishable from
+              the name it replaced: the client's report was "огт хийгээгүй
+              байна, хэвэндээ байна", and they were reading the screen
+              correctly. `stat-card.tsx` already states the rule this broke —
+              "a border that lights on hover says 'this is a link' only once
+              the pointer is already on it, which on a touch screen is never".
+
+              So the name now carries the product's link colour and a chevron,
+              which is the same mark `StatCard` and `ChildTableRow` use for the
+              same promise.
+            */}
+            <Link
+              href={`/groups/${group.id}`}
+              className="group/name inline-flex min-w-0 items-center gap-1 text-primary hover:underline"
+            >
+              <span className="min-w-0 truncate">{group.name}</span>
+              <ChevronRight
+                size={16}
+                aria-hidden="true"
+                className="shrink-0 text-primary/60 transition-transform group-hover/name:translate-x-0.5"
+              />
+            </Link>
             {/*
               ★ The status had no representation at all before this.
 
@@ -275,90 +384,49 @@ function GroupRow({ group }: { group: z.infer<typeof groupListItemSchema> }) {
         }}
         actions={
           /*
-            ★ Two rows, and the split is by what the control *is* — 2026-09-04.
+            ★ One "⋯", where eight controls used to be — 2026-09-06, at the
+            client's request: "тэр ард нь баахан шаваарлалдсан icon-той дардаг
+            хэсгийг л янзлах".
 
-            Eight `size="sm"` buttons were sharing a 352px gutter, so every row
-            wrapped into three ragged lines and no two rows wrapped the same
-            way: the eye had nothing to run down. The client called it
-            "шаваарлалдсан" and they were right.
+            The history is worth keeping, because this is the third arrangement
+            and the first two were both wrong in the same direction. Eight
+            `size="sm"` buttons in one gutter wrapped into three ragged lines
+            ("шаваарлалдсан", 2026-09-04). The fix then was to split them into
+            two rows — three labelled links over five icons — which stopped the
+            ragged wrap and left five unlabelled glyphs in a 236px strip on
+            every row. Tidier, and still a cluster.
 
-            The eight are not one list. Three of them open the group — its
-            register, its meals, its assessment — and five of them act on the
-            group as a record. Splitting on that line gives two short rows that
-            land in the same place on every row of the table, which is the
-            property a column of controls needs and a wrapped pile cannot have.
+            What changed underneath is that the row now has a *destination*.
+            `/groups/:id` did not exist for either of the earlier attempts, so
+            the row's controls were the only way to reach anything; the group's
+            own page carries the three registers as full-size doors, and the
+            name links to it. That is what makes one menu sufficient rather
+            than merely smaller.
 
-            ★★ The top row keeps its words; the bottom row is icons.
+            ★★ The registers stay in the menu as well, as links.
 
-            Ирц, Хоол and Үнэлгээ are opened daily and are the reason an
-            administrator is on this screen, so they stay legible at a glance.
-            The management five are occasional, their glyphs are distinct, and
-            each carries an `aria-label` and a `title` — so the label is one
-            hover or one screen reader away rather than absent. At 44px they are
-            still thumb-sized (`button.tsx`: "Square icon button. Still 44px"),
-            which is the floor the 28px revoke control once broke.
+            `RowMenu` gained `href` for exactly this: Ирц, Хоол and Үнэлгээ are
+            opened daily and should not cost two navigations, so they lead the
+            menu and are separated by a rule from the five things you can do
+            *to* the group. The distinction the 2026-09-04 note drew was the
+            right one; it just does not need two controls to express.
           */
-          <div className="flex flex-col items-end gap-1.5">
-            {/*
-              ★ The group's three daily registers.
-
-              `/groups/:id/attendance`, `/groups/:id/meals` and
-              `/groups/:id/assessment` have never had a top-level menu entry,
-              deliberately: none can start without a group, so a sidebar item
-              would open a screen whose first act is "which group?". A teacher
-              gets them scoped to their one group; an **admin** cannot, because
-              `GET /groups` returns every group and there is no single id to
-              scope to. This list is the admin's own answer to "which group?",
-              so the links belong on its rows.
-            */}
-            <span className="flex items-center gap-1">
-              <Button asChild variant="ghost" size="sm">
-                <Link href={`/groups/${group.id}/attendance`}>
-                  <CalendarCheck size={16} />
-                  Ирц
-                </Link>
-              </Button>
-              <Button asChild variant="ghost" size="sm">
-                <Link href={`/groups/${group.id}/meals`}>
-                  <UtensilsCrossed size={16} />
-                  Хоол
-                </Link>
-              </Button>
-              <Button asChild variant="ghost" size="sm">
-                <Link href={`/groups/${group.id}/assessment`}>
-                  <ClipboardCheck size={16} />
-                  Үнэлгээ
-                </Link>
-              </Button>
-            </span>
-
-            <span className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={`${group.name} — багш хуваарилах`}
-                title="Багш хуваарилах"
-                onClick={() => setManaging(true)}
-              >
-                <UserPlus size={16} aria-hidden />
-              </Button>
-
-              <PromoteGroupButton group={group} enrolled={children} />
-              <EditGroupButton group={group} />
-              <ArchiveToggleButton group={group} />
-              <DeleteGroupButton group={group} enrolled={children} />
-            </span>
-          </div>
+          <RowMenu ariaLabel={`${group.name} — үйлдэл`} items={menuItems} />
         }
       />
 
-      {managing ? (
-        <ManageTeachersDialog
-          groupId={group.id}
-          groupName={group.name}
-          onClose={() => setManaging(false)}
-        />
+      {dialog === "teachers" ? (
+        <ManageTeachersDialog groupId={group.id} groupName={group.name} onClose={close} />
       ) : null}
+
+      <PromoteGroupDialog
+        group={group}
+        enrolled={children}
+        open={dialog === "promote"}
+        onOpenChange={close}
+      />
+      <EditGroupDialog group={group} open={dialog === "edit"} onOpenChange={close} />
+      <DeleteGroupDialog group={group} open={dialog === "delete"} onOpenChange={close} />
     </>
   );
 }
@@ -526,16 +594,19 @@ const promotionResultSchema = z.object({
  * nothing is sent, and if the two ever disagreed the server's word is what
  * lands in the register.
  */
-function PromoteGroupButton({
+function PromoteGroupDialog({
   group,
   enrolled,
+  open,
+  onOpenChange,
 }: {
   group: z.infer<typeof groupListItemSchema>;
   enrolled: number;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const queryClient = useQueryClient();
   const toast = useToast();
-  const [open, setOpen] = useState(false);
   const [toGroupId, setToGroupId] = useState("");
 
   // Already in the cache — this is the list the row was rendered from.
@@ -607,38 +678,31 @@ function PromoteGroupButton({
           ? `${result.movedCount} хүүхэд давтан суралцахаар бүртгэгдлээ.`
           : `${result.movedCount} хүүхэд дэвшлээ.`,
       );
-      setOpen(false);
+      onOpenChange(false);
     },
   });
 
   const errors = fieldErrors(promote.error);
 
+  /*
+    Re-seeded each time it opens. The trigger used to do this in its own
+    `onClick`; the control is a menu entry in `GroupRow` now, so the reset hangs
+    off the state this component can observe.
+  */
+  useEffect(() => {
+    if (!open) return;
+    setToGroupId("");
+    setMode("all");
+    selection.clear();
+    promote.reset();
+    // `promote` and `selection` are stable for the life of this component.
+  }, [open]);
+
   return (
     <>
-      <Button
-        variant="ghost"
-        size="icon"
-        disabled={enrolled === 0}
-        aria-label={`${group.name} — бүлгээр дэвшүүлэх`}
-        /* A group with nobody in it has nobody to promote, and the API says so
-           with a 400. Refusing here means the director never meets it. The
-           title carries the label when it is enabled and the reason when it is
-           not — an icon button must never be a glyph with no explanation. */
-        title={enrolled === 0 ? "Энэ бүлэгт хүүхэд бүртгэлгүй байна" : "Бүлгээр дэвшүүлэх"}
-        onClick={() => {
-          setToGroupId("");
-          setMode("all");
-          selection.clear();
-          promote.reset();
-          setOpen(true);
-        }}
-      >
-        <TrendingUp size={16} aria-hidden="true" />
-      </Button>
-
       <FormDialog
         open={open}
-        onOpenChange={setOpen}
+        onOpenChange={onOpenChange}
         busy={promote.isPending}
         title="Бүлгээр дэвшүүлэх"
         description={`${group.name} — ${enrolled} хүүхэд`}
@@ -649,7 +713,7 @@ function PromoteGroupButton({
               variant="secondary"
               size="sm"
               disabled={promote.isPending}
-              onClick={() => setOpen(false)}
+              onClick={() => onOpenChange(false)}
             >
               Болих
             </Button>
@@ -839,10 +903,17 @@ function PromoteGroupButton({
   );
 }
 
-function EditGroupButton({ group }: { group: z.infer<typeof groupListItemSchema> }) {
+function EditGroupDialog({
+  group,
+  open,
+  onOpenChange,
+}: {
+  group: z.infer<typeof groupListItemSchema>;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const queryClient = useQueryClient();
   const toast = useToast();
-  const [open, setOpen] = useState(false);
   const [name, setName] = useState(group.name);
   const [ageBand, setAgeBand] = useState(group.ageBand ?? "NURSERY");
   const [programKind, setProgramKind] = useState<string>(group.programKind ?? "MAIN");
@@ -857,36 +928,29 @@ function EditGroupButton({ group }: { group: z.infer<typeof groupListItemSchema>
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.adminGroups() });
       toast.success(`${name.trim()} — хадгалагдлаа.`);
-      setOpen(false);
+      onOpenChange(false);
     },
   });
 
   const errors = fieldErrors(save.error);
 
+  // Re-seeded on open: the list refetches while this is closed, and a form
+  // still holding its mount-time values would write them back.
+  useEffect(() => {
+    if (!open) return;
+    setName(group.name);
+    setAgeBand(group.ageBand ?? "NURSERY");
+    setProgramKind(group.programKind ?? "MAIN");
+    setAttendanceForm(group.attendanceForm ?? "STANDARD");
+    save.reset();
+    // `save` is a stable mutation object.
+  }, [open, group.name, group.ageBand, group.programKind, group.attendanceForm]);
+
   return (
     <>
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label={`${group.name} — засах`}
-        title="Засах"
-        onClick={() => {
-          // Re-seeded on open: the list refetches while this is closed, and a
-          // form still holding its mount-time values would write them back.
-          setName(group.name);
-          setAgeBand(group.ageBand ?? "NURSERY");
-          setProgramKind(group.programKind ?? "MAIN");
-          setAttendanceForm(group.attendanceForm ?? "STANDARD");
-          save.reset();
-          setOpen(true);
-        }}
-      >
-        <Pencil size={16} aria-hidden="true" />
-      </Button>
-
       <FormDialog
         open={open}
-        onOpenChange={setOpen}
+        onOpenChange={onOpenChange}
         busy={save.isPending}
         title="Бүлэг засах"
         description={group.schoolYear?.name ? `Хичээлийн жил: ${group.schoolYear.name}` : undefined}
@@ -897,7 +961,7 @@ function EditGroupButton({ group }: { group: z.infer<typeof groupListItemSchema>
               variant="secondary"
               size="sm"
               disabled={save.isPending}
-              onClick={() => setOpen(false)}
+              onClick={() => onOpenChange(false)}
             >
               Болих
             </Button>
@@ -1005,7 +1069,27 @@ function EditGroupButton({ group }: { group: z.infer<typeof groupListItemSchema>
  * keeps a prompt off assessment publish — and the button says which direction
  * it goes. The one-way operation is the one that asks.
  */
-function ArchiveToggleButton({ group }: { group: z.infer<typeof groupListItemSchema> }) {
+/**
+ * Archiving a group, or bringing it back — `PATCH /groups/:id { status }`.
+ *
+ * ★ A hook rather than a component, since 2026-09-06.
+ *
+ * It was an icon button that ran a mutation on click, with its own inline
+ * error beside it. The row's controls are one overflow menu now, and a menu
+ * entry is a label and a callback — there is no element left for a component
+ * to render. What the row actually needs from this is the callback and whether
+ * it is in flight, which is what a hook returns.
+ *
+ * ★★ The error is a toast now, and that is a change worth naming.
+ *
+ * It used to render inline beside the button, deliberately — the note said an
+ * archive failure should stay on the page rather than slide away. With the
+ * button inside a menu that closes on selection there is nowhere for it to
+ * stay, and a message anchored to a control the reader can no longer see is
+ * worse than one that announces itself. `DeleteGroupDialog` below keeps its
+ * 409 inline for the opposite reason: its dialog is still on screen.
+ */
+function useArchiveToggle(group: z.infer<typeof groupListItemSchema>) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const isArchived = group.status === "ARCHIVED";
@@ -1023,50 +1107,10 @@ function ArchiveToggleButton({ group }: { group: z.infer<typeof groupListItemSch
         next === "ARCHIVED" ? `${group.name} — архивлагдлаа.` : `${group.name} — сэргээгдлээ.`,
       );
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
-  return (
-    <span className="inline-flex flex-col items-end gap-1">
-      {/*
-        ★ The pending text moved into the `title`, and that is a real loss the
-        icon form has to pay for.
-
-        "Архивлаж байна…" used to be the button's own label, so the wait was
-        visible without a hover. `disabled` still says the press registered, and
-        the list refetches on success — but a slow archive is now quieter than
-        it was. Accepted because the alternative was this control keeping a
-        90px label and pushing the row back into three wrapped lines.
-      */}
-      <Button
-        variant="ghost"
-        size="icon"
-        disabled={change.isPending}
-        aria-label={`${group.name} — ${isArchived ? "сэргээх" : "архивлах"}`}
-        title={
-          change.isPending
-            ? isArchived
-              ? "Сэргээж байна…"
-              : "Архивлаж байна…"
-            : isArchived
-              ? "Сэргээх"
-              : "Архивлах"
-        }
-        onClick={() => change.mutate()}
-      >
-        {isArchived ? (
-          <RotateCcw size={16} aria-hidden="true" />
-        ) : (
-          <Archive size={16} aria-hidden="true" />
-        )}
-      </Button>
-
-      {change.isError ? (
-        <span role="alert" className="text-caption text-danger">
-          {errorMessage(change.error)}
-        </span>
-      ) : null}
-    </span>
-  );
+  return { isArchived, pending: change.isPending, toggle: () => change.mutate() };
 }
 
 /**
@@ -1090,12 +1134,14 @@ function ArchiveToggleButton({ group }: { group: z.infer<typeof groupListItemSch
  * courtesy rather than the check: the count in the list can be stale, and the
  * server decides.
  */
-function DeleteGroupButton({
+function DeleteGroupDialog({
   group,
-  enrolled,
+  open,
+  onOpenChange,
 }: {
   group: z.infer<typeof groupListItemSchema>;
-  enrolled: number;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -1106,46 +1152,37 @@ function DeleteGroupButton({
       void queryClient.invalidateQueries({ queryKey: qk.adminGroups() });
       toast.success(`${group.name} — устгагдлаа.`);
     },
+    /*
+      ★ The 409 is a toast now, and it used to be an inline message beside the
+      delete button — 2026-09-06.
+
+      `countActiveEnrollments` refuses a group that still has children and its
+      message names the count and says what to do: "Эхлээд тэднийг өөр бүлэгт
+      шилжүүлнэ үү". That is the next instruction, and the old note kept it on
+      the page rather than in a toast for exactly that reason.
+
+      Two things took the page away from it. The row's controls are one
+      overflow menu, so there is no longer a control for the message to sit
+      beside; and `ConfirmDialog` closes on *both* outcomes by design — its own
+      docblock says a failure is reported by the caller outside the dialog — so
+      it cannot live in the prompt either. A toast is what is left, and it does
+      carry the sentence verbatim, which is the part that matters.
+    */
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   return (
-    <span className="inline-flex flex-col items-end gap-1">
-      <ConfirmDialog
-        title="Бүлгийг устгах"
-        description={`"${group.name}" бүлгийг бүрмөсөн устгана. Буцаах боломжгүй — түр хугацаагаар хаахыг хүсвэл "Архивлах"-ыг сонгоно уу.`}
-        confirmLabel="Устгах"
-        pendingLabel="Устгаж байна…"
-        tone="danger"
-        pending={remove.isPending}
-        onConfirm={() => remove.mutate()}
-        trigger={
-          <Button
-            variant="ghost"
-            size="icon"
-            disabled={remove.isPending || enrolled > 0}
-            aria-label={`${group.name} — устгах`}
-            /* `size="icon"` since 2026-09-04 — it was already glyph-only, so
-               `sm`'s `px-4` was padding around nothing. The title carries the
-               label when enabled and the reason when not. */
-            title={
-              enrolled > 0
-                ? "Бүлэгт хүүхэд бүртгэлтэй байна. Эхлээд өөр бүлэгт шилжүүлнэ үү."
-                : "Устгах"
-            }
-            className="text-muted hover:bg-danger-soft hover:text-danger"
-          >
-            <Trash2 size={16} aria-hidden="true" />
-          </Button>
-        }
-      />
-
-      {/* The 409 is the instruction — it stays put rather than passing in a toast. */}
-      {remove.isError ? (
-        <span role="alert" className="max-w-[260px] text-right text-caption text-danger">
-          {errorMessage(remove.error)}
-        </span>
-      ) : null}
-    </span>
+    <ConfirmDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Бүлгийг устгах"
+      description={`"${group.name}" бүлгийг бүрмөсөн устгана. Буцаах боломжгүй — түр хугацаагаар хаахыг хүсвэл "Архивлах"-ыг сонгоно уу.`}
+      confirmLabel="Устгах"
+      pendingLabel="Устгаж байна…"
+      tone="danger"
+      pending={remove.isPending}
+      onConfirm={() => remove.mutate()}
+    />
   );
 }
 

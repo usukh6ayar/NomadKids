@@ -251,6 +251,8 @@ describe("recording an observation", () => {
 // ── Assessment ──────────────────────────────────────────────────────────────
 
 describe("group assessment", () => {
+  const SCHOOL_YEAR_ID = "77777777-7777-4777-8777-777777777777";
+
   const column = {
     group: { id: GROUP_ID, name: "Дунд бүлэг" },
     term: { id: TERM_ID, number: 1, name: "I улирал" },
@@ -280,7 +282,41 @@ describe("group assessment", () => {
       },
       {
         path: "/kindergartens/33333333-3333-4333-8333-333333333333/terms",
-        body: [{ id: TERM_ID, number: 1, name: "I улирал" }],
+        body: [
+          {
+            id: TERM_ID,
+            number: 1,
+            name: "I улирал",
+            startsOn: "2025-09-01",
+            endsOn: "2025-12-31",
+            schoolYear: { id: SCHOOL_YEAR_ID, name: "2025-2026" },
+          },
+        ],
+      },
+      /*
+        ★ Added 2026-09-06 with the year/term/group pickers.
+
+        The screen reads the years for their *dates* — a year named "Өмнөх жил"
+        is what prompted the change — and joins them onto the terms by id. An
+        unstubbed request would 404 and the labels would silently fall back to
+        the bare name, which is the fallback working rather than the feature.
+      */
+      {
+        path: "/kindergartens/33333333-3333-4333-8333-333333333333/school-years",
+        body: [
+          { id: SCHOOL_YEAR_ID, name: "2025-2026", startsOn: "2025-09-01", endsOn: "2026-06-01" },
+        ],
+      },
+      // The group picker's own options — it replaced `GroupSwitcher`'s chips.
+      {
+        path: "/groups?",
+        body: {
+          items: [{ id: GROUP_ID, name: "Дунд бүлэг" }],
+          total: 1,
+          page: 1,
+          pageSize: 100,
+          totalPages: 1,
+        },
       },
     ]);
   }

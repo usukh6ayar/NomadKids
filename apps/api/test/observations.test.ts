@@ -685,13 +685,29 @@ describe("filters and lifecycle", () => {
     expect(res.status).toBe(403);
   });
 
+  /**
+   * ★ The catalogue's contents, not its size.
+   *
+   * This asserted `length >= 5` — the number of system types that happened to
+   * exist when it was written. On 2026-09-06 the client named the three kinds
+   * the product should offer (Ажиглалт, Ярилцлага, Бүтээл) and the seed shrank
+   * to those plus the family's own, so a count-based assertion failed for a
+   * change that was entirely deliberate.
+   *
+   * A count was never what this test was about. What matters is that the
+   * endpoint answers with the kindergarten's own catalogue, so it checks the
+   * codes are there — which fails if a type is dropped by accident and passes
+   * when one is added on purpose.
+   */
   it("lists observation types for the kindergarten", async () => {
     const res = await request(server())
       .get(`/v1/children/${a.child.id}/observations/types`)
       .set("Cookie", teacherA.cookies);
 
     expect(res.status).toBe(200);
-    expect(res.body.length).toBeGreaterThanOrEqual(5);
+
+    const codes = (res.body as { code: string | null }[]).map((type) => type.code);
+    expect(codes).toEqual(expect.arrayContaining(["daily", "conversation", "artwork", "parent"]));
   });
 });
 

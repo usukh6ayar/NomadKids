@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { GroupSwitcher, useSwitchableGroups } from "@/components/shell/group-switcher";
 import { qk } from "@/lib/api/keys";
 import { useToast } from "@/components/ui/toast";
+import { useSession } from "@/lib/auth/session";
 import { errorMessage } from "@/lib/api/errors";
 import { RequireRole } from "@/components/shell/require-role";
 import { Card, SectionHeader } from "@/components/ui/card";
@@ -66,6 +67,33 @@ function GroupAttendance() {
   const params = useParams<{ groupId: string }>();
   const groupId = params.groupId;
   const queryClient = useQueryClient();
+
+  /*
+   * ★ A director reads this sheet; they do not fill it in — 2026-09-06.
+   *
+   * The client was flat about it: "бүлэг рүү орохоор сурагчид чөлөөтэй гэх мэт
+   * тэдгээрийг дарахгүй байх — захирал тэрийг хийхгүй, багш хийгээд тэр
+   * дата-г л захирал харна". The register is the teacher's account of their
+   * own morning, and a second person marking it from another screen is how it
+   * stops being anybody's account: the funding claim is built on these rows,
+   * and "who said this child was here" has to have one answer.
+   *
+   * ★★ Held against ADMIN-without-TEACHER, not against ADMIN.
+   *
+   * A director who also teaches a group is a teacher on the mornings they
+   * teach, and locking them out would leave that group's register with nobody
+   * who can write it. Their membership says which they are; this reads the
+   * same `Membership` the API re-derives per request (§1.3), not a claim baked
+   * into a token.
+   *
+   * ★★★ This is presentation, not authorization. `PUT /children/:id/attendance`
+   * still authorizes the way it always has — a director *can* correct a
+   * register, and there are days when somebody must. What is gone is the
+   * screen that invited it by default. `/attendance/daily` is where a director
+   * is sent, and it links each row here for reading.
+   */
+  const { hasRole } = useSession();
+  const readOnly = hasRole("ADMIN") && !hasRole("TEACHER");
 
   /*
    * ★ `?date=` seeds the picker — 2026-09-04.
@@ -143,7 +171,9 @@ function GroupAttendance() {
    * their own status pills for that, and for the corrections that carry a note
    * or a drop-off, which the batch endpoint deliberately cannot send.
    */
-  const selection = useSelection((sheet.data ?? []).map((row) => row.child.id));
+  // Nothing to select when nothing can be written — the bulk bar's only
+  // controls are the six status buttons.
+  const selection = useSelection(readOnly ? [] : (sheet.data ?? []).map((row) => row.child.id));
 
   const recordMany = useMutation({
     mutationFn: (status: string) =>
@@ -207,7 +237,14 @@ function GroupAttendance() {
 
   return (
     <div className="page-band">
-      <PageHeader title="Ирц" lede={group.data?.name} />
+      <PageHeader
+        title="Ирц"
+        lede={
+          readOnly
+            ? `${group.data?.name ?? ""} — багшийн бүртгэсэн ирэц. Зөвхөн харна.`.trim()
+            : group.data?.name
+        }
+      />
 
       <GroupSwitcher
         groups={switchable.data?.items ?? []}
@@ -264,7 +301,7 @@ function GroupAttendance() {
             action={
               <span className="flex items-center gap-2">
                 <span className="text-body text-muted">{sheet.data.length} хүүхэд</span>
-                {sheet.data.length > 0 ? (
+                {sheet.data.length > 0 && !readOnly ? (
                   <SelectBox
                     checked={selection.allSelected}
                     indeterminate={selection.someSelected}
@@ -288,6 +325,7 @@ function GroupAttendance() {
                   key={row.enrollmentId}
                   child={row.child}
                   status={row.record?.status ?? null}
+                  readOnly={readOnly}
                   pending={record.isPending && record.variables?.childId === row.child.id}
                   onSelect={(status) => record.mutate({ childId: row.child.id, status })}
                   checked={selection.has(row.child.id)}
@@ -306,7 +344,7 @@ function GroupAttendance() {
             correction pass: three sick, one excused) go back to one tap per
             child. `ATTENDANCE_STATUS_LABEL` is the one source both read.
           */}
-          <SelectionBar count={selection.count} onClear={selection.clear}>
+          <SelectionBar count={readOnly ? 0 : selection.count} onClear={selection.clear}>
             {Object.entries(STATUS_LABEL).map(([value, label]) => (
               <button
                 key={value}
@@ -341,6 +379,7 @@ function GroupAttendance() {
 function ChildRow({
   child,
   status,
+  readOnly,
   pending,
   onSelect,
   checked,
@@ -348,6 +387,8 @@ function ChildRow({
 }: {
   child: { id: string; lastName: string; firstName: string };
   status: string | null;
+  /** A director's view — see the note in `GroupAttendance`. */
+  readOnly: boolean;
   pending: boolean;
   onSelect: (status: string) => void;
   checked: boolean;
@@ -361,11 +402,40 @@ function ChildRow({
           edge is scannable as a column, and one tucked between the face and
           the name is not.
         */}
-        <SelectBox checked={checked} onChange={onToggle} label={`${fullName(child)} — сонгох`} />
+        {readOnly ? null : (
+          <SelectBox checked={checked} onChange={onToggle} label={`${fullName(child)} — сонгох`} />
+        )}
         <ChildAvatar child={child} size={40} />
         <span className="min-w-0 truncate text-lead font-semibold text-ink">{fullName(child)}</span>
       </div>
 
+      {/*
+        ★ One tinted chip instead of six buttons, when this is being read.
+
+        Not six disabled buttons: a greyed-out row of controls still says "you
+        may press these, but not now", and there is no "now" in which a
+        director may. The chip carries the same tone the selected button would
+        have, so the sheet scans identically — the exceptions stand out in the
+        same colours — and it simply has nothing to press.
+      */}
+      {readOnly ? (
+        <div className="flex flex-wrap gap-2 sm:justify-end">
+          {status ? (
+            <span
+              className={cn(
+                "inline-flex min-h-9 items-center rounded-control px-3 text-body font-semibold",
+                TONE_SURFACE[ATTENDANCE_STATUS_CHART_TONE[status] ?? "sky"],
+              )}
+            >
+              {STATUS_LABEL[status] ?? status}
+            </span>
+          ) : (
+            <span className="inline-flex min-h-9 items-center rounded-control border border-dashed border-border px-3 text-body text-faint">
+              Бүртгээгүй
+            </span>
+          )}
+        </div>
+      ) : (
       <div
         role="radiogroup"
         aria-label={`${fullName(child)} — ирц`}
@@ -418,6 +488,7 @@ function ChildRow({
           );
         })}
       </div>
+      )}
     </div>
   );
 }

@@ -100,6 +100,17 @@ function titleFor(status: number): string {
       return "Файл хэт том байна";
     case HttpStatus.TOO_MANY_REQUESTS:
       return "Хэт олон хүсэлт илгээлээ";
+    /*
+      ★ Added 2026-09-06 with `StorageService.put`'s 503.
+
+      "Алдаа гарлаа" is the right title for a 500 — something broke and nobody
+      knows what. A 503 is a different statement: the request was fine and the
+      thing it needs is temporarily away, so trying again is the correct next
+      move. Without a case here the two read identically, which is most of what
+      made an object-store outage look like a bug in the upload form.
+    */
+    case HttpStatus.SERVICE_UNAVAILABLE:
+      return "Түр ашиглах боломжгүй байна";
     default:
       return "Алдаа гарлаа";
   }

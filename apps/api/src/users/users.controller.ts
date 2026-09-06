@@ -93,6 +93,20 @@ export class UsersController {
     return this.service.update(actor, params.id, body);
   }
 
+  /**
+   * A one-time password-reset link for a member of staff, handed over by the
+   * administrator. See `UsersService.issuePasswordReset` — it issues a link and
+   * never sets a password.
+   */
+  @Post("users/:id/password-reset")
+  @Roles("ADMIN")
+  async issuePasswordReset(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.issuePasswordReset(actor, params.id);
+  }
+
   @Post("users/:id/memberships")
   @Roles("ADMIN")
   async addMembership(

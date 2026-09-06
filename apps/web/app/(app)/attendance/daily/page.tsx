@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Download, Send } from "lucide-react";
 import { z } from "zod";
 import {
@@ -20,11 +21,12 @@ import { useSession } from "@/lib/auth/session";
 import { downloadUrl } from "@/lib/api/client";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
+import { AttendanceViewSwitch } from "@/components/attendance/view-switch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/field";
-import { StatCard } from "@/components/ui/stat-card";
+import { StatBar, StatCard } from "@/components/ui/stat-card";
 import { TableShell, Td, Th } from "@/components/ui/table";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { SelectBox, SelectionBar, useSelection } from "@/components/ui/selection";
@@ -72,9 +74,18 @@ export default function DailyAttendancePage() {
 function DailyAttendance() {
   const { primaryKindergartenId } = useSession();
 
-  const [from, setFrom] = useState(firstOfMonth);
-  const [to, setTo] = useState(today);
-  const [groupId, setGroupId] = useState("");
+  /*
+   * ★ Seeded from the URL — 2026-09-06, so `AttendanceViewSwitch` can hand the
+   * period over to the child-grained register and back without resetting it.
+   *
+   * Read once, at mount, rather than kept in sync: the filters below are the
+   * authority once the screen is open, and writing every date keystroke back
+   * to the URL would put a history entry behind each one.
+   */
+  const searchParams = useSearchParams();
+  const [from, setFrom] = useState(() => searchParams.get("from") || firstOfMonth());
+  const [to, setTo] = useState(() => searchParams.get("to") || today());
+  const [groupId, setGroupId] = useState(() => searchParams.get("groupId") ?? "");
 
   const filters = useMemo(
     () => ({ from, to, ...(groupId ? { groupId } : {}) }),
@@ -174,6 +185,7 @@ function DailyAttendance() {
       <PageHeader
         title="Өдөр тутмын ирц"
         lede="Бүлэг тус бүрийн өдрийн ирцийн дүн, сонгосон хугацаагаар."
+        actions={<AttendanceViewSwitch current="group" from={from} to={to} groupId={groupId} />}
       />
 
       <Card pad="roomy" className="flex flex-col gap-4">
@@ -244,6 +256,21 @@ function DailyAttendance() {
             because the table's rows are dates and the reader should not have
             to scroll back to the filter to know which.
           */}
+          {/*
+            ★ The graphics went **inside** the four tiles — corrected
+            2026-09-06, on the client's own reading of the first attempt.
+
+            That attempt put a percentage, a segmented bar and a legend in a
+            panel *above* the tiles, which answered "make the summary a
+            dashboard" by adding a dashboard next to it — a second block of
+            height on the screen the same client had just asked to compress
+            ("дээр нь илүү зайнд ингэж нэмэхгүй").
+
+            A tile already has a slot for exactly this: `StatCard`'s `footer`,
+            documented as "a progress bar or a sparkline, below the figure". So
+            each box now carries the picture of its own number and the screen
+            gains no rows at all.
+          */}
           <SectionHeader
             title="Хугацааны дүн"
             lede={`${formatDate(data.from)} — ${formatDate(data.to)} · ${data.items.length} бүлэг-өдөр`}
@@ -283,33 +310,139 @@ function DailyAttendance() {
 }
 
 /**
- * The period's figures, above the table they are the sum of.
+ * The period's figures, above the register they are the sum of.
  *
- * ★ "Бүртгээгүй" leads, and it is the only one that changes tone.
+ * ★ Every tile carries its own graphic, in `StatCard`'s `footer` slot.
+ *
+ * The first attempt at "хугацааны дүнг dashboard-той болгох" drew one big
+ * chart above these four boxes. The client's correction was that the picture
+ * belongs *in* the boxes — "энэ дотор box-нд нь dashboard-ийг нь нэмэх" — and
+ * they are right about the shape as well as the height: a bar under a figure
+ * is that figure explained, where a chart beside four figures is a fifth thing
+ * to read and to reconcile with the other four.
+ *
+ * Each footer answers the question its own number raises:
+ *
+ *   · Ирц бүртгээгүй — how much of the period is filled in at all.
+ *   · Нийт хүүхэд-өдөр — what those child-days were spent as, in four colours.
+ *   · Ирсэн — the attendance rate, which is the one figure a director quotes.
+ *   · Илгээсэн — how much of the register has been declared final.
+ *
+ * ★★ "Ирц бүртгээгүй" is still the only one that changes tone.
  *
  * The other numbers are context; this one is a to-do list. A director opening
  * this screen at nine in the morning is asking which groups have not filled in
- * today, and a figure that sits in the same grey as the rest makes them read
- * five cards to find the one that needs them.
+ * today, and a figure in the same grey as the rest makes them read four cards
+ * to find the one that needs them.
  */
-function Totals({ totals }: { totals: DailyAttendance["totals"] }) {
+function Totals({ totals: t }: { totals: DailyAttendance["totals"] }) {
+  /*
+    Everything below divides by the marks that **exist**, never by `expected`.
+
+    A term whose last week has not been filled in yet would otherwise read as a
+    collapse in attendance rather than as a register somebody has to finish —
+    and "how much is unfilled" already has a tile of its own, one column to the
+    left.
+  */
+  const marked = t.present + t.excused + t.sick + t.absent;
+  const rate = marked > 0 ? Math.round((t.present / marked) * 100) : 0;
+  const filled = t.days > 0 ? (t.complete / t.days) * 100 : 0;
+  const sent = t.days > 0 ? (t.sent / t.days) * 100 : 0;
+
   return (
     <section aria-label="Хугацааны дүн" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <StatCard
         label="Ирц бүртгээгүй"
-        value={totals.unrecorded}
-        unit={`${totals.complete} / ${totals.days} өдөр бүрэн`}
-        tone={totals.unrecorded > 0 ? "sun" : "mint"}
+        value={t.unrecorded}
+        unit={`${t.complete} / ${t.days} өдөр бүрэн`}
+        tone={t.unrecorded > 0 ? "sun" : "mint"}
+        footer={<StatBar percent={filled} label="Бүрэн бүртгэсэн хувь" />}
       />
-      <StatCard label="Ирсэн" value={totals.present} tone="mint" />
-      <StatCard label="Өвчтэй" value={totals.sick} tone="peach" />
+      <StatCard
+        label="Нийт хүүхэд-өдөр"
+        value={t.expected}
+        unit={`${marked} нь бүртгэгдсэн`}
+        tone="sky"
+        footer={<StatusBar totals={t} marked={marked} />}
+      />
+      <StatCard
+        label="Ирсэн"
+        value={t.present}
+        unit={`Ирцийн хувь ${rate}%`}
+        tone="mint"
+        footer={<StatBar percent={rate} label="Ирцийн хувь" />}
+      />
       <StatCard
         label="Илгээсэн"
-        value={totals.sent}
-        unit={`${totals.days} өдрөөс`}
-        tone={totals.sent === totals.days && totals.days > 0 ? "mint" : "sky"}
+        value={t.sent}
+        unit={`${t.days} өдрөөс`}
+        tone={t.sent === t.days && t.days > 0 ? "mint" : "sky"}
+        footer={<StatBar percent={sent} label="Илгээсэн хувь" />}
       />
     </section>
+  );
+}
+
+/**
+ * What the period's child-days were spent as — one four-colour bar.
+ *
+ * ★ Inside the "Нийт хүүхэд-өдөр" tile, because that is the number it divides.
+ *
+ * `StatBar` can only draw one proportion, and this is four. It is deliberately
+ * the same height and radius so the row of tiles still reads as one row: what
+ * differs is that this bar is a composition rather than a fraction.
+ *
+ * ★★ No legend. Four labels under a 2.5px bar in a quarter-width tile is
+ * unreadable at 375px, and the same four counts are already named in the
+ * register's own columns directly below. The colours are the ones the day
+ * sheet, the child's calendar and the journal all use, so they are learnt once;
+ * `aria-label` carries the whole sentence for anyone who cannot see them, and
+ * each segment's `title` names itself on hover.
+ */
+function StatusBar({
+  totals: t,
+  marked,
+}: {
+  totals: DailyAttendance["totals"];
+  marked: number;
+}) {
+  /*
+    The four statuses in the product's own stat tints — `globals.css`'s
+    mint/sky/sun/peach, which every badge and register on this screen already
+    uses. Not `--color-danger`: a red segment would make an ordinary absence
+    read as an incident, and the tone scale here means "category", not
+    "severity".
+  */
+  const segments = [
+    { key: "present", label: "Ирсэн", value: t.present, className: "bg-mint" },
+    { key: "excused", label: "Чөлөөтэй", value: t.excused, className: "bg-sky" },
+    { key: "sick", label: "Өвчтэй", value: t.sick, className: "bg-sun" },
+    { key: "absent", label: "Тасалсан", value: t.absent, className: "bg-peach" },
+  ].filter((segment) => segment.value > 0);
+
+  // An empty bar reads as a rendering fault; the track alone says "nothing
+  // recorded yet", which is what the tile beside it also says.
+  if (marked === 0 || segments.length === 0) {
+    return <div className="h-2 w-full rounded-pill bg-track" />;
+  }
+
+  return (
+    <div
+      role="img"
+      aria-label={segments.map((segment) => `${segment.label} ${segment.value}`).join(", ")}
+      className="flex h-2 w-full overflow-hidden rounded-pill bg-track"
+    >
+      {/* Inline widths: a share is data, and no utility class can express an
+          arbitrary percentage. */}
+      {segments.map((segment) => (
+        <span
+          key={segment.key}
+          title={`${segment.label}: ${segment.value}`}
+          className={segment.className}
+          style={{ width: `${(segment.value / marked) * 100}%` }}
+        />
+      ))}
+    </div>
   );
 }
 

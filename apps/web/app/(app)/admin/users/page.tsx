@@ -1,15 +1,15 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 import {
   GraduationCap,
+  KeyRound,
   Pencil,
   ShieldPlus,
   UserCog,
   UserPlus,
-  Users,
   UsersRound,
   X,
 } from "lucide-react";
@@ -32,6 +32,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DataList, DataRow } from "@/components/ui/data-list";
+import { RowMenu, type RowMenuItem } from "@/components/ui/menu";
 import { StatCard } from "@/components/ui/stat-card";
 import { Pagination, ResultCount } from "@/components/ui/pagination";
 import { Checkbox, Field, Input, Select } from "@/components/ui/field";
@@ -43,6 +44,15 @@ import { RequireRole } from "@/components/shell/require-role";
 import { InvitationHandover } from "@/components/admin/invitation-handover";
 
 const listSchema = paginated(adminUserSchema);
+
+/**
+ * `POST /users/:id/password-reset`.
+ *
+ * The user is echoed back so the dialog can name who the link is for without
+ * trusting the row it was opened from — which may have been refetched in the
+ * meantime. Only the token is used beyond that.
+ */
+const resetIssuedSchema = z.object({ resetToken: z.string() });
 
 /** One row of the admin list — the shape both dialogs below edit. */
 type AdminUser = z.infer<typeof adminUserSchema>;
@@ -68,14 +78,42 @@ const ROLES: { value: Role; label: string }[] = ASSIGNABLE_ROLES.map((value) => 
 /**
  * The list's columns, shared by its header strip and every row.
  *
- * `Эрх` is the widest because a dual-role account carries two badges and each
- * badge carries its own revoke control; `Сүүлд нэвтэрсэн` is sized for
- * `formatRelative`'s longest output ("13 хоногийн өмнө").
+ * ★ The client's four, named — 2026-09-06: "list-ээр харуулах email албан
+ * тушаал нэр н тр н харагддаг байх".
+ *
+ * The name is `DataRow`'s own `title` rather than a column, so what is declared
+ * here is the other three plus the fact this screen is opened to check. Contact
+ * details were a single `username · email · phone` subtitle before, which put
+ * three different kinds of thing on one line and made the email — the one a
+ * director copies — impossible to scan down.
+ *
+ * `Эрх` no longer carries controls of its own, so it needs half the width it
+ * did; `Сүүлд нэвтэрсэн` is sized for `formatRelative`'s longest output
+ * ("13 хоногийн өмнө").
  */
 const USER_COLUMNS = [
-  { key: "roles", label: "Эрх", className: "md:w-[228px]" },
+  { key: "email", label: "И-мэйл", className: "md:w-[220px]" },
+  { key: "phone", label: "Утас", className: "md:w-[112px]" },
+  { key: "roles", label: "Албан тушаал", className: "md:w-[188px]" },
   { key: "lastLogin", label: "Сүүлд нэвтэрсэн", className: "md:w-[140px]" },
 ];
+
+/**
+ * The roles this screen lists — every role except PARENT.
+ *
+ * ★ Sent to the API as `roles=`, not filtered in the browser — 2026-09-06.
+ *
+ * The client's instruction was flat: "хэрэглэгч эрх дотор ерөөсөө эцэг эх
+ * байхгүй". A guardian is reached from their child, where the guardianship
+ * that gives the account its meaning is visible; here they were most of the
+ * rows and none of the work. Dropping them client-side would have been wrong
+ * on a paginated endpoint — see `rolesSchema` in `users.dto.ts`.
+ *
+ * `ASSIGNABLE_ROLES` is exactly this set already (PARENT is deliberately
+ * absent from it), so this is derived rather than restated: a sixth staff role
+ * appears here the day it appears there.
+ */
+const STAFF_ROLES = ASSIGNABLE_ROLES.join(",");
 
 /**
  * Staff and families in this kindergarten.
@@ -135,6 +173,9 @@ function AdminUsers() {
     queryKey: qk.adminUsers({ q: query, role, page: String(page) }),
     queryFn: () => {
       const params = new URLSearchParams({ page: String(page), pageSize: "50" });
+      // Staff only — see `STAFF_ROLES`. The role picker below narrows *within*
+      // this set; it can never widen it back to include guardians.
+      params.set("roles", STAFF_ROLES);
       if (query.trim()) params.set("q", query.trim());
       if (role) params.set("role", role);
       if (primaryKindergartenId) params.set("kindergartenId", primaryKindergartenId);
@@ -168,7 +209,7 @@ function AdminUsers() {
     <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Хэрэглэгчид"
-        lede="Багш, админ, эцэг эхийн бүртгэл."
+        lede="Багш, админ, тогооч, нягтлангийн бүртгэл."
         actions={
           <Button size="sm" onClick={() => setInviting(true)}>
             <UserPlus size={18} />
@@ -191,11 +232,20 @@ function AdminUsers() {
         other two are kindergarten-wide and never narrow, so they are labelled
         for what they are.
       */}
-      <section aria-label="Товч мэдээлэл" className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+      {/*
+        ★ Two tiles now, not three — the "Эцэг эх" count went with the rows.
+
+        It was the honest third figure while this screen listed families. It is
+        not one on a staff directory: a tile counting people the list beneath
+        it deliberately excludes is the kind of number somebody reads, then
+        scrolls looking for. The guardians are counted on `/admin`, beside the
+        children they belong to.
+      */}
+      <section aria-label="Товч мэдээлэл" className="grid grid-cols-2 gap-3">
         <StatCard
-          label={role ? "Шүүлтэд тохирсон" : "Нийт бүртгэл"}
+          label={role ? "Шүүлтэд тохирсон" : "Нийт ажилтан"}
           value={users.data?.total ?? "—"}
-          unit="хэрэглэгч"
+          unit="бүртгэл"
           tone="sky"
           art={<UsersRound size={22} aria-hidden />}
         />
@@ -205,13 +255,6 @@ function AdminUsers() {
           unit="бүртгэл"
           tone="cornflower"
           art={<GraduationCap size={22} aria-hidden />}
-        />
-        <StatCard
-          label="Эцэг эх"
-          value={overview.data?.counts.guardians ?? "—"}
-          unit="бүртгэл"
-          tone="mint"
-          art={<Users size={22} aria-hidden />}
         />
       </section>
 
@@ -244,94 +287,38 @@ function AdminUsers() {
 
       {users.data && items.length === 0 ? (
         <EmptyState
-          title="Хэрэглэгч олдсонгүй"
+          title="Ажилтан олдсонгүй"
           description={query || role ? "Шүүлтээ өөрчилж үзнэ үү." : "Эхний багшаа нэмээрэй."}
         />
       ) : null}
 
+      {items.length > 0 ? <ResultCount total={users.data!.total} noun="ажилтан" /> : null}
+
       {/*
-        ★ Four columns, because the response already carried four things and the
-        row rendered one of them.
+        ★ One overflow menu per row, replacing five controls spread across two
+        cells — 2026-09-06, at the client's request: "3 цэг буюу цэсээр
+        оруулаад засах устгах эрх нэмэх гэх мэт н цэснд харагдана".
 
-        This list was `[avatar] [name flex-1] [badges] [two buttons]`, which put
-        a person's name against the left edge and their controls against the
-        right with the width of a laptop screen between. `lastLoginAt` was in
-        `adminUserSchema` from the beginning and had never been displayed
-        anywhere — and it is the column a director actually wants here, because
-        it answers the question a staff list is opened to answer: who has
-        started using this, and who was invited and never came.
+        The previous row put "Засах" and "Эрх нэмэх" in the actions gutter and
+        hung two 44px icon buttons off *every badge* in the Эрх cell — so a
+        director with a dual-role account read five controls before they read
+        the person's telephone number. The note this replaces argued the other
+        way ("two controls is not a menu's worth"), and it was right about two.
+        It is five, and they are not all about the same object: three act on a
+        membership and two on the account.
 
-        ★★ Both actions still live on the row rather than behind a kebab, for
-        the reason the previous note gave and this one keeps: two controls is
-        not a menu's worth, and hiding the only way to correct a mistyped phone
-        number behind an unlabelled click is worse than repeating a word.
+        What the row is for is reading. The name, the email, the phone and the
+        role are the four things a staff list is opened to check, and they now
+        occupy the row without a control between them.
       */}
-      {items.length > 0 ? <ResultCount total={users.data!.total} noun="хэрэглэгч" /> : null}
-
       {items.length > 0 ? (
         <DataList
           columns={USER_COLUMNS}
-          actionsWidth="w-[236px]"
+          actionsWidth="w-[56px]"
           className={users.isPlaceholderData ? "opacity-60" : ""}
         >
           {items.map((user) => (
-            <DataRow
-              key={user.id}
-              lead={
-                <span className="grid size-10 place-items-center rounded-pill bg-primary-soft text-body font-semibold text-primary">
-                  {initials(user)}
-                </span>
-              }
-              title={fullName(user)}
-              subtitle={[user.username, user.email, user.phone].filter(Boolean).join(" · ") || "—"}
-              cells={{
-                roles: (
-                  <span className="flex flex-wrap items-center gap-1">
-                    {user.memberships.map((m) =>
-                      m.isActive === false ? (
-                        // Kept visible rather than filtered out. The record of
-                        // the relationship survives revocation, and an admin
-                        // looking for "why can this teacher not see the group"
-                        // needs to see that the answer is here.
-                        <Badge key={m.id} tone="neutral">
-                          {ROLE_LABEL[m.role] ?? m.role} · хураасан
-                        </Badge>
-                      ) : (
-                        <span key={m.id} className="flex items-center gap-1">
-                          <Badge tone={m.role === "ADMIN" ? "peach" : "sky"}>
-                            {ROLE_LABEL[m.role] ?? m.role}
-                          </Badge>
-                          <ChangeRoleButton
-                            membershipId={m.id}
-                            currentRole={m.role}
-                            label={fullName(user)}
-                          />
-                          <RevokeMembershipButton
-                            membershipId={m.id}
-                            label={`${fullName(user)} — ${ROLE_LABEL[m.role] ?? m.role}`}
-                          />
-                        </span>
-                      ),
-                    )}
-                    {user.isActive === false ? <Badge tone="sun">Идэвхгүй</Badge> : null}
-                  </span>
-                ),
-                lastLogin: user.lastLoginAt ? (
-                  <span className="text-body text-muted">{formatRelative(user.lastLoginAt)}</span>
-                ) : (
-                  // Not an em dash: "never signed in" is a fact about the
-                  // account, and the dash this list uses for a missing value
-                  // would read as "we do not know".
-                  <span className="text-body text-faint">Нэвтрээгүй</span>
-                ),
-              }}
-              actions={
-                <>
-                  <EditUserButton user={user} />
-                  <AddMembershipButton user={user} />
-                </>
-              }
-            />
+            <UserRow key={user.id} user={user} />
           ))}
         </DataList>
       ) : null}
@@ -347,6 +334,257 @@ function AdminUsers() {
         />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * One person in the staff directory: four facts, and one menu.
+ *
+ * ★ The dialogs live here rather than inside the menu entries.
+ *
+ * `RowMenu` closes before it runs a handler — it has to, or the menu would
+ * still be mounted underneath the dialog and would swallow the outside-press
+ * that dismisses it. That rules out a `Dialog.Trigger` as a menu entry, so the
+ * row owns which dialog is open and every dialog below it is controlled. See
+ * the note on `ConfirmDialog`'s `trigger` prop.
+ *
+ * ★★ Membership actions are named with the role they act on.
+ *
+ * "Албан тушаал солих" is meaningless on an account that holds two, and most
+ * staff hold exactly one — where naming it reads naturally ("Албан тушаал
+ * солих (Багш)") and costs nothing. Listing one entry per active membership is
+ * the honest form of the rare case rather than a picker inside a picker.
+ */
+type RowDialog =
+  | { kind: "edit" }
+  | { kind: "membership" }
+  | { kind: "reset" }
+  | { kind: "role"; membershipId: string; role: Role }
+  | { kind: "revoke"; membershipId: string; role: Role };
+
+function UserRow({ user }: { user: AdminUser }) {
+  const { session } = useSession();
+  const [dialog, setDialog] = useState<RowDialog | null>(null);
+  const name = fullName(user);
+  const active = user.memberships.filter((m) => m.isActive !== false);
+
+  /*
+   * ★ "Эрх нэмэх" is omitted when there is nothing to grant into.
+   *
+   * `AddMembershipDialog` already returns null in that case — the same
+   * derivation `TenantAccessService.adminKindergartenIds` makes on the server —
+   * and before the overflow menu that was enough, because the control it
+   * withheld was the button itself. A menu entry that opens an empty dialog is
+   * worse than the button ever was: it looks like an action and does nothing.
+   */
+  const canGrant = (session?.memberships ?? []).some((m) => m.role === "ADMIN");
+
+  const items: RowMenuItem[] = [
+    { label: "Засах", icon: <Pencil size={16} aria-hidden />, onSelect: () => setDialog({ kind: "edit" }) },
+    {
+      label: "Нууц үг сэргээх",
+      icon: <KeyRound size={16} aria-hidden />,
+      onSelect: () => setDialog({ kind: "reset" }),
+    },
+    ...(canGrant
+      ? [
+          {
+            label: "Эрх нэмэх",
+            icon: <ShieldPlus size={16} aria-hidden />,
+            onSelect: () => setDialog({ kind: "membership" }),
+          },
+        ]
+      : []),
+    ...active.map((m) => ({
+      label: `Албан тушаал солих${active.length > 1 ? ` (${ROLE_LABEL[m.role] ?? m.role})` : ""}`,
+      icon: <UserCog size={16} aria-hidden />,
+      onSelect: () => setDialog({ kind: "role", membershipId: m.id, role: m.role }),
+    })),
+    ...active.map((m) => ({
+      label: `Эрх хураах${active.length > 1 ? ` (${ROLE_LABEL[m.role] ?? m.role})` : ""}`,
+      icon: <X size={16} aria-hidden />,
+      tone: "danger" as const,
+      onSelect: () => setDialog({ kind: "revoke", membershipId: m.id, role: m.role }),
+    })),
+  ];
+
+  const close = () => setDialog(null);
+
+  return (
+    <>
+      <DataRow
+        lead={
+          <span className="grid size-10 place-items-center rounded-pill bg-primary-soft text-body font-semibold text-primary">
+            {initials(user)}
+          </span>
+        }
+        title={name}
+        subtitle={user.username ?? "—"}
+        cells={{
+          // A missing email is a real gap on a staff account — it is how a
+          // reset link reaches somebody — so it is named rather than dashed.
+          email: user.email ? (
+            <span className="block truncate text-body text-ink">{user.email}</span>
+          ) : (
+            <span className="text-body text-faint">Бүртгээгүй</span>
+          ),
+          phone: user.phone ? (
+            <span className="text-body text-ink">{user.phone}</span>
+          ) : (
+            <span className="text-body text-faint">—</span>
+          ),
+          roles: (
+            <span className="flex flex-wrap items-center gap-1">
+              {user.memberships.map((m) =>
+                m.isActive === false ? (
+                  // Kept visible rather than filtered out. The record of the
+                  // relationship survives revocation, and an admin looking for
+                  // "why can this teacher not see the group" needs to see that
+                  // the answer is here.
+                  <Badge key={m.id} tone="neutral">
+                    {ROLE_LABEL[m.role] ?? m.role} · хураасан
+                  </Badge>
+                ) : (
+                  <Badge key={m.id} tone={m.role === "ADMIN" ? "peach" : "sky"}>
+                    {ROLE_LABEL[m.role] ?? m.role}
+                  </Badge>
+                ),
+              )}
+              {user.isActive === false ? <Badge tone="sun">Идэвхгүй</Badge> : null}
+            </span>
+          ),
+          lastLogin: user.lastLoginAt ? (
+            <span className="text-body text-muted">{formatRelative(user.lastLoginAt)}</span>
+          ) : (
+            // Not an em dash: "never signed in" is a fact about the account,
+            // and the dash this list uses for a missing value would read as
+            // "we do not know".
+            <span className="text-body text-faint">Нэвтрээгүй</span>
+          ),
+        }}
+        actions={<RowMenu ariaLabel={`${name} — үйлдэл`} items={items} />}
+      />
+
+      <EditUserDialog user={user} open={dialog?.kind === "edit"} onOpenChange={close} />
+      <AddMembershipDialog user={user} open={dialog?.kind === "membership"} onOpenChange={close} />
+      <PasswordResetDialog user={user} open={dialog?.kind === "reset"} onOpenChange={close} />
+
+      {/*
+        Keyed by the membership so switching between two roles in the menu
+        remounts the dialog with the right starting value — its `Select` seeds
+        from `currentRole` once, on mount.
+      */}
+      {dialog?.kind === "role" ? (
+        <ChangeRoleDialog
+          key={dialog.membershipId}
+          membershipId={dialog.membershipId}
+          currentRole={dialog.role}
+          label={name}
+          open
+          onOpenChange={close}
+        />
+      ) : null}
+
+      {dialog?.kind === "revoke" ? (
+        <RevokeMembershipDialog
+          key={dialog.membershipId}
+          membershipId={dialog.membershipId}
+          label={`${name} — ${ROLE_LABEL[dialog.role] ?? dialog.role}`}
+          open
+          onOpenChange={close}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * A one-time password-reset link for a member of staff — `POST
+ * /users/:id/password-reset`, added 2026-09-06.
+ *
+ * ★ An administrator never types somebody else's password, and this does not
+ * let them start.
+ *
+ * The client asked for "нууц үг солих" on the staff row. The literal reading —
+ * a field where a director sets a teacher's password — is the one thing this
+ * API has refused since the day accounts were invented here, and for a reason
+ * that has not changed: whoever types a password knows it, and a "temporary"
+ * one is permanent in practice. What a locked-out teacher actually needs is a
+ * way back in, so this issues the same one-time link the forgot-password flow
+ * issues and hands it over on the same screen an invitation is handed over on.
+ *
+ * ★★ The link is shown once and is not retrievable. `InvitationHandover` says
+ * so in its own docblock; nothing here is written to storage.
+ */
+function PasswordResetDialog({
+  user,
+  open,
+  onOpenChange,
+}: {
+  user: AdminUser;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const toast = useToast();
+
+  const issue = useMutation({
+    mutationFn: () =>
+      mutate(`/users/${user.id}/password-reset`, resetIssuedSchema, { method: "POST" }),
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  // A fresh dialog each time: a token from a previous opening must not be on
+  // screen when the next one starts.
+  useEffect(() => {
+    if (open) issue.reset();
+    // `issue` is a stable mutation object, so it is not a dependency.
+  }, [open]);
+
+  return (
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      busy={issue.isPending}
+      title="Нууц үг сэргээх"
+      description={`${fullName(user)} — нэг удаагийн холбоос үүсгэнэ.`}
+      footer={
+        issue.isSuccess ? null : (
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={issue.isPending}
+              onClick={() => onOpenChange(false)}
+            >
+              Болих
+            </Button>
+            <Button size="sm" disabled={issue.isPending} onClick={() => issue.mutate()}>
+              {issue.isPending ? "Үүсгэж байна…" : "Холбоос үүсгэх"}
+            </Button>
+          </>
+        )
+      }
+    >
+      {issue.isSuccess ? (
+        <InvitationHandover
+          token={issue.data.resetToken}
+          path="/reset-password"
+          validity="Холбоос 1 цаг хүчинтэй."
+          title="Холбоос бэлэн"
+          subtitle={`${fullName(user)} — нууц үгээ өөрөө шинээр сонгоно.`}
+          onClose={() => onOpenChange(false)}
+        />
+      ) : (
+        <div className="flex flex-col gap-3">
+          <FormError message={issue.isError ? errorMessage(issue.error) : null} />
+          <p className="text-body text-muted">
+            Шинэ нууц үгийг та оруулахгүй. Энэ хүн холбоосоор орж нууц үгээ өөрөө сонгоно. Өмнө
+            үүсгэсэн холбоос байвал хүчингүй болно.
+          </p>
+        </div>
+      )}
+    </FormDialog>
   );
 }
 
@@ -558,14 +796,18 @@ function InviteUserDialog({
  * not bring them back — the same consequence, and the same sentence, the
  * revoke dialog beside it already warns about.
  */
-function ChangeRoleButton({
+function ChangeRoleDialog({
   membershipId,
   currentRole,
   label,
+  open,
+  onOpenChange,
 }: {
   membershipId: string;
   currentRole: Role;
   label: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -583,17 +825,8 @@ function ChangeRoleButton({
 
   return (
     <ConfirmDialog
-      trigger={
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={`${label} — албан тушаал солих`}
-          disabled={change.isPending}
-          className="text-muted hover:bg-primary-soft hover:text-primary"
-        >
-          <UserCog size={16} aria-hidden />
-        </Button>
-      }
+      open={open}
+      onOpenChange={onOpenChange}
       title="Албан тушаал солих"
       description={
         `${label} — одоогийн эрх: ${ROLE_LABEL[currentRole] ?? currentRole}. ` +
@@ -620,7 +853,17 @@ function ChangeRoleButton({
   );
 }
 
-function RevokeMembershipButton({ membershipId, label }: { membershipId: string; label: string }) {
+function RevokeMembershipDialog({
+  membershipId,
+  label,
+  open,
+  onOpenChange,
+}: {
+  membershipId: string;
+  label: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const toast = useToast();
   const queryClient = useQueryClient();
 
@@ -653,17 +896,8 @@ function RevokeMembershipButton({ membershipId, label }: { membershipId: string;
    */
   return (
     <ConfirmDialog
-      trigger={
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={`${label} эрхийг хураах`}
-          disabled={revoke.isPending}
-          className="text-muted hover:bg-danger-soft hover:text-danger"
-        >
-          <X size={16} aria-hidden />
-        </Button>
-      }
+      open={open}
+      onOpenChange={onOpenChange}
       title="Эрхийг хураах уу?"
       description={
         `${label} эрхийг хураана. Бүлгийн хуваарилалт нь мөн дуусна. ` +
@@ -696,10 +930,17 @@ function RevokeMembershipButton({ membershipId, label }: { membershipId: string;
  * to undo — putting a prompt in front of a typo fix teaches people to click
  * through prompts.
  */
-function EditUserButton({ user }: { user: AdminUser }) {
+function EditUserDialog({
+  user,
+  open,
+  onOpenChange,
+}: {
+  user: AdminUser;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const queryClient = useQueryClient();
   const toast = useToast();
-  const [open, setOpen] = useState(false);
 
   const [form, setForm] = useState({
     lastName: user.lastName,
@@ -708,25 +949,6 @@ function EditUserButton({ user }: { user: AdminUser }) {
     phone: user.phone ?? "",
     isActive: user.isActive !== false,
   });
-
-  /*
-   * ★ Re-seeded every time the dialog opens.
-   *
-   * The row can refetch while this is closed — somebody else edits the same
-   * person, or the list reloads after an unrelated change — and a form still
-   * holding the values it read on mount would quietly write them back.
-   */
-  function openWith() {
-    setForm({
-      lastName: user.lastName,
-      firstName: user.firstName,
-      email: user.email ?? "",
-      phone: user.phone ?? "",
-      isActive: user.isActive !== false,
-    });
-    save.reset();
-    setOpen(true);
-  }
 
   const save = useMutation({
     mutationFn: () =>
@@ -745,22 +967,44 @@ function EditUserButton({ user }: { user: AdminUser }) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
       toast.success(`${fullName(user)} — хадгалагдлаа.`);
-      setOpen(false);
+      onOpenChange(false);
     },
   });
+
+  /*
+   * ★ Re-seeded every time the dialog opens.
+   *
+   * The row can refetch while this is closed — somebody else edits the same
+   * person, or the list reloads after an unrelated change — and a form still
+   * holding the values it read on mount would quietly write them back.
+   *
+   * An effect rather than the `openWith` handler this used before the overflow
+   * menu: the control that opens the dialog is now a menu entry in a different
+   * component, so the seeding has to hang off the state it can see. `user.id`
+   * is in the dependency list because a row is keyed by it and React can reuse
+   * this instance for a different person after a refetch.
+   */
+  useEffect(() => {
+    if (!open) return;
+    setForm({
+      lastName: user.lastName,
+      firstName: user.firstName,
+      email: user.email ?? "",
+      phone: user.phone ?? "",
+      isActive: user.isActive !== false,
+    });
+    save.reset();
+    // `save` is intentionally absent from the dependency list: it is a stable
+    // mutation object, and listing it would re-seed the form on every render.
+  }, [open, user.id, user.lastName, user.firstName, user.email, user.phone, user.isActive]);
 
   const errors = fieldErrors(save.error);
 
   return (
     <>
-      <Button variant="ghost" size="sm" onClick={openWith}>
-        <Pencil size={16} aria-hidden="true" />
-        Засах
-      </Button>
-
       <FormDialog
         open={open}
-        onOpenChange={setOpen}
+        onOpenChange={onOpenChange}
         busy={save.isPending}
         title="Хэрэглэгч засах"
         description={user.username ? `Нэвтрэх нэр: ${user.username}` : undefined}
@@ -771,7 +1015,7 @@ function EditUserButton({ user }: { user: AdminUser }) {
               variant="secondary"
               size="sm"
               disabled={save.isPending}
-              onClick={() => setOpen(false)}
+              onClick={() => onOpenChange(false)}
             >
               Болих
             </Button>
@@ -904,11 +1148,18 @@ function EditUserButton({ user }: { user: AdminUser }) {
  * server's answer is shown; a client-side filter would block the reactivation
  * that is supposed to work.
  */
-function AddMembershipButton({ user }: { user: AdminUser }) {
+function AddMembershipDialog({
+  user,
+  open,
+  onOpenChange,
+}: {
+  user: AdminUser;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const { session, primaryKindergartenId } = useSession();
-  const [open, setOpen] = useState(false);
 
   // The same derivation `TenantAccessService.adminKindergartenIds` makes.
   const adminKindergartenIds = [
@@ -944,9 +1195,20 @@ function AddMembershipButton({ user }: { user: AdminUser }) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
       toast.success(`${fullName(user)} — ${ROLE_LABEL[role] ?? role} эрх нэмэгдлээ.`);
-      setOpen(false);
+      onOpenChange(false);
     },
   });
+
+  // Same reasoning as `EditUserDialog`'s: the trigger lives in the row's menu,
+  // so the form resets from the state it can observe.
+  useEffect(() => {
+    if (!open) return;
+    grant.reset();
+    setKindergartenId(primaryKindergartenId ?? adminKindergartenIds[0] ?? "");
+    setRole("TEACHER");
+    // `grant` is stable and `adminKindergartenIds` is rebuilt from the session
+    // on every render, so neither belongs in the dependency list.
+  }, [open, primaryKindergartenId]);
 
   // Nothing to grant into. An admin always has at least one, so this is the
   // defensive branch rather than the expected one.
@@ -954,23 +1216,9 @@ function AddMembershipButton({ user }: { user: AdminUser }) {
 
   return (
     <>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => {
-          grant.reset();
-          setKindergartenId(primaryKindergartenId ?? adminKindergartenIds[0] ?? "");
-          setRole("TEACHER");
-          setOpen(true);
-        }}
-      >
-        <ShieldPlus size={16} aria-hidden="true" />
-        Эрх нэмэх
-      </Button>
-
       <FormDialog
         open={open}
-        onOpenChange={setOpen}
+        onOpenChange={onOpenChange}
         busy={grant.isPending}
         title="Эрх нэмэх"
         description={`${fullName(user)} — ямар цэцэрлэгт ямар эрх эзэмших вэ.`}
@@ -981,7 +1229,7 @@ function AddMembershipButton({ user }: { user: AdminUser }) {
               variant="secondary"
               size="sm"
               disabled={grant.isPending}
-              onClick={() => setOpen(false)}
+              onClick={() => onOpenChange(false)}
             >
               Болих
             </Button>

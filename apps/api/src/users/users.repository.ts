@@ -32,7 +32,14 @@ export class UsersRepository {
         some: {
           kindergartenId: { in: kindergartenIds },
           deletedAt: null,
+          /*
+            `role` narrows to one; `roles` narrows to a set. Both are applied
+            when both are given — the intersection is the honest reading of
+            "teachers, out of the staff roles", and it is what the users screen
+            sends when its own role picker is set while the staff scope stays.
+          */
           ...(filters.role ? { role: filters.role } : {}),
+          ...(filters.roles?.length ? { role: { in: filters.roles } } : {}),
           ...(filters.isActive !== undefined ? { isActive: filters.isActive } : {}),
         },
       },
@@ -249,6 +256,7 @@ export class UsersRepository {
 
 export interface UserFilters {
   role?: Role;
+  roles?: Role[];
   isActive?: boolean;
   q?: string;
 }

@@ -34,6 +34,8 @@ import { cn } from "@/lib/utils";
  */
 export function ConfirmDialog({
   trigger,
+  open: controlledOpen,
+  onOpenChange,
   title,
   description,
   body,
@@ -44,8 +46,22 @@ export function ConfirmDialog({
   pending = false,
   onConfirm,
 }: {
-  /** The control that opens it — usually the button that used to do the work. */
-  trigger: ReactNode;
+  /**
+   * The control that opens it — usually the button that used to do the work.
+   *
+   * ★ Optional since 2026-09-06, and omitted only when `open` is supplied.
+   *
+   * A row's overflow menu cannot *be* the trigger: the menu closes when an
+   * entry is chosen, and a `Dialog.Trigger` that unmounts on the same click
+   * takes the dialog with it. Those call sites drive `open` from their own
+   * state instead and render no trigger at all. Everything else keeps the
+   * uncontrolled form, which is still the right shape for a button that opens
+   * one prompt.
+   */
+  trigger?: ReactNode;
+  /** Controlled open state. Supply both, or neither. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   title: string;
   /** What actually happens, in a sentence. Name the record where you can. */
   description: string;
@@ -72,7 +88,10 @@ export function ConfirmDialog({
   pending?: boolean;
   onConfirm: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : uncontrolledOpen;
+  const setOpen = isControlled ? (onOpenChange ?? (() => {})) : setUncontrolledOpen;
   const descriptionId = useId();
 
   /*
@@ -115,7 +134,7 @@ export function ConfirmDialog({
         setOpen(next);
       }}
     >
-      <Dialog.Trigger asChild>{trigger}</Dialog.Trigger>
+      {trigger ? <Dialog.Trigger asChild>{trigger}</Dialog.Trigger> : null}
 
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-ink/40" />

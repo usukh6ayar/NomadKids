@@ -29,6 +29,21 @@ export class SurveysService {
   async create(actor: Actor, kindergartenId: string, dto: CreateSurveyDto) {
     this.tenants.assertStaff(actor, kindergartenId);
 
+    /*
+      ★ The group must belong to this kindergarten.
+
+      Without this a staff member of one kindergarten could publish a survey
+      addressed to another's group — the id comes from the client, and the
+      audience filter would then hand that group's families a questionnaire
+      from a kindergarten they have nothing to do with. Checked here rather
+      than trusted from a select's options, for the reason §1.1 gives: the
+      screen narrows, the server decides.
+    */
+    if (dto.groupId) {
+      const group = await this.repo.findGroupInKindergarten(dto.groupId, kindergartenId);
+      if (!group) throw new BadRequestException("Бүлэг олдсонгүй");
+    }
+
     const survey = await this.repo.create({
       kindergartenId,
       title: dto.title,
@@ -41,6 +56,8 @@ export class SurveysService {
       createdById: actor.userId,
       schoolYear: dto.schoolYear ?? null,
       period: dto.period ?? null,
+      // Null is every group — see `Survey.groupId`.
+      groupId: dto.groupId ?? null,
     });
 
     await this.audit.append({
@@ -49,7 +66,7 @@ export class SurveysService {
       actorUserId: actor.userId,
       objectType: "Survey",
       objectId: survey.id,
-      metadata: { scope: dto.scope },
+      metadata: { scope: dto.scope, groupId: dto.groupId ?? null },
     });
 
     return survey;
@@ -153,7 +170,8 @@ export class SurveysService {
    * this list is non-empty and unanswered. */
   async listActiveForChild(actor: Actor, childId: string) {
     const facts = await this.childAccess.assertCanAccess(actor, childId);
-    const surveys = await this.repo.findActiveForKindergarten(facts.childKindergartenId);
+    const groupId = await this.repo.activeGroupIdForChild(childId);
+    const surveys = await this.repo.findActiveForKindergarten(facts.childKindergartenId, groupId);
 
     return Promise.all(
       surveys.map(async (survey) => {

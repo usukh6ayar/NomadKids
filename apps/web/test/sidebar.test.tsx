@@ -159,10 +159,8 @@ describe("navigation icons", () => {
       "Хичээлийн жил",
       "Улирал",
       "Бүлгүүд",
-      "Үнэлгээний тохиргоо",
-      "Аудит",
       "Баримт бичгийн сан",
-      "Багшийн мэдээлэл",
+      "Хувийн тохиргоо",
     ];
 
     for (const label of entries) {
@@ -320,8 +318,6 @@ describe("role-based navigation", () => {
       "Хичээлийн жил",
       "Улирал",
       "Бүлгүүд",
-      "Үнэлгээний тохиргоо",
-      "Аудит",
     ]) {
       expect(
         within(nav).queryByRole("link", { name: label }),
@@ -355,8 +351,6 @@ describe("role-based navigation", () => {
       ["Хичээлийн жил", "/admin/school-years"],
       ["Улирал", "/admin/terms"],
       ["Бүлгүүд", "/admin/groups"],
-      ["Үнэлгээний тохиргоо", "/admin/assessment-config"],
-      ["Аудит", "/admin/audit"],
       ["Ирц ба тооцоолол", "/admin/funding"],
     ] as const) {
       expect(within(nav).getByRole("link", { name: label })).toHaveAttribute("href", href);
@@ -379,10 +373,30 @@ describe("role-based navigation", () => {
 
     expect(within(nav).queryByRole("link", { name: "Удирдлага" })).not.toBeInTheDocument();
     // The screens it used to hide are still reachable, which is the point.
-    expect(within(nav).getByRole("link", { name: "Аудит" })).toHaveAttribute(
+    // ★ This assertion named "Аудит" until 2026-09-06, when that row and
+    // "Үнэлгээний тохиргоо" were removed at the client's request. It is
+    // re-pointed at "Хэрэглэгч ба эрх" rather than deleted: the property under
+    // test is that losing the hub row did not orphan the screens behind it,
+    // and any surviving row proves it.
+    expect(within(nav).getByRole("link", { name: "Хэрэглэгч ба эрх" })).toHaveAttribute(
       "href",
-      "/admin/audit",
+      "/admin/users",
     );
+  });
+
+  /**
+   * ★ 2026-09-06 — the client asked for both rows to go.
+   *
+   * The screens stay and keep their own `RequireRole`; what goes is the
+   * permanent menu row for work that is done in August (the assessment
+   * configuration) or only in answer to a question (the audit trail).
+   */
+  it("does not give the assessment configuration or the audit log a row", async () => {
+    renderShell(["TEACHER", "ADMIN"]);
+    const nav = await sidebar();
+
+    expect(within(nav).queryByRole("link", { name: "Үнэлгээний тохиргоо" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Аудит" })).not.toBeInTheDocument();
   });
 
   it("gives a parent their own sections, not the staff ones", async () => {
@@ -503,9 +517,14 @@ describe("the sidebar footer", () => {
     renderShell(["TEACHER"]);
     const nav = await sidebar();
 
-    // The identity block is the settings link — see the note in `WhoAmI`: a
-    // third 44px control leaves a Mongolian name about 96px to live in.
-    expect(within(nav).getByRole("link", { name: /Тест Хэрэглэгч — тохиргоо/ })).toHaveAttribute(
+    // ★ The identity block stopped being the settings link on 2026-09-06 —
+    // see the note in `WhoAmI`. `/settings` has three other doors and the foot
+    // of the sidebar carries the one thing none of them do, so the only
+    // control in that card is the way out.
+    expect(
+      within(nav).queryByRole("link", { name: /Тест Хэрэглэгч/ }),
+    ).not.toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Хувийн тохиргоо" })).toHaveAttribute(
       "href",
       "/settings",
     );
