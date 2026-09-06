@@ -20,14 +20,25 @@ import { loadEnv } from "../../config/env";
  * protects passwords lives in the database (`LoginAttempt`), survives
  * restarts, and was already shared across instances. This layer blunts volume.
  *
- * ★★ **`INCR` then `EXPIRE`, in one pipeline, not `GET`/`SET`.**
+ * ★★ **One Lua script, not `GET`/`SET` and not a pipeline.**
  *
- * Read-modify-write across a network is exactly the race a shared counter
- * exists to avoid: two processes both read 4, both write 5, and the sixth
- * request through a limit of 5 is allowed. `INCR` is atomic server-side, and
- * the `EXPIRE` beside it is what makes the window fixed — set unconditionally
- * rather than only on the first hit, which would leave a key immortal if a
- * process died between the two commands.
+ * Read-modify-write across a network is the race a shared counter exists to
+ * avoid: two processes both read 4, both write 5, and the sixth request
+ * through a limit of 5 is allowed. `INCR` is atomic server-side, which fixes
+ * that half.
+ *
+ * The other half is subtler and the first version of this file got it wrong.
+ * It ran `INCR` and `EXPIRE` in a pipeline, setting the TTL on **every** hit —
+ * which turns a fixed window into a sliding one. A client sending a request
+ * every few seconds pushes the expiry forward faster than it elapses, so a
+ * 15-minute window never resets and the block is permanent rather than
+ * temporary. On the login route that is a lockout with no way out but waiting
+ * for traffic to stop entirely.
+ *
+ * So the TTL is set only when the counter is new — or when the key somehow has
+ * none, which would otherwise make it immortal. `INCR` and the conditional
+ * `PEXPIRE` have to be atomic with respect to each other, and a `MULTI` cannot
+ * branch on the result of a command inside it. Hence `EVAL`.
  *
  * ★★★ **It fails open, and says so loudly.**
  *
@@ -54,11 +65,24 @@ export class RateLimitService implements OnApplicationShutdown {
   private readonly prefix = this.env.NODE_ENV === "test" ? "rl-test:" : "rl:";
 
   private readonly redis: Redis = new IORedis(this.env.REDIS_URL, {
-    // Three attempts, then fail open rather than hold the request. A limiter
-    // that queues behind an unreachable Redis turns a supplementary control
-    // into the slowest thing in the request.
+    /*
+     * ★ Three attempts, then fail open rather than hold the request. A limiter
+     * that queues indefinitely behind an unreachable Redis turns a
+     * supplementary control into the slowest thing in every request.
+     *
+     * ★★ The offline queue stays **on**, which the first version turned off.
+     *
+     * `enableOfflineQueue: false` rejects a command outright while the socket
+     * is still connecting — so the first requests after a deploy would have
+     * gone uncounted, and every one of them logged as a Redis outage. On the
+     * login route that is exactly the window an attacker would want. With the
+     * queue on, those commands wait for the connection instead, and
+     * `maxRetriesPerRequest` is what still bounds a genuine outage.
+     *
+     * It was found by a unit test whose first assertion read `remaining: 3`
+     * where it expected 2 — the fail-open value, on a Redis that was up.
+     */
     maxRetriesPerRequest: 3,
-    enableOfflineQueue: false,
   });
 
   /**
@@ -72,29 +96,26 @@ export class RateLimitService implements OnApplicationShutdown {
 
     try {
       /*
-       * ★ `pttl` is read in the same round trip as the increment.
+       * ★ The remaining TTL comes back with the count, in the same call.
        *
        * Retry-After has to say how long is left in *this* window, not how long
        * a fresh one lasts — a client told to wait the full 15 minutes on the
        * fourteenth minute waits twice as long as the limit actually asks.
        */
-      const results = await this.redis
-        .multi()
-        .incr(namespaced)
-        .expire(namespaced, windowSeconds)
-        .pttl(namespaced)
-        .exec();
+      const result = (await this.redis.eval(HIT_SCRIPT, 1, namespaced, String(windowMs))) as [
+        number,
+        number,
+      ];
 
-      if (!results) return this.failOpen(limit, new Error("Redis MULTI returned null"));
-
-      const count = Number(results[0]?.[1] ?? 0);
-      const pttl = Number(results[2]?.[1] ?? windowMs);
+      const count = Number(result?.[0] ?? 0);
+      const pttl = Number(result?.[1] ?? windowMs);
 
       return {
         allowed: count <= limit,
         remaining: Math.max(0, limit - count),
-        // `pttl` is -1 (no expiry) or -2 (no key) in the races where the key
-        // vanished between commands; neither is a duration a client can wait.
+        // `pttl` is -1 (no expiry) or -2 (no key) only if the key vanished
+        // between the script's own commands, which it cannot — but neither is
+        // a duration a client can wait, so the window length is the fallback.
         retryAfterSeconds: pttl > 0 ? Math.ceil(pttl / 1000) : windowSeconds,
       };
     } catch (error) {
@@ -144,6 +165,26 @@ export class RateLimitService implements OnApplicationShutdown {
     return { allowed: true, remaining: limit, retryAfterSeconds: 0 };
   }
 }
+
+/**
+ * Increment, and set the expiry only if the window is new.
+ *
+ * ★ `count == 1` is the new-window case. The `pttl < 0` clause covers a key
+ * that exists without a TTL — which this script cannot produce, but a manual
+ * `redis-cli SET` or an older build of this file could have left behind, and
+ * an immortal counter is a permanent block.
+ *
+ * Returns `{count, pttl}` so the caller needs no second round trip.
+ */
+const HIT_SCRIPT = `
+local count = redis.call('INCR', KEYS[1])
+local pttl = redis.call('PTTL', KEYS[1])
+if count == 1 or pttl < 0 then
+  redis.call('PEXPIRE', KEYS[1], ARGV[1])
+  pttl = tonumber(ARGV[1])
+end
+return {count, pttl}
+`;
 
 export interface RateLimitResult {
   allowed: boolean;
