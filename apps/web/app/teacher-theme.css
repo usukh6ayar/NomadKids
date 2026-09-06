@@ -38,6 +38,24 @@ body:has([data-app-theme="teacher"]) {
   --workspace-background: linear-gradient(120deg, #f6fbff 0%, #eff9ff 55%, #f3fbef 100%);
 }
 
+body:has([data-app-theme="admin"]) {
+  --color-canvas: #f4f8fb;
+  --color-sunken: #edf4f8;
+  --color-border: #d9e4ec;
+  --color-border-soft: #eaf0f4;
+  --color-ink: #183a54;
+  --color-primary: #236da8;
+  --color-primary-strong: #174f7d;
+  --color-primary-hover: #1c5d91;
+  --color-primary-soft: #e8f3fa;
+  --workspace-accent: #236da8;
+  --workspace-accent-secondary: #2f9d8f;
+  --workspace-button-start: #236da8;
+  --workspace-button-end: #2f8eba;
+  --workspace-button-hover: #174f7d;
+  --workspace-background: linear-gradient(120deg, #f4f8fb 0%, #eef7f7 100%);
+}
+
 [data-app-theme] {
   background: var(--workspace-background);
   color: var(--color-ink);
