@@ -247,7 +247,7 @@ function AuthenticatedShell({
       shortcuts={isStaff ? staffShortcuts(isAdmin, groupId) : undefined}
       variant={isStaff ? "teacher" : "parent"}
       teacherTheme={isStaff && !isAdmin}
-      workspaceTheme={!isAdmin && isStaff ? "teacher" : undefined}
+      workspaceTheme={isAdmin ? "admin" : isStaff ? "teacher" : undefined}
       isAdmin={isAdmin}
       childSwitcher={childSwitcher}
     >
