@@ -102,8 +102,18 @@ describe("ажилтны бүртгэл", () => {
     expect(list.body).toHaveLength(1);
     expect(list.body[0].title).toBe(CERTIFICATE.title);
     expect(list.body[0].documentNo).toBe("ГЭР-2024/882");
-    // `@db.Date` round-trips as the date recorded, not a timestamp.
-    expect(String(list.body[0].startedOn).slice(0, 10)).toBe("2024-03-01");
+
+    /*
+     * ★ The exact string, not a sliced prefix.
+     *
+     * This assertion used `.slice(0, 10)` and passed while the API returned a
+     * full ISO timestamp — which the client then formats in the reader's own
+     * timezone, so a certificate issued on 2024-03-01 reads as 2024-02-29 for
+     * anybody west of UTC. A test that trims the response to the shape it
+     * expects cannot see the shape it got.
+     */
+    expect(list.body[0].startedOn).toBe("2024-03-01");
+    expect(list.body[0].endedOn).toBe("2029-03-01");
   });
 
   /**

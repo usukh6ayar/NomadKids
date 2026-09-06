@@ -30,14 +30,10 @@ export class StaffService {
    * asking for a colleague's records has learned that the colleague has some,
    * which is the fact the permission was protecting.
    */
-  async list(
-    actor: Actor,
-    kindergartenId: string,
-    userId: string,
-    query: ListStaffRecordsQuery,
-  ) {
+  async list(actor: Actor, kindergartenId: string, userId: string, query: ListStaffRecordsQuery) {
     this.tenants.assertCanReadStaffRecords(actor, kindergartenId, userId);
-    return this.repo.listForUser(kindergartenId, userId, query.kind);
+    const rows = await this.repo.listForUser(kindergartenId, userId, query.kind);
+    return rows.map(toResponse);
   }
 
   /**
@@ -51,12 +47,7 @@ export class StaffService {
    * read it back under `canReadStaffRecords`'s own-file branch, from a
    * kindergarten they have nothing to do with.
    */
-  async create(
-    actor: Actor,
-    kindergartenId: string,
-    userId: string,
-    dto: CreateStaffRecordDto,
-  ) {
+  async create(actor: Actor, kindergartenId: string, userId: string, dto: CreateStaffRecordDto) {
     this.tenants.assertCanManageStaffRecords(actor, kindergartenId);
 
     if (!(await this.repo.isStaffMember(kindergartenId, userId))) {
@@ -90,7 +81,7 @@ export class StaffService {
       metadata: { kind: dto.kind, title: dto.title, subjectUserId: userId },
     });
 
-    return saved;
+    return toResponse(saved);
   }
 
   async update(actor: Actor, id: string, dto: UpdateStaffRecordDto) {
@@ -119,7 +110,7 @@ export class StaffService {
       metadata: { fields: Object.keys(data), subjectUserId: record.userId },
     });
 
-    return saved;
+    return toResponse(saved);
   }
 
   async remove(actor: Actor, id: string) {
@@ -144,4 +135,28 @@ export class StaffService {
 /** `@db.Date` is UTC midnight — the same conversion every dated record uses. */
 function toDate(iso: string): Date {
   return new Date(`${iso}T00:00:00.000Z`);
+}
+
+/** `@db.Date` is UTC midnight, so slicing the ISO string is the recorded date. */
+function dateOnly(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
+/**
+ * Dates as `YYYY-MM-DD`, the way every other dated record in this product
+ * crosses the wire.
+ *
+ * ★ Without this the response carries a full ISO timestamp, and the client
+ * formats it in the reader's own timezone — so a certificate issued on
+ * 2024-03-01 reads as 2024-02-29 for anybody west of UTC. `health-records`
+ * makes the same conversion for the same reason; this file shipped without it,
+ * which the tests did not catch because they sliced the string before
+ * comparing.
+ */
+function toResponse<T extends { startedOn: Date; endedOn: Date | null }>(record: T) {
+  return {
+    ...record,
+    startedOn: dateOnly(record.startedOn),
+    endedOn: record.endedOn ? dateOnly(record.endedOn) : null,
+  };
 }

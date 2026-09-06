@@ -8,6 +8,7 @@
  */
 
 import { PrismaPg } from "@prisma/adapter-pg";
+import IORedis, { type Redis } from "ioredis";
 import { PrismaClient } from "../../src/generated/prisma/client";
 import { applySystemConfig } from "../../prisma/system-config";
 
@@ -34,6 +35,8 @@ export function testDb(): PrismaClient {
 export async function closeTestDb(): Promise<void> {
   await client?.$disconnect();
   client = undefined;
+  await rateLimitRedis?.quit().catch(() => rateLimitRedis?.disconnect());
+  rateLimitRedis = undefined;
 }
 
 /**
@@ -50,7 +53,12 @@ export async function closeTestDb(): Promise<void> {
  * development domain or observation type fails on the second case.
  */
 /*
- * ★ `revenue_partners` is named explicitly, and it is the only table here that
+ * ★ `special_needs_categories` is named explicitly, added 2026-09-05, for the
+ * same reason `development_domains` and its two neighbours are: its system rows
+ * carry `kindergartenId IS NULL` and so have no kindergarten to cascade from.
+ * A test that deactivated one would leak that into every later file.
+ *
+ * ★★ `revenue_partners` is named explicitly, and it is the only table here that
  * has to be.
  *
  * Every other name below is reachable by CASCADE from "kindergartens" or
@@ -83,10 +91,60 @@ export async function resetData(): Promise<void> {
       "children", "group_teachers", "groups", "school_years", "memberships",
       "sessions", "auth_tokens", "login_attempts", "kindergartens", "users",
       "development_domains", "assessment_levels", "observation_types",
+      "special_needs_categories",
       "revenue_partners"
     RESTART IDENTITY CASCADE
   `);
   await applySystemConfig(db);
+  await resetRateLimits();
+}
+
+/**
+ * Clears the rate-limit counters between tests.
+ *
+ * ★ Part of `resetData()` since 2026-09-05, and that is the point.
+ *
+ * The counters moved to Redis so the API could run as several processes
+ * (А/261 шалгуур 6), which made them shared state that survives a database
+ * truncate. Every high-login test file already called
+ * `RateLimitService.resetAll()` by hand in its own `beforeEach` — forty of
+ * them — and CLAUDE.md §4.4 records what happens to the file that forgets:
+ * `attendance-register.test.ts` did 21 tests × 5 logins against a
+ * 60-per-15-minutes limit and its 429s read as register defects.
+ *
+ * A guarantee reconstructed by hand at forty call sites is a guarantee that
+ * will eventually be forgotten at one of them, so it belongs here, beside the
+ * truncate, where "reset the world" already means what it says. The per-file
+ * calls are harmless and stay: they document the intent at the point it
+ * matters.
+ *
+ * ★★ Its own connection rather than the Nest app's. `resetData()` is called
+ * from module scope in files that have no app yet, and reaching into the
+ * container for a service would make this helper depend on Nest.
+ */
+let rateLimitRedis: Redis | undefined;
+
+async function resetRateLimits(): Promise<void> {
+  if (!process.env.REDIS_URL) return;
+
+  rateLimitRedis ??= new IORedis(process.env.REDIS_URL, {
+    maxRetriesPerRequest: 1,
+    enableOfflineQueue: false,
+    lazyConnect: false,
+  });
+
+  try {
+    // The same namespace `RateLimitService` writes under in NODE_ENV=test.
+    let cursor = "0";
+    do {
+      const [next, keys] = await rateLimitRedis.scan(cursor, "MATCH", "rl-test:*", "COUNT", 500);
+      cursor = next;
+      if (keys.length > 0) await rateLimitRedis.del(...keys);
+    } while (cursor !== "0");
+  } catch {
+    // A suite that cannot reach Redis will fail on its own terms in a moment;
+    // failing here would report it as a fixture problem.
+  }
 }
 
 /** A unique-enough suffix so fixtures never collide on unique columns. */

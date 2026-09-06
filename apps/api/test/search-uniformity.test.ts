@@ -374,6 +374,60 @@ describe("хайлтын жигд байдал", () => {
   });
 
   /**
+   * ★★★★ Search **narrows** an existing filter; it never replaces it.
+   *
+   * This is the shape failure `searchWhere` is built to prevent and the one no
+   * per-list case above can see: every list there has exactly one filter.
+   * `searchWhere` returns a fragment a repository spreads *beside* its other
+   * conditions, so a term and a status have to intersect — but a repository
+   * that assembled `where` as `{ ...base, ...(q ? searchFragment : statusFilter) }`
+   * would pass every test in this file while quietly answering a filtered
+   * question with unfiltered rows.
+   *
+   * The recipe list is the case with both, so it is the one asserted.
+   */
+  it("intersects the term with the other filters rather than replacing them", async () => {
+    const ingredient = await post(cookA, `/kindergartens/${a.kindergarten.id}/ingredients`, {
+      name: `Гурил-${Math.random().toString(36).slice(2, 6)}`,
+      unit: "GRAM",
+    });
+
+    // Two cards whose names both match; only one will be approved.
+    for (const suffix of ["А", "Б"]) {
+      await post(cookA, `/kindergartens/${a.kindergarten.id}/recipes`, {
+        name: `${TERM} ${suffix}`,
+        yieldPortions: 10,
+        ingredients: [{ ingredientId: ingredient.id, quantity: "100" }],
+      });
+    }
+
+    const all = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/recipes?q=Тэмдэг`),
+      cookA,
+    );
+    expect(all.body.items).toHaveLength(2);
+
+    // A status nothing matches: the term must not resurrect the two drafts.
+    const approved = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/recipes?q=Тэмдэг&status=APPROVED`,
+      ),
+      cookA,
+    );
+    expect(approved.status).toBe(200);
+    expect(approved.body.items).toHaveLength(0);
+
+    // And the reverse: a status that matches, with a term that does not.
+    const neither = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/recipes?q=ХэзээчХайхгүй&status=DRAFT`,
+      ),
+      cookA,
+    );
+    expect(neither.body.items).toHaveLength(0);
+  });
+
+  /**
    * ★ A teacher searching the kitchen still gets 404.
    *
    * Adding `q` to four kitchen lists added four query parameters behind an
