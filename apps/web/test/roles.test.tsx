@@ -174,6 +174,27 @@ describe("navigation is built from the session's roles", () => {
       ),
     );
   });
+
+  it("gives parents the parent workspace theme", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["PARENT"]) },
+      { path: "/notifications/unread-count", body: { count: 0 } },
+      { path: "/children/mine", body: [] },
+    ]);
+
+    const { container } = renderWithProviders(
+      <AppLayout>
+        <div>агуулга</div>
+      </AppLayout>,
+    );
+
+    await waitFor(() =>
+      expect(container.querySelector("[data-app-theme]")).toHaveAttribute(
+        "data-app-theme",
+        "parent",
+      ),
+    );
+  });
 });
 
 /**

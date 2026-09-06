@@ -56,6 +56,24 @@ body:has([data-app-theme="admin"]) {
   --workspace-background: linear-gradient(120deg, #f4f8fb 0%, #eef7f7 100%);
 }
 
+body:has([data-app-theme="parent"]) {
+  --color-canvas: #fff8f7;
+  --color-sunken: #fff1ee;
+  --color-border: #ecdeda;
+  --color-border-soft: #f5e9e6;
+  --color-ink: #3d405b;
+  --color-primary: #d65f52;
+  --color-primary-strong: #a94137;
+  --color-primary-hover: #bc4b40;
+  --color-primary-soft: #fff0ed;
+  --workspace-accent: #d65f52;
+  --workspace-accent-secondary: #55a883;
+  --workspace-button-start: #d65f52;
+  --workspace-button-end: #e68165;
+  --workspace-button-hover: #bc4b40;
+  --workspace-background: linear-gradient(120deg, #fff8f7 0%, #f3fbf8 100%);
+}
+
 [data-app-theme] {
   background: var(--workspace-background);
   color: var(--color-ink);
