@@ -242,6 +242,7 @@ function AuthenticatedShell({
       // box over it would repeat most of it.
       shortcuts={isStaff ? staffShortcuts(isAdmin, groupId) : undefined}
       variant={isStaff ? "teacher" : "parent"}
+      teacherTheme={isStaff && !isAdmin}
       isAdmin={isAdmin}
       childSwitcher={childSwitcher}
     >
