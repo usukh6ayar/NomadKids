@@ -56,7 +56,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
                 src="/logo.png"
                 alt={BRAND}
                 width={76}
-                height={82}
+                height={76}
                 className="w-[76px]"
                 style={{ height: "auto" }}
                 priority
@@ -89,8 +89,8 @@ export function AuthShell({ children }: { children: ReactNode }) {
             design: the old `/logo-160.png` was 149px wide, so 380 rendered
             visibly soft and a blurred logo on the first screen anyone sees is
             worse than a small sharp one. `/logo.png` is regenerated from the
-            1254² original, so the cap has nothing left to protect against.
-            300 on a 2× display asks for 600 source pixels; there are 1071.
+            1400² original, so the cap has nothing left to protect against.
+            300 on a 2× display asks for 600 source pixels; there are 1400.
 
             ★★ No wordmark under it either — the lettering is in the artwork,
             and this panel is `aria-hidden`, so a name repeated here would be
@@ -100,7 +100,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
             src="/logo.png"
             alt=""
             width={300}
-            height={322}
+            height={300}
             className="mx-auto w-[300px] max-w-full"
             style={{ height: "auto" }}
           />
