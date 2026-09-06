@@ -1169,7 +1169,7 @@ describe("this month's birthdays", () => {
 });
 
 describe("the class board notice", () => {
-  async function publish(title: string) {
+  async function publish(title: string | null) {
     const notice = await db.notification.create({
       data: {
         kindergartenId: a.kindergarten.id,
@@ -1182,6 +1182,35 @@ describe("the class board notice", () => {
     });
     return notice.id;
   }
+
+  /**
+   * ★ A notice with no heading must not take the dashboard down with it.
+   *
+   * `Notification.title` became optional on 2026-08-30 — "forcing one produced
+   * titles that restated the first line of the body" — and
+   * `notificationSchema` was updated to match. The **dashboard's own copy** of
+   * the same field was not, so on 2026-09-06 the first heading-less notice
+   * made `GET /dashboard/teacher` fail `teacherDashboardSchema.parse` in the
+   * browser: not a missing card but the whole screen, reported as the generic
+   * "Алдаа гарлаа. Дахин оролдоно уу."
+   *
+   * The API was never at fault — it answered 200 with a correct body — which
+   * is why no server-side test caught it. This one asserts the shape the
+   * client has to be able to read.
+   */
+  it("survives a notice published without a title", async () => {
+    await publish(null);
+
+    const res = await request(server())
+      .get("/v1/dashboard/teacher")
+      .set("Cookie", teacherA.cookies);
+
+    expect(res.status).toBe(200);
+    expect(res.body.boardNotice).not.toBeNull();
+    expect(res.body.boardNotice.title).toBeNull();
+    // The body is what the screen falls back to, so it must still be there.
+    expect(res.body.boardNotice.body).toBe("Ангийн хурал болно.");
+  });
 
   it("shows the most recent published notice with how many opened it", async () => {
     await publish("Хуучин");

@@ -2387,7 +2387,23 @@ export const teacherDashboardSchema = z.object({
   boardNotice: z
     .object({
       id: uuidSchema,
-      title: z.string(),
+      /**
+       * ★ Nullable, and it was not — which took the whole teacher dashboard
+       * down on 2026-09-06.
+       *
+       * `Notification.title` became optional on 2026-08-30 ("forcing one
+       * produced titles that restated the first line of the body") and
+       * `notificationSchema` was updated to match. This copy of the same field
+       * was not, so the first notice published without a heading made
+       * `GET /dashboard/teacher` unparseable — not a missing card, the entire
+       * screen, because a client that validates its responses fails the whole
+       * object. The error surfaced as the generic "Алдаа гарлаа. Дахин
+       * оролдоно уу.", which is what `errorMessage` says for a `ZodError`.
+       *
+       * The lesson worth keeping: a field duplicated into a second schema is a
+       * field that will be changed in one of them.
+       */
+      title: z.string().nullable(),
       body: z.string(),
       publishedAt: z.string().nullable(),
       isImportant: z.boolean(),

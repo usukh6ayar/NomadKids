@@ -150,8 +150,14 @@ export function ClassBoardNotice({ notice }: { notice: TeacherDashboard["boardNo
           */}
           <div className={cn("flex min-w-0 flex-col gap-1.5", photo ? "lg:w-2/5" : "lg:flex-1")}>
             <div className="flex flex-wrap items-center gap-2">
+              {/*
+                ★ No title falls back to the opening of the body — the same
+                thing the notifications list does, so one notice reads the same
+                way in both places. An empty `<h3>` would leave the date and
+                the "Чухал" badge floating under nothing.
+              */}
               <h3 className="min-w-0 flex-1 text-lead font-semibold leading-heading text-ink group-hover:underline">
-                {notice.title}
+                {notice.title ?? excerpt(notice.body, 80)}
               </h3>
               {/* The label carries the state; the tint only reinforces it. */}
               {notice.isImportant ? <Badge tone="peach">Чухал</Badge> : null}

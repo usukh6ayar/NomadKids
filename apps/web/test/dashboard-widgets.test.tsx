@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
+import { teacherDashboardSchema } from "@kinder/contracts";
 import { ClassBoardNotice } from "@/components/dashboard/class-board-notice";
 import { GenderRatio } from "@/components/dashboard/gender-ratio";
 import { MonthBirthdays } from "@/components/dashboard/month-birthdays";
@@ -213,6 +214,50 @@ describe("сүүлийн нийтлэл", () => {
     isImportant: false,
     readCount: 23,
   };
+
+  /**
+   * ★★★ A notice published without a heading — the 2026-09-06 outage.
+   *
+   * `Notification.title` became optional on 2026-08-30 and
+   * `notificationSchema` was updated; `teacherDashboardSchema`'s **own copy**
+   * of the same field was not. So the first heading-less notice made
+   * `GET /dashboard/teacher` fail `schema.parse` in the browser and took the
+   * *entire* teacher dashboard down — not this card, the screen — reported as
+   * the generic "Алдаа гарлаа. Дахин оролдоно уу." that `errorMessage` gives a
+   * `ZodError`.
+   *
+   * The API was never wrong: it answered 200 with a correct body. That is why
+   * no server-side test saw it, and why the guard belongs here.
+   *
+   * Two assertions, because the fix has two halves: the response must parse,
+   * and the card must render something in place of the missing heading.
+   */
+  it("parses a notice with no title — the contract must allow it", () => {
+    const parsed = teacherDashboardSchema.safeParse({
+      currentTerm: null,
+      counts: { children: 0, groups: 0, pendingReviews: 0 },
+      needsAttention: { pendingReviews: 0, childrenMissingAssessment: [] },
+      boardNotice: { ...notice, title: null },
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it("falls back to the body when a notice has no title", () => {
+    renderWithProviders(<ClassBoardNotice notice={{ ...notice, title: null }} />);
+
+    /*
+      The opening of the body stands in as the heading — the same thing the
+      notifications list does, so one notice reads the same way in both places.
+
+      Asserted on the **heading** specifically: the body also appears in the
+      excerpt below it, so a plain text query matches twice and would pass even
+      if the `<h3>` were empty.
+    */
+    expect(
+      screen.getByRole("heading", { name: /2028\.09\.01-нд ангийн хурал болно/ }),
+    ).toBeInTheDocument();
+  });
 
   it("says how many people opened the notice", () => {
     renderWithProviders(<ClassBoardNotice notice={notice} />);
