@@ -1,25 +1,33 @@
 import { Injectable } from "@nestjs/common";
 import { EsisClient } from "./esis.client";
 import { EsisConfig } from "./esis.config";
+import { ESIS_ENDPOINTS, esisPath } from "./esis.endpoints";
+import {
+  esisAcademicYearSchema,
+  esisAttendanceSchema,
+  esisAttendanceUploadSchema,
+  esisFoodMaterialGroupSchema,
+  esisFoodMaterialSchema,
+  esisFoodProductMaterialSchema,
+  esisFoodProductSchema,
+  esisFoodProductTypeSchema,
+  esisGroupSchema,
+  esisListParser,
+  esisMovementSchema,
+  esisOrganizationSchema,
+  esisStaffSchema,
+  esisStudentSchema,
+  type EsisAttendanceUpload,
+} from "./esis.schemas";
 import type { EsisRequest, EsisResponse } from "./esis.types";
 
 /**
  * The application-facing entry point to ESIS.
  *
- * ★ It has no domain methods, and that is the point of this commit.
- *
- * There is no `syncChildren()`, no `fetchInstitution()`, no `pushAttendance()`.
- * We have not seen ESIS's API documentation, so every one of those would be an
- * invented endpoint against an invented schema — and the moment one exists, a
- * screen gets built on it and the guess spreads. What this class establishes is
- * the *boundary*: configuration, authentication, timeouts, errors and logging,
- * all of which are knowable now and none of which change when the real
- * endpoints arrive.
- *
- * ★★ Nothing calls this yet. It is wired into the module graph so the
- * configuration is validated at boot and the tests can exercise it, but no
- * existing behaviour reads from it. Adding the first real caller is a separate,
- * reviewable change — see the note at the foot of this file.
+ * Domain methods are limited to services selected from the official ESIS v2
+ * catalog. They remove the ESIS envelope and discard fields NomadKids does not
+ * need. Synchronisation is still intentionally separate: it needs an issued
+ * token, approved API ids, external-id storage and a retryable queue.
  */
 @Injectable()
 export class EsisService {
@@ -46,31 +54,116 @@ export class EsisService {
   }
 
   /**
-   * Escape hatch for a real endpoint, once we have one.
+   * Low-level escape hatch for a catalog endpoint without a domain method.
    *
-   * Typed generically because the response shape is genuinely unknown until the
-   * documentation exists. Pass `parse` — `schema.parse` from a Zod schema — to
-   * narrow it at the boundary, so a changed payload fails here rather than
-   * three layers inside the app.
+   * Pass `parse` to keep response validation at this boundary. New product
+   * features should normally use one of the named methods below.
    */
   async request<T = unknown>(options: EsisRequest): Promise<EsisResponse<T>> {
     return this.client.request<T>(options);
   }
-}
 
-/*
- * ★ How the first real ESIS feature should be added.
- *
- *   1. Get the documentation. Record the endpoint, its verb, its auth scheme
- *      and a real response sample in `docs/` before writing code.
- *   2. Declare the payload as a Zod schema in `esis.schemas.ts`, beside this
- *      file. Nothing outside this directory should know ESIS's field names.
- *   3. Add a domain method here that calls `this.client.request({ parse })` and
- *      returns *our* domain type, not theirs. The mapping lives at the
- *      boundary so that a rename on their side is a one-file change.
- *   4. Decide the external-ID question then, not now — see
- *      `docs/reference/нэмэлт.md` §15, which asks for source, import date,
- *      importing user, reference id and original value. That is a table, not a
- *      column, and it should not be designed against a guess.
- *   5. Any synchronisation runs on BullMQ (CLAUDE.md §6), never in a request.
- */
+  organization() {
+    return this.getList(ESIS_ENDPOINTS.organization, esisOrganizationSchema);
+  }
+
+  academicYearStatuses() {
+    return this.getList(ESIS_ENDPOINTS.academicYearStatuses, esisAcademicYearSchema);
+  }
+
+  groups() {
+    return this.getList(ESIS_ENDPOINTS.groups, esisGroupSchema);
+  }
+
+  students() {
+    return this.getList(ESIS_ENDPOINTS.students, esisStudentSchema);
+  }
+
+  groupStudents(studentGroupId: string | number) {
+    return this.getList(ESIS_ENDPOINTS.groupStudents, esisStudentSchema, { studentGroupId });
+  }
+
+  studentMovements(beginDate: string) {
+    return this.getList(ESIS_ENDPOINTS.studentMovements, esisMovementSchema, { beginDate });
+  }
+
+  teachers() {
+    return this.getList(ESIS_ENDPOINTS.teachers, esisStaffSchema);
+  }
+
+  staff() {
+    return this.getList(ESIS_ENDPOINTS.staff, esisStaffSchema);
+  }
+
+  groupAttendance(studentGroupId: string | number, dayDate: string) {
+    return this.getList(ESIS_ENDPOINTS.groupAttendance, esisAttendanceSchema, {
+      studentGroupId,
+      dayDate,
+    });
+  }
+
+  async saveAttendance(input: EsisAttendanceUpload) {
+    const parsed = esisAttendanceUploadSchema.parse(input);
+    const institutionId = Number(this.config.institutionId);
+    if (!Number.isSafeInteger(institutionId) || institutionId <= 0) {
+      throw new Error("ESIS_INSTITUTION_ID must be a positive safe integer for attendance upload");
+    }
+    return this.client.request({
+      path: ESIS_ENDPOINTS.saveAttendanceV3.path,
+      method: ESIS_ENDPOINTS.saveAttendanceV3.method,
+      body: { institutionId, ...parsed },
+    });
+  }
+
+  foodProductTypes() {
+    return this.getList(ESIS_ENDPOINTS.foodProductTypes, esisFoodProductTypeSchema, {}, false);
+  }
+
+  foodMaterialGroups() {
+    return this.getList(ESIS_ENDPOINTS.foodMaterialGroups, esisFoodMaterialGroupSchema, {}, false);
+  }
+
+  foodMaterials() {
+    return this.getList(ESIS_ENDPOINTS.foodMaterials, esisFoodMaterialSchema, {}, false);
+  }
+
+  foodProducts() {
+    return this.getList(ESIS_ENDPOINTS.foodProducts, esisFoodProductSchema, {}, false);
+  }
+
+  foodProductMaterials() {
+    return this.getList(
+      ESIS_ENDPOINTS.foodProductMaterials,
+      esisFoodProductMaterialSchema,
+      {},
+      false,
+    );
+  }
+
+  foodKit(productId: string | number) {
+    return this.getList(ESIS_ENDPOINTS.foodKit, esisFoodProductSchema, { productId }, false);
+  }
+
+  foodKitProducts(productId: string | number) {
+    return this.getList(
+      ESIS_ENDPOINTS.foodKitProducts,
+      esisFoodProductSchema,
+      { productId },
+      false,
+    );
+  }
+
+  private async getList<T>(
+    endpoint: { method: "GET"; path: string },
+    schema: import("zod").ZodType<T>,
+    pathValues: Record<string, string | number> = {},
+    includeInstitution = true,
+  ): Promise<EsisResponse<T[]>> {
+    return this.client.request<T[]>({
+      path: esisPath(endpoint.path, pathValues),
+      method: endpoint.method,
+      query: includeInstitution ? { institutionId: this.config.institutionId } : undefined,
+      parse: esisListParser(schema),
+    });
+  }
+}

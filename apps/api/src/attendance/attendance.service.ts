@@ -130,10 +130,10 @@ export class AttendanceService {
    * ★ What this does today, and what it will do.
    *
    * The client asked for a button that sends the register, and the eventual
-   * destination is ESIS. That transport does not exist:
-   * `docs/ESIS_API_READINESS.md` §1 lists the three blockers — the API
-   * documentation has not been received, the data-sharing agreement is not
-   * signed, and no token has been issued. So this records the act — who
+   * destination is ESIS. Its v3 endpoint adapter exists, but the production
+   * transport is not active: the data-sharing agreement, token scope, external
+   * id mapping and retryable sync queue are still required
+   * (`docs/ESIS_API_READINESS.md`). So this records the act — who
    * declared a register final, when, and over how many children — which is
    * worth storing on its own and is exactly the row the ESIS call will hang off
    * when it arrives. The button works; the wire is the part still missing.

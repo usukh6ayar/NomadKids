@@ -87,10 +87,9 @@ export class HealthController {
        * ★★ It answers exactly one question — "would a call be attempted, and
        * against which address?" — and it is `describe()`, not the config, so
        * the token cannot leak through it: presence only, never a value, never
-       * a length. There is no live probe here on purpose. Reaching ESIS to see
-       * whether it answers means choosing an endpoint, and choosing one before
-       * the documentation arrives is the guess `esis.service.ts` exists to
-       * prevent.
+       * a length. There is no live probe here on purpose: it would spend ESIS
+       * quota and disclose availability before the token's approved scope and
+       * a harmless probe service are confirmed.
        */
       esis: this.esis.status(),
       /*

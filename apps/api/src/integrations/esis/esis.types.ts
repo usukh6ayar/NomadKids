@@ -1,26 +1,14 @@
 /**
  * Transport types for the ESIS boundary.
  *
- * ★ There is deliberately **no domain type in this file** — no child, no
- * institution, no enrolment shape.
- *
- * We have not seen ESIS's API documentation. Writing `EsisChild` now would be
- * inventing a schema, and an invented schema is worse than none: it gets
- * imported, screens get built against it, and the day the real contract arrives
- * the cost of being wrong is spread across the codebase instead of contained
- * here. Everything below describes the *envelope* — how a request is made and
- * how a failure is reported — which is knowable without their documentation.
- *
- * When the real endpoints are published, domain schemas belong beside this file
- * as `esis.schemas.ts`, declared with Zod and validated at the boundary, so an
- * unexpected payload fails here rather than three layers inside the app.
+ * Domain schemas live in `esis.schemas.ts`; this file only describes transport.
  */
 
 /** The methods the client supports. Extend when a real endpoint needs more. */
 export type EsisMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 export interface EsisRequest {
-  /** Path relative to `ESIS_BASE_URL`, e.g. `/v1/institutions/123`. */
+  /** Path relative to `ESIS_BASE_URL`, e.g. `/svc/api/hub/v2/group/list`. */
   path: string;
   method?: EsisMethod;
   /** Serialised as JSON. Omit for GET. */
