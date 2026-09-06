@@ -195,6 +195,27 @@ describe("navigation is built from the session's roles", () => {
       ),
     );
   });
+
+  it("gives kitchen staff their theme without loading parent children", async () => {
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["COOK"]) },
+      { path: "/notifications/unread-count", body: { count: 0 } },
+    ]);
+
+    const { container } = renderWithProviders(
+      <AppLayout>
+        <div>агуулга</div>
+      </AppLayout>,
+    );
+
+    await waitFor(() =>
+      expect(container.querySelector("[data-app-theme]")).toHaveAttribute(
+        "data-app-theme",
+        "kitchen",
+      ),
+    );
+    expect(calls.some((call) => call.url.startsWith("/children/mine"))).toBe(false);
+  });
 });
 
 /**
