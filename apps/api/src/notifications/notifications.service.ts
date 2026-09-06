@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { AuditRepository } from "../audit/audit.repository";
 import { TenantAccessService } from "../authz/tenant-access.service";
 import { Role } from "../domain/enums";
+import type { NotificationCategory } from "../domain/enums";
 import type { Actor } from "../authz/actor";
 import { paginate, type PageParams } from "../common/pagination";
 import { NotificationsRepository } from "./notifications.repository";
@@ -282,6 +283,42 @@ export class NotificationsService {
     if (!notification) throw new NotFoundException();
 
     await this.repo.markRead(id, actor.userId);
+  }
+
+  /**
+   * Publishes a one-child notice on behalf of another module that has already
+   * decided the caller may act — a payment reminder from `InvoicesService`,
+   * for instance.
+   *
+   * ★ Deliberately skips `assertStaff`. Deciding *who* may trigger this notice
+   * is the caller's job (CLAUDE.md §1.1) — an accountant may send a finance
+   * reminder without holding the TEACHER/ADMIN permission this board's own
+   * `create()` requires, and giving them that would open the whole
+   * announcement-authoring surface rather than the one narrow action they
+   * actually need. This method reuses the board's storage and delivery
+   * (`NotificationsRepository`, the guardian audience rules) instead of a
+   * second notification system.
+   */
+  async createSystemNotice(
+    kindergartenId: string,
+    authorId: string,
+    dto: { category: NotificationCategory; title: string | null; body: string; childId: string },
+  ) {
+    const notification = await this.repo.create(
+      {
+        kindergartenId,
+        title: dto.title,
+        category: dto.category,
+        body: dto.body,
+        isImportant: false,
+        startsOn: null,
+        endsOn: null,
+        authorId,
+      },
+      [{ childId: dto.childId }],
+    );
+
+    return this.repo.publish(notification.id);
   }
 
   // ── internals ─────────────────────────────────────────────────────────────

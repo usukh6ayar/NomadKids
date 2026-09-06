@@ -85,7 +85,6 @@ function FoodOrders() {
     <div className="flex flex-col gap-5 lg:gap-6">
       <PageHeader
         title="Хүнсний захиалга"
-        lede="Нийлүүлэгчид өгсөн захиалга. Хүлээн авахад нөөц автоматаар нэмэгдэнэ."
         actions={
           kindergartenId ? (
             <Button size="sm" onClick={() => setCreating(true)}>

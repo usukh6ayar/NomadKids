@@ -20,9 +20,11 @@ import type {
   KitchenReportsQuery,
   ListFoodOrdersQuery,
   ListIngredientsQuery,
+  ListMealServingsQuery,
   ListRecipesQuery,
   ListStockMovementsQuery,
   ListSuppliersQuery,
+  MarkMealServedDto,
   ReceiveFoodOrderDto,
   StockAdjustmentDto,
   UpdateFoodOrderDto,
@@ -51,7 +53,13 @@ export class KitchenService {
   async listIngredients(actor: Actor, kindergartenId: string, query: ListIngredientsQuery) {
     this.tenants.assertCanManageKitchen(actor, kindergartenId);
     const { skip, take } = toSkipTake(query);
-    const { items, total } = await this.repo.listIngredients(kindergartenId, query.q, skip, take);
+    const { items, total } = await this.repo.listIngredients(
+      kindergartenId,
+      query.q,
+      query.category,
+      skip,
+      take,
+    );
     return paginate(items, total, query);
   }
 
@@ -773,6 +781,72 @@ export class KitchenService {
     return this.repo.purchaseReport(kindergartenId, toDate(query.from), toDate(query.to));
   }
 
+  // ── Meal servings (Тараалт) ──────────────────────────────────────────────
+
+  async listMealServings(actor: Actor, kindergartenId: string, query: ListMealServingsQuery) {
+    this.tenants.assertCanManageKitchen(actor, kindergartenId);
+    const rows = await this.repo.listMealServings(kindergartenId, toDate(query.date));
+    return rows.map(toMealServingDto);
+  }
+
+  /**
+   * Marks one group's sitting as distributed — or, if it was marked and then
+   * undone, revives that same row rather than creating a second one, which
+   * the partial unique index on (`groupId`, `date`, `kind`) would reject.
+   */
+  async markMealServed(actor: Actor, kindergartenId: string, dto: MarkMealServedDto) {
+    this.tenants.assertCanManageKitchen(actor, kindergartenId);
+
+    const group = await this.repo.findGroupForKitchen(dto.groupId, kindergartenId);
+    if (!group) throw new NotFoundException();
+
+    const date = toDate(dto.date);
+    const existing = await this.repo.findMealServingByKey(dto.groupId, date, dto.kind);
+
+    const saved = existing
+      ? await this.repo.reviveMealServing(existing.id, actor.userId)
+      : await this.repo.createMealServing({
+          kindergartenId,
+          groupId: dto.groupId,
+          date,
+          kind: dto.kind,
+          servedById: actor.userId,
+        });
+
+    await this.audit.append({
+      action: existing ? "UPDATE" : "CREATE",
+      kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "MealServing",
+      objectId: saved.id,
+      metadata: { groupId: dto.groupId, date: dto.date, kind: dto.kind },
+    });
+
+    return toMealServingDto(saved);
+  }
+
+  /**
+   * Undoes a mark — a cook tapped the wrong group, or the food had not
+   * actually gone out yet. Soft delete (CLAUDE.md §3.2); marking the same
+   * sitting again goes through `markMealServed`, which revives this row.
+   */
+  async unmarkMealServed(actor: Actor, id: string) {
+    const serving = await this.repo.findMealServing(id);
+    if (!serving) throw new NotFoundException();
+    this.tenants.assertCanManageKitchen(actor, serving.kindergartenId);
+
+    await this.repo.softDeleteMealServing(id);
+    await this.audit.append({
+      action: "DELETE",
+      kindergartenId: serving.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "MealServing",
+      objectId: id,
+    });
+
+    return { id };
+  }
+
   private async guardUniqueName<T>(run: () => Promise<T>): Promise<T> {
     try {
       return await run();
@@ -953,6 +1027,22 @@ function lineTotal(quantity: string, unitPrice: string): string {
 
 function toDate(iso: string): Date {
   return new Date(`${iso}T00:00:00.000Z`);
+}
+
+function toMealServingDto(row: {
+  id: string;
+  groupId: string;
+  kind: string;
+  servedAt: Date;
+  servedBy: { id: string; firstName: string; lastName: string } | null;
+}) {
+  return {
+    id: row.id,
+    groupId: row.groupId,
+    kind: row.kind,
+    servedAt: row.servedAt.toISOString(),
+    servedBy: row.servedBy,
+  };
 }
 
 function isUniqueViolation(error: unknown): boolean {

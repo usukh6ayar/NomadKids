@@ -830,6 +830,25 @@ export const groupMealRowSchema = z.object({
 });
 export type GroupMealRow = z.infer<typeof groupMealRowSchema>;
 
+/**
+ * Тараалт — one group's sitting, marked as distributed. Client request,
+ * 2026-09-05.
+ *
+ * ★ Not `MealRecord` with the child left off. `MealRecord` answers "did this
+ * child eat" and is written by a teacher, per child; this answers "has the
+ * kitchen sent food to this room yet" and is written by a cook, once per
+ * group per sitting, off the same "Ирц" screen that shows headcounts for
+ * portioning. Nothing here names a child.
+ */
+export const mealServingSchema = z.object({
+  id: uuidSchema,
+  groupId: uuidSchema,
+  kind: mealKindSchema,
+  servedAt: z.string(),
+  servedBy: personRefSchema.nullish(),
+});
+export type MealServing = z.infer<typeof mealServingSchema>;
+
 /*
  * ★ The staff menu — `menuDayWithWarningsSchema` — is NOT here.
  *
@@ -1534,10 +1553,38 @@ export const INGREDIENT_UNIT_LABEL: Record<IngredientUnit, string> = {
 
 const unitRefSchema = namedRefSchema.extend({ unit: ingredientUnitSchema });
 
+/**
+ * Ingredient categories — грouping the kitchen's catalog for browsing. Not
+ * named in the RFP; the client asked for the catalog to sort into buckets
+ * like this on 2026-09-04.
+ *
+ * ★ A closed list and a plain `String` column — same reasoning as
+ * `DOCUMENT_CATEGORIES`. The vocabulary is enforced at the form (a `Select`,
+ * not free text), so nothing here drifts into five spellings of "мах", and if
+ * a kindergarten ever needs its own categories these values are the seed rows
+ * of that table.
+ */
+export const INGREDIENT_CATEGORIES = [
+  "Мах, махан бүтээгдэхүүн",
+  "Сүү, сүүн бүтээгдэхүүн",
+  "Өндөг",
+  "Гурилан бүтээгдэхүүн",
+  "Тариа, будаа",
+  "Хүнсний ногоо",
+  "Жимс, жимсгэнэ",
+  "Тос, өөх",
+  "Амтлагч, зуурмаг",
+  "Бусад",
+] as const;
+export type IngredientCategory = (typeof INGREDIENT_CATEGORIES)[number];
+
 export const ingredientSchema = z.object({
   id: uuidSchema,
   name: z.string(),
   unit: ingredientUnitSchema,
+  /** One of `INGREDIENT_CATEGORIES`, or null for a row filed before the field
+   * existed. Still a string column, not an enum — see the note above. */
+  category: z.string().nullable(),
   /** Per 100 of the ingredient's own unit — 100 g, 100 ml or 100 pieces. */
   caloriesPer100: z.string().nullable(),
   proteinPer100: z.string().nullable(),
@@ -2735,6 +2782,7 @@ export const AUDIT_OBJECT_LABEL: Record<string, string> = {
   Guardianship: "Асран хамгаалагч",
   Invoice: "Нэхэмжлэл",
   InvoiceLineItem: "Нэхэмжлэлийн мөр",
+  InvoiceReminder: "Төлбөрийн сануулга",
   Kindergarten: "Цэцэрлэг",
   MealRecord: "Хоолны бүртгэл",
   MediaFile: "Файл",

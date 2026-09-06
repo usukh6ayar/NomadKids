@@ -17,6 +17,7 @@ export const FINANCIAL_OBJECT_TYPES = [
   "FundingCalculation",
   "Invoice",
   "InvoiceLineItem",
+  "InvoiceReminder",
   "Payment",
 ] as const;
 
@@ -91,6 +92,20 @@ export class AuditRepository {
   async countFinancial(kindergartenId: string): Promise<number> {
     return this.prisma.auditLog.count({
       where: { kindergartenId, objectType: { in: [...FINANCIAL_OBJECT_TYPES] } },
+    });
+  }
+
+  /**
+   * The most recent row for one object — used to throttle a repeatable action
+   * (a payment reminder) rather than to display anything. `objectId` alone
+   * would also match another kindergarten's UUID collision-free, but the pair
+   * costs nothing and reads as the actual intent.
+   */
+  async findLatest(objectType: string, objectId: string) {
+    return this.prisma.auditLog.findFirst({
+      where: { objectType, objectId },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
     });
   }
 }
