@@ -30,17 +30,32 @@ export function AuthShell({ children }: { children: ReactNode }) {
         */}
         <main className="w-full max-w-[440px] rounded-card border border-border bg-surface px-7 py-8 [overflow-wrap:anywhere] min-[900px]:shadow-sm">
           <div className="mb-[22px] flex items-center gap-3.5">
+            {/*
+              ★ `/mark.png`, not `/logo.png`, since the rename on 2026-09-06.
+              
+              `logo.png` has "БЯЦХАН НҮҮДЭЛЧИД" drawn into the artwork, so it
+              would now sit directly beside an `<h1>` reading "NomadKids" —
+              two different names for one product, on the first screen anybody
+              sees. `mark.png` is the same illustration with no lettering, and
+              the wordmark beside it is the name.
+            */}
             <Image
-              src="/logo.png"
-              alt="Бяцхан нүүдэлчид"
+              src="/mark.png"
+              alt={BRAND}
               width={54}
-              height={58}
+              height={39}
               className="w-[54px] shrink-0"
               style={{ height: "auto" }}
               priority
             />
             <div>
-              <h1 className="text-title font-semibold uppercase leading-[1.3] tracking-[.01em] text-ink">
+              {/*
+                ★ No `uppercase`. It was there for "Бяцхан нүүдэлчид", where
+                Cyrillic caps read as a wordmark; applied to "NomadKids" it
+                produces "NOMADKIDS" and destroys the camel case that *is* the
+                brand's spelling — the one the domain and the invoices use.
+              */}
+              <h1 className="text-title font-semibold leading-[1.3] tracking-[.01em] text-ink">
                 {BRAND}
               </h1>
               <p className="mt-1 text-compact leading-snug text-muted">
@@ -70,22 +85,30 @@ export function AuthShell({ children }: { children: ReactNode }) {
             ★ This was capped at 210px, and the cap was a workaround, not a
             design: the old `/logo-160.png` was 149px wide, so 380 rendered
             visibly soft and a blurred logo on the first screen anyone sees is
-            worse than a small sharp one.
+            worse than a small sharp one. The cap is gone.
 
-            `/logo.png` is regenerated from the 1254² original, so the cap has
-            nothing left to protect against and the panel gets the size it was
-            drawn for. 300 on a 2× display asks for 600 source pixels; there are
-            1071.
+            ★★ `/mark.png` since the rename — the lettering in `/logo.png` says
+            "БЯЦХАН НҮҮДЭЛЧИД", which is now a different product's name. The
+            wordmark below carries the name instead, in text, where it can be
+            read by a screen reader and changed without an image editor.
+
+            300 wide on a 2× display asks for 600 source pixels; `mark.png` has
+            512, so it renders at 256 CSS px sharp. The panel is decorative and
+            `aria-hidden`, so the size is a judgement about how it looks rather
+            than about what it tells anybody.
           */}
           <Image
-            src="/logo.png"
+            src="/mark.png"
             alt=""
             width={300}
-            height={322}
+            height={219}
             className="mx-auto w-[300px] max-w-full"
             style={{ height: "auto" }}
           />
-          <p className="mt-6 text-title font-semibold text-ink">Хүүхэд бүрийн хөгжлийн түүх</p>
+          <p className="mt-5 text-display font-semibold tracking-[.01em] text-ink">{BRAND}</p>
+          {/* Tight under the wordmark: the two read as one block, name then
+              promise, rather than as two competing headings. */}
+          <p className="mt-2.5 text-title font-semibold text-ink">Хүүхэд бүрийн хөгжлийн түүх</p>
           <p className="mx-auto mt-2.5 max-w-[34ch] text-body leading-relaxed text-muted">
             Багшийн ажиглалт, эцэг эхийн оролцоо, улирлын үнэлгээ — бүгд нэг дор, хүүхэд тус бүрийн
             цахим хувийн хавтаст.

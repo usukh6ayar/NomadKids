@@ -48,6 +48,10 @@ const prisma = new PrismaClient({
 /**
  * Named so it cannot be mistaken for a real kindergarten in a list of them.
  * Overridable, because a second walkthrough may want its own copy.
+ *
+ * ★ Kept as "Бяцхан нүүдэлчид" through the 2026-09-06 rename: that is a
+ * kindergarten's name and NomadKids is the platform it runs on. See
+ * `demo-data.ts`.
  */
 const KINDERGARTEN_NAME = process.env.SEED_SHOWCASE_NAME ?? "Бяцхан нүүдэлчид (үзүүлэн)";
 

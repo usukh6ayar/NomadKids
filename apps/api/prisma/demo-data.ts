@@ -39,6 +39,15 @@
 import argon2 from "argon2";
 import type { PrismaClient } from "../src/generated/prisma/client";
 
+/**
+ * ★ Still "Бяцхан нүүдэлчид", and deliberately so after the 2026-09-06 rename.
+ *
+ * This is a **kindergarten's** name, not the product's. NomadKids is the
+ * platform; "Бяцхан нүүдэлчид" is the first kindergarten on it, and a demo
+ * tenant named after a real customer is exactly what a demo tenant should be.
+ * Renaming it to "NomadKids (жишээ)" would claim the platform is a
+ * kindergarten.
+ */
 export const DEMO_KINDERGARTEN_NAME = "Бяцхан нүүдэлчид (жишээ)";
 
 export interface DemoSeedOptions {

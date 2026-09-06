@@ -843,7 +843,7 @@ function Brand({ subtitle }: { subtitle: string }) {
       <span className="grid size-10 shrink-0 place-items-center rounded-control bg-primary-soft p-0.5">
         <Image
           src="/mark.png"
-          alt="Бяцхан нүүдэлчид"
+          alt={BRAND}
           width={36}
           height={26}
           className="w-full object-contain"
@@ -1465,7 +1465,7 @@ function MobileHeader({ subtitle }: { subtitle: string }) {
         <span className="grid size-[34px] shrink-0 place-items-center rounded-control bg-primary-soft p-0.5">
           <Image
             src="/mark.png"
-            alt="Бяцхан нүүдэлчид"
+            alt={BRAND}
             width={30}
             height={22}
             className="w-full object-contain"

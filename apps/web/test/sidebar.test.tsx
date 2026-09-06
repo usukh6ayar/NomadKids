@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setPathname, stubApi } from "./support/render";
 import AppLayout from "@/app/(app)/layout";
+import { BRAND } from "@/lib/vocabulary";
 
 /**
  * The sidebar: brand, icons, active state, role and the way out.
@@ -112,7 +113,7 @@ describe("the brand header", () => {
     renderShell(["TEACHER"]);
     const nav = await sidebar();
 
-    const mark = within(nav).getByAltText("Бяцхан нүүдэлчид");
+    const mark = within(nav).getByAltText(BRAND);
     expect(mark).toBeInTheDocument();
     // `/mark.png` — the brand mark regenerated from the 1254² original. The
     // filename is asserted rather than merely "some image", because the sidebar
@@ -125,7 +126,7 @@ describe("the brand header", () => {
     renderShell(["TEACHER"]);
     const nav = await sidebar();
 
-    expect(within(nav).getByAltText("Бяцхан нүүдэлчид").closest("a")).toHaveAttribute("href", "/");
+    expect(within(nav).getByAltText(BRAND).closest("a")).toHaveAttribute("href", "/");
   });
 });
 

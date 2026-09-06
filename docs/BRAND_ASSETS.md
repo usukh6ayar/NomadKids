@@ -37,10 +37,25 @@ sit directly on the tops of `БЯЦХАН` — there is no gap. A crop at 790 ta
 letter tops with it; one at 700 cuts the chins off.
 
 ★★ **The wordmark is cropped out of every icon.** At 16 px — the size that
-actually appears in a browser tab — `БЯЦХАН НҮҮДЭЛЧИД` is four grey smudges.
-The arc and the two faces still read as this product. The full logo appears in
-exactly one generated file, `opengraph-image.png`, which is never rendered below
-600 px wide.
+actually appears in a browser tab — lettering is four grey smudges. The arc and
+the two faces still read as this product.
+
+★★★ **The drawn wordmark is now used nowhere at all — 2026-09-06.**
+
+The product was renamed from "Бяцхан нүүдэлчид" to **NomadKids**, and the
+lettering baked into `logo.png` says the old name. That artwork therefore
+cannot appear anywhere the new name also appears, which is everywhere: the two
+together read as two products.
+
+So both places that used it changed to `mark.png`, which is the same
+illustration with no lettering, and the name is set in **text** beside it —
+`AuthShell`, and `opengraph-image.png`, which is now composed rather than
+cropped. Text is the better home for a name regardless: a screen reader can
+read it, and the next rename is a string rather than an image editor.
+
+`public/logo.png` is kept, unused, because it is the only rendering of the
+original artwork at full size and a replacement wordmark will want it for
+reference. **Do not reintroduce it into a screen** without new lettering.
 
 ## What is generated, and why each one differs
 
@@ -49,12 +64,40 @@ exactly one generated file, `opengraph-image.png`, which is never rendered below
 | `app/favicon.ico`                   | 48, 32, 16  | transparent        | The URL crawlers, feed readers and old browsers request without being told to. Next's middleware matcher already names it                                                                                    |
 | `app/icon.png`                      | 512²        | transparent        | `<link rel="icon">`. Transparent so it reads on a light **and** a dark tab strip — the mark's own blue and yellow carry it either way                                                                        |
 | `app/apple-icon.png`                | 180²        | **opaque white**   | iOS composites alpha onto black. A transparent apple-touch-icon is a black tile with two faces floating in it                                                                                                |
-| `app/opengraph-image.png`           | 1200 × 630  | white on `#eff6ff` | Link previews. The one place the wordmark belongs                                                                                                                                                            |
+| `app/opengraph-image.png`           | 1200 × 630  | white on `#eff6ff` | Link previews. **Composed, not cropped** since the rename: `mark.png` at 260 wide over a rounded white card, with "NomadKids" and the strapline set in Helvetica. Regenerate with the recipe below           |
 | `public/icons/pwa-192.png`          | 192²        | opaque white       | manifest, `purpose: "any"`                                                                                                                                                                                   |
 | `public/icons/pwa-512.png`          | 512²        | opaque white       | manifest, `purpose: "any"`                                                                                                                                                                                   |
 | `public/icons/pwa-maskable-512.png` | 512²        | opaque white       | manifest, `purpose: "maskable"` — **the mark is drawn at 70% width**, inside the safe zone an Android launcher's circular crop leaves. The `any` icons fill their square and would lose both ends of the arc |
-| `public/logo.png`                   | 1071 × 1149 | transparent        | The auth screen's panel                                                                                                                                                                                      |
+| `public/logo.png`                   | 1071 × 1149 | transparent        | **Unused since 2026-09-06** — its drawn wordmark says the old name. Kept as the reference rendering of the original artwork                                                                                  |
 | `public/mark.png`                   | 512 × 373   | transparent        | The sidebar tile                                                                                                                                                                                             |
+
+### Regenerating the link preview
+
+```bash
+cd apps/web
+magick -size 1120x550 xc:none -fill white \
+  -draw 'roundrectangle 0,0 1119,549 28,28' /tmp/card.png
+magick -size 1200x630 xc:'#eff6ff' /tmp/card.png -geometry +40+40 -composite /tmp/base.png
+
+magick /tmp/base.png \
+  \( public/mark.png -resize 260x \) -gravity north -geometry +0+120 -composite \
+  -font Helvetica-Bold -pointsize 62 -fill '#0f172a' -gravity north -annotate +0+338 'NomadKids' \
+  -font Helvetica-Bold -pointsize 42 -fill '#0f172a' -gravity north -annotate +0+424 'Хүүхэд бүрийн хөгжлийн түүх' \
+  -font Helvetica -pointsize 27 -fill '#64748b' -gravity north \
+  -annotate +0+494 'Багшийн ажиглалт · эцэг эхийн оролцоо · улирлын үнэлгээ' \
+  /tmp/og.png
+
+magick /tmp/og.png -dither FloydSteinberg -colors 256 \
+  -strip -define png:compression-level=9 PNG8:app/opengraph-image.png
+```
+
+★ **Helvetica, not the app's own type.** The web app sets no webfont — it uses
+the system stack — so there is no project font file to point ImageMagick at,
+and Helvetica is what a Mac renders that stack as. It also covers Cyrillic,
+which is the constraint that rules most candidates out.
+
+★★ Keep `opengraph-image.alt.txt` in step. It is what a screen reader announces
+in place of this image, and it names the product.
 
 The OpenGraph type is set in `app/layout.tsx`; the manifest in `app/manifest.ts`.
 Neither lists the icon files — `favicon.ico`, `icon.png` and `apple-icon.png` are

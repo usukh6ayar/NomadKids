@@ -141,7 +141,7 @@ export function buildHtml({ observations = 14, photos = 12, headerFooter = false
     ? `
       @page {
         @top-center {
-          content: "Бяцхан Нүүдэлчид · Хүүхдийн хөгжлийн хавтас";
+          content: "NomadKids · Хүүхдийн хөгжлийн хавтас";
           font-size: 9pt; color: #6b7280;
         }
         @bottom-center {
