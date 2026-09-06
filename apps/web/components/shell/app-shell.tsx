@@ -664,13 +664,13 @@ export function AppShell({
         replaced its left margin. Cards stretched to fill it, which is the one
         thing the brief is explicit about not doing above 1440px.
 
-        The frame now owns the sidebar offset (`lg:pl-[244px]`, padding rather
-        than margin, so it cannot collide with auto-centring) and the column
-        inside it owns the cap. `mx-auto` then centres the content in the space
-        the sidebar leaves over, at every width, which is what "keep content
-        centered, max-width around 1400px" asks for.
+        The frame now owns the sidebar offset (`lg:pl-[232px]`: the 220px rail
+        plus a 12px gutter), padding rather than margin, so it cannot collide
+        with auto-centring. The column inside it owns the cap. `mx-auto` then
+        centres the content in the space the sidebar leaves over, at every
+        width.
       */}
-      <div className={cn(desktopSidebar && "lg:pl-[244px]")}>
+      <div className={cn(desktopSidebar && "lg:pl-[232px]")}>
         <DesktopHeader variant={variant} isAdmin={isAdmin} />
 
         {/*
@@ -683,7 +683,7 @@ export function AppShell({
           that have room to give. `lg:pt-8` rather than the old `lg:pt-10`
           because `DesktopHeader` now sits above this and supplies the lead-in.
         */}
-        <main className="mx-auto w-full max-w-[1400px] px-4 pb-24 pt-4 sm:px-6 lg:px-8 lg:pb-16 lg:pt-8 2xl:px-10">
+        <main className="mx-auto w-full max-w-[1420px] px-4 pb-24 pt-4 sm:px-6 lg:px-7 lg:pb-16 lg:pt-6 2xl:px-8">
           {children}
         </main>
       </div>
@@ -767,7 +767,7 @@ function DesktopHeader({ variant, isAdmin }: { variant: Variant; isAdmin: boolea
        * full-height panel to the left and nothing here should ever paint over
        * it.
        */
-      className="sticky top-0 z-10 hidden border-b border-border bg-surface lg:block"
+      className="sticky top-0 z-10 hidden bg-canvas/90 backdrop-blur lg:block"
     >
       {/*
         ★ The bar is full-bleed; its contents are not.
@@ -779,7 +779,7 @@ function DesktopHeader({ variant, isAdmin }: { variant: Variant; isAdmin: boolea
         every card it was meant to sit above. Same cap and same padding as
         `<main>`, so the two columns are one column.
       */}
-      <div className="mx-auto flex w-full max-w-[1400px] items-center gap-4 px-8 py-3 2xl:px-10">
+      <div className="mx-auto flex w-full max-w-[1420px] items-center gap-4 px-7 py-4 2xl:px-8">
         {/*
           ★ The group, and no longer the date.
 
@@ -796,7 +796,7 @@ function DesktopHeader({ variant, isAdmin }: { variant: Variant; isAdmin: boolea
         */}
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
           {isTeacher && count === 1 && group ? (
-            <span className="shrink-0 rounded-pill bg-primary-soft px-3 py-1 text-caption font-semibold text-primary">
+            <span className="shrink-0 rounded-pill bg-surface px-3 py-1 text-caption font-semibold text-primary shadow-sm">
               {group.name}
             </span>
           ) : null}
@@ -807,7 +807,7 @@ function DesktopHeader({ variant, isAdmin }: { variant: Variant; isAdmin: boolea
         <Link
           href="/settings"
           aria-label={`${fullName(session?.user)} — тохиргоо`}
-          className="grid size-11 shrink-0 place-items-center rounded-control transition-colors hover:bg-canvas"
+          className="grid size-11 shrink-0 place-items-center rounded-control bg-surface shadow-sm transition-colors hover:bg-primary-soft"
         >
           <span className="grid size-9 place-items-center rounded-pill bg-primary-soft text-caption font-semibold text-primary">
             {initials(session?.user)}
@@ -1150,7 +1150,7 @@ function Sidebar({
        * scrolled off the screen. The brand and the identity are fixed now, and
        * the nav between them takes the overflow.
        */
-      className="fixed inset-y-0 left-0 z-20 hidden w-[244px] flex-col gap-5 overflow-hidden border-r border-border bg-surface px-3.5 py-[18px] lg:flex"
+      className="fixed inset-y-0 left-0 z-20 hidden w-[220px] flex-col gap-5 overflow-hidden border-r border-border-soft bg-surface/92 px-3.5 py-[18px] shadow-[8px_0_28px_-22px_rgb(29_78_216_/_0.28)] backdrop-blur lg:flex"
     >
       <SidebarContent
         nav={nav}

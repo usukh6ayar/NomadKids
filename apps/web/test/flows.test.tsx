@@ -1252,23 +1252,12 @@ describe("paginated media", () => {
  * quietly shows nobody, a progress bar that divides by zero and prints "NaN%".
  */
 /**
- * The teacher's dashboard — Ангийн самбар.
+ * The teacher's dashboard.
  *
- * ★ Rewritten 2026-08-28, when the client replaced this screen with a five-card
- * design and asked for the rest to be removed.
- *
- * Nine widgets came off the page: the identity hero, the launcher grid, the
- * roster counts, the attention alerts, today's menu, the observation feed, the
- * observation mix, the term progress and the group actions. **None of them was
- * deleted** — every component still exists, still has its own tests, and can be
- * put back on a screen by rendering it.
- *
- * The seven cases that used to live here rendered `DashboardPage` and asserted
- * on those widgets. Each was pinning a real guarantee — "an empty roster must
- * not render NaN%", "the alerts section is absent, not empty, on a quiet day" —
- * and a guarantee is not worth less because the page stopped mounting the
- * component that carries it. So they render the components directly now, and
- * the page's own tests below assert what the page is.
+ * The 2026-09-06 mockup restores a greeting, header search and four illustrated
+ * quick actions, while keeping the real data widgets that already have API
+ * support. Older widgets that are no longer mounted here remain covered by
+ * direct component tests above.
  */
 describe("teacher dashboard", () => {
   const BIRTHDAY_CHILD = "cccccccc-cccc-4ccc-8ccc-ccccccccccc1";
@@ -1298,15 +1287,21 @@ describe("teacher dashboard", () => {
 
   // ═══ The page the client asked for ═══
 
-  it("renders the five cards of the sketch and nothing else", async () => {
+  it("renders the teacher mockup dashboard sections", async () => {
     stubDashboard();
 
     renderWithProviders(<DashboardPage />);
 
+    expect(
+      await screen.findByRole("heading", { name: /Сайн байна уу, Тест Хэрэглэгч/ }),
+    ).toBeInTheDocument();
+
+    for (const action of ["Ирц", "Мэдээ", "Явцын үнэлгээ"]) {
+      expect(await screen.findByText(action)).toBeInTheDocument();
+    }
+
     for (const card of [
-      "Ангийн самбар",
       "Өнөөдрийн ирц",
-      "Бүлгийн хүүхдүүд",
       "Сарын ирц",
       "Төрсөн өдөр",
       "Судалгаа",
@@ -1317,6 +1312,8 @@ describe("teacher dashboard", () => {
         `${card} is missing`,
       ).toBeInTheDocument();
     }
+
+    expect(screen.getByRole("search")).toBeInTheDocument();
   });
 
   /**
@@ -1356,8 +1353,9 @@ describe("teacher dashboard", () => {
     ]) {
       expect(screen.queryByRole("region", { name: region }), `${region} is back`).toBeNull();
     }
-    // The header's search box and "+ Үйлдэл" menu went with them.
-    expect(screen.queryByRole("search")).toBeNull();
+    // The "+ Үйлдэл" menu went with the old dashboard; search returned with
+    // the 2026-09-06 teacher mockup.
+    expect(screen.getByRole("search")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Үйлдэл/ })).toBeNull();
 
     /*

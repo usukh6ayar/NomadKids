@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { BarChart3, CalendarCheck, Cake, ClipboardList, Newspaper, Users } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -62,12 +63,15 @@ export function BoardCard({
     // neighbour sets — the "бүх card ижил өндөртэй" the brief asks for, which
     // grid's default `stretch` gives the cell and this passes on to the card.
     <Card pad="roomy" className={cn("flex h-full flex-col gap-3", className)}>
-      <div className="flex items-baseline justify-between gap-2">
-        <Tag id={id} className="min-w-0 text-lead font-semibold leading-heading text-ink">
-          {title}
-        </Tag>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <BoardIcon title={title} />
+          <Tag id={id} className="min-w-0 text-lead font-semibold leading-heading text-ink">
+            {title}
+          </Tag>
+        </div>
         {figure ? (
-          <span className="shrink-0 text-lead font-semibold tabular-nums text-primary">
+          <span className="shrink-0 rounded-pill bg-primary-soft px-2.5 py-1 text-lead font-semibold tabular-nums leading-none text-primary">
             {figure}
           </span>
         ) : null}
@@ -79,6 +83,31 @@ export function BoardCard({
 
       {footer ? <div className="mt-auto">{footer}</div> : null}
     </Card>
+  );
+}
+
+function BoardIcon({ title }: { title: string }) {
+  const match =
+    title.includes("ирц") || title.includes("Ирц")
+      ? { icon: CalendarCheck, className: "bg-sky text-sky-ink" }
+      : title.includes("хүүхд")
+        ? { icon: Users, className: "bg-primary-soft text-primary" }
+        : title.includes("Төрсөн")
+          ? { icon: Cake, className: "bg-sun text-sun-ink" }
+          : title.includes("Судалгаа")
+            ? { icon: BarChart3, className: "bg-sun text-sun-ink" }
+            : title.includes("нийтлэл")
+              ? { icon: Newspaper, className: "bg-mint text-mint-ink" }
+              : { icon: ClipboardList, className: "bg-peach text-peach-ink" };
+  const Icon = match.icon;
+
+  return (
+    <span
+      aria-hidden="true"
+      className={cn("grid size-10 shrink-0 place-items-center rounded-card", match.className)}
+    >
+      <Icon size={19} strokeWidth={2.3} />
+    </span>
   );
 }
 

@@ -41,7 +41,7 @@
    * look cheap. One step of tint does the separating instead, so the card
    * shadow can stay almost invisible.
    */
-  --color-canvas: #f8fafc;
+  --color-canvas: #eef8ff;
   --color-surface: #ffffff;
   --color-border: #e2e8f0;
   /* The lighter hairline, for card edges where --color-border is too present. */

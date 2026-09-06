@@ -1,23 +1,26 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 import { teacherDashboardSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
-import { formatDate } from "@/lib/format";
+import { formatDate, fullName } from "@/lib/format";
+import { useSession } from "@/lib/auth/session";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
 import { ErrorState, LoadingState, Skeleton } from "@/components/ui/states";
+import { Art, type ArtName } from "@/components/ui/art";
 import { AttendanceToday } from "@/components/dashboard/attendance-today";
 import { TodayMenu } from "@/components/dashboard/today-menu";
 import { SurveySummary } from "@/components/dashboard/survey-summary";
 import { ClassBoardNotice } from "@/components/dashboard/class-board-notice";
-import { GenderRatio } from "@/components/dashboard/gender-ratio";
 import { MonthBirthdays } from "@/components/dashboard/month-birthdays";
 import { WeeklyAttendance } from "@/components/dashboard/weekly-attendance";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
+import { ArrowRight } from "lucide-react";
 
 /**
  * "What needs my attention today."
@@ -134,6 +137,7 @@ export default function DashboardPage() {
  * where that ordering is recorded as an open question rather than settled here.
  */
 function TeacherDashboard() {
+  const { session } = useSession();
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: qk.dashboard.teacher(),
     queryFn: () => get("/dashboard/teacher", teacherDashboardSchema),
@@ -154,23 +158,26 @@ function TeacherDashboard() {
    * them, and it is never empty, because a line that appears late moves
    * everything below it.
    *
-   * ★★ "Ангийн самбар", renamed from "Хяналтын самбар" on 2026-08-28. The
-   * client's own name for this screen, and the reason `ClassBoardNotice`'s
-   * heading moved to "Сүүлийн нийтлэл" in the same pass: the two would
-   * otherwise have been the same string on the same page.
+   * ★★ The 2026-09-06 teacher mockup opens with a personal greeting rather
+   * than the route name. The card below still names the class board's latest
+   * post as "Сүүлийн нийтлэл", so the screen's title and the post widget do
+   * not repeat one another.
    *
    * The lede is the group and the date, in the sketch's own order — the two
    * facts that scope every figure below it. `useMyGroup()` resolves the group
    * the whole screen already speaks about, so this costs no request.
    *
-   * ★★★ No header search and no "+ Үйлдэл" menu.
+   * ★★★ Header search is back; "+ Үйлдэл" stays out.
    *
-   * Both went with the widgets on 2026-08-28. The sketch's header is a title
-   * and a line under it, and neither control was reachable only from here: the
-   * search submitted into `/children`, which has its own, and the menu's three
-   * destinations are the primary actions of the three screens they open.
+   * The new mockup puts search in the teacher header, and `PageHeader` already
+   * submits it to `/children?q=...`. The action menu's destinations are now
+   * the four illustrated quick tiles immediately under the greeting.
    */
-  const header = (lede: string) => <PageHeader title="Ангийн самбар" lede={lede} />;
+  const teacherName = fullName(session?.user);
+  const greetingName = teacherName === "—" ? "багш" : teacherName;
+  const header = (lede: string) => (
+    <PageHeader title={`Сайн байна уу, ${greetingName} 👋`} lede={lede} search />
+  );
 
   if (isLoading) {
     return (
@@ -252,50 +259,90 @@ function TeacherDashboard() {
             : "Идэвхтэй улирал тохируулаагүй",
       )}
 
-      {/*
-        ★ Two across from 375px up, not from a breakpoint.
-
-        The sketch pairs these on a *phone*, and that is buildable: at 375px
-        each card is about 168px, which fits a 96px dial over "30 / 35" (the
-        card stacks its ring and figure below `sm`) and two counts either side
-        of a rule. `AttendanceToday` and `GenderRatio` each carry that
-        narrow-width handling themselves rather than the page guessing at it.
-
-        ★★ Neither card can vanish, so this needs no hole-guard. Both render a
-        quiet `BoardCardEmpty` on every failure and empty case — their
-        docblocks record reversing `return null` for exactly this grid.
-      */}
-      <div className="grid grid-cols-2 gap-3 md:gap-4 lg:gap-5">
-        <AttendanceToday />
-        <GenderRatio />
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <QuickAction
+          href={group ? `/groups/${group.id}/attendance` : "/attendance"}
+          title="Ирц"
+          description="Өнөөдрийн ирц бүртгэх"
+          art="attendance"
+          tone="sky"
+        />
+        <QuickAction
+          href="/notifications/new"
+          title="Мэдээ"
+          description="Зураг, мэдээ нийтлэх"
+          art="notice"
+          tone="mint"
+        />
+        <QuickAction
+          href="/surveys"
+          title="Судалгаа"
+          description="Шинэ судалгаа үүсгэх"
+          art="analytics"
+          tone="sun"
+        />
+        <QuickAction
+          href={group ? `/groups/${group.id}/assessment` : "/children"}
+          title="Явцын үнэлгээ"
+          description="Хүүхдийн үнэлгээ оруулах"
+          art="progress"
+          tone="peach"
+        />
       </div>
 
-      {/* The week's register, full width — the sketch's own emphasis, and the
-          only card on the screen that needs a horizontal axis. */}
-      <WeeklyAttendance />
-
-      <div className="grid grid-cols-2 gap-3 md:gap-4 lg:gap-5">
+      <div className="grid items-stretch gap-4 xl:grid-cols-[1.05fr_1.1fr_1fr_1.35fr]">
+        <AttendanceToday />
+        <WeeklyAttendance />
         <MonthBirthdays birthdays={birthdaysThisMonth} />
         <SurveySummary />
       </div>
 
-      {/* The latest post, full width. Stacked on a phone; text beside its
-          photograph from `lg` — see `class-board-notice.tsx`. */}
-      <ClassBoardNotice notice={boardNotice} />
-
-      {/*
-        ★★★ D — today's menu, restored 2026-08-29.
-
-        It came off this screen with the eight other widgets the redesign
-        removed, and unlike them it had nowhere else to go: `TodayMenu` is the
-        only surface anywhere in the product for the allergy cross-check, which
-        CLAUDE.md §7 lists as delivered ("§11 the allergy cross-check — done").
-        Removing the dashboard from under it did not remove the feature from
-        scope, it just made it unreachable — so it sits below the five cards the
-        client drew rather than among them, which keeps their layout exactly as
-        approved.
-      */}
-      <TodayMenu />
+      <div className="grid items-stretch gap-4 xl:grid-cols-[1.2fr_1fr]">
+        <TodayMenu />
+        <ClassBoardNotice notice={boardNotice} />
+      </div>
     </div>
+  );
+}
+
+function QuickAction({
+  href,
+  title,
+  description,
+  art,
+  tone,
+}: {
+  href: string;
+  title: string;
+  description: string;
+  art: ArtName;
+  tone: "sky" | "mint" | "sun" | "peach";
+}) {
+  const toneClass = {
+    sky: "bg-sky/55 text-sky-ink hover:border-sky",
+    mint: "bg-mint/60 text-mint-ink hover:border-mint",
+    sun: "bg-sun/60 text-sun-ink hover:border-sun",
+    peach: "bg-peach/60 text-peach-ink hover:border-peach",
+  }[tone];
+
+  return (
+    <Link
+      href={href}
+      className="group flex min-h-[92px] items-center gap-3 rounded-card border border-border bg-surface/88 p-3.5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+    >
+      <span
+        aria-hidden="true"
+        className={`grid size-14 shrink-0 place-items-center rounded-card ${toneClass}`}
+      >
+        <Art name={art} size={42} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-lead font-semibold leading-heading text-ink">{title}</span>
+        <span className="mt-0.5 block text-caption leading-snug text-muted">{description}</span>
+      </span>
+      <span className="grid size-9 shrink-0 place-items-center rounded-pill bg-surface text-primary shadow-sm transition group-hover:bg-primary group-hover:text-white">
+        <ArrowRight size={17} aria-hidden="true" />
+      </span>
+    </Link>
   );
 }

@@ -253,6 +253,22 @@ describe("GET /v1/reports/:jobId", () => {
  * download rule would hand them the teacher's copy.
  */
 describe("GET /v1/reports/:jobId/download — audience", () => {
+  /*
+   * ★ 180 s, like every other test in this file that calls `generatedPdf`.
+   *
+   * These two shipped without a timeout and therefore ran under Vitest's
+   * default 5 s. `generatedPdf` launches a real Chromium and renders a real
+   * PDF — `docs/PDF_SPIKE.md` measures ~2.5 s warm and half a second more
+   * cold — so they were always within a slow machine of failing, and on
+   * 2026-09-06 they began failing consistently at ~6.4 s.
+   *
+   * Worth being explicit about what this is not: the authorization rule below
+   * never broke. The test never reached its assertion. Raising the budget to
+   * match its siblings is the fix; the alternative — leaving a real render
+   * under a 5 s budget — is a test that reports the machine's load as a
+   * security regression, which is the most expensive kind of false alarm this
+   * suite can raise (CLAUDE.md §4.4).
+   */
   it("refuses a guardian the teacher's copy of their own child's report", async () => {
     await seedObservations(a);
     const jobId = await createJob(teacherA, a.child.id);
@@ -263,7 +279,7 @@ describe("GET /v1/reports/:jobId/download — audience", () => {
       parentA,
     );
     expect(response.status).toBe(404);
-  });
+  }, 180_000);
 
   it("issues a URL to the requester once the job is done", async () => {
     await seedObservations(a);
@@ -276,7 +292,7 @@ describe("GET /v1/reports/:jobId/download — audience", () => {
     );
     expect(response.status).toBe(200);
     expect(response.body.url).toContain("http");
-  });
+  }, 180_000);
 
   it("refuses to sign a URL before the job has finished", async () => {
     const jobId = await createJob(teacherA, a.child.id);
