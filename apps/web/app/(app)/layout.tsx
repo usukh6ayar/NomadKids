@@ -129,7 +129,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const myChildren = useQuery({
     queryKey: qk.myChildren(),
     queryFn: () => get("/children/mine", ownChildrenSchema),
-    enabled: Boolean(session) && !isSuperAdmin && !isStaff && !isCook,
+    enabled: Boolean(session) && !isSuperAdmin && !isStaff && !isCook && !isAccountant,
     staleTime: 60_000,
   });
 
@@ -163,7 +163,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         nav={supportNav(isCook)}
         sections={supportSections(isCook)}
         variant="teacher"
-        workspaceTheme={isCook ? "kitchen" : undefined}
+        workspaceTheme={isCook ? "kitchen" : "finance"}
       >
         {children}
       </AppShell>

@@ -92,6 +92,24 @@ body:has([data-app-theme="kitchen"]) {
   --workspace-background: linear-gradient(120deg, #f5faf6 0%, #fff9e8 100%);
 }
 
+body:has([data-app-theme="finance"]) {
+  --color-canvas: #f3fafa;
+  --color-sunken: #eaf5f5;
+  --color-border: #d2e4e5;
+  --color-border-soft: #e5f0f0;
+  --color-ink: #173f48;
+  --color-primary: #167b83;
+  --color-primary-strong: #0f5c63;
+  --color-primary-hover: #126b72;
+  --color-primary-soft: #e3f4f4;
+  --workspace-accent: #167b83;
+  --workspace-accent-secondary: #3d83d0;
+  --workspace-button-start: #167b83;
+  --workspace-button-end: #2f9a9c;
+  --workspace-button-hover: #0f5c63;
+  --workspace-background: linear-gradient(120deg, #f3fafa 0%, #eef6fc 100%);
+}
+
 [data-app-theme] {
   background: var(--workspace-background);
   color: var(--color-ink);
