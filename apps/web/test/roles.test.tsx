@@ -237,6 +237,30 @@ describe("navigation is built from the session's roles", () => {
     );
     expect(calls.some((call) => call.url.startsWith("/children/mine"))).toBe(false);
   });
+
+  it("gives a platform operator the platform workspace theme", async () => {
+    const base = sessionFor([]);
+    stubApi([
+      {
+        path: "/auth/me",
+        body: { ...base, user: { ...base.user, isSuperAdmin: true } },
+      },
+      { path: "/notifications/unread-count", body: { count: 0 } },
+    ]);
+
+    const { container } = renderWithProviders(
+      <AppLayout>
+        <div>агуулга</div>
+      </AppLayout>,
+    );
+
+    await waitFor(() =>
+      expect(container.querySelector("[data-app-theme]")).toHaveAttribute(
+        "data-app-theme",
+        "platform",
+      ),
+    );
+  });
 });
 
 /**
