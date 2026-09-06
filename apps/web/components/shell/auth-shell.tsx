@@ -29,39 +29,42 @@ export function AuthShell({ children }: { children: ReactNode }) {
           column and the inputs run off the right edge.
         */}
         <main className="w-full max-w-[440px] rounded-card border border-border bg-surface px-7 py-8 [overflow-wrap:anywhere] min-[900px]:shadow-sm">
+          {/*
+            ★ The drawn logo carries the name; no wordmark is set beside it.
+
+            `logo.png` has "БЯЦХАН НҮҮДЭЛЧИД" lettered into the artwork. Setting
+            "NomadKids" next to it would put two names for one product on the
+            first screen anybody sees, so the heading below is the logo itself —
+            `alt` is what a screen reader announces, and it is the only place
+            the name appears in text here.
+
+            ★★ Client's decision, 2026-09-06: keep the lettering. The
+            alternative was `mark.png`, the same illustration with none.
+          */}
           <div className="mb-[22px] flex items-center gap-3.5">
             {/*
-              ★ `/mark.png`, not `/logo.png`, since the rename on 2026-09-06.
-              
-              `logo.png` has "БЯЦХАН НҮҮДЭЛЧИД" drawn into the artwork, so it
-              would now sit directly beside an `<h1>` reading "NomadKids" —
-              two different names for one product, on the first screen anybody
-              sees. `mark.png` is the same illustration with no lettering, and
-              the wordmark beside it is the name.
+              ★ 76, not the 54 this was while the name sat beside it in text.
+
+              The lettering is part of the artwork now, so the logo has to be
+              big enough for it to resolve — at 54 it was a coloured smudge over
+              two grey lines. 76 is the width at which "БЯЦХАН" reads on a 1×
+              display, and it is what the card's own left column can hold
+              without pushing the sentence beside it onto a fourth line.
             */}
-            <Image
-              src="/mark.png"
-              alt={BRAND}
-              width={54}
-              height={39}
-              className="w-[54px] shrink-0"
-              style={{ height: "auto" }}
-              priority
-            />
-            <div>
-              {/*
-                ★ No `uppercase`. It was there for "Бяцхан нүүдэлчид", where
-                Cyrillic caps read as a wordmark; applied to "NomadKids" it
-                produces "NOMADKIDS" and destroys the camel case that *is* the
-                brand's spelling — the one the domain and the invoices use.
-              */}
-              <h1 className="text-title font-semibold leading-[1.3] tracking-[.01em] text-ink">
-                {BRAND}
-              </h1>
-              <p className="mt-1 text-compact leading-snug text-muted">
-                Багш, эцэг эх, администраторт зориулсан аюулгүй нэвтрэх систем.
-              </p>
-            </div>
+            <h1 className="shrink-0">
+              <Image
+                src="/logo.png"
+                alt={BRAND}
+                width={76}
+                height={82}
+                className="w-[76px]"
+                style={{ height: "auto" }}
+                priority
+              />
+            </h1>
+            <p className="text-compact leading-snug text-muted">
+              Багш, эцэг эх, администраторт зориулсан аюулгүй нэвтрэх систем.
+            </p>
           </div>
 
           {children}
@@ -85,30 +88,23 @@ export function AuthShell({ children }: { children: ReactNode }) {
             ★ This was capped at 210px, and the cap was a workaround, not a
             design: the old `/logo-160.png` was 149px wide, so 380 rendered
             visibly soft and a blurred logo on the first screen anyone sees is
-            worse than a small sharp one. The cap is gone.
+            worse than a small sharp one. `/logo.png` is regenerated from the
+            1254² original, so the cap has nothing left to protect against.
+            300 on a 2× display asks for 600 source pixels; there are 1071.
 
-            ★★ `/mark.png` since the rename — the lettering in `/logo.png` says
-            "БЯЦХАН НҮҮДЭЛЧИД", which is now a different product's name. The
-            wordmark below carries the name instead, in text, where it can be
-            read by a screen reader and changed without an image editor.
-
-            300 wide on a 2× display asks for 600 source pixels; `mark.png` has
-            512, so it renders at 256 CSS px sharp. The panel is decorative and
-            `aria-hidden`, so the size is a judgement about how it looks rather
-            than about what it tells anybody.
+            ★★ No wordmark under it either — the lettering is in the artwork,
+            and this panel is `aria-hidden`, so a name repeated here would be
+            decoration that says the same thing twice.
           */}
           <Image
-            src="/mark.png"
+            src="/logo.png"
             alt=""
             width={300}
-            height={219}
+            height={322}
             className="mx-auto w-[300px] max-w-full"
             style={{ height: "auto" }}
           />
-          <p className="mt-5 text-display font-semibold tracking-[.01em] text-ink">{BRAND}</p>
-          {/* Tight under the wordmark: the two read as one block, name then
-              promise, rather than as two competing headings. */}
-          <p className="mt-2.5 text-title font-semibold text-ink">Хүүхэд бүрийн хөгжлийн түүх</p>
+          <p className="mt-6 text-title font-semibold text-ink">Хүүхэд бүрийн хөгжлийн түүх</p>
           <p className="mx-auto mt-2.5 max-w-[34ch] text-body leading-relaxed text-muted">
             Багшийн ажиглалт, эцэг эхийн оролцоо, улирлын үнэлгээ — бүгд нэг дор, хүүхэд тус бүрийн
             цахим хувийн хавтаст.

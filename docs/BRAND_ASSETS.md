@@ -36,26 +36,33 @@ magick full.png -crop 1071x746+0+0 +repage -trim +repage mark.png   # 1024 × 74
 sit directly on the tops of `БЯЦХАН` — there is no gap. A crop at 790 takes the
 letter tops with it; one at 700 cuts the chins off.
 
-★★ **The wordmark is cropped out of every icon.** At 16 px — the size that
-actually appears in a browser tab — lettering is four grey smudges. The arc and
-the two faces still read as this product.
+★★ **The wordmark used to be cropped out of every icon, and no longer is —
+client's decision, 2026-09-06.**
 
-★★★ **The drawn wordmark is now used nowhere at all — 2026-09-06.**
+The technical argument for cropping was real, and is recorded here rather than
+quietly dropped: at 16 px, the size that actually appears in a browser tab,
+lettering is four grey smudges, while the arc and the two faces read as this
+product on their own. It was put to the client with a rendered comparison of
+both; they chose the full logo, background and all, everywhere.
 
-The product was renamed from "Бяцхан нүүдэлчид" to **NomadKids**, and the
-lettering baked into `logo.png` says the old name. That artwork therefore
-cannot appear anywhere the new name also appears, which is everywhere: the two
-together read as two products.
+So every icon is generated from the **square original** rather than from a
+crop. The source is `docs/spikes/pdf/assets/photo-9.jpg` — 1400², lettering
+included, on the artwork's own near-white ground. That it lives in a spikes
+folder is historical, not deliberate; point the recipes below at a cleaner
+original if one ever lands.
 
-So both places that used it changed to `mark.png`, which is the same
-illustration with no lettering, and the name is set in **text** beside it —
-`AuthShell`, and `opengraph-image.png`, which is now composed rather than
-cropped. Text is the better home for a name regardless: a screen reader can
-read it, and the next rename is a string rather than an image editor.
+★★★ **The product name and the drawn lettering disagree, on purpose.**
 
-`public/logo.png` is kept, unused, because it is the only rendering of the
-original artwork at full size and a replacement wordmark will want it for
-reference. **Do not reintroduce it into a screen** without new lettering.
+The product is **NomadKids**; the logo says "Бяцхан нүүдэлчид". They are not
+the same thing — NomadKids is the platform, that is the kindergarten it was
+built for — and the client wants the drawn wordmark kept.
+
+The cost is that no screen may set "NomadKids" in text _beside_ the drawn logo:
+two names side by side read as two products. So `AuthShell` shows the logo and
+no wordmark — its `alt` carries the name, which is what a screen reader
+announces — and `opengraph-image.png` is the logo over the strapline. The
+sidebar is the one place the name appears as text, and it uses `mark.png`, the
+lettering-free crop, precisely so that the two never meet.
 
 ## What is generated, and why each one differs
 
@@ -64,40 +71,43 @@ reference. **Do not reintroduce it into a screen** without new lettering.
 | `app/favicon.ico`                   | 48, 32, 16  | transparent        | The URL crawlers, feed readers and old browsers request without being told to. Next's middleware matcher already names it                                                                                    |
 | `app/icon.png`                      | 512²        | transparent        | `<link rel="icon">`. Transparent so it reads on a light **and** a dark tab strip — the mark's own blue and yellow carry it either way                                                                        |
 | `app/apple-icon.png`                | 180²        | **opaque white**   | iOS composites alpha onto black. A transparent apple-touch-icon is a black tile with two faces floating in it                                                                                                |
-| `app/opengraph-image.png`           | 1200 × 630  | white on `#eff6ff` | Link previews. **Composed, not cropped** since the rename: `mark.png` at 260 wide over a rounded white card, with "NomadKids" and the strapline set in Helvetica. Regenerate with the recipe below           |
+| `app/opengraph-image.png`           | 1200 × 630  | white on `#eff6ff` | Link previews. The full logo over the strapline — **no "NomadKids" wordmark**, which would put two names in one image                                                                                        |
 | `public/icons/pwa-192.png`          | 192²        | opaque white       | manifest, `purpose: "any"`                                                                                                                                                                                   |
 | `public/icons/pwa-512.png`          | 512²        | opaque white       | manifest, `purpose: "any"`                                                                                                                                                                                   |
 | `public/icons/pwa-maskable-512.png` | 512²        | opaque white       | manifest, `purpose: "maskable"` — **the mark is drawn at 70% width**, inside the safe zone an Android launcher's circular crop leaves. The `any` icons fill their square and would lose both ends of the arc |
-| `public/logo.png`                   | 1071 × 1149 | transparent        | **Unused since 2026-09-06** — its drawn wordmark says the old name. Kept as the reference rendering of the original artwork                                                                                  |
-| `public/mark.png`                   | 512 × 373   | transparent        | The sidebar tile                                                                                                                                                                                             |
+| `public/logo.png`                   | 1071 × 1149 | transparent        | The auth screen — both the card's heading and the decorative panel. Transparent, because it sits on two different grounds                                                                                    |
+| `public/mark.png`                   | 512 × 373   | transparent        | The sidebar tile — **the one place with no lettering**, because the sidebar sets "NomadKids" in text beside it                                                                                               |
 
-### Regenerating the link preview
+### Regenerating the icons
+
+All six come from the square original, which needs no cropping — it is already
+tightly framed.
 
 ```bash
 cd apps/web
-magick -size 1120x550 xc:none -fill white \
-  -draw 'roundrectangle 0,0 1119,549 28,28' /tmp/card.png
-magick -size 1200x630 xc:'#eff6ff' /tmp/card.png -geometry +40+40 -composite /tmp/base.png
+SRC=../../docs/spikes/pdf/assets/photo-9.jpg
 
-magick /tmp/base.png \
-  \( public/mark.png -resize 260x \) -gravity north -geometry +0+120 -composite \
-  -font Helvetica-Bold -pointsize 62 -fill '#0f172a' -gravity north -annotate +0+338 'NomadKids' \
-  -font Helvetica-Bold -pointsize 42 -fill '#0f172a' -gravity north -annotate +0+424 'Хүүхэд бүрийн хөгжлийн түүх' \
-  -font Helvetica -pointsize 27 -fill '#64748b' -gravity north \
-  -annotate +0+494 'Багшийн ажиглалт · эцэг эхийн оролцоо · улирлын үнэлгээ' \
-  /tmp/og.png
+magick "$SRC" -resize 512x512 -strip PNG24:app/icon.png
+magick "$SRC" -resize 180x180 -strip PNG24:app/apple-icon.png
+magick "$SRC" -resize 192x192 -strip PNG24:public/icons/pwa-192.png
+magick "$SRC" -resize 512x512 -strip PNG24:public/icons/pwa-512.png
 
-magick /tmp/og.png -dither FloydSteinberg -colors 256 \
-  -strip -define png:compression-level=9 PNG8:app/opengraph-image.png
+# maskable: 70% of the square, so an Android launcher's circular crop
+# cannot take the arc's ends or the descenders with it
+magick "$SRC" -resize 358x358 -background white -gravity center \
+  -extent 512x512 -strip PNG24:public/icons/pwa-maskable-512.png
+
+# favicon carries three sizes in one file
+magick "$SRC" \( -clone 0 -resize 48x48 \) \( -clone 0 -resize 32x32 \) \
+  \( -clone 0 -resize 16x16 \) -delete 0 app/favicon.ico
 ```
 
-★ **Helvetica, not the app's own type.** The web app sets no webfont — it uses
-the system stack — so there is no project font file to point ImageMagick at,
-and Helvetica is what a Mac renders that stack as. It also covers Cyrillic,
-which is the constraint that rules most candidates out.
+★ **No transparency.** The original's ground is part of what the client chose,
+and an opaque icon also settles the apple-touch-icon problem for free: iOS
+composites alpha onto black, so a transparent one is a black tile.
 
 ★★ Keep `opengraph-image.alt.txt` in step. It is what a screen reader announces
-in place of this image, and it names the product.
+in place of that image, and it names both the product and the lettering.
 
 The OpenGraph type is set in `app/layout.tsx`; the manifest in `app/manifest.ts`.
 Neither lists the icon files — `favicon.ico`, `icon.png` and `apple-icon.png` are
