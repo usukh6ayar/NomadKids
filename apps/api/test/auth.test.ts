@@ -320,6 +320,39 @@ describe("POST /auth/refresh", () => {
     expect(old?.revokedAt).not.toBeNull();
   });
 
+  /**
+   * ★ The refresh limit is counted per **session**, not per IP.
+   *
+   * Every signed-in browser calls this on a timer — a 15-minute access token
+   * is four refreshes an hour per tab — so an IP-wide bucket is a shared
+   * ceiling: fifteen people behind one kindergarten's router exhaust 60/hour
+   * between them and the sixteenth is signed out. The whole building would go
+   * down at the busiest moment of the morning, and it would read as an outage
+   * rather than as a rate limit.
+   *
+   * Two users behind one IP is exactly that case in miniature: after one has
+   * spent a small budget, the other must still be served.
+   */
+  it("counts the refresh limit per session, not per IP", async () => {
+    const one = await login(app, (await createUser({ username: uniq("u") })).username);
+    const two = await login(app, (await createUser({ username: uniq("u") })).username);
+
+    // Several refreshes from the first session, rotating its cookie each time.
+    let cookies = one.cookies;
+    for (let i = 0; i < 5; i += 1) {
+      const res = await request(server()).post("/v1/auth/refresh").set("Cookie", cookies);
+      expect(res.status).toBe(200);
+      const rotated = (res.headers["set-cookie"] as unknown as string[])
+        .map((c) => c.split(";")[0]!)
+        .join("; ");
+      cookies = rotated;
+    }
+
+    // The second session shares the IP and must be unaffected.
+    const other = await request(server()).post("/v1/auth/refresh").set("Cookie", two.cookies);
+    expect(other.status).toBe(200);
+  });
+
   it("revokes the whole family when a rotated token is replayed", async () => {
     // Two parties holding the cookie means it was stolen: the legitimate client
     // discards the old token after rotating. Killing the family logs both out.

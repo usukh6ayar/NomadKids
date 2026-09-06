@@ -107,7 +107,19 @@ export class AuthController {
   @Public()
   @Post("refresh")
   @HttpCode(HttpStatus.OK)
-  @RateLimit({ limit: 60, windowMs: HOUR })
+  /*
+   * ★ Counted per session, not per IP — 2026-09-06.
+   *
+   * The browser began calling this on a timer when the refresh flow landed;
+   * before that nothing called it at all. At a 15-minute access token that is
+   * four refreshes an hour per signed-in tab, so `60` counted per IP is
+   * fifteen people behind one kindergarten's router — after which everybody
+   * else is signed out. See `bySession` in `rate-limit.guard.ts`.
+   *
+   * 60 per session per hour is still ten times what a well-behaved client
+   * needs, and a client looping on refresh is either broken or hostile.
+   */
+  @RateLimit({ limit: 60, windowMs: HOUR, bySession: true })
   async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const token = cookie(req, REFRESH_COOKIE);
     if (!token) {
