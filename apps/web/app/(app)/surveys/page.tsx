@@ -130,7 +130,6 @@ function SurveysList() {
     <div className="flex flex-col gap-5 lg:gap-6">
       <PageHeader
         title="Судалгаа"
-        lede="Гэр бүлээс санал асуулга авах."
         actions={
           <Button onClick={() => setCreating(true)}>
             <Plus size={18} aria-hidden="true" />

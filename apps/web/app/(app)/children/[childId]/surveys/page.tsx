@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { z } from "zod";
-import { childDetailSchema, surveySchema } from "@kinder/contracts";
+import { surveySchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
@@ -13,7 +13,6 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { RowCard, RowList } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { fullName } from "@/lib/format";
 import { SURVEY_TONE_BG, SURVEY_TYPE_META } from "@/lib/survey-meta";
 import { cn } from "@/lib/utils";
 
@@ -37,18 +36,13 @@ export default function ChildSurveysPage() {
   const params = useParams<{ childId: string }>();
   const childId = params.childId;
 
-  const child = useQuery({
-    queryKey: qk.child(childId),
-    queryFn: () => get(`/children/${childId}`, childDetailSchema),
-  });
-
   const surveys = useQuery({
     queryKey: qk.childSurveys(childId),
     queryFn: () => get(`/children/${childId}/surveys`, activeSurveysSchema),
   });
 
   const header = (
-    <PageHeader title="Миний судалгаанууд" lede={child.data ? fullName(child.data) : undefined} />
+    <PageHeader title="Миний судалгаанууд" />
   );
 
   if (surveys.isLoading) {

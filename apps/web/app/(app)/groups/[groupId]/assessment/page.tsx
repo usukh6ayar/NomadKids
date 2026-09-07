@@ -286,7 +286,7 @@ function GroupAssessment() {
         the only page heading that did not. The same mistake `dashboard/page.tsx`
         records fixing in its own three branches.
       */}
-      <PageHeader title="Явцын үнэлгээ" lede={group.data?.name ?? "Бүлгийн үнэлгээ"} />
+      <PageHeader title="Явцын үнэлгээ" />
 
       {/*
         ★ The client's 2026-08-31 top strip: pick a child, then start a record.

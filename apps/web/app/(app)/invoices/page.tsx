@@ -95,8 +95,7 @@ function Invoices() {
   return (
     <div className="flex flex-col gap-5 lg:gap-6">
       <PageHeader
-        title="Эцэг эхийн нэхэмжлэл"
-        lede="Сар бүрийн төлбөр, төлөгдсөн эсэх. Ирц, хоолны бүртгэлтэй хамт улсын санхүүжилтээс тусдаа."
+        title="Нэхэмжлэл"
         actions={
           <div className="flex flex-wrap items-end gap-3">
             <Field label="Сар">
@@ -240,7 +239,11 @@ function GenerateInvoiceDialog({
   const roster = useQuery({
     enabled: open,
     queryKey: ["invoices", "roster", kindergartenId],
-    queryFn: () => get(`/children?pageSize=${MAX_PAGE_SIZE}`, rosterSchema),
+    queryFn: () =>
+      get(
+        `/kindergartens/${kindergartenId}/children/finance-roster?pageSize=${MAX_PAGE_SIZE}`,
+        rosterSchema,
+      ),
   });
 
   const generate = useMutation({

@@ -66,7 +66,7 @@ function currentMonth(): string {
 }
 
 function Reports() {
-  const { group, count } = useMyGroup();
+  const { group } = useMyGroup();
   const [month, setMonth] = useState(currentMonth);
 
   const groupId = group?.id ?? "";
@@ -78,14 +78,7 @@ function Reports() {
     enabled: Boolean(groupId && month),
   });
 
-  const header = (
-    <PageHeader
-      title="Тайлан"
-      lede={
-        count === 1 && group ? `${group.name} — сарын ирцийн нэгтгэл.` : "Сарын ирцийн нэгтгэл."
-      }
-    />
-  );
+  const header = <PageHeader title="Тайлан" />;
 
   /*
     ★ A teacher with no group gets an explanation, not an empty report.

@@ -104,13 +104,12 @@ function Finance() {
     <div className="flex flex-col gap-5 lg:gap-6">
       <PageHeader
         title="Санхүүжилт"
-        lede="Сарын тооцоо, тариф. Ирц болон хоолны бүртгэлээс автоматаар бодогдоно."
         actions={
           <div className="flex flex-wrap items-end gap-3">
             <Button asChild variant="secondary" size="sm">
               <Link href="/invoices">
                 <Receipt size={16} aria-hidden="true" />
-                Эцэг эхийн нэхэмжлэл
+                Нэхэмжлэл
               </Link>
             </Button>
             <Button asChild variant="secondary" size="sm">

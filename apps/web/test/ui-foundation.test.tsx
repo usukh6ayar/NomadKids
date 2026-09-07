@@ -162,11 +162,10 @@ describe("IconChip", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("PageHeader", () => {
-  it("renders title and lede with no icon or meta, as every existing screen expects", () => {
-    renderWithProviders(<PageHeader title="Хүүхдүүд" lede="Хариуцсан бүлэг." />);
+  it("renders title with no icon or meta, as every existing screen expects", () => {
+    renderWithProviders(<PageHeader title="Хүүхдүүд" />);
 
     expect(screen.getByRole("heading", { name: "Хүүхдүүд" })).toBeInTheDocument();
-    expect(screen.getByText("Хариуцсан бүлэг.")).toBeInTheDocument();
     expect(screen.queryByTestId("header-icon")).not.toBeInTheDocument();
   });
 
@@ -189,7 +188,6 @@ describe("PageHeader", () => {
     renderWithProviders(
       <PageHeader
         title="Судалгаа"
-        lede="Асуулга."
         icon={<IconChip icon={<span>i</span>} label="Судалгаа" />}
         meta={<span>3 идэвхтэй</span>}
         actions={<button type="button">Нэмэх</button>}
@@ -199,7 +197,6 @@ describe("PageHeader", () => {
     expect(screen.getByRole("img", { name: "Судалгаа" })).toBeInTheDocument();
     expect(screen.getByText("3 идэвхтэй")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Нэмэх" })).toBeInTheDocument();
-    expect(screen.getByText("Асуулга.")).toBeInTheDocument();
   });
 
   it("wraps the meta row rather than forcing it onto one line", () => {

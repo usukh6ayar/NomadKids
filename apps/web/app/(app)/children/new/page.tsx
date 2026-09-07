@@ -127,7 +127,7 @@ function NewChild() {
 
   return (
     <div className="flex flex-col gap-6 lg:gap-8">
-      <PageHeader title="Хүүхэд бүртгэх" lede="Бүлэгт нэмбэл багш нар шууд харна." />
+      <PageHeader title="Хүүхэд бүртгэх" />
 
       <Card pad="roomy">
         <form

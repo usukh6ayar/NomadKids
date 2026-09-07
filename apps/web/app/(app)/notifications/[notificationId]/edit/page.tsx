@@ -170,7 +170,7 @@ function EditNotice() {
 
   return (
     <div className="flex flex-col gap-6 lg:gap-8">
-      <PageHeader title="Мэдэгдэл засах" lede="Нийтэлсэн зараа шинэчлэх." />
+      <PageHeader title="Мэдэгдэл засах" />
 
       <Card pad="roomy">
         <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>

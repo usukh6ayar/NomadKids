@@ -37,7 +37,12 @@ describe("generating an invoice", () => {
         body: { items: [], page: 1, pageSize: 25, total: 0, totalPages: 0 },
       },
       {
-        path: "/children",
+        // ★ `finance-roster`, not `/children` — 2026-09-07. `GET /children`'s
+        // authorization filter has no accountant chain by design (it is
+        // `canAccessChild`'s, not `canViewChildFinance`'s — see
+        // `ChildrenService.financeRoster`'s own comment), so an accountant's
+        // child picker calls this dedicated route instead.
+        path: `/kindergartens/${KG_ID}/children/finance-roster`,
         method: "GET",
         body: {
           items: [

@@ -72,7 +72,6 @@ function FinancialAuditLog() {
 
       <PageHeader
         title="Санхүүгийн үйлдлийн түүх"
-        lede="Тариф, нэхэмжлэл, төлбөрт орсон бүх өөрчлөлт. Зөвхөн уншина."
       />
 
       {entries.isLoading ? <LoadingState rows={6} /> : null}

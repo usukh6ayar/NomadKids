@@ -129,6 +129,77 @@ describe("who may reach an invoice", () => {
     );
     expect(res.status).toBe(404);
   });
+
+  /*
+   * ★ `assertCanReadFinance` above only proves the actor may touch kindergarten
+   * A's money — it says nothing about which kindergarten `childId` belongs to.
+   * `generate()` used to trust the body outright, so an accountant could bill
+   * a child who was never enrolled in their kindergarten by naming a child id
+   * from somewhere else. The two cases below are the two ways that showed up:
+   * a child the actor cannot see at all, and — the sharper one — a child the
+   * actor legitimately CAN see, just not through kindergarten A.
+   */
+  it("refuses billing a child from a kindergarten the accountant has no relationship to", async () => {
+    const res = await generate(accountant, a.kindergarten.id, generateBody(b.child.id));
+    expect(res.status).toBe(404);
+  });
+
+  it("refuses billing kindergarten A for a child who belongs to B, even for an accountant of both", async () => {
+    // accountantB is legitimately an accountant of B and can see b.child —
+    // `assertCanViewFinance` alone would let this through. Adding a second
+    // membership in A is what isolates the bug this test exists to catch:
+    // "may touch A's money" and "this child belongs to A" are different
+    // questions, and only the second one should decide whose ledger it lands on.
+    await createMembership(accountantB.userId, a.kindergarten.id, "ACCOUNTANT");
+    const res = await generate(accountantB, a.kindergarten.id, generateBody(b.child.id));
+    expect(res.status).toBe(404);
+  });
+});
+
+/**
+ * The child picker behind "Нэхэмжлэл үүсгэх" — нэмэлт.md §7.
+ *
+ * ★ `GET children` is `visibleChildrenWhere`'s list, and that filter has no
+ * accountant chain by design (it is `canAccessChild`'s, not
+ * `canViewChildFinance`'s — see `ChildAccessFacts` / `child-access.ts`). Until
+ * this route existed, an accountant opening this dialog got an empty roster
+ * and could not name a child to bill at all — the bug this suite exists to
+ * catch.
+ */
+describe("the invoice-generation roster (children/finance-roster)", () => {
+  async function roster(session: AuthSession, kindergartenId: string) {
+    return authed(
+      request(server()).get(`/v1/kindergartens/${kindergartenId}/children/finance-roster`),
+      session,
+    );
+  }
+
+  it("lets an accountant see the children of their own kindergarten", async () => {
+    const res = await roster(accountant, a.kindergarten.id);
+    expect(res.status).toBe(200);
+    expect(res.body.items.map((c: { id: string }) => c.id)).toContain(a.child.id);
+  });
+
+  it("refuses a teacher — this route is finance-scoped, not portfolio-scoped", async () => {
+    const res = await roster(teacher, a.kindergarten.id);
+    expect(res.status).toBe(404);
+  });
+
+  it("refuses a guardian", async () => {
+    const res = await roster(parent, a.kindergarten.id);
+    expect(res.status).toBe(404);
+  });
+
+  it("refuses an accountant employed by a different kindergarten", async () => {
+    const res = await roster(accountantB, a.kindergarten.id);
+    expect(res.status).toBe(404);
+  });
+
+  it("never returns a child from another kindergarten", async () => {
+    const res = await roster(accountant, a.kindergarten.id);
+    expect(res.status).toBe(200);
+    expect(res.body.items.map((c: { id: string }) => c.id)).not.toContain(b.child.id);
+  });
 });
 
 describe("a child's own invoices — the guardian-facing read (нэмэлт.md §10)", () => {

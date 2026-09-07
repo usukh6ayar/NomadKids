@@ -52,7 +52,6 @@ function ReviewQueue() {
     <div className="page-band">
       <PageHeader
         title="Эцэг эхийн ажиглалт — хянах"
-        lede="Гэрээс хуваалцсан бичлэгүүдийг хянаж, хавтаст нэмнэ."
         actions={
           data ? (
             <p className="text-body text-muted" aria-live="polite">

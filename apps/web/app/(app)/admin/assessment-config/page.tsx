@@ -99,10 +99,7 @@ function AssessmentConfig() {
 
   return (
     <div className="flex flex-col gap-6 lg:gap-8">
-      <PageHeader
-        title="Үнэлгээний тохиргоо"
-        lede="Хөгжлийн чиглэл, үнэлгээний түвшин, ажиглалтын төрөл."
-      />
+      <PageHeader title="Үнэлгээний тохиргоо" />
 
       <ConfigSection
         title="Хөгжлийн чиглэл"

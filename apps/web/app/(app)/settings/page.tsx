@@ -58,7 +58,7 @@ export default function SettingsPage() {
       on the page, the line is the page.
     */
     <div className="flex w-full flex-col gap-6 lg:gap-8">
-      <PageHeader title="Хувийн тохиргоо" lede="Хувийн мэдээлэл, нэвтрэх нууц үг." />
+      <PageHeader title="Хувийн тохиргоо" />
 
       <div className="flex w-full max-w-[760px] flex-col gap-6 lg:gap-8">
         <ProfileForm />

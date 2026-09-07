@@ -248,11 +248,6 @@ export default function NotificationsPage() {
     <div className="page-band">
       <PageHeader
         title={tab === "news" ? "Мэдээ" : "Судалгаа"}
-        lede={
-          tab === "news"
-            ? "Цэцэрлэгээс ирсэн зар, мэдээлэл."
-            : "Танай хүүхдэд зориулсан судалгаанууд."
-        }
       />
 
       {/*
