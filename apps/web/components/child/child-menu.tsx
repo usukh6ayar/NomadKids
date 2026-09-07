@@ -421,7 +421,12 @@ function DayDetail({
           <MealTimePicker kinds={kindsPresent} selected={pickedKind} onSelect={jumpTo} />
 
           {kindsPresent.map((kind) => (
-            <div key={kind} ref={(el) => { cardRefs.current[kind] = el; }}>
+            <div
+              key={kind}
+              ref={(el) => {
+                cardRefs.current[kind] = el;
+              }}
+            >
               <MealCard
                 kind={kind}
                 dishes={byKind[kind]!}
@@ -529,7 +534,12 @@ function MealTimePicker({
                 kind === selected ? "font-semibold text-primary" : "text-ink",
               )}
             >
-              <span className={cn("grid size-8 shrink-0 place-items-center rounded-control", MEAL_KIND_STYLE[kind].tone)}>
+              <span
+                className={cn(
+                  "grid size-8 shrink-0 place-items-center rounded-control",
+                  MEAL_KIND_STYLE[kind].tone,
+                )}
+              >
                 {MEAL_KIND_STYLE[kind].icon}
               </span>
               {MEAL_KIND_LABEL[kind]}

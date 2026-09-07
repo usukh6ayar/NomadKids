@@ -585,32 +585,32 @@ function ChildRow({
           )}
         </div>
       ) : (
-      <div
-        role="radiogroup"
-        aria-label={`${name} — хоол`}
-        className="flex basis-full flex-wrap gap-2 sm:basis-auto"
-      >
-        {STATUSES.map((s) => {
-          const selected = s.value === status;
-          return (
-            <button
-              key={s.value}
-              type="button"
-              role="radio"
-              aria-checked={selected}
-              onClick={() => onSelect(s.value)}
-              className={cn(
-                "min-h-[44px] flex-1 rounded-control border px-3 text-body font-medium transition-all duration-150 active:translate-y-[1px] sm:flex-none",
-                selected
-                  ? cn(s.selected, "font-semibold shadow-sm")
-                  : "border-border bg-surface text-muted hover:border-faint hover:bg-canvas hover:text-ink",
-              )}
-            >
-              {s.label}
-            </button>
-          );
-        })}
-      </div>
+        <div
+          role="radiogroup"
+          aria-label={`${name} — хоол`}
+          className="flex basis-full flex-wrap gap-2 sm:basis-auto"
+        >
+          {STATUSES.map((s) => {
+            const selected = s.value === status;
+            return (
+              <button
+                key={s.value}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => onSelect(s.value)}
+                className={cn(
+                  "min-h-[44px] flex-1 rounded-control border px-3 text-body font-medium transition-all duration-150 active:translate-y-[1px] sm:flex-none",
+                  selected
+                    ? cn(s.selected, "font-semibold shadow-sm")
+                    : "border-border bg-surface text-muted hover:border-faint hover:bg-canvas hover:text-ink",
+                )}
+              >
+                {s.label}
+              </button>
+            );
+          })}
+        </div>
       )}
     </div>
   );

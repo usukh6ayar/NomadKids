@@ -35,14 +35,17 @@ export class EsisAdminService {
     const deployment = this.esis.status();
     const mapped = Boolean(kindergarten.esisInstitutionId);
     const mappingMatchesDeployment = Boolean(
-      mapped && deployment.configured && kindergarten.esisInstitutionId === deployment.institutionId,
+      mapped &&
+      deployment.configured &&
+      kindergarten.esisInstitutionId === deployment.institutionId,
     );
     const canPreview = deployment.configured && mappingMatchesDeployment;
     const hasSuccessfulPreview = recentRuns.some((run) => run.status === "SUCCEEDED");
     const blockers: string[] = [];
 
     if (!mapped) blockers.push("Platform админ ESIS байгууллагын кодыг холбож баталгаажуулна.");
-    if (!deployment.configured) blockers.push("Server дээр ESIS token болон endpoint тохируулаагүй байна.");
+    if (!deployment.configured)
+      blockers.push("Server дээр ESIS token болон endpoint тохируулаагүй байна.");
     if (mapped && deployment.configured && !mappingMatchesDeployment) {
       blockers.push("Цэцэрлэгийн ESIS код deployment credential-тэй тохирохгүй байна.");
     }

@@ -396,7 +396,9 @@ describe("role-based navigation", () => {
     renderShell(["TEACHER", "ADMIN"]);
     const nav = await sidebar();
 
-    expect(within(nav).queryByRole("link", { name: "Үнэлгээний тохиргоо" })).not.toBeInTheDocument();
+    expect(
+      within(nav).queryByRole("link", { name: "Үнэлгээний тохиргоо" }),
+    ).not.toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: "Аудит" })).not.toBeInTheDocument();
   });
 
@@ -522,9 +524,7 @@ describe("the sidebar footer", () => {
     // see the note in `WhoAmI`. `/settings` has three other doors and the foot
     // of the sidebar carries the one thing none of them do, so the only
     // control in that card is the way out.
-    expect(
-      within(nav).queryByRole("link", { name: /Тест Хэрэглэгч/ }),
-    ).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: /Тест Хэрэглэгч/ })).not.toBeInTheDocument();
     expect(within(nav).getByRole("link", { name: "Хувийн тохиргоо" })).toHaveAttribute(
       "href",
       "/settings",

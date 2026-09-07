@@ -110,7 +110,10 @@ describe("ESIS admin workflow", () => {
       expect.objectContaining({ status: "SUCCEEDED", errorCode: null }),
     );
     expect(audit.append).toHaveBeenCalledWith(
-      expect.objectContaining({ objectType: "EsisSyncRun", metadata: expect.objectContaining({ dryRun: true }) }),
+      expect.objectContaining({
+        objectType: "EsisSyncRun",
+        metadata: expect.objectContaining({ dryRun: true }),
+      }),
     );
   });
 });

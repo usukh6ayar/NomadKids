@@ -384,7 +384,11 @@ describe("exporting to Excel", () => {
   });
 
   it("a teacher from another kindergarten gets 404", async () => {
-    const res = await fetchWorkbook(await login(app, b.teacherUser.username), "2026-03-01", "2026-03-07");
+    const res = await fetchWorkbook(
+      await login(app, b.teacherUser.username),
+      "2026-03-01",
+      "2026-03-07",
+    );
     expect(res.status).toBe(404);
   });
 });

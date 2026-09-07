@@ -399,13 +399,7 @@ function Totals({ totals: t }: { totals: DailyAttendance["totals"] }) {
  * `aria-label` carries the whole sentence for anyone who cannot see them, and
  * each segment's `title` names itself on hover.
  */
-function StatusBar({
-  totals: t,
-  marked,
-}: {
-  totals: DailyAttendance["totals"];
-  marked: number;
-}) {
+function StatusBar({ totals: t, marked }: { totals: DailyAttendance["totals"]; marked: number }) {
   /*
     The four statuses in the product's own stat tints — `globals.css`'s
     mint/sky/sun/peach, which every badge and register on this screen already

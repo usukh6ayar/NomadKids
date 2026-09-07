@@ -516,9 +516,7 @@ describe("meal servings", () => {
     expect(mark.body.servedBy.id).toBeDefined();
 
     const list = await authed(
-      request(server()).get(
-        `/v1/kindergartens/${a.kindergarten.id}/meal-servings?date=2026-04-01`,
-      ),
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/meal-servings?date=2026-04-01`),
       cookA,
     );
     expect(list.status).toBe(200);
@@ -538,9 +536,9 @@ describe("meal servings", () => {
     ).send({ groupId: a.group.id, date: "2026-04-01", kind: "BREAKFAST" });
 
     expect(second.body.id).toBe(first.body.id);
-    expect(
-      await db.mealServing.count({ where: { groupId: a.group.id, kind: "BREAKFAST" } }),
-    ).toBe(1);
+    expect(await db.mealServing.count({ where: { groupId: a.group.id, kind: "BREAKFAST" } })).toBe(
+      1,
+    );
   });
 
   it("unmarking removes it from the list, and marking again revives the same row", async () => {
@@ -549,13 +547,14 @@ describe("meal servings", () => {
       cookA,
     ).send({ groupId: a.group.id, date: "2026-04-01", kind: "LUNCH" });
 
-    const undone = await authed(request(server()).delete(`/v1/meal-servings/${marked.body.id}`), cookA);
+    const undone = await authed(
+      request(server()).delete(`/v1/meal-servings/${marked.body.id}`),
+      cookA,
+    );
     expect(undone.status).toBe(200);
 
     const emptyList = await authed(
-      request(server()).get(
-        `/v1/kindergartens/${a.kindergarten.id}/meal-servings?date=2026-04-01`,
-      ),
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/meal-servings?date=2026-04-01`),
       cookA,
     );
     expect(emptyList.body).toHaveLength(0);
@@ -569,9 +568,7 @@ describe("meal servings", () => {
     // The partial unique index is the thing this whole revive path exists to
     // satisfy — one live row for (groupId, date, kind), soft-deleted history
     // notwithstanding.
-    expect(
-      await db.mealServing.count({ where: { groupId: a.group.id, kind: "LUNCH" } }),
-    ).toBe(1);
+    expect(await db.mealServing.count({ where: { groupId: a.group.id, kind: "LUNCH" } })).toBe(1);
   });
 
   it("a teacher gets 404 — marking a sitting is kitchen-only", async () => {

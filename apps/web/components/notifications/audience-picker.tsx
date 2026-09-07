@@ -28,7 +28,9 @@ const groupListSchema = paginated(groupListItemSchema);
 export type Audience = { groupIds: string[]; childIds: string[] } | null;
 
 /** The API's own target shape — `{ groupId }` or `{ childId }`, never both. */
-export function audienceToTargets(audience: Audience): ({ groupId: string } | { childId: string })[] {
+export function audienceToTargets(
+  audience: Audience,
+): ({ groupId: string } | { childId: string })[] {
   if (!audience) return [];
   return [
     ...audience.groupIds.map((groupId) => ({ groupId })),

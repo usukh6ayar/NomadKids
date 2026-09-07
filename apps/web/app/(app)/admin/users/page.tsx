@@ -383,7 +383,11 @@ function UserRow({ user }: { user: AdminUser }) {
   const canGrant = (session?.memberships ?? []).some((m) => m.role === "ADMIN");
 
   const items: RowMenuItem[] = [
-    { label: "Засах", icon: <Pencil size={16} aria-hidden />, onSelect: () => setDialog({ kind: "edit" }) },
+    {
+      label: "Засах",
+      icon: <Pencil size={16} aria-hidden />,
+      onSelect: () => setDialog({ kind: "edit" }),
+    },
     {
       label: "Нууц үг сэргээх",
       icon: <KeyRound size={16} aria-hidden />,
@@ -491,11 +495,7 @@ function UserRow({ user }: { user: AdminUser }) {
       <PasswordResetDialog user={user} open={dialog?.kind === "reset"} onOpenChange={close} />
 
       {dialog?.kind === "staff" && primaryKindergartenId ? (
-        <StaffRecordsDialog
-          user={user}
-          kindergartenId={primaryKindergartenId}
-          onClose={close}
-        />
+        <StaffRecordsDialog user={user} kindergartenId={primaryKindergartenId} onClose={close} />
       ) : null}
 
       {/*

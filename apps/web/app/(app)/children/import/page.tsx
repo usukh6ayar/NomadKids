@@ -1,7 +1,14 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, Database, FileSpreadsheet, ShieldCheck, Upload } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Database,
+  FileSpreadsheet,
+  ShieldCheck,
+  Upload,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
@@ -134,123 +141,123 @@ function ImportChildren() {
         <EsisImportEntry kindergartenId={primaryKindergartenId} />
       ) : (
         <>
+          <Card pad="roomy" className="flex flex-col gap-3">
+            <SectionHeader
+              title="1. Файл сонгох"
+              lede="Овог, Нэр, Хүйс, Төрсөн огноо баганатай .xlsx файл."
+            />
 
-      <Card pad="roomy" className="flex flex-col gap-3">
-        <SectionHeader
-          title="1. Файл сонгох"
-          lede="Овог, Нэр, Хүйс, Төрсөн огноо баганатай .xlsx файл."
-        />
+            <input
+              ref={inputRef}
+              id="roster-file"
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              className="sr-only"
+              onChange={(e) => choose(e.target.files)}
+            />
 
-        <input
-          ref={inputRef}
-          id="roster-file"
-          type="file"
-          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          className="sr-only"
-          onChange={(e) => choose(e.target.files)}
-        />
+            <div className="flex flex-wrap items-center gap-3">
+              <Button asChild variant="secondary" disabled={run.isPending}>
+                <label htmlFor="roster-file" className="cursor-pointer">
+                  <Upload size={18} aria-hidden />
+                  {file ? "Өөр файл сонгох" : "Файл сонгох"}
+                </label>
+              </Button>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <Button asChild variant="secondary" disabled={run.isPending}>
-            <label htmlFor="roster-file" className="cursor-pointer">
-              <Upload size={18} aria-hidden />
-              {file ? "Өөр файл сонгох" : "Файл сонгох"}
-            </label>
-          </Button>
+              {file ? <span className="text-body text-muted">{file.name}</span> : null}
+            </div>
 
-          {file ? <span className="text-body text-muted">{file.name}</span> : null}
-        </div>
-
-        {/*
+            {/*
           The export doubles as the template: it is the same columns in the
           same order, so "download, edit, upload" needs no separate example
           file that could drift from what the parser accepts.
         */}
-        <p className="text-caption text-muted">
-          Загвар хэрэгтэй бол{" "}
-          <a
-            className="font-medium text-primary hover:underline"
-            href={downloadUrl(`/kindergartens/${primaryKindergartenId}/children/export`)}
-          >
-            одоогийн жагсаалтыг Excel-ээр татаад
-          </a>{" "}
-          засаж болно.
-        </p>
+            <p className="text-caption text-muted">
+              Загвар хэрэгтэй бол{" "}
+              <a
+                className="font-medium text-primary hover:underline"
+                href={downloadUrl(`/kindergartens/${primaryKindergartenId}/children/export`)}
+              >
+                одоогийн жагсаалтыг Excel-ээр татаад
+              </a>{" "}
+              засаж болно.
+            </p>
 
-        <FormError message={run.isError ? errorMessage(run.error) : null} />
-      </Card>
-
-      {run.isPending && !preview ? <LoadingState rows={3} /> : null}
-
-      {preview ? (
-        <>
-          <Card pad="roomy" className="flex flex-col gap-3">
-            <SectionHeader title="2. Шалгасан үр дүн" />
-
-            <div className="flex flex-wrap gap-4">
-              <Figure
-                tone="mint"
-                icon={<CheckCircle2 size={18} aria-hidden />}
-                value={preview.willImport}
-                label="бүртгэгдэнэ"
-              />
-              <Figure
-                tone="sun"
-                icon={<AlertTriangle size={18} aria-hidden />}
-                value={preview.skipped}
-                label="алгасана"
-              />
-            </div>
-
-            {preview.preview.length > 0 ? (
-              <ul className="flex flex-col gap-1">
-                {preview.preview.map((row) => (
-                  <li key={row.rowNumber} className="text-body text-ink">
-                    <span className="text-caption text-muted">мөр {row.rowNumber}</span> {row.name}
-                    {row.group ? (
-                      <span className="text-caption text-muted"> · {row.group}</span>
-                    ) : null}
-                  </li>
-                ))}
-                {preview.willImport > preview.preview.length ? (
-                  <li className="text-caption text-muted">
-                    …бас {preview.willImport - preview.preview.length}
-                  </li>
-                ) : null}
-              </ul>
-            ) : null}
+            <FormError message={run.isError ? errorMessage(run.error) : null} />
           </Card>
 
-          {preview.problems.length > 0 ? (
-            <Card pad="roomy" className="flex flex-col gap-2">
-              <SectionHeader
-                title="Алгасах мөрүүд"
-                lede="Файлаа засаад дахин оруулж болно. Бүртгэгдсэн хүүхэд дахин үүсэхгүй."
-              />
-              <ul className="flex flex-col gap-1.5">
-                {preview.problems.map((problem, index) => (
-                  <li key={index} className="text-body text-ink">
-                    <span className="text-caption text-muted">мөр {problem.rowNumber}</span>{" "}
-                    {problem.message}
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          ) : null}
+          {run.isPending && !preview ? <LoadingState rows={3} /> : null}
 
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              disabled={run.isPending || preview.willImport === 0 || !file}
-              onClick={() => file && run.mutate({ chosen: file, dryRun: false })}
-            >
-              {run.isPending ? "Бүртгэж байна…" : `${preview.willImport} хүүхэд бүртгэх`}
-            </Button>
-            <Button asChild variant="ghost">
-              <Link href="/children">Болих</Link>
-            </Button>
-          </div>
-        </>
-      ) : null}
+          {preview ? (
+            <>
+              <Card pad="roomy" className="flex flex-col gap-3">
+                <SectionHeader title="2. Шалгасан үр дүн" />
+
+                <div className="flex flex-wrap gap-4">
+                  <Figure
+                    tone="mint"
+                    icon={<CheckCircle2 size={18} aria-hidden />}
+                    value={preview.willImport}
+                    label="бүртгэгдэнэ"
+                  />
+                  <Figure
+                    tone="sun"
+                    icon={<AlertTriangle size={18} aria-hidden />}
+                    value={preview.skipped}
+                    label="алгасана"
+                  />
+                </div>
+
+                {preview.preview.length > 0 ? (
+                  <ul className="flex flex-col gap-1">
+                    {preview.preview.map((row) => (
+                      <li key={row.rowNumber} className="text-body text-ink">
+                        <span className="text-caption text-muted">мөр {row.rowNumber}</span>{" "}
+                        {row.name}
+                        {row.group ? (
+                          <span className="text-caption text-muted"> · {row.group}</span>
+                        ) : null}
+                      </li>
+                    ))}
+                    {preview.willImport > preview.preview.length ? (
+                      <li className="text-caption text-muted">
+                        …бас {preview.willImport - preview.preview.length}
+                      </li>
+                    ) : null}
+                  </ul>
+                ) : null}
+              </Card>
+
+              {preview.problems.length > 0 ? (
+                <Card pad="roomy" className="flex flex-col gap-2">
+                  <SectionHeader
+                    title="Алгасах мөрүүд"
+                    lede="Файлаа засаад дахин оруулж болно. Бүртгэгдсэн хүүхэд дахин үүсэхгүй."
+                  />
+                  <ul className="flex flex-col gap-1.5">
+                    {preview.problems.map((problem, index) => (
+                      <li key={index} className="text-body text-ink">
+                        <span className="text-caption text-muted">мөр {problem.rowNumber}</span>{" "}
+                        {problem.message}
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              ) : null}
+
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  disabled={run.isPending || preview.willImport === 0 || !file}
+                  onClick={() => file && run.mutate({ chosen: file, dryRun: false })}
+                >
+                  {run.isPending ? "Бүртгэж байна…" : `${preview.willImport} хүүхэд бүртгэх`}
+                </Button>
+                <Button asChild variant="ghost">
+                  <Link href="/children">Болих</Link>
+                </Button>
+              </div>
+            </>
+          ) : null}
         </>
       )}
     </div>
@@ -276,7 +283,9 @@ function SourceTab({
       onClick={onClick}
       className={
         "inline-flex h-11 items-center gap-2 rounded-control px-5 text-body font-medium transition-colors " +
-        (active ? "bg-primary text-primary-ink shadow-sm" : "text-muted hover:bg-canvas hover:text-ink")
+        (active
+          ? "bg-primary text-primary-ink shadow-sm"
+          : "text-muted hover:bg-canvas hover:text-ink")
       }
     >
       {icon}
@@ -302,7 +311,10 @@ function EsisImportEntry({ kindergartenId }: { kindergartenId: string }) {
       <Card pad="roomy" tone={data.canPreview ? "mint" : "sun"}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
-            <ShieldCheck className={data.canPreview ? "text-mint-ink" : "text-sun-ink"} aria-hidden />
+            <ShieldCheck
+              className={data.canPreview ? "text-mint-ink" : "text-sun-ink"}
+              aria-hidden
+            />
             <div>
               <p className="text-title font-semibold text-ink">
                 {data.canPreview ? "ESIS dry-run бэлэн" : "ESIS тохиргоо хүлээгдэж байна"}

@@ -16,12 +16,12 @@ Portal-ийн 2026-03-31-ний мэдэгдэл v1 сервисүүдийг 202
 
 ## 1. “Бэлэн” гэдэг үгийн утга
 
-| Түвшин         | Утга                                                                     |
-| -------------- | ------------------------------------------------------------------------ |
-| **C1 Catalog** | ESIS v2 catalog-д API ID, method, URL, талбар, sample байна              |
-| **C2 Code**    | Endpoint registry, Zod validation, domain method, unit test бэлэн        |
-| **C3 Access**  | Манай `ACCESS_TOKEN`-д тухайн API ID зөвшөөрөгдсөн                       |
-| **C4 Test**    | ESIS test орчинд бодит байгууллагын өгөгдлөөр амжилттай шалгасан         |
+| Түвшин         | Утга                                                                                     |
+| -------------- | ---------------------------------------------------------------------------------------- |
+| **C1 Catalog** | ESIS v2 catalog-д API ID, method, URL, талбар, sample байна                              |
+| **C2 Code**    | Endpoint registry, Zod validation, domain method, unit test бэлэн                        |
+| **C3 Access**  | Манай `ACCESS_TOKEN`-д тухайн API ID зөвшөөрөгдсөн                                       |
+| **C4 Test**    | ESIS test орчинд бодит байгууллагын өгөгдлөөр амжилттай шалгасан                         |
 | **C5 Live**    | Баталгаатай import, external ID, BullMQ retry/idempotency, attendance reconcile ажиллана |
 
 Одоогийн төлөв: сонгосон 17 сервис **C1 + C2**. Tenant mapping, operator UI,

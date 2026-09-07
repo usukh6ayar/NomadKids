@@ -22,10 +22,10 @@
 
 Order A/261 has 94 checks: 51 mandatory and 43 recommended.
 
-| Category | Complete | Partial | Not met | N/A | Total |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Mandatory | 35 | 14 | 1 | 1 | 51 |
-| Recommended | 14 | 11 | 15 | 3 | 43 |
+| Category    | Complete | Partial | Not met | N/A | Total |
+| ----------- | -------: | ------: | ------: | --: | ----: |
+| Mandatory   |       35 |      14 |       1 |   1 |    51 |
+| Recommended |       14 |      11 |      15 |   3 |    43 |
 
 - **69%** of mandatory requirements are fully met.
 - **96%** of mandatory requirements are complete or partially implemented.
@@ -35,21 +35,21 @@ Order A/261 has 94 checks: 51 mandatory and 43 recommended.
 
 ## 3. ESIS requirement traceability
 
-| Source | Requirement | Status | Evidence and implementation |
-| --- | --- | --- | --- |
-| A/261 general #29 | Two-way education database exchange | Partial | 17 v2 adapters, GET and attendance POST schemas, tenant mapping, operator UI, dry-run, audit; production queue remains |
-| A/261 general #30 | API input/output documentation | Complete | `docs/API.md`, `ESIS_API_READINESS.md`, API ID matrix |
-| A/261 general #31 | Integration capability | Complete | Isolated NestJS boundary, schema validation, timeout, redaction |
-| A/261 preschool #3 | Receive/send organization and learner data | Partial | Organization, year, group, student and movement endpoints; approved import/write remains |
-| A/261 preschool #37 | Pull the unified food catalog | Partial | APIs 111, 112 and 123-127 plus food preview; local ingredient/recipe mapping remains |
-| A/261 preschool #51 | Receive/send teacher and staff data | Partial | Teacher/staff schemas, sensitive-field stripping and preview; account mapping/write remains |
-| A/465 section 3.4.3 | Name every inbound/outbound service | Ready | 17 endpoints recorded with API ID, slug, method, and product use |
-| A/465 sections 3.7 and 4 | Token and least-privilege API access | Partial | Server-only token and scope matrix; BMTT has not granted scope |
-| A/465 section 3.9 | Privacy and cybersecurity | Complete for current scope | RBAC, tenant mapping, token redaction, password/registration-number stripping, audit |
-| A/465 section 3.17 | Deliver primary records | Partial | Attendance v3 contract ready; production POST/reconcile remains |
-| A/465 section 3.18 | Advance planning and test environment | Partial | Rollout plan, TEST UI and dry-run; official test token/acceptance remains |
-| A/465 section 5 | Correction and history | Partial | Sync-run/audit history started; field conflicts and three-day SLA cases remain |
-| A/465 section 7.3 | Daily attendance and movement | Partial externally | Local attendance/movement works; daily ESIS delivery is not live |
+| Source                   | Requirement                                | Status                     | Evidence and implementation                                                                                            |
+| ------------------------ | ------------------------------------------ | -------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| A/261 general #29        | Two-way education database exchange        | Partial                    | 17 v2 adapters, GET and attendance POST schemas, tenant mapping, operator UI, dry-run, audit; production queue remains |
+| A/261 general #30        | API input/output documentation             | Complete                   | `docs/API.md`, `ESIS_API_READINESS.md`, API ID matrix                                                                  |
+| A/261 general #31        | Integration capability                     | Complete                   | Isolated NestJS boundary, schema validation, timeout, redaction                                                        |
+| A/261 preschool #3       | Receive/send organization and learner data | Partial                    | Organization, year, group, student and movement endpoints; approved import/write remains                               |
+| A/261 preschool #37      | Pull the unified food catalog              | Partial                    | APIs 111, 112 and 123-127 plus food preview; local ingredient/recipe mapping remains                                   |
+| A/261 preschool #51      | Receive/send teacher and staff data        | Partial                    | Teacher/staff schemas, sensitive-field stripping and preview; account mapping/write remains                            |
+| A/465 section 3.4.3      | Name every inbound/outbound service        | Ready                      | 17 endpoints recorded with API ID, slug, method, and product use                                                       |
+| A/465 sections 3.7 and 4 | Token and least-privilege API access       | Partial                    | Server-only token and scope matrix; BMTT has not granted scope                                                         |
+| A/465 section 3.9        | Privacy and cybersecurity                  | Complete for current scope | RBAC, tenant mapping, token redaction, password/registration-number stripping, audit                                   |
+| A/465 section 3.17       | Deliver primary records                    | Partial                    | Attendance v3 contract ready; production POST/reconcile remains                                                        |
+| A/465 section 3.18       | Advance planning and test environment      | Partial                    | Rollout plan, TEST UI and dry-run; official test token/acceptance remains                                              |
+| A/465 section 5          | Correction and history                     | Partial                    | Sync-run/audit history started; field conflicts and three-day SLA cases remain                                         |
+| A/465 section 7.3        | Daily attendance and movement              | Partial externally         | Local attendance/movement works; daily ESIS delivery is not live                                                       |
 
 ## 4. PPT-ready ten-slide outline
 

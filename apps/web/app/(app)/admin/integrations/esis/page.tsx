@@ -71,21 +71,16 @@ function EsisIntegration() {
 
   const overview = useQuery({
     queryKey: qk.esis(primaryKindergartenId ?? "none"),
-    queryFn: () =>
-      get(`/kindergartens/${primaryKindergartenId}/esis`, esisOverviewSchema),
+    queryFn: () => get(`/kindergartens/${primaryKindergartenId}/esis`, esisOverviewSchema),
     enabled: Boolean(primaryKindergartenId),
   });
 
   const runPreview = useMutation({
     mutationFn: () =>
-      mutate(
-        `/kindergartens/${primaryKindergartenId}/esis/preview`,
-        esisPreviewResultSchema,
-        {
-          method: "POST",
-          body: { resources: selected },
-        },
-      ),
+      mutate(`/kindergartens/${primaryKindergartenId}/esis/preview`, esisPreviewResultSchema, {
+        method: "POST",
+        body: { resources: selected },
+      }),
     onSuccess: (result) => {
       setPreview(result);
       void queryClient.invalidateQueries({ queryKey: qk.esis(primaryKindergartenId!) });
@@ -151,7 +146,10 @@ function EsisIntegration() {
     <div className="page-band">
       {header}
 
-      <section aria-label="ESIS бэлэн байдлын үе шат" className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+      <section
+        aria-label="ESIS бэлэн байдлын үе шат"
+        className="grid grid-cols-2 gap-3 xl:grid-cols-5"
+      >
         {data.stages.map((stage) => (
           <Card key={stage.code} pad="compact" tone={stage.status === "READY" ? "mint" : "sun"}>
             <div className="flex items-start justify-between gap-2">
@@ -345,7 +343,8 @@ function PreviewPanel({
   onRun: () => void;
 }) {
   const resources = data.endpoints.filter(
-    (endpoint): endpoint is typeof endpoint & { key: EsisPreviewResourceKey } => endpoint.previewable,
+    (endpoint): endpoint is typeof endpoint & { key: EsisPreviewResourceKey } =>
+      endpoint.previewable,
   );
 
   function toggle(key: EsisPreviewResourceKey) {
@@ -364,10 +363,7 @@ function PreviewPanel({
           title="Read-only dry-run"
           lede="Нэг удаад 4 хүртэл мэдээллийн багц шалгана. Дотоод бүртгэл өөрчлөгдөхгүй."
           action={
-            <Button
-              disabled={!data.canPreview || selected.length === 0 || pending}
-              onClick={onRun}
-            >
+            <Button disabled={!data.canPreview || selected.length === 0 || pending} onClick={onRun}>
               <Eye aria-hidden />
               {pending ? "Шалгаж байна…" : "Preview ажиллуулах"}
             </Button>
@@ -412,7 +408,10 @@ function PreviewPanel({
         </div>
 
         {error ? (
-          <p role="alert" className="mt-4 rounded-control bg-danger-soft px-4 py-3 text-body text-danger">
+          <p
+            role="alert"
+            className="mt-4 rounded-control bg-danger-soft px-4 py-3 text-body text-danger"
+          >
             {error}
           </p>
         ) : null}
@@ -515,11 +514,21 @@ function RunStatus({ status }: { status: EsisOverview["recentRuns"][number]["sta
   return <Badge tone={tone}>{label}</Badge>;
 }
 
-function Definition({ label, value, breakAll = false }: { label: string; value: string; breakAll?: boolean }) {
+function Definition({
+  label,
+  value,
+  breakAll = false,
+}: {
+  label: string;
+  value: string;
+  breakAll?: boolean;
+}) {
   return (
     <div className="min-w-0">
       <dt className="text-caption font-semibold text-muted">{label}</dt>
-      <dd className={cn("mt-1 text-body font-medium text-ink", breakAll && "break-all")}>{value}</dd>
+      <dd className={cn("mt-1 text-body font-medium text-ink", breakAll && "break-all")}>
+        {value}
+      </dd>
     </div>
   );
 }

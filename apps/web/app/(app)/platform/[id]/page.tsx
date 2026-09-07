@@ -4,7 +4,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, Database } from "lucide-react";
-import { platformKindergartenDetailSchema, type PlatformKindergartenDetail } from "@kinder/contracts";
+import {
+  platformKindergartenDetailSchema,
+  type PlatformKindergartenDetail,
+} from "@kinder/contracts";
 import { useState } from "react";
 import { z } from "zod";
 import { get, mutate } from "@/lib/api/browser";
@@ -141,11 +144,15 @@ function EsisMappingCard({ kindergarten }: { kindergarten: PlatformKindergartenD
     mutationFn: (mapped: boolean) =>
       mutate(`/platform/kindergartens/${kindergarten.id}/esis/mapping`, esisMappingResultSchema, {
         method: "PUT",
-        body: mapped ? { mapped: true, institutionId: institutionId.trim(), environment } : { mapped: false },
+        body: mapped
+          ? { mapped: true, institutionId: institutionId.trim(), environment }
+          : { mapped: false },
       }),
     onSuccess: (result) => {
       setInstitutionId(result.esisInstitutionId ?? "");
-      toast.success(result.esisInstitutionId ? "ESIS mapping хадгаллаа." : "ESIS mapping салгалаа.");
+      toast.success(
+        result.esisInstitutionId ? "ESIS mapping хадгаллаа." : "ESIS mapping салгалаа.",
+      );
       void queryClient.invalidateQueries({ queryKey: qk.platformKindergarten(kindergarten.id) });
     },
     onError: (error) => toast.error(errorMessage(error)),
@@ -180,9 +187,7 @@ function EsisMappingCard({ kindergarten }: { kindergarten: PlatformKindergartenD
                 aria-describedby={describedBy}
                 invalid={invalid}
                 value={environment}
-                onChange={(event) =>
-                  setEnvironment(event.target.value as "TEST" | "PRODUCTION")
-                }
+                onChange={(event) => setEnvironment(event.target.value as "TEST" | "PRODUCTION")}
               >
                 <option value="TEST">TEST</option>
                 <option value="PRODUCTION">PRODUCTION</option>

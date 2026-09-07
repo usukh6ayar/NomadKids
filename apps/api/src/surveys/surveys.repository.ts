@@ -54,7 +54,10 @@ export class SurveysRepository {
       orderBy: { createdAt: "desc" },
       // `group` so the staff list can say which group a survey is aimed at
       // without a second request per row.
-      include: { questions: { orderBy: questionOrder }, group: { select: { id: true, name: true } } },
+      include: {
+        questions: { orderBy: questionOrder },
+        group: { select: { id: true, name: true } },
+      },
     });
   }
 

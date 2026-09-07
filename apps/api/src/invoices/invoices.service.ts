@@ -518,9 +518,7 @@ export class InvoicesService {
     this.tenants.assertCanReadFinance(actor, invoice.kindergartenId);
 
     if (invoice.status === "PAID" || invoice.status === "REFUNDED") {
-      throw new BadRequestException(
-        "Энэ нэхэмжлэл төлөгдсөн тул сануулга илгээх шаардлагагүй.",
-      );
+      throw new BadRequestException("Энэ нэхэмжлэл төлөгдсөн тул сануулга илгээх шаардлагагүй.");
     }
     if (new Decimal(invoice.balance.toString()).lte(ZERO)) {
       throw new BadRequestException("Үлдэгдэлгүй нэхэмжлэлд сануулга илгээх боломжгүй.");

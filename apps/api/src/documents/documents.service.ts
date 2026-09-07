@@ -165,10 +165,7 @@ export class DocumentsService {
       // Re-checked on every write, not only on create: an edit can change the
       // audience, and the id is as much a client's claim here as it was there.
       if (dto.groupId) {
-        const group = await this.repo.findGroupInKindergarten(
-          dto.groupId,
-          document.kindergartenId,
-        );
+        const group = await this.repo.findGroupInKindergarten(dto.groupId, document.kindergartenId);
         if (!group) throw new BadRequestException("Бүлэг олдсонгүй");
       }
       data.groupId = dto.groupId;

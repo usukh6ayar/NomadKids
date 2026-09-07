@@ -436,23 +436,23 @@ function ChildRow({
           )}
         </div>
       ) : (
-      <div
-        role="radiogroup"
-        aria-label={`${fullName(child)} — ирц`}
-        className="flex flex-wrap gap-2"
-      >
-        {Object.entries(STATUS_LABEL).map(([value, label]) => {
-          const selected = value === status;
-          return (
-            <button
-              key={value}
-              type="button"
-              role="radio"
-              aria-checked={selected}
-              disabled={pending}
-              onClick={() => onSelect(value)}
-              className={cn(
-                /*
+        <div
+          role="radiogroup"
+          aria-label={`${fullName(child)} — ирц`}
+          className="flex flex-wrap gap-2"
+        >
+          {Object.entries(STATUS_LABEL).map(([value, label]) => {
+            const selected = value === status;
+            return (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                disabled={pending}
+                onClick={() => onSelect(value)}
+                className={cn(
+                  /*
                   ★ REDESIGN 2026-09-03 — the chosen status is coloured for what
                   it *means*, not filled with the brand blue.
 
@@ -474,20 +474,20 @@ function ChildRow({
                   state, and the selected pill also takes a heavier weight and
                   a matching border.
                 */
-                "min-h-11 rounded-control border px-3 text-body font-medium transition-all duration-150 active:translate-y-[1px] disabled:opacity-60",
-                selected
-                  ? cn(
-                      TONE_SURFACE[ATTENDANCE_STATUS_CHART_TONE[value] ?? "sky"],
-                      "border-transparent font-semibold shadow-sm",
-                    )
-                  : "border-border bg-surface text-muted hover:border-faint hover:bg-canvas hover:text-ink",
-              )}
-            >
-              {label}
-            </button>
-          );
-        })}
-      </div>
+                  "min-h-11 rounded-control border px-3 text-body font-medium transition-all duration-150 active:translate-y-[1px] disabled:opacity-60",
+                  selected
+                    ? cn(
+                        TONE_SURFACE[ATTENDANCE_STATUS_CHART_TONE[value] ?? "sky"],
+                        "border-transparent font-semibold shadow-sm",
+                      )
+                    : "border-border bg-surface text-muted hover:border-faint hover:bg-canvas hover:text-ink",
+                )}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
       )}
     </div>
   );
