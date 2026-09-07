@@ -1,14 +1,16 @@
 "use client";
 
-import { useMutation } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, Upload } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { AlertTriangle, CheckCircle2, Database, FileSpreadsheet, ShieldCheck, Upload } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { z } from "zod";
-import { mutate } from "@/lib/api/browser";
+import { esisOverviewSchema } from "@kinder/contracts";
+import { get, mutate } from "@/lib/api/browser";
 import { downloadUrl } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
+import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
@@ -57,11 +59,13 @@ export default function ImportPage() {
 function ImportChildren() {
   const toast = useToast();
   const router = useRouter();
-  const { primaryKindergartenId } = useSession();
+  const { primaryKindergartenId, hasRole } = useSession();
+  const isAdmin = hasRole("ADMIN");
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ImportResult | null>(null);
+  const [source, setSource] = useState<"excel" | "esis">("excel");
 
   const run = useMutation({
     mutationFn: ({ chosen, dryRun }: { chosen: File; dryRun: boolean }) => {
@@ -99,9 +103,37 @@ function ImportChildren() {
   return (
     <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
-        title="Excel-ээс импортлох"
-        lede="Файлыг эхлээд шалгаж харуулна. Та зөвшөөрснөөр л бүртгэнэ."
+        title="Хүүхэд импортлох"
+        lede="Эх сурвалжийг сонгоод мэдээллийг бичихээс өмнө шалгана."
       />
+
+      {isAdmin ? (
+        <div
+          role="tablist"
+          aria-label="Импортын эх сурвалж"
+          className="flex w-fit max-w-full gap-1 rounded-control border border-border bg-surface p-1"
+        >
+          <SourceTab
+            active={source === "excel"}
+            icon={<FileSpreadsheet size={17} aria-hidden />}
+            onClick={() => setSource("excel")}
+          >
+            Excel
+          </SourceTab>
+          <SourceTab
+            active={source === "esis"}
+            icon={<Database size={17} aria-hidden />}
+            onClick={() => setSource("esis")}
+          >
+            ESIS
+          </SourceTab>
+        </div>
+      ) : null}
+
+      {source === "esis" && isAdmin ? (
+        <EsisImportEntry kindergartenId={primaryKindergartenId} />
+      ) : (
+        <>
 
       <Card pad="roomy" className="flex flex-col gap-3">
         <SectionHeader
@@ -219,6 +251,93 @@ function ImportChildren() {
           </div>
         </>
       ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+function SourceTab({
+  active,
+  icon,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  icon: React.ReactNode;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={
+        "inline-flex h-11 items-center gap-2 rounded-control px-5 text-body font-medium transition-colors " +
+        (active ? "bg-primary text-primary-ink shadow-sm" : "text-muted hover:bg-canvas hover:text-ink")
+      }
+    >
+      {icon}
+      {children}
+    </button>
+  );
+}
+
+function EsisImportEntry({ kindergartenId }: { kindergartenId: string }) {
+  const overview = useQuery({
+    queryKey: qk.esis(kindergartenId),
+    queryFn: () => get(`/kindergartens/${kindergartenId}/esis`, esisOverviewSchema),
+  });
+
+  if (overview.isPending) return <LoadingState rows={2} shape="cards" />;
+  if (overview.isError) {
+    return <FormError message={errorMessage(overview.error)} />;
+  }
+
+  const data = overview.data;
+  return (
+    <div className="flex flex-col gap-4">
+      <Card pad="roomy" tone={data.canPreview ? "mint" : "sun"}>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <ShieldCheck className={data.canPreview ? "text-mint-ink" : "text-sun-ink"} aria-hidden />
+            <div>
+              <p className="text-title font-semibold text-ink">
+                {data.canPreview ? "ESIS dry-run бэлэн" : "ESIS тохиргоо хүлээгдэж байна"}
+              </p>
+              <p className="mt-1 text-body text-muted">
+                {data.canPreview
+                  ? "Хүүхэд болон бүлгийн мэдээллийг эхлээд read-only байдлаар шалгана."
+                  : data.blockers[0]}
+              </p>
+            </div>
+          </div>
+          <Button asChild>
+            <Link href="/admin/integrations/esis">
+              <Database aria-hidden /> ESIS удирдлага
+            </Link>
+          </Button>
+        </div>
+      </Card>
+
+      <Card pad="roomy">
+        <SectionHeader title="Импортын хамгаалалт" />
+        <ol className="grid gap-3 md:grid-cols-3">
+          {[
+            ["1", "Preview", "ESIS мэдээллийг дотоод бүртгэлтэй тулгана."],
+            ["2", "Зөрүү", "Давхардал, өөрчлөлтийг админ шийдвэрлэнэ."],
+            ["3", "Батлах", "Зөвшөөрсний дараа л дотоод бүртгэлд бичнэ."],
+          ].map(([number, title, description]) => (
+            <li key={number} className="rounded-row bg-sunken p-4">
+              <span className="text-caption font-semibold text-primary">{number}</span>
+              <p className="mt-1 text-body font-semibold text-ink">{title}</p>
+              <p className="mt-1 text-caption text-muted">{description}</p>
+            </li>
+          ))}
+        </ol>
+      </Card>
     </div>
   );
 }

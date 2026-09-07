@@ -22,9 +22,11 @@ Portal-ийн 2026-03-31-ний мэдэгдэл v1 сервисүүдийг 202
 | **C2 Code**    | Endpoint registry, Zod validation, domain method, unit test бэлэн        |
 | **C3 Access**  | Манай `ACCESS_TOKEN`-д тухайн API ID зөвшөөрөгдсөн                       |
 | **C4 Test**    | ESIS test орчинд бодит байгууллагын өгөгдлөөр амжилттай шалгасан         |
-| **C5 Live**    | BullMQ sync, external ID, retry/idempotency, audit, operator UI ажиллана |
+| **C5 Live**    | Баталгаатай import, external ID, BullMQ retry/idempotency, attendance reconcile ажиллана |
 
-Одоогийн төлөв: сонгосон 17 сервис **C1 + C2**. **C3-C5 хүлээгдэж байна**.
+Одоогийн төлөв: сонгосон 17 сервис **C1 + C2**. Tenant mapping, operator UI,
+read-only dry-run, `EsisSyncRun` audit history нэмэгдсэн боловч эдгээр нь C4
+test-ийг орлохгүй. **C3-C5 хүлээгдэж байна**.
 Иймээс adapter код ашиглахад бэлэн боловч ESIS рүү production дуудлага хийхэд
 бэлэн гэж ойлгож болохгүй. Гэрээ, token scope, test баталгаажуулалтгүйгээр
 production өгөгдөл илгээхгүй.
@@ -139,6 +141,10 @@ test-ээр баталгаажуулна. Код catalog-ийн URL болох `
    preview/approve UI нэмэх.
 7. Production-д эхлээд read-only sync, дараа нь нэг цэцэрлэгийн attendance POST,
    эцэст нь шаталсан rollout хийх.
+
+2026-09-07-ны хэрэгжилтээр 6-р алхмын `sync run/result`, tenant-safe mapping,
+operator read-only preview хэсэг хийгдсэн. External ID, field-level conflict,
+approve/import, BullMQ retry/dead-letter нь үлдсэн.
 
 ## 6. Журмын холбоос
 

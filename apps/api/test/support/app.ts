@@ -5,6 +5,7 @@ import cookieParser from "cookie-parser";
 import { AppModule } from "../../src/app.module";
 import { ProblemExceptionFilter } from "../../src/common/filters/problem.filter";
 import { QpayService } from "../../src/integrations/qpay/qpay.service";
+import { EsisService } from "../../src/integrations/esis/esis.service";
 
 /**
  * Boots the real application for integration tests.
@@ -30,18 +31,23 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<INest
   let builder = Test.createTestingModule({ imports: [AppModule] });
 
   /*
-   * ★ The one sanctioned override, and it is narrow on purpose.
+   * ★ Provider overrides are narrow and transport-only on purpose.
    *
    * Everything in this suite runs against the real guards and the real
-   * database. QPay is the exception because the alternative is a test that
+   * database. QPay is overridden because the alternative is a test that
    * spends money: verifying a payment means an authenticated call to a payment
    * provider, and there is no sandbox available to us (docs/reference/QPAY_INTEGRATION.md
    * §5). The *client* is stubbed, never the authorization around it — the
    * callback route, its guards and `QpayPaymentsService` are all the real ones,
-   * which is what the security tests need to be worth anything.
+   * which is what the security tests need to be worth anything. ESIS follows
+   * the same boundary: only the remote transport is replaced; tenant checks,
+   * persistence, audit logging, and HTTP authorization remain real.
    */
   if (options.qpay) {
     builder = builder.overrideProvider(QpayService).useValue(options.qpay);
+  }
+  if (options.esis) {
+    builder = builder.overrideProvider(EsisService).useValue(options.esis);
   }
 
   const moduleRef = await builder.compile();
@@ -60,4 +66,6 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<INest
 export interface TestAppOptions {
   /** A stand-in for the payment provider. See the note above. */
   qpay?: Partial<QpayService>;
+  /** ESIS transport stand-in. Authorization and persistence stay real. */
+  esis?: Partial<EsisService>;
 }
