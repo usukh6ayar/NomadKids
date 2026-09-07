@@ -90,7 +90,6 @@ function EsisIntegration() {
   const header = (
     <PageHeader
       title="ESIS холболт"
-      lede="Боловсролын салбарын мэдээллийн системтэй өгөгдөл солилцох бэлэн байдал."
       icon={<IconChip icon={<Database />} tone="primary" size="lg" />}
       actions={
         <Button
