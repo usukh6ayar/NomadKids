@@ -16,10 +16,11 @@ import { ErrorState, LoadingState, Skeleton } from "@/components/ui/states";
 import { Art, type ArtName } from "@/components/ui/art";
 import { AttendanceToday } from "@/components/dashboard/attendance-today";
 import { TodayMenu } from "@/components/dashboard/today-menu";
-import { SurveySummary } from "@/components/dashboard/survey-summary";
 import { ClassBoardNotice } from "@/components/dashboard/class-board-notice";
 import { MonthBirthdays } from "@/components/dashboard/month-birthdays";
 import { WeeklyAttendance } from "@/components/dashboard/weekly-attendance";
+import { AssessmentProgress } from "@/components/dashboard/assessment-progress";
+import { DashboardChatPreview } from "@/components/dashboard/dashboard-chat-preview";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
 import { ArrowRight } from "lucide-react";
 
@@ -82,11 +83,6 @@ import { ArrowRight } from "lucide-react";
  *    two numerals would be a regression dressed as fidelity.
  *
  * ★★★★ What is STILL held, and why — so the next person does not re-derive it:
- *
- *  - **Чат.** The sketch draws a chat bubble bottom-right. Phase IV, no model,
- *    no endpoint. `app/(app)/layout.tsx` already carries a deliberate faint
- *    "Чат" nav entry with no href, which is the honest representation of a
- *    feature that does not exist. No affordance is added here.
  *
  *  - **The radar against a class average.** `DevelopmentDomain`,
  *    `AssessmentLevel` and `Assessment` carry the axes, and
@@ -170,22 +166,25 @@ function TeacherDashboard() {
    *
    * ★★★ Header search is back; "+ Үйлдэл" stays out.
    *
-   * The new mockup puts search in the teacher header, and `PageHeader` already
-   * submits it to `/children?q=...`. The action menu's destinations are now
+   * The new mockup puts search in the teacher shell's sticky desktop header,
+   * where it submits to `/children?q=...`. The action menu's destinations are
    * the four illustrated quick tiles immediately under the greeting.
    */
   const teacherName = fullName(session?.user);
   const greetingName = teacherName === "—" ? "багш" : teacherName;
   const header = (lede: string) => (
     <div className="teacher-dashboard-header">
-      <PageHeader title={`Сайн байна уу, ${greetingName} 👋`} lede={lede} search />
-      <Image
-        src="/background/mascot-teacher.webp"
-        alt=""
-        width={96}
-        height={120}
-        className="teacher-dashboard-mascot hidden"
-      />
+      <PageHeader title={`Сайн байна уу, ${greetingName}! 👋`} lede={lede} />
+      <div className="teacher-dashboard-banner">
+        <p>Хүүхэд бүр өөрийн гэсэн гэрэлтэй</p>
+        <Image
+          src="/illustrations/nomadkids-login-hero.png"
+          alt="Багш хүүхдүүдтэйгээ"
+          fill
+          sizes="(min-width: 1280px) 420px, 100vw"
+          className="object-cover"
+        />
+      </div>
     </div>
   );
 
@@ -202,9 +201,10 @@ function TeacherDashboard() {
           §4.1 asks loading and error to share the header so nothing shifts;
           the body has to hold up its half of that.
         */}
-        <div className="grid grid-cols-2 gap-3 md:gap-4 lg:gap-5">
-          <Skeleton className="h-[168px] w-full rounded-card" />
-          <Skeleton className="h-[168px] w-full rounded-card" />
+        <div className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton key={index} className="h-[112px] w-full rounded-card" />
+          ))}
         </div>
         <LoadingState rows={3} shape="cards" />
       </div>
@@ -228,7 +228,8 @@ function TeacherDashboard() {
   }
 
   /*
-   * ★ Five of the ten fields `GET /dashboard/teacher` returns are read here now.
+   * The page combines this endpoint's term, birthday, notice and assessment
+   * aggregates with focused widgets that fetch their own live registers.
    *
    * `counts`, `needsAttention`, `recentObservations`, `termProgress` and
    * `observationsByType` belong to the nine widgets this screen dropped on
@@ -238,7 +239,7 @@ function TeacherDashboard() {
    * match one screen's current layout is the coupling `GroupsSection` and
    * `DashboardStats` each decline in their own comments.
    */
-  const { currentTerm, birthdaysThisMonth, boardNotice } = data!;
+  const { currentTerm, birthdaysThisMonth, boardNotice, termProgress } = data!;
 
   /*
    * ★ Bands are spaced further apart than the cards inside them.
@@ -304,12 +305,16 @@ function TeacherDashboard() {
         <AttendanceToday />
         <WeeklyAttendance />
         <MonthBirthdays birthdays={birthdaysThisMonth} />
-        <SurveySummary />
+        <AssessmentProgress
+          progress={termProgress}
+          href={group ? `/groups/${group.id}/assessment` : "/children"}
+        />
       </div>
 
-      <div className="grid items-stretch gap-4 xl:grid-cols-[1.2fr_1fr]">
+      <div className="grid items-stretch gap-4 xl:grid-cols-[1.05fr_1.15fr_1fr]">
         <TodayMenu />
         <ClassBoardNotice notice={boardNotice} />
+        <DashboardChatPreview />
       </div>
     </div>
   );

@@ -132,6 +132,135 @@ describe("navigation is built from the session's roles", () => {
     */
     await waitFor(() => expect(screen.getAllByText("Ирц").length).toBeGreaterThan(0));
   });
+
+  it("gives teachers the teacher workspace theme", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: "/notifications/unread-count", body: { count: 0 } },
+      { path: "/groups", body: { items: [], total: 0, page: 1, pageSize: 20, totalPages: 0 } },
+    ]);
+
+    const { container } = renderWithProviders(
+      <AppLayout>
+        <div>агуулга</div>
+      </AppLayout>,
+    );
+
+    await waitFor(() =>
+      expect(container.querySelector("[data-app-theme]")).toHaveAttribute(
+        "data-app-theme",
+        "teacher",
+      ),
+    );
+  });
+
+  it("gives administrators the admin workspace theme", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: "/notifications/unread-count", body: { count: 0 } },
+      { path: "/groups", body: { items: [], total: 0, page: 1, pageSize: 20, totalPages: 0 } },
+    ]);
+
+    const { container } = renderWithProviders(
+      <AppLayout>
+        <div>агуулга</div>
+      </AppLayout>,
+    );
+
+    await waitFor(() =>
+      expect(container.querySelector("[data-app-theme]")).toHaveAttribute(
+        "data-app-theme",
+        "admin",
+      ),
+    );
+  });
+
+  it("gives parents the parent workspace theme", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["PARENT"]) },
+      { path: "/notifications/unread-count", body: { count: 0 } },
+      { path: "/children/mine", body: [] },
+    ]);
+
+    const { container } = renderWithProviders(
+      <AppLayout>
+        <div>агуулга</div>
+      </AppLayout>,
+    );
+
+    await waitFor(() =>
+      expect(container.querySelector("[data-app-theme]")).toHaveAttribute(
+        "data-app-theme",
+        "parent",
+      ),
+    );
+  });
+
+  it("gives kitchen staff their theme without loading parent children", async () => {
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["COOK"]) },
+      { path: "/notifications/unread-count", body: { count: 0 } },
+    ]);
+
+    const { container } = renderWithProviders(
+      <AppLayout>
+        <div>агуулга</div>
+      </AppLayout>,
+    );
+
+    await waitFor(() =>
+      expect(container.querySelector("[data-app-theme]")).toHaveAttribute(
+        "data-app-theme",
+        "kitchen",
+      ),
+    );
+    expect(calls.some((call) => call.url.startsWith("/children/mine"))).toBe(false);
+  });
+
+  it("gives accountants their theme without loading parent children", async () => {
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["ACCOUNTANT"]) },
+      { path: "/notifications/unread-count", body: { count: 0 } },
+    ]);
+
+    const { container } = renderWithProviders(
+      <AppLayout>
+        <div>агуулга</div>
+      </AppLayout>,
+    );
+
+    await waitFor(() =>
+      expect(container.querySelector("[data-app-theme]")).toHaveAttribute(
+        "data-app-theme",
+        "finance",
+      ),
+    );
+    expect(calls.some((call) => call.url.startsWith("/children/mine"))).toBe(false);
+  });
+
+  it("gives a platform operator the platform workspace theme", async () => {
+    const base = sessionFor([]);
+    stubApi([
+      {
+        path: "/auth/me",
+        body: { ...base, user: { ...base.user, isSuperAdmin: true } },
+      },
+      { path: "/notifications/unread-count", body: { count: 0 } },
+    ]);
+
+    const { container } = renderWithProviders(
+      <AppLayout>
+        <div>агуулга</div>
+      </AppLayout>,
+    );
+
+    await waitFor(() =>
+      expect(container.querySelector("[data-app-theme]")).toHaveAttribute(
+        "data-app-theme",
+        "platform",
+      ),
+    );
+  });
 });
 
 /**
