@@ -23,6 +23,7 @@ import {
   NotebookPen,
   CalendarDays,
   CalendarRange,
+  Database,
   School,
   Receipt,
   ScrollText,
@@ -334,6 +335,7 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
   "/admin/terms": CalendarDays,
   "/admin/assessment-config": SlidersHorizontal,
   "/admin/audit": ScrollText,
+  "/admin/integrations/esis": Database,
 };
 
 /**
@@ -825,6 +827,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         ...adminEntry("Хэрэглэгч ба эрх", "/admin/users"),
         ...adminEntry("Хичээлийн жил", "/admin/school-years"),
         ...adminEntry("Улирал", "/admin/terms"),
+        ...adminEntry("ESIS холболт", "/admin/integrations/esis"),
         /*
          * ★ "Үнэлгээний тохиргоо" and "Аудит" lost their rows on 2026-09-06,
          * at the client's request — and, as with the two review queues above,

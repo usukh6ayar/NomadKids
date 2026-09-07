@@ -248,5 +248,8 @@ interface SystemTable {
   findMany(args: { where: Record<string, unknown> }): Promise<Record<string, unknown>[]>;
   createMany(args: { data: Record<string, unknown>[] }): Promise<unknown>;
   update(args: { where: { id: string }; data: Record<string, unknown> }): Promise<unknown>;
-  updateMany(args: { where: Record<string, unknown>; data: Record<string, unknown> }): Promise<unknown>;
+  updateMany(args: {
+    where: Record<string, unknown>;
+    data: Record<string, unknown>;
+  }): Promise<unknown>;
 }

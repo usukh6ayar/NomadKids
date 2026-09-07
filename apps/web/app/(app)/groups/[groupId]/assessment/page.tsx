@@ -366,11 +366,13 @@ function GroupAssessment() {
                 }}
                 disabled={terms.isLoading}
               >
-                {[...new Map(
-                  (terms.data ?? [])
-                    .filter((term) => term.schoolYear)
-                    .map((term) => [term.schoolYear!.id, term.schoolYear!]),
-                ).values()].map((year) => (
+                {[
+                  ...new Map(
+                    (terms.data ?? [])
+                      .filter((term) => term.schoolYear)
+                      .map((term) => [term.schoolYear!.id, term.schoolYear!]),
+                  ).values(),
+                ].map((year) => (
                   <option key={year.id} value={year.id}>
                     {yearLabel(year.name, yearById.get(year.id))}
                   </option>
@@ -802,9 +804,7 @@ function NewRecordStrip({
               >
                 <style.Icon size={18} aria-hidden="true" />
               </span>
-              <span className="min-w-0 flex-1 truncate text-body font-semibold">
-                + {type.name}
-              </span>
+              <span className="min-w-0 flex-1 truncate text-body font-semibold">+ {type.name}</span>
             </>
           );
 

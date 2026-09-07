@@ -70,6 +70,18 @@ enum AuthTokenPurpose {
   INVITATION
 }
 
+enum EsisEnvironment {
+  TEST
+  PRODUCTION
+}
+
+enum EsisSyncStatus {
+  RUNNING
+  SUCCEEDED
+  PARTIAL
+  FAILED
+}
+
 enum AgeBand {
   NURSERY // Бага бүлэг
   JUNIOR // Дунд бүлэг
@@ -425,6 +437,7 @@ model User {
   applicationsReviewed  KindergartenApplication[] @relation("ApplicationReviewer")
   chatMessages          ChatMessage[]             @relation("ChatAuthor")
   chatReads             ChatRead[]                @relation("ChatReader")
+  esisSyncRuns          EsisSyncRun[]             @relation("EsisSyncInitiator")
 
   @@index([deletedAt])
   @@map("users")
@@ -539,6 +552,16 @@ model Kindergarten {
   description String?
   isActive    Boolean @default(true)
 
+  /// The ESIS institution this tenant is allowed to read.
+  ///
+  /// Set only through the platform-operator route. A kindergarten admin may
+  /// start a preview only when this value matches the deployment credential's
+  /// institution id, preventing one tenant from reading another tenant's
+  /// roster through a shared integration token.
+  esisInstitutionId String?          @unique
+  esisEnvironment   EsisEnvironment?
+  esisMappedAt      DateTime?
+
   /// ★ RFP §3.2 (лого) and §10.3, which requires the logo on every generated
   /// PDF.
   ///
@@ -615,9 +638,36 @@ model Kindergarten {
   contracts             Contract[]
   chatMessages          ChatMessage[]
   chatReads             ChatRead[]
+  esisSyncRuns          EsisSyncRun[]
 
   @@index([deletedAt])
   @@map("kindergartens")
+}
+
+/// One operator-initiated ESIS read-only preview.
+///
+/// The result stores counts and safe error categories only. Remote roster
+/// rows are returned to the authorised administrator for the current request
+/// but are not persisted here; importing them requires a separate approval
+/// workflow and external-id mapping.
+model EsisSyncRun {
+  id             String         @id @default(uuid()) @db.Uuid
+  kindergartenId String         @db.Uuid
+  initiatedById  String         @db.Uuid
+  status         EsisSyncStatus @default(RUNNING)
+  resources      Json
+  summary        Json?
+  errorCode      String?
+  startedAt      DateTime       @default(now())
+  finishedAt     DateTime?
+  createdAt      DateTime       @default(now())
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  initiatedBy  User         @relation("EsisSyncInitiator", fields: [initiatedById], references: [id], onDelete: Restrict)
+
+  @@index([kindergartenId, startedAt])
+  @@index([status, startedAt])
+  @@map("esis_sync_runs")
 }
 
 model SchoolYear {

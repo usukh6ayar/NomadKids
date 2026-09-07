@@ -3,6 +3,9 @@ import { loadEnv } from "../../config/env";
 import { EsisClient } from "./esis.client";
 import { EsisConfig } from "./esis.config";
 import { EsisService } from "./esis.service";
+import { EsisAdminService } from "./esis-admin.service";
+import { EsisRepository } from "./esis.repository";
+import { KindergartenEsisController, PlatformEsisController } from "./esis.controller";
 
 /**
  * The ESIS integration boundary.
@@ -15,6 +18,7 @@ import { EsisService } from "./esis.service";
  * declaring it is one whose blast radius nobody can measure.
  */
 @Module({
+  controllers: [KindergartenEsisController, PlatformEsisController],
   providers: [
     /*
      * A factory, because `EsisConfig` takes the parsed `Env` and that is a
@@ -25,6 +29,8 @@ import { EsisService } from "./esis.service";
     { provide: EsisConfig, useFactory: () => new EsisConfig(loadEnv()) },
     EsisClient,
     EsisService,
+    EsisAdminService,
+    EsisRepository,
   ],
   exports: [EsisService, EsisConfig],
 })

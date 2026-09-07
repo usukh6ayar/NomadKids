@@ -68,7 +68,12 @@ export type UpdateProfileDto = z.infer<typeof updateProfileSchema>;
  */
 const rolesSchema = z
   .string()
-  .transform((value) => value.split(",").map((part) => part.trim()).filter(Boolean))
+  .transform((value) =>
+    value
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean),
+  )
   .pipe(z.array(roleSchema).min(1).max(8));
 
 export const listUsersQuerySchema = paginationQuerySchema.extend({

@@ -67,9 +67,9 @@ export class EsisClient {
    * Makes one ESIS request.
    *
    * Returns the parsed body, or throws `EsisError`. There is no retry: a retry
-   * policy depends on which endpoint is being called and whether it is
-   * idempotent, and inventing one before we have seen a single real endpoint
-   * would be guessing at the ministry's rate limits.
+   * policy depends on the endpoint's idempotency and approved rate limit. The
+   * public catalog documents neither, so retries belong to the future sync job,
+   * after the test contract is confirmed.
    */
   async request<T = unknown>(options: EsisRequest): Promise<EsisResponse<T>> {
     if (!this.config.isConfigured) {

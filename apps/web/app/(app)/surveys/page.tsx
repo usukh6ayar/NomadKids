@@ -535,10 +535,7 @@ function CreateSurveyDialog({
             "бүх бүлэг эсвэл бүлэг сонгох". Both are here now, in that order,
             each with the label that describes it.
           */}
-          <Field
-            label="Хэнд зориулагдсан"
-            hint="Сонгосон бүлгийн эцэг эхэд л харагдана."
-          >
+          <Field label="Хэнд зориулагдсан" hint="Сонгосон бүлгийн эцэг эхэд л харагдана.">
             {({ id, describedBy }) => (
               <Select
                 id={id}

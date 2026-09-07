@@ -2853,6 +2853,9 @@ export type PlatformKindergarten = z.infer<typeof platformKindergartenSchema>;
  */
 export const platformKindergartenDetailSchema = platformKindergartenSchema.extend({
   description: z.string().nullish(),
+  esisInstitutionId: z.string().nullish(),
+  esisEnvironment: z.enum(["TEST", "PRODUCTION"]).nullish(),
+  esisMappedAt: z.string().nullish(),
   counts: z.object({
     children: z.number(),
     groups: z.number(),
@@ -2879,6 +2882,115 @@ export const platformKindergartenDetailSchema = platformKindergartenSchema.exten
   ),
 });
 export type PlatformKindergartenDetail = z.infer<typeof platformKindergartenDetailSchema>;
+
+// ── ESIS integration operations ─────────────────────────────────────────────
+
+export const esisResourceKeySchema = z.enum([
+  "organization",
+  "academicYearStatuses",
+  "groups",
+  "students",
+  "groupStudents",
+  "studentMovements",
+  "teachers",
+  "staff",
+  "groupAttendance",
+  "saveAttendanceV3",
+  "foodProductTypes",
+  "foodMaterialGroups",
+  "foodMaterials",
+  "foodProducts",
+  "foodProductMaterials",
+  "foodKit",
+  "foodKitProducts",
+]);
+export type EsisResourceKey = z.infer<typeof esisResourceKeySchema>;
+
+export const esisPreviewResourceKeySchema = z.enum([
+  "organization",
+  "academicYearStatuses",
+  "groups",
+  "students",
+  "teachers",
+  "staff",
+  "foodProductTypes",
+  "foodMaterialGroups",
+  "foodMaterials",
+  "foodProducts",
+  "foodProductMaterials",
+]);
+export type EsisPreviewResourceKey = z.infer<typeof esisPreviewResourceKeySchema>;
+
+const esisSyncStatusSchema = z.enum(["RUNNING", "SUCCEEDED", "PARTIAL", "FAILED"]);
+
+export const esisOverviewSchema = z.object({
+  deployment: z.object({
+    configured: z.boolean(),
+    baseUrl: z.string(),
+    institutionId: z.string(),
+    hasToken: z.boolean(),
+  }),
+  connection: z.object({
+    mapped: z.boolean(),
+    institutionId: z.string().nullable(),
+    environment: z.enum(["TEST", "PRODUCTION"]).nullable(),
+    mappedAt: z.string().nullable(),
+    mappingMatchesDeployment: z.boolean(),
+  }),
+  stages: z.array(
+    z.object({
+      code: z.enum(["C1", "C2", "C3", "C4", "C5"]),
+      label: z.string(),
+      status: z.enum(["READY", "WAITING"]),
+    }),
+  ),
+  endpoints: z.array(
+    z.object({
+      key: esisResourceKeySchema,
+      apiId: z.number(),
+      slug: z.string(),
+      method: z.enum(["GET", "POST"]),
+      path: z.string(),
+      name: z.string(),
+      domain: z.enum(["ORGANIZATION", "ROSTER", "ATTENDANCE", "FOOD"]),
+      usage: z.string(),
+      previewable: z.boolean(),
+      accessStatus: z.literal("UNKNOWN"),
+    }),
+  ),
+  recentRuns: z.array(
+    z.object({
+      id: uuidSchema,
+      status: esisSyncStatusSchema,
+      resources: z.array(z.string()),
+      summary: z.unknown().nullable(),
+      errorCode: z.string().nullable(),
+      startedAt: z.string(),
+      finishedAt: z.string().nullable(),
+      initiatedBy: z.string(),
+    }),
+  ),
+  canPreview: z.boolean(),
+  blockers: z.array(z.string()),
+});
+export type EsisOverview = z.infer<typeof esisOverviewSchema>;
+
+export const esisPreviewResultSchema = z.object({
+  runId: uuidSchema,
+  dryRun: z.literal(true),
+  status: z.enum(["SUCCEEDED", "PARTIAL", "FAILED"]),
+  results: z.array(
+    z.object({
+      resource: esisPreviewResourceKeySchema,
+      count: z.number(),
+      durationMs: z.number().nullable(),
+      preview: z.array(z.object({ label: z.string() })),
+      status: z.enum(["SUCCEEDED", "FAILED"]),
+      errorCode: z.string().nullable(),
+    }),
+  ),
+});
+export type EsisPreviewResult = z.infer<typeof esisPreviewResultSchema>;
 
 /** `POST /platform/kindergartens` — the tenant, its first admin, and the invite. */
 export const createdKindergartenSchema = z.object({

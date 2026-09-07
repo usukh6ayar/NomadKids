@@ -12,16 +12,16 @@ background-remove or trim the canonical image.
 
 ## Outputs
 
-| File | Size | Ground | Purpose |
-| --- | --- | --- | --- |
-| `app/favicon.ico` | 48, 32, 16 | artwork ground | Browser and crawler fallback icon |
-| `app/icon.png` | 512 x 512 | artwork ground | Next.js browser icon |
-| `app/apple-icon.png` | 180 x 180 | artwork ground | iOS home-screen icon |
-| `public/icons/pwa-192.png` | 192 x 192 | artwork ground | Manifest `any` icon |
-| `public/icons/pwa-512.png` | 512 x 512 | artwork ground | Manifest `any` icon |
-| `public/icons/pwa-maskable-512.png` | 512 x 512 | artwork ground | Android maskable safe-zone icon |
-| `public/logo.png` | 1400 x 1400 | artwork ground | Exact supplied logo used by auth screens |
-| `public/mark.png` | 512 x 373 | transparent | Compact wordmark-free sidebar mark |
+| File                                | Size        | Ground         | Purpose                                  |
+| ----------------------------------- | ----------- | -------------- | ---------------------------------------- |
+| `app/favicon.ico`                   | 48, 32, 16  | artwork ground | Browser and crawler fallback icon        |
+| `app/icon.png`                      | 512 x 512   | artwork ground | Next.js browser icon                     |
+| `app/apple-icon.png`                | 180 x 180   | artwork ground | iOS home-screen icon                     |
+| `public/icons/pwa-192.png`          | 192 x 192   | artwork ground | Manifest `any` icon                      |
+| `public/icons/pwa-512.png`          | 512 x 512   | artwork ground | Manifest `any` icon                      |
+| `public/icons/pwa-maskable-512.png` | 512 x 512   | artwork ground | Android maskable safe-zone icon          |
+| `public/logo.png`                   | 1400 x 1400 | artwork ground | Exact supplied logo used by auth screens |
+| `public/mark.png`                   | 512 x 373   | transparent    | Compact wordmark-free sidebar mark       |
 
 The compact `mark.png` is the only transparent derivation. It is used where the
 product name is rendered beside the image; using the full drawn wordmark there

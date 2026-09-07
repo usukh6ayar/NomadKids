@@ -1,11 +1,16 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
-import { platformKindergartenDetailSchema } from "@kinder/contracts";
-import { get } from "@/lib/api/browser";
+import { ArrowLeft, Database } from "lucide-react";
+import {
+  platformKindergartenDetailSchema,
+  type PlatformKindergartenDetail,
+} from "@kinder/contracts";
+import { useState } from "react";
+import { z } from "zod";
+import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { PageHeader } from "@/components/shell/app-shell";
@@ -18,7 +23,10 @@ import {
 import { ToggleActiveButton } from "@/components/admin/toggle-kindergarten-active";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, SectionHeader } from "@/components/ui/card";
+import { Field, Input, Select } from "@/components/ui/field";
 import { ErrorState, LoadingState } from "@/components/ui/states";
+import { useToast } from "@/components/ui/toast";
 import { formatRelative } from "@/lib/format";
 
 /**
@@ -105,6 +113,8 @@ function KindergartenDetail() {
 
       <StatGrid counts={kg.counts} />
 
+      <EsisMappingCard kindergarten={kg} />
+
       <AssessmentCoverageSection
         coverage={kg.assessmentCoverage}
         hasCurrentTerm={Boolean(kg.currentTerm)}
@@ -112,5 +122,93 @@ function KindergartenDetail() {
 
       <RecentActivitySection entries={kg.recentActivity} />
     </div>
+  );
+}
+
+const esisMappingResultSchema = z.object({
+  id: z.string().uuid(),
+  esisInstitutionId: z.string().nullable(),
+  esisEnvironment: z.enum(["TEST", "PRODUCTION"]).nullable(),
+  esisMappedAt: z.string().nullable(),
+});
+
+function EsisMappingCard({ kindergarten }: { kindergarten: PlatformKindergartenDetail }) {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const [institutionId, setInstitutionId] = useState(kindergarten.esisInstitutionId ?? "");
+  const [environment, setEnvironment] = useState<"TEST" | "PRODUCTION">(
+    kindergarten.esisEnvironment ?? "TEST",
+  );
+
+  const save = useMutation({
+    mutationFn: (mapped: boolean) =>
+      mutate(`/platform/kindergartens/${kindergarten.id}/esis/mapping`, esisMappingResultSchema, {
+        method: "PUT",
+        body: mapped
+          ? { mapped: true, institutionId: institutionId.trim(), environment }
+          : { mapped: false },
+      }),
+    onSuccess: (result) => {
+      setInstitutionId(result.esisInstitutionId ?? "");
+      toast.success(
+        result.esisInstitutionId ? "ESIS mapping хадгаллаа." : "ESIS mapping салгалаа.",
+      );
+      void queryClient.invalidateQueries({ queryKey: qk.platformKindergarten(kindergarten.id) });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  return (
+    <section aria-labelledby="platform-esis-heading">
+      <SectionHeader
+        id="platform-esis-heading"
+        title="ESIS байгууллагын mapping"
+        lede="Энэ тохиргоо тухайн цэцэрлэгийн админ ямар ESIS institution уншихыг хязгаарлана."
+      />
+      <Card pad="roomy">
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px_auto] md:items-end">
+          <Field label="ESIS institution ID">
+            {({ id, describedBy, invalid }) => (
+              <Input
+                id={id}
+                aria-describedby={describedBy}
+                invalid={invalid}
+                value={institutionId}
+                onChange={(event) => setInstitutionId(event.target.value)}
+                placeholder="Жишээ: 40305"
+                inputMode="numeric"
+              />
+            )}
+          </Field>
+          <Field label="Орчин">
+            {({ id, describedBy, invalid }) => (
+              <Select
+                id={id}
+                aria-describedby={describedBy}
+                invalid={invalid}
+                value={environment}
+                onChange={(event) => setEnvironment(event.target.value as "TEST" | "PRODUCTION")}
+              >
+                <option value="TEST">TEST</option>
+                <option value="PRODUCTION">PRODUCTION</option>
+              </Select>
+            )}
+          </Field>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              disabled={!institutionId.trim() || save.isPending}
+              onClick={() => save.mutate(true)}
+            >
+              <Database aria-hidden /> Хадгалах
+            </Button>
+            {kindergarten.esisInstitutionId ? (
+              <Button variant="ghost" disabled={save.isPending} onClick={() => save.mutate(false)}>
+                Салгах
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </Card>
+    </section>
   );
 }

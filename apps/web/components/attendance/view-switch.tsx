@@ -85,7 +85,9 @@ function Tab({
       aria-current={active ? "page" : undefined}
       className={cn(
         "flex min-h-[38px] items-center gap-1.5 rounded-control px-3 text-body font-medium transition-colors",
-        active ? "bg-primary text-primary-ink shadow-sm" : "text-muted hover:bg-canvas hover:text-ink",
+        active
+          ? "bg-primary text-primary-ink shadow-sm"
+          : "text-muted hover:bg-canvas hover:text-ink",
       )}
     >
       {children}

@@ -69,7 +69,10 @@ function KitchenAttendance() {
     enabled: Boolean(primaryKindergartenId),
     queryKey: qk.kitchen.mealServings(primaryKindergartenId ?? "", today),
     queryFn: () =>
-      get(`/kindergartens/${primaryKindergartenId}/meal-servings?date=${today}`, mealServingsSchema),
+      get(
+        `/kindergartens/${primaryKindergartenId}/meal-servings?date=${today}`,
+        mealServingsSchema,
+      ),
   });
 
   const header = (lede: string) => <PageHeader title="Ирц" lede={lede} />;
@@ -251,7 +254,8 @@ function MealServingRow({
       {MEAL_KINDS.map((kind) => {
         const serving = byKind.get(kind);
         const pending =
-          (mark.isPending && mark.variables === kind) || (unmark.isPending && serving && unmark.variables === serving.id);
+          (mark.isPending && mark.variables === kind) ||
+          (unmark.isPending && serving && unmark.variables === serving.id);
 
         return (
           <li key={kind}>
