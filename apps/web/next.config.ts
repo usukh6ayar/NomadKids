@@ -23,11 +23,13 @@ const config: NextConfig = {
    * it build tooling the server never calls. `standalone` traces what the
    * server actually imports and writes a `server.js` beside it.
    *
-   * It is set unconditionally rather than behind `isProduction`: `next dev`
-   * ignores it, so a conditional would only add a way for the development and
-   * production builds to differ.
+   * Vercel supplies its own Next build adapter and does not use this bundle.
+   * Next 16.3 also fails its `onBuildComplete` hook when an adapter and
+   * `standalone` are enabled together because the adapter deliberately omits
+   * `next-server.js.nft.json` while the standalone copier still reads it.
+   * Keep standalone for Docker/VPS builds and let Vercel use its native output.
    */
-  output: "standalone",
+  output: process.env.VERCEL ? undefined : "standalone",
 
   /**
    * ★★ The monorepo root, not `apps/web`.
