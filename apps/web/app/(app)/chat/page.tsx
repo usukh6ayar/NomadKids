@@ -59,7 +59,7 @@ export default function ChatPage() {
   const active = rooms.data?.find((room) => room.key === roomKey) ?? null;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1200px] flex-col px-4 py-4 lg:py-6">
+    <div className="page-band mx-auto w-full max-w-[1200px] px-4 py-4 lg:py-6">
       <PageHeader title="Чат" lede="Бүлгийнхээ багш, эцэг эхтэй шууд харилцах." />
 
       {/*

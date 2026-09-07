@@ -1316,6 +1316,7 @@ describe("teacher dashboard", () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
       { path: "/dashboard/teacher", body: dashboardBody(over) },
+      { path: "/chat/rooms", body: [] },
       { path: "/groups", body: { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 } },
       { path: "/children/summary", body: { total: 10, averageAgeMonths: 48, boys: 5, girls: 5 } },
     ]);
@@ -1333,23 +1334,24 @@ describe("teacher dashboard", () => {
     ).toBeInTheDocument();
 
     for (const action of ["Ирц", "Мэдээ", "Явцын үнэлгээ"]) {
-      expect(await screen.findByText(action)).toBeInTheDocument();
+      expect(
+        await screen.findByRole("link", { name: new RegExp(`^${action}`) }),
+      ).toBeInTheDocument();
     }
 
     for (const card of [
       "Өнөөдрийн ирц",
       "Сарын ирц",
       "Төрсөн өдөр",
-      "Судалгаа",
+      "Явцын үнэлгээ",
       "Сүүлийн нийтлэл",
+      "Сургуулийн чат",
     ]) {
       expect(
         await screen.findByRole("heading", { name: card }),
         `${card} is missing`,
       ).toBeInTheDocument();
     }
-
-    expect(screen.getByRole("search")).toBeInTheDocument();
   });
 
   /**
@@ -1384,14 +1386,12 @@ describe("teacher dashboard", () => {
       "Түргэн холбоос",
       "Өнөөдрийн тойм",
       "Сүүлийн ажиглалтууд",
-      "Улирлын үнэлгээний явц",
       "Бүлгийн бүртгэлүүд",
     ]) {
       expect(screen.queryByRole("region", { name: region }), `${region} is back`).toBeNull();
     }
-    // The "+ Үйлдэл" menu went with the old dashboard; search returned with
-    // the 2026-09-06 teacher mockup.
-    expect(screen.getByRole("search")).toBeInTheDocument();
+    // The "+ Үйлдэл" menu went with the old dashboard. Search now belongs to
+    // the teacher shell's desktop header rather than this page component.
     expect(screen.queryByRole("button", { name: /Үйлдэл/ })).toBeNull();
 
     /*
