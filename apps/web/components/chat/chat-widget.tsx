@@ -2,7 +2,7 @@
 
 import * as Dialog from "@radix-ui/react-dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, MessageCircle, Send, X } from "lucide-react";
+import { ArrowLeft, Send, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { z } from "zod";
 import { chatMessageSchema, chatRoomSchema, unreadCountSchema } from "@kinder/contracts";
@@ -10,6 +10,7 @@ import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
+import { Art } from "@/components/ui/art";
 import { Input } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/states";
 import { fullName } from "@/lib/format";
@@ -123,11 +124,11 @@ export function ChatWidget() {
         aria-label={count > 0 ? `Чат, ${count} шинэ мессеж` : "Чат"}
         data-print-hide
         className={cn(
-          "fixed right-4 z-30 grid size-14 place-items-center rounded-pill bg-primary text-primary-ink shadow-lg transition-colors hover:bg-primary-hover",
+          "fixed right-4 z-30 grid size-14 place-items-center rounded-pill shadow-lg transition-transform hover:scale-105",
           "bottom-[calc(var(--size-bottom-nav)+env(safe-area-inset-bottom)+0.5rem)] lg:bottom-6 lg:right-6",
         )}
       >
-        <MessageCircle size={24} strokeWidth={2} aria-hidden="true" />
+        <Art name="chatBadge" size={56} className="size-14" />
         {count > 0 ? (
           <span
             aria-hidden="true"

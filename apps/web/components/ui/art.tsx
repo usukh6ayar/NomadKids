@@ -38,8 +38,9 @@ import Image from "next/image";
  * ★★★★ Keep the supplied feature drawings central.
  *
  * `child`, `group`, `attendance`, `teacher`, `food`, `kindergarten`, `finance`,
- * `notice`, `survey`, `progress`, and the four portfolio launcher drawings are
- * the owner's 1254×1254 transparent PNGs, kept at their original resolution.
+ * `notice`, `survey`, `progress`, `chat`, `chatBadge`, and the four portfolio
+ * launcher drawings are the owner's 1254×1254 transparent PNGs, kept at their
+ * original resolution.
  * Every dashboard tile, navigation item and page identity reaches them through
  * this registry rather than carrying a second copy or a route-specific file
  * path. Replacing one source here therefore replaces that feature consistently
@@ -48,6 +49,8 @@ import Image from "next/image";
 const SOURCE = {
   analytics: "/icons/icon-analytics.png",
   attendance: "/icons/icon-attendance-3d.png",
+  chat: "/icons/icon-chat-3d.png",
+  chatBadge: "/icons/icon-chat-badge-3d.png",
   child: "/icons/icon-children-3d.png",
   finance: "/icons/icon-finance-payment-3d.png",
   food: "/icons/icon-food-3d.png",

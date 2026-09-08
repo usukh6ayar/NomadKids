@@ -2,11 +2,12 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Eye, Images, MessageCircle, X } from "lucide-react";
+import { X } from "lucide-react";
 import { observationSchema, type ChildDetail } from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
+import { Art, type ArtName } from "@/components/ui/art";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/field";
@@ -32,6 +33,10 @@ import { cn } from "@/lib/utils";
  * write about. A later pass can give `Ярилцлага`/`Бүтээл` their own stored
  * distinction if the client asks for one; nothing here has to change shape to
  * add it, since each still posts a plain `CreateParentObservationDto`.
+ *
+ * ★★ Each door carries one of `public/icons/`'s illustrations (`art.tsx`):
+ * `analytics`'s magnifying glass for "Ажиглалт", `chat`'s speech bubbles for
+ * "Ярилцлага", `portfolioGallery`'s photo folder for "Бүтээл".
  */
 const BUCKETS = [
   {
@@ -39,21 +44,21 @@ const BUCKETS = [
     label: "Ажиглалт",
     verb: "Ажиглалт нэмэх",
     tone: "green" as GradientTone,
-    Icon: Eye,
+    art: "analytics" as ArtName,
   },
   {
     key: "conversation",
     label: "Ярилцлага",
     verb: "Ярилцлага нэмэх",
     tone: "blue" as GradientTone,
-    Icon: MessageCircle,
+    art: "chat" as ArtName,
   },
   {
     key: "artwork",
     label: "Бүтээл",
     verb: "Бүтээл нэмэх",
     tone: "orange" as GradientTone,
-    Icon: Images,
+    art: "portfolioGallery" as ArtName,
   },
 ] as const;
 
@@ -147,9 +152,9 @@ function QuickShareBar({
     >
       <span
         aria-hidden="true"
-        className="flex size-9 shrink-0 items-center justify-center rounded-pill bg-white/25"
+        className="flex size-9 shrink-0 items-center justify-center rounded-pill bg-white"
       >
-        <bucket.Icon size={18} aria-hidden="true" />
+        <Art name={bucket.art} size={26} className="size-[26px] object-contain" />
       </span>
       <span className="min-w-0 flex-1 truncate text-body font-semibold">{bucket.label}</span>
     </button>
