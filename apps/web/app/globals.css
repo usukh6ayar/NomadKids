@@ -152,23 +152,70 @@
    * Radii — the reference's `--radius`, `--radius-sm` and `--radius-ctl`.
    * `--radius-card` was 16px and every card in the product was 2px tighter
    * than the design.
+   *
+   * ★ **Softened one step across the board — 2026-09-08**, at the client's
+   * request: "ерөнхий дөрвөлжиндүү юмнуудыг бүр өнхий гоё болгоё … аппын бүр
+   * өнхий шиг". Every one of these went up together rather than the input they
+   * pointed at going up alone: a 16px field inside a 18px card reads as a patch
+   * on a squarer page, and the complaint was about the page.
+   *
+   *   control  12 → 16   fields, selects, chips, small chrome
+   *   row      14 → 18   list rows, menus, sunken panels
+   *   card     18 → 24   the surfaces those sit on
+   *
+   * The ratios are kept — a card is still the roundest thing, a control the
+   * tightest — so the hierarchy that made 12/14/18 legible survives the shift.
    */
-  --radius-control: 12px;
-  --radius-card: 18px;
-  --radius-row: 14px;
+  --radius-control: 16px;
+  --radius-card: 24px;
+  --radius-row: 18px;
   --radius-pill: 999px;
   /*
-   * ★ 6px, for the 20px checkbox and nothing larger — added 2026-09-04 when
-   * the client asked for rounded boxes.
+   * ★★ Buttons are capsules — 2026-09-08, the same request, second half:
+   * "товч ntr н дөрвөлжин юм шиг байгаад байна. гоё зөөлхөн дугуйдуу болгох нь
+   * гоё байна."
    *
-   * `--radius-control` is 12px, which is right on a 44px button and wrong on a
-   * 20px square: 12px corners on a 20px box very nearly meet, so the control
+   * A token of its own rather than a fourth value on the scale above, because
+   * a button is the one control whose radius should follow its *height*: `sm`
+   * is 44px, `md` 48px and `lg` 52px, and a fixed 22px would leave the three
+   * sizes visibly differently-shaped. 999px makes every one of them the same
+   * capsule, which is what "зөөлхөн дугуйдуу" describes.
+   *
+   * It is deliberately not `--radius-pill`, which badges use: they are the same
+   * number today, and a later decision to soften buttons *short* of a capsule
+   * must not have to un-pill every badge to get there.
+   */
+  --radius-button: 999px;
+  /*
+   * ★★★ Anything you type into — 2026-09-08, the same request, third pass:
+   * "тэр input ntr оруулаад байгаа дөрвөлжиндүү байгаад байгааг нь бөөрөнхий
+   * зөөлөн болгомоор байна … нэрээр хайх ntr гэсэн тийм хэсгүүд дөрвөлжин
+   * байгаад байна".
+   *
+   * 24px, which is exactly half of `--size-control` — so a single-line field
+   * is a capsule, the same shape the buttons beside it now take, and the row
+   * of "хайх + шүүлт + Нэмэх" reads as one family instead of three.
+   *
+   * Not `--radius-control`, which also dresses 32px and 40px chrome: at 24px
+   * those become circles. A field is the one control whose height is fixed at
+   * 48px by `--size-control`, so it is the one that can safely take half of it.
+   * A textarea is taller and keeps the same 24px, where it reads as a soft
+   * corner rather than a capsule — the roundest surface on the page is a card,
+   * also 24px, and a field sitting inside one now matches it.
+   */
+  --radius-field: 24px;
+  /*
+   * ★ 7px, for the 20px checkbox and nothing larger — added 2026-09-04 when
+   * the client asked for rounded boxes, widened by 1px when the scale moved.
+   *
+   * `--radius-control` is 16px, which is right on a 48px field and wrong on a
+   * 20px square: corners that size on a box that size meet, so the control
    * renders as a circle and reads as a radio — "pick one of these" instead of
    * "pick any of these". That is a meaning, not a style, and it is the one
-   * thing a checkbox must not borrow. 6px is visibly rounded and unmistakably
+   * thing a checkbox must not borrow. 7px is visibly rounded and unmistakably
    * still a box.
    */
-  --radius-check: 6px;
+  --radius-check: 7px;
 
   /*
    * ★ Removed 2026-08-23. Cards use Tailwind's `shadow-sm`.

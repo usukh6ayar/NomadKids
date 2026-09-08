@@ -628,7 +628,7 @@ function StatusLegend() {
           <span
             aria-hidden="true"
             className={cn(
-              "inline-flex h-5 w-5 items-center justify-center rounded-control text-caption font-semibold",
+              "inline-flex h-5 w-5 items-center justify-center rounded-check text-caption font-semibold",
               STATUS_TONE[status] ?? "bg-canvas text-muted",
             )}
           >
@@ -641,7 +641,7 @@ function StatusLegend() {
       <span className="flex items-center gap-1.5">
         <span
           aria-hidden="true"
-          className="inline-flex h-5 w-5 items-center justify-center rounded-control border border-dashed border-border"
+          className="inline-flex h-5 w-5 items-center justify-center rounded-check border border-dashed border-border"
         />
         Бүртгэлгүй
       </span>
