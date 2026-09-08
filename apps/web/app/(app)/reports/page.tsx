@@ -192,7 +192,6 @@ function MonthReport({ data }: { data: GroupAttendanceSummary }) {
         <StatCard
           label="Бүртгэсэн өдөр"
           value={recordedDays}
-          unit="өдөр"
           art={<CalendarDays size={22} />}
           tone="sky"
           className="teacher-stat-card teacher-stat-sky"
@@ -215,7 +214,6 @@ function MonthReport({ data }: { data: GroupAttendanceSummary }) {
         <StatCard
           label="Бүлгийн хүүхэд"
           value={data.roster}
-          unit="хүүхэд"
           art={<Art name="group" size={36} />}
           artSurface={false}
           tone="peach"

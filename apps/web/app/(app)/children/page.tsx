@@ -398,7 +398,6 @@ function RosterSummary({ search, facets }: { search: string; facets: RosterFacet
         <StatCard
           label="Нийт хүүхэд"
           value={data.total}
-          unit="хүүхэд"
           art={<Art name="child" size={36} />}
           artSurface={false}
           tone="sky"
@@ -407,7 +406,6 @@ function RosterSummary({ search, facets }: { search: string; facets: RosterFacet
         <StatCard
           label="Охид"
           value={data.girls}
-          unit="хүүхэд"
           art={<Venus size={22} />}
           tone="peach"
           className="teacher-stat-card teacher-stat-peach"
@@ -415,7 +413,6 @@ function RosterSummary({ search, facets }: { search: string; facets: RosterFacet
         <StatCard
           label="Хөвгүүд"
           value={data.boys}
-          unit="хүүхэд"
           art={<Mars size={22} />}
           tone="mint"
           className="teacher-stat-card teacher-stat-mint"

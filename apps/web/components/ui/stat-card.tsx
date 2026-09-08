@@ -155,6 +155,16 @@ export function StatCard({
           {value}
         </p>
 
+        {/*
+          ★ Only when it says something the label does not — 2026-09-09.
+
+          "Нийт хүүхэд" over "24" over "хүүхэд" spends a third line repeating
+          the noun in the first, and four cards of that is a row a third taller
+          than it needs to be ("дотор н агуулгыг ашигтайхан янзлах"). The
+          callers that kept a unit are the ones where it adds a fact — a file
+          size, "2 нийт · 1 амжилтгүй", "идэвхтэй" — rather than a category the
+          label already gave.
+        */}
         {unit ? <p className="text-caption text-muted">{unit}</p> : null}
 
         {/*
@@ -171,7 +181,7 @@ export function StatCard({
           <div className="mt-2.5 border-t border-border-soft pt-2 text-caption">{trend}</div>
         ) : null}
 
-        {footer ? <div className="mt-1.5">{footer}</div> : null}
+        {footer ? <div className="mt-1">{footer}</div> : null}
       </div>
 
       {/*

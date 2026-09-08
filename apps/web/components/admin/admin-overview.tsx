@@ -216,7 +216,6 @@ export function AdminOverview() {
           <StatCard
             label="Нийт хүүхэд"
             value={counts.children}
-            unit="хүүхэд"
             href="/children"
             tone="cornflower"
             art={<Art name="child" size={36} />}
