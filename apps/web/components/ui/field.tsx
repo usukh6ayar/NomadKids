@@ -105,7 +105,7 @@ export function Field({
  * looks pre-filled when it is empty.
  */
 const controlBase =
-  "w-full rounded-control border bg-sunken px-3.5 text-ink placeholder:text-faint " +
+  "w-full rounded-field border bg-sunken px-3.5 text-ink placeholder:text-faint " +
   "transition-colors duration-150 focus:bg-surface " +
   "disabled:cursor-not-allowed disabled:opacity-60 disabled:bg-border-soft";
 
@@ -174,7 +174,9 @@ export function PasswordInput({
         onClick={() => setVisible((v) => !v)}
         aria-pressed={visible}
         aria-label={visible ? "Нууц үг нуух" : "Нууц үг харуулах"}
-        className="absolute right-1 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-control text-muted transition-colors hover:text-ink"
+        // A round target inside a capsule field: a 16px-cornered square sitting
+        // in a 24px-cornered pill reads as a second, tighter shape bolted on.
+        className="absolute right-1 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-pill text-muted transition-colors hover:text-ink"
       >
         {visible ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
       </button>
