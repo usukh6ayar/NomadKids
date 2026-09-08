@@ -3025,6 +3025,7 @@ export const esisResourceKeySchema = z.enum([
   "academicYearStatuses",
   "groups",
   "students",
+  "studentByRegister",
   "groupStudents",
   "studentMovements",
   "teachers",
@@ -3111,7 +3112,8 @@ export const esisOverviewSchema = z.object({
   endpoints: z.array(
     z.object({
       key: esisResourceKeySchema,
-      apiId: z.number(),
+      /** The portal's own id, or null while it is still to be read off it. */
+      apiId: z.number().nullable(),
       slug: z.string(),
       method: z.enum(["GET", "POST"]),
       path: z.string(),

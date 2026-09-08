@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
-import { EsisPullButton } from "@/components/esis/esis-pull-button";
+import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { SingleImageUpload } from "@/components/media/single-image-upload";
@@ -150,13 +150,10 @@ function AdminKindergarten() {
         title="Цэцэрлэгийн мэдээлэл"
         actions={
           editing ? null : (
-            <>
-              <EsisPullButton resource="organization" />
-              <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
-                <Pencil aria-hidden="true" />
-                Засах
-              </Button>
-            </>
+            <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
+              <Pencil aria-hidden="true" />
+              Засах
+            </Button>
           )
         }
       />
@@ -345,6 +342,23 @@ function AdminKindergarten() {
           </dl>
         </Card>
       )}
+
+      {/*
+        ★ ESIS's own record of this kindergarten, under the local one.
+
+        Reading order is the argument for the position. The five fields above
+        are what the director typed; the sixteen below are what the ministry
+        holds — the official name, the classification, the аймаг/сум/хороо
+        chain — and the only useful thing to do with the second is check it
+        against the first. Stacked, that is one downward read. Behind a button
+        it is two screens and a memory test.
+
+        It is out of edit mode on purpose: the panel is a source to compare
+        against, and putting it beside a half-typed form invites the reader to
+        think one of the two saves the other. Import is a separate step that
+        does not exist yet (`ESIS_API_READINESS.md` C5).
+      */}
+      {editing ? null : <EsisDataPanel resource="organization" />}
     </div>
   );
 }

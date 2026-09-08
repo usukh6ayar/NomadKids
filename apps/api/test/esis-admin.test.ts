@@ -97,7 +97,7 @@ describe("ESIS administration authorization", () => {
     );
 
     expect(own.status).toBe(200);
-    expect(own.body.endpoints).toHaveLength(17);
+    expect(own.body.endpoints).toHaveLength(18);
     expect(other.status).toBe(404);
   });
 

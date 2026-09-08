@@ -17,7 +17,7 @@ import { Checkbox, Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { useToast } from "@/components/ui/toast";
-import { EsisPullButton } from "@/components/esis/esis-pull-button";
+import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 
@@ -78,13 +78,10 @@ function AdminSchoolYears() {
       <PageHeader
         title="Хичээлийн жил"
         actions={
-          <>
-            <EsisPullButton resource="academicYearStatuses" />
-            <Button size="sm" onClick={() => setCreating(true)}>
-              <Plus size={18} />
-              Жил нэмэх
-            </Button>
-          </>
+          <Button size="sm" onClick={() => setCreating(true)}>
+            <Plus size={18} />
+            Жил нэмэх
+          </Button>
         }
       />
 
@@ -105,6 +102,20 @@ function AdminSchoolYears() {
           ))}
         </DataList>
       ) : null}
+
+      {/*
+        ★ The ministry's own academic years, beside the local ones.
+
+        "Жил нэмэх" writes a local year, and the value that matters about it is
+        whether its dates match ESIS's — a year opened a week early puts every
+        enrolment in it out of step with the register the ministry keeps. So
+        the panel names the ESIS year, its open and close dates and which one
+        is current, on the screen where the local year is created.
+      */}
+      <EsisDataPanel
+        resource="academicYearStatuses"
+        description="ESIS-ийн хичээлийн жил, нээсэн ба хаасан огноо"
+      />
 
       {creating && primaryKindergartenId ? (
         <CreateYearDialog

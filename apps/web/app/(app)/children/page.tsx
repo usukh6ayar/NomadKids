@@ -27,6 +27,7 @@ import {
   type ChildSummary,
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
+import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { useSwitchableGroups } from "@/components/shell/group-switcher";
 import { qk } from "@/lib/api/keys";
@@ -465,6 +466,31 @@ function StaffChildren() {
           <Pagination page={data.page} totalPages={data.totalPages} onPage={setPage} />
         </>
       ) : null}
+
+      {/*
+        ★ Both ESIS roster services, under the local roster.
+
+        `EsisDataPanel` renders nothing for a teacher — the route behind it
+        answers 404 to anybody but an administrator of this kindergarten — so
+        these two are the director's half of a screen the whole staff shares.
+
+        ★★ The register search is the one panel whose parameter is a person.
+        Every other service pre-fills its ids in demo mode; this one cannot,
+        because there is no such thing as a safe invented national identifier
+        to put in a form. It stays empty until the director types the number
+        from the document in front of them, we send it, and we keep none of it
+        — `personRegNumber` is a refused output here exactly as it is on the
+        roster service above (`ESIS_REQUEST.md` §1.1 (b)).
+      */}
+      <EsisDataPanel
+        resource="students"
+        description="ESIS-д бүртгэлтэй суралцагчид — элсэлт тулгах эхний эх сурвалж"
+      />
+      <EsisDataPanel
+        resource="studentByRegister"
+        title="ESIS мэдээлэл — Регистрээр хайх"
+        description="Нэг хүүхдийг регистрийн дугаараар ESIS-ээс олох"
+      />
     </div>
   );
 }

@@ -52,7 +52,7 @@ import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { useToast } from "@/components/ui/toast";
-import { EsisPullButton } from "@/components/esis/esis-pull-button";
+import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { SingleImageUpload } from "@/components/media/single-image-upload";
 import { RequireRole } from "@/components/shell/require-role";
@@ -147,13 +147,10 @@ function AdminGroups() {
       <PageHeader
         title="Бүлгүүд"
         actions={
-          <>
-            <EsisPullButton resource="groups" />
-            <Button size="sm" onClick={() => setCreating(true)}>
-              <Plus size={18} />
-              Бүлэг нэмэх
-            </Button>
-          </>
+          <Button size="sm" onClick={() => setCreating(true)}>
+            <Plus size={18} />
+            Бүлэг нэмэх
+          </Button>
         }
       />
 
@@ -188,6 +185,21 @@ function AdminGroups() {
           ))}
         </DataList>
       ) : null}
+
+      {/*
+        ★ ESIS's group list, including the teacher it has assigned to each.
+
+        `instructorId` and `instructorName` are the reason this panel is here
+        rather than only on the integration screen: assigning a teacher to a
+        group is a decision the ministry also records, and the director's
+        question is whether the two agree. The local assignment is the "⋯ →
+        Багш" dialog on each row above; ESIS's answer is the `Багшийн код` and
+        `Багшийн нэр` columns below, on the same screen, in one downward read.
+      */}
+      <EsisDataPanel
+        resource="groups"
+        description="Бүлэг, түвшин, хөтөлбөр — мөн ESIS-д бүртгэлтэй бүлгийн багш"
+      />
 
       {creating && primaryKindergartenId ? (
         <CreateGroupDialog

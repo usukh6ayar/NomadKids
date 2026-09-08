@@ -13,6 +13,7 @@ import {
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { EsisRowValues, esisSampleColumns } from "@/components/esis/esis-rows";
+import { ESIS_DEMO_PARAM, ESIS_PARAM_LABEL, esisApiIdLabel } from "@/components/esis/esis-params";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
@@ -34,21 +35,6 @@ const ERROR_LABEL: Record<string, string> = {
   NOT_CONFIGURED: "Server дээр ESIS тохиргоо алга байна.",
   HTTP: "ESIS алдаатай хариу буцаалаа.",
   UNKNOWN: "Тодорхойгүй алдаа гарлаа.",
-};
-
-/** The path values a service can ask for, in the operator's language. */
-const PARAM_LABEL: Record<string, string> = {
-  studentGroupId: "ESIS бүлгийн дугаар",
-  productId: "ESIS бүтээгдэхүүний дугаар",
-  dayDate: "Огноо",
-  beginDate: "Эхлэх огноо",
-};
-
-const DEMO_PARAM: Record<string, string> = {
-  studentGroupId: "10001",
-  productId: "51001",
-  dayDate: "2026-09-08",
-  beginDate: "2026-09-01",
 };
 
 /**
@@ -132,7 +118,7 @@ function EsisPullDialog({
    * sandbox mapping so the connected-state screen is complete on first open. */
   const [entered, setEntered] = useState<Record<string, string>>({});
   const value = (name: string) =>
-    entered[name] ?? params?.[name] ?? (demoMode ? DEMO_PARAM[name] : "") ?? "";
+    entered[name] ?? params?.[name] ?? (demoMode ? ESIS_DEMO_PARAM[name] : "") ?? "";
   const missing = required.filter((name) => !value(name));
   const ready = Boolean(overview.data?.canPreview) && missing.length === 0;
 
@@ -197,7 +183,7 @@ function EsisPullDialog({
               <p className="text-body font-medium text-ink">ESIS хүсэлтийн параметр</p>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 {required.map((name) => (
-                  <Field key={name} label={PARAM_LABEL[name] ?? name}>
+                  <Field key={name} label={ESIS_PARAM_LABEL[name] ?? name}>
                     {({ id }) => (
                       <Input
                         id={id}
@@ -278,7 +264,7 @@ function EndpointSummary({ endpoint }: { endpoint: EsisOverview["endpoints"][num
       <div className="min-w-0">
         <dt className="text-caption font-semibold text-muted">Сервис</dt>
         <dd className="mt-1 text-body font-medium text-ink">
-          {endpoint.slug} · ID {endpoint.apiId}
+          {endpoint.slug} · {esisApiIdLabel(endpoint.apiId)}
         </dd>
       </div>
       <div className="min-w-0">

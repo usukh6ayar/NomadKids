@@ -40,7 +40,7 @@ import { Checkbox, Field, Input, Select } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { useToast } from "@/components/ui/toast";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
-import { EsisPullButton } from "@/components/esis/esis-pull-button";
+import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { InvitationHandover } from "@/components/admin/invitation-handover";
@@ -213,14 +213,10 @@ function AdminUsers() {
       <PageHeader
         title="Хэрэглэгчид"
         actions={
-          <>
-            <EsisPullButton resource="teachers" label="ESIS багш" />
-            <EsisPullButton resource="staff" label="ESIS ажилтан" />
-            <Button size="sm" onClick={() => setInviting(true)}>
-              <UserPlus size={18} />
-              Хэрэглэгч нэмэх
-            </Button>
-          </>
+          <Button size="sm" onClick={() => setInviting(true)}>
+            <UserPlus size={18} />
+            Хэрэглэгч нэмэх
+          </Button>
         }
       />
 
@@ -332,6 +328,22 @@ function AdminUsers() {
       {users.data ? (
         <Pagination page={users.data.page} totalPages={users.data.totalPages} onPage={setPage} />
       ) : null}
+
+      {/*
+        ★ Two panels, because ESIS answers the staff question with two services
+        and neither is a subset of the other. `teacher/list` carries the
+        teaching assignment — instructor type, subject department, availability
+        — and `school/staff` carries employment: position, job code, years of
+        service, the parent education authority. A director checking whether
+        their people are correctly registered has to see both, and merging them
+        into one table would put a багш's empty `Ажилласан жил` beside a
+        тогооч's filled one and imply the field failed rather than not applying.
+      */}
+      <EsisDataPanel resource="teachers" description="ESIS-д бүртгэлтэй багш нар" />
+      <EsisDataPanel
+        resource="staff"
+        description="Эрхлэгч, эмч, тогооч, нягтлан — ESIS-ийн ажилтны бүртгэл"
+      />
 
       {inviting && primaryKindergartenId ? (
         <InviteUserDialog
