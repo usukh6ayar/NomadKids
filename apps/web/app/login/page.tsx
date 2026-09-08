@@ -39,6 +39,7 @@ const navigationItems = [
   { label: "Бүтээгдэхүүн", href: "#features" },
   { label: "Хэнд зориулагдсан", href: "#audiences" },
   { label: "Давуу тал", href: "#benefits" },
+  { label: "Түгээмэл асуулт", href: "#faq" },
 ] as const;
 
 const featureItems = [
@@ -127,6 +128,24 @@ const benefitItems = [
     title: "Илүү сайн удирдлага",
     copy: "Өгөгдөлд суурилсан зөв шийдвэр гаргана.",
     tone: "bg-[#fff0df] text-[#ee9631]",
+  },
+] as const;
+
+const landingFaqItems = [
+  {
+    question: "Эцэг эх ямар мэдээлэл харах вэ?",
+    answer:
+      "Зөвхөн өөртэй нь баталгаажуулан холбосон хүүхдийн ирц, хоол, хөгжлийн мэдээлэл болон цэцэрлэгийн мэдэгдлийг харна.",
+  },
+  {
+    question: "Хүүхдийн мэдээлэл хэрхэн хамгаалагдах вэ?",
+    answer:
+      "Байгууллага, үүрэг, бүлэг, хүүхдийн хамаарлаар эрхийг хязгаарлаж, чухал үйлдлийг аудитын мөрөөр бүртгэнэ.",
+  },
+  {
+    question: "ESIS-тэй мэдээлэл солилцох уу?",
+    answer:
+      "Зөвшөөрөгдсөн байгууллага батлагдсан endpoint, эрхийн хүрээнд мэдээлэл татаж, ирц зэрэг утгыг шалгасны дараа илгээнэ.",
   },
 ] as const;
 
@@ -311,6 +330,18 @@ function LoginCard() {
           Нууц үгээ мартсан?
         </Link>
       </div>
+
+      <p className="mt-3 border-t border-[#edf2f7] pt-3 text-center text-caption leading-5 text-slate-500">
+        Нэвтрэхдээ{" "}
+        <Link href="/terms" className="font-semibold text-[#2588ed] hover:underline">
+          Үйлчилгээний нөхцөл
+        </Link>{" "}
+        болон{" "}
+        <Link href="/privacy" className="font-semibold text-[#2588ed] hover:underline">
+          Нууцлалын бодлоготой
+        </Link>{" "}
+        танилцана уу.
+      </p>
     </div>
   );
 }
@@ -602,6 +633,30 @@ function LoginLanding() {
         </div>
       </section>
 
+      <section id="faq" className="border-t border-[#edf2f7] px-5 py-16 sm:px-8 sm:py-20">
+        <SectionHeading
+          eyebrow="Тусламж"
+          title="Түгээмэл асуулт"
+          copy="Нэвтрэлт, мэдээллийн хамгаалалт болон ESIS холболтын үндсэн хариултууд."
+        />
+        <div className="mx-auto mt-9 grid max-w-[1050px] gap-x-8 gap-y-7 md:grid-cols-3">
+          {landingFaqItems.map((item) => (
+            <article key={item.question} className="border-t-2 border-[#8fcaff] pt-4">
+              <h3 className="text-lead font-extrabold leading-6 text-[#173e70]">{item.question}</h3>
+              <p className="mt-2 text-body leading-6 text-slate-600">{item.answer}</p>
+            </article>
+          ))}
+        </div>
+        <div className="mt-9 text-center">
+          <Link
+            href="/faq"
+            className="inline-flex min-h-11 items-center gap-2 rounded-control border border-[#cfe1f1] px-5 text-body font-bold text-[#1677d2] hover:bg-[#eef7ff]"
+          >
+            Бүх асуулт, хариултыг харах <ArrowRight className="size-4" aria-hidden />
+          </Link>
+        </div>
+      </section>
+
       <section className="px-5 py-10 sm:px-8 sm:py-14">
         <div className="relative mx-auto min-h-[250px] max-w-[1180px] overflow-hidden rounded-control bg-[#eaf6ff] px-6 py-8 sm:px-10 lg:flex lg:min-h-[230px] lg:items-center">
           <div className="relative z-10 max-w-[570px] text-center lg:text-left">
@@ -637,6 +692,9 @@ function LoginLanding() {
             <Link href="/register">Байгууллагын бүртгэл</Link>
             <a href="#features">Бүтээгдэхүүн</a>
             <a href="#audiences">Хэнд зориулагдсан</a>
+            <Link href="/faq">Түгээмэл асуулт</Link>
+            <Link href="/privacy">Нууцлалын бодлого</Link>
+            <Link href="/terms">Үйлчилгээний нөхцөл</Link>
             <a href="mailto:Nomadkidsmn@gmail.com">Холбоо барих</a>
           </nav>
         </div>

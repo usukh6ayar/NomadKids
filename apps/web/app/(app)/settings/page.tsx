@@ -2,16 +2,31 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { KeyRound, Pencil } from "lucide-react";
+import {
+  BriefcaseBusiness,
+  Building2,
+  CheckCircle2,
+  Database,
+  KeyRound,
+  Mail,
+  Pencil,
+} from "lucide-react";
 import { z } from "zod";
-import { PASSWORD_RULES, userProfileSchema, validatePasswordStrength } from "@kinder/contracts";
+import {
+  esisMyProfileSchema,
+  PASSWORD_RULES,
+  userProfileSchema,
+  validatePasswordStrength,
+} from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
-import { useLogout } from "@/lib/auth/session";
+import { useLogout, useSession } from "@/lib/auth/session";
+import { buildEsisDemoProfile, type EsisDemoField } from "@/lib/esis/demo-profile";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Field, Input, PasswordInput, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
@@ -62,8 +77,158 @@ export default function SettingsPage() {
 
       <div className="flex w-full max-w-[760px] flex-col gap-6 lg:gap-8">
         <ProfileForm />
+        <EsisProfileSection />
         <SignOutCard />
       </div>
+    </div>
+  );
+}
+
+/** ESIS values belong on the user's profile, visible without a separate pull action. */
+function EsisProfileSection() {
+  const { roles, primaryKindergartenId } = useSession();
+  const { data, isLoading, isError } = useQuery({
+    queryKey: qk.profile(),
+    queryFn: () => get("/me/profile", profileSchema),
+  });
+  const esisQuery = useQuery({
+    queryKey: ["esis", "my-profile", primaryKindergartenId],
+    queryFn: () =>
+      get(`/kindergartens/${primaryKindergartenId}/esis/my-profile`, esisMyProfileSchema),
+    enabled: Boolean(primaryKindergartenId),
+    retry: false,
+  });
+
+  if (isLoading || esisQuery.isLoading || isError || !data) return null;
+  if (esisQuery.isError) {
+    return (
+      <section aria-labelledby="esis-profile-heading">
+        <SectionHeader id="esis-profile-heading" title="ESIS мэдээлэл" />
+        <ErrorState description={errorMessage(esisQuery.error)} />
+      </section>
+    );
+  }
+
+  const esis = buildEsisDemoProfile(data, roles);
+  const live = esisQuery.data?.mode === "LIVE" ? esisQuery.data : null;
+  if (!esis && !live) return null;
+
+  if (live) {
+    const fields = live.fields
+      .filter((field) => field.ingested)
+      .map((field) => ({ label: field.label, value: live.row[field.name] ?? "—" }));
+    return (
+      <section aria-labelledby="esis-profile-heading">
+        <SectionHeader
+          id="esis-profile-heading"
+          title="ESIS мэдээлэл"
+          action={
+            <Badge tone="mint">
+              <CheckCircle2 size={13} aria-hidden="true" />
+              Бодит ESIS синк
+            </Badge>
+          }
+        />
+        <Card pad="roomy" className="flex flex-col gap-5">
+          <div className="flex flex-wrap items-start gap-3 border-b border-border-soft pb-5">
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-control bg-sky text-sky-ink">
+              <Database size={21} aria-hidden="true" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-ink">
+                {live.resource === "teachers" ? "Багшийн бүртгэл" : "Ажилтны бүртгэл"}
+              </p>
+              <p className="mt-0.5 text-body text-muted">
+                API {live.slug} · {live.endpoint}
+              </p>
+            </div>
+            <p className="shrink-0 text-caption text-muted">
+              Шинэчилсэн: {new Date(live.syncedAt).toLocaleString("mn-MN")}
+            </p>
+          </div>
+          <EsisFieldGroup
+            icon={BriefcaseBusiness}
+            title={`ESIS гаралтын ${fields.length} талбар`}
+            fields={fields}
+          />
+        </Card>
+      </section>
+    );
+  }
+
+  if (!esis) return null;
+
+  return (
+    <section aria-labelledby="esis-profile-heading">
+      <SectionHeader
+        id="esis-profile-heading"
+        title="ESIS мэдээлэл"
+        action={
+          <Badge tone="mint">
+            <CheckCircle2 size={13} aria-hidden="true" />
+            Demo ESIS синк
+          </Badge>
+        }
+      />
+
+      <Card pad="roomy" className="flex flex-col gap-5">
+        <div className="flex flex-wrap items-start gap-3 border-b border-border-soft pb-5">
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-control bg-sky text-sky-ink">
+            <Database size={21} aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-semibold text-ink">{esis.resourceLabel}</p>
+              <Badge tone="mint">
+                <CheckCircle2 size={13} aria-hidden="true" />
+                Синк хийгдсэн
+              </Badge>
+            </div>
+            <p className="mt-0.5 text-body text-muted">Эх сурвалж: ESIS · {esis.resource}</p>
+          </div>
+          <p className="shrink-0 text-caption text-muted">Шинэчилсэн: {esis.syncedAt}</p>
+        </div>
+
+        <EsisFieldGroup
+          icon={Building2}
+          title="Байгууллага ба үндсэн мэдээлэл"
+          fields={[
+            { label: "Байгууллагын нэр", value: esis.institutionName },
+            { label: "Байгууллагын код", value: esis.institutionId },
+            ...esis.summary,
+          ]}
+        />
+        <EsisFieldGroup icon={BriefcaseBusiness} title="Томилгоо" fields={esis.employment} />
+        <EsisFieldGroup icon={Mail} title="Холбоо барих мэдээлэл" fields={esis.contact} />
+
+        <p className="border-t border-border-soft pt-4 text-caption text-muted">
+          Татахгүй талбар: регистр, иргэний бүртгэлийн дугаар, нэвтрэх мэдээлэл.
+        </p>
+      </Card>
+    </section>
+  );
+}
+
+function EsisFieldGroup({
+  icon: Icon,
+  title,
+  fields,
+}: {
+  icon: typeof Building2;
+  title: string;
+  fields: EsisDemoField[];
+}) {
+  return (
+    <div>
+      <div className="mb-3 flex items-center gap-2 text-body font-semibold text-ink">
+        <Icon size={17} className="text-primary" aria-hidden="true" />
+        <h3>{title}</h3>
+      </div>
+      <dl className="grid gap-x-5 gap-y-4 sm:grid-cols-2">
+        {fields.map((field) => (
+          <ReadField key={field.label} label={field.label} value={field.value} />
+        ))}
+      </dl>
     </div>
   );
 }
@@ -71,11 +236,14 @@ export default function SettingsPage() {
 function ProfileForm() {
   const queryClient = useQueryClient();
   const toast = useToast();
+  const { roles } = useSession();
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: qk.profile(),
     queryFn: () => get("/me/profile", profileSchema),
   });
+  const esisProfile = data ? buildEsisDemoProfile(data, roles) : null;
+  const specialization = data?.specialization || esisProfile?.profileDefaults.specialization || "";
 
   const [form, setForm] = useState<Record<string, string>>({});
   /**
@@ -100,11 +268,11 @@ function ProfileForm() {
       firstName: data.firstName ?? "",
       email: data.email ?? "",
       phone: data.phone ?? "",
-      specialization: data.specialization ?? "",
+      specialization,
       education: data.education ?? "",
       bio: data.bio ?? "",
     });
-  }, [data]);
+  }, [data, specialization]);
 
   const save = useMutation({
     mutationFn: () =>
@@ -139,7 +307,7 @@ function ProfileForm() {
         firstName: data.firstName ?? "",
         email: data.email ?? "",
         phone: data.phone ?? "",
-        specialization: data.specialization ?? "",
+        specialization,
         education: data.education ?? "",
         bio: data.bio ?? "",
       });
@@ -251,14 +419,14 @@ function ProfileForm() {
             something else, so the empty case gets a sentence and the Засах
             button in the header above is the next step.
           */}
-          {!data?.phone && !data?.specialization && !data?.education && !data?.bio ? (
+          {!data?.phone && !specialization && !data?.education && !data?.bio ? (
             <p className="text-body text-muted">
               Утас, мэргэжил, боловсролоо нэмбэл багш нарын жагсаалтад бүрэн харагдана.
             </p>
           ) : (
             <dl className="grid gap-4 sm:grid-cols-2">
               <ReadField label="Утас" value={data?.phone} />
-              <ReadField label="Мэргэжил" value={data?.specialization} />
+              <ReadField label="Мэргэжил" value={specialization} />
               <ReadField label="Боловсрол" value={data?.education} />
               <ReadField label="Танилцуулга" value={data?.bio} className="sm:col-span-2" />
             </dl>

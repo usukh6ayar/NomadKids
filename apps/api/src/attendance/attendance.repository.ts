@@ -72,7 +72,9 @@ export class AttendanceRepository {
         select: {
           id: true,
           childId: true,
-          child: { select: { id: true, lastName: true, firstName: true } },
+          child: {
+            select: { id: true, lastName: true, firstName: true, dateOfBirth: true },
+          },
         },
       }),
       this.prisma.attendance.findMany({
@@ -211,7 +213,15 @@ export class AttendanceRepository {
       select: {
         id: true,
         childId: true,
-        child: { select: { id: true, lastName: true, firstName: true, status: true } },
+        child: {
+          select: {
+            id: true,
+            lastName: true,
+            firstName: true,
+            dateOfBirth: true,
+            status: true,
+          },
+        },
         group: {
           select: { id: true, name: true, ageBand: true, programKind: true, attendanceForm: true },
         },
@@ -533,7 +543,14 @@ export class AttendanceRepository {
   async findGroup(groupId: string, kindergartenIds: string[]) {
     return this.prisma.group.findFirst({
       where: { id: groupId, deletedAt: null, kindergartenId: { in: kindergartenIds } },
-      select: { id: true, kindergartenId: true },
+      select: { id: true, kindergartenId: true, name: true },
+    });
+  }
+
+  findEsisConnection(kindergartenId: string) {
+    return this.prisma.kindergarten.findFirst({
+      where: { id: kindergartenId, deletedAt: null },
+      select: { esisInstitutionId: true, esisEnvironment: true },
     });
   }
 

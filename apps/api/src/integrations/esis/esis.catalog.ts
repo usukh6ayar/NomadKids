@@ -1,4 +1,6 @@
 import { ESIS_ENDPOINTS } from "./esis.endpoints";
+import { ESIS_FIELDS, ESIS_FIELD_SOURCE, sampleRow } from "./esis.fields";
+import { ESIS_READABLE_KEYS, esisReaderParams, type EsisReadableKey } from "./esis.service";
 
 export type EsisEndpointKey = keyof typeof ESIS_ENDPOINTS;
 export type EsisDomain = "ORGANIZATION" | "ROSTER" | "ATTENDANCE" | "FOOD";
@@ -7,7 +9,10 @@ interface EsisEndpointMeta {
   name: string;
   domain: EsisDomain;
   usage: string;
+  /** Whether the multi-select dry-run may call it without operator input. */
   previewable: boolean;
+  /** Shown beside the field table when the catalog decision needs a sentence. */
+  note?: string;
 }
 
 const META: Record<EsisEndpointKey, EsisEndpointMeta> = {
@@ -34,6 +39,10 @@ const META: Record<EsisEndpointKey, EsisEndpointMeta> = {
     domain: "ROSTER",
     usage: "Хүүхэд болон элсэлтийн эхний тулгалт",
     previewable: true,
+    note:
+      "Суралцагчийн нэмэлт мэдээлэл — регистрийн дугаар, өрхийн байдал, эрүүл мэндийн " +
+      "лавлагаа — ESIS_REQUEST.md §1.1 (b) ба §1.3-аар зориуд хүсээгүй. Тулгалтыг " +
+      "`personId`-аар хийнэ.",
   },
   groupStudents: {
     name: "Бүлгийн суралцагч",
@@ -64,12 +73,14 @@ const META: Record<EsisEndpointKey, EsisEndpointMeta> = {
     domain: "ATTENDANCE",
     usage: "Илгээсэн ирцийг ESIS-ээс буцааж шалгах",
     previewable: false,
+    note: "Бүлэг болон огноог сонгосны дараа татна — ирцийн дэлгэц дээрээс шууд дуудна.",
   },
   saveAttendanceV3: {
     name: "Өдрийн ирц илгээх v3",
     domain: "ATTENDANCE",
     usage: "Баталгаажсан өдрийн ирцийг ESIS рүү илгээх",
     previewable: false,
+    note: "Энэ бол цорын ганц бичих сервис. Доорх талбарууд нь гаралт биш, илгээх орц.",
   },
   foodProductTypes: {
     name: "Хоолны төрөл",
@@ -115,8 +126,32 @@ const META: Record<EsisEndpointKey, EsisEndpointMeta> = {
   },
 };
 
+const READABLE = new Set<string>(ESIS_READABLE_KEYS);
+
+const isReadable = (key: EsisEndpointKey): key is EsisReadableKey => READABLE.has(key);
+
+/**
+ * One row per service, carrying everything the operator screen shows.
+ *
+ * ★ `fields` is the point of this file now. Before a token exists the count,
+ * the names and the refusals are the *only* answer to "what comes back?", and
+ * an operator who can see them can check them against the developer portal
+ * without our help. `params` tells the screen which services need a group or a
+ * date before the button can do anything.
+ */
 export const ESIS_RESOURCE_CATALOG = (Object.keys(ESIS_ENDPOINTS) as EsisEndpointKey[]).map(
-  (key) => ({ key, ...ESIS_ENDPOINTS[key], ...META[key] }),
+  (key) => ({
+    key,
+    ...ESIS_ENDPOINTS[key],
+    ...META[key],
+    fields: ESIS_FIELDS[key],
+    fieldSource: ESIS_FIELD_SOURCE[key],
+    ingestedFieldCount: ESIS_FIELDS[key].filter((field) => field.io === "OUTPUT" && field.ingested)
+      .length,
+    sampleRow: sampleRow(key),
+    readable: isReadable(key),
+    params: isReadable(key) ? [...esisReaderParams(key)] : [],
+  }),
 );
 
 export const ESIS_PREVIEW_RESOURCES = [

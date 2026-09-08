@@ -52,6 +52,7 @@ import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { useToast } from "@/components/ui/toast";
+import { EsisPullButton } from "@/components/esis/esis-pull-button";
 import { PageHeader } from "@/components/shell/app-shell";
 import { SingleImageUpload } from "@/components/media/single-image-upload";
 import { RequireRole } from "@/components/shell/require-role";
@@ -147,10 +148,13 @@ function AdminGroups() {
         title="Бүлгүүд"
         lede="Бүлэг үүсгэж, багш хуваарилна."
         actions={
-          <Button size="sm" onClick={() => setCreating(true)}>
-            <Plus size={18} />
-            Бүлэг нэмэх
-          </Button>
+          <>
+            <EsisPullButton resource="groups" />
+            <Button size="sm" onClick={() => setCreating(true)}>
+              <Plus size={18} />
+              Бүлэг нэмэх
+            </Button>
+          </>
         }
       />
 

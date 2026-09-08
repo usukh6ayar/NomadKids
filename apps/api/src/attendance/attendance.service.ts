@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadGatewayException,
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { AuditRepository } from "../audit/audit.repository";
 import { AuthzRepository } from "../authz/authz.repository";
 import { ChildAccessService } from "../authz/child-access.service";
@@ -19,6 +25,67 @@ import type {
   RecordPickupDto,
   ReviewAttendanceRequestDto,
 } from "./attendance.dto";
+import { EsisService } from "../integrations/esis/esis.service";
+import { EsisError } from "../integrations/esis/esis.client";
+
+const DEMO_ESIS_INSTITUTION_ID = 40305;
+const DEMO_ESIS_GROUPS: Record<string, number> = {
+  "Наран бүлэг": 10001,
+  "Дэлбээ бүлэг": 10002,
+};
+const DEMO_ESIS_PEOPLE: Record<string, number> = {
+  "Ганболд Батбаяр": 90000000000001,
+  "Дорж Намуун": 90000000000002,
+  "Энхбат Тэмүүлэн": 90000000000003,
+  "Мөнхбаяр Сарнай": 90000000000004,
+  "Батжаргал Ану": 90000000000005,
+  "Сүхбаатар Чингис": 90000000000006,
+  "Пүрэвдорж Оюунаа": 90000000000007,
+  "Алтанзул Мандах": 90000000000008,
+  "Нэргүй Хулан": 90000000000009,
+  "Цэрэндорж Билгүүн": 90000000000010,
+};
+
+function stableDemoNumber(value: string, base: number, spread: number) {
+  let hash = 0;
+  for (const char of value) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return base + (hash % spread);
+}
+
+function esisReasonCode(status: string): "PRESENT" | "EXCUSED" | "SICK" | "UNEXCUSED" | null {
+  if (status === "PRESENT" || status === "HALF_DAY") return "PRESENT";
+  if (status === "EXCUSED") return "EXCUSED";
+  if (status === "SICK") return "SICK";
+  if (status === "ABSENT") return "UNEXCUSED";
+  return null;
+}
+
+type AttendanceIdentity = {
+  childId: string;
+  lastName: string;
+  firstName: string;
+  dateOfBirth: Date;
+  attendReasonCode: "PRESENT" | "EXCUSED" | "SICK" | "UNEXCUSED";
+};
+
+type AttendanceDraft = {
+  groupId: string;
+  groupName: string;
+  dayDate: string;
+  children: AttendanceIdentity[];
+};
+
+function normalizedName(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("mn-MN");
+}
+
+function positiveEsisNumber(value: string | number, label: string): number {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new BadGatewayException(`ESIS ${label} буруу форматтай ирлээ.`);
+  }
+  return parsed;
+}
 
 @Injectable()
 export class AttendanceService {
@@ -28,6 +95,7 @@ export class AttendanceService {
     private readonly tenants: TenantAccessService,
     private readonly authz: AuthzRepository,
     private readonly audit: AuditRepository,
+    private readonly esis: EsisService,
   ) {}
 
   /**
@@ -56,9 +124,18 @@ export class AttendanceService {
     const built = await this.buildRegister(actor, kindergartenId, query);
     const { page, pageSize } = query;
     const start = (page - 1) * pageSize;
+    const items = built.rows.slice(start, start + pageSize).map((row) => ({
+      ...row,
+      child: {
+        id: row.child.id,
+        lastName: row.child.lastName,
+        firstName: row.child.firstName,
+        status: row.child.status,
+      },
+    }));
 
     return {
-      ...paginate(built.rows.slice(start, start + pageSize), built.rows.length, query),
+      ...paginate(items, built.rows.length, query),
       from: query.from,
       to: query.to,
       days: built.days,
@@ -124,19 +201,72 @@ export class AttendanceService {
     };
   }
 
+  /** Builds the exact ESIS v3 request bodies without sending them. */
+  async esisAttendancePreview(actor: Actor, kindergartenId: string, dto: SubmitAttendanceDto) {
+    const dates = dto.entries.map((entry) => entry.date).sort();
+    const built = await this.buildRegister(actor, kindergartenId, {
+      from: dates[0]!,
+      to: dates[dates.length - 1]!,
+      groupId: undefined,
+      childId: undefined,
+      ageBand: undefined,
+      status: undefined,
+      childStatus: undefined,
+      programKind: undefined,
+      attendanceForm: undefined,
+      q: undefined,
+      page: 1,
+      pageSize: 1,
+    });
+
+    const drafts: AttendanceDraft[] = dto.entries.map((entry) => {
+      const dayIndex = built.days.findIndex((day) => day === entry.date);
+      const groupRows = built.rows.filter((row) => row.group.id === entry.groupId);
+      const groupName = groupRows[0]?.group.name;
+
+      if (dayIndex < 0 || !groupName || groupRows.length === 0) {
+        throw new BadRequestException(`Илгээх бүртгэл олдсонгүй: ${entry.date}`);
+      }
+
+      const missing = groupRows.filter((row) => !row.days[dayIndex]);
+      if (missing.length > 0) {
+        throw new BadRequestException(
+          `Ирц бүрэн бүртгэгдээгүй байна: ${groupName} (${entry.date}) — ${missing.length} хүүхэд дутуу.`,
+        );
+      }
+
+      return {
+        groupId: entry.groupId,
+        groupName,
+        dayDate: entry.date,
+        children: groupRows.map((row) => {
+          const childName = `${row.child.lastName} ${row.child.firstName}`;
+          const fact = row.days[dayIndex]!;
+          const attendReasonCode = esisReasonCode(fact.status);
+          if (!attendReasonCode) {
+            throw new BadRequestException(
+              `${groupName} (${entry.date}) — ${childName}-ийн "Бусад" ирцийг ESIS-ийн тодорхой шалтгаанаар солино уу.`,
+            );
+          }
+
+          return {
+            childId: row.childId,
+            lastName: row.child.lastName,
+            firstName: row.child.firstName,
+            dateOfBirth: row.child.dateOfBirth,
+            attendReasonCode,
+          };
+        }),
+      };
+    });
+
+    return this.resolveAttendanceDrafts(kindergartenId, drafts);
+  }
+
   /**
-   * "Ирц илгээх" — marks group-days as submitted.
-   *
-   * ★ What this does today, and what it will do.
-   *
-   * The client asked for a button that sends the register, and the eventual
-   * destination is ESIS. Its v3 endpoint adapter exists, but the production
-   * transport is not active: the data-sharing agreement, token scope, external
-   * id mapping and retryable sync queue are still required
-   * (`docs/ESIS_API_READINESS.md`). So this records the act — who
-   * declared a register final, when, and over how many children — which is
-   * worth storing on its own and is exactly the row the ESIS call will hang off
-   * when it arrives. The button works; the wire is the part still missing.
+   * "Ирц илгээх" — sends complete group-days to live ESIS when configured,
+   * then records each accepted submission locally. Demo mode keeps the same
+   * workflow available before the ministry issues the token.
    *
    * ★★ An incomplete register is refused, not silently sent.
    *
@@ -217,7 +347,19 @@ export class AttendanceService {
 
     if (rows.length === 0) throw new BadRequestException("Илгээх бүртгэл олдсонгүй");
 
-    const saved = await this.repo.submitDays(rows);
+    const preview = await this.esisAttendancePreview(actor, kindergartenId, dto);
+    const saved = [];
+    for (const request of preview.requests) {
+      if (!preview.demo) await this.sendAttendance(request.payload);
+      const local = rows.find(
+        (row) =>
+          row.groupId === request.groupId &&
+          row.date.toISOString().slice(0, 10) === request.payload.dayDate,
+      );
+      if (!local) continue;
+      const [submission] = await this.repo.submitDays([local]);
+      if (submission) saved.push(submission);
+    }
 
     /*
       One audit row for the batch — the act a director performed. The same
@@ -231,7 +373,12 @@ export class AttendanceService {
       actorUserId: actor.userId,
       objectType: "AttendanceSubmission",
       objectId: kindergartenId,
-      metadata: { count: saved.length, dates: [...new Set(dto.entries.map((e) => e.date))] },
+      metadata: {
+        count: saved.length,
+        dates: [...new Set(dto.entries.map((e) => e.date))],
+        esisMode: preview.demo ? "DEMO" : "LIVE",
+        apiId: 171,
+      },
     });
 
     return saved.map((row) => ({
@@ -393,10 +540,251 @@ export class AttendanceService {
 
     const byEnrollment = new Map(records.map((r) => [r.enrollmentId, r]));
     return enrollments.map((enrollment) => ({
-      child: enrollment.child,
+      child: {
+        id: enrollment.child.id,
+        lastName: enrollment.child.lastName,
+        firstName: enrollment.child.firstName,
+      },
       enrollmentId: enrollment.id,
       record: byEnrollment.get(enrollment.id) ?? null,
     }));
+  }
+
+  /** Builds the exact ESIS attendance input for one group-day. */
+  async groupEsisAttendancePreview(actor: Actor, groupId: string, dateIso: string) {
+    await this.assertCanReadGroup(actor, groupId);
+    const group = await this.repo.findGroup(groupId, this.tenants.memberKindergartenIds(actor));
+    if (!group) throw new NotFoundException();
+
+    const date = new Date(`${dateIso}T00:00:00.000Z`);
+    if (isFutureDate(date)) {
+      throw new BadRequestException("Ирээдүйн огнооны ирцийг ESIS рүү илгээх боломжгүй");
+    }
+    const { enrollments, records } = await this.repo.groupDaySheet(groupId, date);
+    if (enrollments.length === 0) {
+      throw new BadRequestException("ESIS рүү илгээх бүлгийн хүүхэд олдсонгүй");
+    }
+    const byChild = new Map(records.map((record) => [record.childId, record]));
+    const missing = enrollments.filter((enrollment) => !byChild.has(enrollment.childId));
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `Ирц бүрэн бүртгэгдээгүй байна: ${group.name} (${dateIso}) — ${missing.length} хүүхэд дутуу.`,
+      );
+    }
+
+    const children: AttendanceIdentity[] = enrollments.map((enrollment) => {
+      const record = byChild.get(enrollment.childId)!;
+      const childName = `${enrollment.child.lastName} ${enrollment.child.firstName}`;
+      const attendReasonCode = esisReasonCode(record.status);
+      if (!attendReasonCode) {
+        throw new BadRequestException(
+          `${group.name} (${dateIso}) — ${childName}-ийн "Бусад" ирцийг ESIS-ийн тодорхой шалтгаанаар солино уу.`,
+        );
+      }
+
+      return {
+        childId: enrollment.childId,
+        lastName: enrollment.child.lastName,
+        firstName: enrollment.child.firstName,
+        dateOfBirth: enrollment.child.dateOfBirth,
+        attendReasonCode,
+      };
+    });
+
+    return this.resolveAttendanceDrafts(group.kindergartenId, [
+      { groupId, groupName: group.name, dayDate: dateIso, children },
+    ]);
+  }
+
+  private async resolveAttendanceDrafts(kindergartenId: string, drafts: AttendanceDraft[]) {
+    if (!this.esis.isConfigured) {
+      return {
+        demo: true,
+        apiId: 171,
+        endpoint: "/svc/api/hub/v2/group/school/attendance/save/v3",
+        requests: drafts.map((draft) => ({
+          groupId: draft.groupId,
+          groupName: draft.groupName,
+          payload: {
+            institutionId: DEMO_ESIS_INSTITUTION_ID,
+            studentGroupId:
+              DEMO_ESIS_GROUPS[draft.groupName] ?? stableDemoNumber(draft.groupId, 10100, 800),
+            dayDate: draft.dayDate,
+            attendanceList: draft.children.map((child) => {
+              const childName = `${child.lastName} ${child.firstName}`;
+              return {
+                personId:
+                  DEMO_ESIS_PEOPLE[childName] ??
+                  stableDemoNumber(child.childId, 90000000100000, 8_000_000),
+                attendReasonCode: child.attendReasonCode,
+                tardyMinutes: 0,
+                attendReasonList: [],
+              };
+            }),
+          },
+        })),
+      };
+    }
+
+    const connection = await this.repo.findEsisConnection(kindergartenId);
+    if (!connection?.esisInstitutionId) {
+      throw new ConflictException("Цэцэрлэгийн ESIS байгууллагын код тохируулагдаагүй байна.");
+    }
+    const institutionId = positiveEsisNumber(connection.esisInstitutionId, "institutionId");
+
+    try {
+      const groups = (await this.esis.groups(connection.esisInstitutionId)).data;
+      const studentsByGroup = new Map<
+        string,
+        Awaited<ReturnType<EsisService["groupStudents"]>>["data"]
+      >();
+      const requests = [];
+
+      for (const draft of drafts) {
+        const matchingGroups = groups.filter(
+          (group) => normalizedName(group.studentGroupName) === normalizedName(draft.groupName),
+        );
+        if (matchingGroups.length !== 1) {
+          throw new ConflictException(
+            matchingGroups.length === 0
+              ? `ESIS-д "${draft.groupName}" бүлэг олдсонгүй.`
+              : `ESIS-д "${draft.groupName}" нэртэй ${matchingGroups.length} бүлэг байна. Mapping-ийг ялгаж баталгаажуулна уу.`,
+          );
+        }
+
+        const esisGroup = matchingGroups[0]!;
+        const groupKey = String(esisGroup.studentGroupId);
+        let students = studentsByGroup.get(groupKey);
+        if (!students) {
+          students = (
+            await this.esis.groupStudents(connection.esisInstitutionId, esisGroup.studentGroupId)
+          ).data;
+          studentsByGroup.set(groupKey, students);
+        }
+
+        const attendanceList = draft.children.map((child) => {
+          const localName = normalizedName(`${child.lastName} ${child.firstName}`);
+          const birthDate = child.dateOfBirth.toISOString().slice(0, 10);
+          const matches = students!.filter((student) => {
+            const names = [
+              `${student.lastName} ${student.firstName}`,
+              `${student.lastNameMgl ?? ""} ${student.firstNameMgl ?? ""}`,
+              `${student.familyName ?? ""} ${student.firstName}`,
+              `${student.familyNameMgl ?? ""} ${student.firstNameMgl ?? student.firstName}`,
+            ].map(normalizedName);
+            return student.dateOfBirth.slice(0, 10) === birthDate && names.includes(localName);
+          });
+
+          if (matches.length !== 1) {
+            const childName = `${child.lastName} ${child.firstName}`;
+            throw new ConflictException(
+              matches.length === 0
+                ? `ESIS-ийн ${draft.groupName} бүлэгт ${childName} (${birthDate}) олдсонгүй.`
+                : `ESIS-д ${childName} (${birthDate}) давхардсан байна. Person ID-г баталгаажуулна уу.`,
+            );
+          }
+
+          return {
+            personId: positiveEsisNumber(matches[0]!.personId, "personId"),
+            attendReasonCode: child.attendReasonCode,
+            tardyMinutes: 0,
+            attendReasonList: [],
+          };
+        });
+
+        requests.push({
+          groupId: draft.groupId,
+          groupName: draft.groupName,
+          payload: {
+            institutionId,
+            studentGroupId: positiveEsisNumber(esisGroup.studentGroupId, "studentGroupId"),
+            dayDate: draft.dayDate,
+            attendanceList,
+          },
+        });
+      }
+
+      return {
+        demo: false,
+        apiId: 171,
+        endpoint: "/svc/api/hub/v2/group/school/attendance/save/v3",
+        requests,
+      };
+    } catch (error) {
+      if (error instanceof ConflictException || error instanceof BadGatewayException) throw error;
+      if (error instanceof EsisError && error.kind === "http" && error.detail.status === 401) {
+        throw new BadGatewayException("ESIS Bearer token хүчингүй эсвэл хугацаа дууссан байна.");
+      }
+      if (error instanceof EsisError && error.kind === "http" && error.detail.status === 403) {
+        throw new BadGatewayException("ESIS token-д бүлэг болон суралцагч унших эрх алга байна.");
+      }
+      throw new BadGatewayException("ESIS-ээс бүлэг, суралцагчийн мэдээлэл татаж чадсангүй.");
+    }
+  }
+
+  async submitGroupDay(actor: Actor, groupId: string, dateIso: string) {
+    const preview = await this.groupEsisAttendancePreview(actor, groupId, dateIso);
+    if (!preview.demo) await this.sendAttendance(preview.requests[0]!.payload);
+    const group = await this.repo.findGroup(groupId, this.tenants.memberKindergartenIds(actor));
+    if (!group) throw new NotFoundException();
+    const { enrollments } = await this.repo.groupDaySheet(
+      groupId,
+      new Date(`${dateIso}T00:00:00.000Z`),
+    );
+
+    const [saved] = await this.repo.submitDays([
+      {
+        kindergartenId: group.kindergartenId,
+        groupId,
+        date: new Date(`${dateIso}T00:00:00.000Z`),
+        submittedById: actor.userId,
+        childCount: enrollments.length,
+      },
+    ]);
+
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId: group.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "AttendanceSubmission",
+      objectId: groupId,
+      metadata: {
+        esisMode: preview.demo ? "DEMO" : "LIVE",
+        apiId: 171,
+        date: dateIso,
+        childCount: enrollments.length,
+      },
+    });
+
+    return {
+      groupId,
+      date: dateIso,
+      submittedAt: saved!.submittedAt.toISOString(),
+    };
+  }
+
+  private async sendAttendance(payload: {
+    institutionId: number;
+    studentGroupId: number;
+    dayDate: string;
+    attendanceList: {
+      personId: number;
+      attendReasonCode: "PRESENT" | "EXCUSED" | "SICK" | "UNEXCUSED";
+      tardyMinutes: number;
+      attendReasonList: string[];
+    }[];
+  }) {
+    try {
+      return await this.esis.saveAttendance(payload);
+    } catch (error) {
+      if (error instanceof EsisError && error.kind === "http" && error.detail.status === 401) {
+        throw new BadGatewayException("ESIS Bearer token хүчингүй эсвэл хугацаа дууссан байна.");
+      }
+      if (error instanceof EsisError && error.kind === "http" && error.detail.status === 403) {
+        throw new BadGatewayException("ESIS token-д API-000269 ирц илгээх эрх алга байна.");
+      }
+      throw new BadGatewayException("ESIS ирцийн хүсэлтийг хүлээж авсангүй. Дахин шалгана уу.");
+    }
   }
 
   // ── Writing — staff only ────────────────────────────────────────────────

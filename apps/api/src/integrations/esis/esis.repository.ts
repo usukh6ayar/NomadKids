@@ -19,6 +19,13 @@ export class EsisRepository {
     });
   }
 
+  findUserIdentity(userId: string) {
+    return this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: { lastName: true, firstName: true, email: true },
+    });
+  }
+
   updateMapping(
     id: string,
     mapping:

@@ -2,6 +2,7 @@ import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
+import { EsisError } from "../src/integrations/esis/esis.client";
 import type { EsisService } from "../src/integrations/esis/esis.service";
 import { createTestApp } from "./support/app";
 import { resetData, testDb, uniq } from "./support/db";
@@ -16,10 +17,20 @@ import {
 
 const db = testDb();
 const institutionId = "40305";
-const organization = vi.fn(async () => ({
-  data: [{ institutionId, institutionName: "Цэцэрлэг A" }],
+const organizationRow = { institutionId, institutionName: "Цэцэрлэг A" };
+const studentRow = {
+  institutionId,
+  personId: "90000000000001",
+  lastName: "Баяр",
+  firstName: "Ану",
+  dateOfBirth: "2021-03-04",
+  genderCode: "F",
+};
+const organization = vi.fn(async () => ({ data: [organizationRow], status: 200, durationMs: 7 }));
+const read = vi.fn(async (key: string) => ({
+  data: key === "students" ? [studentRow] : [organizationRow],
   status: 200,
-  durationMs: 7,
+  durationMs: 9,
 }));
 const esis = {
   status: () => ({
@@ -29,7 +40,14 @@ const esis = {
     hasToken: true,
   }),
   organization,
-} as Partial<EsisService>;
+  read,
+} as unknown as Partial<EsisService>;
+
+const mapInstitution = (kindergartenId: string, session: AuthSession) =>
+  authed(
+    request(server()).put(`/v1/platform/kindergartens/${kindergartenId}/esis/mapping`),
+    session,
+  ).send({ mapped: true, institutionId, environment: "TEST" });
 
 let app: INestApplication;
 let a: Scenario;
@@ -53,6 +71,7 @@ beforeEach(async () => {
   await resetData();
   await app.get(RateLimitService).resetAll();
   organization.mockClear();
+  read.mockClear();
 
   a = await createScenario("esis-a");
   b = await createScenario("esis-b");
@@ -149,7 +168,7 @@ describe("read-only preview", () => {
         {
           resource: "organization",
           count: 1,
-          preview: [{ label: "Цэцэрлэг A" }],
+          preview: [expect.objectContaining({ institutionName: "Цэцэрлэг A" })],
         },
       ],
     });
@@ -165,10 +184,7 @@ describe("read-only preview", () => {
   });
 
   it("recovers a stale preview lock before starting a new run", async () => {
-    await authed(
-      request(server()).put(`/v1/platform/kindergartens/${a.kindergarten.id}/esis/mapping`),
-      superAdmin,
-    ).send({ mapped: true, institutionId, environment: "TEST" });
+    await mapInstitution(a.kindergarten.id, superAdmin);
     const stale = await db.esisSyncRun.create({
       data: {
         kindergartenId: a.kindergarten.id,
@@ -189,5 +205,121 @@ describe("read-only preview", () => {
       errorCode: "STALE_RUN_RECOVERED",
     });
     expect(await db.esisSyncRun.count({ where: { kindergartenId: a.kindergarten.id } })).toBe(2);
+  });
+});
+
+/**
+ * The single-resource read behind every "ESIS-ээс татах" button.
+ *
+ * ★ It can return a ministry roster of children, so it gets §4.1's three
+ * authorization cases through HTTP against the real route — not against
+ * `TenantAccessService` in isolation, which would pass even if the controller
+ * forgot to call it.
+ */
+describe("single-resource ESIS read", () => {
+  const url = (kindergartenId: string, query: string) =>
+    `/v1/kindergartens/${kindergartenId}/esis/resource?${query}`;
+
+  it.each([
+    ["teacher", () => teacherA],
+    ["guardian", () => parentA],
+  ])("returns 404 to a %s and never calls ESIS", async (_label, session) => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+
+    const res = await authed(
+      request(server()).get(url(a.kindergarten.id, "resource=students")),
+      session(),
+    );
+
+    expect(res.status).toBe(404);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 to an admin of another kindergarten", async () => {
+    await mapInstitution(b.kindergarten.id, superAdmin);
+
+    const res = await authed(
+      request(server()).get(url(b.kindergarten.id, "resource=students")),
+      adminA,
+    );
+
+    expect(res.status).toBe(404);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("requires authentication", async () => {
+    const res = await request(server()).get(url(a.kindergarten.id, "resource=students"));
+    expect(res.status).toBe(401);
+  });
+
+  it("refuses a resource outside the reviewed catalog", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+
+    const [unknown, write] = await Promise.all([
+      authed(request(server()).get(url(a.kindergarten.id, "resource=payroll")), adminA),
+      authed(request(server()).get(url(a.kindergarten.id, "resource=saveAttendanceV3")), adminA),
+    ]);
+
+    expect(unknown.status).toBe(400);
+    expect(write.status).toBe(400);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("refuses a service whose path values are missing", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+
+    const res = await authed(
+      request(server()).get(url(a.kindergarten.id, "resource=groupAttendance")),
+      adminA,
+    );
+
+    expect(res.status).toBe(409);
+    expect(res.body.detail).toContain("studentGroupId");
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("returns every ingested field, writes no child row, and records who looked", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    const beforeChildren = await db.child.count({ where: { kindergartenId: a.kindergarten.id } });
+
+    const res = await authed(
+      request(server()).get(url(a.kindergarten.id, "resource=students")),
+      adminA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("SUCCEEDED");
+    expect(res.body.count).toBe(1);
+    expect(res.body.rows[0]).toMatchObject({ firstName: "Ану", personId: "90000000000001" });
+    // Refused fields are described, never valued.
+    const refused = res.body.fields.filter((field: { ingested: boolean }) => !field.ingested);
+    expect(refused.map((field: { name: string }) => field.name)).toContain("personRegNumber");
+    expect(Object.keys(res.body.rows[0])).not.toContain("personRegNumber");
+
+    expect(await db.child.count({ where: { kindergartenId: a.kindergarten.id } })).toBe(
+      beforeChildren,
+    );
+    expect(await db.esisSyncRun.count({ where: { kindergartenId: a.kindergarten.id } })).toBe(0);
+    expect(
+      await db.auditLog.count({
+        where: { kindergartenId: a.kindergarten.id, objectType: "EsisResource", action: "VIEW" },
+      }),
+    ).toBe(1);
+  });
+
+  it("reports an upstream failure as a result rather than an error", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    read.mockRejectedValueOnce(
+      new EsisError("http", "ESIS responded 403", { status: 403, path: "/students/list" }),
+    );
+
+    const res = await authed(
+      request(server()).get(url(a.kindergarten.id, "resource=students")),
+      adminA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: "FAILED", errorCode: "SCOPE_DENIED", count: 0 });
+    expect(res.body.fields.length).toBeGreaterThan(0);
   });
 });

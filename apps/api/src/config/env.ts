@@ -99,8 +99,9 @@ export const envSchema = z.object({
    * deliberately not prefixed `NEXT_PUBLIC_`, and `apps/web` has no reason to
    * name it — see `esis.client.ts` for the redaction that backs this up.
    */
-  ESIS_BASE_URL: z.string().default(""),
+  ESIS_BASE_URL: z.string().default("https://hubv2.esis.edu.mn"),
   ESIS_TOKEN: z.string().default(""),
+  /** @deprecated Institution scope is stored per kindergarten. */
   ESIS_INSTITUTION_ID: z.string().default(""),
   /**
    * Milliseconds before an ESIS request is abandoned.
@@ -250,18 +251,6 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
      * URL alone and every call would then fail unauthenticated, which reads as
      * "the ministry is rejecting us" rather than "we never set the token".
      */
-    const esis = [
-      ["ESIS_BASE_URL", env.ESIS_BASE_URL],
-      ["ESIS_TOKEN", env.ESIS_TOKEN],
-      ["ESIS_INSTITUTION_ID", env.ESIS_INSTITUTION_ID],
-    ] as const;
-    const esisSet = esis.filter(([, value]) => value !== "");
-
-    if (esisSet.length > 0 && esisSet.length < esis.length) {
-      const missing = esis.filter(([, value]) => value === "").map(([name]) => name);
-      // Names only. The values of the ones that *are* set include the token.
-      problems.push(`ESIS is partly configured — missing ${missing.join(", ")}`);
-    }
     if (env.ESIS_BASE_URL && env.ESIS_BASE_URL.startsWith("http://")) {
       problems.push("ESIS_BASE_URL is a plaintext http:// origin — the token would cross it");
     }

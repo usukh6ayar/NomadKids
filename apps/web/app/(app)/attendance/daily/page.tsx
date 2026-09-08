@@ -1,24 +1,27 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Download, Send } from "lucide-react";
+import { Braces, CheckCircle2, Download, Pencil, Send } from "lucide-react";
 import { z } from "zod";
 import {
   attendanceSubmissionSchema,
   dailyAttendanceSchema,
+  esisAttendancePreviewSchema,
   groupListItemSchema,
   paginated,
   type DailyAttendance,
   type DailyAttendanceRow,
+  type EsisAttendancePreview,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { downloadUrl } from "@/lib/api/client";
+import { EsisPullButton } from "@/components/esis/esis-pull-button";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { AttendanceViewSwitch } from "@/components/attendance/view-switch";
@@ -72,7 +75,7 @@ export default function DailyAttendancePage() {
 }
 
 function DailyAttendance() {
-  const { primaryKindergartenId } = useSession();
+  const { primaryKindergartenId, hasRole } = useSession();
 
   /*
    * ★ Seeded from the URL — 2026-09-06, so `AttendanceViewSwitch` can hand the
@@ -133,6 +136,41 @@ function DailyAttendance() {
    */
   const rowKey = (row: DailyAttendanceRow) => `${row.groupId} ${row.date}`;
   const selection = useSelection((data?.items ?? []).map(rowKey));
+  const appliedDeepLinkSelection = useRef(false);
+
+  useEffect(() => {
+    if (
+      appliedDeepLinkSelection.current ||
+      searchParams.get("select") !== "1" ||
+      !data?.items.some((row) => row.complete)
+    ) {
+      return;
+    }
+
+    appliedDeepLinkSelection.current = true;
+    for (const row of data.items) {
+      if (row.complete) selection.toggle(rowKey(row));
+    }
+  }, [data, searchParams, selection.toggle]);
+  const selectedRows = (data?.items ?? []).filter((row) => selection.has(rowKey(row)));
+  const selectedEntries = selectedRows.map((row) => ({ groupId: row.groupId, date: row.date }));
+  const canPreviewEsis =
+    Boolean(primaryKindergartenId) &&
+    selectedRows.length > 0 &&
+    selectedRows.every((row) => row.complete);
+
+  const esisPreview = useQuery({
+    queryKey: ["esis", "attendance-preview", primaryKindergartenId, selectedEntries],
+    queryFn: () =>
+      mutate(
+        `/kindergartens/${primaryKindergartenId}/attendance/daily/esis-preview`,
+        esisAttendancePreviewSchema,
+        { method: "POST", body: { entries: selectedEntries } },
+      ),
+    enabled: canPreviewEsis,
+    staleTime: Infinity,
+    retry: false,
+  });
 
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -165,7 +203,9 @@ function DailyAttendance() {
       );
     },
     onSuccess: (sent) => {
-      toast.success(`${sent.length} бүртгэл илгээгдлээ.`);
+      toast.success(
+        `${esisPreview.data?.demo ? "Demo ESIS" : "ESIS"} рүү ${sent.length} бүртгэл амжилттай илгээгдлээ.`,
+      );
       selection.clear();
       void queryClient.invalidateQueries({ queryKey: ["attendance", "daily"] });
     },
@@ -185,7 +225,18 @@ function DailyAttendance() {
       <PageHeader
         title="Өдөр тутмын ирц"
         lede="Бүлэг тус бүрийн өдрийн ирцийн дүн, сонгосон хугацаагаар."
-        actions={<AttendanceViewSwitch current="group" from={from} to={to} groupId={groupId} />}
+        actions={
+          <>
+            {/*
+             * ★ No `params` passed on purpose. `groupId` here is a NomadKids
+             * uuid and ESIS keys its own `studentGroupId`; until §15's external
+             * id lands, the dialog asks the operator for the ESIS number rather
+             * than sending an id the ministry has never seen.
+             */}
+            <EsisPullButton resource="groupAttendance" label="ESIS ирц" params={{ dayDate: to }} />
+            <AttendanceViewSwitch current="group" from={from} to={to} groupId={groupId} />
+          </>
+        }
       />
 
       <Card pad="roomy" className="flex flex-col gap-4">
@@ -286,7 +337,17 @@ function DailyAttendance() {
             kindergartenName={data.kindergartenName}
             selection={selection}
             rowKey={rowKey}
+            canEdit={hasRole("ADMIN")}
           />
+
+          {selection.count > 0 ? (
+            <EsisPayloadPreview
+              rows={selectedRows}
+              preview={esisPreview.data}
+              loading={canPreviewEsis && esisPreview.isPending}
+              error={esisPreview.isError ? errorMessage(esisPreview.error) : null}
+            />
+          ) : null}
 
           {/*
             ★ Илгээх lives in the selection bar, not in the header.
@@ -298,15 +359,153 @@ function DailyAttendance() {
             reader has scrolled to.
           */}
           <SelectionBar count={selection.count} onClear={selection.clear}>
-            <Button size="sm" disabled={submit.isPending} onClick={() => submit.mutate()}>
+            <Button
+              size="sm"
+              disabled={
+                submit.isPending || !canPreviewEsis || esisPreview.isPending || !esisPreview.data
+              }
+              onClick={() => submit.mutate()}
+            >
               <Send size={16} aria-hidden />
-              {submit.isPending ? "Илгээж байна…" : "Ирц илгээх"}
+              {submit.isPending
+                ? "Илгээж байна…"
+                : esisPreview.isPending
+                  ? "Payload бэлтгэж байна…"
+                  : "ESIS рүү илгээх"}
             </Button>
           </SelectionBar>
         </>
       )}
     </div>
   );
+}
+
+function EsisPayloadPreview({
+  rows,
+  preview,
+  loading,
+  error,
+}: {
+  rows: DailyAttendanceRow[];
+  preview?: EsisAttendancePreview;
+  loading: boolean;
+  error: string | null;
+}) {
+  const incomplete = rows.filter((row) => !row.complete);
+  const requests = preview?.requests ?? [];
+
+  return (
+    <section aria-labelledby="esis-payload-heading">
+      <SectionHeader
+        id="esis-payload-heading"
+        title="ESIS рүү илгээх өгөгдөл"
+        lede={`API-000269 · ID ${preview?.apiId ?? 171} · POST ${
+          preview?.endpoint ?? "/svc/api/hub/v2/group/school/attendance/save/v3"
+        }`}
+        action={
+          <Badge tone={error || incomplete.length ? "sun" : loading ? "sky" : "mint"}>
+            {loading ? "Бэлтгэж байна" : preview?.demo ? "Demo горим" : "ESIS холбогдсон"}
+          </Badge>
+        }
+      />
+
+      <Card pad="roomy" className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-3 border-b border-border-soft pb-4">
+          <span className="grid size-10 shrink-0 place-items-center rounded-control bg-sky text-sky-ink">
+            <Braces size={20} aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-ink">
+              {requests.length} хүсэлт ·{" "}
+              {requests.reduce((sum, item) => sum + item.payload.attendanceList.length, 0)} хүүхэд
+            </p>
+            <p className="text-caption text-muted">
+              {preview?.demo ? "Demo ESIS" : "Бодит ESIS"} холболт · илгээх хүсэлт автоматаар
+              бэлтгэгдсэн.
+            </p>
+          </div>
+          {error ? (
+            <Badge tone="sun">Засах шаардлагатай</Badge>
+          ) : incomplete.length === 0 && !loading ? (
+            <Badge tone="mint">
+              <CheckCircle2 size={13} aria-hidden="true" /> Бэлэн
+            </Badge>
+          ) : incomplete.length ? (
+            <Badge tone="sun">{incomplete.length} бүрэн бус</Badge>
+          ) : null}
+        </div>
+
+        {loading ? <LoadingState rows={2} shape="text" /> : null}
+        {error ? <p className="text-body text-danger">{error}</p> : null}
+
+        {requests.map(({ groupId, groupName, payload }, index) => (
+          <details key={`${groupId}-${payload.dayDate}`} open={index === 0}>
+            <summary className="cursor-pointer rounded-control px-2 py-2 font-medium text-ink hover:bg-sunken">
+              {groupName} · {formatDate(payload.dayDate)} · {payload.attendanceList.length} хүүхэд
+            </summary>
+
+            <div className="mt-3 flex flex-col gap-3 pl-2">
+              <dl className="grid gap-3 sm:grid-cols-4">
+                <PayloadValue label="institutionId" value={payload.institutionId} />
+                <PayloadValue label="studentGroupId" value={payload.studentGroupId} />
+                <PayloadValue label="dayDate" value={payload.dayDate} />
+                <PayloadValue
+                  label="attendanceList"
+                  value={`${payload.attendanceList.length} мөр`}
+                />
+              </dl>
+
+              <TableShell
+                caption={`${groupName} бүлгийн ESIS ирцийн payload`}
+                minWidth="min-w-[680px]"
+              >
+                <thead>
+                  <tr>
+                    <Th>personId</Th>
+                    <Th>attendReasonCode</Th>
+                    <Th numeric>tardyMinutes</Th>
+                    <Th>attendReasonList</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {payload.attendanceList.map((item) => (
+                    <tr key={item.personId}>
+                      <Td className="font-mono text-caption">{item.personId}</Td>
+                      <Td>
+                        <Badge tone={reasonTone(item.attendReasonCode)}>
+                          {item.attendReasonCode}
+                        </Badge>
+                      </Td>
+                      <Td numeric>{item.tardyMinutes}</Td>
+                      <Td className="font-mono text-caption">[]</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </TableShell>
+            </div>
+          </details>
+        ))}
+      </Card>
+    </section>
+  );
+}
+
+function PayloadValue({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div>
+      <dt className="font-mono text-caption text-muted">{label}</dt>
+      <dd className="mt-0.5 break-words text-body font-medium text-ink">{value}</dd>
+    </div>
+  );
+}
+
+function reasonTone(
+  code: EsisAttendancePreview["requests"][number]["payload"]["attendanceList"][number]["attendReasonCode"],
+) {
+  if (code === "PRESENT") return "mint" as const;
+  if (code === "EXCUSED") return "sky" as const;
+  if (code === "SICK") return "sun" as const;
+  return "danger" as const;
 }
 
 /**
@@ -458,14 +657,16 @@ function DailyTable({
   kindergartenName,
   selection,
   rowKey,
+  canEdit,
 }: {
   rows: DailyAttendanceRow[];
   kindergartenName: string;
   selection: ReturnType<typeof useSelection>;
   rowKey: (row: DailyAttendanceRow) => string;
+  canEdit: boolean;
 }) {
   return (
-    <TableShell caption="Өдөр тутмын ирцийн бүртгэл" minWidth="min-w-[1260px]">
+    <TableShell caption="Өдөр тутмын ирцийн бүртгэл" minWidth="min-w-[1380px]">
       <thead>
         <tr>
           <Th className="w-10">
@@ -491,6 +692,7 @@ function DailyTable({
           <Th>Илгээсэн хэрэглэгч</Th>
           <Th>Үүссэн</Th>
           <Th>Үүсгэсэн хэрэглэгч (Web)</Th>
+          <Th>Үйлдэл</Th>
         </tr>
       </thead>
       <tbody>
@@ -561,6 +763,17 @@ function DailyTable({
             </Td>
             <Td className="text-muted">
               {row.createdBy.length > 0 ? row.createdBy.join(", ") : "—"}
+            </Td>
+            <Td>
+              {canEdit ? (
+                <Button size="sm" variant="ghost" asChild>
+                  <Link href={`/groups/${row.groupId}/attendance?date=${row.date}&edit=1`}>
+                    <Pencil size={16} aria-hidden /> Засах
+                  </Link>
+                </Button>
+              ) : (
+                "—"
+              )}
             </Td>
           </tr>
         ))}

@@ -4,14 +4,12 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { BookOpen, Plus } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
-import { z } from "zod";
-import { parentDashboardSchema, surveySchema, unreadCountSchema } from "@kinder/contracts";
+import { parentDashboardSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
-import { Card, SectionHeader } from "@/components/ui/card";
-import { QuickTile, QuickTileGrid, TileIcon } from "@/components/ui/quick-tile";
+import { Card } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
 import { useSelectedChild } from "@/lib/selected-child";
@@ -35,16 +33,6 @@ export default function ParentHomePage() {
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: qk.dashboard.parent(),
     queryFn: () => get("/dashboard/parent", parentDashboardSchema),
-  });
-
-  // Powers the "Ангийн самбар" tile below — the same count the header bell
-  // and the bottom bar's badge show, reused here as a share reason to open
-  // /notifications rather than a bare number.
-  const { data: unread } = useQuery({
-    queryKey: qk.unreadCount(),
-    queryFn: () => get("/notifications/unread-count", unreadCountSchema),
-    staleTime: 60_000,
-    retry: false,
   });
 
   if (isLoading) {
@@ -131,71 +119,6 @@ export default function ParentHomePage() {
           </Link>
         </div>
       </Card>
-
-      {/*
-        ★ A 3-column icon grid matching the parent's own mock-up: Ангийн
-        самбар, Ирц, Хоол, Цэцэрлэг, Үнэлгээ, Судалгаа, Санхүү. The icon assets
-        (icon-notice.png, icon-attendance.png, …) already carry their own
-        colour per tile, so the grid reads as varied as the reference's
-        icon-square grid without inventing a new colour system for it.
-        `PORTFOLIO` is not a tile here — it is a button on the hero card
-        above and the bottom bar's "Зураг" tab (`(app)/layout.tsx`'s
-        `parentNav`); a third entry point on this grid would be the same
-        destination three times on one screen.
-        Судалгаа has its own permanent tile — `SurveyTile` below — landing on
-        `/children/:id/surveys`, the list this grid's Судалгаа entry could
-        not honestly point to before that page existed.
-        Ирц, Хоол, Цэцэрлэг and Үнэлгээ each land on their own standalone
-        route now (`/children/:id/attendance`, `/menu`, `/enrollment-archive`,
-        `/assessments`) rather than a `?tab=` deep link into the child hub —
-        the hub dropped those same tabs, so a deep link into them would no
-        longer have opened anything.
-        Цэцэрлэг is the client's own later addition — "Цэцэрлэг, бүлгийн
-        архив", the current placement, its teacher, and the family's full
-        enrollment history — sitting between Хоол and Үнэлгээ.
-        Санхүү was a `ComingSoonTile` (a `<div>`, not a `<Link>`) while
-        CLAUDE.md §7 kept finance a later phase; invoices are built now
-        (`нэмэлт.md` §7–§10) and it is a real `QuickTile` to
-        `/children/:id/finance`, the same route `(app)/layout.tsx`'s sidebar
-        points its own "Төлбөр" row at.
-      */}
-      <section aria-labelledby="board-heading">
-        <SectionHeader id="board-heading" title="Түргэн холбоос" />
-        <QuickTileGrid>
-          <QuickTile
-            href="/notifications"
-            label="Ангийн самбар"
-            badge={unread && unread.count > 0 ? unread.count : undefined}
-            icon={<TileIcon name="notice" />}
-          />
-          <QuickTile
-            href={`/children/${selected.id}/attendance`}
-            label="Ирц"
-            icon={<TileIcon name="attendance" />}
-          />
-          <QuickTile
-            href={`/children/${selected.id}/menu`}
-            label="Хоол"
-            icon={<TileIcon name="menu" />}
-          />
-          <QuickTile
-            href={`/children/${selected.id}/enrollment-archive`}
-            label="Цэцэрлэг"
-            icon={<TileIcon name="kindergarten" />}
-          />
-          <QuickTile
-            href={`/children/${selected.id}/assessments`}
-            label="Үнэлгээ"
-            icon={<TileIcon name="progress" />}
-          />
-          <SurveyTile childId={selected.id} />
-          <QuickTile
-            href={`/children/${selected.id}/finance`}
-            label="Санхүү"
-            icon={<TileIcon name="finance" />}
-          />
-        </QuickTileGrid>
-      </section>
     </HomeBackdrop>
   );
 }
@@ -250,37 +173,6 @@ export default function ParentHomePage() {
  * and a looping background video is exactly the motion that preference exists
  * to suppress.
  */
-
-const activeSurveysSchema = z.array(surveySchema);
-
-/**
- * "Судалгаа" — a permanent tile, unlike the card it replaces.
- *
- * ★ Always a real link now: `/children/:id/surveys` lists every survey for
- * this child, answered or not, so — unlike the old single-pending-survey
- * card — this tile is never one this family cannot act on. The badge counts
- * only the unanswered ones, the same "a number, not a dot" rule `UnreadDot`
- * and `QuickTile`'s own `badge` prop already follow.
- */
-function SurveyTile({ childId }: { childId: string }) {
-  const { data } = useQuery({
-    queryKey: qk.childSurveys(childId),
-    queryFn: () => get(`/children/${childId}/surveys`, activeSurveysSchema),
-    staleTime: 60_000,
-    retry: false,
-  });
-
-  const pendingCount = data?.filter((survey) => !survey.respondedByMe).length ?? 0;
-
-  return (
-    <QuickTile
-      href={`/children/${childId}/surveys`}
-      label="Судалгаа"
-      badge={pendingCount > 0 ? pendingCount : undefined}
-      icon={<TileIcon name="survey" />}
-    />
-  );
-}
 
 function HomeBackdrop({ children }: { children: ReactNode }) {
   const videoRef = useRef<HTMLVideoElement>(null);

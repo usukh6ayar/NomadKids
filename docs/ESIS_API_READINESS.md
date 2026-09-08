@@ -1,6 +1,6 @@
 # ESIS v2 API бэлэн байдлын матриц
 
-**Шалгасан огноо:** 2026-09-07
+**Шалгасан огноо:** 2026-09-08
 
 **Албан ёсны эх:** <https://developerv2.esis.edu.mn/api/structure>
 
@@ -24,17 +24,19 @@ Portal-ийн 2026-03-31-ний мэдэгдэл v1 сервисүүдийг 202
 | **C4 Test**    | ESIS test орчинд бодит байгууллагын өгөгдлөөр амжилттай шалгасан                         |
 | **C5 Live**    | Баталгаатай import, external ID, BullMQ retry/idempotency, attendance reconcile ажиллана |
 
-Одоогийн төлөв: сонгосон 17 сервис **C1 + C2**. Tenant mapping, operator UI,
-read-only dry-run, `EsisSyncRun` audit history нэмэгдсэн боловч эдгээр нь C4
-test-ийг орлохгүй. **C3-C5 хүлээгдэж байна**.
-Иймээс adapter код ашиглахад бэлэн боловч ESIS рүү production дуудлага хийхэд
-бэлэн гэж ойлгож болохгүй. Гэрээ, token scope, test баталгаажуулалтгүйгээр
-production өгөгдөл илгээхгүй.
+Одоогийн төлөв: сонгосон 17 сервисийн **C1 + C2 код бүрэн холбогдсон**. Tenant
+mapping, operator UI, read-only dry-run, `EsisSyncRun` audit history, багш/ажилтны
+live profile, хүүхдийн live template, ирцийн live ID тулгалт ба attendance POST
+ажиллана. Official Bearer token тавихад live горим автоматаар нээгдэнэ.
+**C3-C5 нотолгоо** нь БМТТ-өөс token scope олгох, test/production орчинд
+хүлээн авах шалгалт хийх хүртэл хүлээгдэнэ; энэ нь кодын бус гадаад gate юм.
 
 ## 2. Сонгосон endpoint ба ашиглах газар
 
-Бүх замын өмнө `https://hubv2.esis.edu.mn` орно. `institutionId`-г backend
-өөрийн `ESIS_INSTITUTION_ID` тохиргооноос нэмнэ.
+Бүх замын өмнө default-аар `https://hubv2.esis.edu.mn` орно. `institutionId`-г
+backend тухайн tenant-ийн `Kindergarten.esisInstitutionId` mapping-аас нэмнэ.
+Ингэснээр нэг provider token олон гэрээт цэцэрлэгийг tenant-safe байдлаар
+үйлчилнэ.
 
 ### Байгууллага, хүүхэд, хүний нөөц
 
@@ -65,6 +67,19 @@ Student/staff payload-д ESIS-ийн sample-аар email password, РД, civil-i
 одоогийн attendance status-ыг ESIS-ийн reason code-той тулгах хүснэгт catalog-д
 байхгүй тул C5 хийхээс өмнө token-той lookup/test шаардлагатай.
 
+`/attendance/daily` дээр бүрэн бүртгэгдсэн бүлэг-өдрийг сонгоход
+`POST /kindergartens/:id/attendance/daily/esis-preview` нь API-000269-ийн
+илгээх body-г хүүхэд бүрийн мөрөөр бэлтгэж дэлгэцэд харуулна. Portal-ийн
+гаралтын тайлбарт байгаа кодоор demo mapping нь `PRESENT`/`HALF_DAY → PRESENT`,
+`EXCUSED → EXCUSED`, `SICK → SICK`, `ABSENT → UNEXCUSED`. Тодорхой ESIS
+шалтгаангүй `OTHER`-ийг таамаглахгүй, илгээхийн өмнө засах алдаа болгоно.
+Token байхгүй үед preview тодорхой `demo: true` payload үзүүлнэ. Token байгаа
+үед API `groups` болон `groupStudents`-ийг бодитоор дуудаж, бүлгийг нэрээр,
+хүүхдийг овог нэр + төрсөн огноогоор цорын ганц тохирсон үед ESIS-ийн
+`studentGroupId`, `personId`-г payload-д тавина. Олдоогүй эсвэл давхардсан
+тохиолдолд буруу ID таахгүй, илгээлтийг зогсооно. `Илгээх` нь API-000269 POST
+амжилттай болсны дараа л local `AttendanceSubmission` хадгална.
+
 ### Хоолны нэгдсэн лавлах
 
 | API                | Method ба зам                                     | NomadKids-д ашиглах газар            | Одоо  |
@@ -82,16 +97,59 @@ Student/staff payload-д ESIS-ийн sample-аар email password, РД, civil-i
 `Recipe`-г шууд overwrite хийхгүй; external ID mapping, preview, operator
 approval бүхий import C5 дээр нэмэгдэнэ.
 
+## 2.1 Гаралтын талбарын каталог (2026-09-08 бүрэн тулгасан)
+
+Сервис бүрийн **бүх гаралтын талбар** `esis.fields.ts`-д нэрээрээ бүртгэлтэй.
+Талбар бүр `ingested: true|false` төлөвтэй; авахгүй талбар бүр `omitReason`-той
+бөгөөд ямар баримтаар татгалзсаныг нэрлэнэ.
+
+| Эх сурвалж | Сервис             | Утга                                                              |
+| ---------- | ------------------ | ----------------------------------------------------------------- |
+| `PORTAL`   | Сонгосон 17 сервис | 2026-09-08-нд `/api/structure`-оос нэр, төрөл, `io`-гоор тулгасан |
+
+Нийт **256 гаралтын талбар**, attendance v3 бичих сервисийн **8 оролтын
+талбар** байна. UI нь оролт, гаралтыг тусдаа badge-аар ялгана. Demo утга нь
+үзүүлэнгийн мэдээлэл бөгөөд бодит ESIS хариу биш гэдгийг бүх дэлгэц дээр
+тэмдэглэнэ. Token авсны дараа C4 test орчинд бодит утга, nullable байдал,
+өгөгдлийн төрлийг дахин тулгана.
+
+**Зориуд авахгүй талбарууд** (`ESIS_REQUEST.md` §1.1 (b), §1.2):
+`civilId`, `personRegNumber`, `microsoftPassword`, `googlePassword`,
+`microsoftEmailPass`, `googleEmailPass`, `username`. Эдгээр нь схемд огт
+байхгүй — zod parse дээр хасагдана — гэхдээ
+каталогид **үлдээсэн**: БМТТ-ийн шалгагч portal-той тулгахдаа "уншаад
+татгалзсан" гэдгийг харах ёстой, богино жагсаалт бол алдаа мэт харагдана.
+
+Схем ба каталогийн нийцлийг `esis.fields.test.ts` барина: `ingested` талбарын
+нэрсийн олонлог зохих zod схемийн түлхүүрүүдтэй яг тэнцүү байх ёстой.
+
+★ Суралцагчийн **нэмэлт мэдээлэл** (өрхийн байдал, эрүүл мэндийн лавлагаа, РД)
+нь `ESIS_REQUEST.md` §1.1 (b) ба §1.3-аар зориуд хүсээгүй хэвээр. Дэлгэц дээр
+энэ шийдвэрийг тайлбартай нь харуулна.
+
 ## 3. Кодын бэлэн хэсэг
 
-| Файл                       | Үүрэг                                                               |
-| -------------------------- | ------------------------------------------------------------------- |
-| `esis.endpoints.ts`        | 17 service-ийн API ID, slug, method, path                           |
-| `esis.schemas.ts`          | ESIS envelope validation, field minimization, attendance payload    |
-| `esis.service.ts`          | Байгууллага, roster, хүний нөөц, ирц, хоолны domain method          |
-| `esis.client.ts`           | Bearer auth, timeout, алдааны ангилал, token redaction              |
-| `esis.service.test.ts`     | Endpoint path, envelope, sensitive-field stripping, v3 payload test |
-| `GET /v1/health/readiness` | Token-ийг гаргалгүй integration config-ийн төлөв харуулна           |
+| Файл                                                           | Үүрэг                                                                  |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `esis.endpoints.ts`                                            | 17 service-ийн API ID, slug, method, path                              |
+| `esis.fields.ts`                                               | Сервис бүрийн бүх гаралтын талбар, авах/авахгүй шийдэл ба шалтгаан     |
+| `esis.schemas.ts`                                              | ESIS envelope validation, field minimization, attendance payload       |
+| `esis.service.ts`                                              | `ESIS_READERS` хүснэгт, domain method, түлхүүрээр унших `read()`       |
+| `esis.client.ts`                                               | Bearer auth, timeout, safe GET retry, алдааны ангилал, token redaction |
+| `esis.service.test.ts`                                         | Endpoint path, envelope, sensitive-field stripping, v3 payload test    |
+| `esis.fields.test.ts`                                          | Каталог ба схемийн тэнцэл, татгалзсан талбарын шалтгаан                |
+| `GET /v1/kindergartens/:id/esis/resource`                      | Нэг сервисийг read-only татаж, талбар бүрийн утгыг буцаана             |
+| `GET /v1/kindergartens/:id/esis/student-registration-template` | Staff хүүхэд бүртгэлд minimized `students` contract өгнө               |
+| `GET /v1/groups/:id/attendance/esis-preview`                   | Нэг бүлэг-өдрийн API-000269 payload-ийг үүсгэнэ                        |
+| `POST /v1/groups/:id/attendance/submit`                        | Багшийн бүрэн өдрийг API-000269-д илгээж, амжилтыг local хадгална      |
+| `GET /v1/kindergartens/:id/esis/my-profile`                    | Нэвтэрсэн багш/ажилтны бүх зөвшөөрөгдсөн live гаралтыг харуулна        |
+| `GET /v1/health/readiness`                                     | Token-ийг гаргалгүй integration config-ийн төлөв харуулна              |
+
+`…/esis/resource?resource=<key>&studentGroupId=…&dayDate=…` нь ADMIN эрхтэй,
+tenant mapping шалгасны дараа ажиллана. Дотоод бүртгэлд юу ч бичихгүй; ганц
+бичих мөр нь `AuditLog`-ийн `VIEW`. Дээд тал нь 25 мөр буцаана. Upstream
+алдааг HTTP алдаа болгож биш, `status: "FAILED"` + `errorCode` болгож буцаана —
+товчлуурын үүрэг нь "холболт ажиллаж байна уу?"-г хариулах явдал.
 
 2026-09-07-нд catalog-ийн тухайн үеийн sample body-гаар 16 `GET` schema-г
 автоматаар parse хийхэд бүгд амжилттай. Attendance `POST` sample нь `0` ID,
@@ -101,9 +159,9 @@ positive ID, ISO date бүхий contract unit test-т орсон.
 Тохиргоо:
 
 ```dotenv
-ESIS_BASE_URL=https://hubv2.esis.edu.mn
 ESIS_TOKEN=<ACCESS_TOKEN>
-ESIS_INSTITUTION_ID=<ENTRY_SOURCE_ID>
+# optional override; default нь https://hubv2.esis.edu.mn
+ESIS_BASE_URL=https://hubv2.esis.edu.mn
 ESIS_TIMEOUT_MS=15000
 ```
 
@@ -137,14 +195,16 @@ test-ээр баталгаажуулна. Код catalog-ийн URL болох `
 4. ESIS test орчинд нэг цэцэрлэгээр GET contract test ажиллуулах.
 5. Ирцийн code mapping, POST idempotency/error contract-ыг test response-оор
    батлах.
-6. External ID + sync run/result хадгалалт, BullMQ retry/dead-letter, operator
-   preview/approve UI нэмэх.
+6. Урт хугацааны import-д external ID + field conflict хадгалалт, BullMQ
+   dead-letter, operator approve UI нэмэх. Attendance нь одоогоор live roster-оос
+   deterministic тулгалт хийдэг тул token ирмэгц ажиллана.
 7. Production-д эхлээд read-only sync, дараа нь нэг цэцэрлэгийн attendance POST,
    эцэст нь шаталсан rollout хийх.
 
-2026-09-07-ны хэрэгжилтээр 6-р алхмын `sync run/result`, tenant-safe mapping,
-operator read-only preview хэсэг хийгдсэн. External ID, field-level conflict,
-approve/import, BullMQ retry/dead-letter нь үлдсэн.
+2026-09-08-ны хэрэгжилтээр `sync run/result`, tenant-safe mapping, operator
+read-only preview, safe GET retry, live profile/student output, attendance live
+resolve + POST хийгдсэн. Bulk import-ийн persisted external ID, field-level
+conflict, approve/import, dead-letter queue нь дараагийн operational шатанд үлдсэн.
 
 ## 6. Журмын холбоос
 

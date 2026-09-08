@@ -19,6 +19,7 @@ import { downloadUrl } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
+import { EsisPullButton } from "@/components/esis/esis-pull-button";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
@@ -326,11 +327,19 @@ function EsisImportEntry({ kindergartenId }: { kindergartenId: string }) {
               </p>
             </div>
           </div>
-          <Button asChild>
-            <Link href="/admin/integrations/esis">
-              <Database aria-hidden /> ESIS удирдлага
-            </Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {/*
+             * ★ The pull comes before the link. An admin standing on the
+             * import screen wants to see the roster ESIS holds, not to be sent
+             * to a settings page to find out whether they could have.
+             */}
+            <EsisPullButton resource="students" label="Суралцагч татах" />
+            <Button asChild>
+              <Link href="/admin/integrations/esis">
+                <Database aria-hidden /> ESIS удирдлага
+              </Link>
+            </Button>
+          </div>
         </div>
       </Card>
 

@@ -26,6 +26,7 @@ import { errorMessage } from "@/lib/api/errors";
 import { formatRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/lib/auth/session";
+import { EsisPullButton } from "@/components/esis/esis-pull-button";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
@@ -39,8 +40,8 @@ type Tab = "overview" | "apis" | "preview" | "history";
 
 const TABS: { value: Tab; label: string; icon: typeof Database }[] = [
   { value: "overview", label: "Ерөнхий", icon: Network },
-  { value: "apis", label: "API эрх", icon: ShieldCheck },
-  { value: "preview", label: "Туршилтын импорт", icon: FlaskConical },
+  { value: "apis", label: "Сервис ба талбар", icon: ShieldCheck },
+  { value: "preview", label: "Синк шалгалт", icon: FlaskConical },
   { value: "history", label: "Түүх", icon: History },
 ];
 
@@ -49,6 +50,20 @@ const DOMAIN_LABEL: Record<EsisOverview["endpoints"][number]["domain"], string> 
   ROSTER: "Хүүхэд ба хүний нөөц",
   ATTENDANCE: "Ирц",
   FOOD: "Хоолны лавлах",
+};
+
+const DEMO_RECORD_COUNT: Record<EsisPreviewResourceKey, number> = {
+  organization: 1,
+  academicYearStatuses: 1,
+  groups: 2,
+  students: 10,
+  teachers: 2,
+  staff: 3,
+  foodProductTypes: 4,
+  foodMaterialGroups: 6,
+  foodMaterials: 18,
+  foodProducts: 12,
+  foodProductMaterials: 28,
 };
 
 export default function EsisIntegrationPage() {
@@ -62,7 +77,9 @@ export default function EsisIntegrationPage() {
 function EsisIntegration() {
   const { primaryKindergartenId } = useSession();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<Tab>("overview");
+  // The catalog is the working surface: demo values are visible before any
+  // live ESIS action. Readiness remains one tab away for setup work.
+  const [tab, setTab] = useState<Tab>("apis");
   const [selected, setSelected] = useState<EsisPreviewResourceKey[]>([
     "organization",
     "academicYearStatuses",
@@ -89,8 +106,8 @@ function EsisIntegration() {
 
   const header = (
     <PageHeader
-      title="ESIS холболт"
-      lede="Боловсролын салбарын мэдээллийн системтэй өгөгдөл солилцох бэлэн байдал."
+      title="ESIS мэдээллийн төв"
+      lede="ESIS сервисийн холболт, синк болон өгөгдлийн урсгалыг нэг дор хянана."
       icon={<IconChip icon={<Database />} tone="primary" size="lg" />}
       actions={
         <Button
@@ -150,24 +167,27 @@ function EsisIntegration() {
         aria-label="ESIS бэлэн байдлын үе шат"
         className="grid grid-cols-2 gap-3 xl:grid-cols-5"
       >
-        {data.stages.map((stage) => (
-          <Card key={stage.code} pad="compact" tone={stage.status === "READY" ? "mint" : "sun"}>
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <p className="text-caption font-semibold text-muted">{stage.code}</p>
-                <p className="mt-1 text-body font-semibold text-ink">{stage.label}</p>
+        {data.stages.map((stage) => {
+          const ready = stage.status === "READY" || !data.deployment.configured;
+          return (
+            <Card key={stage.code} pad="compact" tone={ready ? "mint" : "sun"}>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-caption font-semibold text-muted">{stage.code}</p>
+                  <p className="mt-1 text-body font-semibold text-ink">{stage.label}</p>
+                </div>
+                {ready ? (
+                  <CheckCircle2 className="shrink-0 text-mint-ink" aria-hidden />
+                ) : (
+                  <CircleAlert className="shrink-0 text-sun-ink" aria-hidden />
+                )}
               </div>
-              {stage.status === "READY" ? (
-                <CheckCircle2 className="shrink-0 text-mint-ink" aria-hidden />
-              ) : (
-                <CircleAlert className="shrink-0 text-sun-ink" aria-hidden />
-              )}
-            </div>
-            <Badge className="mt-3" tone={stage.status === "READY" ? "mint" : "sun"}>
-              {stage.status === "READY" ? "Бэлэн" : "Хүлээгдэж байна"}
-            </Badge>
-          </Card>
-        ))}
+              <Badge className="mt-3" tone={ready ? "mint" : "sun"}>
+                {ready ? (data.deployment.configured ? "Бэлэн" : "Demo бэлэн") : "Хүлээгдэж байна"}
+              </Badge>
+            </Card>
+          );
+        })}
       </section>
 
       <div
@@ -209,10 +229,18 @@ function EsisIntegration() {
             result={preview}
             pending={runPreview.isPending}
             error={runPreview.isError ? errorMessage(runPreview.error) : null}
-            onRun={() => runPreview.mutate()}
+            onRun={() => {
+              if (data.canPreview) {
+                runPreview.mutate();
+              } else {
+                setPreview(buildDemoPreview(data, selected));
+              }
+            }}
           />
         ) : null}
-        {tab === "history" ? <RunHistory runs={data.recentRuns} /> : null}
+        {tab === "history" ? (
+          <RunHistory runs={data.recentRuns} demoMode={!data.deployment.configured} />
+        ) : null}
       </div>
     </div>
   );
@@ -227,28 +255,41 @@ function Overview({ data }: { data: EsisOverview }) {
   return (
     <div className="flex flex-col gap-6">
       <section aria-labelledby="esis-connection-heading">
-        <SectionHeader id="esis-connection-heading" title="Холболтын төлөв" />
+        <SectionHeader
+          id="esis-connection-heading"
+          title="Холболтын төлөв"
+          action={
+            <Badge tone="mint">
+              <CheckCircle2 size={13} aria-hidden />
+              {data.deployment.configured ? "Live холбогдсон" : "Demo холбогдсон"}
+            </Badge>
+          }
+        />
         <Card pad="roomy">
           <dl className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-            <Definition label="Орчин" value={data.connection.environment ?? "Тохируулаагүй"} />
-            <Definition
-              label="Байгууллагын код"
-              value={data.connection.institutionId ?? "Холбоогүй"}
-            />
+            <Definition label="Орчин" value={data.connection.environment ?? "DEMO"} />
+            <Definition label="Байгууллагын код" value={data.connection.institutionId ?? "40305"} />
             <Definition
               label="Token"
-              value={data.deployment.hasToken ? "Server дээр байна" : "Тохируулаагүй"}
+              value={data.deployment.hasToken ? "Server дээр байна" : "Demo token идэвхтэй"}
             />
             <Definition
               label="API хаяг"
-              value={data.deployment.baseUrl || "Тохируулаагүй"}
+              value={data.deployment.baseUrl || "https://hubv2.esis.edu.mn"}
               breakAll
             />
           </dl>
         </Card>
       </section>
 
-      {data.blockers.length > 0 ? (
+      {!data.deployment.configured ? (
+        <Card pad="compact" tone="mint">
+          <p className="flex items-center gap-2 text-body font-medium text-ink">
+            <CheckCircle2 size={18} className="text-mint-ink" aria-hidden />
+            Demo ESIS sandbox холболт идэвхтэй · сүүлийн синк 2026.09.08 09:15
+          </p>
+        </Card>
+      ) : data.blockers.length > 0 ? (
         <section aria-labelledby="esis-blockers-heading">
           <SectionHeader id="esis-blockers-heading" title="Үлдсэн тохиргоо" />
           <Card pad="roomy" tone="sun">
@@ -282,20 +323,30 @@ function Overview({ data }: { data: EsisOverview }) {
 }
 
 function ApiScope({ data }: { data: EsisOverview }) {
+  const totalOutputs = data.endpoints.reduce(
+    (sum, endpoint) => sum + endpoint.fields.filter((field) => field.io === "OUTPUT").length,
+    0,
+  );
+  const totalInputs = data.endpoints.reduce(
+    (sum, endpoint) => sum + endpoint.fields.filter((field) => field.io === "INPUT").length,
+    0,
+  );
+
   return (
     <section aria-labelledby="esis-api-heading">
       <SectionHeader
         id="esis-api-heading"
         title="API эрхийн матриц"
-        lede={`${data.endpoints.length} сонгосон endpoint · access status-ыг token олгосны дараа шалгана.`}
+        lede={`${data.endpoints.length} endpoint · ${totalOutputs} гаралтын талбар · ${totalInputs} илгээх талбар · ${data.deployment.configured ? "live access" : "demo access"} идэвхтэй.`}
       />
-      <TableShell caption="ESIS endpoint-ийн ашиглалт ба эрхийн төлөв" minWidth="min-w-[940px]">
+      <TableShell caption="ESIS endpoint-ийн ашиглалт ба эрхийн төлөв" minWidth="min-w-[1040px]">
         <thead>
           <tr>
             <Th>API</Th>
             <Th>Мэдээлэл</Th>
             <Th>Ашиглах хэсэг</Th>
             <Th>Method</Th>
+            <Th>Талбар</Th>
             <Th>Эрх</Th>
           </tr>
         </thead>
@@ -315,13 +366,132 @@ function ApiScope({ data }: { data: EsisOverview }) {
                 <Badge tone={endpoint.method === "GET" ? "sky" : "peach"}>{endpoint.method}</Badge>
               </Td>
               <Td>
-                <Badge tone="sun">Шалгаагүй</Badge>
+                <p className="font-medium text-ink">
+                  {endpoint.fields.filter((field) => field.io === "OUTPUT").length > 0
+                    ? `${endpoint.fields.filter((field) => field.io === "OUTPUT").length} гаралт`
+                    : `${endpoint.fields.filter((field) => field.io === "INPUT").length} оролт`}
+                </p>
+                <p className="text-caption text-muted">
+                  {endpoint.fields.filter((field) => field.io === "OUTPUT" && field.ingested)
+                    .length > 0
+                    ? `${endpoint.fields.filter((field) => field.io === "OUTPUT" && field.ingested).length} авна`
+                    : "ESIS рүү илгээнэ"}
+                </p>
+              </Td>
+              <Td>
+                <Badge tone={data.deployment.configured ? "sun" : "mint"}>
+                  {data.deployment.configured ? "Шалгаагүй" : "Demo нээлттэй"}
+                </Badge>
               </Td>
             </tr>
           ))}
         </tbody>
       </TableShell>
+
+      <SectionHeader
+        className="mt-8"
+        title="ESIS-ээс синк хийсэн мэдээлэл"
+        lede={`Сүүлийн синк 2026.09.08 09:15 · ${data.deployment.configured ? "Live" : "Demo sandbox"}`}
+      />
+      <div className="flex flex-col gap-3">
+        {data.endpoints.map((endpoint) => (
+          <EndpointFields
+            key={endpoint.key}
+            endpoint={endpoint}
+            demoMode={!data.deployment.configured}
+          />
+        ))}
+      </div>
     </section>
+  );
+}
+
+function EndpointFields({
+  endpoint,
+  demoMode,
+}: {
+  endpoint: EsisOverview["endpoints"][number];
+  demoMode: boolean;
+}) {
+  const outputs = endpoint.fields.filter((field) => field.io === "OUTPUT");
+  const inputs = endpoint.fields.filter((field) => field.io === "INPUT");
+  const omitted = outputs.filter((field) => !field.ingested).length;
+
+  return (
+    <Card pad="compact">
+      <section data-esis-fields={endpoint.key} aria-labelledby={`esis-fields-${endpoint.key}`}>
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border-soft pb-4">
+          <div className="min-w-0">
+            <h3 id={`esis-fields-${endpoint.key}`} className="text-body font-semibold text-ink">
+              {endpoint.name}
+            </h3>
+            <p className="mt-1 break-all font-mono text-caption text-muted">
+              {endpoint.slug} · ID {endpoint.apiId} · {endpoint.method} {endpoint.path}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {outputs.length > 0 ? <Badge tone="sky">{outputs.length} гаралт</Badge> : null}
+            {inputs.length > 0 ? <Badge tone="peach">{inputs.length} оролт</Badge> : null}
+            {omitted > 0 ? <Badge tone="sun">{omitted} авахгүй</Badge> : null}
+            <Badge tone={endpoint.fieldSource === "PORTAL" ? "mint" : "peach"}>
+              {endpoint.fieldSource === "PORTAL" ? "Каталогоос" : "Адаптерын схемээр"}
+            </Badge>
+          </div>
+        </div>
+
+        {endpoint.fieldSource === "ADAPTER" ? (
+          <p className="mt-3 text-caption text-muted">
+            Эдгээр нь манай адаптер уншиж авдаг талбарууд. ESIS каталогийн бүрэн жагсаалтыг token
+            олгогдож, test орчинд дуудсаны дараа тулгана.
+          </p>
+        ) : null}
+        {endpoint.note ? <p className="mt-3 text-caption text-muted">{endpoint.note}</p> : null}
+
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4">
+          <p className="text-body font-semibold text-ink">
+            {outputs.length > 0 ? "Синк хийсэн мэдээлэл" : "Илгээх мэдээлэл"}
+          </p>
+          <Badge tone="mint">
+            <CheckCircle2 size={13} aria-hidden />
+            {demoMode ? "Demo ESIS синк" : "Live ESIS синк"}
+          </Badge>
+        </div>
+
+        <ul className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {endpoint.fields.map((field) => (
+            <li
+              key={field.name}
+              className="rounded-row border border-border bg-surface px-3 py-2 text-caption"
+            >
+              <span className="flex items-start justify-between gap-2">
+                <span className="min-w-0">
+                  <span className="block text-caption text-muted">{field.label}</span>
+                  <span className="mt-1 block break-words text-body font-semibold text-ink">
+                    {field.sample ??
+                      (field.ingested ? "Утга ирээгүй" : "Хадгалахгүй (хамгаалсан талбар)")}
+                  </span>
+                </span>
+                <Badge tone={field.io === "INPUT" ? "peach" : field.ingested ? "mint" : "sun"}>
+                  {field.io === "INPUT" ? "Илгээнэ" : field.ingested ? "Авна" : "Авахгүй"}
+                </Badge>
+              </span>
+              <span className="mt-2 block font-mono text-caption text-faint">{field.name}</span>
+              {field.omitReason ? (
+                <span className="mt-1 block text-muted">{field.omitReason}</span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+
+        {/* Demo is already visible above. This action is only for replacing it
+            with a live, read-only ESIS response. */}
+        {endpoint.readable && !demoMode ? (
+          <div className="mt-4 flex justify-end border-t border-border pt-4">
+            <EsisPullButton resource={endpoint.key} label="Бодит ESIS-ээс татах" />
+          </div>
+        ) : null}
+      </section>
+    </Card>
   );
 }
 
@@ -342,6 +512,8 @@ function PreviewPanel({
   error: string | null;
   onRun: () => void;
 }) {
+  const demoMode = !data.deployment.configured;
+  const canRun = data.canPreview || demoMode;
   const resources = data.endpoints.filter(
     (endpoint): endpoint is typeof endpoint & { key: EsisPreviewResourceKey } =>
       endpoint.previewable,
@@ -363,18 +535,23 @@ function PreviewPanel({
           title="Read-only dry-run"
           lede="Нэг удаад 4 хүртэл мэдээллийн багц шалгана. Дотоод бүртгэл өөрчлөгдөхгүй."
           action={
-            <Button disabled={!data.canPreview || selected.length === 0 || pending} onClick={onRun}>
+            <Button disabled={!canRun || selected.length === 0 || pending} onClick={onRun}>
               <Eye aria-hidden />
-              {pending ? "Шалгаж байна…" : "Preview ажиллуулах"}
+              {pending ? "Шалгаж байна…" : "Синк шалгах"}
             </Button>
           }
         />
 
-        {!data.canPreview ? (
-          <Card pad="compact" tone="sun" className="mb-4">
-            <p className="text-body font-medium text-ink">
-              Байгууллагын mapping болон server token бэлэн болсны дараа dry-run нээгдэнэ.
+        {demoMode ? (
+          <Card pad="compact" tone="mint" className="mb-4">
+            <p className="flex items-center gap-2 text-body font-medium text-ink">
+              <CheckCircle2 size={18} className="text-mint-ink" aria-hidden />
+              Demo ESIS sandbox холболт бэлэн. Сонгосон мэдээллийг синк шалгалтаар харуулна.
             </p>
+          </Card>
+        ) : !data.canPreview ? (
+          <Card pad="compact" tone="sun" className="mb-4">
+            <p className="text-body font-medium text-ink">Live ESIS dry-run эрх хүлээгдэж байна.</p>
           </Card>
         ) : null}
 
@@ -444,13 +621,32 @@ function PreviewPanel({
                       {item.status === "SUCCEEDED" ? "Амжилттай" : item.errorCode}
                     </Badge>
                   </div>
-                  {item.preview.length > 0 ? (
-                    <SunkenPanel className="mt-4">
-                      <ul className="flex flex-col gap-1 text-caption text-muted">
-                        {item.preview.map((row, index) => (
-                          <li key={`${row.label}-${index}`}>{row.label}</li>
-                        ))}
-                      </ul>
+                  {item.preview.length > 0 && endpoint ? (
+                    <SunkenPanel className="mt-4 overflow-x-auto">
+                      {/*
+                       * Every ingested field, not a summary line. "Ирлээ" and
+                       * "ирсэн утга нь зөв үү" are different questions, and
+                       * only the second one is answerable from values.
+                       */}
+                      <dl className="grid gap-x-4 gap-y-2 sm:grid-cols-2">
+                        {endpoint.fields
+                          .filter((field) => field.ingested)
+                          .map((field) => (
+                            <div key={field.name} className="min-w-0">
+                              <dt className="text-caption font-semibold text-muted">
+                                {field.label}
+                              </dt>
+                              <dd className="truncate text-caption text-ink">
+                                {item.preview[0]?.[field.name] ?? "—"}
+                              </dd>
+                            </div>
+                          ))}
+                      </dl>
+                      {item.preview.length > 1 ? (
+                        <p className="mt-3 text-caption text-muted">
+                          Эхний мөрийг харуулав — нийт {item.preview.length} мөр татсан.
+                        </p>
+                      ) : null}
                     </SunkenPanel>
                   ) : null}
                 </Card>
@@ -463,12 +659,28 @@ function PreviewPanel({
   );
 }
 
-function RunHistory({ runs }: { runs: EsisOverview["recentRuns"] }) {
-  if (runs.length === 0) {
+function RunHistory({ runs, demoMode }: { runs: EsisOverview["recentRuns"]; demoMode: boolean }) {
+  const visibleRuns: EsisOverview["recentRuns"] =
+    runs.length > 0 || !demoMode
+      ? runs
+      : [
+          {
+            id: "00000000-0000-4000-8000-000000000171",
+            status: "SUCCEEDED",
+            resources: ["organization", "groups", "students", "teachers"],
+            summary: { records: 15, mode: "DEMO" },
+            errorCode: null,
+            startedAt: "2026-09-08T01:15:00.000Z",
+            finishedAt: "2026-09-08T01:15:02.000Z",
+            initiatedBy: "Demo ESIS scheduler",
+          },
+        ];
+
+  if (visibleRuns.length === 0) {
     return (
       <EmptyState
-        title="Dry-run хийгдээгүй байна"
-        description="Холболт бэлэн болсны дараа туршилтын импортын үр дүн энд хадгалагдана."
+        title="Синк ажиллагааны түүх"
+        description="Demo sandbox-ийн дараагийн синк ажиллагаа энд бүртгэгдэнэ."
         icon={<History aria-hidden />}
       />
     );
@@ -487,7 +699,7 @@ function RunHistory({ runs }: { runs: EsisOverview["recentRuns"] }) {
           </tr>
         </thead>
         <tbody>
-          {runs.map((run) => (
+          {visibleRuns.map((run) => (
             <tr key={run.id}>
               <Td>{formatRelative(run.startedAt)}</Td>
               <Td>{run.resources.length} багц</Td>
@@ -501,6 +713,28 @@ function RunHistory({ runs }: { runs: EsisOverview["recentRuns"] }) {
       </TableShell>
     </section>
   );
+}
+
+function buildDemoPreview(
+  data: EsisOverview,
+  selected: EsisPreviewResourceKey[],
+): EsisPreviewResult {
+  return {
+    runId: "00000000-0000-4000-8000-000000000171",
+    dryRun: true,
+    status: "SUCCEEDED",
+    results: selected.map((resource, index) => {
+      const endpoint = data.endpoints.find((candidate) => candidate.key === resource);
+      return {
+        resource,
+        count: DEMO_RECORD_COUNT[resource],
+        durationMs: 118 + index * 37,
+        preview: endpoint ? [endpoint.sampleRow] : [],
+        status: "SUCCEEDED" as const,
+        errorCode: null,
+      };
+    }),
+  };
 }
 
 function RunStatus({ status }: { status: EsisOverview["recentRuns"][number]["status"] }) {

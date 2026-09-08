@@ -63,7 +63,7 @@ describe("ESIS v2 domain methods", () => {
       ],
     });
 
-    const response = await service.organization();
+    const response = await service.organization("40305");
 
     expect(request).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -101,7 +101,7 @@ describe("ESIS v2 domain methods", () => {
       ],
     });
 
-    const response = await service.students();
+    const response = await service.students("40305");
 
     expect(response.data[0]).toEqual({
       institutionId: "40305",
@@ -113,10 +113,47 @@ describe("ESIS v2 domain methods", () => {
     });
   });
 
+  /*
+   * ★ The portal gave us these field *names* on 2026-09-07; it did not give us
+   * their JSON types. `esisListParser` validates the whole `RESULT` array, so a
+   * year that arrives as a string would throw away every staff row and the
+   * operator would read "хариу гэрээнд тохирохгүй" on the screen meant to prove
+   * the fields are ready. Both shapes are accepted and normalised once.
+   */
+  it("accepts a staff count or flag in either JSON type", async () => {
+    const { service } = serviceFor({
+      SUCCESS_CODE: 200,
+      RESPONSE_MESSAGE: "Амжилттай",
+      RESULT: [
+        {
+          institutionId: 40305,
+          assignmentId: 1,
+          personId: 2,
+          lastName: "Дорж",
+          firstName: "Сараа",
+          yearsOfService: "12",
+          educationSectorYears: 7,
+          primaryFlag: true,
+          minor: "Багш",
+        },
+      ],
+    });
+
+    const response = await service.staff("40305");
+
+    expect(response.data[0]).toMatchObject({
+      yearsOfService: 12,
+      educationSectorYears: 7,
+      primaryFlag: "true",
+      minor: "Багш",
+    });
+  });
+
   it("uses the documented v3 attendance payload", async () => {
     const { service, request } = serviceFor({ SUCCESS_CODE: 200 });
 
     await service.saveAttendance({
+      institutionId: 40305,
       studentGroupId: 10001,
       dayDate: "2026-09-07",
       attendanceList: [
