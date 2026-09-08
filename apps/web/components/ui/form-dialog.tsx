@@ -4,6 +4,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { useId, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 /**
  * A modal that holds a form.
@@ -39,6 +40,15 @@ export function FormDialog({
   footer,
   /** Blocks the close affordances while a submit is in flight. */
   busy = false,
+  /**
+   * A wider column, for a dialog whose content is a table rather than a form.
+   *
+   * ★ Added for the ESIS field catalog — 31 field rows and a 27-column value
+   * table, which at 480px is a column of horizontal scrollbars. The default is
+   * unchanged, because 480px is the right width for the five-field forms this
+   * component was built for and every existing caller is one of those.
+   */
+  size = "form",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -47,6 +57,7 @@ export function FormDialog({
   children: ReactNode;
   footer?: ReactNode;
   busy?: boolean;
+  size?: "form" | "wide";
 }) {
   const descriptionId = useId();
 
@@ -71,7 +82,10 @@ export function FormDialog({
         */}
         <Dialog.Content
           aria-describedby={description ? descriptionId : undefined}
-          className="fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-[480px] -translate-x-1/2 -translate-y-1/2 flex-col overflow-y-auto rounded-card border border-border bg-surface p-5 shadow-lg"
+          className={cn(
+            "fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-y-auto rounded-card border border-border bg-surface p-5 shadow-lg",
+            size === "wide" ? "max-w-[1040px]" : "max-w-[480px]",
+          )}
         >
           <div className="mb-4 flex items-start justify-between gap-3">
             <div className="min-w-0">

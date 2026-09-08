@@ -244,9 +244,6 @@ function AuthenticatedShell({
       sections={
         isStaff ? staffSections(isAdmin, groupId) : parentSections(myChildren, selectedChildId)
       }
-      // Staff only. A parent's menu is four rows about one child; a shortcut
-      // box over it would repeat most of it.
-      shortcuts={isStaff ? staffShortcuts(isAdmin, groupId) : undefined}
       variant={isStaff ? "teacher" : "parent"}
       teacherTheme={isStaff && !isAdmin}
       workspaceTheme={isAdmin ? "admin" : isStaff ? "teacher" : "parent"}
@@ -388,44 +385,6 @@ function routeIcon(href: string | undefined) {
  * `/children`, where assessment can still be reached per child. No branch is a
  * dead link, and none of them opens a screen whose first act is "which group?".
  */
-/**
- * "Түргэн холбоос" — the three a teacher opens every morning.
- *
- * ★ The client asked for this box back on 2026-09-05, having compared the two
- * products side by side. `NavShortcuts` carries the argument on both sides;
- * what belongs here is why *these three*.
- *
- * They are the reference system's own choice — Хүүхдүүд, Ирц, Ангийн самбар —
- * and they are the three that are opened on a schedule rather than looked up:
- * the register every morning, the board every time something is posted, the
- * roster whenever a parent asks about a child. Everything else in the menu is
- * reached when there is a reason to, which is what a section is for.
- *
- * ★★ Ирц resolves the same way the section below does — a teacher gets their
- * own group's day sheet, an administrator gets `/attendance/daily`. A shortcut
- * that led somewhere different from the menu row of the same name would be
- * worse than no shortcut.
- *
- * ★★★ A teacher with no group gets **no** Ирц shortcut rather than one
- * pointing at a picker. `scoped()` returns null there, and a quick link whose
- * first act is a question is not quick.
- */
-function staffShortcuts(isAdmin: boolean, groupId: string | null): NavItem[] {
-  const attendanceHref = isAdmin
-    ? "/attendance/daily"
-    : groupId
-      ? `/groups/${groupId}/attendance`
-      : null;
-
-  return [
-    { href: "/children", label: "Хүүхдүүд", icon: <Users {...sectionIconProps} /> },
-    ...(attendanceHref
-      ? [{ href: attendanceHref, label: "Ирц", icon: <CalendarCheck {...sectionIconProps} /> }]
-      : []),
-    { href: "/notifications", label: "Ангийн самбар", icon: <Newspaper {...sectionIconProps} /> },
-  ];
-}
-
 function staffNav(isAdmin: boolean, groupId: string | null): NavItem[] {
   const assessmentHref = groupId
     ? `/groups/${groupId}/assessment`
@@ -827,7 +786,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         ...adminEntry("Хэрэглэгч ба эрх", "/admin/users"),
         ...adminEntry("Хичээлийн жил", "/admin/school-years"),
         ...adminEntry("Улирал", "/admin/terms"),
-        ...adminEntry("ESIS холболт", "/admin/integrations/esis"),
+        ...adminEntry("ESIS мэдээллийн төв", "/admin/integrations/esis"),
         /*
          * ★ "Үнэлгээний тохиргоо" and "Аудит" lost their rows on 2026-09-06,
          * at the client's request — and, as with the two review queues above,

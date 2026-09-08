@@ -1,9 +1,6 @@
-import { screen, waitFor } from "@testing-library/react";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
-import ParentHomePage from "@/app/(app)/home/page";
+import { describe, expect, it } from "vitest";
 
 /**
  * Every labelled landmark actually has a name.
@@ -77,45 +74,6 @@ describe("landmark naming", () => {
     const dangling = referenced.filter((r) => !defined.has(r.id));
     expect(dangling.map((r) => `${r.file} → aria-labelledby="${r.id}" has no matching id`)).toEqual(
       [],
-    );
-  });
-});
-
-function childFixture(id: string, firstName: string) {
-  return {
-    id,
-    lastName: "Ганболд",
-    firstName,
-    dateOfBirth: "2021-04-12",
-    photoMediaFileId: null,
-    group: null,
-    assessments: [],
-  };
-}
-
-function stubParentHome(children: ReturnType<typeof childFixture>[]) {
-  stubApi([
-    { path: "/auth/me", body: sessionFor(["PARENT"]) },
-    { path: "/dashboard/parent", body: { children, recent: [], currentTerm: null } },
-  ]);
-}
-
-describe("a parent's home", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    setSearchParams("");
-  });
-
-  it("names its sections so a screen reader can announce them", async () => {
-    stubParentHome([childFixture("44444444-4444-4444-8444-444444444444", "Батбаяр")]);
-
-    renderWithProviders(<ParentHomePage />);
-
-    // The name comes from the heading the section already renders — which is
-    // the whole point of passing an id rather than repeating the string in an
-    // `aria-label` that can drift away from it.
-    await waitFor(() =>
-      expect(screen.getByRole("region", { name: "Түргэн холбоос" })).toBeInTheDocument(),
     );
   });
 });

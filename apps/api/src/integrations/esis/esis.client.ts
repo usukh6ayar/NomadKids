@@ -66,10 +66,10 @@ export class EsisClient {
   /**
    * Makes one ESIS request.
    *
-   * Returns the parsed body, or throws `EsisError`. There is no retry: a retry
-   * policy depends on the endpoint's idempotency and approved rate limit. The
-   * public catalog documents neither, so retries belong to the future sync job,
-   * after the test contract is confirmed.
+   * Returns the parsed body, or throws `EsisError`. Read-only GET calls retry
+   * transient network, timeout, 429 and 5xx failures up to three attempts.
+   * Writes are never retried here because API-000269 publishes no idempotency
+   * key and repeating a POST could duplicate an accepted attendance write.
    */
   async request<T = unknown>(options: EsisRequest): Promise<EsisResponse<T>> {
     if (!this.config.isConfigured) {
@@ -90,17 +90,7 @@ export class EsisClient {
 
     let response: Response;
     try {
-      response = await fetch(url, {
-        method,
-        headers: {
-          // The one place the token is used.
-          Authorization: `Bearer ${this.config.token}`,
-          Accept: "application/json",
-          ...(options.body === undefined ? {} : { "Content-Type": "application/json" }),
-        },
-        body: options.body === undefined ? undefined : JSON.stringify(options.body),
-        signal: AbortSignal.timeout(options.timeoutMs ?? this.config.timeoutMs),
-      });
+      response = await this.fetchWithRetry(url, method, options);
     } catch (cause) {
       const durationMs = Date.now() - startedAt;
       // `AbortSignal.timeout` rejects with a TimeoutError; everything else here
@@ -170,6 +160,39 @@ export class EsisClient {
     return { data: data as T, status: response.status, durationMs };
   }
 
+  private async fetchWithRetry(
+    url: string,
+    method: string,
+    options: EsisRequest,
+  ): Promise<Response> {
+    const maxAttempts = method === "GET" ? 3 : 1;
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        const response = await fetch(url, {
+          method,
+          headers: {
+            Authorization: `Bearer ${this.config.token}`,
+            Accept: "application/json",
+            ...(options.body === undefined ? {} : { "Content-Type": "application/json" }),
+          },
+          body: options.body === undefined ? undefined : JSON.stringify(options.body),
+          signal: AbortSignal.timeout(options.timeoutMs ?? this.config.timeoutMs),
+        });
+        const transient = response.status === 429 || response.status >= 500;
+        if (!transient || attempt === maxAttempts) return response;
+      } catch (error) {
+        lastError = error;
+        if (attempt === maxAttempts) throw error;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 250 * 2 ** (attempt - 1)));
+    }
+
+    throw lastError;
+  }
+
   /**
    * Removes the token from a string.
    *
@@ -219,8 +242,6 @@ export class EsisClient {
     const missing: string[] = [];
     if (!this.config.baseUrl) missing.push("ESIS_BASE_URL");
     if (!this.config.token) missing.push("ESIS_TOKEN");
-    if (!this.config.institutionId) missing.push("ESIS_INSTITUTION_ID");
-
     return missing;
   }
 

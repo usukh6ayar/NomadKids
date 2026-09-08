@@ -1,6 +1,8 @@
 import { Injectable } from "@nestjs/common";
 import { type Env } from "../../config/env";
 
+const DEFAULT_ESIS_BASE_URL = "https://hubv2.esis.edu.mn";
+
 /**
  * The ESIS credentials, and the one place that decides whether they exist.
  *
@@ -28,18 +30,16 @@ export class EsisConfig {
   /**
    * Whether a real ESIS call can be attempted.
    *
-   * All three or none. `env.ts` refuses a partial set at boot in production;
-   * this is the same rule expressed for the two environments where it does not
-   * throw, so a developer with one variable filled in gets "not configured"
-   * rather than a confusing 401 from the ministry.
+   * The official hub URL has a safe default and institution scope belongs to
+   * each tenant, so the Bearer token is the only deployment secret required.
    */
   get isConfigured(): boolean {
-    return Boolean(this.baseUrl && this.token && this.institutionId);
+    return Boolean(this.baseUrl && this.token);
   }
 
   /** Trailing slash removed so joining a path cannot produce `//`. */
   get baseUrl(): string {
-    return this.env.ESIS_BASE_URL.replace(/\/+$/, "");
+    return (this.env.ESIS_BASE_URL || DEFAULT_ESIS_BASE_URL).replace(/\/+$/, "");
   }
 
   /**
@@ -50,12 +50,7 @@ export class EsisConfig {
    * `EsisClient.redact()` is the backstop for the cases a reviewer misses.
    */
   get token(): string {
-    return this.env.ESIS_TOKEN;
-  }
-
-  /** Which institution this deployment acts as. Not a secret. */
-  get institutionId(): string {
-    return this.env.ESIS_INSTITUTION_ID;
+    return this.env.ESIS_TOKEN.trim().replace(/^Bearer\s+/i, "");
   }
 
   get timeoutMs(): number {
@@ -71,11 +66,10 @@ export class EsisConfig {
    * of a JWT is its header, which names the algorithm. Neither is worth the
    * diagnostic value.
    */
-  describe(): { configured: boolean; baseUrl: string; institutionId: string; hasToken: boolean } {
+  describe(): { configured: boolean; baseUrl: string; hasToken: boolean } {
     return {
       configured: this.isConfigured,
       baseUrl: this.baseUrl,
-      institutionId: this.institutionId,
       hasToken: this.token !== "",
     };
   }

@@ -1,7 +1,7 @@
 /**
  * ESIS v2 services used by NomadKids.
  *
- * Source: https://developerv2.esis.edu.mn/api/structure, reviewed 2026-09-07.
+ * Source: https://developerv2.esis.edu.mn/api/structure, reviewed 2026-09-08.
  * Keep the API id beside the path: access is granted per service in the ESIS
  * developer portal, so an operator needs both when requesting or auditing a
  * token's scope.

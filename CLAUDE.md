@@ -290,6 +290,38 @@ Both web occurrences are in files that render a **table of money** filtered by
 a control. If it recurs, run the full suite with `--reporter=verbose` writing
 to a file _before_ grepping, so the assertion survives.
 
+★★★★★ **2026-09-08 — the output was finally captured**, and it kills the
+"table of money" theory. `pnpm --filter web test` failed **three** tests across
+three files in one run:
+
+| Test                                                           | How it failed            |
+| -------------------------------------------------------------- | ------------------------ |
+| `admin-users > "reports how many accounts the filter matched"` | element never appeared   |
+| `flows > "shows the server's message on a bad password…"`      | **timed out at 5000 ms** |
+| `password-policy > "refuses a password with no upper case…"`   | **timed out at 5000 ms** |
+
+All three passed together in isolation (81/81), `admin-users` passed 23/23
+three consecutive times alone, and the **next full run passed 559/559**.
+
+What this adds: two of the three were **timeouts**, which ★★★★ had ruled out
+for its own instance — so the failure mode is not one assertion going wrong, it
+is _work not finishing in time_. `password-policy`'s case is the sharpest
+evidence available: that test asserts the API is **never called** and needs no
+network at all, so nothing about fixtures, money or filters explains it. It
+points at the full-run environment — scheduler pressure, module-graph
+contention — rather than at any test's own logic.
+
+★ **A related cause is now ruled _in_:** running the api and web suites
+**concurrently** reproduces this shape on demand — `beforeEach` hook timeouts
+and `prisma.$executeRawUnsafe()` errors, including a cross-kindergarten
+isolation failure in `children.test.ts` that looks exactly like the leak this
+section warns must never be waved through. It is not one: it is Postgres and
+CPU starvation. **Never run the two suites at the same time**, and before
+blaming this section, check what else was running. Run serially and both are
+clean — api 1885/0, web 559/0.
+
+Still not a diagnosis. But the next person can skip "it is the money tables".
+
 ---
 
 ## 5. UI rules

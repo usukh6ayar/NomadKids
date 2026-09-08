@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { EsisPullButton } from "@/components/esis/esis-pull-button";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { SingleImageUpload } from "@/components/media/single-image-upload";
@@ -149,10 +150,13 @@ function AdminKindergarten() {
         title="Цэцэрлэгийн мэдээлэл"
         actions={
           editing ? null : (
-            <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
-              <Pencil aria-hidden="true" />
-              Засах
-            </Button>
+            <>
+              <EsisPullButton resource="organization" />
+              <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
+                <Pencil aria-hidden="true" />
+                Засах
+              </Button>
+            </>
           )
         }
       />

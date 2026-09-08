@@ -38,6 +38,7 @@
 
 import argon2 from "argon2";
 import type { PrismaClient } from "../src/generated/prisma/client";
+import { seedDemoExtras } from "./demo-extras";
 
 /**
  * ★ Still "Бяцхан нүүдэлчид", and deliberately so after the 2026-09-06 rename.
@@ -409,6 +410,17 @@ export async function seedDemoKindergarten(
       address: "Улаанбаатар, Баянзүрх дүүрэг, 26-р хороо",
       phone: "+976 7000 0000",
       email: "demo@nomadkids.mn",
+      /*
+       * ★ Filled because `/admin/kindergarten` renders every one of its five
+       * fields, and the four that were seeded made the fifth look like a
+       * defect: a screen reading "Бөглөөгүй" under a demo tenant tells a
+       * viewer the field is broken, not that nobody typed in it yet. The
+       * demo's job is to show what the screen looks like populated.
+       */
+      description:
+        "Бяцхан нүүдэлчид цэцэрлэг нь 2-6 насны хүүхдэд сургуулийн өмнөх боловсрол " +
+        "олгодог. Бид хүүхэд бүрийн хөгжлийг ажиглалт, гэрэл зураг, улирлын үнэлгээгээр " +
+        "баримтжуулж, эцэг эхтэй өдөр тутам хуваалцдаг.",
     },
   });
 
@@ -1503,6 +1515,18 @@ export async function seedDemoKindergarten(
       fundingCalculationCount += 1;
     }
   }
+
+  /*
+   * ★ The sections that only need ids, in their own file.
+   *
+   * Suppliers, orders, stock, invoices, staff files, term reports and the rest
+   * depend on nothing this function still holds in a local — only on rows that
+   * are now committed. Keeping them separable is what lets the same code fill a
+   * database that was seeded before those sections were written, which
+   * `seed-demo-extras.ts` does. See `demo-extras.ts`.
+   */
+  console.log("Creating supply, finance and staff records…");
+  await seedDemoExtras(prisma, kg.id);
 
   return {
     kindergartenId: kg.id,

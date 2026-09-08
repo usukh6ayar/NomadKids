@@ -16,6 +16,7 @@ import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { useDebounced } from "@/lib/use-debounced";
+import { EsisPullButton } from "@/components/esis/esis-pull-button";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { ArchiveButton } from "@/components/ui/archive-button";
@@ -86,10 +87,13 @@ function Ingredients() {
         title="Орц, түүхий эд"
         actions={
           kindergartenId ? (
-            <Button size="sm" onClick={() => setCreating(true)}>
-              <Plus size={18} />
-              Орц нэмэх
-            </Button>
+            <>
+              <EsisPullButton resource="foodMaterials" label="ESIS лавлах" />
+              <Button size="sm" onClick={() => setCreating(true)}>
+                <Plus size={18} />
+                Орц нэмэх
+              </Button>
+            </>
           ) : null
         }
       />

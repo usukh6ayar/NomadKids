@@ -8,8 +8,10 @@ import {
 } from "./attendance.controller";
 import { AttendanceRepository } from "./attendance.repository";
 import { AttendanceService } from "./attendance.service";
+import { EsisModule } from "../integrations/esis/esis.module";
 
 @Module({
+  imports: [EsisModule],
   controllers: [
     ChildAttendanceController,
     ChildAttendanceRequestController,
