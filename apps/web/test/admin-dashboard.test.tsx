@@ -33,6 +33,7 @@ const ADMIN_DASHBOARD = {
   storage: {
     totalBytes: 2048,
     fileCount: 5,
+    documents: { count: 9, totalBytes: 1024 },
     reports: { total: 2, done: 2, failed: 0 },
   },
 };
@@ -101,6 +102,7 @@ describe("the administration dashboard", () => {
       ["Өнөөдрийн ирц", "/attendance/journal"],
       ["Бүлэг", "/admin/groups"],
       ["Багш, ажилтан", "/admin/users"],
+      ["Баримт бичгийн сан", "/documents"],
     ] as const) {
       expect(cardLink(label), `${label} does not link anywhere`).toHaveAttribute("href", href);
     }
@@ -109,34 +111,45 @@ describe("the administration dashboard", () => {
   it("leaves a figure unlinked when no screen explains it", async () => {
     renderAdminDashboard();
 
-    await waitFor(() => expect(within(figures()).getByText("Хадгалсан файл")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(within(figures()).getByText("Баримт бичгийн сан")).toBeInTheDocument(),
+    );
 
     /*
      * ★ Not an oversight, and the reason belongs next to the assertion.
      *
-     * Files are reached through the child they belong to, and a `ReportJob` is
-     * only ever seen in the dialog that started it
-     * (`components/reports/report-dialog.tsx`). Neither has a screen of its
-     * own, so neither card has anywhere honest to go. Give one a destination
-     * and this test should be updated — it fails here to make that a decision
-     * rather than a side effect.
+     * A `ReportJob` is only ever seen in the dialog that started it
+     * (`components/reports/report-dialog.tsx`), so this card has nowhere
+     * honest to go. Give it a destination and this test should be updated — it
+     * fails here to make that a decision rather than a side effect.
+     *
+     * ★★ It was two cards until 2026-09-09. The other counted every stored
+     * file, had no screen either, and became the document library — which does
+     * have one, and is asserted with the rest above.
      */
-    expect(cardLink("Хадгалсан файл")).toBeNull();
     expect(cardLink("Тайлан")).toBeNull();
   });
 
   it("keeps the figures the storage cards carry", async () => {
     renderAdminDashboard();
 
-    await waitFor(() => expect(within(figures()).getByText("Хадгалсан файл")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(within(figures()).getByText("Баримт бичгийн сан")).toBeInTheDocument(),
+    );
 
     /*
      * These two came from the deleted `/admin` and are RFP §12.2's
      * "Хадгалалтын хэмжээ" and "Тайлангийн статистик" — the one part of that
      * page `AdminOverview` had no version of, so a merge that dropped them
      * would have lost a requirement rather than a duplicate.
+     *
+     * ★ The document count is `documents.count`, not `fileCount` — 9, not 5.
+     * The fixture keeps them different on purpose: the card carried the media
+     * total under a label that read like the document library's name until
+     * 2026-09-09, and a fixture where the two agreed would let it drift back.
      */
-    expect(within(figures()).getByText("5")).toBeInTheDocument();
+    expect(within(figures()).getByText("9")).toBeInTheDocument();
+    expect(within(figures()).queryByText("5")).toBeNull();
     expect(within(figures()).getByText("2 нийт")).toBeInTheDocument();
     expect(within(figures()).getByText("Тайлан")).toBeInTheDocument();
   });

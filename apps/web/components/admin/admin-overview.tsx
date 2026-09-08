@@ -28,7 +28,7 @@ import { Donut } from "@/components/ui/chart/donut";
 import { Ring } from "@/components/ui/chart/ring";
 import { SERIES_TONES } from "@/components/ui/chart/chart-tokens";
 import { TONE_VAR, type Tone } from "@/components/ui/tone";
-import { GraduationCap, HardDrive, PieChart } from "lucide-react";
+import { FileText, GraduationCap, PieChart } from "lucide-react";
 import { AssessmentCoverageSection, RecentActivitySection } from "./dashboard-sections";
 
 /**
@@ -175,13 +175,28 @@ export function AdminOverview() {
         oversight — 2026-09-04.
 
         Each figure links to the screen that explains it: the children list, the
-        kindergarten-wide register, the groups, the user list. `Хадгалсан файл`
-        and `Тайлан` have no destination because the product has no screen for
-        either — files are reached through the child they belong to, and a
-        `ReportJob` is only ever seen in the dialog that started it
-        (`components/reports/report-dialog.tsx`). Pointing them at the nearest
-        plausible route would be the dead navigation the hub page was deleted
-        for, one card at a time. They stay figures until a screen exists.
+        kindergarten-wide register, the groups, the user list, and — since
+        2026-09-09 — the document library. `Тайлан` is the one that still goes
+        nowhere, and that is not an oversight: a `ReportJob` is only ever seen
+        in the dialog that started it (`components/reports/report-dialog.tsx`),
+        and pointing it at the nearest plausible route would be the dead
+        navigation the hub page was deleted for. It stays a figure until a
+        screen exists.
+
+        ★★★★ `Хадгалсан файл` → `Баримт бичгийн сан` — 2026-09-09.
+
+        The client asked what the card was ("Хадгалсан файл гэдэг юу билээ?
+        Баримт бичгийн сан уу?"), which it was not, and then that it become
+        that. So it did — including the number: it counted every `MediaFile`
+        the kindergarten owns, photographs and artwork and avatars and the
+        logo, and now counts the published documents. A figure and the label
+        over it have to answer the same question, or they disagree in front of
+        a reader who can open the screen and count.
+
+        Total storage did not disappear with it. `totalBytes` and `fileCount`
+        are still on the payload and still what RFP §12.2's "Хадгалалтын
+        хэмжээ" asks for; they are simply no longer *this* card, which now has
+        somewhere to go instead.
       */}
         <section
           aria-label="Товч мэдээлэл"
@@ -248,21 +263,25 @@ export function AdminOverview() {
           {storage ? (
             <>
               {/*
-              ★ The figure counts files; the size is the caption under it.
+              ★ The figure counts documents; their size is the caption under it.
 
-              It was the other way round, and on a kindergarten that has not
-              uploaded anything the card read "—" over "0 файл":
+              It was the other way round once, and on a kindergarten that had
+              uploaded nothing the card read "—" over "0 файл":
               `formatFileSize` returns an em dash for zero bytes, which is right
               where a size is unknown and wrong where it is known to be nothing.
-              The label says "файл", so the number under it should be files —
-              and a size has no honest zero to show, while a count does.
+              A count has an honest zero; a size does not.
             */}
               <StatCard
-                label="Хадгалсан файл"
-                value={storage.fileCount}
-                unit={storage.totalBytes > 0 ? formatFileSize(storage.totalBytes) : "хоосон"}
+                label="Баримт бичгийн сан"
+                value={storage.documents.count}
+                unit={
+                  storage.documents.totalBytes > 0
+                    ? formatFileSize(storage.documents.totalBytes)
+                    : "хоосон"
+                }
+                href="/documents"
                 tone="teal"
-                art={<HardDrive size={28} aria-hidden />}
+                art={<FileText size={28} aria-hidden />}
               />
               <StatCard
                 label="Тайлан"
