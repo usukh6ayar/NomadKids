@@ -374,9 +374,7 @@ function EsisStudentOutput({
         lede={`${template.slug} · ID ${template.apiId} · ${template.method} ${template.endpoint}`}
         action={
           <Badge tone={template.mode === "LIVE" ? "mint" : "sun"}>
-            {template.mode === "LIVE" ? (
-              <CheckCircle2 size={13} aria-hidden />
-            ) : null}
+            {template.mode === "LIVE" ? <CheckCircle2 size={13} aria-hidden /> : null}
             {template.mode === "LIVE" ? "Бодит ESIS синк" : "Demo / Test data · MOCK"}
           </Badge>
         }

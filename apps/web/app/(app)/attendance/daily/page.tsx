@@ -423,7 +423,8 @@ function EsisPayloadPreview({
             <p className="text-caption text-muted">
               {preview?.demo
                 ? "Demo / Test data · production ESIS рүү илгээхгүй"
-                : "Бодит ESIS холболт"} · илгээх хүсэлт автоматаар бэлтгэгдсэн.
+                : "Бодит ESIS холболт"}{" "}
+              · илгээх хүсэлт автоматаар бэлтгэгдсэн.
             </p>
           </div>
           {error ? (

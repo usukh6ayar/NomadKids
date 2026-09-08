@@ -91,36 +91,35 @@ export class EsisClient {
     let response: Response;
     if (this.config.isDemoMode) {
       if (!options.demoFixture) {
-        throw new EsisError(
-          "invalid_response",
-          "ESIS demo request has no deterministic fixture",
-          { path: options.path },
-        );
+        throw new EsisError("invalid_response", "ESIS demo request has no deterministic fixture", {
+          path: options.path,
+        });
       }
       response = new Response(JSON.stringify(esisDemoFixture(options.demoFixture, options)), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
-    } else try {
-      const url = this.buildUrl(options.path, options.query);
-      response = await this.fetchWithRetry(url, method, options);
-    } catch (cause) {
-      const durationMs = Date.now() - startedAt;
-      // `AbortSignal.timeout` rejects with a TimeoutError; everything else here
-      // is a connection-level fault. They are separated because only one of
-      // them is worth retrying.
-      const timedOut = cause instanceof Error && cause.name === "TimeoutError";
+    } else
+      try {
+        const url = this.buildUrl(options.path, options.query);
+        response = await this.fetchWithRetry(url, method, options);
+      } catch (cause) {
+        const durationMs = Date.now() - startedAt;
+        // `AbortSignal.timeout` rejects with a TimeoutError; everything else here
+        // is a connection-level fault. They are separated because only one of
+        // them is worth retrying.
+        const timedOut = cause instanceof Error && cause.name === "TimeoutError";
 
-      this.logFailure(method, options.path, timedOut ? "timeout" : "network", durationMs);
+        this.logFailure(method, options.path, timedOut ? "timeout" : "network", durationMs);
 
-      throw new EsisError(
-        timedOut ? "timeout" : "network",
-        timedOut
-          ? `ESIS request timed out after ${options.timeoutMs ?? this.config.timeoutMs}ms`
-          : `ESIS request failed: ${this.redact(cause instanceof Error ? cause.message : "unknown")}`,
-        { path: options.path, durationMs },
-      );
-    }
+        throw new EsisError(
+          timedOut ? "timeout" : "network",
+          timedOut
+            ? `ESIS request timed out after ${options.timeoutMs ?? this.config.timeoutMs}ms`
+            : `ESIS request failed: ${this.redact(cause instanceof Error ? cause.message : "unknown")}`,
+          { path: options.path, durationMs },
+        );
+      }
 
     const durationMs = Date.now() - startedAt;
     const rawBody = await response.text().catch(() => "");
@@ -169,7 +168,9 @@ export class EsisClient {
     }
 
     const source = this.config.isDemoMode ? "MOCK" : "LIVE";
-    this.logger.log(`ESIS ${source} ${method} ${options.path} → ${response.status} (${durationMs}ms)`);
+    this.logger.log(
+      `ESIS ${source} ${method} ${options.path} → ${response.status} (${durationMs}ms)`,
+    );
 
     return { data: data as T, status: response.status, durationMs, source };
   }
