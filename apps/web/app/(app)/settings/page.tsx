@@ -2,15 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import {
-  BriefcaseBusiness,
-  Building2,
-  CheckCircle2,
-  Database,
-  KeyRound,
-  Mail,
-  Pencil,
-} from "lucide-react";
+import { BriefcaseBusiness, Building2, Database, KeyRound, Mail, Pencil } from "lucide-react";
 import { z } from "zod";
 import {
   esisMyProfileSchema,
@@ -25,8 +17,7 @@ import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useLogout, useSession } from "@/lib/auth/session";
 import { buildEsisDemoProfile, type EsisDemoField } from "@/lib/esis/demo-profile";
 import { Button } from "@/components/ui/button";
-import { Card, SectionHeader } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { Field, Input, PasswordInput, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
@@ -84,7 +75,20 @@ export default function SettingsPage() {
   );
 }
 
-/** ESIS values belong on the user's profile, visible without a separate pull action. */
+/**
+ * The signed-in person's employment record, on their own settings screen.
+ *
+ * ★ No "ESIS мэдээлэл" heading and no `Demo ESIS` badge — 2026-09-08, at the
+ * client's instruction, the same one that took them off the director's screens:
+ * the record is to read as this screen's own, not as a labelled import. Where
+ * the values come from is recorded here and on `/admin/integrations/esis`,
+ * which keeps its badges because it exists to answer exactly that question.
+ *
+ * ★★ It has always been built from the signed-in account — see
+ * `buildEsisDemoProfile`. The name, the e-mail and the position are the
+ * person's own; only the ESIS identifiers are illustrative, and no civil id,
+ * register number or credential is ever represented.
+ */
 function EsisProfileSection() {
   const { roles, primaryKindergartenId } = useSession();
   const { data, isLoading, isError } = useQuery({
@@ -102,10 +106,9 @@ function EsisProfileSection() {
   if (isLoading || esisQuery.isLoading || isError || !data) return null;
   if (esisQuery.isError) {
     return (
-      <section aria-labelledby="esis-profile-heading">
-        <SectionHeader id="esis-profile-heading" title="ESIS мэдээлэл" />
+      <section aria-label="Ажлын мэдээлэл">
         <Card pad="compact" tone="sun">
-          <p className="font-medium text-ink">ESIS мэдээлэл түр татагдсангүй.</p>
+          <p className="font-medium text-ink">Ажлын мэдээлэл түр татагдсангүй.</p>
           <p className="mt-1 text-body text-muted">{errorMessage(esisQuery.error)}</p>
         </Card>
       </section>
@@ -121,28 +124,18 @@ function EsisProfileSection() {
       .filter((field) => field.ingested)
       .map((field) => ({ label: field.label, value: live.row[field.name] ?? "—" }));
     return (
-      <section aria-labelledby="esis-profile-heading">
-        <SectionHeader
-          id="esis-profile-heading"
-          title="ESIS мэдээлэл"
-          action={
-            <Badge tone="mint">
-              <CheckCircle2 size={13} aria-hidden="true" />
-              Бодит ESIS синк
-            </Badge>
-          }
-        />
+      <section aria-label="Ажлын мэдээлэл">
         <Card pad="roomy" className="flex flex-col gap-5">
           <div className="flex flex-wrap items-start gap-3 border-b border-border-soft pb-5">
             <span className="flex size-11 shrink-0 items-center justify-center rounded-control bg-sky text-sky-ink">
               <Database size={21} aria-hidden="true" />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="font-semibold text-ink">
+              <h2 className="font-semibold text-ink">
                 {live.resource === "teachers" ? "Багшийн бүртгэл" : "Ажилтны бүртгэл"}
-              </p>
-              <p className="mt-0.5 text-body text-muted">
-                API {live.slug} · {live.endpoint}
+              </h2>
+              <p className="mt-0.5 break-all font-mono text-caption text-faint">
+                {live.slug} · {live.endpoint}
               </p>
             </div>
             <p className="shrink-0 text-caption text-muted">
@@ -151,7 +144,7 @@ function EsisProfileSection() {
           </div>
           <EsisFieldGroup
             icon={BriefcaseBusiness}
-            title={`ESIS гаралтын ${fields.length} талбар`}
+            title={`${fields.length} талбар`}
             fields={fields}
           />
         </Card>
@@ -162,19 +155,17 @@ function EsisProfileSection() {
   if (!esis) return null;
 
   return (
-    <section aria-labelledby="esis-profile-heading">
-      <SectionHeader id="esis-profile-heading" title="ESIS мэдээлэл" />
-
+    <section aria-label="Ажлын мэдээлэл">
       <Card pad="roomy" className="flex flex-col gap-5">
         <div className="flex flex-wrap items-start gap-3 border-b border-border-soft pb-5">
           <span className="flex size-11 shrink-0 items-center justify-center rounded-control bg-sky text-sky-ink">
             <Database size={21} aria-hidden="true" />
           </span>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="font-semibold text-ink">{esis.resourceLabel}</p>
-            </div>
-            <p className="mt-0.5 text-body text-muted">Эх сурвалж: ESIS · {esis.resource}</p>
+            <h2 className="font-semibold text-ink">{esis.resourceLabel}</h2>
+            <p className="mt-0.5 text-body text-muted">
+              Албан тушаал, томилгоо, байгууллагын мэдээлэл
+            </p>
           </div>
           <p className="shrink-0 text-caption text-muted">Шинэчилсэн: {esis.syncedAt}</p>
         </div>
@@ -312,9 +303,19 @@ function ProfileForm() {
   if (isError) return <ErrorState description={errorMessage(error)} />;
 
   return (
-    <section aria-labelledby="profile-heading">
-      <SectionHeader id="profile-heading" title="Хувийн мэдээлэл" />
+    /*
+      ★ No "Хувийн мэдээлэл" heading, and no read-back of the fields under it
+      — 2026-09-08, at the client's instruction: the screen shows what ESIS
+      holds about this person, not our own copy of it above it.
 
+      The card stays, reduced to the identity row, because that row is not a
+      display: the avatar *is* the photo upload control, and Засах is the only
+      way into the form and into "Нууц үг солих". The four optional fields it
+      used to read back — утас, мэргэжил, боловсрол, танилцуулга — are still
+      edited here and still shown to other staff; they are simply no longer
+      repeated above the record they duplicate.
+    */
+    <section aria-label="Хувийн тохиргоо">
       {!editing ? (
         /*
           The read view. A definition list rather than disabled inputs: a greyed
@@ -396,31 +397,18 @@ function ProfileForm() {
           </div>
 
           {/*
-            ★ One sentence when every optional field is empty, not four dashes.
+            ★ The prompt survived the fields it used to sit under.
 
-            The header already states the name and the email, so what is left
-            here is only what it does not say — and on a fresh account that is
-            Утас, Мэргэжил, Боловсрол and Танилцуулга, all blank. Four labels
-            over four em dashes reads as a form that failed to load, and it is
-            the first thing a new teacher sees on their own profile.
-
-            The dash is still right for *one* missing value among several: it
-            says "we asked and there is no answer". A whole card of them says
-            something else, so the empty case gets a sentence and the Засах
-            button in the header above is the next step.
+            It is the one thing on the read view that is not a duplicate: a
+            teacher whose утас and мэргэжил are blank is missing from the staff
+            list other people read, and nothing else on this screen says so.
+            Засах above is the next step.
           */}
           {!data?.phone && !specialization && !data?.education && !data?.bio ? (
             <p className="text-body text-muted">
               Утас, мэргэжил, боловсролоо нэмбэл багш нарын жагсаалтад бүрэн харагдана.
             </p>
-          ) : (
-            <dl className="grid gap-4 sm:grid-cols-2">
-              <ReadField label="Утас" value={data?.phone} />
-              <ReadField label="Мэргэжил" value={specialization} />
-              <ReadField label="Боловсрол" value={data?.education} />
-              <ReadField label="Танилцуулга" value={data?.bio} className="sm:col-span-2" />
-            </dl>
-          )}
+          ) : null}
         </Card>
       ) : (
         <Card pad="roomy" className="flex flex-col gap-5">
