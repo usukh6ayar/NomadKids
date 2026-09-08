@@ -17,12 +17,6 @@ import {
 } from "lucide-react";
 import { z } from "zod";
 import {
-  adminUserSchema,
-  childSummarySchema,
-  groupListItemSchema,
-  uuidSchema,
-  groupWithTeachersSchema,
-  paginated,
   schoolYearSchema,
   programKindSchema,
   attendanceFormSchema,
@@ -33,31 +27,17 @@ import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
-import { fullName } from "@/lib/format";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DataList, DataRow } from "@/components/ui/data-list";
-import { RowMenu, type RowMenuItem } from "@/components/ui/menu";
-import { SelectBox, useSelection } from "@/components/ui/selection";
-import { StatCard } from "@/components/ui/stat-card";
-import { BarRow } from "@/components/ui/chart/bar-row";
-import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/field";
-import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { FormDialog } from "@/components/ui/form-dialog";
+import { FormError } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
-import { SingleImageUpload } from "@/components/media/single-image-upload";
 import { RequireRole } from "@/components/shell/require-role";
 import { Art } from "@/components/ui/art";
 
-const groupsSchema = paginated(groupListItemSchema);
 /** The promote dialog's roster — the group's own children, to pick from. */
-const childListSchema = paginated(childSummarySchema);
 const yearsSchema = z.array(schoolYearSchema);
-const usersSchema = paginated(adminUserSchema);
 
 const AGE_BANDS = [
   { value: "NURSERY", label: "Бага бүлэг" },
@@ -65,8 +45,6 @@ const AGE_BANDS = [
   { value: "MIDDLE", label: "Ахлах бүлэг" },
   { value: "SENIOR", label: "Бэлтгэл бүлэг" },
 ] as const;
-
-const BAND_LABEL = Object.fromEntries(AGE_BANDS.map((b) => [b.value, b.label]));
 
 /**
  * Programme and hours — Order А/261, Annex 2 §1 items 6, 14 and 16, all
@@ -80,19 +58,6 @@ const BAND_LABEL = Object.fromEntries(AGE_BANDS.map((b) => [b.value, b.label]));
  */
 const PROGRAM_KINDS = programKindSchema.options;
 const ATTENDANCE_FORMS = attendanceFormSchema.options;
-
-/**
- * The list's columns.
- *
- * `Хүүхэд` is the narrowest and the one a director scans — it is the answer to
- * "is this group full?" and it now sits in a column instead of at the end of a
- * dot-joined sentence.
- */
-const GROUP_COLUMNS = [
-  { key: "band", label: "Насны бүлэг", className: "md:w-[124px]" },
-  { key: "year", label: "Хичээлийн жил", className: "md:w-[120px]" },
-  { key: "children", label: "Хүүхэд", className: "md:w-[92px]" },
-];
 
 /**
  * Groups and the teachers assigned to them.
@@ -120,24 +85,6 @@ function AdminGroups() {
   const { primaryKindergartenId } = useSession();
   const [creating, setCreating] = useState(false);
 
-  const groups = useQuery({
-    queryKey: qk.adminGroups(),
-    /*
-     * ★ `pageSize=100`, the API's maximum, and this screen has no pager.
-     *
-     * The summary above the list folds over the rows it received, so a default
-     * page of 25 would have it reporting "25 бүлэг · 480 хүүхэд" for a
-     * kindergarten with thirty groups — a wrong total presented as a fact,
-     * which is worse than no summary. A kindergarten does not have a hundred
-     * groups; if one ever does, the list needs a pager and the summary needs
-     * the server to count, and both should be built then rather than guessed
-     * at now.
-     */
-    queryFn: () => get("/groups?pageSize=100", groupsSchema),
-  });
-
-  const items = groups.data?.items ?? [];
-
   return (
     <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
@@ -150,51 +97,24 @@ function AdminGroups() {
         }
       />
 
-      {groups.isLoading ? <LoadingState rows={3} /> : null}
-      {groups.isError ? <ErrorState description={errorMessage(groups.error)} /> : null}
-
-      {groups.data && items.length === 0 ? (
-        <EmptyState
-          title="Бүлэг байхгүй байна"
-          description="Хүүхэд бүртгэхийн өмнө бүлэг үүсгэх шаардлагатай."
-        />
-      ) : null}
-
-      {items.length > 0 ? <GroupsOverview groups={items} /> : null}
-
       {/*
-        ★ 56px, and the number has now come down twice — 352 → 300 → 56.
+        ★ The groups, from ESIS — 2026-09-08, at the client's instruction,
+        given twice with the consequence written out first.
 
-        `actionsWidth` reserves the same strip in the header and on every row so
-        the columns line up beneath their own labels, so it has to match what
-        the gutter actually holds. 352 was sized for eight buttons on one
-        nominal line, which is not what they did — they wrapped into three
-        ragged lines; 300 was sized for the two short rows that replaced them.
-        The gutter is one "⋯" now (see `GroupRow`), and the ~250px it gives
-        back goes to the name column, where the badges were being squeezed
-        against the group's own name.
-      */}
-      {items.length > 0 ? (
-        <DataList columns={GROUP_COLUMNS} leadWidth={null} actionsWidth="w-[56px]">
-          {items.map((group) => (
-            <GroupRow key={group.id} group={group} />
-          ))}
-        </DataList>
-      ) : null}
+        The local list and its summary are gone, and with them every row
+        control that had no other home: assigning a teacher, promoting to the
+        next year, editing, archiving. Their endpoints still exist and still
+        work; nothing in this product calls them any more. "Бүлэг нэмэх" still
+        creates a local group, and the rest of the product still reads it.
 
-      {/*
-        ★ ESIS's group list, including the teacher it has assigned to each.
-
-        `instructorId` and `instructorName` are the reason this panel is here
-        rather than only on the integration screen: assigning a teacher to a
-        group is a decision the ministry also records, and the director's
-        question is whether the two agree. The local assignment is the "⋯ →
-        Багш" dialog on each row above; ESIS's answer is the `Багшийн код` and
-        `Багшийн нэр` columns below, on the same screen, in one downward read.
+        ESIS carries the teacher assignment too — `instructorId` and
+        `instructorName` — so the column the "Багш" dialog used to set is still
+        on the screen, as the ministry's answer rather than as ours.
       */}
       <EsisDataPanel
         resource="groups"
-        description="Бүлэг, түвшин, хөтөлбөр — мөн ESIS-д бүртгэлтэй бүлгийн багш"
+        title="Бүлгүүд"
+        description="Бүлэг, түвшин, хөтөлбөр, бүлгийн багш"
       />
 
       {creating && primaryKindergartenId ? (

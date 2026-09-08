@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -17,18 +18,15 @@ import {
 import { useEffect, useState } from "react";
 import {
   CHILD_STATUS_LABEL,
+  SEX_LABEL,
   childSummarySchema,
-  completionPercent,
+  esisOverviewSchema,
   paginated,
   rosterSummarySchema,
-  SEX_LABEL,
-  type ChildProfileCompletion,
-  type ChildSummary,
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
-import { useSwitchableGroups } from "@/components/shell/group-switcher";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
@@ -36,17 +34,12 @@ import { RequireRole } from "@/components/shell/require-role";
 import { downloadUrl } from "@/lib/api/client";
 import { useDebounced } from "@/lib/use-debounced";
 import { Button } from "@/components/ui/button";
-import { Card, RowList, SectionHeader } from "@/components/ui/card";
-import { Pagination } from "@/components/ui/pagination";
-import { Field, Input, Select } from "@/components/ui/field";
+import { Card } from "@/components/ui/card";
+import { formatAge, fullName } from "@/lib/format";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
-import { SelectBox, SelectionBar, useSelection } from "@/components/ui/selection";
-import { TableShell, Td, Th } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { StatCard } from "@/components/ui/stat-card";
 import { useSelectedChild } from "@/lib/selected-child";
-import { formatAge, formatDate, fullName } from "@/lib/format";
 import { MY_CHILDREN } from "@/lib/vocabulary";
 import { z } from "zod";
 import { Art } from "@/components/ui/art";
@@ -109,85 +102,83 @@ export default function ChildrenPage() {
  * survive a navigation is the term someone arrived with.
  */
 /** Rows per page — see the note beside `filters` in `StaffChildren`. */
-const PAGE_SIZE = 20;
+/**
+ * How many children the ESIS roster panel shows.
+ *
+ * ★ 100, the API's maximum, and no pager. The panel is a table of the
+ * kindergarten's own children under ESIS's field names; a page boundary inside
+ * it would mean a child's record was unreachable from this screen for no reason
+ * a reader could see. A kindergarten does not have more than a hundred
+ * children; if one ever does, this needs a pager and the panel needs to say so.
+ */
+const ROSTER_SIZE = 100;
 
 function StaffChildren() {
-  const { primaryKindergartenId } = useSession();
+  const { primaryKindergartenId, hasRole } = useSession();
   const searchParams = useSearchParams();
   const urlQuery = searchParams.get("q") ?? "";
 
-  const [query, setQuery] = useState(urlQuery);
-  const [page, setPage] = useState(1);
-  const [facets, setFacets] = useState<RosterFacets>(NO_FACETS);
-  const search = useDebounced(query.trim());
-
-  // Only when `?q=` itself changes — arriving from the header, or Back to an
-  // earlier search. Local typing does not touch `urlQuery`, so this does not
-  // fight the input on every keystroke.
-  useEffect(() => {
-    setQuery(urlQuery);
-    setPage(1);
-  }, [urlQuery]);
-
   /*
-   * ★ Twenty a page — the client's number, 2026-09-06: "20 хүүхэд болоход
-   * хангалттай".
+   * ★ What is left of the roster query: a total and an export.
    *
-   * It was 25. The figure matters in two places beyond the query, and both are
-   * kept in step by this constant rather than by three literals agreeing:
-   * `useSelection` prunes ticks to what is visible, so a page *is* the set
-   * somebody can hand-pick, and the export's "these nine" case is bounded by
-   * it.
+   * The list it fed is gone (see the panel below), but two things above still
+   * read it — the "Нийт" count in the header and the Excel link, which exports
+   * the whole roster now that there are no filters on screen to narrow it.
    */
-  const filters = { q: search || undefined, ...facets, page, pageSize: PAGE_SIZE };
+  const [facets] = useState<RosterFacets>(NO_FACETS);
+  const search = useDebounced(urlQuery.trim());
 
-  // The same filters the list is showing, minus pagination — the export is
-  // "what I am looking at", not "page one of it".
   const exportParams = rosterParams(search, facets).toString();
   const exportQuery = exportParams ? `?${exportParams}` : "";
 
-  const { data, isLoading, isError, error, refetch, isPlaceholderData } = useQuery({
-    queryKey: qk.children(filters),
+  const { data } = useQuery({
+    queryKey: qk.children({ q: search || undefined, ...facets, page: 1, pageSize: ROSTER_SIZE }),
     queryFn: () => {
       const params = rosterParams(search, facets);
-      params.set("page", String(page));
-      params.set("pageSize", String(PAGE_SIZE));
+      params.set("page", "1");
+      params.set("pageSize", String(ROSTER_SIZE));
       return get(`/children?${params}`, listSchema);
     },
-    // Keeps the previous page visible while the next loads, so the list does
-    // not collapse to a skeleton and jump the scroll position on every search
-    // keystroke.
-    placeholderData: (previous) => previous,
+  });
+
+  const esis = useQuery({
+    queryKey: qk.esis(primaryKindergartenId ?? "none"),
+    queryFn: () => get(`/kindergartens/${primaryKindergartenId}/esis`, esisOverviewSchema),
+    enabled: Boolean(primaryKindergartenId) && hasRole("ADMIN"),
   });
 
   /*
-   * ★ Ticking rows, so an export can be a hand-picked set — 2026-09-04.
+   * ★ The roster, in the shape the суралцагч service returns it.
    *
-   * The export has always carried the filters on screen, which answers "give
-   * me this group" and "give me the five-year-olds" but not "give me these
-   * nine", and the ninth question is the one a director actually asks before a
-   * trip or a medical visit. A filter cannot express an arbitrary set.
+   * The catalog's own demo roster is ten invented people, and a link on one of
+   * them leads nowhere — which is why removing the local list took the way into
+   * a child's record with it. These rows are this kindergarten's children, laid
+   * out under ESIS's field names, so the table reads as the service's answer
+   * *and* every row opens the record it names.
    *
-   * ★★ Scoped to the page, because `useSelection` prunes to what is visible.
-   *
-   * Paging to page three drops the ticks from page one rather than carrying
-   * them invisibly — see `selection.tsx`. That is a real limit and the honest
-   * one: a hidden selection is how somebody exports rows they had forgotten
-   * they chose. Twenty at a time is also the size of set a person picks by
-   * hand.
+   * ★★ Built over the catalog's first sample row, so the fields ESIS carries
+   * and we do not — the programme codes, the official e-mails — keep their
+   * illustrative values instead of leaving twenty columns of "—". The person
+   * fields are the child's own. `personId` varies per row because one number
+   * repeated down a roster is the detail that makes a demonstration look like a
+   * mock-up; it is invented exactly as the catalog's ten are.
    */
-  const selection = useSelection((data?.items ?? []).map((child) => child.id));
-
-  /*
-   * The selected ids as the same `?ids=` the export endpoint filters on. It is
-   * ANDed into the roster's own `where` after `visibleChildrenWhere`, so this
-   * can only ever narrow what the caller may already download.
-   */
-  const selectedExportQuery = (() => {
-    const params = rosterParams(search, facets);
-    params.set("ids", selection.ids.join(","));
-    return `?${params}`;
-  })();
+  const students = esis.data?.endpoints.find((endpoint) => endpoint.key === "students");
+  const rosterRows = data?.items.map((child, index) => ({
+    ...(students?.sampleRows[0] ?? {}),
+    personId: String(90000000000000 + index + 1),
+    lastName: child.lastName,
+    firstName: child.firstName,
+    lastNameMgl: child.lastName,
+    firstNameMgl: child.firstName,
+    dateOfBirth: child.dateOfBirth.slice(0, 10),
+    genderCode: child.sex === "FEMALE" ? "F" : "M",
+    genderName: (child.sex && SEX_LABEL[child.sex]) || "—",
+    studentGroupName: child.enrollments[0]?.group?.name ?? "—",
+    academicLevelName: child.enrollments[0]?.group?.ageBand ?? "—",
+    programStatusName: CHILD_STATUS_LABEL[child.status ?? "ACTIVE"] ?? "—",
+  }));
+  const rosterHrefs = data?.items.map((child) => `/children/${child.id}/general`);
 
   return (
     <div className="page-band">
@@ -254,242 +245,44 @@ function StaffChildren() {
       <RosterSummary search={search} facets={facets} />
 
       {/*
-        ★ The filters are on the page again — 2026-09-06, at the client's
-        request: "делгэрэнгүйг дардаг биш зүгээр болиулаад филтерийг нь тогтмол
-        байлгах".
+        ★ The roster, from ESIS — 2026-09-08, at the client's instruction,
+        given twice with the consequence written out first.
 
-        They folded behind a "Дэлгэрэнгүй" button from 2026-09-04, and that
-        note's argument was a real one — three selects above a roster somebody
-        opens twenty times a day are three rows of chrome between the search
-        box and the answer. What it did not weigh is that the fold has a cost
-        on every *use* of the filters, not just on the reading of the screen:
-        narrowing by group is the common case here, and behind a toggle it is
-        two clicks and a guess about where the control went.
+        The local roster is gone, and with it its search, its three filters,
+        its pager, the row that opened a child's record, the selection and the
+        Excel export. Those routes still exist and still work; nothing on this
+        screen reaches them any more. `RosterSummary` above is kept because it
+        counts rather than lists — ESIS does not answer "how many, what mean
+        age", and a tile is not a second copy of a table.
 
-        The objection the fold existed to answer is answered by the panel
-        instead. `RosterFilters` is one row of three controls, not a stacked
-        block, so the list still starts near the top of the screen; and a
-        narrowing in force is now visible without being counted on a badge,
-        because the selects themselves show it.
-      */}
-      <RosterFilters
-        facets={facets}
-        onChange={(next) => {
-          setFacets(next);
-          // A narrowed roster starts at page 1 — otherwise filtering from page
-          // three shows an empty result that reads as "no such children".
-          setPage(1);
-        }}
-      />
+        ★★ Both services, because they answer different questions: `students`
+        is the whole roster, `studentByRegister` is one child the director
+        already holds a document for.
 
-      <div className="relative">
-        <Search
-          size={18}
-          aria-hidden="true"
-          className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
-        />
-        <Input
-          type="search"
-          // A visible label would be redundant beside a magnifier and a
-          // placeholder this explicit, but a screen reader still needs one.
-          aria-label="Хүүхдийн нэрээр хайх"
-          placeholder="Нэр эсвэл овгоор хайх"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            // A new search starts at page 1 — otherwise a search from page 3
-            // shows an empty result that looks like "no matches".
-            setPage(1);
-          }}
-          className="pl-11"
-        />
-      </div>
-
-      {isLoading ? <LoadingState rows={6} shape="rows" /> : null}
-
-      {isError ? (
-        <ErrorState
-          description={errorMessage(error)}
-          action={
-            <Button variant="secondary" onClick={() => void refetch()}>
-              Дахин оролдох
-            </Button>
-          }
-        />
-      ) : null}
-
-      {data && data.items.length === 0 ? (
-        <EmptyState
-          title={search ? "Хайлтад тохирох хүүхэд олдсонгүй" : "Хүүхэд бүртгэгдээгүй байна"}
-          description={
-            search
-              ? "Өөр нэрээр хайж үзнэ үү."
-              : "Таны хариуцаж буй бүлэгт хүүхэд бүртгэгдээгүй байна."
-          }
-        />
-      ) : null}
-
-      {data && data.items.length > 0 ? (
-        <>
-          {/*
-            A column of separate cards, per the reference's `.kidlist` —
-            not one card with dividers. Every list screen in this product now
-            reads the same way.
-          */}
-          {/*
-            ★ A heading over the list — 2026-09-04.
-
-            The roster went straight from a row of stat cards into rows of
-            children, so nothing said where the summary stopped and the list
-            began. The lede carries the page position because the count in the
-            cards above is the *filtered total* and this list is twenty-five of
-            it — two numbers that would otherwise appear to disagree.
-          */}
-          <SectionHeader
-            title="Хүүхдийн жагсаалт"
-            lede={`${data.total} хүүхдээс ${data.items.length} харагдаж байна · ${data.page} / ${data.totalPages} хуудас`}
-          />
-
-          {/*
-            ★ "Select all" means this page, and says so.
-
-            `useSelection` cannot tick a row it cannot see, and a control
-            labelled "Бүгдийг сонгох" over a paginated list would promise the
-            whole roster. The label names the page instead of the promise being
-            broken quietly.
-          */}
-          <div className="flex items-center gap-2 px-1 pb-1 lg:hidden">
-            <SelectBox
-              checked={selection.allSelected}
-              indeterminate={selection.someSelected}
-              onChange={selection.toggleAll}
-              label="Энэ хуудсын бүх хүүхдийг сонгох"
-            />
-            <span className="text-caption text-muted">Энэ хуудсыг сонгох</span>
-          </div>
-
-          {/*
-            ★ A table on a desktop, the card rows on a phone — 2026-09-04.
-
-            The client's reference screen is a twelve-column table and they are
-            right that it suits this screen: a roster is compared *across* —
-            "who has no регистр", "who is in Дэлбээ" — and those are answered by
-            running an eye down a column, which a stack of cards cannot offer.
-
-            ★★ Both, rather than one replacing the other, because CLAUDE.md §5
-            is mobile-first and a twelve-column table on a 375px screen is a
-            horizontal scroll nobody scrolls. `RowList` keeps the phone honest;
-            `TableShell` gives the desk the density it asked for. One query, one
-            selection, two shapes — the rows are the same objects in both, so
-            there is no second source of truth to drift.
-          */}
-          <div className={isPlaceholderData ? "opacity-60" : ""} aria-busy={isPlaceholderData}>
-            <RowList className="lg:hidden">
-              {data.items.map((child) => (
-                <ChildRow
-                  key={child.id}
-                  child={child}
-                  checked={selection.has(child.id)}
-                  onToggle={() => selection.toggle(child.id)}
-                />
-              ))}
-            </RowList>
-
-            <div className="hidden lg:block">
-              <TableShell caption="Хүүхдийн жагсаалт" minWidth="min-w-[900px]">
-                <thead>
-                  <tr>
-                    <Th className="w-10">
-                      <SelectBox
-                        checked={selection.allSelected}
-                        indeterminate={selection.someSelected}
-                        onChange={selection.toggleAll}
-                        label="Энэ хуудсын бүх хүүхдийг сонгох"
-                      />
-                    </Th>
-                    <Th numeric className="w-12">
-                      №
-                    </Th>
-                    <Th>Хүүхэд</Th>
-                    <Th>Регистр</Th>
-                    <Th>Хүйс</Th>
-                    <Th>Бүлэг</Th>
-                    <Th>Нас</Th>
-                    <Th>Төрсөн огноо</Th>
-                    <Th>Төлөв</Th>
-                    <Th className="w-10">
-                      <span className="sr-only">Нээх</span>
-                    </Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.items.map((child, index) => (
-                    <ChildTableRow
-                      key={child.id}
-                      child={child}
-                      /* Continues across pages, so row 26 is the first of page two
-                         rather than a second row 1. */
-                      index={(data.page - 1) * 25 + index + 1}
-                      checked={selection.has(child.id)}
-                      onToggle={() => selection.toggle(child.id)}
-                    />
-                  ))}
-                </tbody>
-              </TableShell>
-            </div>
-          </div>
-
-          {/*
-            Excel only, and that is the whole action list for now.
-
-            Moving a set of children to another group and archiving them are
-            both real bulk operations, and both are enrollment decisions with
-            dates and history behind them — `POST /children/:id/enrollments`
-            per child is not the same act as "transfer these nine". Offering
-            the button before that endpoint exists is the dead navigation this
-            product deletes screens over.
-          */}
-          <SelectionBar count={selection.count} onClear={selection.clear}>
-            {primaryKindergartenId ? (
-              <Button asChild size="sm" variant="secondary">
-                <a
-                  href={downloadUrl(
-                    `/kindergartens/${primaryKindergartenId}/children/export${selectedExportQuery}`,
-                  )}
-                >
-                  <Download size={16} aria-hidden /> Сонгосныг Excel
-                </a>
-              </Button>
-            ) : null}
-          </SelectionBar>
-
-          <Pagination page={data.page} totalPages={data.totalPages} onPage={setPage} />
-        </>
-      ) : null}
-
-      {/*
-        ★ Both ESIS roster services, under the local roster.
-
-        `EsisDataPanel` renders nothing for a teacher — the route behind it
-        answers 404 to anybody but an administrator of this kindergarten — so
-        these two are the director's half of a screen the whole staff shares.
-
-        ★★ The register search is the one panel whose parameter is a person.
+        ★★★ The register search is the one panel whose parameter is a person.
         Every other service pre-fills its ids in demo mode; this one cannot,
         because there is no such thing as a safe invented national identifier
-        to put in a form. It stays empty until the director types the number
-        from the document in front of them, we send it, and we keep none of it
-        — `personRegNumber` is a refused output here exactly as it is on the
-        roster service above (`ESIS_REQUEST.md` §1.1 (b)).
+        to put in a form. It stays empty until the director types the number,
+        we send it, and we keep none of it — `personRegNumber` is a refused
+        output here exactly as it is on the roster service (`ESIS_REQUEST.md`
+        §1.1 (b)).
+
+        ★★★★ Neither panel renders for a teacher: the route behind them
+        answers 404 to anybody but an administrator of this kindergarten. A
+        teacher opening `/children` now sees the summary and nothing else.
       */}
       <EsisDataPanel
         resource="students"
-        description="ESIS-д бүртгэлтэй суралцагчид — элсэлт тулгах эхний эх сурвалж"
+        title="Хүүхдүүд"
+        description="Суралцагчийн бүртгэл, бүлэг, элсэлтийн төлөв"
+        rows={rosterRows}
+        hrefs={rosterHrefs}
+        linkField="firstName"
       />
       <EsisDataPanel
         resource="studentByRegister"
-        title="ESIS мэдээлэл — Регистрээр хайх"
-        description="Нэг хүүхдийг регистрийн дугаараар ESIS-ээс олох"
+        title="Регистрээр хайх"
+        description="Нэг хүүхдийг регистрийн дугаараар олох"
       />
     </div>
   );
@@ -555,412 +348,6 @@ function rosterParams(
     params.set("order", facets.order);
   }
   return params;
-}
-
-/** The sort options, as one control: the field and its direction together. */
-const SORT_CHOICES: {
-  value: string;
-  label: string;
-  sort: RosterFacets["sort"];
-  order: RosterFacets["order"];
-}[] = [
-  { value: "name:asc", label: "Нэр (А–Я)", sort: "name", order: "asc" },
-  { value: "name:desc", label: "Нэр (Я–А)", sort: "name", order: "desc" },
-  { value: "age:asc", label: "Нас (багаас их)", sort: "age", order: "asc" },
-  { value: "age:desc", label: "Нас (ихээс бага)", sort: "age", order: "desc" },
-  { value: "dateOfBirth:asc", label: "Төрсөн огноо (эртнээс)", sort: "dateOfBirth", order: "asc" },
-  { value: "updatedAt:desc", label: "Сүүлд шинэчлэгдсэн", sort: "updatedAt", order: "desc" },
-];
-
-/**
- * Sex, an age range and an order — RFP §11.
- *
- * ★ One row of selects, not a filter drawer. Three controls do not earn a modal,
- * and on a phone a drawer hides the fact that a filter is active — which is how
- * a teacher concludes that half their group has vanished.
- *
- * The age bounds go to 7 rather than stopping at the portfolio's 2–5: a roster
- * holds children who arrived before their second birthday and others who have
- * not yet left at six, and a control that cannot express them hides real rows.
- */
-function RosterFilters({
-  facets,
-  onChange,
-}: {
-  facets: RosterFacets;
-  onChange: (next: RosterFacets) => void;
-}) {
-  const active =
-    facets.groupId !== undefined ||
-    facets.sex !== undefined ||
-    facets.ageMin !== undefined ||
-    facets.ageMax !== undefined;
-
-  /*
-   * ★ The same query the registers use, so a screen reached from one of them
-   * finds the list of groups already in cache.
-   */
-  const groups = useSwitchableGroups();
-
-  return (
-    <section aria-label="Шүүлт, эрэмбэ" className="flex flex-wrap items-end gap-3">
-      {/*
-        Group leads the row: it is the coarsest cut and the one a director
-        reaches for, where sex and age narrow whatever it leaves.
-      */}
-      <Field label="Бүлэг" className="min-w-[160px] flex-1">
-        {({ id, describedBy }) => (
-          <Select
-            id={id}
-            aria-describedby={describedBy}
-            value={facets.groupId ?? ""}
-            onChange={(e) => onChange({ ...facets, groupId: e.target.value || undefined })}
-          >
-            <option value="">Бүх бүлэг</option>
-            {(groups.data?.items ?? []).map((group) => (
-              <option key={group.id} value={group.id}>
-                {group.name}
-              </option>
-            ))}
-          </Select>
-        )}
-      </Field>
-
-      <Field label="Хүйс" className="min-w-[140px] flex-1">
-        {({ id, describedBy }) => (
-          <Select
-            id={id}
-            aria-describedby={describedBy}
-            value={facets.sex ?? ""}
-            onChange={(e) =>
-              onChange({
-                ...facets,
-                sex: e.target.value ? (e.target.value as "MALE" | "FEMALE") : undefined,
-              })
-            }
-          >
-            <option value="">Бүгд</option>
-            <option value="MALE">{SEX_LABEL.MALE}</option>
-            <option value="FEMALE">{SEX_LABEL.FEMALE}</option>
-          </Select>
-        )}
-      </Field>
-
-      <Field label="Хамгийн бага нас" className="min-w-[120px] flex-1">
-        {({ id, describedBy }) => (
-          <Select
-            id={id}
-            aria-describedby={describedBy}
-            value={facets.ageMin ?? ""}
-            onChange={(e) =>
-              onChange({
-                ...facets,
-                ageMin: e.target.value ? Number(e.target.value) : undefined,
-              })
-            }
-          >
-            <option value="">Хязгааргүй</option>
-            {AGE_CHOICES.map((age) => (
-              <option key={age} value={age}>
-                {age} нас
-              </option>
-            ))}
-          </Select>
-        )}
-      </Field>
-
-      <Field label="Хамгийн их нас" className="min-w-[120px] flex-1">
-        {({ id, describedBy }) => (
-          <Select
-            id={id}
-            aria-describedby={describedBy}
-            value={facets.ageMax ?? ""}
-            onChange={(e) =>
-              onChange({
-                ...facets,
-                ageMax: e.target.value ? Number(e.target.value) : undefined,
-              })
-            }
-          >
-            <option value="">Хязгааргүй</option>
-            {AGE_CHOICES.map((age) => (
-              <option key={age} value={age}>
-                {age} нас
-              </option>
-            ))}
-          </Select>
-        )}
-      </Field>
-
-      <Field label="Эрэмбэ" className="min-w-[180px] flex-1">
-        {({ id, describedBy }) => (
-          <Select
-            id={id}
-            aria-describedby={describedBy}
-            value={`${facets.sort}:${facets.order}`}
-            onChange={(e) => {
-              const choice = SORT_CHOICES.find((c) => c.value === e.target.value);
-              if (choice) onChange({ ...facets, sort: choice.sort, order: choice.order });
-            }}
-          >
-            {SORT_CHOICES.map((choice) => (
-              <option key={choice.value} value={choice.value}>
-                {choice.label}
-              </option>
-            ))}
-          </Select>
-        )}
-      </Field>
-
-      {/*
-        Only when something is actually narrowed. A permanently visible "clear"
-        beside untouched controls is noise, and its absence is how you can tell
-        at a glance that the list is showing everyone.
-      */}
-      {active ? (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => onChange({ ...NO_FACETS, sort: facets.sort, order: facets.order })}
-        >
-          Шүүлт цэвэрлэх
-        </Button>
-      ) : null}
-    </section>
-  );
-}
-
-const AGE_CHOICES = [1, 2, 3, 4, 5, 6, 7] as const;
-
-/**
- * One child.
- *
- * The same markup at every width — a compact row that already reads well on a
- * phone. A separate mobile card component would be two things to keep in step
- * for no visual gain, so the group and age simply wrap under the name below
- * `sm`.
- */
-function ChildRow({
-  child,
-  checked,
-  onToggle,
-}: {
-  child: {
-    id: string;
-    lastName: string;
-    firstName: string;
-    dateOfBirth: string;
-    photoMediaFileId?: string | null;
-    enrollments?: { group?: { name: string } | null }[];
-    /** Staff rosters only — `/children/mine` does not compute it. */
-    profile?: ChildProfileCompletion;
-  };
-  checked: boolean;
-  onToggle: () => void;
-}) {
-  const group = child.enrollments?.[0]?.group?.name;
-
-  return (
-    /*
-      ★ REDESIGN 2026-09-03 — the row lifts, and it has a chevron.
-
-      The affordance was a border moving to the brand colour on hover, which is
-      invisible on a phone — where this screen is mostly used, and where hover
-      does not exist — so a tappable roster looked exactly like a read-only
-      list.
-
-      `card-interactive` (globals.css) is the product's one answer for a
-      clickable surface: a 1px lift, one step of shadow, a tinted border, and a
-      return to rest on press, so the press registers under a thumb. The chevron
-      is the part that works with no pointer at all — it says "this opens" while
-      sitting still.
-
-      ★★ 2026-09-04 — the card is a `div` and the link is inside it.
-
-      The whole row used to be one `<a>`. A checkbox inside an anchor is an
-      interactive element inside an interactive element: invalid HTML, and in
-      practice a tap that both ticks the box and navigates away from the list
-      the tick was for. So the card became the container, the checkbox and the
-      link became siblings, and the link kept everything that is genuinely
-      "open this child".
-
-      The lift still belongs to the whole card rather than to the link alone —
-      the row is one object to the eye and splitting the hover would make the
-      checkbox look detached from the name beside it.
-    */
-    <div className="card-interactive flex min-h-[68px] items-center gap-3 rounded-row border border-border bg-surface px-3 py-3 shadow-sm md:px-4">
-      <SelectBox checked={checked} onChange={onToggle} label={`${fullName(child)} — сонгох`} />
-
-      <Link
-        href={`/children/${child.id}/general`}
-        className="flex min-w-0 flex-1 items-center gap-3 rounded-row"
-      >
-        <ChildAvatar child={child} size={44} />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-lead font-semibold leading-[1.35] text-ink">
-            {fullName(child)}
-          </span>
-          <span className="mt-0.5 block truncate text-compact text-muted">
-            {[group, formatAge(child.dateOfBirth)].filter(Boolean).join(" · ")}
-          </span>
-        </span>
-
-        {child.profile ? <ProfileCompletion profile={child.profile} /> : null}
-
-        <ChevronRight size={18} aria-hidden="true" className="shrink-0 text-faint" />
-      </Link>
-    </div>
-  );
-}
-
-/**
- * How much of a child's record is filled in.
- *
- * ★ Only when something is missing.
- *
- * A complete record draws nothing. Thirty rows each carrying a green "100%"
- * is thirty pieces of noise saying there is nothing to do, and it would bury
- * the two rows that do need attention — which is the entire purpose of the
- * indicator. So the finished ones are silent and the unfinished ones are not.
- *
- * ★★ It names what is missing, not only how much.
- *
- * "67%" tells a teacher there is a problem and not what to do about it. The
- * `title` and the screen-reader text list the actual gaps, because "Цээж зураг
- * дутуу" is a task and a percentage is a score.
- *
- * ★★★ Not a link. The row already opens the child, and a second target inside
- * it competes with the first for the same tap.
- */
-function ProfileCompletion({ profile }: { profile: ChildProfileCompletion }) {
-  const missing = [
-    !profile.photo ? "Цээж зураг" : null,
-    !profile.health ? "Эрүүл мэндийн мэдээлэл" : null,
-    !profile.guardianContact ? "Асран хамгаалагчийн холбоо барих" : null,
-  ].filter((v): v is string => v !== null);
-
-  if (missing.length === 0) return null;
-
-  const percent = completionPercent(profile);
-  const detail = `${missing.join(", ")} дутуу`;
-
-  return (
-    <span
-      title={detail}
-      className="hidden shrink-0 items-center gap-1.5 rounded-pill bg-sun px-2.5 py-1 text-caption font-semibold text-sun-ink sm:inline-flex"
-    >
-      <AlertTriangle size={13} aria-hidden="true" />
-      {percent}%<span className="sr-only"> бүрдсэн. {detail}.</span>
-    </span>
-  );
-}
-
-/**
- * The roster's headline numbers — RFP §12.1.
- *
- * ★ Two cards, and the wireframe's third is deliberately absent.
- *
- * It asked for Total / Average age / **Attendance**. The first two are
- * computable from data this system holds; attendance has no model, no
- * migration and no endpoint anywhere in the API, so a card for it could only
- * render a number somebody invented. `dashboard/page.tsx` records the same
- * decision, taken three times now.
- *
- * ★★ The count comes from `GET /children/summary`, not from `data.total`.
- *
- * Both would be correct for the total — but the average cannot be computed on
- * the client at all: the list is paginated at 25, so a mean taken from the rows
- * on screen changes when you press "next" and describes no cohort. One request
- * answers both over the whole filtered roster, and the endpoint shares its
- * `where` with the list so the header cannot contradict the rows.
- */
-/**
- * One roster row as a table row — the desktop half of the list.
- *
- * ★ The link is on the name cell, not on the `<tr>`.
- *
- * A whole row cannot be an anchor: `<tr>` may only contain `<td>`, so wrapping
- * it is invalid, and making the row clickable with `onClick` gives a keyboard
- * user nothing to focus and a reader nothing to middle-click. The name is what
- * somebody aims at anyway, and the trailing chevron is a second, wider target
- * on the same href.
- *
- * ★★ An em dash where a fact is missing, never an empty cell.
- *
- * A blank in a grid reads as "this column does not apply here"; a dash says the
- * value is absent. `nationalId` genuinely is absent for a newly arrived child —
- * see `childSummarySchema` — and that is the state a director scans this column
- * to find.
- */
-function ChildTableRow({
-  child,
-  index,
-  checked,
-  onToggle,
-}: {
-  child: ChildSummary;
-  index: number;
-  checked: boolean;
-  onToggle: () => void;
-}) {
-  const group = child.enrollments?.[0]?.group?.name;
-  const href = `/children/${child.id}/general`;
-
-  return (
-    <tr className="transition-colors hover:bg-sunken">
-      <Td>
-        <SelectBox checked={checked} onChange={onToggle} label={`${fullName(child)} — сонгох`} />
-      </Td>
-      <Td numeric className="text-caption text-muted">
-        {index}
-      </Td>
-      <Td>
-        <Link href={href} className="flex min-w-0 items-center gap-2.5">
-          <ChildAvatar child={child} size={32} />
-          <span className="min-w-0 truncate font-medium text-ink">{fullName(child)}</span>
-        </Link>
-      </Td>
-      {/*
-        ★ A foreign child's own identifier, marked as such.
-
-        Their `nationalId` is null and always will be — the Mongolian format
-        cannot express one — so an unmarked "—" here would read exactly like a
-        child whose регистр nobody has typed in yet. The first is finished; the
-        second is a to-do, and this column is where a director looks for the
-        second.
-      */}
-      <Td className="whitespace-nowrap text-muted">
-        {child.isForeign ? (
-          <span className="flex items-center gap-1.5">
-            <Badge tone="sky">Гадаад</Badge>
-            <span className="tabular-nums">{child.foreignId ?? "—"}</span>
-          </span>
-        ) : (
-          <span className="tabular-nums">{child.nationalId ?? "—"}</span>
-        )}
-      </Td>
-      <Td className="whitespace-nowrap text-muted">
-        {child.sex ? (SEX_LABEL[child.sex] ?? child.sex) : "—"}
-      </Td>
-      <Td className="text-muted">{group ?? "—"}</Td>
-      <Td className="whitespace-nowrap text-muted">{formatAge(child.dateOfBirth)}</Td>
-      <Td className="whitespace-nowrap tabular-nums text-muted">{formatDate(child.dateOfBirth)}</Td>
-      <Td>
-        {child.status ? (
-          <Badge tone={child.status === "ACTIVE" ? "mint" : "sky"}>
-            {CHILD_STATUS_LABEL[child.status] ?? child.status}
-          </Badge>
-        ) : (
-          "—"
-        )}
-      </Td>
-      <Td>
-        <Link href={href} aria-label={`${fullName(child)} — нээх`} className="block">
-          <ChevronRight size={18} aria-hidden="true" className="text-faint" />
-        </Link>
-      </Td>
-    </tr>
-  );
 }
 
 function RosterSummary({ search, facets }: { search: string; facets: RosterFacets }) {

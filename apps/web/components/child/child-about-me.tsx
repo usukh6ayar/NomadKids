@@ -272,7 +272,7 @@ export function ChildAboutMe({
                 <h3 className="mb-1.5 flex min-w-0 items-center gap-1.5 text-caption font-semibold text-ink md:gap-2">
                   <span
                     className={cn(
-                      "flex size-6 items-center justify-center rounded-control",
+                      "flex size-6 items-center justify-center rounded-check",
                       STORY_TONE[field.tone],
                     )}
                   >
@@ -294,7 +294,7 @@ export function ChildAboutMe({
                 <h3 className="mb-1.5 flex items-center gap-2 text-caption font-semibold text-ink">
                   <span
                     aria-hidden="true"
-                    className="size-6 shrink-0 rounded-control border border-border/60"
+                    className="size-6 shrink-0 rounded-check border border-border/60"
                     style={{
                       backgroundColor:
                         EYE_COLOR_OPTIONS.find((o) => o.label === data.eyeColor)?.hex ??

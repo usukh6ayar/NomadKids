@@ -148,8 +148,13 @@ describe("ESIS мэдээллийн панел", () => {
 
     expect(await screen.findByText("Бяцхан нүүдэлчид (жишээ)")).toBeInTheDocument();
     expect(screen.getByText("40305")).toBeInTheDocument();
-    // Present *and* labelled, on the same view.
-    expect(screen.getByText("Demo ESIS синк")).toBeInTheDocument();
+    /*
+     * ★ No `Demo ESIS` badge — removed 2026-09-08 at the client's explicit
+     * instruction, given twice. The panel reads as a connected source; where
+     * the values actually come from is recorded in `esis-data-panel.tsx` and
+     * shown on `/admin/integrations/esis`, which keeps its badges.
+     */
+    expect(screen.queryByText(/Demo ESIS/)).toBeNull();
     expect(screen.getByRole("button", { name: /ESIS-ээс мэдээллээ татах/ })).toBeInTheDocument();
   });
 
@@ -180,8 +185,6 @@ describe("ESIS мэдээллийн панел", () => {
 
     expect(await screen.findByText("Жинхэнэ цэцэрлэг")).toBeInTheDocument();
     expect(screen.queryByText("Бяцхан нүүдэлчид (жишээ)")).not.toBeInTheDocument();
-    expect(screen.queryByText("Demo ESIS синк")).not.toBeInTheDocument();
-    expect(screen.getByText("Бодит ESIS синк")).toBeInTheDocument();
   });
 
   /*
@@ -201,6 +204,67 @@ describe("ESIS мэдээллийн панел", () => {
     expect(screen.getByText(/хадгалахгүй/)).toBeInTheDocument();
     // A service whose portal entry has not been read says so rather than "ID null".
     expect(screen.getByText(/ID тодруулах/)).toBeInTheDocument();
+  });
+
+  /*
+   * ★ The reason `rows` exists at all — 2026-09-08.
+   *
+   * Removing the local roster took the way into a child's record with it, and
+   * the catalog's own demo roster cannot replace it: those ten people are
+   * invented and match no record this product holds, so a link on one of them
+   * would lead nowhere. `/children` passes its own children instead, and every
+   * row opens the record it names.
+   */
+  it("opens the record a row names when the caller supplies one", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: ESIS_PATH, body: overview(false) },
+    ]);
+    renderWithProviders(
+      <EsisDataPanel
+        resource="organization"
+        rows={[
+          { institutionId: "1", institutionName: "Алтанзул Мандах" },
+          { institutionId: "2", institutionName: "Батжаргал Ану" },
+        ]}
+        hrefs={["/children/aaa/general", "/children/bbb/general"]}
+        linkField="institutionName"
+      />,
+    );
+
+    // The caller's records replace the catalog's, entirely.
+    expect(await screen.findByText("Алтанзул Мандах")).toBeInTheDocument();
+    expect(screen.queryByText("Бяцхан нүүдэлчид (жишээ)")).toBeNull();
+
+    // The name itself is the link — no separate "Нээх" control to find first.
+    expect(screen.getByRole("link", { name: "Алтанзул Мандах" })).toHaveAttribute(
+      "href",
+      "/children/aaa/general",
+    );
+    expect(screen.getByRole("link", { name: "Батжаргал Ану" })).toHaveAttribute(
+      "href",
+      "/children/bbb/general",
+    );
+  });
+
+  it("offers no link when the caller supplies none", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: ESIS_PATH, body: overview(false) },
+    ]);
+    renderWithProviders(
+      <EsisDataPanel
+        resource="organization"
+        rows={[
+          { institutionId: "1", institutionName: "Нэг" },
+          { institutionId: "2", institutionName: "Хоёр" },
+        ]}
+      />,
+    );
+
+    await screen.findByText("Нэг");
+    expect(screen.queryByRole("link", { name: "Нэг" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Хоёр" })).toBeNull();
   });
 
   it("renders nothing for a teacher, because the route answers 404", async () => {
