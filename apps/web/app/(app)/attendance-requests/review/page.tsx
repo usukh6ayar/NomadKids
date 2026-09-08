@@ -18,9 +18,7 @@ export default function AttendanceRequestReviewPage() {
   return (
     <RequireRole roles={["TEACHER", "ADMIN"]}>
       <div className="flex flex-col gap-6 lg:gap-8">
-        <PageHeader
-          title="Ирцийн мэдэгдэл — хянах"
-        />
+        <PageHeader title="Ирцийн мэдэгдэл — хянах" />
         <AttendanceRequestQueue />
       </div>
     </RequireRole>

@@ -65,9 +65,7 @@ function Applications() {
 
   return (
     <div className="flex flex-col gap-5 lg:gap-6">
-      <PageHeader
-        title="Байгууллагын хүсэлт"
-      />
+      <PageHeader title="Байгууллагын хүсэлт" />
 
       <div className="flex flex-wrap gap-2">
         {TABS.map((tab) => (
