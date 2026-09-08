@@ -107,6 +107,7 @@ function Finance() {
         title="Санхүүжилт"
         actions={
           <div className="flex flex-wrap items-end gap-3">
+            <Badge tone="peach">ESIS finance API · NOT ENABLED</Badge>
             <Button asChild variant="secondary" size="sm">
               <Link href="/invoices">
                 <Art name="finance" size={18} className="size-[18px]" />

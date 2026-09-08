@@ -107,23 +107,26 @@ export function ChildHeroProfile({
           roster, the feeds and the birthday list.
         */}
         {/*
-          ★ REDESIGN 2026-09-03 — 72px → 88px, with a ring.
+          ★ REDESIGN 2026-09-03 — 72px → 88px.
 
           This is the one screen that is about a *person*, and the brief calls
           the portfolio hanging off it the emotional centre of the product. A
           72px avatar sitting inline with the badges made the header read like
-          a database row with a thumbnail. The larger portrait plus a soft
-          brand ring gives the child top billing, which is the hierarchy this
-          screen should have.
+          a database row with a thumbnail. The larger portrait gives the child
+          top billing, which is the hierarchy this screen should have.
 
-          The ring is `ring-*` rather than a border so it does not change the
-          avatar's layout box — `ChildAvatar` is used flat at five other sizes
-          across the product and none of them should move.
+          ★★ The `ring-4 ring-primary-soft` that shipped with that redesign is
+          gone — 2026-09-09, on the client's instruction, after they read the
+          uploaded photograph as failing to fill its circle.
+
+          It was not: the photograph filled all 88px and the ring was 4px of
+          `primary-soft` drawn *outside* it. But `primary-soft` against a white
+          card is barely a colour, so the halo read as a gap rather than as a
+          frame — and a decoration that people report as a bug is not doing the
+          job it was added for. Size alone carries the billing now.
         */}
         <div className="relative shrink-0">
-          <div className="rounded-pill ring-4 ring-primary-soft">
-            <ChildAvatar child={child} size={88} />
-          </div>
+          <ChildAvatar child={child} size={88} />
           {canEditPhoto ? (
             <ChildPhotoButton childId={child.id} childName={fullName(child)} />
           ) : null}

@@ -37,6 +37,16 @@ export class EsisConfig {
     return Boolean(this.baseUrl && this.token);
   }
 
+  /** Demo mode is an explicit transport choice, not inferred from a missing token. */
+  get isDemoMode(): boolean {
+    return this.env.ESIS_DEMO_MODE === true;
+  }
+
+  /** Whether the shared client can serve a request in either transport mode. */
+  get isAvailable(): boolean {
+    return this.isDemoMode || this.isConfigured;
+  }
+
   /** Trailing slash removed so joining a path cannot produce `//`. */
   get baseUrl(): string {
     return (this.env.ESIS_BASE_URL || DEFAULT_ESIS_BASE_URL).replace(/\/+$/, "");
@@ -66,9 +76,17 @@ export class EsisConfig {
    * of a JWT is its header, which names the algorithm. Neither is worth the
    * diagnostic value.
    */
-  describe(): { configured: boolean; baseUrl: string; hasToken: boolean } {
+  describe(): {
+    configured: boolean;
+    demoMode: boolean;
+    mode: "MOCK" | "LIVE";
+    baseUrl: string;
+    hasToken: boolean;
+  } {
     return {
       configured: this.isConfigured,
+      demoMode: this.isDemoMode,
+      mode: this.isDemoMode ? "MOCK" : "LIVE",
       baseUrl: this.baseUrl,
       hasToken: this.token !== "",
     };

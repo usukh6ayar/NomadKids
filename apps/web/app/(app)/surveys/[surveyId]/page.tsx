@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import {
+  SURVEY_CATEGORY_LABEL,
   surveyResultsSchema,
   type SurveyGroupResult,
   surveySchema,
@@ -86,6 +87,7 @@ function SurveyDetail() {
     <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title={data.title}
+        lede={SURVEY_CATEGORY_LABEL[data.category]}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {data.status !== "DRAFT" ? (

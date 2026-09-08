@@ -11,7 +11,6 @@ import { MediaThumb } from "@/components/media/media-image";
 import { Badge } from "@/components/ui/badge";
 import { BoardCard, BoardCardEmpty } from "./board-card";
 import { excerpt, formatDate } from "@/lib/format";
-import { cn } from "@/lib/utils";
 
 /**
  * Сүүлийн нийтлэл — the latest notice, and whether it landed.
@@ -133,22 +132,27 @@ export function ClassBoardNotice({ notice }: { notice: TeacherDashboard["boardNo
       }
     >
       {notice ? (
-        <Link
-          href={`/notifications/${notice.id}`}
-          className="group flex flex-col gap-3 lg:flex-row lg:items-stretch lg:gap-6"
-        >
-          {/*
-            ★ Stacked on a phone, text beside the picture from `lg` up — the
-            desktop expansion the 2026-08-28 brief asked for, at 40 / 60 when
-            there is a photograph to give the larger share to.
+        <Link href={`/notifications/${notice.id}`} className="group flex flex-col gap-3">
+          {/* The preview stays stacked at every width. In the dashboard's
+              three-column band a side-by-side layout left the Mongolian title
+              in a one-word-wide column; a shallow image followed by full-width
+              text is both denser and easier to scan. */}
+          {photo ? (
+            <MediaThumb
+              mediaId={photo.id}
+              caption={photo.caption}
+              className="aspect-[12/5] w-full rounded-row"
+            />
+          ) : (
+            <div
+              aria-hidden="true"
+              className="grid aspect-[12/5] w-full place-items-center rounded-row bg-primary-soft"
+            >
+              <Art name="notice" size={72} />
+            </div>
+          )}
 
-            With no photograph the text takes the row and the panel drops to a
-            compact 200px square. Measured: at three fifths of a 1336px card the
-            16/9 fallback was 674 × 379px of tint around a 96px icon — the
-            emptiest element on the screen and the tallest card on the page, for
-            a post with nothing to show.
-          */}
-          <div className={cn("flex min-w-0 flex-col gap-1.5", photo ? "lg:w-2/5" : "lg:flex-1")}>
+          <div className="flex min-w-0 flex-col gap-1.5">
             <div className="flex flex-wrap items-center gap-2">
               {/*
                 ★ No title falls back to the opening of the body — the same
@@ -173,32 +177,10 @@ export function ClassBoardNotice({ notice }: { notice: TeacherDashboard["boardNo
               and three lines of it above a photograph is the card growing into
               the feed it links to.
             */}
-            <p className="hidden whitespace-pre-wrap text-body text-muted lg:block">
+            <p className="line-clamp-2 whitespace-pre-wrap text-body leading-relaxed text-muted">
               {excerpt(notice.body, 180)}
             </p>
           </div>
-
-          {photo ? (
-            <div className="lg:w-3/5">
-              <MediaThumb
-                mediaId={photo.id}
-                caption={photo.caption}
-                className="aspect-[16/9] w-full rounded-card"
-              />
-            </div>
-          ) : (
-            /*
-              No photograph: a tinted 16/9 frame on a phone, where the sketch
-              shows a picture and an empty gap would read as a failed image, and
-              the compact 200px square from `lg` — see the note above.
-            */
-            <div
-              aria-hidden="true"
-              className="grid aspect-[16/9] w-full place-items-center lg:aspect-auto lg:w-[200px] lg:shrink-0 lg:p-6"
-            >
-              <Art name="notice" size={88} />
-            </div>
-          )}
         </Link>
       ) : (
         <BoardCardEmpty

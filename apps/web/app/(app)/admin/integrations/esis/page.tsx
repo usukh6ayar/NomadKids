@@ -19,6 +19,7 @@ import {
   type EsisOverview,
   type EsisPreviewResourceKey,
   type EsisPreviewResult,
+  type EsisResourceKey,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -150,12 +151,27 @@ function EsisIntegration() {
     <div className="page-band">
       {header}
 
+      {data.deployment.demoMode ? (
+        <Card pad="compact" tone="sun" className="mb-6">
+          <div className="flex items-start gap-3">
+            <FlaskConical className="mt-0.5 shrink-0 text-sun-ink" size={20} aria-hidden />
+            <div>
+              <p className="text-body font-semibold text-ink">ESIS integration demo / Mock data</p>
+              <p className="mt-1 text-caption text-muted">
+                Жинхэнэ ESIS холболт хийгдээгүй. Энэ горимд production request огт илгээгдэхгүй,
+                зөвхөн зохиомол test өгөгдөл ашиглана.
+              </p>
+            </div>
+          </div>
+        </Card>
+      ) : null}
+
       <section
         aria-label="ESIS бэлэн байдлын үе шат"
         className="grid grid-cols-2 gap-3 xl:grid-cols-5"
       >
         {data.stages.map((stage) => {
-          const ready = stage.status === "READY" || !data.deployment.configured;
+          const ready = stage.status === "READY";
           return (
             <Card key={stage.code} pad="compact" tone={ready ? "mint" : "sun"}>
               <div className="flex items-start justify-between gap-2">
@@ -170,7 +186,7 @@ function EsisIntegration() {
                 )}
               </div>
               <Badge className="mt-3" tone={ready ? "mint" : "sun"}>
-                {ready ? (data.deployment.configured ? "Бэлэн" : "Demo бэлэн") : "Хүлээгдэж байна"}
+                {ready ? "Бэлэн" : "Хүлээгдэж байна"}
               </Badge>
             </Card>
           );
@@ -216,18 +232,10 @@ function EsisIntegration() {
             result={preview}
             pending={runPreview.isPending}
             error={runPreview.isError ? errorMessage(runPreview.error) : null}
-            onRun={() => {
-              if (data.canPreview) {
-                runPreview.mutate();
-              } else {
-                setPreview(buildDemoPreview(data, selected));
-              }
-            }}
+            onRun={() => runPreview.mutate()}
           />
         ) : null}
-        {tab === "history" ? (
-          <RunHistory runs={data.recentRuns} demoMode={!data.deployment.configured} />
-        ) : null}
+        {tab === "history" ? <RunHistory runs={data.recentRuns} /> : null}
       </div>
     </div>
   );
@@ -246,19 +254,28 @@ function Overview({ data }: { data: EsisOverview }) {
           id="esis-connection-heading"
           title="Холболтын төлөв"
           action={
-            <Badge tone="mint">
-              <CheckCircle2 size={13} aria-hidden />
-              {data.deployment.configured ? "Live холбогдсон" : "Demo холбогдсон"}
+            <Badge tone={data.deployment.demoMode ? "sun" : "mint"}>
+              {data.deployment.demoMode ? (
+                <FlaskConical size={13} aria-hidden />
+              ) : (
+                <CheckCircle2 size={13} aria-hidden />
+              )}
+              {data.deployment.demoMode ? "Mock data · холболтгүй" : "Live холбогдсон"}
             </Badge>
           }
         />
         <Card pad="roomy">
           <dl className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-            <Definition label="Орчин" value={data.connection.environment ?? "DEMO"} />
+            <Definition
+              label="Орчин"
+              value={
+                data.deployment.demoMode ? "DEMO / TEST" : (data.connection.environment ?? "LIVE")
+              }
+            />
             <Definition label="Байгууллагын код" value={data.connection.institutionId ?? "40305"} />
             <Definition
               label="Token"
-              value={data.deployment.hasToken ? "Server дээр байна" : "Demo token идэвхтэй"}
+              value={data.deployment.hasToken ? "Server дээр байна" : "Token хүлээгдэж байна"}
             />
             <Definition
               label="API хаяг"
@@ -269,11 +286,11 @@ function Overview({ data }: { data: EsisOverview }) {
         </Card>
       </section>
 
-      {!data.deployment.configured ? (
-        <Card pad="compact" tone="mint">
+      {data.deployment.demoMode ? (
+        <Card pad="compact" tone="sun">
           <p className="flex items-center gap-2 text-body font-medium text-ink">
-            <CheckCircle2 size={18} className="text-mint-ink" aria-hidden />
-            Demo ESIS sandbox холболт идэвхтэй · сүүлийн синк 2026.09.08 09:15
+            <CircleAlert size={18} className="text-sun-ink" aria-hidden />
+            MOCK transport идэвхтэй · ESIS сервер рүү сүлжээний дуудлага хийхгүй
           </p>
         </Card>
       ) : data.blockers.length > 0 ? (
@@ -310,6 +327,7 @@ function Overview({ data }: { data: EsisOverview }) {
 }
 
 function ApiScope({ data }: { data: EsisOverview }) {
+  const [selectedKey, setSelectedKey] = useState<EsisResourceKey>("groups");
   const totalOutputs = data.endpoints.reduce(
     (sum, endpoint) => sum + endpoint.fields.filter((field) => field.io === "OUTPUT").length,
     0,
@@ -318,13 +336,15 @@ function ApiScope({ data }: { data: EsisOverview }) {
     (sum, endpoint) => sum + endpoint.fields.filter((field) => field.io === "INPUT").length,
     0,
   );
+  const selected =
+    data.endpoints.find((endpoint) => endpoint.key === selectedKey) ?? data.endpoints[0]!;
 
   return (
     <section aria-labelledby="esis-api-heading">
       <SectionHeader
         id="esis-api-heading"
         title="API эрхийн матриц"
-        lede={`${data.endpoints.length} endpoint · ${totalOutputs} гаралтын талбар · ${totalInputs} илгээх талбар · ${data.deployment.configured ? "live access" : "demo access"} идэвхтэй.`}
+        lede={`${data.endpoints.length} endpoint · ${totalOutputs} гаралтын талбар · ${totalInputs} илгээх талбар · ${data.deployment.demoMode ? "mock transport" : "live access"} идэвхтэй.`}
       />
       <TableShell caption="ESIS endpoint-ийн ашиглалт ба эрхийн төлөв" minWidth="min-w-[1040px]">
         <thead>
@@ -366,8 +386,8 @@ function ApiScope({ data }: { data: EsisOverview }) {
                 </p>
               </Td>
               <Td>
-                <Badge tone={data.deployment.configured ? "sun" : "mint"}>
-                  {data.deployment.configured ? "Шалгаагүй" : "Demo нээлттэй"}
+                <Badge tone={accessTone(endpoint.accessStatus)}>
+                  {endpoint.accessStatus.replace("_", " ")}
                 </Badge>
               </Td>
             </tr>
@@ -377,18 +397,26 @@ function ApiScope({ data }: { data: EsisOverview }) {
 
       <SectionHeader
         className="mt-8"
-        title="ESIS-ээс синк хийсэн мэдээлэл"
-        lede={`Сүүлийн синк 2026.09.08 09:15 · ${data.deployment.configured ? "Live" : "Demo sandbox"}`}
+        title="Endpoint шалгах"
+        lede="Endpoint сонгоод Request → Response → Field Mapping → Sync Log дарааллаар бүрэн шалгана."
       />
-      <div className="flex flex-col gap-3">
-        {data.endpoints.map((endpoint) => (
-          <EndpointFields
-            key={endpoint.key}
-            endpoint={endpoint}
-            demoMode={!data.deployment.configured}
-          />
-        ))}
-      </div>
+      <label className="mb-3 block max-w-2xl">
+        <span className="mb-1.5 block text-caption font-semibold text-muted">API endpoint</span>
+        <select
+          value={selected.key}
+          onChange={(event) => setSelectedKey(event.target.value as EsisResourceKey)}
+          className="h-11 w-full rounded-control border border-border bg-surface px-3 text-body text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+        >
+          {data.endpoints.map((endpoint) => (
+            <option key={endpoint.key} value={endpoint.key}>
+              {endpoint.slug} · {endpoint.name} · {endpoint.method}
+            </option>
+          ))}
+        </select>
+      </label>
+      <EndpointFields endpoint={selected} demoMode={data.deployment.demoMode} />
+
+      <RoleCoverage />
     </section>
   );
 }
@@ -413,10 +441,14 @@ function EndpointFields({
   endpoint: EsisOverview["endpoints"][number];
   demoMode: boolean;
 }) {
+  const [view, setView] = useState<"request" | "response" | "mapping" | "log">("response");
   const outputs = endpoint.fields.filter((field) => field.io === "OUTPUT");
   const inputs = endpoint.fields.filter((field) => field.io === "INPUT");
   const omitted = outputs.filter((field) => !field.ingested).length;
   const columns = esisSampleColumns(endpoint.fields);
+  const mapped = endpoint.mappings.filter((mapping) =>
+    ["DIRECT", "MATCH", "TRANSFORM", "REQUEST"].includes(mapping.strategy),
+  ).length;
 
   return (
     <Card pad="compact">
@@ -448,61 +480,344 @@ function EndpointFields({
         ) : null}
         {endpoint.note ? <p className="mt-3 text-caption text-muted">{endpoint.note}</p> : null}
 
-        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4">
-          <p className="text-body font-semibold text-ink">
-            {outputs.length > 0 ? "Синк хийсэн мэдээлэл" : "Илгээх мэдээлэл"}
-          </p>
-          <Badge tone="mint">
-            <CheckCircle2 size={13} aria-hidden />
-            {demoMode ? "Demo ESIS синк" : "Live ESIS синк"}
+        <dl className="mt-4 grid gap-4 border-t border-border pt-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Definition label="API нэр" value={endpoint.name} />
+          <Definition label="Method" value={endpoint.method} />
+          <Definition
+            label="Direction"
+            value={
+              endpoint.direction === "ESIS_TO_NOMADKIDS" ? "ESIS → NomadKids" : "NomadKids → ESIS"
+            }
+          />
+          <Definition
+            label="Request parameter"
+            value={requestParameterNames(endpoint).join(", ") || "Body ашиглахгүй"}
+          />
+          <Definition
+            label="HTTP status"
+            value={
+              endpoint.httpStatus === null
+                ? "Хариу хүлээгдэж байна"
+                : `${endpoint.httpStatus} ${demoMode ? "MOCK" : ""}`.trim()
+            }
+          />
+          <Definition label="Response mode" value={endpoint.responseMode} />
+          <Definition label="NomadKids model" value={endpoint.targetModel} />
+          <Definition
+            label="Сүүлийн sync"
+            value={endpoint.lastSyncAt ? formatRelative(endpoint.lastSyncAt) : "Ажиллуулаагүй"}
+          />
+        </dl>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <Badge tone={demoMode ? "sun" : "mint"}>
+            {demoMode ? (
+              <FlaskConical size={13} aria-hidden />
+            ) : (
+              <CheckCircle2 size={13} aria-hidden />
+            )}
+            {demoMode ? "ESIS DEMO DATA — LIVE CONNECTION NOT ACTIVE" : "LIVE"}
           </Badge>
-          <Badge tone="sky">{endpoint.sampleRows.length} бичлэг</Badge>
+          <Badge
+            tone={
+              endpoint.syncStatus === "FAILED"
+                ? "danger"
+                : endpoint.syncStatus === "PENDING"
+                  ? "sun"
+                  : "mint"
+            }
+          >
+            {endpoint.syncStatus}
+          </Badge>
+          <Badge tone="sky">
+            Mapped {mapped} / {endpoint.mappings.length} fields
+          </Badge>
         </div>
 
-        <div className="mt-3">
-          <EsisRowValues columns={columns} rows={endpoint.sampleRows} />
-        </div>
-
-        <p className="mt-6 text-body font-semibold text-ink">
-          {outputs.length > 0
-            ? `Гаралтын бүх талбар (${outputs.length})`
-            : `Илгээх бүх талбар (${inputs.length})`}
-        </p>
-        <ul className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {endpoint.fields.map((field) => (
-            <li
-              key={field.name}
-              className="rounded-row border border-border bg-surface px-3 py-2 text-caption"
+        <div
+          role="tablist"
+          aria-label={`${endpoint.name} endpoint detail`}
+          className="mt-5 flex max-w-full gap-1 overflow-x-auto border-b border-border"
+        >
+          {(
+            [
+              ["request", "Request"],
+              ["response", "Response"],
+              ["mapping", "Field Mapping"],
+              ["log", "Sync Log"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={view === value}
+              onClick={() => setView(value)}
+              className={cn(
+                "h-10 shrink-0 border-b-2 px-3 text-body font-medium",
+                view === value
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted hover:text-ink",
+              )}
             >
-              <span className="flex items-start justify-between gap-2">
-                <span className="min-w-0">
-                  <span className="block break-words text-body font-medium text-ink">
-                    {field.label}
-                  </span>
-                  <span className="mt-1 block break-all font-mono text-caption text-faint">
-                    {field.name}
-                  </span>
-                </span>
-                <Badge tone={field.io === "INPUT" ? "peach" : field.ingested ? "mint" : "sun"}>
-                  {field.io === "INPUT" ? "Илгээнэ" : field.ingested ? "Авна" : "Авахгүй"}
-                </Badge>
-              </span>
-              {field.omitReason ? (
-                <span className="mt-2 block text-muted">{field.omitReason}</span>
-              ) : null}
-            </li>
+              {label}
+            </button>
           ))}
-        </ul>
+        </div>
 
-        {/* Demo is already visible above. This action is only for replacing it
-            with a live, read-only ESIS response. */}
-        {endpoint.readable && !demoMode ? (
+        {view === "request" ? (
+          <div className="mt-4">
+            <p className="text-body font-semibold text-ink">{endpoint.method} request</p>
+            <JsonBlock value={requestExample(endpoint)} />
+          </div>
+        ) : null}
+
+        {view === "response" ? (
+          <div className="mt-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-body font-semibold text-ink">Response output · бүх safe field</p>
+              <Badge tone={endpoint.httpStatus === null ? "peach" : demoMode ? "sun" : "mint"}>
+                {endpoint.httpStatus === null
+                  ? "NOT ENABLED"
+                  : demoMode
+                    ? `${endpoint.httpStatus} MOCK`
+                    : "LIVE"}
+              </Badge>
+              <Badge tone="sky">{endpoint.sampleRows.length} бичлэг</Badge>
+            </div>
+            <JsonBlock value={responseExample(endpoint)} />
+            {outputs.length > 0 ? (
+              <div className="mt-4">
+                <EsisRowValues columns={columns} rows={endpoint.sampleRows} />
+              </div>
+            ) : null}
+            <p className="mt-5 text-body font-semibold text-ink">
+              {outputs.length > 0
+                ? `Гаралтын бүх талбар (${outputs.length})`
+                : `Илгээх бүх талбар (${inputs.length})`}
+            </p>
+            <FieldList fields={endpoint.fields} />
+          </div>
+        ) : null}
+
+        {view === "mapping" ? (
+          <div className="mt-4">
+            <TableShell caption={`${endpoint.name} field mapping`} minWidth="min-w-[900px]">
+              <thead>
+                <tr>
+                  <Th>ESIS field</Th>
+                  <Th>NomadKids model / field</Th>
+                  <Th>Strategy</Th>
+                  <Th>Тайлбар</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {endpoint.mappings.map((mapping) => (
+                  <tr key={mapping.sourceField}>
+                    <Td>
+                      <code>{mapping.sourceField}</code>
+                    </Td>
+                    <Td>{mapping.targetField}</Td>
+                    <Td>
+                      <Badge tone={mappingTone(mapping.strategy)}>{mapping.strategy}</Badge>
+                    </Td>
+                    <Td>{mapping.note}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </TableShell>
+          </div>
+        ) : null}
+
+        {view === "log" ? (
+          <dl className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <Definition label="Sync status" value={endpoint.syncStatus} />
+            <Definition
+              label="HTTP"
+              value={
+                endpoint.httpStatus === null
+                  ? "—"
+                  : `${endpoint.httpStatus} ${demoMode ? "MOCK" : ""}`.trim()
+              }
+            />
+            <Definition label="Mode" value={endpoint.responseMode} />
+            <Definition label="Error code" value={endpoint.syncErrorCode ?? "—"} />
+          </dl>
+        ) : null}
+
+        {endpoint.readable && endpoint.accessStatus !== "NOT_ENABLED" ? (
           <div className="mt-4 flex justify-end border-t border-border pt-4">
-            <EsisPullButton resource={endpoint.key} label="Бодит ESIS-ээс татах" />
+            <EsisPullButton
+              resource={endpoint.key}
+              label={demoMode ? "Mock response шалгах" : "Бодит ESIS-ээс татах"}
+            />
           </div>
         ) : null}
       </section>
     </Card>
+  );
+}
+
+function FieldList({ fields }: { fields: EsisOverview["endpoints"][number]["fields"] }) {
+  return (
+    <ul className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+      {fields.map((field) => (
+        <li
+          key={field.name}
+          className="rounded-row border border-border bg-surface px-3 py-2 text-caption"
+        >
+          <span className="flex items-start justify-between gap-2">
+            <span className="min-w-0">
+              <span className="block break-words text-body font-medium text-ink">
+                {field.label}
+              </span>
+              <span className="mt-1 block break-all font-mono text-caption text-faint">
+                {field.name}
+              </span>
+            </span>
+            <Badge tone={field.io === "INPUT" ? "peach" : field.ingested ? "mint" : "sun"}>
+              {field.io === "INPUT" ? "Илгээнэ" : field.ingested ? "Авна" : "Авахгүй"}
+            </Badge>
+          </span>
+          {field.omitReason ? (
+            <span className="mt-2 block text-muted">{field.omitReason}</span>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+type Endpoint = EsisOverview["endpoints"][number];
+
+const DEMO_PARAMETER: Record<string, string> = {
+  studentGroupId: "10001",
+  productId: "51001",
+  dayDate: "2026-09-08",
+  beginDate: "2026-09-01",
+};
+
+function requestParameterNames(endpoint: Endpoint): string[] {
+  if (endpoint.method === "POST") return endpoint.fields.map((field) => field.name);
+  return endpoint.domain === "FOOD" ? endpoint.params : ["institutionId", ...endpoint.params];
+}
+
+function requestExample(endpoint: Endpoint): unknown {
+  if (endpoint.method === "POST") {
+    return {
+      institutionId: 40305,
+      studentGroupId: 10001,
+      dayDate: "2026-09-08",
+      attendanceList: [
+        {
+          personId: 99000000000001,
+          attendReasonCode: "PRESENT",
+          tardyMinutes: 0,
+          attendReasonList: [],
+        },
+      ],
+    };
+  }
+
+  return Object.fromEntries(
+    requestParameterNames(endpoint).map((name) => [
+      name,
+      name === "institutionId" ? "40305" : (DEMO_PARAMETER[name] ?? "DEMO_VALUE"),
+    ]),
+  );
+}
+
+function responseExample(endpoint: Endpoint): unknown {
+  if (endpoint.method === "POST") {
+    return {
+      SUCCESS_CODE: 200,
+      RESPONSE_MESSAGE: "DEMO_SUCCESS",
+      RESULT: {
+        status: "MOCK",
+        accepted: true,
+        acceptedCount: 1,
+        referenceId: "MOCK-ATTENDANCE-20260908-001",
+      },
+    };
+  }
+  return {
+    SUCCESS_CODE: 200,
+    RESPONSE_MESSAGE: "DEMO_SUCCESS",
+    RESULT: endpoint.sampleRows,
+  };
+}
+
+function JsonBlock({ value }: { value: unknown }) {
+  return (
+    <pre className="mt-3 max-h-[520px] overflow-auto rounded-control border border-border bg-ink p-4 font-mono text-caption leading-6 text-white">
+      <code>{JSON.stringify(value, null, 2)}</code>
+    </pre>
+  );
+}
+
+function accessTone(status: Endpoint["accessStatus"]): "mint" | "sun" | "peach" | "sky" {
+  if (status === "ENABLED") return "mint";
+  if (status === "MOCK") return "sun";
+  if (status === "NOT_ENABLED") return "peach";
+  return "sky";
+}
+
+function mappingTone(
+  strategy: Endpoint["mappings"][number]["strategy"],
+): "mint" | "sky" | "sun" | "peach" {
+  if (strategy === "DIRECT" || strategy === "REQUEST") return "mint";
+  if (strategy === "MATCH" || strategy === "TRANSFORM") return "sky";
+  if (strategy === "REJECTED") return "peach";
+  return "sun";
+}
+
+function RoleCoverage() {
+  const rows = [
+    ["Удирдлага", "Байгууллага, бүлэг, багш, хүүхэд, enrollment, progression", "ENABLED"],
+    ["Багш", "Өөрийн профайл, бүлэг, хүүхэд, хөтөлбөр, ирцийн request/response", "ENABLED"],
+    ["Эцэг эх", "Өөрийн хүүхдэд sync болсон safe талбар; raw API болон token харахгүй", "LIMITED"],
+    ["Тогооч", "Food catalog endpoint-ийн service access баталгаажаагүй", "NOT ENABLED"],
+    [
+      "Нягтлан",
+      "ESIS finance/payment endpoint тодорхойлогдоогүй; fake endpoint үүсгээгүй",
+      "NOT ENABLED",
+    ],
+  ] as const;
+
+  return (
+    <section className="mt-8" aria-labelledby="esis-role-coverage">
+      <SectionHeader
+        id="esis-role-coverage"
+        title="Role тус бүрийн ESIS харагдац"
+        lede="Raw endpoint мэдээллийг зөвхөн удирдлага харна; бусад role ажлын хүрээндээ багасгасан мэдээлэл авна."
+      />
+      <TableShell caption="Role бүрийн ESIS мэдээллийн хүрээ" minWidth="min-w-[760px]">
+        <thead>
+          <tr>
+            <Th>Role</Th>
+            <Th>Харагдах мэдээлэл</Th>
+            <Th>Төлөв</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([role, scope, status]) => (
+            <tr key={role}>
+              <Td>
+                <span className="font-semibold text-ink">{role}</span>
+              </Td>
+              <Td>{scope}</Td>
+              <Td>
+                <Badge
+                  tone={status === "ENABLED" ? "mint" : status === "LIMITED" ? "sky" : "peach"}
+                >
+                  {status}
+                </Badge>
+              </Td>
+            </tr>
+          ))}
+        </tbody>
+      </TableShell>
+    </section>
   );
 }
 
@@ -523,8 +838,8 @@ function PreviewPanel({
   error: string | null;
   onRun: () => void;
 }) {
-  const demoMode = !data.deployment.configured;
-  const canRun = data.canPreview || demoMode;
+  const demoMode = data.deployment.demoMode;
+  const canRun = data.canPreview;
   const resources = data.endpoints.filter(
     (endpoint): endpoint is typeof endpoint & { key: EsisPreviewResourceKey } =>
       endpoint.previewable,
@@ -554,10 +869,10 @@ function PreviewPanel({
         />
 
         {demoMode ? (
-          <Card pad="compact" tone="mint" className="mb-4">
+          <Card pad="compact" tone="sun" className="mb-4">
             <p className="flex items-center gap-2 text-body font-medium text-ink">
-              <CheckCircle2 size={18} className="text-mint-ink" aria-hidden />
-              Demo ESIS sandbox холболт бэлэн. Сонгосон мэдээллийг синк шалгалтаар харуулна.
+              <FlaskConical size={18} className="text-sun-ink" aria-hidden />
+              Mock dry-run ажиллана. ESIS сервер рүү request илгээгдэхгүй.
             </p>
           </Card>
         ) : !data.canPreview ? (
@@ -610,7 +925,7 @@ function PreviewPanel({
           <SectionHeader
             id="esis-result-heading"
             title="Шалгалтын үр дүн"
-            lede={`Run ${result.runId} · дотоод мэдээлэлд өөрчлөлт оруулаагүй`}
+            lede={`Run ${result.runId} · ${result.mode} · дотоод мэдээлэлд өөрчлөлт оруулаагүй`}
           />
           <div className="grid gap-3 lg:grid-cols-2">
             {result.results.map((item) => {
@@ -629,7 +944,11 @@ function PreviewPanel({
                       <p className="mt-1 text-title font-semibold text-ink">{item.count} бичлэг</p>
                     </div>
                     <Badge tone={item.status === "SUCCEEDED" ? "mint" : "danger"}>
-                      {item.status === "SUCCEEDED" ? "Амжилттай" : item.errorCode}
+                      {item.status === "SUCCEEDED"
+                        ? item.source === "MOCK"
+                          ? "DEMO_SUCCESS · MOCK"
+                          : "Амжилттай"
+                        : item.errorCode}
                     </Badge>
                   </div>
                   {item.preview.length > 0 && endpoint ? (
@@ -662,28 +981,12 @@ function PreviewPanel({
   );
 }
 
-function RunHistory({ runs, demoMode }: { runs: EsisOverview["recentRuns"]; demoMode: boolean }) {
-  const visibleRuns: EsisOverview["recentRuns"] =
-    runs.length > 0 || !demoMode
-      ? runs
-      : [
-          {
-            id: "00000000-0000-4000-8000-000000000171",
-            status: "SUCCEEDED",
-            resources: ["organization", "groups", "students", "teachers"],
-            summary: { records: 15, mode: "DEMO" },
-            errorCode: null,
-            startedAt: "2026-09-08T01:15:00.000Z",
-            finishedAt: "2026-09-08T01:15:02.000Z",
-            initiatedBy: "Demo ESIS scheduler",
-          },
-        ];
-
-  if (visibleRuns.length === 0) {
+function RunHistory({ runs }: { runs: EsisOverview["recentRuns"] }) {
+  if (runs.length === 0) {
     return (
       <EmptyState
         title="Синк ажиллагааны түүх"
-        description="Demo sandbox-ийн дараагийн синк ажиллагаа энд бүртгэгдэнэ."
+        description="Dry-run ажиллуулсны дараа MOCK эсвэл LIVE төлөвтэй түүх энд бүртгэгдэнэ."
         icon={<History aria-hidden />}
       />
     );
@@ -698,15 +1001,19 @@ function RunHistory({ runs, demoMode }: { runs: EsisOverview["recentRuns"]; demo
             <Th>Эхэлсэн</Th>
             <Th>Мэдээллийн багц</Th>
             <Th>Ажиллуулсан</Th>
+            <Th>Эх үүсвэр</Th>
             <Th>Төлөв</Th>
           </tr>
         </thead>
         <tbody>
-          {visibleRuns.map((run) => (
+          {runs.map((run) => (
             <tr key={run.id}>
               <Td>{formatRelative(run.startedAt)}</Td>
               <Td>{run.resources.length} багц</Td>
               <Td>{run.initiatedBy}</Td>
+              <Td>
+                <Badge tone={run.mode === "MOCK" ? "sun" : "mint"}>{run.mode}</Badge>
+              </Td>
               <Td>
                 <RunStatus status={run.status} />
               </Td>
@@ -716,35 +1023,6 @@ function RunHistory({ runs, demoMode }: { runs: EsisOverview["recentRuns"]; demo
       </TableShell>
     </section>
   );
-}
-
-function buildDemoPreview(
-  data: EsisOverview,
-  selected: EsisPreviewResourceKey[],
-): EsisPreviewResult {
-  return {
-    runId: "00000000-0000-4000-8000-000000000171",
-    dryRun: true,
-    status: "SUCCEEDED",
-    results: selected.map((resource, index) => {
-      const endpoint = data.endpoints.find((candidate) => candidate.key === resource);
-      const rows = endpoint?.sampleRows ?? [];
-      /*
-       * ★ The count is the number of rows, not a figure of its own. It used to
-       * be a hand-kept table, which is how "10 бичлэг" came to sit above one
-       * row — a dry-run whose own summary disagrees with what it shows is worse
-       * than no dry-run.
-       */
-      return {
-        resource,
-        count: rows.length,
-        durationMs: 118 + index * 37,
-        preview: rows,
-        status: "SUCCEEDED" as const,
-        errorCode: null,
-      };
-    }),
-  };
 }
 
 function RunStatus({ status }: { status: EsisOverview["recentRuns"][number]["status"] }) {

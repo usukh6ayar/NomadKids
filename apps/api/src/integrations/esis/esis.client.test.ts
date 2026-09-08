@@ -122,8 +122,15 @@ describe("configuration", () => {
   it("reports readiness without revealing the token", () => {
     const described = configured().describe();
 
+    // ★ `demoMode` and `mode` joined the payload on 2026-09-09, so the admin
+    // screen can say which of the two ESIS modes is live. They are booleans
+    // and a literal, not credentials — the assertion below is what this test
+    // is actually for, and it walks the whole serialised object, so a field
+    // added here can never smuggle the token past it.
     expect(described).toEqual({
       configured: true,
+      demoMode: false,
+      mode: "LIVE",
       baseUrl: "https://esis.example.test/api",
       hasToken: true,
     });

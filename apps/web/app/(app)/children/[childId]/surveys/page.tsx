@@ -13,7 +13,7 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { RowCard, RowList } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { SURVEY_TONE_BG, SURVEY_TYPE_META } from "@/lib/survey-meta";
+import { SURVEY_CATEGORY_META, SURVEY_TONE_BG } from "@/lib/survey-meta";
 import { cn } from "@/lib/utils";
 
 const activeSurveysSchema = z.array(surveySchema);
@@ -83,7 +83,7 @@ export default function ChildSurveysPage() {
         {data.map((survey) => {
           const answered = Boolean(survey.respondedByMe);
           const open = !answered && survey.status !== "CLOSED";
-          const meta = SURVEY_TYPE_META[survey.questions[0]?.type ?? "TEXT"];
+          const meta = SURVEY_CATEGORY_META[survey.category];
           const questionCount = survey.questions.length;
 
           const body = (

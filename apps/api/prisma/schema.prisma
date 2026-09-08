@@ -3068,15 +3068,25 @@ enum SurveyPeriod {
   ENDLINE // Жилийн эцсийн үнэлгээ — тавдугаар сар
 }
 
+enum SurveyCategory {
+  PARENT_ENGAGEMENT
+  SATISFACTION
+  SOCIAL_DEVELOPMENT
+  PHYSICAL_DEVELOPMENT
+  COGNITIVE_DEVELOPMENT
+  HABITS_INDEPENDENCE
+}
+
 model Survey {
-  id             String       @id @default(uuid()) @db.Uuid
-  kindergartenId String       @db.Uuid
+  id             String         @id @default(uuid()) @db.Uuid
+  kindergartenId String         @db.Uuid
   title          String
   description    String?
+  category       SurveyCategory @default(PARENT_ENGAGEMENT)
   scope          SurveyScope
-  kind           SurveyKind   @default(FORM)
-  status         SurveyStatus @default(DRAFT)
-  createdById    String?      @db.Uuid
+  kind           SurveyKind     @default(FORM)
+  status         SurveyStatus   @default(DRAFT)
+  createdById    String?        @db.Uuid
   publishedAt    DateTime?
   closedAt       DateTime?
 
@@ -3149,6 +3159,7 @@ model Survey {
   clones       Survey[]         @relation("SurveyClone")
 
   @@index([kindergartenId, status])
+  @@index([kindergartenId, category])
   /// The parent's list: published surveys for their child's group, or for all.
   @@index([kindergartenId, groupId])
   /// "This year's waves, in order" — what Module 1.2 asks for.

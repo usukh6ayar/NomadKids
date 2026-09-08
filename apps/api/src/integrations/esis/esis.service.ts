@@ -168,6 +168,14 @@ export class EsisService {
     return this.config.isConfigured;
   }
 
+  get isDemoMode(): boolean {
+    return this.config.isDemoMode;
+  }
+
+  get isAvailable(): boolean {
+    return this.config.isAvailable;
+  }
+
   /** Safe to show an operator: no token, not even its length. */
   status(): ReturnType<EsisConfig["describe"]> {
     return this.config.describe();
@@ -210,6 +218,7 @@ export class EsisService {
       institution?: boolean;
     };
     return this.getList(
+      key,
       reader.endpoint,
       reader.schema,
       params,
@@ -264,6 +273,7 @@ export class EsisService {
       path: ESIS_ENDPOINTS.saveAttendanceV3.path,
       method: ESIS_ENDPOINTS.saveAttendanceV3.method,
       body: parsed,
+      demoFixture: "saveAttendanceV3",
     });
   }
 
@@ -296,6 +306,7 @@ export class EsisService {
   }
 
   private async getList<T>(
+    key: EsisReadableKey,
     endpoint: { method: "GET"; path: string },
     schema: import("zod").ZodType<T>,
     pathValues: Record<string, string | number> = {},
@@ -310,6 +321,7 @@ export class EsisService {
       method: endpoint.method,
       query: institutionScoped ? { institutionId } : undefined,
       parse: esisListParser(schema),
+      demoFixture: key,
     });
   }
 }

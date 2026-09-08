@@ -1,0 +1,27 @@
+{
+  "SUCCESS_CODE": 200,
+  "RESPONSE_MESSAGE": "DEMO_SUCCESS",
+  "RESULT": [
+    {
+      "institutionId": "40305",
+      "studentProgramId": "45001",
+      "academicLevel": "2",
+      "academicLevelName": "Дунд бүлэг",
+      "studentGroupId": "10001",
+      "studentGroupName": "Наран demo бүлэг",
+      "programStatusCode": "ACTIVE",
+      "programStatusName": "Идэвхтэй",
+      "approvalStatusCode": "APPROVED",
+      "approvalStatusName": "Баталгаажсан",
+      "personId": "99000000000001",
+      "lastName": "Demo",
+      "firstName": "Хүүхэд-01",
+      "dateOfBirth": "2021-04-12",
+      "genderCode": "M",
+      "genderName": "Эрэгтэй",
+      "actionId": "2",
+      "actionName": "Элсэлт",
+      "actionDate": "2026-09-01"
+    }
+  ]
+}

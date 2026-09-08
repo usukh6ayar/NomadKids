@@ -2,6 +2,7 @@ import { ESIS_ENDPOINTS } from "./esis.endpoints";
 import { ESIS_FIELDS, ESIS_FIELD_SOURCE, sampleRow } from "./esis.fields";
 import { sampleRows } from "./esis.samples";
 import { ESIS_READABLE_KEYS, esisReaderParams, type EsisReadableKey } from "./esis.service";
+import { fieldMappings } from "./esis.mapping";
 
 export type EsisEndpointKey = keyof typeof ESIS_ENDPOINTS;
 export type EsisDomain = "ORGANIZATION" | "ROSTER" | "ATTENDANCE" | "FOOD";
@@ -166,10 +167,27 @@ export const ESIS_RESOURCE_CATALOG = (Object.keys(ESIS_ENDPOINTS) as EsisEndpoin
       .length,
     sampleRow: sampleRow(key),
     sampleRows: sampleRows(key),
+    direction:
+      ESIS_ENDPOINTS[key].method === "GET"
+        ? ("ESIS_TO_NOMADKIDS" as const)
+        : ("NOMADKIDS_TO_ESIS" as const),
+    targetModel: targetModel(key),
+    mappings: fieldMappings(key, ESIS_FIELDS[key]),
     readable: isReadable(key),
     params: isReadable(key) ? [...esisReaderParams(key)] : [],
   }),
 );
+
+function targetModel(key: EsisEndpointKey): string {
+  if (key === "organization") return "Kindergarten";
+  if (key === "academicYearStatuses") return "SchoolYear";
+  if (key === "groups") return "Group / GroupTeacher";
+  if (key === "students" || key === "groupStudents") return "Child / Enrollment";
+  if (key === "studentMovements") return "Enrollment";
+  if (key === "teachers" || key === "staff") return "User / Membership";
+  if (key === "groupAttendance" || key === "saveAttendanceV3") return "Attendance";
+  return "Ingredient / Recipe (NOT ENABLED)";
+}
 
 export const ESIS_PREVIEW_RESOURCES = [
   "organization",

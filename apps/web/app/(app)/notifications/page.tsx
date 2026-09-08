@@ -48,7 +48,7 @@ import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { excerpt, formatRelative, fullName } from "@/lib/format";
-import { SURVEY_TONE_BG, SURVEY_TYPE_META } from "@/lib/survey-meta";
+import { SURVEY_CATEGORY_META, SURVEY_TONE_BG } from "@/lib/survey-meta";
 import { cn } from "@/lib/utils";
 
 const listSchema = paginated(notificationSchema);
@@ -777,7 +777,7 @@ function SurveysTab({
           {data.map((survey) => {
             const answered = Boolean(survey.respondedByMe);
             const open = !answered && survey.status !== "CLOSED";
-            const meta = SURVEY_TYPE_META[survey.questions[0]?.type ?? "TEXT"];
+            const meta = SURVEY_CATEGORY_META[survey.category];
             const questionCount = survey.questions.length;
 
             const body = (

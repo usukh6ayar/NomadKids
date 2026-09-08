@@ -230,7 +230,9 @@ function GroupAttendance() {
       }),
     onSuccess: () => {
       toast.success(
-        `Ирц ${esisPreview.data?.demo ? "Demo ESIS" : "ESIS"} рүү амжилттай илгээгдлээ.`,
+        esisPreview.data?.demo
+          ? "Mock client ирцийг хүлээн авлаа (DEMO_SUCCESS). Production ESIS рүү илгээгээгүй."
+          : "Ирц ESIS рүү амжилттай илгээгдлээ.",
       );
       void queryClient.invalidateQueries({ queryKey: ["attendance"] });
     },
@@ -504,12 +506,14 @@ function GroupEsisPayload({
         title="ESIS рүү илгээх утга"
         lede={`API-000269 · ID ${preview.apiId} · POST ${preview.endpoint}`}
         action={
-          <Badge tone="mint">
-            <CheckCircle2 size={13} aria-hidden />
+          <Badge tone={preview.demo ? "sun" : "mint"}>
+            {!preview.demo ? <CheckCircle2 size={13} aria-hidden /> : null}
             {submittedAt
-              ? `Илгээсэн ${submittedAt.slice(11, 16)}`
+              ? preview.demo
+                ? `DEMO_SUCCESS ${submittedAt.slice(11, 16)}`
+                : `Илгээсэн ${submittedAt.slice(11, 16)}`
               : preview.demo
-                ? "Demo горим"
+                ? "MOCK · production руу илгээхгүй"
                 : "ESIS бэлэн"}
           </Badge>
         }

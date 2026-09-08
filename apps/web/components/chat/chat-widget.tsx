@@ -2,8 +2,21 @@
 
 import * as Dialog from "@radix-ui/react-dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, MessageCircle, Send, X } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  ArrowLeft,
+  CloudOff,
+  Ellipsis,
+  MessageCircle,
+  MessageSquare,
+  Paperclip,
+  Search,
+  Send,
+  SmilePlus,
+  RotateCcw,
+  Users,
+  X,
+} from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { z } from "zod";
 import { chatMessageSchema, chatRoomSchema, unreadCountSchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
@@ -159,6 +172,8 @@ export function ChatWidget() {
             <ChatList
               rooms={rooms.data}
               loading={rooms.isLoading}
+              error={rooms.isError}
+              onRetry={() => void rooms.refetch()}
               onOpen={(key) => setRoomKey(key)}
             />
           )}
@@ -172,13 +187,22 @@ export function ChatWidget() {
 export function ChatList({
   rooms,
   loading,
+  error = false,
+  onRetry,
   onOpen,
   activeKey,
+  action,
+  searchPlaceholder = "Нэр эсвэл мессежээр хайх",
   chrome = dialogChrome,
 }: {
   rooms: z.infer<typeof roomsSchema> | undefined;
   loading: boolean;
+  error?: boolean;
+  onRetry?: () => void;
   onOpen: (key: string) => void;
+  /** Optional full-page action rendered above the room search. */
+  action?: ReactNode;
+  searchPlaceholder?: string;
   /**
    * Which room the frame is showing beside this list, if any.
    *
@@ -190,19 +214,52 @@ export function ChatList({
   chrome?: ChatChrome;
 }) {
   const { Title, Close } = chrome;
+  const [query, setQuery] = useState("");
+  const normalizedQuery = query.trim().toLocaleLowerCase("mn");
+  const visibleRooms = useMemo(
+    () =>
+      rooms?.filter((room) => {
+        if (!normalizedQuery) return true;
+        return [
+          room.name,
+          room.lastMessage?.body,
+          room.lastMessage?.author ? fullName(room.lastMessage.author) : undefined,
+        ]
+          .filter(Boolean)
+          .some((value) => value!.toLocaleLowerCase("mn").includes(normalizedQuery));
+      }),
+    [normalizedQuery, rooms],
+  );
 
   return (
     <>
-      <header className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-        <Title className="text-lead font-semibold text-ink">Чатууд</Title>
-        {Close ? (
-          <Close
-            aria-label="Хаах"
-            className="grid size-11 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
-          >
-            <X size={18} aria-hidden="true" />
-          </Close>
-        ) : null}
+      <header className="border-b border-border bg-surface px-4 pb-3 pt-4">
+        <div className="flex min-h-11 items-center justify-between gap-2">
+          {action ?? <Title className="text-title font-bold text-ink">Чатууд</Title>}
+          {Close ? (
+            <Close
+              aria-label="Хаах"
+              className="grid size-11 place-items-center rounded-control text-muted transition-colors hover:bg-canvas hover:text-ink"
+            >
+              <X size={19} aria-hidden="true" />
+            </Close>
+          ) : null}
+        </div>
+        <label className="relative mt-2 block">
+          <span className="sr-only">Чатын нэр эсвэл мессежээр хайх</span>
+          <Search
+            size={18}
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
+          />
+          <Input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={searchPlaceholder}
+            className="h-[44px] bg-canvas pl-11"
+          />
+        </label>
       </header>
 
       {loading ? (
@@ -210,55 +267,82 @@ export function ChatList({
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-12 w-full" />
         </div>
+      ) : error ? (
+        <div className="grid flex-1 place-items-center px-6 py-10 text-center">
+          <div>
+            <CloudOff size={30} aria-hidden="true" className="mx-auto mb-3 text-faint" />
+            <p className="text-body font-semibold text-ink">Чатуудыг ачаалж чадсангүй</p>
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-control px-3 text-body font-medium text-primary hover:bg-primary-soft"
+            >
+              <RotateCcw size={17} aria-hidden="true" />
+              Дахин оролдох
+            </button>
+          </div>
+        </div>
       ) : !rooms || rooms.length === 0 ? (
         <p className="px-6 py-10 text-center text-body text-muted">
           Танд нээлттэй чат байхгүй байна.
         </p>
+      ) : visibleRooms?.length === 0 ? (
+        <div className="grid flex-1 place-items-center px-6 py-10 text-center">
+          <div>
+            <Search size={28} aria-hidden="true" className="mx-auto mb-3 text-faint" />
+            <p className="text-body font-medium text-ink">Илэрц олдсонгүй</p>
+            <p className="mt-1 text-caption text-muted">Өөр нэр эсвэл мессежээр хайна уу.</p>
+          </div>
+        </div>
       ) : (
-        <ul className="min-h-0 flex-1 divide-y divide-border-soft overflow-y-auto">
-          {rooms.map((room) => (
+        <ul className="min-h-0 flex-1 overflow-y-auto bg-surface py-1">
+          {visibleRooms?.map((room) => (
             <li key={room.key}>
               <button
                 type="button"
                 onClick={() => onOpen(room.key)}
                 aria-current={room.key === activeKey ? "true" : undefined}
                 className={cn(
-                  "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-canvas",
-                  room.key === activeKey && "bg-primary-soft hover:bg-primary-soft",
+                  "relative flex min-h-[84px] w-full items-center gap-3 border-b border-border-soft px-4 py-3 text-left transition-colors hover:bg-canvas",
+                  room.key === activeKey &&
+                    "bg-primary-soft before:absolute before:inset-y-2 before:left-0 before:w-1 before:rounded-r-pill before:bg-primary hover:bg-primary-soft",
                 )}
               >
                 {/* Initials, not an avatar: a room is a group of people and
                     there is no one face for it. */}
                 <span
                   aria-hidden="true"
-                  className="grid size-10 shrink-0 place-items-center rounded-pill bg-primary-soft text-body font-semibold text-primary"
+                  className={cn(
+                    "grid size-12 shrink-0 place-items-center rounded-pill text-lead font-bold",
+                    room.kind === "GROUP"
+                      ? "bg-mint text-mint-ink"
+                      : "bg-primary-soft text-primary",
+                  )}
                 >
                   {room.name.slice(0, 1)}
                 </span>
 
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline justify-between gap-2">
-                    <span className="truncate text-body font-semibold text-ink">{room.name}</span>
+                    <span className="truncate text-body font-bold text-ink">{room.name}</span>
                     {room.lastMessage ? (
                       <span className="shrink-0 text-caption tabular-nums text-muted">
-                        {timeOfDay(room.lastMessage.createdAt)}
+                        {roomListTime(room.lastMessage.createdAt)}
                       </span>
                     ) : null}
                   </span>
-                  <span className="block text-caption text-muted">{room.memberCount} гишүүн</span>
-                  {room.lastMessage ? (
-                    <span className="mt-0.5 block truncate text-caption text-muted">
-                      {room.lastMessage.body}
+                  <span className="mt-1 flex items-center justify-between gap-2">
+                    <span className="truncate text-caption text-muted">
+                      {room.lastMessage?.body ?? `${room.memberCount} гишүүн`}
                     </span>
-                  ) : null}
-                </span>
-
-                {room.unreadCount > 0 ? (
-                  <span className="mt-1 flex min-w-[20px] shrink-0 items-center justify-center rounded-pill bg-danger px-1 text-caption font-bold leading-5 text-white">
-                    {room.unreadCount > 99 ? "99+" : room.unreadCount}
-                    <span className="sr-only"> шинэ мессеж</span>
+                    {room.unreadCount > 0 ? (
+                      <span className="flex min-w-[22px] shrink-0 items-center justify-center rounded-pill bg-primary px-1.5 text-caption font-bold leading-[22px] text-primary-ink">
+                        {room.unreadCount > 99 ? "99+" : room.unreadCount}
+                        <span className="sr-only"> шинэ мессеж</span>
+                      </span>
+                    ) : null}
                   </span>
-                ) : null}
+                </span>
               </button>
             </li>
           ))}
@@ -295,7 +379,12 @@ export function ChatRoom({
   const { Title, Close } = chrome;
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState("");
+  const [messageQuery, setMessageQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const bottom = useRef<HTMLDivElement | null>(null);
+  const draftId = useId();
 
   const history = useQuery({
     queryKey: qk.chatMessages(room.key),
@@ -346,6 +435,15 @@ export function ChatRoom({
   // conversation reads, so it is reversed here rather than sorted on the server
   // where "newest first" is the right default for pagination.
   const messages = [...(history.data?.items ?? [])].reverse();
+  const normalizedMessageQuery = messageQuery.trim().toLocaleLowerCase("mn");
+  const visibleMessages = normalizedMessageQuery
+    ? messages.filter((message) =>
+        [message.body, message.author ? fullName(message.author) : ""]
+          .join(" ")
+          .toLocaleLowerCase("mn")
+          .includes(normalizedMessageQuery),
+      )
+    : messages;
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: "end" });
@@ -353,45 +451,157 @@ export function ChatRoom({
 
   return (
     <>
-      <header className="flex items-center gap-2 border-b border-border px-2 py-2.5">
-        {onBack ? (
-          <button
-            type="button"
-            onClick={onBack}
-            aria-label="Чатууд руу буцах"
+      <div className="border-b border-border bg-surface">
+        <header className="flex min-h-[76px] items-center gap-2 px-3 py-2.5 sm:px-4">
+          {onBack ? (
+            <button
+              type="button"
+              onClick={onBack}
+              aria-label="Чатууд руу буцах"
+              className={cn(
+                "grid size-11 shrink-0 place-items-center rounded-control text-muted transition-colors hover:bg-canvas hover:text-ink",
+                hideBackAtLg && "lg:hidden",
+              )}
+            >
+              <ArrowLeft size={20} aria-hidden="true" />
+            </button>
+          ) : null}
+
+          <span
+            aria-hidden="true"
             className={cn(
-              "grid size-9 shrink-0 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink",
-              hideBackAtLg && "lg:hidden",
+              "hidden size-11 shrink-0 place-items-center rounded-pill text-body font-bold sm:grid",
+              room.kind === "GROUP" ? "bg-mint text-mint-ink" : "bg-primary-soft text-primary",
             )}
           >
-            <ArrowLeft size={18} aria-hidden="true" />
-          </button>
-        ) : null}
-        <div className="min-w-0 flex-1 ps-1">
-          <Title className="truncate text-body font-semibold text-ink">{room.name}</Title>
-          <p className="text-caption text-muted">{room.memberCount} гишүүн</p>
-        </div>
-        {Close ? (
-          <Close
-            aria-label="Хаах"
-            className="grid size-9 shrink-0 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
-          >
-            <X size={18} aria-hidden="true" />
-          </Close>
-        ) : null}
-      </header>
+            {room.name.slice(0, 1)}
+          </span>
 
-      <div className="min-h-0 flex-1 overflow-y-auto bg-canvas px-3 py-3">
+          <div className="min-w-0 flex-1">
+            <Title className="truncate text-lead font-bold text-ink">{room.name}</Title>
+            <p className="mt-0.5 truncate text-caption text-muted">{room.memberCount} гишүүн</p>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                setSearchOpen((open) => !open);
+                setDetailsOpen(false);
+              }}
+              aria-label="Мессежээс хайх"
+              aria-expanded={searchOpen}
+              className={cn(
+                "grid size-11 place-items-center rounded-control border border-border text-muted transition-colors hover:bg-canvas hover:text-ink",
+                searchOpen && "border-primary bg-primary-soft text-primary",
+              )}
+            >
+              <Search size={19} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDetailsOpen((open) => !open);
+                setSearchOpen(false);
+              }}
+              aria-label="Чатын мэдээлэл"
+              aria-expanded={detailsOpen}
+              className={cn(
+                "hidden size-11 place-items-center rounded-control border border-border text-muted transition-colors hover:bg-canvas hover:text-ink sm:grid",
+                detailsOpen && "border-primary bg-primary-soft text-primary",
+              )}
+            >
+              <Users size={19} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDetailsOpen((open) => !open);
+                setSearchOpen(false);
+              }}
+              aria-label="Нэмэлт мэдээлэл"
+              aria-expanded={detailsOpen}
+              className="hidden size-11 place-items-center rounded-control text-muted transition-colors hover:bg-canvas hover:text-ink md:grid"
+            >
+              <Ellipsis size={20} aria-hidden="true" />
+            </button>
+            {Close ? (
+              <Close
+                aria-label="Хаах"
+                className="grid size-11 shrink-0 place-items-center rounded-control text-muted transition-colors hover:bg-canvas hover:text-ink"
+              >
+                <X size={19} aria-hidden="true" />
+              </Close>
+            ) : null}
+          </div>
+        </header>
+
+        {searchOpen ? (
+          <div className="border-t border-border-soft px-3 py-2.5 sm:px-4">
+            <label className="relative block">
+              <span className="sr-only">Энэ чатын мессежээс хайх</span>
+              <Search
+                size={17}
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
+              />
+              <Input
+                type="search"
+                autoFocus
+                value={messageQuery}
+                onChange={(event) => setMessageQuery(event.target.value)}
+                placeholder="Энэ чатын мессежээс хайх"
+                className="h-[44px] bg-canvas pl-11"
+              />
+            </label>
+          </div>
+        ) : null}
+
+        {detailsOpen ? (
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-border-soft bg-canvas px-4 py-2.5 text-caption text-muted">
+            <span className="font-medium text-ink">
+              {room.kind === "GROUP" ? "Бүлгийн чат" : "Ажилтны чат"}
+            </span>
+            <span>{room.memberCount} гишүүн</span>
+            <span>{room.unreadCount > 0 ? `${room.unreadCount} уншаагүй` : "Шинэ мессежгүй"}</span>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto bg-surface px-3 py-4 sm:px-5">
         {history.isLoading ? (
-          <div className="flex flex-col gap-2">
-            <Skeleton className="h-10 w-2/3" />
-            <Skeleton className="ml-auto h-10 w-1/2" />
+          <div className="mx-auto flex w-full max-w-[860px] flex-col gap-3">
+            <Skeleton className="h-12 w-2/3" />
+            <Skeleton className="ml-auto h-12 w-1/2" />
+          </div>
+        ) : history.isError ? (
+          <div className="grid min-h-full place-items-center px-6 py-10 text-center">
+            <div>
+              <CloudOff size={32} aria-hidden="true" className="mx-auto mb-3 text-faint" />
+              <p className="text-body font-semibold text-ink">Мессежүүдийг ачаалж чадсангүй</p>
+              <button
+                type="button"
+                onClick={() => void history.refetch()}
+                className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-control px-3 text-body font-medium text-primary hover:bg-primary-soft"
+              >
+                <RotateCcw size={17} aria-hidden="true" />
+                Дахин оролдох
+              </button>
+            </div>
           </div>
         ) : messages.length === 0 ? (
-          <p className="py-10 text-center text-body text-muted">Эхний мессежээ бичнэ үү.</p>
+          <ChatEmptyState />
+        ) : visibleMessages.length === 0 ? (
+          <div className="grid min-h-full place-items-center py-10 text-center">
+            <div>
+              <Search size={30} aria-hidden="true" className="mx-auto mb-3 text-faint" />
+              <p className="text-body font-semibold text-ink">Тохирох мессеж олдсонгүй</p>
+              <p className="mt-1 text-caption text-muted">Хайлтын үгээ өөрчилж үзнэ үү.</p>
+            </div>
+          </div>
         ) : (
-          <ul className="flex flex-col gap-2">
-            {messages.map((message) => (
+          <ul className="mx-auto flex w-full max-w-[860px] flex-col gap-3">
+            {visibleMessages.map((message) => (
               <MessageBubble key={message.id} message={message} />
             ))}
           </ul>
@@ -399,41 +609,105 @@ export function ChatRoom({
         <div ref={bottom} />
       </div>
 
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          const body = draft.trim();
-          if (body && !send.isPending) send.mutate(body);
-        }}
-        className="flex items-center gap-2 border-t border-border px-3 py-2.5"
-      >
-        <label htmlFor="chat-draft" className="sr-only">
-          Мессеж бичих
-        </label>
-        <Input
-          id="chat-draft"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder="Мессеж бичих…"
-          autoComplete="off"
-          disabled={send.isPending}
-        />
-        <button
-          type="submit"
-          aria-label="Илгээх"
-          disabled={!draft.trim() || send.isPending}
-          className="grid size-12 shrink-0 place-items-center rounded-control bg-primary text-primary-ink transition-colors hover:bg-primary-hover disabled:bg-track disabled:text-faint"
-        >
-          <Send size={18} aria-hidden="true" />
-        </button>
-      </form>
+      <div className="relative border-t border-border bg-surface p-3 sm:p-4">
+        {emojiOpen ? (
+          <div className="absolute bottom-[76px] right-14 z-10 flex gap-1 rounded-card border border-border bg-surface p-2 shadow-lg sm:right-20">
+            {["😊", "👍", "❤️", "🎉", "🙏"].map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => {
+                  setDraft((value) => `${value}${emoji}`);
+                  setEmojiOpen(false);
+                }}
+                aria-label={`${emoji} нэмэх`}
+                className="grid size-11 place-items-center rounded-control text-title transition-colors hover:bg-canvas"
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
-      {send.isError ? (
-        <p role="alert" className="border-t border-border px-3 py-2 text-caption text-danger">
-          {errorMessage(send.error)}
-        </p>
-      ) : null}
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            const body = draft.trim();
+            if (body && !send.isPending) send.mutate(body);
+          }}
+          className="mx-auto flex w-full max-w-[940px] items-center gap-2"
+        >
+          <button
+            type="button"
+            disabled
+            aria-label="Файл хавсаргах боломж одоогоор идэвхгүй"
+            title="Файл хавсаргах үйлчилгээ одоогоор идэвхгүй"
+            className="grid size-12 shrink-0 place-items-center rounded-control border border-border text-faint"
+          >
+            <Paperclip size={20} aria-hidden="true" />
+          </button>
+
+          <div className="relative min-w-0 flex-1">
+            <label htmlFor={draftId} className="sr-only">
+              Мессеж бичих
+            </label>
+            <Input
+              id={draftId}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder="Бичих..."
+              autoComplete="off"
+              maxLength={2000}
+              disabled={send.isPending}
+              className="bg-canvas pr-12"
+            />
+            <button
+              type="button"
+              onClick={() => setEmojiOpen((open) => !open)}
+              aria-label="Эможи сонгох"
+              aria-expanded={emojiOpen}
+              className="absolute right-0.5 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-control text-muted transition-colors hover:bg-surface hover:text-ink"
+            >
+              <SmilePlus size={20} aria-hidden="true" />
+            </button>
+          </div>
+
+          <button
+            type="submit"
+            aria-label="Илгээх"
+            disabled={!draft.trim() || send.isPending}
+            className="grid size-12 shrink-0 place-items-center rounded-control bg-primary text-primary-ink shadow-sm transition-all hover:bg-primary-hover hover:shadow-md disabled:bg-track disabled:text-faint disabled:shadow-none"
+          >
+            <Send size={20} aria-hidden="true" />
+          </button>
+        </form>
+
+        {send.isError ? (
+          <p role="alert" className="mx-auto mt-2 max-w-[940px] text-caption text-danger">
+            {errorMessage(send.error)}
+          </p>
+        ) : null}
+      </div>
     </>
+  );
+}
+
+function ChatEmptyState() {
+  return (
+    <div className="grid min-h-full place-items-center px-4 py-12 text-center">
+      <div>
+        <div className="relative mx-auto mb-6 h-20 w-28" aria-hidden="true">
+          <span className="absolute bottom-0 right-1 grid size-14 place-items-center rounded-card bg-primary-soft text-primary/40">
+            <MessageSquare size={31} strokeWidth={1.8} />
+          </span>
+          <span className="absolute left-1 top-0 grid size-16 place-items-center rounded-card bg-primary text-primary-ink shadow-sm">
+            <MessageCircle size={34} strokeWidth={1.9} />
+          </span>
+        </div>
+        <p className="text-title font-bold text-ink">Эхний бичлэгээ илгээнэ үү.</p>
+        <p className="mt-2 text-body text-muted">Энэ чатад одоогоор мессеж алга байна.</p>
+      </div>
+    </div>
   );
 }
 
@@ -454,7 +728,7 @@ function MessageBubble({ message }: { message: z.infer<typeof chatMessageSchema>
       ) : null}
       <div
         className={cn(
-          "max-w-[80%] rounded-card px-3 py-2",
+          "max-w-[82%] rounded-card px-3.5 py-2.5 sm:max-w-[72%]",
           message.mine ? "bg-primary text-primary-ink" : "border border-border bg-surface text-ink",
         )}
       >
@@ -472,4 +746,28 @@ function timeOfDay(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function roomListTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const now = new Date();
+  const sameDay =
+    now.getFullYear() === date.getFullYear() &&
+    now.getMonth() === date.getMonth() &&
+    now.getDate() === date.getDate();
+  if (sameDay) return timeOfDay(iso);
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (
+    yesterday.getFullYear() === date.getFullYear() &&
+    yesterday.getMonth() === date.getMonth() &&
+    yesterday.getDate() === date.getDate()
+  ) {
+    return "Өчигдөр";
+  }
+
+  return `${date.getMonth() + 1} сар ${date.getDate()}`;
 }

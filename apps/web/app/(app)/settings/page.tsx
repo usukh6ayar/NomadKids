@@ -17,7 +17,8 @@ import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useLogout, useSession } from "@/lib/auth/session";
 import { buildEsisDemoProfile, type EsisDemoField } from "@/lib/esis/demo-profile";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, PasswordInput } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
@@ -154,16 +155,25 @@ function EsisProfileSection() {
   if (!esis) return null;
 
   return (
-    <section aria-label="Ажлын мэдээлэл">
+    <section aria-labelledby="esis-profile-heading">
+      <SectionHeader
+        id="esis-profile-heading"
+        title="ESIS мэдээлэл"
+        action={<Badge tone="sun">Demo / Test data · MOCK</Badge>}
+      />
+
       <Card pad="roomy" className="flex flex-col gap-5">
         <div className="flex flex-wrap items-start gap-3 border-b border-border-soft pb-5">
           <span className="flex size-11 shrink-0 items-center justify-center rounded-control bg-sky text-sky-ink">
             <Database size={21} aria-hidden="true" />
           </span>
           <div className="min-w-0 flex-1">
-            <h2 className="font-semibold text-ink">{esis.resourceLabel}</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-semibold text-ink">{esis.resourceLabel}</h2>
+              <Badge tone="sun">Жинхэнэ ESIS синк биш</Badge>
+            </div>
             <p className="mt-0.5 text-body text-muted">
-              Албан тушаал, томилгоо, байгууллагын мэдээлэл
+              Эх сурвалж: ESIS schema-тай mock fixture · {esis.resource}
             </p>
           </div>
           <p className="shrink-0 text-caption text-muted">Шинэчилсэн: {esis.syncedAt}</p>

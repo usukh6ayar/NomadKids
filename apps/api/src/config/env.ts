@@ -109,6 +109,14 @@ export const envSchema = z.object({
    */
   ESIS_BASE_URL: z.string().default(""),
   ESIS_TOKEN: z.string().default(""),
+  /**
+   * Uses deterministic, schema-shaped fixtures and makes no outbound ESIS
+   * request. Disable only after the production Bearer token has been issued.
+   */
+  ESIS_DEMO_MODE: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
   /** @deprecated Institution scope is stored per kindergarten. */
   ESIS_INSTITUTION_ID: z.string().default(""),
   /**

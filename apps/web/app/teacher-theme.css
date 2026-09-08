@@ -10,11 +10,11 @@ body:has([data-app-theme]) {
 }
 
 body:has([data-app-theme="teacher"]) {
-  --color-canvas: #f6fbff;
-  --color-sunken: #f2f8ff;
-  --color-border: #dce6f1;
-  --color-border-soft: #edf3f9;
-  --color-ink: #173e70;
+  --color-canvas: #f4f8fb;
+  --color-sunken: #f0f6fb;
+  --color-border: #d9e5ef;
+  --color-border-soft: #eaf1f6;
+  --color-ink: #153b66;
   --color-primary: #2582eb;
   --color-primary-strong: #1767bc;
   --color-primary-hover: #1d73d3;
@@ -35,7 +35,7 @@ body:has([data-app-theme="teacher"]) {
   --workspace-button-start: #2582eb;
   --workspace-button-end: #3d9cf5;
   --workspace-button-hover: #1d73d3;
-  --workspace-background: linear-gradient(120deg, #f6fbff 0%, #eff9ff 55%, #f3fbef 100%);
+  --workspace-background: linear-gradient(135deg, #f7fbff 0%, #f3f8fb 58%, #f7fbf6 100%);
 }
 
 body:has([data-app-theme="admin"]) {
@@ -182,6 +182,18 @@ body:has([data-app-theme="teacher"]) [data-brand-mark] + span > span:first-child
   font-weight: 800;
 }
 
+body:has([data-app-theme="teacher"]) [data-app-theme="teacher"] > nav[aria-label="Үндсэн цэс"] {
+  background: #ffffff;
+  box-shadow: 10px 0 34px -28px rgb(28 78 121 / 0.35);
+}
+
+body:has([data-app-theme="teacher"])
+  [data-app-theme="teacher"]
+  > nav[aria-label="Үндсэн цэс"]
+  > a:first-child {
+  padding-inline: 4px;
+}
+
 body:has([data-app-theme]) nav a[aria-current="page"] {
   background: linear-gradient(100deg, var(--color-primary-soft), #ffffff);
   color: var(--color-primary-strong);
@@ -207,6 +219,15 @@ body:has([data-app-theme]) nav a[aria-current="page"] {
   background: linear-gradient(90deg, var(--workspace-accent), var(--workspace-accent-secondary));
 }
 
+[data-app-theme="teacher"] main[data-layout="content"] [data-ui="page-header"] {
+  min-height: 70px;
+  align-content: center;
+}
+
+[data-app-theme="teacher"] main[data-layout="content"] [data-ui="page-header"] h1 {
+  text-wrap: balance;
+}
+
 [data-app-theme] .teacher-page-icon > span {
   box-shadow: 0 6px 18px color-mix(in srgb, var(--workspace-accent) 14%, transparent);
 }
@@ -220,6 +241,18 @@ body:has([data-app-theme]) nav a[aria-current="page"] {
 [data-app-theme] main [data-ui="row-card"] {
   border-color: var(--color-border);
   background-color: rgb(255 255 255 / 0.96);
+}
+
+[data-app-theme="teacher"] main[data-layout="content"] [data-ui="card"] {
+  box-shadow:
+    0 1px 2px rgb(31 78 120 / 0.04),
+    0 10px 30px -22px rgb(31 78 120 / 0.28);
+}
+
+[data-app-theme="teacher"] main[data-layout="content"] [data-ui="row-card"] {
+  box-shadow:
+    0 1px 2px rgb(31 78 120 / 0.04),
+    0 7px 22px -20px rgb(31 78 120 / 0.26);
 }
 
 [data-app-theme] main [data-ui="row-card"]:hover {
@@ -280,9 +313,37 @@ body:has([data-app-theme]) nav a[aria-current="page"] {
   background: var(--workspace-accent-secondary);
 }
 
+[data-app-theme="teacher"]
+  main[data-layout="content"]
+  [data-ui="section-header"]
+  > div:first-child::before {
+  background: linear-gradient(180deg, var(--color-primary), var(--workspace-accent-secondary));
+}
+
 [data-app-theme] main [data-ui="field"] > label {
   color: var(--color-ink);
   font-weight: 650;
+}
+
+[data-app-theme="teacher"]
+  main[data-layout="content"]
+  [data-ui="field"]
+  :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), textarea),
+[data-app-theme="teacher"] main[data-layout="content"] [data-ui="field"] button[role="combobox"] {
+  border-color: #d4e2ed;
+  background-color: #f5f9fc;
+}
+
+[data-app-theme="teacher"]
+  main[data-layout="content"]
+  [data-ui="field"]
+  :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), textarea):focus,
+[data-app-theme="teacher"]
+  main[data-layout="content"]
+  [data-ui="field"]
+  button[role="combobox"][data-state="open"] {
+  border-color: color-mix(in srgb, var(--workspace-accent) 42%, white);
+  background-color: #ffffff;
 }
 
 [data-app-theme] main [data-ui-table="true"] thead th {
@@ -296,6 +357,20 @@ body:has([data-app-theme]) nav a[aria-current="page"] {
 
 [data-app-theme] main [data-ui-table="true"] tbody tr:hover {
   background-color: color-mix(in srgb, var(--workspace-accent) 5%, white);
+}
+
+[data-app-theme="teacher"] main[data-layout="content"] [data-ui-table="true"] thead th {
+  background-color: #e8f2fc;
+  border-bottom-color: #cfdfea;
+}
+
+[data-app-theme="teacher"]
+  main[data-layout="content"]
+  [data-ui-table="true"]
+  tbody
+  tr:last-child
+  td {
+  border-bottom: 0;
 }
 
 body:has([data-app-theme]) [data-nav-icon] {

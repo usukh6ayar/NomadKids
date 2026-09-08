@@ -56,7 +56,6 @@ import { formatRelative, fullName, initials } from "@/lib/format";
 import { BRAND } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
-import { ChatWidget } from "@/components/chat/chat-widget";
 import { IconChip } from "@/components/ui/icon-chip";
 import { Art, type ArtName } from "@/components/ui/art";
 import type { Tone } from "@/components/ui/tone";
@@ -90,10 +89,9 @@ export interface NavItem {
 }
 
 /**
- * One sidebar section. Staff renders it as a collapsible group; the guardian
- * shell renders its short sections as one always-open list.
- *
- * ★ Ported from the reference's `<details class="nav-group">`.
+ * A navigation section used to organize route configuration and permissions.
+ * The sidebar flattens these entries into one list; section titles are not
+ * shown to users.
  *
  * Every entry is a link *or* a plain, non-interactive label — never a link to
  * nowhere. `staffSections` below uses only links: a teacher's whole product
@@ -225,10 +223,8 @@ function isBackgroundlessArt(icon: ReactNode) {
  *
  * ★ Ported from the reference's `.topbar`, which every one of its screens uses.
  *
- * ★★ Its supporting `lede` line went on 2026-09-07, at the client's request —
- * every screen was carrying a subtitle under the title, and across 47 call
- * sites that read as restating the nav label rather than adding anything a
- * screen-specific `meta` chip row or the body itself does not already say.
+ * ★★ Supporting text is opt-in. Most screens need only their title; workflow
+ * screens can add one sentence when it changes how the task should be done.
  *
  * ★★★ The search box is opt-in, and it is not decoration.
  *
@@ -237,21 +233,10 @@ function isBackgroundlessArt(icon: ReactNode) {
  * rather than into a box that swallows what you type. It is off by default —
  * a search field on a settings screen searches nothing.
  *
- * ★★★ The identity pill and the notification bell both left this component on
- * 2026-08-28, and what replaced them is a header rather than nothing.
- *
- * Both were `hidden … lg:*` — they existed only at the width where the desktop
- * chrome shows, and the desktop chrome now has a header of its own
- * (`DesktopHeader`) carrying exactly those two things once for the whole app
- * instead of once per screen. That is the difference that matters: a screen
- * which forgot to render `PageHeader` silently had no bell at all, and thirty-
- * four copies of a control that never varies is thirty-four chances to drift.
- *
- * The pill was already dead code behind a `hasSidebar` constant pinned to
- * `true`, with a note saying removing it was a cleanup "this merge should not
- * make unasked". A desktop header with a profile area on the right is the ask,
- * and `page-header.test.tsx` already asserts that no name is repeated here —
- * so the removal is the behaviour that file specifies rather than a new one.
+ * Identity and notification controls stay out of this per-page component.
+ * Desktop reaches them from the sidebar; mobile carries the notification bell
+ * in its compact header. That keeps the page title row focused on the current
+ * screen instead of rebuilding application chrome at every call site.
  */
 export function PageHeader({
   title,
@@ -259,6 +244,7 @@ export function PageHeader({
   search = false,
   icon,
   meta,
+  lede,
 }: {
   title: string;
   /** Trailing controls — a count, a filter, a primary action. */
@@ -280,6 +266,8 @@ export function PageHeader({
    * `.webp` later occupy it without this signature changing.
    */
   icon?: ReactNode;
+  /** A screen-specific sentence that adds context beyond the page title. */
+  lede?: ReactNode;
   /**
    * A chip row under the title — counts, status, the term being viewed.
    *
@@ -332,6 +320,8 @@ export function PageHeader({
           <h1 className="text-heading font-semibold leading-[1.3] tracking-[-.01em] text-ink md:text-display md:leading-[1.35]">
             {title}
           </h1>
+
+          {lede ? <div className="mt-1 text-body text-muted">{lede}</div> : null}
 
           {/*
           `flex-wrap`, because a row of chips at 375px is the width that
@@ -416,30 +406,26 @@ function HeaderSearch({ className }: { className?: string }) {
       role="search"
       onSubmit={onSubmit}
       /*
-        280px, not 420px. It sat at `min(420px,32vw)` — a third of the header on
-        a laptop, for a field that takes a child's name. A search box wider than
-        its longest realistic query reads as the page's main event rather than
-        as a way past the list.
+        Capped at 360px. It is wide enough for the more explicit Mongolian
+        placeholder without becoming the page's main event. The teacher shell
+        opts into 380px where the toolbar has the full workspace width.
       */
-      className={cn("min-w-0 lg:mx-auto lg:w-[min(280px,24vw)]", className)}
+      className={cn("min-w-0 lg:mx-auto lg:w-[min(360px,32vw)]", className)}
     >
       <label htmlFor={id} className="sr-only">
         Хүүхэд хайх
       </label>
-      <div className="relative">
-        <Search
-          size={18}
-          aria-hidden="true"
-          className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
-        />
+      <div className="group relative rounded-control border border-border bg-surface shadow-sm transition-all focus-within:border-primary focus-within:shadow-md">
+        <span className="pointer-events-none absolute left-2 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-control bg-primary-soft text-primary transition-colors group-focus-within:bg-primary group-focus-within:text-primary-ink">
+          <Search size={17} aria-hidden="true" />
+        </span>
         {/*
           ★ The shared `Input`, not a bespoke field.
 
-          This was `h-[44px] rounded-pill` with the placeholder "Хүүхдийн нэрээр
-          хайх…", while `/children` — the screen this submits into — renders the
-          48px `rounded-control` `Input` with "Нэр эсвэл овгоор хайх". Two
-          shapes, two heights and two wordings for one job, and using the first
-          one puts you next to the second.
+          This was `h-[44px] rounded-pill`, while `/children` — the screen this
+          submits into — renders the 48px `rounded-control` `Input`. The shared
+          input keeps the height and keyboard behaviour aligned; the wrapper
+          supplies the persistent search identity and focus treatment.
 
           `Input` also names no font size, which is what keeps a focused field
           at the 16px iOS needs. That property was the reason this field was
@@ -450,9 +436,20 @@ function HeaderSearch({ className }: { className?: string }) {
           type="search"
           value={term}
           onChange={(event) => setTerm(event.target.value)}
-          placeholder="Нэр эсвэл овгоор хайх"
-          className="pl-11"
+          placeholder="Хүүхдийн нэр эсвэл овгоор хайх"
+          className="border-0 bg-transparent pl-12 pr-12 shadow-none focus:bg-transparent"
         />
+        {term ? (
+          <button
+            type="button"
+            onClick={() => setTerm("")}
+            aria-label="Хайлтыг цэвэрлэх"
+            title="Хайлтыг цэвэрлэх"
+            className="absolute right-0.5 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-control text-muted transition-colors hover:bg-canvas hover:text-ink"
+          >
+            <X size={17} aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
     </form>
   );
@@ -470,13 +467,9 @@ function HeaderSearch({ className }: { className?: string }) {
  * A dot alone says "something changed" to everyone who can see it and nothing
  * at all to anyone who cannot.
  *
- * ★★ Desktop only, and now by position rather than by a class.
- *
- * It used to carry `hidden … lg:grid` because it lived in `PageHeader`, which
- * every audience renders at every width — and below `lg` all of them already
- * have Мэдэгдэл in the bottom bar carrying the same count. Its one call site is
- * `DesktopHeader`, which is itself `hidden … lg:flex`, so the visibility rule
- * now lives in one place instead of two that have to agree.
+ * It is mounted by the mobile header. Desktop reaches the same feed from the
+ * sidebar's Мэдээ row and unread badge, avoiding a separate toolbar whose only
+ * job was to repeat navigation already present beside it.
  */
 function NotificationBell() {
   const count = useUnreadCount();
@@ -728,9 +721,10 @@ export function AppShell({
   childSwitcher?: ChildSwitcher;
 }) {
   const { session } = useSession();
+  const pathname = usePathname();
   const resolvedTheme = workspaceTheme ?? (teacherTheme ? "teacher" : null);
   const isTeacherWorkspace = resolvedTheme === "teacher";
-  const hasDedicatedChatNavigation = resolvedTheme === "teacher" || resolvedTheme === "admin";
+  const isChatPage = pathname === "/chat";
 
   // Every role gets the sidebar from `lg` up; only the bottom bar is
   // role-dependent (mobile-only, all three variants).
@@ -825,31 +819,31 @@ export function AppShell({
                   : "lg:pl-[232px]"),
           )}
         >
-          <DesktopHeader variant={variant} isAdmin={isAdmin} />
-
           {/*
           `pb-24` on mobile clears the fixed bottom bar. Without it the last row
           of every list sits underneath the navigation and cannot be tapped —
           which only shows up when a list is long enough to scroll to the end.
 
           Side padding: 16px on a phone, where 26px would cost a seventh of a
-          375px screen, rising to 32px from `lg` and 40px at `2xl` — the widths
-          that have room to give. `lg:pt-8` rather than the old `lg:pt-10`
-          because `DesktopHeader` now sits above this and supplies the lead-in.
+          375px screen, rising to 28px from `lg` and 32px at `2xl` — the widths
+          that have room to give. Desktop starts directly with the page header;
+          the separate top toolbar was removed so it does not spend a full row
+          on controls already available from the sidebar and each list page.
         */}
-          <main className="mx-auto w-full max-w-[1420px] px-4 pb-24 pt-4 sm:px-6 lg:px-7 lg:pb-16 lg:pt-6 2xl:px-8">
+          <main
+            data-layout={isChatPage ? "full-page" : "content"}
+            className={cn(
+              "w-full",
+              isChatPage
+                ? "h-[calc(100dvh-4.25rem)] overflow-hidden pb-[calc(var(--size-bottom-nav)+env(safe-area-inset-bottom))] lg:h-dvh lg:max-w-none lg:pb-0"
+                : "mx-auto max-w-[1420px] px-4 pb-24 pt-4 sm:px-6 lg:px-7 lg:pb-16 lg:pt-6 2xl:px-8",
+            )}
+          >
             {children}
           </main>
         </div>
 
         <BottomBar nav={bottomNav} hideOnDesktop={desktopSidebar} />
-
-        {/*
-          Teachers already have Chat in the sidebar, the mobile menu and the
-          dashboard preview. The floating trigger covered register actions and
-          form controls, so it stays only for audiences without that navigation.
-        */}
-        {!hasDedicatedChatNavigation ? <ChatWidget /> : null}
 
         <MobileMenuDrawer
           open={menuOpen}
@@ -863,102 +857,6 @@ export function AppShell({
         />
       </div>
     </WorkspaceThemeContext.Provider>
-  );
-}
-
-/**
- * The desktop header — the one row of chrome above every screen from `lg` up.
- *
- * ★ It exists because two things were being rendered per *page* that belong to
- * the *app*: the notification bell and an identity pill, both inside
- * `PageHeader`, both `hidden … lg:*`. Thirty-four screens each rendered their
- * own copy of a control that never varies, and a screen that forgot to use
- * `PageHeader` silently had no bell at all.
- *
- * ★★ Search on the left for a teacher.
- *
- * The dashboard mockup puts child search in the workspace chrome so it remains
- * available as the teacher moves between registers. The teacher's one group is
- * stated by each scoped screen and in `WhoAmI`; repeating it here would spend
- * the only useful header space on context already visible nearby.
- *
- * ★★★ The profile area is an avatar, not a second name.
- *
- * The sidebar's own footer names the signed-in person forty pixels away, and
- * `page-header.test.tsx` exists because that name was previously on screen
- * twice at this exact width. The header carries the affordance — a 40px target
- * that opens `/settings` — and puts the name in its accessible label, where it
- * is available to a screen reader without being read twice by eye.
- */
-function DesktopHeader({ variant, isAdmin }: { variant: Variant; isAdmin: boolean }) {
-  const { session, hasRole } = useSession();
-  /*
-    ★ `hasRole("TEACHER")`, not "the teacher variant and not an admin".
-
-    Since 2026-08-30 a cook and an accountant share this variant — they are
-    employees of one kindergarten and the frame is the same — and neither
-    teaches a group. `GET /groups` is `@Roles("TEACHER","ADMIN")`, so the old
-    condition fired a request that 404s on every render of their shell, four
-    times a page load, to fill a chip that was never going to have a value.
-  */
-  const isTeacher = variant === "teacher" && !isAdmin && hasRole("TEACHER");
-  return (
-    <header
-      data-print-hide
-      /*
-       * Sticky rather than fixed: a fixed header would need every page below it
-       * padded by its own height, which is the class of coupling `AppShell`
-       * exists to keep out of the screens. `bg-surface` and the hairline are
-       * what separate it from the canvas as content scrolls under it.
-       *
-       * `z-10` sits under the sidebar's `z-20` on purpose — the sidebar is a
-       * full-height panel to the left and nothing here should ever paint over
-       * it.
-       */
-      className="sticky top-0 z-10 hidden bg-canvas/90 backdrop-blur lg:block"
-    >
-      {/*
-        ★ The bar is full-bleed; its contents are not.
-
-        The hairline has to run the whole width or it stops reading as the edge
-        of the chrome. What sits on it must line up with the page underneath —
-        measured at 1920, an uncapped row put the avatar at x≈1900 while the
-        content column ended at 1782, so the profile control floated 118px past
-        every card it was meant to sit above. Same cap and same padding as
-        `<main>`, so the two columns are one column.
-      */}
-      <div className="mx-auto flex w-full max-w-[1420px] items-center gap-4 px-7 py-4 2xl:px-8">
-        {/*
-          ★ The group, and no longer the date.
-
-          Both were here until 2026-08-28, when `/dashboard` began stating
-          "Дэлбээ бүлэг · 2026.08.28" as its own lede — the same two facts, sixty
-          pixels below, at every width this header exists at. `PageHeader` has a
-          test file devoted to precisely that kind of duplication (a name
-          appearing twice at `lg`), and the resolution is the same one it
-          reached: a fact belongs to whichever surface can state it once.
-
-          The date went because a page that is about today is the thing that
-          should say so. The group stays, because it is the piece of context the
-          other thirty-three screens have nowhere else to get.
-        */}
-        <div className="flex min-w-0 flex-1 items-center gap-2.5">
-          {isTeacher ? <HeaderSearch className="mr-auto lg:mx-0 lg:w-[320px]" /> : null}
-        </div>
-
-        <NotificationBell />
-
-        <Link
-          href="/settings"
-          aria-label={`${fullName(session?.user)} — тохиргоо`}
-          className="grid size-11 shrink-0 place-items-center rounded-control bg-surface shadow-sm transition-colors hover:bg-primary-soft"
-        >
-          <span className="grid size-9 place-items-center rounded-pill bg-primary-soft text-caption font-semibold text-primary">
-            {initials(session?.user)}
-          </span>
-        </Link>
-      </div>
-    </header>
   );
 }
 
@@ -1035,8 +933,8 @@ function WhoAmI({ variant, isAdmin }: { variant: Variant; isAdmin: boolean }) {
   const { session, hasRole } = useSession();
   const logout = useLogout();
 
-  // `hasRole("TEACHER")` for the reason `DesktopHeader` gives: the teacher
-  // variant now covers three roles and only one of them has a group.
+  // The teacher variant covers three staff roles; only a real teacher has a
+  // group to show beneath their name.
   const isTeacher = variant === "teacher" && !isAdmin && hasRole("TEACHER");
   const { group, count } = useMyGroup({ enabled: isTeacher });
 
@@ -1116,10 +1014,9 @@ function WhoAmI({ variant, isAdmin }: { variant: Variant; isAdmin: boolean }) {
         {/*
           ★ Not a link any more — 2026-09-06, at the client's request.
 
-          It pointed at `/settings`, and by the time it did, `/settings` had
-          three other doors: `DesktopHeader`'s profile menu at the top right,
-          the "Хувийн тохиргоо" row in this very menu, and the phone's bottom
-          bar. Four ways into one screen is not four affordances, it is a
+          It pointed at `/settings`, and by the time it did, `/settings` already
+          had the "Хувийн тохиргоо" row in this very menu and the phone's bottom
+          bar. Repeating the link in the identity card is not another useful affordance, it is a
           reader wondering whether they differ — the client's words were
           "хэт олон profile болоод байна".
 
@@ -1164,8 +1061,7 @@ function WhoAmI({ variant, isAdmin }: { variant: Variant; isAdmin: boolean }) {
  * that differs between the two frames is layout (a fixed column vs. a Radix
  * dialog panel) and, on mobile, that tapping a link should also close the
  * drawer — handled by the drawer's own wrapper (`closeOnLinkClick`), not by
- * this component, so neither `NavLink` nor `NavGroup` needs to know a drawer
- * exists.
+ * this component, so `NavLink` does not need to know a drawer exists.
  */
 function SidebarContent({
   nav,
@@ -1187,6 +1083,7 @@ function SidebarContent({
   showTeacherArt?: boolean;
 }) {
   const pathname = usePathname();
+  const sectionEntries = sections?.flatMap((section) => section.entries) ?? [];
 
   // The first item stays a top-level link above the sections, as "Хяналтын
   // самбар" does in the reference. The rest are reachable from the sections
@@ -1240,20 +1137,15 @@ function SidebarContent({
         <div className="-mr-1.5 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1.5">
           {primary ? <NavLink item={primary} pathname={pathname} orientation="vertical" /> : null}
 
-          {sections?.length ? (
-            /*
-                ★ `display: contents`, so the wrapper is in the DOM but not in
-                the layout — the sections keep the parent's own `gap-0.5`
-                rhythm rather than becoming one flex child with none.
-
-                It exists because "Хүүхдүүд" and "Ирц" appear twice in this
-                sidebar since the shortcut box returned (2026-09-05), and an
-                assertion about the *section* menu needs to be able to say so.
-                `sidebar.test.tsx` scopes to it.
-              */
+          {sectionEntries.length ? (
             <div data-testid="nav-sections" className="contents">
-              {sections.map((section) => (
-                <NavGroup key={section.title} section={section} pathname={pathname} />
+              {sectionEntries.map((entry, index) => (
+                <NavLink
+                  key={`${entry.href ?? entry.label}-${index}`}
+                  item={{ ...entry, icon: entry.icon ?? null }}
+                  pathname={pathname}
+                  orientation="vertical"
+                />
               ))}
             </div>
           ) : (
@@ -1339,9 +1231,15 @@ function ParentSidebarContent({
           {primary ? <ParentSidebarRow item={primary} pathname={pathname} /> : null}
 
           <div data-testid="nav-sections" className="flex flex-col">
-            {sections.map((section) => (
-              <ParentSidebarSection key={section.title} section={section} pathname={pathname} />
-            ))}
+            {sections
+              .flatMap((section) => section.entries)
+              .map((item, index) => (
+                <ParentSidebarRow
+                  key={`${item.href ?? item.label}-${index}`}
+                  item={item}
+                  pathname={pathname}
+                />
+              ))}
           </div>
         </div>
 
@@ -1362,22 +1260,6 @@ function ParentSidebarContent({
         </button>
       </div>
     </>
-  );
-}
-
-function ParentSidebarSection({ section, pathname }: { section: NavSection; pathname: string }) {
-  return (
-    <section
-      aria-label={section.title}
-      className={cn(
-        "flex flex-col",
-        section.separatorBefore && "mt-3 border-t border-slate-100 pt-3",
-      )}
-    >
-      {section.entries.map((item) => (
-        <ParentSidebarRow key={item.label} item={item} pathname={pathname} />
-      ))}
-    </section>
   );
 }
 
@@ -1522,7 +1404,7 @@ function ChildSwitcherControl({ switcher }: { switcher: ChildSwitcher }) {
  * product, not two.
  *
  * ★★ Closes itself on a link tap, via event delegation on the one wrapper
- * rather than threading a callback through `NavLink` and `NavGroup`. Every
+ * rather than threading a callback through `NavLink`. Every
  * real destination in this menu is an `<a>` — `WhoAmI`'s logout button is
  * not, and does not need to close anything it is about to navigate away from
  * regardless.
@@ -1588,121 +1470,6 @@ function MobileMenuDrawer({
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
-  );
-}
-
-/**
- * A collapsible section.
- *
- * `open` by default, like the reference: the menu's job is to show what the
- * product contains, and a teacher should not have to open five drawers to find
- * out. `<details>` rather than state, so it works before hydration and keeps
- * the platform's own keyboard behaviour.
- */
-function NavGroup({ section, pathname }: { section: NavSection; pathname: string }) {
-  return (
-    /*
-      ★ No vertical padding, and no rule under the last section.
-      
-      Four sections at `py-0.5` plus their gaps put the staff sidebar 12px over
-      its own scroll container at a 900px window — so the last entry rendered
-      half-cut with no scrollbar to explain it (macOS draws overlay scrollbars,
-      which are invisible until you scroll). It read as a broken layout rather
-      than as a list that continues.
-      
-      `last:border-b-0` because the footer below already separates itself with
-      its own tinted surface; the rule was drawing a second line 8px above it.
-    */
-    <details
-      open
-      className="border-b border-border last:border-b-0 [&[open]>summary>svg]:rotate-180"
-    >
-      {/*
-        ★ REDESIGN 2026-09-03 — the section title is a label, not a heading in
-        disguise.
-
-        It was `text-compact font-semibold text-ink`, the same weight and
-        colour as an *active* entry beneath it, so a collapsed group heading
-        competed with the one row on screen that was meant to stand out.
-        Uppercase at `text-caption` with tracking is the conventional treatment
-        for a group label and it settles the hierarchy: headings recede, the
-        current page is the loudest thing in the panel.
-
-        `items-start` and `gap-2` for the same reason the entries have them —
-        "Хүүхдийн хөгжил ба үнэлгээ" is the longest string in the menu and
-        wraps to two lines at 244px.
-      */}
-      <summary className="flex min-h-[44px] cursor-pointer list-none items-start justify-between gap-2 px-2.5 py-3 text-caption font-semibold uppercase tracking-[.06em] text-faint transition-colors hover:text-muted [&::-webkit-details-marker]:hidden">
-        <span className="min-w-0 leading-snug">{section.title}</span>
-        <ChevronDown
-          size={16}
-          aria-hidden="true"
-          className="mt-px shrink-0 text-faint transition-transform"
-        />
-      </summary>
-
-      {section.entries.map((entry) => {
-        if (!entry.href) {
-          return (
-            <span
-              key={entry.label}
-              className="ml-3 flex min-h-[44px] items-center gap-1.5 px-2.5 py-1.5 text-compact text-faint"
-            >
-              {entry.label}
-              <span className="text-caption">(удахгүй)</span>
-            </span>
-          );
-        }
-
-        const active = pathname === entry.href || pathname.startsWith(`${entry.href}/`);
-        const backgroundlessIcon = isBackgroundlessArt(entry.icon);
-        return (
-          <Link
-            key={entry.href}
-            href={entry.href}
-            aria-current={active ? "page" : undefined}
-            className={cn(
-              /*
-                ★ REDESIGN 2026-09-03 — `items-center` → `items-start` with
-                `py-2.5`, because these labels wrap and used to be truncated.
-
-                The label carried `truncate`, which is exactly what brief
-                constraint 2 forbids: "Чөлөөний хүсэлт хянах" and "Ангийн
-                самбар / Мэдээ" do not fit 244px minus an icon and padding at
-                any weight, so the two longest entries in a teacher's menu were
-                rendering as "Чөлөөний хүсэлт х…". A menu that hides the end of
-                its own words is the first thing that reads as unfinished, and
-                it is the one place the product can least afford ambiguity.
-
-                Wrapping needs the row to grow, so the height is a `min-h`
-                floor with real vertical padding rather than a fixed centre,
-                and the icon gets `mt-px` to sit on the first line's optical
-                centre instead of the block's.
-              */
-              "relative ml-3 flex min-h-[44px] items-start gap-2.5 rounded-control px-2.5 py-2.5 text-compact leading-snug transition-colors",
-              active
-                ? // The blue-700 rule is the active marker; the tint and the
-                  // weight are what make it readable. Three signals, because
-                  // colour alone must not carry the state.
-                  "bg-primary-soft font-semibold text-primary before:absolute before:-left-2 before:top-1/2 before:h-5 before:w-[3px] before:-translate-y-1/2 before:rounded-pill before:bg-primary"
-                : "text-muted hover:bg-canvas hover:text-ink",
-            )}
-          >
-            <span
-              data-nav-icon
-              data-icon-surface={backgroundlessIcon ? "none" : "tinted"}
-              className={cn(
-                "mt-px grid size-8 shrink-0 place-items-center rounded-control",
-                backgroundlessIcon ? "bg-transparent" : navIconTone(entry.label),
-              )}
-            >
-              {entry.icon}
-            </span>
-            <span className="min-w-0">{entry.label}</span>
-          </Link>
-        );
-      })}
-    </details>
   );
 }
 
@@ -1863,6 +1630,18 @@ function NavLink({
     */
     active ? "text-primary" : "text-muted hover:text-ink",
     !horizontal && (active ? "bg-primary-soft" : "hover:bg-canvas"),
+    /*
+      ★★ The weight is what the paragraph above already promised.
+
+      It used to live on `NavGroup`'s own `<Link>`, which drew the rows inside
+      each collapsible section; the flattened sidebar sends those same rows
+      through `NavLink` instead, and the weight did not come with them — so the
+      current page lost a cue and kept only colour, which is the one thing this
+      comment says must never carry the state alone. `sidebar.test.tsx` caught
+      it. It sits beside the tint rather than in the `text-*` line so the two
+      halves of "changes weight with the tint" cannot drift apart again.
+    */
+    !horizontal && active && "font-semibold",
     !horizontal &&
       active &&
       "before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-pill before:bg-primary",

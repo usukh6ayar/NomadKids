@@ -1,0 +1,36 @@
+{
+  "SUCCESS_CODE": 200,
+  "RESPONSE_MESSAGE": "DEMO_SUCCESS",
+  "RESULT": [
+    {
+      "institutionId": "40305",
+      "assignmentId": "70011",
+      "personId": "99000000000021",
+      "instructorId": "88012",
+      "displayName": "Demo багш 01",
+      "lastName": "Demo",
+      "firstName": "Багш-01",
+      "positionName": "Бүлгийн багш",
+      "instructorTypeId": "1",
+      "instructorTypeName": "Үндсэн багш",
+      "microsoftEmail": "demo.teacher01@example.invalid",
+      "googleEmail": "demo.teacher01@example.invalid",
+      "allEmail": "demo.teacher01@example.invalid"
+    },
+    {
+      "institutionId": "40305",
+      "assignmentId": "70012",
+      "personId": "99000000000022",
+      "instructorId": "88013",
+      "displayName": "Demo багш 02",
+      "lastName": "Demo",
+      "firstName": "Багш-02",
+      "positionName": "Бүлгийн багш",
+      "instructorTypeId": "1",
+      "instructorTypeName": "Үндсэн багш",
+      "microsoftEmail": "demo.teacher02@example.invalid",
+      "googleEmail": "demo.teacher02@example.invalid",
+      "allEmail": "demo.teacher02@example.invalid"
+    }
+  ]
+}

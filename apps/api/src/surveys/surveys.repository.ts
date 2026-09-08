@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import type {
+  SurveyCategory,
   SurveyKind,
   SurveyPeriod,
   SurveyQuestionType,
@@ -20,6 +21,7 @@ export class SurveysRepository {
     kindergartenId: string;
     title: string;
     description: string | null;
+    category: SurveyCategory;
     scope: SurveyScope;
     /** Optional so the clone path keeps compiling; the column defaults to FORM. */
     kind?: SurveyKind;

@@ -91,6 +91,20 @@ const endpoint = (
     ),
   ],
   accessStatus: "UNKNOWN",
+  /*
+    ★ The sync-state half of the catalog row, required by
+    `esisOverviewSchema` since 2026-09-09. Without them the typed client's
+    Zod parse throws, the panel renders nothing, and every test below reports
+    a missing element rather than a short payload.
+  */
+  direction: "ESIS_TO_NOMADKIDS",
+  targetModel: "Child",
+  mappings: [],
+  responseMode: "DEMO",
+  syncStatus: "DEMO_SUCCESS",
+  syncErrorCode: null,
+  httpStatus: null,
+  lastSyncAt: null,
   ...extra,
 });
 
@@ -98,6 +112,9 @@ function overview(configured: boolean) {
   return {
     deployment: {
       configured,
+      // `configured` doubles as "is this deployment talking to the real ESIS".
+      demoMode: !configured,
+      mode: configured ? ("LIVE" as const) : ("MOCK" as const),
       baseUrl: "https://hubv2.esis.edu.mn",
       hasToken: configured,
     },
@@ -169,12 +186,23 @@ describe("ESIS мэдээллийн панел", () => {
         path: `${ESIS_PATH}/resource`,
         body: {
           resource: "organization",
+          /*
+            ★ `source` and `response` joined `esisResourceReadSchema` on
+            2026-09-09: which transport answered, and the upstream envelope
+            verbatim. `rows` is the parsed view of the same records.
+          */
+          source: "LIVE",
           status: "SUCCEEDED",
           errorCode: null,
           count: 1,
           durationMs: 42,
           fields: organizationFields,
           rows: [{ institutionId: "77777", institutionName: "Жинхэнэ цэцэрлэг" }],
+          response: {
+            SUCCESS_CODE: 200,
+            RESPONSE_MESSAGE: "OK",
+            RESULT: [{ institutionId: "77777", institutionName: "Жинхэнэ цэцэрлэг" }],
+          },
         },
       },
       { path: ESIS_PATH, body: overview(true) },
@@ -285,12 +313,23 @@ describe("ESIS мэдээллийн панел", () => {
         path: `${ESIS_PATH}/resource`,
         body: {
           resource: "organization",
+          /*
+            ★ `source` and `response` joined `esisResourceReadSchema` on
+            2026-09-09: which transport answered, and the upstream envelope
+            verbatim. `rows` is the parsed view of the same records.
+          */
+          source: "LIVE",
           status: "FAILED",
           errorCode: "SCOPE_DENIED",
           count: 0,
           durationMs: null,
           fields: organizationFields,
           rows: [],
+          response: {
+            SUCCESS_CODE: 403,
+            RESPONSE_MESSAGE: "SCOPE_DENIED",
+            RESULT: [],
+          },
         },
       },
       { path: ESIS_PATH, body: overview(true) },

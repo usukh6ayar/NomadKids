@@ -81,7 +81,7 @@ export const ATTENDANCE_COMPANION_LABEL: Record<string, string> = {
   OTHER: "Бусад",
 };
 
-/** Same convention as `SURVEY_TYPE_META` (`lib/survey-meta.ts`) — the icon
+/** Same convention as `SURVEY_CATEGORY_META` (`lib/survey-meta.ts`) — the icon
  * component itself, not a name string, keyed the same as every other
  * companion map here. */
 export const ATTENDANCE_COMPANION_ICON: Record<string, typeof UserRound> = {

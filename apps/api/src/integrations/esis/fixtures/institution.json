@@ -1,0 +1,19 @@
+{
+  "SUCCESS_CODE": 200,
+  "RESPONSE_MESSAGE": "DEMO_SUCCESS",
+  "RESULT": [
+    {
+      "institutionId": "40305",
+      "institutionName": "NomadKids Demo цэцэрлэг",
+      "shortName": "NK Demo",
+      "longName": "NomadKids ESIS Integration Demo цэцэрлэг",
+      "institutionTypeId": "2",
+      "institutionTypeName": "Цэцэрлэг",
+      "provinceName": "Тест аймаг",
+      "districtName": "Тест дүүрэг",
+      "subDistrictName": "Тест хороо",
+      "regionName": "Demo бүс",
+      "institutionAddress": "Зохиомол test хаяг"
+    }
+  ]
+}

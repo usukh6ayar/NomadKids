@@ -21,6 +21,7 @@ type PreviewResource = EsisPreviewDto["resources"][number];
 /** How many rows a screen shows. Both are display limits, not fetch limits. */
 const PREVIEW_ROWS = 5;
 const READ_ROWS = 25;
+const DEMO_ESIS_INSTITUTION_ID = "40305";
 
 @Injectable()
 export class EsisAdminService {
@@ -41,12 +42,15 @@ export class EsisAdminService {
     const deployment = this.esis.status();
     const mapped = Boolean(kindergarten.esisInstitutionId);
     const mappingMatchesDeployment = mapped;
-    const canPreview = deployment.configured && mappingMatchesDeployment;
-    const hasSuccessfulPreview = recentRuns.some((run) => run.status === "SUCCEEDED");
+    const canPreview = deployment.demoMode || (deployment.configured && mappingMatchesDeployment);
+    const hasSuccessfulPreview = recentRuns.some(
+      (run) => run.status === "SUCCEEDED" && syncRunMode(run.summary) === "LIVE",
+    );
     const blockers: string[] = [];
 
-    if (!mapped) blockers.push("Platform админ ESIS байгууллагын кодыг холбож баталгаажуулна.");
-    if (!deployment.configured) blockers.push("Server дээр ESIS Bearer token тохируулаагүй байна.");
+    if (!mapped) blockers.push("Live горимд ESIS байгууллагын кодыг холбож баталгаажуулна.");
+    if (!deployment.configured)
+      blockers.push("Live горимын ESIS Bearer token тохируулаагүй байна.");
 
     return {
       deployment,
@@ -63,7 +67,7 @@ export class EsisAdminService {
         {
           code: "C3",
           label: "Token ба API эрх",
-          status: canPreview ? ("READY" as const) : ("WAITING" as const),
+          status: deployment.configured && mapped ? ("READY" as const) : ("WAITING" as const),
         },
         {
           code: "C4",
@@ -76,13 +80,42 @@ export class EsisAdminService {
           status: "WAITING" as const,
         },
       ],
-      endpoints: ESIS_RESOURCE_CATALOG.map((endpoint) => ({
-        ...endpoint,
-        accessStatus: "UNKNOWN" as const,
-      })),
+      endpoints: ESIS_RESOURCE_CATALOG.map((endpoint) => {
+        const demoEnabled = endpoint.domain !== "FOOD";
+        const lastRun = recentRuns.find((run) =>
+          Array.isArray(run.resources) ? run.resources.includes(endpoint.key) : false,
+        );
+        return {
+          ...endpoint,
+          accessStatus:
+            endpoint.domain === "FOOD"
+              ? ("NOT_ENABLED" as const)
+              : deployment.demoMode
+                ? demoEnabled
+                  ? ("MOCK" as const)
+                  : ("NOT_ENABLED" as const)
+                : deployment.configured
+                  ? ("UNKNOWN" as const)
+                  : ("NOT_ENABLED" as const),
+          responseMode: deployment.demoMode ? ("DEMO" as const) : ("LIVE" as const),
+          httpStatus:
+            (deployment.demoMode && demoEnabled) || lastRun?.status === "SUCCEEDED" ? 200 : null,
+          syncStatus:
+            deployment.demoMode && demoEnabled
+              ? ("DEMO_SUCCESS" as const)
+              : lastRun?.status === "SUCCEEDED"
+                ? ("SUCCESS" as const)
+                : lastRun?.status === "FAILED" || lastRun?.status === "PARTIAL"
+                  ? ("FAILED" as const)
+                  : ("PENDING" as const),
+          syncErrorCode: lastRun?.errorCode ?? null,
+          lastSyncAt: lastRun?.finishedAt ?? lastRun?.startedAt ?? null,
+        };
+      }),
       recentRuns: recentRuns.map((run) => ({
         ...run,
         initiatedBy: `${run.initiatedBy.lastName} ${run.initiatedBy.firstName}`.trim(),
+        mode: syncRunMode(run.summary),
       })),
       canPreview,
       blockers,
@@ -95,7 +128,7 @@ export class EsisAdminService {
     if (!kindergarten) throw new NotFoundException();
 
     const student = ESIS_RESOURCE_CATALOG.find((endpoint) => endpoint.key === "students")!;
-    if (this.esis.isConfigured && kindergarten.esisInstitutionId) {
+    if (this.esis.isAvailable && (this.esis.isDemoMode || kindergarten.esisInstitutionId)) {
       await this.audit.append({
         action: "VIEW",
         kindergartenId,
@@ -105,12 +138,12 @@ export class EsisAdminService {
         metadata: { purpose: "student-registration-template" },
       });
       const response = await this.esis
-        .students(kindergarten.esisInstitutionId)
+        .students(kindergarten.esisInstitutionId ?? DEMO_ESIS_INSTITUTION_ID)
         .catch((error: unknown) => {
           throw esisUserError(error, "суралцагчийн мэдээлэл");
         });
       return {
-        mode: "LIVE" as const,
+        mode: response.source === "MOCK" ? ("DEMO" as const) : ("LIVE" as const),
         resource: "students" as const,
         apiId: student.apiId,
         slug: student.slug,
@@ -152,7 +185,7 @@ export class EsisAdminService {
       : ("staff" as const);
     const catalog = ESIS_RESOURCE_CATALOG.find((endpoint) => endpoint.key === resource)!;
 
-    if (!this.esis.isConfigured || !kindergarten.esisInstitutionId) {
+    if (!this.esis.isAvailable || (!this.esis.isDemoMode && !kindergarten.esisInstitutionId)) {
       return {
         mode: "DEMO" as const,
         resource,
@@ -176,11 +209,25 @@ export class EsisAdminService {
     });
     const response = await (
       resource === "teachers"
-        ? this.esis.teachers(kindergarten.esisInstitutionId)
-        : this.esis.staff(kindergarten.esisInstitutionId)
+        ? this.esis.teachers(kindergarten.esisInstitutionId ?? DEMO_ESIS_INSTITUTION_ID)
+        : this.esis.staff(kindergarten.esisInstitutionId ?? DEMO_ESIS_INSTITUTION_ID)
     ).catch((error: unknown) => {
       throw esisUserError(error, "ажилтны мэдээлэл");
     });
+    if (response.source === "MOCK") {
+      return {
+        mode: "DEMO" as const,
+        resource,
+        apiId: catalog.apiId,
+        slug: catalog.slug,
+        endpoint: catalog.path,
+        syncedAt: new Date().toISOString(),
+        institutionId: kindergarten.esisInstitutionId,
+        fields: ESIS_FIELDS[resource],
+        row: rowValues(resource, response.data, 1)[0] ?? catalog.sampleRow,
+      };
+    }
+
     const localName = normalizeIdentity(`${user.lastName} ${user.firstName}`);
     const localEmail = user.email?.trim().toLowerCase() ?? "";
     const matches = response.data.filter((person) => {
@@ -267,13 +314,16 @@ export class EsisAdminService {
     if (!kindergarten) throw new NotFoundException();
 
     const deployment = this.esis.status();
-    if (!deployment.configured) {
+    if (!deployment.demoMode && !deployment.configured) {
       throw new ServiceUnavailableException("ESIS холболт server дээр тохируулагдаагүй байна.");
     }
-    if (!kindergarten.esisInstitutionId) {
+    if (!deployment.demoMode && !kindergarten.esisInstitutionId) {
       throw new ConflictException("Цэцэрлэгийн ESIS байгууллагын код баталгаажаагүй байна.");
     }
-    return kindergarten;
+    return {
+      kindergarten,
+      institutionId: kindergarten.esisInstitutionId ?? DEMO_ESIS_INSTITUTION_ID,
+    };
   }
 
   /**
@@ -291,7 +341,7 @@ export class EsisAdminService {
    * toast that says something went wrong.
    */
   async read(actor: Actor, kindergartenId: string, dto: EsisReadDto) {
-    const kindergarten = await this.assertReadable(actor, kindergartenId);
+    const { institutionId } = await this.assertReadable(actor, kindergartenId);
 
     const params = Object.fromEntries(
       Object.entries(dto.params ?? {}).filter(([, value]) => value !== undefined),
@@ -312,31 +362,43 @@ export class EsisAdminService {
 
     const fields = ESIS_FIELDS[dto.resource];
     try {
-      const response = await this.esis.read(dto.resource, params, kindergarten.esisInstitutionId!);
+      const response = await this.esis.read(dto.resource, params, institutionId);
       return {
         resource: dto.resource,
+        source: response.source,
         status: "SUCCEEDED" as const,
         errorCode: null,
         count: response.data.length,
         durationMs: response.durationMs,
         fields,
         rows: rowValues(dto.resource, response.data, READ_ROWS),
+        response: {
+          SUCCESS_CODE: 200,
+          RESPONSE_MESSAGE: response.source === "MOCK" ? "DEMO_SUCCESS" : "SUCCESS",
+          RESULT: rowValues(dto.resource, response.data, READ_ROWS),
+        },
       };
     } catch (error) {
       return {
         resource: dto.resource,
+        source: this.esis.isDemoMode ? ("MOCK" as const) : ("LIVE" as const),
         status: "FAILED" as const,
         errorCode: safeErrorCode(error),
         count: 0,
         durationMs: null,
         fields,
         rows: [],
+        response: {
+          SUCCESS_CODE: 502,
+          RESPONSE_MESSAGE: safeErrorCode(error),
+          RESULT: [],
+        },
       };
     }
   }
 
   async preview(actor: Actor, kindergartenId: string, dto: EsisPreviewDto) {
-    const kindergarten = await this.assertReadable(actor, kindergartenId);
+    const { institutionId } = await this.assertReadable(actor, kindergartenId);
     await this.repo.expireStaleRuns(kindergartenId, new Date(Date.now() - 15 * 60_000));
     if (await this.repo.findRunning(kindergartenId)) {
       throw new ConflictException("Энэ цэцэрлэгийн ESIS шалгалт аль хэдийн ажиллаж байна.");
@@ -354,12 +416,13 @@ export class EsisAdminService {
 
     const settled = await Promise.allSettled(
       dto.resources.map(async (resource) => {
-        const response = await this.fetchResource(resource, kindergarten.esisInstitutionId!);
+        const response = await this.fetchResource(resource, institutionId);
         return {
           resource,
           count: response.data.length,
           durationMs: response.durationMs,
           preview: rowValues(resource, response.data, PREVIEW_ROWS),
+          source: response.source,
         };
       }),
     );
@@ -375,17 +438,21 @@ export class EsisAdminService {
             preview: [],
             status: "FAILED" as const,
             errorCode: safeErrorCode(item.reason),
+            source: this.esis.isDemoMode ? ("MOCK" as const) : ("LIVE" as const),
           };
     });
     const successCount = results.filter((result) => result.status === "SUCCEEDED").length;
     const status =
       successCount === results.length ? "SUCCEEDED" : successCount === 0 ? "FAILED" : "PARTIAL";
-    const summary = Object.fromEntries(
-      results.map((result) => [
-        result.resource,
-        { status: result.status, count: result.count, errorCode: result.errorCode },
-      ]),
-    );
+    const summary = {
+      mode: this.esis.isDemoMode ? ("MOCK" as const) : ("LIVE" as const),
+      resources: Object.fromEntries(
+        results.map((result) => [
+          result.resource,
+          { status: result.status, count: result.count, errorCode: result.errorCode },
+        ]),
+      ),
+    };
 
     await this.repo.finishRun(run.id, {
       status,
@@ -398,14 +465,17 @@ export class EsisAdminService {
       actorUserId: actor.userId,
       objectType: "EsisSyncRun",
       objectId: run.id,
-      metadata: { dryRun: true, resources: dto.resources, status },
+      metadata: { dryRun: true, resources: dto.resources, status, mode: summary.mode },
     });
 
-    return { runId: run.id, dryRun: true as const, status, results };
+    return { runId: run.id, dryRun: true as const, mode: summary.mode, status, results };
   }
 
   private fetchResource(resource: PreviewResource, institutionId: string) {
-    const calls: Record<PreviewResource, () => Promise<{ data: unknown[]; durationMs: number }>> = {
+    const calls: Record<
+      PreviewResource,
+      () => Promise<{ data: unknown[]; durationMs: number; source: "MOCK" | "LIVE" }>
+    > = {
       organization: () => this.esis.organization(institutionId),
       academicYearStatuses: () => this.esis.academicYearStatuses(institutionId),
       groups: () => this.esis.groups(institutionId),
@@ -462,6 +532,18 @@ function safeErrorCode(error: unknown): string {
     return error.kind.toUpperCase();
   }
   return "UNKNOWN";
+}
+
+function syncRunMode(summary: unknown): "MOCK" | "LIVE" {
+  if (
+    typeof summary === "object" &&
+    summary !== null &&
+    "mode" in summary &&
+    summary.mode === "MOCK"
+  ) {
+    return "MOCK";
+  }
+  return "LIVE";
 }
 
 function esisUserError(error: unknown, resource: string): BadGatewayException {

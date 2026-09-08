@@ -159,11 +159,31 @@ positive ID, ISO date бүхий contract unit test-т орсон.
 Тохиргоо:
 
 ```dotenv
-ESIS_TOKEN=<ACCESS_TOKEN>
+ESIS_DEMO_MODE=true
+ESIS_TOKEN=
 # optional override; default нь https://hubv2.esis.edu.mn
 ESIS_BASE_URL=https://hubv2.esis.edu.mn
 ESIS_TIMEOUT_MS=15000
 ```
+
+`ESIS_DEMO_MODE=true` үед client ямар ч ESIS host руу request илгээхгүй.
+Deterministic fixture нь live response-тэй ижил `SUCCESS_CODE`,
+`RESPONSE_MESSAGE`, `RESULT` envelope-оор орж, live-тэй ижил schema/parser,
+mapping-аар шалгагдана. UI болон sync log үүнийг `MOCK`, `DEMO_SUCCESS` гэж
+ил тод тэмдэглэнэ. Live token баталгаажсаны дараа `ESIS_TOKEN`-ийг тохируулж,
+`ESIS_DEMO_MODE=false` болгоно.
+
+Core fixture-үүд `apps/api/src/integrations/esis/fixtures/` дотор
+`institution`, `group`, `teacher`, `student`, `enrollment`, `attendance`,
+`progression` гэж тусдаа хадгалагдана. Бүгд тогтмол зохиомол ID, `.invalid`
+и-мэйл ашигладаг; регистрийн дугаар болон бодит хүүхдийн хувийн мэдээлэлгүй.
+
+Admin evidence API нь endpoint бүрт `direction`, `targetModel`, бүх field-ийн
+`mappings`, `responseMode`, `httpStatus`, `syncStatus`, `lastSyncAt` буцаана.
+Resource read response нь parser-аар цэвэрлэсэн safe мөрүүдийг ESIS-ийн
+`SUCCESS_CODE`, `RESPONSE_MESSAGE`, `RESULT` envelope-оор давхар буцаадаг.
+Bearer token, provider password, регистр болон raw sensitive payload энэ
+дэлгэцийн contract-д орохгүй.
 
 `developerv2.esis.edu.mn` бол developer portal; API base URL биш. Token-ийг
 browser руу өгөхгүй, frontend ESIS Hub-ийг шууд дуудахгүй.

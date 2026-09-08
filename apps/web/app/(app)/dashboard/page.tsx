@@ -8,7 +8,7 @@ import { get } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
-import { fullName } from "@/lib/format";
+import { formatDate, fullName } from "@/lib/format";
 import { useSession } from "@/lib/auth/session";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,7 @@ import { WeeklyAttendance } from "@/components/dashboard/weekly-attendance";
 import { AssessmentProgress } from "@/components/dashboard/assessment-progress";
 import { DashboardChatPreview } from "@/components/dashboard/dashboard-chat-preview";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, CalendarDays, UsersRound } from "lucide-react";
 
 /**
  * "What needs my attention today."
@@ -170,9 +170,27 @@ function TeacherDashboard() {
    */
   const teacherName = fullName(session?.user);
   const greetingName = teacherName === "—" ? "багш" : teacherName;
+  const today = new Date();
+  const weekday = new Intl.DateTimeFormat("mn-MN", { weekday: "long" }).format(today);
   const header = (
     <div className="teacher-dashboard-header">
-      <PageHeader title={`Сайн байна уу, ${greetingName}! 👋`} />
+      <PageHeader
+        title={`Сайн байна уу, ${greetingName}! 👋`}
+        meta={
+          <>
+            {group ? (
+              <span className="inline-flex min-h-7 items-center gap-1.5 rounded-pill bg-surface px-2.5 text-caption font-semibold text-ink shadow-sm">
+                <UsersRound size={14} aria-hidden="true" className="text-primary" />
+                {group.name}
+              </span>
+            ) : null}
+            <span className="inline-flex min-h-7 items-center gap-1.5 rounded-pill bg-surface px-2.5 text-caption font-medium text-muted shadow-sm">
+              <CalendarDays size={14} aria-hidden="true" className="text-mint-ink" />
+              {formatDate(today)} · {weekday}
+            </span>
+          </>
+        }
+      />
       <div className="teacher-dashboard-banner">
         <p>Хүүхэд бүр өөрийн гэсэн гэрэлтэй</p>
         <Image
@@ -282,7 +300,7 @@ function TeacherDashboard() {
         />
       </div>
 
-      <div className="grid items-stretch gap-4 xl:grid-cols-[1.05fr_1.1fr_1fr_1.35fr]">
+      <div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-[1.05fr_1.1fr_1fr_1.35fr]">
         <AttendanceToday />
         <WeeklyAttendance />
         <MonthBirthdays birthdays={birthdaysThisMonth} />
@@ -292,7 +310,7 @@ function TeacherDashboard() {
         />
       </div>
 
-      <div className="grid items-stretch gap-4 xl:grid-cols-[1.05fr_1.15fr_1fr]">
+      <div className="grid items-stretch gap-4 xl:grid-cols-[1.05fr_1.3fr_1fr]">
         <TodayMenu />
         <ClassBoardNotice notice={boardNotice} />
         <DashboardChatPreview />

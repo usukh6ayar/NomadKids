@@ -1,215 +1,412 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { Eye, MessageCircle, Palette } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 import { groupObservationStatsSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
-import { Card, SectionHeader } from "@/components/ui/card";
-import { BarRow } from "@/components/ui/chart/bar-row";
-import { ColumnChart } from "@/components/ui/chart/columns";
+import { Card } from "@/components/ui/card";
 import { ErrorState, LoadingState } from "@/components/ui/states";
+import { TONE_VAR, type Tone } from "@/components/ui/tone";
+import { cn } from "@/lib/utils";
 
-/** `2026-09` → `9-р сар`, the form the rest of the product writes months in. */
-function monthLabel(iso: string): string {
-  const month = Number(iso.slice(5, 7));
-  return Number.isFinite(month) ? `${month}-р сар` : iso;
+const ACADEMIC_MONTHS = [9, 10, 11, 12, 1, 2, 3, 4, 5] as const;
+const OBSERVATION_TYPES = ["Ажиглалт", "Ярилцлага", "Бүтээл"] as const;
+const DEVELOPMENT_DOMAINS = [
+  "Нийгэм-сэтгэл хөдлөл",
+  "Хөдөлгөөн, эрүүл мэнд",
+  "Хэл яриа",
+  "Байгаль, нийгмийн орчин",
+  "Математик",
+  "Зураг, урлал",
+  "Хөгжим",
+] as const;
+const DAILY_ACTIVITIES = [
+  "Өглөөний хүлээн авалт",
+  "Тоглоомын цаг",
+  "Өглөөний дасгал",
+  "Өглөөний цай",
+  "Сургалт, үйл ажиллагаа",
+  "Ариун цэвэр, дадал хэвшил",
+  "Зугаалгын цаг",
+  "Өдрийн хоол",
+  "Өдрийн унтлага",
+  "Үдийн цай",
+  "Ганцаарчилсан сургалт",
+  "Хөгжөөн баясгах үйл ажиллагаа",
+  "Таралт",
+] as const;
+
+const DOMAIN_ALIASES: Record<string, readonly string[]> = {
+  "Нийгэм-сэтгэл хөдлөл": ["Нийгэмшихүй, сэтгэл хөдлөл"],
+  "Хөдөлгөөн, эрүүл мэнд": ["Бие бялдрын хөгжил", "Бие бялдар, хөдөлгөөн"],
+  "Хэл яриа": ["Хэл яриа, харилцаа"],
+  Математик: ["Танин мэдэхүй"],
+  "Зураг, урлал": ["Урлаг, гоо зүйн хүмүүжил", "Бүтээлч сэтгэлгээ"],
+};
+
+interface CountRow {
+  id: string;
+  name: string;
+  count: number;
 }
 
-/**
- * The school year around a date — September to the following May.
- *
- * ★ Derived rather than fetched, deliberately.
- *
- * A `SchoolYear` row exists and carries a name, but not the month boundaries
- * this chart needs, and `Term` dates are a kindergarten's own and may not cover
- * the holidays. September–May is the RFP's own year and is what the client's
- * drawing labels its axis with (9, 10, 11, 12, 1 … 5). Getting it from the
- * clock keeps this component free of a second endpoint whose only job would be
- * to say which year it is.
- */
-function schoolYearWindow(today: Date): { from: string; to: string } {
+interface MonthPoint {
+  key: string;
+  label: string;
+  count: number;
+  childrenCount: number;
+}
+
+/** September through May for the school year containing `from`. */
+function academicMonthList(from: string): MonthPoint[] {
+  const parsedYear = Number(from.slice(0, 4));
+  const today = new Date();
+  const fallbackYear = today.getMonth() >= 8 ? today.getFullYear() : today.getFullYear() - 1;
+  const startYear = Number.isFinite(parsedYear) ? parsedYear : fallbackYear;
+
+  return ACADEMIC_MONTHS.map((month) => {
+    const year = month >= 9 ? startYear : startYear + 1;
+    return {
+      key: `${year}-${String(month).padStart(2, "0")}`,
+      label: `${month}-р сар`,
+      count: 0,
+      childrenCount: 0,
+    };
+  });
+}
+
+function defaultWindow(): { from: string; to: string } {
+  const today = new Date();
   const year = today.getMonth() >= 8 ? today.getFullYear() : today.getFullYear() - 1;
   return { from: `${year}-09-01`, to: `${year + 1}-05-31` };
 }
 
-/**
- * How a group's note-keeping is going — the client's 2026-08-31 dashboard.
- *
- * ★ It answers "am I writing about every child", not "how many notes exist".
- *
- * The headline is coverage: how many of the group's children have been written
- * about at all this year. A teacher with ninety notes about four children and
- * nothing about the other five is the case this screen exists to make visible,
- * and a total alone hides it completely — which is why `childrenWithNotes` is
- * the number in front and `total` is a supporting figure.
- *
- * ★★ Every chart is a list that happens to be drawn.
- *
- * `BarRow` rows and `ColumnChart` columns both carry their own text, so the
- * whole dashboard is readable at 320px without a horizontal scroller and with
- * a screen reader that draws nothing at all. The client asked specifically that
- * nothing overflow the viewport on a phone; the way to keep that promise is not
- * to have a fixed-width canvas in the first place.
- */
-export function GroupCoverage({ groupId }: { groupId: string }) {
-  const window_ = schoolYearWindow(new Date());
+function normalized(value: string): string {
+  return value.trim().toLocaleLowerCase("mn-MN");
+}
 
+/** Keep the source screen's fixed order while accepting legacy catalogue names. */
+function fixedRows(
+  reference: readonly string[],
+  rows: CountRow[],
+  aliases: Record<string, readonly string[]> = {},
+): CountRow[] {
+  return reference.map((name, index) => {
+    const accepted = new Set([name, ...(aliases[name] ?? [])].map(normalized));
+    const matches = rows.filter((row) => accepted.has(normalized(row.name)));
+    return {
+      id: matches.map((row) => row.id).join("-") || `reference-${index}-${name}`,
+      name,
+      count: matches.reduce((sum, row) => sum + row.count, 0),
+    };
+  });
+}
+
+/**
+ * The assessment page's observation coverage overview.
+ *
+ * Counts come from one group-scoped aggregate endpoint. The browser never
+ * downloads every child's notes to calculate these panels.
+ */
+export function GroupCoverage({
+  groupId,
+  startsOn,
+  endsOn,
+}: {
+  groupId: string;
+  startsOn?: string | null;
+  endsOn?: string | null;
+}) {
+  const fallback = defaultWindow();
+  const from = startsOn ? `${startsOn.slice(0, 4)}-09-01` : fallback.from;
+  const to = endsOn ? `${endsOn.slice(0, 4)}-05-31` : fallback.to;
   const stats = useQuery({
-    queryKey: qk.groupObservationStats(groupId, window_.from, window_.to),
+    queryKey: qk.groupObservationStats(groupId, from, to),
     queryFn: () =>
       get(
-        `/groups/${groupId}/observation-stats?from=${window_.from}&to=${window_.to}`,
+        `/groups/${groupId}/observation-stats?from=${from}&to=${to}`,
         groupObservationStatsSchema,
       ),
   });
+
+  const monthTemplate = academicMonthList(from);
+  const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+  const initialMonth = monthTemplate.some((month) => month.key === currentMonth)
+    ? currentMonth
+    : monthTemplate[0]!.key;
+  const [selectedMonth, setSelectedMonth] = useState(initialMonth);
+  const [target, setTarget] = useState(2);
+  const targetKey = `assessment-monthly-target:${groupId}:${from}`;
+
+  useEffect(() => {
+    const stored = Number(window.localStorage.getItem(targetKey));
+    if (Number.isInteger(stored) && stored >= 1 && stored <= 20) setTarget(stored);
+  }, [targetKey]);
 
   if (stats.isPending) return <LoadingState rows={4} />;
   if (stats.isError) return <ErrorState description={errorMessage(stats.error)} />;
 
   const data = stats.data;
-  const coverage =
-    data.enrolled === 0 ? 0 : Math.round((data.childrenWithNotes / data.enrolled) * 100);
+  const monthStats = new Map(data.byMonth.map((month) => [month.month, month]));
+  const months = monthTemplate.map((month) => ({
+    ...month,
+    count: monthStats.get(month.key)?.count ?? 0,
+    childrenCount: monthStats.get(month.key)?.childrenCount ?? 0,
+  }));
+  const selected = months.find((month) => month.key === selectedMonth) ?? months[0]!;
+  const completed = selected.childrenCount;
+  const percent = Math.min(100, Math.round((completed / target) * 100));
+  const targetMet = completed >= target;
+  const selectedMonthLocative = selected.label.replace(" сар", " сард");
+  const selectedMonthGenitive = selected.label.replace(" сар", " сарын");
+  const shouldRemind =
+    selected.key === currentMonth && new Date().getDate() >= 21 && !targetMet && data.enrolled > 0;
+  const teacherTypes = data.byType.filter((row) => !normalized(row.name).includes("гэр бүлээс"));
+  const typeRows = OBSERVATION_TYPES.map((name, index) => ({
+    id: `type-${index}-${name}`,
+    name,
+    count: teacherTypes
+      .filter((row) => {
+        const value = normalized(row.name);
+        if (name === "Ярилцлага") return value.includes("ярилц");
+        if (name === "Бүтээл") return value.includes("бүтээл");
+        return !value.includes("ярилц") && !value.includes("бүтээл");
+      })
+      .reduce((sum, row) => sum + row.count, 0),
+  }));
+  const domainRows = fixedRows(DEVELOPMENT_DOMAINS, data.byDomain, DOMAIN_ALIASES);
+  const activityRows = fixedRows(
+    DAILY_ACTIVITIES,
+    data.byActivity.map((row, index) => ({ id: `activity-${index}-${row.name}`, ...row })),
+  );
+
+  function updateTarget(value: number) {
+    const next = Math.min(20, Math.max(1, Number.isFinite(value) ? value : 1));
+    setTarget(next);
+    window.localStorage.setItem(targetKey, String(next));
+  }
 
   return (
-    <section aria-labelledby="coverage-heading" className="flex flex-col gap-4">
-      <SectionHeader
-        id="coverage-heading"
-        title="Тэмдэглэлийн хамралт"
-        lede="Энэ хичээлийн жилд бүлгийн хэдэн хүүхдэд тэмдэглэл хөтөлсөн."
-      />
+    <section aria-label="Үнэлгээний сарын тойм" className="flex flex-col gap-4">
+      {shouldRemind ? (
+        <div
+          role="status"
+          className="flex items-start gap-2.5 rounded-row border border-sun bg-sun/40 px-4 py-3 text-body text-ink"
+        >
+          <span aria-hidden="true" className="mt-0.5 size-2.5 shrink-0 rounded-pill bg-sun-ink" />
+          <p>
+            {selectedMonthLocative} зорилтоо биелүүлэхэд {Math.max(target - completed, 0)} хүүхдэд
+            тэмдэглэл хөтлөх үлдлээ.
+          </p>
+        </div>
+      ) : null}
 
-      {/*
-        The headline. `sm:grid-cols-3` rather than a row that wraps: three
-        numbers of two digits each fit side by side from 640px, and below that
-        two columns keep them legible instead of squeezing to three.
-      */}
-      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Stat
-          label="Хамрагдсан хүүхэд"
-          value={`${data.childrenWithNotes}/${data.enrolled}`}
-          hint={`${coverage}%`}
-        />
-        <Stat label="Нийт тэмдэглэл" value={data.total} />
-        <Stat
-          label="Тэмдэглэлгүй"
-          value={Math.max(0, data.enrolled - data.childrenWithNotes)}
-          hint="хүүхэд"
-        />
-      </dl>
+      <Card
+        tone="mint"
+        pad="compact"
+        className="grid gap-5 lg:grid-cols-[1fr_360px] lg:items-center"
+      >
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="text-caption font-bold uppercase text-mint-ink">Зорилт</span>
+            <label>
+              <span className="sr-only">Тайлант сар сонгох</span>
+              <select
+                value={selected.key}
+                onChange={(event) => setSelectedMonth(event.target.value)}
+                className="h-9 rounded-control border border-mint bg-surface px-3 text-body font-semibold text-mint-ink"
+              >
+                {months.map((month) => (
+                  <option key={month.key} value={month.key}>
+                    {month.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
 
-      {/*
-        ★ One column below `lg`, two above — the client asked that desktop
-        sections stack rather than shrink on a phone.
+          <h2 className="mt-2 text-lead font-semibold text-ink">
+            Хүүхэд бүрийн үнэлгээний хамралт
+          </h2>
+          <label className="mt-4 flex flex-wrap items-center gap-2 text-body font-semibold text-ink">
+            <input
+              type="number"
+              min={1}
+              max={20}
+              step={1}
+              inputMode="numeric"
+              value={target}
+              onChange={(event) => updateTarget(event.currentTarget.valueAsNumber)}
+              className="h-11 w-16 rounded-control border border-mint bg-surface px-2 text-center font-semibold tabular-nums text-ink"
+            />
+            <span>хүүхдэд тэмдэглэл хөтлөх</span>
+          </label>
+          <p className="mt-3 text-caption font-medium text-mint-ink">
+            Зорилт: {selectedMonthLocative} {target} өөр хүүхдэд тэмдэглэл хөтлөх.
+          </p>
+        </div>
 
-        Three panels side by side at 390px would give each about 110px, which is
-        narrower than the labels inside them. Stacking is not a fallback here;
-        it is the only arrangement in which the bars are readable.
-      */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <BucketPanel
-          title="Ажиглалтын төрлийн бүрдэл"
-          empty="Тэмдэглэл бүртгэгдээгүй байна."
-          rows={data.byType}
+        <div className="min-w-0">
+          <div className="flex items-baseline justify-between gap-4">
+            <strong className="text-display font-semibold tabular-nums text-ink">
+              {completed} / {target}
+            </strong>
+            <span className="text-lead font-bold tabular-nums text-mint-ink">{percent}%</span>
+          </div>
+          <div
+            role="progressbar"
+            aria-label={`${selected.label}: ${target} хүүхдийн зорилтоос ${completed} хүүхэд`}
+            aria-valuemin={0}
+            aria-valuemax={target}
+            aria-valuenow={Math.min(completed, target)}
+            className="mt-2 h-2.5 overflow-hidden rounded-pill bg-surface"
+          >
+            <div
+              className="h-full rounded-pill bg-mint-ink transition-[width]"
+              style={{ width: `${percent}%` }}
+            />
+          </div>
+          <p className="mt-3 flex items-start gap-2 text-caption text-muted">
+            <span
+              aria-hidden="true"
+              className={cn(
+                "mt-1 size-2.5 shrink-0 rounded-pill",
+                targetMet ? "bg-mint-ink" : "bg-sun-ink",
+              )}
+            />
+            {targetMet
+              ? `${selectedMonthGenitive} зорилт биелсэн байна.`
+              : `${selectedMonthLocative} одоогоор ${completed}/${target} хүүхэд — ${percent}% биелэлттэй байна.`}
+          </p>
+        </div>
+      </Card>
+
+      <div className="grid items-stretch gap-4 xl:grid-cols-3">
+        <CoveragePanel
+          title="Ажиглалтын төрлийн бүрдэлт"
+          rows={typeRows}
+          tone="mint"
+          iconFor={observationTypeIcon}
+          footer="3 төрлийн тэмдэглэлийг тэнцвэртэй хөтөлж буй эсэх."
         />
-        <BucketPanel
+        <CoveragePanel
           title="Сургалтын чиглэлийн хамралт"
-          empty="Хөгжлийн чиглэл тэмдэглэгдээгүй байна."
-          rows={data.byDomain}
+          rows={domainRows}
+          tone="sky"
+          footer="СӨБ-ын 7 чиглэл орхигдоогүй эсэхийг харуулна."
+        />
+        <CoveragePanel
+          title="Үйл ажиллагааны явц"
+          rows={activityRows}
+          tone="sun"
+          dashWhenZero
+          footer={
+            data.byActivity.length > 0
+              ? "Үйл ажиллагааны үе шат бүрийн тэмдэглэлийн хамралтыг харуулна."
+              : "Үйл ажиллагааны үе шат одоогийн тэмдэглэлд сонгогдоогүй байна."
+          }
         />
       </div>
 
-      {data.byActivity.length > 0 ? (
-        <BucketPanel
-          title="Үйл ажиллагааны явц"
-          empty="Үйл ажиллагаа тэмдэглэгдээгүй байна."
-          rows={data.byActivity.map((row) => ({ id: row.name, name: row.name, count: row.count }))}
-        />
-      ) : null}
-
-      <Card pad="roomy" className="flex flex-col gap-3">
-        <h3 className="text-body font-semibold text-ink">Сарын тэмдэглэлийн хамралт</h3>
-        {data.byMonth.length === 0 ? (
-          <p className="text-body text-muted">Энэ хичээлийн жилд тэмдэглэл алга байна.</p>
-        ) : (
-          <ColumnChart
-            /*
-              Scaled against the busiest month rather than against the child
-              count: this chart is about rhythm — which months went quiet — and
-              a fixed ceiling would flatten every bar in a group that writes
-              little, which is exactly the group whose pattern matters most.
-            */
-            columns={data.byMonth.map((row) => {
-              const peak = Math.max(...data.byMonth.map((entry) => entry.count), 1);
-              return {
-                label: monthLabel(row.month),
-                value: Math.round((row.count / peak) * 100),
-                accessibleLabel: `${monthLabel(row.month)}: ${row.count} тэмдэглэл`,
-              };
-            })}
-            axisLabel={() => ""}
-            height={120}
-          />
-        )}
-      </Card>
+      <div className="grid gap-4 xl:grid-cols-3">
+        <MonthlyCoverage months={months} />
+      </div>
     </section>
   );
 }
 
-/** One headline figure. A `<dl>` cell, so the label and number read as a pair. */
-function Stat({ label, value, hint }: { label: string; value: number | string; hint?: string }) {
+function observationTypeIcon(name: string): ReactNode {
+  const value = normalized(name);
+  if (value.includes("ярилц")) return <MessageCircle size={14} aria-hidden="true" />;
+  if (value.includes("бүтээл")) return <Palette size={14} aria-hidden="true" />;
+  return <Eye size={14} aria-hidden="true" />;
+}
+
+function CoveragePanel({
+  title,
+  rows,
+  footer,
+  tone,
+  iconFor,
+  dashWhenZero = false,
+}: {
+  title: string;
+  rows: CountRow[];
+  footer: string;
+  tone: Tone;
+  iconFor?: (name: string) => ReactNode;
+  dashWhenZero?: boolean;
+}) {
+  const peak = Math.max(...rows.map((row) => row.count), 1);
+
   return (
-    <div className="rounded-card border border-border bg-surface px-3 py-2.5">
-      <dt className="text-caption text-muted">{label}</dt>
-      <dd className="text-lead font-semibold tabular-nums text-ink">{value}</dd>
-      {hint ? <p className="text-caption text-faint">{hint}</p> : null}
-    </div>
+    <Card pad="compact" className="flex h-full flex-col">
+      <h3 className="text-body font-semibold text-ink">{title}</h3>
+      <div className="mt-4 flex flex-col gap-2.5">
+        {rows.map((row) => (
+          <div
+            key={row.id}
+            className="grid grid-cols-[minmax(120px,1fr)_minmax(64px,1.15fr)_24px] items-center gap-2"
+          >
+            <span className="flex min-w-0 items-center gap-1.5 text-caption leading-snug text-ink">
+              {iconFor ? <span className="shrink-0 text-muted">{iconFor(row.name)}</span> : null}
+              <span>{row.name}</span>
+            </span>
+            <span
+              role="img"
+              aria-label={`${row.name}: ${row.count} тэмдэглэл`}
+              className="h-2 overflow-hidden rounded-pill bg-track"
+            >
+              <span
+                className="block h-full rounded-pill"
+                style={{ width: `${(row.count / peak) * 100}%`, background: TONE_VAR[tone] }}
+              />
+            </span>
+            <strong className="text-right text-caption tabular-nums text-ink">
+              {dashWhenZero && row.count === 0 ? "—" : row.count}
+            </strong>
+          </div>
+        ))}
+      </div>
+      <p className="mt-auto pt-4 text-caption text-muted">{footer}</p>
+    </Card>
   );
 }
 
-/**
- * A titled list of counts drawn as bars.
- *
- * ★ Scaled to the biggest row, not to the total.
- *
- * A share-of-total scale makes every bar tiny as soon as there are eight
- * categories — the exact case here, where seven learning areas split a hundred
- * notes. Against the leader, the shape of "which areas are covered and which
- * are not" is legible at any count, which is the question the panel is asked.
- */
-function BucketPanel({
-  title,
-  rows,
-  empty,
-}: {
-  title: string;
-  rows: { id: string; name: string; count: number }[];
-  empty: string;
-}) {
-  const peak = Math.max(...rows.map((row) => row.count), 0);
+function MonthlyCoverage({ months }: { months: MonthPoint[] }) {
+  const peak = Math.max(...months.map((month) => month.childrenCount), 1);
 
   return (
-    <Card pad="roomy" className="flex flex-col gap-3">
-      <h3 className="text-body font-semibold text-ink">{title}</h3>
-
-      {rows.length === 0 || peak === 0 ? (
-        <p className="text-body text-muted">{empty}</p>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {rows.map((row) => (
-            <BarRow
-              key={row.id}
-              label={row.name}
-              percent={(row.count / peak) * 100}
-              value={row.count}
-              accessibleLabel={`${row.name}: ${row.count}`}
-              // Full width for the label: these are Mongolian compounds
-              // ("Нийгэм-сэтгэл хөдлөл"), not two-letter weekday stubs.
-              labelWidth="w-[132px] md:w-[168px]"
-            />
-          ))}
-        </div>
-      )}
+    <Card pad="compact">
+      <h3 className="text-body font-semibold text-ink">Сарын тэмдэглэлийн хамралт</h3>
+      <ul className="mt-4 grid h-[82px] grid-cols-9 items-end gap-1 border-b border-border-soft">
+        {months.map((month) => {
+          const height = month.childrenCount === 0 ? 2 : (month.childrenCount / peak) * 42;
+          return (
+            <li
+              key={month.key}
+              aria-label={`${month.label}: ${month.childrenCount} хүүхэд, ${month.count} тэмдэглэл`}
+              className="flex h-full min-w-0 flex-col items-center justify-end gap-1"
+            >
+              <strong className="text-caption tabular-nums text-ink">{month.childrenCount}</strong>
+              <span
+                aria-hidden="true"
+                className="w-full max-w-3 rounded-t-control bg-sky-ink/80"
+                style={{ height }}
+              />
+              <span className="text-caption tabular-nums text-muted">
+                {Number(month.key.slice(5))}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-4 text-caption text-muted">
+        Сар бүр хичнээн хүүхдэд тэмдэглэл хөтөлснийг харуулна (9-5 сар).
+      </p>
     </Card>
   );
 }

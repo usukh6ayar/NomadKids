@@ -17,11 +17,11 @@ import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
-import { FormError } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
+import { FormError } from "@/components/ui/states";
 
 /** The promote dialog's roster — the group's own children, to pick from. */
 const yearsSchema = z.array(schoolYearSchema);

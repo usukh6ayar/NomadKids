@@ -771,8 +771,8 @@ describe("group observation stats", () => {
     );
 
     expect(res.body.byMonth).toEqual([
-      { month: "2026-02", count: 1 },
-      { month: "2026-03", count: 1 },
+      { month: "2026-02", count: 1, childrenCount: 1 },
+      { month: "2026-03", count: 1, childrenCount: 1 },
     ]);
   });
 

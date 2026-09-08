@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { surveyKindSchema, uuidSchema } from "@kinder/contracts";
+import { surveyCategorySchema, surveyKindSchema, uuidSchema } from "@kinder/contracts";
 
 /** "2025-2026" — a school year spans two calendar years, so it is a string. */
 const schoolYearSchema = z
@@ -16,6 +16,9 @@ export const createSurveySchema = z
   .object({
     title: z.string().min(1).max(200),
     description: z.string().max(2000).nullable().optional(),
+    // Older API clients keep creating the general parent-engagement category;
+    // the current UI always sends the teacher's explicit selection.
+    category: surveyCategorySchema.default("PARENT_ENGAGEMENT"),
     scope: z.enum(["CHILD", "KINDERGARTEN"]),
     /*
       Defaulted rather than required so every existing caller — the clone

@@ -54,16 +54,13 @@ function weekdaysOf(today: Date): string[] {
 }
 
 /**
- * Сарын ирц — attendance across this week, as a column per day.
+ * Долоо хоногийн ирц — attendance across this week, as a column per day.
  *
- * ★ The title is the client's and the data is a week, and that gap is theirs
- * to close rather than this file's to paper over.
+ * ★ The title names the data, not the old mock-up label.
  *
- * The sketch titles this card "Сарын ирц" — the month's attendance — and labels
- * its own axis Да Мя Лх Пү Ба, which is a week. It was shipped as "Долоо
- * хоногийн ирц" for one iteration on the grounds that a card reading "the
- * month" over five weekday columns misreports itself; the client then asked for
- * the screen to match the drawing exactly, so the drawing's word is what ships.
+ * The chart contains Monday through Friday of the current week. Calling those
+ * five columns "Сарын ирц" made the interface visually faithful but factually
+ * ambiguous, so the card now says exactly what it shows.
  *
  * **A real month is not blocked by this file.** It needs
  * `GET /groups/:id/attendance/summary?from=&to=`, which does not exist — see
@@ -139,7 +136,7 @@ export function WeeklyAttendance() {
    */
   if (!group) {
     return (
-      <BoardCard title="Сарын ирц">
+      <BoardCard title="Долоо хоногийн ирц">
         <BoardCardEmpty
           icon={<CloudOff size={22} />}
           title="Ирцийн мэдээлэл алга"
@@ -176,7 +173,7 @@ export function WeeklyAttendance() {
 
   return (
     <BoardCard
-      title="Сарын ирц"
+      title="Долоо хоногийн ирц"
       /*
         The mean, in the title row — where the sketch puts its "92%". A headline
         the chart then explains, rather than a figure the reader derives by eye
@@ -191,7 +188,7 @@ export function WeeklyAttendance() {
         </p>
       }
     >
-      <ColumnChart columns={columns} emptyLabel="ирц бүртгээгүй" height={180} />
+      <ColumnChart columns={columns} emptyLabel="ирц бүртгээгүй" height={138} />
     </BoardCard>
   );
 }

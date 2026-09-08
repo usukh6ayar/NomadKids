@@ -1,0 +1,30 @@
+{
+  "SUCCESS_CODE": 200,
+  "RESPONSE_MESSAGE": "DEMO_SUCCESS",
+  "RESULT": [
+    {
+      "institutionId": "40305",
+      "studentGroupId": "10001",
+      "studentGroupName": "Наран demo бүлэг",
+      "academicLevel": "2",
+      "academicLevelName": "Дунд бүлэг",
+      "academicGroupId": "10001",
+      "academicGroupName": "Наран demo бүлэг",
+      "instructorId": "88012",
+      "instructorName": "Demo багш 01",
+      "academicYear": "2026"
+    },
+    {
+      "institutionId": "40305",
+      "studentGroupId": "10002",
+      "studentGroupName": "Тэнгэр demo бүлэг",
+      "academicLevel": "3",
+      "academicLevelName": "Ахлах бүлэг",
+      "academicGroupId": "10002",
+      "academicGroupName": "Тэнгэр demo бүлэг",
+      "instructorId": "88013",
+      "instructorName": "Demo багш 02",
+      "academicYear": "2026"
+    }
+  ]
+}
