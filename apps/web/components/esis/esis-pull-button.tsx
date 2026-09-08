@@ -12,6 +12,7 @@ import {
   type EsisResourceRead,
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
+import { EsisRowValues, esisSampleColumns } from "@/components/esis/esis-rows";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
@@ -299,24 +300,16 @@ function EndpointSummary({ endpoint }: { endpoint: EsisOverview["endpoints"][num
 }
 
 /**
- * A width class picked from a fixed set.
+ * The sandbox records shown until a live response replaces them.
  *
- * ★ Not interpolated. Tailwind reads class names out of the source, so
- * `min-w-[${n}px]` compiles to no rule at all and a 27-column staff table
- * would squeeze instead of scrolling. Three literals cover every service.
- */
-function rowTableWidth(columns: number): string {
-  if (columns > 16) return "min-w-[2400px]";
-  if (columns > 8) return "min-w-[1400px]";
-  return "min-w-[720px]";
-}
-
-/**
- * The sandbox row shown until a live response replaces it.
- *
- * ★ Rendered through `RowValues`, the same component a live result uses, so the
- * demonstration has the same shape as a live result, while the `Demo ESIS`
+ * ★ Rendered through `EsisRowValues`, the same component a live result uses, so
+ * the demonstration has the same shape as a live result, while the `Demo ESIS`
  * badge prevents it from being presented as production evidence.
+ *
+ * ★★ The whole demo set, not its first row. A roster service that renders one
+ * child answers "what fields come back?" and not "what will this screen look
+ * like once we are connected?", which is the question somebody opens this
+ * dialog without a token to ask.
  */
 function SampleResult({
   endpoint,
@@ -325,7 +318,7 @@ function SampleResult({
   endpoint: EsisOverview["endpoints"][number];
   demoMode: boolean;
 }) {
-  const columns = endpoint.fields.filter((field) => field.io === "OUTPUT" && field.ingested);
+  const columns = esisSampleColumns(endpoint.fields);
 
   return (
     <section aria-labelledby="esis-pull-sample">
@@ -336,99 +329,15 @@ function SampleResult({
         <Badge tone={demoMode ? "mint" : "sun"}>
           {demoMode ? "Demo ESIS синк" : "Live хариу хүлээгдэж байна"}
         </Badge>
+        <Badge tone="sky">{endpoint.sampleRows.length} бичлэг</Badge>
       </div>
       <p className="mb-3 text-caption text-muted">
         {demoMode
           ? "Developer portal-ийн гэрээгээр боловсруулсан demo sandbox өгөгдөл."
           : "Талбарын нэр нь ESIS developer portal-оос баталгаажсан."}
       </p>
-      <RowValues columns={columns} rows={[endpoint.sampleRow]} />
+      <EsisRowValues columns={columns} rows={endpoint.sampleRows} />
     </section>
-  );
-}
-
-/**
- * The values, shared by a live result and the sample.
- *
- * ★ One component on purpose. If the demonstration drew its own view the two
- * would drift, and the first thing to drift would be which fields appear —
- * making the sample a promise the live view does not keep.
- *
- * ★★ **One record is a definition list; many are a table.** A single
- * organisation across 16 columns is a horizontal scrollbar with one row under
- * it — the reader drags sideways to answer "what is the хаяг?", which is the
- * wrong shape for a question about one thing. Stacked label-above-value is how
- * `/admin/kindergarten` already shows exactly this record, so ESIS's copy of it
- * reads the same way. A roster of eighteen children is the opposite case:
- * columns are compared downwards, and a table is the only thing that works.
- */
-function RowValues({
-  columns,
-  rows,
-}: {
-  columns: EsisField[];
-  rows: Record<string, string | null>[];
-}) {
-  if (rows.length === 1) return <RecordFields columns={columns} row={rows[0]!} />;
-
-  return (
-    <TableShell caption="ESIS сервисийн мөрүүд" minWidth={rowTableWidth(columns.length)}>
-      <thead>
-        <tr>
-          {columns.map((field) => (
-            <Th key={field.name}>{field.label}</Th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row, index) => (
-          <tr key={index}>
-            {columns.map((field) => (
-              <Td key={field.name}>{row[field.name] ?? "—"}</Td>
-            ))}
-          </tr>
-        ))}
-      </tbody>
-    </TableShell>
-  );
-}
-
-/**
- * One ESIS record, laid out the way `/admin/kindergarten` lays out its own.
- *
- * ★ Deliberately the same shape as that page's `DetailRow`: caption-sized muted
- * label, body-sized ink value, stacked. The point of this screen is "here is
- * what ESIS holds about your kindergarten", and the answer is easiest to check
- * when it looks like the page holding the local copy — a reader comparing the
- * two should not also be translating between two layouts.
- *
- * ★★ A field ESIS left empty says "Бөглөөгүй" rather than rendering blank, for
- * the reason that page gives: a bare dash leaves the reader unsure whether the
- * value is missing or the screen failed to load it.
- */
-function RecordFields({
-  columns,
-  row,
-}: {
-  columns: EsisField[];
-  row: Record<string, string | null>;
-}) {
-  return (
-    <Card pad="roomy">
-      <dl className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {columns.map((field) => {
-          const value = row[field.name];
-          return (
-            <div key={field.name} className="flex min-w-0 flex-col gap-0.5">
-              <dt className="text-caption text-muted">{field.label}</dt>
-              <dd className={value ? "text-body break-words text-ink" : "text-body text-faint"}>
-                {value || "Бөглөөгүй"}
-              </dd>
-            </div>
-          );
-        })}
-      </dl>
-    </Card>
   );
 }
 
@@ -444,7 +353,7 @@ function ReadResult({ result }: { result: EsisResourceRead }) {
     );
   }
 
-  const columns = result.fields.filter((field) => field.io === "OUTPUT" && field.ingested);
+  const columns = esisSampleColumns(result.fields);
 
   return (
     <section aria-labelledby="esis-pull-rows">
@@ -461,7 +370,7 @@ function ReadResult({ result }: { result: EsisResourceRead }) {
           <p className="text-body text-muted">ESIS энэ сервисээр бичлэг буцаасангүй.</p>
         </Card>
       ) : (
-        <RowValues columns={columns} rows={result.rows} />
+        <EsisRowValues columns={columns} rows={result.rows} />
       )}
       {result.count > result.rows.length ? (
         <p className="mt-2 text-caption text-muted">

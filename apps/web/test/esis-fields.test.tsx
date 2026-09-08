@@ -91,6 +91,11 @@ const endpoint = (
   sampleRow: Object.fromEntries(
     fields.filter((field) => field.ingested).map((field) => [field.name, field.sample]),
   ),
+  sampleRows: [
+    Object.fromEntries(
+      fields.filter((field) => field.ingested).map((field) => [field.name, field.sample]),
+    ),
+  ],
   accessStatus: "UNKNOWN",
   ...extra,
 });
@@ -224,6 +229,43 @@ describe("ESIS гаралтын талбарууд", () => {
     expect(within(details).getByText("Demo ESIS синк")).toBeInTheDocument();
     expect(within(details).getByText("Төвийн бүс")).toBeInTheDocument();
     expect(within(details).getByText("Бяцхан нүүдэлчид (жишээ)")).toBeInTheDocument();
+  });
+
+  /*
+   * ★ "Гаралтын утгуудыг бүгдийг нь" is a plural, and a roster service is where
+   * that bites: one child under a heading that says ten is a screen the
+   * operator cannot check anything against. Every demo record renders, and the
+   * count beside them is the number of records rendered rather than a figure
+   * kept by hand somewhere else.
+   */
+  it("renders every demo record of a list service, not only the first", async () => {
+    const roster = endpoint("students", "Суралцагчийн жагсаалт", studentFields, {
+      key: "students",
+      domain: "ROSTER",
+      sampleRows: [
+        { personId: "90000000000001", firstName: "Батбаяр" },
+        { personId: "90000000000002", firstName: "Ануужин" },
+        { personId: "90000000000003", firstName: "Хулан" },
+      ],
+    });
+    const body = overview(false);
+    body.endpoints = [body.endpoints[0]!, roster];
+
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: ESIS_PATH, body },
+    ]);
+    renderWithProviders(<EsisIntegrationPage />);
+
+    await openFieldsTab();
+    const details = fieldsFor("Суралцагчийн жагсаалт");
+
+    expect(within(details).getByText("Батбаяр")).toBeInTheDocument();
+    expect(within(details).getByText("Ануужин")).toBeInTheDocument();
+    expect(within(details).getByText("Хулан")).toBeInTheDocument();
+    expect(within(details).getByText("3 бичлэг")).toBeInTheDocument();
+    // Three records and a header row, under the catalog's own labels.
+    expect(within(details).getAllByRole("row")).toHaveLength(4);
   });
 
   it("drops the example entirely once ESIS returns real rows", async () => {
