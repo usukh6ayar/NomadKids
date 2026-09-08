@@ -386,7 +386,15 @@ function RosterSummary({ search, facets }: { search: string; facets: RosterFacet
         data. Selecting a group gives that group's split, which is what makes
         it worth having on this screen rather than only on the dashboard.
       */}
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3">
+      {/*
+        ★ Three across at every width — 2026-09-09.
+
+        "Нийт хүүхэд" spanned both phone columns, so a two-digit number sat in a
+        full-width card with the other half empty, and "Хөвгүүд" then wrapped to
+        a row of its own beside a hole. Three equal cells is what the three
+        figures are: one count and its two parts.
+      */}
+      <div className="grid grid-cols-3 gap-2 md:gap-3">
         <StatCard
           label="Нийт хүүхэд"
           value={data.total}
@@ -394,7 +402,7 @@ function RosterSummary({ search, facets }: { search: string; facets: RosterFacet
           art={<Art name="child" size={36} />}
           artSurface={false}
           tone="sky"
-          className="teacher-stat-card teacher-stat-sky col-span-2 md:col-span-1"
+          className="teacher-stat-card teacher-stat-sky"
         />
         <StatCard
           label="Охид"

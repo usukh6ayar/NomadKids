@@ -185,10 +185,45 @@ function AttendanceJournal() {
     <div className="flex flex-col gap-4 py-2">
       <PageHeader
         title="Ирцийн дэлгэрэнгүй"
-        actions={<AttendanceViewSwitch current="child" from={from} to={to} groupId={groupId} />}
+        actions={
+          <>
+            <AttendanceViewSwitch current="child" from={from} to={to} groupId={groupId} />
+            {/*
+              ★ In the header, not under the filters — 2026-09-09, at the
+              client's request: "excel татах гэдэг нь дороо орсноор маш том
+              цагаан хэсэг гарч зай эзэлж байна … excel татахыг нь дээш нь
+              оруулдаг ч юм уу".
+
+              It shared a `justify-between` row with the status chips, so at any
+              width where the two did not fill the line the gap between them was
+              the widest thing on the screen, and at narrower ones the button
+              wrapped to a line of its own — a 44px strip holding one control.
+              Beside the view switch it is one of the screen's two actions,
+              which is what it is.
+
+              ★★ A link, not a fetch. The browser downloads it with the session
+              cookie it already has; fetching would buffer a spreadsheet in
+              memory only to hand it straight back — the reasoning
+              `/admin/funding` records for its own export. `disabled` does
+              nothing to an anchor, so the control is absent until there is a
+              kindergarten to point it at rather than present and inert.
+            */}
+            {primaryKindergartenId ? (
+              <Button size="sm" variant="secondary" asChild>
+                <a
+                  href={downloadUrl(
+                    `/kindergartens/${primaryKindergartenId}/attendance/register/export?${queryString}`,
+                  )}
+                >
+                  <Download size={16} aria-hidden /> Excel татах
+                </a>
+              </Button>
+            ) : null}
+          </>
+        }
       />
 
-      <Card pad="roomy" className="flex flex-col gap-4">
+      <Card pad="compact" className="flex flex-col gap-3">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Эхлэх">
             {({ id }) => (
@@ -250,39 +285,17 @@ function AttendanceJournal() {
           </Field>
         </div>
 
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <FilterChipRow label="Ирцийн төлөв" scroll>
-            {STATUS_ORDER.map((status) => (
-              <FilterChip
-                key={status}
-                active={statuses.includes(status)}
-                onClick={() => toggleStatus(status)}
-              >
-                {ATTENDANCE_STATUS_LABEL[status] ?? status}
-              </FilterChip>
-            ))}
-          </FilterChipRow>
-
-          {/*
-            ★ A link, not a fetch. The browser downloads it with the session
-            cookie it already has; fetching would buffer a spreadsheet in
-            memory only to hand it straight back — the reasoning
-            `/admin/funding` records for its own export. `disabled` does
-            nothing to an anchor, so the control is absent until there is a
-            kindergarten to point it at rather than present and inert.
-          */}
-          {primaryKindergartenId ? (
-            <Button size="sm" variant="secondary" asChild>
-              <a
-                href={downloadUrl(
-                  `/kindergartens/${primaryKindergartenId}/attendance/register/export?${queryString}`,
-                )}
-              >
-                <Download size={16} aria-hidden /> Excel татах
-              </a>
-            </Button>
-          ) : null}
-        </div>
+        <FilterChipRow label="Ирцийн төлөв" scroll>
+          {STATUS_ORDER.map((status) => (
+            <FilterChip
+              key={status}
+              active={statuses.includes(status)}
+              onClick={() => toggleStatus(status)}
+            >
+              {ATTENDANCE_STATUS_LABEL[status] ?? status}
+            </FilterChip>
+          ))}
+        </FilterChipRow>
       </Card>
 
       {journal.isError ? (

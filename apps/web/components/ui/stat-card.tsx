@@ -89,7 +89,17 @@ export function StatCard({
 }) {
   const card = (
     <Card
-      pad="roomy"
+      /*
+        ★ `compact`, not `roomy` — 2026-09-09, at the client's request:
+        "хэтэрхий том, хэрэггүй том зайнууд гаргасан … шахаж сайжруул".
+
+        `roomy` is 24px of padding on a desktop, which is right for a card of
+        prose and wrong for one holding a label and a number: the figure is
+        `text-display` and states itself in two lines, so the padding was the
+        largest thing on the card. `compact` is 16px, and the row of them
+        shortens by about a fifth without any of the three parts moving.
+      */
+      pad="compact"
       className={cn(
         "flex items-start gap-3 overflow-hidden",
         size === "wide" && "sm:col-span-2",
@@ -119,7 +129,7 @@ export function StatCard({
           aria-hidden="true"
           className={cn(
             "grid shrink-0 place-items-center rounded-card [&>img]:size-full [&>img]:object-contain",
-            size === "wide" ? "size-14" : "size-11",
+            size === "wide" ? "size-12" : "size-10",
             artSurface ? TONE_SURFACE[tone] : "bg-transparent",
           )}
           data-icon-surface={artSurface ? "tone" : "none"}
