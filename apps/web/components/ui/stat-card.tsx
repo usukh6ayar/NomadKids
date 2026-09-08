@@ -53,6 +53,7 @@ export function StatCard({
   size = "normal",
   trend,
   footer,
+  chart,
   className,
 }: {
   label: string;
@@ -85,6 +86,22 @@ export function StatCard({
   trend?: ReactNode;
   /** A progress bar or a sparkline, below the figure. */
   footer?: ReactNode;
+  /**
+   * A small graphic in the card's right-hand space.
+   *
+   * ★ Added 2026-09-09, at the client's request: "тэр тусдаа dashboard тэгж
+   * гаргахгүйгээр … box дотор тэр ард хэсэгт н зай байгаа тэр дотор н гоё
+   * graphic dashboard гаргаж өг".
+   *
+   * A stat card's text column is short — a label, a figure, sometimes a
+   * caption — so the space to its right was empty on every card in the
+   * product. A chart there is the same fact the figure states, shown as a
+   * shape: the reader takes the split off it before reading either number.
+   *
+   * Distinct from `art`, which leads the card and identifies *what* it counts.
+   * This closes it and says *how it divides*, so a card can carry both.
+   */
+  chart?: ReactNode;
   className?: string;
 }) {
   const card = (
@@ -183,6 +200,11 @@ export function StatCard({
 
         {footer ? <div className="mt-1">{footer}</div> : null}
       </div>
+
+      {/* Centred against the whole card, unlike the chevron below: a chart is
+          the card's second subject and reads as balanced against the figure,
+          where a chevron is an affordance and belongs level with the label. */}
+      {chart ? <span className="shrink-0 self-center">{chart}</span> : null}
 
       {/*
         Aligned to the label rather than centred: the card's height is set by
