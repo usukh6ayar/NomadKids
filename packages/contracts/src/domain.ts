@@ -3032,6 +3032,15 @@ export const esisOverviewSchema = z.object({
       ingestedFieldCount: z.number(),
       /** One illustrative row — shown only until a live read succeeds. */
       sampleRow: esisRowSchema,
+      /**
+       * Every illustrative record of the service, `sampleRow` first.
+       *
+       * ★ A list service demonstrates a list. One row answers "what fields come
+       * back?"; it does not answer "what does a synced kindergarten look like?",
+       * which is the question asked before a token exists. Same rule as
+       * `sampleRow`: the whole set disappears the moment ESIS returns anything.
+       */
+      sampleRows: z.array(esisRowSchema),
       accessStatus: z.literal("UNKNOWN"),
     }),
   ),

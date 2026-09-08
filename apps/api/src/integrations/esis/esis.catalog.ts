@@ -1,5 +1,6 @@
 import { ESIS_ENDPOINTS } from "./esis.endpoints";
 import { ESIS_FIELDS, ESIS_FIELD_SOURCE, sampleRow } from "./esis.fields";
+import { sampleRows } from "./esis.samples";
 import { ESIS_READABLE_KEYS, esisReaderParams, type EsisReadableKey } from "./esis.service";
 
 export type EsisEndpointKey = keyof typeof ESIS_ENDPOINTS;
@@ -138,6 +139,10 @@ const isReadable = (key: EsisEndpointKey): key is EsisReadableKey => READABLE.ha
  * an operator who can see them can check them against the developer portal
  * without our help. `params` tells the screen which services need a group or a
  * date before the button can do anything.
+ *
+ * ★★ `sampleRows` is every demo record; `sampleRow` is the first of them, kept
+ * because two callers want exactly one — the child-registration template and
+ * "my ESIS profile" describe one person, not a roster.
  */
 export const ESIS_RESOURCE_CATALOG = (Object.keys(ESIS_ENDPOINTS) as EsisEndpointKey[]).map(
   (key) => ({
@@ -149,6 +154,7 @@ export const ESIS_RESOURCE_CATALOG = (Object.keys(ESIS_ENDPOINTS) as EsisEndpoin
     ingestedFieldCount: ESIS_FIELDS[key].filter((field) => field.io === "OUTPUT" && field.ingested)
       .length,
     sampleRow: sampleRow(key),
+    sampleRows: sampleRows(key),
     readable: isReadable(key),
     params: isReadable(key) ? [...esisReaderParams(key)] : [],
   }),

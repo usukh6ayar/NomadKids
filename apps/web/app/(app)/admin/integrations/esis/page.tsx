@@ -27,6 +27,7 @@ import { formatRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/lib/auth/session";
 import { EsisPullButton } from "@/components/esis/esis-pull-button";
+import { EsisRowValues, esisSampleColumns } from "@/components/esis/esis-rows";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
@@ -50,20 +51,6 @@ const DOMAIN_LABEL: Record<EsisOverview["endpoints"][number]["domain"], string> 
   ROSTER: "Хүүхэд ба хүний нөөц",
   ATTENDANCE: "Ирц",
   FOOD: "Хоолны лавлах",
-};
-
-const DEMO_RECORD_COUNT: Record<EsisPreviewResourceKey, number> = {
-  organization: 1,
-  academicYearStatuses: 1,
-  groups: 2,
-  students: 10,
-  teachers: 2,
-  staff: 3,
-  foodProductTypes: 4,
-  foodMaterialGroups: 6,
-  foodMaterials: 18,
-  foodProducts: 12,
-  foodProductMaterials: 28,
 };
 
 export default function EsisIntegrationPage() {
@@ -405,6 +392,19 @@ function ApiScope({ data }: { data: EsisOverview }) {
   );
 }
 
+/**
+ * One service: its demo records first, then every field it declares.
+ *
+ * ★ The records come first because they are the answer to the question the
+ * screen is asked — "what does ESIS give us?" — and the field table is the
+ * evidence behind it. Values live in exactly one of the two: repeating a value
+ * beside its own field name would put the same invented tenant on screen twice
+ * and make the field list look like a second, disagreeing source.
+ *
+ * ★★ Which is why the field list below carries no values at all. It answers a
+ * different question — what is declared, what is kept, and what was read in the
+ * ministry's catalog and refused, with the document that refused it.
+ */
 function EndpointFields({
   endpoint,
   demoMode,
@@ -415,6 +415,7 @@ function EndpointFields({
   const outputs = endpoint.fields.filter((field) => field.io === "OUTPUT");
   const inputs = endpoint.fields.filter((field) => field.io === "INPUT");
   const omitted = outputs.filter((field) => !field.ingested).length;
+  const columns = esisSampleColumns(endpoint.fields);
 
   return (
     <Card pad="compact">
@@ -454,8 +455,18 @@ function EndpointFields({
             <CheckCircle2 size={13} aria-hidden />
             {demoMode ? "Demo ESIS синк" : "Live ESIS синк"}
           </Badge>
+          <Badge tone="sky">{endpoint.sampleRows.length} бичлэг</Badge>
         </div>
 
+        <div className="mt-3">
+          <EsisRowValues columns={columns} rows={endpoint.sampleRows} />
+        </div>
+
+        <p className="mt-6 text-body font-semibold text-ink">
+          {outputs.length > 0
+            ? `Гаралтын бүх талбар (${outputs.length})`
+            : `Илгээх бүх талбар (${inputs.length})`}
+        </p>
         <ul className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {endpoint.fields.map((field) => (
             <li
@@ -464,19 +475,19 @@ function EndpointFields({
             >
               <span className="flex items-start justify-between gap-2">
                 <span className="min-w-0">
-                  <span className="block text-caption text-muted">{field.label}</span>
-                  <span className="mt-1 block break-words text-body font-semibold text-ink">
-                    {field.sample ??
-                      (field.ingested ? "Утга ирээгүй" : "Хадгалахгүй (хамгаалсан талбар)")}
+                  <span className="block break-words text-body font-medium text-ink">
+                    {field.label}
+                  </span>
+                  <span className="mt-1 block break-all font-mono text-caption text-faint">
+                    {field.name}
                   </span>
                 </span>
                 <Badge tone={field.io === "INPUT" ? "peach" : field.ingested ? "mint" : "sun"}>
                   {field.io === "INPUT" ? "Илгээнэ" : field.ingested ? "Авна" : "Авахгүй"}
                 </Badge>
               </span>
-              <span className="mt-2 block font-mono text-caption text-faint">{field.name}</span>
               {field.omitReason ? (
-                <span className="mt-1 block text-muted">{field.omitReason}</span>
+                <span className="mt-2 block text-muted">{field.omitReason}</span>
               ) : null}
             </li>
           ))}
@@ -623,27 +634,19 @@ function PreviewPanel({
                   {item.preview.length > 0 && endpoint ? (
                     <SunkenPanel className="mt-4 overflow-x-auto">
                       {/*
-                       * Every ingested field, not a summary line. "Ирлээ" and
-                       * "ирсэн утга нь зөв үү" are different questions, and
-                       * only the second one is answerable from values.
+                       * Every ingested field of every returned row, not a
+                       * summary line and not just the first record. "Ирлээ" and
+                       * "ирсэн утга нь зөв үү" are different questions, and only
+                       * the second one is answerable from values.
                        */}
-                      <dl className="grid gap-x-4 gap-y-2 sm:grid-cols-2">
-                        {endpoint.fields
-                          .filter((field) => field.ingested)
-                          .map((field) => (
-                            <div key={field.name} className="min-w-0">
-                              <dt className="text-caption font-semibold text-muted">
-                                {field.label}
-                              </dt>
-                              <dd className="truncate text-caption text-ink">
-                                {item.preview[0]?.[field.name] ?? "—"}
-                              </dd>
-                            </div>
-                          ))}
-                      </dl>
-                      {item.preview.length > 1 ? (
+                      <EsisRowValues
+                        columns={esisSampleColumns(endpoint.fields)}
+                        rows={item.preview}
+                      />
+                      {item.count > item.preview.length ? (
                         <p className="mt-3 text-caption text-muted">
-                          Эхний мөрийг харуулав — нийт {item.preview.length} мөр татсан.
+                          Эхний {item.preview.length} мөрийг харуулав — нийт {item.count} мөр
+                          татсан.
                         </p>
                       ) : null}
                     </SunkenPanel>
@@ -724,11 +727,18 @@ function buildDemoPreview(
     status: "SUCCEEDED",
     results: selected.map((resource, index) => {
       const endpoint = data.endpoints.find((candidate) => candidate.key === resource);
+      const rows = endpoint?.sampleRows ?? [];
+      /*
+       * ★ The count is the number of rows, not a figure of its own. It used to
+       * be a hand-kept table, which is how "10 бичлэг" came to sit above one
+       * row — a dry-run whose own summary disagrees with what it shows is worse
+       * than no dry-run.
+       */
       return {
         resource,
-        count: DEMO_RECORD_COUNT[resource],
+        count: rows.length,
         durationMs: 118 + index * 37,
-        preview: endpoint ? [endpoint.sampleRow] : [],
+        preview: rows,
         status: "SUCCEEDED" as const,
         errorCode: null,
       };

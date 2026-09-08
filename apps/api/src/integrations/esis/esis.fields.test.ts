@@ -3,6 +3,7 @@ import { z } from "zod";
 import { ESIS_RESOURCE_CATALOG } from "./esis.catalog";
 import { ESIS_ENDPOINTS } from "./esis.endpoints";
 import { ESIS_FIELDS, ingestedFieldNames } from "./esis.fields";
+import { sampleRows, unknownOverrideKeys } from "./esis.samples";
 import { ESIS_READABLE_KEYS, ESIS_READERS, type EsisReadableKey } from "./esis.service";
 
 /**
@@ -122,6 +123,67 @@ describe("ESIS field catalog", () => {
       });
       // No column may be blank, or the demonstration shows a hole.
       expect(Object.values(entry.sampleRow).every((value) => Boolean(value))).toBe(true);
+    }
+  });
+
+  /*
+   * ★ The demo set is the whole answer to "show me the outputs" before a token
+   * exists, so a row missing a column is a hole on screen with nothing to
+   * explain it. Column equality with the live row is what keeps the
+   * demonstration and a real response the same shape.
+   */
+  it("gives every demo record the live row's columns, all filled", () => {
+    for (const entry of ESIS_RESOURCE_CATALOG) {
+      const columns = Object.keys(entry.sampleRow).sort();
+      for (const row of sampleRows(entry.key)) {
+        // The write service has no outputs; its demo row is the request body.
+        const expected = entry.key === "saveAttendanceV3" ? Object.keys(row).sort() : columns;
+        expect({ key: entry.key, columns: Object.keys(row).sort() }).toEqual({
+          key: entry.key,
+          columns: expected,
+        });
+        expect(Object.values(row).every((value) => Boolean(value))).toBe(true);
+      }
+    }
+  });
+
+  it("starts the demo set with the row the field catalog illustrates", () => {
+    for (const entry of ESIS_RESOURCE_CATALOG) {
+      expect(entry.sampleRows.length).toBeGreaterThan(0);
+      if (entry.key === "saveAttendanceV3") continue;
+      expect({ key: entry.key, first: entry.sampleRows[0] }).toEqual({
+        key: entry.key,
+        first: entry.sampleRow,
+      });
+    }
+  });
+
+  /*
+   * ★ A row is built from the field catalog's key set, so an override naming a
+   * field the service does not return is dropped rather than shown — correct on
+   * screen, silent in the source. This is the noise that makes it loud.
+   */
+  it("has no demo override naming a field its service does not return", () => {
+    expect(unknownOverrideKeys()).toEqual([]);
+  });
+
+  /*
+   * ★★ The refusals are the point of the catalog, and a demo row is the one
+   * place a refused name could come back — an override is a bare object with no
+   * type to stop it. A fabricated register number on screen is exactly what
+   * `ESIS_REQUEST.md` §1.1 (b) says this product does not hold.
+   */
+  it("never gives a refused field a value in any demo record", () => {
+    const refused = new Set(
+      ESIS_RESOURCE_CATALOG.flatMap((entry) =>
+        entry.fields.filter((field) => !field.ingested).map((field) => field.name),
+      ),
+    );
+
+    for (const entry of ESIS_RESOURCE_CATALOG) {
+      for (const row of sampleRows(entry.key)) {
+        expect(Object.keys(row).filter((name) => refused.has(name))).toEqual([]);
+      }
     }
   });
 
