@@ -166,9 +166,15 @@ describe("ESIS v2 domain methods", () => {
       ],
     });
 
+    // ★ `demoFixture` names which built-in response answers this call when the
+    // deployment is in MOCK mode — added 2026-09-09. It is routing metadata for
+    // our own client, never sent upstream, so the path, the method and the body
+    // below are still the whole of what ESIS receives, which is what the test's
+    // name is about.
     expect(request).toHaveBeenCalledWith({
       path: "/svc/api/hub/v2/group/school/attendance/save/v3",
       method: "POST",
+      demoFixture: "saveAttendanceV3",
       body: {
         institutionId: 40305,
         studentGroupId: 10001,

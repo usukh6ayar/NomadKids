@@ -1,11 +1,13 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { MessageCircle, Plus, Users } from "lucide-react";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 import { chatRoomSchema } from "@kinder/contracts";
 import { ChatList, ChatRoom, type ChatChrome } from "@/components/chat/chat-widget";
-import { PageHeader } from "@/components/shell/app-shell";
+import { Button } from "@/components/ui/button";
+import { FormDialog } from "@/components/ui/form-dialog";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
@@ -49,6 +51,7 @@ const pageChrome: ChatChrome = {
  */
 export default function ChatPage() {
   const [roomKey, setRoomKey] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const rooms = useQuery({
     queryKey: qk.chatRooms(),
@@ -58,38 +61,66 @@ export default function ChatPage() {
 
   const active = rooms.data?.find((room) => room.key === roomKey) ?? null;
 
-  return (
-    <div className="page-band mx-auto w-full max-w-[1200px] px-4 py-4 lg:py-6">
-      <PageHeader title="Чат" />
+  useEffect(() => {
+    const firstRoom = rooms.data?.[0];
+    if (!firstRoom || roomKey) return;
 
-      {/*
-        A fixed height rather than page flow: both panes scroll internally, and a
-        column that grows with its messages would leave the composer below the
-        fold on a long conversation. `100dvh` minus the chrome — `dvh` and not
-        `vh` because mobile Safari's toolbar collapses, and `vh` there measures
-        the tall state and pushes the composer under the browser's own bar.
-      */}
-      <div className="flex min-h-[420px] flex-col overflow-hidden rounded-card border border-border bg-surface lg:h-[calc(100dvh-13rem)] lg:flex-row">
+    const desktop = window.matchMedia("(min-width: 1024px)");
+    const openFirstRoom = () => {
+      if (desktop.matches) setRoomKey(firstRoom.key);
+    };
+    openFirstRoom();
+    desktop.addEventListener("change", openFirstRoom);
+    return () => desktop.removeEventListener("change", openFirstRoom);
+  }, [roomKey, rooms.data]);
+
+  return (
+    <div className="h-full w-full">
+      <h1 className="sr-only">Чат</h1>
+
+      {/* The shell gives this route the remaining viewport height. Both panes
+          scroll internally so a long conversation never pushes the composer
+          below the fold. */}
+      <div className="flex h-full min-h-0 flex-col lg:flex-row lg:gap-4">
         {/*
           Below `lg` exactly one pane is mounted, as in the widget. From `lg`
           both are, and the list becomes a fixed rail beside the room.
         */}
         <div
           className={cn(
-            "min-h-0 min-w-0 flex-col lg:flex lg:w-[320px] lg:shrink-0 lg:border-e lg:border-border",
+            "min-h-0 min-w-0 flex-col overflow-hidden rounded-card border border-border bg-surface shadow-sm lg:flex lg:w-[360px] lg:shrink-0 xl:w-[380px]",
             active ? "hidden" : "flex flex-1",
           )}
         >
           <ChatList
             rooms={rooms.data}
             loading={rooms.isLoading}
+            error={rooms.isError}
+            onRetry={() => void rooms.refetch()}
             onOpen={setRoomKey}
             activeKey={roomKey}
+            action={
+              <Button
+                size="sm"
+                onClick={() => setPickerOpen(true)}
+                disabled={rooms.isLoading || !rooms.data?.length}
+                className="min-w-[184px]"
+              >
+                <Plus size={19} aria-hidden="true" />
+                Шинэ чат
+              </Button>
+            }
+            searchPlaceholder="Яриа хайх..."
             chrome={pageChrome}
           />
         </div>
 
-        <div className={cn("min-h-0 min-w-0 flex-1 flex-col", active ? "flex" : "hidden lg:flex")}>
+        <div
+          className={cn(
+            "min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-card border border-border bg-surface shadow-sm",
+            active ? "flex" : "hidden lg:flex",
+          )}
+        >
           {active ? (
             /*
               `key` remounts the pane when the room changes. `ChatRoom` marks a
@@ -107,12 +138,55 @@ export default function ChatPage() {
               chrome={pageChrome}
             />
           ) : (
-            <p className="hidden place-items-center px-6 py-10 text-center text-body text-muted lg:grid">
-              Зүүн талаас чатаа сонгоно уу.
-            </p>
+            <div className="hidden min-h-full place-items-center px-6 py-10 text-center lg:grid">
+              <div>
+                <span className="mx-auto mb-5 grid size-16 place-items-center rounded-card bg-primary-soft text-primary">
+                  <MessageCircle size={32} strokeWidth={1.8} aria-hidden="true" />
+                </span>
+                <p className="text-title font-bold text-ink">Чатаа сонгоно уу</p>
+                <p className="mt-2 max-w-sm text-body text-muted">
+                  Зүүн талын жагсаалтаас бүлэг эсвэл ажилтны чатыг нээнэ үү.
+                </p>
+              </div>
+            </div>
           )}
         </div>
       </div>
+
+      <FormDialog
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        title="Шинэ чат нээх"
+        description="Таны харьяалагдах бүлэг болон ажилтны чатуудаас сонгоно уу."
+      >
+        <div className="overflow-hidden rounded-card border border-border">
+          {rooms.data?.map((room) => (
+            <button
+              key={room.key}
+              type="button"
+              onClick={() => {
+                setRoomKey(room.key);
+                setPickerOpen(false);
+              }}
+              className="flex min-h-[68px] w-full items-center gap-3 border-b border-border-soft px-3 py-2.5 text-left transition-colors last:border-b-0 hover:bg-canvas"
+            >
+              <span
+                aria-hidden="true"
+                className="grid size-11 shrink-0 place-items-center rounded-pill bg-primary-soft font-bold text-primary"
+              >
+                {room.name.slice(0, 1)}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-body font-semibold text-ink">{room.name}</span>
+                <span className="mt-0.5 flex items-center gap-1.5 text-caption text-muted">
+                  <Users size={14} aria-hidden="true" />
+                  {room.memberCount} гишүүн
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </FormDialog>
     </div>
   );
 }

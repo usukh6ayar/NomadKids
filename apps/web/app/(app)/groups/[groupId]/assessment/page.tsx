@@ -22,12 +22,12 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import Link from "next/link";
 import { Eye, Images, MessageCircle } from "lucide-react";
-import { GRADIENT_TONE_STYLE, type GradientTone } from "@/lib/gradient-tones";
 import { observationTypeSchema } from "@kinder/contracts";
 
 /** The kindergarten's configured record kinds — one shortcut button each. */
 const observationTypesSchema = z.array(observationTypeSchema);
 import { Card, SectionHeader } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { GroupCoverage } from "@/components/assessment/group-coverage";
 import { RegisterProgress } from "@/components/register/register-progress";
 import { RegisterSaveBar } from "@/components/register/save-bar";
@@ -134,6 +134,7 @@ function GroupAssessment() {
   });
 
   const yearById = new Map((years.data ?? []).map((year) => [year.id, year]));
+  const groupSchoolYear = yearById.get(group.data?.schoolYearId ?? "");
 
   /*
    * Which year's terms the term picker offers. Derived from the chosen term
@@ -286,7 +287,10 @@ function GroupAssessment() {
         the only page heading that did not. The same mistake `dashboard/page.tsx`
         records fixing in its own three branches.
       */}
-      <PageHeader title="Явцын үнэлгээ" />
+      <PageHeader
+        title="Явцын үнэлгээ"
+        lede="Бүлгийн бүх хүүхдийг нэг чиглэлээр дараалан үнэлнэ."
+      />
 
       {/*
         ★ The client's 2026-08-31 top strip: pick a child, then start a record.
@@ -302,7 +306,23 @@ function GroupAssessment() {
       */}
       <NewRecordStrip children={children} />
 
-      <GroupCoverage groupId={groupId} />
+      <GroupCoverage
+        groupId={groupId}
+        startsOn={groupSchoolYear?.startsOn}
+        endsOn={groupSchoolYear?.endsOn}
+      />
+
+      {column.data ? (
+        <p className="flex flex-wrap items-center gap-2 text-body text-muted">
+          <span>Нийт {children.length} хүүхэд</span>
+          <span aria-hidden="true">·</span>
+          <Badge tone={assessed === children.length ? "mint" : "sun"}>
+            {assessed === children.length
+              ? "Бүгд үнэлэгдсэн"
+              : `${Math.max(children.length - assessed, 0)} үнэлэгдээгүй`}
+          </Badge>
+        </p>
+      ) : null}
 
       {/* `pad="roomy"` rather than four inline padding values — `card.tsx`
           documents the two named steps and why call sites stopped inventing
@@ -716,28 +736,14 @@ function dateRange(startsOn?: string | null, endsOn?: string | null): string | n
   return null;
 }
 
-/**
- * The three kinds, drawn exactly as the family's own screen draws them.
- *
- * ★ Same gradients, same icons, same order — `parent-growth-launcher.tsx`'s
- * `BUCKETS`, keyed here by the catalogue's `code` instead of by a literal.
- *
- * The client asked for parity by naming the path to the screen they meant
- * (эцэг эх → home → Цахим хуудас → Хөгжил), and parity means the *same
- * picture*: a saturated bar, a white circle with a glyph in it, "+ Ажиглалт".
- * A quieter version in the product's own tints would have been the same idea
- * drawn differently, which is what "яг л тийм болгох" rules out.
- *
- * `GRADIENT_TONE_STYLE` is shared with that file, so the two cannot drift.
- */
-const KIND_STYLE: Record<string, { tone: GradientTone; Icon: typeof Eye }> = {
-  daily: { tone: "green", Icon: Eye },
-  conversation: { tone: "blue", Icon: MessageCircle },
-  artwork: { tone: "orange", Icon: Images },
+/** The configured kinds in the compact quick-entry strip. */
+const KIND_STYLE: Record<string, { tone: Tone; Icon: typeof Eye }> = {
+  daily: { tone: "mint", Icon: Eye },
+  conversation: { tone: "sky", Icon: MessageCircle },
+  artwork: { tone: "sun", Icon: Images },
 };
 
-/** A kind an administrator invented. It gets a door, in the fifth gradient. */
-const KIND_FALLBACK = { tone: "purple" as GradientTone, Icon: Eye };
+const KIND_FALLBACK = { tone: "cornflower" as Tone, Icon: Eye };
 
 function NewRecordStrip({
   children,
@@ -754,93 +760,49 @@ function NewRecordStrip({
     staleTime: 5 * 60_000,
   });
 
-  const selected = children.find((child) => child.childId === childId);
-  const doors = (types.data ?? []).filter((type) => type.code !== "parent");
+  const selectedId = childId || children[0]?.childId || "";
+  const selected = children.find((child) => child.childId === selectedId);
+  const doors = (types.data ?? []).filter((type) =>
+    ["daily", "conversation", "artwork"].includes(type.code ?? ""),
+  );
 
   if (children.length === 0) return null;
 
   return (
-    <Card pad="roomy" className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-lead font-semibold text-ink">Шинэ тэмдэглэл</h2>
-        <p className="mt-0.5 text-body text-muted">
-          Хүүхдээ сонгоод, ямар төрлийн тэмдэглэл хөтлөхөө сонгоно уу.
-        </p>
-      </div>
+    <Card pad="compact" className="grid items-end gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
+      <label>
+        <span className="sr-only">Хүүхэд сонгох</span>
+        <Select value={selectedId} onChange={(event) => setChildId(event.target.value)}>
+          {children.map((child) => (
+            <option key={child.childId} value={child.childId}>
+              {child.lastName ? `${child.lastName} ` : ""}
+              {child.firstName}
+            </option>
+          ))}
+        </Select>
+      </label>
 
-      <Field label="Хүүхэд">
-        {({ id }) => (
-          <Select id={id} value={childId} onChange={(e) => setChildId(e.target.value)}>
-            <option value="">Хүүхэд сонгох…</option>
-            {children.map((child) => (
-              <option key={child.childId} value={child.childId}>
-                {child.lastName ? `${child.lastName} ` : ""}
-                {child.firstName}
-              </option>
-            ))}
-          </Select>
-        )}
-      </Field>
-
-      {/*
-        ★ Rendered as a door whether or not a child is chosen, and inert until
-        one is.
-
-        Hiding them until the select is touched would change the screen's shape
-        underneath somebody; three dimmed doors with one line underneath saying
-        what to do first is the version that explains itself. `aria-disabled`
-        and no `href`, rather than a `<Link>` to nowhere.
-      */}
-      <div className="grid gap-2.5 sm:grid-cols-3">
-        {doors.map((type) => {
-          const style = KIND_STYLE[type.code ?? ""] ?? KIND_FALLBACK;
-          const gradient = GRADIENT_TONE_STYLE[style.tone];
-
-          const content = (
-            <>
-              <span
-                aria-hidden="true"
-                className="flex size-9 shrink-0 items-center justify-center rounded-pill bg-white/25"
+      <div className="min-w-0">
+        <p className="mb-1.5 text-caption font-semibold uppercase text-muted">Шинэ тэмдэглэл</p>
+        <div className="flex flex-wrap gap-2">
+          {doors.map((type) => {
+            const style = KIND_STYLE[type.code ?? ""] ?? KIND_FALLBACK;
+            return (
+              <Link
+                key={type.id}
+                href={`/children/${selected!.childId}/observations/new?typeId=${type.id}`}
+                className={cn(
+                  "flex min-h-[48px] min-w-[112px] items-center justify-center gap-2 rounded-control border border-transparent px-3.5 text-body font-semibold transition-transform hover:-translate-y-0.5",
+                  TONE_SURFACE[style.tone],
+                )}
               >
                 <style.Icon size={18} aria-hidden="true" />
-              </span>
-              <span className="min-w-0 flex-1 truncate text-body font-semibold">+ {type.name}</span>
-            </>
-          );
-
-          const className = cn(
-            "flex min-h-13 items-center gap-3 rounded-card px-3.5 py-3 text-left text-white",
-            gradient.gradient,
-            gradient.shadow,
-          );
-
-          return selected ? (
-            <Link
-              key={type.id}
-              href={`/children/${selected.childId}/observations/new?typeId=${type.id}`}
-              className={cn(className, "transition-transform hover:scale-[1.01]")}
-            >
-              {content}
-            </Link>
-          ) : (
-            /*
-              Dimmed rather than greyed: the colour is how the three are told
-              apart, and washing it out would leave three identical grey bars
-              that say nothing about which is which while you read the line
-              telling you to pick a child.
-            */
-            <div key={type.id} aria-disabled="true" className={cn(className, "opacity-45")}>
-              {content}
-            </div>
-          );
-        })}
+                <span>{type.name}</span>
+              </Link>
+            );
+          })}
+        </div>
       </div>
-
-      {!selected ? (
-        <p className="text-caption text-muted">
-          Шинэ тэмдэглэл хөтлөхийн тулд эхлээд хүүхдээ сонгоно уу.
-        </p>
-      ) : null}
     </Card>
   );
 }

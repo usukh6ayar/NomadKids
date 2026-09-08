@@ -167,9 +167,8 @@ function EsisProfileSection() {
         id="esis-profile-heading"
         title="ESIS мэдээлэл"
         action={
-          <Badge tone="mint">
-            <CheckCircle2 size={13} aria-hidden="true" />
-            Demo ESIS синк
+          <Badge tone="sun">
+            Demo / Test data · MOCK
           </Badge>
         }
       />
@@ -182,12 +181,13 @@ function EsisProfileSection() {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <p className="font-semibold text-ink">{esis.resourceLabel}</p>
-              <Badge tone="mint">
-                <CheckCircle2 size={13} aria-hidden="true" />
-                Синк хийгдсэн
+              <Badge tone="sun">
+                Жинхэнэ ESIS синк биш
               </Badge>
             </div>
-            <p className="mt-0.5 text-body text-muted">Эх сурвалж: ESIS · {esis.resource}</p>
+            <p className="mt-0.5 text-body text-muted">
+              Эх сурвалж: ESIS schema-тай mock fixture · {esis.resource}
+            </p>
           </div>
           <p className="shrink-0 text-caption text-muted">Шинэчилсэн: {esis.syncedAt}</p>
         </div>

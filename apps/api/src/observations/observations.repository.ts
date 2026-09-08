@@ -396,9 +396,13 @@ export class ObservationsRepository {
     groupId: string,
     from: Date,
     to: Date,
-  ): Promise<{ month: string; count: number }[]> {
-    const rows = await this.prisma.$queryRaw<{ month: Date; count: bigint }[]>`
-      SELECT date_trunc('month', o."observedOn")::date AS month, COUNT(*) AS count
+  ): Promise<{ month: string; count: number; childrenCount: number }[]> {
+    const rows = await this.prisma.$queryRaw<
+      { month: Date; count: bigint; childrenCount: bigint }[]
+    >`
+      SELECT date_trunc('month', o."observedOn")::date AS month,
+             COUNT(*) AS count,
+             COUNT(DISTINCT o."childId") AS "childrenCount"
       FROM observations o
       JOIN enrollments e ON e.id = o."enrollmentId"
       WHERE e."groupId" = ${groupId}::uuid
@@ -413,6 +417,7 @@ export class ObservationsRepository {
     return rows.map((row) => ({
       month: row.month.toISOString().slice(0, 7),
       count: Number(row.count),
+      childrenCount: Number(row.childrenCount),
     }));
   }
 }

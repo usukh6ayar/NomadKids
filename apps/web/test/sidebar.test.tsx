@@ -329,14 +329,34 @@ describe("role-based navigation", () => {
   });
 
   /** The headings the staff menu groups the product by, per the 2026-08-29 drawing. */
-  it("groups the staff menu into named sections", async () => {
+  /**
+   * ★ 2026-09-09 — this asserted on the four section *headings*.
+   *
+   * The staff sidebar was a set of collapsible `<details>` groups and this
+   * test named their summaries. It is one flat list now, the same shape the
+   * parent shell already used, so those headings no longer exist and the old
+   * assertions could only have been satisfied by putting the accordion back.
+   *
+   * What the headings were protecting is not the headings. `layout.tsx` still
+   * declares the sections — flattening happens in `app-shell.tsx`, at render —
+   * and the risk of `flatMap` is that a whole section's entries go missing
+   * without anything failing, because every remaining row still looks right.
+   * So this now asserts on one destination out of each of the four groups: if
+   * a section stops being rendered, its row disappears and this test says so.
+   */
+  it("renders a destination from every staff section", async () => {
     renderShell(["TEACHER", "ADMIN"]);
     const nav = await sidebar();
 
-    expect(within(nav).getByText("Хүүхдийн хөгжил ба үнэлгээ")).toBeInTheDocument();
-    expect(within(nav).getByText("Өдөр тутмын бүртгэл")).toBeInTheDocument();
-    expect(within(nav).getByText("Харилцаа холбоо")).toBeInTheDocument();
-    expect(within(nav).getByText("Багш ба байгууллага")).toBeInTheDocument();
+    // Хүүхдийн хөгжил ба үнэлгээ
+    expect(within(nav).getByRole("link", { name: "Явцын үнэлгээ" })).toBeInTheDocument();
+    // Өдөр тутмын бүртгэл
+    expect(within(nav).getByRole("link", { name: "Ирц" })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Хоол ба цэс" })).toBeInTheDocument();
+    // Харилцаа холбоо
+    expect(within(nav).getByRole("link", { name: "Судалгаа" })).toBeInTheDocument();
+    // Багш ба байгууллага
+    expect(within(nav).getByRole("link", { name: "Хувийн тохиргоо" })).toBeInTheDocument();
   });
 
   /**

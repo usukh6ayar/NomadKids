@@ -48,6 +48,7 @@ export class SurveysService {
       kindergartenId,
       title: dto.title,
       description: dto.description ?? null,
+      category: dto.category,
       scope: dto.scope,
       // The column defaults to FORM, and so does an omitted field: a caller
       // that predates `kind` keeps creating exactly what it created before.
@@ -66,7 +67,7 @@ export class SurveysService {
       actorUserId: actor.userId,
       objectType: "Survey",
       objectId: survey.id,
-      metadata: { scope: dto.scope, groupId: dto.groupId ?? null },
+      metadata: { category: dto.category, scope: dto.scope, groupId: dto.groupId ?? null },
     });
 
     return survey;
@@ -479,6 +480,7 @@ export class SurveysService {
       kindergartenId: source.kindergartenId,
       title: dto.title ?? `${source.title} (хуулбар)`,
       description: source.description,
+      category: source.category,
       scope: source.scope,
       createdById: actor.userId,
       schoolYear: dto.schoolYear ?? source.schoolYear,

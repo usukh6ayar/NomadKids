@@ -134,6 +134,20 @@ describe("the child hero", () => {
    * as well with a sixth added beside them, which is exactly how the row grew to
    * five. So this counts what is directly in the hero and checks that only one
    * of them is the filled primary.
+   *
+   * ★★ 2026-09-09 — the primary is the portfolio, not "Ажиглалт".
+   *
+   * This pinned the filled button's label to "Ажиглалт", which had been the
+   * call to action since the child hub was split up. The hero now leads to
+   * `portfolio` instead: it is the screen the client calls the emotional
+   * centre of the product, and it is what a teacher opening a child's record
+   * is usually going to. **Writing an observation did not become
+   * unreachable** — `child-observations.tsx`, the portfolio's own "Хөгжил"
+   * page and the group assessment sheet all still link `observations/new`,
+   * which is what makes this a change of emphasis rather than a lost feature.
+   *
+   * The count is unchanged and remains the real guard here; only the name of
+   * the one filled control moved.
    */
   it("offers one primary action and tucks the rest behind a menu", async () => {
     stubChild();
@@ -148,16 +162,28 @@ describe("the child hero", () => {
 
     const filled = [...links, ...controls].filter((el) => el.className.includes("bg-primary"));
     expect(filled, "exactly one call to action").toHaveLength(1);
-    expect(filled[0]).toHaveTextContent("Ажиглалт");
+    expect(filled[0]).toHaveTextContent("Цахим хувийн хавтас");
   });
 
-  it("keeps the term report direct after removing the portfolio action", async () => {
+  /**
+   * ★ 2026-09-09 — this asserted the portfolio link was *absent*.
+   *
+   * It was, for as long as the hero's own call to action was "Ажиглалт": the
+   * portfolio had been pulled out of a five-button row and the assertion kept
+   * it from creeping back beside the term report. It is the primary action
+   * now (see the test above), so "not in the document" is no longer true and
+   * asserting it would mean undoing that decision.
+   *
+   * What the test is actually for survives untouched: the term report must
+   * stay a direct link in the visible row rather than sliding into the
+   * overflow menu, which is the regression this file exists to catch.
+   */
+  it("keeps the term report direct beside the portfolio action", async () => {
     const user = userEvent.setup();
     stubChild();
     renderWithProviders(<ChildGeneralPage />);
 
     await screen.findByRole("heading", { name: /Ганболд/ });
-    expect(screen.queryByRole("link", { name: /Цахим хувийн хавтас/ })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Улирлын тайлан/ })).toHaveAttribute(
       "href",
       `/children/${CHILD_ID}/term-report`,

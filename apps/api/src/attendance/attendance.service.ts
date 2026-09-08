@@ -359,7 +359,7 @@ export class AttendanceService {
     const preview = await this.esisAttendancePreview(actor, kindergartenId, dto);
     const saved = [];
     for (const request of preview.requests) {
-      if (!preview.demo) await this.sendAttendance(request.payload);
+      await this.sendAttendance(request.payload);
       const local = rows.find(
         (row) =>
           row.groupId === request.groupId &&
@@ -385,7 +385,8 @@ export class AttendanceService {
       metadata: {
         count: saved.length,
         dates: [...new Set(dto.entries.map((e) => e.date))],
-        esisMode: preview.demo ? "DEMO" : "LIVE",
+        esisMode: preview.demo ? "MOCK" : "LIVE",
+        esisStatus: preview.demo ? "DEMO_SUCCESS" : "SUCCEEDED",
         apiId: 171,
       },
     });
@@ -606,7 +607,7 @@ export class AttendanceService {
   }
 
   private async resolveAttendanceDrafts(kindergartenId: string, drafts: AttendanceDraft[]) {
-    if (!this.esis.isConfigured) {
+    if (this.esis.isDemoMode) {
       return {
         demo: true,
         apiId: 171,
@@ -633,6 +634,12 @@ export class AttendanceService {
           },
         })),
       };
+    }
+
+    if (!this.esis.isConfigured) {
+      throw new BadGatewayException(
+        "ESIS live горим идэвхтэй боловч Bearer token тохируулаагүй байна.",
+      );
     }
 
     const connection = await this.repo.findEsisConnection(kindergartenId);
@@ -733,7 +740,7 @@ export class AttendanceService {
 
   async submitGroupDay(actor: Actor, groupId: string, dateIso: string) {
     const preview = await this.groupEsisAttendancePreview(actor, groupId, dateIso);
-    if (!preview.demo) await this.sendAttendance(preview.requests[0]!.payload);
+    await this.sendAttendance(preview.requests[0]!.payload);
     const group = await this.repo.findGroup(groupId, this.tenants.memberKindergartenIds(actor));
     if (!group) throw new NotFoundException();
     const { enrollments } = await this.repo.groupDaySheet(
@@ -758,7 +765,8 @@ export class AttendanceService {
       objectType: "AttendanceSubmission",
       objectId: groupId,
       metadata: {
-        esisMode: preview.demo ? "DEMO" : "LIVE",
+        esisMode: preview.demo ? "MOCK" : "LIVE",
+        esisStatus: preview.demo ? "DEMO_SUCCESS" : "SUCCEEDED",
         apiId: 171,
         date: dateIso,
         childCount: enrollments.length,

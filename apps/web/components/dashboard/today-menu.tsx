@@ -59,7 +59,7 @@ export function TodayMenu() {
   const day = data?.[0] ?? null;
 
   return (
-    <section aria-labelledby="today-menu-heading">
+    <section aria-labelledby="today-menu-heading" className="flex h-full flex-col">
       {/*
         ★ The section carries the drawing, not each dish.
 
@@ -78,7 +78,7 @@ export function TodayMenu() {
         icon={<IconChip icon={<Art name="menu" />} tone="sun" size="lg" />}
       />
 
-      <Card pad="roomy" className="flex flex-col gap-3">
+      <Card pad="roomy" className="flex flex-1 flex-col gap-3">
         {isLoading ? (
           /* Mirrors the dish grid, so the card does not resize when it lands. */
           <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">

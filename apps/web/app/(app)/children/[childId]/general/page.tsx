@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, ClipboardList, MoreHorizontal, Pencil, Plus } from "lucide-react";
+import { ArrowLeft, ClipboardList, FolderOpen, MoreHorizontal, Pencil } from "lucide-react";
 import { childDetailSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -185,9 +185,9 @@ function ChildActions({ childId, isStaff }: { childId: string; isStaff: boolean 
     <>
       {isStaff ? (
         <Button asChild size="sm">
-          <Link href={`/children/${childId}/observations/new`}>
-            <Plus size={18} />
-            Ажиглалт
+          <Link href={`/children/${childId}/portfolio`}>
+            <FolderOpen size={18} aria-hidden="true" />
+            Цахим хувийн хавтас
           </Link>
         </Button>
       ) : null}

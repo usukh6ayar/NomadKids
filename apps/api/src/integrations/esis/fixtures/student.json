@@ -1,0 +1,38 @@
+{
+  "SUCCESS_CODE": 200,
+  "RESPONSE_MESSAGE": "DEMO_SUCCESS",
+  "RESULT": [
+    {
+      "institutionId": "40305",
+      "personId": "99000000000001",
+      "lastName": "Demo",
+      "firstName": "Хүүхэд-01",
+      "dateOfBirth": "2021-04-12",
+      "genderCode": "M",
+      "genderName": "Эрэгтэй",
+      "academicLevel": "2",
+      "academicLevelName": "Дунд бүлэг",
+      "studentGroupId": "10001",
+      "studentGroupName": "Наран demo бүлэг",
+      "academicYear": "2026",
+      "instructorId": "88012",
+      "instructorName": "Demo багш 01"
+    },
+    {
+      "institutionId": "40305",
+      "personId": "99000000000002",
+      "lastName": "Demo",
+      "firstName": "Хүүхэд-02",
+      "dateOfBirth": "2021-06-18",
+      "genderCode": "F",
+      "genderName": "Эмэгтэй",
+      "academicLevel": "2",
+      "academicLevelName": "Дунд бүлэг",
+      "studentGroupId": "10001",
+      "studentGroupName": "Наран demo бүлэг",
+      "academicYear": "2026",
+      "instructorId": "88012",
+      "instructorName": "Demo багш 01"
+    }
+  ]
+}

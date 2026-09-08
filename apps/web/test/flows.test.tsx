@@ -353,7 +353,12 @@ describe("group assessment", () => {
 
     renderWithProviders(<GroupAssessmentPage />);
 
-    await waitFor(() => expect(screen.getByText("Ганболд Батбаяр")).toBeInTheDocument());
+    // ★ `getAllByText` since 2026-09-09: `GroupCoverage` grew a second panel
+    // ("Үйл ажиллагааны явц") that names children too, so the roster is no
+    // longer the only place this name appears. This line is only waiting for
+    // the sheet to finish loading — the radio click below is what the test is
+    // actually about, and it is already unambiguous.
+    await waitFor(() => expect(screen.getAllByText("Ганболд Батбаяр").length).toBeGreaterThan(0));
 
     await user.click(screen.getByRole("radio", { name: "Дэмжлэгтэй" }));
 
@@ -1521,7 +1526,12 @@ describe("teacher dashboard", () => {
 
     for (const card of [
       "Өнөөдрийн ирц",
-      "Сарын ирц",
+      // ★ Was "Сарын ирц" until 2026-09-09. The card charts Monday to Friday
+      // of the current week, so the mock-up's "month" label was describing
+      // data the card does not hold — `weekly-attendance.tsx` renamed it to
+      // what it actually shows. The assertion is that the card is on the
+      // dashboard at all, which is unchanged.
+      "Долоо хоногийн ирц",
       "Төрсөн өдөр",
       "Явцын үнэлгээ",
       "Сүүлийн нийтлэл",

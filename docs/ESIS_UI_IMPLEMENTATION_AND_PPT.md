@@ -51,10 +51,10 @@
   байх бөгөөд талбарын жагсаалт нь зөвхөн нэр, төлөв, авахгүй шалтгааныг
   харуулна: нэг утгыг хоёр газар давхардуулбал ижил зохиомол өгөгдөл хоёр
   эх сурвалж мэт харагдана.
-- Credential тохируулаагүй demo орчинд UI нь нэг мөр **Demo ESIS sandbox
-  холбогдсон** төлөв үзүүлнэ: C1-C5 бэлэн, API access нээлттэй, сүүлийн синк ба
-  амжилттай ажиллагааны түүх харагдана. `Demo ESIS` badge-ийг хадгалсан тул
-  үүнийг production холболт гэж андуурахгүй.
+- `ESIS_DEMO_MODE=true` үед UI нь **ESIS integration demo / Mock data**,
+  **жинхэнэ ESIS холболт хийгдээгүй** гэж тогтмол харуулна. C3-C5 live үе шат
+  хүлээгдсэн хэвээр, mock dry-run болон түүх `DEMO_SUCCESS · MOCK` төлөвтэй
+  байна. Энэ горимд production request огт илгээгдэхгүй.
 - Багшийн `/settings` дээр token байхгүй үед demo, token байгаа үед
   `teacher/list` эсвэл `school/staff`-ийн бодит гаралтын бүх зөвшөөрөгдсөн
   талбар автоматаар харагдана. Ирц дээр API-000269 payload хүүхэд бүрээр
@@ -63,6 +63,30 @@
   contract-оос авч collapse-гүй харуулна. Овог, нэр, хүйс, төрсөн огноо,
   бүлгийг ESIS demo мөрөөс автоматаар бөглөж, регистр болон provider credential
   зэрэг татахгүй талбарыг нэр ба шалтгаантай нь `Авахгүй` гэж ялгана.
+
+### Endpoint evidence дэлгэц
+
+`Удирдлага → ESIS мэдээллийн төв → Сервис ба талбар` нь endpoint сонголттой
+бөгөөд endpoint бүр дээр дараах нотолгоог нэг дэлгэцэд үзүүлнэ:
+
+- API нэр, method, URL, direction, request parameter/body;
+- `DEMO` эсвэл `LIVE` mode, HTTP status, sync status, сүүлийн ажилласан цаг;
+- safe response envelope болон бүх зөвшөөрөгдсөн output field/value;
+- field бүрийн NomadKids target, `DIRECT`, `MATCH`, `TRANSFORM`, `REQUEST`,
+  `DISPLAY_ONLY`, `NOT_STORED`, `REJECTED` mapping status;
+- sync log-ийн `DEMO_SUCCESS`, `SUCCESS`, `FAILED`, `PENDING` төлөв.
+
+Prisma-д үнэхээр байхгүй external ID-г хадгалдаг мэт харуулахгүй. Жишээлбэл
+`studentGroupId`, `personId`, programme/stage/plan ID одоогоор `NOT_STORED`;
+import хийхийн өмнө тусгай external mapping schema шаардлагатай. Харин
+`institutionId → Kindergarten.esisInstitutionId` нь `DIRECT` mapping.
+
+Role хүрээ: удирдлага raw endpoint evidence харна; багш ажлын бүлэг, хүүхэд,
+ирцийн safe мэдээлэл ба attendance payload харна; эцэг эх зөвхөн өөрийн
+хүүхдийн local sync үр дүнг харна. Food service access болон ESIS finance API
+баталгаажаагүй тул тогооч, нягтлангийн дэлгэц `NOT ENABLED`; fake endpoint
+үүсгээгүй.
+
 - Бүлгийн ирц `Засах → Хадгалах → ESIS рүү илгээх` гэсэн гурван тусдаа
   үйлдэлтэй. Хадгалсан өдөр бүрэн болмогц API-000269-ийн 8 input болон
   `attendanceList`-ийн хүүхэд бүрийн мөр харагдана; илгээсний дараа `api-22`

@@ -1,0 +1,22 @@
+{
+  "SUCCESS_CODE": 200,
+  "RESPONSE_MESSAGE": "DEMO_SUCCESS",
+  "RESULT": [
+    {
+      "academicLevel": "2",
+      "personId": "99000000000001",
+      "dayDate": "2026-09-08",
+      "attendanceReasonCode": "PRESENT",
+      "attendanceReasonName": "Ирсэн",
+      "tardyMinutes": 0
+    },
+    {
+      "academicLevel": "2",
+      "personId": "99000000000002",
+      "dayDate": "2026-09-08",
+      "attendanceReasonCode": "SICK",
+      "attendanceReasonName": "Өвчтэй",
+      "tardyMinutes": 0
+    }
+  ]
+}

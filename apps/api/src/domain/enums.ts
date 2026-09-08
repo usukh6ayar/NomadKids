@@ -55,6 +55,7 @@ export {
   StaffRecordKind,
   StockDirection,
   StockSourceType,
+  SurveyCategory,
   SurveyKind,
   SurveyPeriod,
   SurveyQuestionType,

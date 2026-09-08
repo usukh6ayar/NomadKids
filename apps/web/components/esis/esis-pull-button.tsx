@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, CloudDownload } from "lucide-react";
+import { CircleAlert, CloudDownload } from "lucide-react";
 import { useState } from "react";
 import {
   esisOverviewSchema,
@@ -61,9 +61,8 @@ const DEMO_PARAM: Record<string, string> = {
  * exactly appears here?* So it shows the field contract first and the live
  * values second, and it shows the contract whether or not the call can run.
  *
- * ★★ A kindergarten without a live token sees the demo sandbox field list,
- * not an error. It stays explicitly labelled `Demo ESIS`, while preserving the
- * exact shape that a live response replaces once credentials are available.
+ * ★★ Demo mode is explicit and calls the backend mock transport. It is never
+ * presented as a live ESIS connection.
  */
 export function EsisPullButton({
   resource,
@@ -126,10 +125,9 @@ function EsisPullDialog({
 
   const endpoint = overview.data?.endpoints.find((item) => item.key === resource);
   const required = endpoint?.params ?? [];
-  const demoMode = Boolean(overview.data && !overview.data.deployment.configured);
+  const demoMode = Boolean(overview.data?.deployment.demoMode);
 
-  /* Live calls use caller-supplied ESIS identifiers. Demo mode supplies the
-   * sandbox mapping so the connected-state screen is complete on first open. */
+  /* Live calls use ESIS identifiers; mock mode supplies deterministic fixture ids. */
   const [entered, setEntered] = useState<Record<string, string>>({});
   const value = (name: string) =>
     entered[name] ?? params?.[name] ?? (demoMode ? DEMO_PARAM[name] : "") ?? "";
@@ -213,17 +211,17 @@ function EsisPullDialog({
               </div>
               <p className="mt-2 text-caption text-muted">
                 {demoMode
-                  ? "Demo sandbox mapping-аас автоматаар бөглөгдсөн."
+                  ? "Mock fixture-ийн test утгаар автоматаар бөглөгдсөн."
                   : "ESIS-ийн өөрийн дугаарыг ашиглана."}
               </p>
             </Card>
           ) : null}
 
           {demoMode ? (
-            <Card pad="compact" tone="mint">
+            <Card pad="compact" tone="sun">
               <p className="flex items-center gap-2 text-body font-medium text-ink">
-                <CheckCircle2 size={18} className="text-mint-ink" aria-hidden />
-                Demo ESIS sandbox холболт идэвхтэй · сүүлийн синк 2026.09.08 09:15
+                <CircleAlert size={18} className="text-sun-ink" aria-hidden />
+                Demo / Test data · жинхэнэ ESIS холболт хийгдээгүй
               </p>
             </Card>
           ) : null}
@@ -303,7 +301,7 @@ function EndpointSummary({ endpoint }: { endpoint: EsisOverview["endpoints"][num
  * The sandbox records shown until a live response replaces them.
  *
  * ★ Rendered through `EsisRowValues`, the same component a live result uses, so
- * the demonstration has the same shape as a live result, while the `Demo ESIS`
+ * the demonstration has the same shape as a live result, while the `Mock data`
  * badge prevents it from being presented as production evidence.
  *
  * ★★ The whole demo set, not its first row. A roster service that renders one
@@ -326,14 +324,12 @@ function SampleResult({
         <h3 id="esis-pull-sample" className="text-body font-semibold text-ink">
           Синк хийсэн мэдээлэл
         </h3>
-        <Badge tone={demoMode ? "mint" : "sun"}>
-          {demoMode ? "Demo ESIS синк" : "Live хариу хүлээгдэж байна"}
-        </Badge>
+        <Badge tone="sun">{demoMode ? "Mock data · синк биш" : "Live хариу хүлээгдэж байна"}</Badge>
         <Badge tone="sky">{endpoint.sampleRows.length} бичлэг</Badge>
       </div>
       <p className="mb-3 text-caption text-muted">
         {demoMode
-          ? "Developer portal-ийн гэрээгээр боловсруулсан demo sandbox өгөгдөл."
+          ? "ESIS response schema-тай ижил бүтэцтэй зохиомол test өгөгдөл."
           : "Талбарын нэр нь ESIS developer portal-оос баталгаажсан."}
       </p>
       <EsisRowValues columns={columns} rows={endpoint.sampleRows} />
@@ -361,9 +357,17 @@ function ReadResult({ result }: { result: EsisResourceRead }) {
         <h3 id="esis-pull-rows" className="text-body font-semibold text-ink">
           Ирсэн мэдээлэл
         </h3>
-        <Badge tone="mint">{result.count} бичлэг</Badge>
+        <Badge tone={result.source === "MOCK" ? "sun" : "mint"}>
+          {result.source === "MOCK" ? "DEMO_SUCCESS · MOCK" : "LIVE"}
+        </Badge>
+        <Badge tone="sky">{result.count} бичлэг</Badge>
         {result.durationMs === null ? null : <Badge tone="sky">{result.durationMs} мс</Badge>}
       </div>
+
+      <p className="mb-2 text-body font-semibold text-ink">Response JSON</p>
+      <pre className="mb-4 max-h-[420px] overflow-auto rounded-control border border-border bg-ink p-4 font-mono text-caption leading-6 text-white">
+        <code>{JSON.stringify(result.response, null, 2)}</code>
+      </pre>
 
       {result.rows.length === 0 ? (
         <Card pad="compact">

@@ -70,16 +70,16 @@ export function BoardCard({
     // `h-full` so a card in a two-across row fills the height its taller
     // neighbour sets — the "бүх card ижил өндөртэй" the brief asks for, which
     // grid's default `stretch` gives the cell and this passes on to the card.
-    <Card pad="roomy" className={cn("flex h-full flex-col gap-3", className)}>
+    <Card pad="compact" className={cn("flex h-full flex-col gap-2.5", className)}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2.5">
           <BoardIcon title={title} />
-          <Tag id={id} className="min-w-0 text-lead font-semibold leading-heading text-ink">
+          <Tag id={id} className="min-w-0 text-body font-bold leading-heading text-ink">
             {title}
           </Tag>
         </div>
         {figure ? (
-          <span className="shrink-0 rounded-pill bg-primary-soft px-2.5 py-1 text-lead font-semibold tabular-nums leading-none text-primary">
+          <span className="shrink-0 rounded-pill bg-primary-soft px-2.5 py-1 text-body font-bold tabular-nums leading-none text-primary">
             {figure}
           </span>
         ) : null}
@@ -114,9 +114,9 @@ function BoardIcon({ title }: { title: string }) {
   return (
     <span
       aria-hidden="true"
-      className={cn("grid size-10 shrink-0 place-items-center rounded-card", match.className)}
+      className={cn("grid size-9 shrink-0 place-items-center rounded-control", match.className)}
     >
-      <Icon size={19} strokeWidth={2.3} />
+      <Icon size={18} strokeWidth={2.3} />
     </span>
   );
 }

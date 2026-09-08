@@ -204,7 +204,9 @@ function DailyAttendance() {
     },
     onSuccess: (sent) => {
       toast.success(
-        `${esisPreview.data?.demo ? "Demo ESIS" : "ESIS"} рүү ${sent.length} бүртгэл амжилттай илгээгдлээ.`,
+        esisPreview.data?.demo
+          ? `${sent.length} бүртгэлийг mock client хүлээн авлаа (DEMO_SUCCESS). Production ESIS рүү илгээгээгүй.`
+          : `ESIS рүү ${sent.length} бүртгэл амжилттай илгээгдлээ.`,
       );
       selection.clear();
       void queryClient.invalidateQueries({ queryKey: ["attendance", "daily"] });
@@ -403,7 +405,7 @@ function EsisPayloadPreview({
         }`}
         action={
           <Badge tone={error || incomplete.length ? "sun" : loading ? "sky" : "mint"}>
-            {loading ? "Бэлтгэж байна" : preview?.demo ? "Demo горим" : "ESIS холбогдсон"}
+            {loading ? "Бэлтгэж байна" : preview?.demo ? "MOCK · холболтгүй" : "ESIS холбогдсон"}
           </Badge>
         }
       />
@@ -419,8 +421,9 @@ function EsisPayloadPreview({
               {requests.reduce((sum, item) => sum + item.payload.attendanceList.length, 0)} хүүхэд
             </p>
             <p className="text-caption text-muted">
-              {preview?.demo ? "Demo ESIS" : "Бодит ESIS"} холболт · илгээх хүсэлт автоматаар
-              бэлтгэгдсэн.
+              {preview?.demo
+                ? "Demo / Test data · production ESIS рүү илгээхгүй"
+                : "Бодит ESIS холболт"} · илгээх хүсэлт автоматаар бэлтгэгдсэн.
             </p>
           </div>
           {error ? (

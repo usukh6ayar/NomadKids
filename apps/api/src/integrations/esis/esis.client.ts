@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { EsisConfig } from "./esis.config";
+import { esisDemoFixture } from "./esis.fixtures";
 import type { EsisErrorKind, EsisRequest, EsisResponse } from "./esis.types";
 
 /**
@@ -72,7 +73,10 @@ export class EsisClient {
    * key and repeating a POST could duplicate an accepted attendance write.
    */
   async request<T = unknown>(options: EsisRequest): Promise<EsisResponse<T>> {
-    if (!this.config.isConfigured) {
+    const method = options.method ?? "GET";
+    const startedAt = Date.now();
+
+    if (!this.config.isAvailable) {
       /*
        * ★ Fails before any network work, and names only which variables are
        * absent — never the values of the ones that are present.
@@ -84,12 +88,21 @@ export class EsisClient {
       );
     }
 
-    const url = this.buildUrl(options.path, options.query);
-    const method = options.method ?? "GET";
-    const startedAt = Date.now();
-
     let response: Response;
-    try {
+    if (this.config.isDemoMode) {
+      if (!options.demoFixture) {
+        throw new EsisError(
+          "invalid_response",
+          "ESIS demo request has no deterministic fixture",
+          { path: options.path },
+        );
+      }
+      response = new Response(JSON.stringify(esisDemoFixture(options.demoFixture, options)), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } else try {
+      const url = this.buildUrl(options.path, options.query);
       response = await this.fetchWithRetry(url, method, options);
     } catch (cause) {
       const durationMs = Date.now() - startedAt;
@@ -155,9 +168,10 @@ export class EsisClient {
       }
     }
 
-    this.logger.log(`ESIS ${method} ${options.path} → ${response.status} (${durationMs}ms)`);
+    const source = this.config.isDemoMode ? "MOCK" : "LIVE";
+    this.logger.log(`ESIS ${source} ${method} ${options.path} → ${response.status} (${durationMs}ms)`);
 
-    return { data: data as T, status: response.status, durationMs };
+    return { data: data as T, status: response.status, durationMs, source };
   }
 
   private async fetchWithRetry(

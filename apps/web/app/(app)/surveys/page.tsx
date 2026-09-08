@@ -7,18 +7,21 @@ import { useState } from "react";
 import { z } from "zod";
 import { ListChecks, Plus, Search, Users } from "lucide-react";
 import {
+  SURVEY_CATEGORY_LABEL,
   SURVEY_KIND_HINT,
   SURVEY_KIND_LABEL,
   groupListItemSchema,
   paginated,
+  surveyCategorySchema,
   surveyKindSchema,
   surveySchema,
+  type SurveyCategory,
   type SurveyKind,
-  type SurveyQuestionType,
 } from "@kinder/contracts";
 
 /** The two kinds in the order the client's drawing puts them: Пол, then Форм. */
 const SURVEY_KINDS = surveyKindSchema.options;
+const SURVEY_CATEGORIES = surveyCategorySchema.options;
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
@@ -32,7 +35,7 @@ import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { formatDate } from "@/lib/format";
-import { SURVEY_TONE_BG, SURVEY_TYPE_META } from "@/lib/survey-meta";
+import { SURVEY_CATEGORY_META, SURVEY_TONE_BG } from "@/lib/survey-meta";
 import { cn } from "@/lib/utils";
 
 const surveysSchema = z.array(surveySchema);
@@ -82,19 +85,7 @@ function SurveysList() {
   const { primaryKindergartenId } = useSession();
   const [creating, setCreating] = useState(false);
   const [tab, setTab] = useState<"active" | "closed">("active");
-  /**
-   * ★ Filtered by question type, not by a subject taxonomy.
-   *
-   * The client's mock-up draws Эрүүл мэнд / Бие бялдар / Оюун ухаан chips here,
-   * and there is no field behind them: `surveySchema` carries a scope, a status,
-   * a school year and an assessment period, and nothing that names a subject.
-   * Inventing one would mean either a column nobody fills or a chip row that
-   * filters on a guess. The type of a survey's first question is the taxonomy
-   * this product actually has — `SURVEY_TYPE_META` already renders it as chips
-   * on the parent's own list — so the row is built from that and the two lists
-   * keep one vocabulary.
-   */
-  const [type, setType] = useState<SurveyQuestionType | null>(null);
+  const [category, setCategory] = useState<SurveyCategory | null>(null);
   /**
    * Client-side, like the notifications page's survey tab and for the same
    * reason: a kindergarten's surveys are a handful of rows already in memory,
@@ -116,7 +107,7 @@ function SurveysList() {
   const visible = all.filter(
     (survey) =>
       statuses.includes(survey.status) &&
-      (!type || (survey.questions[0]?.type ?? "TEXT") === type) &&
+      (!category || survey.category === category) &&
       (!term ||
         survey.title.toLowerCase().includes(term) ||
         (survey.description ?? "").toLowerCase().includes(term)),
@@ -171,13 +162,13 @@ function SurveysList() {
         reads as "there is more", rather than stopping short inside the page
         padding where it reads as the end of the row.
       */}
-      <FilterChipRow label="Судалгааны төрлөөр шүүх">
-        <FilterChip active={type === null} onClick={() => setType(null)}>
+      <FilterChipRow label="Судалгааны ангиллаар шүүх">
+        <FilterChip active={category === null} onClick={() => setCategory(null)}>
           Бүгд
         </FilterChip>
-        {(Object.keys(SURVEY_TYPE_META) as SurveyQuestionType[]).map((key) => (
-          <FilterChip key={key} active={type === key} onClick={() => setType(key)}>
-            {SURVEY_TYPE_META[key].label}
+        {SURVEY_CATEGORIES.map((key) => (
+          <FilterChip key={key} active={category === key} onClick={() => setCategory(key)}>
+            {SURVEY_CATEGORY_LABEL[key]}
           </FilterChip>
         ))}
       </FilterChipRow>
@@ -224,7 +215,7 @@ function SurveysList() {
               variant="secondary"
               onClick={() => {
                 setSearch("");
-                setType(null);
+                setCategory(null);
               }}
             >
               Шүүлтүүр цэвэрлэх
@@ -310,10 +301,9 @@ function TabPill({
  *
  * ★ Replaces a 64px row carrying a title, a scope and a status badge.
  *
- * Everything on it comes from `surveySchema` — the type chip from
- * `questions[0].type` (see `lib/survey-meta.ts` for why a survey's first
- * question is an honest stand-in for its kind), the question count from
- * `questions.length`, and the date from whichever of `closedAt` /
+ * Everything on it comes from `surveySchema` — the category chip from
+ * `category`, the question count from `questions.length`, and the date from
+ * whichever of `closedAt` /
  * `publishedAt` / `createdAt` describes the state it is in. Nothing here is a
  * field the API does not send.
  *
@@ -321,7 +311,7 @@ function TabPill({
  * sets, which is what keeps the footers of a row on one line.
  */
 function SurveyCard({ survey }: { survey: z.infer<typeof surveySchema> }) {
-  const meta = SURVEY_TYPE_META[survey.questions[0]?.type ?? "TEXT"];
+  const meta = SURVEY_CATEGORY_META[survey.category];
   const questionCount = survey.questions.length;
   const date = survey.closedAt ?? survey.publishedAt ?? survey.createdAt;
 
@@ -395,6 +385,7 @@ function CreateSurveyDialog({
 }) {
   const router = useRouter();
   const [title, setTitle] = useState("");
+  const [category, setCategory] = useState<SurveyCategory>("PARENT_ENGAGEMENT");
   const [scope, setScope] = useState<"CHILD" | "KINDERGARTEN">("CHILD");
   /**
    * Which group the survey is for — "" is every group.
@@ -425,6 +416,7 @@ function CreateSurveyDialog({
         method: "POST",
         body: {
           title,
+          category,
           scope,
           kind,
           /*
@@ -521,6 +513,24 @@ function CreateSurveyDialog({
                 onChange={(e) => setTitle(e.target.value)}
                 autoFocus
               />
+            )}
+          </Field>
+
+          <Field label="Судалгааны ангилал" error={errors.category} required>
+            {({ id, describedBy, invalid }) => (
+              <Select
+                id={id}
+                aria-describedby={describedBy}
+                invalid={invalid}
+                value={category}
+                onChange={(e) => setCategory(e.target.value as SurveyCategory)}
+              >
+                {SURVEY_CATEGORIES.map((value) => (
+                  <option key={value} value={value}>
+                    {SURVEY_CATEGORY_LABEL[value]}
+                  </option>
+                ))}
+              </Select>
             )}
           </Field>
 

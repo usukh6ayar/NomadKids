@@ -17,6 +17,8 @@ export interface EsisRequest {
   query?: Record<string, string | number | boolean | undefined>;
   /** Overrides `ESIS_TIMEOUT_MS` for one call. */
   timeoutMs?: number;
+  /** Deterministic fixture selected when `ESIS_DEMO_MODE=true`. */
+  demoFixture?: import("./esis.samples").EsisEndpointKey;
   /**
    * Validates and narrows the response body.
    *
@@ -32,6 +34,8 @@ export interface EsisRequest {
 export interface EsisResponse<T> {
   data: T;
   status: number;
+  /** Makes mock and live data impossible to confuse above the transport layer. */
+  source: "MOCK" | "LIVE";
   /**
    * Milliseconds the call took. Useful in a log line; carries no secret.
    */

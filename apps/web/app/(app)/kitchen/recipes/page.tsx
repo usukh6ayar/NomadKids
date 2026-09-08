@@ -15,7 +15,6 @@ import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
-import { EsisPullButton } from "@/components/esis/esis-pull-button";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
@@ -79,7 +78,7 @@ function Recipes() {
         actions={
           kindergartenId ? (
             <>
-              <EsisPullButton resource="foodProducts" label="ESIS лавлах" />
+              <Badge tone="peach">ESIS · NOT ENABLED</Badge>
               <Button size="sm" onClick={() => setCreating(true)}>
                 <Plus size={18} />
                 Карт нэмэх

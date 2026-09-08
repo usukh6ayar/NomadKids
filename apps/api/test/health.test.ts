@@ -154,7 +154,22 @@ describe("readiness: the ESIS boundary", () => {
     // Bearer token is the only deployment secret required"). One deployment now
     // serves institutions that this readiness payload cannot name, so reporting
     // a single id here would have been reporting the wrong one.
-    expect(Object.keys(res.body.esis).sort()).toEqual(["baseUrl", "configured", "hasToken"]);
+    //
+    // ★★ `demoMode` and `mode` were added 2026-09-09, and this is that
+    // decision being made rather than the list being widened to make a test
+    // pass. Both describe *which* ESIS an operator is talking to — the
+    // built-in fixtures or the real upstream — which an admin reading this
+    // screen has to know before they trust a row on it. Neither is derived
+    // from the token: `demoMode` is a boolean and `mode` is one of two
+    // literals. The two assertions below still walk the whole payload, so the
+    // token cannot ride in behind them.
+    expect(Object.keys(res.body.esis).sort()).toEqual([
+      "baseUrl",
+      "configured",
+      "demoMode",
+      "hasToken",
+      "mode",
+    ]);
     expect(JSON.stringify(res.body)).not.toContain("ESIS_TOKEN");
     // The test environment sets no ESIS credentials, and that is a legitimate
     // state rather than a fault.

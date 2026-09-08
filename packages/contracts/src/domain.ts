@@ -909,6 +909,26 @@ export type SurveyScope = z.infer<typeof surveyScopeSchema>;
 export const surveyStatusSchema = z.enum(["DRAFT", "PUBLISHED", "CLOSED"]);
 export type SurveyStatus = z.infer<typeof surveyStatusSchema>;
 
+/** The six approved purposes a kindergarten survey may be created for. */
+export const surveyCategorySchema = z.enum([
+  "PARENT_ENGAGEMENT",
+  "SATISFACTION",
+  "SOCIAL_DEVELOPMENT",
+  "PHYSICAL_DEVELOPMENT",
+  "COGNITIVE_DEVELOPMENT",
+  "HABITS_INDEPENDENCE",
+]);
+export type SurveyCategory = z.infer<typeof surveyCategorySchema>;
+
+export const SURVEY_CATEGORY_LABEL: Record<SurveyCategory, string> = {
+  PARENT_ENGAGEMENT: "Эцэг эхийн оролцооны судалгаа",
+  SATISFACTION: "Сэтгэл ханамжийн судалгаа",
+  SOCIAL_DEVELOPMENT: "Нийгэмшихүйн хөгжлийн үнэлгээ",
+  PHYSICAL_DEVELOPMENT: "Бие бялдрын хөгжлийн үнэлгээ",
+  COGNITIVE_DEVELOPMENT: "Танин мэдэхүйн хөгжлийн үнэлгээ",
+  HABITS_INDEPENDENCE: "Дадал хэвшил, бие даах чадварын үнэлгээ",
+};
+
 /** RFP Module 1.1's archival classification, and Module 1.2's pairing key. */
 export const surveyPeriodSchema = z.enum(["BASELINE", "MIDLINE", "ENDLINE"]);
 export type SurveyPeriod = z.infer<typeof surveyPeriodSchema>;
@@ -996,6 +1016,8 @@ export const surveySchema = z.object({
   id: uuidSchema,
   title: z.string(),
   description: z.string().nullish(),
+  /** Defaults only when parsing rows returned by a pre-migration local API. */
+  category: surveyCategorySchema.default("PARENT_ENGAGEMENT"),
   scope: surveyScopeSchema,
   /** Defaulted for rows written before the column existed. */
   kind: surveyKindSchema.catch("FORM"),
@@ -3091,6 +3113,8 @@ export type EsisRow = z.infer<typeof esisRowSchema>;
 export const esisOverviewSchema = z.object({
   deployment: z.object({
     configured: z.boolean(),
+    demoMode: z.boolean(),
+    mode: z.enum(["MOCK", "LIVE"]),
     baseUrl: z.string(),
     hasToken: z.boolean(),
   }),
@@ -3136,7 +3160,30 @@ export const esisOverviewSchema = z.object({
        * `sampleRow`: the whole set disappears the moment ESIS returns anything.
        */
       sampleRows: z.array(esisRowSchema),
-      accessStatus: z.literal("UNKNOWN"),
+      direction: z.enum(["ESIS_TO_NOMADKIDS", "NOMADKIDS_TO_ESIS"]),
+      targetModel: z.string(),
+      mappings: z.array(
+        z.object({
+          sourceField: z.string(),
+          targetField: z.string(),
+          strategy: z.enum([
+            "DIRECT",
+            "MATCH",
+            "TRANSFORM",
+            "REQUEST",
+            "DISPLAY_ONLY",
+            "NOT_STORED",
+            "REJECTED",
+          ]),
+          note: z.string(),
+        }),
+      ),
+      accessStatus: z.enum(["MOCK", "UNKNOWN", "ENABLED", "NOT_ENABLED"]),
+      responseMode: z.enum(["DEMO", "LIVE"]),
+      httpStatus: z.number().int().nullable(),
+      syncStatus: z.enum(["DEMO_SUCCESS", "SUCCESS", "FAILED", "PENDING"]),
+      syncErrorCode: z.string().nullable(),
+      lastSyncAt: z.string().nullable(),
     }),
   ),
   recentRuns: z.array(
@@ -3149,6 +3196,7 @@ export const esisOverviewSchema = z.object({
       startedAt: z.string(),
       finishedAt: z.string().nullable(),
       initiatedBy: z.string(),
+      mode: z.enum(["MOCK", "LIVE"]),
     }),
   ),
   canPreview: z.boolean(),
@@ -3159,6 +3207,7 @@ export type EsisOverview = z.infer<typeof esisOverviewSchema>;
 export const esisPreviewResultSchema = z.object({
   runId: uuidSchema,
   dryRun: z.literal(true),
+  mode: z.enum(["MOCK", "LIVE"]),
   status: z.enum(["SUCCEEDED", "PARTIAL", "FAILED"]),
   results: z.array(
     z.object({
@@ -3168,6 +3217,7 @@ export const esisPreviewResultSchema = z.object({
       preview: z.array(esisRowSchema),
       status: z.enum(["SUCCEEDED", "FAILED"]),
       errorCode: z.string().nullable(),
+      source: z.enum(["MOCK", "LIVE"]),
     }),
   ),
 });
@@ -3181,12 +3231,18 @@ export type EsisPreviewResult = z.infer<typeof esisPreviewResultSchema>;
  */
 export const esisResourceReadSchema = z.object({
   resource: esisResourceKeySchema,
+  source: z.enum(["MOCK", "LIVE"]),
   status: z.enum(["SUCCEEDED", "FAILED"]),
   errorCode: z.string().nullable(),
   count: z.number(),
   durationMs: z.number().nullable(),
   fields: z.array(esisFieldSchema),
   rows: z.array(esisRowSchema),
+  response: z.object({
+    SUCCESS_CODE: z.number(),
+    RESPONSE_MESSAGE: z.string(),
+    RESULT: z.array(esisRowSchema),
+  }),
 });
 export type EsisResourceRead = z.infer<typeof esisResourceReadSchema>;
 
@@ -3778,7 +3834,17 @@ export const groupObservationStatsSchema = z.object({
   /** The busiest activity names — free text, so keyed by name rather than id. */
   byActivity: z.array(z.object({ name: z.string(), count: z.number() })).default([]),
   /** `yyyy-mm` buckets, ascending. Months with no notes are absent. */
-  byMonth: z.array(z.object({ month: z.string(), count: z.number() })).default([]),
+  byMonth: z
+    .array(
+      z.object({
+        month: z.string(),
+        /** All notes written in the month. */
+        count: z.number(),
+        /** Distinct children with at least one note in the month. */
+        childrenCount: z.number().default(0),
+      }),
+    )
+    .default([]),
 });
 export type GroupObservationStats = z.infer<typeof groupObservationStatsSchema>;
 
