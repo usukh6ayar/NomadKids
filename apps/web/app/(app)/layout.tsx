@@ -63,6 +63,7 @@ import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
 import { LoadingState } from "@/components/ui/states";
+import { useNavigationHistory } from "@/lib/nav-history";
 import { useSession } from "@/lib/auth/session";
 import { SelectedChildProvider, useSelectedChild } from "@/lib/selected-child";
 
@@ -92,6 +93,10 @@ const ownChildrenSchema = z.array(childSummarySchema);
 export default function AppLayout({ children }: { children: ReactNode }) {
   const { session, isLoading, hasRole, isSuperAdmin } = useSession();
   const router = useRouter();
+  // Counts navigations so `BackButton` knows whether there is anywhere to go
+  // back *to*. Mounted here because it has to see every route change, and this
+  // shell is the one thing under `(app)` that never unmounts between them.
+  useNavigationHistory();
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
   /*
     ★ Neither of these is `isStaff`, and the shell has to say so before the

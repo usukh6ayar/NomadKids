@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
 import { z } from "zod";
 import {
   INVOICE_LINE_TYPE_LABEL,
@@ -19,6 +18,7 @@ import { formatDate, formatRelative } from "@/lib/format";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
+import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -110,12 +110,7 @@ function InvoiceDetail() {
 
   return (
     <div className="flex flex-col gap-5 lg:gap-6">
-      <Button asChild variant="ghost" size="sm" className="-ml-2 self-start">
-        <Link href="/invoices">
-          <ArrowLeft size={18} />
-          Нэхэмжлэлийн жагсаалт
-        </Link>
-      </Button>
+      <BackButton href="/invoices" />
 
       <PageHeader
         title={`${data.child.lastName ? `${data.child.lastName} ` : ""}${data.child.firstName}`}

@@ -1,15 +1,13 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { z } from "zod";
-import { ArrowLeft } from "lucide-react";
 import { ageProfileSchema, childDetailSchema, type AgeProfile } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
-import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/ui/back-button";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { FAVORITE_FIELDS, type PortfolioAge } from "@/lib/age-development";
 import { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
@@ -64,12 +62,7 @@ export default function GrowthComparePage() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <Button asChild variant="ghost" size="sm" className="-ml-2 self-start">
-        <Link href={`/children/${childId}/portfolio/growth/age`}>
-          <ArrowLeft size={18} />
-          Насны мэдээлэл
-        </Link>
-      </Button>
+      <BackButton href={`/children/${childId}/portfolio/growth/age`} />
 
       <header>
         <h1 className="text-heading font-semibold text-ink">2-5 насны мэдээлэл</h1>

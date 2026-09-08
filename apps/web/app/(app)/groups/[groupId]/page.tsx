@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, CalendarCheck, ClipboardCheck, UtensilsCrossed } from "lucide-react";
+import { CalendarCheck, ClipboardCheck, UtensilsCrossed } from "lucide-react";
 import {
   ATTENDANCE_FORM_LABEL,
   PROGRAM_KIND_LABEL,
@@ -17,6 +17,7 @@ import { qk } from "@/lib/api/keys";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
+import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
@@ -89,12 +90,7 @@ function GroupDetail() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Button asChild variant="ghost" size="sm" className="self-start">
-        <Link href="/admin/groups">
-          <ArrowLeft size={16} aria-hidden />
-          Бүлгүүд
-        </Link>
-      </Button>
+      <BackButton href="/admin/groups" className="ml-0" />
 
       <PageHeader
         title={data.name}
