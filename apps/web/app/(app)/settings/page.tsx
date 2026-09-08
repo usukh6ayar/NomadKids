@@ -276,7 +276,7 @@ function ProfileCard() {
         </div>
 
         <div className="border-t border-border-soft pt-5">
-          <PasswordSection />
+          <PasswordSection identifier={data?.email || data?.username || ""} email={data?.email} />
         </div>
       </Card>
     </section>
@@ -321,7 +321,15 @@ function ReadField({
  * says every other device has been signed out, which is a consequence somebody
  * needs to read *after* the change rather than a toast that slides away.
  */
-function PasswordSection() {
+function PasswordSection({
+  identifier,
+  email,
+}: {
+  /** What `POST /auth/password-reset` is asked about — this account. */
+  identifier: string;
+  /** Where the link would land, or nothing. */
+  email?: string | null;
+}) {
   const [open, setOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -341,6 +349,28 @@ function PasswordSection() {
     },
   });
 
+  /**
+   * "Мартсан уу?" — the same reset `/forgot-password` requests, from here.
+   *
+   * ★ 2026-09-08, at the client's request: "одоогийн нууц үгээ мэдэхгүй ч
+   * байж болишд". `POST /auth/password` needs the current password, so
+   * somebody who has forgotten it could change nothing from this screen and
+   * had to sign out to reach the recovery they were already signed in beside.
+   *
+   * ★★ It sends this account's own identifier rather than asking for one.
+   * `/forgot-password` asks because it serves a stranger and must not confirm
+   * whether an identifier exists; here the caller is authenticated and it is
+   * their own account, so the neutral wording that page needs would be
+   * evasive rather than careful. It says what happened.
+   */
+  const forgot = useMutation({
+    mutationFn: () =>
+      mutate("/auth/password-reset", z.unknown(), {
+        method: "POST",
+        body: { identifier },
+      }),
+  });
+
   const errors = fieldErrors(change.error);
 
   function close() {
@@ -350,6 +380,7 @@ function PasswordSection() {
     setConfirm("");
     setLocalError(null);
     change.reset();
+    forgot.reset();
   }
 
   return (
@@ -455,6 +486,42 @@ function PasswordSection() {
               />
             )}
           </Field>
+
+          {/*
+            Under the field it rescues, because that is where somebody
+            discovers they cannot fill it in.
+          */}
+          {forgot.isSuccess ? (
+            <p role="status" className="text-body text-mint-ink">
+              Сэргээх холбоосыг {email} хаяг руу илгээлээ. И-мэйлээ шалгана уу.
+            </p>
+          ) : email ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="-ml-2 self-start"
+              disabled={forgot.isPending}
+              onClick={() => forgot.mutate()}
+            >
+              {forgot.isPending ? "Илгээж байна…" : "Одоогийн нууц үгээ мартсан уу?"}
+            </Button>
+          ) : (
+            /*
+              No e-mail, so no link can be sent. Saying so is the honest answer
+              and it is not an enumeration leak: this is the signed-in person's
+              own account, and they can act on it.
+            */
+            <p className="text-caption text-muted">
+              Нууц үгээ мартсан бол эрхлэгчид хандана уу — бүртгэлд и-мэйл бүртгээгүй тул сэргээх
+              холбоос илгээх боломжгүй.
+            </p>
+          )}
+          {forgot.isError ? (
+            <p role="alert" className="text-body text-danger">
+              {errorMessage(forgot.error)}
+            </p>
+          ) : null}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Шинэ нууц үг" error={errors.newPassword} required>

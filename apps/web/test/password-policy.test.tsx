@@ -103,27 +103,17 @@ const PROFILE = {
 };
 
 /**
- * ★ The password form is the last section of the profile's *edit* form since
- * 2026-09-06, folded shut. Every test here now opens the profile for editing
- * and then unfolds it.
+ * ★ One press, and it has been three arrangements — the last on 2026-09-08.
  *
- * The client asked for both steps, in two passes: first that the form stop
- * being permanently on screen ("нууц үг солих гээд тогтмол харагдаад
- * байхгүйгээр"), then that a modal opened from a second header button was the
- * wrong answer ("шал сонин байна") and it belongs inside the profile's own
- * edit — "profile дотроо edit гэхэд нь".
+ * The client asked for each in turn: that the form stop being permanently on
+ * screen ("нууц үг солих гээд тогтмол харагдаад байхгүйгээр"); that a modal
+ * from a second header button was the wrong answer ("шал сонин байна") and it
+ * belonged inside the profile's own edit; and then that the profile stop being
+ * editable at all, which took that edit form with it. So the section sits on
+ * the page, folded shut, and one press opens it.
  *
- * What is under test is unchanged — the rules are listed, the fields reveal,
- * and a weak password never reaches the API — so the tests gained two clicks
- * rather than an assertion.
- */
-/*
- * ★ One press now, not two — 2026-09-08.
- *
- * The password form used to be the last section of the profile's edit form, so
- * reaching it meant Засах first. That form is gone (see `ProfileCard`), and the
- * section sits on the page folded shut. What these tests pin is unchanged: the
- * rules, the reveal toggle and the local refusal.
+ * What is under test has survived all three — the rules are listed, the fields
+ * reveal, and a weak password never reaches the API.
  */
 async function openPasswordForm(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByRole("button", { name: "Нууц үг солих" }));
@@ -222,6 +212,58 @@ describe("settings — changing a password", () => {
       expect(screen.getByRole("alert")).toHaveTextContent(/том үсэг|тоо байх ёстой/),
     );
     expect(calls.filter((c) => c.url.startsWith("/auth/password"))).toHaveLength(0);
+  });
+  /*
+   * ★ "Одоогийн нууц үгээ мэдэхгүй ч байж болишд" — the client, 2026-09-08.
+   *
+   * `POST /auth/password` needs the current password, so somebody who has
+   * forgotten it could do nothing here and had to sign out to reach the
+   * recovery they were already signed in beside. This sends the reset for the
+   * account that is open, without asking them to name it.
+   */
+  it("asks for a reset link without asking who is asking", async () => {
+    const user = userEvent.setup();
+    const email = "bagsh@nomadkids.mn";
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: "/auth/password-reset", method: "POST", status: 204 },
+      { path: "/me/profile", body: { ...PROFILE, email } },
+    ]);
+    renderWithProviders(<SettingsPage />);
+
+    await openPasswordForm(user);
+    await user.click(await screen.findByRole("button", { name: /мартсан уу/ }));
+
+    await waitFor(() =>
+      expect(calls.some((call) => call.url === "/auth/password-reset")).toBe(true),
+    );
+    // Its own identifier, not one typed into a field that is not there.
+    const request = calls.find((call) => call.url === "/auth/password-reset")!;
+    expect(request.body).toEqual({ identifier: email });
+    expect(await screen.findByRole("status")).toHaveTextContent(email);
+  });
+
+  /*
+   * ★★ An account with no e-mail cannot be sent a link, and this says so.
+   *
+   * Not an enumeration leak — `/forgot-password` is neutral because it serves
+   * a stranger; here the caller is signed in and it is their own account. The
+   * neutral wording would be evasive rather than careful, and would leave
+   * somebody waiting for a mail that was never going to arrive.
+   */
+  it("says a reset cannot be sent when the account has no e-mail", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: "/me/profile", body: PROFILE },
+    ]);
+    renderWithProviders(<SettingsPage />);
+
+    await openPasswordForm(user);
+
+    expect(screen.queryByRole("button", { name: /мартсан уу/ })).toBeNull();
+    expect(screen.getByText(/эрхлэгчид хандана уу/)).toBeInTheDocument();
+    expect(calls.some((call) => call.url === "/auth/password-reset")).toBe(false);
   });
 });
 
