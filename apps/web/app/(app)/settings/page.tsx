@@ -104,7 +104,10 @@ function EsisProfileSection() {
     return (
       <section aria-labelledby="esis-profile-heading">
         <SectionHeader id="esis-profile-heading" title="ESIS мэдээлэл" />
-        <ErrorState description={errorMessage(esisQuery.error)} />
+        <Card pad="compact" tone="sun">
+          <p className="font-medium text-ink">ESIS мэдээлэл түр татагдсангүй.</p>
+          <p className="mt-1 text-body text-muted">{errorMessage(esisQuery.error)}</p>
+        </Card>
       </section>
     );
   }
