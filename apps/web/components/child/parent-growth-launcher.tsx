@@ -2,6 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import Image from "next/image";
 import { Eye, Images, MessageCircle, X } from "lucide-react";
 import { observationSchema, type ChildDetail } from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
@@ -32,6 +33,16 @@ import { cn } from "@/lib/utils";
  * write about. A later pass can give `Ярилцлага`/`Бүтээл` their own stored
  * distinction if the client asks for one; nothing here has to change shape to
  * add it, since each still posts a plain `CreateParentObservationDto`.
+ *
+ * ★★ Two of three carry the client's own art since 2026-09-09 — reusing
+ * `icon-observation.png`/`icon-portfolio.png` from `art.tsx`'s registry
+ * rather than a third copy of the same drawing. `Ярилцлага` still renders its
+ * lucide glyph: the matching drawing existed in the same delivery, but the
+ * reference folder was deleted (this file's own catch-up, `art.tsx`'s "used
+ * everything with a slot" pass) before this door's slot was found, and
+ * nothing here should fabricate art that was never actually supplied. `image`
+ * is optional for exactly that reason — `Icon` is the fallback whether or not
+ * one exists, not dead code once the third arrives.
  */
 const BUCKETS = [
   {
@@ -40,6 +51,7 @@ const BUCKETS = [
     verb: "Ажиглалт нэмэх",
     tone: "green" as GradientTone,
     Icon: Eye,
+    image: "/icons/icon-observation.png",
   },
   {
     key: "conversation",
@@ -47,6 +59,7 @@ const BUCKETS = [
     verb: "Ярилцлага нэмэх",
     tone: "blue" as GradientTone,
     Icon: MessageCircle,
+    image: undefined,
   },
   {
     key: "artwork",
@@ -54,6 +67,7 @@ const BUCKETS = [
     verb: "Бүтээл нэмэх",
     tone: "orange" as GradientTone,
     Icon: Images,
+    image: "/icons/icon-portfolio.png",
   },
 ] as const;
 
@@ -149,7 +163,11 @@ function QuickShareBar({
         aria-hidden="true"
         className="flex size-9 shrink-0 items-center justify-center rounded-pill bg-white/25"
       >
-        <bucket.Icon size={18} aria-hidden="true" />
+        {bucket.image ? (
+          <Image src={bucket.image} alt="" width={22} height={22} />
+        ) : (
+          <bucket.Icon size={18} aria-hidden="true" />
+        )}
       </span>
       <span className="min-w-0 flex-1 truncate text-body font-semibold">{bucket.label}</span>
     </button>
