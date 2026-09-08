@@ -236,11 +236,39 @@ function DailyAttendance() {
              */}
             <EsisPullButton resource="groupAttendance" label="ESIS ирц" params={{ dayDate: to }} />
             <AttendanceViewSwitch current="group" from={from} to={to} groupId={groupId} />
+            {/*
+              ★ In the header — 2026-09-09, at the client's request, the same
+              move `/attendance/journal` got: "excel татахыг нь дээш нь
+              оруулдаг ч юм уу".
+
+              It had a `flex justify-end` row of its own under the three
+              filters, which is a full-width strip holding one right-aligned
+              button and a screen's width of nothing beside it. Up here it
+              joins the two controls this screen already had.
+
+              ★★ A link, not a fetch — the browser downloads it with the
+              session cookie it already has, and fetching would buffer a
+              spreadsheet in memory only to hand it straight back. Absent
+              rather than inert when there is no kindergarten to point at:
+              `disabled` does nothing to an anchor.
+            */}
+            {primaryKindergartenId ? (
+              <Button size="sm" variant="secondary" asChild>
+                <a
+                  href={downloadUrl(
+                    `/kindergartens/${primaryKindergartenId}/attendance/register/export?${queryString}`,
+                  )}
+                >
+                  <Download size={16} aria-hidden /> Excel татах
+                </a>
+              </Button>
+            ) : null}
           </>
         }
       />
 
-      <Card pad="roomy" className="flex flex-col gap-4">
+      {/* One row of filters now that the export has moved up. */}
+      <Card pad="compact">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Эхлэх">
             {({ id }) => (
@@ -264,27 +292,6 @@ function DailyAttendance() {
               </Select>
             )}
           </Field>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {/*
-            ★ A link, not a fetch — the browser downloads it with the session
-            cookie it already has, and fetching would buffer a spreadsheet in
-            memory only to hand it straight back. Absent rather than inert when
-            there is no kindergarten to point at: `disabled` does nothing to an
-            anchor.
-          */}
-          {primaryKindergartenId ? (
-            <Button size="sm" variant="secondary" asChild>
-              <a
-                href={downloadUrl(
-                  `/kindergartens/${primaryKindergartenId}/attendance/register/export?${queryString}`,
-                )}
-              >
-                <Download size={16} aria-hidden /> Excel татах
-              </a>
-            </Button>
-          ) : null}
         </div>
       </Card>
 

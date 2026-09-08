@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
 import { GroupSwitcher, useSwitchableGroups } from "@/components/shell/group-switcher";
+import { Art } from "@/components/ui/art";
 import { Card, SectionHeader, SunkenPanel } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
@@ -24,7 +25,6 @@ import {
 } from "@/lib/attendance-meta";
 import { fullName } from "@/lib/format";
 import { StatCard } from "@/components/ui/stat-card";
-import { Art } from "@/components/ui/art";
 
 /**
  * "Тайлан" — a teacher's own group, a month at a time.
@@ -192,7 +192,6 @@ function MonthReport({ data }: { data: GroupAttendanceSummary }) {
         <StatCard
           label="Бүртгэсэн өдөр"
           value={recordedDays}
-          unit="өдөр"
           art={<CalendarDays size={22} />}
           tone="sky"
           className="teacher-stat-card teacher-stat-sky"
@@ -215,7 +214,6 @@ function MonthReport({ data }: { data: GroupAttendanceSummary }) {
         <StatCard
           label="Бүлгийн хүүхэд"
           value={data.roster}
-          unit="хүүхэд"
           art={<Art name="group" size={36} />}
           artSurface={false}
           tone="peach"

@@ -23,6 +23,9 @@ import { useSession } from "@/lib/auth/session";
 import { RequireRole } from "@/components/shell/require-role";
 import { downloadUrl } from "@/lib/api/client";
 import { useDebounced } from "@/lib/use-debounced";
+import { Art } from "@/components/ui/art";
+import { Donut } from "@/components/ui/chart/donut";
+import { Ring } from "@/components/ui/chart/ring";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { formatAge, fullName } from "@/lib/format";
@@ -32,7 +35,6 @@ import { StatCard } from "@/components/ui/stat-card";
 import { useSelectedChild } from "@/lib/selected-child";
 import { MY_CHILDREN } from "@/lib/vocabulary";
 import { z } from "zod";
-import { Art } from "@/components/ui/art";
 
 const listSchema = paginated(childSummarySchema);
 const ownSchema = z.array(childSummarySchema);
@@ -232,7 +234,7 @@ function StaffChildren() {
         }
       />
 
-      <RosterSummary search={search} facets={facets} />
+      <RosterSummary search={search} facets={facets} esisCount={rosterRows?.length} />
 
       {/*
         ★ The roster, from ESIS — 2026-09-08, at the client's instruction,
@@ -340,7 +342,27 @@ function rosterParams(
   return params;
 }
 
-function RosterSummary({ search, facets }: { search: string; facets: RosterFacets }) {
+function RosterSummary({
+  search,
+  facets,
+  esisCount,
+}: {
+  search: string;
+  facets: RosterFacets;
+  /**
+   * How many children the ESIS roster below this screen is showing.
+   *
+   * ★ 2026-09-09, at the client's request: "тэр нийт хүүхэд гэсэн тоог тэр
+   * ESIS-ээс татсан датагийн хүүхдийн тооноос авдаг болго."
+   *
+   * Both numbers come from the same query with the same filters, so they agree
+   * — and being the *same* number is the point: a director who counts the rows
+   * in the table and reads the card above it must not find two answers. The
+   * sex split still comes from `/children/summary`, which counts server-side
+   * rather than folding whatever rows loaded.
+   */
+  esisCount?: number;
+}) {
   const filters = { q: search || undefined, ...facets };
 
   const { data } = useQuery({
@@ -369,6 +391,16 @@ function RosterSummary({ search, facets }: { search: string; facets: RosterFacet
   */
   const counted = data.boys + data.girls;
 
+  /*
+   * ★ The ESIS table's row count when there is one, the endpoint's total
+   * otherwise — the fallback covers the first paint, before that query lands.
+   *
+   * They differ only past `ROSTER_SIZE`, where the table is capped and the
+   * total is not. A kindergarten of more than a hundred children needs a pager
+   * on that table before this figure means anything, and the panel says so.
+   */
+  const total = esisCount ?? data.total;
+
   return (
     <section aria-label="Товч тоо" className="flex flex-col gap-2 md:gap-3">
       {/*
@@ -386,73 +418,95 @@ function RosterSummary({ search, facets }: { search: string; facets: RosterFacet
         data. Selecting a group gives that group's split, which is what makes
         it worth having on this screen rather than only on the dashboard.
       */}
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3">
+      {/*
+        ★ Three across at every width — 2026-09-09.
+
+        "Нийт хүүхэд" spanned both phone columns, so a two-digit number sat in a
+        full-width card with the other half empty, and "Хөвгүүд" then wrapped to
+        a row of its own beside a hole. Three equal cells is what the three
+        figures are: one count and its two parts.
+      */}
+      <div className="grid grid-cols-3 gap-2 md:gap-3">
+        {/*
+          ★ The split is drawn inside the cards — 2026-09-09, at the client's
+          request, and it replaces the ratio bar that used to sit under them.
+
+          The bar was a fourth card restating what the three above it already
+          counted, and each of those three left its right-hand half empty. The
+          donut on the total shows the whole division at a glance; the two rings
+          show each half's share of it. Same three numbers, one row instead of
+          two, and the shape is read before any of them.
+
+          ★★ Hidden below `md`, not shrunk. Three cards across a 390px screen
+          leave about 118px each, and a ring in that width squeezes the figure
+          it is meant to illustrate — the mistake `StatCard`'s own note records
+          about the art that used to close these cards.
+        */}
         <StatCard
           label="Нийт хүүхэд"
-          value={data.total}
-          unit="хүүхэд"
+          value={total}
           art={<Art name="child" size={36} />}
           artSurface={false}
-          tone="sky"
-          className="teacher-stat-card teacher-stat-sky col-span-2 md:col-span-1"
+          tone="cornflower"
+          className="teacher-stat-card teacher-stat-cornflower"
+          chart={
+            counted > 0 ? (
+              <Donut
+                size={56}
+                className="hidden md:block"
+                label={`${data.girls} охин, ${data.boys} хүү`}
+                segments={[
+                  { label: "Охид", value: data.girls, tone: "pink" },
+                  { label: "Хөвгүүд", value: data.boys, tone: "sky" },
+                ]}
+              />
+            ) : undefined
+          }
+          footer={
+            counted > 0 && counted < total ? (
+              <p className="text-caption text-muted">
+                {total - counted} хүүхдийн хүйс бүртгэгдээгүй.
+              </p>
+            ) : undefined
+          }
         />
         <StatCard
           label="Охид"
           value={data.girls}
-          unit="хүүхэд"
           art={<Venus size={22} />}
-          tone="peach"
-          className="teacher-stat-card teacher-stat-peach"
+          tone="pink"
+          className="teacher-stat-card teacher-stat-pink"
+          chart={
+            counted > 0 ? (
+              <Ring
+                size="sm"
+                tone="pink"
+                percent={(data.girls / counted) * 100}
+                label={`Охид ${Math.round((data.girls / counted) * 100)}%`}
+                className="hidden md:grid"
+              />
+            ) : undefined
+          }
         />
         <StatCard
           label="Хөвгүүд"
           value={data.boys}
-          unit="хүүхэд"
           art={<Mars size={22} />}
-          tone="mint"
-          className="teacher-stat-card teacher-stat-mint"
+          tone="sky"
+          className="teacher-stat-card teacher-stat-sky"
+          chart={
+            counted > 0 ? (
+              <Ring
+                size="sm"
+                tone="sky"
+                percent={(data.boys / counted) * 100}
+                label={`Хөвгүүд ${Math.round((data.boys / counted) * 100)}%`}
+                className="hidden md:grid"
+              />
+            ) : undefined
+          }
         />
       </div>
-
-      {/*
-        The ratio itself, as one bar.
-
-        Two counts answer "how many"; a length answers "how does it split", and
-        the eye reads the second off a bar faster than off a pair of numerals.
-        Percentages are printed beside it rather than inside the segments — a
-        one-child segment has no room for a label, and a bar whose text vanishes
-        at small values is a bar that fails exactly when it is most surprising.
-
-        Hidden when nobody's sex is recorded: an empty rule reads as a
-        rendering fault, and the three cards above already say so by showing
-        zeroes.
-      */}
-      {counted > 0 ? (
-        <Card pad="compact" className="flex flex-col gap-2">
-          <div className="flex items-baseline justify-between gap-3">
-            <p className="text-body text-muted">Хүйсийн харьцаа</p>
-            <p className="text-body tabular-nums text-muted">
-              {Math.round((data.girls / counted) * 100)}% ·{" "}
-              {Math.round((data.boys / counted) * 100)}%
-            </p>
-          </div>
-          <div
-            role="img"
-            aria-label={`${data.girls} охин, ${data.boys} хүү`}
-            className="flex h-2.5 overflow-hidden rounded-pill bg-border-soft"
-          >
-            {/* Inline widths: the split is data, and a Tailwind class cannot
-                express an arbitrary percentage. */}
-            <span className="bg-peach" style={{ width: `${(data.girls / counted) * 100}%` }} />
-            <span className="bg-primary" style={{ width: `${(data.boys / counted) * 100}%` }} />
-          </div>
-          {counted < data.total ? (
-            <p className="text-caption text-muted">
-              {data.total - counted} хүүхдийн хүйс бүртгэгдээгүй.
-            </p>
-          ) : null}
-        </Card>
-      ) : null}
     </section>
   );
 }

@@ -28,7 +28,7 @@ import { Donut } from "@/components/ui/chart/donut";
 import { Ring } from "@/components/ui/chart/ring";
 import { SERIES_TONES } from "@/components/ui/chart/chart-tokens";
 import { TONE_VAR, type Tone } from "@/components/ui/tone";
-import { FileText, GraduationCap, PieChart } from "lucide-react";
+import { GraduationCap, PieChart } from "lucide-react";
 import { AssessmentCoverageSection, RecentActivitySection } from "./dashboard-sections";
 
 /**
@@ -216,7 +216,6 @@ export function AdminOverview() {
           <StatCard
             label="Нийт хүүхэд"
             value={counts.children}
-            unit="хүүхэд"
             href="/children"
             tone="cornflower"
             art={<Art name="child" size={36} />}
@@ -296,7 +295,14 @@ export function AdminOverview() {
                 }
                 href="/documents"
                 tone="teal"
-                art={<FileText size={28} aria-hidden />}
+                /*
+                  ★ `Art`, not a lucide glyph — #69 turned this grid 3D while
+                  #70 was replacing this card's icon for a different reason, and
+                  the merge kept one of the two. `register` is the ledger; the
+                  set has no `document`, and `report` belongs to the card below.
+                */
+                art={<Art name="register" size={36} />}
+                artSurface={false}
               />
               <StatCard
                 label="Тайлан"
