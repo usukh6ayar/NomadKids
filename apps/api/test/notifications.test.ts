@@ -1212,3 +1212,57 @@ describe("filtering the board by group", () => {
     expect(titles).toContain("Нарангийн зар");
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Cook — reads the board, does not post to it. Client decision, 2026-09-08.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("cook", () => {
+  async function cookSession(kindergartenId: string) {
+    const user = await createUser({ username: uniq("cook") });
+    await createMembership(user.id, kindergartenId, "COOK");
+    return login(app, user.username);
+  }
+
+  it("reads a published, kindergarten-wide notice", async () => {
+    const cookA = await cookSession(a.kindergarten.id);
+    await notify([], { title: "Цэцэрлэг маргааш амарна" });
+
+    const res = await authed(request(server()).get("/v1/notifications"), cookA);
+    expect(res.status).toBe(200);
+    expect(res.body.items.map((n: { title: string }) => n.title)).toContain(
+      "Цэцэрлэг маргааш амарна",
+    );
+  });
+
+  it("does not read a draft it did not author", async () => {
+    const cookA = await cookSession(a.kindergarten.id);
+    await notify([], { title: "Ноорог", publish: false });
+
+    const res = await authed(request(server()).get("/v1/notifications"), cookA);
+    expect(res.body.items.map((n: { title: string }) => n.title)).not.toContain("Ноорог");
+  });
+
+  it("never reaches another kindergarten's board", async () => {
+    const cookA = await cookSession(a.kindergarten.id);
+
+    const teacherB = await login(app, b.teacherUser.username);
+    const created = await authed(
+      request(server()).post(`/v1/kindergartens/${b.kindergarten.id}/notifications`),
+      teacherB,
+    ).send({ title: "Хааны мэдэгдэл", body: "Дэлгэрэнгүй", targets: [] });
+    await authed(request(server()).post(`/v1/notifications/${created.body.id}/publish`), teacherB);
+
+    const res = await authed(request(server()).get("/v1/notifications"), cookA);
+    expect(res.body.items.map((n: { title: string }) => n.title)).not.toContain("Хааны мэдэгдэл");
+  });
+
+  it("still cannot post — the coarse role gate refuses before the audience filter is even reached", async () => {
+    const cookA = await cookSession(a.kindergarten.id);
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/notifications`),
+      cookA,
+    ).send({ title: "x", body: "y", targets: [] });
+    expect(res.status).toBe(404);
+  });
+});

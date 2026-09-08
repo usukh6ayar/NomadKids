@@ -102,7 +102,10 @@ function Stock() {
                 key={level.ingredient.id}
                 className="flex items-center justify-between gap-3 px-4 py-3"
               >
-                <span className="truncate text-body text-ink">{level.ingredient.name}</span>
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="truncate text-body text-ink">{level.ingredient.name}</span>
+                  {level.low ? <Badge tone="danger">Нөөц багассан</Badge> : null}
+                </span>
                 <span
                   className={`shrink-0 text-body font-semibold tabular-nums ${Number(level.onHand) < 0 ? "text-danger" : "text-ink"}`}
                 >

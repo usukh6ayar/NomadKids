@@ -11,6 +11,11 @@ import type { Actor } from "../authz/actor";
 import { paginate, toSkipTake } from "../common/pagination";
 import { parseDishes } from "../meals/dish-json";
 import { KitchenRepository } from "./kitchen.repository";
+import {
+  buildConsumptionWorkbook,
+  buildNutritionWorkbook,
+  buildPurchasesWorkbook,
+} from "./kitchen-reports-workbook";
 import { costOfRecipe } from "./recipe-cost";
 import type {
   CreateFoodOrderDto,
@@ -473,10 +478,19 @@ export class KitchenService {
     return saved;
   }
 
+  /** Refuses when a live food order still references this supplier — same
+   * shape as `removeIngredient`'s recipe-usage guard. */
   async removeSupplier(actor: Actor, id: string) {
     const supplier = await this.repo.findSupplier(id);
     if (!supplier) throw new NotFoundException();
     this.tenants.assertCanManageKitchen(actor, supplier.kindergartenId);
+
+    const usage = await this.repo.countFoodOrderUsage(id);
+    if (usage > 0) {
+      throw new ConflictException(
+        `Энэ нийлүүлэгчээр ${usage} захиалга хийгдсэн тул устгах боломжгүй`,
+      );
+    }
 
     await this.repo.softDeleteSupplier(id);
     await this.audit.append({
@@ -781,6 +795,49 @@ export class KitchenService {
     return this.repo.purchaseReport(kindergartenId, toDate(query.from), toDate(query.to));
   }
 
+  /**
+   * The three reports as Excel — parity with `/menu`'s export button, which
+   * `/kitchen/reports` did not have. Each reuses the same service method the
+   * on-screen tab already calls, so a downloaded file can never show a number
+   * the screen did not.
+   */
+  async exportConsumptionReport(actor: Actor, kindergartenId: string, query: KitchenReportsQuery) {
+    const rows = await this.consumptionReport(actor, kindergartenId, query);
+    const buffer = await buildConsumptionWorkbook(rows, query);
+    await this.auditExport(actor, kindergartenId, "ConsumptionReport", query);
+    return { buffer, filename: `khereglee_${query.from}_${query.to}.xlsx` };
+  }
+
+  async exportNutritionReport(actor: Actor, kindergartenId: string, query: KitchenReportsQuery) {
+    const rows = await this.nutritionReport(actor, kindergartenId, query);
+    const buffer = await buildNutritionWorkbook(rows, query);
+    await this.auditExport(actor, kindergartenId, "NutritionReport", query);
+    return { buffer, filename: `shim_tejeel_${query.from}_${query.to}.xlsx` };
+  }
+
+  async exportPurchaseReport(actor: Actor, kindergartenId: string, query: KitchenReportsQuery) {
+    const rows = await this.purchaseReport(actor, kindergartenId, query);
+    const buffer = await buildPurchasesWorkbook(rows, query);
+    await this.auditExport(actor, kindergartenId, "PurchaseReport", query);
+    return { buffer, filename: `hudaldan_avalt_${query.from}_${query.to}.xlsx` };
+  }
+
+  private async auditExport(
+    actor: Actor,
+    kindergartenId: string,
+    objectType: string,
+    query: KitchenReportsQuery,
+  ): Promise<void> {
+    await this.audit.append({
+      action: "DOWNLOAD",
+      kindergartenId,
+      actorUserId: actor.userId,
+      objectType,
+      objectId: kindergartenId,
+      metadata: { from: query.from, to: query.to },
+    });
+  }
+
   // ── Meal servings (Тараалт) ──────────────────────────────────────────────
 
   async listMealServings(actor: Actor, kindergartenId: string, query: ListMealServingsQuery) {
@@ -845,6 +902,41 @@ export class KitchenService {
     });
 
     return { id };
+  }
+
+  /**
+   * Compares a set of already-computed required quantities — `MealsService`
+   * owns the "what does today's menu call for" math — against current stock.
+   * Returns only the ingredients actually required: a kitchen might stock
+   * forty ingredients and one day's dishes only call for six.
+   *
+   * No new query for on-hand stock: `stockLevels` already computes it for
+   * every ingredient in the kindergarten, so this reuses that read rather
+   * than a second aggregation over the same ledger.
+   */
+  async checkStockSufficiency(kindergartenId: string, required: Map<string, number>) {
+    if (required.size === 0) return [];
+
+    const levels = await this.repo.stockLevels(kindergartenId);
+    const byIngredient = new Map(levels.map((row) => [row.ingredient.id, row]));
+
+    return [...required.entries()]
+      .map(([ingredientId, requiredQty]) => {
+        const level = byIngredient.get(ingredientId);
+        if (!level) return null;
+
+        const available = Number(level.onHand);
+        const shortfall = requiredQty - available;
+        return {
+          ingredient: level.ingredient,
+          required: round(requiredQty, 2).toFixed(2),
+          available: level.onHand,
+          sufficient: shortfall <= 0,
+          shortfall: shortfall > 0 ? round(shortfall, 2).toFixed(2) : null,
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null)
+      .sort((a, b) => a.ingredient.name.localeCompare(b.ingredient.name));
   }
 
   private async guardUniqueName<T>(run: () => Promise<T>): Promise<T> {

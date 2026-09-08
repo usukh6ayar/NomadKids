@@ -36,6 +36,7 @@ const COLUMNS = [
   { key: "category", label: "Ангилал", className: "md:w-[180px]" },
   { key: "unit", label: "Нэгж", className: "md:w-[80px]" },
   { key: "calories", label: "Ккал/100", className: "md:w-[100px]" },
+  { key: "minStock", label: "Хамгийн бага нөөц", className: "md:w-[140px]" },
   { key: "allergens", label: "Харшил", className: "md:w-[190px]" },
 ];
 
@@ -197,6 +198,11 @@ function IngredientRow({
               {ingredient.caloriesPer100 ?? "—"}
             </span>
           ),
+          minStock: (
+            <span className="text-body tabular-nums text-ink">
+              {ingredient.minStock ?? <span className="text-faint">Тогтоогоогүй</span>}
+            </span>
+          ),
           allergens:
             ingredient.allergenTags.length > 0 ? (
               <span className="flex flex-wrap gap-1">
@@ -268,6 +274,7 @@ function IngredientFormDialog({
   const [carbs, setCarbs] = useState(ingredient?.carbsPer100 ?? "");
   const [allergenTags, setAllergenTags] = useState(ingredient?.allergenTags.join(", ") ?? "");
   const [note, setNote] = useState(ingredient?.note ?? "");
+  const [minStock, setMinStock] = useState(ingredient?.minStock ?? "");
 
   const save = useMutation({
     mutationFn: () => {
@@ -284,6 +291,7 @@ function IngredientFormDialog({
           .map((tag) => tag.trim())
           .filter(Boolean),
         note: note.trim() || null,
+        minStock: minStock.trim() || null,
       };
       return isEdit
         ? mutate(`/ingredients/${ingredient!.id}`, ingredientSchema, { method: "PATCH", body })
@@ -442,6 +450,23 @@ function IngredientFormDialog({
         >
           {({ id }) => (
             <Input id={id} value={allergenTags} onChange={(e) => setAllergenTags(e.target.value)} />
+          )}
+        </Field>
+
+        <Field
+          label="Хамгийн бага нөөц"
+          error={errors.minStock}
+          hint="Энэ хэмжээнээс доош орвол Самбар дээр анхааруулна. Хоосон бол анхааруулахгүй."
+        >
+          {({ id }) => (
+            <Input
+              id={id}
+              type="number"
+              min={0}
+              step="0.01"
+              value={minStock}
+              onChange={(e) => setMinStock(e.target.value)}
+            />
           )}
         </Field>
 

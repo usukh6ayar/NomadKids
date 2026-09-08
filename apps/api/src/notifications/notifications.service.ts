@@ -36,12 +36,21 @@ export class NotificationsService {
    * filter. Someone who is both sees the union, which is correct: a teacher
    * whose own child attends should see the notice sent to that child's group
    * as well as the ones sent to their kindergarten.
+   *
+   * ★★ COOK reads this board too, since 2026-09-08 (client decision) — the
+   * closures/holidays a kindergarten posts here are exactly what a cook needs
+   * to plan around. `staffWhere` has no group dependency (kindergarten-wide,
+   * `PUBLISHED` only, plus the reader's own drafts), which a cook — who has
+   * no `GroupTeacher` assignment at all — can still satisfy. This does **not**
+   * make COOK "staff": `create()` below still gates on `assertStaff`
+   * (TEACHER/ADMIN), so a cook can read the board and still cannot post to
+   * it. Widening *this* set is a read-audience decision, not a role change.
    */
   private async audienceFilter(actor: Actor, now = new Date()) {
     const staffKindergartens = [
       ...new Set(
         actor.memberships
-          .filter((m) => m.role === Role.TEACHER || m.role === Role.ADMIN)
+          .filter((m) => m.role === Role.TEACHER || m.role === Role.ADMIN || m.role === Role.COOK)
           .map((m) => m.kindergartenId),
       ),
     ];

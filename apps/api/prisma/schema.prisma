@@ -2728,6 +2728,11 @@ model Ingredient {
   /// matched by the same `allergenMatches` stem logic — сүү, самар, өндөг…
   allergenTags   String[]       @default([])
   note           String?
+  /// The cook's own reorder threshold, in this ingredient's own `unit`.
+  /// Nullable and opt-in — no default is invented for an ingredient nobody
+  /// has set one for, same reasoning `caloriesPer100`'s comment gives: blank
+  /// must read as "not set", never as zero (which would warn on everything).
+  minStock       Decimal?       @db.Decimal(10, 2)
 
   createdById String? @db.Uuid
 

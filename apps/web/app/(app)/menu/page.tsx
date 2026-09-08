@@ -4,7 +4,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, Download, PackageMinus } from "lucide-react";
 import { useState } from "react";
 import { z } from "zod";
-import { menuDayWithWarningsSchema, recipeSummarySchema } from "@kinder/contracts";
+import {
+  ingredientUnitSchema,
+  menuDayWithWarningsSchema,
+  recipeSummarySchema,
+} from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { downloadUrl } from "@/lib/api/client";
 import { qk } from "@/lib/api/keys";
@@ -36,6 +40,19 @@ const weekSchema = z.array(menuDayWithWarningsSchema);
  */
 const approvedRecipesSchema = z.array(
   recipeSummarySchema.pick({ id: true, name: true, yieldPortions: true, mealKind: true }),
+);
+
+/** `GET .../menu/:date/sufficiency` — this day's recipe-linked, portioned
+ * dishes against current stock, using the exact deduction math `consume`
+ * commits with. Only the ingredients actually required by the day appear. */
+const sufficiencySchema = z.array(
+  z.object({
+    ingredient: z.object({ id: z.string(), name: z.string(), unit: ingredientUnitSchema }),
+    required: z.string(),
+    available: z.string(),
+    sufficient: z.boolean(),
+    shortfall: z.string().nullable(),
+  }),
 );
 
 /** Today, as `YYYY-MM-DD`, in UTC — matches how every other date here is keyed. */
@@ -78,6 +95,16 @@ function weekdayLabel(iso: string): string {
   const d = new Date(`${iso}T00:00:00.000Z`);
   return WEEKDAY_BY_INDEX[d.getUTCDay()]!;
 }
+
+/** Monday-first weekday index for `iso`, clamped into the Mon–Fri range this
+ * screen shows — a weekend date (Сар/Ба clicked "Маргааш" on a Friday) lands
+ * on Friday rather than pointing at a day the strip has no button for. */
+function weekdayOffset(iso: string): number {
+  const day = new Date(`${iso}T00:00:00.000Z`).getUTCDay();
+  return Math.min((day + 6) % 7, 4);
+}
+
+const WEEKDAYS_SHORT = ["Да", "Мя", "Лх", "Пү", "Ба"];
 
 /**
  * Долоо хоногийн цэс — the kitchen's own screen.
@@ -133,14 +160,26 @@ function WeeklyMenu() {
   // week" (the Өмнөх/Энэ долоо хоног/Дараах row was removed 2026-09-05; see
   // the header's own comment below).
   const weekStart = mondayOf(new Date());
+  const weekDates = Array.from({ length: 5 }, (_, i) => addDays(weekStart, i));
   // Its own state, not derived from `weekStart` — see `child-menu.tsx`'s
   // identical `quickView` for why: "7 хоног" is a way back to the current
   // week, not a third destination, and deriving this from the date would
   // make it do nothing when the open week already contains today.
   const [quickView, setQuickView] = useState<"today" | "tomorrow" | "week">("today");
+  // Which weekday the "7 хоног" strip has open — an offset into `weekDates`,
+  // not a stored date, the same reasoning `child-menu.tsx`'s `selectedOffset`
+  // gives: it is what turns a week into one day's detail instead of five
+  // full editors stacked and scrolled past to reach Friday.
+  const [selectedOffset, setSelectedOffset] = useState(() => weekdayOffset(today));
 
+  // The whole Mon–Fri range for "week" — the strip needs every day's
+  // fill-state at once, not just the one currently open — versus a single
+  // day for "today"/"tomorrow", which have no strip to feed.
   const from = quickView === "week" ? weekStart : quickView === "today" ? today : tomorrow;
   const to = quickView === "week" ? addDays(weekStart, 4) : from;
+  // The one day actually rendered below: the strip's selection in "week",
+  // otherwise whichever of "today"/"tomorrow" is active.
+  const activeDate = quickView === "week" ? weekDates[selectedOffset]! : from;
 
   const week = useQuery({
     enabled: Boolean(kindergartenId),
@@ -156,7 +195,6 @@ function WeeklyMenu() {
   });
 
   const byDate = new Map((week.data ?? []).map((day) => [day.date.slice(0, 10), day]));
-  const weekDates = Array.from({ length: 5 }, (_, i) => addDays(weekStart, i));
 
   const weekEnd = addDays(weekStart, 4);
   const month = monthRange(new Date());
@@ -221,8 +259,9 @@ function WeeklyMenu() {
 
       {/* Same 3-way quick view as a parent's own menu tab (`child-menu.tsx`)
           — "Өнөөдөр"/"Маргааш" jump straight to that day; "7 хоног" opens the
-          full Mon–Fri week starting this Monday, the only week this screen
-          shows now that there is no control left to move `weekStart` off it. */}
+          Mon–Fri strip below, starting this Monday, the only week this
+          screen shows now that there is no control left to move `weekStart`
+          off it. */}
       <div
         role="group"
         aria-label="Хугацаа сонгох"
@@ -230,15 +269,29 @@ function WeeklyMenu() {
       >
         {(
           [
-            ["today", "Өнөөдөр"],
-            ["tomorrow", "Маргааш"],
-            ["week", "7 хоног"],
+            [
+              "today",
+              "Өнөөдөр",
+              () => {
+                setSelectedOffset(weekdayOffset(today));
+                setQuickView("today");
+              },
+            ],
+            [
+              "tomorrow",
+              "Маргааш",
+              () => {
+                setSelectedOffset(weekdayOffset(tomorrow));
+                setQuickView("tomorrow");
+              },
+            ],
+            ["week", "7 хоног", () => setQuickView("week")],
           ] as const
-        ).map(([value, label]) => (
+        ).map(([value, label, onClick]) => (
           <button
             key={value}
             type="button"
-            onClick={() => setQuickView(value)}
+            onClick={onClick}
             aria-pressed={quickView === value}
             className={cn(
               "min-h-[40px] rounded-control text-caption font-semibold transition-colors",
@@ -252,25 +305,61 @@ function WeeklyMenu() {
         ))}
       </div>
 
-      {week.isLoading ? <LoadingState rows={quickView === "week" ? 5 : 1} /> : null}
+      {/* The weekday strip is what "7 хоног" means — Өнөөдөр/Маргааш jump
+          straight to a day without it, so it only shows once that's the
+          actual quick view selected, same as `child-menu.tsx`. Picking a day
+          here narrows the week down to that one day's card below instead of
+          stacking all five and scrolling. */}
+      {quickView === "week" ? (
+        <div className="grid grid-cols-5 gap-1.5">
+          {weekDates.map((date, i) => {
+            const day = byDate.get(date);
+            const filled = (day?.dishes.length ?? 0) > 0;
+            const isToday = date === today;
+            const active = i === selectedOffset;
+
+            return (
+              <button
+                key={date}
+                type="button"
+                aria-pressed={active}
+                aria-label={`${WEEKDAYS_SHORT[i]}, ${formatDate(date)}${filled ? " — цэстэй" : ""}`}
+                onClick={() => setSelectedOffset(i)}
+                className={cn(
+                  "flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-row border px-1 py-2 text-caption font-semibold transition-colors",
+                  active
+                    ? "border-primary bg-primary-soft text-primary-strong"
+                    : "border-border bg-surface text-ink hover:border-primary",
+                  isToday && !active && "border-primary/50",
+                )}
+              >
+                <span className="text-faint">{WEEKDAYS_SHORT[i]}</span>
+                <span>{Number(date.slice(8, 10))}</span>
+                <span
+                  aria-hidden="true"
+                  className={cn("size-1.5 rounded-pill", filled ? "bg-mint" : "bg-transparent")}
+                />
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {week.isLoading ? <LoadingState rows={1} /> : null}
       {week.isError ? <ErrorState description={errorMessage(week.error)} /> : null}
 
       {kindergartenId && !week.isLoading ? (
-        <div className="flex flex-col gap-4">
-          {(quickView === "week" ? weekDates : [from]).map((date) => (
-            <MenuDayCard
-              key={date}
-              kindergartenId={kindergartenId}
-              queryFrom={from}
-              queryTo={to}
-              date={date}
-              weekday={weekdayLabel(date)}
-              day={byDate.get(date) ?? null}
-              recipes={recipes.data ?? []}
-              isKitchen={isKitchen}
-            />
-          ))}
-        </div>
+        <MenuDayCard
+          key={activeDate}
+          kindergartenId={kindergartenId}
+          queryFrom={from}
+          queryTo={to}
+          date={activeDate}
+          weekday={weekdayLabel(activeDate)}
+          day={byDate.get(activeDate) ?? null}
+          recipes={recipes.data ?? []}
+          isKitchen={isKitchen}
+        />
       ) : null}
     </div>
   );
@@ -364,6 +453,22 @@ function MenuDayCard({
   const isApproved = day?.status === "APPROVED";
   const isConsumed = Boolean(day?.consumedAt);
 
+  /*
+   * ★ Хангамжийн шалгалт — reads the exact numbers `consume` will deduct
+   * with, not an estimate. Kitchen-only (the endpoint is COOK/ADMIN,
+   * `assertCanManageKitchen`), so a teacher's screen never fires this query.
+   * Skipped once the day is already consumed — the ledger is already the
+   * fact by then, and a shortfall found afterward is a stock ADJUSTMENT, not
+   * something this screen can still act on.
+   */
+  const sufficiency = useQuery({
+    enabled: isKitchen && !isConsumed,
+    queryKey: qk.kitchen.sufficiency(kindergartenId, date),
+    queryFn: () =>
+      get(`/kindergartens/${kindergartenId}/menu/${date}/sufficiency`, sufficiencySchema),
+  });
+  const shortages = (sufficiency.data ?? []).filter((row) => !row.sufficient);
+
   return (
     <Card pad="roomy" className="flex flex-col gap-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -407,6 +512,31 @@ function MenuDayCard({
         </div>
       ) : null}
 
+      {/*
+        ★ Same shape as the allergy warning above, own colour — this is an
+        operational shortage, not a safety warning, and the two must not read
+        as the same kind of alert. `required`/`available` are already in the
+        ingredient's own unit; no conversion happens anywhere in this module.
+        ★★ Not just advisory since 2026-09-08 — `consume` actually refuses
+        while any row here is short, so the wording says so rather than
+        hedging with "may be".
+      */}
+      {shortages.length > 0 ? (
+        <div className="flex flex-col gap-1.5 rounded-row bg-sky/40 px-3 py-2.5">
+          <p className="flex items-center gap-1.5 text-body font-medium text-sky-ink">
+            <PackageMinus size={16} aria-hidden="true" />
+            Нөөц хүрэлцэхгүй байна — хэрэглээ бүртгэх боломжгүй
+          </p>
+          <ul className="flex flex-col gap-1">
+            {shortages.map((row) => (
+              <li key={row.ingredient.id} className="text-caption text-sky-ink">
+                {row.ingredient.name} — хэрэгтэй {row.required}, байгаа {row.available}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       <MenuDishEditor
         draftDishes={draftDishes}
         onChange={(next) => {
@@ -434,12 +564,14 @@ function MenuDayCard({
             </Button>
           ) : null}
 
-          {/* Зарцуулалт — deducts this day's cooking from stock. */}
+          {/* Зарцуулалт — deducts this day's cooking from stock. Disabled
+              while a shortage is showing above: the server refuses the same
+              way (2026-09-08), this just saves the round trip. */}
           {isApproved && !isConsumed ? (
             <Button
               variant="secondary"
               size="sm"
-              disabled={consume.isPending}
+              disabled={consume.isPending || shortages.length > 0}
               onClick={() => consume.mutate()}
             >
               <PackageMinus size={16} aria-hidden="true" />

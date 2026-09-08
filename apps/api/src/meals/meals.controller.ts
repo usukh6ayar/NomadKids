@@ -112,6 +112,17 @@ export class MealsController {
   ) {
     return this.service.consumeDay(actor, params.id, params.date);
   }
+
+  /** Хангамжийн шалгалт — this day's required ingredients against current
+   * stock. COOK/ADMIN only, same gate as approve/consume. */
+  @Get(":date/sufficiency")
+  @Roles("COOK", "ADMIN")
+  async sufficiency(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(dayParamsSchema)) params: { id: string } & DateParam,
+  ) {
+    return this.service.checkSufficiency(actor, params.id, params.date);
+  }
 }
 
 /**
