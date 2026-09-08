@@ -70,9 +70,7 @@ function FinancialAuditLog() {
         </Link>
       </Button>
 
-      <PageHeader
-        title="Санхүүгийн үйлдлийн түүх"
-      />
+      <PageHeader title="Санхүүгийн үйлдлийн түүх" />
 
       {entries.isLoading ? <LoadingState rows={6} /> : null}
       {entries.isError ? <ErrorState description={errorMessage(entries.error)} /> : null}

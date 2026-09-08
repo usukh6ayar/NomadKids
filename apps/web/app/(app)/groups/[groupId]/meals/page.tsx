@@ -261,9 +261,7 @@ function GroupMeals() {
 
   return (
     <div className="flex flex-col gap-5 py-2">
-      <PageHeader
-        title="Хоолны бүртгэл"
-      />
+      <PageHeader title="Хоолны бүртгэл" />
 
       <GroupSwitcher
         groups={switchable.data?.items ?? []}

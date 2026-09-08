@@ -95,9 +95,7 @@ function EditChild() {
 
   return (
     <div className="flex flex-col gap-6 lg:gap-8">
-      <PageHeader
-        title="Хүүхдийн мэдээлэл засах"
-      />
+      <PageHeader title="Хүүхдийн мэдээлэл засах" />
 
       <DetailsForm childId={childId} child={child.data!} />
       <TransferCard childId={childId} />

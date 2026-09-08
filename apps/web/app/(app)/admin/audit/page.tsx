@@ -102,9 +102,7 @@ function AuditBrowser() {
 
   return (
     <div className="flex flex-col gap-6 lg:gap-8">
-      <PageHeader
-        title="Үйлдлийн түүх"
-      />
+      <PageHeader title="Үйлдлийн түүх" />
 
       <div className="flex flex-wrap items-end gap-3">
         {/*

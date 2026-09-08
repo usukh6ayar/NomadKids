@@ -83,9 +83,7 @@ function TermReport({ childId }: { childId: string }) {
 
   return (
     <div className="page-band">
-      <PageHeader
-        title="Улирлын тайлан"
-      />
+      <PageHeader title="Улирлын тайлан" />
 
       {termItems.length === 0 ? (
         <EmptyState

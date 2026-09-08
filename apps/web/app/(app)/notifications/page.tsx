@@ -246,9 +246,7 @@ export default function NotificationsPage() {
 
   return (
     <div className="page-band">
-      <PageHeader
-        title={tab === "news" ? "Мэдээ" : "Судалгаа"}
-      />
+      <PageHeader title={tab === "news" ? "Мэдээ" : "Судалгаа"} />
 
       {/*
         Capped from `lg` up. Full width is right on a phone, where the field is

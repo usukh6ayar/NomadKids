@@ -41,9 +41,7 @@ export default function ChildSurveysPage() {
     queryFn: () => get(`/children/${childId}/surveys`, activeSurveysSchema),
   });
 
-  const header = (
-    <PageHeader title="Миний судалгаанууд" />
-  );
+  const header = <PageHeader title="Миний судалгаанууд" />;
 
   if (surveys.isLoading) {
     return (
