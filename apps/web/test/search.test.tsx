@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -9,7 +9,6 @@ import {
   stubApi,
 } from "./support/render";
 import { PageHeader } from "@/components/shell/app-shell";
-import ChildrenPage from "@/app/(app)/children/page";
 
 /**
  * The handoff from the header's search field to the children list.
@@ -25,23 +24,6 @@ import ChildrenPage from "@/app/(app)/children/page";
  * A test on either component alone passes with the bug present. This one covers
  * the seam.
  */
-
-const childrenPage = {
-  items: [
-    {
-      id: "44444444-4444-4444-8444-444444444444",
-      lastName: "Ганболд",
-      firstName: "Батбаяр",
-      dateOfBirth: "2021-04-12",
-      photoMediaFileId: null,
-      enrollments: [],
-    },
-  ],
-  page: 1,
-  pageSize: 25,
-  total: 1,
-  totalPages: 1,
-};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -61,40 +43,15 @@ describe("header search → children list", () => {
     expect(ROUTER.push).toHaveBeenCalledWith(`/children?q=${encodeURIComponent("Ганболд")}`);
   });
 
-  it("the list seeds its search box from ?q= and filters by it", async () => {
-    setSearchParams("q=Ганболд");
-    const { calls } = stubApi([
-      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      { path: "/children", body: childrenPage },
-    ]);
-
-    renderWithProviders(<ChildrenPage />);
-
-    // The visible box carries the term, so the result set is explained rather
-    // than looking like an unfiltered list that happens to be short.
-    const field = await screen.findByLabelText("Хүүхдийн нэрээр хайх");
-    await waitFor(() => expect(field).toHaveValue("Ганболд"));
-
-    // …and the request actually asked for it.
-    await waitFor(() =>
-      expect(calls.some((c) => c.url.startsWith("/children?") && c.url.includes("q="))).toBe(true),
-    );
-    const request = calls.find((c) => c.url.startsWith("/children?"))!;
-    expect(decodeURIComponent(request.url)).toContain("q=Ганболд");
-  });
-
-  it("an empty ?q= leaves the box empty and asks for the whole roster", async () => {
-    const { calls } = stubApi([
-      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      { path: "/children", body: childrenPage },
-    ]);
-
-    renderWithProviders(<ChildrenPage />);
-
-    const field = await screen.findByLabelText("Хүүхдийн нэрээр хайх");
-    expect(field).toHaveValue("");
-
-    await waitFor(() => expect(calls.some((c) => c.url.startsWith("/children?"))).toBe(true));
-    expect(calls.find((c) => c.url.startsWith("/children?"))!.url).not.toContain("q=");
-  });
+  /*
+   * ★ The other half of this seam is gone — 2026-09-08.
+   *
+   * `StaffChildren` no longer draws a search box or a roster: the client asked
+   * for the ESIS panels to be the screen's data. `?q=` still reaches the page
+   * and still narrows what the Excel export carries, but there is no visible
+   * field to seed and no list to filter, so the two tests that asserted both
+   * were removed rather than rewritten into a weaker version of themselves.
+   *
+   * The header half above is unchanged and still pinned.
+   */
 });

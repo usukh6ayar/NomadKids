@@ -163,16 +163,7 @@ function EsisProfileSection() {
 
   return (
     <section aria-labelledby="esis-profile-heading">
-      <SectionHeader
-        id="esis-profile-heading"
-        title="ESIS мэдээлэл"
-        action={
-          <Badge tone="mint">
-            <CheckCircle2 size={13} aria-hidden="true" />
-            Demo ESIS синк
-          </Badge>
-        }
-      />
+      <SectionHeader id="esis-profile-heading" title="ESIS мэдээлэл" />
 
       <Card pad="roomy" className="flex flex-col gap-5">
         <div className="flex flex-wrap items-start gap-3 border-b border-border-soft pb-5">
@@ -182,10 +173,6 @@ function EsisProfileSection() {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <p className="font-semibold text-ink">{esis.resourceLabel}</p>
-              <Badge tone="mint">
-                <CheckCircle2 size={13} aria-hidden="true" />
-                Синк хийгдсэн
-              </Badge>
             </div>
             <p className="mt-0.5 text-body text-muted">Эх сурвалж: ESIS · {esis.resource}</p>
           </div>

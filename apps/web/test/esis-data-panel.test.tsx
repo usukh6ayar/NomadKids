@@ -148,8 +148,13 @@ describe("ESIS мэдээллийн панел", () => {
 
     expect(await screen.findByText("Бяцхан нүүдэлчид (жишээ)")).toBeInTheDocument();
     expect(screen.getByText("40305")).toBeInTheDocument();
-    // Present *and* labelled, on the same view.
-    expect(screen.getByText("Demo ESIS синк")).toBeInTheDocument();
+    /*
+     * ★ No `Demo ESIS` badge — removed 2026-09-08 at the client's explicit
+     * instruction, given twice. The panel reads as a connected source; where
+     * the values actually come from is recorded in `esis-data-panel.tsx` and
+     * shown on `/admin/integrations/esis`, which keeps its badges.
+     */
+    expect(screen.queryByText(/Demo ESIS/)).toBeNull();
     expect(screen.getByRole("button", { name: /ESIS-ээс мэдээллээ татах/ })).toBeInTheDocument();
   });
 
@@ -180,8 +185,6 @@ describe("ESIS мэдээллийн панел", () => {
 
     expect(await screen.findByText("Жинхэнэ цэцэрлэг")).toBeInTheDocument();
     expect(screen.queryByText("Бяцхан нүүдэлчид (жишээ)")).not.toBeInTheDocument();
-    expect(screen.queryByText("Demo ESIS синк")).not.toBeInTheDocument();
-    expect(screen.getByText("Бодит ESIS синк")).toBeInTheDocument();
   });
 
   /*
