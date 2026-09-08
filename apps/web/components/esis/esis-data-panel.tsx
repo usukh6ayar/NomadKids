@@ -1,0 +1,242 @@
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { CheckCircle2, CloudDownload, Database } from "lucide-react";
+import { useState } from "react";
+import {
+  esisOverviewSchema,
+  esisResourceReadSchema,
+  type EsisResourceKey,
+} from "@kinder/contracts";
+import { get } from "@/lib/api/browser";
+import { errorMessage } from "@/lib/api/errors";
+import { qk } from "@/lib/api/keys";
+import { useSession } from "@/lib/auth/session";
+import { EsisRowValues, esisSampleColumns } from "@/components/esis/esis-rows";
+import {
+  ESIS_DEMO_PARAM,
+  ESIS_PARAM_LABEL,
+  esisApiIdLabel,
+  isPersonalParam,
+} from "@/components/esis/esis-params";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, SectionHeader } from "@/components/ui/card";
+import { Field, Input } from "@/components/ui/field";
+import { LoadingState } from "@/components/ui/states";
+
+/** The Mongolian sentence behind each upstream failure code. */
+const ERROR_LABEL: Record<string, string> = {
+  UNAUTHORIZED: "Token хүчингүй эсвэл хугацаа нь дууссан байна.",
+  SCOPE_DENIED: "Энэ API-д манай token-д эрх олгоогүй байна.",
+  TIMEOUT: "ESIS хугацаанд хариу өгсөнгүй.",
+  NETWORK: "ESIS сервертэй холбогдож чадсангүй.",
+  INVALID_RESPONSE: "ESIS-ийн хариу гэрээнд тохирохгүй байна.",
+  NOT_CONFIGURED: "Server дээр ESIS тохиргоо алга байна.",
+  HTTP: "ESIS алдаатай хариу буцаалаа.",
+  UNKNOWN: "Тодорхойгүй алдаа гарлаа.",
+};
+
+/**
+ * One ESIS service, **on the screen that uses it** — not behind a dialog.
+ *
+ * ★ The dialog was the wrong shape for the director's question. `EsisPullButton`
+ * answers "what would ESIS say if I asked?", which is the integration
+ * engineer's question; the director's is "what does ESIS hold about my
+ * kindergarten?", and the answer to that belongs beside the local copy it is
+ * meant to be compared against. `/settings` has shown a teacher their own ESIS
+ * record inline since it shipped, and it reads as connected because nothing has
+ * to be pressed for the data to be there. This is that panel, for a service.
+ *
+ * ★★ So the values are present on first paint — demo rows when no token is
+ * configured, live rows once one is — and the button **replaces** them rather
+ * than revealing them. That ordering is what keeps the badge honest: a screen
+ * whose data appears only after a press invites the reader to assume the press
+ * called the ministry, whether or not it did.
+ *
+ * ★★★ Never mixed. Live rows replace the demo set entirely, and the badge
+ * changes with them, so an invented tenant name is never on screen beside a
+ * real one — the rule `esis.fields.ts` states and every ESIS surface keeps.
+ */
+export function EsisDataPanel({
+  resource,
+  params,
+  title,
+  description,
+  headingId,
+}: {
+  resource: EsisResourceKey;
+  /** Path values the caller already knows — a group id, a date. */
+  params?: Record<string, string | undefined>;
+  /** Overrides the service's catalog name in the section header. */
+  title?: string;
+  description?: string;
+  headingId?: string;
+}) {
+  const { primaryKindergartenId, hasRole } = useSession();
+  const [entered, setEntered] = useState<Record<string, string>>({});
+  const [pulled, setPulled] = useState(false);
+  const [syncedAt, setSyncedAt] = useState<string | null>(null);
+
+  const overview = useQuery({
+    queryKey: qk.esis(primaryKindergartenId ?? "none"),
+    queryFn: () => get(`/kindergartens/${primaryKindergartenId}/esis`, esisOverviewSchema),
+    enabled: Boolean(primaryKindergartenId) && hasRole("ADMIN"),
+  });
+
+  const endpoint = overview.data?.endpoints.find((item) => item.key === resource);
+  const demoMode = Boolean(overview.data && !overview.data.deployment.configured);
+  const required = endpoint?.params ?? [];
+
+  /*
+   * A demo deployment pre-fills the ESIS ids it invented, so the panel is
+   * complete on first paint. It never pre-fills a personal identifier — see
+   * `esis-params.ts`.
+   */
+  const value = (name: string) =>
+    entered[name] ?? params?.[name] ?? (demoMode ? (ESIS_DEMO_PARAM[name] ?? "") : "") ?? "";
+  const missing = required.filter((name) => !value(name));
+
+  const query = new URLSearchParams({ resource });
+  for (const name of required) {
+    if (value(name)) query.set(name, value(name));
+  }
+
+  const read = useQuery({
+    queryKey: qk.esisResource(primaryKindergartenId ?? "none", resource, query.toString()),
+    queryFn: () =>
+      get(`/kindergartens/${primaryKindergartenId}/esis/resource?${query}`, esisResourceReadSchema),
+    enabled: pulled && Boolean(overview.data?.canPreview) && missing.length === 0,
+    /*
+     * ★ Opts out of the app-wide refetch policy, deliberately — the same
+     * reasoning as `EsisPullButton`. This query calls the *ministry*: every
+     * refetch is another outbound request and another `AuditLog` VIEW row
+     * saying somebody read the roster. Alt-tabbing is not somebody reading the
+     * roster. One press, one call.
+     */
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    staleTime: Infinity,
+    retry: false,
+  });
+
+  // The route answers 404 to anyone but an administrator of this kindergarten.
+  if (!primaryKindergartenId || !hasRole("ADMIN")) return null;
+  if (overview.isPending) return <LoadingState rows={3} />;
+  if (!endpoint) return null;
+
+  const live = read.data?.status === "SUCCEEDED" ? read.data : null;
+  const rows = live ? live.rows : endpoint.sampleRows;
+  const columns = esisSampleColumns(live ? live.fields : endpoint.fields);
+  const heading = headingId ?? `esis-panel-${resource}`;
+
+  async function pull() {
+    setPulled(true);
+    if (overview.data?.canPreview) {
+      await read.refetch();
+    } else {
+      // No token: re-read our own catalog, which is what is actually shown.
+      await overview.refetch();
+    }
+    setSyncedAt(new Date().toLocaleString("mn-MN"));
+  }
+
+  return (
+    <section aria-labelledby={heading}>
+      <SectionHeader
+        id={heading}
+        title={title ?? `ESIS мэдээлэл — ${endpoint.name}`}
+        action={
+          <Badge tone={live ? "sky" : "mint"}>
+            <CheckCircle2 size={13} aria-hidden />
+            {live ? "Бодит ESIS синк" : "Demo ESIS синк"}
+          </Badge>
+        }
+      />
+
+      <Card pad="roomy" className="flex flex-col gap-5">
+        <div className="flex flex-wrap items-start gap-3 border-b border-border-soft pb-5">
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-control bg-sky text-sky-ink">
+            <Database size={21} aria-hidden />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-ink">{description ?? endpoint.usage}</p>
+            <p className="mt-0.5 break-all font-mono text-caption text-muted">
+              {endpoint.slug} · {esisApiIdLabel(endpoint.apiId)} · {endpoint.method} {endpoint.path}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <Badge tone="sky">{rows.length} бичлэг</Badge>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={read.isFetching}
+              onClick={() => void pull()}
+            >
+              <CloudDownload aria-hidden />
+              {read.isFetching ? "Татаж байна…" : "ESIS-ээс мэдээллээ татах"}
+            </Button>
+          </div>
+        </div>
+
+        {required.length > 0 ? (
+          <div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {required.map((name) => (
+                <Field key={name} label={ESIS_PARAM_LABEL[name] ?? name}>
+                  {({ id }) => (
+                    <Input
+                      id={id}
+                      type={name.endsWith("Date") ? "date" : "text"}
+                      value={value(name)}
+                      onChange={(event) =>
+                        setEntered((current) => ({ ...current, [name]: event.target.value }))
+                      }
+                    />
+                  )}
+                </Field>
+              ))}
+            </div>
+            <p className="mt-2 text-caption text-muted">
+              {required.some(isPersonalParam)
+                ? "Регистрийн дугаарыг ESIS рүү илгээх ба хадгалахгүй."
+                : demoMode
+                  ? "Demo sandbox mapping-аас автоматаар бөглөгдсөн."
+                  : "ESIS-ийн өөрийн дугаарыг ашиглана."}
+            </p>
+          </div>
+        ) : null}
+
+        {read.isError ? (
+          <p
+            role="alert"
+            className="rounded-control bg-danger-soft px-4 py-3 text-body text-danger"
+          >
+            {errorMessage(read.error)}
+          </p>
+        ) : null}
+        {read.data?.status === "FAILED" ? (
+          <Card pad="compact" tone="peach">
+            <p className="text-body font-semibold text-ink">ESIS хариу өгсөнгүй</p>
+            <p className="mt-1 text-caption text-muted">
+              {ERROR_LABEL[read.data.errorCode ?? "UNKNOWN"] ?? read.data.errorCode}
+            </p>
+          </Card>
+        ) : null}
+
+        {rows.length === 0 ? (
+          <Card pad="compact">
+            <p className="text-body text-muted">ESIS энэ сервисээр бичлэг буцаасангүй.</p>
+          </Card>
+        ) : (
+          <EsisRowValues columns={columns} rows={rows} />
+        )}
+
+        <p className="border-t border-border-soft pt-4 text-caption text-muted">
+          {syncedAt ? `Шинэчилсэн: ${syncedAt} · ` : null}
+          Татахгүй талбар: регистр, иргэний бүртгэлийн дугаар, нэвтрэх мэдээлэл.
+        </p>
+      </Card>
+    </section>
+  );
+}

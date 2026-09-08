@@ -17,10 +17,11 @@ import { ESIS_ENDPOINTS } from "./esis.endpoints";
  * comparing this screen against the developer portal must see that we knew
  * about them and declined. Deleting the row would look like an oversight.
  *
- * ★★★ `source` says where the names came from. All 17 selected services were
- * checked against https://developerv2.esis.edu.mn/api/structure on 2026-09-08.
+ * ★★★ `source` says where the names came from. The selected services were
+ * checked against https://developerv2.esis.edu.mn/api/structure on 2026-09-08 —
+ * all but `studentByRegister`, whose block the catalog page truncates before.
  * `io` keeps the attendance write service honest: its eight fields are request
- * inputs, while the other sixteen services expose response outputs.
+ * inputs, while every other service exposes response outputs.
  *
  * ★★★★ **`sample` is invented, and the UI must never let it pass for real.**
  *
@@ -98,7 +99,14 @@ const ACADEMIC_YEAR = "2026";
 const GROUP_ID = "10001";
 const GROUP_NAME = "Наран бүлэг";
 
-/** `students` and `groupStudents` expose the same portal field set. */
+/**
+ * The child record, shared by every service that returns one.
+ *
+ * `students`, `groupStudents` and `studentByRegister` differ in how the record
+ * is *found* — the whole roster, one group's roster, one register number — and
+ * not in what comes back, so one field list serves all three and the refusals
+ * cannot drift apart between them.
+ */
 const STUDENT_FIELDS: EsisField[] = [
   keep("institutionId", "Байгууллагын код", INSTITUTION_ID),
   keep("personId", "ESIS хүний дугаар", "90000000000001"),
@@ -248,6 +256,7 @@ export const ESIS_FIELDS: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
     keep("academicYear", "Хичээлийн жил", ACADEMIC_YEAR),
   ],
   students: STUDENT_FIELDS,
+  studentByRegister: STUDENT_FIELDS,
   groupStudents: STUDENT_FIELDS,
   studentMovements: [
     keep("institutionId", "Байгууллагын код", INSTITUTION_ID),
@@ -436,6 +445,10 @@ export const ESIS_FIELD_SOURCE: Record<keyof typeof ESIS_ENDPOINTS, EsisFieldSou
   academicYearStatuses: "PORTAL",
   groups: "PORTAL",
   students: "PORTAL",
+  // The catalog page truncates before the суралцагч block, so this one's field
+  // list is `students`' — the same record, found a different way — rather than
+  // a list read off the portal. Marked ADAPTER until somebody can read it.
+  studentByRegister: "ADAPTER",
   groupStudents: "PORTAL",
   studentMovements: "PORTAL",
   teachers: "PORTAL",

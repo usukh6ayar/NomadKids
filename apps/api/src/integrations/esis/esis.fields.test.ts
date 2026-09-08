@@ -76,6 +76,7 @@ describe("ESIS field catalog", () => {
     );
 
     expect(params).toEqual({
+      studentByRegister: ["personRegNumber"],
       groupStudents: ["studentGroupId"],
       studentMovements: ["beginDate"],
       groupAttendance: ["studentGroupId", "dayDate"],
@@ -86,12 +87,22 @@ describe("ESIS field catalog", () => {
     expect(ESIS_READABLE_KEYS as string[]).not.toContain("saveAttendanceV3");
   });
 
+  /*
+   * ★ `ADAPTER` is the honest label for a field list our schema supplies rather
+   * than the catalog. Pinned rather than counted, for the reason the null
+   * `apiId` is pinned: it should shrink when somebody reads the portal, and it
+   * growing means a service shipped without being checked against it.
+   */
   it("marks every selected service as checked against the developer portal", () => {
-    const portal = ESIS_RESOURCE_CATALOG.filter((entry) => entry.fieldSource === "PORTAL").map(
-      (entry) => entry.key,
-    );
+    const keysBySource = (source: string) =>
+      ESIS_RESOURCE_CATALOG.filter((entry) => entry.fieldSource === source).map(
+        (entry) => entry.key,
+      );
 
-    expect(portal.sort()).toEqual(Object.keys(ESIS_ENDPOINTS).sort());
+    expect(keysBySource("ADAPTER")).toEqual(["studentByRegister"]);
+    expect([...keysBySource("PORTAL"), "studentByRegister"].sort()).toEqual(
+      Object.keys(ESIS_ENDPOINTS).sort(),
+    );
   });
 
   /*
