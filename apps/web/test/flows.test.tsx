@@ -871,7 +871,7 @@ describe("the child profile tabs", () => {
   }
 
   /**
-   * ★ All five sections are tabs since 2026-08-29, and the "Бусад" pane that
+   * ★ The child record sections are direct tabs, and the "Бусад" pane that
    * used to hold four of them is gone because it never worked.
    *
    * Radix picks which `Tabs.Content` renders from the value on `Tabs.Root`, and
@@ -889,13 +889,193 @@ describe("the child profile tabs", () => {
 
     const general = await screen.findByRole("tab", { name: "Ерөнхий" });
     expect(general).toHaveAttribute("aria-selected", "true");
-    // Three of the four that were behind "Бусад" are in the strip now — the
-    // fourth, Бүтээл, moved to the portfolio's own "Хөгжил" page (2026-08-29,
-    // `general/page.tsx`'s own doc comment).
-    for (const label of ["Өсөлт", "Эрүүл мэнд", "Аюулгүй байдал"]) {
+    // The remaining profile sections are directly available in the strip.
+    for (const label of ["Өсөлт", "Эрүүл мэнд", "Суралцсан түүх"]) {
       expect(screen.getByRole("tab", { name: label })).toHaveAttribute("aria-selected", "false");
     }
+    expect(screen.queryByRole("tab", { name: "Аюулгүй байдал" })).toBeNull();
     expect(screen.queryByRole("tab", { name: "Бусад" })).toBeNull();
+  });
+
+  it("shows the base group category in the registration history", async () => {
+    setParams({ childId: CHILD_ID });
+    setSearchParams("");
+    stubChild(
+      enrolled({
+        enrollments: [
+          {
+            id: "eeee1111-1111-4111-8111-eeeeeeeeeeee",
+            group: { id: GROUP_ID, name: "Дэлбээ бүлэг", ageBand: "NURSERY" },
+            schoolYear: { id: "ffff1111-1111-4111-8111-ffffffffffff", name: "2026-2027" },
+            status: "ACTIVE",
+            startedOn: "2026-08-01",
+            endedOn: null,
+          },
+        ],
+      }),
+    );
+
+    renderWithProviders(<ChildGeneralPage />);
+
+    const history = await screen.findByRole("region", { name: "Бүртгэлийн түүх" });
+    const groupName = within(history).getByText("Дэлбээ бүлэг");
+    expect(groupName.parentElement).toHaveTextContent(/Дэлбээ бүлэг\s*·\s*Бага бүлэг/);
+    expect(within(history).getByText(/2026–2027 · Элссэн:\s*2026\.08\.01/)).toBeInTheDocument();
+  });
+
+  it("shows the current registration and guardian contact in the general-information cards", async () => {
+    const user = userEvent.setup();
+    setParams({ childId: CHILD_ID });
+    setSearchParams("");
+    const guardianId = "bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb";
+    const guardianshipId = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
+    const kindergarten = {
+      id: "33333333-3333-4333-8333-333333333333",
+      name: "Бяцхан Нүүдэлчид цэцэрлэг",
+    };
+    const body = enrolled({
+      kindergarten,
+      nationalId: "УШ21241200",
+      enrollments: [
+        {
+          id: "eeee1111-1111-4111-8111-eeeeeeeeeeee",
+          group: { id: GROUP_ID, name: "Дэлбээ бүлэг", ageBand: "JUNIOR" },
+          schoolYear: { id: "ffff1111-1111-4111-8111-ffffffffffff", name: "2026-2027" },
+          status: "ACTIVE",
+          startedOn: "2026-08-01",
+          endedOn: null,
+        },
+      ],
+      guardianships: [
+        {
+          id: guardianshipId,
+          relation: "FATHER",
+          canView: true,
+          isPrimary: true,
+          guardian: {
+            id: guardianId,
+            lastName: "Ганболд",
+            firstName: "Энхтүвшин",
+            phone: "99123456",
+            email: null,
+          },
+        },
+      ],
+    });
+
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["PARENT"], guardianId) },
+      { path: "/me/profile", method: "PATCH", body: {} },
+      { path: `/guardianships/${guardianshipId}`, method: "PATCH", body: {} },
+      {
+        path: `/children/${CHILD_ID}/enrollment-archive`,
+        body: {
+          child: { id: CHILD_ID, lastName: "Ганболд", firstName: "Батбаяр" },
+          current: {
+            id: "eeee1111-1111-4111-8111-eeeeeeeeeeee",
+            startedOn: "2026-08-01",
+            schoolYear: {
+              id: "ffff1111-1111-4111-8111-ffffffffffff",
+              name: "2026-2027",
+            },
+            kindergarten: {
+              ...kindergarten,
+              address: null,
+              phone: null,
+              email: null,
+              description: null,
+            },
+            group: { id: GROUP_ID, name: "Дэлбээ бүлэг", schedule: null, rules: null },
+            teachers: [
+              {
+                id: "cccccccc-1111-4111-8111-cccccccccccc",
+                lastName: "Бат",
+                firstName: "Оюунчимэг",
+                role: "LEAD",
+              },
+            ],
+          },
+          history: [],
+        },
+      },
+      { path: `/children/${CHILD_ID}`, body },
+    ]);
+
+    renderWithProviders(<ChildGeneralPage />);
+
+    const general = await screen.findByRole("region", { name: "Ерөнхий мэдээлэл" });
+    expect(
+      within(general).getByRole("heading", { name: "Хүүхдийн үндсэн мэдээлэл" }),
+    ).toBeInTheDocument();
+    expect(within(general).getByText("Ганболд Батбаяр")).toBeInTheDocument();
+    expect(within(general).getByText("5 нас · 2021.04.12")).toBeInTheDocument();
+    expect(within(general).getByText("УШ21241200")).toBeInTheDocument();
+    expect(within(general).getByText("Хүү")).toBeInTheDocument();
+    expect(within(general).getByText("Б. Оюунчимэг")).toBeInTheDocument();
+    expect(within(general).getByText("Суралцаж байгаа")).toBeInTheDocument();
+    expect(screen.getByText("9912 3456")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Холбоо барих" })).toHaveAttribute(
+      "href",
+      "tel:99123456",
+    );
+    expect(screen.queryByRole("button", { name: "Урих" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /харах эрхийг хураах/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Засах" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Асран хамгаалагчийн мэдээлэл засах",
+    });
+    const nameInput = within(dialog).getByLabelText(/Асран хамгаалагчийн нэр/);
+    const phoneInput = within(dialog).getByLabelText(/Холбоо барих утас/);
+
+    expect(nameInput).toHaveValue("Ганболд Энхтүвшин");
+    expect(phoneInput).toHaveValue("99123456");
+
+    await user.clear(nameInput);
+    await user.type(nameInput, "Б.Энхцэцэг");
+    await selectOption(user, /Хүүхэдтэй холбоо/, "Ээж");
+    await user.clear(phoneInput);
+    await user.type(phoneInput, "88112233");
+    await user.click(within(dialog).getByRole("button", { name: "Хадгалах" }));
+
+    await waitFor(() =>
+      expect(
+        calls.find((call) => call.url === "/me/profile" && call.method === "PATCH")?.body,
+      ).toEqual({ lastName: "Б.", firstName: "Энхцэцэг", phone: "88112233" }),
+    );
+    expect(
+      calls.find(
+        (call) => call.url === `/guardianships/${guardianshipId}` && call.method === "PATCH",
+      )?.body,
+    ).toEqual({ relation: "MOTHER" });
+    expect(
+      await screen.findByText("Асран хамгаалагчийн мэдээлэл хадгалагдлаа."),
+    ).toBeInTheDocument();
+  });
+
+  it("routes kindergarten registration edits through the admin child form", async () => {
+    setParams({ childId: CHILD_ID });
+    setSearchParams("");
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: `/children/${CHILD_ID}/enrollment-archive`,
+        body: {
+          child: { id: CHILD_ID, lastName: "Ганболд", firstName: "Батбаяр" },
+          current: null,
+          history: [],
+        },
+      },
+      { path: `/children/${CHILD_ID}`, body: child },
+    ]);
+
+    renderWithProviders(<ChildGeneralPage />);
+
+    const general = await screen.findByRole("region", { name: "Ерөнхий мэдээлэл" });
+    expect(within(general).getByRole("link", { name: "Засах" })).toHaveAttribute(
+      "href",
+      `/children/${CHILD_ID}/edit`,
+    );
   });
 
   /**

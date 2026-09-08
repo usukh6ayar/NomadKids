@@ -1,6 +1,6 @@
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestApp } from "./support/app";
 import { resetData, testDb } from "./support/db";
 import {
@@ -14,6 +14,7 @@ import {
   type Scenario,
 } from "./support/fixtures";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
+import { StorageService } from "../src/storage/storage.service";
 
 /**
  * Attendance — staff records it, guardians may only request it in advance.
@@ -54,6 +55,7 @@ beforeEach(async () => {
 });
 
 const server = () => app.getHttpServer();
+const PDF = Buffer.from("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n", "ascii");
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Recording — staff only
@@ -441,6 +443,32 @@ describe("reading", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("attendance requests", () => {
+  it("stores a PDF doctor's note with the leave request", async () => {
+    vi.spyOn(app.get(StorageService), "put").mockResolvedValue(undefined);
+
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/attendance-requests`),
+      parentA,
+    )
+      .field("dateFrom", "2026-03-02")
+      .field("dateTo", "2026-03-03")
+      .field("requestedStatus", "SICK")
+      .field("reason", "Халуурсан")
+      .attach("attachment", PDF, "эмчийн-бичиг.pdf");
+
+    expect(res.status).toBe(201);
+    expect(res.body.attachment).toMatchObject({
+      originalName: "эмчийн-бичиг.pdf",
+      mimeType: "application/pdf",
+    });
+
+    const media = await db.mediaFile.findUniqueOrThrow({
+      where: { attendanceRequestId: res.body.id },
+    });
+    expect(media.childId).toBe(a.child.id);
+    expect(media.purpose).toBe("ATTENDANCE_ATTACHMENT");
+  });
+
   it("a guardian's request does not itself create an Attendance row", async () => {
     const res = await authed(
       request(server()).post(`/v1/children/${a.child.id}/attendance-requests`),

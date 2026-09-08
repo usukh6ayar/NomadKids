@@ -1,15 +1,16 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import NextImage from "next/image";
 import Link from "next/link";
-import { BookOpen, Plus } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
-import { parentDashboardSchema } from "@kinder/contracts";
+import { z } from "zod";
+import { parentDashboardSchema, surveySchema, unreadCountSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { QuickTile, QuickTileGrid, TileIcon } from "@/components/ui/quick-tile";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
 import { useSelectedChild } from "@/lib/selected-child";
@@ -33,6 +34,16 @@ export default function ParentHomePage() {
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: qk.dashboard.parent(),
     queryFn: () => get("/dashboard/parent", parentDashboardSchema),
+  });
+
+  // Powers the "Ангийн самбар" tile below — the same count the header bell
+  // and the bottom bar's badge show, reused here as a share reason to open
+  // /notifications rather than a bare number.
+  const { data: unread } = useQuery({
+    queryKey: qk.unreadCount(),
+    queryFn: () => get("/notifications/unread-count", unreadCountSchema),
+    staleTime: 60_000,
+    retry: false,
   });
 
   if (isLoading) {
@@ -81,44 +92,110 @@ export default function ParentHomePage() {
   return (
     <HomeBackdrop>
       {/*
-        ★ A plain white card, and two actions — both buttons, neither a link
-        styled to look like one. `PORTFOLIO` moved back in from the grid
-        below: it still leads that grid *and* has the bottom bar's "Зураг"
-        tab, but this card is where a parent's eye already is, so the single
-        most important destination in the product earns a third, closest
-        path rather than making them look away from the child they just
-        confirmed. `Хуваалцах` (submitting an observation from home) has no
-        tile or tab of its own, so it keeps its round button, sized a step
-        above the switcher's own 44px control since it is the one thing on
-        this card meant to be pressed, not read.
+        ★ Profile and portfolio are peers rather than actions crowded into
+        one card. The selected child's identity stays unboxed at the left;
+        the portfolio gets the quiet illustrated banner from the reference.
+        Both remain driven by the selected child — the sample name in the
+        visual is content, not a value this screen may hard-code.
       */}
-      <Card pad="roomy" className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <div className="flex min-w-0 items-center gap-4">
-          <ChildAvatar child={selected} size={72} className="shrink-0" />
+      <div className="mb-2 flex flex-col gap-6 px-1 sm:px-2 lg:mb-0 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-center gap-5">
+          <ChildAvatar
+            child={selected}
+            size={96}
+            className="shrink-0 border-2 border-white shadow-sm"
+          />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-heading font-semibold text-ink">{fullName(selected)}</p>
-            <p className="text-lead text-muted">
+            <h1 className="truncate text-display font-bold text-gray-900">{fullName(selected)}</h1>
+            <p className="mt-1 text-compact font-medium text-gray-500">
               {[formatAge(selected.dateOfBirth), selected.group?.name].filter(Boolean).join(" · ")}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 sm:ml-auto sm:shrink-0">
-          <Button asChild className="flex-1 sm:flex-none">
-            <Link href={`/children/${selected.id}/portfolio`}>
-              <BookOpen size={20} aria-hidden="true" />
-              {PORTFOLIO}
-            </Link>
-          </Button>
-          <Link
-            href={`/children/${selected.id}/observations/new`}
-            aria-label="Ажиглалт хуваалцах"
-            className="grid size-13 shrink-0 place-items-center rounded-pill bg-primary text-primary-ink shadow-md transition-colors hover:bg-primary-hover"
+        <Link
+          href={`/children/${selected.id}/portfolio`}
+          className="group flex w-full items-center justify-between gap-5 overflow-hidden rounded-card border border-gray-100 bg-gradient-to-r from-white to-gray-100/80 px-6 py-4 shadow-sm transition-[border-color,box-shadow] hover:border-primary/30 hover:shadow-md lg:min-w-[390px] lg:max-w-[430px]"
+        >
+          <span className="text-title font-bold text-gray-800">{PORTFOLIO}</span>
+          <span
+            className="relative grid size-20 shrink-0 place-items-end overflow-hidden rounded-card bg-amber-100"
+            aria-hidden="true"
           >
-            <Plus size={26} aria-hidden="true" />
-          </Link>
-        </div>
-      </Card>
+            <NextImage
+              src="/background/mascot-girl-teal-b.webp"
+              alt=""
+              width={88}
+              height={132}
+              className="h-[76px] w-auto translate-y-2 object-contain transition-transform group-hover:scale-105"
+            />
+          </span>
+        </Link>
+      </div>
+
+      {/*
+        ★ A 3-column icon grid matching the parent's own mock-up: Ангийн
+        самбар, Ирц, Хоол, Цэцэрлэг, Үнэлгээ, Судалгаа, Санхүү. The icon assets
+        (icon-notice.png, icon-attendance.png, …) already carry their own
+        colour per tile, so the grid reads as varied as the reference's
+        icon-square grid without inventing a new colour system for it.
+        `PORTFOLIO` is not a tile here — it is the illustrated banner
+        above and the bottom bar's "Зураг" tab (`(app)/layout.tsx`'s
+        `parentNav`); a third entry point on this grid would be the same
+        destination three times on one screen.
+        Судалгаа has its own permanent tile — `SurveyTile` below — landing on
+        `/children/:id/surveys`, the list this grid's Судалгаа entry could
+        not honestly point to before that page existed.
+        Ирц, Хоол, Цэцэрлэг and Үнэлгээ each land on their own standalone
+        route now (`/children/:id/attendance`, `/menu`, `/enrollment-archive`,
+        `/assessments`) rather than a `?tab=` deep link into the child hub —
+        the hub dropped those same tabs, so a deep link into them would no
+        longer have opened anything.
+        Цэцэрлэг is the client's own later addition — "Цэцэрлэг, бүлгийн
+        архив", the current placement, its teacher, and the family's full
+        enrollment history — sitting between Хоол and Үнэлгээ.
+        Санхүү was a `ComingSoonTile` (a `<div>`, not a `<Link>`) while
+        CLAUDE.md §7 kept finance a later phase; invoices are built now
+        (`нэмэлт.md` §7–§10) and it is a real `QuickTile` to
+        `/children/:id/finance`, the same route `(app)/layout.tsx`'s sidebar
+        points its own "Төлбөр" row at.
+      */}
+      <section aria-label="Түргэн холбоос" className="rounded-card bg-blue-50/40 p-4 sm:p-5 lg:p-6">
+        <QuickTileGrid className="gap-3 lg:gap-4">
+          <QuickTile
+            href="/notifications"
+            label="Ангийн самбар"
+            badge={unread && unread.count > 0 ? unread.count : undefined}
+            icon={<TileIcon name="notice" />}
+          />
+          <QuickTile
+            href={`/children/${selected.id}/attendance`}
+            label="Ирц"
+            icon={<TileIcon name="attendance" />}
+          />
+          <QuickTile
+            href={`/children/${selected.id}/menu`}
+            label="Хоол"
+            icon={<TileIcon name="menu" />}
+          />
+          <QuickTile
+            href={`/children/${selected.id}/enrollment-archive`}
+            label="Цэцэрлэг"
+            icon={<TileIcon name="kindergarten" />}
+          />
+          <QuickTile
+            href={`/children/${selected.id}/assessments`}
+            label="Үнэлгээ"
+            icon={<TileIcon name="progress" />}
+          />
+          <SurveyTile childId={selected.id} />
+          <QuickTile
+            href={`/children/${selected.id}/finance`}
+            label="Санхүү"
+            icon={<TileIcon name="finance" />}
+          />
+        </QuickTileGrid>
+      </section>
     </HomeBackdrop>
   );
 }
@@ -173,6 +250,37 @@ export default function ParentHomePage() {
  * and a looping background video is exactly the motion that preference exists
  * to suppress.
  */
+
+const activeSurveysSchema = z.array(surveySchema);
+
+/**
+ * "Судалгаа" — a permanent tile, unlike the card it replaces.
+ *
+ * ★ Always a real link now: `/children/:id/surveys` lists every survey for
+ * this child, answered or not, so — unlike the old single-pending-survey
+ * card — this tile is never one this family cannot act on. The badge counts
+ * only the unanswered ones, the same "a number, not a dot" rule `UnreadDot`
+ * and `QuickTile`'s own `badge` prop already follow.
+ */
+function SurveyTile({ childId }: { childId: string }) {
+  const { data } = useQuery({
+    queryKey: qk.childSurveys(childId),
+    queryFn: () => get(`/children/${childId}/surveys`, activeSurveysSchema),
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  const pendingCount = data?.filter((survey) => !survey.respondedByMe).length ?? 0;
+
+  return (
+    <QuickTile
+      href={`/children/${childId}/surveys`}
+      label="Судалгаа"
+      badge={pendingCount > 0 ? pendingCount : undefined}
+      icon={<TileIcon name="survey" />}
+    />
+  );
+}
 
 function HomeBackdrop({ children }: { children: ReactNode }) {
   const videoRef = useRef<HTMLVideoElement>(null);

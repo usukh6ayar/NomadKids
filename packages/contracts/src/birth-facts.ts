@@ -192,6 +192,16 @@ export function ageInYears(dateOfBirth: Date | string, on: Date | string = new D
   return Math.max(age, 0);
 }
 
+/** Completed calendar months, for measurements whose position within a year matters. */
+export function ageInMonths(dateOfBirth: Date | string, on: Date | string = new Date()): number {
+  const born = parts(dateOfBirth);
+  const measured = parts(typeof on === "string" ? on : new Date(on.toISOString()));
+
+  let months = (measured.year - born.year) * 12 + (measured.month - born.month);
+  if (measured.day < born.day) months -= 1;
+  return Math.max(months, 0);
+}
+
 /** Both facts together — what the portfolio and the PDF each ask for. */
 export function birthFacts(dateOfBirth: Date | string): {
   zodiac: ZodiacSign;

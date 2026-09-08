@@ -240,6 +240,22 @@ describe("revoked guardian", () => {
         .status,
     ).toBe(200);
   });
+
+  it("cannot edit the relationship after access is revoked", async () => {
+    await authed(request(server()).patch(`/v1/guardianships/${a.guardianship.id}`), adminA).send({
+      canView: false,
+    });
+
+    const res = await authed(
+      request(server()).patch(`/v1/guardianships/${a.guardianship.id}`),
+      parentA,
+    ).send({ relation: "FATHER" });
+
+    expect(res.status).toBe(404);
+    expect((await db.guardianship.findUnique({ where: { id: a.guardianship.id } }))?.relation).toBe(
+      "MOTHER",
+    );
+  });
 });
 
 describe("revoked teacher", () => {
@@ -391,7 +407,7 @@ describe("multiple teachers", () => {
 // Write access is narrower than read
 // ═══════════════════════════════════════════════════════════════════════════
 
-describe("a guardian may read but not write", () => {
+describe("a guardian's child-record write access", () => {
   it("reads their own child", async () => {
     expect(
       (await request(server()).get(`/v1/children/${a.child.id}`).set("Cookie", parentA.cookies))
@@ -426,6 +442,42 @@ describe("a guardian may read but not write", () => {
       parentA,
     ).send({ groupId: a.group.id });
     expect(res.status).toBe(404);
+  });
+
+  it("may correct their own relationship label", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/guardianships/${a.guardianship.id}`),
+      parentA,
+    ).send({ relation: "FATHER" });
+
+    expect(res.status).toBe(200);
+    expect((await db.guardianship.findUnique({ where: { id: a.guardianship.id } }))?.relation).toBe(
+      "FATHER",
+    );
+  });
+
+  it("cannot change custody controls on their own guardianship", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/guardianships/${a.guardianship.id}`),
+      parentA,
+    ).send({ canView: false });
+
+    expect(res.status).toBe(400);
+    expect((await db.guardianship.findUnique({ where: { id: a.guardianship.id } }))?.canView).toBe(
+      true,
+    );
+  });
+
+  it("cannot change another guardian's relationship label", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/guardianships/${b.guardianship.id}`),
+      parentA,
+    ).send({ relation: "FATHER" });
+
+    expect(res.status).toBe(404);
+    expect((await db.guardianship.findUnique({ where: { id: b.guardianship.id } }))?.relation).toBe(
+      "MOTHER",
+    );
   });
 });
 

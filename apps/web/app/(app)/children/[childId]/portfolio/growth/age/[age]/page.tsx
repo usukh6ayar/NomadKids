@@ -11,14 +11,14 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { ErrorState, LoadingState } from "@/components/ui/states";
-import { AgeStepper } from "@/components/child/age-stepper";
 import { GradientUnderline } from "@/components/child/portfolio-hero";
+import { AgeProfileProgress } from "@/components/child/age-profile-progress";
 import {
   CharacterCard,
+  FamilyLearningCard,
   FamilyCard,
   FavoritesCard,
-  GrowthTeaserCard,
-  SkillsCard,
+  KindergartenSkillsCard,
 } from "@/components/child/age-profile-cards";
 import { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
 
@@ -26,9 +26,8 @@ const ageProfilesSchema = z.array(ageProfileSchema);
 
 /**
  * "Миний {age} нас" — client reference screenshot, 2026-08-30. A parent's own
- * destination for one age's whole record: favourites, character, what this
- * child learned at kindergarten and from family, and a launcher into the
- * growth chart that already exists elsewhere.
+ * destination for one age's whole record: favourites, character, family,
+ * dream and learned things.
  *
  * ★ No hero card, unlike `ParentGrowthLauncher` and the comparison page — the
  * screenshot draws this one as a plain heading over the page background, not
@@ -64,7 +63,7 @@ export default function AgeProfilePage() {
 
   const backLink = (
     <Button asChild variant="ghost" size="sm" className="-ml-2 self-start">
-      <Link href={`/children/${childId}/portfolio/growth`}>
+      <Link href={`/children/${childId}/portfolio/growth/age`}>
         <ArrowLeft size={18} />
         Насны мэдээлэл
       </Link>
@@ -100,7 +99,7 @@ export default function AgeProfilePage() {
   const profile = ageProfiles.data?.find((p) => p.age === age);
 
   return (
-    <div className="flex flex-col gap-6 py-2">
+    <div className="flex flex-col gap-4 py-1 sm:gap-5 sm:py-2">
       {backLink}
 
       <div>
@@ -111,20 +110,14 @@ export default function AgeProfilePage() {
         </p>
       </div>
 
-      <AgeStepper childId={childId} current={age} />
+      <AgeProfileProgress age={age} childName={data.firstName} profile={profile} />
 
-      <div className="flex flex-col gap-4">
-        <GrowthTeaserCard childId={childId} age={age} />
+      <div className="flex flex-col gap-2.5 sm:gap-3">
         <FavoritesCard childId={childId} age={age} profile={profile} />
-        <SkillsCard childId={childId} age={age} profile={profile} />
-        <FamilyCard
-          childId={childId}
-          age={age}
-          profile={profile}
-          title="Миний гэр бүлээсээ суралцсан зүйлс"
-        />
+        <KindergartenSkillsCard childId={childId} age={age} profile={profile} />
+        <FamilyLearningCard childId={childId} age={age} profile={profile} />
         <CharacterCard childId={childId} age={age} profile={profile} />
-        <FamilyCard childId={childId} age={age} profile={profile} title="Гэр бүл" />
+        <FamilyCard childId={childId} age={age} profile={profile} />
       </div>
     </div>
   );

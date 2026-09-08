@@ -14,6 +14,14 @@ import type { Actor } from "../authz/actor";
 import { paginate } from "../common/pagination";
 import { isFutureDate, isValidRange } from "./attendance-rules";
 import { AttendanceRepository } from "./attendance.repository";
+import { StorageService } from "../storage/storage.service";
+import {
+  detectImageType,
+  sanitiseFilename,
+  UploadRejected,
+  validateImageUpload,
+  validatePdfUpload,
+} from "../media/upload-validation";
 import { buildJournalWorkbook } from "./journal-workbook";
 import { summariseDays } from "./daily-summary";
 import type { AttendanceRegisterQuery } from "./attendance.dto";
@@ -96,6 +104,7 @@ export class AttendanceService {
     private readonly authz: AuthzRepository,
     private readonly audit: AuditRepository,
     private readonly esis: EsisService,
+    private readonly storage: StorageService,
   ) {}
 
   /**
@@ -969,7 +978,12 @@ export class AttendanceService {
 
   /** A guardian's advance notice. Read access is enough — same shape as a
    * parent observation. */
-  async createRequest(actor: Actor, childId: string, dto: CreateAttendanceRequestDto) {
+  async createRequest(
+    actor: Actor,
+    childId: string,
+    dto: CreateAttendanceRequestDto,
+    attachment?: { buffer: Buffer; originalname: string },
+  ) {
     const facts = await this.childAccess.assertCanAccess(actor, childId);
     if (!isGuardianOf(actor, facts)) throw new NotFoundException();
 
@@ -989,6 +1003,45 @@ export class AttendanceService {
     const pickedUpAt =
       isPresentClaim && dto.pickedUpWith ? (dto.pickedUpAt ?? new Date()) : undefined;
 
+    let storedAttachment:
+      | {
+          storageKey: string;
+          originalName: string;
+          mimeType: string;
+          sizeBytes: number;
+          width: number | null;
+          height: number | null;
+        }
+      | undefined;
+
+    if (attachment) {
+      if (dto.requestedStatus !== "EXCUSED" && dto.requestedStatus !== "SICK") {
+        throw new BadRequestException("Хавсралтыг зөвхөн чөлөөний хүсэлтэд оруулна");
+      }
+      try {
+        const detected = detectImageType(attachment.buffer);
+        if (detected === "image/webp") {
+          throw new UploadRejected("Зөвхөн PDF, JPG, PNG файл оруулна уу");
+        }
+        const validated = detected
+          ? await validateImageUpload(attachment.buffer)
+          : await validatePdfUpload(attachment.buffer);
+        const storageKey = this.storage.buildKey(childId);
+        await this.storage.put(storageKey, validated.buffer, validated.mimeType);
+        storedAttachment = {
+          storageKey,
+          originalName: sanitiseFilename(attachment.originalname),
+          mimeType: validated.mimeType,
+          sizeBytes: validated.sizeBytes,
+          width: "width" in validated ? validated.width : null,
+          height: "height" in validated ? validated.height : null,
+        };
+      } catch (error) {
+        if (error instanceof UploadRejected) throw new BadRequestException(error.reason);
+        throw error;
+      }
+    }
+
     const request = await this.repo.createRequest({
       kindergartenId: enrollment.kindergartenId,
       childId,
@@ -1006,6 +1059,17 @@ export class AttendanceService {
       pickedUpWithName:
         isPresentClaim && dto.pickedUpWith === "OTHER" ? (dto.pickedUpWithName ?? null) : null,
       pickedUpAt,
+      attachment: storedAttachment
+        ? {
+            kindergartenId: enrollment.kindergartenId,
+            childId,
+            purpose: "ATTENDANCE_ATTACHMENT",
+            ...storedAttachment,
+            caption: null,
+            order: 0,
+            uploadedById: actor.userId,
+          }
+        : undefined,
     });
 
     await this.audit.append({
@@ -1015,7 +1079,10 @@ export class AttendanceService {
       objectType: "AttendanceRequest",
       objectId: request.id,
       childId,
-      metadata: { requestedStatus: dto.requestedStatus },
+      metadata: {
+        requestedStatus: dto.requestedStatus,
+        hasAttachment: Boolean(storedAttachment),
+      },
     });
 
     return request;

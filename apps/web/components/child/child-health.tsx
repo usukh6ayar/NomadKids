@@ -1,16 +1,34 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { Accessibility, AlertTriangle, Pill, Syringe, Trash2 } from "lucide-react";
+import { useId, useState, type ReactNode } from "react";
+import {
+  Accessibility,
+  AlertTriangle,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  ClipboardList,
+  HeartHandshake,
+  Pill,
+  Plus,
+  ShieldAlert,
+  Stethoscope,
+  Syringe,
+  Trash2,
+} from "lucide-react";
 import { z } from "zod";
 import {
   ALLERGY_KIND_LABEL,
   ALLERGY_SEVERITY_LABEL,
+  ageInMonths,
   childHealthSchema,
   specialNeedsCategorySchema,
   type Allergy,
+  type ChildHealth as ChildHealthData,
+  type Medication,
   type SpecialNeed,
+  type Vaccination,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -22,12 +40,26 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { FormDialog } from "@/components/ui/form-dialog";
 import { useToast } from "@/components/ui/toast";
 import { useSession } from "@/lib/auth/session";
 
 /** The picker's list — an array, not a page: the reference table is small and
  * the endpoint returns it whole. */
 const specialNeedsCategoryListSchema = z.array(specialNeedsCategorySchema);
+
+type HealthHistoryRecord =
+  | { kind: "ALLERGY"; date: string; allergy: Allergy }
+  | { kind: "SPECIAL_NEED"; date: string; need: SpecialNeed }
+  | { kind: "MEDICATION"; date: string; medication: Medication }
+  | { kind: "VACCINATION"; date: string; vaccination: Vaccination };
+
+interface HealthHistoryYear {
+  startYear: number;
+  label: string;
+  age: number | null;
+  records: HealthHistoryRecord[];
+}
 
 /**
  * A child's health record — RFP Module 2.
@@ -40,7 +72,17 @@ const specialNeedsCategoryListSchema = z.array(specialNeedsCategorySchema);
  * shows each control only to whoever may use it — a button that always 404s
  * teaches people the app is broken.
  */
-export function ChildHealth({ childId, isStaff }: { childId: string; isStaff: boolean }) {
+export function ChildHealth({
+  childId,
+  isStaff,
+  dateOfBirth,
+  currentSchoolYear,
+}: {
+  childId: string;
+  isStaff: boolean;
+  dateOfBirth?: string;
+  currentSchoolYear?: string | null;
+}) {
   /*
    * ★ Only for the medication rule.
    *
@@ -51,6 +93,8 @@ export function ChildHealth({ childId, isStaff }: { childId: string; isStaff: bo
    */
   const { session } = useSession();
   const userId = session?.user.id ?? null;
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(true);
 
   const health = useQuery({
     queryKey: qk.health(childId),
@@ -60,254 +104,516 @@ export function ChildHealth({ childId, isStaff }: { childId: string; isStaff: bo
   if (health.isPending) return <LoadingState rows={4} />;
   if (health.isError) return <ErrorState description={errorMessage(health.error)} />;
 
-  const { allergies, medications, vaccinations, specialNeeds, healthNotes } = health.data;
+  const { allergies, medications, specialNeeds, healthNotes } = health.data;
   const live = allergies.filter((allergy) => !allergy.endedOn);
   const liveNeeds = specialNeeds.filter((need) => !need.endedOn);
+  const activeMedications = medications.filter((medication) => medication.isActive);
+  const currentStartYear =
+    schoolYearStart(currentSchoolYear) ?? academicYearStartForDate(localDateInputValue());
+  const years = buildHealthHistoryYears(health.data, currentStartYear, dateOfBirth);
+
+  const allergySummary = live.length > 0 ? live.map((item) => item.allergen).join(", ") : null;
+  const medicationSummary = activeMedications.length
+    ? `${activeMedications.length} идэвхтэй · ${shortDate(
+        [...activeMedications].sort((a, b) => a.endsOn.localeCompare(b.endsOn))[0]!.endsOn,
+      )} хүртэл`
+    : null;
 
   return (
-    <div className="flex flex-col gap-6">
-      {healthNotes ? (
-        <Card pad="roomy">
-          <SectionHeader title="Эрүүл мэндийн тэмдэглэл" />
-          <p className="whitespace-pre-wrap text-body text-ink">{healthNotes}</p>
-        </Card>
-      ) : null}
-
-      <section aria-labelledby="allergies-heading" className="flex flex-col gap-3">
-        <SectionHeader id="allergies-heading" title="Харшил" />
-
-        {isStaff ? <AllergyForm childId={childId} /> : null}
-
-        {live.length === 0 ? (
-          <EmptyState
-            title="Бүртгэгдсэн харшил алга"
-            description={
-              isStaff
-                ? "Эцэг эхээс мэдээлэл авсан бол энд бүртгэнэ үү."
-                : "Харшилтай бол багшдаа мэдэгдэнэ үү."
-            }
-          />
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {live.map((allergy) => (
-              <AllergyRow key={allergy.id} childId={childId} allergy={allergy} canEdit={isStaff} />
-            ))}
-          </ul>
-        )}
-
-        {/*
-          Ended allergies are kept and shown separately: a child who outgrew a
-          milk allergy still had one, and a teacher reading the history needs to
-          know it was considered rather than never recorded.
-        */}
-        {allergies.length > live.length ? (
-          <details className="group">
-            <summary className="inline-flex min-h-[44px] cursor-pointer list-none items-center text-caption font-medium text-primary hover:underline [&::-webkit-details-marker]:hidden">
-              Дууссан харшил ({allergies.length - live.length})
-            </summary>
-            <ul className="mt-2 flex flex-col gap-2">
-              {allergies
-                .filter((allergy) => allergy.endedOn)
-                .map((allergy) => (
-                  <AllergyRow
-                    key={allergy.id}
-                    childId={childId}
-                    allergy={allergy}
-                    /*
-                      ★ Was `false`, which pre-dated there being anything to do
-                      here but end an allergy — and an ended one cannot be ended
-                      again. Now that delete exists it has to reach this list:
-                      a record entered by mistake is often ended before anyone
-                      works out it was wrong, and ending it a second time is not
-                      the repair. `AllergyRow` still hides "Дуусгах" whenever
-                      `endedOn` is set, so this only exposes the delete.
-                    */
-                    canEdit={isStaff}
-                  />
-                ))}
-            </ul>
-          </details>
-        ) : null}
-      </section>
-
-      {/*
-        Тусгай хэрэгцээ — А/261, цэцэрлэгийн шалгуур 11.
-
-        ★ Between the allergies and the medication, which is where it belongs
-        rather than at the foot of the screen: it is read at the same moment
-        the allergies are — when a teacher is working out what this child needs
-        today — and not at the moment a dose is due.
-
-        ★★ A family reads it and does not write it, the split the allergy
-        section already makes. The category is counted by the state in a return
-        the kindergarten signs, and the person who can be asked which
-        commission decision it came from is a member of staff. The API answers
-        404 to a guardian who posts one, so offering them the form would be
-        offering a control that always fails.
-      */}
-      <section aria-labelledby="special-needs-heading" className="flex flex-col gap-3">
+    <div className="flex flex-col gap-7">
+      <section aria-labelledby="health-heading">
         <SectionHeader
-          id="special-needs-heading"
-          title="Тусгай хэрэгцээ"
-          lede={isStaff ? "Комиссын шийдвэрийн дагуу бүртгэнэ." : undefined}
+          id="health-heading"
+          title="Эрүүл мэнд"
+          lede="Одоогийн идэвхтэй мэдээлэл"
+          action={
+            <Button
+              size="sm"
+              aria-expanded={quickAddOpen}
+              aria-controls="health-quick-add"
+              onClick={() => setQuickAddOpen((value) => !value)}
+            >
+              <Plus aria-hidden="true" />
+              Мэдээлэл нэмэх
+            </Button>
+          }
         />
 
-        {isStaff ? <SpecialNeedForm childId={childId} /> : null}
+        {quickAddOpen ? (
+          <Card id="health-quick-add" pad="roomy" className="mb-4 flex flex-col gap-4">
+            <div>
+              <h3 className="font-semibold text-ink">Шинэ бүртгэлийн төрөл</h3>
+              <p className="mt-1 text-body text-muted">
+                Нэмэх мэдээллийн төрлийг сонгоод маягтыг бөглөнө үү.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {isStaff ? <AllergyForm childId={childId} /> : null}
+              <MedicationForm childId={childId} />
+              {isStaff ? <VaccinationForm childId={childId} /> : null}
+            </div>
+          </Card>
+        ) : null}
+
+        <Card className="overflow-hidden">
+          <div className="flex items-center justify-between gap-3 border-b border-border bg-primary-soft px-4 py-4 md:px-6">
+            <h3 className="text-lead font-semibold text-ink">Одоогийн мэдээлэл</h3>
+            {years.current.age !== null ? <Badge tone="sky">{years.current.age} нас</Badge> : null}
+          </div>
+          <div className="divide-y divide-border">
+            <HealthStatusRow
+              icon={<ShieldAlert aria-hidden="true" />}
+              label="Харшил"
+              value={allergySummary ?? "Бүртгэлгүй"}
+              active={Boolean(allergySummary)}
+              action={
+                <StatusAction
+                  label={allergySummary ? "Харшлын түүх рүү очих" : "Харшил нэмэх"}
+                  hasValue={Boolean(allergySummary)}
+                  canAdd={isStaff}
+                  onClick={() =>
+                    allergySummary
+                      ? scrollToHealthHistory()
+                      : isStaff
+                        ? setQuickAddOpen(true)
+                        : undefined
+                  }
+                />
+              }
+            />
+            <HealthStatusRow
+              icon={<HeartHandshake aria-hidden="true" />}
+              label="Тусгай хэрэгцээ"
+              value={liveNeeds.length > 0 ? `${liveNeeds.length} бүртгэл` : "Бүртгэлгүй"}
+              active={liveNeeds.length > 0}
+              action={
+                isStaff ? (
+                  <SpecialNeedForm childId={childId} compact />
+                ) : liveNeeds.length > 0 ? (
+                  <StatusAction
+                    label="Тусгай хэрэгцээний түүх рүү очих"
+                    hasValue
+                    onClick={scrollToHealthHistory}
+                  />
+                ) : null
+              }
+            />
+            <HealthStatusRow
+              icon={<Stethoscope aria-hidden="true" />}
+              label="Архаг өвчин"
+              value="Бүртгэлгүй"
+              active={false}
+            />
+            <HealthStatusRow
+              icon={<Pill aria-hidden="true" />}
+              label="Эмийн зөвшөөрөл"
+              value={medicationSummary ?? "Бүртгэлгүй"}
+              active={Boolean(medicationSummary)}
+              action={
+                <StatusAction
+                  label={
+                    medicationSummary ? "Эмийн зөвшөөрлийн түүх рүү очих" : "Эмийн зөвшөөрөл нэмэх"
+                  }
+                  hasValue={Boolean(medicationSummary)}
+                  canAdd
+                  onClick={() =>
+                    medicationSummary ? scrollToHealthHistory() : setQuickAddOpen(true)
+                  }
+                />
+              }
+            />
+            <HealthStatusRow
+              icon={<ClipboardList aria-hidden="true" />}
+              label="Анхаарах заавар"
+              value={healthNotes ? "1 мэдээлэл" : "Бүртгэлгүй"}
+              active={Boolean(healthNotes)}
+              action={
+                healthNotes ? (
+                  <StatusAction
+                    label="Анхаарах зааврыг харах"
+                    hasValue
+                    onClick={scrollToHealthHistory}
+                  />
+                ) : null
+              }
+            />
+          </div>
+        </Card>
 
         {liveNeeds.length === 0 ? (
-          <EmptyState
-            title="Бүртгэгдсэн тусгай хэрэгцээ алга"
-            description={
-              isStaff
-                ? "Комиссын шийдвэр гарсан бол ангиллыг нь энд бүртгэнэ үү."
-                : "Хүүхэд тань тусгай дэмжлэг шаардлагатай бол багштайгаа ярилцана уу."
-            }
-          />
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {liveNeeds.map((need) => (
-              <SpecialNeedRow key={need.id} childId={childId} need={need} canEdit={isStaff} />
-            ))}
-          </ul>
-        )}
-
-        {/*
-          Ended needs are kept and shown separately, for the ended allergies'
-          reason: support that was withdrawn was still once in place, and a
-          teacher reading the history needs to know it was considered.
-        */}
-        {specialNeeds.length > liveNeeds.length ? (
-          <details className="group">
-            <summary className="inline-flex min-h-[44px] cursor-pointer list-none items-center text-caption font-medium text-primary hover:underline [&::-webkit-details-marker]:hidden">
-              Дууссан бүртгэл ({specialNeeds.length - liveNeeds.length})
-            </summary>
-            <ul className="mt-2 flex flex-col gap-2">
-              {specialNeeds
-                .filter((need) => need.endedOn)
-                .map((need) => (
-                  <SpecialNeedRow key={need.id} childId={childId} need={need} canEdit={isStaff} />
-                ))}
-            </ul>
-          </details>
+          <span className="sr-only">Бүртгэгдсэн тусгай хэрэгцээ алга</span>
         ) : null}
       </section>
 
-      <section aria-labelledby="medications-heading" className="flex flex-col gap-3">
-        <SectionHeader id="medications-heading" title="Эмийн зөвшөөрөл" />
+      <section id="health-history" aria-labelledby="health-history-heading">
+        <div className="mb-4 flex min-h-11 items-center justify-between gap-3 border-t border-border pt-5">
+          <h3 id="health-history-heading" className="text-lead font-semibold text-ink">
+            Эрүүл мэндийн түүх{" "}
+            <span className="text-body font-normal text-muted">· нас, жилээр</span>
+          </h3>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={
+              historyOpen ? "Эрүүл мэндийн түүхийг хураах" : "Эрүүл мэндийн түүхийг дэлгэх"
+            }
+            aria-expanded={historyOpen}
+            onClick={() => setHistoryOpen((value) => !value)}
+          >
+            {historyOpen ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+          </Button>
+        </div>
 
-        {/*
-          Not gated on `isStaff`: RFP Module 2 has the family leaving this form
-          ("Эцэг эхчүүд өглөө хүүхдээ өгөхдөө … баталгаажуулан үлдээх"). Staff
-          may also record one a family phoned in.
-        */}
-        <MedicationForm childId={childId} />
-
-        {medications.length === 0 ? (
-          <EmptyState
-            title="Идэвхтэй зөвшөөрөл алга"
-            description="Эм уулгах шаардлагатай бол цаг, тунг бүртгэнэ үү."
-          />
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {medications.map((medication) => (
-              <li key={medication.id}>
-                <Card pad="compact" className="flex flex-col gap-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Pill size={16} aria-hidden="true" className="shrink-0 text-muted" />
-                    <span className="text-body font-medium text-ink">
-                      {medication.medicineName}
-                    </span>
-                    <span className="text-body text-muted">{medication.dosage}</span>
-                    {/*
-                      "Is it live today" comes from the API, not from comparing
-                      dates here: it decides whether a teacher gives a child
-                      medicine, and two clients deriving it is two chances to
-                      get the boundary wrong.
-                    */}
-                    {medication.isActive ? (
-                      <Badge tone="mint">Идэвхтэй</Badge>
-                    ) : (
-                      <Badge tone="neutral">Идэвхгүй</Badge>
-                    )}
-
-                    {/*
-                      ★ Staff, or the guardian who authorised this one.
-
-                      `removeMedication` 404s a guardian who did not sign it —
-                      "one guardian may not withdraw another's consent" — so
-                      offering the button to the other parent would be offering
-                      a control that always fails. The row *is* the consent, so
-                      withdrawing it is the family's to do.
-                    */}
-                    {isStaff || (userId && medication.authorisedBy?.id === userId) ? (
-                      <span className="ml-auto">
-                        <DeleteHealthRecord
-                          childId={childId}
-                          path={`/medications/${medication.id}`}
-                          recordLabel={medication.medicineName}
-                          title="Эмийн зөвшөөрлийг устгах"
-                          description={`"${medication.medicineName}" — зөвшөөрлийг устгаснаар багш энэ эмийг уулгахаа болино.`}
-                        />
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="text-caption text-muted">
-                    {medication.timesOfDay.join(", ")} · {formatDate(medication.startsOn)} –{" "}
-                    {formatDate(medication.endsOn)}
-                  </p>
-                  {medication.instructions ? (
-                    <p className="text-body text-ink">{medication.instructions}</p>
-                  ) : null}
-                </Card>
-              </li>
+        {historyOpen ? (
+          <div className="flex flex-col gap-3">
+            {[years.current, ...years.previous].map((year, index) => (
+              <HealthHistoryYearCard
+                key={year.startYear}
+                year={year}
+                childId={childId}
+                isStaff={isStaff}
+                userId={userId}
+                healthNotes={index === 0 ? healthNotes : null}
+                defaultOpen={index < 2}
+              />
             ))}
-          </ul>
-        )}
-      </section>
-
-      <section aria-labelledby="vaccinations-heading" className="flex flex-col gap-3">
-        <SectionHeader id="vaccinations-heading" title="Вакцин, амин дэм" />
-
-        {isStaff ? <VaccinationForm childId={childId} /> : null}
-
-        {vaccinations.length === 0 ? (
-          <EmptyState title="Бүртгэл алга" description="Хийлгэсэн вакциныг энд бүртгэнэ." />
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {vaccinations.map((vaccination) => (
-              <li key={vaccination.id}>
-                <Card pad="compact" className="flex flex-wrap items-center gap-2">
-                  <Syringe size={16} aria-hidden="true" className="shrink-0 text-muted" />
-                  <span className="text-body text-ink">{vaccination.vaccineName}</span>
-                  {vaccination.doseLabel ? <Badge tone="sky">{vaccination.doseLabel}</Badge> : null}
-                  <span className="text-caption text-muted">
-                    {formatDate(vaccination.administeredOn)}
-                  </span>
-
-                  {/*
-                    Staff only — `@Roles("TEACHER", "ADMIN")`, and the register
-                    is the kindergarten's, not the family's. A guardian cannot
-                    record one either.
-                  */}
-                  {isStaff ? (
-                    <span className="ml-auto">
-                      <DeleteHealthRecord
-                        childId={childId}
-                        path={`/vaccinations/${vaccination.id}`}
-                        recordLabel={vaccination.vaccineName}
-                        title="Вакцины бүртгэлийг устгах"
-                        description={`"${vaccination.vaccineName}" — буруу бүртгэсэн бол устгана.`}
-                      />
-                    </span>
-                  ) : null}
-                </Card>
-              </li>
-            ))}
-          </ul>
-        )}
+          </div>
+        ) : null}
       </section>
     </div>
   );
+}
+
+function HealthStatusRow({
+  icon,
+  label,
+  value,
+  active,
+  action,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  active: boolean;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="grid min-h-[72px] gap-3 px-4 py-4 sm:grid-cols-[minmax(170px,.9fr)_minmax(180px,1fr)_auto] sm:items-center md:px-6">
+      <div className="flex items-center gap-3 font-semibold text-ink [&_svg]:size-5 [&_svg]:shrink-0 [&_svg]:text-muted">
+        {icon}
+        <span>{label}</span>
+      </div>
+      <span className={active ? "font-medium text-primary" : "text-muted"}>{value}</span>
+      <div className="flex min-h-11 items-center justify-end">{action}</div>
+    </div>
+  );
+}
+
+function StatusAction({
+  label,
+  hasValue,
+  canAdd = false,
+  onClick,
+}: {
+  label: string;
+  hasValue: boolean;
+  canAdd?: boolean;
+  onClick: () => void;
+}) {
+  if (!hasValue && !canAdd) return null;
+
+  return (
+    <Button variant="ghost" size="icon" aria-label={label} onClick={onClick}>
+      {hasValue ? <ChevronRight aria-hidden="true" /> : <Plus aria-hidden="true" />}
+    </Button>
+  );
+}
+
+function HealthHistoryYearCard({
+  childId,
+  isStaff,
+  userId,
+  year,
+  defaultOpen,
+  healthNotes,
+}: {
+  childId: string;
+  isStaff: boolean;
+  userId: string | null;
+  year: HealthHistoryYear;
+  defaultOpen: boolean;
+  healthNotes?: string | null;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const endedAllergies = year.records.filter(
+    (record): record is Extract<HealthHistoryRecord, { kind: "ALLERGY" }> =>
+      record.kind === "ALLERGY" && Boolean(record.allergy.endedOn),
+  );
+  const endedNeeds = year.records.filter(
+    (record): record is Extract<HealthHistoryRecord, { kind: "SPECIAL_NEED" }> =>
+      record.kind === "SPECIAL_NEED" && Boolean(record.need.endedOn),
+  );
+  const visible = year.records.filter((record) => {
+    if (record.kind === "ALLERGY") return !record.allergy.endedOn;
+    if (record.kind === "SPECIAL_NEED") return !record.need.endedOn;
+    return true;
+  });
+  const count = year.records.length + Number(Boolean(healthNotes));
+
+  return (
+    <details
+      className="group overflow-hidden rounded-card border border-border bg-surface shadow-sm"
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary className="flex min-h-[72px] cursor-pointer list-none items-center justify-between gap-3 px-4 py-4 marker:content-none md:px-5 [&::-webkit-details-marker]:hidden">
+        <div>
+          <h4 className="text-lead font-semibold text-ink">{year.label} хичээлийн жил</h4>
+          {year.age !== null ? (
+            <p className="mt-0.5 text-caption text-muted">{year.age} нас</p>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-2 font-semibold text-primary">
+          <span>{count} бүртгэл</span>
+          <ChevronDown
+            aria-hidden="true"
+            className="text-muted transition-transform group-open:rotate-180"
+          />
+        </div>
+      </summary>
+
+      <div className="border-t border-border bg-canvas/40 p-3 md:p-4">
+        {healthNotes ? (
+          <div className="mb-3 flex gap-3 rounded-row border border-border bg-surface p-4">
+            <ClipboardList aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-muted" />
+            <div>
+              <p className="font-semibold text-ink">Анхаарах заавар</p>
+              <p className="mt-1 whitespace-pre-wrap text-body text-muted">{healthNotes}</p>
+            </div>
+          </div>
+        ) : null}
+
+        {visible.length > 0 ? (
+          <ul className="flex flex-col gap-2">
+            {visible.map((record) => (
+              <HealthHistoryRecordRow
+                key={`${record.kind}-${historyRecordId(record)}`}
+                childId={childId}
+                isStaff={isStaff}
+                userId={userId}
+                record={record}
+              />
+            ))}
+          </ul>
+        ) : !healthNotes && endedAllergies.length === 0 && endedNeeds.length === 0 ? (
+          <EmptyState
+            title="Энэ хичээлийн жилд бүртгэл алга"
+            description="Эрүүл мэндийн мэдээлэл нэмэгдэхэд энд автоматаар харагдана."
+          />
+        ) : null}
+
+        {endedAllergies.length > 0 ? (
+          <details className="mt-3">
+            <summary className="inline-flex min-h-11 cursor-pointer items-center text-caption font-medium text-primary">
+              Дууссан харшил ({endedAllergies.length})
+            </summary>
+            <ul className="mt-2 flex flex-col gap-2">
+              {endedAllergies.map((record) => (
+                <AllergyRow
+                  key={record.allergy.id}
+                  childId={childId}
+                  allergy={record.allergy}
+                  canEdit={isStaff}
+                />
+              ))}
+            </ul>
+          </details>
+        ) : null}
+
+        {endedNeeds.length > 0 ? (
+          <details className="mt-3">
+            <summary className="inline-flex min-h-11 cursor-pointer items-center text-caption font-medium text-primary">
+              Дууссан бүртгэл ({endedNeeds.length})
+            </summary>
+            <ul className="mt-2 flex flex-col gap-2">
+              {endedNeeds.map((record) => (
+                <SpecialNeedRow
+                  key={record.need.id}
+                  childId={childId}
+                  need={record.need}
+                  canEdit={isStaff}
+                />
+              ))}
+            </ul>
+          </details>
+        ) : null}
+      </div>
+    </details>
+  );
+}
+
+function HealthHistoryRecordRow({
+  childId,
+  isStaff,
+  userId,
+  record,
+}: {
+  childId: string;
+  isStaff: boolean;
+  userId: string | null;
+  record: HealthHistoryRecord;
+}) {
+  if (record.kind === "ALLERGY") {
+    return <AllergyRow childId={childId} allergy={record.allergy} canEdit={isStaff} />;
+  }
+
+  if (record.kind === "SPECIAL_NEED") {
+    return <SpecialNeedRow childId={childId} need={record.need} canEdit={isStaff} />;
+  }
+
+  if (record.kind === "MEDICATION") {
+    const medication = record.medication;
+    const canDelete = isStaff || Boolean(userId && medication.authorisedBy?.id === userId);
+    return (
+      <li>
+        <Card pad="compact" className="flex flex-col gap-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <Pill size={16} aria-hidden="true" className="shrink-0 text-muted" />
+            <span className="text-body font-medium text-ink">{medication.medicineName}</span>
+            <span className="text-body text-muted">{medication.dosage}</span>
+            <Badge tone={medication.isActive ? "mint" : "neutral"}>
+              {medication.isActive ? "Идэвхтэй" : "Идэвхгүй"}
+            </Badge>
+            {canDelete ? (
+              <span className="ml-auto">
+                <DeleteHealthRecord
+                  childId={childId}
+                  path={`/medications/${medication.id}`}
+                  recordLabel={medication.medicineName}
+                  title="Эмийн зөвшөөрлийг устгах"
+                  description={`"${medication.medicineName}" — зөвшөөрлийг устгаснаар багш энэ эмийг уулгахаа болино.`}
+                />
+              </span>
+            ) : null}
+          </div>
+          <p className="text-caption text-muted">
+            {medication.timesOfDay.join(", ")} · {formatDate(medication.startsOn)} –{" "}
+            {formatDate(medication.endsOn)}
+          </p>
+          {medication.instructions ? (
+            <p className="text-body text-ink">{medication.instructions}</p>
+          ) : null}
+        </Card>
+      </li>
+    );
+  }
+
+  const vaccination = record.vaccination;
+  return (
+    <li>
+      <Card pad="compact" className="flex flex-wrap items-center gap-2">
+        <Syringe size={16} aria-hidden="true" className="shrink-0 text-muted" />
+        <span className="text-body text-ink">{vaccination.vaccineName}</span>
+        {vaccination.doseLabel ? <Badge tone="sky">{vaccination.doseLabel}</Badge> : null}
+        <span className="text-caption text-muted">{formatDate(vaccination.administeredOn)}</span>
+        {isStaff ? (
+          <span className="ml-auto">
+            <DeleteHealthRecord
+              childId={childId}
+              path={`/vaccinations/${vaccination.id}`}
+              recordLabel={vaccination.vaccineName}
+              title="Вакцины бүртгэлийг устгах"
+              description={`"${vaccination.vaccineName}" — буруу бүртгэсэн бол устгана.`}
+            />
+          </span>
+        ) : null}
+      </Card>
+    </li>
+  );
+}
+
+function buildHealthHistoryYears(
+  health: ChildHealthData,
+  currentStartYear: number,
+  dateOfBirth?: string,
+): { current: HealthHistoryYear; previous: HealthHistoryYear[] } {
+  const records: HealthHistoryRecord[] = [
+    ...health.allergies.map((allergy) => ({
+      kind: "ALLERGY" as const,
+      date: allergy.notedOn,
+      allergy,
+    })),
+    ...health.specialNeeds.map((need) => ({
+      kind: "SPECIAL_NEED" as const,
+      date: need.assessedOn,
+      need,
+    })),
+    ...health.medications.map((medication) => ({
+      kind: "MEDICATION" as const,
+      date: medication.startsOn,
+      medication,
+    })),
+    ...health.vaccinations.map((vaccination) => ({
+      kind: "VACCINATION" as const,
+      date: vaccination.administeredOn,
+      vaccination,
+    })),
+  ];
+  const grouped = new Map<number, HealthHistoryRecord[]>();
+
+  for (const record of records) {
+    const startYear = academicYearStartForDate(record.date);
+    const group = grouped.get(startYear) ?? [];
+    group.push(record);
+    grouped.set(startYear, group);
+  }
+
+  const createYear = (startYear: number): HealthHistoryYear => ({
+    startYear,
+    label: `${startYear}–${startYear + 1}`,
+    age: dateOfBirth
+      ? Math.max(0, Math.floor(ageInMonths(dateOfBirth, `${startYear}-09-01`) / 12))
+      : null,
+    records: [...(grouped.get(startYear) ?? [])].sort((a, b) => b.date.localeCompare(a.date)),
+  });
+
+  const previous = [...grouped.keys()]
+    .filter((startYear) => startYear < currentStartYear)
+    .sort((a, b) => b - a)
+    .map(createYear);
+
+  return { current: createYear(currentStartYear), previous };
+}
+
+function historyRecordId(record: HealthHistoryRecord) {
+  if (record.kind === "ALLERGY") return record.allergy.id;
+  if (record.kind === "SPECIAL_NEED") return record.need.id;
+  if (record.kind === "MEDICATION") return record.medication.id;
+  return record.vaccination.id;
+}
+
+function scrollToHealthHistory() {
+  document.getElementById("health-history")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function localDateInputValue(date = new Date()) {
+  const localTime = date.getTime() - date.getTimezoneOffset() * 60_000;
+  return new Date(localTime).toISOString().slice(0, 10);
+}
+
+function schoolYearStart(value: string | null | undefined): number | null {
+  const match = value?.match(/^(\d{4})/);
+  return match ? Number(match[1]) : null;
+}
+
+function academicYearStartForDate(iso: string): number {
+  const year = Number(iso.slice(0, 4));
+  const month = Number(iso.slice(5, 7));
+  return month >= 8 ? year : year - 1;
+}
+
+function shortDate(iso: string) {
+  return iso.slice(5, 10).replace("-", ".");
 }
 
 /**
@@ -422,7 +728,7 @@ function AllergyRow({
     mutationFn: () =>
       mutate(`/allergies/${allergy.id}`, z.unknown(), {
         method: "PATCH",
-        body: { endedOn: new Date().toISOString().slice(0, 10) },
+        body: { endedOn: localDateInputValue() },
       }),
     onSuccess: () => {
       setConfirming(false);
@@ -441,7 +747,7 @@ function AllergyRow({
               allergy.severity === "SEVERE" ? "shrink-0 text-danger" : "shrink-0 text-muted"
             }
           />
-          <span className="text-body font-medium text-ink">{allergy.allergen}</span>
+          <span className="text-body font-medium text-ink">Харшил: {allergy.allergen}</span>
           <Badge tone={severityTone(allergy.severity)}>
             {ALLERGY_SEVERITY_LABEL[allergy.severity]}
           </Badge>
@@ -533,7 +839,7 @@ function SpecialNeedRow({
     mutationFn: () =>
       mutate(`/special-needs/${need.id}`, z.unknown(), {
         method: "PATCH",
-        body: { endedOn: new Date().toISOString().slice(0, 10) },
+        body: { endedOn: localDateInputValue() },
       }),
     onSuccess: () => {
       setConfirming(false);
@@ -591,9 +897,10 @@ function SpecialNeedRow({
   );
 }
 
-function SpecialNeedForm({ childId }: { childId: string }) {
+function SpecialNeedForm({ childId, compact = false }: { childId: string; compact?: boolean }) {
   const queryClient = useQueryClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateInputValue();
+  const formId = useId();
 
   const [open, setOpen] = useState(false);
   const [categoryId, setCategoryId] = useState("");
@@ -639,31 +946,50 @@ function SpecialNeedForm({ childId }: { childId: string }) {
 
   const errors = fieldErrors(save.error);
 
-  if (!open) {
-    return (
-      <Button variant="secondary" size="sm" className="self-start" onClick={() => setOpen(true)}>
-        Тусгай хэрэгцээ нэмэх
-      </Button>
-    );
-  }
-
   return (
-    <Card pad="roomy">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!save.isPending && categoryId) save.mutate();
-        }}
-        className="flex flex-col gap-4"
-        noValidate
+    <>
+      <Button
+        variant={compact ? "ghost" : "secondary"}
+        size={compact ? "icon" : "sm"}
+        className={compact ? undefined : "self-start"}
+        aria-label={compact ? "Тусгай хэрэгцээ нэмэх" : undefined}
+        onClick={() => setOpen(true)}
       >
-        <FormError
-          message={
-            save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null
-          }
-        />
+        {compact ? <Plus aria-hidden="true" /> : "Тусгай хэрэгцээ нэмэх"}
+      </Button>
 
-        <div className="grid gap-4 sm:grid-cols-3">
+      <FormDialog
+        open={open}
+        onOpenChange={setOpen}
+        title="Тусгай хэрэгцээ нэмэх"
+        description="Хүүхдэд хэрэгтэй дэмжлэг болон албан ёсны шийдвэрийн мэдээллийг бүртгэнэ."
+        busy={save.isPending}
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
+              Болих
+            </Button>
+            <Button type="submit" form={formId} disabled={save.isPending || !categoryId}>
+              {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
+            </Button>
+          </>
+        }
+      >
+        <form
+          id={formId}
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!save.isPending && categoryId) save.mutate();
+          }}
+          className="flex flex-col gap-4"
+          noValidate
+        >
+          <FormError
+            message={
+              save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null
+            }
+          />
+
           <Field label="Ангилал" error={errors.categoryId} required>
             {({ id, describedBy, invalid }) => (
               <Select
@@ -672,13 +998,8 @@ function SpecialNeedForm({ childId }: { childId: string }) {
                 invalid={invalid}
                 value={categoryId}
                 disabled={categories.isPending}
-                onChange={(e) => setCategoryId(e.target.value)}
+                onChange={(event) => setCategoryId(event.target.value)}
               >
-                {/*
-                  An empty first option, deliberately. A pre-selected "Хараа"
-                  is a classification nobody chose, and this one goes into a
-                  return the kindergarten signs.
-                */}
                 <option value="">
                   {categories.isPending ? "Ачаалж байна…" : "— Сонгоно уу —"}
                 </option>
@@ -700,7 +1021,7 @@ function SpecialNeedForm({ childId }: { childId: string }) {
                 aria-describedby={describedBy}
                 invalid={invalid}
                 value={assessedOn}
-                onChange={(e) => setAssessedOn(e.target.value)}
+                onChange={(event) => setAssessedOn(event.target.value)}
               />
             )}
           </Field>
@@ -712,41 +1033,32 @@ function SpecialNeedForm({ childId }: { childId: string }) {
                 aria-describedby={describedBy}
                 invalid={invalid}
                 value={documentNo}
-                onChange={(e) => setDocumentNo(e.target.value)}
+                onChange={(event) => setDocumentNo(event.target.value)}
               />
             )}
           </Field>
-        </div>
 
-        <Field label="Шаардлагатай дэмжлэг" error={errors.note}>
-          {({ id, describedBy, invalid }) => (
-            <Textarea
-              id={id}
-              rows={3}
-              aria-describedby={describedBy}
-              invalid={invalid}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-            />
-          )}
-        </Field>
-
-        <div className="flex flex-wrap gap-2">
-          <Button type="submit" size="sm" disabled={save.isPending || !categoryId}>
-            {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
-          </Button>
-          <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>
-            Болих
-          </Button>
-        </div>
-      </form>
-    </Card>
+          <Field label="Шаардлагатай дэмжлэг" error={errors.note}>
+            {({ id, describedBy, invalid }) => (
+              <Textarea
+                id={id}
+                rows={3}
+                aria-describedby={describedBy}
+                invalid={invalid}
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+              />
+            )}
+          </Field>
+        </form>
+      </FormDialog>
+    </>
   );
 }
 
 function AllergyForm({ childId }: { childId: string }) {
   const queryClient = useQueryClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateInputValue();
 
   const [open, setOpen] = useState(false);
   const [allergen, setAllergen] = useState("");
@@ -890,7 +1202,7 @@ function AllergyForm({ childId }: { childId: string }) {
 
 function MedicationForm({ childId }: { childId: string }) {
   const queryClient = useQueryClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateInputValue();
 
   const [open, setOpen] = useState(false);
   const [medicineName, setMedicineName] = useState("");
@@ -1053,7 +1365,7 @@ function MedicationForm({ childId }: { childId: string }) {
 
 function VaccinationForm({ childId }: { childId: string }) {
   const queryClient = useQueryClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateInputValue();
 
   const [open, setOpen] = useState(false);
   const [vaccineName, setVaccineName] = useState("");

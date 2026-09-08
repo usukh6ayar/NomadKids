@@ -12,7 +12,7 @@ import {
 } from "./support/render";
 import ChildGeneralPage from "@/app/(app)/children/[childId]/general/page";
 import LoginPage from "@/app/login/page";
-import { GALLERY, PORTFOLIO } from "@/lib/vocabulary";
+import { GALLERY } from "@/lib/vocabulary";
 
 /**
  * One noun per thing, and one primary action per screen.
@@ -151,23 +151,23 @@ describe("the child hero", () => {
     expect(filled[0]).toHaveTextContent("Ажиглалт");
   });
 
-  it("keeps the term report and editing reachable, one press deeper", async () => {
+  it("keeps the term report direct after removing the portfolio action", async () => {
     const user = userEvent.setup();
     stubChild();
     renderWithProviders(<ChildGeneralPage />);
 
     await screen.findByRole("heading", { name: /Ганболд/ });
-    expect(screen.getByRole("link", { name: new RegExp(PORTFOLIO) })).toBeInTheDocument();
-
-    // Nothing was deleted — it moved. A declutter that drops a destination is a
-    // different change from the one this claims to be.
-    await user.click(screen.getByRole("button", { name: "Бусад үйлдэл" }));
-    const menu = await screen.findByRole("menu", { name: "Бусад үйлдэл" });
-
-    expect(within(menu).getByRole("menuitem", { name: /Улирлын тайлан/ })).toHaveAttribute(
+    expect(screen.queryByRole("link", { name: /Цахим хувийн хавтас/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Улирлын тайлан/ })).toHaveAttribute(
       "href",
       `/children/${CHILD_ID}/term-report`,
     );
+
+    // Editing remains one press deeper for staff, without displacing the term
+    // report from the visible action row.
+    await user.click(screen.getByRole("button", { name: "Бусад үйлдэл" }));
+    const menu = await screen.findByRole("menu", { name: "Бусад үйлдэл" });
+
     expect(within(menu).getByRole("menuitem", { name: /Мэдээлэл засах/ })).toHaveAttribute(
       "href",
       `/children/${CHILD_ID}/edit`,

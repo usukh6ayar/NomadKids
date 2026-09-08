@@ -99,15 +99,31 @@ export function ChildAvatar({
   );
 }
 
-/** An observation photo. */
+/**
+ * An observation photo.
+ *
+ * ★ `flush` drops the thumb's own radius, and is a prop rather than a class.
+ *
+ * A thumb sitting at the top of a card already has its corners cut by that
+ * card's `overflow-hidden rounded-card`; its own `rounded-control` then shows
+ * as a sliver of card colour inside each corner. The obvious fix is
+ * `className="rounded-none"` at the call site, which `tokens.test.tsx` bans
+ * along with the rest of Tailwind's radius scale — and rightly, because "no
+ * corner" spelled four different ways is the same drift the scale exists to
+ * stop. Naming the case here means the four album grids ask for the same thing
+ * by the same name.
+ */
 export function MediaThumb({
   mediaId,
   caption,
   className,
+  flush = false,
 }: {
   mediaId: string;
   caption?: string | null;
   className?: string;
+  /** The parent clips these corners already — draw none of our own. */
+  flush?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
 
@@ -115,7 +131,8 @@ export function MediaThumb({
     return (
       <div
         className={cn(
-          "flex aspect-square items-center justify-center rounded-control border border-border bg-canvas p-2 text-center text-caption text-muted",
+          "flex aspect-square items-center justify-center border border-border bg-canvas p-2 text-center text-caption text-muted",
+          !flush && "rounded-control",
           className,
         )}
       >
@@ -129,7 +146,7 @@ export function MediaThumb({
       src={mediaUrl(mediaId)}
       alt={caption || "Ажиглалтын зураг"}
       loading="lazy"
-      className={cn("aspect-square w-full rounded-control object-cover", className)}
+      className={cn("aspect-square w-full object-cover", !flush && "rounded-control", className)}
       onError={() => setFailed(true)}
     />
   );

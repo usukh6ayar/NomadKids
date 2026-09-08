@@ -465,7 +465,18 @@ export class AttendanceRepository {
   // ── Attendance requests ──────────────────────────────────────────────────
 
   async createRequest(data: CreateAttendanceRequestData) {
-    return this.prisma.attendanceRequest.create({ data });
+    const { attachment, ...request } = data;
+    return this.prisma.attendanceRequest.create({
+      data: {
+        ...request,
+        attachment: attachment ? { create: attachment } : undefined,
+      },
+      include: {
+        attachment: {
+          select: { id: true, originalName: true, mimeType: true, sizeBytes: true },
+        },
+      },
+    });
   }
 
   async listRequestsForChild(childId: string) {
@@ -475,6 +486,9 @@ export class AttendanceRepository {
       include: {
         requestedBy: { select: { id: true, lastName: true, firstName: true } },
         reviewedBy: { select: { id: true, lastName: true, firstName: true } },
+        attachment: {
+          select: { id: true, originalName: true, mimeType: true, sizeBytes: true },
+        },
       },
     });
   }
@@ -595,4 +609,18 @@ export interface CreateAttendanceRequestData {
   pickedUpWith?: AttendanceCompanion | null;
   pickedUpWithName?: string | null;
   pickedUpAt?: Date | null;
+  attachment?: {
+    kindergartenId: string;
+    childId: string;
+    purpose: "ATTENDANCE_ATTACHMENT";
+    storageKey: string;
+    originalName: string;
+    mimeType: string;
+    sizeBytes: number;
+    width: number | null;
+    height: number | null;
+    caption: null;
+    order: number;
+    uploadedById: string;
+  };
 }

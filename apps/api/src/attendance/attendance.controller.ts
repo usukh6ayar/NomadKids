@@ -1,10 +1,26 @@
 import type { Response } from "express";
-import { Body, Controller, Get, Param, Patch, Post, Put, Query, Res } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Query,
+  Res,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { idParamSchema, paginationQuerySchema } from "@kinder/contracts";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
 import type { Actor } from "../authz/actor";
+import { RateLimit, RateLimitGuard } from "../common/rate-limit/rate-limit.guard";
+import { MAX_PDF_BYTES } from "../media/upload-validation";
 import { AttendanceService } from "./attendance.service";
 import {
   createAttendanceRequestSchema,
@@ -80,6 +96,7 @@ export class ChildAttendanceController {
 
 /** A guardian's advance notice, and the staff review of it. */
 @Controller("children/:id/attendance-requests")
+@UseGuards(RateLimitGuard)
 export class ChildAttendanceRequestController {
   constructor(private readonly service: AttendanceService) {}
 
@@ -92,12 +109,15 @@ export class ChildAttendanceRequestController {
   }
 
   @Post()
+  @RateLimit({ limit: 30, windowMs: 60 * 60 * 1000, byUser: true })
+  @UseInterceptors(FileInterceptor("attachment", { limits: { fileSize: MAX_PDF_BYTES, files: 1 } }))
   async create(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
     @Body(new ZodValidationPipe(createAttendanceRequestSchema)) body: CreateAttendanceRequestDto,
+    @UploadedFile() attachment: { buffer: Buffer; originalname: string } | undefined,
   ) {
-    return this.service.createRequest(actor, params.id, body);
+    return this.service.createRequest(actor, params.id, body, attachment);
   }
 }
 

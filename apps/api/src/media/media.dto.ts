@@ -32,6 +32,7 @@ export const listMediaQuerySchema = paginationQuerySchema.extend({
   observationId: uuidSchema.optional(),
   category: mediaCategorySchema.optional(),
   age: z.coerce.number().int().min(2).max(5).optional(),
+  attribution: mediaAttributionSchema.optional(),
 });
 export type ListMediaQuery = z.infer<typeof listMediaQuerySchema>;
 

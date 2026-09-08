@@ -15,6 +15,8 @@ const zodiacCodeSchema = z.enum(ZODIAC_SIGNS.map((sign) => sign.code) as [string
  */
 
 const text = (max: number) => z.string().max(max).nullable().optional();
+const choices = z.array(z.string().trim().min(1).max(200)).max(50).optional();
+const categoryNotes = z.record(z.string().trim().min(1).max(100), z.string().max(2000)).optional();
 
 /**
  * ★ These schemas are `.strict()`: an unknown field is a 400, not a silent
@@ -93,11 +95,25 @@ export const updateAgeProfileSchema = z
     favoriteSong: text(200),
     favoriteStory: text(200),
     favoriteActivity: text(200),
+    favoriteClothes: text(200),
+    favoriteMovie: text(200),
+    favoriteTreat: text(200),
     personality: text(2000),
     emotionalTraits: text(2000),
     familyMembers: text(2000),
+    dream: text(2000),
     learningInterest: text(2000),
     newSkills: text(2000),
+    kindergartenSkills: choices,
+    kindergartenSkillNotes: categoryNotes,
+    kindergartenOtherSkill: text(2000),
+    familyLearningSkills: choices,
+    familyLearningNotes: categoryNotes,
+    familyLearningOther: text(2000),
+    characterTraits: choices,
+    characterObservation: text(2000),
+    familyMemberTypes: choices,
+    familyDescription: text(2000),
     parentNote: text(2000),
     teacherNote: text(2000),
   })

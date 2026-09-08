@@ -4,71 +4,30 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { z } from "zod";
-import { ArrowLeft, BarChart3 } from "lucide-react";
-import {
-  ageProfileSchema,
-  birthdaySectionSchema,
-  childDetailSchema,
-  growthChartSchema,
-  type GrowthPoint,
-} from "@kinder/contracts";
+import { ArrowLeft } from "lucide-react";
+import { ageProfileSchema, childDetailSchema, type AgeProfile } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
-import { SectionHeader } from "@/components/ui/card";
-import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { AgeStepper } from "@/components/child/age-stepper";
-import { PortfolioHero } from "@/components/child/portfolio-hero";
-import { AGE_FIELDS } from "@/components/child/child-growth-ages";
-import { ChildBirthdayNotes } from "@/components/child/child-birthday";
-import { GrowthChartFigure } from "@/components/child/growth-chart";
+import { ErrorState, LoadingState } from "@/components/ui/states";
+import { FAVORITE_FIELDS, type PortfolioAge } from "@/lib/age-development";
 import { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
-import { PORTFOLIO } from "@/lib/vocabulary";
-import { ageInYears } from "@/lib/format";
-import { isPresent } from "@/lib/utils";
 
 const ageProfilesSchema = z.array(ageProfileSchema);
-
-/** RFP fields the favourites table doesn't already cover — see this page's own doc comment. */
-const OTHER_FIELD_KEYS = [
-  "personality",
-  "emotionalTraits",
-  "learningInterest",
-  "newSkills",
-  "familyMembers",
-] as const;
 
 /**
  * "Хөгжлийн харьцуулалт" — client reference screenshot, 2026-08-30. Every
  * age's own record, side by side, read-only (editing happens on each age's
  * own page — `portfolio/growth/age/[age]/page.tsx`).
  *
- * ★ The favourites/character table has one more section than the screenshot
- * shows — the crop only reached "Гэр бүлийн гишүүд" before cutting off.
- * `OTHER_FIELD_KEYS` covers the RFP fields not already in the favourites
- * table (`AGE_FIELDS`'s `favorite*` entries), so a screen whose whole job is
- * "compare everything" doesn't quietly compare only some of it.
+ * ★ The five parent age-development sections are rows in one horizontal
+ * table, with ages 2–5 as columns. Empty ages say so explicitly and the view
+ * never assigns a score or rank.
  *
- * ★★ The growth section reuses `GrowthChartFigure` wholesale rather than
- * drawing new charts — it already plots height and weight against age, and a
- * second hand-rolled chart for the same two quantities would be a second
- * implementation of a component this product already has.
- *
- * ★★★ `ChildBirthdayNotes` moved here from `about-me/page.tsx` on 2026-09-04,
- * on the client's instruction — a birthday note is written per age, the same
- * axis every other section on this page already compares by, and it stopped
- * having a home on "Миний тухай" once that page's own age-comparison door
- * moved out to the portfolio hub. `birthdays` is fetched the same way
- * `about-me/page.tsx` used to: not part of the blocking loading/error state
- * above, since `ChildBirthdayNotes` already renders its own loading rows.
- *
- * ★★★★ The back button points at the portfolio hub, not `growth/page.tsx` —
- * unified 2026-09-04, on the client's instruction, with the other three of
- * `PortfolioHubNav`'s tiles (`about-me/page.tsx`, `growth/page.tsx`,
- * `overview/page.tsx`), all of which had drifted to different back
- * destinations. `AgeStepper` still moves a visitor between this page and
- * `growth/age/[age]/page.tsx` without touching either's own back button.
+ * Every questionnaire prompt is its own row so the same answer can be scanned
+ * straight across ages. Growth, WHO references and birthday notes deliberately
+ * live outside this focused view.
  */
 export default function GrowthComparePage() {
   const params = useParams<{ childId: string }>();
@@ -84,22 +43,12 @@ export default function GrowthComparePage() {
     queryFn: () => get(`/children/${childId}/age-profiles`, ageProfilesSchema),
   });
 
-  const growth = useQuery({
-    queryKey: qk.growth(childId),
-    queryFn: () => get(`/children/${childId}/growth`, growthChartSchema),
-  });
-
-  const birthdays = useQuery({
-    queryKey: qk.birthdayNotes(childId),
-    queryFn: () => get(`/children/${childId}/birthday-notes`, birthdaySectionSchema),
-  });
-
-  if (child.isLoading || ageProfiles.isLoading || growth.isLoading) {
+  if (child.isLoading || ageProfiles.isLoading) {
     return <LoadingState rows={5} />;
   }
 
-  const error = child.error ?? ageProfiles.error ?? growth.error;
-  if (child.isError || ageProfiles.isError || growth.isError) {
+  const error = child.error ?? ageProfiles.error;
+  if (child.isError || ageProfiles.isError) {
     return (
       <div className="py-6">
         <ErrorState
@@ -112,136 +61,224 @@ export default function GrowthComparePage() {
 
   const data = child.data!;
   const profiles = ageProfiles.data!;
-  const profileFor = (age: number) => profiles.find((p) => p.age === age);
-  const byAge = latestMeasurementPerAge(growth.data!.points);
-  const currentAge = ageInYears(data.dateOfBirth);
 
   return (
     <div className="flex flex-col gap-6 py-2">
       <Button asChild variant="ghost" size="sm" className="-ml-2 self-start">
-        <Link href={`/children/${childId}/portfolio`}>
+        <Link href={`/children/${childId}/portfolio/growth/age`}>
           <ArrowLeft size={18} />
-          {PORTFOLIO}
+          Насны мэдээлэл
         </Link>
       </Button>
 
-      <PortfolioHero
-        child={data}
-        icon={<BarChart3 size={26} aria-hidden="true" />}
-        overline="ХӨГЖЛИЙН ХАРЬЦУУЛАЛТ"
-        title="Хөгжлийн харьцуулалт"
-        subtitle={`${data.firstName}-ийн 2-5 насны өсөлт, хөгжлийн түүх.`}
-      />
+      <header>
+        <h1 className="text-heading font-semibold text-ink">2-5 насны мэдээлэл</h1>
+        <p className="mt-1 text-body text-muted">
+          {data.firstName}-ийн нас насны мэдээллийг хажуу тийш гүйлгэн харьцуулна уу.
+        </p>
+      </header>
 
-      <AgeStepper childId={childId} current="compare" />
-
-      <section aria-labelledby="growth-compare-heading">
-        <SectionHeader id="growth-compare-heading" title="Өндөр - Жингийн ахиц" />
-        <AgeTable
-          rows={[
-            {
-              label: "Өндөр",
-              cells: PORTFOLIO_AGES.map((age) =>
-                isPresent(byAge[age]?.heightCm) ? `${byAge[age]!.heightCm} см` : "—",
-              ),
-            },
-            {
-              label: "Жин",
-              cells: PORTFOLIO_AGES.map((age) =>
-                isPresent(byAge[age]?.weightKg) ? `${byAge[age]!.weightKg} кг` : "—",
-              ),
-            },
-          ]}
-        />
-
-        <div className="mt-4">
-          {growth.data!.points.length === 0 ? (
-            <EmptyState
-              title="Хэмжилт бүртгэгдээгүй байна"
-              description="Бүх насны график энд харагдана."
-            />
-          ) : (
-            <GrowthChartFigure chart={growth.data!} layout="grid" />
-          )}
-        </div>
-      </section>
-
-      <section aria-labelledby="favorites-compare-heading">
-        <SectionHeader id="favorites-compare-heading" title="Дуртай зүйлс" />
-        <AgeTable
-          rows={AGE_FIELDS.filter((f) => f.key.startsWith("favorite")).map((field) => ({
-            label: field.label,
-            cells: PORTFOLIO_AGES.map((age) => String(profileFor(age)?.[field.key] ?? "—")),
-          }))}
-        />
-      </section>
-
-      <section aria-labelledby="character-compare-heading">
-        <SectionHeader id="character-compare-heading" title="Хувь хүний онцлог" />
-        <AgeTable
-          rows={AGE_FIELDS.filter((f) =>
-            (OTHER_FIELD_KEYS as readonly string[]).includes(f.key),
-          ).map((field) => ({
-            label: field.label,
-            cells: PORTFOLIO_AGES.map((age) => String(profileFor(age)?.[field.key] ?? "—")),
-          }))}
-        />
-      </section>
-
-      <ChildBirthdayNotes
-        childId={childId}
-        section={birthdays.data ?? null}
-        isLoading={birthdays.isLoading}
-        currentAge={currentAge}
-      />
+      <AgeDevelopmentComparison profiles={profiles} />
     </div>
   );
 }
 
-/** The latest point per whole year of age — a re-measurement corrects that age, same rule `ChildGrowth`'s own `PUT :date` encodes for a single day. */
-function latestMeasurementPerAge(points: GrowthPoint[]): Partial<Record<number, GrowthPoint>> {
-  const byAge: Partial<Record<number, GrowthPoint>> = {};
-  for (const point of points) {
-    const age = Math.floor(point.ageYears);
-    if (!PORTFOLIO_AGES.includes(age as (typeof PORTFOLIO_AGES)[number])) continue;
-    const existing = byAge[age];
-    if (!existing || point.measuredOn >= existing.measuredOn) byAge[age] = point;
-  }
-  return byAge;
+type CompareQuestion = {
+  id: string;
+  label: string;
+  answer: (profile: AgeProfile, age: PortfolioAge) => string | null | undefined;
+};
+
+type CompareSection = {
+  id: string;
+  title: string;
+  questions: CompareQuestion[];
+};
+
+function joined(values: (string | null | undefined)[]): string | null {
+  const answer = values
+    .map((value) => value?.trim())
+    .filter(Boolean)
+    .join(", ");
+  return answer || null;
 }
 
-/** A small, scrollable table — ages as columns, one row per quantity. */
-function AgeTable({ rows }: { rows: { label: string; cells: string[] }[] }) {
+function joinedNotes(notes: Record<string, string>): string | null {
+  return joined(Object.values(notes));
+}
+
+const AGE_COMPARE_SECTIONS: CompareSection[] = [
+  {
+    id: "favorites",
+    title: "Миний дуртай бүх зүйлс",
+    questions: FAVORITE_FIELDS.map(({ key, label }) => ({
+      id: key,
+      label,
+      answer: (profile) => profile[key],
+    })),
+  },
+  {
+    id: "kindergarten-skills",
+    title: "Миний цэцэрлэгтээ сурсан зүйлс",
+    questions: [
+      {
+        id: "kindergartenSkills",
+        label: "Сонгосон чадварууд",
+        answer: (profile) => joined(profile.kindergartenSkills),
+      },
+      {
+        id: "kindergartenSkillNotes",
+        label: "Нэмэлт тайлбар",
+        answer: (profile) => joinedNotes(profile.kindergartenSkillNotes),
+      },
+      {
+        id: "kindergartenOtherSkill",
+        label: "Өөр сурсан зүйл",
+        answer: (profile) => profile.kindergartenOtherSkill ?? profile.newSkills,
+      },
+    ],
+  },
+  {
+    id: "family-learning",
+    title: "Миний гэр бүлээсээ суралцсан зүйлс",
+    questions: [
+      {
+        id: "familyLearningSkills",
+        label: "Сонгосон чадварууд",
+        answer: (profile) => joined(profile.familyLearningSkills),
+      },
+      {
+        id: "familyLearningNotes",
+        label: "Нэмэлт тайлбар",
+        answer: (profile) => joinedNotes(profile.familyLearningNotes),
+      },
+      {
+        id: "familyLearningOther",
+        label: "Өөр сурсан зүйл",
+        answer: (profile) => profile.familyLearningOther ?? profile.familyMembers,
+      },
+    ],
+  },
+  {
+    id: "character",
+    title: "Миний зан араншин",
+    questions: [
+      {
+        id: "characterTraits",
+        label: "Зан араншингийн ажиглалт",
+        answer: (profile) => joined(profile.characterTraits),
+      },
+      {
+        id: "characterObservation",
+        label: "Тухайн насны зан араншин",
+        answer: (profile) =>
+          profile.characterObservation ??
+          joined([profile.personality, profile.emotionalTraits].filter(Boolean)),
+      },
+    ],
+  },
+  {
+    id: "family",
+    title: "Гэр бүл",
+    questions: [
+      {
+        id: "familyMemberTypes",
+        label: "Гэр бүлийн гишүүд",
+        answer: (profile) => joined(profile.familyMemberTypes),
+      },
+      {
+        id: "familyDescription",
+        label: "Гэр бүлийн тухай, хамтдаа хийх дуртай зүйлс",
+        answer: (profile) => profile.familyDescription,
+      },
+    ],
+  },
+];
+
+function AgeDevelopmentComparison({ profiles }: { profiles: AgeProfile[] }) {
+  const profileFor = (age: PortfolioAge) => profiles.find((profile) => profile.age === age);
+
   return (
-    <div className="overflow-x-auto rounded-card border border-border bg-surface">
-      <table className="w-full min-w-105 border-collapse text-body">
-        <thead>
-          <tr className="border-b border-border text-left text-muted">
-            <th scope="col" className="px-4 py-2.5 font-medium">
-              &nbsp;
-            </th>
+    <section aria-labelledby="age-information-table-heading">
+      <h2 id="age-information-table-heading" className="sr-only">
+        2-5 насны мэдээллийн хүснэгт
+      </h2>
+      <div className="overflow-x-auto rounded-card border border-border bg-surface shadow-sm">
+        <table
+          aria-label="2-5 насны мэдээллийн хэвтээ харьцуулалт"
+          className="w-full min-w-280 table-fixed border-collapse text-body"
+        >
+          <colgroup>
+            <col className="w-56" />
             {PORTFOLIO_AGES.map((age) => (
-              <th key={age} scope="col" className="px-4 py-2.5 text-center font-medium">
-                {age} нас
-              </th>
+              <col key={age} className="w-64" />
             ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.label} className="border-b border-border/60 last:border-0">
-              <th scope="row" className="px-4 py-2.5 text-left font-medium text-ink">
-                {row.label}
+          </colgroup>
+          <thead>
+            <tr className="border-b-2 border-border bg-sunken">
+              <th
+                scope="col"
+                className="sticky left-0 z-10 bg-sunken px-4 py-3 text-left font-semibold text-ink"
+              >
+                Сэдэв
               </th>
-              {row.cells.map((cell, i) => (
-                <td key={i} className="px-4 py-2.5 text-center tabular-nums text-ink">
-                  {cell}
-                </td>
+              {PORTFOLIO_AGES.map((age) => (
+                <th
+                  key={age}
+                  scope="col"
+                  className="border-l border-border px-4 py-3 text-left font-semibold text-primary"
+                >
+                  {age} нас
+                </th>
               ))}
             </tr>
+          </thead>
+          {AGE_COMPARE_SECTIONS.map((section) => (
+            <tbody key={section.id}>
+              <tr className="border-y border-border bg-primary-soft/60">
+                <th
+                  scope="rowgroup"
+                  colSpan={5}
+                  className="px-4 py-2.5 text-left font-semibold text-primary"
+                >
+                  {section.title}
+                </th>
+              </tr>
+              {section.questions.map((question) => (
+                <tr key={question.id} className="border-b border-border last:border-0">
+                  <th
+                    scope="row"
+                    className="sticky left-0 z-10 bg-surface px-4 py-3 text-left align-top font-medium text-ink"
+                  >
+                    {question.label}
+                  </th>
+                  {PORTFOLIO_AGES.map((age) => {
+                    const profile = profileFor(age);
+                    const answer = profile ? question.answer(profile, age)?.trim() : null;
+
+                    return (
+                      <td
+                        key={age}
+                        className={
+                          answer
+                            ? "border-l border-border px-4 py-3 align-top text-ink"
+                            : "border-l border-border px-4 py-3 text-center align-middle text-muted"
+                        }
+                      >
+                        {answer || <span aria-label="Мэдээлэлгүй">—</span>}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
           ))}
-        </tbody>
-      </table>
-    </div>
+        </table>
+      </div>
+      <p className="mt-2 text-caption leading-relaxed text-muted">
+        Энд зөвхөн нэг хүүхдийн нас насны ажиглалтыг харуулна. Оноо, зэрэглэл гаргахгүй бөгөөд бусад
+        хүүхэдтэй харьцуулахгүй.
+      </p>
+    </section>
   );
 }

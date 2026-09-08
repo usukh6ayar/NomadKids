@@ -277,6 +277,8 @@ export const qk = {
     filters && Object.keys(filters).length > 0
       ? (["child", childId, "media", filters] as const)
       : (["child", childId, "media"] as const),
+  childAgeAlbum: (childId: string, age: number) =>
+    ["child", childId, "media", "age-album", age] as const,
   childReports: (childId: string) => ["child", childId, "reports"] as const,
   report: (jobId: string) => ["report", jobId] as const,
   /** Admin lists. Filters are part of the key so a search does not reuse a page. */

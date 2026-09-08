@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { AGE_ALBUM_CATEGORIES } from "@kinder/contracts";
 import { PrismaService } from "../prisma/prisma.service";
 import { toSkipTake, type PageParams } from "../common/pagination";
 import type { WhereFragment } from "../common/repository/tenant-scope";
@@ -34,6 +35,7 @@ const GALLERY_SELECT = {
   takenAt: true,
   age: true,
   category: true,
+  albumCoverAge: true,
   attribution: true,
   uploadedBy: { select: { id: true, lastName: true, firstName: true } },
 } as const;
@@ -46,6 +48,7 @@ export interface MediaFilters {
   incidentId?: string;
   category?: string;
   age?: number;
+  attribution?: MediaAttribution;
 }
 
 @Injectable()
@@ -72,6 +75,9 @@ export class MediaRepository {
         mimeType: true,
         status: true,
         purpose: true,
+        age: true,
+        category: true,
+        albumCoverAge: true,
         // Who uploaded it — a guardian may edit their own photograph's caption
         // and nobody else's. `MediaService.updateMetadata`.
         uploadedById: true,
@@ -95,6 +101,7 @@ export class MediaRepository {
       ...(filters.incidentId ? { incidentId: filters.incidentId } : {}),
       ...(filters.category ? { category: filters.category } : {}),
       ...(filters.age === undefined ? {} : { age: filters.age }),
+      ...(filters.attribution ? { attribution: filters.attribution } : {}),
     };
   }
 
@@ -203,6 +210,53 @@ export class MediaRepository {
     return { items, total };
   }
 
+  private async ageAlbumSummary(where: WhereFragment, age: number) {
+    const albumWhere = {
+      ...where,
+      age,
+      category: { in: [...AGE_ALBUM_CATEGORIES] },
+    };
+
+    const [grouped, thumbnails, cover] = await Promise.all([
+      this.prisma.mediaFile.groupBy({
+        by: ["category"],
+        where: albumWhere,
+        _count: { _all: true },
+      }),
+      this.prisma.mediaFile.findMany({
+        where: albumWhere,
+        orderBy: [{ takenAt: { sort: "desc", nulls: "last" } }, { uploadedAt: "desc" }],
+        distinct: ["category"],
+        select: { id: true, category: true },
+      }),
+      this.prisma.mediaFile.findFirst({
+        where: { ...where, albumCoverAge: age },
+        select: { id: true },
+      }),
+    ]);
+
+    const counts = new Map(grouped.map((item) => [item.category, item._count._all]));
+    const firstPhoto = new Map(thumbnails.map((item) => [item.category, item.id]));
+
+    return {
+      age,
+      coverMediaFileId: cover?.id ?? null,
+      categories: AGE_ALBUM_CATEGORIES.map((category) => ({
+        category,
+        count: counts.get(category) ?? 0,
+        thumbnailMediaId: firstPhoto.get(category) ?? null,
+      })),
+    };
+  }
+
+  async ageAlbumSummaryForStaff(childId: string, age: number) {
+    return this.ageAlbumSummary({ childId, deletedAt: null, status: "READY" as const }, age);
+  }
+
+  async ageAlbumSummaryForGuardian(childId: string, guardianUserId: string, age: number) {
+    return this.ageAlbumSummary(this.guardianVisibleWhere(childId, guardianUserId), age);
+  }
+
   /**
    * Whether this one file is visible to this guardian.
    *
@@ -262,6 +316,10 @@ export class MediaRepository {
         ...(data.takenAt === undefined ? {} : { takenAt: data.takenAt }),
         ...(data.age === undefined ? {} : { age: data.age }),
         ...(data.category === undefined ? {} : { category: data.category }),
+        // A cover is valid only while its photo remains in that age's portrait
+        // album. Any tag correction clears the marker; it can then be selected
+        // again explicitly from the correct album.
+        ...(data.age !== undefined || data.category !== undefined ? { albumCoverAge: null } : {}),
         ...(data.attribution === undefined ? {} : { attribution: data.attribution }),
       },
       select: GALLERY_SELECT,
@@ -273,6 +331,21 @@ export class MediaRepository {
     return this.prisma.child.update({
       where: { id: childId },
       data: { photoMediaFileId: mediaFileId },
+    });
+  }
+
+  /** Moves the unique cover marker to one photo in the requested age album. */
+  async setAgeAlbumCover(childId: string, age: number, mediaFileId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.mediaFile.updateMany({
+        where: { childId, albumCoverAge: age },
+        data: { albumCoverAge: null },
+      });
+      return tx.mediaFile.update({
+        where: { id: mediaFileId },
+        data: { albumCoverAge: age },
+        select: { id: true },
+      });
     });
   }
 

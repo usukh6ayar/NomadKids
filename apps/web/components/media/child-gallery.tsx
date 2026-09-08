@@ -8,12 +8,14 @@ import { z } from "zod";
 import {
   mediaListSchema,
   mediaSchema,
+  ageAlbumSummarySchema,
   MEDIA_CATEGORIES,
   MEDIA_CATEGORY_LABEL,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { mediaUrl } from "@/lib/api/client";
 import { qk } from "@/lib/api/keys";
+import { errorMessage } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Select } from "@/components/ui/field";
@@ -22,6 +24,13 @@ import { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { MediaThumb } from "@/components/media/media-image";
 import { PhotoUpload } from "@/components/media/photo-upload";
+import { useToast } from "@/components/ui/toast";
+import { cn } from "@/lib/utils";
+
+const ageCoverResponseSchema = z.object({
+  age: z.number(),
+  coverMediaFileId: z.uuid(),
+});
 
 /**
  * ★ One page, deliberately large — an interim, not the destination.
@@ -73,6 +82,10 @@ export function ChildGallery({
   emptyDescription,
   uploadLabel = "Зураг нэмэх",
   uploadHint,
+  compactEmpty = false,
+  uploadWithCaption = false,
+  coverAge,
+  currentCoverMediaId,
 }: {
   childId: string;
   childName?: string;
@@ -91,8 +104,15 @@ export function ChildGallery({
   emptyDescription?: string;
   uploadLabel?: string;
   uploadHint?: ReactNode | null;
+  /** Hides the verbose empty-state copy inside an album modal. */
+  compactEmpty?: boolean;
+  uploadWithCaption?: boolean;
+  /** When supplied, every photo gets a star that selects this age's cover. */
+  coverAge?: number;
+  currentCoverMediaId?: string | null;
 }) {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [viewing, setViewing] = useState<string | null>(null);
   const filters = { pageSize: GALLERY_PAGE_SIZE, category, age };
 
@@ -139,6 +159,25 @@ export function ChildGallery({
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: qk.childMedia(childId) }),
   });
 
+  const setAgeCover = useMutation({
+    mutationFn: (mediaId: string) =>
+      mutate(`/children/${childId}/media/age-cover`, ageCoverResponseSchema, {
+        method: "POST",
+        body: { mediaId, age: coverAge },
+      }),
+    onSuccess: (result) => {
+      toast.success("Насны ковер зураг шинэчлэгдлээ.");
+      if (coverAge) {
+        const summaryKey = qk.childAgeAlbum(childId, coverAge);
+        queryClient.setQueryData<z.infer<typeof ageAlbumSummarySchema>>(summaryKey, (current) =>
+          current ? { ...current, coverMediaFileId: result.coverMediaFileId } : current,
+        );
+        void queryClient.invalidateQueries({ queryKey: summaryKey, refetchType: "inactive" });
+      }
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   const items = photos.data?.items ?? [];
   const total = photos.data?.total ?? 0;
   const truncated = total > items.length;
@@ -153,7 +192,7 @@ export function ChildGallery({
 
         {photos.isError ? <ErrorState description="Зургийг ачаалж чадсангүй." /> : null}
 
-        {photos.data && items.length === 0 ? (
+        {photos.data && items.length === 0 && !compactEmpty ? (
           <EmptyState
             icon={<Image src="/background/mascot-girl-purple.webp" alt="" width={96} height={96} />}
             title={emptyTitle}
@@ -170,6 +209,7 @@ export function ChildGallery({
           <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5">
             {items.map((photo) => {
               const isProfile = photo.id === photoMediaFileId;
+              const isAgeCover = photo.id === currentCoverMediaId;
               return (
                 <li key={photo.id} className="relative">
                   <button
@@ -195,6 +235,30 @@ export function ChildGallery({
                       <span className="sr-only">Хувийн зураг</span>
                     </span>
                   ) : null}
+
+                  {coverAge ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="icon"
+                      className={cn(
+                        "absolute right-1.5 top-1.5 rounded-pill shadow-sm",
+                        isAgeCover
+                          ? "border-[#d99a08] bg-[#f5b82e] text-white hover:border-[#c78b00] hover:bg-[#e5a817]"
+                          : "border-border bg-surface/95 text-muted hover:border-[#d99a08] hover:text-[#b87c00]",
+                      )}
+                      aria-label={
+                        isAgeCover
+                          ? `${coverAge} насны ковер зураг`
+                          : `${coverAge} насны ковер зураг болгох`
+                      }
+                      aria-pressed={isAgeCover}
+                      disabled={setAgeCover.isPending}
+                      onClick={() => setAgeCover.mutate(photo.id)}
+                    >
+                      <Star aria-hidden="true" fill={isAgeCover ? "currentColor" : "none"} />
+                    </Button>
+                  ) : null}
                 </li>
               );
             })}
@@ -214,6 +278,7 @@ export function ChildGallery({
             category={category}
             age={age}
             label={uploadLabel}
+            withCaption={uploadWithCaption}
             hint={
               uploadHint ??
               "Бүтээл, зурсан зураг, тоглож буй мөч. JPEG, PNG эсвэл WebP, 10 MB хүртэл."

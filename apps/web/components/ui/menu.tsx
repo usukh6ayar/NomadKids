@@ -237,11 +237,14 @@ export function RowMenu({
   items,
   ariaLabel,
   className,
+  triggerIcon,
 }: {
   items: RowMenuItem[];
   /** Names *this row's* menu — include the person or record. */
   ariaLabel: string;
   className?: string;
+  /** Optional visual override; existing row menus keep the horizontal dots. */
+  triggerIcon?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [focusFirst, setFocusFirst] = useState(false);
@@ -312,7 +315,7 @@ export function RowMenu({
           setFocusFirst(true);
         }}
       >
-        <MoreHorizontal size={18} aria-hidden="true" />
+        {triggerIcon ?? <MoreHorizontal size={18} aria-hidden="true" />}
       </Button>
 
       {open ? (

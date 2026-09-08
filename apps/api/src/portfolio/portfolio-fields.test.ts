@@ -17,6 +17,7 @@ import {
 describe("editableAgeProfileFields", () => {
   it("gives a guardian the shared fields plus parentNote", () => {
     const fields = editableAgeProfileFields(true);
+    expect(fields.has("dream")).toBe(true);
     expect(fields.has("parentNote")).toBe(true);
     expect(fields.has("teacherNote")).toBe(false);
     for (const shared of SHARED_AGE_FIELDS) expect(fields.has(shared)).toBe(true);
@@ -41,7 +42,15 @@ describe("rejectedAgeProfileFields", () => {
 
   it("accepts a guardian writing shared fields and their own note", () => {
     expect(
-      rejectedAgeProfileFields({ favoriteColor: "Хөх", parentNote: "Тэмдэглэл" }, true),
+      rejectedAgeProfileFields(
+        {
+          favoriteColor: "Хөх",
+          characterTraits: ["Тайван"],
+          kindergartenSkillNotes: { current: "Өдөр бүр давтаж байна" },
+          parentNote: "Тэмдэглэл",
+        },
+        true,
+      ),
     ).toEqual([]);
   });
 

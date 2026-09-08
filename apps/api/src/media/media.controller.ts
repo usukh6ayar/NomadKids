@@ -75,6 +75,16 @@ export class ChildMediaController {
     return this.service.listForChild(actor, params.id, query);
   }
 
+  @Get("album-summary")
+  async albumSummary(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(z.object({ age: z.coerce.number().int().min(2).max(5) })))
+    query: { age: number },
+  ) {
+    return this.service.ageAlbumSummary(actor, params.id, query.age);
+  }
+
   /**
    * Uploads a photo.
    *
@@ -140,6 +150,18 @@ export class ChildMediaController {
     @Body(new ZodValidationPipe(z.object({ mediaId: z.uuid() }))) body: { mediaId: string },
   ) {
     return this.service.setAsChildPhoto(actor, params.id, body.mediaId);
+  }
+
+  @Post("age-cover")
+  async setAgeAlbumCover(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(
+      new ZodValidationPipe(z.object({ mediaId: z.uuid(), age: z.number().int().min(2).max(5) })),
+    )
+    body: { mediaId: string; age: number },
+  ) {
+    return this.service.setAgeAlbumCover(actor, params.id, body.age, body.mediaId);
   }
 }
 
@@ -284,8 +306,10 @@ export class MediaController {
   async download(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(z.object({ download: z.literal("1").optional() })))
+    query: { download?: "1" },
   ) {
-    const url = await this.service.getDownloadUrl(actor, params.id);
+    const url = await this.service.getDownloadUrl(actor, params.id, query.download === "1");
     return { url, statusCode: 302 };
   }
 

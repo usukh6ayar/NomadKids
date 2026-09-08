@@ -339,7 +339,7 @@ export class MediaService {
    * credential and generating one for an unauthorized caller has already leaked
    * the object even if the response is then discarded.
    */
-  async getDownloadUrl(actor: Actor, mediaId: string): Promise<string> {
+  async getDownloadUrl(actor: Actor, mediaId: string, forceDownload = false): Promise<string> {
     const media = await this.repo.findForAuthorization(mediaId);
     if (!media) throw new NotFoundException();
     if (media.status !== "READY") throw new NotFoundException();
@@ -412,6 +412,28 @@ export class MediaService {
       return this.storage.presignedGetUrl(media.storageKey, media.originalName);
     }
 
+    /*
+     * A doctor's note belongs to the child's attendance record, not to their
+     * gallery. Everyone who may read that child's attendance may open it; the
+     * separate purpose keeps the file out of the photo list and avoids treating
+     * a PDF as an image.
+     */
+    if (media.purpose === "ATTENDANCE_ATTACHMENT") {
+      if (!media.childId) throw new NotFoundException();
+      await this.childAccess.assertCanAccess(actor, media.childId);
+
+      await this.audit.append({
+        action: "DOWNLOAD",
+        kindergartenId: media.kindergartenId,
+        actorUserId: actor.userId,
+        objectType: "MediaFile",
+        objectId: mediaId,
+        childId: media.childId,
+      });
+
+      return this.storage.presignedGetUrl(media.storageKey, media.originalName);
+    }
+
     if (!media.childId) throw new NotFoundException();
 
     const facts = await this.childAccess.assertCanAccess(actor, media.childId);
@@ -434,7 +456,11 @@ export class MediaService {
     });
 
     // Never logged: the URL grants access until it expires.
-    return this.storage.presignedGetUrl(media.storageKey, media.originalName);
+    return this.storage.presignedGetUrl(
+      media.storageKey,
+      media.originalName,
+      forceDownload ? "attachment" : "inline",
+    );
   }
 
   /** Metadata without a URL — for a gallery that has not been clicked yet. */
@@ -468,6 +494,7 @@ export class MediaService {
       observationId: query.observationId,
       category: query.category,
       age: query.age,
+      attribution: query.attribution,
     };
     const page: PageParams = { page: query.page, pageSize: query.pageSize };
 
@@ -476,6 +503,14 @@ export class MediaService {
       : await this.repo.listForChild(childId, filters, page);
 
     return paginate(items, total, page);
+  }
+
+  /** Twelve category totals and their first thumbnails for one age. */
+  async ageAlbumSummary(actor: Actor, childId: string, age: number) {
+    const facts = await this.childAccess.assertCanAccess(actor, childId);
+    return isGuardianOf(actor, facts)
+      ? this.repo.ageAlbumSummaryForGuardian(childId, actor.userId, age)
+      : this.repo.ageAlbumSummaryForStaff(childId, age);
   }
 
   /** Archives a photo. Record access — a guardian cannot delete gallery items. */
@@ -701,6 +736,32 @@ export class MediaService {
     return { childId, photoMediaFileId: mediaId };
   }
 
+  /** Selects any visible photo from the requested age as that age album's cover. */
+  async setAgeAlbumCover(actor: Actor, childId: string, age: number, mediaId: string) {
+    const facts = await this.childAccess.assertCanContributeMedia(actor, childId);
+    const media = await this.repo.findForAuthorization(mediaId);
+    if (!media || media.childId !== childId || media.status !== "READY" || media.age !== age) {
+      throw new NotFoundException();
+    }
+
+    if (isGuardianOf(actor, facts)) {
+      const visible = await this.repo.isVisibleToGuardian(childId, mediaId, actor.userId);
+      if (!visible) throw new NotFoundException();
+    }
+
+    await this.repo.setAgeAlbumCover(childId, age, mediaId);
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId: media.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "MediaFile",
+      objectId: mediaId,
+      childId,
+      metadata: { albumCoverAge: age },
+    });
+    return { age, coverMediaFileId: mediaId };
+  }
+
   // ── Tenant images — RFP §3.2 (лого, ангийн зураг), §3.3 (профайл зураг) ────
 
   /**
@@ -871,6 +932,7 @@ export class MediaService {
     takenAt?: Date | null;
     age?: number | null;
     category?: string | null;
+    albumCoverAge?: number | null;
     attribution?: MediaAttribution | null;
     uploadedBy?: { id: string; lastName: string; firstName: string } | null;
   }) {
@@ -886,6 +948,7 @@ export class MediaService {
       takenAt: media.takenAt ?? null,
       age: media.age ?? null,
       category: media.category ?? null,
+      albumCoverAge: media.albumCoverAge ?? null,
       attribution: media.attribution ?? null,
       uploadedBy: media.uploadedBy ?? null,
     };

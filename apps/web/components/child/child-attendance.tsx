@@ -2,8 +2,18 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
-import { Check, LogOut, Megaphone } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  CalendarDays,
+  Check,
+  Clock3,
+  FileText,
+  LogIn,
+  LogOut,
+  Paperclip,
+  UserRound,
+  X,
+} from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 import { z } from "zod";
 import { attendanceRecordSchema, attendanceRequestSchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
@@ -12,10 +22,11 @@ import { errorMessage } from "@/lib/api/errors";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
-import { Field, Input, Textarea } from "@/components/ui/field";
+import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { AttendanceCalendar } from "@/components/child/attendance-calendar";
-import { formatDate } from "@/lib/format";
+import { formatDate, todayLocal } from "@/lib/format";
+import { mediaUrl } from "@/lib/api/client";
 import {
   ATTENDANCE_COMPANION_ICON as COMPANION_ICON,
   ATTENDANCE_COMPANION_LABEL as COMPANION_LABEL,
@@ -67,6 +78,65 @@ function currentMonth(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
+const WEEKDAY_LABEL = ["Ням", "Даваа", "Мягмар", "Лхагва", "Пүрэв", "Баасан", "Бямба"];
+
+/** A local calendar date, kept at midday so parsing never rolls it into the
+ * previous date in Mongolia (or any other positive UTC offset). */
+function localCalendarDate(value: string): Date {
+  return new Date(`${value.slice(0, 10)}T12:00:00`);
+}
+
+function todayLabel(value: string): string {
+  const date = localCalendarDate(value);
+  return `${date.getFullYear()} оны ${date.getMonth() + 1}-р сарын ${date.getDate()} · ${WEEKDAY_LABEL[date.getDay()]}`;
+}
+
+function eventSentence(record: AttendanceRecord | undefined): string {
+  if (!record) return "Өнөөдрийн ирц хараахан бүртгэгдээгүй байна.";
+
+  if (record.pickedUpWith) {
+    return `${record.pickedUpAt ? `${toLocalTime(record.pickedUpAt)}-д ` : ""}${companionSuffix(record.pickedUpWith, record.pickedUpWithName)} цэцэрлэгээс явлаа.`;
+  }
+  if (record.arrivedWith) {
+    return `${record.arrivedAt ? `${toLocalTime(record.arrivedAt)}-д ` : ""}${companionSuffix(record.arrivedWith, record.arrivedWithName)} цэцэрлэгтээ ирлээ.`;
+  }
+  return `Өнөөдрийн төлөв: ${STATUS_LABEL[record.status]}.`;
+}
+
+function LastRegistration({ record }: { record: AttendanceRecord | undefined }) {
+  if (!record) {
+    return (
+      <div className="border-t border-border pt-3">
+        <p className="text-caption font-medium text-muted">Сүүлийн бүртгэл</p>
+        <p className="mt-1 text-body text-muted">Ирцийн бүртгэл алга.</p>
+      </div>
+    );
+  }
+
+  const time = record.pickedUpAt ?? record.arrivedAt;
+  const companion = record.pickedUpWith ?? record.arrivedWith;
+  const companionName = record.pickedUpWithName ?? record.arrivedWithName;
+
+  return (
+    <div className="grid gap-2 border-t border-border pt-3 text-body sm:grid-cols-3">
+      <div className="flex items-center gap-2 text-muted">
+        <CalendarDays size={16} aria-hidden="true" />
+        <span>{formatDate(record.date)}</span>
+      </div>
+      <div className="flex items-center gap-2 text-muted">
+        <Clock3 size={16} aria-hidden="true" />
+        <span>{time ? toLocalTime(time) : "Цаггүй"}</span>
+      </div>
+      <div className="flex items-center gap-2 text-muted">
+        <UserRound size={16} aria-hidden="true" />
+        <span>
+          {companion ? companionDisplay(companion, companionName) : "Хүлээн авсан хүнгүй"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 /**
  * The "Ирц" tab.
  *
@@ -92,29 +162,17 @@ export function ChildAttendance({
     queryFn: () => get(`/children/${childId}/attendance-requests`, requestsSchema),
   });
 
-  /*
-   * ★ Which of today's two claims is next — decided from `requests.data`,
-   * not a second fetch. A day is "arrived" once any of today's PRESENT
-   * requests carries `arrivedWith` (pending or already approved — the
-   * button's job is "have you told us", not "has staff confirmed it"), and
-   * "picked up" the same way. `dateFrom === dateTo === today` because a
-   * multi-day PRESENT request is not what either dialog ever creates.
-   */
-  const today = new Date().toISOString().slice(0, 10);
-  const isToday = (r: { dateFrom: string; dateTo: string }) =>
-    r.dateFrom.slice(0, 10) === today && r.dateTo.slice(0, 10) === today;
-  const arrivedToday = requests.data?.some(
-    (r) => r.requestedStatus === "PRESENT" && isToday(r) && r.arrivedWith,
-  );
-  const pickedUpToday = requests.data?.some(
-    (r) => r.requestedStatus === "PRESENT" && isToday(r) && r.pickedUpWith,
-  );
-
   return (
     <div className="flex flex-col gap-6">
       {isStaff ? (
         <TodayAttendanceRecorder childId={childId} childFirstName={childFirstName} />
-      ) : null}
+      ) : (
+        <GuardianTodayAttendance
+          childId={childId}
+          requests={requests.data ?? []}
+          requestsPending={requests.isPending}
+        />
+      )}
 
       {/*
         ★ A calendar, not the flat "Энэ сарын ирц" list this tab used to end
@@ -131,48 +189,8 @@ export function ChildAttendance({
         <section aria-labelledby="attendance-requests-heading">
           <SectionHeader
             id="attendance-requests-heading"
-            title="Ирцийн мэдэгдэл"
-            lede="Ирснийг мэдэгдэх эсвэл чөлөө хүсэх — багш хянаад ирцэд бүртгэнэ."
-            action={
-              <div className="flex flex-wrap items-center gap-2">
-                {!arrivedToday ? (
-                  <ReportAttendanceDialog
-                    childId={childId}
-                    mode="arrival"
-                    trigger={
-                      <Button size="sm">
-                        <Megaphone size={16} />
-                        Ирц мэдэгдэх
-                      </Button>
-                    }
-                  />
-                ) : !pickedUpToday ? (
-                  <ReportAttendanceDialog
-                    childId={childId}
-                    mode="pickup"
-                    trigger={
-                      <Button size="sm">
-                        <LogOut size={16} />
-                        Гарсныг мэдэгдэх
-                      </Button>
-                    }
-                  />
-                ) : (
-                  <span className="flex items-center gap-1.5 text-body text-mint-ink">
-                    <Check size={16} className="shrink-0" aria-hidden="true" />
-                    Өнөөдрийн ирц бүрэн мэдэгдсэн
-                  </span>
-                )}
-                <RequestLeaveDialog
-                  childId={childId}
-                  trigger={
-                    <Button size="sm" variant="secondary">
-                      Чөлөө хүсэх
-                    </Button>
-                  }
-                />
-              </div>
-            }
+            title="Хүсэлтийн түүх"
+            lede="Багшид илгээсэн ирц, гаралт болон чөлөөний хүсэлтүүд"
           />
 
           {requests.isPending ? <LoadingState rows={2} /> : null}
@@ -213,6 +231,17 @@ export function ChildAttendance({
                       : ""}
                     {req.reason ? ` · ${req.reason}` : ""}
                   </p>
+                  {req.attachment ? (
+                    <a
+                      href={mediaUrl(req.attachment.id)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-1 inline-flex items-center gap-1.5 self-start text-caption font-medium text-primary hover:underline"
+                    >
+                      <Paperclip size={14} aria-hidden="true" />
+                      {req.attachment.originalName}
+                    </a>
+                  ) : null}
                 </div>
               ))}
             </Card>
@@ -220,6 +249,124 @@ export function ChildAttendance({
         </section>
       ) : null}
     </div>
+  );
+}
+
+/** The parent's task-first card. Reporting still creates a reviewable request;
+ * only staff can write the attendance record itself. */
+function GuardianTodayAttendance({
+  childId,
+  requests,
+  requestsPending,
+}: {
+  childId: string;
+  requests: z.infer<typeof attendanceRequestSchema>[];
+  requestsPending: boolean;
+}) {
+  const month = currentMonth();
+  const today = todayLocal();
+  const records = useQuery({
+    queryKey: qk.attendance(childId, month),
+    queryFn: () => get(`/children/${childId}/attendance?month=${month}`, recordsSchema),
+  });
+
+  if (records.isPending) return <LoadingState rows={2} />;
+  if (records.isError) return <ErrorState description={errorMessage(records.error)} />;
+
+  const todayRecord = records.data.find((record) => record.date.slice(0, 10) === today);
+  const latestRecord = [...records.data].sort((a, b) => b.date.localeCompare(a.date))[0];
+  const todayRequests = requests.filter(
+    (request) =>
+      request.requestedStatus === "PRESENT" &&
+      request.dateFrom.slice(0, 10) === today &&
+      request.dateTo.slice(0, 10) === today &&
+      request.reviewStatus !== "REJECTED",
+  );
+  const arrivalSent = Boolean(todayRecord?.arrivedWith || todayRequests.some((r) => r.arrivedWith));
+  const pickupSent = Boolean(
+    todayRecord?.pickedUpWith || todayRequests.some((r) => r.pickedUpWith),
+  );
+  const pendingArrival = todayRequests.find((r) => r.arrivedWith);
+  const pendingPickup = todayRequests.find((r) => r.pickedUpWith);
+  const requestForSentence = pendingPickup ?? pendingArrival;
+  const sentence = todayRecord
+    ? eventSentence(todayRecord)
+    : requestForSentence?.pickedUpWith
+      ? `${requestForSentence.pickedUpAt ? `${toLocalTime(requestForSentence.pickedUpAt)}-д ` : ""}${companionSuffix(requestForSentence.pickedUpWith, requestForSentence.pickedUpWithName)} явсныг багшид мэдэгдсэн.`
+      : requestForSentence?.arrivedWith
+        ? `${requestForSentence.arrivedAt ? `${toLocalTime(requestForSentence.arrivedAt)}-д ` : ""}${companionSuffix(requestForSentence.arrivedWith, requestForSentence.arrivedWithName)} ирснийг багшид мэдэгдсэн.`
+        : "Өнөөдрийн ирц хараахан бүртгэгдээгүй байна.";
+
+  return (
+    <section aria-labelledby="today-attendance-heading">
+      <Card pad="roomy" className="overflow-hidden">
+        <div className="flex flex-col gap-1">
+          <h2 id="today-attendance-heading" className="text-title font-semibold text-ink">
+            Өнөөдрийн ирц
+          </h2>
+          <p className="text-body text-muted">{todayLabel(today)}</p>
+          <p className="mt-1 flex items-start gap-2 text-body font-medium text-ink">
+            <span
+              className="mt-[7px] size-2 shrink-0 rounded-pill bg-mint-ink"
+              aria-hidden="true"
+            />
+            {sentence}
+          </p>
+        </div>
+
+        <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          {arrivalSent || requestsPending ? (
+            <Button disabled block className="bg-mint text-mint-ink">
+              <Check size={17} />
+              Ирлээ
+            </Button>
+          ) : (
+            <ReportAttendanceDialog
+              childId={childId}
+              mode="arrival"
+              trigger={
+                <Button block className="bg-mint text-mint-ink hover:bg-mint/80">
+                  <LogIn size={17} />
+                  Ирлээ
+                </Button>
+              }
+            />
+          )}
+
+          {pickupSent || requestsPending || !arrivalSent ? (
+            <Button disabled block>
+              {pickupSent ? <Check size={17} /> : <LogOut size={17} />}
+              Явлаа
+            </Button>
+          ) : (
+            <ReportAttendanceDialog
+              childId={childId}
+              mode="pickup"
+              trigger={
+                <Button block>
+                  <LogOut size={17} />
+                  Явлаа
+                </Button>
+              }
+            />
+          )}
+
+          <RequestLeaveDialog
+            childId={childId}
+            trigger={
+              <Button block variant="secondary">
+                <FileText size={17} />
+                Чөлөө хүсэх
+              </Button>
+            }
+          />
+        </div>
+
+        <div className="mt-4">
+          <LastRegistration record={latestRecord} />
+        </div>
+      </Card>
+    </section>
   );
 }
 
@@ -246,7 +393,7 @@ export function TodayAttendanceRecorder({
   childFirstName?: string;
 }) {
   const month = currentMonth();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
 
   const records = useQuery({
     queryKey: qk.attendance(childId, month),
@@ -257,6 +404,7 @@ export function TodayAttendanceRecorder({
   if (records.isError) return <ErrorState description={errorMessage(records.error)} />;
 
   const todayRecord = records.data.find((r) => r.date.slice(0, 10) === today);
+  const latestRecord = [...records.data].sort((a, b) => b.date.localeCompare(a.date))[0];
 
   return (
     <TodayRecorder
@@ -264,6 +412,7 @@ export function TodayAttendanceRecorder({
       month={month}
       today={today}
       todayRecord={todayRecord}
+      latestRecord={latestRecord}
       childFirstName={childFirstName}
     />
   );
@@ -289,16 +438,19 @@ function TodayRecorder({
   month,
   today,
   todayRecord,
+  latestRecord,
   childFirstName,
 }: {
   childId: string;
   month: string;
   today: string;
   todayRecord: AttendanceRecord | undefined;
+  latestRecord: AttendanceRecord | undefined;
   childFirstName?: string;
 }) {
   const queryClient = useQueryClient();
-  const [arrivalOpen, setArrivalOpen] = useState(todayRecord?.status === "PRESENT");
+  const [arrivalOpen, setArrivalOpen] = useState(false);
+  const [pickupOpen, setPickupOpen] = useState(false);
 
   const record = useMutation({
     mutationFn: (body: {
@@ -317,75 +469,99 @@ function TodayRecorder({
   });
 
   const currentStatus = todayRecord?.status;
-  const showArrival = arrivalOpen || currentStatus === "PRESENT";
 
   return (
-    <Card className="flex flex-col gap-4 px-4 py-4">
-      <div className="flex flex-col gap-3">
-        <p className="font-medium text-ink">Өнөөдрийн ирц</p>
-        <div role="radiogroup" aria-label="Өнөөдрийн ирц" className="flex flex-wrap gap-2">
-          {Object.entries(STATUS_LABEL).map(([status, label]) => {
-            const active = currentStatus
-              ? currentStatus === status
-              : status === "PRESENT" && arrivalOpen;
-            return (
-              <button
-                key={status}
-                type="button"
-                role="radio"
-                aria-checked={active}
-                disabled={record.isPending}
-                onClick={() => {
-                  if (status === "PRESENT") {
-                    setArrivalOpen(true);
-                    return;
-                  }
-                  setArrivalOpen(false);
-                  record.mutate({ status });
-                }}
-                className={cn(
-                  "min-h-11 rounded-control border px-3 text-body font-medium transition-colors disabled:opacity-60",
-                  active
-                    ? "border-primary bg-primary-soft text-primary"
-                    : "border-border bg-surface text-muted hover:bg-canvas hover:text-ink",
-                )}
-              >
-                {label}
-              </button>
-            );
-          })}
+    <section aria-labelledby="today-attendance-heading">
+      <Card pad="roomy" className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1">
+          <h2 id="today-attendance-heading" className="text-title font-semibold text-ink">
+            Өнөөдрийн ирц
+          </h2>
+          <p className="text-body text-muted">{todayLabel(today)}</p>
+          <p className="mt-1 flex items-start gap-2 text-body font-medium text-ink">
+            <span
+              className="mt-[7px] size-2 shrink-0 rounded-pill bg-mint-ink"
+              aria-hidden="true"
+            />
+            {eventSentence(todayRecord)}
+          </p>
         </div>
+
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Button
+            block
+            disabled={record.isPending}
+            onClick={() => {
+              setArrivalOpen((open) => !open);
+              setPickupOpen(false);
+            }}
+            className={cn(currentStatus === "PRESENT" && "bg-mint text-mint-ink hover:bg-mint/80")}
+          >
+            {currentStatus === "PRESENT" ? <Check size={17} /> : <LogIn size={17} />}
+            Ирлээ
+          </Button>
+          <Button
+            block
+            disabled={record.isPending || currentStatus !== "PRESENT"}
+            onClick={() => {
+              setPickupOpen((open) => !open);
+              setArrivalOpen(false);
+            }}
+          >
+            {todayRecord?.pickedUpWith ? <Check size={17} /> : <LogOut size={17} />}
+            Явлаа
+          </Button>
+          <Button
+            block
+            variant="secondary"
+            disabled={record.isPending}
+            onClick={() => {
+              setArrivalOpen(false);
+              setPickupOpen(false);
+              record.mutate({ status: "EXCUSED" });
+            }}
+          >
+            <FileText size={17} />
+            Чөлөөтэй
+          </Button>
+        </div>
+
         <FormError message={record.isError ? errorMessage(record.error) : null} />
-      </div>
 
-      {showArrival ? (
-        <ArrivalDetails
-          today={today}
-          childFirstName={childFirstName}
-          pending={record.isPending}
-          savedWith={currentStatus === "PRESENT" ? (todayRecord?.arrivedWith ?? null) : null}
-          savedWithName={
-            currentStatus === "PRESENT" ? (todayRecord?.arrivedWithName ?? null) : null
-          }
-          savedAt={currentStatus === "PRESENT" ? (todayRecord?.arrivedAt ?? null) : null}
-          onConfirm={(arrivedWith, arrivedWithName, arrivedAt) =>
-            record.mutate({ status: "PRESENT", arrivedWith, arrivedWithName, arrivedAt })
-          }
-        />
-      ) : null}
+        <LastRegistration record={latestRecord} />
 
-      {currentStatus === "PRESENT" ? (
-        <PickupDetails
-          childId={childId}
-          month={month}
-          today={today}
-          childFirstName={childFirstName}
-          pickedUpWith={todayRecord?.pickedUpWith ?? null}
-          pickedUpWithName={todayRecord?.pickedUpWithName ?? null}
-          pickedUpAt={todayRecord?.pickedUpAt ?? null}
-        />
-      ) : null}
-    </Card>
+        {arrivalOpen ? (
+          <ArrivalDetails
+            today={today}
+            childFirstName={childFirstName}
+            pending={record.isPending}
+            savedWith={currentStatus === "PRESENT" ? (todayRecord?.arrivedWith ?? null) : null}
+            savedWithName={
+              currentStatus === "PRESENT" ? (todayRecord?.arrivedWithName ?? null) : null
+            }
+            savedAt={currentStatus === "PRESENT" ? (todayRecord?.arrivedAt ?? null) : null}
+            onConfirm={(arrivedWith, arrivedWithName, arrivedAt) =>
+              record.mutate(
+                { status: "PRESENT", arrivedWith, arrivedWithName, arrivedAt },
+                { onSuccess: () => setArrivalOpen(false) },
+              )
+            }
+          />
+        ) : null}
+
+        {pickupOpen && currentStatus === "PRESENT" ? (
+          <PickupDetails
+            childId={childId}
+            month={month}
+            today={today}
+            childFirstName={childFirstName}
+            pickedUpWith={todayRecord?.pickedUpWith ?? null}
+            pickedUpWithName={todayRecord?.pickedUpWithName ?? null}
+            pickedUpAt={todayRecord?.pickedUpAt ?? null}
+          />
+        ) : null}
+      </Card>
+    </section>
   );
 }
 
@@ -669,7 +845,9 @@ function ReportAttendanceDialog({
   const [open, setOpen] = useState(false);
   return (
     <>
-      <span onClick={() => setOpen(true)}>{trigger}</span>
+      <span className="block" onClick={() => setOpen(true)}>
+        {trigger}
+      </span>
       {open ? (
         <ReportAttendanceModal childId={childId} mode={mode} onClose={() => setOpen(false)} />
       ) : null}
@@ -687,7 +865,7 @@ function ReportAttendanceModal({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const [companion, setCompanion] = useState<string>("MOTHER");
   const [name, setName] = useState("");
   const [time, setTime] = useState(nowTime());
@@ -831,7 +1009,9 @@ function RequestLeaveDialog({ childId, trigger }: { childId: string; trigger: Re
   const [open, setOpen] = useState(false);
   return (
     <>
-      <span onClick={() => setOpen(true)}>{trigger}</span>
+      <span className="block" onClick={() => setOpen(true)}>
+        {trigger}
+      </span>
       {open ? <RequestDialog childId={childId} onClose={() => setOpen(false)} /> : null}
     </>
   );
@@ -839,18 +1019,31 @@ function RequestLeaveDialog({ childId, trigger }: { childId: string; trigger: Re
 
 function RequestDialog({ childId, onClose }: { childId: string; onClose: () => void }) {
   const queryClient = useQueryClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
+  const attachmentId = useId();
+  const attachmentRef = useRef<HTMLInputElement>(null);
   const [dateFrom, setDateFrom] = useState(today);
   const [dateTo, setDateTo] = useState(today);
   const [requestedStatus, setRequestedStatus] = useState<"EXCUSED" | "SICK">("EXCUSED");
   const [reason, setReason] = useState("");
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const invalidRange = dateFrom > dateTo;
 
   const create = useMutation({
-    mutationFn: () =>
-      mutate(`/children/${childId}/attendance-requests`, attendanceRequestSchema, {
+    mutationFn: () => {
+      const form = new FormData();
+      form.append("dateFrom", dateFrom);
+      form.append("dateTo", dateTo);
+      form.append("requestedStatus", requestedStatus);
+      if (reason.trim()) form.append("reason", reason.trim());
+      if (attachment) form.append("attachment", attachment);
+
+      return mutate(`/children/${childId}/attendance-requests`, attendanceRequestSchema, {
         method: "POST",
-        body: { dateFrom, dateTo, requestedStatus, reason: reason.trim() || null },
-      }),
+        body: form,
+      });
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.attendanceRequests(childId) });
       onClose();
@@ -877,30 +1070,54 @@ function RequestDialog({ childId, onClose }: { childId: string; onClose: () => v
       aria-label="Чөлөөний хүсэлт"
       className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4"
     >
-      <div className="w-full max-w-[480px] rounded-card border border-border bg-surface p-5">
+      <div className="w-full max-w-[540px] rounded-card border border-border bg-surface p-5 shadow-lg">
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (!create.isPending) create.mutate();
+            if (!create.isPending && !invalidRange && !attachmentError) create.mutate();
           }}
           className="flex flex-col gap-4"
           noValidate
         >
-          <div>
-            <h2 className="text-title font-semibold text-ink">Чөлөөний хүсэлт</h2>
-            <p className="mt-0.5 text-body text-muted">
-              Багш хүсэлтийг хүлээн авсны дараа ирцэд бүртгэгдэнэ.
-            </p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-title font-semibold text-ink">Чөлөөний хүсэлт</h2>
+              <p className="mt-0.5 text-body text-muted">
+                Өвчтэй эсвэл чөлөөтэй байх хугацааг багшид мэдэгдэнэ.
+              </p>
+            </div>
+            <Button type="button" size="icon" variant="ghost" onClick={onClose} aria-label="Хаах">
+              <X size={18} />
+            </Button>
           </div>
 
           <FormError message={create.isError ? errorMessage(create.error) : null} />
 
+          <Field label="Чөлөөний төрөл" required>
+            {({ id, describedBy }) => (
+              <Select
+                id={id}
+                aria-describedby={describedBy}
+                value={requestedStatus}
+                onChange={(event) => setRequestedStatus(event.target.value as "EXCUSED" | "SICK")}
+              >
+                <option value="EXCUSED">Чөлөөтэй</option>
+                <option value="SICK">Өвчтэй</option>
+              </Select>
+            )}
+          </Field>
+
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Эхлэх огноо" required>
-              {({ id, describedBy }) => (
+            <Field
+              label="Эхлэх огноо"
+              error={invalidRange ? "Огнооны дарааллыг шалгана уу" : null}
+              required
+            >
+              {({ id, describedBy, invalid }) => (
                 <Input
                   id={id}
                   aria-describedby={describedBy}
+                  invalid={invalid}
                   type="date"
                   required
                   value={dateFrom}
@@ -922,42 +1139,88 @@ function RequestDialog({ childId, onClose }: { childId: string; onClose: () => v
             </Field>
           </div>
 
-          <fieldset className="flex flex-col gap-2">
-            <legend className="text-body font-medium text-ink">Төрөл</legend>
-            <div className="flex gap-2">
-              {(["EXCUSED", "SICK"] as const).map((status) => (
-                <button
-                  key={status}
-                  type="button"
-                  role="radio"
-                  aria-checked={requestedStatus === status}
-                  onClick={() => setRequestedStatus(status)}
-                  className={cn(
-                    "min-h-11 rounded-control border px-3 text-body font-medium transition-colors",
-                    requestedStatus === status
-                      ? "border-primary bg-primary text-primary-ink"
-                      : "border-border bg-surface text-muted hover:bg-canvas hover:text-ink",
-                  )}
-                >
-                  {STATUS_LABEL[status]}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-
-          <Field label="Тайлбар" hint="Заавал биш.">
+          <Field label="Тайлбар" hint="Шалтгаан болон багшид дамжуулах нэмэлт мэдээллээ бичнэ үү.">
             {({ id, describedBy }) => (
               <Textarea
                 id={id}
                 aria-describedby={describedBy}
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
+                placeholder="Тайлбар оруулах"
+                maxLength={2000}
               />
             )}
           </Field>
 
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={attachmentId} className="text-body font-medium text-ink">
+              Эмчийн бичиг хавсаргах
+            </label>
+            <input
+              ref={attachmentRef}
+              id={attachmentId}
+              type="file"
+              accept="application/pdf,image/jpeg,image/png"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0] ?? null;
+                setAttachmentError(null);
+                if (!file) {
+                  setAttachment(null);
+                  return;
+                }
+                if (!["application/pdf", "image/jpeg", "image/png"].includes(file.type)) {
+                  setAttachment(null);
+                  setAttachmentError("Зөвхөн PDF, JPG, PNG файл хавсаргана уу.");
+                  return;
+                }
+                if (file.size > 25 * 1024 * 1024) {
+                  setAttachment(null);
+                  setAttachmentError("Файлын хэмжээ 25 MB-аас их байж болохгүй.");
+                  return;
+                }
+                setAttachment(file);
+              }}
+            />
+            <label
+              htmlFor={attachmentId}
+              className="flex min-h-20 cursor-pointer items-center gap-3 rounded-control border border-dashed border-faint bg-sunken px-4 py-3 text-body transition-colors hover:border-primary hover:bg-primary-soft"
+            >
+              <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-sky text-primary">
+                <Paperclip size={18} aria-hidden="true" />
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate font-medium text-ink">
+                  {attachment?.name ?? "Файл сонгох"}
+                </span>
+                <span className="block text-caption text-muted">PDF, JPG, PNG · 25 MB хүртэл</span>
+              </span>
+            </label>
+            {attachment ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setAttachment(null);
+                  setAttachmentError(null);
+                  if (attachmentRef.current) attachmentRef.current.value = "";
+                }}
+                className="self-start text-caption font-medium text-primary hover:underline"
+              >
+                Хавсралтыг арилгах
+              </button>
+            ) : null}
+            {attachmentError ? (
+              <p role="alert" className="text-caption font-medium text-danger">
+                {attachmentError}
+              </p>
+            ) : null}
+          </div>
+
           <div className="flex flex-wrap gap-2 border-t border-border pt-4">
-            <Button type="submit" disabled={create.isPending}>
+            <Button
+              type="submit"
+              disabled={create.isPending || invalidRange || Boolean(attachmentError)}
+            >
               {create.isPending ? "Илгээж байна…" : "Хүсэлт илгээх"}
             </Button>
             <Button type="button" variant="ghost" onClick={onClose} disabled={create.isPending}>

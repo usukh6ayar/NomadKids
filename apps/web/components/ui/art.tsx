@@ -54,16 +54,22 @@ import Image from "next/image";
  *
  * The thirteen below are already two styles: twelve carry their own tinted
  * rounded square (`kindergarten`, `attendance`, `menu`, `notice`,
- * `portfolio`, `progress`, `child`, `teacher`,
+ * `portfolio`, `progress`, `survey`, `finance`, `child`, `teacher`,
  * `register`, `report`) and `analytics` is a bare cut-out. Side by side in
  * one grid the two read as different sizes, because one has a chip's worth of
  * padding baked in and the other does not. Anything added should match the
  * family it will sit beside rather than the set as a whole.
+ *
+ * ★★★★★ `survey` and `finance` were dropped when the parent home's tile grid
+ * went away and came back with it. They are the only two the grid needs that
+ * nothing else on the product draws, so they left and returned together — see
+ * `ui/quick-tile.tsx` for the grid itself.
  */
 const SOURCE = {
   analytics: "/icons/icon-analytics.png",
   attendance: "/icons/icon-attendance.png",
   child: "/icons/icon-child.png",
+  finance: "/icons/icon-finance.png",
   kindergarten: "/icons/icon-kindergarten.png",
   menu: "/icons/icon-menu.png",
   notice: "/icons/icon-notice.png",
@@ -71,6 +77,7 @@ const SOURCE = {
   progress: "/icons/icon-progress.png",
   register: "/icons/icon-register.png",
   report: "/icons/icon-report.png",
+  survey: "/icons/icon-survey.png",
   teacher: "/icons/icon-teacher.png",
 } as const;
 

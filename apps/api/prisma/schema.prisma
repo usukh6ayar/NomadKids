@@ -245,6 +245,9 @@ enum MediaPurpose {
   /// material, not child data, so membership authorises them.
   DOCUMENT
   DOCUMENT_COVER
+  /// A PDF or image supplied with a guardian's leave request. It is child data,
+  /// not an album photograph, and therefore never appears in the gallery.
+  ATTENDANCE_ATTACHMENT
   /// A photograph on a safety incident — RFP Module 2.1. Child data carrying
   /// `childId`, so `canAccessChild` governs it like an album photo.
   INCIDENT
@@ -575,70 +578,70 @@ model Kindergarten {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  logo                  MediaFile?                @relation("KindergartenLogo", fields: [logoMediaFileId], references: [id], onDelete: SetNull)
-  memberships           Membership[]
-  schoolYears           SchoolYear[]
-  groups                Group[]
-  groupTeachers         GroupTeacher[]
-  children              Child[]
-  guardianships         Guardianship[]
-  enrollments           Enrollment[]
-  childProfiles         ChildProfile[]
-  childAgeProfiles      ChildAgeProfile[]
-  birthdayNotes         BirthdayNote[]
-  developmentDomains    DevelopmentDomain[]
-  assessmentLevels      AssessmentLevel[]
-  observationTypes      ObservationType[]
-  terms                 Term[]
-  observations          Observation[]
-  observationDomains    ObservationDomain[]
-  assessments           Assessment[]
-  termReports           TermReport[]
-  mediaFiles            MediaFile[]
-  notifications         Notification[]
-  notificationTargets   NotificationTarget[]
-  notificationReactions NotificationReaction[]
-  reportJobs            ReportJob[]
-  auditLogs             AuditLog[]
-  attendanceRecords     Attendance[]
-  attendanceSubmissions AttendanceSubmission[]
-  attendanceRequests    AttendanceRequest[]
-  menuDays              MenuDay[]
-  surveys               Survey[]
-  surveyQuestions       SurveyQuestion[]
-  surveyResponses       SurveyResponse[]
-  surveyAnswers         SurveyAnswer[]
-  growthMeasurements    GrowthMeasurement[]
-  milestones            Milestone[]
-  allergies             AllergyRecord[]
+  logo                   MediaFile?                @relation("KindergartenLogo", fields: [logoMediaFileId], references: [id], onDelete: SetNull)
+  memberships            Membership[]
+  schoolYears            SchoolYear[]
+  groups                 Group[]
+  groupTeachers          GroupTeacher[]
+  children               Child[]
+  guardianships          Guardianship[]
+  enrollments            Enrollment[]
+  childProfiles          ChildProfile[]
+  childAgeProfiles       ChildAgeProfile[]
+  birthdayNotes          BirthdayNote[]
+  developmentDomains     DevelopmentDomain[]
+  assessmentLevels       AssessmentLevel[]
+  observationTypes       ObservationType[]
+  terms                  Term[]
+  observations           Observation[]
+  observationDomains     ObservationDomain[]
+  assessments            Assessment[]
+  termReports            TermReport[]
+  mediaFiles             MediaFile[]
+  notifications          Notification[]
+  notificationTargets    NotificationTarget[]
+  notificationReactions  NotificationReaction[]
+  reportJobs             ReportJob[]
+  auditLogs              AuditLog[]
+  attendanceRecords      Attendance[]
+  attendanceSubmissions  AttendanceSubmission[]
+  attendanceRequests     AttendanceRequest[]
+  menuDays               MenuDay[]
+  surveys                Survey[]
+  surveyQuestions        SurveyQuestion[]
+  surveyResponses        SurveyResponse[]
+  surveyAnswers          SurveyAnswer[]
+  growthMeasurements     GrowthMeasurement[]
+  milestones             Milestone[]
+  allergies              AllergyRecord[]
   specialNeedsCategories SpecialNeedsCategory[]
-  specialNeeds          SpecialNeedRecord[]
-  staffRecords          StaffRecord[]
-  medications           MedicationAuthorisation[]
-  vaccinations          VaccinationRecord[]
-  safetyIncidents       SafetyIncident[]
-  artworkComparisons    ArtworkComparison[]
-  documents             Document[]
-  documentBookmarks     DocumentBookmark[]
-  consents              ConsentRecord[]
-  mealRecords           MealRecord[]
-  ingredients           Ingredient[]
-  recipes               Recipe[]
-  suppliers             Supplier[]
-  foodOrders            FoodOrder[]
-  stockMovements        StockMovement[]
-  mealServings          MealServing[]
-  fundingRules          FundingRule[]
-  fundingCalculations   FundingCalculation[]
-  invoices              Invoice[]
-  payments              Payment[]
-  qpayInvoices          QpayInvoice[]
-  accessSubscriptions   AccessSubscription[]
-  applications          KindergartenApplication[]
-  contracts             Contract[]
-  chatMessages          ChatMessage[]
-  chatReads             ChatRead[]
-  esisSyncRuns          EsisSyncRun[]
+  specialNeeds           SpecialNeedRecord[]
+  staffRecords           StaffRecord[]
+  medications            MedicationAuthorisation[]
+  vaccinations           VaccinationRecord[]
+  safetyIncidents        SafetyIncident[]
+  artworkComparisons     ArtworkComparison[]
+  documents              Document[]
+  documentBookmarks      DocumentBookmark[]
+  consents               ConsentRecord[]
+  mealRecords            MealRecord[]
+  ingredients            Ingredient[]
+  recipes                Recipe[]
+  suppliers              Supplier[]
+  foodOrders             FoodOrder[]
+  stockMovements         StockMovement[]
+  mealServings           MealServing[]
+  fundingRules           FundingRule[]
+  fundingCalculations    FundingCalculation[]
+  invoices               Invoice[]
+  payments               Payment[]
+  qpayInvoices           QpayInvoice[]
+  accessSubscriptions    AccessSubscription[]
+  applications           KindergartenApplication[]
+  contracts              Contract[]
+  chatMessages           ChatMessage[]
+  chatReads              ChatRead[]
+  esisSyncRuns           EsisSyncRun[]
 
   @@index([deletedAt])
   @@map("kindergartens")
@@ -985,12 +988,29 @@ model ChildAgeProfile {
   favoriteSong     String?
   favoriteStory    String?
   favoriteActivity String?
+  favoriteClothes  String?
+  favoriteMovie    String?
+  favoriteTreat    String?
 
   personality      String?
   emotionalTraits  String?
   familyMembers    String?
+  dream            String?
   learningInterest String?
   newSkills        String?
+
+  /// Structured parent observations added without replacing the legacy text
+  /// columns above. Keeping both preserves every existing age-profile row.
+  kindergartenSkills     String[] @default([])
+  kindergartenSkillNotes Json     @default("{}")
+  kindergartenOtherSkill String?
+  familyLearningSkills   String[] @default([])
+  familyLearningNotes    Json     @default("{}")
+  familyLearningOther    String?
+  characterTraits        String[] @default([])
+  characterObservation   String?
+  familyMemberTypes      String[] @default([])
+  familyDescription      String?
 
   parentNote  String?
   teacherNote String?
@@ -1295,11 +1315,11 @@ model StaffRecord {
 
   /// The post, the certificate's name, the degree. Required — a record with no
   /// title is a row nobody can read back.
-  title String
+  title      String
   /// Where it came from: the employer for EXPERIENCE, the awarding body
   /// otherwise. Free text, because the state keeps no register we can validate
   /// against.
-  issuer String?
+  issuer     String?
   /// Гэрчилгээний дугаар, дипломын дугаар.
   documentNo String?
   note       String?
@@ -2604,6 +2624,10 @@ model AttendanceRequest {
   reviewedById     String?              @db.Uuid
   reviewedAt       DateTime?
 
+  /// Optional doctor's note or supporting image supplied with this request.
+  /// The bytes stay private and are served through the ordinary media guard.
+  attachment MediaFile? @relation("AttendanceRequestAttachment")
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -3321,21 +3345,24 @@ model TermReport {
 /// filename lives only in `originalName`, for display, and is never used to
 /// build a URL. docs/SECURITY.md §7.
 model MediaFile {
-  id             String  @id @default(uuid()) @db.Uuid
-  kindergartenId String  @db.Uuid
+  id                  String  @id @default(uuid()) @db.Uuid
+  kindergartenId      String  @db.Uuid
   /// The authorization anchor. NULL only for kindergarten-level outputs.
-  childId        String? @db.Uuid
-  observationId  String? @db.Uuid
+  childId             String? @db.Uuid
+  observationId       String? @db.Uuid
   /// Set for `NOTIFICATION` media. Mutually exclusive with `childId` in
   /// practice: a class announcement is addressed to a group, not a child.
-  notificationId String? @db.Uuid
+  notificationId      String? @db.Uuid
   /// Set for `MILESTONE` media — RFP §4.5's "Зураг". Carries `childId` too, so
   /// the ordinary child-media authorization applies without a special case.
-  milestoneId    String? @db.Uuid
+  milestoneId         String? @db.Uuid
   /// Set for `INCIDENT` media — Module 2.1's "фото зураг хавсаргах". Also
   /// carries `childId`, so the ordinary child-media authorization applies.
-  incidentId     String? @db.Uuid
-  order          Int     @default(0)
+  incidentId          String? @db.Uuid
+  /// Set only for `ATTENDANCE_ATTACHMENT`; unique because one leave request
+  /// accepts one supporting document.
+  attendanceRequestId String? @unique @db.Uuid
+  order               Int     @default(0)
 
   purpose MediaPurpose
 
@@ -3376,6 +3403,11 @@ model MediaFile {
   /// the existing values become seed rows in a new table.
   category String?
 
+  /// This photograph is the cover of this age's album. Null for ordinary
+  /// photographs. The compound unique constraint allows many NULL rows while
+  /// guaranteeing only one selected cover for a child and age.
+  albumCoverAge Int? @db.SmallInt
+
   /// Whose photograph this is, for display. See `MediaAttribution`.
   attribution MediaAttribution?
 
@@ -3398,6 +3430,7 @@ model MediaFile {
   notification       Notification?       @relation("NotificationMedia", fields: [notificationId], references: [id], onDelete: Cascade)
   milestone          Milestone?          @relation("MilestoneMedia", fields: [milestoneId], references: [id], onDelete: Cascade)
   incident           SafetyIncident?     @relation("IncidentMedia", fields: [incidentId], references: [id], onDelete: Cascade)
+  attendanceRequest  AttendanceRequest?  @relation("AttendanceRequestAttachment", fields: [attendanceRequestId], references: [id], onDelete: Cascade)
   uploadedBy         User?               @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
   childPhotoOf       Child?              @relation("ChildPhoto")
   comparisonEarlier  ArtworkComparison[] @relation("ComparisonEarlier")
@@ -3410,6 +3443,7 @@ model MediaFile {
   groupPhotoOf       Group?              @relation("GroupPhoto")
   contractPdf        Contract?           @relation("ContractPdf")
 
+  @@unique([childId, albumCoverAge])
   @@index([childId, purpose, uploadedAt(sort: Desc)])
   @@index([kindergartenId, uploadedAt(sort: Desc)])
   @@index([observationId, order])

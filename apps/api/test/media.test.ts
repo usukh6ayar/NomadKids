@@ -108,6 +108,95 @@ async function teacherObservation(visibleToParents: boolean) {
   return res.body.id as string;
 }
 
+async function albumPhoto(category: string, age = 5) {
+  return db.mediaFile.create({
+    data: {
+      kindergartenId: a.kindergarten.id,
+      childId: a.child.id,
+      purpose: "CHILD_PHOTO",
+      storageKey: `children/${uniq("album")}`,
+      originalName: "album.jpg",
+      mimeType: "image/jpeg",
+      sizeBytes: 24,
+      status: "READY",
+      category,
+      age,
+      attribution: "TEACHER",
+      uploadedById: a.teacherUser.id,
+    },
+  });
+}
+
+describe("age photo albums", () => {
+  it("returns all twelve categories with real counts and thumbnails", async () => {
+    const portrait = await albumPhoto("PORTRAIT");
+    await albumPhoto("PORTRAIT");
+    const family = await albumPhoto("FAMILY");
+
+    const res = await request(server())
+      .get(`/v1/children/${a.child.id}/media/album-summary?age=5`)
+      .set("Cookie", parentA.cookies);
+
+    expect(res.status).toBe(200);
+    expect(res.body.categories).toHaveLength(12);
+    expect(
+      res.body.categories.find((item: { category: string }) => item.category === "PORTRAIT"),
+    ).toMatchObject({ count: 2 });
+    expect(
+      res.body.categories.find((item: { category: string }) => item.category === "FAMILY"),
+    ).toMatchObject({ count: 1, thumbnailMediaId: family.id });
+    expect(
+      res.body.categories.find((item: { category: string }) => item.category === "OTHER"),
+    ).toMatchObject({ count: 0, thumbnailMediaId: null });
+    expect([portrait.id, family.id]).not.toContain(res.body.coverMediaFileId);
+  });
+
+  it("lets a guardian choose any photo from the age as its cover", async () => {
+    const first = await albumPhoto("PORTRAIT");
+    const next = await albumPhoto("FAMILY");
+
+    const select = (mediaId: string) =>
+      authed(request(server()).post(`/v1/children/${a.child.id}/media/age-cover`), parentA).send({
+        mediaId,
+        age: 5,
+      });
+
+    expect((await select(first.id)).status).toBe(201);
+    expect((await select(next.id)).status).toBe(201);
+
+    const rows = await db.mediaFile.findMany({
+      where: { childId: a.child.id, albumCoverAge: 5 },
+      select: { id: true },
+    });
+    expect(rows).toEqual([{ id: next.id }]);
+  });
+
+  it("refuses a photo from another age as the cover", async () => {
+    const portraitAtFour = await albumPhoto("PORTRAIT", 4);
+
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/media/age-cover`),
+      parentA,
+    ).send({ mediaId: portraitAtFour.id, age: 5 });
+    expect(res.status).toBe(404);
+  });
+
+  it("filters teacher photos and can force an attachment download", async () => {
+    const photo = await albumPhoto("FAMILY");
+    const list = await request(server())
+      .get(`/v1/children/${a.child.id}/media?attribution=TEACHER`)
+      .set("Cookie", parentA.cookies);
+    expect(list.status).toBe(200);
+    expect(list.body.items.map((item: { id: string }) => item.id)).toContain(photo.id);
+
+    const download = await request(server())
+      .get(`/v1/media/${photo.id}?download=1`)
+      .set("Cookie", parentA.cookies);
+    expect(download.status).toBe(302);
+    expect(decodeURIComponent(download.headers.location as string)).toContain("attachment;");
+  });
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Upload
 // ═══════════════════════════════════════════════════════════════════════════

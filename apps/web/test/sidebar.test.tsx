@@ -65,13 +65,14 @@ function renderShell(
    * Testing that needs a roster with no groups in it.
    */
   groups: unknown = GROUPS,
+  unreadCount = 0,
 ) {
   setPathname(pathname);
   stubApi([
     { path: "/auth/me", body: sessionFor(roles) },
     { path: "/groups", body: groups },
     { path: "/children/mine", body: ownChildren },
-    { path: "/notifications/unread-count", body: { count: 0 } },
+    { path: "/notifications/unread-count", body: { count: unreadCount } },
   ]);
 
   return renderWithProviders(
@@ -452,27 +453,43 @@ describe("role-based navigation", () => {
     expect(within(nav).queryByText("удахгүй")).not.toBeInTheDocument();
   });
 
-  /**
-   * ★ A parent's menu names every tab of their child's file.
-   *
-   * Ирц, Хоол and Судалгаа are routes a parent opens constantly and had no
-   * name in this menu — reachable only by landing on the child's page and
-   * finding the tab there.
-   */
-  it("names the child's tabs a parent actually opens", async () => {
-    renderShell(["PARENT"], "/home", [OWN_CHILD]);
+  it("renders the guardian-only reference menu and unread badge", async () => {
+    renderShell(["PARENT"], "/home", [OWN_CHILD], GROUPS, 3);
     const nav = await sidebar();
 
-    await waitFor(() =>
-      expect(within(nav).getByRole("link", { name: /Батмөнх/ })).toBeInTheDocument(),
+    expect(await within(nav).findByRole("combobox", { name: "Хүүхэд сонгох" })).toHaveValue(
+      OWN_CHILD.id,
     );
+    expect(within(nav).getAllByText("Батмөнх Тэмүүлэн").length).toBeGreaterThan(0);
 
-    for (const label of ["Ажиглалт", "Ирц", "Хоол", "Судалгаа"]) {
-      expect(
-        within(nav).queryByRole("link", { name: label }),
-        `${label} is missing from the parent menu`,
-      ).toBeInTheDocument();
+    for (const label of [
+      "Нүүр",
+      "Хүүхдийн мэдээлэл",
+      "Цэцэрлэгийн мэдээлэл",
+      "Мэдээ",
+      "Багштай холбогдох",
+      "Үйлчилгээний эрх",
+      "Миний гэрээ",
+      "Гарын авлага",
+      "Түгээмэл асуулт",
+      "Холбоо барих",
+      "Үйлчилгээний нөхцөл",
+      "Нууцлалын бодлого",
+    ]) {
+      expect(within(nav).getByText(label), `${label} is missing`).toBeInTheDocument();
     }
+
+    expect(within(nav).getByText("3")).toBeInTheDocument();
+    expect(within(nav).getByText("Жилийн")).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Нүүр" })).toHaveAttribute("aria-current", "page");
+    expect(within(nav).getByRole("link", { name: "Хүүхдийн мэдээлэл" })).toHaveAttribute(
+      "href",
+      `/children/${OWN_CHILD.id}/general`,
+    );
+    expect(within(nav).getByRole("link", { name: "Багштай холбогдох" })).toHaveAttribute(
+      "href",
+      "/chat",
+    );
   });
 });
 
@@ -509,11 +526,12 @@ describe("the sidebar footer", () => {
     expect(within(nav).queryByText("Дэлбээ бүлэг")).not.toBeInTheDocument();
   });
 
-  it("names a parent by role", async () => {
-    renderShell(["PARENT"], "/home");
+  it("gives a parent the full-width sign-out action from the reference", async () => {
+    renderShell(["PARENT"], "/home", [OWN_CHILD]);
     const nav = await sidebar();
 
-    expect(within(nav).getByText("Эцэг эх")).toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: "Системээс гарах" })).toBeInTheDocument();
+    expect(within(nav).queryByText("Эцэг эх")).not.toBeInTheDocument();
   });
 
   it("keeps settings and the way out reachable", async () => {

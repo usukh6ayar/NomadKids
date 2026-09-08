@@ -285,7 +285,12 @@ export const enrollmentArchiveTeacherSchema = z.object({
 
 export const enrollmentArchiveSchema = z.object({
   /** For the hero — saves the page a second `/children/:id` fetch. */
-  child: z.object({ id: uuidSchema, firstName: z.string(), lastName: z.string() }),
+  child: z.object({
+    id: uuidSchema,
+    firstName: z.string(),
+    lastName: z.string(),
+    dateOfBirth: z.string().nullable().optional(),
+  }),
   current: z
     .object({
       id: uuidSchema,
@@ -745,6 +750,14 @@ export const attendanceRequestSchema = z.object({
   pickedUpWith: attendanceCompanionSchema.nullish(),
   pickedUpWithName: z.string().nullish(),
   pickedUpAt: z.string().nullish(),
+  attachment: z
+    .object({
+      id: uuidSchema,
+      originalName: z.string(),
+      mimeType: z.string(),
+      sizeBytes: z.number(),
+    })
+    .nullish(),
 });
 export type AttendanceRequest = z.infer<typeof attendanceRequestSchema>;
 
@@ -1278,11 +1291,25 @@ export const ageProfileSchema = z.object({
   favoriteSong: z.string().nullish(),
   favoriteStory: z.string().nullish(),
   favoriteActivity: z.string().nullish(),
+  favoriteClothes: z.string().nullish(),
+  favoriteMovie: z.string().nullish(),
+  favoriteTreat: z.string().nullish(),
   personality: z.string().nullish(),
   emotionalTraits: z.string().nullish(),
   familyMembers: z.string().nullish(),
+  dream: z.string().nullish(),
   learningInterest: z.string().nullish(),
   newSkills: z.string().nullish(),
+  kindergartenSkills: z.array(z.string()).default([]),
+  kindergartenSkillNotes: z.record(z.string(), z.string()).default({}),
+  kindergartenOtherSkill: z.string().nullish(),
+  familyLearningSkills: z.array(z.string()).default([]),
+  familyLearningNotes: z.record(z.string(), z.string()).default({}),
+  familyLearningOther: z.string().nullish(),
+  characterTraits: z.array(z.string()).default([]),
+  characterObservation: z.string().nullish(),
+  familyMemberTypes: z.array(z.string()).default([]),
+  familyDescription: z.string().nullish(),
   parentNote: z.string().nullish(),
   teacherNote: z.string().nullish(),
 });
@@ -1894,6 +1921,11 @@ export type Milestone = z.infer<typeof milestoneSchema>;
 export const growthPointSchema = z.object({
   id: uuidSchema,
   measuredOn: z.string(),
+  /**
+   * Completed calendar months at measurement time — the chart's precise age
+   * axis. Optional while older API processes are still serving `ageYears` only.
+   */
+  ageMonths: z.number().int().nonnegative().optional(),
   ageYears: z.number(),
   heightCm: z.number().nullish(),
   weightKg: z.number().nullish(),
@@ -2068,12 +2100,62 @@ export const MEDIA_ATTRIBUTION_LABEL: Record<string, string> = {
  * the client asks for administrator-editable categories these values become the
  * seed rows of a new table. See the note on `MediaFile.category`.
  */
+/**
+ * The twelve parent-facing albums inside one age's photo library.
+ *
+ * Kept separate from `MEDIA_CATEGORIES`: the latter also contains workflow
+ * categories (artwork, observation activity, first day and graduation) used
+ * by older screens. The age-album grid must stay exactly twelve cards even as
+ * those internal categories evolve.
+ */
+export const AGE_ALBUM_CATEGORIES = [
+  "PORTRAIT",
+  "FAMILY",
+  "TRAVEL",
+  "KINDERGARTEN",
+  "FRIENDS",
+  "ACHIEVEMENT",
+  "NEW_YEAR",
+  "TSAGAAN_SAR",
+  "GOLDEN_AUTUMN",
+  "CELEBRATION",
+  "BIRTHDAY",
+  "OTHER",
+] as const;
+
+export const AGE_ALBUM_CATEGORY_LABEL: Record<(typeof AGE_ALBUM_CATEGORIES)[number], string> = {
+  PORTRAIT: "Цээж зураг",
+  FAMILY: "Миний гэр бүл",
+  TRAVEL: "Аялал, зугаалга",
+  KINDERGARTEN: "Би цэцэрлэгтээ",
+  FRIENDS: "Миний найзууд",
+  ACHIEVEMENT: "Миний амжилтууд",
+  NEW_YEAR: "Шинэ жил",
+  TSAGAAN_SAR: "Цагаан сар",
+  GOLDEN_AUTUMN: "Алтан намар",
+  CELEBRATION: "Тэмдэглэлт баяр",
+  BIRTHDAY: "Миний төрсөн өдөр",
+  OTHER: "Бусад",
+};
+
+export const ageAlbumCategorySchema = z.enum(AGE_ALBUM_CATEGORIES);
+
 export const MEDIA_CATEGORIES = [
   "ARTWORK",
   "ACTIVITY",
   "EVENT",
   "DAILY",
   "PORTRAIT",
+  "FAMILY",
+  "TRAVEL",
+  "KINDERGARTEN",
+  "FRIENDS",
+  "ACHIEVEMENT",
+  "NEW_YEAR",
+  "TSAGAAN_SAR",
+  "GOLDEN_AUTUMN",
+  "CELEBRATION",
+  "OTHER",
   /**
    * ★ RFP §4.2 asks for a "төрсөн өдрийн зураг" in the birthday section, and
    * `EVENT` cannot answer it: a query for this year's birthday photograph would
@@ -2099,8 +2181,7 @@ export const MEDIA_CATEGORY_LABEL: Record<string, string> = {
   ACTIVITY: "Үйл ажиллагаа",
   EVENT: "Баяр ёслол",
   DAILY: "Өдөр тутам",
-  PORTRAIT: "Хөрөг",
-  BIRTHDAY: "Төрсөн өдөр",
+  ...AGE_ALBUM_CATEGORY_LABEL,
   FIRST_DAY: "Цэцэрлэгийн анхны өдөр",
   GRADUATION: "Төгсөлт",
 };
@@ -2119,6 +2200,7 @@ export const mediaSchema = z.object({
   takenAt: z.string().nullish(),
   age: z.number().nullish(),
   category: z.string().nullish(),
+  albumCoverAge: z.number().nullish(),
   attribution: mediaAttributionSchema.nullish(),
   uploadedBy: personRefSchema.nullish(),
 });
@@ -2126,6 +2208,19 @@ export type Media = z.infer<typeof mediaSchema>;
 
 /** The gallery response. Every list is paginated — CLAUDE.md §3.4. */
 export const mediaListSchema = paginated(mediaSchema);
+
+export const ageAlbumSummarySchema = z.object({
+  age: z.number().int().min(2).max(5),
+  coverMediaFileId: uuidSchema.nullable(),
+  categories: z.array(
+    z.object({
+      category: ageAlbumCategorySchema,
+      count: z.number().int().nonnegative(),
+      thumbnailMediaId: uuidSchema.nullable(),
+    }),
+  ),
+});
+export type AgeAlbumSummary = z.infer<typeof ageAlbumSummarySchema>;
 
 // ── Reports ──────────────────────────────────────────────────────────────────
 

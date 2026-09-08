@@ -3,6 +3,8 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   BarChart3,
+  Baby,
+  BookOpen,
   Boxes,
   Building2,
   Carrot,
@@ -20,7 +22,6 @@ import {
   Bell,
   Menu,
   MessageCircle,
-  NotebookPen,
   CalendarDays,
   CalendarRange,
   Database,
@@ -38,7 +39,11 @@ import {
   UtensilsCrossed,
   Users,
   FileBarChart,
+  FileCheck2,
   FileSignature,
+  Headphones,
+  HelpCircle,
+  LockKeyhole,
   Wallet,
   // `X` was the picker modal's close button and went with it. The type stays:
   // `ICON_FOR` below is keyed by href and annotated with it.
@@ -56,12 +61,10 @@ import {
 } from "@/components/shell/app-shell";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
-import { ChildAvatar } from "@/components/media/media-image";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
 import { LoadingState } from "@/components/ui/states";
 import { useSession } from "@/lib/auth/session";
 import { SelectedChildProvider, useSelectedChild } from "@/lib/selected-child";
-import { fullName } from "@/lib/format";
 
 const ownChildrenSchema = z.array(childSummarySchema);
 
@@ -210,13 +213,16 @@ function AuthenticatedShell({
 
   const nav = isStaff ? staffNav(isAdmin, groupId) : parentNav(myChildren, selectedChildId);
 
-  // Below two children there is nothing to switch between — the sidebar
-  // already names the one child directly, same as before this existed.
+  const currentChildId = selectedChildId ?? myChildren?.[0]?.id;
+
+  // The parent reference keeps the selected child at the top even for a
+  // one-child family. With several children this is a real switcher; with one
+  // it remains the sidebar's visual context rather than disappearing.
   const childSwitcher: ChildSwitcher | undefined =
-    !isStaff && myChildren && myChildren.length > 1 && selectedChildId
+    !isStaff && myChildren && myChildren.length > 0 && currentChildId
       ? {
           children: myChildren,
-          selectedId: selectedChildId,
+          selectedId: currentChildId,
           onSelect: setSelectedChildId,
         }
       : undefined;
@@ -334,19 +340,6 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
   "/admin/audit": ScrollText,
   "/admin/integrations/esis": Database,
 };
-
-/**
- * One section row, taking its icon from the route it points at.
- *
- * ★ Module-level, so `staffSections` and `parentSections` cannot build a row
- * two different ways. Both menus name `/notifications` and `/settings`, and a
- * per-builder copy is how the same destination came to carry one glyph in one
- * menu and none in the other — the drift `ROUTE_ICON` exists to prevent, one
- * level up.
- */
-function entry(label: string, href: string) {
-  return { label, href, icon: routeIcon(href) };
-}
 
 /** The section-level icon for a route, or nothing if it has no destination. */
 function routeIcon(href: string | undefined) {
@@ -1021,7 +1014,7 @@ function parentNav(
   selectedChildId: string | undefined,
 ): NavItem[] {
   const activeId = selectedChildId ?? myChildren?.[0]?.id;
-  const zuragHref = activeId ? `/children/${activeId}/overview` : "/children";
+  const zuragHref = activeId ? `/children/${activeId}/portfolio/gallery` : "/children";
   const hoolHref = activeId ? `/children/${activeId}/menu` : "/children";
 
   return [
@@ -1033,162 +1026,68 @@ function parentNav(
   ];
 }
 
-/**
- * The desktop sidebar's grouped sections — parent side.
- *
- * Same shape as `staffSections` and the same rule for anything actually
- * built: every real entry is a link, duplicated here from `parentNav` for
- * the same reason the staff sidebar duplicates its own (see the comment
- * above `NavSection`) — a desktop reader sees the whole menu in one place
- * rather than a partial one that sends them hunting in the bottom bar. Each
- * duplicated entry carries the same icon `parentNav` gave its bottom-bar
- * tab, so the two surfaces read as one menu rather than two that happen to
- * agree.
- *
- * Санхүү is the one deliberate exception, named without a link. CLAUDE.md §7
- * puts finance in a later phase — it is not built, and pulling it forward was
- * not asked for here. Naming it anyway, as inert "удахгүй" text rather than a
- * link, was a specific choice for this sidebar: it is the reference's own
- * device (see `NavSection`'s doc comment), not the "eight dead links" version
- * this codebase already tried once and removed. Чат was the same kind of
- * entry and is gone entirely instead — removed on direct instruction, not a
- * decision made here.
- *
- * ★ "Хүүхдийн мэдээлэл" names the children, not the features.
- *
- * The first version of this listed "Миний хүүхдүүд" / "Ирц" / "Хоол ба цэс" as
- * three separate rows, all pointing at the same `/children` list for any
- * family that isn't exactly one child — see `parentNav`'s doc comment for why
- * that fallback existed and was then removed entirely. A parent has one or
- * two children, never a menu of features to browse; naming the children
- * directly, straight into each one's own page, is one tap to the thing a
- * parent actually wants instead of a route to a list they then pick from
- * anyway.
- *
- * ★★ Four rows for the *selected* child, not one, since the child hub was
- * deleted (2026-08-28) — it used to carry Ерөнхий and Ажиглалт as tabs on one
- * page, and without that page a desktop reader needs both named here
- * directly. `/general`'s icon is the child's own avatar, matching every
- * per-child row this menu has ever shown; Ажиглалт, Хоол and Цэцэрлэгийн
- * архив underneath it carry a plain glyph instead.
- *
- * ★★★ One child, not every child — 2026-08-28's second change the same day.
- * This mapped every one of a family's children in, which put two identical
- * "Ажиглалт" rows on the menu for any family with two — the same label twice
- * with nothing beside it to say whose. `SelectedChildProvider` (the
- * switcher `app-shell.tsx` renders above this section) is what disambiguates
- * now: one child is "current" at a time, same as `parentNav`'s "Зураг" and
- * "Хоол" tabs, and this section follows it rather than listing everyone at
- * once. "Хоол" joined the same day, mirroring `parentNav`'s own addition —
- * both surfaces name the same three destinations for the same reason.
- *
- * "Цэцэрлэгийн архив" joined later, at the client's request for a "Цэцэрлэг,
- * бүлгийн архив" screen: current placement, its teacher, and the family's
- * full enrollment history (`/children/[childId]/enrollment-archive`). It has
- * no bottom-bar tab of its own — that row is spent on `parentNav`'s four
- * destinations already — so a phone reader reaches it from the home page's
- * "Цэцэрлэг" tile (`(app)/home/page.tsx`) instead.
- */
+/** The flat guardian menu; the selected child supplies every child-scoped URL. */
 function parentSections(
   myChildren: ChildSummary[] | undefined,
   selectedChildId: string | undefined,
 ): NavSection[] {
   const selected = myChildren?.find((child) => child.id === selectedChildId) ?? myChildren?.[0];
 
-  /*
-   * ★ Seven rows for the selected child, not two.
-   *
-   * A parent's whole product *is* their child's file, and three of its tabs —
-   * Ирц, Хоол, Судалгаа — had no name anywhere in this menu even though a
-   * parent opens them constantly and each is a real route. They were reachable
-   * only by landing on the child's page first and finding the tab, which is a
-   * menu that names a third of what it leads to.
-   *
-   * The switcher above decides *which* child; these rows decide *what about
-   * them*, so they follow the selection rather than repeating per child.
-   *
-   * ★★ "Цэцэрлэгийн архив" is not the sixth any more and it still comes from
-   * `main`, not from here. It is the one row that is not about a day —
-   * placement, teacher and the family's full enrollment history — so it sits
-   * last, after the ones that are. Its icon stays `Building2`, the glyph
-   * `main` chose for it, but spelled with `sectionIconProps` like every other
-   * row in this list: the size is the same 18 either way, and this file
-   * already argues that writing the number inline is "the same number three
-   * times and no name for it".
-   *
-   * ★★★ "Төлбөр" joined 2026-09-01, once `ChildInvoicesController` and
-   * `/children/[childId]/finance` existed to point it at — see that route's
-   * own comment. It sits beside Хоол rather than after Судалгаа: both are
-   * money the family owes the kindergarten for the same reason, tuition and
-   * meals together, and a parent scanning this list reads them as one kind of
-   * thing.
-   */
-  const childEntries = selected
-    ? [
-        {
-          label: fullName(selected),
-          href: `/children/${selected.id}/general`,
-          icon: <ChildAvatar child={selected} size={24} />,
-        },
-        {
-          label: "Ажиглалт",
-          href: `/children/${selected.id}/observations`,
-          icon: <NotebookPen {...sectionIconProps} />,
-        },
-        {
-          label: "Ирц",
-          href: `/children/${selected.id}/attendance`,
-          icon: <CalendarCheck {...sectionIconProps} />,
-        },
-        {
-          label: "Хоол",
-          href: `/children/${selected.id}/menu`,
-          icon: <UtensilsCrossed {...sectionIconProps} />,
-        },
-        {
-          label: "Төлбөр",
-          href: `/children/${selected.id}/finance`,
-          icon: <Receipt {...sectionIconProps} />,
-        },
-        {
-          label: "Судалгаа",
-          href: `/children/${selected.id}/surveys`,
-          icon: <BarChart3 {...sectionIconProps} />,
-        },
-        {
-          label: "Цэцэрлэгийн архив",
-          href: `/children/${selected.id}/enrollment-archive`,
-          icon: <Building2 {...sectionIconProps} />,
-        },
-      ]
-    : [{ label: "Холбогдсон хүүхэд алга" }];
+  const childBase = selected ? `/children/${selected.id}` : "/children";
 
   return [
-    { title: "Хүүхдийн мэдээлэл", entries: childEntries },
     {
-      /*
-       * ★ Чат has no row here either, for the reason `staffSections` gives:
-       * `ChatWidget` floats on every screen for every role, with its own unread
-       * badge. A menu row beside a button already on screen is a second way in
-       * for a feature that needs one.
-       */
-      title: "Харилцаа холбоо",
-      entries: [entry("Мэдээ", "/notifications")],
+      title: "Эцэг эхийн үндсэн цэс",
+      entries: [
+        {
+          label: "Хүүхдийн мэдээлэл",
+          href: selected ? `${childBase}/general` : childBase,
+          icon: <Baby {...iconProps} />,
+        },
+        {
+          label: "Цахим хувийн хавтас",
+          href: selected ? `${childBase}/portfolio` : childBase,
+          icon: <Images {...iconProps} />,
+        },
+        {
+          label: "Цэцэрлэгийн мэдээлэл",
+          href: selected ? `${childBase}/enrollment-archive` : childBase,
+          icon: <Building2 {...iconProps} />,
+        },
+        {
+          label: "Мэдээ",
+          href: "/notifications",
+          icon: <Newspaper {...iconProps} />,
+          badge: "unread",
+        },
+        {
+          label: "Багштай холбогдох",
+          href: "/chat",
+          icon: <MessageCircle {...iconProps} />,
+        },
+      ],
     },
     {
-      /*
-       * ★ The inert "Санхүү" row that used to sit here is gone for good, not
-       * merely renamed. It was label-only — the reference's device for naming
-       * a feature the build had not reached — and this file argued three
-       * times that a grey row teaches a family only that something is
-       * missing. Parent invoices are built now (`нэмэлт.md` §7–§10), so the
-       * real row lives with the rest of the selected child's own tabs above
-       * ("Төлбөр"), not here: a family's money is about a specific child, the
-       * same reason Ирц and Хоол are child rows rather than kindergarten-wide
-       * settings.
-       */
-      title: "Тохиргоо",
-      entries: [entry("Миний бүртгэл", "/settings")],
+      title: "Үйлчилгээ ба тусламж",
+      separatorBefore: true,
+      entries: [
+        {
+          label: "Үйлчилгээний эрх",
+          href: selected ? `${childBase}/finance` : childBase,
+          icon: <ShieldCheck {...iconProps} />,
+          tag: "Жилийн",
+        },
+        { label: "Миний гэрээ", icon: <FileText {...iconProps} /> },
+        { label: "Гарын авлага", icon: <BookOpen {...iconProps} /> },
+        { label: "Түгээмэл асуулт", icon: <HelpCircle {...iconProps} /> },
+        {
+          label: "Холбоо барих",
+          href: "mailto:Nomadkidsmn@gmail.com",
+          icon: <Headphones {...iconProps} />,
+        },
+        { label: "Үйлчилгээний нөхцөл", icon: <FileCheck2 {...iconProps} /> },
+        { label: "Нууцлалын бодлого", icon: <LockKeyhole {...iconProps} /> },
+      ],
     },
   ];
 }
