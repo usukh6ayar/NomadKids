@@ -220,6 +220,7 @@ export function AdminOverview() {
             href="/children"
             tone="cornflower"
             art={<Art name="child" size={36} />}
+            artSurface={false}
             trend={
               <StatTrend
                 current={counts.children}
@@ -246,7 +247,8 @@ export function AdminOverview() {
                 ? "mint"
                 : "sun"
             }
-            art={<Art name="register" size={36} />}
+            art={<Art name="attendance" size={36} />}
+            artSurface={false}
             href="/attendance/journal"
           />
           <StatCard
@@ -255,7 +257,8 @@ export function AdminOverview() {
             unit="идэвхтэй"
             href="/admin/groups"
             tone="mint"
-            art={<Art name="kindergarten" size={36} />}
+            art={<Art name="group" size={36} />}
+            artSurface={false}
           />
           <StatCard
             label="Багш, ажилтан"
@@ -264,6 +267,7 @@ export function AdminOverview() {
             href="/admin/users"
             tone="sky"
             art={<Art name="teacher" size={36} />}
+            artSurface={false}
           />
 
           {/*
@@ -468,7 +472,7 @@ function TodayDial({ today }: { today: AdminDashboard["attendanceToday"] }) {
         id="today-dial"
         title="Өнөөдрийн ирц"
         lede={formatLongDate(new Date())}
-        icon={<Art name="register" size={40} />}
+        icon={<Art name="attendance" size={40} />}
       />
 
       <Card pad="roomy" className="flex flex-wrap items-center gap-6">
@@ -618,7 +622,7 @@ function AttendanceByGroup({ groups }: { groups: AdminDashboard["attendanceByGro
         id="attendance-by-group"
         title="Бүлгүүдийн ирц"
         lede="Сүүлийн 30 хоног."
-        icon={<Art name="kindergarten" size={40} />}
+        icon={<Art name="group" size={40} />}
       />
 
       {withRows.length === 0 ? (

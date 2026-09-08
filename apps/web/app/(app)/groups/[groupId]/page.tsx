@@ -3,7 +3,6 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { CalendarCheck, ClipboardCheck, UtensilsCrossed } from "lucide-react";
 import {
   ATTENDANCE_FORM_LABEL,
   PROGRAM_KIND_LABEL,
@@ -23,6 +22,7 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
 import { formatAge, fullName } from "@/lib/format";
+import { Art } from "@/components/ui/art";
 
 const childrenSchema = paginated(childSummarySchema);
 
@@ -123,22 +123,22 @@ function GroupDetail() {
       <div className="grid gap-2.5 sm:grid-cols-3">
         <RegisterDoor
           href={`/groups/${groupId}/attendance`}
-          icon={<CalendarCheck size={20} aria-hidden />}
-          tone="bg-mint text-mint-ink"
+          icon={<Art name="attendance" size={28} className="size-7" />}
+          tone="bg-transparent"
           title="Ирц"
           hint="Өдрийн ирц бүртгэх"
         />
         <RegisterDoor
           href={`/groups/${groupId}/meals`}
-          icon={<UtensilsCrossed size={20} aria-hidden />}
-          tone="bg-sun text-sun-ink"
+          icon={<Art name="food" size={28} className="size-7" />}
+          tone="bg-transparent"
           title="Хоол"
           hint="Хоолны бүртгэл"
         />
         <RegisterDoor
           href={`/groups/${groupId}/assessment`}
-          icon={<ClipboardCheck size={20} aria-hidden />}
-          tone="bg-sky text-sky-ink"
+          icon={<Art name="progress" size={28} className="size-7" />}
+          tone="bg-transparent"
           title="Явцын үнэлгээ"
           hint="Улирлын үнэлгээ"
         />

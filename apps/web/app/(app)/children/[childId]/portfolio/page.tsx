@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { BarChart3, ChevronRight, FileText, Images, Sprout, User } from "lucide-react";
+import { ChevronRight, FileText } from "lucide-react";
 import { childDetailSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -16,8 +16,7 @@ import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { ReportDialog } from "@/components/reports/report-dialog";
 import { useSession } from "@/lib/auth/session";
 import { PORTFOLIO } from "@/lib/vocabulary";
-import { TONE_SURFACE, type Tone } from "@/components/ui/tone";
-import { cn } from "@/lib/utils";
+import { Art, type ArtName } from "@/components/ui/art";
 
 /**
  * The portfolio — RFP §4.3.
@@ -136,29 +135,30 @@ export default function PortfolioPage() {
  * from here and only one way back.
  */
 function PortfolioHubNav({ childId }: { childId: string }) {
-  const items: { href: string; label: string; tone: Tone; Icon: typeof User }[] = [
+  const items: { href: string; label: string; art: ArtName }[] = [
     {
-      href: `/children/${childId}/portfolio/about-me`,
-      label: "Миний тухай",
-      tone: "mint",
-      Icon: User,
+      href: `/children/${childId}/portfolio/growth`,
+      label: "Хөгжил",
+      art: "portfolioDevelopment",
     },
-    { href: `/children/${childId}/portfolio/growth`, label: "Хөгжил", tone: "mint", Icon: Sprout },
     // This portfolio-specific route starts with age cards and keeps the
     // portfolio breadcrumb/sidebar state active throughout the album flow.
     {
       href: `/children/${childId}/portfolio/gallery`,
       label: "Зургийн цомог",
-      tone: "sky",
-      Icon: Images,
+      art: "portfolioGallery",
+    },
+    {
+      href: `/children/${childId}/portfolio/about-me`,
+      label: "Миний тухай",
+      art: "portfolioAboutMe",
     },
     // The landing is navigation-only; details appear only after choosing the
     // comparison action or one of the four age folders.
     {
       href: `/children/${childId}/portfolio/growth/age`,
       label: "Насны харьцуулалт",
-      tone: "peach",
-      Icon: BarChart3,
+      art: "portfolioAgeComparison",
     },
   ];
 
@@ -166,18 +166,12 @@ function PortfolioHubNav({ childId }: { childId: string }) {
     ★ REDESIGN 2026-09-03 — the tiles became cards.
 
     This is the emotional centre of the family's experience and the brief asks
-    it to carry the most design care, but the row was three loose glyphs on the
-    page background with a caption under each — visually the weakest element on
-    a screen that should be the warmest. They now sit on real surfaces with the
-    product's interactive treatment, a generous 64px tinted disc, and a chevron
-    that says the tile opens something.
+    it to carry the most design care. The four owner-supplied illustrations now
+    identify the destinations directly, without a second tinted disc behind
+    their already-coloured transparent artwork. The card remains the tap target
+    and the chevron says it opens something.
 
-    The tint stays warm and restrained — the accent is the *disc*, not the card,
-    so the row reads as friendly rather than as three coloured rectangles. Card
-    surfaces stay white, which is what keeps this from tipping into the
-    "childish / game-like" register the direction explicitly rules out.
-
-    `items-stretch` on the grid so all three cards match height whatever their
+    `items-stretch` on the grid so all four cards match height whatever their
     label wraps to — "Зургийн цомог" wraps at 375px and the other two do not.
   */
   return (
@@ -192,23 +186,14 @@ function PortfolioHubNav({ childId }: { childId: string }) {
         64px disc from crowding it.
       */}
       <ul className="grid grid-cols-2 items-stretch gap-2 sm:grid-cols-4 sm:gap-3">
-        {items.map(({ href, label, tone, Icon }) => (
+        {items.map(({ href, label, art }) => (
           <li key={href} className="flex">
             <Link
               href={href}
               className="card-interactive flex w-full flex-col items-center gap-2.5 rounded-card border border-border bg-surface px-2 py-4 text-center shadow-sm sm:px-3 sm:py-5"
             >
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "flex size-16 items-center justify-center rounded-card",
-                  // `TONE_SURFACE` rather than a ternary: it knew two tones and
-                  // there are three now. Every pairing in that map is measured
-                  // at 4.5:1 or better (`ui-foundation.test.tsx`).
-                  TONE_SURFACE[tone],
-                )}
-              >
-                <Icon size={28} />
+              <span aria-hidden="true" className="flex size-16 items-center justify-center">
+                <Art name={art} size={56} className="size-14 object-contain" />
               </span>
               <span className="text-body font-semibold leading-snug text-ink">{label}</span>
               <ChevronRight size={16} aria-hidden="true" className="text-faint" />

@@ -136,7 +136,7 @@ export default function ParentHomePage() {
       {/*
         ★ A 3-column icon grid matching the parent's own mock-up: Ангийн
         самбар, Ирц, Хоол, Цэцэрлэг, Үнэлгээ, Судалгаа, Санхүү. The icon assets
-        (icon-notice.png, icon-attendance.png, …) already carry their own
+        (icon-notice-3d.png, icon-attendance-3d.png, …) already carry their own
         colour per tile, so the grid reads as varied as the reference's
         icon-square grid without inventing a new colour system for it.
         `PORTFOLIO` is not a tile here — it is the illustrated banner
@@ -176,7 +176,7 @@ export default function ParentHomePage() {
           <QuickTile
             href={`/children/${selected.id}/menu`}
             label="Хоол"
-            icon={<TileIcon name="menu" />}
+            icon={<TileIcon name="food" />}
           />
           <QuickTile
             href={`/children/${selected.id}/enrollment-archive`}

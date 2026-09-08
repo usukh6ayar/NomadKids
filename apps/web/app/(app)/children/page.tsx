@@ -5,7 +5,17 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Download, Mars, Plus, Upload, UsersRound, Venus } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronRight,
+  Download,
+  Mars,
+  Plus,
+  Search,
+  Upload,
+  Venus,
+} from "lucide-react";
+import { useEffect, useState } from "react";
 import {
   CHILD_STATUS_LABEL,
   SEX_LABEL,
@@ -32,6 +42,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import { useSelectedChild } from "@/lib/selected-child";
 import { MY_CHILDREN } from "@/lib/vocabulary";
 import { z } from "zod";
+import { Art } from "@/components/ui/art";
 
 const listSchema = paginated(childSummarySchema);
 const ownSchema = z.array(childSummarySchema);
@@ -390,7 +401,8 @@ function RosterSummary({ search, facets }: { search: string; facets: RosterFacet
           label="Нийт хүүхэд"
           value={data.total}
           unit="хүүхэд"
-          art={<UsersRound size={22} />}
+          art={<Art name="child" size={36} />}
+          artSurface={false}
           tone="sky"
           className="teacher-stat-card teacher-stat-sky col-span-2 md:col-span-1"
         />

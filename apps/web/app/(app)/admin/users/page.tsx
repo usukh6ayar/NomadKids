@@ -1,9 +1,18 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { FormError } from "@/components/ui/states";
-import { GraduationCap, UserPlus, UsersRound } from "lucide-react";
+import { useEffect, useState } from "react";
+import { z } from "zod";
+import {
+  FileBadge,
+  KeyRound,
+  Pencil,
+  ShieldPlus,
+  UserCog,
+  UserPlus,
+  UsersRound,
+  X,
+} from "lucide-react";
 import {
   ASSIGNABLE_ROLES,
   ROLE_LABEL,
@@ -24,6 +33,8 @@ import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { InvitationHandover } from "@/components/admin/invitation-handover";
+import { StaffRecordsDialog } from "@/components/admin/staff-records-dialog";
+import { Art } from "@/components/ui/art";
 
 const listSchema = paginated(adminUserSchema);
 
@@ -188,7 +199,8 @@ function AdminUsers() {
           value={overview.data?.counts.staff ?? "—"}
           unit="бүртгэл"
           tone="cornflower"
-          art={<GraduationCap size={22} aria-hidden />}
+          art={<Art name="teacher" size={36} />}
+          artSurface={false}
         />
       </section>
 

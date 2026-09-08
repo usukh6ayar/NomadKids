@@ -211,6 +211,10 @@ body:has([data-app-theme]) nav a[aria-current="page"] {
   box-shadow: 0 6px 18px color-mix(in srgb, var(--workspace-accent) 14%, transparent);
 }
 
+[data-app-theme] .teacher-page-icon > span[data-icon-surface="none"] {
+  box-shadow: none;
+}
+
 /* Shared surfaces stay quiet, while their hierarchy becomes more explicit. */
 [data-app-theme] main [data-ui="card"],
 [data-app-theme] main [data-ui="row-card"] {
@@ -285,6 +289,11 @@ body:has([data-app-theme]) a:hover [data-nav-icon],
 body:has([data-app-theme]) button:hover [data-nav-icon] {
   transform: translateY(-1px);
   box-shadow: 0 5px 14px color-mix(in srgb, var(--workspace-accent) 14%, transparent);
+}
+
+body:has([data-app-theme]) a:hover [data-nav-icon][data-icon-surface="none"],
+body:has([data-app-theme]) button:hover [data-nav-icon][data-icon-surface="none"] {
+  box-shadow: none;
 }
 
 [data-app-theme="teacher"] .teacher-dashboard-header {

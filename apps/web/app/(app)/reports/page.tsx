@@ -24,6 +24,7 @@ import {
 } from "@/lib/attendance-meta";
 import { fullName } from "@/lib/format";
 import { StatCard } from "@/components/ui/stat-card";
+import { Art } from "@/components/ui/art";
 
 /**
  * "Тайлан" — a teacher's own group, a month at a time.
@@ -215,7 +216,8 @@ function MonthReport({ data }: { data: GroupAttendanceSummary }) {
           label="Бүлгийн хүүхэд"
           value={data.roster}
           unit="хүүхэд"
-          art={<UsersRound size={22} />}
+          art={<Art name="group" size={36} />}
+          artSurface={false}
           tone="peach"
           className="teacher-stat-card teacher-stat-peach"
         />
