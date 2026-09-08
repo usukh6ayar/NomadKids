@@ -63,8 +63,7 @@ export function TodayMenu() {
       {/*
         ★ The section carries the drawing, not each dish.
 
-        `icon-menu.png` is the only food illustration the product owns, and
-        `/home` already uses it for the parent's menu tile — so it identifies
+        The shared food artwork also appears on the parent's menu tile, so it identifies
         the feature on both sides of the product. Repeating it on every dish
         card was the first attempt and it was wrong twice over: three copies of
         one picture says nothing about three different dishes, and §13's own

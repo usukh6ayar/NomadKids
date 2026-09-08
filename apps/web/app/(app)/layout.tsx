@@ -264,6 +264,7 @@ const iconProps = { size: 20, strokeWidth: 2, "aria-hidden": true } as const;
 const sectionIconProps = { size: 18, strokeWidth: 2, "aria-hidden": true } as const;
 
 const ROUTE_ART: Partial<Record<string, ArtName>> = {
+  "/dashboard": "dashboard",
   "/children": "child",
   "/attendance-requests/review": "attendance",
   "/attendance/daily": "attendance",
@@ -271,6 +272,11 @@ const ROUTE_ART: Partial<Record<string, ArtName>> = {
   "/kitchen/attendance": "attendance",
   "/notifications": "notice",
   "/surveys": "survey",
+  "/chat": "chat",
+  "/documents": "documents",
+  "/settings": "settings",
+  "/reports": "report",
+  "/incidents": "safety",
   "/admin/groups": "group",
   "/menu": "food",
   "/kitchen/recipes": "food",
@@ -380,7 +386,7 @@ function staffNav(isAdmin: boolean, groupId: string | null): NavItem[] {
       : "/children";
 
   return [
-    { href: "/dashboard", label: "Самбар", icon: <LayoutGrid {...iconProps} /> },
+    { href: "/dashboard", label: "Самбар", icon: artIcon("dashboard", 20) },
     { href: "/notifications", label: "Мэдээ", icon: artIcon("notice", 20), badge: "unread" },
     { href: assessmentHref, label: "Явцын үнэлгээ", icon: artIcon("progress", 20) },
     { href: "/surveys", label: "Судалгаа", icon: artIcon("survey", 20) },

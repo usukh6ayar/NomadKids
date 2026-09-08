@@ -152,8 +152,14 @@ const landingFaqItems = [
 function Brand({ compact = false }: { compact?: boolean }) {
   return (
     <Link href="#home" className="inline-flex items-center gap-2" aria-label={`${BRAND} нүүр`}>
-      <span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-control bg-white p-0.5 shadow-sm">
-        <Image src="/mark.png" alt="" width={40} height={29} className="w-full object-contain" />
+      <span className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-control bg-white shadow-sm">
+        <Image
+          src="/logo-transparent.png"
+          alt=""
+          width={48}
+          height={48}
+          className="size-full object-contain"
+        />
       </span>
       <span className="min-w-0">
         <span className="block text-title font-extrabold leading-none text-[#123d73]">{BRAND}</span>

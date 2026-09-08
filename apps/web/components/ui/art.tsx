@@ -5,7 +5,7 @@ import Image from "next/image";
  *
  * ★ Thirteen call sites spelled a file path instead.
  *
- * Every screen using the drawn icons wrote `<Image src="/icons/icon-menu.png"
+ * Every screen using the drawn icons wrote `<Image src="/icons/icon-progress-3d.png"
  * alt="" width={48} height={48} />` in full, which is three decisions repeated
  * per call: where the file lives, that it is decorative, and how big it is. The
  * third had already drifted — the parent home renders them at 44 and the
@@ -33,7 +33,7 @@ import Image from "next/image";
  * Still pending, in the same `icon-<name>.png` convention, square with a
  * transparent background:
  *
- *   school-year · term · users · parent · storage · settings
+ *   school-year · term · users · parent · storage
  *
  * ★★★★ Keep the supplied feature drawings central.
  *
@@ -48,12 +48,14 @@ import Image from "next/image";
 const SOURCE = {
   analytics: "/icons/icon-analytics.png",
   attendance: "/icons/icon-attendance-3d.png",
+  chat: "/icons/icon-chat-3d.png",
   child: "/icons/icon-children-3d.png",
+  dashboard: "/icons/icon-dashboard-3d.png",
+  documents: "/icons/icon-documents-3d.png",
   finance: "/icons/icon-finance-payment-3d.png",
   food: "/icons/icon-food-3d.png",
   group: "/icons/icon-group-3d.png",
   kindergarten: "/icons/icon-kindergarten-3d.png",
-  menu: "/icons/icon-menu.png",
   notice: "/icons/icon-notice-3d.png",
   portfolio: "/icons/icon-portfolio.png",
   portfolioAboutMe: "/icons/icon-portfolio-about-me-3d.png",
@@ -62,7 +64,9 @@ const SOURCE = {
   portfolioGallery: "/icons/icon-portfolio-gallery-3d.png",
   progress: "/icons/icon-progress-3d.png",
   register: "/icons/icon-register.png",
-  report: "/icons/icon-report.png",
+  report: "/icons/icon-report-3d.png",
+  safety: "/icons/icon-safety-3d.png",
+  settings: "/icons/icon-settings-3d.png",
   survey: "/icons/icon-survey-3d.png",
   teacher: "/icons/icon-teacher-3d.png",
 } as const;

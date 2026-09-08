@@ -39,8 +39,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
             `alt` is what a screen reader announces, and it is the only place
             the name appears in text here.
 
-            ★★ Client's decision, 2026-09-06: keep the lettering. The
-            alternative was `mark.png`, the same illustration with none.
+            ★★ Client's decision, 2026-09-06: keep the lettering everywhere.
           */}
           <div className="mb-[22px] flex items-center gap-3.5">
             {/*
@@ -54,7 +53,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
             */}
             <h1 className="shrink-0">
               <Image
-                src="/logo.png"
+                src="/logo-transparent.png"
                 alt={BRAND}
                 width={76}
                 height={76}
@@ -103,7 +102,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
             ★ This was capped at 210px, and the cap was a workaround, not a
             design: the old `/logo-160.png` was 149px wide, so 380 rendered
             visibly soft and a blurred logo on the first screen anyone sees is
-            worse than a small sharp one. `/logo.png` is regenerated from the
+            worse than a small sharp one. `/logo-transparent.png` keeps the
             1400² original, so the cap has nothing left to protect against.
             300 on a 2× display asks for 600 source pixels; there are 1400.
 
@@ -112,7 +111,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
             decoration that says the same thing twice.
           */}
           <Image
-            src="/logo.png"
+            src="/logo-transparent.png"
             alt=""
             width={300}
             height={300}
