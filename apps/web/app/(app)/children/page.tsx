@@ -234,7 +234,7 @@ function StaffChildren() {
         }
       />
 
-      <RosterSummary search={search} facets={facets} />
+      <RosterSummary search={search} facets={facets} esisCount={rosterRows?.length} />
 
       {/*
         ★ The roster, from ESIS — 2026-09-08, at the client's instruction,
@@ -342,7 +342,27 @@ function rosterParams(
   return params;
 }
 
-function RosterSummary({ search, facets }: { search: string; facets: RosterFacets }) {
+function RosterSummary({
+  search,
+  facets,
+  esisCount,
+}: {
+  search: string;
+  facets: RosterFacets;
+  /**
+   * How many children the ESIS roster below this screen is showing.
+   *
+   * ★ 2026-09-09, at the client's request: "тэр нийт хүүхэд гэсэн тоог тэр
+   * ESIS-ээс татсан датагийн хүүхдийн тооноос авдаг болго."
+   *
+   * Both numbers come from the same query with the same filters, so they agree
+   * — and being the *same* number is the point: a director who counts the rows
+   * in the table and reads the card above it must not find two answers. The
+   * sex split still comes from `/children/summary`, which counts server-side
+   * rather than folding whatever rows loaded.
+   */
+  esisCount?: number;
+}) {
   const filters = { q: search || undefined, ...facets };
 
   const { data } = useQuery({
@@ -370,6 +390,16 @@ function RosterSummary({ search, facets }: { search: string; facets: RosterFacet
     same sum for the same reason.
   */
   const counted = data.boys + data.girls;
+
+  /*
+   * ★ The ESIS table's row count when there is one, the endpoint's total
+   * otherwise — the fallback covers the first paint, before that query lands.
+   *
+   * They differ only past `ROSTER_SIZE`, where the table is capped and the
+   * total is not. A kindergarten of more than a hundred children needs a pager
+   * on that table before this figure means anything, and the panel says so.
+   */
+  const total = esisCount ?? data.total;
 
   return (
     <section aria-label="Товч тоо" className="flex flex-col gap-2 md:gap-3">
@@ -414,7 +444,7 @@ function RosterSummary({ search, facets }: { search: string; facets: RosterFacet
         */}
         <StatCard
           label="Нийт хүүхэд"
-          value={data.total}
+          value={total}
           art={<Art name="child" size={36} />}
           artSurface={false}
           tone="sky"
@@ -433,9 +463,9 @@ function RosterSummary({ search, facets }: { search: string; facets: RosterFacet
             ) : undefined
           }
           footer={
-            counted > 0 && counted < data.total ? (
+            counted > 0 && counted < total ? (
               <p className="text-caption text-muted">
-                {data.total - counted} хүүхдийн хүйс бүртгэгдээгүй.
+                {total - counted} хүүхдийн хүйс бүртгэгдээгүй.
               </p>
             ) : undefined
           }

@@ -145,6 +145,32 @@
   --color-teal: #cfeeeb;
   --color-teal-ink: #14615c;
 
+  /*
+   * ★ The chart palette — added 2026-09-09, at the client's request: "энд
+   * байгаа бүх graphic dashboard-ийн өнгөний тохицлыг гэгээлэг өнгөтэй болго.
+   * Одоо бол хэт dark төрлийн өнгүүд байна, бараан ногоон хүрэн гэх мэт".
+   *
+   * They were right about the cause: `TONE_VAR` handed every chart the `-ink`
+   * value, and those are **text** colours — 6.2:1 to 8.4:1 on white, because
+   * badge labels are drawn in them and `responsive.test.tsx` holds them to
+   * 4.5:1. `mint-ink` at that weight is a bottle green and `sun-ink` is brown.
+   *
+   * An arc, a bar and a line are **graphics, never text**, so the floor that
+   * applies is WCAG's 3:1 for a non-text element — the distinction `ring.tsx`
+   * already records. These sit just above it, 3.1:1 to 3.9:1, which is as
+   * luminous as each hue gets while still being legible against `--color-surface`
+   * for a reader who cannot separate it by colour alone.
+   *
+   * `TONE_VAR` reads these and nothing else does; the `-ink` tokens keep their
+   * one job, which is text on a tint.
+   */
+  --color-sky-chart: #1a86d6;
+  --color-mint-chart: #12a066;
+  --color-sun-chart: #bf8305;
+  --color-peach-chart: #e05a24;
+  --color-cornflower-chart: #4f7ce8;
+  --color-teal-chart: #0d938c;
+
   --color-danger: #c0392b;
   --color-danger-soft: #fdeceb;
 

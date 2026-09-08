@@ -77,14 +77,24 @@ export const TONE_CARD: Record<Tone, string> = {
  * The accent as a *chart* fill.
  *
  * Charts need the colour as a value rather than a class — an SVG `fill` or a
- * `conic-gradient` stop cannot be a Tailwind utility. These name the same CSS
- * custom properties the classes above compile to, so a repaint moves both.
+ * `conic-gradient` stop cannot be a Tailwind utility.
+ *
+ * ★ These point at `--color-*-chart`, not at `--color-*-ink` — 2026-09-09.
+ *
+ * The ink tokens are text on a tint and `responsive.test.tsx` holds them to
+ * 4.5:1, which is why `mint-ink` is a bottle green and `sun-ink` is brown. An
+ * arc, a bar and a line are graphics, so the floor is WCAG's 3:1 for a
+ * non-text element and the colour can be far more luminous — which is what the
+ * client asked for ("гэгээлэг өнгөтэй болго").
+ *
+ * Nothing else reads this map, so the two palettes stay independent: text keeps
+ * its contrast, charts keep their light.
  */
 export const TONE_VAR: Record<Tone, string> = {
-  sky: "var(--color-sky-ink)",
-  mint: "var(--color-mint-ink)",
-  sun: "var(--color-sun-ink)",
-  peach: "var(--color-peach-ink)",
-  cornflower: "var(--color-cornflower-ink)",
-  teal: "var(--color-teal-ink)",
+  sky: "var(--color-sky-chart)",
+  mint: "var(--color-mint-chart)",
+  sun: "var(--color-sun-chart)",
+  peach: "var(--color-peach-chart)",
+  cornflower: "var(--color-cornflower-chart)",
+  teal: "var(--color-teal-chart)",
 };
