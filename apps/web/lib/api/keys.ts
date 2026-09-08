@@ -68,6 +68,12 @@ export const qk = {
   consent: (childId: string) => ["child", childId, "consent"] as const,
   audit: (filters: Record<string, unknown> = {}) => ["admin", "audit", filters] as const,
   esis: (kindergartenId: string) => ["admin", "esis", kindergartenId] as const,
+  esisStudentRegistration: (kindergartenId: string) =>
+    ["esis", kindergartenId, "student-registration-template"] as const,
+  /** One read-only ESIS service. The query string is part of the key because
+   * a group or a date changes which rows come back. */
+  esisResource: (kindergartenId: string, resource: string, query: string) =>
+    ["admin", "esis", kindergartenId, "resource", resource, query] as const,
   surveyComparison: (surveyId: string) => ["survey", surveyId, "comparison"] as const,
   configDomains: (kindergartenId: string) =>
     ["admin", "config", "domains", kindergartenId] as const,
@@ -79,6 +85,8 @@ export const qk = {
     ["documents", kindergartenId, "categories"] as const,
   groupAttendance: (groupId: string, date: string) =>
     ["group", groupId, "attendance", date] as const,
+  groupAttendanceEsis: (groupId: string, date: string) =>
+    ["group", groupId, "attendance", date, "esis-preview"] as const,
   /**
    * One group's month, for the register's own panel.
    *

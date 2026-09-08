@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Plus, X } from "lucide-react";
+import { Check, Plus } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import {
@@ -10,12 +10,12 @@ import {
   paginated,
   RECIPE_STATUS_LABEL,
   recipeSummarySchema,
-  type Ingredient,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
+import { EsisPullButton } from "@/components/esis/esis-pull-button";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +27,7 @@ import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui
 import { useToast } from "@/components/ui/toast";
 import { SearchField } from "@/components/ui/search-field";
 import { useDebounced } from "@/lib/use-debounced";
+import { RecipeLinesEditor, type RecipeLineDraft } from "@/components/kitchen/recipe-lines-editor";
 
 const recipesSchema = paginated(recipeSummarySchema);
 const ingredientsSchema = paginated(ingredientSchema);
@@ -77,10 +78,13 @@ function Recipes() {
         title="Технологийн карт"
         actions={
           kindergartenId ? (
-            <Button size="sm" onClick={() => setCreating(true)}>
-              <Plus size={18} />
-              Карт нэмэх
-            </Button>
+            <>
+              <EsisPullButton resource="foodProducts" label="ESIS лавлах" />
+              <Button size="sm" onClick={() => setCreating(true)}>
+                <Plus size={18} />
+                Карт нэмэх
+              </Button>
+            </>
           ) : null
         }
       />
@@ -212,85 +216,6 @@ function ApproveButton({ recipeId, name }: { recipeId: string; name: string }) {
       <Check size={16} aria-hidden="true" />
       {approve.isPending ? "Батлаж байна…" : "Батлах"}
     </Button>
-  );
-}
-
-/**
- * One ingredient line — a select and a quantity, shared between recipe
- * creation here and editing on the detail page.
- */
-export interface RecipeLineDraft {
-  key: string;
-  ingredientId: string;
-  quantity: string;
-}
-
-export function RecipeLinesEditor({
-  lines,
-  onChange,
-  ingredients,
-}: {
-  lines: RecipeLineDraft[];
-  onChange: (lines: RecipeLineDraft[]) => void;
-  ingredients: Ingredient[];
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      {lines.map((line, index) => (
-        <div key={line.key} className="flex items-center gap-2">
-          <Select
-            aria-label={`${index + 1}-р орц`}
-            value={line.ingredientId}
-            onChange={(e) =>
-              onChange(
-                lines.map((l) => (l.key === line.key ? { ...l, ingredientId: e.target.value } : l)),
-              )
-            }
-            className="min-w-0 flex-1"
-          >
-            <option value="">Орц сонгоно уу</option>
-            {ingredients.map((ingredient) => (
-              <option key={ingredient.id} value={ingredient.id}>
-                {ingredient.name}
-              </option>
-            ))}
-          </Select>
-          <Input
-            aria-label={`${index + 1}-р орцны хэмжээ`}
-            type="number"
-            min={0}
-            step="0.01"
-            value={line.quantity}
-            onChange={(e) =>
-              onChange(
-                lines.map((l) => (l.key === line.key ? { ...l, quantity: e.target.value } : l)),
-              )
-            }
-            className="w-[110px] shrink-0"
-            placeholder="Хэмжээ"
-          />
-          <button
-            type="button"
-            aria-label={`${index + 1}-р орцыг хасах`}
-            onClick={() => onChange(lines.filter((l) => l.key !== line.key))}
-            className="grid size-11 shrink-0 place-items-center rounded-control text-muted transition-colors hover:bg-canvas hover:text-danger"
-          >
-            <X size={16} aria-hidden="true" />
-          </button>
-        </div>
-      ))}
-
-      <button
-        type="button"
-        onClick={() =>
-          onChange([...lines, { key: crypto.randomUUID(), ingredientId: "", quantity: "" }])
-        }
-        className="inline-flex min-h-[44px] items-center gap-1.5 self-start text-body font-medium text-primary hover:text-primary-strong"
-      >
-        <Plus size={16} aria-hidden="true" />
-        Орц нэмэх
-      </button>
-    </div>
   );
 }
 

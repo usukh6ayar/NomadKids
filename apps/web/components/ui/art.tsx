@@ -54,7 +54,7 @@ import Image from "next/image";
  *
  * The thirteen below are already two styles: twelve carry their own tinted
  * rounded square (`kindergarten`, `attendance`, `menu`, `notice`,
- * `portfolio`, `progress`, `survey`, `finance`, `child`, `teacher`,
+ * `portfolio`, `progress`, `child`, `teacher`,
  * `register`, `report`) and `analytics` is a bare cut-out. Side by side in
  * one grid the two read as different sizes, because one has a chip's worth of
  * padding baked in and the other does not. Anything added should match the
@@ -64,7 +64,6 @@ const SOURCE = {
   analytics: "/icons/icon-analytics.png",
   attendance: "/icons/icon-attendance.png",
   child: "/icons/icon-child.png",
-  finance: "/icons/icon-finance.png",
   kindergarten: "/icons/icon-kindergarten.png",
   menu: "/icons/icon-menu.png",
   notice: "/icons/icon-notice.png",
@@ -72,7 +71,6 @@ const SOURCE = {
   progress: "/icons/icon-progress.png",
   register: "/icons/icon-register.png",
   report: "/icons/icon-report.png",
-  survey: "/icons/icon-survey.png",
   teacher: "/icons/icon-teacher.png",
 } as const;
 

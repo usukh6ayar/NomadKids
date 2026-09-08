@@ -28,7 +28,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
-import { RecipeLinesEditor, type RecipeLineDraft } from "../page";
+import { RecipeLinesEditor, type RecipeLineDraft } from "@/components/kitchen/recipe-lines-editor";
 
 const ingredientsSchema = paginated(ingredientSchema);
 

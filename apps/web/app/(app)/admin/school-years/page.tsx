@@ -17,6 +17,7 @@ import { Checkbox, Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { useToast } from "@/components/ui/toast";
+import { EsisPullButton } from "@/components/esis/esis-pull-button";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 
@@ -77,10 +78,13 @@ function AdminSchoolYears() {
       <PageHeader
         title="Хичээлийн жил"
         actions={
-          <Button size="sm" onClick={() => setCreating(true)}>
-            <Plus size={18} />
-            Жил нэмэх
-          </Button>
+          <>
+            <EsisPullButton resource="academicYearStatuses" />
+            <Button size="sm" onClick={() => setCreating(true)}>
+              <Plus size={18} />
+              Жил нэмэх
+            </Button>
+          </>
         }
       />
 

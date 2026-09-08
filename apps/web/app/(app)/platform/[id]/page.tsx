@@ -27,7 +27,6 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/field";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
-import { formatRelative } from "@/lib/format";
 
 /**
  * The platform operator's view into one kindergarten — the "info from

@@ -19,6 +19,7 @@ function setup(overrides: { configured?: boolean; mappedId?: string | null } = {
   const institutionId = "40305";
   const configured = overrides.configured ?? true;
   const esis = {
+    isConfigured: configured,
     status: vi.fn(() => ({
       configured,
       baseUrl: configured ? "https://hubv2.esis.edu.mn" : "",
@@ -74,20 +75,18 @@ describe("ESIS admin workflow", () => {
     expect(JSON.stringify(overview)).not.toContain("secret");
   });
 
-  it("refuses an ESIS read when the tenant mapping differs from the credential", async () => {
+  it("uses the tenant mapping instead of a deployment-wide institution id", async () => {
     const { service, esis, repo } = setup({ mappedId: "99999" });
 
-    await expect(
-      service.preview(actor, actor.memberships[0]!.kindergartenId, {
-        resources: ["organization"],
-      }),
-    ).rejects.toThrow("баталгаажаагүй");
+    await service.preview(actor, actor.memberships[0]!.kindergartenId, {
+      resources: ["organization"],
+    });
 
-    expect(esis.organization).not.toHaveBeenCalled();
-    expect(repo.createRun).not.toHaveBeenCalled();
+    expect(esis.organization).toHaveBeenCalledWith("99999");
+    expect(repo.createRun).toHaveBeenCalled();
   });
 
-  it("records a read-only preview with counts and a safe label", async () => {
+  it("records a read-only preview with counts and every catalog field", async () => {
     const { service, repo, audit } = setup();
 
     const result = await service.preview(actor, actor.memberships[0]!.kindergartenId, {
@@ -99,8 +98,18 @@ describe("ESIS admin workflow", () => {
     expect(result.results[0]).toMatchObject({
       resource: "organization",
       count: 1,
-      preview: [{ label: "Бяцхан нүүдэлчид" }],
     });
+
+    /*
+     * ★ A field ESIS did not send is still a column, holding null. Dropping it
+     * would make "they stopped sending this" indistinguishable from "it was
+     * empty this time", and only one of those is a contract change.
+     */
+    const row = result.results[0]!.preview[0]!;
+    expect(row.institutionName).toBe("Бяцхан нүүдэлчид");
+    expect(row.institutionId).toBe("40305");
+    expect(row.regionName).toBeNull();
+    expect(Object.keys(row)).toHaveLength(16);
     expect(repo.expireStaleRuns).toHaveBeenCalledWith(
       actor.memberships[0]!.kindergartenId,
       expect.any(Date),

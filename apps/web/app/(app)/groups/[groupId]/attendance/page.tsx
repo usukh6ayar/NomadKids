@@ -3,17 +3,26 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { CheckCircle2, Pencil, Save, Send, X } from "lucide-react";
 import { z } from "zod";
-import { attendanceRecordSchema, groupAttendanceRowSchema } from "@kinder/contracts";
+import {
+  attendanceRecordSchema,
+  attendanceSubmissionSchema,
+  esisAttendancePreviewSchema,
+  groupAttendanceRowSchema,
+  type EsisAttendancePreview,
+} from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
 import { GroupSwitcher, useSwitchableGroups } from "@/components/shell/group-switcher";
 import { qk } from "@/lib/api/keys";
 import { useToast } from "@/components/ui/toast";
-import { useSession } from "@/lib/auth/session";
 import { errorMessage } from "@/lib/api/errors";
 import { RequireRole } from "@/components/shell/require-role";
 import { Card, SectionHeader } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { TableShell, Td, Th } from "@/components/ui/table";
 import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
@@ -50,10 +59,9 @@ function today(): string {
 /**
  * The group's day sheet — every enrolled child, one day.
  *
- * ★ Each tap saves immediately, unlike the assessment column's batch save.
- * Attendance is a fact about right now, usually corrected in the moment
- * ("no, she just arrived") — a pending-changes bar would ask a teacher to
- * remember to press a second button for something that already happened.
+ * ★ Attendance uses an explicit review flow: Засах → status changes →
+ * Хадгалах. Once the saved day is complete, the exact ESIS payload appears
+ * and Илгээх becomes available.
  */
 export default function GroupAttendancePage() {
   return (
@@ -92,9 +100,6 @@ function GroupAttendance() {
    * screen that invited it by default. `/attendance/daily` is where a director
    * is sent, and it links each row here for reading.
    */
-  const { hasRole } = useSession();
-  const readOnly = hasRole("ADMIN") && !hasRole("TEACHER");
-
   /*
    * ★ `?date=` seeds the picker — 2026-09-04.
    *
@@ -111,6 +116,8 @@ function GroupAttendance() {
       ? requested
       : today();
   });
+  const [editing, setEditing] = useState(() => search.get("edit") === "1");
+  const [draft, setDraft] = useState<Record<string, string>>({});
 
   /*
    * ★ The same key the other two registers use, so switching from Ирц to
@@ -121,6 +128,15 @@ function GroupAttendance() {
   const sheet = useQuery({
     queryKey: qk.groupAttendance(groupId, date),
     queryFn: () => get(`/groups/${groupId}/attendance?date=${date}`, daySheetSchema),
+  });
+  const rows = sheet.data ?? [];
+  const savedComplete = rows.length > 0 && rows.every((row) => row.record);
+
+  const draftStatus = (childId: string, saved: string | null) => draft[childId] ?? saved;
+  const dirtyEntries = rows.flatMap((row) => {
+    const next = draft[row.child.id];
+    if (!next || next === row.record?.status) return [];
+    return [{ childId: row.child.id, status: next }];
   });
 
   /*
@@ -136,19 +152,6 @@ function GroupAttendance() {
    * the row looking unchanged with no explanation at all.
    */
   const toast = useToast();
-
-  const record = useMutation({
-    mutationFn: ({ childId, status }: { childId: string; status: string }) =>
-      mutate(`/children/${childId}/attendance/${date}`, attendanceRecordSchema, {
-        method: "PUT",
-        body: { status },
-      }),
-    onSuccess: () => {
-      toast.success("Ирц бүртгэгдлээ.");
-      void queryClient.invalidateQueries({ queryKey: qk.groupAttendance(groupId, date) });
-    },
-    onError: (error) => toast.error(errorMessage(error)),
-  });
 
   /*
    * ★ Ticking many children and marking them in one request — 2026-09-04.
@@ -168,23 +171,68 @@ function GroupAttendance() {
    */
   // Nothing to select when nothing can be written — the bulk bar's only
   // controls are the six status buttons.
-  const selection = useSelection(readOnly ? [] : (sheet.data ?? []).map((row) => row.child.id));
+  const selection = useSelection(editing ? rows.map((row) => row.child.id) : []);
 
-  const recordMany = useMutation({
-    mutationFn: (status: string) =>
+  const save = useMutation({
+    mutationFn: () =>
       mutate(`/groups/${groupId}/attendance`, z.array(attendanceRecordSchema), {
         method: "PUT",
         body: {
           date,
-          entries: selection.ids.map((childId) => ({ childId, status })),
+          entries: dirtyEntries,
         },
       }),
     onSuccess: (saved) => {
-      toast.success(`${saved.length} хүүхдийн ирц бүртгэгдлээ.`);
-      // Cleared only on success: a failed batch leaves the ticks where they
-      // were, so the teacher can retry rather than re-select twenty-four rows.
+      toast.success(`${saved.length} хүүхдийн ирц хадгалагдлаа.`);
+      setEditing(false);
+      setDraft({});
       selection.clear();
-      void queryClient.invalidateQueries({ queryKey: qk.groupAttendance(groupId, date) });
+      void queryClient.invalidateQueries({ queryKey: ["group", groupId, "attendance"] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  function beginEdit() {
+    const saved: Record<string, string> = {};
+    for (const row of rows) {
+      if (row.record) saved[row.child.id] = row.record.status;
+    }
+    setDraft(saved);
+    setEditing(true);
+  }
+
+  function cancelEdit() {
+    setEditing(false);
+    setDraft({});
+    selection.clear();
+  }
+
+  function setSelectedStatus(status: string) {
+    setDraft((current) => ({
+      ...current,
+      ...Object.fromEntries(selection.ids.map((childId) => [childId, status])),
+    }));
+  }
+
+  const esisPreview = useQuery({
+    queryKey: qk.groupAttendanceEsis(groupId, date),
+    queryFn: () =>
+      get(`/groups/${groupId}/attendance/esis-preview?date=${date}`, esisAttendancePreviewSchema),
+    enabled: savedComplete && !editing,
+    retry: false,
+  });
+
+  const submitEsis = useMutation({
+    mutationFn: () =>
+      mutate(`/groups/${groupId}/attendance/submit`, attendanceSubmissionSchema, {
+        method: "POST",
+        body: { date },
+      }),
+    onSuccess: () => {
+      toast.success(
+        `Ирц ${esisPreview.data?.demo ? "Demo ESIS" : "ESIS"} рүү амжилттай илгээгдлээ.`,
+      );
+      void queryClient.invalidateQueries({ queryKey: ["attendance"] });
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -197,8 +245,9 @@ function GroupAttendance() {
    * it sits above — a teacher marking a child present and watching the count
    * not move learns to distrust both.
    */
-  const rows = sheet.data ?? [];
-  const recorded = rows.filter((row) => row.record).length;
+  const recorded = rows.filter((row) =>
+    draftStatus(row.child.id, row.record?.status ?? null),
+  ).length;
 
   /*
    * ★ Six statuses, not the five in `ATTENDANCE_STATUS_ORDER`.
@@ -226,7 +275,8 @@ function GroupAttendance() {
   const breakdown = [...ATTENDANCE_STATUS_ORDER, "OTHER" as const].map((status) => ({
     key: status,
     label: ATTENDANCE_STATUS_LABEL[status] ?? status,
-    count: rows.filter((row) => row.record?.status === status).length,
+    count: rows.filter((row) => draftStatus(row.child.id, row.record?.status ?? null) === status)
+      .length,
     tone: ATTENDANCE_STATUS_CHART_TONE[status] ?? "sky",
   }));
 
@@ -234,6 +284,53 @@ function GroupAttendance() {
     <div className="page-band">
       <PageHeader
         title="Ирц"
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            {editing ? (
+              <>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={cancelEdit}
+                  disabled={save.isPending}
+                >
+                  <X aria-hidden /> Болих
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => save.mutate()}
+                  disabled={save.isPending || dirtyEntries.length === 0}
+                >
+                  <Save aria-hidden />
+                  {save.isPending ? "Хадгалж байна…" : `Хадгалах (${dirtyEntries.length})`}
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={beginEdit}
+                disabled={rows.length === 0}
+              >
+                <Pencil aria-hidden /> Засах
+              </Button>
+            )}
+            {!editing ? (
+              <Button
+                size="sm"
+                onClick={() => submitEsis.mutate()}
+                disabled={!esisPreview.data || submitEsis.isPending}
+              >
+                <Send aria-hidden />
+                {submitEsis.isPending
+                  ? "Илгээж байна…"
+                  : submitEsis.data
+                    ? "Дахин илгээх"
+                    : "ESIS рүү илгээх"}
+              </Button>
+            ) : null}
+          </div>
+        }
       />
 
       <GroupSwitcher
@@ -261,7 +358,10 @@ function GroupAttendance() {
                 type="date"
                 max={today()}
                 value={date}
-                onChange={(e) => setDate(e.target.value)}
+                onChange={(e) => {
+                  setDate(e.target.value);
+                  cancelEdit();
+                }}
               />
             )}
           </Field>
@@ -278,7 +378,16 @@ function GroupAttendance() {
         <AttendanceMonthPanel groupId={groupId} month={date.slice(0, 7)} />
       </Card>
 
-      <FormError message={record.isError ? errorMessage(record.error) : null} />
+      <FormError message={save.isError ? errorMessage(save.error) : null} />
+
+      {!editing && rows.length > 0 && !savedComplete ? (
+        <Card pad="compact" tone="sun">
+          <p className="text-body font-medium text-ink">
+            {rows.filter((row) => !row.record).length} хүүхдийн ирц хадгалагдаагүй байна. Засаж
+            дууссаны дараа ESIS илгээх утга бэлтгэгдэнэ.
+          </p>
+        </Card>
+      ) : null}
 
       {sheet.isLoading ? <LoadingState rows={6} shape="register" /> : null}
 
@@ -291,7 +400,7 @@ function GroupAttendance() {
             action={
               <span className="flex items-center gap-2">
                 <span className="text-body text-muted">{sheet.data.length} хүүхэд</span>
-                {sheet.data.length > 0 && !readOnly ? (
+                {sheet.data.length > 0 && editing ? (
                   <SelectBox
                     checked={selection.allSelected}
                     indeterminate={selection.someSelected}
@@ -314,10 +423,12 @@ function GroupAttendance() {
                 <ChildRow
                   key={row.enrollmentId}
                   child={row.child}
-                  status={row.record?.status ?? null}
-                  readOnly={readOnly}
-                  pending={record.isPending && record.variables?.childId === row.child.id}
-                  onSelect={(status) => record.mutate({ childId: row.child.id, status })}
+                  status={draftStatus(row.child.id, row.record?.status ?? null)}
+                  readOnly={!editing}
+                  pending={save.isPending}
+                  onSelect={(status) =>
+                    setDraft((current) => ({ ...current, [row.child.id]: status }))
+                  }
                   checked={selection.has(row.child.id)}
                   onToggle={() => selection.toggle(row.child.id)}
                 />
@@ -334,13 +445,13 @@ function GroupAttendance() {
             correction pass: three sick, one excused) go back to one tap per
             child. `ATTENDANCE_STATUS_LABEL` is the one source both read.
           */}
-          <SelectionBar count={readOnly ? 0 : selection.count} onClear={selection.clear}>
+          <SelectionBar count={editing ? selection.count : 0} onClear={selection.clear}>
             {Object.entries(STATUS_LABEL).map(([value, label]) => (
               <button
                 key={value}
                 type="button"
-                disabled={recordMany.isPending}
-                onClick={() => recordMany.mutate(value)}
+                disabled={save.isPending}
+                onClick={() => setSelectedStatus(value)}
                 className={cn(
                   "min-h-11 rounded-control border border-transparent px-3 text-body font-semibold transition-all duration-150 active:translate-y-[1px] disabled:opacity-60",
                   TONE_SURFACE[ATTENDANCE_STATUS_CHART_TONE[value] ?? "sky"],
@@ -350,6 +461,16 @@ function GroupAttendance() {
               </button>
             ))}
           </SelectionBar>
+
+          {!editing && esisPreview.data ? (
+            <GroupEsisPayload
+              preview={esisPreview.data}
+              submittedAt={submitEsis.data?.submittedAt}
+            />
+          ) : null}
+          {!editing && esisPreview.isError ? (
+            <FormError message={errorMessage(esisPreview.error)} />
+          ) : null}
         </>
       ) : null}
 
@@ -366,6 +487,118 @@ function GroupAttendance() {
   );
 }
 
+function GroupEsisPayload({
+  preview,
+  submittedAt,
+}: {
+  preview: EsisAttendancePreview;
+  submittedAt?: string;
+}) {
+  const request = preview.requests[0];
+  if (!request) return null;
+
+  return (
+    <section aria-labelledby="group-esis-payload-heading">
+      <SectionHeader
+        id="group-esis-payload-heading"
+        title="ESIS рүү илгээх утга"
+        lede={`API-000269 · ID ${preview.apiId} · POST ${preview.endpoint}`}
+        action={
+          <Badge tone="mint">
+            <CheckCircle2 size={13} aria-hidden />
+            {submittedAt
+              ? `Илгээсэн ${submittedAt.slice(11, 16)}`
+              : preview.demo
+                ? "Demo горим"
+                : "ESIS бэлэн"}
+          </Badge>
+        }
+      />
+      <Card pad="roomy" className="flex flex-col gap-4">
+        <dl className="grid gap-3 sm:grid-cols-4">
+          <PayloadField label="institutionId" value={request.payload.institutionId} />
+          <PayloadField label="studentGroupId" value={request.payload.studentGroupId} />
+          <PayloadField label="dayDate" value={request.payload.dayDate} />
+          <PayloadField
+            label="attendanceList"
+            value={`${request.payload.attendanceList.length} мөр`}
+          />
+        </dl>
+        <TableShell caption="API-000269 attendanceList" minWidth="min-w-[680px]">
+          <thead>
+            <tr>
+              <Th>personId</Th>
+              <Th>attendReasonCode</Th>
+              <Th numeric>tardyMinutes</Th>
+              <Th>attendReasonList</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {request.payload.attendanceList.map((item) => (
+              <tr key={item.personId}>
+                <Td className="font-mono text-caption">{item.personId}</Td>
+                <Td>{item.attendReasonCode}</Td>
+                <Td numeric>{item.tardyMinutes}</Td>
+                <Td className="font-mono text-caption">[]</Td>
+              </tr>
+            ))}
+          </tbody>
+        </TableShell>
+
+        <section className="border-t border-border-soft pt-4" aria-label="ESIS ирцийн гаралт">
+          <h3 className="text-body font-semibold text-primary">
+            ESIS-ээс буцааж шалгах гаралтын утга
+          </h3>
+          <p className="mt-2 font-mono text-caption text-muted">
+            api-22 · GET /svc/api/hub/v2/group/list/attendance/
+            {request.payload.studentGroupId}/{request.payload.dayDate}
+          </p>
+          <TableShell className="mt-3" caption="ESIS attendance output" minWidth="min-w-[820px]">
+            <thead>
+              <tr>
+                <Th>academicLevel</Th>
+                <Th>personId</Th>
+                <Th>dayDate</Th>
+                <Th>attendanceReasonCode</Th>
+                <Th>attendanceReasonName</Th>
+                <Th numeric>tardyMinutes</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {request.payload.attendanceList.map((item) => (
+                <tr key={item.personId}>
+                  <Td>2</Td>
+                  <Td className="font-mono text-caption">{item.personId}</Td>
+                  <Td>{request.payload.dayDate}</Td>
+                  <Td>{item.attendReasonCode}</Td>
+                  <Td>{reasonName(item.attendReasonCode)}</Td>
+                  <Td numeric>{item.tardyMinutes}</Td>
+                </tr>
+              ))}
+            </tbody>
+          </TableShell>
+        </section>
+      </Card>
+    </section>
+  );
+}
+
+function reasonName(code: string): string {
+  if (code === "PRESENT") return "Ирсэн";
+  if (code === "EXCUSED") return "Чөлөөтэй";
+  if (code === "SICK") return "Өвчтэй";
+  return "Тасалсан";
+}
+
+function PayloadField({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div>
+      <dt className="font-mono text-caption text-muted">{label}</dt>
+      <dd className="mt-1 text-body font-semibold text-ink">{value}</dd>
+    </div>
+  );
+}
+
 function ChildRow({
   child,
   status,
@@ -377,7 +610,7 @@ function ChildRow({
 }: {
   child: { id: string; lastName: string; firstName: string };
   status: string | null;
-  /** A director's view — see the note in `GroupAttendance`. */
+  /** Saved view until the user explicitly enters edit mode. */
   readOnly: boolean;
   pending: boolean;
   onSelect: (status: string) => void;

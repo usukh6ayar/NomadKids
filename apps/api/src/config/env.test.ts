@@ -86,21 +86,13 @@ describe("loadEnv", () => {
       expect(() => loadEnv(prod)).not.toThrow();
     });
 
-    it("refuses a half-configured ESIS, naming only what is missing", () => {
-      try {
+    it("accepts an ESIS token without a deployment-wide institution id", () => {
+      expect(() =>
         loadEnv({
           ...prod,
-          ESIS_BASE_URL: "https://esis.example.test",
           ESIS_TOKEN: "super-secret-value",
-        } as NodeJS.ProcessEnv);
-        expect.unreachable("should have thrown");
-      } catch (e) {
-        const message = (e as Error).message;
-        expect(message).toContain("ESIS_INSTITUTION_ID");
-        // ★ The message names the absent settings, never the value of a
-        // present one — the token is among them.
-        expect(message).not.toContain("super-secret-value");
-      }
+        } as NodeJS.ProcessEnv),
+      ).not.toThrow();
     });
 
     it("refuses a plaintext ESIS base URL, because the token crosses it", () => {

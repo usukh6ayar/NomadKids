@@ -2,15 +2,23 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { CheckCircle2, Database } from "lucide-react";
 import { z } from "zod";
-import { groupListItemSchema, paginated, SEX_LABEL, uuidSchema } from "@kinder/contracts";
+import {
+  esisStudentRegistrationTemplateSchema,
+  groupListItemSchema,
+  paginated,
+  SEX_LABEL,
+  uuidSchema,
+} from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, SectionHeader } from "@/components/ui/card";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
@@ -79,11 +87,44 @@ function NewChild() {
   const [foreignId, setForeignId] = useState("");
   const [groupId, setGroupId] = useState("");
   const [healthNotes, setHealthNotes] = useState("");
+  const appliedEsis = useRef(false);
 
   const groups = useQuery({
     queryKey: qk.adminGroups(),
     queryFn: () => get("/groups", groupsSchema),
   });
+
+  const esisTemplate = useQuery({
+    queryKey: qk.esisStudentRegistration(primaryKindergartenId ?? "none"),
+    queryFn: () =>
+      get(
+        `/kindergartens/${primaryKindergartenId}/esis/student-registration-template`,
+        esisStudentRegistrationTemplateSchema,
+      ),
+    enabled: Boolean(primaryKindergartenId),
+  });
+
+  useEffect(() => {
+    const row = esisTemplate.data?.row;
+    if (!row || appliedEsis.current) return;
+
+    appliedEsis.current = true;
+    setLastName(row.lastName ?? "");
+    setFirstName(row.firstName ?? "");
+    setSex(row.genderCode === "M" ? "MALE" : row.genderCode === "F" ? "FEMALE" : "");
+    setDateOfBirth(row.dateOfBirth ?? "");
+  }, [esisTemplate.data]);
+
+  useEffect(() => {
+    const esisGroupName = esisTemplate.data?.row.studentGroupName;
+    if (!esisGroupName || groupId || !groups.data) return;
+
+    const normalized = esisGroupName.toLocaleLowerCase("mn-MN").replace(/\s*бүлэг$/, "");
+    const matched = groups.data.items.find(
+      (group) => group.name.toLocaleLowerCase("mn-MN").replace(/\s*бүлэг$/, "") === normalized,
+    );
+    if (matched) setGroupId(matched.id);
+  }, [esisTemplate.data, groupId, groups.data]);
 
   const create = useMutation({
     mutationFn: () =>
@@ -129,7 +170,20 @@ function NewChild() {
     <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader title="Хүүхэд бүртгэх" />
 
+      {esisTemplate.isError ? <FormError message={errorMessage(esisTemplate.error)} /> : null}
+      {esisTemplate.data ? <EsisStudentOutput template={esisTemplate.data} /> : null}
+
       <Card pad="roomy">
+        <SectionHeader
+          title="Дотоод бүртгэлд хадгалах"
+          lede="ESIS гаралтаас тохирох талбарууд автоматаар бөглөгдсөн."
+          action={
+            <Badge tone="mint">
+              <CheckCircle2 size={13} aria-hidden />
+              Тулгалт бэлэн
+            </Badge>
+          }
+        />
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -145,7 +199,7 @@ function NewChild() {
           />
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Овог" error={errors.lastName} required>
+            <Field label="Овог" hint="ESIS: lastName" error={errors.lastName} required>
               {({ id, describedBy, invalid }) => (
                 <Input
                   id={id}
@@ -158,7 +212,7 @@ function NewChild() {
               )}
             </Field>
 
-            <Field label="Нэр" error={errors.firstName} required>
+            <Field label="Нэр" hint="ESIS: firstName" error={errors.firstName} required>
               {({ id, describedBy, invalid }) => (
                 <Input
                   id={id}
@@ -172,7 +226,7 @@ function NewChild() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Хүйс" error={errors.sex} required>
+            <Field label="Хүйс" hint="ESIS: genderCode" error={errors.sex} required>
               {({ id, describedBy, invalid }) => (
                 <Select
                   id={id}
@@ -188,7 +242,12 @@ function NewChild() {
               )}
             </Field>
 
-            <Field label="Төрсөн огноо" error={errors.dateOfBirth} required>
+            <Field
+              label="Төрсөн огноо"
+              hint="ESIS: dateOfBirth"
+              error={errors.dateOfBirth}
+              required
+            >
               {({ id, describedBy, invalid }) => (
                 <Input
                   id={id}
@@ -231,7 +290,7 @@ function NewChild() {
               <Field
                 label="Регистрийн дугаар"
                 error={errors.nationalId}
-                hint="Хоёр үсэг, найман орон. Жишээ: УБ12345678"
+                hint="ESIS-ээс татахгүй; дотоод бүртгэлд шаардлагатай бол оруулна."
               >
                 {({ id, describedBy, invalid }) => (
                   <Input
@@ -249,7 +308,7 @@ function NewChild() {
             <Field
               label="Бүлэг"
               error={errors.groupId}
-              hint="Хожим ч нэмж болно, гэхдээ бүлэггүй хүүхэд бүртгэлд харагдахгүй."
+              hint="ESIS: studentGroupId, studentGroupName"
             >
               {({ id, describedBy, invalid }) => (
                 <Select
@@ -274,7 +333,7 @@ function NewChild() {
           <Field
             label="Эрүүл мэндийн тэмдэглэл"
             error={errors.healthNotes}
-            hint="Багшийн мэдэх шаардлагатай зүйл байвал."
+            hint="ESIS-ээс татахгүй дотоод мэдээлэл."
           >
             {({ id, describedBy, invalid }) => (
               <Textarea
@@ -293,11 +352,94 @@ function NewChild() {
               Болих
             </Button>
             <Button type="submit" disabled={create.isPending}>
-              {create.isPending ? "Бүртгэж байна…" : "Бүртгэх"}
+              {create.isPending ? "Хадгалж байна…" : "Хадгалах"}
             </Button>
           </div>
         </form>
       </Card>
     </div>
+  );
+}
+
+function EsisStudentOutput({
+  template,
+}: {
+  template: z.infer<typeof esisStudentRegistrationTemplateSchema>;
+}) {
+  return (
+    <section aria-labelledby="esis-student-output-heading">
+      <SectionHeader
+        id="esis-student-output-heading"
+        title="ESIS суралцагчийн гаралт"
+        lede={`${template.slug} · ID ${template.apiId} · ${template.method} ${template.endpoint}`}
+        action={
+          <Badge tone="mint">
+            <CheckCircle2 size={13} aria-hidden />
+            {template.mode === "LIVE" ? "Бодит ESIS синк" : "Demo ESIS синк"}
+          </Badge>
+        }
+      />
+      <Card pad="roomy">
+        <div className="flex items-start gap-3 border-b border-border-soft pb-4">
+          <span className="grid size-10 shrink-0 place-items-center rounded-control bg-sky text-sky-ink">
+            <Database size={20} aria-hidden />
+          </span>
+          <div className="min-w-0">
+            <p className="font-semibold text-ink">
+              {template.row.lastName} {template.row.firstName}
+            </p>
+            <p className="mt-0.5 text-caption text-muted">
+              personId {template.row.personId} · studentGroupId {template.row.studentGroupId} ·
+              шинэчилсэн {template.syncedAt.slice(0, 16).replace("T", " ")}
+            </p>
+          </div>
+        </div>
+
+        <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            ["Хөтөлбөр", template.row.programOfStudyName],
+            ["Сургалтын төлөвлөгөө", template.row.programPlanName],
+            ["Түвшин", template.row.academicLevelName],
+            ["Суралцах төлөв", template.row.programStatusName],
+          ].map(([label, value]) => (
+            <div key={label} className="min-w-0">
+              <dt className="text-caption font-semibold text-muted">{label}</dt>
+              <dd className="mt-1 break-words text-body font-medium text-ink">{value ?? "—"}</dd>
+            </div>
+          ))}
+        </dl>
+
+        <section
+          className="mt-5 border-t border-border-soft pt-4"
+          aria-label="ESIS гаралтын талбар"
+        >
+          <h3 className="text-body font-semibold text-primary">
+            Бүх {template.fields.length} гаралтын талбар
+          </h3>
+          <ul className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {template.fields.map((field) => (
+              <li key={field.name} className="rounded-row bg-sunken px-3 py-2">
+                <span className="flex items-start justify-between gap-2">
+                  <span className="min-w-0">
+                    <span className="block text-caption text-muted">{field.label}</span>
+                    <span className="mt-0.5 block break-words text-body font-medium text-ink">
+                      {template.row[field.name] ??
+                        (field.ingested ? "Утга ирээгүй" : "Хадгалахгүй (хамгаалсан талбар)")}
+                    </span>
+                  </span>
+                  <Badge tone={field.ingested ? "mint" : "sun"}>
+                    {field.ingested ? "Гаралт" : "Авахгүй"}
+                  </Badge>
+                </span>
+                <span className="mt-1 block font-mono text-caption text-faint">{field.name}</span>
+                {field.omitReason ? (
+                  <span className="mt-1 block text-caption text-muted">{field.omitReason}</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      </Card>
+    </section>
   );
 }

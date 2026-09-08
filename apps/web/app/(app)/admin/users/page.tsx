@@ -40,6 +40,7 @@ import { Checkbox, Field, Input, Select } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { useToast } from "@/components/ui/toast";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { EsisPullButton } from "@/components/esis/esis-pull-button";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { InvitationHandover } from "@/components/admin/invitation-handover";
@@ -212,10 +213,14 @@ function AdminUsers() {
       <PageHeader
         title="Хэрэглэгчид"
         actions={
-          <Button size="sm" onClick={() => setInviting(true)}>
-            <UserPlus size={18} />
-            Хэрэглэгч нэмэх
-          </Button>
+          <>
+            <EsisPullButton resource="teachers" label="ESIS багш" />
+            <EsisPullButton resource="staff" label="ESIS ажилтан" />
+            <Button size="sm" onClick={() => setInviting(true)}>
+              <UserPlus size={18} />
+              Хэрэглэгч нэмэх
+            </Button>
+          </>
         }
       />
 

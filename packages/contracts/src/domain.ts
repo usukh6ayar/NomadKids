@@ -650,6 +650,36 @@ export const attendanceSubmissionSchema = z.object({
 });
 export type AttendanceSubmissionResult = z.infer<typeof attendanceSubmissionSchema>;
 
+/** Exact API-000269 request body, prepared before an attendance submission. */
+export const esisAttendancePayloadSchema = z.object({
+  institutionId: z.number().int().positive(),
+  studentGroupId: z.number().int().positive(),
+  dayDate: z.iso.date(),
+  attendanceList: z.array(
+    z.object({
+      personId: z.number().int().positive(),
+      attendReasonCode: z.enum(["PRESENT", "EXCUSED", "SICK", "UNEXCUSED"]),
+      tardyMinutes: z.number().int().min(0),
+      attendReasonList: z.array(z.string()),
+    }),
+  ),
+});
+export type EsisAttendancePayload = z.infer<typeof esisAttendancePayloadSchema>;
+
+export const esisAttendancePreviewSchema = z.object({
+  demo: z.boolean(),
+  apiId: z.number().int().positive(),
+  endpoint: z.string(),
+  requests: z.array(
+    z.object({
+      groupId: z.string(),
+      groupName: z.string(),
+      payload: esisAttendancePayloadSchema,
+    }),
+  ),
+});
+export type EsisAttendancePreview = z.infer<typeof esisAttendancePreviewSchema>;
+
 export const attendanceRequestStatusSchema = z.enum(["PENDING", "APPROVED", "REJECTED"]);
 export type AttendanceRequestStatus = z.infer<typeof attendanceRequestStatusSchema>;
 
@@ -2933,11 +2963,40 @@ export type EsisPreviewResourceKey = z.infer<typeof esisPreviewResourceKeySchema
 
 const esisSyncStatusSchema = z.enum(["RUNNING", "SUCCEEDED", "PARTIAL", "FAILED"]);
 
+/**
+ * One input or output field of an ESIS service, and whether NomadKids keeps it.
+ *
+ * `ingested: false` rows are shown on purpose — they are the record that a
+ * field was read in the catalog and refused, with `omitReason` naming the
+ * document that refused it.
+ */
+export const esisFieldSchema = z.object({
+  name: z.string(),
+  label: z.string(),
+  io: z.enum(["OUTPUT", "INPUT"]),
+  ingested: z.boolean(),
+  omitReason: z.string().optional(),
+  /**
+   * An illustrative value, for showing the screen before a token exists.
+   *
+   * ★ Never a value ESIS returned. Set only on ingested fields, and the UI
+   * shows it only while no live read has succeeded — see `esis.fields.ts`.
+   */
+  sample: z.string().optional(),
+});
+export type EsisField = z.infer<typeof esisFieldSchema>;
+
+/** `PORTAL` — read from the ESIS developer catalog. `ADAPTER` — our schema. */
+export const esisFieldSourceSchema = z.enum(["PORTAL", "ADAPTER"]);
+
+/** One preview row: every ingested field name → its value, `null` when absent. */
+export const esisRowSchema = z.record(z.string(), z.string().nullable());
+export type EsisRow = z.infer<typeof esisRowSchema>;
+
 export const esisOverviewSchema = z.object({
   deployment: z.object({
     configured: z.boolean(),
     baseUrl: z.string(),
-    institutionId: z.string(),
     hasToken: z.boolean(),
   }),
   connection: z.object({
@@ -2964,7 +3023,15 @@ export const esisOverviewSchema = z.object({
       name: z.string(),
       domain: z.enum(["ORGANIZATION", "ROSTER", "ATTENDANCE", "FOOD"]),
       usage: z.string(),
+      note: z.string().optional(),
       previewable: z.boolean(),
+      readable: z.boolean(),
+      params: z.array(z.string()),
+      fields: z.array(esisFieldSchema),
+      fieldSource: esisFieldSourceSchema,
+      ingestedFieldCount: z.number(),
+      /** One illustrative row — shown only until a live read succeeds. */
+      sampleRow: esisRowSchema,
       accessStatus: z.literal("UNKNOWN"),
     }),
   ),
@@ -2994,13 +3061,63 @@ export const esisPreviewResultSchema = z.object({
       resource: esisPreviewResourceKeySchema,
       count: z.number(),
       durationMs: z.number().nullable(),
-      preview: z.array(z.object({ label: z.string() })),
+      preview: z.array(esisRowSchema),
       status: z.enum(["SUCCEEDED", "FAILED"]),
       errorCode: z.string().nullable(),
     }),
   ),
 });
 export type EsisPreviewResult = z.infer<typeof esisPreviewResultSchema>;
+
+/**
+ * `GET /kindergartens/:id/esis/resource` — one service, read in place.
+ *
+ * A failed read is a result with an `errorCode`, not an HTTP error: the button
+ * that triggered it exists to report whether the connection works.
+ */
+export const esisResourceReadSchema = z.object({
+  resource: esisResourceKeySchema,
+  status: z.enum(["SUCCEEDED", "FAILED"]),
+  errorCode: z.string().nullable(),
+  count: z.number(),
+  durationMs: z.number().nullable(),
+  fields: z.array(esisFieldSchema),
+  rows: z.array(esisRowSchema),
+});
+export type EsisResourceRead = z.infer<typeof esisResourceReadSchema>;
+
+/**
+ * Safe ESIS student output used while registering a child.
+ *
+ * This deliberately contains the catalog row after field minimization, so
+ * civil identifiers and provider credentials never reach the staff form.
+ */
+export const esisStudentRegistrationTemplateSchema = z.object({
+  mode: z.enum(["DEMO", "LIVE"]),
+  resource: z.literal("students"),
+  apiId: z.number().int().positive(),
+  slug: z.string(),
+  method: z.literal("GET"),
+  endpoint: z.string(),
+  syncedAt: z.string(),
+  fields: z.array(esisFieldSchema),
+  row: esisRowSchema,
+});
+export type EsisStudentRegistrationTemplate = z.infer<typeof esisStudentRegistrationTemplateSchema>;
+
+/** ESIS teacher/staff row matched to the signed-in user. */
+export const esisMyProfileSchema = z.object({
+  mode: z.enum(["DEMO", "LIVE"]),
+  resource: z.enum(["teachers", "staff"]),
+  apiId: z.number().int().positive(),
+  slug: z.string(),
+  endpoint: z.string(),
+  syncedAt: z.string(),
+  institutionId: z.string().nullable(),
+  fields: z.array(esisFieldSchema),
+  row: esisRowSchema,
+});
+export type EsisMyProfile = z.infer<typeof esisMyProfileSchema>;
 
 /** `POST /platform/kindergartens` — the tenant, its first admin, and the invite. */
 export const createdKindergartenSchema = z.object({

@@ -101,22 +101,23 @@ describe("configuration", () => {
     expect(callArgs()[1].signal).toBeInstanceOf(AbortSignal);
   });
 
-  it.each([
-    ["ESIS_BASE_URL", { ESIS_BASE_URL: "" }],
-    ["ESIS_TOKEN", { ESIS_TOKEN: "" }],
-    ["ESIS_INSTITUTION_ID", { ESIS_INSTITUTION_ID: "" }],
-  ])("fails safely when %s is missing, without calling out", async (name, override) => {
-    const client = new EsisClient(configured(override as Partial<Env>));
+  it.each([["ESIS_TOKEN", { ESIS_TOKEN: "" }]])(
+    "fails safely when %s is missing, without calling out",
+    async (name, override) => {
+      const client = new EsisClient(configured(override as Partial<Env>));
 
-    const error = await client.request({ path: "/v1/thing" }).catch((e: unknown) => e as EsisError);
+      const error = await client
+        .request({ path: "/v1/thing" })
+        .catch((e: unknown) => e as EsisError);
 
-    expect(error).toBeInstanceOf(EsisError);
-    expect((error as EsisError).kind).toBe("not_configured");
-    expect((error as EsisError).message).toContain(name);
-    // ★ No network attempt at all — an unconfigured instance must not resolve
-    // a hostname, let alone send a header.
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
+      expect(error).toBeInstanceOf(EsisError);
+      expect((error as EsisError).kind).toBe("not_configured");
+      expect((error as EsisError).message).toContain(name);
+      // ★ No network attempt at all — an unconfigured instance must not resolve
+      // a hostname, let alone send a header.
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
 
   it("reports readiness without revealing the token", () => {
     const described = configured().describe();
@@ -124,7 +125,6 @@ describe("configuration", () => {
     expect(described).toEqual({
       configured: true,
       baseUrl: "https://esis.example.test/api",
-      institutionId: "INST-42",
       hasToken: true,
     });
     // Not the value, not a prefix, not the length: a length narrows a search
@@ -133,8 +133,9 @@ describe("configuration", () => {
     expect(JSON.stringify(described)).not.toContain(String(TOKEN.length));
   });
 
-  it("is not configured when only some settings are present", () => {
+  it("needs only the token because URL and tenant scope have other sources", () => {
     expect(configured({ ESIS_TOKEN: "" }).isConfigured).toBe(false);
+    expect(configured({ ESIS_BASE_URL: "", ESIS_INSTITUTION_ID: "" }).isConfigured).toBe(true);
     expect(configured().isConfigured).toBe(true);
   });
 });

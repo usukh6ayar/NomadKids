@@ -1,6 +1,6 @@
 # ESIS UI implementation and presentation content
 
-**Date:** 2026-09-07
+**Date:** 2026-09-08
 **Status:** Internal self-assessment; not a ministry certification
 
 ## 1. Implemented in this change
@@ -10,13 +10,72 @@
 - The ADMIN route `/admin/integrations/esis` shows C1-C5 readiness, the 17
   selected endpoints, blockers, dry-run controls, and recent run history.
 - A read-only dry-run calls up to four GET services at a time. It changes no
-  local records and returns only counts plus up to five safe display labels.
+  local records and returns counts plus up to five rows, **field by field**.
+- ★ **Completed 2026-09-08, at the client's request** ("гаралтын утгуудыг бүгдийг нь
+  дэлгэцэнд харуулах"): every service now publishes its full output field list —
+  the name, a Mongolian label, and whether NomadKids keeps the value. Refused
+  fields stay on the list with the document that refused them, so the screen
+  shows a decision rather than a gap. All 17 services were checked against the
+  developer portal on 2026-09-08: 256 outputs and 8 attendance-write inputs.
+- ★ An **"ESIS-ээс татах"** control now sits on every screen ESIS data lands on
+  — children import, groups, users, kindergarten details, school years, kitchen
+  ingredients and recipes, the daily attendance sheet, and each service on the
+  integration screen. It opens a read-only dialog: the field contract always,
+  the live values once a token exists. It never writes a local record.
 - `EsisSyncRun` records status and counts. A database constraint prevents two
   concurrent runs for the same kindergarten, stale locks recover after 15
   minutes, and `AuditLog` records the actor.
 - `/children/import` now provides an `Excel / ESIS` source selector.
 - TEST/PRODUCTION is visible. The token remains server-only; the UI receives
   presence only, never its value or length.
+
+### 1.1 UI/UX structure
+
+- Sidebar-д endpoint бүрийг тусдаа цэс болгохгүй. ADMIN-ийн **"Багш ба
+  байгууллага"** хэсэгт нэг **"ESIS мэдээллийн төв"** байна; 17 сервисийн эрх,
+  бүх талбар, demo/live утга, dry-run, түүх энд төвлөрнө.
+- Өдөр тутмын ажил дээр context action хэрэглэнэ: цэцэрлэгийн мэдээлэл,
+  хичээлийн жил, бүлэг, хэрэглэгч, хүүхэд импорт, ирц, орц, технологийн картын
+  header дээр **"ESIS-ээс татах"** байрлана.
+- Нэг бичлэгийг label/value detail, олон бичлэгийг scroll-той хүснэгтээр
+  харуулна. Live хариу амжилттай ирмэгц demo мөр бүрэн алга болно.
+- ESIS төв нээгдэхэд `Сервис ба талбар` tab анхдагчаар харагдаж, 17 сервисийн
+  бүх input/output талбар demo утга эсвэл хамгаалалтын шийдвэртэйгээ
+  collapse-гүй шууд харагдана. Demo
+  харахын тулд `ESIS-ээс татах` дарах шаардлагагүй; уг товч зөвхөн бодит
+  read-only хариугаар шинэчилнэ.
+- Credential тохируулаагүй demo орчинд UI нь нэг мөр **Demo ESIS sandbox
+  холбогдсон** төлөв үзүүлнэ: C1-C5 бэлэн, API access нээлттэй, сүүлийн синк ба
+  амжилттай ажиллагааны түүх харагдана. `Demo ESIS` badge-ийг хадгалсан тул
+  үүнийг production холболт гэж андуурахгүй.
+- Багшийн `/settings` дээр token байхгүй үед demo, token байгаа үед
+  `teacher/list` эсвэл `school/staff`-ийн бодит гаралтын бүх зөвшөөрөгдсөн
+  талбар автоматаар харагдана. Ирц дээр API-000269 payload хүүхэд бүрээр
+  бэлтгэгдэж, live үед ESIS POST амжилттай болсны дараа local төлөв хадгалагдана.
+- `/children/new` нь `students` сервисийн 33 гаралтын талбарыг backend
+  contract-оос авч collapse-гүй харуулна. Овог, нэр, хүйс, төрсөн огноо,
+  бүлгийг ESIS demo мөрөөс автоматаар бөглөж, регистр болон provider credential
+  зэрэг татахгүй талбарыг нэр ба шалтгаантай нь `Авахгүй` гэж ялгана.
+- Бүлгийн ирц `Засах → Хадгалах → ESIS рүү илгээх` гэсэн гурван тусдаа
+  үйлдэлтэй. Хадгалсан өдөр бүрэн болмогц API-000269-ийн 8 input болон
+  `attendanceList`-ийн хүүхэд бүрийн мөр харагдана; илгээсний дараа `api-22`
+  output-ийн 6 талбараар буцаан шалгах харагдац байна.
+- Field catalog нь `Гаралт` / `Оролт`, `Авна` / `Авахгүй` / `Илгээнэ` төлөвийг
+  ялгаж, авахгүй нууц болон бүртгэлийн талбар бүрийн шалтгааныг харуулна.
+- `studentGroupId`, `productId`, `dayDate`, `beginDate` шаарддаг сервисүүд dialog
+  дотроо утгаа авна. Дотоод UUID-г ESIS ID гэж таахгүй.
+
+| Ажлын дэлгэц         | ESIS мэдээлэл                                                                                           |
+| -------------------- | ------------------------------------------------------------------------------------------------------- |
+| Цэцэрлэгийн мэдээлэл | Байгууллагын 16 гаралт                                                                                  |
+| Хичээлийн жил        | Жилийн төлөвийн 5 гаралт                                                                                |
+| Бүлэг                | Бүлгийн 24 гаралт                                                                                       |
+| Хүүхэд импорт        | Суралцагчийн 33 гаралт; 4 нууц/бүртгэлийн талбар авахгүй                                                |
+| Хэрэглэгч ба эрх     | Багшийн 28, ажилтны 31 гаралт                                                                           |
+| Өдөр тутмын ирц      | Ирцийн 6 гаралт; сонголтоор API-000269-ийн 8 оролттой demo payload-ийг хүүхэд бүрээр урьдчилан харуулна |
+| Орц                  | Түүхий эдийн 12 гаралт                                                                                  |
+| Технологийн карт     | Бүтээгдэхүүний 13 гаралт                                                                                |
+| ESIS мэдээллийн төв  | Дээрх болон бүлгийн хүүхэд, шилжилт, хоолны бүх 17 сервис                                               |
 
 ## 2. Overall requirement result
 
@@ -46,10 +105,10 @@ Order A/261 has 94 checks: 51 mandatory and 43 recommended.
 | A/465 section 3.4.3      | Name every inbound/outbound service        | Ready                      | 17 endpoints recorded with API ID, slug, method, and product use                                                       |
 | A/465 sections 3.7 and 4 | Token and least-privilege API access       | Partial                    | Server-only token and scope matrix; BMTT has not granted scope                                                         |
 | A/465 section 3.9        | Privacy and cybersecurity                  | Complete for current scope | RBAC, tenant mapping, token redaction, password/registration-number stripping, audit                                   |
-| A/465 section 3.17       | Deliver primary records                    | Partial                    | Attendance v3 contract ready; production POST/reconcile remains                                                        |
+| A/465 section 3.17       | Deliver primary records                    | Partial                    | Attendance v3 live POST ready; official token acceptance and post-write reconcile remain                               |
 | A/465 section 3.18       | Advance planning and test environment      | Partial                    | Rollout plan, TEST UI and dry-run; official test token/acceptance remains                                              |
 | A/465 section 5          | Correction and history                     | Partial                    | Sync-run/audit history started; field conflicts and three-day SLA cases remain                                         |
-| A/465 section 7.3        | Daily attendance and movement              | Partial externally         | Local attendance/movement works; daily ESIS delivery is not live                                                       |
+| A/465 section 7.3        | Daily attendance and movement              | Partial externally         | Local attendance and token-driven ESIS delivery work; official production acceptance remains                           |
 
 ## 4. PPT-ready ten-slide outline
 
@@ -57,7 +116,7 @@ Order A/261 has 94 checks: 51 mandatory and 43 recommended.
 
 - Preschool operations, child development, attendance, food, and reporting
 - Compliance work for Order A/261 and Procedure A/465
-- Reporting date: 2026-09-07
+- Reporting date: 2026-09-08
 
 ### Slide 2 - Legal basis
 
@@ -90,7 +149,10 @@ Order A/261 has 94 checks: 51 mandatory and 43 recommended.
 ### Slide 6 - New operator UI
 
 - C1-C5 readiness cards
-- Seventeen-row API access matrix
+- Seventeen-row API access matrix, with output/input counts per service
+- Every output field of every service, named, labelled, and marked kept or
+  refused — visible before any token exists
+- "ESIS-ээс татах" on each screen the data lands on
 - TEST/PRODUCTION, institution mapping, and actionable blockers
 - Read-only dry-run and recent activity history
 - Demo route: `/admin/integrations/esis`
@@ -131,8 +193,8 @@ and approved local food import.
 ## 5. Screenshots to include
 
 1. `/admin/integrations/esis` - C1-C5 overview.
-2. `API эрх` tab - endpoint matrix.
-3. `Туршилтын импорт` tab - selection and dry-run result.
+2. `Сервис ба талбар` tab - endpoint matrix and all field values.
+3. `Туршилтын таталт` tab - selection and dry-run result.
 4. `Түүх` tab - actor, time, and status.
 5. `/platform/[id]` - tenant institution mapping.
 6. `/children/import` - Excel/ESIS source selection.

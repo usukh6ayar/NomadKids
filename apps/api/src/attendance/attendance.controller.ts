@@ -176,6 +176,17 @@ export class KindergartenAttendanceController {
     return this.service.dailySummary(actor, params.id, query);
   }
 
+  /** Prepares the API-000269 body using live ESIS IDs when a token is configured. */
+  @Post("daily/esis-preview")
+  @Roles("ADMIN", "ACCOUNTANT")
+  async previewEsisAttendance(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(submitAttendanceSchema)) body: SubmitAttendanceDto,
+  ) {
+    return this.service.esisAttendancePreview(actor, params.id, body);
+  }
+
   /**
    * "Ирц илгээх" — declares a set of group-days final and submitted.
    *
@@ -256,6 +267,28 @@ export class GroupAttendanceController {
     @Body(new ZodValidationPipe(recordGroupAttendanceSchema)) body: RecordGroupAttendanceDto,
   ) {
     return this.service.recordGroupAttendance(actor, params.id, body);
+  }
+
+  /** Exact API-000269 body for one teacher-owned group day. */
+  @Get("esis-preview")
+  @Roles("TEACHER", "ADMIN")
+  async esisPreview(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(groupDaySheetQuerySchema)) query: GroupDaySheetQuery,
+  ) {
+    return this.service.groupEsisAttendancePreview(actor, params.id, query.date);
+  }
+
+  /** Sends one group-day to ESIS, then records the successful submission locally. */
+  @Post("submit")
+  @Roles("TEACHER", "ADMIN")
+  async submitGroup(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(groupDaySheetQuerySchema)) body: GroupDaySheetQuery,
+  ) {
+    return this.service.submitGroupDay(actor, params.id, body.date);
   }
 
   /**

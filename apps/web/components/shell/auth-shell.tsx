@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { BRAND } from "@/lib/vocabulary";
 import type { ReactNode } from "react";
 
@@ -76,6 +77,20 @@ export function AuthShell({ children }: { children: ReactNode }) {
             <span aria-hidden="true">·</span>
             <span>Нууц үг хамгаалагдсан</span>
           </div>
+          <nav
+            aria-label="Нууцлал ба тусламж"
+            className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1 text-caption font-semibold text-primary"
+          >
+            <Link href="/privacy" className="min-h-10 content-center hover:underline">
+              Нууцлал
+            </Link>
+            <Link href="/terms" className="min-h-10 content-center hover:underline">
+              Үйлчилгээний нөхцөл
+            </Link>
+            <Link href="/faq" className="min-h-10 content-center hover:underline">
+              Түгээмэл асуулт
+            </Link>
+          </nav>
         </main>
       </div>
 

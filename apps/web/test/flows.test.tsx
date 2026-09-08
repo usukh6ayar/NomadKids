@@ -481,7 +481,7 @@ describe("registering a child", () => {
     await waitFor(() => expect(screen.getByLabelText(/Бүлэг/)).not.toBeDisabled());
     await selectOption(user, /Бүлэг/, "Дунд бүлэг");
 
-    await user.click(screen.getByRole("button", { name: "Бүртгэх" }));
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
 
     await waitFor(() => expect(ROUTER.push).toHaveBeenCalledWith(`/children/${CHILD_ID}/general`));
 
@@ -516,7 +516,7 @@ describe("registering a child", () => {
     await selectOption(user, /Хүйс/, "Охин");
     await user.type(screen.getByLabelText(/Төрсөн огноо/), "2022-03-15");
 
-    await user.click(screen.getByRole("button", { name: "Бүртгэх" }));
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
 
     await waitFor(() => expect(ROUTER.push).toHaveBeenCalled());
 

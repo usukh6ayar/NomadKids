@@ -308,7 +308,7 @@ function CreateOrderDialog({
   );
 }
 
-export function OrderLinesEditor({
+function OrderLinesEditor({
   lines,
   onChange,
   ingredients,
