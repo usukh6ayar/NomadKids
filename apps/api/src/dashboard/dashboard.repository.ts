@@ -805,6 +805,41 @@ export class DashboardRepository {
   }
 
   /**
+   * How many ingredients are at or below their own reorder threshold —
+   * `Ingredient.minStock`, opt-in per ingredient (nullable; an ingredient
+   * nobody has set one for cannot be "low" by definition). A count, same
+   * reasoning as `pendingFoodOrders`: the detail lives at `/kitchen/stock`.
+   *
+   * Two queries rather than a running balance: on-hand stock is computed
+   * per-read everywhere in this codebase (`KitchenRepository.stockLevels`),
+   * because `StockMovement` is an append-only ledger, not a cached total.
+   */
+  async lowStockCount(kindergartenIds: string[]): Promise<number> {
+    if (kindergartenIds.length === 0) return 0;
+
+    const tracked = await this.prisma.ingredient.findMany({
+      where: { kindergartenId: { in: kindergartenIds }, deletedAt: null, minStock: { not: null } },
+      select: { id: true, minStock: true },
+    });
+    if (tracked.length === 0) return 0;
+
+    const movements = await this.prisma.stockMovement.groupBy({
+      by: ["ingredientId", "direction"],
+      where: { ingredientId: { in: tracked.map((i) => i.id) } },
+      _sum: { quantity: true },
+    });
+
+    const onHand = new Map<string, number>();
+    for (const row of movements) {
+      const amount = Number(row._sum.quantity ?? 0);
+      const signed = row.direction === "OUT" ? -amount : amount;
+      onHand.set(row.ingredientId, (onHand.get(row.ingredientId) ?? 0) + signed);
+    }
+
+    return tracked.filter((i) => (onHand.get(i.id) ?? 0) < Number(i.minStock)).length;
+  }
+
+  /**
    * Every group's mean level per development domain, for the term — the
    * sketch's "Бүлгүүдийн явцын үнэлгээ" radar.
    *

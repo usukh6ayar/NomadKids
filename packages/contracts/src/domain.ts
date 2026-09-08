@@ -1592,6 +1592,9 @@ export const ingredientSchema = z.object({
   carbsPer100: z.string().nullable(),
   allergenTags: z.array(z.string()).default([]),
   note: z.string().nullable(),
+  /** The cook's own reorder threshold, in this ingredient's own unit. Null
+   * means no threshold is set — never treated as zero. */
+  minStock: z.string().nullable(),
 });
 export type Ingredient = z.infer<typeof ingredientSchema>;
 
@@ -1774,10 +1777,14 @@ export const stockMovementSchema = z.object({
 export type StockMovement = z.infer<typeof stockMovementSchema>;
 
 /** Current on-hand quantity — `SUM(IN) + SUM(ADJUSTMENT) − SUM(OUT)`, computed
- * per read rather than kept as a running balance column. */
+ * per read rather than kept as a running balance column. `low` is only ever
+ * true when `minStock` is set — an ingredient nobody has set a threshold on
+ * cannot be "low". */
 export const stockLevelSchema = z.object({
   ingredient: unitRefSchema,
   onHand: z.string(),
+  minStock: z.string().nullable(),
+  low: z.boolean(),
 });
 export type StockLevel = z.infer<typeof stockLevelSchema>;
 
@@ -2685,6 +2692,9 @@ export const cookDashboardSchema = z.object({
   ),
   /** Orders still `DRAFT` or `ORDERED` — placed but nothing has arrived yet. */
   pendingFoodOrders: z.number(),
+  /** Ingredients at or below their own `minStock` — opt-in per ingredient,
+   * so this is never inflated by ingredients nobody has set a threshold on. */
+  lowStockCount: z.number(),
 });
 export type CookDashboard = z.infer<typeof cookDashboardSchema>;
 

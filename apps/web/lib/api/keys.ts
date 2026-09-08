@@ -218,6 +218,8 @@ export const qk = {
       ["kitchen", "report", "purchases", kindergartenId, from, to] as const,
     mealServings: (kindergartenId: string, date: string) =>
       ["kitchen", "meal-servings", kindergartenId, date] as const,
+    sufficiency: (kindergartenId: string, date: string) =>
+      ["kitchen", "sufficiency", kindergartenId, date] as const,
   },
   /** One kindergarten's own funding — not the platform's revenue. */
   kindergartenFunding: (kindergartenId: string, month: string) =>

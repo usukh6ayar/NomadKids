@@ -50,6 +50,9 @@ export const createIngredientSchema = z
     carbsPer100: nutritionValue,
     allergenTags: z.array(z.string().min(1).max(60)).max(20).default([]),
     note: z.string().max(1000).nullable().optional(),
+    /** The cook's own reorder threshold, in this ingredient's own `unit`.
+     * Opt-in — null (the default) means "no threshold set", never zero. */
+    minStock: qty.nullable().optional(),
   })
   .strict();
 export type CreateIngredientDto = z.infer<typeof createIngredientSchema>;
@@ -65,6 +68,7 @@ export const updateIngredientSchema = z
     carbsPer100: nutritionValue,
     allergenTags: z.array(z.string().min(1).max(60)).max(20).optional(),
     note: z.string().max(1000).nullable().optional(),
+    minStock: qty.nullable().optional(),
   })
   .strict()
   .refine((body) => Object.keys(body).length > 0, { message: "Өөрчлөх талбар алга" });

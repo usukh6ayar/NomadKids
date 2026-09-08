@@ -863,8 +863,10 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
  * matches on the `/settings` href, not the label, so renaming "Профайл" to
  * "Цэс" and its icon to `Menu` is enough to make it read as the same hamburger
  * button every other role's last tab already is. The drawer is where
- * everything this bar has no room for still lives — Түүхий эд, Нийлүүлэгч,
- * Хүнсний захиалга, Нөөц, Ирц, Тайлан, Чат — unchanged from `supportSections`.
+ * everything this bar has no room for still lives — Түүхий эд, Хүнсний
+ * захиалга, Нөөц, Ирц, Тайлан, Мэдээ (COOK only, 2026-09-08), Чат — unchanged
+ * from `supportSections`. ("Нийлүүлэгч" is off `supportSections` itself right
+ * now, so it is not in the drawer either — see that array's own comment.)
  *
  * This does put `/menu` and `/kitchen/recipes` on two surfaces at once, both
  * already reachable from the sidebar. The 2026-09-04 note this replaced
@@ -921,8 +923,9 @@ function supportSections(isCook: boolean): NavSection[] {
             navEntry("Хоолны цэс", "/menu"),
             navEntry("Түүхий эд", "/kitchen/ingredients"),
             navEntry("Технологийн карт", "/kitchen/recipes"),
-            // ★ "Нийлүүлэгч" (/kitchen/suppliers) taken off the sidebar,
-            // 2026-09-05 — not needed for now. The route and its data are
+            // ★ "Нийлүүлэгч" (/kitchen/suppliers) off the sidebar — restored
+            // briefly 2026-09-08, taken off again the same day: still "not
+            // needed for now" per the client. The route and its data are
             // untouched; a food order still names a supplier, this just stops
             // promoting the management screen for it. Re-add the row here to
             // bring it back.
@@ -966,9 +969,18 @@ function supportSections(isCook: boolean): NavSection[] {
        * widget (`chat-widget.tsx`) — while `staffSections` has carried one
        * beside its own notifications row since 2026-08-31. This gives them
        * that same page, in the one slot this section has.
+       *
+       * ★★ "Мэдээ" returns for COOK only, 2026-09-08 — client decision. The
+       * board is no longer a class-scoped thing this role can't reach:
+       * `NotificationsService.audienceFilter` now reads a cook's own
+       * kindergarten-wide, published notices (closures, holidays) the same
+       * way staff do, while `create()` still refuses them — read, not post.
+       * Accountant is untouched; that role's audience filter was not widened.
        */
       title: "Харилцаа холбоо",
-      entries: [navEntry("Чат", "/chat")],
+      entries: isCook
+        ? [navEntry("Мэдээ", "/notifications"), navEntry("Чат", "/chat")]
+        : [navEntry("Чат", "/chat")],
     },
     {
       title: "Миний мэдээлэл",

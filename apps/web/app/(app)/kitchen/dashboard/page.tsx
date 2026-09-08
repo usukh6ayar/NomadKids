@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { ArrowRight, ClipboardList, ShoppingCart } from "lucide-react";
+import { AlertTriangle, ArrowRight, ClipboardList, ShoppingCart } from "lucide-react";
 import { cookDashboardSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
@@ -73,7 +73,7 @@ function KitchenDashboard() {
     );
   }
 
-  const { attendanceToday, pendingFoodOrders } = data;
+  const { attendanceToday, pendingFoodOrders, lowStockCount } = data;
   const percent =
     attendanceToday.expected > 0 ? (attendanceToday.present / attendanceToday.expected) * 100 : 0;
 
@@ -153,6 +153,32 @@ function KitchenDashboard() {
             />
           ) : (
             <p className="text-body text-muted">Нийлүүлэгчээс хараахан хүлээн аваагүй захиалга.</p>
+          )}
+        </BoardCard>
+
+        <BoardCard
+          title="Нөөц багассан орц"
+          figure={lowStockCount}
+          footer={
+            <Link
+              href="/kitchen/stock"
+              className="inline-flex min-h-[44px] items-center gap-1.5 text-body font-medium text-primary hover:text-primary-strong"
+            >
+              Нөөц рүү
+              <ArrowRight size={15} aria-hidden="true" />
+            </Link>
+          }
+        >
+          {lowStockCount === 0 ? (
+            <BoardCardEmpty
+              icon={<AlertTriangle size={22} />}
+              title="Бүх орц хангалттай"
+              hint="Босго тогтоосон орцуудын нөөц хэвийн байна."
+            />
+          ) : (
+            <p className="text-body text-muted">
+              Тогтоосон хамгийн бага нөөцөөс доош орсон орц байна.
+            </p>
           )}
         </BoardCard>
       </div>

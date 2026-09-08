@@ -175,7 +175,7 @@ describe("authorization", () => {
     );
   });
 
-  it("only COOK/ADMIN may approve or consume a menu day — a teacher gets 404", async () => {
+  it("only COOK/ADMIN may approve, consume or check sufficiency for a menu day — a teacher gets 404", async () => {
     await authed(
       request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-04-01`),
       teacherA,
@@ -188,8 +188,13 @@ describe("authorization", () => {
       request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-04-01/consume`),
       teacherA,
     );
+    const sufficiency = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-04-01/sufficiency`),
+      teacherA,
+    );
     expect(approve.status).toBe(404);
     expect(consume.status).toBe(404);
+    expect(sufficiency.status).toBe(404);
   });
 });
 
@@ -339,6 +344,41 @@ describe("suppliers", () => {
       cookA,
     );
     expect(list.body.items.map((s: { id: string }) => s.id)).toContain(created.body.id);
+  });
+
+  it("archiving is blocked while a live food order still references the supplier", async () => {
+    const supplier = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/suppliers`),
+      cookA,
+    ).send({ name: "Ногоон эрдэнэ ХХК" });
+    const flour = await createIngredient(cookA, a.kindergarten.id, { name: "Гурил" });
+    const order = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/food-orders`),
+      cookA,
+    ).send({
+      supplierId: supplier.body.id,
+      orderDate: "2026-04-01",
+      lines: [{ ingredientId: flour.id, quantity: "1000", unitPrice: "1" }],
+    });
+    expect(order.status).toBe(201);
+
+    const blocked = await authed(
+      request(server()).delete(`/v1/suppliers/${supplier.body.id}`),
+      cookA,
+    );
+    expect(blocked.status).toBe(409);
+
+    await authed(request(server()).patch(`/v1/food-orders/${order.body.id}`), cookA).send({
+      status: "CANCELLED",
+    });
+
+    const stillBlocked = await authed(
+      request(server()).delete(`/v1/suppliers/${supplier.body.id}`),
+      cookA,
+    );
+    // A cancelled order still references the supplier — the guard counts any
+    // live order, not just open ones, same as the ingredient/recipe guard.
+    expect(stillBlocked.status).toBe(409);
   });
 });
 
@@ -855,6 +895,171 @@ describe("menu integration", () => {
     expect(edit.status).toBe(400);
   });
 
+  it("sufficiency compares a day's required ingredients against current stock, using the same math consume commits with", async () => {
+    const flour = await createIngredient(cookA, a.kindergarten.id, { name: "Гурил" });
+    const milk = await createIngredient(cookA, a.kindergarten.id, {
+      name: "Сүү",
+      unit: "MILLILITER",
+    });
+    const riceRecipe = await createRecipe(cookA, a.kindergarten.id, "Цагаан будаа", 10, [
+      { ingredientId: flour.id, quantity: "1000" },
+    ]);
+    const milkRecipe = await createRecipe(cookA, a.kindergarten.id, "Сүүтэй цай", 10, [
+      { ingredientId: milk.id, quantity: "1000" },
+    ]);
+    await approveRecipe(cookA, riceRecipe.id);
+    await approveRecipe(cookA, milkRecipe.id);
+
+    // A date with nothing saved yet answers "nothing required", not 404.
+    const empty = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-04-01/sufficiency`),
+      cookA,
+    );
+    expect(empty.status).toBe(200);
+    expect(empty.body).toEqual([]);
+
+    const supplier = (
+      await authed(
+        request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/suppliers`),
+        cookA,
+      ).send({ name: "Нийлүүлэгч" })
+    ).body;
+    // Plenty of flour, but only half the milk two batches will need.
+    for (const [ingredientId, quantity] of [
+      [flour.id, "5000"],
+      [milk.id, "500"],
+    ]) {
+      const order = await authed(
+        request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/food-orders`),
+        cookA,
+      ).send({
+        supplierId: supplier.id,
+        orderDate: "2026-04-01",
+        lines: [{ ingredientId, quantity, unitPrice: "1" }],
+      });
+      await authed(request(server()).post(`/v1/food-orders/${order.body.id}/receive`), cookA).send({
+        lines: [],
+      });
+    }
+
+    await authed(
+      request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-04-01`),
+      cookA,
+    ).send({
+      dishes: [
+        { name: "x", allergenTags: [], recipeId: riceRecipe.id, portions: 2 },
+        // 1 batch × 1000ml needed, only 500ml on hand.
+        { name: "y", allergenTags: [], recipeId: milkRecipe.id, portions: 1 },
+      ],
+    });
+
+    // Works before approval too — a cook checking whether to even bother
+    // approving a still-draft day.
+    const res = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-04-01/sufficiency`),
+      cookA,
+    );
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(2);
+
+    const flourRow = res.body.find(
+      (r: { ingredient: { id: string } }) => r.ingredient.id === flour.id,
+    );
+    expect(Number(flourRow.required)).toBe(2000);
+    expect(Number(flourRow.available)).toBe(5000);
+    expect(flourRow.sufficient).toBe(true);
+    expect(flourRow.shortfall).toBeNull();
+
+    const milkRow = res.body.find(
+      (r: { ingredient: { id: string } }) => r.ingredient.id === milk.id,
+    );
+    expect(Number(milkRow.required)).toBe(1000);
+    expect(Number(milkRow.available)).toBe(500);
+    expect(milkRow.sufficient).toBe(false);
+    expect(Number(milkRow.shortfall)).toBe(500);
+  });
+
+  /**
+   * ★ Client decision, 2026-09-08: consume refuses rather than driving stock
+   * negative. Same fixture and shortage as the sufficiency test above — the
+   * two must agree, since the screen shows one and the server enforces the
+   * other against the identical numbers.
+   */
+  it("consume refuses when it would drive an ingredient's stock negative, and succeeds once stock catches up", async () => {
+    const flour = await createIngredient(cookA, a.kindergarten.id, { name: "Гурил" });
+    const milk = await createIngredient(cookA, a.kindergarten.id, {
+      name: "Сүү",
+      unit: "MILLILITER",
+    });
+    const riceRecipe = await createRecipe(cookA, a.kindergarten.id, "Цагаан будаа", 10, [
+      { ingredientId: flour.id, quantity: "1000" },
+    ]);
+    const milkRecipe = await createRecipe(cookA, a.kindergarten.id, "Сүүтэй цай", 10, [
+      { ingredientId: milk.id, quantity: "1000" },
+    ]);
+    await approveRecipe(cookA, riceRecipe.id);
+    await approveRecipe(cookA, milkRecipe.id);
+
+    const supplier = (
+      await authed(
+        request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/suppliers`),
+        cookA,
+      ).send({ name: "Нийлүүлэгч" })
+    ).body;
+    async function receive(ingredientId: string, quantity: string) {
+      const order = await authed(
+        request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/food-orders`),
+        cookA,
+      ).send({
+        supplierId: supplier.id,
+        orderDate: "2026-04-01",
+        lines: [{ ingredientId, quantity, unitPrice: "1" }],
+      });
+      await authed(request(server()).post(`/v1/food-orders/${order.body.id}/receive`), cookA).send({
+        lines: [],
+      });
+    }
+    await receive(flour.id, "5000");
+    // Only half the milk one batch will need.
+    await receive(milk.id, "500");
+
+    await authed(
+      request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-04-01`),
+      cookA,
+    ).send({
+      dishes: [
+        { name: "x", allergenTags: [], recipeId: riceRecipe.id, portions: 2 },
+        { name: "y", allergenTags: [], recipeId: milkRecipe.id, portions: 1 },
+      ],
+    });
+    await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-04-01/approve`),
+      cookA,
+    );
+
+    const blocked = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-04-01/consume`),
+      cookA,
+    );
+    expect(blocked.status).toBe(400);
+    expect(blocked.body.detail).toContain("Сүү");
+    // Refused, not partially applied — flour's stock is untouched.
+    expect(
+      await db.stockMovement.count({
+        where: { ingredientId: flour.id, sourceType: "CONSUMPTION" },
+      }),
+    ).toBe(0);
+
+    // The kitchen receives the rest of the milk it needed.
+    await receive(milk.id, "500");
+
+    const consume = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-04-01/consume`),
+      cookA,
+    );
+    expect(consume.status).toBe(201);
+  });
+
   it("a save resets an APPROVED day back to DRAFT", async () => {
     await authed(
       request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-04-01`),
@@ -1064,6 +1269,77 @@ describe("reports", () => {
     expect(row.orderCount).toBe(2);
     // 5000×2.5 + 5000×1.2 = 12500 + 6000
     expect(row.totalAmount).toBe("18500.00");
+  });
+
+  describe("export", () => {
+    async function fetchExport(session: AuthSession, path: string) {
+      return authed(
+        request(server()).get(
+          `/v1/kindergartens/${a.kindergarten.id}/kitchen/reports/${path}/export?from=2026-04-01&to=2026-04-01`,
+        ),
+        session,
+      )
+        .buffer(true)
+        .parse((r, cb) => {
+          const chunks: Buffer[] = [];
+          r.on("data", (c: Buffer) => chunks.push(c));
+          r.on("end", () => cb(null, Buffer.concat(chunks)));
+        });
+    }
+
+    async function loadWorkbook(buffer: Buffer) {
+      const ExcelJS = (await import("exceljs")).default;
+      const book = new ExcelJS.Workbook();
+      await book.xlsx.load(buffer);
+      return book;
+    }
+
+    it("exports the consumption report as the same rows the screen reads", async () => {
+      const { flour } = await stockedKitchen();
+
+      const res = await fetchExport(cookA, "consumption");
+      expect(res.status).toBe(200);
+      expect(res.headers["content-disposition"]).toContain(".xlsx");
+
+      const book = await loadWorkbook(res.body);
+      const sheet = book.worksheets[0]!;
+      const names = sheet.getRows(2, sheet.rowCount - 1)!.map((row) => row.getCell("A").text);
+      expect(names).toContain(flour.name);
+    });
+
+    it("exports the nutrition report", async () => {
+      await stockedKitchen();
+
+      const res = await fetchExport(cookA, "nutrition");
+      expect(res.status).toBe(200);
+
+      const book = await loadWorkbook(res.body);
+      const sheet = book.worksheets[0]!;
+      expect(sheet.getRow(2).getCell("A").text).toBe("2026-04-01");
+    });
+
+    it("exports the purchase report", async () => {
+      const { supplier } = await stockedKitchen();
+
+      const res = await fetchExport(cookA, "purchases");
+      expect(res.status).toBe(200);
+
+      const book = await loadWorkbook(res.body);
+      const sheet = book.worksheets[0]!;
+      expect(sheet.getRow(2).getCell("A").text).toBe(supplier.name);
+    });
+
+    it("a teacher gets 404 on all three report exports", async () => {
+      for (const path of ["consumption", "nutrition", "purchases"]) {
+        const res = await authed(
+          request(server()).get(
+            `/v1/kindergartens/${a.kindergarten.id}/kitchen/reports/${path}/export?from=2026-04-01&to=2026-04-01`,
+          ),
+          teacherA,
+        );
+        expect(res.status).toBe(404);
+      }
+    });
   });
 });
 

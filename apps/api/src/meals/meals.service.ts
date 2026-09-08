@@ -254,6 +254,13 @@ export class MealsService {
    * A dish whose recipe has since been deleted is skipped rather than
    * failing the whole call — its frozen name/allergens/calories are still
    * correct; only the ingredient it would have deducted is unknown now.
+   *
+   * ★ Refuses rather than going negative — client decision, 2026-09-08.
+   * `checkStockSufficiency` is the exact same read `GET .../sufficiency`
+   * shows the cook beforehand, so a refusal here can never name a shortage
+   * the screen did not already warn about. A short ingredient means placing
+   * or receiving an order, or a manual stock adjustment — not a deduction
+   * that quietly leaves the ledger negative.
    */
   async consumeDay(actor: Actor, kindergartenId: string, dateIso: string) {
     this.tenants.assertCanManageKitchen(actor, kindergartenId);
@@ -276,21 +283,19 @@ export class MealsService {
       throw new BadRequestException("Технологийн картаар холбогдсон, порц бүхий хоол алга");
     }
 
-    const deductions = new Map<string, number>();
-    for (const dish of dishes) {
-      const recipe = await this.kitchen.getRecipeIngredientLines(kindergartenId, dish.recipeId);
-      if (!recipe) continue;
-
-      for (const line of recipe.lines) {
-        deductions.set(
-          line.ingredientId,
-          (deductions.get(line.ingredientId) ?? 0) + line.quantity * dish.portions,
-        );
-      }
-    }
-
+    const deductions = await this.resolveDeductions(kindergartenId, dishes);
     if (deductions.size === 0) {
       throw new BadRequestException("Энэ өдрийн технологийн картууд олдсонгүй");
+    }
+
+    const shortages = (await this.kitchen.checkStockSufficiency(kindergartenId, deductions)).filter(
+      (row) => !row.sufficient,
+    );
+    if (shortages.length > 0) {
+      const names = shortages
+        .map((row) => `${row.ingredient.name} (дутуу ${row.shortfall})`)
+        .join(", ");
+      throw new BadRequestException(`Нөөц хүрэлцэхгүй байна: ${names}`);
     }
 
     await this.kitchen.consumeForMenuDay(
@@ -312,6 +317,58 @@ export class MealsService {
     });
 
     return { id: day.id, ingredientCount: deductions.size };
+  }
+
+  /** How much of each ingredient a day's recipe-linked, portioned dishes call
+   * for — the exact math `consumeDay` commits with, extracted so the
+   * sufficiency check below can answer "will this actually work" with the
+   * same numbers `consume` would use, not an approximation of them. */
+  private async resolveDeductions(
+    kindergartenId: string,
+    dishes: (MenuDishLike & { recipeId: string; portions: number })[],
+  ): Promise<Map<string, number>> {
+    const deductions = new Map<string, number>();
+    for (const dish of dishes) {
+      const recipe = await this.kitchen.getRecipeIngredientLines(kindergartenId, dish.recipeId);
+      if (!recipe) continue;
+
+      for (const line of recipe.lines) {
+        deductions.set(
+          line.ingredientId,
+          (deductions.get(line.ingredientId) ?? 0) + line.quantity * dish.portions,
+        );
+      }
+    }
+    return deductions;
+  }
+
+  /**
+   * Хангамжийн шалгалт — can this day's planned, recipe-linked dishes
+   * actually be cooked from what's on the shelf right now.
+   *
+   * ★ COOK/ADMIN only (`assertCanManageKitchen`), the same gate as approve and
+   * consume: this reads the kitchen's own stock, not the shared menu a
+   * teacher also edits.
+   *
+   * ★★ A date with no saved menu, or no recipe-linked dishes yet, is not an
+   * error — it answers "nothing required", the same way an unplanned day
+   * exports as a row saying so rather than failing. A cook checking a date
+   * before anything is drafted should see an empty list, not a 404.
+   */
+  async checkSufficiency(actor: Actor, kindergartenId: string, dateIso: string) {
+    this.tenants.assertCanManageKitchen(actor, kindergartenId);
+    const date = new Date(`${dateIso}T00:00:00.000Z`);
+
+    const day = await this.repo.findDay(kindergartenId, date);
+    const dishes = day
+      ? parseDishes(day.dishes).filter(
+          (dish): dish is MenuDishLike & { recipeId: string; portions: number } =>
+            Boolean(dish.recipeId) && Boolean(dish.portions) && (dish.portions ?? 0) > 0,
+        )
+      : [];
+
+    const required = await this.resolveDeductions(kindergartenId, dishes);
+    return this.kitchen.checkStockSufficiency(kindergartenId, required);
   }
 
   // ── The meal register — нэмэлт.md §2 ───────────────────────────────────────

@@ -8,7 +8,9 @@ import {
   authed,
   createChild,
   createGroup,
+  createMembership,
   createScenario,
+  createUser,
   enrollChild,
   login,
   type AuthSession,
@@ -32,6 +34,7 @@ let b: Scenario;
 let teacherA: AuthSession;
 let parentA: AuthSession;
 let parentB: AuthSession;
+let cookA: AuthSession;
 let storageAvailable = true;
 
 beforeAll(async () => {
@@ -60,6 +63,12 @@ beforeEach(async () => {
   teacherA = await login(app, a.teacherUser.username);
   parentA = await login(app, a.parentUser.username);
   parentB = await login(app, b.parentUser.username);
+
+  const cookUser = await createUser({
+    username: `cook-${Math.random().toString(36).slice(2, 8)}`,
+  });
+  await createMembership(cookUser.id, a.kindergarten.id, "COOK");
+  cookA = await login(app, cookUser.username);
 });
 
 const server = () => app.getHttpServer();
@@ -521,6 +530,32 @@ describe("the meal register", () => {
       });
 
       expect(res.status).toBe(404);
+    });
+
+    /**
+     * `GroupMealsController` is `@Roles("TEACHER","ADMIN")` — COOK is excluded
+     * on purpose (`assertStaff`, not `assertCanManageMeals`): this register
+     * names individual children and what each one ate, which is child data a
+     * cook has no route to anywhere else in the system either. Asserted
+     * explicitly rather than left as an absence, per the audit that found this
+     * controller had no COOK case in either direction.
+     */
+    it("a cook gets 404 on both the group register and its sheet — this is child data, not the kitchen's", async () => {
+      const write = await authed(
+        request(server()).put(`/v1/groups/${a.group.id}/meals`),
+        cookA,
+      ).send({
+        date: "2026-03-02",
+        kind: "LUNCH",
+        entries: [{ childId: a.child.id, status: "TAKEN" }],
+      });
+      expect(write.status).toBe(404);
+
+      const read = await authed(
+        request(server()).get(`/v1/groups/${a.group.id}/meals?date=2026-03-02&kind=LUNCH`),
+        cookA,
+      );
+      expect(read.status).toBe(404);
     });
 
     it("a teacher assigned to a different group in the same kindergarten gets 404", async () => {

@@ -258,13 +258,15 @@ export class DashboardService {
     const kindergartenIds = this.tenants.memberKindergartenIds(actor);
     const today = startOfDay(new Date());
 
-    const [attendanceToday, attendanceByGroup, pendingFoodOrders] = await Promise.all([
-      this.repo.attendanceToday(kindergartenIds, today),
-      this.repo.attendanceByGroup(kindergartenIds, today, today),
-      this.repo.pendingFoodOrders(kindergartenIds),
-    ]);
+    const [attendanceToday, attendanceByGroup, pendingFoodOrders, lowStockCount] =
+      await Promise.all([
+        this.repo.attendanceToday(kindergartenIds, today),
+        this.repo.attendanceByGroup(kindergartenIds, today, today),
+        this.repo.pendingFoodOrders(kindergartenIds),
+        this.repo.lowStockCount(kindergartenIds),
+      ]);
 
-    return { attendanceToday, attendanceByGroup, pendingFoodOrders };
+    return { attendanceToday, attendanceByGroup, pendingFoodOrders, lowStockCount };
   }
 
   /**

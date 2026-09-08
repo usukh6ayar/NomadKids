@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { Download } from "lucide-react";
 import { useState } from "react";
 import { z } from "zod";
 import {
@@ -9,11 +10,13 @@ import {
   purchaseReportRowSchema,
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
+import { downloadUrl } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
+import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
@@ -39,9 +42,9 @@ function thisMonthRange(): { from: string; to: string } {
 }
 
 const TABS = [
-  { value: "consumption", label: "Хэрэглээ" },
-  { value: "nutrition", label: "Шим тэжээл" },
-  { value: "purchases", label: "Худалдан авалт" },
+  { value: "consumption", label: "Хэрэглээ", exportPath: "consumption/export" },
+  { value: "nutrition", label: "Шим тэжээл", exportPath: "nutrition/export" },
+  { value: "purchases", label: "Худалдан авалт", exportPath: "purchases/export" },
 ] as const;
 
 /** Хоол үйлдвэрлэлийн тайлан — consumption, nutrition and purchase reports
@@ -88,6 +91,22 @@ function KitchenReports() {
                 />
               )}
             </Field>
+            {/* One destination — the tab and range currently on screen, same
+                shape as `finance-reports.tsx`'s export button. `/menu`'s
+                three-item dropdown fits three fixed windows (day/week/month);
+                this screen has one open-ended range instead. */}
+            {kindergartenId ? (
+              <Button size="sm" variant="secondary" asChild>
+                <a
+                  href={downloadUrl(
+                    `/kindergartens/${kindergartenId}/kitchen/reports/${TABS.find((t) => t.value === tab)!.exportPath}?from=${range.from}&to=${range.to}`,
+                  )}
+                >
+                  <Download size={16} aria-hidden="true" />
+                  Excel татах
+                </a>
+              </Button>
+            ) : null}
           </div>
         }
       />

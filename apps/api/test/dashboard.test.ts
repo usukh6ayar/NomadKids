@@ -687,6 +687,32 @@ describe("cook dashboard", () => {
     expect(after.body.pendingFoodOrders).toBe(0);
   });
 
+  it("counts ingredients below their own minStock, and only those with a threshold set", async () => {
+    const cookA = await cookSession(a.kindergarten.id);
+
+    const tracked = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/ingredients`),
+      cookA,
+    ).send({ name: "Гурил", unit: "GRAM", allergenTags: [], minStock: "1000" });
+    // No threshold set — never counted, no matter how little is on hand.
+    await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/ingredients`),
+      cookA,
+    ).send({ name: "Сахар", unit: "GRAM", allergenTags: [] });
+
+    const before = await request(server()).get("/v1/dashboard/cook").set("Cookie", cookA.cookies);
+    // Nothing received yet — 0 on hand is below a 1000g threshold.
+    expect(before.body.lowStockCount).toBe(1);
+
+    await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/stock/adjustments`),
+      cookA,
+    ).send({ ingredientId: tracked.body.id, date: "2026-04-01", quantity: "1500" });
+
+    const after = await request(server()).get("/v1/dashboard/cook").set("Cookie", cookA.cookies);
+    expect(after.body.lowStockCount).toBe(0);
+  });
+
   it("an admin may also open it", async () => {
     const res = await request(server()).get("/v1/dashboard/cook").set("Cookie", adminA.cookies);
     expect(res.status).toBe(200);

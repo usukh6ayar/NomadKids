@@ -312,6 +312,16 @@ export class KitchenRepository {
     return this.prisma.supplier.update({ where: { id }, data: { deletedAt: new Date() } });
   }
 
+  /** How many live food orders still reference this supplier — same
+   * reasoning as `countRecipeUsage`: a delete that silently drops a supplier
+   * out from under an open order (DRAFT/ORDERED, not yet received) leaves a
+   * cook unable to find who a pending delivery is even from. */
+  async countFoodOrderUsage(supplierId: string): Promise<number> {
+    return this.prisma.foodOrder.count({
+      where: { supplierId, deletedAt: null },
+    });
+  }
+
   // ── Food orders (Хүнсний захиалга) ──────────────────────────────────────
 
   private readonly foodOrderInclude = {
@@ -444,12 +454,15 @@ export class KitchenRepository {
   // ── Stock ────────────────────────────────────────────────────────────────
 
   /** On-hand per ingredient — `SUM(IN)+SUM(ADJUSTMENT,signed)-SUM(OUT)`,
-   * computed per read rather than a running balance column. */
+   * computed per read rather than a running balance column. Carries
+   * `minStock` and a derived `low` flag so `/kitchen/stock` and the cook
+   * dashboard can warn without a second query — `low` is only ever true for
+   * an ingredient a cook has actually set a threshold on. */
   async stockLevels(kindergartenId: string) {
     const [ingredients, movements] = await Promise.all([
       this.prisma.ingredient.findMany({
         where: { kindergartenId, deletedAt: null },
-        select: { id: true, name: true, unit: true },
+        select: { id: true, name: true, unit: true, minStock: true },
         orderBy: { name: "asc" },
       }),
       this.prisma.stockMovement.groupBy({
@@ -466,10 +479,16 @@ export class KitchenRepository {
       byIngredient.set(row.ingredientId, (byIngredient.get(row.ingredientId) ?? 0) + signed);
     }
 
-    return ingredients.map((ingredient) => ({
-      ingredient,
-      onHand: (byIngredient.get(ingredient.id) ?? 0).toFixed(2),
-    }));
+    return ingredients.map(({ minStock, ...ingredient }) => {
+      const onHand = byIngredient.get(ingredient.id) ?? 0;
+      const threshold = minStock === null ? null : Number(minStock);
+      return {
+        ingredient,
+        onHand: onHand.toFixed(2),
+        minStock: minStock === null ? null : minStock.toFixed(2),
+        low: threshold !== null && onHand < threshold,
+      };
+    });
   }
 
   async listStockMovements(

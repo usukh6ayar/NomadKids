@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Res } from "@nestjs/common";
+import type { Response } from "express";
 import { idParamSchema } from "@kinder/contracts";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
@@ -347,6 +348,45 @@ export class KitchenReportsController {
   ) {
     return this.service.purchaseReport(actor, params.id, query);
   }
+
+  @Get("consumption/export")
+  async consumptionExport(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: IdParam,
+    @Query(new ZodValidationPipe(kitchenReportsQuerySchema)) query: KitchenReportsQuery,
+    @Res() res: Response,
+  ) {
+    sendWorkbook(res, await this.service.exportConsumptionReport(actor, params.id, query));
+  }
+
+  @Get("nutrition/export")
+  async nutritionExport(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: IdParam,
+    @Query(new ZodValidationPipe(kitchenReportsQuerySchema)) query: KitchenReportsQuery,
+    @Res() res: Response,
+  ) {
+    sendWorkbook(res, await this.service.exportNutritionReport(actor, params.id, query));
+  }
+
+  @Get("purchases/export")
+  async purchasesExport(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: IdParam,
+    @Query(new ZodValidationPipe(kitchenReportsQuerySchema)) query: KitchenReportsQuery,
+    @Res() res: Response,
+  ) {
+    sendWorkbook(res, await this.service.exportPurchaseReport(actor, params.id, query));
+  }
+}
+
+function sendWorkbook(res: Response, file: { buffer: Buffer; filename: string }): void {
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+  res.setHeader("Content-Disposition", `attachment; filename="${file.filename}"`);
+  res.send(file.buffer);
 }
 
 // ── Meal servings (Тараалт) ─────────────────────────────────────────────

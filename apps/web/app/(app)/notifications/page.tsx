@@ -71,6 +71,18 @@ const activeSurveysSchema = z.array(surveySchema);
 export default function NotificationsPage() {
   const { hasRole, session } = useSession();
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
+  /*
+   * ★ Added 2026-09-08, when COOK started reading this board too
+   * (`NotificationsService.audienceFilter`). Every guardian-only branch below
+   * used to read `!isStaff`, which was correct only because COOK/ACCOUNTANT
+   * previously got nothing back from the API and neither had a nav row here —
+   * `!isStaff` and "is a parent" happened to be the same set of users who
+   * ever saw this page. They no longer are: a cook is `!isStaff` too, and has
+   * no children and no surveys to answer. Guardian-shaped UI (the Мэдээ/
+   * Судалгаа tab switcher, the child-scoped surveys tab) now checks this
+   * instead; `isStaff` still gates compose/edit, unchanged.
+   */
+  const isGuardian = hasRole("PARENT");
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
   /*
    * Filtered in the browser, unlike `unread` and `q` which the API understands.
@@ -145,7 +157,7 @@ export default function NotificationsPage() {
   const myChildren = useQuery({
     queryKey: qk.myChildren(),
     queryFn: () => get("/children/mine", ownChildrenSchema),
-    enabled: !isStaff,
+    enabled: isGuardian,
     staleTime: 60_000,
   });
 
@@ -165,7 +177,7 @@ export default function NotificationsPage() {
     queries: surveyChildren.map((child) => ({
       queryKey: qk.childSurveys(child.id),
       queryFn: () => get(`/children/${child.id}/surveys`, activeSurveysSchema),
-      enabled: !isStaff,
+      enabled: isGuardian,
       staleTime: 60_000,
     })),
   });
@@ -246,9 +258,7 @@ export default function NotificationsPage() {
 
   return (
     <div className="page-band">
-      <PageHeader
-        title={tab === "news" ? "Мэдээ" : "Судалгаа"}
-      />
+      <PageHeader title={tab === "news" ? "Мэдээ" : "Судалгаа"} />
 
       {/*
         Capped from `lg` up. Full width is right on a phone, where the field is
@@ -268,7 +278,7 @@ export default function NotificationsPage() {
         filters both change meaning with the tab; the tab changes meaning with
         nothing.
       */}
-      {!isStaff ? (
+      {isGuardian ? (
         <div role="tablist" aria-label="Мэдээ эсвэл судалгаа" className="flex gap-2">
           <TabButton
             active={tab === "news"}
@@ -475,7 +485,7 @@ export default function NotificationsPage() {
         </div>
       ) : null}
 
-      {tab === "surveys" && !isStaff ? (
+      {tab === "surveys" && isGuardian ? (
         <SurveysTab
           familyChildren={surveyChildren}
           selectedChild={selectedSurveyChild}
