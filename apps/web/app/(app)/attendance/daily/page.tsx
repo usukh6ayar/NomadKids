@@ -224,7 +224,6 @@ function DailyAttendance() {
       */}
       <PageHeader
         title="Өдөр тутмын ирц"
-        lede="Бүлэг тус бүрийн өдрийн ирцийн дүн, сонгосон хугацаагаар."
         actions={
           <>
             {/*

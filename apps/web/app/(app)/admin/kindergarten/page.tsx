@@ -148,7 +148,6 @@ function AdminKindergarten() {
     <div className="flex max-w-[760px] flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Цэцэрлэгийн мэдээлэл"
-        lede="Эцэг эхэд харагдах нэр, хаяг, холбоо барих мэдээлэл."
         actions={
           editing ? null : (
             <>

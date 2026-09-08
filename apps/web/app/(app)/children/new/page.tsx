@@ -168,10 +168,7 @@ function NewChild() {
 
   return (
     <div className="flex flex-col gap-6 lg:gap-8">
-      <PageHeader
-        title="Хүүхэд бүртгэх"
-        lede="ESIS суралцагчийн гаралтыг дотоод бүртгэлтэй тулгаж хадгална."
-      />
+      <PageHeader title="Хүүхэд бүртгэх" />
 
       {esisTemplate.isError ? <FormError message={errorMessage(esisTemplate.error)} /> : null}
       {esisTemplate.data ? <EsisStudentOutput template={esisTemplate.data} /> : null}

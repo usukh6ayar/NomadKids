@@ -3,6 +3,7 @@ import Decimal from "decimal.js";
 import { AuditRepository } from "../audit/audit.repository";
 import { TenantAccessService } from "../authz/tenant-access.service";
 import { ChildAccessService } from "../authz/child-access.service";
+import { childKindergartenIds } from "../authz/child-access";
 import { NotificationsService } from "../notifications/notifications.service";
 import type { Actor } from "../authz/actor";
 import { paginate, toSkipTake, type PageParams } from "../common/pagination";
@@ -121,9 +122,24 @@ export class InvoicesService {
    * ★★ Regenerating an invoice that already has money against it is refused.
    * `нэмэлт.md` §14: a confirmed financial transaction gets a correction or a
    * reversal, not a bill quietly rewritten underneath it.
+   *
+   * ★★★ `dto.childId` is checked against `kindergartenId`, not trusted from
+   * the body. `assertCanReadFinance` above only proves the actor may touch
+   * *this* kindergarten's money — it says nothing about which kindergarten
+   * `dto.childId` belongs to. Without this, an accountant of kindergarten A
+   * could bill a child who has never been enrolled there by naming a child id
+   * from kindergarten B: `createInvoice` writes whatever `childId` it is
+   * given under `kindergartenId: A`, and `assertCanViewFinance` alone is not
+   * enough to catch it — an actor who is *also* an accountant of B would
+   * legitimately pass it while still misattributing the invoice to A's
+   * ledger. CLAUDE.md §3.1's tenant scoping applies to the child on the
+   * body, not only the id in the URL.
    */
   async generate(actor: Actor, kindergartenId: string, dto: GenerateInvoiceDto) {
     this.tenants.assertCanReadFinance(actor, kindergartenId);
+
+    const childFacts = await this.childAccess.assertCanViewFinance(actor, dto.childId);
+    if (!childKindergartenIds(childFacts).has(kindergartenId)) throw new NotFoundException();
 
     const month = toMonthDate(dto.month);
     const dueDate = toDate(dto.dueDate);

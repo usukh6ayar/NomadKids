@@ -104,12 +104,12 @@ export function AdminOverview() {
     administrator who has not created one needs to read that at the top rather
     than infer it from an empty section further down.
   */
-  const header = (lede: string) => <PageHeader title="Удирдлагын самбар" lede={lede} />;
+  const header = <PageHeader title="Удирдлагын самбар" />;
 
   if (isLoading) {
     return (
       <>
-        {header("Ачаалж байна…")}
+        {header}
         <LoadingState rows={4} />
       </>
     );
@@ -118,7 +118,7 @@ export function AdminOverview() {
   if (isError) {
     return (
       <>
-        {header("Мэдээлэл ачаалж чадсангүй.")}
+        {header}
         <ErrorState
           description={errorMessage(error)}
           action={
@@ -147,9 +147,7 @@ export function AdminOverview() {
     <>
       {/* Outside the gap column below: `PageHeader` carries its own `mb-4
           lg:mb-6`, and inside it that margin would stack with `gap-6`. */}
-      {header(
-        currentTerm ? `${currentTerm.name} · идэвхтэй улирал` : "Идэвхтэй улирал тохируулаагүй",
-      )}
+      {header}
 
       <div className="flex flex-col gap-6">
         {/*

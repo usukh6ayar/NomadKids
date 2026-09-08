@@ -20,7 +20,6 @@ export default function AttendanceRequestReviewPage() {
       <div className="flex flex-col gap-6 lg:gap-8">
         <PageHeader
           title="Ирцийн мэдэгдэл — хянах"
-          lede="Эцэг эхийн ирцийн мэдэгдэл, чөлөөний хүсэлтийг хянаж, ирцэд бүртгэнэ."
         />
         <AttendanceRequestQueue />
       </div>

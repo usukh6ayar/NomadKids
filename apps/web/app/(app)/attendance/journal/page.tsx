@@ -185,7 +185,6 @@ function AttendanceJournal() {
     <div className="flex flex-col gap-4 py-2">
       <PageHeader
         title="Ирцийн дэлгэрэнгүй"
-        lede="Хүүхэд бүрийн өдөр тутмын ирц, сонгосон хугацаагаар"
         actions={<AttendanceViewSwitch current="child" from={from} to={to} groupId={groupId} />}
       />
 

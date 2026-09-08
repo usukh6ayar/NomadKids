@@ -77,7 +77,6 @@ function AdminSchoolYears() {
     <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Хичээлийн жил"
-        lede="Бүлэг, элсэлт бүр хичээлийн жилд харьяалагдана."
         actions={
           <>
             <EsisPullButton resource="academicYearStatuses" />

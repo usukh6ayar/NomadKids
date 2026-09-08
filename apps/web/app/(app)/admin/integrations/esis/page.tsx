@@ -107,7 +107,6 @@ function EsisIntegration() {
   const header = (
     <PageHeader
       title="ESIS мэдээллийн төв"
-      lede="ESIS сервисийн холболт, синк болон өгөгдлийн урсгалыг нэг дор хянана."
       icon={<IconChip icon={<Database />} tone="primary" size="lg" />}
       actions={
         <Button

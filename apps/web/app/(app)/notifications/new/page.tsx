@@ -214,7 +214,7 @@ function ComposeNotice() {
 
   return (
     <div className="flex flex-col gap-6 lg:gap-8">
-      <PageHeader title="Шинэ мэдэгдэл" lede="Ангийн самбарт зар нийтлэх." />
+      <PageHeader title="Шинэ мэдэгдэл" />
 
       <Card pad="roomy">
         <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>

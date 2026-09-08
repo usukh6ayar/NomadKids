@@ -104,7 +104,6 @@ describe("бүртгэлийн дэлгэц", () => {
     renderWithProviders(<GroupMealsPage />);
 
     expect(await screen.findByRole("heading", { name: "Хоолны бүртгэл" })).toBeInTheDocument();
-    expect(await screen.findByText("Дунд бүлэг")).toBeInTheDocument();
   });
 
   it("lists every active enrolled child", async () => {

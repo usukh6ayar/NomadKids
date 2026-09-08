@@ -200,16 +200,16 @@ function navIconTone(label: string) {
 }
 
 /**
- * The page header: a title, an optional supporting line, and the screen's own
- * actions.
+ * The page header: a title and the screen's own actions.
  *
  * ★ Ported from the reference's `.topbar`, which every one of its screens uses.
  *
- * The lede is what makes a screen explain itself: "Хариуцсан бүлгийн хүүхдүүд"
- * under "Хүүхдүүд". Optional, because a few screens genuinely have nothing to
- * add and a placeholder sentence is worse than none.
+ * ★★ Its supporting `lede` line went on 2026-09-07, at the client's request —
+ * every screen was carrying a subtitle under the title, and across 47 call
+ * sites that read as restating the nav label rather than adding anything a
+ * screen-specific `meta` chip row or the body itself does not already say.
  *
- * ★★ The search box is opt-in, and it is not decoration.
+ * ★★★ The search box is opt-in, and it is not decoration.
  *
  * `search` renders a real field: `/children` already accepts `?q=` and the API
  * already filters on it, so submitting navigates into the existing search
@@ -234,14 +234,12 @@ function navIconTone(label: string) {
  */
 export function PageHeader({
   title,
-  lede,
   actions,
   search = false,
   icon,
   meta,
 }: {
   title: string;
-  lede?: string;
   /** Trailing controls — a count, a filter, a primary action. */
   actions?: ReactNode;
   /** Shows the header search field. Screens with something to search set it. */
@@ -264,8 +262,8 @@ export function PageHeader({
   /**
    * A chip row under the title — counts, status, the term being viewed.
    *
-   * Sits below the lede rather than beside the title: Mongolian compounds wrap
-   * at almost every width (`--leading-heading` exists for exactly that), and a
+   * Sits below the title rather than beside it: Mongolian compounds wrap at
+   * almost every width (`--leading-heading` exists for exactly that), and a
    * chip sharing the title's line is the first thing to be pushed off it.
    */
   meta?: ReactNode;
@@ -312,7 +310,6 @@ export function PageHeader({
           <h1 className="text-heading font-semibold leading-[1.3] tracking-[-.01em] text-ink md:text-display md:leading-[1.35]">
             {title}
           </h1>
-          {lede ? <p className="mt-0.5 text-body text-muted">{lede}</p> : null}
 
           {/*
           `flex-wrap`, because a row of chips at 375px is the width that

@@ -94,7 +94,6 @@ function PlatformRevenue() {
     <div className="flex flex-col gap-5 lg:gap-6">
       <PageHeader
         title="Санхүү"
-        lede="Цэцэрлэгүүдээс орсон орлого, хуваарилалт."
         actions={
           <Field label="Сар">
             {({ id }) => (

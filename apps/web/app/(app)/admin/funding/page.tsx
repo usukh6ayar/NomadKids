@@ -237,7 +237,6 @@ function FundingRegister() {
     <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Ирц ба тооцоолол"
-        lede={`${formatMonthLabel(month)} — ирцийн бүртгэл ба санхүүжилтийн тооцоо.`}
         actions={
           <div className="flex flex-wrap gap-2">
             {/*

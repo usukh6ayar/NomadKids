@@ -1407,28 +1407,6 @@ describe("teacher dashboard", () => {
     expect(screen.getByRole("region", { name: "Хоолны цэс" })).toBeInTheDocument();
   });
 
-  it("names the group and the date under the title", async () => {
-    stubApi([
-      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      { path: "/dashboard/teacher", body: dashboardBody() },
-      {
-        path: "/groups",
-        body: {
-          items: [{ id: GROUP_ID, name: "Дунд бүлэг" }],
-          page: 1,
-          pageSize: 20,
-          total: 1,
-          totalPages: 1,
-        },
-      },
-      { path: "/children/summary", body: { total: 10, averageAgeMonths: 48, boys: 5, girls: 5 } },
-    ]);
-
-    renderWithProviders(<DashboardPage />);
-
-    expect(await screen.findByText(/Дунд бүлэг · \d{4}\.\d{2}\.\d{2}/)).toBeInTheDocument();
-  });
-
   // ═══ Guarantees that outlived the widgets carrying them ═══
 
   it("names the children whose birthday is today", () => {

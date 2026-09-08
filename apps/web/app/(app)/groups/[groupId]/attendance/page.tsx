@@ -290,7 +290,6 @@ function GroupAttendance() {
     <div className="page-band">
       <PageHeader
         title="Ирц"
-        lede={`${group.data?.name ?? ""} · ${date} · ${editing ? "Засварлаж байна" : "Хадгалсан бүртгэл"}`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {editing ? (

@@ -74,7 +74,6 @@ function RecipeDetail() {
     <div className="flex flex-col gap-5 lg:gap-6">
       <PageHeader
         title={data.name}
-        lede={data.mealKind ? MEAL_KIND_LABEL[data.mealKind] : undefined}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={isDraft ? "neutral" : "mint"}>{RECIPE_STATUS_LABEL[data.status]}</Badge>

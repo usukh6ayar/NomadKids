@@ -146,7 +146,6 @@ function AdminGroups() {
     <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Бүлгүүд"
-        lede="Бүлэг үүсгэж, багш хуваарилна."
         actions={
           <>
             <EsisPullButton resource="groups" />

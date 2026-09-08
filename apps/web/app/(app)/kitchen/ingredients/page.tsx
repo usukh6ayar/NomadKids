@@ -85,7 +85,6 @@ function Ingredients() {
     <div className="flex flex-col gap-5 lg:gap-6">
       <PageHeader
         title="Орц, түүхий эд"
-        lede="Технологийн карт болон шим тэжээлийн тооцоо эдгээр орцоос бодогдоно."
         actions={
           kindergartenId ? (
             <>
