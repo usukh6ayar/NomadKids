@@ -3,48 +3,32 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   BarChart3,
-  Baby,
   BookOpen,
   Boxes,
-  Building2,
   Carrot,
-  ChefHat,
-  // `ChevronRight` left with the child-picker modal `origin/main` removed;
-  // `CalendarCheck` stays because the staff nav still labels Ирц with it.
-  CalendarCheck,
-  ClipboardCheck,
   ClipboardList,
-  Newspaper,
   FileText,
   Home,
   Images,
   LayoutGrid,
-  Bell,
   Menu,
   MessageCircle,
   CalendarDays,
   CalendarRange,
   Database,
-  School,
-  Receipt,
   ScrollText,
   Settings,
-  Shapes,
   ShieldAlert,
   ShieldCheck,
   ShoppingCart,
   SlidersHorizontal,
   Truck,
   UserCog,
-  UtensilsCrossed,
-  Users,
   FileBarChart,
   FileCheck2,
-  FileSignature,
   Headphones,
   HelpCircle,
   LockKeyhole,
-  Wallet,
   // `X` was the picker modal's close button and went with it. The type stays:
   // `ICON_FOR` below is keyed by href and annotated with it.
   type LucideIcon,
@@ -63,6 +47,7 @@ import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
 import { LoadingState } from "@/components/ui/states";
+import { Art, type ArtName } from "@/components/ui/art";
 import { useNavigationHistory } from "@/lib/nav-history";
 import { useSession } from "@/lib/auth/session";
 import { SelectedChildProvider, useSelectedChild } from "@/lib/selected-child";
@@ -278,6 +263,30 @@ const iconProps = { size: 20, strokeWidth: 2, "aria-hidden": true } as const;
  */
 const sectionIconProps = { size: 18, strokeWidth: 2, "aria-hidden": true } as const;
 
+const ROUTE_ART: Partial<Record<string, ArtName>> = {
+  "/children": "child",
+  "/attendance-requests/review": "attendance",
+  "/attendance/daily": "attendance",
+  "/attendance/journal": "attendance",
+  "/kitchen/attendance": "attendance",
+  "/notifications": "notice",
+  "/surveys": "survey",
+  "/admin/groups": "group",
+  "/menu": "food",
+  "/kitchen/recipes": "food",
+  "/finance": "finance",
+  "/invoices": "finance",
+  "/admin/funding": "finance",
+  "/platform": "kindergarten",
+  "/platform/revenue": "finance",
+  "/platform/applications": "kindergarten",
+  "/admin/kindergarten": "kindergarten",
+};
+
+function artIcon(name: ArtName, size: 18 | 20) {
+  return <Art name={name} size={size} className={size === 20 ? "size-5" : "size-[18px]"} />;
+}
+
 /**
  * One icon per destination, chosen once.
  *
@@ -287,57 +296,34 @@ const sectionIconProps = { size: 18, strokeWidth: 2, "aria-hidden": true } as co
  * staff sections, the parent sections and both bottom bars; `/settings` is in
  * three. Each call site used to pick its own glyph, and they had already
  * drifted: the same route was `Bell` in one list and nothing at all in
- * another. A map keyed by the destination makes "the same feature, two icons"
- * unrepresentable instead of merely discouraged.
+ * another. `ROUTE_ART` holds the owner's illustrated feature icons and
+ * `ROUTE_ICON` holds the remaining Lucide glyphs; both are keyed by destination,
+ * making "the same feature, two icons" unrepresentable instead of merely
+ * discouraged.
  *
- * ★★ Existing choices are kept, not re-picked. `/children` was already `Users`
- * and `/observations/review` already `ClipboardList` in the top-level nav; both
- * stay, so the phone's bottom bar and the desktop sidebar keep agreeing. Only
- * the four routes that had no icon anywhere are new decisions.
+ * `/observations/review` keeps its existing `ClipboardList`; supplied feature
+ * drawings live in `ROUTE_ART`, so the phone bar and desktop sidebar always
+ * agree on the same asset.
  */
 const ROUTE_ICON: Record<string, LucideIcon> = {
   "/dashboard": LayoutGrid,
   "/home": Home,
-  "/children": Users,
   "/observations/review": ClipboardList,
-  "/attendance-requests/review": CalendarCheck,
-  "/notifications": Newspaper,
   "/chat": MessageCircle,
-  "/surveys": BarChart3,
   "/documents": FileText,
   "/settings": Settings,
-  "/menu": UtensilsCrossed,
-  "/finance": Wallet,
-  "/invoices": Receipt,
   "/finance/audit-log": ScrollText,
   "/kitchen/dashboard": LayoutGrid,
   "/kitchen/ingredients": Carrot,
-  "/kitchen/recipes": ChefHat,
   "/kitchen/suppliers": Truck,
   "/kitchen/orders": ShoppingCart,
   "/kitchen/stock": Boxes,
-  "/kitchen/attendance": CalendarCheck,
   "/kitchen/reports": BarChart3,
   "/admin": ShieldCheck,
-  "/admin/funding": Wallet,
-  "/attendance/daily": CalendarCheck,
   "/reports": FileBarChart,
   "/incidents": ShieldAlert,
-  "/platform": Building2,
-  "/platform/revenue": Wallet,
-  "/platform/applications": FileSignature,
 
-  /*
-   * ★ The seven administration screens, which had no icons because they had no
-   * rows — every one of them sat behind the single "Удирдлага" hub.
-   *
-   * `Building2` is not reused for `/admin/kindergarten`: it is already
-   * `/platform`, the superadmin's list of *every* kindergarten, and one glyph
-   * for "the estate" and "my own building" is the drift this map exists to
-   * prevent. `School` is the narrower thing.
-   */
-  "/admin/groups": Shapes,
-  "/admin/kindergarten": School,
+  /* Administration screens without supplied feature artwork. */
   "/admin/users": UserCog,
   "/admin/school-years": CalendarRange,
   "/admin/terms": CalendarDays,
@@ -349,6 +335,9 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
 /** The section-level icon for a route, or nothing if it has no destination. */
 function routeIcon(href: string | undefined) {
   if (!href) return undefined;
+  const art = ROUTE_ART[href];
+  if (art) return artIcon(art, 18);
+
   const Icon = ROUTE_ICON[href];
 
   return Icon ? <Icon {...sectionIconProps} /> : undefined;
@@ -392,9 +381,9 @@ function staffNav(isAdmin: boolean, groupId: string | null): NavItem[] {
 
   return [
     { href: "/dashboard", label: "Самбар", icon: <LayoutGrid {...iconProps} /> },
-    { href: "/notifications", label: "Мэдээ", icon: <Newspaper {...iconProps} />, badge: "unread" },
-    { href: assessmentHref, label: "Явцын үнэлгээ", icon: <ClipboardCheck {...iconProps} /> },
-    { href: "/surveys", label: "Судалгаа", icon: <BarChart3 {...iconProps} /> },
+    { href: "/notifications", label: "Мэдээ", icon: artIcon("notice", 20), badge: "unread" },
+    { href: assessmentHref, label: "Явцын үнэлгээ", icon: artIcon("progress", 20) },
+    { href: "/surveys", label: "Судалгаа", icon: artIcon("survey", 20) },
     /*
       ★ `/settings` is what `AppShell` matches on to open the drawer instead of
       navigating (see its `bottomNav` mapping), so the href is load-bearing even
@@ -592,7 +581,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         {
           label: "Явцын үнэлгээ",
           href: scoped("assessment"),
-          icon: <ClipboardCheck {...sectionIconProps} />,
+          icon: artIcon("progress", 18),
         },
         /*
          * ★ "Тайлан" — added 2026-09-05, at the client's request, after they
@@ -676,12 +665,12 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         {
           label: "Ирц",
           href: isAdmin ? "/attendance/daily" : scoped("attendance"),
-          icon: <CalendarCheck {...sectionIconProps} />,
+          icon: artIcon("attendance", 18),
         },
         {
           label: "Хоол ба цэс",
           href: scoped("meals"),
-          icon: <UtensilsCrossed {...sectionIconProps} />,
+          icon: artIcon("food", 18),
         },
         entry("Аюулгүй байдал", "/incidents"),
       ],
@@ -847,14 +836,14 @@ function supportNav(isCook: boolean): NavItem[] {
   return isCook
     ? [
         { href: "/kitchen/dashboard", label: "Самбар", icon: <LayoutGrid {...iconProps} /> },
-        { href: "/menu", label: "Хоолны цэс", icon: <UtensilsCrossed {...iconProps} /> },
-        { href: "/kitchen/recipes", label: "Технологийн карт", icon: <ChefHat {...iconProps} /> },
+        { href: "/menu", label: "Хоолны цэс", icon: artIcon("food", 20) },
+        { href: "/kitchen/recipes", label: "Технологийн карт", icon: artIcon("food", 20) },
         { href: "/settings", label: "Цэс", icon: <Menu {...iconProps} /> },
       ]
     : [
-        { href: "/finance", label: "Санхүү", icon: <Wallet {...iconProps} /> },
-        { href: "/invoices", label: "Нэхэмжлэл", icon: <Receipt {...iconProps} /> },
-        { href: "/attendance/journal", label: "Ирц", icon: <CalendarCheck {...iconProps} /> },
+        { href: "/finance", label: "Санхүү", icon: artIcon("finance", 20) },
+        { href: "/invoices", label: "Нэхэмжлэл", icon: artIcon("finance", 20) },
+        { href: "/attendance/journal", label: "Ирц", icon: artIcon("attendance", 20) },
         { href: "/settings", label: "Цэс", icon: <Menu {...iconProps} /> },
       ];
 }
@@ -956,7 +945,7 @@ function supportSections(isCook: boolean): NavSection[] {
  */
 function platformNav(): NavItem[] {
   return [
-    { href: "/platform", label: "Цэцэрлэгүүд", icon: <Building2 {...iconProps} /> },
+    { href: "/platform", label: "Цэцэрлэгүүд", icon: artIcon("kindergarten", 20) },
     /*
       ★ Санхүү — the operator's own money, not a kindergarten's.
 
@@ -967,7 +956,7 @@ function platformNav(): NavItem[] {
       is still the operator's first job — §7 keeps the platform surface small,
       and this is the one addition the client asked for.
     */
-    { href: "/platform/revenue", label: "Санхүү", icon: <Wallet {...iconProps} /> },
+    { href: "/platform/revenue", label: "Санхүү", icon: artIcon("finance", 20) },
     /*
       ★ The onboarding queue — `docs/CONTRACT_ONBOARDING.md` step 3. It sits
       below the money because approving an application is occasional work and
@@ -978,7 +967,7 @@ function platformNav(): NavItem[] {
     {
       href: "/platform/applications",
       label: "Байгууллагын хүсэлт",
-      icon: <FileSignature {...iconProps} />,
+      icon: artIcon("kindergarten", 20),
     },
     { href: "/settings", label: "Профайл", icon: <Settings {...iconProps} /> },
   ];
@@ -1024,9 +1013,9 @@ function parentNav(
 
   return [
     { href: "/home", label: "Нүүр", icon: <Home {...iconProps} /> },
-    { href: "/notifications", label: "Мэдээ", icon: <Bell {...iconProps} />, badge: "unread" },
+    { href: "/notifications", label: "Мэдээ", icon: artIcon("notice", 20), badge: "unread" },
     { href: zuragHref, label: "Зураг", icon: <Images {...iconProps} /> },
-    { href: hoolHref, label: "Хоол", icon: <UtensilsCrossed {...iconProps} /> },
+    { href: hoolHref, label: "Хоол", icon: artIcon("food", 20) },
     { href: "/settings", label: "Цэс", icon: <Menu {...iconProps} /> },
   ];
 }
@@ -1047,7 +1036,7 @@ function parentSections(
         {
           label: "Хүүхдийн мэдээлэл",
           href: selected ? `${childBase}/general` : childBase,
-          icon: <Baby {...iconProps} />,
+          icon: artIcon("child", 20),
         },
         {
           label: "Цахим хувийн хавтас",
@@ -1057,12 +1046,12 @@ function parentSections(
         {
           label: "Цэцэрлэгийн мэдээлэл",
           href: selected ? `${childBase}/enrollment-archive` : childBase,
-          icon: <Building2 {...iconProps} />,
+          icon: artIcon("kindergarten", 20),
         },
         {
           label: "Мэдээ",
           href: "/notifications",
-          icon: <Newspaper {...iconProps} />,
+          icon: artIcon("notice", 20),
           badge: "unread",
         },
         {

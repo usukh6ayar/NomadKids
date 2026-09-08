@@ -2,16 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import {
-  AlertTriangle,
-  CalendarDays,
-  CheckCircle2,
-  Download,
-  Info,
-  RotateCw,
-  Users,
-  Wallet,
-} from "lucide-react";
+import { AlertTriangle, CalendarDays, CheckCircle2, Download, Info, RotateCw } from "lucide-react";
 import { z } from "zod";
 import {
   attendanceRegisterSchema,
@@ -55,6 +46,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
+import { Art } from "@/components/ui/art";
 
 const groupsSchema = paginated(groupListItemSchema);
 
@@ -533,7 +525,8 @@ function SummaryCards({ register }: { register: AttendanceRegister | undefined }
         value={register?.totals.children ?? "—"}
         unit="хүүхэд"
         tone="sky"
-        art={<Users size={22} aria-hidden />}
+        art={<Art name="child" size={36} />}
+        artSurface={false}
       />
       <StatCard
         label="Ажлын өдөр"
@@ -561,7 +554,8 @@ function SummaryCards({ register }: { register: AttendanceRegister | undefined }
         label="Суутгалын дүн"
         value={formatTugrug(register?.totals.deductionAmount)}
         tone="peach"
-        art={<Wallet size={22} aria-hidden />}
+        art={<Art name="finance" size={36} />}
+        artSurface={false}
         footer={
           register ? (
             <p className="text-caption text-muted">

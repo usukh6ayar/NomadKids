@@ -55,6 +55,7 @@ export function TermProgress({
     <section aria-label="Улирлын үнэлгээний явц" className="h-full">
       <TileShell
         icon={<Art name="progress" />}
+        iconSurface={false}
         tone="teal"
         size="feature"
         label="Улирлын үнэлгээний явц"

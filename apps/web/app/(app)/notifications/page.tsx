@@ -29,15 +29,14 @@ import { useSession } from "@/lib/auth/session";
 import {
   Building2,
   CalendarRange,
-  CheckCircle2,
   ChevronRight,
-  Newspaper,
   PenLine,
   Search,
   Pencil,
   Trash2,
   Users,
 } from "lucide-react";
+import { Art } from "@/components/ui/art";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Badge } from "@/components/ui/badge";
@@ -283,14 +282,14 @@ export default function NotificationsPage() {
           <TabButton
             active={tab === "news"}
             onClick={() => setTab("news")}
-            icon={<Newspaper size={16} aria-hidden="true" />}
+            icon={<Art name="notice" size={18} className="size-[18px]" />}
           >
             Мэдээ
           </TabButton>
           <TabButton
             active={tab === "surveys"}
             onClick={() => setTab("surveys")}
-            icon={<CheckCircle2 size={16} aria-hidden="true" />}
+            icon={<Art name="survey" size={18} className="size-[18px]" />}
             badge={totalPending > 0 ? totalPending : undefined}
           >
             Судалгаа

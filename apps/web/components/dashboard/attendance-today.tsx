@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, ClipboardCheck, CloudOff, Users } from "lucide-react";
+import { ArrowRight, CloudOff, Users } from "lucide-react";
 import Link from "next/link";
 import { groupAttendanceRowSchema } from "@kinder/contracts";
 import { z } from "zod";
@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/states";
 import { BoardCard, BoardCardEmpty } from "./board-card";
 import { useMyGroup } from "./use-my-group";
 import { Ring } from "@/components/ui/chart/ring";
+import { Art } from "@/components/ui/art";
 
 const daySheetSchema = z.array(groupAttendanceRowSchema);
 
@@ -153,7 +154,7 @@ export function AttendanceToday() {
         nothingMarked ? (
           <Button asChild size="sm" className="w-full">
             <Link href={`/groups/${group.id}/attendance`}>
-              <ClipboardCheck size={16} aria-hidden="true" />
+              <Art name="attendance" size={18} className="size-[18px]" />
               Ирц бүртгэх
             </Link>
           </Button>
