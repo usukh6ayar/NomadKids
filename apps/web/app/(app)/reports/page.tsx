@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import { CalendarDays, CheckCircle2, Percent, UsersRound } from "lucide-react";
 import { useState } from "react";
 import { groupAttendanceSummarySchema, type GroupAttendanceSummary } from "@kinder/contracts";
@@ -10,6 +11,7 @@ import { errorMessage } from "@/lib/api/errors";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
+import { GroupSwitcher, useSwitchableGroups } from "@/components/shell/group-switcher";
 import { Card, SectionHeader, SunkenPanel } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
@@ -69,7 +71,25 @@ function Reports() {
   const { group } = useMyGroup();
   const [month, setMonth] = useState(currentMonth);
 
-  const groupId = group?.id ?? "";
+  /*
+   * ★ A director gets a group picker instead of a dead end — 2026-09-09.
+   *
+   * `useMyGroup` resolves nothing for an administrator, who has every group and
+   * therefore no single one, and this screen answered that with an empty state
+   * pointing at Ирц. That was defensible while nothing linked here; the
+   * dashboard's `Тайлан` card does now, and a card that lands on "you are in
+   * the wrong place" is the dead navigation this product deletes screens over.
+   *
+   * The group is in the query string rather than in local state, so a director
+   * comparing two groups can keep both open and the Back button steps between
+   * them — the reason `GroupSwitcher` is links everywhere else.
+   */
+  const searchParams = useSearchParams();
+  const groups = useSwitchableGroups(!group);
+  const items = groups.data?.items ?? [];
+  const chosen = searchParams.get("group") ?? "";
+  const groupId =
+    group?.id ?? (items.some((item) => item.id === chosen) ? chosen : items[0]?.id) ?? "";
 
   const summary = useQuery({
     queryKey: qk.groupAttendanceSummary(groupId, month),
@@ -83,12 +103,12 @@ function Reports() {
   /*
     ★ A teacher with no group gets an explanation, not an empty report.
 
-    `useMyGroup` resolves nothing for a new hire before an assignment, and for
-    an administrator, who has every group and therefore no single one. Both are
-    real states and neither is an error; the assessment sheet makes the same
-    choice for the same reason.
+    `useMyGroup` resolves nothing for a new hire before an assignment. That is a
+    real state and not an error; the assessment sheet makes the same choice for
+    the same reason. An administrator no longer reaches this branch unless the
+    kindergarten has no groups at all, which is the same sentence either way.
   */
-  if (!groupId) {
+  if (!groupId && !groups.isLoading) {
     return (
       <div className="page-band">
         {header}
@@ -103,6 +123,10 @@ function Reports() {
   return (
     <div className="page-band">
       {header}
+
+      {/* Only for somebody who has more than one — `GroupSwitcher` renders
+          nothing below two, so a teacher's screen is unchanged. */}
+      <GroupSwitcher groups={items} activeGroupId={groupId} href={(id) => `/reports?group=${id}`} />
 
       {/*
         A month, not a from/to pair. The register is kept by the month and the

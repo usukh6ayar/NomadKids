@@ -103,31 +103,40 @@ describe("the administration dashboard", () => {
       ["Бүлэг", "/admin/groups"],
       ["Багш, ажилтан", "/admin/users"],
       ["Баримт бичгийн сан", "/documents"],
+      ["Тайлан", "/reports"],
     ] as const) {
       expect(cardLink(label), `${label} does not link anywhere`).toHaveAttribute("href", href);
     }
   });
 
-  it("leaves a figure unlinked when no screen explains it", async () => {
+  /*
+   * ★ Every figure goes somewhere, as of 2026-09-09.
+   *
+   * This used to assert the opposite for two cards, with the reason beside it:
+   * neither stored files nor a `ReportJob` had a screen, and pointing them at
+   * the nearest plausible route is the dead navigation the hub page was deleted
+   * for. Both have destinations now — the document library, and `/reports` once
+   * it stopped dead-ending an administrator — so the rule the old test carried
+   * is asserted the other way round: no card is left unlinked, and adding one
+   * that is should be a decision rather than a side effect.
+   */
+  it("leaves no figure without a screen to explain it", async () => {
     renderAdminDashboard();
 
     await waitFor(() =>
       expect(within(figures()).getByText("Баримт бичгийн сан")).toBeInTheDocument(),
     );
 
-    /*
-     * ★ Not an oversight, and the reason belongs next to the assertion.
-     *
-     * A `ReportJob` is only ever seen in the dialog that started it
-     * (`components/reports/report-dialog.tsx`), so this card has nowhere
-     * honest to go. Give it a destination and this test should be updated — it
-     * fails here to make that a decision rather than a side effect.
-     *
-     * ★★ It was two cards until 2026-09-09. The other counted every stored
-     * file, had no screen either, and became the document library — which does
-     * have one, and is asserted with the rest above.
-     */
-    expect(cardLink("Тайлан")).toBeNull();
+    for (const label of [
+      "Нийт хүүхэд",
+      "Өнөөдрийн ирц",
+      "Бүлэг",
+      "Багш, ажилтан",
+      "Баримт бичгийн сан",
+      "Тайлан",
+    ]) {
+      expect(cardLink(label), `${label} goes nowhere`).not.toBeNull();
+    }
   });
 
   it("keeps the figures the storage cards carry", async () => {

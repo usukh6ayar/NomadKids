@@ -175,13 +175,24 @@ export function AdminOverview() {
         oversight — 2026-09-04.
 
         Each figure links to the screen that explains it: the children list, the
-        kindergarten-wide register, the groups, the user list, and — since
-        2026-09-09 — the document library. `Тайлан` is the one that still goes
-        nowhere, and that is not an oversight: a `ReportJob` is only ever seen
-        in the dialog that started it (`components/reports/report-dialog.tsx`),
-        and pointing it at the nearest plausible route would be the dead
-        navigation the hub page was deleted for. It stays a figure until a
-        screen exists.
+        kindergarten-wide register, the groups, the user list, the document
+        library and — since 2026-09-09 — `Тайлан`. Every figure on the grid goes
+        somewhere now.
+
+        ★★★★★ `Тайлан` → `/reports`, at the client's request, and the screen
+        had to be made reachable first. It resolved a group through `useMyGroup`
+        and an administrator has every group and therefore no single one, so a
+        director landed on "Бүлэг хараахан хуваарилагдаагүй байна" — a card
+        pointing at a sentence telling them they were in the wrong place. It
+        carries a `GroupSwitcher` for anybody with more than one group now.
+
+        The figure and the destination answer *adjacent* questions rather than
+        the same one: this counts `ReportJob` rows — the PDFs generated from a
+        child's portfolio and from `/finance` — while the screen is the month's
+        attendance by group. There is no kindergarten-wide list of generated
+        reports to point at; `GET /children/:id/reports` is per child and
+        nothing aggregates them. Worth revisiting if that endpoint is ever
+        built, and worth stating rather than leaving for a reader to notice.
 
         ★★★★ `Хадгалсан файл` → `Баримт бичгийн сан` — 2026-09-09.
 
@@ -285,6 +296,7 @@ export function AdminOverview() {
               />
               <StatCard
                 label="Тайлан"
+                href="/reports"
                 value={storage.reports.done}
                 unit={
                   storage.reports.failed > 0
