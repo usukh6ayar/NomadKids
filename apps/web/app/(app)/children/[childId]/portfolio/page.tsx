@@ -1,9 +1,10 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { BarChart3, ChevronRight, FileText, Images, Sprout, User } from "lucide-react";
+import { ChevronRight, FileText } from "lucide-react";
 import { childDetailSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -134,23 +135,35 @@ export default function PortfolioPage() {
  * `overview/page.tsx` apart from the bottom bar's own "Зураг" tab: the
  * portfolio has its own `gallery` entrance now, so there is only one way in
  * from here and only one way back.
+ *
+ * ★★★★ Drawn icons, not lucide glyphs — 2026-09-08, the client's own set
+ * (same delivery as `art.tsx`'s nine and `age-content.ts`'s family artwork).
+ * `Насны харьцуулалт` takes "нас насны мэдээлэл" (age information) — the
+ * closest drawing the delivered set has to a tile about comparing a child's
+ * record across ages, and there is no second, more literal "comparison"
+ * icon to prefer over it.
  */
 function PortfolioHubNav({ childId }: { childId: string }) {
-  const items: { href: string; label: string; tone: Tone; Icon: typeof User }[] = [
+  const items: { href: string; label: string; tone: Tone; icon: string }[] = [
     {
       href: `/children/${childId}/portfolio/about-me`,
       label: "Миний тухай",
       tone: "mint",
-      Icon: User,
+      icon: "/icons/portfolio-hub/about-me.png",
     },
-    { href: `/children/${childId}/portfolio/growth`, label: "Хөгжил", tone: "mint", Icon: Sprout },
+    {
+      href: `/children/${childId}/portfolio/growth`,
+      label: "Хөгжил",
+      tone: "mint",
+      icon: "/icons/portfolio-hub/growth.png",
+    },
     // This portfolio-specific route starts with age cards and keeps the
     // portfolio breadcrumb/sidebar state active throughout the album flow.
     {
       href: `/children/${childId}/portfolio/gallery`,
       label: "Зургийн цомог",
       tone: "sky",
-      Icon: Images,
+      icon: "/icons/portfolio-hub/photo-album.png",
     },
     // The landing is navigation-only; details appear only after choosing the
     // comparison action or one of the four age folders.
@@ -158,7 +171,7 @@ function PortfolioHubNav({ childId }: { childId: string }) {
       href: `/children/${childId}/portfolio/growth/age`,
       label: "Насны харьцуулалт",
       tone: "peach",
-      Icon: BarChart3,
+      icon: "/icons/portfolio-hub/age-info.png",
     },
   ];
 
@@ -192,7 +205,7 @@ function PortfolioHubNav({ childId }: { childId: string }) {
         64px disc from crowding it.
       */}
       <ul className="grid grid-cols-2 items-stretch gap-2 sm:grid-cols-4 sm:gap-3">
-        {items.map(({ href, label, tone, Icon }) => (
+        {items.map(({ href, label, tone, icon }) => (
           <li key={href} className="flex">
             <Link
               href={href}
@@ -208,7 +221,7 @@ function PortfolioHubNav({ childId }: { childId: string }) {
                   TONE_SURFACE[tone],
                 )}
               >
-                <Icon size={28} />
+                <Image src={icon} alt="" width={44} height={44} />
               </span>
               <span className="text-body font-semibold leading-snug text-ink">{label}</span>
               <ChevronRight size={16} aria-hidden="true" className="text-faint" />

@@ -52,18 +52,28 @@ import Image from "next/image";
  *
  * ★★★★ One family, not two.
  *
- * The thirteen below are already two styles: twelve carry their own tinted
- * rounded square (`kindergarten`, `attendance`, `menu`, `notice`,
- * `portfolio`, `progress`, `survey`, `finance`, `child`, `teacher`,
- * `register`, `report`) and `analytics` is a bare cut-out. Side by side in
- * one grid the two read as different sizes, because one has a chip's worth of
- * padding baked in and the other does not. Anything added should match the
- * family it will sit beside rather than the set as a whole.
- *
  * ★★★★★ `survey` and `finance` were dropped when the parent home's tile grid
- * went away and came back with it. They are the only two the grid needs that
- * nothing else on the product draws, so they left and returned together — see
- * `ui/quick-tile.tsx` for the grid itself.
+ * went away — PR #60's squash-merge (`2f1bfa9`) was cut from a branch that had
+ * not rebased past the commits that finished migrating that grid onto this
+ * registry, so merging it silently reverted both keys, their two PNGs, and
+ * the whole `QuickTileGrid` section of `(app)/home/page.tsx`. Restored from
+ * the commit immediately before the squash rather than redrawn — see
+ * `ui/quick-tile.tsx` for the grid itself. They are the only two keys nothing
+ * else on the product draws, which is why they are the two that went missing
+ * without anyone noticing sooner.
+ *
+ * ★★★★★★ 2026-09-08 — nine of the thirteen were separately replaced with the
+ * client's own icon pack (`analytics`, `attendance`, `child`, `kindergarten`,
+ * `menu`, `notice`, `portfolio`, `progress`, `teacher`), delivered as bare
+ * cut-outs — no tinted square baked in, unlike the set they replaced.
+ * `register` and `report` are two of the four left in the old padded style
+ * (`survey`/`finance` above are the other two, for an unrelated reason): the
+ * delivered pack had no icon for either concept, so nothing was swapped
+ * rather than guessing. Side by side in one grid the two styles read as
+ * different sizes, because one has a chip's worth of padding baked in and the
+ * other does not — expected until the rest get a matching replacement or the
+ * nine get padded to match them. Anything added should match the family it
+ * will sit beside rather than the set as a whole.
  */
 const SOURCE = {
   analytics: "/icons/icon-analytics.png",

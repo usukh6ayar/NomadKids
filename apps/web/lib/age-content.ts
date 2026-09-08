@@ -60,6 +60,54 @@ export const AGE_SKILL_OPTIONS: Record<Age, string[]> = {
   ],
 };
 
+/**
+ * The emotion picker on "Миний зан аранши" — client reference screenshot,
+ * 2026-09-08. Unicode emoji rather than custom illustration (confirmed with
+ * the client that day); a reasonable starting vocabulary I wrote, the same
+ * honesty `AGE_SKILL_OPTIONS`'s own comment states about its list.
+ */
+export const CHARACTER_TRAIT_OPTIONS: { label: string; icon: string }[] = [
+  { label: "Хөгжилтэй", icon: "😄" },
+  { label: "Эелдэг", icon: "😊" },
+  { label: "Бахархамаар", icon: "🥰" },
+  { label: "Тайван", icon: "😌" },
+  { label: "Гунигтай", icon: "😢" },
+  { label: "Зөрүүд", icon: "😤" },
+  { label: "Уурламтгай", icon: "😠" },
+  { label: "Сандрамтгай", icon: "😰" },
+  { label: "Нойрмог", icon: "😴" },
+  { label: "Ичимхий", icon: "😳" },
+  { label: "Зоригтой", icon: "💪" },
+];
+
+/**
+ * The family-member picker on "Гэр бүл" — same source as `AGE_SKILL_OPTIONS`.
+ *
+ * ★ Real artwork, not emoji, since 2026-09-08 — the client's own character
+ * set, delivered in Google Drive, one drawing per relation
+ * (`age-preset-field.tsx`'s own doc comment has the crop/rendering story).
+ * "Налх охин"/"Налх хүү" read from the delivered "охин дүү"/"эрэгтэй дүү"
+ * artwork — infants in the source images, not the older-sibling reading
+ * their filenames suggest; the drawings, not the filenames, are what a
+ * parent actually sees in the picker.
+ *
+ * ★★ No "Хүү"/"Охин" entry. Those two drawings (`boy.png`/`girl.png`) are the
+ * child's *own* sex-based avatar fallback now (`ChildAvatar`'s `sexFallback`,
+ * `media-image.tsx`) — a household member picker listing "a boy" or "a girl"
+ * as who lives with the child never made sense next to the child's own
+ * `sex` field describing the same thing. Client, 2026-09-08.
+ */
+export const FAMILY_MEMBER_OPTIONS: { label: string; icon: string }[] = [
+  { label: "Эмээ", icon: "/icons/family/grandma.png" },
+  { label: "Өвөө", icon: "/icons/family/grandpa.png" },
+  { label: "Аав", icon: "/icons/family/dad.png" },
+  { label: "Ээж", icon: "/icons/family/mom.png" },
+  { label: "Ах", icon: "/icons/family/older-brother.png" },
+  { label: "Эгч", icon: "/icons/family/older-sister.png" },
+  { label: "Налх охин", icon: "/icons/family/baby-girl.png" },
+  { label: "Налх хүү", icon: "/icons/family/baby-boy.png" },
+];
+
 /** Same shape, for the "гэр бүлээсээ суралцсан зүйлс" card. */
 export const AGE_FAMILY_OPTIONS: Record<Age, string[]> = {
   2: [

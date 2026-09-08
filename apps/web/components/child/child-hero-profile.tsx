@@ -122,7 +122,7 @@ export function ChildHeroProfile({
         */}
         <div className="relative shrink-0">
           <div className="rounded-pill ring-4 ring-primary-soft">
-            <ChildAvatar child={child} size={88} />
+            <ChildAvatar child={child} size={88} sexFallback />
           </div>
           {canEditPhoto ? (
             <ChildPhotoButton childId={child.id} childName={fullName(child)} />

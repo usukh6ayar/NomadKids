@@ -57,28 +57,52 @@ function tintFor(name: string): string {
   return AVATAR_TINTS[hash % AVATAR_TINTS.length]!;
 }
 
+/** `SEX_LABEL`'s two keys — kept local rather than importing the contracts enum for one union. */
+const SEX_MASCOT: Record<"MALE" | "FEMALE", string> = {
+  MALE: "/icons/family/boy.png",
+  FEMALE: "/icons/family/girl.png",
+};
+
 export function ChildAvatar({
   child,
   size = 44,
   className,
+  sexFallback = false,
 }: {
   child: {
     lastName?: string | null;
     firstName?: string | null;
     photoMediaFileId?: string | null;
+    sex?: "MALE" | "FEMALE" | null;
   };
   size?: number;
   className?: string;
+  /**
+   * Use the boy/girl mascot drawing (`SEX_MASCOT`) as the no-photo fallback,
+   * instead of the tinted initial.
+   *
+   * ★ Opt-in, not automatic on `child.sex` being present. `ChildAvatar` also
+   * draws every row of `/children` and every dashboard feed — the initial
+   * fallback's own doc comment above is explicit that a *column* of avatars
+   * needs to read apart at a glance, and a roster half boys and half girls
+   * would collapse to two repeated faces there. `ChildHeroProfile` is the one
+   * caller passing this — a single child's own page, where recognisability
+   * against a list is not the question. Sex unknown still falls back to the
+   * initial either way; a wrong guess is worse than none (`domain.ts`'s own
+   * note on `sex` says as much).
+   */
+  sexFallback?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
   const name = [child.lastName, child.firstName].filter(Boolean).join(" ");
   const showPhoto = Boolean(child.photoMediaFileId) && !failed;
+  const mascot = sexFallback && child.sex ? SEX_MASCOT[child.sex] : null;
 
   return (
     <span
       className={cn(
         "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-pill font-semibold",
-        showPhoto ? "bg-primary-soft text-primary" : tintFor(name),
+        showPhoto || mascot ? "bg-primary-soft text-primary" : tintFor(name),
         className,
       )}
       style={{ width: size, height: size, fontSize: Math.max(12, Math.round(size * 0.36)) }}
@@ -90,6 +114,8 @@ export function ChildAvatar({
           className="h-full w-full object-cover"
           onError={() => setFailed(true)}
         />
+      ) : mascot ? (
+        <img src={mascot} alt="" className="h-full w-full object-cover object-top" />
       ) : (
         // The initial repeats information already in the adjacent name, so it
         // is decorative to a screen reader.
