@@ -1,7 +1,8 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import Image from "next/image";
 import { z } from "zod";
 import {
   BookOpen,
@@ -32,7 +33,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
-import { YEAR_ANIMAL_ICON, ZODIAC_ICON } from "@/lib/zodiac-icons";
+import { yearAnimalIcon, zodiacIcon } from "@/lib/zodiac-icons";
 import { cn } from "@/lib/utils";
 
 // `/about-me` answers with `{ exists: false }` when nothing is written yet.
@@ -88,14 +89,20 @@ const STORY_TONE: Record<string, string> = {
  * hex the swatch does ("Бор" in brown, literally), which is the reason this
  * is a fixed list rather than the free-text field it replaces: colouring
  * arbitrary typed text would need to guess a colour from a word.
+ *
+ * ★ Four of six got that art, 2026-09-08 — the client's delivered set has an
+ * eye drawing for Хар/Бор/Ногоон/Цэнхэр but not for Хүрэн or Саарал, so those
+ * two keep the plain colour swatch rather than a fabricated drawing. `icon`
+ * is optional for exactly that reason; both render sites fall back to the
+ * hex swatch when it is absent.
  */
 const EYE_COLOR_OPTIONS = [
-  { label: "Хар", hex: "#2b2118" },
-  { label: "Бор", hex: "#6b3f1d" },
-  { label: "Хүрэн", hex: "#8b5a2b" },
-  { label: "Ногоон", hex: "#4a7c59" },
-  { label: "Цэнхэр", hex: "#4a7ba6" },
-  { label: "Саарал", hex: "#8a8f94" },
+  { label: "Хар", hex: "#2b2118", icon: "/icons/eyes/black.png" },
+  { label: "Бор", hex: "#6b3f1d", icon: "/icons/eyes/brown.png" },
+  { label: "Хүрэн", hex: "#8b5a2b", icon: undefined },
+  { label: "Ногоон", hex: "#4a7c59", icon: "/icons/eyes/green.png" },
+  { label: "Цэнхэр", hex: "#4a7ba6", icon: "/icons/eyes/blue.png" },
+  { label: "Саарал", hex: "#8a8f94", icon: undefined },
 ] as const;
 
 /** The edit screen's exact, user-facing order before the two visual pickers. */
@@ -292,15 +299,29 @@ export function ChildAboutMe({
                 className="min-w-0 rounded-row border border-border bg-canvas px-2.5 py-3 md:px-4 md:py-3.5"
               >
                 <h3 className="mb-1.5 flex items-center gap-2 text-caption font-semibold text-ink">
-                  <span
-                    aria-hidden="true"
-                    className="size-6 shrink-0 rounded-check border border-border/60"
-                    style={{
-                      backgroundColor:
-                        EYE_COLOR_OPTIONS.find((o) => o.label === data.eyeColor)?.hex ??
-                        "var(--color-border)",
-                    }}
-                  />
+                  {(() => {
+                    const option = EYE_COLOR_OPTIONS.find((o) => o.label === data.eyeColor);
+                    return option?.icon ? (
+                      <span
+                        aria-hidden="true"
+                        className="size-6 shrink-0 overflow-hidden rounded-check border border-border/60"
+                      >
+                        <Image
+                          src={option.icon}
+                          alt=""
+                          width={24}
+                          height={24}
+                          className="size-full object-cover"
+                        />
+                      </span>
+                    ) : (
+                      <span
+                        aria-hidden="true"
+                        className="size-6 shrink-0 rounded-check border border-border/60"
+                        style={{ backgroundColor: option?.hex ?? "var(--color-border)" }}
+                      />
+                    );
+                  })()}
                   Нүдний өнгө
                 </h3>
                 <p
@@ -410,11 +431,26 @@ export function ChildAboutMe({
                           : "border-border bg-surface hover:border-primary",
                       )}
                     >
-                      <span
-                        aria-hidden="true"
-                        className="size-8 rounded-pill border border-border/60"
-                        style={{ backgroundColor: option.hex }}
-                      />
+                      {option.icon ? (
+                        <span
+                          aria-hidden="true"
+                          className="size-8 overflow-hidden rounded-pill border border-border/60"
+                        >
+                          <Image
+                            src={option.icon}
+                            alt=""
+                            width={32}
+                            height={32}
+                            className="size-full object-cover"
+                          />
+                        </span>
+                      ) : (
+                        <span
+                          aria-hidden="true"
+                          className="size-8 rounded-pill border border-border/60"
+                          style={{ backgroundColor: option.hex }}
+                        />
+                      )}
                       <span className="text-caption font-medium" style={{ color: option.hex }}>
                         {option.label}
                       </span>
@@ -435,7 +471,7 @@ export function ChildAboutMe({
           <CyclePicker
             label="Арван хоёр жил"
             options={YEAR_ANIMALS}
-            iconFor={(code) => YEAR_ANIMAL_ICON[code] ?? "⭐"}
+            iconFor={yearAnimalIcon}
             value={form.yearAnimalCode ?? ""}
             onChange={(code) => setForm((f) => ({ ...f, yearAnimalCode: code }))}
           />
@@ -443,7 +479,7 @@ export function ChildAboutMe({
           <CyclePicker
             label="Одны орд"
             options={ZODIAC_SIGNS}
-            iconFor={(code) => ZODIAC_ICON[code] ?? "✨"}
+            iconFor={zodiacIcon}
             value={form.zodiacCode ?? ""}
             onChange={(code) => setForm((f) => ({ ...f, zodiacCode: code }))}
           />
@@ -486,7 +522,7 @@ function CyclePicker({
 }: {
   label: string;
   options: { code: string; name: string }[];
-  iconFor: (code: string) => string;
+  iconFor: (code: string, size: number) => ReactNode;
   value: string;
   onChange: (code: string) => void;
 }) {
@@ -501,8 +537,8 @@ function CyclePicker({
       >
         <summary className="flex min-h-[48px] cursor-pointer list-none items-center justify-between gap-2 px-3.5 text-body text-ink [&::-webkit-details-marker]:hidden">
           <span className="flex min-w-0 items-center gap-2">
-            <span aria-hidden="true" className="text-title leading-none">
-              {current ? iconFor(current.code) : "⭐"}
+            <span aria-hidden="true" className="grid size-6 shrink-0 place-items-center">
+              {current ? iconFor(current.code, 24) : <span className="text-title leading-none">⭐</span>}
             </span>
             <span className={cn("truncate", !current && "text-muted")}>
               {current?.name ?? "Сонгох…"}
@@ -531,8 +567,8 @@ function CyclePicker({
                     : "border-border bg-surface text-ink hover:border-primary",
                 )}
               >
-                <span aria-hidden="true" className="text-heading leading-none">
-                  {iconFor(option.code)}
+                <span aria-hidden="true" className="grid size-8 place-items-center">
+                  {iconFor(option.code, 32)}
                 </span>
                 {option.name}
               </button>

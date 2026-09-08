@@ -41,7 +41,7 @@ export function RecentObservations({
       <SectionHeader
         title="Сүүлийн ажиглалтууд"
         lede={isEmpty ? undefined : "Хамгийн сүүлд бичигдсэн ажиглалтууд."}
-        icon={<IconChip icon={<Art name="portfolio" />} tone="cornflower" size="lg" />}
+        icon={<IconChip icon={<Art name="observation" />} tone="cornflower" size="lg" />}
         // The empty state already offers this exact link, and two identical
         // buttons three inches apart is a question about which one is the real
         // one. The header keeps it only when there is a list to look past.

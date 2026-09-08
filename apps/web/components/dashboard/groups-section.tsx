@@ -8,6 +8,8 @@ import { qk } from "@/lib/api/keys";
 import { CalendarCheck, ClipboardList, UtensilsCrossed } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
+import { IconChip } from "@/components/ui/icon-chip";
+import { Art } from "@/components/ui/art";
 
 const groupsSchema = paginated(groupSchema);
 
@@ -118,7 +120,11 @@ export function GroupsSection() {
 
   return (
     <section aria-label="Бүлгүүд">
-      <SectionHeader title="Бүлгүүд" lede="Хариуцсан бүлгүүд, ирц болон үнэлгээ рүү шууд." />
+      <SectionHeader
+        title="Бүлгүүд"
+        lede="Хариуцсан бүлгүүд, ирц болон үнэлгээ рүү шууд."
+        icon={<IconChip icon={<Art name="group" />} tone="mint" size="lg" />}
+      />
       <Card className="divide-y divide-border">
         {data.items.map((group) => (
           <div
