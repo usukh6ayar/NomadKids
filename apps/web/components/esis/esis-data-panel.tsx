@@ -72,6 +72,9 @@ const ERROR_LABEL: Record<string, string> = {
 export function EsisDataPanel({
   resource,
   params,
+  rows: given,
+  hrefs,
+  linkField,
   title,
   description,
   headingId,
@@ -79,6 +82,22 @@ export function EsisDataPanel({
   resource: EsisResourceKey;
   /** Path values the caller already knows — a group id, a date. */
   params?: Record<string, string | undefined>;
+  /**
+   * Records to show in place of the catalog's own, while no live read has
+   * replaced them.
+   *
+   * ★ For the one screen whose rows have to be *reachable*: `/children` builds
+   * them from the kindergarten's own children so that every row is a child
+   * this product holds a record for, and `hrefs` can lead there. The catalog's
+   * demo roster is ten invented people who match nobody, so a link on it would
+   * lead nowhere — which is how the roster lost its way into a child's record
+   * in the first place.
+   */
+  rows?: Record<string, string | null>[];
+  /** Where each of `rows` leads, index-aligned. */
+  hrefs?: (string | null)[];
+  /** Which column carries the link — the name, on a roster. */
+  linkField?: string;
   /** Overrides the service's catalog name in the section header. */
   title?: string;
   description?: string;
@@ -137,7 +156,9 @@ export function EsisDataPanel({
   if (!endpoint) return null;
 
   const live = read.data?.status === "SUCCEEDED" ? read.data : null;
-  const rows = live ? live.rows : endpoint.sampleRows;
+  // A live response replaces everything, `rows` included — the caller's records
+  // are a stand-in for the catalog's, not something to merge with a real one.
+  const rows = live ? live.rows : (given ?? endpoint.sampleRows);
   const columns = esisSampleColumns(live ? live.fields : endpoint.fields);
   const heading = headingId ?? `esis-panel-${resource}`;
 
@@ -230,7 +251,12 @@ export function EsisDataPanel({
             <p className="text-body text-muted">ESIS энэ сервисээр бичлэг буцаасангүй.</p>
           </Card>
         ) : (
-          <EsisRowValues columns={columns} rows={rows} />
+          <EsisRowValues
+            columns={columns}
+            rows={rows}
+            hrefs={live ? undefined : hrefs}
+            linkField={linkField}
+          />
         )}
 
         <p className="border-t border-border-soft pt-4 text-caption text-muted">

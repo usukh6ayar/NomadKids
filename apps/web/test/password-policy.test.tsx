@@ -117,8 +117,15 @@ const PROFILE = {
  * and a weak password never reaches the API — so the tests gained two clicks
  * rather than an assertion.
  */
+/*
+ * ★ One press now, not two — 2026-09-08.
+ *
+ * The password form used to be the last section of the profile's edit form, so
+ * reaching it meant Засах first. That form is gone (see `ProfileCard`), and the
+ * section sits on the page folded shut. What these tests pin is unchanged: the
+ * rules, the reveal toggle and the local refusal.
+ */
 async function openPasswordForm(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole("button", { name: "Засах" }));
   await user.click(await screen.findByRole("button", { name: "Нууц үг солих" }));
 }
 

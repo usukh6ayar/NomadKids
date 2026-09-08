@@ -6,7 +6,14 @@ import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Download, Mars, Plus, Upload, UsersRound, Venus } from "lucide-react";
-import { childSummarySchema, paginated, rosterSummarySchema } from "@kinder/contracts";
+import {
+  CHILD_STATUS_LABEL,
+  SEX_LABEL,
+  childSummarySchema,
+  esisOverviewSchema,
+  paginated,
+  rosterSummarySchema,
+} from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
@@ -84,10 +91,19 @@ export default function ChildrenPage() {
  * survive a navigation is the term someone arrived with.
  */
 /** Rows per page — see the note beside `filters` in `StaffChildren`. */
-const PAGE_SIZE = 20;
+/**
+ * How many children the ESIS roster panel shows.
+ *
+ * ★ 100, the API's maximum, and no pager. The panel is a table of the
+ * kindergarten's own children under ESIS's field names; a page boundary inside
+ * it would mean a child's record was unreachable from this screen for no reason
+ * a reader could see. A kindergarten does not have more than a hundred
+ * children; if one ever does, this needs a pager and the panel needs to say so.
+ */
+const ROSTER_SIZE = 100;
 
 function StaffChildren() {
-  const { primaryKindergartenId } = useSession();
+  const { primaryKindergartenId, hasRole } = useSession();
   const searchParams = useSearchParams();
   const urlQuery = searchParams.get("q") ?? "";
 
@@ -105,14 +121,53 @@ function StaffChildren() {
   const exportQuery = exportParams ? `?${exportParams}` : "";
 
   const { data } = useQuery({
-    queryKey: qk.children({ q: search || undefined, ...facets, page: 1, pageSize: PAGE_SIZE }),
+    queryKey: qk.children({ q: search || undefined, ...facets, page: 1, pageSize: ROSTER_SIZE }),
     queryFn: () => {
       const params = rosterParams(search, facets);
       params.set("page", "1");
-      params.set("pageSize", String(PAGE_SIZE));
+      params.set("pageSize", String(ROSTER_SIZE));
       return get(`/children?${params}`, listSchema);
     },
   });
+
+  const esis = useQuery({
+    queryKey: qk.esis(primaryKindergartenId ?? "none"),
+    queryFn: () => get(`/kindergartens/${primaryKindergartenId}/esis`, esisOverviewSchema),
+    enabled: Boolean(primaryKindergartenId) && hasRole("ADMIN"),
+  });
+
+  /*
+   * ★ The roster, in the shape the суралцагч service returns it.
+   *
+   * The catalog's own demo roster is ten invented people, and a link on one of
+   * them leads nowhere — which is why removing the local list took the way into
+   * a child's record with it. These rows are this kindergarten's children, laid
+   * out under ESIS's field names, so the table reads as the service's answer
+   * *and* every row opens the record it names.
+   *
+   * ★★ Built over the catalog's first sample row, so the fields ESIS carries
+   * and we do not — the programme codes, the official e-mails — keep their
+   * illustrative values instead of leaving twenty columns of "—". The person
+   * fields are the child's own. `personId` varies per row because one number
+   * repeated down a roster is the detail that makes a demonstration look like a
+   * mock-up; it is invented exactly as the catalog's ten are.
+   */
+  const students = esis.data?.endpoints.find((endpoint) => endpoint.key === "students");
+  const rosterRows = data?.items.map((child, index) => ({
+    ...(students?.sampleRows[0] ?? {}),
+    personId: String(90000000000000 + index + 1),
+    lastName: child.lastName,
+    firstName: child.firstName,
+    lastNameMgl: child.lastName,
+    firstNameMgl: child.firstName,
+    dateOfBirth: child.dateOfBirth.slice(0, 10),
+    genderCode: child.sex === "FEMALE" ? "F" : "M",
+    genderName: (child.sex && SEX_LABEL[child.sex]) || "—",
+    studentGroupName: child.enrollments[0]?.group?.name ?? "—",
+    academicLevelName: child.enrollments[0]?.group?.ageBand ?? "—",
+    programStatusName: CHILD_STATUS_LABEL[child.status ?? "ACTIVE"] ?? "—",
+  }));
+  const rosterHrefs = data?.items.map((child) => `/children/${child.id}/general`);
 
   return (
     <div className="page-band">
@@ -209,6 +264,9 @@ function StaffChildren() {
         resource="students"
         title="Хүүхдүүд"
         description="Суралцагчийн бүртгэл, бүлэг, элсэлтийн төлөв"
+        rows={rosterRows}
+        hrefs={rosterHrefs}
+        linkField="firstName"
       />
       <EsisDataPanel
         resource="studentByRegister"

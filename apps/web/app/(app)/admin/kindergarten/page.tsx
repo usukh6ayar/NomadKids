@@ -1,19 +1,14 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import { uuidSchema } from "@kinder/contracts";
-import { get, mutate } from "@/lib/api/browser";
-import { mediaUrl } from "@/lib/api/client";
-import { errorMessage, fieldErrors } from "@/lib/api/errors";
+import { get } from "@/lib/api/browser";
+import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
-import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
-import { Field, Input, Textarea } from "@/components/ui/field";
-import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { ErrorState, LoadingState } from "@/components/ui/states";
 import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
@@ -45,8 +40,6 @@ const detailSchema = z.object({
   logoMediaFileId: uuidSchema.nullish(),
 });
 
-type Detail = z.infer<typeof detailSchema>;
-
 export default function AdminKindergartenPage() {
   return (
     <RequireRole roles={["ADMIN"]}>
@@ -57,73 +50,12 @@ export default function AdminKindergartenPage() {
 
 function AdminKindergarten() {
   const { primaryKindergartenId } = useSession();
-  const queryClient = useQueryClient();
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: qk.adminKindergarten(primaryKindergartenId ?? ""),
     queryFn: () => get(`/kindergartens/${primaryKindergartenId}`, detailSchema),
     enabled: Boolean(primaryKindergartenId),
   });
-
-  const [form, setForm] = useState<Partial<Detail>>({});
-
-  /*
-   * ★ Read first, edit on purpose — 2026-09-06, at the client's request.
-   *
-   * Every field on this screen was a live input the moment the page loaded, so
-   * the kindergarten's own name — the string that prints on every PDF it
-   * issues and heads every parent's app — sat one stray keystroke from being
-   * changed. Nothing here is edited more than a few times a year, which is
-   * exactly the shape that should not be permanently armed: "шууд ингэж ил
-   * байлгаж болохгүй, ирээдүйд буруу зүйл хийхээс урьдчилан сэргийлэх".
-   *
-   * The gate is a mode, not a confirmation dialog. A dialog asks "are you
-   * sure?" *after* the damage is typed and is answered reflexively; a mode
-   * means the damage cannot be typed at all until somebody says they came here
-   * to change something.
-   *
-   * ★★ There is deliberately no delete. Removing a kindergarten is the
-   * platform operator's decision, for the same reason `isActive` is not
-   * offered here — see the docblock at the top of this file.
-   */
-  const [editing, setEditing] = useState(false);
-
-  // The form is only seeded once the record arrives; typing before that would
-  // be overwritten the moment it did.
-  useEffect(() => {
-    if (!data) return;
-    setForm({
-      name: data.name,
-      address: data.address ?? "",
-      phone: data.phone ?? "",
-      email: data.email ?? "",
-      description: data.description ?? "",
-    });
-  }, [data]);
-
-  const save = useMutation({
-    mutationFn: () =>
-      mutate(`/kindergartens/${primaryKindergartenId}`, detailSchema, {
-        method: "PATCH",
-        body: {
-          name: form.name?.trim(),
-          // null clears the field; "" would fail the email format check.
-          address: form.address?.trim() || null,
-          phone: form.phone?.trim() || null,
-          email: form.email?.trim() || null,
-          description: form.description?.trim() || null,
-        },
-      }),
-    onSuccess: () => {
-      setEditing(false);
-      void queryClient.invalidateQueries({ queryKey: ["admin", "kindergarten"] });
-      // The shell prints the kindergarten's name under the logo, so a rename
-      // that did not refresh the session would show the old one until reload.
-      void queryClient.invalidateQueries({ queryKey: qk.session() });
-    },
-  });
-
-  const errors = fieldErrors(save.error);
 
   if (isLoading) return <LoadingState rows={3} />;
   if (isError) return <ErrorState description={errorMessage(error)} />;
@@ -146,28 +78,7 @@ function AdminKindergarten() {
       and the form below stay the same width instead of stepping.
     */
     <div className="flex max-w-[760px] flex-col gap-6 lg:gap-8">
-      <PageHeader
-        title="Цэцэрлэгийн мэдээлэл"
-        actions={
-          editing ? null : (
-            <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
-              <Pencil aria-hidden="true" />
-              Засах
-            </Button>
-          )
-        }
-      />
-
-      {/*
-        The saved confirmation lives outside the form now: the form unmounts on
-        success (the screen returns to its reading state), so a status rendered
-        inside it would flash and vanish with the thing that raised it.
-      */}
-      {save.isSuccess && !editing ? (
-        <p role="status" className="rounded-control bg-mint px-3.5 py-2.5 text-body text-mint-ink">
-          Хадгалагдлаа.
-        </p>
-      ) : null}
+      <PageHeader title="Цэцэрлэгийн мэдээлэл" />
 
       {/*
         RFP §3.2 asks for the logo, and §10.3 puts it on every generated PDF —
@@ -181,175 +92,46 @@ function AdminKindergarten() {
         greyed out.
       */}
       {/*
-        ★ The logo is behind the same gate, and it is the field that needed it
-        most: `SingleImageUpload` saves on selection, with no Хадгалах between
-        the file picker and the mark on every report the kindergarten issues.
-        Out of edit mode the current logo is shown and nothing can replace it.
+        ★ The logo outlived the edit form — 2026-09-08.
+
+        The client's instruction was that the record is not hand-corrected
+        here: it arrives from ESIS. A logo does not. `organization/info` carries
+        no image of any kind, so removing this upload with the form would mean
+        the mark RFP §10.3 prints on every generated report could never be set
+        or replaced again.
+
+        It was behind the edit gate; with no gate left it is simply the card,
+        and `SingleImageUpload` saves on selection — there was never a Хадгалах
+        between the file picker and the change.
       */}
       <Card pad="roomy">
         <SectionHeader title="Лого" />
-        {editing ? (
-          <SingleImageUpload
-            endpoint={`/kindergartens/${primaryKindergartenId}/logo`}
-            currentMediaId={data?.logoMediaFileId}
-            label="Лого нэмэх"
-            alt={`${data?.name ?? "Цэцэрлэг"}-ийн лого`}
-            hint="Тайлан, PDF бүрд хэвлэгдэнэ. JPEG, PNG эсвэл WebP."
-            invalidateKeys={[qk.adminKindergarten(primaryKindergartenId ?? ""), qk.session()]}
-          />
-        ) : data?.logoMediaFileId ? (
-          // `/media/:id` 302s to a presigned URL, which `next/image` cannot
-          // follow — every other media surface in this product uses a plain
-          // <img> for the same reason.
-          <img
-            src={mediaUrl(data.logoMediaFileId)}
-            alt={`${data.name}-ийн лого`}
-            className="h-24 w-auto rounded-control object-contain"
-          />
-        ) : (
-          <p className="text-body text-muted">Лого оруулаагүй байна.</p>
-        )}
+        <SingleImageUpload
+          endpoint={`/kindergartens/${primaryKindergartenId}/logo`}
+          currentMediaId={data?.logoMediaFileId}
+          label="Лого нэмэх"
+          alt={`${data?.name ?? "Цэцэрлэг"}-ийн лого`}
+          hint="Тайлан, PDF бүрд хэвлэгдэнэ. JPEG, PNG эсвэл WebP."
+          invalidateKeys={[qk.adminKindergarten(primaryKindergartenId ?? ""), qk.session()]}
+        />
       </Card>
-
-      {editing ? (
-        <Card pad="roomy">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!save.isPending) save.mutate();
-            }}
-            className="flex flex-col gap-4"
-            noValidate
-          >
-            <FormError
-              message={
-                save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null
-              }
-            />
-
-            <Field label="Цэцэрлэгийн нэр" error={errors.name} required>
-              {({ id, describedBy, invalid }) => (
-                <Input
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  value={form.name ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                />
-              )}
-            </Field>
-
-            <Field label="Хаяг" error={errors.address}>
-              {({ id, describedBy, invalid }) => (
-                <Input
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  value={form.address ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
-                />
-              )}
-            </Field>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Утас" error={errors.phone}>
-                {({ id, describedBy, invalid }) => (
-                  <Input
-                    id={id}
-                    aria-describedby={describedBy}
-                    invalid={invalid}
-                    type="tel"
-                    inputMode="tel"
-                    value={form.phone ?? ""}
-                    onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                  />
-                )}
-              </Field>
-
-              <Field label="И-мэйл" error={errors.email}>
-                {({ id, describedBy, invalid }) => (
-                  <Input
-                    id={id}
-                    aria-describedby={describedBy}
-                    invalid={invalid}
-                    type="email"
-                    inputMode="email"
-                    value={form.email ?? ""}
-                    onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                  />
-                )}
-              </Field>
-            </div>
-
-            <Field
-              label="Танилцуулга"
-              error={errors.description}
-              hint="Эцэг эхэд цэцэрлэгээ танилцуулах богино тайлбар."
-            >
-              {({ id, describedBy, invalid }) => (
-                <Textarea
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  rows={4}
-                  value={form.description ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                />
-              )}
-            </Field>
-
-            <div className="flex justify-end gap-2">
-              {/*
-                Болих restores the record's own values rather than merely closing
-                the form: without the reset, re-opening it would show whatever
-                was half-typed before the reader changed their mind, which reads
-                as unsaved work the screen intends to keep.
-              */}
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={save.isPending}
-                onClick={() => {
-                  setEditing(false);
-                  save.reset();
-                  if (data) {
-                    setForm({
-                      name: data.name,
-                      address: data.address ?? "",
-                      phone: data.phone ?? "",
-                      email: data.email ?? "",
-                      description: data.description ?? "",
-                    });
-                  }
-                }}
-              >
-                Болих
-              </Button>
-              <Button type="submit" disabled={save.isPending}>
-                {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
-              </Button>
-            </div>
-          </form>
-        </Card>
-      ) : null}
 
       {/*
         ★ The kindergarten's record, from ESIS — 2026-09-08, at the client's
-        instruction.
+        instruction, and since the same day the *only* version of it: "цэцэрлэгийн
+        мэдээлэл байгаа бас засах хэрэггүй".
 
         This screen used to read the local record back as a card of five
-        fields; that card is gone and the sixteen ESIS fields are the reading
-        state. The local values are still what "Засах" edits and what every
-        report prints — they are simply no longer *displayed* here, because the
-        client asked that the screen read as one connected source rather than
-        two lists of the same kindergarten.
+        fields and open a form over it; both are gone, and the sixteen ESIS
+        fields are the whole of it. `PATCH /kindergartens/:id` still exists and
+        still works — nothing in this product calls it any more, so the name,
+        address, telephone and e-mail the reports print are whatever they were
+        last set to.
 
-        Out of edit mode on purpose: putting a read-only source beside a
-        half-typed form invites the reader to think one of the two saves the
-        other. Import is a separate step that does not exist yet
-        (`ESIS_API_READINESS.md` C5).
+        Import is the step that would make that a temporary state, and it does
+        not exist yet (`ESIS_API_READINESS.md` C5).
       */}
-      {editing ? null : <EsisDataPanel resource="organization" />}
+      <EsisDataPanel resource="organization" />
     </div>
   );
 }
