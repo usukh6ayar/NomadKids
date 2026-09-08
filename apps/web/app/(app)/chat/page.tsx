@@ -60,7 +60,7 @@ export default function ChatPage() {
 
   return (
     <div className="page-band mx-auto w-full max-w-[1200px] px-4 py-4 lg:py-6">
-      <PageHeader title="Чат" lede="Бүлгийнхээ багш, эцэг эхтэй шууд харилцах." />
+      <PageHeader title="Чат" />
 
       {/*
         A fixed height rather than page flow: both panes scroll internally, and a

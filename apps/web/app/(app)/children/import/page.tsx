@@ -109,10 +109,7 @@ function ImportChildren() {
 
   return (
     <div className="flex flex-col gap-6 lg:gap-8">
-      <PageHeader
-        title="Хүүхэд импортлох"
-        lede="Эх сурвалжийг сонгоод мэдээллийг бичихээс өмнө шалгана."
-      />
+      <PageHeader title="Хүүхэд импортлох" />
 
       {isAdmin ? (
         <div

@@ -67,7 +67,6 @@ function Applications() {
     <div className="flex flex-col gap-5 lg:gap-6">
       <PageHeader
         title="Байгууллагын хүсэлт"
-        lede="Цэцэрлэгүүдийн нэгдэх хүсэлт. Батласнаар цэцэрлэг болон гэрээ үүснэ."
       />
 
       <div className="flex flex-wrap gap-2">

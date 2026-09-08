@@ -95,10 +95,6 @@ function KindergartenDetail() {
 
       <PageHeader
         title={kg.name}
-        lede={
-          [kg.address, kg.phone, kg.email].filter(Boolean).join(" · ") ||
-          `Бүртгэсэн: ${formatRelative(kg.createdAt)}`
-        }
         actions={
           <span className="flex items-center gap-2">
             <Badge tone={kg.isActive ? "mint" : "neutral"}>

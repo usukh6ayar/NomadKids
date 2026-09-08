@@ -8,7 +8,7 @@ import { get } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
-import { formatDate, fullName } from "@/lib/format";
+import { fullName } from "@/lib/format";
 import { useSession } from "@/lib/auth/session";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
@@ -141,8 +141,10 @@ function TeacherDashboard() {
   });
 
   // Shared with `TeacherHero`, `AttendanceToday` and `WeeklyAttendance` under
-  // one query key, so naming the group in the lede costs nothing.
-  const { group, count: groupCount } = useMyGroup();
+  // one query key. Still read here for the "Ирц" quick action's href below —
+  // not for the header, which stopped naming the group when its `lede` line
+  // was removed (2026-09-07, every page's header subtitle went at once).
+  const { group } = useMyGroup();
 
   /*
    * ★ All three branches render the same `PageHeader`.
@@ -151,18 +153,14 @@ function TeacherDashboard() {
    * different size *and* a different weight from the one `PageHeader` renders —
    * so the title grew 4px and changed weight in place the moment the query
    * resolved. Three copies of one string, and the copy nobody looks at was the
-   * one on screen while the screen was loading. Only the lede differs between
-   * them, and it is never empty, because a line that appears late moves
-   * everything below it.
+   * one on screen while the screen was loading. Rendering the identical
+   * `header` element in all three branches is what keeps them from drifting
+   * apart again.
    *
    * ★★ The 2026-09-06 teacher mockup opens with a personal greeting rather
    * than the route name. The card below still names the class board's latest
    * post as "Сүүлийн нийтлэл", so the screen's title and the post widget do
    * not repeat one another.
-   *
-   * The lede is the group and the date, in the sketch's own order — the two
-   * facts that scope every figure below it. `useMyGroup()` resolves the group
-   * the whole screen already speaks about, so this costs no request.
    *
    * ★★★ Header search is back; "+ Үйлдэл" stays out.
    *
@@ -172,9 +170,9 @@ function TeacherDashboard() {
    */
   const teacherName = fullName(session?.user);
   const greetingName = teacherName === "—" ? "багш" : teacherName;
-  const header = (lede: string) => (
+  const header = (
     <div className="teacher-dashboard-header">
-      <PageHeader title={`Сайн байна уу, ${greetingName}! 👋`} lede={lede} />
+      <PageHeader title={`Сайн байна уу, ${greetingName}! 👋`} />
       <div className="teacher-dashboard-banner">
         <p>Хүүхэд бүр өөрийн гэсэн гэрэлтэй</p>
         <Image
@@ -191,7 +189,7 @@ function TeacherDashboard() {
   if (isLoading) {
     return (
       <div className="page-band">
-        {header("Ачаалж байна…")}
+        {header}
         {/*
           ★ Card-shaped, and paired at the top like the real thing.
 
@@ -214,7 +212,7 @@ function TeacherDashboard() {
   if (isError) {
     return (
       <div className="page-band">
-        {header("Мэдээлэл ачаалж чадсангүй")}
+        {header}
         <ErrorState
           description={errorMessage(error)}
           action={
@@ -239,7 +237,7 @@ function TeacherDashboard() {
    * match one screen's current layout is the coupling `GroupsSection` and
    * `DashboardStats` each decline in their own comments.
    */
-  const { currentTerm, birthdaysThisMonth, boardNotice, termProgress } = data!;
+  const { birthdaysThisMonth, boardNotice, termProgress } = data!;
 
   /*
    * ★ Bands are spaced further apart than the cards inside them.
@@ -255,20 +253,7 @@ function TeacherDashboard() {
     // rhythm, and a step above the 16/20px gap between cards inside a band so
     // the grouping is visible without a divider.
     <div className="page-band">
-      {header(
-        /*
-          Group · date, per the sketch — but only where naming one group is
-          true. An admin sees every group in the kindergarten and
-          `TeacherAssignment` permits a teacher covering two, so both fall back
-          to the term rather than being told they run "Дэлбээ". Same rule
-          `WhoAmI` (`app-shell.tsx`) applies to the sidebar's context line.
-        */
-        groupCount === 1 && group
-          ? `${group.name} · ${formatDate(new Date())}`
-          : currentTerm
-            ? `${currentTerm.name} · идэвхтэй улирал`
-            : "Идэвхтэй улирал тохируулаагүй",
-      )}
+      {header}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <QuickAction

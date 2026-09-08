@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { z } from "zod";
-import { attendanceRecordSchema, groupAttendanceRowSchema, groupSchema } from "@kinder/contracts";
+import { attendanceRecordSchema, groupAttendanceRowSchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
 import { GroupSwitcher, useSwitchableGroups } from "@/components/shell/group-switcher";
@@ -117,11 +117,6 @@ function GroupAttendance() {
    * Үнэлгээ for the same group does not refetch the list of groups.
    */
   const switchable = useSwitchableGroups();
-
-  const group = useQuery({
-    queryKey: ["group", groupId],
-    queryFn: () => get(`/groups/${groupId}`, groupSchema),
-  });
 
   const sheet = useQuery({
     queryKey: qk.groupAttendance(groupId, date),
@@ -239,11 +234,6 @@ function GroupAttendance() {
     <div className="page-band">
       <PageHeader
         title="Ирц"
-        lede={
-          readOnly
-            ? `${group.data?.name ?? ""} — багшийн бүртгэсэн ирэц. Зөвхөн харна.`.trim()
-            : group.data?.name
-        }
       />
 
       <GroupSwitcher

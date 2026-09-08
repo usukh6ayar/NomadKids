@@ -7,7 +7,6 @@ import { NotebookPen } from "lucide-react";
 import { z } from "zod";
 import {
   groupMealRowSchema,
-  groupSchema,
   mealRecordSchema,
   type MealKind,
   type MealStatus,
@@ -167,11 +166,6 @@ function GroupMeals() {
    */
   const switchable = useSwitchableGroups();
 
-  const group = useQuery({
-    queryKey: ["group", groupId],
-    queryFn: () => get(`/groups/${groupId}`, groupSchema),
-  });
-
   /*
     ★ One sitting, not four.
 
@@ -269,11 +263,6 @@ function GroupMeals() {
     <div className="flex flex-col gap-5 py-2">
       <PageHeader
         title="Хоолны бүртгэл"
-        lede={
-          readOnly
-            ? `${group.data?.name ?? ""} — багшийн бүртгэсэн хоол. Зөвхөн харна.`.trim()
-            : group.data?.name
-        }
       />
 
       <GroupSwitcher

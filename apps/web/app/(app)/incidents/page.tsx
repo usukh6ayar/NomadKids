@@ -63,7 +63,6 @@ function IncidentJournal() {
     <div className="page-band">
       <PageHeader
         title="Аюулгүй байдал"
-        lede="Осол, бэртэл болон эцэг эхэд мэдээлэх шаардлагатай тохиолдлууд."
         actions={
           incidents.data ? <ResultCount total={incidents.data.total} noun="тохиолдол" /> : null
         }

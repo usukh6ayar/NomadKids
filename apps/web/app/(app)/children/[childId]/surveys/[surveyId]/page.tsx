@@ -71,7 +71,7 @@ export default function SurveyResponsePage() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <PageHeader title={survey.title} lede={survey.description ?? undefined} />
+      <PageHeader title={survey.title} />
 
       <form
         onSubmit={(e) => {

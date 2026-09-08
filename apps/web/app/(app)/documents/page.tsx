@@ -98,7 +98,6 @@ function DocumentLibrary() {
     <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Баримт бичгийн сан"
-        lede="Хөтөлбөр, арга зүй, дотоод журам."
         actions={
           !adding ? (
             <Button size="sm" onClick={() => setAdding(true)}>

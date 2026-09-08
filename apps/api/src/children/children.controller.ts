@@ -123,6 +123,26 @@ export class ChildrenController {
   }
 
   /**
+   * The roster a kindergarten's finance staff may invoice — нэмэлт.md §7.
+   *
+   * ★ `GET children` above has no `@Roles` because `list()`'s
+   * `visibleChildrenWhere` decides who is in it — and that filter
+   * deliberately has no accountant chain (`ChildrenService.financeRoster`'s
+   * own comment explains why: it is `canAccessChild`'s filter, not
+   * `canViewChildFinance`'s). This route is the money axis's own list, so an
+   * accountant's invoice-generation screen has a roster to pick a child from.
+   */
+  @Get("kindergartens/:id/children/finance-roster")
+  @Roles("ADMIN", "ACCOUNTANT")
+  async financeRoster(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(listChildrenQuerySchema)) query: ListChildrenQuery,
+  ) {
+    return this.service.financeRoster(actor, params.id, query);
+  }
+
+  /**
    * Imports a roster from a spreadsheet — RFP §3.4.
    *
    * ★ `?dryRun=true` validates and reports without writing, which is the whole

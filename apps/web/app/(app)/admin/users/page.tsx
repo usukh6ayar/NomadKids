@@ -211,7 +211,6 @@ function AdminUsers() {
     <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Хэрэглэгчид"
-        lede="Багш, админ, тогооч, нягтлангийн бүртгэл."
         actions={
           <Button size="sm" onClick={() => setInviting(true)}>
             <UserPlus size={18} />

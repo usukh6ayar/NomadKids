@@ -104,7 +104,6 @@ function AuditBrowser() {
     <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Үйлдлийн түүх"
-        lede="Хэн, хэзээ, юу хийсэн. Зөвхөн уншина — түүхийг засах боломжгүй."
       />
 
       <div className="flex flex-wrap items-end gap-3">

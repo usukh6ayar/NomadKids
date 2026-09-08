@@ -81,7 +81,6 @@ function Platform() {
     <div className="flex flex-col gap-5 lg:gap-7">
       <PageHeader
         title="Цэцэрлэгүүд"
-        lede="Платформд бүртгэлтэй цэцэрлэгүүд. Шинээр бүртгэхэд эхний удирдлагын бүртгэл үүснэ."
         actions={
           <Button size="sm" onClick={() => setCreating(true)}>
             <Plus size={18} />

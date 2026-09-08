@@ -86,7 +86,6 @@ function SurveyDetail() {
     <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title={data.title}
-        lede={data.description ?? undefined}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {data.status !== "DRAFT" ? (

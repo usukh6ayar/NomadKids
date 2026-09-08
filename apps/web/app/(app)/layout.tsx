@@ -874,9 +874,15 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
  * duplicate a sidebar row on purpose, because the bar's whole job is a
  * one-tap phone route to what the drawer would otherwise cost a tap to reach.
  *
- * The accountant's bar is untouched — still Санхүү, Мэдээ, Профайл from
- * 2026-08-30. Nothing asked for it to change, and none of its three tabs are
- * cook-specific enough to justify moving without being asked.
+ * ★★★ The accountant's bar moved onto the same four-tab shape on 2026-09-07 —
+ * Санхүү · Нэхэмжлэл · Ирц · Цэс, matching the cook's row above and
+ * `staffNav`/`parentNav`. It was Санхүү, Мэдээ, Профайл: "Мэдээ" pointed at
+ * `/notifications`, a class's board an accountant does not belong to (the
+ * same reason it lost its `supportSections` row on 2026-09-05, see below —
+ * this bar had simply not been revisited to match). `/invoices` and
+ * `/attendance/journal` replace it with the two screens this role actually
+ * opens daily, both already one tap away in `supportSections`; the last tab
+ * is the drawer, not a fourth destination, for the reason the cook's is.
  */
 function supportNav(isCook: boolean): NavItem[] {
   return isCook
@@ -888,8 +894,9 @@ function supportNav(isCook: boolean): NavItem[] {
       ]
     : [
         { href: "/finance", label: "Санхүү", icon: <Wallet {...iconProps} /> },
-        { href: "/notifications", label: "Мэдээ", icon: <Newspaper {...iconProps} /> },
-        { href: "/settings", label: "Профайл", icon: <Settings {...iconProps} /> },
+        { href: "/invoices", label: "Нэхэмжлэл", icon: <Receipt {...iconProps} /> },
+        { href: "/attendance/journal", label: "Ирц", icon: <CalendarCheck {...iconProps} /> },
+        { href: "/settings", label: "Цэс", icon: <Menu {...iconProps} /> },
       ];
 }
 
@@ -926,7 +933,7 @@ function supportSections(isCook: boolean): NavSection[] {
           ]
         : [
             navEntry("Санхүүжилт", "/finance"),
-            navEntry("Эцэг эхийн нэхэмжлэл", "/invoices"),
+            navEntry("Нэхэмжлэл", "/invoices"),
             /*
              * ★ Added 2026-09-02. `/admin/funding` widened to
              * `RequireRole(["ADMIN", "ACCOUNTANT"])` the same day — see that

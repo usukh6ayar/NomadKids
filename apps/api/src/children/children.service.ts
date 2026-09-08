@@ -58,6 +58,33 @@ export class ChildrenService {
   }
 
   /**
+   * The roster a kindergarten's finance staff may invoice — нэмэлт.md §7.
+   *
+   * ★ `list()` above answers "children I may open a portfolio for," gated by
+   * `visibleChildrenWhere`, which has no accountant chain by design (that
+   * predicate is `canAccessChild`'s, and §13 is explicit an accountant gets no
+   * developmental record). Without this method the invoice-generation screen's
+   * child picker called `list()` anyway and rendered empty for every
+   * accountant — the two axes look identical until someone who is staff but
+   * not a teacher or admin tries the roster. This is the money axis's own list,
+   * built from `visibleChildrenForFinanceWhere` the way `canViewChildFinance`
+   * is built from `canAccessChild`'s sibling predicates in child-access.ts.
+   */
+  async financeRoster(actor: Actor, kindergartenId: string, query: ListChildrenQuery) {
+    this.tenants.assertCanReadFinance(actor, kindergartenId);
+
+    const visible = this.authz.visibleChildrenForFinanceWhere(kindergartenId);
+    const page: PageParams = { page: query.page, pageSize: query.pageSize };
+
+    const { items, total } = await this.repo.listChildren(visible, childFilters(query), page, {
+      sort: query.sort,
+      order: query.order,
+    });
+
+    return paginate(items, total, page);
+  }
+
+  /**
    * The roster's headline numbers — RFP §12.1's "нийт хүүхэд" and mean age.
    *
    * ★ Over the whole filtered roster, not the page on screen.

@@ -184,7 +184,6 @@ function DailyAttendance() {
       */}
       <PageHeader
         title="Өдөр тутмын ирц"
-        lede="Бүлэг тус бүрийн өдрийн ирцийн дүн, сонгосон хугацаагаар."
         actions={<AttendanceViewSwitch current="group" from={from} to={to} groupId={groupId} />}
       />
 

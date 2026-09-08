@@ -192,7 +192,6 @@ function StaffChildren() {
     <div className="page-band">
       <PageHeader
         title="Хүүхдүүд"
-        lede="Хариуцсан бүлгийн хүүхдүүд."
         actions={
           /*
             ★ `flex-wrap`, and `gap-2` until there is room for `gap-3`.
@@ -1065,7 +1064,7 @@ function MyChildren() {
 
   return (
     <div className="page-band">
-      <PageHeader title={MY_CHILDREN} lede="Таны бүртгэлтэй хүүхдүүд." />
+      <PageHeader title={MY_CHILDREN} />
 
       {isLoading ? <LoadingState rows={2} /> : null}
 

@@ -75,12 +75,12 @@ function KitchenAttendance() {
       ),
   });
 
-  const header = (lede: string) => <PageHeader title="Ирц" lede={lede} />;
+  const header = <PageHeader title="Ирц" />;
 
   if (isLoading) {
     return (
       <div className="flex flex-col gap-5 lg:gap-6">
-        {header("Ачаалж байна…")}
+        {header}
         <LoadingState rows={4} />
       </div>
     );
@@ -89,7 +89,7 @@ function KitchenAttendance() {
   if (isError || !data) {
     return (
       <div className="flex flex-col gap-5 lg:gap-6">
-        {header("Мэдээлэл ачаалж чадсангүй")}
+        {header}
         <ErrorState
           description={errorMessage(error)}
           action={

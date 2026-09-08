@@ -7,7 +7,6 @@ import { cookDashboardSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
-import { formatLongDate } from "@/lib/format";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
@@ -47,12 +46,12 @@ function KitchenDashboard() {
     queryFn: () => get("/dashboard/cook", cookDashboardSchema),
   });
 
-  const header = (lede: string) => <PageHeader title="Самбар" lede={lede} />;
+  const header = <PageHeader title="Самбар" />;
 
   if (isLoading) {
     return (
       <div className="flex flex-col gap-5 lg:gap-6">
-        {header("Ачаалж байна…")}
+        {header}
         <LoadingState rows={3} />
       </div>
     );
@@ -61,7 +60,7 @@ function KitchenDashboard() {
   if (isError || !data) {
     return (
       <div className="flex flex-col gap-5 lg:gap-6">
-        {header("Мэдээлэл ачаалж чадсангүй")}
+        {header}
         <ErrorState
           description={errorMessage(error)}
           action={
@@ -80,7 +79,7 @@ function KitchenDashboard() {
 
   return (
     <div className="flex flex-col gap-5 lg:gap-6">
-      {header(formatLongDate(new Date()))}
+      {header}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:gap-4 lg:gap-5">
         <BoardCard

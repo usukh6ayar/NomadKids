@@ -25,14 +25,6 @@ import { formatAge, fullName } from "@/lib/format";
 
 const childrenSchema = paginated(childSummarySchema);
 
-/** The same four the group list names — one source would be better; see below. */
-const BAND_LABEL: Record<string, string> = {
-  NURSERY: "Бага бүлэг",
-  JUNIOR: "Дунд бүлэг",
-  MIDDLE: "Ахлах бүлэг",
-  SENIOR: "Бэлтгэл бүлэг",
-};
-
 /**
  * One group, in full — "Бүлгийн дэлгэрэнгүй".
  *
@@ -106,12 +98,6 @@ function GroupDetail() {
 
       <PageHeader
         title={data.name}
-        lede={[
-          data.ageBand ? (BAND_LABEL[data.ageBand] ?? data.ageBand) : null,
-          data.schoolYear?.name,
-        ]
-          .filter(Boolean)
-          .join(" · ")}
         meta={
           <>
             {isArchived ? <Badge tone="neutral">Архивласан</Badge> : null}

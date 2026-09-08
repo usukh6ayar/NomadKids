@@ -93,7 +93,6 @@ function AdminTerms() {
     <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Улирал"
-        lede="Үнэлгээ ба улирлын тайлан улиралд харьяалагдана."
         actions={
           currentYear ? (
             <Button size="sm" onClick={() => setCreating(true)}>

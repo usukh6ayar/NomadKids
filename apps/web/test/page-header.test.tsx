@@ -83,7 +83,10 @@ describe("heading hierarchy", () => {
     ]);
 
     const loaded = renderWithProviders(<DashboardPage />);
-    await waitFor(() => expect(screen.getByText(/улирал тохируулаагүй/i)).toBeInTheDocument());
+    // Any string from the loaded branch's quick-action tiles signals the query
+    // has settled — the header itself no longer carries a lede to wait on
+    // (removed 2026-09-07, along with every other page's header subtitle).
+    await waitFor(() => expect(screen.getByText("Ирц")).toBeInTheDocument());
 
     expect(loaded.container.querySelector("h1")!.className).toBe(whenFailed);
   });

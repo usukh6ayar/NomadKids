@@ -16,7 +16,6 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/field";
 import { ErrorState, LoadingState } from "@/components/ui/states";
-import { formatDate } from "@/lib/format";
 import { useToast } from "@/components/ui/toast";
 
 /** `"126900.00"` → `"126 900₮"`. */
@@ -102,7 +101,6 @@ function FoodOrderDetail() {
     <div className="flex flex-col gap-5 lg:gap-6">
       <PageHeader
         title={data.supplier.name}
-        lede={formatDate(data.orderDate)}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={STATUS_TONE[data.status]}>{FOOD_ORDER_STATUS_LABEL[data.status]}</Badge>
