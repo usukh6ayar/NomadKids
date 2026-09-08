@@ -1,37 +1,46 @@
 "use client";
 
+import * as Dialog from "@radix-ui/react-dialog";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import Image from "next/image";
-import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
-import { MoreHorizontal } from "lucide-react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import {
+  ChevronRight,
+  HandHeart,
+  Heart,
+  HouseHeart,
+  MoreVertical,
+  Pencil,
+  School,
+  Smile,
+  X,
+} from "lucide-react";
 import { ageProfileSchema, type AgeProfile } from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Field, Input, Textarea } from "@/components/ui/field";
+import { Checkbox, Field, Input, Textarea } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
+import { RowMenu } from "@/components/ui/menu";
 import { FormError } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
-import { AGE_FIELDS } from "@/components/child/child-growth-ages";
-import { AgePresetField } from "@/components/child/age-preset-field";
-import { AGE_FAMILY_OPTIONS, AGE_SKILL_OPTIONS, AGE_TONE } from "@/lib/age-content";
+import {
+  CHARACTER_TRAITS,
+  FAMILY_MEMBER_TYPES,
+  FAVORITE_FIELDS,
+  ageSectionCompletion,
+  familyLearningCategories,
+  kindergartenSkillCategories,
+  type PortfolioAge,
+} from "@/lib/age-development";
+import { AGE_TONE } from "@/lib/age-content";
 import type { GradientTone } from "@/lib/gradient-tones";
-import type { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
 import { cn } from "@/lib/utils";
 
-type Age = (typeof PORTFOLIO_AGES)[number];
 type Profile = AgeProfile | undefined;
+type PatchBody = Record<string, string | null | string[] | Record<string, string>>;
 
-/**
- * A plain white card with just its border tinted to the current age — the
- * reference screenshots give every card on the page the active age's colour
- * this way (blue borders on "Миний 3 нас", green on "Миний 2 нас"), rather
- * than `Card`'s own `tone` prop, whose `TONE_CARD` also washes the
- * background — these stay white inside.
- */
 const BORDER_FOR_TONE: Record<GradientTone, string> = {
   green: "border-mint",
   blue: "border-sky",
@@ -40,120 +49,166 @@ const BORDER_FOR_TONE: Record<GradientTone, string> = {
   pink: "border-peach",
 };
 
+const EMPTY_CARD_FOR_TONE: Record<GradientTone, string> = {
+  green: "bg-mint text-mint-ink",
+  blue: "bg-sky text-sky-ink",
+  orange: "bg-peach text-peach-ink",
+  purple: "bg-cornflower text-cornflower-ink",
+  pink: "bg-peach text-peach-ink",
+};
+
 /**
- * The six cards on a parent's per-age page — client reference screenshot,
- * 2026-08-30. Every field here is in `SHARED_AGE_FIELDS`
- * (`portfolio-fields.ts`), writable by a guardian, so every card below is a
- * real edit, not a read-only preview of a staff-only record.
- *
- * ★ Each card sends only its own field(s) to `PATCH .../age-profiles/:age`.
- * `PortfolioService.updateAgeProfile` runs the body through `definedOnly()`
- * — a key this component never includes is left untouched server-side, so a
- * save from "Миний зан араншин" cannot clobber `newSkills` sitting in a
- * different card's own draft. All six invalidate the same
- * `qk.ageProfiles(childId)` the staff accordion (`ChildGrowthAges`) reads, so
- * neither side of the record can go stale relative to the other.
+ * Each card sends only its own columns. The API's partial upsert leaves all
+ * other sections untouched, while a failed request keeps the draft open.
  */
-
-const FAVORITE_KEYS = AGE_FIELDS.filter((f) => f.key.startsWith("favorite")).map((f) => f.key);
-
-/** One `PATCH .../age-profiles/:age` mutation, shared by every card's dialog. */
-function useAgeProfileSave(childId: string, age: Age, onSaved: () => void) {
+function useAgeProfileSave(childId: string, age: PortfolioAge, onSaved: () => void) {
   const queryClient = useQueryClient();
   const toast = useToast();
 
   return useMutation({
-    mutationFn: (body: Record<string, string | null>) =>
+    mutationFn: (body: PatchBody) =>
       mutate(`/children/${childId}/age-profiles/${age}`, ageProfileSchema, {
         method: "PATCH",
         body,
       }),
-    onSuccess: () => {
-      toast.success("Хадгаллаа.");
+    onSuccess: (saved) => {
+      queryClient.setQueryData<AgeProfile[]>(qk.ageProfiles(childId), (current = []) => {
+        const existing = current.find((item) => item.age === age);
+        const next = { ...existing, ...saved };
+        return existing
+          ? current.map((item) => (item.age === age ? next : item))
+          : [...current, next].sort((a, b) => a.age - b.age);
+      });
+      toast.success(`${age} насны мэдээлэл хадгалагдлаа.`);
       onSaved();
-      void queryClient.invalidateQueries({ queryKey: qk.ageProfiles(childId) });
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
 }
 
-/** The shell every card shares: heading, "⋮" trigger, empty state, the current age's border tint. */
+/** Compact index card: details open on the card and editing starts from ⋮. */
 function ProfileCard({
   title,
   tone,
   hasContent,
-  emptyHint,
+  emptyPrompt,
   onEdit,
+  icon,
+  iconTone,
   children,
 }: {
   title: string;
   tone: GradientTone;
   hasContent: boolean;
-  emptyHint: string;
+  emptyPrompt: string;
   onEdit: () => void;
+  icon: ReactNode;
+  iconTone: string;
   children: ReactNode;
 }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
   return (
-    <Card pad="roomy" className={cn("flex flex-col gap-2 border-2", BORDER_FOR_TONE[tone])}>
-      <div className="flex items-start justify-between gap-3">
-        <h3 className="font-semibold text-ink">{title}</h3>
-        <Button variant="ghost" size="icon" aria-label={`${title} засах`} onClick={onEdit}>
-          <MoreHorizontal size={18} aria-hidden="true" />
-        </Button>
-      </div>
-      {hasContent ? children : <p className="text-body text-muted">{emptyHint}</p>}
-    </Card>
+    <Dialog.Root open={detailsOpen} onOpenChange={setDetailsOpen}>
+      <Card
+        className={cn(
+          "overflow-visible border-2 transition-shadow hover:shadow-md",
+          BORDER_FOR_TONE[tone],
+          !hasContent && EMPTY_CARD_FOR_TONE[tone],
+        )}
+      >
+        <div className="flex min-h-[72px] items-center gap-1 p-1.5 md:px-3 md:py-2">
+          <button
+            type="button"
+            aria-label={`${title} ${hasContent ? "дэлгэрэнгүй" : "тэмдэглэх"}`}
+            className="card-interactive flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-row px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            onClick={() => (hasContent ? setDetailsOpen(true) : onEdit())}
+          >
+            <span
+              aria-hidden="true"
+              className={cn(
+                "grid size-9 shrink-0 place-items-center rounded-row shadow-sm",
+                iconTone,
+              )}
+            >
+              {icon}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span role="heading" aria-level={3} className="block font-semibold text-ink">
+                {title}
+              </span>
+              <span className="mt-0.5 line-clamp-2 block text-caption leading-snug text-muted">
+                {hasContent ? "Мэдээлэл бүртгэгдсэн" : emptyPrompt}
+              </span>
+            </span>
+            <span className="inline-flex shrink-0 items-center gap-0.5 rounded-pill bg-surface/80 px-2 py-1 text-caption font-semibold text-primary shadow-sm">
+              {hasContent ? "Харах" : "+ Тэмдэглэх"}
+              <ChevronRight size={14} aria-hidden="true" />
+            </span>
+          </button>
+          <div className="self-start">
+            <RowMenu
+              ariaLabel={`${title} үйлдэл`}
+              triggerIcon={<MoreVertical size={18} aria-hidden="true" />}
+              items={[{ label: "Засах", icon: <Pencil size={16} />, onSelect: onEdit }]}
+            />
+          </div>
+        </div>
+      </Card>
+
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-ink/40" />
+        <Dialog.Content
+          aria-label={`${title} мэдээлэл`}
+          aria-describedby={undefined}
+          className="fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-[620px] -translate-x-1/2 -translate-y-1/2 flex-col overflow-y-auto rounded-card border border-border bg-surface p-5 shadow-lg md:p-6"
+        >
+          <div className="mb-5 flex items-start justify-between gap-3">
+            <Dialog.Title className="text-lead font-semibold text-ink">{title}</Dialog.Title>
+            <Dialog.Close asChild>
+              <Button variant="ghost" size="icon" aria-label="Хаах">
+                <X size={18} aria-hidden="true" />
+              </Button>
+            </Dialog.Close>
+          </div>
+          {hasContent ? children : <p className="text-body text-muted">{emptyPrompt}</p>}
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
-/**
- * Links to the growth chart/form that already exists — `ChildGrowth`, reached
- * from "Ерөнхий" → Өсөлт. An illustrated banner rather than the other five
- * cards' plain heading — the screenshot draws this one differently because
- * it owns no field of its own to show or edit here; it is a doorway, not a
- * record.
- */
-export function GrowthTeaserCard({ childId, age }: { childId: string; age: Age }) {
+function DialogActions({
+  formId,
+  busy,
+  onCancel,
+}: {
+  formId: string;
+  busy: boolean;
+  onCancel: () => void;
+}) {
   return (
-    <Card
-      pad="roomy"
-      className={cn(
-        "relative flex min-h-44 items-center gap-4 overflow-hidden border-2 bg-[linear-gradient(135deg,#fef6e4_0%,#fdecc8_100%)]",
-        BORDER_FOR_TONE[AGE_TONE[age]],
-      )}
-    >
-      <div className="min-w-0 flex-1">
-        <p className="text-lead font-semibold text-ink">Би өдөр бүр өсч байна</p>
-        <p className="mt-1.5 text-body text-muted">Өндөр, жингийн мэдээллээ нэмээрэй.</p>
-        <span
-          aria-hidden="true"
-          className="mt-5 block h-2 w-2/3 rounded-pill bg-[linear-gradient(90deg,#34d399_0%,#16a34a_100%)]"
-        />
-      </div>
-
-      {/*
-        A static asset — the client's own artwork, 520×603 — not a hand-rolled
-        `<svg>`. `tokens.test.tsx` bans a new inline one in every file outside
-        `components/ui/chart/` (plus two named, explicitly-closed pieces of
-        debt), and a decoration that draws nothing to scale against belongs in
-        `public/` anyway, the same way `child-growth-ages.tsx`'s own empty
-        state loads `mascot-boy-green.webp`. `w-auto` keeps its own aspect
-        ratio as the height steps up at `sm:` rather than stretching it square.
-      */}
-      <Image
-        src="/illustrations/giraffe-growth.png"
-        alt=""
-        width={138}
-        height={160}
-        className="h-32 w-auto shrink-0 sm:h-40"
-      />
-
-      <Button asChild variant="ghost" size="icon" className="absolute right-3 top-3">
-        <Link href={`/children/${childId}/general?tab=growth`} aria-label="Өсөлт хөгжил рүү очих">
-          <MoreHorizontal size={18} aria-hidden="true" />
-        </Link>
+    <>
+      <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={onCancel}>
+        Болих
       </Button>
-    </Card>
+      <Button type="submit" form={formId} size="sm" disabled={busy}>
+        {busy ? "Хадгалж байна…" : "Хадгалах"}
+      </Button>
+    </>
+  );
+}
+
+function ValuesList({ rows }: { rows: { label: string; value: string }[] }) {
+  return (
+    <dl className="grid gap-3 sm:grid-cols-2">
+      {rows.map((row) => (
+        <div key={row.label} className="rounded-row bg-sunken px-3 py-2.5">
+          <dt className="text-caption text-muted">{row.label}</dt>
+          <dd className="mt-0.5 whitespace-pre-wrap text-body text-ink">{row.value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
@@ -163,92 +218,79 @@ export function FavoritesCard({
   profile,
 }: {
   childId: string;
-  age: Age;
+  age: PortfolioAge;
   profile: Profile;
 }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    const next: Record<string, string> = {};
-    for (const key of FAVORITE_KEYS) next[key] = (profile?.[key] as string) ?? "";
-    setForm(next);
+  const reset = useCallback(() => {
+    setForm(Object.fromEntries(FAVORITE_FIELDS.map(({ key }) => [key, profile?.[key] ?? ""])));
   }, [profile]);
+  useEffect(reset, [reset]);
 
-  const save = useAgeProfileSave(childId, age, () => setOpen(false));
+  const close = () => {
+    setOpen(false);
+    reset();
+  };
+  const save = useAgeProfileSave(childId, age, close);
   const errors = fieldErrors(save.error);
-  const filled = FAVORITE_KEYS.filter((key) => profile?.[key]);
+  const rows = FAVORITE_FIELDS.flatMap(({ key, label }) => {
+    const value = profile?.[key]?.trim();
+    return value ? [{ label, value }] : [];
+  });
+  const formId = `favorites-${age}-form`;
 
   return (
-    <ProfileCard
-      title="Миний дуртай бүх зүйлс"
-      tone={AGE_TONE[age]}
-      hasContent={filled.length > 0}
-      emptyHint="Мэдээлэл байхгүй"
-      onEdit={() => setOpen(true)}
-    >
-      <dl className="grid gap-2.5 sm:grid-cols-2">
-        {filled.map((key) => {
-          const field = AGE_FIELDS.find((f) => f.key === key)!;
-          return (
-            <div key={key}>
-              <dt className="text-caption text-muted">{field.label}</dt>
-              <dd className="truncate text-body text-ink">{String(profile?.[key])}</dd>
-            </div>
-          );
-        })}
-      </dl>
-
+    <>
+      <ProfileCard
+        title="Миний дуртай бүх зүйлс"
+        tone={AGE_TONE[age]}
+        hasContent={rows.length > 0}
+        emptyPrompt={`${age} насандаа хамгийн дуртай ямар тоглоомтой байсан бэ?`}
+        icon={<Heart size={18} />}
+        iconTone="bg-peach text-peach-ink"
+        onEdit={() => {
+          reset();
+          setOpen(true);
+        }}
+      >
+        <ValuesList rows={rows} />
+      </ProfileCard>
       <FormDialog
         open={open}
-        onOpenChange={setOpen}
+        onOpenChange={(next) => (next ? setOpen(true) : close())}
         busy={save.isPending}
-        title="Дуртай зүйлс"
-        description={`${age} насны дуртай зүйлсээ бөглөнө үү.`}
-        footer={
-          <>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={save.isPending}
-              onClick={() => setOpen(false)}
-            >
-              Болих
-            </Button>
-            <Button type="submit" form="favorites-form" size="sm" disabled={save.isPending}>
-              {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
-            </Button>
-          </>
-        }
+        title="Миний дуртай бүх зүйлс"
+        description={`${age} насны дуртай зүйлсээ хүссэнээрээ бөглөнө үү.`}
+        footer={<DialogActions formId={formId} busy={save.isPending} onCancel={close} />}
       >
         <form
-          id="favorites-form"
+          id={formId}
           className="flex flex-col gap-4"
           noValidate
-          onSubmit={(e) => {
-            e.preventDefault();
+          onSubmit={(event) => {
+            event.preventDefault();
             if (save.isPending) return;
-            const body: Record<string, string | null> = {};
-            for (const key of FAVORITE_KEYS) body[key] = form[key]?.trim() || null;
-            save.mutate(body);
+            save.mutate(
+              Object.fromEntries(
+                FAVORITE_FIELDS.map(({ key }) => [key, form[key]?.trim() || null]),
+              ),
+            );
           }}
         >
-          <FormError
-            message={
-              save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null
-            }
-          />
+          <FormError message={save.isError ? errorMessage(save.error) : null} />
           <div className="grid gap-4 sm:grid-cols-2">
-            {AGE_FIELDS.filter((f) => FAVORITE_KEYS.includes(f.key)).map((field) => (
-              <Field key={field.key} label={field.label} error={errors[field.key]}>
+            {FAVORITE_FIELDS.map(({ key, label }) => (
+              <Field key={key} label={label} error={errors[key]}>
                 {({ id, describedBy, invalid }) => (
                   <Input
                     id={id}
                     aria-describedby={describedBy}
                     invalid={invalid}
-                    value={form[field.key] ?? ""}
-                    onChange={(e) => setForm((f) => ({ ...f, [field.key]: e.target.value }))}
+                    value={form[key] ?? ""}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, [key]: event.target.value }))
+                    }
                   />
                 )}
               </Field>
@@ -256,151 +298,229 @@ export function FavoritesCard({
           </div>
         </form>
       </FormDialog>
-    </ProfileCard>
+    </>
   );
 }
 
-/** Shared by both `newSkills` and `familyMembers` — same preset-picker shape, different options and copy. */
-function PresetCard({
+type SkillCategory = { id: string; label: string; options: string[] };
+
+function SkillsSectionCard({
   childId,
   age,
   profile,
-  fieldKey,
   title,
-  dialogHint,
-  options,
+  emptyPrompt,
+  categories,
+  selectedKey,
+  notesKey,
+  otherKey,
+  legacyKey,
+  disclaimer,
+  icon,
+  iconTone,
 }: {
   childId: string;
-  age: Age;
+  age: PortfolioAge;
   profile: Profile;
-  fieldKey: "newSkills" | "familyMembers";
   title: string;
-  dialogHint: string;
-  options: string[];
+  emptyPrompt: string;
+  categories: SkillCategory[];
+  selectedKey: "kindergartenSkills" | "familyLearningSkills";
+  notesKey: "kindergartenSkillNotes" | "familyLearningNotes";
+  otherKey: "kindergartenOtherSkill" | "familyLearningOther";
+  legacyKey: "newSkills" | "familyMembers";
+  disclaimer?: string;
+  icon: ReactNode;
+  iconTone: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [value, setValue] = useState("");
+  const [selected, setSelected] = useState<string[]>([]);
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [other, setOther] = useState("");
+  const reset = useCallback(() => {
+    setSelected(profile?.[selectedKey] ?? []);
+    setNotes(profile?.[notesKey] ?? {});
+    setOther(profile?.[otherKey] ?? profile?.[legacyKey] ?? "");
+  }, [legacyKey, notesKey, otherKey, profile, selectedKey]);
+  useEffect(reset, [reset]);
 
-  useEffect(() => setValue(profile?.[fieldKey] ?? ""), [profile, fieldKey]);
-
-  const save = useAgeProfileSave(childId, age, () => setOpen(false));
+  const close = () => {
+    setOpen(false);
+    reset();
+  };
+  const save = useAgeProfileSave(childId, age, close);
   const errors = fieldErrors(save.error);
-  const stored = profile?.[fieldKey];
+  const storedSelected = profile?.[selectedKey] ?? [];
+  const storedNotes = profile?.[notesKey] ?? {};
+  const storedOther = profile?.[otherKey] ?? profile?.[legacyKey] ?? "";
+  const rows = [
+    ...(storedSelected.length
+      ? [{ label: "Сонгосон чадвар", value: storedSelected.join(", ") }]
+      : []),
+    ...categories.flatMap((category) => {
+      const value = storedNotes[category.id]?.trim();
+      return value ? [{ label: `${category.label} — Нэмэлт тайлбар`, value }] : [];
+    }),
+    ...(storedOther.trim() ? [{ label: "Өөр сурсан зүйл", value: storedOther }] : []),
+  ];
+  const formId = `${selectedKey}-${age}-form`;
 
   return (
-    <ProfileCard
-      title={title}
-      tone={AGE_TONE[age]}
-      hasContent={Boolean(stored)}
-      emptyHint="Мэдээлэл байхгүй"
-      onEdit={() => setOpen(true)}
-    >
-      <p className="whitespace-pre-wrap text-body text-ink">{stored}</p>
-
+    <>
+      <ProfileCard
+        title={title}
+        tone={AGE_TONE[age]}
+        hasContent={rows.length > 0}
+        emptyPrompt={emptyPrompt}
+        icon={icon}
+        iconTone={iconTone}
+        onEdit={() => {
+          reset();
+          setOpen(true);
+        }}
+      >
+        <ValuesList rows={rows} />
+        {disclaimer ? (
+          <p className="mt-4 text-caption leading-relaxed text-muted">{disclaimer}</p>
+        ) : null}
+      </ProfileCard>
       <FormDialog
         open={open}
-        onOpenChange={setOpen}
+        onOpenChange={(next) => (next ? setOpen(true) : close())}
         busy={save.isPending}
         title={title}
-        description={dialogHint}
-        footer={
-          <>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={save.isPending}
-              onClick={() => setOpen(false)}
-            >
-              Болих
-            </Button>
-            <Button type="submit" form={`${fieldKey}-form`} size="sm" disabled={save.isPending}>
-              {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
-            </Button>
-          </>
-        }
+        description={`${age} насны ажиглалтыг олон сонголтоор тэмдэглэнэ үү.`}
+        footer={<DialogActions formId={formId} busy={save.isPending} onCancel={close} />}
       >
         <form
-          id={`${fieldKey}-form`}
+          id={formId}
+          className="flex flex-col gap-5"
           noValidate
-          onSubmit={(e) => {
-            e.preventDefault();
+          onSubmit={(event) => {
+            event.preventDefault();
             if (save.isPending) return;
-            save.mutate({ [fieldKey]: value.trim() || null });
+            save.mutate({
+              [selectedKey]: selected,
+              [notesKey]: Object.fromEntries(
+                Object.entries(notes)
+                  .map(([key, value]) => [key, value.trim()])
+                  .filter(([, value]) => value),
+              ),
+              [otherKey]: other.trim() || null,
+            });
           }}
         >
-          <FormError
-            message={
-              save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null
-            }
-          />
-          <Field label={title} error={errors[fieldKey]}>
+          <FormError message={save.isError ? errorMessage(save.error) : null} />
+          {categories.map((category) => (
+            <fieldset key={category.id} className="rounded-row border border-border p-3.5">
+              <legend className="px-1 text-body font-semibold text-ink">{category.label}</legend>
+              <div className="mt-1 grid gap-x-4 sm:grid-cols-2">
+                {category.options.map((option) => (
+                  <Checkbox
+                    key={option}
+                    label={option}
+                    checked={selected.includes(option)}
+                    onChange={() =>
+                      setSelected((current) =>
+                        current.includes(option)
+                          ? current.filter((item) => item !== option)
+                          : [...current, option],
+                      )
+                    }
+                  />
+                ))}
+              </div>
+              <Field label="Нэмэлт тайлбар" className="mt-3" error={errors[notesKey]}>
+                {({ id, describedBy, invalid }) => (
+                  <Textarea
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    value={notes[category.id] ?? ""}
+                    onChange={(event) =>
+                      setNotes((current) => ({ ...current, [category.id]: event.target.value }))
+                    }
+                  />
+                )}
+              </Field>
+            </fieldset>
+          ))}
+          <Field label="Өөр сурсан зүйл нэмэх" error={errors[otherKey]}>
             {({ id, describedBy, invalid }) => (
-              <AgePresetField
+              <Textarea
                 id={id}
-                describedBy={describedBy}
+                aria-describedby={describedBy}
                 invalid={invalid}
-                options={options}
-                value={value}
-                onChange={setValue}
+                value={other}
+                onChange={(event) => setOther(event.target.value)}
               />
             )}
           </Field>
+          {disclaimer ? (
+            <p className="rounded-row bg-primary-soft px-3.5 py-3 text-caption leading-relaxed text-muted">
+              {disclaimer}
+            </p>
+          ) : null}
         </form>
       </FormDialog>
-    </ProfileCard>
+    </>
   );
 }
 
-export function SkillsCard({
+const OBSERVATION_DISCLAIMER =
+  "Эдгээр нь ажиглалтаа тэмдэглэх сонголтууд бөгөөд хүүхэд бүр заавал эзэмшсэн байх үнэлгээний стандарт биш. Сонгоогүй чадварыг хоцрогдол гэж үнэлэхгүй.";
+
+export function KindergartenSkillsCard({
   childId,
   age,
   profile,
 }: {
   childId: string;
-  age: Age;
+  age: PortfolioAge;
   profile: Profile;
 }) {
   return (
-    <PresetCard
+    <SkillsSectionCard
       childId={childId}
       age={age}
       profile={profile}
-      fieldKey="newSkills"
       title="Миний цэцэрлэгтээ сурсан зүйлс"
-      dialogHint={`${age} насанд тохирох чадваруудаас сонгож эсвэл шинээр бичээрэй.`}
-      options={AGE_SKILL_OPTIONS[age]}
+      emptyPrompt={`${age} насандаа цэцэрлэгтээ ямар шинэ зүйл сурсан бэ?`}
+      categories={kindergartenSkillCategories(age)}
+      selectedKey="kindergartenSkills"
+      notesKey="kindergartenSkillNotes"
+      otherKey="kindergartenOtherSkill"
+      legacyKey="newSkills"
+      disclaimer={OBSERVATION_DISCLAIMER}
+      icon={<School size={18} />}
+      iconTone="bg-sky text-sky-ink"
     />
   );
 }
 
-/**
- * Rendered twice on the page — "Миний гэр бүлээсээ суралцсан зүйлс" and "Гэр
- * бүл" — both read/write the same `familyMembers` column. RFP §4.3 has one
- * family-related field, not two, so this is one value shown from two angles
- * rather than a second column invented to keep the card count matching the
- * screenshot.
- */
-export function FamilyCard({
+export function FamilyLearningCard({
   childId,
   age,
   profile,
-  title,
 }: {
   childId: string;
-  age: Age;
+  age: PortfolioAge;
   profile: Profile;
-  title: string;
 }) {
   return (
-    <PresetCard
+    <SkillsSectionCard
       childId={childId}
       age={age}
       profile={profile}
-      fieldKey="familyMembers"
-      title={title}
-      dialogHint={`${age} насанд гэр бүлээсээ сурсан зүйлсийг сонгож эсвэл шинээр бичээрэй.`}
-      options={AGE_FAMILY_OPTIONS[age]}
+      title="Миний гэр бүлээсээ суралцсан зүйлс"
+      emptyPrompt={`${age} насандаа гэр бүлээсээ юу сурсан бэ?`}
+      categories={familyLearningCategories(age)}
+      selectedKey="familyLearningSkills"
+      notesKey="familyLearningNotes"
+      otherKey="familyLearningOther"
+      legacyKey="familyMembers"
+      icon={<HandHeart size={18} />}
+      iconTone="bg-mint text-mint-ink"
     />
   );
 }
@@ -411,109 +531,239 @@ export function CharacterCard({
   profile,
 }: {
   childId: string;
-  age: Age;
+  age: PortfolioAge;
   profile: Profile;
 }) {
   const [open, setOpen] = useState(false);
-  const [personality, setPersonality] = useState("");
-  const [emotionalTraits, setEmotionalTraits] = useState("");
-
-  useEffect(() => {
-    setPersonality(profile?.personality ?? "");
-    setEmotionalTraits(profile?.emotionalTraits ?? "");
+  const [traits, setTraits] = useState<string[]>([]);
+  const [observation, setObservation] = useState("");
+  const reset = useCallback(() => {
+    setTraits(profile?.characterTraits ?? []);
+    setObservation(
+      profile?.characterObservation ??
+        [profile?.personality, profile?.emotionalTraits].filter(Boolean).join("\n"),
+    );
   }, [profile]);
+  useEffect(reset, [reset]);
 
-  const save = useAgeProfileSave(childId, age, () => setOpen(false));
+  const close = () => {
+    setOpen(false);
+    reset();
+  };
+  const save = useAgeProfileSave(childId, age, close);
   const errors = fieldErrors(save.error);
-  const hasContent = Boolean(profile?.personality) || Boolean(profile?.emotionalTraits);
+  const storedObservation =
+    profile?.characterObservation ??
+    [profile?.personality, profile?.emotionalTraits].filter(Boolean).join("\n");
+  const rows = [
+    ...(profile?.characterTraits.length
+      ? [{ label: "Сонгосон ажиглалт", value: profile.characterTraits.join(", ") }]
+      : []),
+    ...(storedObservation.trim()
+      ? [{ label: `Миний ${age} насны зан араншин`, value: storedObservation }]
+      : []),
+  ];
+  const formId = `character-${age}-form`;
 
   return (
-    <ProfileCard
-      title="Миний зан араншин"
-      tone={AGE_TONE[age]}
-      hasContent={hasContent}
-      emptyHint="Мэдээлэл байхгүй"
-      onEdit={() => setOpen(true)}
-    >
-      <dl className="flex flex-col gap-2.5">
-        {profile?.personality ? (
-          <div>
-            <dt className="text-caption text-muted">Зан чанар</dt>
-            <dd className="whitespace-pre-wrap text-body text-ink">{profile.personality}</dd>
-          </div>
-        ) : null}
-        {profile?.emotionalTraits ? (
-          <div>
-            <dt className="text-caption text-muted">Сэтгэл хөдлөлийн онцлог</dt>
-            <dd className="whitespace-pre-wrap text-body text-ink">{profile.emotionalTraits}</dd>
-          </div>
-        ) : null}
-      </dl>
-
+    <>
+      <ProfileCard
+        title="Миний зан араншин"
+        tone={AGE_TONE[age]}
+        hasContent={rows.length > 0}
+        emptyPrompt={`${age} насныхаа зан араншинг ажиглан тэмдэглээрэй.`}
+        icon={<Smile size={18} />}
+        iconTone="bg-cornflower text-cornflower-ink"
+        onEdit={() => {
+          reset();
+          setOpen(true);
+        }}
+      >
+        <ValuesList rows={rows} />
+        <p className="mt-4 text-caption leading-relaxed text-muted">
+          Сонголтууд нь тухайн үеийн эцэг эхийн ажиглалт бөгөөд оноо, онош эсвэл хүүхдийн тогтмол
+          шошго биш.
+        </p>
+      </ProfileCard>
       <FormDialog
         open={open}
-        onOpenChange={setOpen}
+        onOpenChange={(next) => (next ? setOpen(true) : close())}
         busy={save.isPending}
         title="Миний зан араншин"
-        footer={
-          <>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={save.isPending}
-              onClick={() => setOpen(false)}
-            >
-              Болих
-            </Button>
-            <Button type="submit" form="character-form" size="sm" disabled={save.isPending}>
-              {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
-            </Button>
-          </>
-        }
+        description="Тухайн үеийн ажиглалтаас хэд хэдийг сонгож болно."
+        footer={<DialogActions formId={formId} busy={save.isPending} onCancel={close} />}
       >
         <form
-          id="character-form"
-          className="flex flex-col gap-4"
+          id={formId}
+          className="flex flex-col gap-5"
           noValidate
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (save.isPending) return;
-            save.mutate({
-              personality: personality.trim() || null,
-              emotionalTraits: emotionalTraits.trim() || null,
-            });
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!save.isPending) {
+              save.mutate({
+                characterTraits: traits,
+                characterObservation: observation.trim() || null,
+              });
+            }
           }}
         >
-          <FormError
-            message={
-              save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null
-            }
-          />
-          <Field label="Зан чанар" error={errors.personality}>
+          <FormError message={save.isError ? errorMessage(save.error) : null} />
+          <fieldset>
+            <legend className="text-body font-semibold text-ink">Зан араншингийн ажиглалт</legend>
+            <div className="mt-2 grid gap-x-4 sm:grid-cols-2">
+              {CHARACTER_TRAITS.map((trait) => (
+                <Checkbox
+                  key={trait}
+                  label={trait}
+                  checked={traits.includes(trait)}
+                  onChange={() =>
+                    setTraits((current) =>
+                      current.includes(trait)
+                        ? current.filter((item) => item !== trait)
+                        : [...current, trait],
+                    )
+                  }
+                />
+              ))}
+            </div>
+          </fieldset>
+          <Field label={`Миний ${age} насны зан араншин`} error={errors.characterObservation}>
             {({ id, describedBy, invalid }) => (
               <Textarea
                 id={id}
                 aria-describedby={describedBy}
                 invalid={invalid}
-                value={personality}
-                onChange={(e) => setPersonality(e.target.value)}
+                value={observation}
+                onChange={(event) => setObservation(event.target.value)}
               />
             )}
           </Field>
-          <Field label="Сэтгэл хөдлөлийн онцлог" error={errors.emotionalTraits}>
+          <p className="rounded-row bg-primary-soft px-3.5 py-3 text-caption leading-relaxed text-muted">
+            Энэ мэдээллийг оноо, онош эсвэл хүүхдийн тогтмол шошго болгон ашиглахгүй.
+          </p>
+        </form>
+      </FormDialog>
+    </>
+  );
+}
+
+export function FamilyCard({
+  childId,
+  age,
+  profile,
+}: {
+  childId: string;
+  age: PortfolioAge;
+  profile: Profile;
+}) {
+  const [open, setOpen] = useState(false);
+  const [members, setMembers] = useState<string[]>([]);
+  const [description, setDescription] = useState("");
+  const reset = useCallback(() => {
+    setMembers(profile?.familyMemberTypes ?? []);
+    setDescription(profile?.familyDescription ?? "");
+  }, [profile]);
+  useEffect(reset, [reset]);
+
+  const close = () => {
+    setOpen(false);
+    reset();
+  };
+  const save = useAgeProfileSave(childId, age, close);
+  const errors = fieldErrors(save.error);
+  const rows = [
+    ...(profile?.familyMemberTypes.length
+      ? [{ label: "Гэр бүлийн гишүүд", value: profile.familyMemberTypes.join(", ") }]
+      : []),
+    ...(profile?.familyDescription?.trim()
+      ? [
+          {
+            label: "Гэр бүлийн тухай, хамтдаа хийх дуртай зүйлс",
+            value: profile.familyDescription,
+          },
+        ]
+      : []),
+  ];
+  const formId = `family-${age}-form`;
+
+  return (
+    <>
+      <ProfileCard
+        title="Гэр бүл"
+        tone={AGE_TONE[age]}
+        hasContent={rows.length > 0}
+        emptyPrompt="Гэр бүлийнхээ тухай нандин дурсамжаа тэмдэглээрэй."
+        icon={<HouseHeart size={18} />}
+        iconTone="bg-sun text-sun-ink"
+        onEdit={() => {
+          reset();
+          setOpen(true);
+        }}
+      >
+        <ValuesList rows={rows} />
+      </ProfileCard>
+      <FormDialog
+        open={open}
+        onOpenChange={(next) => (next ? setOpen(true) : close())}
+        busy={save.isPending}
+        title="Гэр бүл"
+        description={`${age} насны гэр бүлийн мэдээлэл.`}
+        footer={<DialogActions formId={formId} busy={save.isPending} onCancel={close} />}
+      >
+        <form
+          id={formId}
+          className="flex flex-col gap-5"
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!save.isPending) {
+              save.mutate({
+                familyMemberTypes: members,
+                familyDescription: description.trim() || null,
+              });
+            }
+          }}
+        >
+          <FormError message={save.isError ? errorMessage(save.error) : null} />
+          <fieldset>
+            <legend className="text-body font-semibold text-ink">Гэр бүлийн гишүүд</legend>
+            <div className="mt-2 grid gap-x-4 sm:grid-cols-2">
+              {FAMILY_MEMBER_TYPES.map((member) => (
+                <Checkbox
+                  key={member}
+                  label={member}
+                  checked={members.includes(member)}
+                  onChange={() =>
+                    setMembers((current) =>
+                      current.includes(member)
+                        ? current.filter((item) => item !== member)
+                        : [...current, member],
+                    )
+                  }
+                />
+              ))}
+            </div>
+          </fieldset>
+          <Field
+            label="Гэр бүлийн тухай, хамтдаа хийх дуртай зүйлс"
+            error={errors.familyDescription}
+          >
             {({ id, describedBy, invalid }) => (
               <Textarea
                 id={id}
                 aria-describedby={describedBy}
                 invalid={invalid}
-                value={emotionalTraits}
-                onChange={(e) => setEmotionalTraits(e.target.value)}
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
               />
             )}
           </Field>
         </form>
       </FormDialog>
-    </ProfileCard>
+    </>
   );
+}
+
+export function hasAnyAgeDevelopment(profile: Profile): boolean {
+  return ageSectionCompletion(profile).completed > 0;
 }

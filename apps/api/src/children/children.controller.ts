@@ -230,9 +230,12 @@ export class ChildrenController {
     return this.service.inviteGuardian(actor, params.id, body);
   }
 
-  /** `canView: false` here is the revocation path. */
+  /**
+   * An admin manages the whole relationship; a guardian may correct only their
+   * own relationship label. The service enforces that distinction from the
+   * resource itself, so this cannot be expressed by a route-level role list.
+   */
   @Patch("guardianships/:id")
-  @Roles("ADMIN")
   async updateGuardianship(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },

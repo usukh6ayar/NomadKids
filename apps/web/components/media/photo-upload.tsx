@@ -9,6 +9,7 @@ import { mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
+import { Field, Input } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 
 /** The API's own ceiling. Checked here too, so a 12 MB photo fails instantly. */
@@ -71,6 +72,7 @@ export function PhotoUpload({
   hint,
   onUploaded,
   variant = "secondary",
+  withCaption = false,
   children,
 }: {
   childId: string;
@@ -89,6 +91,8 @@ export function PhotoUpload({
   hint?: ReactNode | null;
   onUploaded?: (mediaId: string) => void | Promise<void>;
   variant?: "primary" | "secondary";
+  /** Shows one short caption field and sends it with every file in this batch. */
+  withCaption?: boolean;
   /** Extra controls rendered beside the button. */
   children?: ReactNode;
 }) {
@@ -100,6 +104,7 @@ export function PhotoUpload({
   const [failed, setFailed] = useState<File[] | null>(null);
   /** What the server refused, per file, so the message names them. */
   const [refused, setRefused] = useState<{ name: string; reason: string }[]>([]);
+  const [caption, setCaption] = useState("");
 
   const upload = useMutation({
     mutationFn: async (files: File[]) => {
@@ -115,6 +120,7 @@ export function PhotoUpload({
       if (purpose) form.append("purpose", purpose);
       if (category) form.append("category", category);
       if (age) form.append("age", String(age));
+      if (caption.trim()) form.append("caption", caption.trim());
       // No Content-Type is set: the browser must add the multipart boundary.
       return mutate(`/children/${childId}/media`, uploadResultSchema, {
         method: "POST",
@@ -123,6 +129,7 @@ export function PhotoUpload({
     },
     onSuccess: async (result) => {
       setFailed(null);
+      setCaption("");
       // Partial success is normal, not an error: the server stored what it
       // could and named what it would not. Saying so beats a silent shortfall.
       setRefused(result.failed);
@@ -161,6 +168,22 @@ export function PhotoUpload({
   return (
     <div className="flex flex-col gap-2">
       <FormError message={localError ?? (upload.isError ? errorMessage(upload.error) : null)} />
+
+      {withCaption ? (
+        <Field label="Зургийн тайлбар">
+          {({ id, describedBy, invalid }) => (
+            <Input
+              id={id}
+              aria-describedby={describedBy}
+              invalid={invalid}
+              value={caption}
+              maxLength={255}
+              placeholder="Жишээ: Манай гэр бүлийн дурсамж"
+              onChange={(event) => setCaption(event.target.value)}
+            />
+          )}
+        </Field>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-2">
         {/*

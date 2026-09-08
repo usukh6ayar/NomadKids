@@ -387,6 +387,7 @@ export class ChildrenRepository {
         id: true,
         firstName: true,
         lastName: true,
+        dateOfBirth: true,
         enrollments: {
           where: { deletedAt: null },
           orderBy: { startedOn: "desc" },

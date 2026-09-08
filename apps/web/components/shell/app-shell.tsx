@@ -57,7 +57,7 @@ import {
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { z } from "zod";
-import { Input, Select } from "@/components/ui/field";
+import { Input } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/states";
 import { qk } from "@/lib/api/keys";
 import { useLogout, useSession } from "@/lib/auth/session";
@@ -68,6 +68,7 @@ import { useMyGroup } from "@/components/dashboard/use-my-group";
 import { ChatWidget } from "@/components/chat/chat-widget";
 import { IconChip } from "@/components/ui/icon-chip";
 import type { Tone } from "@/components/ui/tone";
+import { ChildAvatar } from "@/components/media/media-image";
 
 /** The bell panel reads five rows; the feed reads fifteen and paginates. */
 const bellListSchema = paginated(notificationSchema);
@@ -90,12 +91,15 @@ export interface NavItem {
   icon: ReactNode;
   /** Shows the unread-notification count. Only one item ever sets this. */
   badge?: "unread";
+  /** Small trailing context used by the guardian service row. */
+  tag?: string;
   /** Runs instead of navigating. See `href`. */
   onSelect?: () => void;
 }
 
 /**
- * One collapsible section of the desktop sidebar.
+ * One sidebar section. Staff renders it as a collapsible group; the guardian
+ * shell renders its short sections as one always-open list.
  *
  * ★ Ported from the reference's `<details class="nav-group">`.
  *
@@ -112,9 +116,13 @@ export interface NavItem {
  */
 export interface NavSection {
   title: string;
+  /** A light divider before the service/help block in the parent menu. */
+  separatorBefore?: boolean;
   entries: {
     label: string;
     href?: string;
+    badge?: "unread";
+    tag?: string;
     /**
      * A small mark before the label — a lucide icon at the same weight as
      * `parentNav`'s own, or (for `parentSections`' one child per entry) a
@@ -794,7 +802,14 @@ export function AppShell({
         width.
       */}
         <div
-          className={cn(desktopSidebar && (isTeacherWorkspace ? "lg:pl-[276px]" : "lg:pl-[232px]"))}
+          className={cn(
+            desktopSidebar &&
+              (isTeacherWorkspace
+                ? "lg:pl-[276px]"
+                : variant === "parent"
+                  ? "lg:pl-[256px]"
+                  : "lg:pl-[232px]"),
+          )}
         >
           <DesktopHeader variant={variant} isAdmin={isAdmin} />
 
@@ -1164,6 +1179,17 @@ function SidebarContent({
   // below and from the bottom bar on a phone.
   const [primary] = nav;
 
+  if (variant === "parent") {
+    return (
+      <ParentSidebarContent
+        primary={primary}
+        sections={sections ?? []}
+        pathname={pathname}
+        childSwitcher={childSwitcher}
+      />
+    );
+  }
+
   return (
     <>
       <Brand subtitle={subtitle} />
@@ -1269,6 +1295,123 @@ function SidebarContent({
   );
 }
 
+type ParentSidebarEntry = NavSection["entries"][number] | NavItem;
+
+/**
+ * The guardian-only navigation from the supplied reference.
+ *
+ * It is intentionally separate from the staff accordion: a parent scans one
+ * short, always-open list, while staff still need grouped operational modules.
+ */
+function ParentSidebarContent({
+  primary,
+  sections,
+  pathname,
+  childSwitcher,
+}: {
+  primary: NavItem | undefined;
+  sections: NavSection[];
+  pathname: string;
+  childSwitcher?: ChildSwitcher;
+}) {
+  const logout = useLogout();
+
+  return (
+    <>
+      {childSwitcher ? <ChildSwitcherControl switcher={childSwitcher} /> : null}
+
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div className="-mr-1.5 flex min-h-0 flex-1 flex-col overflow-y-auto pr-1.5">
+          {primary ? <ParentSidebarRow item={primary} pathname={pathname} /> : null}
+
+          <div data-testid="nav-sections" className="flex flex-col">
+            {sections.map((section) => (
+              <ParentSidebarSection key={section.title} section={section} pathname={pathname} />
+            ))}
+          </div>
+        </div>
+
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-surface to-transparent"
+        />
+      </div>
+
+      <div className="-mx-1 shrink-0 border-t border-slate-100 pt-3">
+        <button
+          type="button"
+          onClick={() => void logout()}
+          className="flex min-h-[48px] w-full items-center gap-3 rounded-2xl px-3 text-left text-base font-semibold text-rose-600 transition-colors hover:bg-rose-50"
+        >
+          <LogOut size={21} className="text-sky-500" aria-hidden="true" />
+          <span>Системээс гарах</span>
+        </button>
+      </div>
+    </>
+  );
+}
+
+function ParentSidebarSection({ section, pathname }: { section: NavSection; pathname: string }) {
+  return (
+    <section
+      aria-label={section.title}
+      className={cn(
+        "flex flex-col",
+        section.separatorBefore && "mt-3 border-t border-slate-100 pt-3",
+      )}
+    >
+      {section.entries.map((item) => (
+        <ParentSidebarRow key={item.label} item={item} pathname={pathname} />
+      ))}
+    </section>
+  );
+}
+
+function ParentSidebarRow({ item, pathname }: { item: ParentSidebarEntry; pathname: string }) {
+  const active = Boolean(
+    item.href?.startsWith("/") && (pathname === item.href || pathname.startsWith(`${item.href}/`)),
+  );
+
+  const content = (
+    <>
+      <span className="grid size-7 shrink-0 place-items-center text-sky-500">{item.icon}</span>
+      <span className="min-w-0 flex-1 leading-snug">{item.label}</span>
+      {item.badge === "unread" ? <ParentUnreadBadge /> : null}
+      {item.tag ? (
+        <span className="shrink-0 text-sm font-medium text-sky-600">{item.tag}</span>
+      ) : null}
+    </>
+  );
+  const className = cn(
+    "flex min-h-[47px] w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-base transition-colors",
+    active
+      ? "bg-sky-50 font-semibold text-sky-700"
+      : item.href
+        ? "text-slate-600 hover:bg-slate-50 hover:text-slate-800"
+        : "text-slate-500",
+  );
+
+  if (!item.href) return <span className={className}>{content}</span>;
+
+  return (
+    <Link href={item.href} aria-current={active ? "page" : undefined} className={className}>
+      {content}
+    </Link>
+  );
+}
+
+function ParentUnreadBadge() {
+  const count = useUnreadCount();
+  if (count === 0) return null;
+
+  return (
+    <span className="flex min-w-6 shrink-0 items-center justify-center rounded-full bg-rose-500 px-1.5 text-xs font-bold leading-6 text-white">
+      <span aria-hidden="true">{count > 99 ? "99+" : count}</span>
+      <span className="sr-only">{count} уншаагүй мэдэгдэл</span>
+    </span>
+  );
+}
+
 function Sidebar({
   nav,
   sections,
@@ -1301,8 +1444,12 @@ function Sidebar({
        * the nav between them takes the overflow.
        */
       className={cn(
-        "fixed inset-y-0 left-0 z-20 hidden flex-col gap-5 overflow-hidden border-r border-border-soft bg-surface/92 px-3.5 py-[18px] shadow-[8px_0_28px_-22px_rgb(29_78_216_/_0.28)] backdrop-blur lg:flex",
-        teacherTheme ? "w-[264px]" : "w-[220px]",
+        "fixed inset-y-0 left-0 z-20 hidden flex-col overflow-hidden border-r border-border-soft bg-surface/92 py-[18px] shadow-[8px_0_28px_-22px_rgb(29_78_216_/_0.28)] backdrop-blur lg:flex",
+        teacherTheme
+          ? "w-[264px] gap-5 px-3.5"
+          : variant === "parent"
+            ? "w-[244px] gap-4 px-4"
+            : "w-[220px] gap-5 px-3.5",
       )}
     >
       <SidebarContent
@@ -1320,30 +1467,34 @@ function Sidebar({
 
 /**
  * The parent's own child picker, above the sidebar's nav — the only place a
- * family with more than one child chooses which is "current" for the
- * sections below and for Home's tiles. Uses the same `Select` every form in
- * this product uses (`components/ui/field.tsx`) rather than a bespoke
- * control, so it does not have to teach a second interaction pattern for one
- * dropdown.
+ * family chooses which child is "current" for the sections below and Home's
+ * tiles. It remains visible for a one-child family because the reference uses
+ * this row as the sidebar's context, not only as a switching control.
  */
 function ChildSwitcherControl({ switcher }: { switcher: ChildSwitcher }) {
+  const selected =
+    switcher.children.find((child) => child.id === switcher.selectedId) ?? switcher.children[0];
+  if (!selected) return null;
+
   return (
-    <div>
-      <label htmlFor="child-switcher" className="sr-only">
-        Хүүхэд сонгох
-      </label>
-      <Select
+    <label className="relative flex min-h-[64px] w-full cursor-pointer items-center gap-3 rounded-[22px] border border-sky-100 bg-sky-50/40 px-3 py-2.5 text-slate-700 transition-colors hover:bg-sky-50 focus-within:ring-2 focus-within:ring-sky-400 focus-within:ring-offset-2">
+      <ChildAvatar child={selected} size={44} className="bg-sky-100 text-sky-700" />
+      <span className="min-w-0 flex-1 truncate text-base font-semibold">{fullName(selected)}</span>
+      <ChevronDown size={20} className="shrink-0 text-slate-700" aria-hidden="true" />
+      <select
         id="child-switcher"
+        aria-label="Хүүхэд сонгох"
         value={switcher.selectedId}
         onChange={(event) => switcher.onSelect(event.target.value)}
+        className="absolute inset-0 size-full cursor-pointer appearance-none opacity-0"
       >
         {switcher.children.map((child) => (
           <option key={child.id} value={child.id}>
             {fullName(child)}
           </option>
         ))}
-      </Select>
-    </div>
+      </select>
+    </label>
   );
 }
 

@@ -115,7 +115,7 @@ export function ChildTabs({ tabs, paramName = "tab" }: { tabs: ChildTab[]; param
             key={tab.value}
             value={tab.value}
             className={cn(
-              "relative min-h-[44px] shrink-0 whitespace-nowrap rounded-control px-3.5 text-body font-medium transition-all duration-150",
+              "relative min-h-[44px] shrink-0 whitespace-nowrap rounded-control px-3.5 text-body font-medium transition-all duration-150 sm:min-w-0 sm:flex-1",
               "text-muted hover:text-ink",
               "data-[state=active]:bg-surface data-[state=active]:font-semibold data-[state=active]:text-primary-strong data-[state=active]:shadow-sm",
             )}

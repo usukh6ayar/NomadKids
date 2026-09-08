@@ -221,6 +221,8 @@ describe("the chart", () => {
 
     const res = await authed(request(server()).get(`/v1/children/${a.child.id}/growth`), teacherA);
     const [first, second] = res.body.points as {
+      ageMonths: number;
+      ageYears: number;
       heightChangeCm: number | null;
       weightChangeKg: number | null;
     }[];
@@ -230,6 +232,7 @@ describe("the chart", () => {
     // measurements themselves carry.
     expect(second!.heightChangeCm).toBe(1.8);
     expect(second!.weightChangeKg).toBe(1);
+    expect(second!.ageYears).toBe(second!.ageMonths / 12);
   });
 
   /**

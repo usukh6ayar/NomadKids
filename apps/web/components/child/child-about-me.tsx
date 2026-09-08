@@ -5,21 +5,21 @@ import { useEffect, useState } from "react";
 import { z } from "zod";
 import {
   BookOpen,
-  CalendarDays,
   ChevronDown,
   Droplet,
   Heart,
   MapPin,
   MessageCircle,
-  Ruler,
   Sparkles,
   Sun,
   Tag,
   Users,
-  Weight,
 } from "lucide-react";
 import {
+  ageInYears,
   aboutMeSchema,
+  birthFacts,
+  type BirthdaySection,
   childDetailSchema,
   SEX_LABEL,
   YEAR_ANIMALS,
@@ -29,10 +29,9 @@ import { mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
-import { Field, Input, Select, Textarea } from "@/components/ui/field";
+import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
-import { formatDate } from "@/lib/format";
 import { YEAR_ANIMAL_ICON, ZODIAC_ICON } from "@/lib/zodiac-icons";
 import { cn } from "@/lib/utils";
 
@@ -99,6 +98,19 @@ const EYE_COLOR_OPTIONS = [
   { label: "Саарал", hex: "#8a8f94" },
 ] as const;
 
+/** The edit screen's exact, user-facing order before the two visual pickers. */
+const EDIT_FIELDS = [
+  { key: "clanName", label: "Ургийн овог", kind: "text" },
+  { key: "lastName", label: "Овог", kind: "text" },
+  { key: "firstName", label: "Нэр", kind: "text" },
+  { key: "dateOfBirth", label: "Төрсөн өдөр", kind: "date" },
+  { key: "sex", label: "Хүйс", kind: "sex" },
+  { key: "nameMeaning", label: "Нэрний утга", kind: "text" },
+  { key: "nickname", label: "Өхөөрддөг нэр", kind: "text" },
+  { key: "birthplace", label: "Төрсөн газар", kind: "text" },
+  { key: "bloodType", label: "Цусны бүлэг", kind: "text" },
+] as const;
+
 /**
  * "Миний тухай" — RFP §4.1, its own page since 2026-08-29.
  *
@@ -157,11 +169,7 @@ export function ChildAboutMe({
       firstName: child.firstName ?? "",
       dateOfBirth: child.dateOfBirth ? String(child.dateOfBirth).slice(0, 10) : "",
       sex: child.sex ?? "",
-      introduction: data.introduction ?? "",
       nameMeaning: data.nameMeaning ?? "",
-      dream: data.dream ?? "",
-      distinguishingTraits: data.distinguishingTraits ?? "",
-      memorableSayings: data.memorableSayings ?? "",
       clanName: data.clanName ?? "",
       nickname: data.nickname ?? "",
       birthplace: data.birthplace ?? "",
@@ -169,10 +177,6 @@ export function ChildAboutMe({
       eyeColor: data.eyeColor ?? "",
       yearAnimalCode: data.yearAnimalCode ?? "",
       zodiacCode: data.zodiacCode ?? "",
-      heightCm: data.heightCm === null || data.heightCm === undefined ? "" : String(data.heightCm),
-      weightKg: data.weightKg === null || data.weightKg === undefined ? "" : String(data.weightKg),
-      // `<input type="date">` wants `YYYY-MM-DD`; the API sends an ISO stamp.
-      recordedOn: data.recordedOn ? String(data.recordedOn).slice(0, 10) : "",
     });
   }, [data, child]);
 
@@ -188,12 +192,8 @@ export function ChildAboutMe({
           firstName: form.firstName?.trim() || undefined,
           dateOfBirth: form.dateOfBirth?.trim() || undefined,
           sex: form.sex?.trim() || undefined,
-          introduction: form.introduction?.trim() || null,
-          nameMeaning: form.nameMeaning?.trim() || null,
-          dream: form.dream?.trim() || null,
-          distinguishingTraits: form.distinguishingTraits?.trim() || null,
-          memorableSayings: form.memorableSayings?.trim() || null,
           clanName: form.clanName?.trim() || null,
+          nameMeaning: form.nameMeaning?.trim() || null,
           nickname: form.nickname?.trim() || null,
           birthplace: form.birthplace?.trim() || null,
           bloodType: form.bloodType?.trim() || null,
@@ -202,24 +202,48 @@ export function ChildAboutMe({
           // fact — see `PortfolioService.listBirthdayNotes`.
           yearAnimalCode: form.yearAnimalCode?.trim() || null,
           zodiacCode: form.zodiacCode?.trim() || null,
-          // Empty means "clear it", which the API models as null. Sending ""
-          // would fail the numeric coercion.
-          heightCm: form.heightCm?.trim() ? Number(form.heightCm) : null,
-          weightKg: form.weightKg?.trim() ? Number(form.weightKg) : null,
-          recordedOn: form.recordedOn?.trim() || null,
         },
       }),
-    onSuccess: () => {
+    onSuccess: (saved) => {
+      // The PATCH response is the new source of truth. Write it into every
+      // cache this merged screen reads before closing the editor; otherwise
+      // the preview briefly reappears with the old name/profile while three
+      // background refetches are still in flight.
+      queryClient.setQueryData<AboutMeResponse>(qk.aboutMe(childId), (current) => ({
+        ...current,
+        ...saved,
+        exists: true,
+      }));
+
+      queryClient.setQueryData<z.infer<typeof childDetailSchema>>(qk.child(childId), (current) => ({
+        ...(current ?? child),
+        lastName: form.lastName?.trim() || (current ?? child).lastName,
+        firstName: form.firstName?.trim() || (current ?? child).firstName,
+        dateOfBirth: form.dateOfBirth?.trim() || (current ?? child).dateOfBirth,
+        sex: form.sex === "MALE" || form.sex === "FEMALE" ? form.sex : (current ?? child).sex,
+      }));
+
+      queryClient.setQueryData<BirthdaySection>(qk.birthdayNotes(childId), (current) => {
+        const dateOfBirth = form.dateOfBirth?.trim() || current?.dateOfBirth || child.dateOfBirth;
+        const computed = birthFacts(dateOfBirth);
+        const yearAnimal = YEAR_ANIMALS.find(
+          (animal) => animal.code === form.yearAnimalCode?.trim(),
+        );
+        const zodiac = ZODIAC_SIGNS.find((sign) => sign.code === form.zodiacCode?.trim());
+
+        return {
+          dateOfBirth,
+          ageYears: ageInYears(dateOfBirth),
+          zodiac: zodiac ?? computed.zodiac,
+          yearAnimal: yearAnimal
+            ? { ...yearAnimal, beforeLunarNewYear: false }
+            : computed.yearAnimal,
+          notes: current?.notes ?? [],
+        };
+      });
+
       toast.success("Хадгаллаа.");
       onEditingChange(false);
-      void queryClient.invalidateQueries({ queryKey: qk.aboutMe(childId) });
-      // Also invalidates `Child` — `lastName`/`firstName`/`dateOfBirth`/`sex`
-      // may have changed, and `ChildHeroProfile` above this section reads
-      // the same query key.
-      void queryClient.invalidateQueries({ queryKey: qk.child(childId) });
-      // And the birthday facts — a yearAnimalCode/zodiacCode override changes
-      // what `ChildBirthdayFacts` (rendered from this same query) shows.
-      void queryClient.invalidateQueries({ queryKey: qk.birthdayNotes(childId) });
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -233,93 +257,62 @@ export function ChildAboutMe({
       {error ? <p className="text-body text-danger">{errorMessage(error)}</p> : null}
 
       {!isLoading && !editing ? (
-        filled || data?.heightCm || data?.weightKg || data?.recordedOn ? (
-          <div className="flex flex-col gap-4">
-            {/* Height and weight are measurements, so they stay compact facts. */}
-            {data?.heightCm || data?.weightKg || data?.recordedOn ? (
-              <div className="flex flex-wrap gap-2">
-                {data?.heightCm ? (
-                  <span className="inline-flex items-center gap-2 rounded-control bg-canvas px-2.5 py-1.5 text-caption md:px-3 md:py-2 md:text-body">
-                    <Ruler size={16} aria-hidden="true" className="text-muted" />
-                    <span className="text-muted">Өндөр</span>
-                    <strong className="font-semibold text-ink">{String(data.heightCm)} см</strong>
-                  </span>
-                ) : null}
-                {data?.weightKg ? (
-                  <span className="inline-flex items-center gap-2 rounded-control bg-canvas px-2.5 py-1.5 text-caption md:px-3 md:py-2 md:text-body">
-                    <Weight size={16} aria-hidden="true" className="text-muted" />
-                    <span className="text-muted">Жин</span>
-                    <strong className="font-semibold text-ink">{String(data.weightKg)} кг</strong>
-                  </span>
-                ) : null}
-                {/*
-                    RFP §4.1's "оруулсан огноо", beside the numbers it dates
-                    rather than in a row of its own — a height with no date is a
-                    measurement of a growing child that nobody can place in time.
-                  */}
-                {data?.recordedOn ? (
-                  <span className="inline-flex items-center gap-2 rounded-control bg-canvas px-2.5 py-1.5 text-caption md:px-3 md:py-2 md:text-body">
-                    <CalendarDays size={16} aria-hidden="true" className="text-muted" />
-                    <span className="text-muted">Хэмжсэн</span>
-                    <strong className="font-semibold text-ink">
-                      {formatDate(data.recordedOn)}
-                    </strong>
-                  </span>
-                ) : null}
-              </div>
-            ) : null}
-
-            <div className="grid gap-3 md:grid-cols-2">
-              {ABOUT_FIELDS.filter((f) => data?.[f.key]).map((field) => (
-                <article
-                  key={field.key}
-                  className={cn(
-                    "rounded-row border border-border bg-canvas px-3 py-3 md:px-4 md:py-3.5",
-                    field.long && "md:col-span-2",
-                  )}
-                >
-                  <h3 className="mb-1.5 flex items-center gap-2 text-caption font-semibold text-ink">
-                    <span
-                      className={cn(
-                        "flex size-6 items-center justify-center rounded-control",
-                        STORY_TONE[field.tone],
-                      )}
-                    >
-                      <field.Icon size={13} aria-hidden="true" />
-                    </span>
-                    {field.label}
-                  </h3>
-                  <p className="whitespace-pre-wrap text-body leading-relaxed text-ink">
-                    {String(data?.[field.key])}
-                  </p>
-                </article>
-              ))}
-
-              {data?.eyeColor ? (
-                <article className="rounded-row border border-border bg-canvas px-3 py-3 md:px-4 md:py-3.5">
-                  <h3 className="mb-1.5 flex items-center gap-2 text-caption font-semibold text-ink">
-                    <span
-                      aria-hidden="true"
-                      className="size-6 shrink-0 rounded-control border border-border/60"
-                      style={{
-                        backgroundColor:
-                          EYE_COLOR_OPTIONS.find((o) => o.label === data.eyeColor)?.hex ??
-                          "var(--color-border)",
-                      }}
-                    />
-                    Нүдний өнгө
-                  </h3>
-                  <p
-                    className="text-body font-medium"
-                    style={{
-                      color: EYE_COLOR_OPTIONS.find((o) => o.label === data.eyeColor)?.hex,
-                    }}
+        filled ? (
+          <div
+            role="list"
+            aria-label="Миний тухай мэдээллүүд"
+            className="grid grid-cols-2 gap-2.5 md:gap-3"
+          >
+            {ABOUT_FIELDS.filter((f) => data?.[f.key]).map((field) => (
+              <article
+                key={field.key}
+                role="listitem"
+                className="min-w-0 rounded-row border border-border bg-canvas px-2.5 py-3 md:px-4 md:py-3.5"
+              >
+                <h3 className="mb-1.5 flex min-w-0 items-center gap-1.5 text-caption font-semibold text-ink md:gap-2">
+                  <span
+                    className={cn(
+                      "flex size-6 items-center justify-center rounded-control",
+                      STORY_TONE[field.tone],
+                    )}
                   >
-                    {data.eyeColor}
-                  </p>
-                </article>
-              ) : null}
-            </div>
+                    <field.Icon size={13} aria-hidden="true" />
+                  </span>
+                  <span className="min-w-0 break-words">{field.label}</span>
+                </h3>
+                <p className="break-words whitespace-pre-wrap text-caption leading-relaxed text-ink md:text-body">
+                  {String(data?.[field.key])}
+                </p>
+              </article>
+            ))}
+
+            {data?.eyeColor ? (
+              <article
+                role="listitem"
+                className="min-w-0 rounded-row border border-border bg-canvas px-2.5 py-3 md:px-4 md:py-3.5"
+              >
+                <h3 className="mb-1.5 flex items-center gap-2 text-caption font-semibold text-ink">
+                  <span
+                    aria-hidden="true"
+                    className="size-6 shrink-0 rounded-control border border-border/60"
+                    style={{
+                      backgroundColor:
+                        EYE_COLOR_OPTIONS.find((o) => o.label === data.eyeColor)?.hex ??
+                        "var(--color-border)",
+                    }}
+                  />
+                  Нүдний өнгө
+                </h3>
+                <p
+                  className="text-body font-medium"
+                  style={{
+                    color: EYE_COLOR_OPTIONS.find((o) => o.label === data.eyeColor)?.hex,
+                  }}
+                >
+                  {data.eyeColor}
+                </p>
+              </article>
+            ) : null}
           </div>
         ) : (
           <EmptyState
@@ -332,6 +325,7 @@ export function ChildAboutMe({
 
       {editing ? (
         <form
+          aria-label="Миний тухай мэдээлэл засах"
           onSubmit={(e) => {
             e.preventDefault();
             if (!save.isPending) save.mutate();
@@ -345,91 +339,45 @@ export function ChildAboutMe({
             }
           />
 
-          {/*
-              ★ `Child`'s own columns, first — matching the reference build's
-              own field order (identity facts before the portfolio's story
-              fields).
-            */}
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Овог" error={errors.lastName}>
-              {({ id, describedBy, invalid }) => (
-                <Input
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  value={form.lastName ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
-                />
-              )}
-            </Field>
-            <Field label="Нэр" error={errors.firstName}>
-              {({ id, describedBy, invalid }) => (
-                <Input
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  value={form.firstName ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
-                />
-              )}
-            </Field>
-            <Field label="Төрсөн өдөр" error={errors.dateOfBirth}>
-              {({ id, describedBy, invalid }) => (
-                <Input
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  type="date"
-                  value={form.dateOfBirth ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, dateOfBirth: e.target.value }))}
-                />
-              )}
-            </Field>
-            <Field label="Хүйс" error={errors.sex}>
-              {({ id, describedBy, invalid }) => (
-                <Select
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  value={form.sex ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, sex: e.target.value }))}
-                >
-                  <option value="" disabled>
-                    Сонгох…
-                  </option>
-                  {Object.entries(SEX_LABEL).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </Field>
+            {EDIT_FIELDS.map((field) => (
+              <Field key={field.key} label={field.label} error={errors[field.key]}>
+                {({ id, describedBy, invalid }) =>
+                  field.kind === "sex" ? (
+                    <Select
+                      id={id}
+                      aria-describedby={describedBy}
+                      invalid={invalid}
+                      value={form[field.key] ?? ""}
+                      onChange={(event) =>
+                        setForm((current) => ({ ...current, [field.key]: event.target.value }))
+                      }
+                    >
+                      <option value="" disabled>
+                        Сонгох…
+                      </option>
+                      {Object.entries(SEX_LABEL).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </Select>
+                  ) : (
+                    <Input
+                      id={id}
+                      aria-describedby={describedBy}
+                      invalid={invalid}
+                      type={field.kind === "date" ? "date" : "text"}
+                      value={form[field.key] ?? ""}
+                      onChange={(event) =>
+                        setForm((current) => ({ ...current, [field.key]: event.target.value }))
+                      }
+                    />
+                  )
+                }
+              </Field>
+            ))}
           </div>
-
-          {ABOUT_FIELDS.map((field) => (
-            <Field key={field.key} label={field.label} error={errors[field.key]}>
-              {({ id, describedBy, invalid }) =>
-                field.long ? (
-                  <Textarea
-                    id={id}
-                    aria-describedby={describedBy}
-                    invalid={invalid}
-                    value={form[field.key] ?? ""}
-                    onChange={(e) => setForm((f) => ({ ...f, [field.key]: e.target.value }))}
-                  />
-                ) : (
-                  <Input
-                    id={id}
-                    aria-describedby={describedBy}
-                    invalid={invalid}
-                    value={form[field.key] ?? ""}
-                    onChange={(e) => setForm((f) => ({ ...f, [field.key]: e.target.value }))}
-                  />
-                )
-              }
-            </Field>
-          ))}
 
           {/*
               ★ Swatches, not a select — the point is to show the colour, not
@@ -499,50 +447,6 @@ export function ChildAboutMe({
             value={form.zodiacCode ?? ""}
             onChange={(code) => setForm((f) => ({ ...f, zodiacCode: code }))}
           />
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Өндөр (см)" error={errors.heightCm}>
-              {({ id, describedBy, invalid }) => (
-                <Input
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  type="number"
-                  inputMode="decimal"
-                  step="0.1"
-                  value={form.heightCm ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, heightCm: e.target.value }))}
-                />
-              )}
-            </Field>
-            <Field label="Хэмжсэн огноо" error={errors.recordedOn}>
-              {({ id, describedBy, invalid }) => (
-                <Input
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  type="date"
-                  value={form.recordedOn ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, recordedOn: e.target.value }))}
-                />
-              )}
-            </Field>
-
-            <Field label="Жин (кг)" error={errors.weightKg}>
-              {({ id, describedBy, invalid }) => (
-                <Input
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  type="number"
-                  inputMode="decimal"
-                  step="0.1"
-                  value={form.weightKg ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, weightKg: e.target.value }))}
-                />
-              )}
-            </Field>
-          </div>
 
           <div className="flex flex-wrap gap-2">
             <Button type="submit" disabled={save.isPending}>

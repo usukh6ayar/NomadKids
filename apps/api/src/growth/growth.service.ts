@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { ageInYears } from "@kinder/contracts";
+import { ageInMonths } from "@kinder/contracts";
 import { AuditRepository } from "../audit/audit.repository";
 import { ChildAccessService } from "../authz/child-access.service";
 import { isGuardianOf } from "../authz/child-access";
@@ -47,11 +47,13 @@ export class GrowthService {
     const points = rows.map((row) => {
       const heightCm = toNumber(row.heightCm);
       const weightKg = toNumber(row.weightKg);
+      const ageMonths = ageInMonths(child.dateOfBirth, row.measuredOn);
 
       const point = {
         id: row.id,
         measuredOn: toDateOnly(row.measuredOn),
-        ageYears: ageInYears(child.dateOfBirth, row.measuredOn),
+        ageMonths,
+        ageYears: ageMonths / 12,
         heightCm,
         weightKg,
         headCircumferenceCm: toNumber(row.headCircumferenceCm),

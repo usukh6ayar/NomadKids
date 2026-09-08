@@ -378,7 +378,17 @@ export class ChildrenService {
     const guardianship = await this.repo.findGuardianship(guardianshipId);
     if (!guardianship) throw new NotFoundException();
 
-    await this.childAccess.assertCanAdminister(actor, guardianship.childId);
+    const isOwnRelationship =
+      guardianship.guardianUserId === actor.userId && guardianship.canView === true;
+    if (isOwnRelationship) {
+      // A guardian may state how they are related to their own child. Custody
+      // access and which contact is primary remain kindergarten decisions.
+      if (dto.canView !== undefined || dto.isPrimary !== undefined) {
+        throw new BadRequestException("Энэ тохиргоог зөвхөн админ өөрчилнө");
+      }
+    } else {
+      await this.childAccess.assertCanAdminister(actor, guardianship.childId);
+    }
 
     const updated = await this.repo.updateGuardianship(guardianshipId, dto);
     await this.auditGuardianship(
@@ -420,7 +430,12 @@ export class ChildrenService {
     const teachers = active?.group ? await this.repo.listActiveGroupTeachers(active.group.id) : [];
 
     return {
-      child: { id: child.id, firstName: child.firstName, lastName: child.lastName },
+      child: {
+        id: child.id,
+        firstName: child.firstName,
+        lastName: child.lastName,
+        dateOfBirth: child.dateOfBirth?.toISOString() ?? null,
+      },
       current: active
         ? {
             id: active.id,

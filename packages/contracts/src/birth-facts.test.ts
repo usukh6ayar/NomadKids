@@ -1,5 +1,11 @@
 import { describe, expect, test } from "vitest";
-import { ageInYears, birthFacts, mongolianYearAnimal, westernZodiac } from "./birth-facts";
+import {
+  ageInMonths,
+  ageInYears,
+  birthFacts,
+  mongolianYearAnimal,
+  westernZodiac,
+} from "./birth-facts";
 
 describe("ageInYears", () => {
   test("counts completed years", () => {
@@ -19,6 +25,13 @@ describe("ageInYears", () => {
 
   test("never returns a negative age for a mistyped future date", () => {
     expect(ageInYears("2030-01-01", "2026-08-25")).toBe(0);
+  });
+});
+
+describe("ageInMonths", () => {
+  test("counts only completed calendar months", () => {
+    expect(ageInMonths("2021-04-12", "2026-09-11")).toBe(64);
+    expect(ageInMonths("2021-04-12", "2026-09-12")).toBe(65);
   });
 });
 

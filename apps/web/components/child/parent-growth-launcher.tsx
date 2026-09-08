@@ -98,7 +98,7 @@ export function ParentGrowthLauncher({ child }: { child: ChildDetail }) {
         title={`${child.firstName}-ийн өхөөрдөм ахиц`}
       />
 
-      <div className="grid gap-2.5 sm:grid-cols-3">
+      <div className="grid grid-cols-3 gap-2.5">
         {BUCKETS.map((bucket) => (
           <QuickShareBar
             key={bucket.key}
@@ -139,7 +139,7 @@ function QuickShareBar({
       aria-expanded={active}
       onClick={onClick}
       className={cn(
-        "flex min-h-13 items-center gap-3 rounded-card px-3.5 py-3 text-left text-white transition-transform hover:scale-[1.01]",
+        "flex min-h-20 flex-col items-center justify-center gap-2 rounded-card px-2 py-3 text-center text-white transition-transform hover:scale-[1.01] sm:min-h-13 sm:flex-row sm:justify-start sm:gap-3 sm:px-3.5 sm:text-left",
         tone.gradient,
         tone.shadow,
         active && "ring-2 ring-white ring-offset-2 ring-offset-canvas",
@@ -151,7 +151,7 @@ function QuickShareBar({
       >
         <bucket.Icon size={18} aria-hidden="true" />
       </span>
-      <span className="min-w-0 flex-1 truncate text-body font-semibold">+ {bucket.label}</span>
+      <span className="min-w-0 flex-1 truncate text-body font-semibold">{bucket.label}</span>
     </button>
   );
 }

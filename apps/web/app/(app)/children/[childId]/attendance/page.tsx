@@ -11,7 +11,6 @@ import { errorMessage } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAttendance } from "@/components/child/child-attendance";
-import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { useSession } from "@/lib/auth/session";
 
 /**
@@ -23,10 +22,9 @@ import { useSession } from "@/lib/auth/session";
  * gone from the hub entirely — one destination, not a route and a tab both
  * showing the same thing.
  *
- * The hero renders here (not inside `ChildAttendance` itself, which has no
- * opinion on identity) because this route has no other visible anchor for
- * whose record is open — unlike the hub, which already shows it above the
- * tab strip.
+ * This route deliberately starts with the attendance content. The large child
+ * hero and its decorative background belong to the profile, not to a task
+ * screen somebody opens to report a drop-off or request leave.
  */
 export default function ChildAttendancePage() {
   const params = useParams<{ childId: string }>();
@@ -60,7 +58,7 @@ export default function ChildAttendancePage() {
         </Link>
       </Button>
 
-      <ChildHeroProfile child={data} showHealthAlert={isStaff} />
+      <h1 className="sr-only">{data.firstName}-ийн ирц</h1>
 
       <ChildAttendance childId={childId} isStaff={isStaff} childFirstName={data.firstName} />
     </div>

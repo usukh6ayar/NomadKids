@@ -131,12 +131,18 @@ export class StorageService {
    * `ResponseContentDisposition` makes the browser show the child's real
    * filename on save without that name ever appearing in the key.
    */
-  async presignedGetUrl(key: string, filename?: string): Promise<string> {
+  async presignedGetUrl(
+    key: string,
+    filename?: string,
+    disposition: "inline" | "attachment" = "inline",
+  ): Promise<string> {
     const command = new GetObjectCommand({
       Bucket: this.env.STORAGE_BUCKET,
       Key: key,
       ...(filename
-        ? { ResponseContentDisposition: `inline; filename="${encodeURIComponent(filename)}"` }
+        ? {
+            ResponseContentDisposition: `${disposition}; filename="${encodeURIComponent(filename)}"`,
+          }
         : {}),
     });
 

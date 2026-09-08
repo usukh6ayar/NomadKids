@@ -540,6 +540,21 @@ describe("guardian-editable zodiac / year-animal override", () => {
 });
 
 describe("age profiles", () => {
+  it("stores a separate dream for the selected age", async () => {
+    const save = await authed(
+      request(server()).patch(`/v1/children/${a.child.id}/age-profiles/3`),
+      parentA,
+    ).send({ dream: "Сансрын нисгэгч болно" });
+
+    expect(save.status).toBe(200);
+    expect(save.body).toMatchObject({ age: 3, dream: "Сансрын нисгэгч болно" });
+
+    const otherAge = await request(server())
+      .get(`/v1/children/${a.child.id}/age-profiles/2`)
+      .set("Cookie", parentA.cookies);
+    expect(otherAge.body.dream).toBeUndefined();
+  });
+
   it("persists and reads back", async () => {
     await authed(
       request(server()).patch(`/v1/children/${a.child.id}/age-profiles/2`),
@@ -570,6 +585,98 @@ describe("age profiles", () => {
 
     expect(list.body).toHaveLength(2);
     expect(list.body.map((p: { age: number }) => p.age)).toEqual([2, 5]);
+  });
+
+  it("persists structured parent answers and keeps section saves independent", async () => {
+    const first = await authed(
+      request(server()).patch(`/v1/children/${a.child.id}/age-profiles/2`),
+      parentA,
+    ).send({
+      favoriteToy: "Модон галт тэрэг",
+      favoriteMovie: "Маамуу",
+      kindergartenSkills: ["Гараа угаах", "Тоглоомоо цэгцлэх"],
+      kindergartenSkillNotes: { current: "Санамж өгөхөд өөрөө хийдэг" },
+      kindergartenOtherSkill: "Цүнхээ байранд нь тавьдаг",
+    });
+
+    expect(first.status).toBe(200);
+    expect(first.body.kindergartenSkills).toEqual(["Гараа угаах", "Тоглоомоо цэгцлэх"]);
+
+    const second = await authed(
+      request(server()).patch(`/v1/children/${a.child.id}/age-profiles/2`),
+      parentA,
+    ).send({
+      characterTraits: ["Хөгжилтэй", "Зоригтой"],
+      characterObservation: "Шинэ орчинд хурдан дасдаг.",
+    });
+
+    expect(second.status).toBe(200);
+    expect(second.body.favoriteToy).toBe("Модон галт тэрэг");
+    expect(second.body.kindergartenSkillNotes).toEqual({
+      current: "Санамж өгөхөд өөрөө хийдэг",
+    });
+    expect(second.body.characterTraits).toEqual(["Хөгжилтэй", "Зоригтой"]);
+
+    const readBack = await request(server())
+      .get(`/v1/children/${a.child.id}/age-profiles/2`)
+      .set("Cookie", parentA.cookies);
+    expect(readBack.body).toMatchObject({
+      favoriteMovie: "Маамуу",
+      kindergartenOtherSkill: "Цүнхээ байранд нь тавьдаг",
+      characterObservation: "Шинэ орчинд хурдан дасдаг.",
+    });
+  });
+
+  it("accepts empty optional section values without requiring every field", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/children/${a.child.id}/age-profiles/4`),
+      parentA,
+    ).send({
+      familyLearningSkills: [],
+      familyLearningNotes: {},
+      familyLearningOther: null,
+      familyMemberTypes: [],
+      familyDescription: null,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.familyLearningSkills).toEqual([]);
+    expect(res.body.familyMemberTypes).toEqual([]);
+  });
+
+  it("reopens saved structured answers independently for ages 2, 3, 4 and 5", async () => {
+    for (const age of [2, 3, 4, 5]) {
+      const save = await authed(
+        request(server()).patch(`/v1/children/${a.child.id}/age-profiles/${age}`),
+        parentA,
+      ).send({
+        favoriteToy: `${age} насны тоглоом`,
+        familyMemberTypes: ["Аав, ээж"],
+        familyDescription: `${age} насны гэр бүлийн дурсамж`,
+      });
+      expect(save.status).toBe(200);
+    }
+
+    const reopened = await request(server())
+      .get(`/v1/children/${a.child.id}/age-profiles`)
+      .set("Cookie", parentA.cookies);
+
+    expect(reopened.status).toBe(200);
+    expect(
+      reopened.body.map(
+        (profile: { age: number; favoriteToy: string; familyDescription: string }) => ({
+          age: profile.age,
+          favoriteToy: profile.favoriteToy,
+          familyDescription: profile.familyDescription,
+        }),
+      ),
+    ).toEqual(
+      [2, 3, 4, 5].map((age) => ({
+        age,
+        favoriteToy: `${age} насны тоглоом`,
+        familyDescription: `${age} насны гэр бүлийн дурсамж`,
+      })),
+    );
   });
 
   it("rejects an age outside 2–5", async () => {

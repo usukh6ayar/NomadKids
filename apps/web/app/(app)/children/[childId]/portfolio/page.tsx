@@ -30,14 +30,17 @@ import { cn } from "@/lib/utils";
  *    facts (Монгол жил / Одны орд) and the birthday notes.
  *  - "Хөгжил" → `portfolio/growth/page.tsx` — ages 2–5, milestones, and quick
  *    actions into Ажиглалт and Бүтээл.
- *  - "Зургийн цомог" → `/overview`, the same destination the bottom bar's
- *    own "Зураг" tab already used — one album, reached two ways, rather than
- *    a second screen that happens to show the same photographs.
- *  - "Насны харьцуулалт" → `portfolio/growth/compare/page.tsx` — added
+ *  - "Зургийн цомог" → `portfolio/gallery/page.tsx`, where a parent chooses an
+ *    age before opening that age's category albums. It used to be `/overview`,
+ *    the bottom bar's own "Зураг" destination; that is still one album reached
+ *    two ways, but the portfolio's own entrance now keeps the portfolio
+ *    breadcrumb and sidebar state for the whole album flow.
+ *  - "Насны харьцуулалт" → `portfolio/growth/age/page.tsx` — added
  *    2026-09-04, on the client's instruction, when the age pills and "Бүх
  *    насыг харьцуулах" bar were pulled out of `about-me/page.tsx`'s merged
- *    card. This tile is now the one door in; `AgeStepper` carries a visitor
- *    on from there to any of the five age/compare pages.
+ *    card. This tile is now the one door in; the landing is navigation-only,
+ *    and `AgeStepper` carries a visitor on from there to any of the five
+ *    age/compare pages.
  *
  * The PDF button stays here: `type: "CHILD_PORTFOLIO"` exports this whole
  * record, not any one door of it, so it belongs on the hub the doors share
@@ -131,9 +134,10 @@ export default function PortfolioPage() {
  * ★★★ All four destinations' own back buttons return here now — unified
  * 2026-09-04, on the client's instruction, after each had drifted to a
  * different target (`/home`, `growth/page.tsx`, this hub, or nothing at all).
- * `overview/page.tsx` is the one exception that still branches: it is also
- * the bottom nav bar's own "Зураг" tab, so `?from=portfolio` on the href
- * above is how it tells the two entrances apart — see its own doc comment.
+ * The album no longer needs the `?from=portfolio` marker that told
+ * `overview/page.tsx` apart from the bottom bar's own "Зураг" tab: the
+ * portfolio has its own `gallery` entrance now, so there is only one way in
+ * from here and only one way back.
  */
 function PortfolioHubNav({ childId }: { childId: string }) {
   const items: { href: string; label: string; tone: Tone; Icon: typeof User }[] = [
@@ -144,20 +148,18 @@ function PortfolioHubNav({ childId }: { childId: string }) {
       Icon: User,
     },
     { href: `/children/${childId}/portfolio/growth`, label: "Хөгжил", tone: "mint", Icon: Sprout },
-    // The bottom bar's own "Зураг" destination (`layout.tsx`'s `parentNav`) —
-    // see this page's own doc comment for why it is the same route rather
-    // than a second one. `?from=portfolio` tells the album's own back button
-    // which of its two entrances this was.
+    // This portfolio-specific route starts with age cards and keeps the
+    // portfolio breadcrumb/sidebar state active throughout the album flow.
     {
-      href: `/children/${childId}/overview?from=portfolio`,
+      href: `/children/${childId}/portfolio/gallery`,
       label: "Зургийн цомог",
       tone: "sky",
       Icon: Images,
     },
-    // Moved out of `about-me`'s merged card. `AgeStepper` on the destination
-    // carries a visitor on to any of the four per-age pages from here.
+    // The landing is navigation-only; details appear only after choosing the
+    // comparison action or one of the four age folders.
     {
-      href: `/children/${childId}/portfolio/growth/compare`,
+      href: `/children/${childId}/portfolio/growth/age`,
       label: "Насны харьцуулалт",
       tone: "peach",
       Icon: BarChart3,

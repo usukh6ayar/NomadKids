@@ -112,13 +112,17 @@ export default function AboutMePage() {
       </Button>
 
       <Card pad="roomy" className="flex flex-col gap-5">
-        <AboutMeSummaryCard child={data} editing={editing} onEdit={() => setEditing(true)} />
+        {!editing ? (
+          <>
+            <AboutMeSummaryCard child={data} editing={editing} onEdit={() => setEditing(true)} />
 
-        {!birthdays.isLoading && birthdays.data ? (
-          <ChildBirthdayFacts section={birthdays.data} />
+            {!birthdays.isLoading && birthdays.data ? (
+              <ChildBirthdayFacts section={birthdays.data} />
+            ) : null}
+
+            <div className="border-t border-border" />
+          </>
         ) : null}
-
-        <div className="border-t border-border" />
 
         <ChildAboutMe
           childId={childId}

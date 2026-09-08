@@ -25,7 +25,13 @@ const ageProfilesSchema = z.array(ageProfileSchema);
 function hasAgeContent(profile?: z.infer<typeof ageProfileSchema>): boolean {
   if (!profile) return false;
   return Object.entries(profile).some(
-    ([key, value]) => key !== "age" && typeof value === "string" && value.trim().length > 0,
+    ([key, value]) =>
+      key !== "age" &&
+      ((typeof value === "string" && value.trim().length > 0) ||
+        (Array.isArray(value) && value.length > 0) ||
+        (value !== null &&
+          typeof value === "object" &&
+          Object.values(value).some((entry) => typeof entry === "string" && entry.trim()))),
   );
 }
 
@@ -41,10 +47,9 @@ function hasAgeContent(profile?: z.infer<typeof ageProfileSchema>): boolean {
  * fields could be written by any other client and were invisible here — and a
  * teacher had no way to enter them at all.
  *
- * ★★ Still short of the RFP by two: дуртай кино/хүүхэлдэйн кино and дуртай
- * хувцас have no column, so adding them is a migration rather than a list edit
- * — deliberately left out of a frontend change. "Тухайн насны зураг" is the
- * gallery, which lives on the child's own "Зураг" page.
+ * ★★ The parent's expanded age-development form added clothes, movie and
+ * treats in 2026-09-08. They remain ordinary optional text fields here so the
+ * staff editor can read and update the same record without a second mapping.
  *
  * ★★★ Exported since 2026-08-30 — the parent's per-age page
  * (`portfolio/growth/age/[age]/page.tsx`) and the comparison page
@@ -58,10 +63,14 @@ export const AGE_FIELDS = [
   { key: "favoriteBook", label: "Дуртай ном", long: false },
   { key: "favoriteSong", label: "Дуртай дуу", long: false },
   { key: "favoriteStory", label: "Дуртай үлгэр", long: false },
+  { key: "favoriteMovie", label: "Дуртай хүүхэлдэйн кино / кино", long: false },
+  { key: "favoriteTreat", label: "Дуртай амттан", long: false },
+  { key: "favoriteClothes", label: "Дуртай хувцас", long: false },
   { key: "favoriteActivity", label: "Дуртай үйл ажиллагаа", long: false },
   { key: "familyMembers", label: "Гэр бүлийн гишүүд", long: true },
   { key: "personality", label: "Зан чанар", long: true },
   { key: "emotionalTraits", label: "Сэтгэл хөдлөлийн онцлог", long: true },
+  { key: "dream", label: "Миний мөрөөдөл", long: true },
   { key: "learningInterest", label: "Суралцах сонирхол", long: true },
   { key: "newSkills", label: "Шинээр эзэмшсэн чадвар", long: true },
 ] as const;

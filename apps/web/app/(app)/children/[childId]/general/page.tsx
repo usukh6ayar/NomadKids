@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, BookOpen, ClipboardList, MoreHorizontal, Pencil, Plus } from "lucide-react";
+import { ArrowLeft, ClipboardList, MoreHorizontal, Pencil, Plus } from "lucide-react";
 import { childDetailSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -14,17 +14,14 @@ import { Menu, type MenuItem } from "@/components/ui/menu";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildGrowth } from "@/components/child/child-growth";
 import { ChildHealth } from "@/components/child/child-health";
-import { ChildIncidents } from "@/components/child/child-incidents";
 import { ChildGeneralInfo } from "@/components/child/child-general-info";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { ChildTabs } from "@/components/child/child-tabs";
 import { ChildEnrollmentArchive } from "@/components/child/enrollment-archive";
-import { PORTFOLIO } from "@/lib/vocabulary";
 
 const GENERAL = "general";
 const GROWTH = "growth";
 const HEALTH = "health";
-const INCIDENTS = "incidents";
 /**
  * ★ "Шилжилт хөдөлгөөн" — added 2026-09-04 at the client's request.
  *
@@ -43,7 +40,7 @@ const PLACEMENT = "placement";
  * Зураг moved to their own routes (`/observations`, `/overview`) — same "one
  * destination, not a route and a tab both showing the same thing" reasoning
  * `/attendance` and `/menu` already followed elsewhere in this directory.
- * Growth, health and incidents have no outside link pointing at them
+ * Growth and health have no outside link pointing at them
  * directly, so they stay here behind "Бусад" rather than becoming routes too.
  *
  * ★★ Artwork left the same way 2026-08-29: the portfolio's own "Хөгжил" page
@@ -127,22 +124,43 @@ export default function ChildGeneralPage() {
           {
             value: GROWTH,
             label: "Өсөлт",
-            content: <ChildGrowth childId={childId} isStaff={isStaff} />,
+            content: (
+              <ChildGrowth
+                childId={childId}
+                isStaff={isStaff}
+                dateOfBirth={data.dateOfBirth}
+                currentSchoolYear={
+                  data.enrollments.find((enrollment) => enrollment.status === "ACTIVE")?.schoolYear
+                    ?.name
+                }
+              />
+            ),
           },
           {
             value: HEALTH,
             label: "Эрүүл мэнд",
-            content: <ChildHealth childId={childId} isStaff={isStaff} />,
-          },
-          {
-            value: INCIDENTS,
-            label: "Аюулгүй байдал",
-            content: <ChildIncidents childId={childId} isStaff={isStaff} />,
+            content: (
+              <ChildHealth
+                childId={childId}
+                isStaff={isStaff}
+                dateOfBirth={data.dateOfBirth}
+                currentSchoolYear={
+                  data.enrollments.find((enrollment) => enrollment.status === "ACTIVE")?.schoolYear
+                    ?.name
+                }
+              />
+            ),
           },
           {
             value: PLACEMENT,
-            label: "Шилжилт хөдөлгөөн",
-            content: <ChildEnrollmentArchive childId={childId} showHero={false} />,
+            label: "Суралцсан түүх",
+            content: (
+              <ChildEnrollmentArchive
+                childId={childId}
+                showHero={false}
+                dateOfBirth={data.dateOfBirth}
+              />
+            ),
           },
         ]}
       />
@@ -150,44 +168,38 @@ export default function ChildGeneralPage() {
   );
 }
 
-/** Unchanged from the old hub — see git history for `children/[childId]/page.tsx`. */
+/** Profile actions shared by parent and staff views. */
 function ChildActions({ childId, isStaff }: { childId: string; isStaff: boolean }) {
-  const overflow: MenuItem[] = [
-    {
-      href: `/children/${childId}/term-report`,
-      label: "Улирлын тайлан",
-      hint: "Улирлын үнэлгээ, багшийн дүгнэлт.",
-      icon: <ClipboardList size={18} aria-hidden="true" />,
-    },
-    ...(isStaff
-      ? [
-          {
-            href: `/children/${childId}/edit`,
-            label: "Мэдээлэл засах",
-            hint: "Нэр, төрсөн огноо, бүлгийн бүртгэл.",
-            icon: <Pencil size={18} aria-hidden="true" />,
-          },
-        ]
-      : []),
-  ];
+  const overflow: MenuItem[] = isStaff
+    ? [
+        {
+          href: `/children/${childId}/edit`,
+          label: "Мэдээлэл засах",
+          hint: "Нэр, төрсөн огноо, бүлгийн бүртгэл.",
+          icon: <Pencil size={18} aria-hidden="true" />,
+        },
+      ]
+    : [];
 
   return (
     <>
-      <Button asChild size="sm">
-        <Link href={`/children/${childId}/observations/new`}>
-          <Plus size={18} />
-          {isStaff ? "Ажиглалт" : "Хуваалцах"}
-        </Link>
-      </Button>
+      {isStaff ? (
+        <Button asChild size="sm">
+          <Link href={`/children/${childId}/observations/new`}>
+            <Plus size={18} />
+            Ажиглалт
+          </Link>
+        </Button>
+      ) : null}
 
       <Button asChild variant="secondary" size="sm">
-        <Link href={`/children/${childId}/portfolio`}>
-          <BookOpen size={18} />
-          {PORTFOLIO}
+        <Link href={`/children/${childId}/term-report`}>
+          <ClipboardList size={18} />
+          Улирлын тайлан
         </Link>
       </Button>
 
-      {overflow.length > 1 ? (
+      {overflow.length > 0 ? (
         <Menu
           variant="secondary"
           ariaLabel="Бусад үйлдэл"
@@ -199,14 +211,7 @@ function ChildActions({ childId, isStaff }: { childId: string; isStaff: boolean 
             </>
           }
         />
-      ) : (
-        <Button asChild variant="secondary" size="sm">
-          <Link href={overflow[0]!.href}>
-            <ClipboardList size={18} />
-            {overflow[0]!.label}
-          </Link>
-        </Button>
-      )}
+      ) : null}
     </>
   );
 }

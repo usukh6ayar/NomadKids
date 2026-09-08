@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import {
+  ArrowRightLeft,
   Building2,
   CalendarDays,
   ChevronDown,
@@ -11,14 +12,15 @@ import {
   Mail,
   MapPin,
   Phone,
+  Sparkles,
+  UserCheck,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import {
   enrollmentArchiveSchema,
+  ageInMonths,
   TEACHER_ROLE_LABEL,
   type EnrollmentArchive,
-  ENROLLMENT_STATUS_LABEL,
-  ENROLLMENT_STATUS_TONE,
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -56,9 +58,11 @@ type Current = NonNullable<EnrollmentArchive["current"]>;
 export function ChildEnrollmentArchive({
   childId,
   showHero = true,
+  dateOfBirth,
 }: {
   childId: string;
   showHero?: boolean;
+  dateOfBirth?: string | null;
 }) {
   const archive = useQuery({
     queryKey: qk.enrollmentArchive(childId),
@@ -86,28 +90,38 @@ export function ChildEnrollmentArchive({
   }
 
   const { child, current, history } = archive.data!;
+  const effectiveDateOfBirth = child.dateOfBirth ?? dateOfBirth;
 
   return (
     <div className="flex flex-col gap-6">
       {showHero ? <ArchiveHero child={child} current={current} /> : null}
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <CurrentPlacementDisclosure current={current} />
-        <HistoryDisclosure history={history} />
-      </div>
+      <section aria-labelledby="enrollment-history-heading">
+        <SectionHeader
+          id="enrollment-history-heading"
+          title="Суралцсан түүх"
+          lede="Одоогийн бүртгэл болон гарсан өөрчлөлтүүд"
+        />
 
-      {current ? (
+        {current ? (
+          <CurrentEnrollmentCard current={current} />
+        ) : (
+          <EmptyState
+            icon={<GraduationCap size={28} aria-hidden="true" />}
+            title="Одоогоор бүртгэлгүй байна"
+            description="Энэ хүүхэд одоогоор ямар ч бүлэгт идэвхтэй бүртгэлгүй байна."
+          />
+        )}
+      </section>
+
+      <EnrollmentTimeline current={current} history={history} dateOfBirth={effectiveDateOfBirth} />
+
+      {showHero && current ? (
         <>
           <KindergartenInfoCard current={current} />
           <TeacherContactCard current={current} />
         </>
-      ) : (
-        <EmptyState
-          icon={<GraduationCap size={28} aria-hidden="true" />}
-          title="Одоогоор бүртгэлгүй байна"
-          description="Энэ хүүхэд одоогоор ямар ч бүлэгт идэвхтэй бүртгэлгүй байна."
-        />
-      )}
+      ) : null}
     </div>
   );
 }
@@ -143,100 +157,211 @@ function ArchiveHero({
   );
 }
 
-/**
- * One of the two summary tiles — a label, a figure, an optional subline, and a
- * disclosure chevron. Same `<details className="group">` +
- * `group-open:rotate-180` convention `child-about-me.tsx`'s option picker uses,
- * so one disclosure primitive covers both.
- */
-function SummaryDisclosure({
-  label,
-  value,
-  sub,
-  children,
-}: {
-  label: string;
-  value: ReactNode;
-  sub?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <details className="group rounded-card border border-border bg-surface shadow-sm">
-      <summary className="flex min-h-[44px] cursor-pointer list-none items-start justify-between gap-3 px-4 py-4 [&::-webkit-details-marker]:hidden">
-        <div className="min-w-0">
-          <p className="text-caption text-muted">{label}</p>
-          <p className="mt-0.5 truncate text-lead font-semibold text-ink">{value}</p>
-          {sub ? <p className="truncate text-body text-muted">{sub}</p> : null}
-        </div>
-        <ChevronDown
-          size={18}
-          aria-hidden="true"
-          className="mt-1 shrink-0 text-faint transition-transform group-open:rotate-180"
-        />
-      </summary>
-      <div className="border-t border-border-soft px-4 py-3">{children}</div>
-    </details>
-  );
-}
+function CurrentEnrollmentCard({ current }: { current: Current }) {
+  const teacherNames = current.teachers.map(fullName).join(", ");
 
-function CurrentPlacementDisclosure({ current }: { current: EnrollmentArchive["current"] }) {
   return (
-    <SummaryDisclosure
-      label="Одоо суралцаж байгаа"
-      value={current?.kindergarten.name ?? "Бүртгэлгүй"}
-      sub={current?.group?.name}
-    >
-      {current ? (
-        <dl className="flex flex-col gap-1.5 text-body">
-          <div className="flex justify-between gap-3">
-            <dt className="text-muted">Элссэн</dt>
-            <dd className="text-ink">{formatDate(current.startedOn)}</dd>
-          </div>
-          {current.schoolYear ? (
-            <div className="flex justify-between gap-3">
-              <dt className="text-muted">Хичээлийн жил</dt>
-              <dd className="text-ink">{current.schoolYear.name}</dd>
+    <div className="overflow-hidden rounded-card border border-primary/30 bg-surface shadow-sm">
+      <div className="flex items-center justify-between gap-3 border-b border-border bg-primary-soft px-4 py-4 md:px-5">
+        <h3 className="text-lead font-semibold text-ink">Одоогийн бүртгэл</h3>
+        <Badge tone="mint">Суралцаж байгаа</Badge>
+      </div>
+
+      <details open className="group">
+        <summary className="flex min-h-[92px] cursor-pointer list-none items-center justify-between gap-4 px-4 py-5 marker:content-none md:px-5 [&::-webkit-details-marker]:hidden">
+          <div className="flex min-w-0 items-start gap-4">
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-row bg-canvas text-ink">
+              <Building2 size={21} aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-lead font-semibold text-ink">
+                {current.kindergarten.name}
+              </p>
+              <p className="mt-1 text-body text-muted">
+                {current.group?.name ?? "Бүлэггүй"} · {formatDate(current.startedOn)}-ээс
+              </p>
             </div>
-          ) : null}
+          </div>
+          <ChevronDown
+            aria-hidden="true"
+            className="shrink-0 text-primary transition-transform group-open:rotate-180"
+          />
+        </summary>
+
+        <dl className="grid border-t border-border sm:grid-cols-2 sm:divide-x sm:divide-border">
+          <div className="flex min-h-[80px] items-center gap-3 px-4 py-4 md:px-5">
+            <GraduationCap aria-hidden="true" className="size-5 shrink-0 text-muted" />
+            <div>
+              <dt className="text-body text-muted">Ангийн багш</dt>
+              <dd className="mt-0.5 font-semibold text-ink">
+                {teacherNames || "Багш бүртгэгдээгүй"}
+              </dd>
+            </div>
+          </div>
+          <div className="flex min-h-[80px] items-center gap-3 border-t border-border px-4 py-4 sm:border-t-0 md:px-5">
+            <CalendarDays aria-hidden="true" className="size-5 shrink-0 text-muted" />
+            <div>
+              <dt className="text-body text-muted">Хичээлийн жил</dt>
+              <dd className="mt-0.5 font-semibold text-ink">
+                {current.schoolYear?.name ?? "Тодорхойгүй"}
+              </dd>
+            </div>
+          </div>
         </dl>
-      ) : (
-        <p className="text-body text-muted">Одоогоор идэвхтэй бүртгэл алга.</p>
-      )}
-    </SummaryDisclosure>
+      </details>
+    </div>
   );
 }
 
-/** Past kindergarten/group/teacher, ended-status-tinted the same way `child-general-info.tsx`'s own history list is. */
-function HistoryDisclosure({ history }: { history: EnrollmentArchive["history"] }) {
+type Placement = EnrollmentArchive["history"][number] | Current;
+type TimelineKind = "INITIAL" | "KINDERGARTEN" | "GROUP" | "CONTINUED";
+
+interface TimelineEvent {
+  id: string;
+  kind: TimelineKind;
+  title: string;
+  date: string;
+  age: number | null;
+  from?: string;
+  to: string;
+}
+
+function EnrollmentTimeline({
+  current,
+  history,
+  dateOfBirth,
+}: {
+  current: EnrollmentArchive["current"];
+  history: EnrollmentArchive["history"];
+  dateOfBirth?: string | null;
+}) {
+  const events = buildTimeline(current, history, dateOfBirth);
+
   return (
-    <SummaryDisclosure
-      label="Суралцсан түүх"
-      value={`${history.length} түүх`}
-      sub="Цэцэрлэг, бүлэг, багшийн өөрчлөлт"
-    >
-      {history.length === 0 ? (
-        <p className="text-body text-muted">Өөрчлөлт бүртгэгдээгүй байна.</p>
+    <section aria-labelledby="enrollment-timeline-heading">
+      <div className="mb-5 flex items-center justify-between gap-3 border-t border-border pt-5">
+        <h3 id="enrollment-timeline-heading" className="text-heading font-semibold text-ink">
+          Бүртгэл, шилжилтийн түүх
+        </h3>
+        <span className="shrink-0 text-body text-muted">{events.length} өөрчлөлт</span>
+      </div>
+
+      {events.length === 0 ? (
+        <EmptyState
+          title="Өөрчлөлт бүртгэгдээгүй байна"
+          description="Бүртгэл эсвэл шилжилт хийгдэхэд энд дарааллаар харагдана."
+        />
       ) : (
-        <ul className="flex flex-col gap-3">
-          {history.map((entry) => (
-            <li key={entry.id} className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="truncate font-medium text-ink">
-                  {[entry.kindergarten.name, entry.group?.name].filter(Boolean).join(" · ")}
-                </p>
-                <p className="text-caption text-muted">
-                  {formatDate(entry.startedOn)} – {entry.endedOn ? formatDate(entry.endedOn) : "…"}
-                </p>
-              </div>
-              <Badge tone={ENROLLMENT_STATUS_TONE[entry.status] ?? "neutral"}>
-                {ENROLLMENT_STATUS_LABEL[entry.status] ?? ENROLLMENT_STATUS_LABEL.ENDED}
-              </Badge>
-            </li>
+        <ol className="relative ml-5 flex flex-col gap-8 pb-1 before:absolute before:bottom-5 before:left-[17px] before:top-5 before:w-0.5 before:bg-primary/20">
+          {events.map((event) => (
+            <TimelineRow key={event.id} event={event} />
           ))}
-        </ul>
+        </ol>
       )}
-    </SummaryDisclosure>
+    </section>
   );
+}
+
+function TimelineRow({ event }: { event: TimelineEvent }) {
+  const Icon =
+    event.kind === "KINDERGARTEN"
+      ? ArrowRightLeft
+      : event.kind === "GROUP"
+        ? UserCheck
+        : event.kind === "CONTINUED"
+          ? CalendarDays
+          : Sparkles;
+
+  return (
+    <li className="relative grid min-h-[88px] grid-cols-[36px_minmax(0,1fr)] gap-5">
+      <span className="relative z-10 flex size-9 items-center justify-center rounded-full border-2 border-surface bg-primary-soft text-primary">
+        <Icon size={17} aria-hidden="true" />
+      </span>
+      <div className="min-w-0 pb-1 sm:flex sm:items-start sm:justify-between sm:gap-5">
+        <div className="min-w-0">
+          <h4 className="text-lead font-semibold text-ink">{event.title}</h4>
+          {event.age !== null ? (
+            <p className="mt-0.5 text-body text-muted">{event.age} нас</p>
+          ) : null}
+          <p className="mt-2 flex flex-wrap items-center gap-2 font-medium text-primary">
+            {event.from ? (
+              <>
+                <span>{event.from}</span>
+                <span aria-hidden="true">→</span>
+              </>
+            ) : null}
+            <span>{event.to}</span>
+          </p>
+        </div>
+        <time dateTime={event.date} className="mt-2 block shrink-0 text-body text-muted sm:mt-0">
+          {formatDate(event.date)}
+        </time>
+      </div>
+    </li>
+  );
+}
+
+function buildTimeline(
+  current: EnrollmentArchive["current"],
+  history: EnrollmentArchive["history"],
+  dateOfBirth?: string | null,
+): TimelineEvent[] {
+  const placements: Placement[] = [...history, ...(current ? [current] : [])].sort((a, b) =>
+    a.startedOn.localeCompare(b.startedOn),
+  );
+
+  return placements
+    .map((placement, index): TimelineEvent => {
+      const previous = placements[index - 1];
+      const age = dateOfBirth
+        ? Math.max(0, Math.floor(ageInMonths(dateOfBirth, placement.startedOn) / 12))
+        : null;
+
+      if (!previous) {
+        return {
+          id: placement.id,
+          kind: "INITIAL",
+          title: "Цэцэрлэгт анх элссэн",
+          date: placement.startedOn,
+          age,
+          to: `Анхны цэцэрлэг · ${placement.group?.name ?? placement.kindergarten.name}`,
+        };
+      }
+
+      if (previous.kindergarten.id !== placement.kindergarten.id) {
+        return {
+          id: placement.id,
+          kind: "KINDERGARTEN",
+          title: "Цэцэрлэг шилжсэн",
+          date: placement.startedOn,
+          age,
+          from: previous.kindergarten.name,
+          to: placement.kindergarten.name,
+        };
+      }
+
+      if (previous.group?.id !== placement.group?.id) {
+        return {
+          id: placement.id,
+          kind: "GROUP",
+          title: "Бүлэг шилжсэн",
+          date: placement.startedOn,
+          age,
+          from: previous.group?.name ?? "Бүлэггүй",
+          to: placement.group?.name ?? "Бүлэггүй",
+        };
+      }
+
+      return {
+        id: placement.id,
+        kind: "CONTINUED",
+        title: "Шинэ хичээлийн жилд үргэлжлүүлэн суралцсан",
+        date: placement.startedOn,
+        age,
+        to: [placement.kindergarten.name, placement.group?.name].filter(Boolean).join(" · "),
+      };
+    })
+    .reverse();
 }
 
 /** The teacher-entered introduction and the kindergarten's own contact details. */

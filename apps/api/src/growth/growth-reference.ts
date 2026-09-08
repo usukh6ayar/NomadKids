@@ -21,11 +21,18 @@
  * and CLAUDE.md §7 had percentiles out of scope for exactly this reason before
  * the scope changed; the change added the comparison, not the diagnosis.
  *
- * The values below are the WHO Child Growth Standards medians and standard
- * deviations at whole-year ages, transcribed from the published tables. They
- * are coarse by design: interpolating monthly points would imply a precision
- * this table does not have.
+ * The values come from WHO's published month-by-month z-score workbooks. They
+ * are kept as monthly observations rather than interpolated from yearly points,
+ * so filtering a chart to one age does not invent precision the source lacks.
  */
+
+import {
+  BOYS_HEIGHT,
+  BOYS_WEIGHT,
+  GIRLS_HEIGHT,
+  GIRLS_WEIGHT,
+  type MonthlyReferenceTuple,
+} from "./growth-reference-data";
 
 export interface ReferenceSource {
   name: string;
@@ -48,56 +55,16 @@ export const REFERENCE_SOURCE: ReferenceSource = {
     "Санаа зовоосон зүйл байвал эмчид хандана уу.",
 };
 
-interface Band {
-  /** Whole years. */
-  age: number;
-  median: number;
-  /** One standard deviation, in the same unit as the median. */
-  sd: number;
-}
-
 /** Height-for-age, centimetres. WHO 2006, boys and girls separately. */
-const HEIGHT_BY_SEX: Record<"MALE" | "FEMALE", Band[]> = {
-  MALE: [
-    { age: 1, median: 75.7, sd: 2.7 },
-    { age: 2, median: 87.1, sd: 3.2 },
-    { age: 3, median: 96.1, sd: 3.7 },
-    { age: 4, median: 103.3, sd: 4.2 },
-    { age: 5, median: 110.0, sd: 4.6 },
-    { age: 6, median: 116.0, sd: 5.0 },
-    { age: 7, median: 121.7, sd: 5.4 },
-  ],
-  FEMALE: [
-    { age: 1, median: 74.0, sd: 2.7 },
-    { age: 2, median: 85.7, sd: 3.3 },
-    { age: 3, median: 95.1, sd: 3.8 },
-    { age: 4, median: 102.7, sd: 4.4 },
-    { age: 5, median: 109.4, sd: 4.8 },
-    { age: 6, median: 115.1, sd: 5.2 },
-    { age: 7, median: 120.8, sd: 5.6 },
-  ],
+const HEIGHT_BY_SEX: Record<"MALE" | "FEMALE", readonly MonthlyReferenceTuple[]> = {
+  MALE: BOYS_HEIGHT,
+  FEMALE: GIRLS_HEIGHT,
 };
 
 /** Weight-for-age, kilograms. WHO 2006. */
-const WEIGHT_BY_SEX: Record<"MALE" | "FEMALE", Band[]> = {
-  MALE: [
-    { age: 1, median: 9.6, sd: 1.1 },
-    { age: 2, median: 12.2, sd: 1.4 },
-    { age: 3, median: 14.3, sd: 1.7 },
-    { age: 4, median: 16.3, sd: 2.1 },
-    { age: 5, median: 18.3, sd: 2.5 },
-    { age: 6, median: 20.5, sd: 3.1 },
-    { age: 7, median: 22.9, sd: 3.7 },
-  ],
-  FEMALE: [
-    { age: 1, median: 8.9, sd: 1.1 },
-    { age: 2, median: 11.5, sd: 1.4 },
-    { age: 3, median: 13.9, sd: 1.8 },
-    { age: 4, median: 16.1, sd: 2.3 },
-    { age: 5, median: 18.2, sd: 2.8 },
-    { age: 6, median: 20.2, sd: 3.2 },
-    { age: 7, median: 22.4, sd: 3.8 },
-  ],
+const WEIGHT_BY_SEX: Record<"MALE" | "FEMALE", readonly MonthlyReferenceTuple[]> = {
+  MALE: BOYS_WEIGHT,
+  FEMALE: GIRLS_WEIGHT,
 };
 
 export interface ReferenceBand {
@@ -109,17 +76,14 @@ export interface ReferenceBand {
   high: number;
 }
 
-function toBands(rows: Band[]): ReferenceBand[] {
-  return rows.map(({ age, median, sd }) => ({
-    age,
+function toBands(rows: readonly MonthlyReferenceTuple[]): ReferenceBand[] {
+  return rows.map(([median, low, high], month) => ({
+    // The chart axis is years; fractions preserve the source's monthly grain.
+    age: month / 12,
     median,
-    low: round1(median - 2 * sd),
-    high: round1(median + 2 * sd),
+    low,
+    high,
   }));
-}
-
-function round1(value: number): number {
-  return Math.round(value * 10) / 10;
 }
 
 /**
