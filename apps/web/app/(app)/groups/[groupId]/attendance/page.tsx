@@ -10,7 +10,6 @@ import {
   attendanceSubmissionSchema,
   esisAttendancePreviewSchema,
   groupAttendanceRowSchema,
-  groupSchema,
   type EsisAttendancePreview,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
@@ -125,11 +124,6 @@ function GroupAttendance() {
    * Үнэлгээ for the same group does not refetch the list of groups.
    */
   const switchable = useSwitchableGroups();
-
-  const group = useQuery({
-    queryKey: ["group", groupId],
-    queryFn: () => get(`/groups/${groupId}`, groupSchema),
-  });
 
   const sheet = useQuery({
     queryKey: qk.groupAttendance(groupId, date),
