@@ -819,10 +819,7 @@ function Brand({ subtitle }: { subtitle: string }) {
         colour did. It is also the arbitrary-colour mistake the token system
         exists to prevent, sitting in the shell.
       */}
-      <span
-        data-brand-mark
-        className="grid size-[52px] shrink-0 place-items-center overflow-hidden rounded-control border border-border-soft bg-white"
-      >
+      <span data-brand-mark className="grid size-[52px] shrink-0 place-items-center">
         <Image
           src="/logo-transparent.png"
           alt={BRAND}
@@ -1429,10 +1426,7 @@ function MobileHeader({ subtitle }: { subtitle: string }) {
       )}
     >
       <Link href="/" className="flex min-h-[44px] items-center gap-3">
-        <span
-          data-brand-mark
-          className="grid size-[42px] shrink-0 place-items-center overflow-hidden rounded-control border border-border-soft bg-white"
-        >
+        <span data-brand-mark className="grid size-[42px] shrink-0 place-items-center">
           <Image
             src="/logo-transparent.png"
             alt={BRAND}

@@ -32,7 +32,7 @@ export function PublicInfoShell({
             className="inline-flex items-center gap-2.5"
             aria-label={`${BRAND} нүүр`}
           >
-            <span className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-control border border-[#e5edf6] bg-white">
+            <span className="grid size-12 shrink-0 place-items-center">
               <Image
                 src="/logo-transparent.png"
                 alt=""
