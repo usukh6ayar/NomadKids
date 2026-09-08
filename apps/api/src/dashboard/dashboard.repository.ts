@@ -616,6 +616,7 @@ export class DashboardRepository {
         firstName: true,
         dateOfBirth: true,
         photoMediaFileId: true,
+        sex: true,
         enrollments: {
           where: { status: "ACTIVE", deletedAt: null },
           select: { group: { select: { id: true, name: true } } },

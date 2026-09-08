@@ -304,6 +304,7 @@ export class DashboardService {
         firstName: c.firstName,
         dateOfBirth: c.dateOfBirth,
         photoMediaFileId: c.photoMediaFileId,
+        sex: c.sex,
         group: c.enrollments[0]?.group ?? null,
         assessments: (assessmentsByChild.get(c.id) ?? []).map((a) => ({
           domain: a.domain,

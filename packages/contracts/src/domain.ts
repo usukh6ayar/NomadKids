@@ -2658,6 +2658,7 @@ export const parentDashboardSchema = z.object({
       firstName: z.string(),
       dateOfBirth: z.string().nullish(),
       photoMediaFileId: uuidSchema.nullish(),
+      sex: sexSchema.nullish(),
       group: namedRefSchema.nullish(),
       assessments: z
         .array(z.object({ domain: domainSchema.nullish(), level: levelSchema.nullish() }))
