@@ -87,7 +87,8 @@ export function PortfolioSpecialAlbums({
                       <MediaThumb
                         mediaId={thumbnail.id}
                         caption={album.title}
-                        className="aspect-[4/3] rounded-none object-cover"
+                        flush
+                        className="aspect-[4/3] object-cover"
                       />
                     ) : (
                       <span

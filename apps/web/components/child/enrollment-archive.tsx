@@ -274,7 +274,7 @@ function TimelineRow({ event }: { event: TimelineEvent }) {
 
   return (
     <li className="relative grid min-h-[88px] grid-cols-[36px_minmax(0,1fr)] gap-5">
-      <span className="relative z-10 flex size-9 items-center justify-center rounded-full border-2 border-surface bg-primary-soft text-primary">
+      <span className="relative z-10 flex size-9 items-center justify-center rounded-pill border-2 border-surface bg-primary-soft text-primary">
         <Icon size={17} aria-hidden="true" />
       </span>
       <div className="min-w-0 pb-1 sm:flex sm:items-start sm:justify-between sm:gap-5">

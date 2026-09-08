@@ -106,8 +106,8 @@ export default function ParentHomePage() {
             className="shrink-0 border-2 border-white shadow-sm"
           />
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-2xl font-bold text-gray-900">{fullName(selected)}</h1>
-            <p className="mt-1 text-sm font-medium text-gray-500">
+            <h1 className="truncate text-display font-bold text-gray-900">{fullName(selected)}</h1>
+            <p className="mt-1 text-compact font-medium text-gray-500">
               {[formatAge(selected.dateOfBirth), selected.group?.name].filter(Boolean).join(" · ")}
             </p>
           </div>
@@ -115,11 +115,11 @@ export default function ParentHomePage() {
 
         <Link
           href={`/children/${selected.id}/portfolio`}
-          className="group flex w-full items-center justify-between gap-5 overflow-hidden rounded-3xl border border-gray-100 bg-gradient-to-r from-white to-gray-100/80 px-6 py-4 shadow-sm transition-[border-color,box-shadow] hover:border-primary/30 hover:shadow-md lg:min-w-[390px] lg:max-w-[430px]"
+          className="group flex w-full items-center justify-between gap-5 overflow-hidden rounded-card border border-gray-100 bg-gradient-to-r from-white to-gray-100/80 px-6 py-4 shadow-sm transition-[border-color,box-shadow] hover:border-primary/30 hover:shadow-md lg:min-w-[390px] lg:max-w-[430px]"
         >
-          <span className="text-xl font-bold text-gray-800">{PORTFOLIO}</span>
+          <span className="text-title font-bold text-gray-800">{PORTFOLIO}</span>
           <span
-            className="relative grid size-20 shrink-0 place-items-end overflow-hidden rounded-2xl bg-amber-100"
+            className="relative grid size-20 shrink-0 place-items-end overflow-hidden rounded-card bg-amber-100"
             aria-hidden="true"
           >
             <NextImage
@@ -160,10 +160,7 @@ export default function ParentHomePage() {
         `/children/:id/finance`, the same route `(app)/layout.tsx`'s sidebar
         points its own "Төлбөр" row at.
       */}
-      <section
-        aria-label="Түргэн холбоос"
-        className="rounded-[24px] bg-blue-50/40 p-4 sm:p-5 lg:p-6"
-      >
+      <section aria-label="Түргэн холбоос" className="rounded-card bg-blue-50/40 p-4 sm:p-5 lg:p-6">
         <QuickTileGrid className="gap-3 lg:gap-4">
           <QuickTile
             href="/notifications"

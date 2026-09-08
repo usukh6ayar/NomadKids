@@ -229,7 +229,8 @@ export function AgePhotoAlbum({ childId, age }: { childId: string; age: Age }) {
                       <MediaThumb
                         mediaId={item.thumbnailMediaId}
                         caption={AGE_ALBUM_CATEGORY_LABEL[item.category]}
-                        className="aspect-[4/3] rounded-none"
+                        flush
+                        className="aspect-[4/3]"
                       />
                     ) : (
                       <span
@@ -374,7 +375,8 @@ function TeacherAlbumCard({
               <MediaThumb
                 mediaId={page.items[0].id}
                 caption={title}
-                className="aspect-[4/3] rounded-none object-cover"
+                flush
+                className="aspect-[4/3] object-cover"
               />
             ) : (
               <span className="flex aspect-[4/3] items-center justify-center bg-gradient-to-br from-[#eeeaff] to-[#eaf5ff] text-[#5c63a8]">

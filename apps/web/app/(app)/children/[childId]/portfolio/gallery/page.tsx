@@ -68,11 +68,7 @@ export default function PhotoAlbumLandingPage() {
                 className="card-interactive group block overflow-hidden rounded-card border border-border bg-surface shadow-sm"
               >
                 {cover ? (
-                  <MediaThumb
-                    mediaId={cover}
-                    caption={`${age} насны ковер`}
-                    className="rounded-none"
-                  />
+                  <MediaThumb mediaId={cover} caption={`${age} насны ковер`} flush />
                 ) : (
                   <span className="flex aspect-square items-center justify-center bg-[linear-gradient(145deg,#e9f7ff_0%,#fff2e8_100%)] text-primary">
                     <Images size={36} aria-hidden="true" />

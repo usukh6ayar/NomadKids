@@ -307,7 +307,7 @@ function GuardianTodayAttendance({
           <p className="text-body text-muted">{todayLabel(today)}</p>
           <p className="mt-1 flex items-start gap-2 text-body font-medium text-ink">
             <span
-              className="mt-[7px] size-2 shrink-0 rounded-full bg-mint-ink"
+              className="mt-[7px] size-2 shrink-0 rounded-pill bg-mint-ink"
               aria-hidden="true"
             />
             {sentence}
@@ -480,7 +480,7 @@ function TodayRecorder({
           <p className="text-body text-muted">{todayLabel(today)}</p>
           <p className="mt-1 flex items-start gap-2 text-body font-medium text-ink">
             <span
-              className="mt-[7px] size-2 shrink-0 rounded-full bg-mint-ink"
+              className="mt-[7px] size-2 shrink-0 rounded-pill bg-mint-ink"
               aria-hidden="true"
             />
             {eventSentence(todayRecord)}
@@ -1186,7 +1186,7 @@ function RequestDialog({ childId, onClose }: { childId: string; onClose: () => v
               htmlFor={attachmentId}
               className="flex min-h-20 cursor-pointer items-center gap-3 rounded-control border border-dashed border-faint bg-sunken px-4 py-3 text-body transition-colors hover:border-primary hover:bg-primary-soft"
             >
-              <span className="grid size-10 shrink-0 place-items-center rounded-full bg-sky text-primary">
+              <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-sky text-primary">
                 <Paperclip size={18} aria-hidden="true" />
               </span>
               <span className="min-w-0">

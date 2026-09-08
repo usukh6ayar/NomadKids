@@ -1341,7 +1341,7 @@ function ParentSidebarContent({
         <button
           type="button"
           onClick={() => void logout()}
-          className="flex min-h-[48px] w-full items-center gap-3 rounded-2xl px-3 text-left text-base font-semibold text-rose-600 transition-colors hover:bg-rose-50"
+          className="flex min-h-[48px] w-full items-center gap-3 rounded-card px-3 text-left text-lead font-semibold text-rose-600 transition-colors hover:bg-rose-50"
         >
           <LogOut size={21} className="text-sky-500" aria-hidden="true" />
           <span>Системээс гарах</span>
@@ -1378,12 +1378,12 @@ function ParentSidebarRow({ item, pathname }: { item: ParentSidebarEntry; pathna
       <span className="min-w-0 flex-1 leading-snug">{item.label}</span>
       {item.badge === "unread" ? <ParentUnreadBadge /> : null}
       {item.tag ? (
-        <span className="shrink-0 text-sm font-medium text-sky-600">{item.tag}</span>
+        <span className="shrink-0 text-compact font-medium text-sky-600">{item.tag}</span>
       ) : null}
     </>
   );
   const className = cn(
-    "flex min-h-[47px] w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-base transition-colors",
+    "flex min-h-[47px] w-full items-center gap-3 rounded-card px-3 py-2.5 text-left text-lead transition-colors",
     active
       ? "bg-sky-50 font-semibold text-sky-700"
       : item.href
@@ -1405,7 +1405,7 @@ function ParentUnreadBadge() {
   if (count === 0) return null;
 
   return (
-    <span className="flex min-w-6 shrink-0 items-center justify-center rounded-full bg-rose-500 px-1.5 text-xs font-bold leading-6 text-white">
+    <span className="flex min-w-6 shrink-0 items-center justify-center rounded-pill bg-rose-500 px-1.5 text-caption font-bold leading-6 text-white">
       <span aria-hidden="true">{count > 99 ? "99+" : count}</span>
       <span className="sr-only">{count} уншаагүй мэдэгдэл</span>
     </span>
@@ -1477,9 +1477,9 @@ function ChildSwitcherControl({ switcher }: { switcher: ChildSwitcher }) {
   if (!selected) return null;
 
   return (
-    <label className="relative flex min-h-[64px] w-full cursor-pointer items-center gap-3 rounded-[22px] border border-sky-100 bg-sky-50/40 px-3 py-2.5 text-slate-700 transition-colors hover:bg-sky-50 focus-within:ring-2 focus-within:ring-sky-400 focus-within:ring-offset-2">
+    <label className="relative flex min-h-[64px] w-full cursor-pointer items-center gap-3 rounded-card border border-sky-100 bg-sky-50/40 px-3 py-2.5 text-slate-700 transition-colors hover:bg-sky-50 focus-within:ring-2 focus-within:ring-sky-400 focus-within:ring-offset-2">
       <ChildAvatar child={selected} size={44} className="bg-sky-100 text-sky-700" />
-      <span className="min-w-0 flex-1 truncate text-base font-semibold">{fullName(selected)}</span>
+      <span className="min-w-0 flex-1 truncate text-lead font-semibold">{fullName(selected)}</span>
       <ChevronDown size={20} className="shrink-0 text-slate-700" aria-hidden="true" />
       <select
         id="child-switcher"

@@ -155,7 +155,7 @@ export function AttendanceCalendar({ childId }: { childId: string }) {
               {summaryItems.map((item) => (
                 <div key={item.key} className="rounded-row bg-sunken px-3 py-3">
                   <span className="flex items-center gap-1.5 text-caption text-muted">
-                    <span className={cn("size-2 rounded-full", item.dot)} aria-hidden="true" />
+                    <span className={cn("size-2 rounded-pill", item.dot)} aria-hidden="true" />
                     {item.label}
                   </span>
                   <strong className="mt-1 block text-title font-semibold text-ink">
@@ -186,7 +186,7 @@ export function AttendanceCalendar({ childId }: { childId: string }) {
                     }}
                     aria-hidden="true"
                   />
-                  <span className="text-center text-[11px] leading-tight text-muted">
+                  <span className="text-center text-caption leading-tight text-muted">
                     {item.label}
                   </span>
                 </div>
@@ -232,7 +232,7 @@ export function AttendanceCalendar({ childId }: { childId: string }) {
               {summaryItems.map((item) => (
                 <span key={item.key} className="flex items-center gap-1.5 text-caption text-muted">
                   <span
-                    className={cn("size-2.5 shrink-0 rounded-full", item.dot)}
+                    className={cn("size-2.5 shrink-0 rounded-pill", item.dot)}
                     aria-hidden="true"
                   />
                   {item.label}
