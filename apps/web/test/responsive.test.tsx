@@ -301,6 +301,10 @@ describe("design tokens", () => {
       ["sky", "#cde7f7", "#1d4e89"],
       ["sun", "#f8e6a0", "#7a5810"],
       ["peach", "#f8d5c2", "#9a4a25"],
+      ["cornflower", "#e6eefb", "#2b5aa8"],
+      ["teal", "#cfeeeb", "#14615c"],
+      // ★ The seventh accent, added 2026-09-09 — girls, in a sex split.
+      ["pink", "#fde1e8", "#a82d50"],
     ];
     for (const [name, tint, ink] of pairs) {
       expect(GLOBALS_CSS).toContain(ink);
@@ -321,12 +325,13 @@ describe("design tokens", () => {
    */
   it("draws charts in a lighter palette than it writes text in", () => {
     const pairs: [string, string, string][] = [
-      ["sky", "#1d4e89", "#1a86d6"],
-      ["mint", "#1f6b4d", "#12a066"],
-      ["sun", "#7a5810", "#bf8305"],
-      ["peach", "#9a4a25", "#e05a24"],
-      ["cornflower", "#2b5aa8", "#4f7ce8"],
-      ["teal", "#14615c", "#0d938c"],
+      ["sky", "#1d4e89", "#3d93dd"],
+      ["mint", "#1f6b4d", "#1fa370"],
+      ["sun", "#7a5810", "#c08a14"],
+      ["peach", "#9a4a25", "#ea6a44"],
+      ["cornflower", "#2b5aa8", "#6b8ded"],
+      ["teal", "#14615c", "#1ba39a"],
+      ["pink", "#a82d50", "#ec5183"],
     ];
 
     for (const [name, ink, chart] of pairs) {

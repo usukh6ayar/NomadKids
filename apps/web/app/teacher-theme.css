@@ -257,6 +257,16 @@ body:has([data-app-theme]) nav a[aria-current="page"] {
   background-color: #fff2ec;
 }
 
+/* The roster total, so it is not the same blue as the boys' card beside it. */
+[data-app-theme] main [data-ui="card"].teacher-stat-cornflower {
+  background-color: #f1f5fe;
+}
+
+/* Girls — see `--color-pink`'s note in globals.css. */
+[data-app-theme] main [data-ui="card"].teacher-stat-pink {
+  background-color: #fff0f6;
+}
+
 [data-app-theme] main [data-ui="sunken-panel"] {
   background-color: var(--color-sunken);
 }

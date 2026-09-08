@@ -25,6 +25,20 @@ export const TONE_MEANING = {
   cornflower: "category",
   /** Progress, analytics, secondary positive. */
   teal: "progress",
+  /**
+   * Girls, in a sex split. Deliberately narrow.
+   *
+   * ★ The seventh accent, and the only one named for a category rather than a
+   * state — added 2026-09-09 because the roster drew girls in `peach` and boys
+   * in `mint`, which mean *attention* and *complete*. A tone is a meaning, and
+   * those two were the wrong ones on a chart about children.
+   *
+   * It stays narrow on purpose: `cornflower` is the general "category" accent
+   * and remains so. This one exists for the one split every Mongolian
+   * kindergarten register keeps, where pink and blue are the convention rather
+   * than a decoration.
+   */
+  pink: "girls",
 } as const;
 
 export type Tone = keyof typeof TONE_MEANING;
@@ -49,6 +63,7 @@ export const TONE_SURFACE: Record<Tone, string> = {
   peach: "bg-peach text-peach-ink",
   cornflower: "bg-cornflower text-cornflower-ink",
   teal: "bg-teal text-teal-ink",
+  pink: "bg-pink text-pink-ink",
 };
 
 /**
@@ -71,6 +86,7 @@ export const TONE_CARD: Record<Tone, string> = {
   peach: "bg-peach/40 border-peach",
   cornflower: "bg-cornflower/50 border-cornflower",
   teal: "bg-teal/40 border-teal",
+  pink: "bg-pink/40 border-pink",
 };
 
 /**
@@ -97,4 +113,5 @@ export const TONE_VAR: Record<Tone, string> = {
   peach: "var(--color-peach-chart)",
   cornflower: "var(--color-cornflower-chart)",
   teal: "var(--color-teal-chart)",
+  pink: "var(--color-pink-chart)",
 };

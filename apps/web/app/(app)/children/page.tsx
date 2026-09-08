@@ -447,8 +447,8 @@ function RosterSummary({
           value={total}
           art={<Art name="child" size={36} />}
           artSurface={false}
-          tone="sky"
-          className="teacher-stat-card teacher-stat-sky"
+          tone="cornflower"
+          className="teacher-stat-card teacher-stat-cornflower"
           chart={
             counted > 0 ? (
               <Donut
@@ -456,8 +456,8 @@ function RosterSummary({
                 className="hidden md:block"
                 label={`${data.girls} охин, ${data.boys} хүү`}
                 segments={[
-                  { label: "Охид", value: data.girls, tone: "peach" },
-                  { label: "Хөвгүүд", value: data.boys, tone: "mint" },
+                  { label: "Охид", value: data.girls, tone: "pink" },
+                  { label: "Хөвгүүд", value: data.boys, tone: "sky" },
                 ]}
               />
             ) : undefined
@@ -474,13 +474,13 @@ function RosterSummary({
           label="Охид"
           value={data.girls}
           art={<Venus size={22} />}
-          tone="peach"
-          className="teacher-stat-card teacher-stat-peach"
+          tone="pink"
+          className="teacher-stat-card teacher-stat-pink"
           chart={
             counted > 0 ? (
               <Ring
                 size="sm"
-                tone="peach"
+                tone="pink"
                 percent={(data.girls / counted) * 100}
                 label={`Охид ${Math.round((data.girls / counted) * 100)}%`}
                 className="hidden md:grid"
@@ -492,13 +492,13 @@ function RosterSummary({
           label="Хөвгүүд"
           value={data.boys}
           art={<Mars size={22} />}
-          tone="mint"
-          className="teacher-stat-card teacher-stat-mint"
+          tone="sky"
+          className="teacher-stat-card teacher-stat-sky"
           chart={
             counted > 0 ? (
               <Ring
                 size="sm"
-                tone="mint"
+                tone="sky"
                 percent={(data.boys / counted) * 100}
                 label={`Хөвгүүд ${Math.round((data.boys / counted) * 100)}%`}
                 className="hidden md:grid"
