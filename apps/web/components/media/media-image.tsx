@@ -57,7 +57,22 @@ function tintFor(name: string): string {
   return AVATAR_TINTS[hash % AVATAR_TINTS.length]!;
 }
 
-export function ChildAvatar({
+/**
+ * ★ 2026-09-09 — `ChildAvatar` is an alias, not the implementation.
+ *
+ * Chat needed a teacher's portrait, and this component already drew one: a
+ * photograph if the person has one, their initials on a name-derived tint if
+ * not. Nothing in it was ever about childhood. Copying it for staff would have
+ * given the product two avatars that agree until one is edited, so the
+ * implementation took a person-neutral name and the old one points at it —
+ * every existing `ChildAvatar` call site keeps working untouched, and it still
+ * reads correctly at the roster and the family list where the person *is* a
+ * child.
+ *
+ * The prop stays `child` for the same reason: renaming it would be 40 edits
+ * that change no behaviour.
+ */
+export function PersonAvatar({
   child,
   size = 44,
   className,
@@ -98,6 +113,9 @@ export function ChildAvatar({
     </span>
   );
 }
+
+/** The same avatar, named for the roster and the family list. */
+export const ChildAvatar = PersonAvatar;
 
 /**
  * An observation photo.

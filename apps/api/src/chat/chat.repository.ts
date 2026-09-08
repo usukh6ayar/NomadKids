@@ -41,7 +41,7 @@ export class ChatRepository {
         roomKey: true,
         body: true,
         createdAt: true,
-        author: { select: { id: true, lastName: true, firstName: true } },
+        author: { select: { id: true, lastName: true, firstName: true, photoMediaFileId: true } },
       },
     });
   }
@@ -103,7 +103,7 @@ export class ChatRepository {
         body: true,
         createdAt: true,
         authorId: true,
-        author: { select: { id: true, lastName: true, firstName: true } },
+        author: { select: { id: true, lastName: true, firstName: true, photoMediaFileId: true } },
       },
     });
   }
@@ -126,7 +126,7 @@ export class ChatRepository {
         body: true,
         createdAt: true,
         authorId: true,
-        author: { select: { id: true, lastName: true, firstName: true } },
+        author: { select: { id: true, lastName: true, firstName: true, photoMediaFileId: true } },
       },
     });
   }

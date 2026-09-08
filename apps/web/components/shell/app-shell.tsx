@@ -5,33 +5,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  Bell,
-  Boxes,
-  CalendarRange,
-  Carrot,
-  ChevronDown,
-  FileBarChart,
-  FileSignature,
-  FileText,
-  Images,
-  LayoutGrid,
-  LogOut,
-  MessageCircle,
-  Search,
-  Settings,
-  ShieldAlert,
-  ShoppingCart,
-  Sprout,
-  Truck,
-  UserCog,
-  X,
-  type LucideIcon,
-} from "lucide-react";
+import { Bell, ChevronDown, LogOut, Search, X } from "lucide-react";
 import {
   createContext,
   isValidElement,
-  useContext,
   useId,
   useState,
   type FormEvent,
@@ -54,11 +31,9 @@ import { qk } from "@/lib/api/keys";
 import { useLogout, useSession } from "@/lib/auth/session";
 import { formatRelative, fullName, initials } from "@/lib/format";
 import { BRAND } from "@/lib/vocabulary";
+import { Art } from "@/components/ui/art";
 import { cn } from "@/lib/utils";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
-import { IconChip } from "@/components/ui/icon-chip";
-import { Art, type ArtName } from "@/components/ui/art";
-import type { Tone } from "@/components/ui/tone";
 import { ChildAvatar } from "@/components/media/media-image";
 
 /** The bell panel reads five rows; the feed reads fifteen and paginates. */
@@ -138,63 +113,6 @@ export interface ChildSwitcher {
 
 const WorkspaceThemeContext = createContext<WorkspaceTheme | null>(null);
 
-type WorkspacePageIcon = {
-  Icon?: LucideIcon;
-  art?: ArtName;
-  tone: Tone;
-};
-
-const WORKSPACE_PAGE_ICONS: (WorkspacePageIcon & { match: string[] })[] = [
-  { match: ["хүүхд"], art: "child", tone: "sky" },
-  { match: ["ирц"], art: "attendance", tone: "mint" },
-  { match: ["бүлэг"], art: "group", tone: "sky" },
-  { match: ["багш"], art: "teacher", tone: "cornflower" },
-  { match: ["үнэлгээ"], art: "progress", tone: "peach" },
-  { match: ["хоол", "цэс"], art: "food", tone: "sun" },
-  { match: ["мэдээ", "самбар", "зарлал"], art: "notice", tone: "mint" },
-  { match: ["судалгаа"], art: "survey", tone: "sun" },
-  { match: ["чат"], Icon: MessageCircle, tone: "sky" },
-  { match: ["баримт"], Icon: FileText, tone: "cornflower" },
-  { match: ["тохиргоо"], Icon: Settings, tone: "cornflower" },
-  { match: ["тайлан"], Icon: FileBarChart, tone: "sky" },
-  { match: ["аюулгүй", "тохиолдол"], Icon: ShieldAlert, tone: "peach" },
-  { match: ["хэрэглэгч", "эрх"], Icon: UserCog, tone: "cornflower" },
-  { match: ["цэцэрлэг", "байгууллага", "платформ"], art: "kindergarten", tone: "sky" },
-  { match: ["хичээлийн жил", "улирал"], Icon: CalendarRange, tone: "sky" },
-  { match: ["гал тогоо", "жор"], art: "food", tone: "sun" },
-  { match: ["орц", "материал"], Icon: Carrot, tone: "mint" },
-  { match: ["нийлүүлэгч"], Icon: Truck, tone: "cornflower" },
-  { match: ["захиалга"], Icon: ShoppingCart, tone: "sun" },
-  { match: ["агуулах", "үлдэгдэл"], Icon: Boxes, tone: "mint" },
-  { match: ["нэхэмжлэх", "нэхэмжлэл"], art: "finance", tone: "sun" },
-  { match: ["санхүү", "төлбөр"], art: "finance", tone: "mint" },
-  { match: ["өргөдөл", "хүсэлт"], Icon: FileSignature, tone: "cornflower" },
-  { match: ["өсөлт", "хөгжил"], Icon: Sprout, tone: "mint" },
-  { match: ["зураг", "цомог"], Icon: Images, tone: "sky" },
-];
-
-function workspacePageIcon(title: string): WorkspacePageIcon {
-  const normalized = title.toLocaleLowerCase("mn-MN");
-  if (normalized === "самбар" || normalized.includes("удирдлагын самбар")) {
-    return { Icon: LayoutGrid, tone: "sky" as const };
-  }
-  return (
-    WORKSPACE_PAGE_ICONS.find(({ match }) => match.some((word) => normalized.includes(word))) ?? {
-      Icon: LayoutGrid,
-      tone: "sky" as const,
-    }
-  );
-}
-
-function WorkspacePageIconArt({ identity }: { identity: WorkspacePageIcon }) {
-  if (identity.art) {
-    return <Art name={identity.art} size={28} className="size-7 object-contain" />;
-  }
-
-  const Icon = identity.Icon ?? LayoutGrid;
-  return <Icon size={22} strokeWidth={2.2} />;
-}
-
 function navIconTone(label: string) {
   const normalized = label.toLocaleLowerCase("mn-MN");
   if (normalized.includes("ирц") || normalized.includes("хүүхд")) {
@@ -242,7 +160,6 @@ export function PageHeader({
   title,
   actions,
   search = false,
-  icon,
   meta,
   lede,
 }: {
@@ -277,49 +194,60 @@ export function PageHeader({
    */
   meta?: ReactNode;
 }) {
-  const workspaceTheme = useContext(WorkspaceThemeContext);
-  const pageIdentity = workspaceTheme && !icon ? workspacePageIcon(title) : null;
+  /*
+    ★ With the title `sr-only`, this row can be empty — and an empty row still
+    spends its own bottom margin.
+
+    Before, the heading guaranteed something was always drawn here, so the
+    24px below it was always separating two visible things. On a screen that
+    passes only a `title`, the header is now nothing at all, and the margin
+    became a gap at the top of the page with no cause a reader could see. The
+    margin is therefore conditional on the row actually rendering something.
+  */
+  const hasVisibleRow = Boolean(lede || meta || search || actions);
 
   return (
     <div
       data-ui="page-header"
-      className="mb-4 flex flex-wrap items-center justify-between gap-3 lg:mb-6"
+      className={cn(
+        "flex flex-wrap items-center justify-between gap-3",
+        hasVisibleRow && "mb-4 lg:mb-6",
+      )}
     >
-      {/* No `flex-1`: the search below centres itself with auto margins, and a
-          title that grew to fill the row would leave those margins nothing to
-          absorb. `min-w-0` still lets a long title shrink rather than push. */}
       {/*
-        The identity block: chip and titles on one row, so a wrapping title
-        stays beside its icon rather than under it. `items-start` keeps the
-        chip aligned to the first line of a two-line heading.
+        ★ 2026-09-09 — the screen's icon went with the title.
+
+        The chip existed to give a heading a face. With the heading `sr-only`
+        it had nothing to sit beside: a 48px illustrated square alone at the
+        left of a row of buttons reads as a stray graphic, not as the identity
+        of anything. Removed on the client's instruction, in the same pass.
+
+        The `icon` prop stays in the signature: 9 screens pass one, and taking
+        it away would be 9 edits to say the same thing this line already says.
+        `workspacePageIcon` and `WorkspacePageIconArt` had no other caller and
+        are gone with it.
       */}
       <div className="flex min-w-0 items-start gap-3">
-        {icon ? <div className="mt-0.5 shrink-0">{icon}</div> : null}
-        {pageIdentity ? (
-          <div className="teacher-page-icon mt-0.5 shrink-0">
-            <IconChip
-              icon={<WorkspacePageIconArt identity={pageIdentity} />}
-              tone={pageIdentity.tone}
-              size="lg"
-              surface={!pageIdentity.art}
-            />
-          </div>
-        ) : null}
-
         <div className="min-w-0">
           {/*
-          ★ `font-semibold` is not decoration here.
+          ★ 2026-09-09 — the title is `sr-only`. It is not gone.
 
-          Tailwind's preflight resets heading weight to `inherit`, so without it
-          this `<h1>` rendered at 400 while `SectionHeader`'s `<h2>` renders at
-          600 — every section heading on every screen was bolder than the page
-          title above it, which is the hierarchy exactly inverted. Every other
-          heading in the product sets its weight explicitly; this was the one
-          that did not.
+          Every screen opened by repeating, in 23px type, the exact words of
+          the sidebar row that had just been pressed: "Хувийн тохиргоо" in the
+          menu, then "Хувийн тохиргоо" again at the top of the page. On the
+          client's instruction the duplication comes off all 58 screens.
+
+          It stays in the accessibility tree rather than being deleted. A
+          document with no `<h1>` has no name in a screen reader's landmark
+          list and no top level in its outline, so removing the element would
+          trade a visual annoyance for a navigational one — and the sidebar's
+          `aria-current="page"`, which is what makes the visible copy
+          redundant, is not a substitute for the page's own heading.
+
+          `sr-only` and not `lg:sr-only`: the request was for every width. On a
+          phone the drawer's own header and the bottom bar carry the location.
         */}
-          <h1 className="text-heading font-semibold leading-[1.3] tracking-[-.01em] text-ink md:text-display md:leading-[1.35]">
-            {title}
-          </h1>
+          <h1 className="sr-only">{title}</h1>
 
           {lede ? <div className="mt-1 text-body text-muted">{lede}</div> : null}
 
@@ -829,6 +757,15 @@ export function AppShell({
           that have room to give. Desktop starts directly with the page header;
           the separate top toolbar was removed so it does not spend a full row
           on controls already available from the sidebar and each list page.
+
+          ★ The cap is 1920px as of 2026-09-09, raised from 1420px on the
+          client's instruction that the desktop layout should use the full
+          width. It is a raise rather than a removal: at 1420px a 2560px
+          monitor left a third of the screen empty on either side, and with no
+          cap at all the same monitor gives a register row roughly 2400px of
+          travel between a child's name and the figure at the end of it, which
+          is the distance the eye loses a row over. 1920px covers every laptop
+          and nearly every desktop panel in use; only wider ones centre.
         */}
           <main
             data-layout={isChatPage ? "full-page" : "content"}
@@ -836,7 +773,7 @@ export function AppShell({
               "w-full",
               isChatPage
                 ? "h-[calc(100dvh-4.25rem)] overflow-hidden pb-[calc(var(--size-bottom-nav)+env(safe-area-inset-bottom))] lg:h-dvh lg:max-w-none lg:pb-0"
-                : "mx-auto max-w-[1420px] px-4 pb-24 pt-4 sm:px-6 lg:px-7 lg:pb-16 lg:pt-6 2xl:px-8",
+                : "mx-auto max-w-[1920px] px-4 pb-24 pt-4 sm:px-6 lg:px-7 lg:pb-16 lg:pt-6 2xl:px-8",
             )}
           >
             {children}
@@ -884,15 +821,14 @@ function Brand({ subtitle }: { subtitle: string }) {
       */}
       <span
         data-brand-mark
-        className="grid size-10 shrink-0 place-items-center rounded-control bg-primary-soft p-0.5"
+        className="grid size-[52px] shrink-0 place-items-center overflow-hidden rounded-control border border-border-soft bg-white"
       >
         <Image
-          src="/mark.png"
+          src="/logo-transparent.png"
           alt={BRAND}
-          width={36}
-          height={26}
-          className="w-full object-contain"
-          style={{ height: "auto" }}
+          width={52}
+          height={52}
+          className="size-full object-contain"
         />
       </span>
       <span className="min-w-0">
@@ -1495,15 +1431,14 @@ function MobileHeader({ subtitle }: { subtitle: string }) {
       <Link href="/" className="flex min-h-[44px] items-center gap-3">
         <span
           data-brand-mark
-          className="grid size-[34px] shrink-0 place-items-center rounded-control bg-primary-soft p-0.5"
+          className="grid size-[42px] shrink-0 place-items-center overflow-hidden rounded-control border border-border-soft bg-white"
         >
           <Image
-            src="/mark.png"
+            src="/logo-transparent.png"
             alt={BRAND}
-            width={30}
-            height={22}
-            className="w-full object-contain"
-            style={{ height: "auto" }}
+            width={42}
+            height={42}
+            className="size-full object-contain"
           />
         </span>
         <span className="min-w-0">

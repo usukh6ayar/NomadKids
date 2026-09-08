@@ -110,17 +110,16 @@ beforeEach(() => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("the brand header", () => {
-  it("renders the existing logo mark, named for a screen reader", async () => {
+  it("renders the full logo, named for a screen reader", async () => {
     renderShell(["TEACHER"]);
     const nav = await sidebar();
 
     const mark = within(nav).getByAltText(BRAND);
     expect(mark).toBeInTheDocument();
-    // `/mark.png` — the brand mark regenerated from the 1254² original. The
-    // filename is asserted rather than merely "some image", because the sidebar
-    // renders it through next/image and a missing public asset is a 404 the
-    // component itself never notices.
-    expect(mark.getAttribute("src")).toContain("mark.png");
+    // The filename is asserted rather than merely "some image", because the
+    // sidebar renders it through next/image and a missing public asset is a 404
+    // the component itself never notices.
+    expect(mark.getAttribute("src")).toContain("logo-transparent.png");
   });
 
   it("links the brand home", async () => {

@@ -3430,12 +3430,29 @@ export const chatRoomSchema = z.object({
 });
 export type ChatRoom = z.infer<typeof chatRoomSchema>;
 
+/**
+ * A chat message's author — a `personRef` plus their portrait.
+ *
+ * ★ Its own schema rather than a widened `personRefSchema`.
+ *
+ * `personRefSchema` names a person in 32 payloads across this file, most of
+ * them lists where a photograph is neither wanted nor cheap to join. Adding
+ * `photoMediaFileId` there would put an optional field on all of them to serve
+ * one, and every reader would then have to know it is only ever populated in
+ * the chat. A room is the one place the product shows who is talking as a
+ * face, so it carries the face itself.
+ */
+export const chatAuthorSchema = personRefSchema.extend({
+  photoMediaFileId: uuidSchema.nullish(),
+});
+export type ChatAuthor = z.infer<typeof chatAuthorSchema>;
+
 export const chatMessageSchema = z.object({
   id: uuidSchema,
   roomKey: z.string(),
   body: z.string(),
   createdAt: z.string(),
-  author: personRefSchema.nullish(),
+  author: chatAuthorSchema.nullish(),
   /** Whether the signed-in reader wrote it — the client aligns their own right. */
   mine: z.boolean().default(false),
 });

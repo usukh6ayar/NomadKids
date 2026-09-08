@@ -216,12 +216,22 @@ describe("PageHeader", () => {
     expect(screen.queryByTestId("header-icon")).not.toBeInTheDocument();
   });
 
-  it("renders the icon slot", () => {
+  /**
+   * ★ 2026-09-09 — the header draws neither the title nor the icon.
+   *
+   * Both came off on the client's instruction: the title duplicated the
+   * sidebar row that had just been pressed, and once it was `sr-only` the
+   * chip beside it had nothing to identify. `icon` stays in the signature
+   * because nine screens pass one, so what this now pins is that passing one
+   * is harmless — it is accepted and not painted — and that the heading
+   * survives for assistive technology.
+   */
+  it("accepts an icon without drawing it, and keeps the heading", () => {
     renderWithProviders(
       <PageHeader title="Нүүр" icon={<IconChip icon={<span>i</span>} label="Нүүр" />} />,
     );
 
-    expect(screen.getByRole("img", { name: "Нүүр" })).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "Нүүр" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Нүүр" })).toBeInTheDocument();
   });
 
@@ -241,7 +251,10 @@ describe("PageHeader", () => {
       />,
     );
 
-    expect(screen.getByRole("img", { name: "Судалгаа" })).toBeInTheDocument();
+    // The icon is not drawn (see above); `meta` and `actions` are what the
+    // row still carries, and this is the case that keeps them from being lost
+    // to each other's layout.
+    expect(screen.queryByRole("img", { name: "Судалгаа" })).not.toBeInTheDocument();
     expect(screen.getByText("3 идэвхтэй")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Нэмэх" })).toBeInTheDocument();
   });

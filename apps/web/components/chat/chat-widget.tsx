@@ -26,6 +26,7 @@ import { useSession } from "@/lib/auth/session";
 import { Input } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/states";
 import { fullName } from "@/lib/format";
+import { PersonAvatar } from "@/components/media/media-image";
 import { cn } from "@/lib/utils";
 
 const roomsSchema = z.array(chatRoomSchema);
@@ -719,6 +720,21 @@ function ChatEmptyState() {
  * narrow panel unreadable.
  */
 function MessageBubble({ message }: { message: z.infer<typeof chatMessageSchema> }) {
+  /*
+    ★ 2026-09-09 — other people's messages carry their portrait.
+
+    A room is the one screen in the product that is about who is speaking, and
+    a column of identical grey bubbles above a name in 12px type makes two
+    teachers in the same room hard to tell apart at a glance. `PersonAvatar`
+    already answers this: a photograph if the person has one, their initials on
+    a tint derived from their name if not — so a room reads the same whether
+    anybody has uploaded a picture.
+
+    Not on your own messages, for the reason the name is not on them either:
+    you know who you are, and a 32px face repeated down the right-hand side of
+    a 400px panel is the noise that makes it unreadable. That asymmetry is why
+    the avatar sits inside the row rather than being a column of its own.
+  */
   return (
     <li className={cn("flex flex-col", message.mine ? "items-end" : "items-start")}>
       {!message.mine ? (
@@ -726,15 +742,28 @@ function MessageBubble({ message }: { message: z.infer<typeof chatMessageSchema>
           {fullName(message.author)}
         </span>
       ) : null}
-      <div
+      <div className={cn("flex max-w-[82%] items-end gap-2 sm:max-w-[72%]")}>
+        {!message.mine ? (
+          <PersonAvatar child={message.author ?? {}} size={32} className="mb-4 shrink-0 self-end" />
+        ) : null}
+        <div
+          className={cn(
+            "min-w-0 rounded-card px-3.5 py-2.5",
+            message.mine
+              ? "bg-primary text-primary-ink"
+              : "border border-border bg-surface text-ink",
+          )}
+        >
+          <p className="whitespace-pre-wrap break-words text-body">{message.body}</p>
+        </div>
+      </div>
+      <span
         className={cn(
-          "max-w-[82%] rounded-card px-3.5 py-2.5 sm:max-w-[72%]",
-          message.mine ? "bg-primary text-primary-ink" : "border border-border bg-surface text-ink",
+          "mt-0.5 text-caption tabular-nums text-faint",
+          // Line the clock up under the bubble, not under the avatar.
+          message.mine ? "px-1" : "px-1 ms-10",
         )}
       >
-        <p className="whitespace-pre-wrap break-words text-body">{message.body}</p>
-      </div>
-      <span className="mt-0.5 px-1 text-caption tabular-nums text-faint">
         {timeOfDay(message.createdAt)}
       </span>
     </li>

@@ -39,19 +39,29 @@ describe("heading hierarchy", () => {
    * looks wrong; the `<h1>` is a real `<h1>` and the outline is correct. Only
    * the visual weight was inverted.
    */
-  it("the page title is at least as heavy as the section headings beneath it", async () => {
+  /**
+   * ★ 2026-09-09 — this asserted the `<h1>` was at least as heavy as the
+   * `<h2>`s under it. There is no visible `<h1>` any more.
+   *
+   * Every screen repeated, in 23px type, the words of the sidebar row that had
+   * just been pressed, and the client asked for the duplication to go. The
+   * heading is `sr-only` now, so a weight comparison has nothing to compare —
+   * but the reason it was worth asserting has not changed: the page must still
+   * *have* a heading, or it has no name in a screen reader's landmark list and
+   * no top level in its outline. That is what this checks instead.
+   */
+  it("keeps a page heading for assistive technology, with nothing drawn", async () => {
     stubApi([{ path: "/auth/me", body: sessionFor(["PARENT"]) }]);
 
     const { container } = renderWithProviders(<PageHeader title="Гарчиг" />);
     const h1 = await waitFor(() => container.querySelector("h1")!);
 
-    const { container: section } = render(<SectionHeader title="Дэд гарчиг" />);
-    const h2 = section.querySelector("h2")!;
+    expect(h1).toHaveTextContent("Гарчиг");
+    expect(h1.className, "the page title is present but not painted").toContain("sr-only");
 
-    expect(h1.className, "the page title must set its weight explicitly").toContain(
-      "font-semibold",
-    );
-    expect(h2.className).toContain("font-semibold");
+    // The section headings below it are still the visible hierarchy.
+    const { container: section } = render(<SectionHeader title="Дэд гарчиг" />);
+    expect(section.querySelector("h2")!.className).toContain("font-semibold");
   });
 
   /**
@@ -72,9 +82,11 @@ describe("heading hierarchy", () => {
 
     const failed = renderWithProviders(<DashboardPage />);
     await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+    // ★ `sr-only` since 2026-09-09 — see the test above. What this case is
+    // for is unchanged: the heading must not change between the error branch
+    // and the loaded branch, which is what the final assertion compares.
     const whenFailed = failed.container.querySelector("h1")!.className;
-    expect(whenFailed).toContain("text-display");
-    expect(whenFailed).toContain("font-semibold");
+    expect(whenFailed).toContain("sr-only");
     failed.unmount();
 
     stubApi([
