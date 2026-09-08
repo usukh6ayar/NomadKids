@@ -1,15 +1,13 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { z } from "zod";
-import { ArrowLeft } from "lucide-react";
 import { ageProfileSchema, childDetailSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
-import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/ui/back-button";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { GradientUnderline } from "@/components/child/portfolio-hero";
 import { AgeProfileProgress } from "@/components/child/age-profile-progress";
@@ -61,14 +59,7 @@ export default function AgeProfilePage() {
     enabled: age !== undefined,
   });
 
-  const backLink = (
-    <Button asChild variant="ghost" size="sm" className="-ml-2 self-start">
-      <Link href={`/children/${childId}/portfolio/growth/age`}>
-        <ArrowLeft size={18} />
-        Насны мэдээлэл
-      </Link>
-    </Button>
-  );
+  const backLink = <BackButton href={`/children/${childId}/portfolio/growth/age`} />;
 
   // RFP §4.3 fixes this at 2–5; anything else in the URL is a bad link, not a
   // record this page can render.

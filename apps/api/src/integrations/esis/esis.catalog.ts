@@ -46,6 +46,17 @@ const META: Record<EsisEndpointKey, EsisEndpointMeta> = {
       "лавлагаа — ESIS_REQUEST.md §1.1 (b) ба §1.3-аар зориуд хүсээгүй. Тулгалтыг " +
       "`personId`-аар хийнэ.",
   },
+  studentByRegister: {
+    name: "Регистрээр хайх",
+    domain: "ROSTER",
+    usage: "Нэг хүүхдийг регистрийн дугаараар ESIS-ээс олох",
+    previewable: false,
+    note:
+      "Регистрийн дугаарыг эрхлэгч гараар бичиж **илгээнэ** — ESIS_REQUEST.md §1.1 (b) " +
+      "нь регистрийн дугаарыг хүлээж авч хадгалахыг татгалзсан бөгөөд энэ нь тэр биш. " +
+      "Буцаж ирсэн бичлэг `students`-ийн ижил талбаруудаар хязгаарлагдана: " +
+      "`personRegNumber` энд ч мөн адил авахгүй талбар.",
+  },
   groupStudents: {
     name: "Бүлгийн суралцагч",
     domain: "ROSTER",

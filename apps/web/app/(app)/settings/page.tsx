@@ -1,16 +1,8 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import {
-  BriefcaseBusiness,
-  Building2,
-  CheckCircle2,
-  Database,
-  KeyRound,
-  Mail,
-  Pencil,
-} from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { BriefcaseBusiness, Building2, Database, KeyRound, Mail } from "lucide-react";
 import { z } from "zod";
 import {
   esisMyProfileSchema,
@@ -25,11 +17,10 @@ import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useLogout, useSession } from "@/lib/auth/session";
 import { buildEsisDemoProfile, type EsisDemoField } from "@/lib/esis/demo-profile";
 import { Button } from "@/components/ui/button";
-import { Card, SectionHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Field, Input, PasswordInput, Textarea } from "@/components/ui/field";
+import { Card, SectionHeader } from "@/components/ui/card";
+import { Field, PasswordInput } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
-import { useToast } from "@/components/ui/toast";
 import { ChildAvatar } from "@/components/media/media-image";
 import { PhotoBadgeButton } from "@/components/media/photo-badge-button";
 
@@ -76,7 +67,7 @@ export default function SettingsPage() {
       <PageHeader title="Хувийн тохиргоо" />
 
       <div className="flex w-full max-w-[760px] flex-col gap-6 lg:gap-8">
-        <ProfileForm />
+        <ProfileCard />
         <EsisProfileSection />
         <SignOutCard />
       </div>
@@ -84,7 +75,20 @@ export default function SettingsPage() {
   );
 }
 
-/** ESIS values belong on the user's profile, visible without a separate pull action. */
+/**
+ * The signed-in person's employment record, on their own settings screen.
+ *
+ * ★ No "ESIS мэдээлэл" heading and no `Demo ESIS` badge — 2026-09-08, at the
+ * client's instruction, the same one that took them off the director's screens:
+ * the record is to read as this screen's own, not as a labelled import. Where
+ * the values come from is recorded here and on `/admin/integrations/esis`,
+ * which keeps its badges because it exists to answer exactly that question.
+ *
+ * ★★ It has always been built from the signed-in account — see
+ * `buildEsisDemoProfile`. The name, the e-mail and the position are the
+ * person's own; only the ESIS identifiers are illustrative, and no civil id,
+ * register number or credential is ever represented.
+ */
 function EsisProfileSection() {
   const { roles, primaryKindergartenId } = useSession();
   const { data, isLoading, isError } = useQuery({
@@ -102,10 +106,9 @@ function EsisProfileSection() {
   if (isLoading || esisQuery.isLoading || isError || !data) return null;
   if (esisQuery.isError) {
     return (
-      <section aria-labelledby="esis-profile-heading">
-        <SectionHeader id="esis-profile-heading" title="ESIS мэдээлэл" />
+      <section aria-label="Ажлын мэдээлэл">
         <Card pad="compact" tone="sun">
-          <p className="font-medium text-ink">ESIS мэдээлэл түр татагдсангүй.</p>
+          <p className="font-medium text-ink">Ажлын мэдээлэл түр татагдсангүй.</p>
           <p className="mt-1 text-body text-muted">{errorMessage(esisQuery.error)}</p>
         </Card>
       </section>
@@ -121,28 +124,18 @@ function EsisProfileSection() {
       .filter((field) => field.ingested)
       .map((field) => ({ label: field.label, value: live.row[field.name] ?? "—" }));
     return (
-      <section aria-labelledby="esis-profile-heading">
-        <SectionHeader
-          id="esis-profile-heading"
-          title="ESIS мэдээлэл"
-          action={
-            <Badge tone="mint">
-              <CheckCircle2 size={13} aria-hidden="true" />
-              Бодит ESIS синк
-            </Badge>
-          }
-        />
+      <section aria-label="Ажлын мэдээлэл">
         <Card pad="roomy" className="flex flex-col gap-5">
           <div className="flex flex-wrap items-start gap-3 border-b border-border-soft pb-5">
             <span className="flex size-11 shrink-0 items-center justify-center rounded-control bg-sky text-sky-ink">
               <Database size={21} aria-hidden="true" />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="font-semibold text-ink">
+              <h2 className="font-semibold text-ink">
                 {live.resource === "teachers" ? "Багшийн бүртгэл" : "Ажилтны бүртгэл"}
-              </p>
-              <p className="mt-0.5 text-body text-muted">
-                API {live.slug} · {live.endpoint}
+              </h2>
+              <p className="mt-0.5 break-all font-mono text-caption text-faint">
+                {live.slug} · {live.endpoint}
               </p>
             </div>
             <p className="shrink-0 text-caption text-muted">
@@ -151,7 +144,7 @@ function EsisProfileSection() {
           </div>
           <EsisFieldGroup
             icon={BriefcaseBusiness}
-            title={`ESIS гаралтын ${fields.length} талбар`}
+            title={`${fields.length} талбар`}
             fields={fields}
           />
         </Card>
@@ -166,11 +159,7 @@ function EsisProfileSection() {
       <SectionHeader
         id="esis-profile-heading"
         title="ESIS мэдээлэл"
-        action={
-          <Badge tone="sun">
-            Demo / Test data · MOCK
-          </Badge>
-        }
+        action={<Badge tone="sun">Demo / Test data · MOCK</Badge>}
       />
 
       <Card pad="roomy" className="flex flex-col gap-5">
@@ -180,10 +169,8 @@ function EsisProfileSection() {
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="font-semibold text-ink">{esis.resourceLabel}</p>
-              <Badge tone="sun">
-                Жинхэнэ ESIS синк биш
-              </Badge>
+              <h2 className="font-semibold text-ink">{esis.resourceLabel}</h2>
+              <Badge tone="sun">Жинхэнэ ESIS синк биш</Badge>
             </div>
             <p className="mt-0.5 text-body text-muted">
               Эх сурвалж: ESIS schema-тай mock fixture · {esis.resource}
@@ -236,361 +223,72 @@ function EsisFieldGroup({
   );
 }
 
-function ProfileForm() {
-  const queryClient = useQueryClient();
-  const toast = useToast();
-  const { roles } = useSession();
-
+/**
+ * Who is signed in, and their picture.
+ *
+ * ★ No editing — 2026-09-08, at the client's instruction: "цаанаасаа шууд
+ * оруулж мэдээлэл авах болохоор edit гэсэн хэсэгт байгаа edit-үүдийг арилга".
+ *
+ * The form this card used to open — овог, нэр, и-мэйл, утас, мэргэжил,
+ * боловсрол, танилцуулга — is gone, and `PATCH /me/profile` has no caller left
+ * in this product. What the panel below shows is what ESIS holds about this
+ * person, and the client's position is that it is not a thing to hand-correct
+ * here.
+ *
+ * ★★ Two things stayed, and both are deliberate:
+ *
+ *   The **picture**, because ESIS supplies none. Removing its badge would mean
+ *   nobody could ever set a profile photo again, which is not information
+ *   arriving from anywhere — it saves on selection, against its own endpoint.
+ *
+ *   The **password**, which was the last section of that form (see
+ *   `PasswordSection`'s own note for the two arrangements the client rejected
+ *   before it landed there). Changing a password is not correcting a record;
+ *   losing it with the form would have left an account with no way to rotate
+ *   its own credentials. It sits on the page now, folded shut, which is the
+ *   shape it already had inside the form.
+ */
+function ProfileCard() {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: qk.profile(),
     queryFn: () => get("/me/profile", profileSchema),
   });
-  const esisProfile = data ? buildEsisDemoProfile(data, roles) : null;
-  const specialization = data?.specialization || esisProfile?.profileDefaults.specialization || "";
 
-  const [form, setForm] = useState<Record<string, string>>({});
-  /**
-   * ★ A profile reads as a profile until you ask to change it.
-   *
-   * This screen was a form that was always open — six text inputs and a Save
-   * button, whether or not anybody intended to edit anything. That is a form
-   * with a heading, not a profile: there is no state in which a teacher can
-   * simply *look at* their own details, and an always-editable field invites
-   * the accidental keystroke that a Save button then makes permanent.
-   *
-   * Reading is the default and editing is a mode you enter deliberately, which
-   * is what "Засах дарж байгаад засна" asks for. Cancelling restores the saved
-   * values rather than keeping a half-typed draft around.
-   */
-  const [editing, setEditing] = useState(false);
-
-  useEffect(() => {
-    if (!data) return;
-    setForm({
-      lastName: data.lastName ?? "",
-      firstName: data.firstName ?? "",
-      email: data.email ?? "",
-      phone: data.phone ?? "",
-      specialization,
-      education: data.education ?? "",
-      bio: data.bio ?? "",
-    });
-  }, [data, specialization]);
-
-  const save = useMutation({
-    mutationFn: () =>
-      mutate("/me/profile", profileSchema, {
-        method: "PATCH",
-        body: {
-          lastName: form.lastName?.trim(),
-          firstName: form.firstName?.trim(),
-          // null clears the field; "" would fail the email format check.
-          email: form.email?.trim() || null,
-          phone: form.phone?.trim() || null,
-          specialization: form.specialization?.trim() || null,
-          education: form.education?.trim() || null,
-          bio: form.bio?.trim() || null,
-        },
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: qk.profile() });
-      // The shell shows the name, so the session has to be refreshed too.
-      void queryClient.invalidateQueries({ queryKey: qk.session() });
-      toast.success("Хувийн мэдээлэл хадгалагдлаа.");
-      setEditing(false);
-    },
-    onError: (error) => toast.error(errorMessage(error)),
-  });
-
-  /** Throws away the draft and returns to the read view. */
-  function cancelEdit() {
-    if (data) {
-      setForm({
-        lastName: data.lastName ?? "",
-        firstName: data.firstName ?? "",
-        email: data.email ?? "",
-        phone: data.phone ?? "",
-        specialization,
-        education: data.education ?? "",
-        bio: data.bio ?? "",
-      });
-    }
-    save.reset();
-    setEditing(false);
-  }
-
-  const errors = fieldErrors(save.error);
-
-  if (isLoading) return <LoadingState rows={4} shape="text" />;
+  if (isLoading) return <LoadingState rows={2} shape="text" />;
   if (isError) return <ErrorState description={errorMessage(error)} />;
 
   return (
-    <section aria-labelledby="profile-heading">
-      <SectionHeader id="profile-heading" title="Хувийн мэдээлэл" />
-
-      {!editing ? (
-        /*
-          The read view. A definition list rather than disabled inputs: a greyed
-          field still looks like something you failed to type into, where a
-          label over a value looks like a record — and an empty one says "—"
-          instead of showing a blank box.
-
-          ★ One card, with the picture in its header — it was two.
-
-          The upload sat in a `Card` of its own above this one: a dashed circle,
-          a full-width "Зураг нэмэх" button and a line of hint text, which is
-          most of a card's height to say one thing. Under it a second card held
-          the four fields. A profile is one record, and splitting it put a rule
-          and 16px of gap through the middle of it.
-
-          Now the picture leads the card and the person's name sits beside it,
-          which is the shape every profile converges on for the same reason: the
-          two identify the same person and belong on the same line.
-        */
-        <Card pad="roomy" className="flex flex-col gap-5">
-          {/*
-            ★ The picture is the control — 2026-09-06, at the client's request:
-            "зураг нэмэх гэж тусдаа button байхгүй, камерын зурагтай тэнд нь
-            дардаг болгоё".
-
-            A "Зураг нэмэх" button sat under the name and took a line of its
-            own to say what the avatar beside it already showed. The camera
-            badge is the affordance every product uses for this, it is on the
-            thing being changed, and it costs no layout — the same argument
-            `child-photo-button.tsx` made for a child's portrait, now shared as
-            `PhotoBadgeButton`.
-
-            `ChildAvatar` draws the picture, or the person's initials on a
-            tinted circle when there is none — a name is a real answer where
-            `SingleImageUpload`'s dashed ring reads as a broken image.
-
-            ★★ The badge stays outside the form and works in both states,
-            because this endpoint saves on selection: a picture chosen inside a
-            form with a Хадгалах button reads as unsaved until one is pressed.
-            Only ever the signed-in user's own — the API refuses any other id.
-          */}
-          <div className="flex flex-wrap items-center gap-4 border-b border-border-soft pb-5">
-            <span className="relative shrink-0">
-              <ChildAvatar child={data ?? {}} size={72} />
-              <PhotoBadgeButton
-                endpoint={`/users/${data?.id}/photo`}
-                label="Профайл зураг солих"
-                invalidateKeys={[qk.profile(), qk.session()]}
-              />
-            </span>
-
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-title font-semibold text-ink">
-                {[data?.lastName, data?.firstName].filter(Boolean).join(" ") || "—"}
-              </p>
-              <p className="truncate text-body text-muted">{data?.email || "И-мэйл оруулаагүй"}</p>
-            </div>
-
-            {/*
-              ★ Засах moved off the page header and into the card — same
-              request, second half: "тэр edit-ийг нь дээр нь байхгүйгээр box-ын
-              дотор нь оруулж гоё байрлуулж өгөх".
-
-              It belongs to this record, not to the screen, and the screen's
-              header is above a card that is now the only thing on the page —
-              so a control up there was pointing down at the one object beneath
-              it from outside its own box. On the identity row it sits opposite
-              the name it edits, which is where a profile puts it.
-            */}
-            <Button
-              variant="secondary"
-              size="sm"
-              className="shrink-0"
-              onClick={() => setEditing(true)}
-            >
-              <Pencil size={16} aria-hidden="true" />
-              Засах
-            </Button>
-          </div>
-
-          {/*
-            ★ One sentence when every optional field is empty, not four dashes.
-
-            The header already states the name and the email, so what is left
-            here is only what it does not say — and on a fresh account that is
-            Утас, Мэргэжил, Боловсрол and Танилцуулга, all blank. Four labels
-            over four em dashes reads as a form that failed to load, and it is
-            the first thing a new teacher sees on their own profile.
-
-            The dash is still right for *one* missing value among several: it
-            says "we asked and there is no answer". A whole card of them says
-            something else, so the empty case gets a sentence and the Засах
-            button in the header above is the next step.
-          */}
-          {!data?.phone && !specialization && !data?.education && !data?.bio ? (
-            <p className="text-body text-muted">
-              Утас, мэргэжил, боловсролоо нэмбэл багш нарын жагсаалтад бүрэн харагдана.
-            </p>
-          ) : (
-            <dl className="grid gap-4 sm:grid-cols-2">
-              <ReadField label="Утас" value={data?.phone} />
-              <ReadField label="Мэргэжил" value={specialization} />
-              <ReadField label="Боловсрол" value={data?.education} />
-              <ReadField label="Танилцуулга" value={data?.bio} className="sm:col-span-2" />
-            </dl>
-          )}
-        </Card>
-      ) : (
-        <Card pad="roomy" className="flex flex-col gap-5">
-          {/*
-            The same identity row as the read view, so pressing Засах changes
-            what is editable and not where anything is. The badge stays outside
-            the form below it, for the reason its own note gives: this endpoint
-            saves on selection, and a picture chosen inside a form with a
-            Хадгалах button reads as unsaved until one is pressed.
-          */}
-          <div className="flex flex-wrap items-center gap-4 border-b border-border-soft pb-5">
-            <span className="relative shrink-0">
-              <ChildAvatar child={data ?? {}} size={72} />
-              <PhotoBadgeButton
-                endpoint={`/users/${data?.id}/photo`}
-                label="Профайл зураг солих"
-                invalidateKeys={[qk.profile(), qk.session()]}
-              />
-            </span>
-
-            <p className="min-w-0 flex-1 text-body text-muted">
-              Зургаа солихдоо камерын тэмдэг дээр дарна уу.
-            </p>
-          </div>
-
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!save.isPending) save.mutate();
-            }}
-            className="flex flex-col gap-4"
-            noValidate
-          >
-            <FormError
-              message={
-                save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null
-              }
+    <section aria-label="Хувийн тохиргоо">
+      <Card pad="roomy" className="flex flex-col gap-5">
+        {/*
+          ★ The picture is the control — 2026-09-06, at the client's request:
+          "зураг нэмэх гэж тусдаа button байхгүй, камерын зурагтай тэнд нь
+          дардаг болгоё". `ChildAvatar` draws the picture, or the person's
+          initials on a tinted circle when there is none — a name is a real
+          answer where a dashed ring reads as a broken image.
+        */}
+        <div className="flex flex-wrap items-center gap-4">
+          <span className="relative shrink-0">
+            <ChildAvatar child={data ?? {}} size={72} />
+            <PhotoBadgeButton
+              endpoint={`/users/${data?.id}/photo`}
+              label="Профайл зураг солих"
+              invalidateKeys={[qk.profile(), qk.session()]}
             />
+          </span>
 
-            {/*
-            ★ The inline "Хадгалагдлаа." block that sat here is now a toast.
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-title font-semibold text-ink">
+              {[data?.lastName, data?.firstName].filter(Boolean).join(" ") || "—"}
+            </p>
+            <p className="truncate text-body text-muted">{data?.email || "И-мэйл оруулаагүй"}</p>
+          </div>
+        </div>
 
-            This form is long enough to scroll, and the submit button is at its
-            foot — so a confirmation rendered at the top was frequently off
-            screen at the moment it appeared, which is the failure mode
-            CLAUDE.md §5's "toast after save" exists to prevent. The error above
-            stays inline: it is attached to the fields the user has to fix.
-          */}
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Овог" error={errors.lastName} required>
-                {({ id, describedBy, invalid }) => (
-                  <Input
-                    id={id}
-                    aria-describedby={describedBy}
-                    invalid={invalid}
-                    value={form.lastName ?? ""}
-                    onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
-                  />
-                )}
-              </Field>
-
-              <Field label="Нэр" error={errors.firstName} required>
-                {({ id, describedBy, invalid }) => (
-                  <Input
-                    id={id}
-                    aria-describedby={describedBy}
-                    invalid={invalid}
-                    value={form.firstName ?? ""}
-                    onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
-                  />
-                )}
-              </Field>
-
-              <Field label="И-мэйл" error={errors.email}>
-                {({ id, describedBy, invalid }) => (
-                  <Input
-                    id={id}
-                    aria-describedby={describedBy}
-                    invalid={invalid}
-                    type="email"
-                    autoComplete="email"
-                    value={form.email ?? ""}
-                    onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                  />
-                )}
-              </Field>
-
-              <Field label="Утас" error={errors.phone}>
-                {({ id, describedBy, invalid }) => (
-                  <Input
-                    id={id}
-                    aria-describedby={describedBy}
-                    invalid={invalid}
-                    type="tel"
-                    inputMode="tel"
-                    autoComplete="tel"
-                    value={form.phone ?? ""}
-                    onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                  />
-                )}
-              </Field>
-            </div>
-
-            <Field label="Танилцуулга" error={errors.bio}>
-              {({ id, describedBy, invalid }) => (
-                <Textarea
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  value={form.bio ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, bio: e.target.value }))}
-                />
-              )}
-            </Field>
-
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit" disabled={save.isPending}>
-                {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
-              </Button>
-              <Button type="button" variant="ghost" onClick={cancelEdit} disabled={save.isPending}>
-                Болих
-              </Button>
-            </div>
-          </form>
-
-          {/*
-            ★ The password lives inside the edit card — corrected 2026-09-06,
-            twice.
-
-            It began as a permanently open card beside the profile: four policy
-            rules and three password fields on screen every time anybody came to
-            check their own telephone number, for a thing people do once a year.
-            The client asked for that to stop.
-
-            The first correction moved it into a dialog opened from a second
-            header button, and the client's answer was "шал сонин байна" — fair,
-            and the reason is legible in hindsight: two buttons where the screen
-            had one, and a modal for a form that belongs to the record already
-            open behind it. Changing your password is *editing your account*,
-            not a separate errand.
-
-            So it is the last section of the edit form, under a rule, folded
-            shut. You press Засах, and the way to change your password is where
-            you would look for it — "profile дотроо edit гэхэд нь".
-
-            ★★ Its own submit, and that is not an oversight.
-
-            `PATCH /me/profile` and `POST /auth/password` are two endpoints with
-            two outcomes, and the second signs every other device out. One
-            "Хадгалах" spanning both would make a name correction capable of
-            ending somebody's sessions, and would have to decide what "half
-            saved" means when one call succeeds and the other does not.
-          */}
-          <PasswordSection />
-        </Card>
-      )}
+        <div className="border-t border-border-soft pt-5">
+          <PasswordSection identifier={data?.email || data?.username || ""} email={data?.email} />
+        </div>
+      </Card>
     </section>
   );
 }
@@ -633,7 +331,15 @@ function ReadField({
  * says every other device has been signed out, which is a consequence somebody
  * needs to read *after* the change rather than a toast that slides away.
  */
-function PasswordSection() {
+function PasswordSection({
+  identifier,
+  email,
+}: {
+  /** What `POST /auth/password-reset` is asked about — this account. */
+  identifier: string;
+  /** Where the link would land, or nothing. */
+  email?: string | null;
+}) {
   const [open, setOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -653,6 +359,28 @@ function PasswordSection() {
     },
   });
 
+  /**
+   * "Мартсан уу?" — the same reset `/forgot-password` requests, from here.
+   *
+   * ★ 2026-09-08, at the client's request: "одоогийн нууц үгээ мэдэхгүй ч
+   * байж болишд". `POST /auth/password` needs the current password, so
+   * somebody who has forgotten it could change nothing from this screen and
+   * had to sign out to reach the recovery they were already signed in beside.
+   *
+   * ★★ It sends this account's own identifier rather than asking for one.
+   * `/forgot-password` asks because it serves a stranger and must not confirm
+   * whether an identifier exists; here the caller is authenticated and it is
+   * their own account, so the neutral wording that page needs would be
+   * evasive rather than careful. It says what happened.
+   */
+  const forgot = useMutation({
+    mutationFn: () =>
+      mutate("/auth/password-reset", z.unknown(), {
+        method: "POST",
+        body: { identifier },
+      }),
+  });
+
   const errors = fieldErrors(change.error);
 
   function close() {
@@ -662,6 +390,7 @@ function PasswordSection() {
     setConfirm("");
     setLocalError(null);
     change.reset();
+    forgot.reset();
   }
 
   return (
@@ -767,6 +496,42 @@ function PasswordSection() {
               />
             )}
           </Field>
+
+          {/*
+            Under the field it rescues, because that is where somebody
+            discovers they cannot fill it in.
+          */}
+          {forgot.isSuccess ? (
+            <p role="status" className="text-body text-mint-ink">
+              Сэргээх холбоосыг {email} хаяг руу илгээлээ. И-мэйлээ шалгана уу.
+            </p>
+          ) : email ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="-ml-2 self-start"
+              disabled={forgot.isPending}
+              onClick={() => forgot.mutate()}
+            >
+              {forgot.isPending ? "Илгээж байна…" : "Одоогийн нууц үгээ мартсан уу?"}
+            </Button>
+          ) : (
+            /*
+              No e-mail, so no link can be sent. Saying so is the honest answer
+              and it is not an enumeration leak: this is the signed-in person's
+              own account, and they can act on it.
+            */
+            <p className="text-caption text-muted">
+              Нууц үгээ мартсан бол эрхлэгчид хандана уу — бүртгэлд и-мэйл бүртгээгүй тул сэргээх
+              холбоос илгээх боломжгүй.
+            </p>
+          )}
+          {forgot.isError ? (
+            <p role="alert" className="text-body text-danger">
+              {errorMessage(forgot.error)}
+            </p>
+          ) : null}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Шинэ нууц үг" error={errors.newPassword} required>

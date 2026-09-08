@@ -7,7 +7,17 @@
  * token's scope.
  */
 export interface EsisEndpoint {
-  apiId: number;
+  /**
+   * The portal's own id for the service, or `null` when it is not yet read.
+   *
+   * ★ Nullable because one service reached us from the client rather than from
+   * the catalog page, which truncates before the суралцагч block. Access is
+   * granted per id, so writing a plausible number here would send the ministry
+   * a scope request for whichever service actually holds it. A null renders as
+   * "тодруулах" and stays visibly unfinished until somebody reads it off the
+   * portal.
+   */
+  apiId: number | null;
   slug: string;
   method: "GET" | "POST";
   path: string;
@@ -39,6 +49,28 @@ export const ESIS_ENDPOINTS = {
     slug: "api-8",
     method: "GET",
     path: "/svc/api/hub/v2/students/list",
+  }),
+  /**
+   * One child, found by the register number the operator types.
+   *
+   * ★ **This does not weaken `ESIS_REQUEST.md` §1.1 (b).** That paragraph
+   * refuses to *receive and keep* register numbers: `personRegNumber` is a
+   * refused output on every roster service and is stored nowhere. Here the
+   * number travels the other way — the director already has the child's
+   * registration document in front of them and types it in to find the ESIS
+   * record. We send it, we never save it, and the record that comes back is
+   * minimised by the same field list as `students`.
+   *
+   * ★★ `apiId` is unknown. The endpoint came from the client (2026-09-08) and
+   * the public catalog page truncates before the суралцагч services, so the
+   * portal id has to be read off the portal before this appears in a token
+   * scope request. Guessing it would request the wrong service.
+   */
+  studentByRegister: endpoint({
+    apiId: null,
+    slug: "student/:personRegNumber",
+    method: "GET",
+    path: "/svc/api/hub/v2/student/:personRegNumber",
   }),
   groupStudents: endpoint({
     apiId: 100004874669783,

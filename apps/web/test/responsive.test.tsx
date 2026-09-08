@@ -311,7 +311,35 @@ describe("design tokens", () => {
   it("defines the sizing floors as tokens", () => {
     expect(GLOBALS_CSS).toMatch(/--size-control:\s*48px/);
     expect(GLOBALS_CSS).toMatch(/--size-tap:\s*44px/);
-    expect(GLOBALS_CSS).toMatch(/--radius-control:\s*12px/);
+  });
+
+  /*
+   * ★ The order, not the numbers — changed 2026-09-08.
+   *
+   * This used to pin `--radius-control: 12px`, beside two floors that are
+   * genuinely safety limits (a control under 44px is unusable with a thumb).
+   * A radius is not a floor, and pinning one meant the client asking for
+   * softer corners failed a test named "sizing floors" — which taught nothing
+   * except to edit the number.
+   *
+   * What is worth holding is the relationship: a card is the roundest surface,
+   * a row sits inside it, a control inside that, and a 20px checkbox is
+   * tighter than all three or it renders as a radio. That survives any repaint
+   * and breaks on the mistake this can actually catch — one value moved on its
+   * own until the scale stopped reading as a scale.
+   */
+  it("keeps the radius scale ordered from card to checkbox", () => {
+    const px = (name: string) => {
+      const found = GLOBALS_CSS.match(new RegExp(`--radius-${name}:\\s*(\\d+)px`));
+      expect(found, `--radius-${name}`).toBeTruthy();
+      return Number(found![1]);
+    };
+
+    expect(px("card")).toBeGreaterThan(px("row"));
+    expect(px("row")).toBeGreaterThan(px("control"));
+    expect(px("control")).toBeGreaterThan(px("check"));
+    // A 20px box at half its own width is a circle, and a circle is a radio.
+    expect(px("check")).toBeLessThan(10);
   });
 
   it("respects a reduced-motion preference", () => {

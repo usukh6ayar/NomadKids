@@ -1,8 +1,11 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { EsisField } from "@kinder/contracts";
 import { Card } from "@/components/ui/card";
 import { TableShell, Td, Th } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 
 /**
  * The columns a service's records are shown under.
@@ -48,11 +51,32 @@ function rowTableWidth(columns: number): string {
 export function EsisRowValues({
   columns,
   rows,
+  hrefs,
+  linkField,
 }: {
   columns: EsisField[];
   rows: Record<string, string | null>[];
+  /**
+   * Where each row leads, index-aligned with `rows`. `null` for a row that
+   * leads nowhere.
+   */
+  hrefs?: (string | null)[];
+  /**
+   * Which column carries the link — the name, on a roster.
+   *
+   * ★ A real `<a>` in one cell, and the whole row clickable around it. The
+   * anchor is what makes the destination reachable by keyboard, announced by a
+   * screen reader and openable in a new tab; the row handler is a convenience
+   * for a pointer, and repeats what the anchor already does rather than being
+   * the only way in. Defaults to the first column when the caller does not say.
+   */
+  linkField?: string;
 }) {
+  const router = useRouter();
+
   if (rows.length === 1) return <EsisRecordFields columns={columns} row={rows[0]!} />;
+
+  const anchorColumn = columns.find((field) => field.name === linkField) ?? columns[0];
 
   return (
     <TableShell caption="ESIS сервисийн мөрүүд" minWidth={rowTableWidth(columns.length)}>
@@ -64,13 +88,45 @@ export function EsisRowValues({
         </tr>
       </thead>
       <tbody>
-        {rows.map((row, index) => (
-          <tr key={index}>
-            {columns.map((field) => (
-              <Td key={field.name}>{row[field.name] ?? "—"}</Td>
-            ))}
-          </tr>
-        ))}
+        {rows.map((row, index) => {
+          const href = hrefs?.[index] ?? null;
+          return (
+            <tr
+              key={index}
+              className={cn(href && "cursor-pointer transition-colors hover:bg-canvas")}
+              onClick={
+                href
+                  ? (event) => {
+                      // The anchor inside handles its own click, including
+                      // ⌘-click and "open in new tab". Only bare clicks on the
+                      // rest of the row need routing.
+                      if (event.defaultPrevented) return;
+                      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                      if ((event.target as HTMLElement).closest("a")) return;
+                      if (window.getSelection()?.toString()) return;
+                      router.push(href);
+                    }
+                  : undefined
+              }
+            >
+              {columns.map((field) => {
+                const value = row[field.name] ?? "—";
+                const isAnchor = href && field.name === anchorColumn?.name;
+                return (
+                  <Td key={field.name}>
+                    {isAnchor ? (
+                      <Link href={href} className="font-medium text-ink hover:underline">
+                        {value}
+                      </Link>
+                    ) : (
+                      value
+                    )}
+                  </Td>
+                );
+              })}
+            </tr>
+          );
+        })}
       </tbody>
     </TableShell>
   );

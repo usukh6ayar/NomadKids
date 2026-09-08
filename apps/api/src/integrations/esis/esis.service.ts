@@ -44,6 +44,17 @@ export const ESIS_READERS = {
   },
   groups: { endpoint: ESIS_ENDPOINTS.groups, schema: esisGroupSchema },
   students: { endpoint: ESIS_ENDPOINTS.students, schema: esisStudentSchema },
+  /*
+   * ★ The register number is a path value the operator types, never a value we
+   * store — see the endpoint's own note. It is the only reader whose parameter
+   * is a personal identifier, which is why `esis-admin.service.ts` keeps it out
+   * of the audit metadata.
+   */
+  studentByRegister: {
+    endpoint: ESIS_ENDPOINTS.studentByRegister,
+    schema: esisStudentSchema,
+    params: ["personRegNumber"],
+  },
   groupStudents: {
     endpoint: ESIS_ENDPOINTS.groupStudents,
     schema: esisStudentSchema,

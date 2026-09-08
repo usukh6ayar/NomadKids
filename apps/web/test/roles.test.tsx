@@ -349,20 +349,13 @@ describe("role-guarded screens", () => {
 });
 
 describe("the children screen adapts to who is asking", () => {
-  it("a teacher gets the searchable roster", async () => {
-    const { calls } = stubApi([
-      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      {
-        path: "/children",
-        body: { items: [], page: 1, pageSize: 25, total: 0, totalPages: 0 },
-      },
-    ]);
-
-    renderWithProviders(<ChildrenPage />);
-
-    await waitFor(() => expect(screen.getByLabelText("Хүүхдийн нэрээр хайх")).toBeInTheDocument());
-    expect(calls.some((c) => c.url.startsWith("/children?"))).toBe(true);
-  });
+  /*
+   * ★ The teacher's half of this screen used to be a searchable roster. It was
+   * removed on 2026-09-08 at the client's instruction — `/children` shows the
+   * summary and the ESIS panels now, and the panels render nothing for a
+   * teacher. What is left to assert about a teacher here is the parent branch
+   * below not being taken, which the next test covers from the other side.
+   */
 
   /**
    * A parent hits `/children/mine`, which is a different endpoint — not the

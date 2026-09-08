@@ -167,8 +167,8 @@ describe("navigation icons", () => {
 
     for (const label of entries) {
       const link = within(nav).getByRole("link", { name: label });
-      // lucide renders an <svg>; a row without one is the old bare-text state.
-      expect(link.querySelector("svg"), `${label} has no icon`).not.toBeNull();
+      // Feature art renders an <img>; the rest of the icon set stays SVG.
+      expect(link.querySelector("svg, img"), `${label} has no icon`).not.toBeNull();
     }
   });
 
@@ -176,7 +176,7 @@ describe("navigation icons", () => {
     renderShell(["TEACHER"]);
     const nav = await sidebar();
 
-    const icon = within(nav).getByRole("link", { name: "Судалгаа" }).querySelector("svg")!;
+    const icon = within(nav).getByRole("link", { name: "Судалгаа" }).querySelector("img")!;
     expect(icon.getAttribute("width")).toBe("18");
   });
 
@@ -196,10 +196,9 @@ describe("navigation icons", () => {
       .filter((a) => a.getAttribute("href") === "/notifications");
 
     expect(paths.length).toBeGreaterThan(0);
-    const names = new Set(
-      paths.map((a) => a.querySelector("svg")?.getAttribute("class") ?? "none"),
-    );
+    const names = new Set(paths.map((a) => a.querySelector("img")?.getAttribute("src") ?? "none"));
     expect(names.size).toBe(1);
+    expect([...names][0]).toContain("icon-notice");
   });
 });
 

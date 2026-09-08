@@ -6,16 +6,11 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  BarChart3,
   Bell,
   Boxes,
-  Building2,
-  CalendarCheck,
   CalendarRange,
   Carrot,
-  ChefHat,
   ChevronDown,
-  ClipboardCheck,
   FileBarChart,
   FileSignature,
   FileText,
@@ -23,8 +18,6 @@ import {
   LayoutGrid,
   LogOut,
   MessageCircle,
-  Newspaper,
-  Receipt,
   Search,
   Settings,
   ShieldAlert,
@@ -32,14 +25,12 @@ import {
   Sprout,
   Truck,
   UserCog,
-  Users,
-  UtensilsCrossed,
-  Wallet,
   X,
   type LucideIcon,
 } from "lucide-react";
 import {
   createContext,
+  isValidElement,
   useContext,
   useId,
   useState,
@@ -66,6 +57,7 @@ import { BRAND } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
 import { IconChip } from "@/components/ui/icon-chip";
+import { Art, type ArtName } from "@/components/ui/art";
 import type { Tone } from "@/components/ui/tone";
 import { ChildAvatar } from "@/components/media/media-image";
 
@@ -146,34 +138,42 @@ export interface ChildSwitcher {
 
 const WorkspaceThemeContext = createContext<WorkspaceTheme | null>(null);
 
-const WORKSPACE_PAGE_ICONS: { match: string[]; Icon: LucideIcon; tone: Tone }[] = [
-  { match: ["хүүхд"], Icon: Users, tone: "sky" },
-  { match: ["ирц"], Icon: CalendarCheck, tone: "mint" },
-  { match: ["үнэлгээ"], Icon: ClipboardCheck, tone: "peach" },
-  { match: ["хоол", "цэс"], Icon: UtensilsCrossed, tone: "sun" },
-  { match: ["мэдээ", "самбар", "зарлал"], Icon: Newspaper, tone: "mint" },
-  { match: ["судалгаа"], Icon: BarChart3, tone: "sun" },
+type WorkspacePageIcon = {
+  Icon?: LucideIcon;
+  art?: ArtName;
+  tone: Tone;
+};
+
+const WORKSPACE_PAGE_ICONS: (WorkspacePageIcon & { match: string[] })[] = [
+  { match: ["хүүхд"], art: "child", tone: "sky" },
+  { match: ["ирц"], art: "attendance", tone: "mint" },
+  { match: ["бүлэг"], art: "group", tone: "sky" },
+  { match: ["багш"], art: "teacher", tone: "cornflower" },
+  { match: ["үнэлгээ"], art: "progress", tone: "peach" },
+  { match: ["хоол", "цэс"], art: "food", tone: "sun" },
+  { match: ["мэдээ", "самбар", "зарлал"], art: "notice", tone: "mint" },
+  { match: ["судалгаа"], art: "survey", tone: "sun" },
   { match: ["чат"], Icon: MessageCircle, tone: "sky" },
   { match: ["баримт"], Icon: FileText, tone: "cornflower" },
   { match: ["тохиргоо"], Icon: Settings, tone: "cornflower" },
   { match: ["тайлан"], Icon: FileBarChart, tone: "sky" },
   { match: ["аюулгүй", "тохиолдол"], Icon: ShieldAlert, tone: "peach" },
   { match: ["хэрэглэгч", "эрх"], Icon: UserCog, tone: "cornflower" },
-  { match: ["цэцэрлэг", "байгууллага", "платформ"], Icon: Building2, tone: "sky" },
+  { match: ["цэцэрлэг", "байгууллага", "платформ"], art: "kindergarten", tone: "sky" },
   { match: ["хичээлийн жил", "улирал"], Icon: CalendarRange, tone: "sky" },
-  { match: ["гал тогоо", "жор"], Icon: ChefHat, tone: "sun" },
+  { match: ["гал тогоо", "жор"], art: "food", tone: "sun" },
   { match: ["орц", "материал"], Icon: Carrot, tone: "mint" },
   { match: ["нийлүүлэгч"], Icon: Truck, tone: "cornflower" },
   { match: ["захиалга"], Icon: ShoppingCart, tone: "sun" },
   { match: ["агуулах", "үлдэгдэл"], Icon: Boxes, tone: "mint" },
-  { match: ["нэхэмжлэх", "нэхэмжлэл"], Icon: Receipt, tone: "sun" },
-  { match: ["санхүү", "төлбөр"], Icon: Wallet, tone: "mint" },
+  { match: ["нэхэмжлэх", "нэхэмжлэл"], art: "finance", tone: "sun" },
+  { match: ["санхүү", "төлбөр"], art: "finance", tone: "mint" },
   { match: ["өргөдөл", "хүсэлт"], Icon: FileSignature, tone: "cornflower" },
   { match: ["өсөлт", "хөгжил"], Icon: Sprout, tone: "mint" },
   { match: ["зураг", "цомог"], Icon: Images, tone: "sky" },
 ];
 
-function workspacePageIcon(title: string) {
+function workspacePageIcon(title: string): WorkspacePageIcon {
   const normalized = title.toLocaleLowerCase("mn-MN");
   if (normalized === "самбар" || normalized.includes("удирдлагын самбар")) {
     return { Icon: LayoutGrid, tone: "sky" as const };
@@ -184,6 +184,15 @@ function workspacePageIcon(title: string) {
       tone: "sky" as const,
     }
   );
+}
+
+function WorkspacePageIconArt({ identity }: { identity: WorkspacePageIcon }) {
+  if (identity.art) {
+    return <Art name={identity.art} size={28} className="size-7 object-contain" />;
+  }
+
+  const Icon = identity.Icon ?? LayoutGrid;
+  return <Icon size={22} strokeWidth={2.2} />;
 }
 
 function navIconTone(label: string) {
@@ -203,6 +212,10 @@ function navIconTone(label: string) {
     return "bg-mint text-mint-ink";
   }
   return "bg-cornflower text-primary";
+}
+
+function isBackgroundlessArt(icon: ReactNode) {
+  return isValidElement(icon) && icon.type === Art;
 }
 
 /**
@@ -285,9 +298,10 @@ export function PageHeader({
         {pageIdentity ? (
           <div className="teacher-page-icon mt-0.5 shrink-0">
             <IconChip
-              icon={<pageIdentity.Icon size={22} strokeWidth={2.2} />}
+              icon={<WorkspacePageIconArt identity={pageIdentity} />}
               tone={pageIdentity.tone}
               size="lg"
+              surface={!pageIdentity.art}
             />
           </div>
         ) : null}
@@ -1587,6 +1601,7 @@ function NavLink({
       : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
   const horizontal = orientation === "horizontal";
+  const backgroundlessIcon = isBackgroundlessArt(item.icon);
 
   const className = cn(
     "relative flex items-center rounded-control font-medium transition-colors",
@@ -1636,6 +1651,7 @@ function NavLink({
     <>
       <span
         data-nav-icon
+        data-icon-surface={backgroundlessIcon ? "none" : "tinted"}
         className={cn(
           // ★ `transition-all` and a slight scale on the active well — the tab
           // now visibly *settles* when it becomes current instead of the tint
@@ -1644,9 +1660,14 @@ function NavLink({
           "relative flex items-center justify-center transition-all duration-150",
           // The tinted well the drawing puts behind the active glyph. Sized so
           // a 20px icon sits in a 40×28 rounded rectangle, as drawn.
-          horizontal ? "h-7 w-10 rounded-control" : navIconTone(item.label),
+          horizontal
+            ? "h-7 w-10 rounded-control"
+            : backgroundlessIcon
+              ? "bg-transparent"
+              : navIconTone(item.label),
           !horizontal && "size-9 rounded-control",
-          horizontal && active && "scale-105 bg-primary-soft",
+          horizontal && active && "scale-105",
+          horizontal && active && !backgroundlessIcon && "bg-primary-soft",
         )}
       >
         {item.icon}

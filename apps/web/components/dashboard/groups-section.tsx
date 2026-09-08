@@ -5,9 +5,9 @@ import Link from "next/link";
 import { groupSchema, paginated } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
-import { CalendarCheck, ClipboardList, UtensilsCrossed } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
+import { Art } from "@/components/ui/art";
 
 const groupsSchema = paginated(groupSchema);
 
@@ -94,19 +94,19 @@ export function GroupsSection() {
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="secondary" size="sm">
               <Link href={`/groups/${group.id}/attendance`}>
-                <CalendarCheck size={18} />
+                <Art name="attendance" size={20} className="size-5" />
                 Ирц
               </Link>
             </Button>
             <Button asChild variant="secondary" size="sm">
               <Link href={`/groups/${group.id}/meals`}>
-                <UtensilsCrossed size={18} />
+                <Art name="food" size={20} className="size-5" />
                 Хоол
               </Link>
             </Button>
             <Button asChild variant="secondary" size="sm">
               <Link href={`/groups/${group.id}/assessment`}>
-                <ClipboardList size={18} />
+                <Art name="progress" size={20} className="size-5" />
                 Үнэлгээ
               </Link>
             </Button>

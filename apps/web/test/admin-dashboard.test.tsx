@@ -33,6 +33,7 @@ const ADMIN_DASHBOARD = {
   storage: {
     totalBytes: 2048,
     fileCount: 5,
+    documents: { count: 9, totalBytes: 1024 },
     reports: { total: 2, done: 2, failed: 0 },
   },
 };
@@ -101,42 +102,63 @@ describe("the administration dashboard", () => {
       ["Өнөөдрийн ирц", "/attendance/journal"],
       ["Бүлэг", "/admin/groups"],
       ["Багш, ажилтан", "/admin/users"],
+      ["Баримт бичгийн сан", "/documents"],
+      ["Тайлан", "/reports"],
     ] as const) {
       expect(cardLink(label), `${label} does not link anywhere`).toHaveAttribute("href", href);
     }
   });
 
-  it("leaves a figure unlinked when no screen explains it", async () => {
+  /*
+   * ★ Every figure goes somewhere, as of 2026-09-09.
+   *
+   * This used to assert the opposite for two cards, with the reason beside it:
+   * neither stored files nor a `ReportJob` had a screen, and pointing them at
+   * the nearest plausible route is the dead navigation the hub page was deleted
+   * for. Both have destinations now — the document library, and `/reports` once
+   * it stopped dead-ending an administrator — so the rule the old test carried
+   * is asserted the other way round: no card is left unlinked, and adding one
+   * that is should be a decision rather than a side effect.
+   */
+  it("leaves no figure without a screen to explain it", async () => {
     renderAdminDashboard();
 
-    await waitFor(() => expect(within(figures()).getByText("Хадгалсан файл")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(within(figures()).getByText("Баримт бичгийн сан")).toBeInTheDocument(),
+    );
 
-    /*
-     * ★ Not an oversight, and the reason belongs next to the assertion.
-     *
-     * Files are reached through the child they belong to, and a `ReportJob` is
-     * only ever seen in the dialog that started it
-     * (`components/reports/report-dialog.tsx`). Neither has a screen of its
-     * own, so neither card has anywhere honest to go. Give one a destination
-     * and this test should be updated — it fails here to make that a decision
-     * rather than a side effect.
-     */
-    expect(cardLink("Хадгалсан файл")).toBeNull();
-    expect(cardLink("Тайлан")).toBeNull();
+    for (const label of [
+      "Нийт хүүхэд",
+      "Өнөөдрийн ирц",
+      "Бүлэг",
+      "Багш, ажилтан",
+      "Баримт бичгийн сан",
+      "Тайлан",
+    ]) {
+      expect(cardLink(label), `${label} goes nowhere`).not.toBeNull();
+    }
   });
 
   it("keeps the figures the storage cards carry", async () => {
     renderAdminDashboard();
 
-    await waitFor(() => expect(within(figures()).getByText("Хадгалсан файл")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(within(figures()).getByText("Баримт бичгийн сан")).toBeInTheDocument(),
+    );
 
     /*
      * These two came from the deleted `/admin` and are RFP §12.2's
      * "Хадгалалтын хэмжээ" and "Тайлангийн статистик" — the one part of that
      * page `AdminOverview` had no version of, so a merge that dropped them
      * would have lost a requirement rather than a duplicate.
+     *
+     * ★ The document count is `documents.count`, not `fileCount` — 9, not 5.
+     * The fixture keeps them different on purpose: the card carried the media
+     * total under a label that read like the document library's name until
+     * 2026-09-09, and a fixture where the two agreed would let it drift back.
      */
-    expect(within(figures()).getByText("5")).toBeInTheDocument();
+    expect(within(figures()).getByText("9")).toBeInTheDocument();
+    expect(within(figures()).queryByText("5")).toBeNull();
     expect(within(figures()).getByText("2 нийт")).toBeInTheDocument();
     expect(within(figures()).getByText("Тайлан")).toBeInTheDocument();
   });

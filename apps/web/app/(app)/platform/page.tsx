@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
-import { Building2, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import {
   createdKindergartenSchema,
   paginated,
@@ -22,6 +22,7 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { RequireSuperAdmin } from "@/components/shell/require-role";
 import { InvitationHandover } from "@/components/admin/invitation-handover";
 import { Stat } from "@/components/admin/dashboard-sections";
+import { Art } from "@/components/ui/art";
 import { ToggleActiveButton } from "@/components/admin/toggle-kindergarten-active";
 import { formatRelative } from "@/lib/format";
 
@@ -147,8 +148,8 @@ function Platform() {
               className="flex min-h-[64px] flex-wrap items-center gap-3 rounded-row border border-border bg-surface px-4 py-3 transition-colors has-[a:hover]:border-primary"
             >
               <Link href={`/platform/${kg.id}`} className="flex min-w-0 flex-1 items-center gap-3">
-                <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-primary-soft text-primary">
-                  <Building2 size={18} aria-hidden />
+                <span className="grid size-10 shrink-0 place-items-center bg-transparent">
+                  <Art name="kindergarten" size={36} className="size-9" />
                 </span>
 
                 <span className="min-w-0 flex-1">

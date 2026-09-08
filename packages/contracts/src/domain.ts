@@ -2710,6 +2710,18 @@ export const adminDashboardSchema = z.object({
     .object({
       totalBytes: z.number(),
       fileCount: z.number(),
+      /**
+       * The document library, counted on its own.
+       *
+       * ★ Added 2026-09-09. `fileCount` is every `MediaFile` a kindergarten
+       * owns — photographs, artwork, avatars, the logo — and the card that
+       * showed it was labelled in a way that read like the name of the
+       * documents screen. The client asked for the card to be that screen's,
+       * so it needs that screen's number: a figure and the label over it have
+       * to answer the same question or the two disagree in front of a reader
+       * who can open both.
+       */
+      documents: z.object({ count: z.number(), totalBytes: z.number() }),
       reports: z.object({ total: z.number(), done: z.number(), failed: z.number() }),
     })
     .nullish(),
@@ -3047,6 +3059,7 @@ export const esisResourceKeySchema = z.enum([
   "academicYearStatuses",
   "groups",
   "students",
+  "studentByRegister",
   "groupStudents",
   "studentMovements",
   "teachers",
@@ -3135,7 +3148,8 @@ export const esisOverviewSchema = z.object({
   endpoints: z.array(
     z.object({
       key: esisResourceKeySchema,
-      apiId: z.number(),
+      /** The portal's own id, or null while it is still to be read off it. */
+      apiId: z.number().nullable(),
       slug: z.string(),
       method: z.enum(["GET", "POST"]),
       path: z.string(),

@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   ArrowRightLeft,
-  Building2,
   CalendarDays,
   ChevronDown,
   ClipboardList,
@@ -31,6 +30,7 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { formatDate, fullName, initials } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { Art } from "@/components/ui/art";
 
 type Current = NonNullable<EnrollmentArchive["current"]>;
 
@@ -170,8 +170,8 @@ function CurrentEnrollmentCard({ current }: { current: Current }) {
       <details open className="group">
         <summary className="flex min-h-[92px] cursor-pointer list-none items-center justify-between gap-4 px-4 py-5 marker:content-none md:px-5 [&::-webkit-details-marker]:hidden">
           <div className="flex min-w-0 items-start gap-4">
-            <span className="flex size-11 shrink-0 items-center justify-center rounded-row bg-canvas text-ink">
-              <Building2 size={21} aria-hidden="true" />
+            <span className="flex size-11 shrink-0 items-center justify-center bg-transparent">
+              <Art name="kindergarten" size={40} className="size-10" />
             </span>
             <div className="min-w-0">
               <p className="truncate text-lead font-semibold text-ink">
@@ -370,7 +370,7 @@ function KindergartenInfoCard({ current }: { current: Current }) {
 
   if (current.kindergarten.description) {
     rows.push({
-      icon: <Building2 size={16} aria-hidden="true" />,
+      icon: <Art name="kindergarten" size={18} className="size-[18px]" />,
       label: "Танилцуулга",
       value: <span className="whitespace-pre-wrap">{current.kindergarten.description}</span>,
     });

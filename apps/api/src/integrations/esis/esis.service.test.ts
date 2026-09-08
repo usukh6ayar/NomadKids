@@ -22,12 +22,27 @@ function serviceFor(body: unknown) {
 }
 
 describe("ESIS v2 endpoint registry", () => {
-  it("contains only the 17 reviewed services with unique API ids", () => {
+  it("contains only the selected services, each with a distinct API id", () => {
     const endpoints = Object.values(ESIS_ENDPOINTS);
+    const withId = endpoints.filter((item) => item.apiId !== null);
 
-    expect(endpoints).toHaveLength(17);
-    expect(new Set(endpoints.map((item) => item.apiId)).size).toBe(17);
+    expect(endpoints).toHaveLength(18);
+    expect(new Set(withId.map((item) => item.apiId)).size).toBe(withId.length);
     expect(endpoints.every((item) => item.path.startsWith("/svc/api/hub/v2/"))).toBe(true);
+  });
+
+  /*
+   * ★ A null id is a service whose portal entry has not been read, not a
+   * service without one. It cannot be named in a token scope request, so the
+   * list of them is pinned: it shrinks when somebody reads the portal, and any
+   * growth is a service that was added without checking the catalog.
+   */
+  it("names every service still missing its portal id", () => {
+    const missing = Object.entries(ESIS_ENDPOINTS)
+      .filter(([, item]) => item.apiId === null)
+      .map(([key]) => key);
+
+    expect(missing).toEqual(["studentByRegister"]);
   });
 
   it("pins the official API ids and encodes path parameters", () => {

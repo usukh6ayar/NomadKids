@@ -48,6 +48,7 @@ import { cn } from "@/lib/utils";
  */
 export function TileShell({
   icon,
+  iconSurface = true,
   tone = "sky",
   label,
   size = "compact",
@@ -58,6 +59,8 @@ export function TileShell({
 }: {
   /** A lucide glyph, or an illustrated `.webp`. `IconChip` sizes both. */
   icon: ReactNode;
+  /** False for transparent artwork that must not gain a tinted chip behind it. */
+  iconSurface?: boolean;
   tone?: Tone;
   label: string;
   /**
@@ -98,7 +101,7 @@ export function TileShell({
           glyph each one chose. `IconChip` is `aria-hidden` unless given a name:
           the label beside it already says what the tile is.
         */}
-        <IconChip icon={icon} tone={tone} size={feature ? "lg" : "md"} />
+        <IconChip icon={icon} tone={tone} size={feature ? "lg" : "md"} surface={iconSurface} />
         <p
           className={cn(
             "min-w-0 font-medium",

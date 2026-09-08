@@ -12,7 +12,7 @@ import Image from "next/image";
  * teacher dashboard at 48, so the same drawing is two sizes in one product.
  *
  * A name also says what the caller means. `art={<Art name="progress" />}` is a
- * statement about the tile; `src="/icons/icon-progress.png"` is a statement
+ * statement about the tile; `src="/icons/icon-progress-3d.png"` is a statement
  * about the filesystem, and it is the one that breaks silently when a file is
  * renamed — a wrong path renders a broken image, and nothing fails in CI.
  *
@@ -26,59 +26,45 @@ import Image from "next/image";
  *
  * ★★★ Adding one is a file and a line.
  *
- * `child`, `teacher`, `register` and `report` arrived on 2026-08-31 and are
- * placed where the owner put them — three on the administration board's stat
- * cards, one on the dashboard's attendance section. The rest of those screens
- * still render lucide glyphs, and the names stay reserved rather than pointed
- * at files that do not exist: a key here that resolves to a 404 is worse than
- * no key, because the call site looks correct.
+ * Only artwork that exists belongs in this registry: a key that resolves to a
+ * 404 is worse than no key because the call site looks correct while the UI is
+ * broken.
  *
- * Still pending, in the same `icon-<name>.png` convention, 1024×1024 with a
+ * Still pending, in the same `icon-<name>.png` convention, square with a
  * transparent background:
  *
- *   school-year · term · group · users · parent · storage · settings
+ *   school-year · term · users · parent · storage · settings
  *
- * ★★★★★ The four that landed were rebuilt, not dropped in.
+ * ★★★★ Keep the supplied feature drawings central.
  *
- * They arrived as 570×426 screenshots against a set that is 1024×1024 — a
- * landscape crop of a square icon. What the crop removed is the bottom of each
- * *tinted square*, not the drawing on it, so a square cut to the file's own
- * height keeps every element whole; where an element reaches that edge it
- * bleeds off it, which is how the artwork was drawn (`child`'s identity card
- * does exactly that in the original).
- *
- * The fifth, a school building, is `kindergarten` already — it has been in the
- * set since it was created, at full size, so it was placed rather than added.
- *
- * ★★★★ One family, not two.
- *
- * The thirteen below are already two styles: twelve carry their own tinted
- * rounded square (`kindergarten`, `attendance`, `menu`, `notice`,
- * `portfolio`, `progress`, `survey`, `finance`, `child`, `teacher`,
- * `register`, `report`) and `analytics` is a bare cut-out. Side by side in
- * one grid the two read as different sizes, because one has a chip's worth of
- * padding baked in and the other does not. Anything added should match the
- * family it will sit beside rather than the set as a whole.
- *
- * ★★★★★ `survey` and `finance` were dropped when the parent home's tile grid
- * went away and came back with it. They are the only two the grid needs that
- * nothing else on the product draws, so they left and returned together — see
- * `ui/quick-tile.tsx` for the grid itself.
+ * `child`, `group`, `attendance`, `teacher`, `food`, `kindergarten`, `finance`,
+ * `notice`, `survey`, `progress`, and the four portfolio launcher drawings are
+ * the owner's 1254×1254 transparent PNGs, kept at their original resolution.
+ * Every dashboard tile, navigation item and page identity reaches them through
+ * this registry rather than carrying a second copy or a route-specific file
+ * path. Replacing one source here therefore replaces that feature consistently
+ * across the product.
  */
 const SOURCE = {
   analytics: "/icons/icon-analytics.png",
-  attendance: "/icons/icon-attendance.png",
-  child: "/icons/icon-child.png",
-  finance: "/icons/icon-finance.png",
-  kindergarten: "/icons/icon-kindergarten.png",
+  attendance: "/icons/icon-attendance-3d.png",
+  child: "/icons/icon-children-3d.png",
+  finance: "/icons/icon-finance-payment-3d.png",
+  food: "/icons/icon-food-3d.png",
+  group: "/icons/icon-group-3d.png",
+  kindergarten: "/icons/icon-kindergarten-3d.png",
   menu: "/icons/icon-menu.png",
-  notice: "/icons/icon-notice.png",
+  notice: "/icons/icon-notice-3d.png",
   portfolio: "/icons/icon-portfolio.png",
-  progress: "/icons/icon-progress.png",
+  portfolioAboutMe: "/icons/icon-portfolio-about-me-3d.png",
+  portfolioAgeComparison: "/icons/icon-portfolio-age-comparison-3d.png",
+  portfolioDevelopment: "/icons/icon-portfolio-development-3d.png",
+  portfolioGallery: "/icons/icon-portfolio-gallery-3d.png",
+  progress: "/icons/icon-progress-3d.png",
   register: "/icons/icon-register.png",
   report: "/icons/icon-report.png",
-  survey: "/icons/icon-survey.png",
-  teacher: "/icons/icon-teacher.png",
+  survey: "/icons/icon-survey-3d.png",
+  teacher: "/icons/icon-teacher-3d.png",
 } as const;
 
 export type ArtName = keyof typeof SOURCE;

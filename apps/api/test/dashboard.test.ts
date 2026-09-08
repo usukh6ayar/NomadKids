@@ -469,6 +469,77 @@ describe("admin dashboard — kindergarten-wide figures", () => {
     return res.body;
   }
 
+  /**
+   * The document library, counted apart from everything else stored.
+   *
+   * ★ Added 2026-09-09 with `storage.documents`, and the assertion that matters
+   * is the *difference* between the two figures. `fileCount` is every
+   * `MediaFile` a kindergarten owns; `documents.count` is the published rows of
+   * `/documents`. The dashboard card carried the first under a label that read
+   * like the second's screen, and the web schema now requires the second — so a
+   * payload without it fails to parse in the browser rather than here, which is
+   * the wrong place to find out.
+   */
+  describe("storage figures", () => {
+    async function upload(sizeBytes: number) {
+      return db.mediaFile.create({
+        data: {
+          kindergartenId: a.kindergarten.id,
+          purpose: "DOCUMENT",
+          storageKey: `documents/${uniq("file")}`,
+          originalName: "journal.pdf",
+          mimeType: "application/pdf",
+          sizeBytes,
+          status: "READY",
+          uploadedById: a.adminUser.id,
+        },
+      });
+    }
+
+    it("counts published documents apart from every other stored file", async () => {
+      const [published, loose] = await Promise.all([upload(400), upload(1_000)]);
+      await db.document.create({
+        data: {
+          kindergartenId: a.kindergarten.id,
+          title: "Дотоод журам",
+          fileMediaFileId: published.id,
+          publishedById: a.adminUser.id,
+        },
+      });
+
+      const body = await adminDashboard();
+
+      // Two files stored; one of them is a document.
+      expect(body.storage.fileCount).toBe(2);
+      expect(body.storage.documents).toEqual({ count: 1, totalBytes: 400 });
+      // The loose upload's bytes are in the total and not in the library's.
+      expect(body.storage.totalBytes).toBe(400 + loose.sizeBytes);
+    });
+
+    it("reports an empty library as zero rather than as nothing", async () => {
+      const body = await adminDashboard();
+
+      expect(body.storage.documents).toEqual({ count: 0, totalBytes: 0 });
+    });
+
+    it("leaves a soft-deleted document out of the count", async () => {
+      const file = await upload(700);
+      await db.document.create({
+        data: {
+          kindergartenId: a.kindergarten.id,
+          title: "Хуучирсан журам",
+          fileMediaFileId: file.id,
+          publishedById: a.adminUser.id,
+          deletedAt: new Date(),
+        },
+      });
+
+      const body = await adminDashboard();
+
+      expect(body.storage.documents).toEqual({ count: 0, totalBytes: 0 });
+    });
+  });
+
   it("counts the roster as expected, not the rows written", async () => {
     // No register taken at all: the denominator still has to be the roster, or
     // an untaken morning reads as 0/0 — "nothing to do".

@@ -4,12 +4,13 @@ import { useQuery } from "@tanstack/react-query";
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import Link from "next/link";
 import { usePathname, useParams, useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Eye, Palette, Plus, Search, Sprout } from "lucide-react";
+import { Eye, Palette, Plus, Search, Sprout } from "lucide-react";
 import { childDetailSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
+import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
@@ -81,7 +82,7 @@ const TONE_CLASS: Record<string, string> = {
  *
  * ★★★★★ The parent branch's own back button used to be a bespoke underlined
  * link to `/home` — the mockup's own back target for that screen alone. It
- * now matches the staff branch's: the same `Button`/`ArrowLeft` markup, back
+ * now matches the staff branch's: the same `BackButton`, back
  * to `PORTFOLIO` (Цахим хувийн хавтас), same as the other three of
  * `PortfolioHubNav`'s tiles (`about-me/page.tsx`, `overview/page.tsx`,
  * `growth/compare/page.tsx`) — unified 2026-09-04, on the client's
@@ -153,12 +154,7 @@ export default function GrowthPage() {
   if (!isStaff) {
     return (
       <div className="flex flex-col gap-6 py-2">
-        <Button asChild variant="ghost" size="sm" className="-ml-2 self-start">
-          <Link href={`/children/${childId}/portfolio`}>
-            <ArrowLeft size={18} />
-            {PORTFOLIO}
-          </Link>
-        </Button>
+        <BackButton href={`/children/${childId}/portfolio`} />
 
         <ParentGrowthLauncher child={data} />
       </div>
@@ -167,12 +163,7 @@ export default function GrowthPage() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <Button asChild variant="ghost" size="sm" className="-ml-2 self-start">
-        <Link href={`/children/${childId}/portfolio`}>
-          <ArrowLeft size={18} />
-          {PORTFOLIO}
-        </Link>
-      </Button>
+      <BackButton href={`/children/${childId}/portfolio`} />
 
       <ChildHeroProfile child={data} showHealthAlert={isStaff} />
 

@@ -1,15 +1,8 @@
 import type { ReactNode } from "react";
-import {
-  BarChart3,
-  CalendarCheck,
-  Cake,
-  ClipboardList,
-  MessageCircle,
-  Newspaper,
-  Users,
-} from "lucide-react";
+import { Cake, ClipboardList, MessageCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { Art, type ArtName } from "@/components/ui/art";
 
 /**
  * One card of Ангийн самбар: a title, an optional figure at the right, content.
@@ -95,20 +88,45 @@ export function BoardCard({
 }
 
 function BoardIcon({ title }: { title: string }) {
-  const match =
+  const artMatch: ArtName | null =
     title.includes("ирц") || title.includes("Ирц")
-      ? { icon: CalendarCheck, className: "bg-sky text-sky-ink" }
-      : title.includes("хүүхд")
-        ? { icon: Users, className: "bg-primary-soft text-primary" }
-        : title.includes("Төрсөн")
-          ? { icon: Cake, className: "bg-sun text-sun-ink" }
-          : title.includes("чат")
-            ? { icon: MessageCircle, className: "bg-sky text-sky-ink" }
-            : title.includes("Судалгаа")
-              ? { icon: BarChart3, className: "bg-sun text-sun-ink" }
-              : title.includes("нийтлэл")
-                ? { icon: Newspaper, className: "bg-mint text-mint-ink" }
-                : { icon: ClipboardList, className: "bg-peach text-peach-ink" };
+      ? "attendance"
+      : title.includes("Судалгаа")
+        ? "survey"
+        : title.includes("нийтлэл") || title.includes("Мэдээ")
+          ? "notice"
+          : title.includes("үнэлгээ") || title.includes("Үнэлгээ")
+            ? "progress"
+            : title.includes("хүүхд") || title.includes("Хүүхд")
+              ? "child"
+              : title.includes("бүлэг") || title.includes("Бүлэг")
+                ? "group"
+                : title.includes("багш") || title.includes("Багш")
+                  ? "teacher"
+                  : title.includes("хоол") || title.includes("Хоол")
+                    ? "food"
+                    : title.includes("цэцэрлэг") || title.includes("Цэцэрлэг")
+                      ? "kindergarten"
+                      : title.includes("санхүү") ||
+                          title.includes("Санхүү") ||
+                          title.includes("төлбөр") ||
+                          title.includes("Төлбөр")
+                        ? "finance"
+                        : null;
+
+  if (artMatch) {
+    return (
+      <span aria-hidden="true" className="grid size-10 shrink-0 place-items-center">
+        <Art name={artMatch} size={32} className="size-8 object-contain" />
+      </span>
+    );
+  }
+
+  const match = title.includes("Төрсөн")
+    ? { icon: Cake, className: "bg-sun text-sun-ink" }
+    : title.includes("чат")
+      ? { icon: MessageCircle, className: "bg-sky text-sky-ink" }
+      : { icon: ClipboardList, className: "bg-peach text-peach-ink" };
   const Icon = match.icon;
 
   return (

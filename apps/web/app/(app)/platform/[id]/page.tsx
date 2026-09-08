@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Database } from "lucide-react";
+import { Database } from "lucide-react";
 import {
   platformKindergartenDetailSchema,
   type PlatformKindergartenDetail,
@@ -22,6 +22,7 @@ import {
 } from "@/components/admin/dashboard-sections";
 import { ToggleActiveButton } from "@/components/admin/toggle-kindergarten-active";
 import { Badge } from "@/components/ui/badge";
+import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/field";
@@ -84,13 +85,7 @@ function KindergartenDetail() {
 
   return (
     <div className="flex flex-col gap-6 lg:gap-8">
-      <Link
-        href="/platform"
-        className="inline-flex w-fit items-center gap-1.5 text-compact font-medium text-muted hover:text-ink"
-      >
-        <ArrowLeft size={16} aria-hidden />
-        Цэцэрлэгүүд рүү буцах
-      </Link>
+      <BackButton href="/platform" className="ml-0" />
 
       <PageHeader
         title={kg.name}

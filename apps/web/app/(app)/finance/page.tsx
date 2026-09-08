@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Calculator, ChevronRight, Receipt, ScrollText } from "lucide-react";
+import { Calculator, ChevronRight, ScrollText } from "lucide-react";
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { z } from "zod";
@@ -16,6 +16,7 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { PageHeader } from "@/components/shell/app-shell";
+import { Art } from "@/components/ui/art";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -109,7 +110,7 @@ function Finance() {
             <Badge tone="peach">ESIS finance API · NOT ENABLED</Badge>
             <Button asChild variant="secondary" size="sm">
               <Link href="/invoices">
-                <Receipt size={16} aria-hidden="true" />
+                <Art name="finance" size={18} className="size-[18px]" />
                 Нэхэмжлэл
               </Link>
             </Button>

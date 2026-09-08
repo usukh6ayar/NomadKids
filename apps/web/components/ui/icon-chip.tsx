@@ -25,6 +25,12 @@ import { TONE_SURFACE, type Tone } from "@/components/ui/tone";
  * "image, attendance, Attendance" is noise. The few places where the icon is
  * the *only* content — a bare icon button — pass a `label`, which switches it
  * to `img` with a name rather than leaving it silent.
+ *
+ * ★★★★ Transparent supplied artwork can opt out of the surface.
+ *
+ * The four owner-provided feature PNGs already carry their full 3D shape and
+ * colour. `surface={false}` preserves the chip's sizing and accessibility
+ * contract while keeping any second rounded colour block out from behind them.
  */
 
 /**
@@ -61,6 +67,7 @@ export function IconChip({
   icon,
   tone = "sky",
   size = "md",
+  surface = true,
   label,
   className,
 }: {
@@ -68,6 +75,8 @@ export function IconChip({
   /** One of the six meanings, or `primary` for the brand — see `BRAND` above. */
   tone?: Tone | "primary";
   size?: keyof typeof SIZE;
+  /** Set false for transparent supplied artwork that must not gain a second tile behind it. */
+  surface?: boolean;
   /**
    * An accessible name. Supply it only when the chip is the sole carrier of
    * meaning — beside a visible label, leave it off so the label is announced
@@ -79,13 +88,14 @@ export function IconChip({
   return (
     <span
       {...(label ? { role: "img", "aria-label": label } : { "aria-hidden": "true" })}
+      data-icon-surface={surface ? "tinted" : "none"}
       className={cn(
         "grid shrink-0 place-items-center rounded-card",
         // An illustrated .webp fills the chip; a lucide glyph is sized by the
         // `[&>svg]` rule above. One slot, either kind of art.
         "[&>img]:size-full [&>img]:rounded-card [&>img]:object-contain",
         SIZE[size],
-        tone === "primary" ? BRAND : TONE_SURFACE[tone],
+        surface ? (tone === "primary" ? BRAND : TONE_SURFACE[tone]) : "bg-transparent",
         className,
       )}
     >

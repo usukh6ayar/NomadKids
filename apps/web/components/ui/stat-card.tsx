@@ -47,6 +47,7 @@ export function StatCard({
   value,
   unit,
   art,
+  artSurface = true,
   href,
   tone = "sky",
   size = "normal",
@@ -60,6 +61,8 @@ export function StatCard({
   /** "хүүхэд", "%" — the words under the figure. */
   unit?: string;
   art?: ReactNode;
+  /** False for owner-supplied transparent artwork that already carries its own surface. */
+  artSurface?: boolean;
   /**
    * Where this figure is explained in full — `/children` for a child count.
    *
@@ -117,8 +120,9 @@ export function StatCard({
           className={cn(
             "grid shrink-0 place-items-center rounded-card [&>img]:size-full [&>img]:object-contain",
             size === "wide" ? "size-14" : "size-11",
-            TONE_SURFACE[tone],
+            artSurface ? TONE_SURFACE[tone] : "bg-transparent",
           )}
+          data-icon-surface={artSurface ? "tone" : "none"}
         >
           {art}
         </span>

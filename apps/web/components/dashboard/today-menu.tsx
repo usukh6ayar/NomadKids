@@ -75,7 +75,7 @@ export function TodayMenu() {
         id="today-menu-heading"
         title="Хоолны цэс"
         lede="Өнөөдрийн хоол, харшлын шалгалттай"
-        icon={<IconChip icon={<Art name="menu" />} tone="sun" size="lg" />}
+        icon={<IconChip icon={<Art name="food" />} tone="sun" size="lg" surface={false} />}
       />
 
       <Card pad="roomy" className="flex flex-1 flex-col gap-3">

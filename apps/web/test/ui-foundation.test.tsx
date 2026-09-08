@@ -10,6 +10,8 @@ import { Donut } from "@/components/ui/chart/donut";
 import { Ring } from "@/components/ui/chart/ring";
 import { Sparkline } from "@/components/ui/chart/sparkline";
 import { TONES, TONE_CARD, TONE_SURFACE, TONE_VAR } from "@/components/ui/tone";
+import { StatCard } from "@/components/ui/stat-card";
+import { Art } from "@/components/ui/art";
 import { renderWithProviders } from "./support/render";
 
 /**
@@ -154,6 +156,51 @@ describe("IconChip", () => {
 
     expect(sm.className).toContain("size-8");
     expect(xl.className).toContain("size-16");
+  });
+
+  it("can keep transparent supplied artwork free of a tinted background", () => {
+    const chip = render(<IconChip icon={<span>i</span>} tone="mint" surface={false} />).container
+      .firstElementChild!;
+
+    expect(chip).toHaveAttribute("data-icon-surface", "none");
+    expect(chip.className).toContain("bg-transparent");
+    expect(chip.className).not.toContain("bg-mint");
+  });
+});
+
+describe("StatCard artwork", () => {
+  it("can render supplied transparent artwork without a tinted icon surface", () => {
+    const { container } = render(
+      <StatCard label="Хүүхэд" value={12} art={<span>i</span>} artSurface={false} />,
+    );
+    const art = container.querySelector('[data-icon-surface="none"]');
+
+    expect(art).not.toBeNull();
+    expect(art!.className).toContain("bg-transparent");
+    expect(art!.className).not.toContain("bg-sky");
+  });
+});
+
+describe("supplied module artwork", () => {
+  it.each([
+    ["child", "icon-children-3d"],
+    ["group", "icon-group-3d"],
+    ["attendance", "icon-attendance-3d"],
+    ["teacher", "icon-teacher-3d"],
+    ["food", "icon-food-3d"],
+    ["kindergarten", "icon-kindergarten-3d"],
+    ["finance", "icon-finance-payment-3d"],
+    ["portfolioDevelopment", "icon-portfolio-development-3d"],
+    ["portfolioGallery", "icon-portfolio-gallery-3d"],
+    ["portfolioAboutMe", "icon-portfolio-about-me-3d"],
+    ["portfolioAgeComparison", "icon-portfolio-age-comparison-3d"],
+  ] as const)("maps %s to its transparent owner-supplied asset", (name, asset) => {
+    const { container } = render(<Art name={name} />);
+    const icon = container.querySelector("img");
+
+    expect(icon).not.toBeNull();
+    expect(icon!.getAttribute("src")).toContain(asset);
+    expect(icon).toHaveAttribute("alt", "");
   });
 });
 

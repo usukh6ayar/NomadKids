@@ -1,9 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
 import {
   AUDIT_ACTION_LABEL,
   AUDIT_OBJECT_LABEL,
@@ -18,7 +16,7 @@ import { formatRelative } from "@/lib/format";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/ui/back-button";
 import { Card, RowCard, RowList } from "@/components/ui/card";
 import { Pagination, ResultCount } from "@/components/ui/pagination";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
@@ -63,12 +61,7 @@ function FinancialAuditLog() {
 
   return (
     <div className="flex flex-col gap-5 lg:gap-6">
-      <Button asChild variant="ghost" size="sm" className="-ml-2 self-start">
-        <Link href="/finance">
-          <ArrowLeft size={18} />
-          Санхүүжилт
-        </Link>
-      </Button>
+      <BackButton href="/finance" />
 
       <PageHeader title="Санхүүгийн үйлдлийн түүх" />
 

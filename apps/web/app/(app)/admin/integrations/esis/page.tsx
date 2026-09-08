@@ -28,6 +28,7 @@ import { formatRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/lib/auth/session";
 import { EsisPullButton } from "@/components/esis/esis-pull-button";
+import { esisApiIdLabel } from "@/components/esis/esis-params";
 import { EsisRowValues, esisSampleColumns } from "@/components/esis/esis-rows";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
@@ -361,7 +362,7 @@ function ApiScope({ data }: { data: EsisOverview }) {
             <tr key={endpoint.key}>
               <Td>
                 <p className="font-semibold text-ink">{endpoint.slug}</p>
-                <p className="text-caption text-muted">ID {endpoint.apiId}</p>
+                <p className="text-caption text-muted">{esisApiIdLabel(endpoint.apiId)}</p>
               </Td>
               <Td>
                 <p className="font-medium text-ink">{endpoint.name}</p>
@@ -458,7 +459,7 @@ function EndpointFields({
               {endpoint.name}
             </h3>
             <p className="mt-1 break-all font-mono text-caption text-muted">
-              {endpoint.slug} · ID {endpoint.apiId} · {endpoint.method} {endpoint.path}
+              {endpoint.slug} · {esisApiIdLabel(endpoint.apiId)} · {endpoint.method} {endpoint.path}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">

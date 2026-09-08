@@ -32,7 +32,7 @@ import { cn } from "@/lib/utils";
  *    both at once on many touch stacks, and the press must win.
  */
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 rounded-control font-medium " +
+  "inline-flex items-center justify-center gap-2 rounded-button font-medium " +
     "transition-all duration-150 disabled:pointer-events-none disabled:opacity-50 " +
     "disabled:shadow-none active:translate-y-[1px] " +
     "[&_svg]:size-[18px] [&_svg]:shrink-0",

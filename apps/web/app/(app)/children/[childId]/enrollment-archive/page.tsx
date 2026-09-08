@@ -1,9 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/ui/back-button";
 import { ChildEnrollmentArchive } from "@/components/child/enrollment-archive";
 
 /**
@@ -23,12 +21,7 @@ export default function EnrollmentArchivePage() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <Button asChild variant="ghost" size="sm" className="-ml-2 self-start">
-        <Link href={`/children/${childId}/general`}>
-          <ArrowLeft size={18} />
-          Хүүхдийн бүртгэл
-        </Link>
-      </Button>
+      <BackButton href={`/children/${childId}/general`} />
 
       <ChildEnrollmentArchive childId={childId} />
     </div>
