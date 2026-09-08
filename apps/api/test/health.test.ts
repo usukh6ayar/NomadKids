@@ -147,12 +147,14 @@ describe("readiness: the ESIS boundary", () => {
     expect(res.status).toBe(200);
     // Presence of a token, never any part of its value — not a prefix, not a
     // length. The exact key list is asserted so that adding one is a decision.
-    expect(Object.keys(res.body.esis).sort()).toEqual([
-      "baseUrl",
-      "configured",
-      "hasToken",
-      "institutionId",
-    ]);
+    //
+    // ★ `institutionId` was one of these until the catalog work made institution
+    // scope a *per-kindergarten* mapping rather than a deployment setting
+    // (`esis.config.ts`: "institution scope belongs to each tenant, so the
+    // Bearer token is the only deployment secret required"). One deployment now
+    // serves institutions that this readiness payload cannot name, so reporting
+    // a single id here would have been reporting the wrong one.
+    expect(Object.keys(res.body.esis).sort()).toEqual(["baseUrl", "configured", "hasToken"]);
     expect(JSON.stringify(res.body)).not.toContain("ESIS_TOKEN");
     // The test environment sets no ESIS credentials, and that is a legitimate
     // state rather than a fault.
