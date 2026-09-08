@@ -301,10 +301,47 @@ describe("design tokens", () => {
       ["sky", "#cde7f7", "#1d4e89"],
       ["sun", "#f8e6a0", "#7a5810"],
       ["peach", "#f8d5c2", "#9a4a25"],
+      ["cornflower", "#e6eefb", "#2b5aa8"],
+      ["teal", "#cfeeeb", "#14615c"],
+      // ★ The seventh accent, added 2026-09-09 — girls, in a sex split.
+      ["pink", "#fde1e8", "#a82d50"],
     ];
     for (const [name, tint, ink] of pairs) {
       expect(GLOBALS_CSS).toContain(ink);
       expect(contrast(tint, ink), `${name} badge text`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  /*
+   * ★ Charts are graphics, so 3:1 — and they must actually be brighter than the
+   * text palette, which is the point of having a second one.
+   *
+   * `TONE_VAR` handed every chart the `-ink` value until 2026-09-09. Those are
+   * held to 4.5:1 as badge text by the assertion above, and at that weight a
+   * mint is a bottle green. Both halves are asserted because either alone
+   * passes while the pair is broken: a chart colour that fails 3:1 is invisible
+   * to a reader who cannot separate it by hue, and one that merely equals its
+   * ink is the dark palette back under a new name.
+   */
+  it("draws charts in a lighter palette than it writes text in", () => {
+    const pairs: [string, string, string][] = [
+      ["sky", "#1d4e89", "#3d93dd"],
+      ["mint", "#1f6b4d", "#1fa370"],
+      ["sun", "#7a5810", "#c08a14"],
+      ["peach", "#9a4a25", "#ea6a44"],
+      ["cornflower", "#2b5aa8", "#6b8ded"],
+      ["teal", "#14615c", "#1ba39a"],
+      ["pink", "#a82d50", "#ec5183"],
+    ];
+
+    for (const [name, ink, chart] of pairs) {
+      expect(GLOBALS_CSS, `--color-${name}-chart`).toContain(`--color-${name}-chart: ${chart}`);
+      // Legible as a shape against the surface it is drawn on.
+      expect(contrast(chart, "#ffffff"), `${name} chart on surface`).toBeGreaterThanOrEqual(3);
+      // …and lighter than the text colour it replaced.
+      expect(contrast(chart, "#ffffff"), `${name} chart vs ink`).toBeLessThan(
+        contrast(ink, "#ffffff"),
+      );
     }
   });
 

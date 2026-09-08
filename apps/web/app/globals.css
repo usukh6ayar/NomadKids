@@ -144,6 +144,57 @@
   --color-cornflower-ink: #2b5aa8;
   --color-teal: #cfeeeb;
   --color-teal-ink: #14615c;
+  /*
+   * ★ Pink, added 2026-09-09 — the seventh accent, and the first added since
+   * the palette was written.
+   *
+   * At the client's instruction: "охидыг ягаан хөвгүүдийг цэнхэр гэх мэт
+   * байдаг шдээ". The roster's sex split was drawn in `peach` and `mint`,
+   * which are attention-orange and complete-green — two meanings that have
+   * nothing to do with the thing they were colouring, so the chart read as
+   * wrong rather than as dark. Girls are pink and boys are blue in every
+   * register a Mongolian kindergarten keeps, and there was no pink.
+   *
+   * `-ink` clears 4.5:1 on its own tint (5.42:1) the way every accent must;
+   * `-chart` clears the 3:1 a graphic needs (3.46:1) and is bright with it.
+   *
+   * ★★ Hue 343°, not 330°. The first attempt was a magenta and the client said
+   * so — "энэ цн бараг л purple байшдээ". Pink in this product is warm.
+   */
+  --color-pink: #fde1e8;
+  --color-pink-ink: #a82d50;
+
+  /*
+   * ★ The chart palette — added 2026-09-09, at the client's request: "энд
+   * байгаа бүх graphic dashboard-ийн өнгөний тохицлыг гэгээлэг өнгөтэй болго.
+   * Одоо бол хэт dark төрлийн өнгүүд байна, бараан ногоон хүрэн гэх мэт".
+   *
+   * They were right about the cause: `TONE_VAR` handed every chart the `-ink`
+   * value, and those are **text** colours — 6.2:1 to 8.4:1 on white, because
+   * badge labels are drawn in them and `responsive.test.tsx` holds them to
+   * 4.5:1. `mint-ink` at that weight is a bottle green and `sun-ink` is brown.
+   *
+   * An arc, a bar and a line are **graphics, never text**, so the floor that
+   * applies is WCAG's 3:1 for a non-text element — the distinction `ring.tsx`
+   * already records. These sit just above it, 3.0:1 to 3.5:1: as light and as
+   * lightly saturated as each hue gets while a reader who cannot separate it by
+   * colour alone can still see the shape ("илүү гоё зөөлхөн болгоод").
+   *
+   * ★★ Yellow is the one that cannot move. A `sun` light enough to look soft
+   * falls under 3:1 against white — the hue is already near the surface's own
+   * luminance — so it stays the deepest of the seven at 3.05:1. That is a
+   * property of yellow, not a value somebody forgot to update.
+   *
+   * `TONE_VAR` reads these and nothing else does; the `-ink` tokens keep their
+   * one job, which is text on a tint.
+   */
+  --color-sky-chart: #3d93dd;
+  --color-mint-chart: #1fa370;
+  --color-sun-chart: #c08a14;
+  --color-peach-chart: #ea6a44;
+  --color-cornflower-chart: #6b8ded;
+  --color-teal-chart: #1ba39a;
+  --color-pink-chart: #ec5183;
 
   --color-danger: #c0392b;
   --color-danger-soft: #fdeceb;

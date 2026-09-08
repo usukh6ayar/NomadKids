@@ -53,6 +53,7 @@ export function StatCard({
   size = "normal",
   trend,
   footer,
+  chart,
   className,
 }: {
   label: string;
@@ -85,11 +86,37 @@ export function StatCard({
   trend?: ReactNode;
   /** A progress bar or a sparkline, below the figure. */
   footer?: ReactNode;
+  /**
+   * A small graphic in the card's right-hand space.
+   *
+   * ★ Added 2026-09-09, at the client's request: "тэр тусдаа dashboard тэгж
+   * гаргахгүйгээр … box дотор тэр ард хэсэгт н зай байгаа тэр дотор н гоё
+   * graphic dashboard гаргаж өг".
+   *
+   * A stat card's text column is short — a label, a figure, sometimes a
+   * caption — so the space to its right was empty on every card in the
+   * product. A chart there is the same fact the figure states, shown as a
+   * shape: the reader takes the split off it before reading either number.
+   *
+   * Distinct from `art`, which leads the card and identifies *what* it counts.
+   * This closes it and says *how it divides*, so a card can carry both.
+   */
+  chart?: ReactNode;
   className?: string;
 }) {
   const card = (
     <Card
-      pad="roomy"
+      /*
+        ★ `compact`, not `roomy` — 2026-09-09, at the client's request:
+        "хэтэрхий том, хэрэггүй том зайнууд гаргасан … шахаж сайжруул".
+
+        `roomy` is 24px of padding on a desktop, which is right for a card of
+        prose and wrong for one holding a label and a number: the figure is
+        `text-display` and states itself in two lines, so the padding was the
+        largest thing on the card. `compact` is 16px, and the row of them
+        shortens by about a fifth without any of the three parts moving.
+      */
+      pad="compact"
       className={cn(
         "flex items-start gap-3 overflow-hidden",
         size === "wide" && "sm:col-span-2",
@@ -119,7 +146,7 @@ export function StatCard({
           aria-hidden="true"
           className={cn(
             "grid shrink-0 place-items-center rounded-card [&>img]:size-full [&>img]:object-contain",
-            size === "wide" ? "size-14" : "size-11",
+            size === "wide" ? "size-12" : "size-10",
             artSurface ? TONE_SURFACE[tone] : "bg-transparent",
           )}
           data-icon-surface={artSurface ? "tone" : "none"}
@@ -145,6 +172,16 @@ export function StatCard({
           {value}
         </p>
 
+        {/*
+          ★ Only when it says something the label does not — 2026-09-09.
+
+          "Нийт хүүхэд" over "24" over "хүүхэд" spends a third line repeating
+          the noun in the first, and four cards of that is a row a third taller
+          than it needs to be ("дотор н агуулгыг ашигтайхан янзлах"). The
+          callers that kept a unit are the ones where it adds a fact — a file
+          size, "2 нийт · 1 амжилтгүй", "идэвхтэй" — rather than a category the
+          label already gave.
+        */}
         {unit ? <p className="text-caption text-muted">{unit}</p> : null}
 
         {/*
@@ -161,8 +198,13 @@ export function StatCard({
           <div className="mt-2.5 border-t border-border-soft pt-2 text-caption">{trend}</div>
         ) : null}
 
-        {footer ? <div className="mt-1.5">{footer}</div> : null}
+        {footer ? <div className="mt-1">{footer}</div> : null}
       </div>
+
+      {/* Centred against the whole card, unlike the chevron below: a chart is
+          the card's second subject and reads as balanced against the figure,
+          where a chevron is an affordance and belongs level with the label. */}
+      {chart ? <span className="shrink-0 self-center">{chart}</span> : null}
 
       {/*
         Aligned to the label rather than centred: the card's height is set by

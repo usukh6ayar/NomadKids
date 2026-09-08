@@ -523,7 +523,6 @@ function SummaryCards({ register }: { register: AttendanceRegister | undefined }
       <StatCard
         label="Нийт хүүхэд"
         value={register?.totals.children ?? "—"}
-        unit="хүүхэд"
         tone="sky"
         art={<Art name="child" size={36} />}
         artSurface={false}
@@ -531,7 +530,6 @@ function SummaryCards({ register }: { register: AttendanceRegister | undefined }
       <StatCard
         label="Ажлын өдөр"
         value={register?.workingDays ?? "—"}
-        unit="өдөр"
         tone="cornflower"
         art={<CalendarDays size={22} aria-hidden />}
         footer={<p className="text-caption text-muted">Ирц бүртгэгдсэн өдрөөр тоолсон.</p>}
@@ -539,7 +537,6 @@ function SummaryCards({ register }: { register: AttendanceRegister | undefined }
       <StatCard
         label="Ирсэн хоног"
         value={register ? attended.toLocaleString("mn-MN") : "—"}
-        unit="хоног"
         tone="mint"
         art={<CheckCircle2 size={22} aria-hidden />}
         footer={
