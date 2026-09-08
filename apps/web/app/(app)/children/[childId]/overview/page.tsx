@@ -1,11 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/ui/back-button";
 import { ChildOverviewContent } from "@/components/child/child-overview-content";
-import { PORTFOLIO } from "@/lib/vocabulary";
 
 /**
  * The child overview — the standalone route.
@@ -30,19 +27,16 @@ export default function ChildOverviewPage() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <Button asChild variant="ghost" size="sm" className="-ml-2 self-start">
-        {fromPortfolio ? (
-          <Link href={`/children/${childId}/portfolio`}>
-            <ArrowLeft size={18} />
-            {PORTFOLIO}
-          </Link>
-        ) : (
-          <Link href={`/children/${childId}/general`}>
-            <ArrowLeft size={18} />
-            Хүүхдийн бүртгэл
-          </Link>
-        )}
-      </Button>
+      {/*
+        ★ `?from=portfolio` survives as the *fallback* only.
+
+        It was this screen's own answer to the problem `BackButton` now solves
+        generally: two ways in, one hardcoded way out, so the link had to be
+        told which. With history behind it the button no longer needs telling.
+        The parameter still picks the right landing place for a cold open,
+        which is the one case history cannot answer.
+      */}
+      <BackButton href={`/children/${childId}/${fromPortfolio ? "portfolio" : "general"}`} />
 
       <ChildOverviewContent childId={childId} />
     </div>

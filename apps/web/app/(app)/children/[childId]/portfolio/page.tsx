@@ -3,11 +3,12 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, BarChart3, ChevronRight, FileText, Images, Sprout, User } from "lucide-react";
+import { BarChart3, ChevronRight, FileText, Images, Sprout, User } from "lucide-react";
 import { childDetailSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
+import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { SectionHeader } from "@/components/ui/card";
 import { ErrorState, LoadingState } from "@/components/ui/states";
@@ -81,12 +82,7 @@ export default function PortfolioPage() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <Button asChild variant="ghost" size="sm" className="-ml-2 self-start">
-        <Link href={`/children/${childId}/general`}>
-          <ArrowLeft size={18} />
-          Хүүхдийн бүртгэл
-        </Link>
-      </Button>
+      <BackButton href={`/children/${childId}/general`} />
 
       <SectionHeader as="h1" title={PORTFOLIO} className="mb-0" />
 

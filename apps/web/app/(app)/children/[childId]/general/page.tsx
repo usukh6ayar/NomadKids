@@ -3,12 +3,13 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, ClipboardList, MoreHorizontal, Pencil, Plus } from "lucide-react";
+import { ClipboardList, MoreHorizontal, Pencil, Plus } from "lucide-react";
 import { childDetailSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
+import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { Menu, type MenuItem } from "@/components/ui/menu";
 import { ErrorState, LoadingState } from "@/components/ui/states";
@@ -100,12 +101,7 @@ export default function ChildGeneralPage() {
         which is why this points up to the roster rather than to a sibling
         page the way theirs point here.
       */}
-      <Button asChild variant="ghost" size="sm" className="-ml-2 self-start">
-        <Link href="/children">
-          <ArrowLeft size={18} />
-          Хүүхдийн жагсаалт
-        </Link>
-      </Button>
+      <BackButton href="/children" />
 
       <ChildHeroProfile
         child={data}

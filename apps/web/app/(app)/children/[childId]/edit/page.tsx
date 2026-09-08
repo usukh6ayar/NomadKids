@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useState } from "react";
 import { z } from "zod";
 import {
@@ -12,6 +12,7 @@ import {
   CHILD_STATUS_LABEL,
   SEX_LABEL,
 } from "@kinder/contracts";
+import { useGoBack } from "@/lib/nav-history";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
@@ -118,7 +119,7 @@ function DetailsForm({
   child: z.infer<typeof childDetailSchema>;
 }) {
   const toast = useToast();
-  const router = useRouter();
+  const goBack = useGoBack(`/children/${childId}/general`);
   const queryClient = useQueryClient();
 
   const [lastName, setLastName] = useState(child.lastName);
@@ -334,11 +335,13 @@ function DetailsForm({
           </Field>
 
           <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => router.push(`/children/${childId}/general`)}
-            >
+            {/*
+              Буцах, not "back to the child's record": the reader may have
+              arrived from a group roster or a search, and `useGoBack` returns
+              them there. The child's own page stays the fallback for a form
+              opened cold, from a pasted link.
+            */}
+            <Button type="button" variant="secondary" onClick={goBack}>
               Буцах
             </Button>
             <Button type="submit" disabled={save.isPending}>
