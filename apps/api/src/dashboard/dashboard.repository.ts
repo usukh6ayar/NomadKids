@@ -432,16 +432,33 @@ export class DashboardRepository {
    */
   async storageAndReportStats(kindergartenIds: string[]) {
     if (kindergartenIds.length === 0) {
-      return { totalBytes: 0, fileCount: 0, reports: { total: 0, done: 0, failed: 0 } };
+      return {
+        totalBytes: 0,
+        fileCount: 0,
+        documents: { count: 0, totalBytes: 0 },
+        reports: { total: 0, done: 0, failed: 0 },
+      };
     }
 
     const where = { kindergartenId: { in: kindergartenIds }, deletedAt: null };
 
-    const [media, reportsByStatus] = await Promise.all([
+    const [media, documents, reportsByStatus] = await Promise.all([
       this.prisma.mediaFile.aggregate({
         where,
         _sum: { sizeBytes: true },
         _count: { _all: true },
+      }),
+      /*
+       * ★ The library's own rows, not a slice of the media count.
+       *
+       * A `Document` points at its `MediaFile`, so its bytes are already inside
+       * `totalBytes` above — this counts the published documents themselves,
+       * which is what "Баримт бичгийн сан" means to a director. Soft-deleted
+       * rows are excluded on both sides, for the reason the docblock gives.
+       */
+      this.prisma.document.findMany({
+        where,
+        select: { file: { select: { sizeBytes: true } } },
       }),
       this.prisma.reportJob.groupBy({
         by: ["status"],
@@ -455,6 +472,10 @@ export class DashboardRepository {
     return {
       totalBytes: media._sum.sizeBytes ?? 0,
       fileCount: media._count._all,
+      documents: {
+        count: documents.length,
+        totalBytes: documents.reduce((sum, doc) => sum + (doc.file?.sizeBytes ?? 0), 0),
+      },
       reports: {
         total: reportsByStatus.reduce((sum, r) => sum + r._count._all, 0),
         done: byStatus.get("DONE") ?? 0,
