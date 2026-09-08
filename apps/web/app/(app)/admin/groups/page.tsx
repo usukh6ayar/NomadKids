@@ -5,20 +5,15 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Archive,
-  CalendarCheck,
-  ClipboardCheck,
   ChevronRight,
   Gauge,
   Pencil,
   Plus,
   RotateCcw,
-  Shapes,
   Trash2,
   TrendingUp,
   UserMinus,
   UserPlus,
-  Users,
-  UtensilsCrossed,
 } from "lucide-react";
 import { z } from "zod";
 import {
@@ -56,6 +51,7 @@ import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { SingleImageUpload } from "@/components/media/single-image-upload";
 import { RequireRole } from "@/components/shell/require-role";
+import { Art } from "@/components/ui/art";
 
 const groupsSchema = paginated(groupListItemSchema);
 /** The promote dialog's roster — the group's own children, to pick from. */
@@ -224,17 +220,17 @@ function GroupRow({ group }: { group: z.infer<typeof groupListItemSchema> }) {
     {
       label: "Ирц",
       href: `/groups/${group.id}/attendance`,
-      icon: <CalendarCheck size={16} aria-hidden />,
+      icon: <Art name="attendance" size={18} className="size-[18px]" />,
     },
     {
       label: "Хоол",
       href: `/groups/${group.id}/meals`,
-      icon: <UtensilsCrossed size={16} aria-hidden />,
+      icon: <Art name="food" size={18} className="size-[18px]" />,
     },
     {
       label: "Явцын үнэлгээ",
       href: `/groups/${group.id}/assessment`,
-      icon: <ClipboardCheck size={16} aria-hidden />,
+      icon: <Art name="progress" size={18} className="size-[18px]" />,
     },
     {
       label: "Багш хуваарилах",
@@ -485,7 +481,8 @@ function GroupsOverview({ groups }: { groups: z.infer<typeof groupListItemSchema
           value={active.length}
           unit="идэвхтэй"
           tone="sky"
-          art={<Shapes size={22} aria-hidden />}
+          art={<Art name="group" size={36} />}
+          artSurface={false}
           footer={
             archived > 0 ? (
               <p className="text-caption text-muted">{archived} архивласан</p>
@@ -497,7 +494,8 @@ function GroupsOverview({ groups }: { groups: z.infer<typeof groupListItemSchema
           value={children}
           unit="хүүхэд"
           tone="mint"
-          art={<Users size={22} aria-hidden />}
+          art={<Art name="child" size={36} />}
+          artSurface={false}
         />
         <StatCard
           label="Дундаж дүүргэлт"

@@ -1513,10 +1513,23 @@ describe("teacher dashboard", () => {
       await screen.findByRole("heading", { name: /Сайн байна уу, Тест Хэрэглэгч/ }),
     ).toBeInTheDocument();
 
-    for (const action of ["Ирц", "Мэдээ", "Явцын үнэлгээ"]) {
+    for (const action of ["Ирц", "Мэдээ", "Судалгаа", "Явцын үнэлгээ"]) {
       expect(
         await screen.findByRole("link", { name: new RegExp(`^${action}`) }),
       ).toBeInTheDocument();
+    }
+
+    for (const [action, asset] of [
+      ["Ирц", "icon-attendance-3d"],
+      ["Мэдээ", "icon-notice-3d"],
+      ["Судалгаа", "icon-survey-3d"],
+      ["Явцын үнэлгээ", "icon-progress-3d"],
+    ] as const) {
+      const link = await screen.findByRole("link", { name: new RegExp(`^${action}`) });
+      const icon = link.querySelector("img");
+      expect(icon, `${action} must use the supplied transparent icon`).not.toBeNull();
+      expect(icon!.getAttribute("src")).toContain(asset);
+      expect(icon).toHaveAttribute("alt", "");
     }
 
     for (const card of [

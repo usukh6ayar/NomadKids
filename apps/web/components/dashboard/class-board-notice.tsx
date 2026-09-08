@@ -194,7 +194,7 @@ export function ClassBoardNotice({ notice }: { notice: TeacherDashboard["boardNo
             */
             <div
               aria-hidden="true"
-              className="grid aspect-[16/9] w-full place-items-center rounded-card bg-primary-soft lg:aspect-auto lg:w-[200px] lg:shrink-0 lg:p-6"
+              className="grid aspect-[16/9] w-full place-items-center lg:aspect-auto lg:w-[200px] lg:shrink-0 lg:p-6"
             >
               <Art name="notice" size={88} />
             </div>

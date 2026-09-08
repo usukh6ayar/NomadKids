@@ -3,7 +3,6 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import Image from "next/image";
-import { CalendarCheck, ClipboardList } from "lucide-react";
 import { userProfileSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -11,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
 import { useMyGroup } from "./use-my-group";
+import { Art } from "@/components/ui/art";
 
 /**
  * Who is looking, and at which group — the sketch's top-left block.
@@ -147,12 +147,12 @@ export function TeacherHero() {
           <div className="flex flex-wrap gap-2">
             <HeroAction
               href={`/groups/${group.id}/attendance`}
-              icon={<CalendarCheck size={16} aria-hidden="true" />}
+              icon={<Art name="attendance" size={20} className="size-5" />}
               label="Ирц бүртгэх"
             />
             <HeroAction
               href={`/groups/${group.id}/assessment`}
-              icon={<ClipboardList size={16} aria-hidden="true" />}
+              icon={<Art name="progress" size={20} className="size-5" />}
               label="Үнэлгээ"
             />
           </div>

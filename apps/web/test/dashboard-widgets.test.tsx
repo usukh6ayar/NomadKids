@@ -715,23 +715,10 @@ describe("дүрслэл", () => {
   });
 
   /**
-   * ★★ The register's identity is an illustration, and it is silent.
-   *
-   * `icon-attendance.webp` is the same drawing the parent's home page uses for
-   * this feature. It repeats the label beside it, so announcing it would make
-   * a screen reader say "attendance" twice — `IconChip` hides it, and this is
-   * what catches a future `alt="Ирц"` that looks helpful and is not.
+   * The owner's attendance drawing is shared across the whole product and is
+   * silent here: both it and the ring repeat text already visible on the card.
    */
-  /**
-   * ★ Rewritten 2026-08-28. This asserted `icon-attendance.png` in the card,
-   * and the client's redesign removed every illustration from this screen —
-   * six plain white cards, with the only colour in the data.
-   *
-   * The half of it that still matters is the half about the ring: it restates
-   * a figure already on the card as text, so it must stay decoration. A
-   * `role="img"` here would make a screen reader read the percentage twice.
-   */
-  it("keeps the ring decorative, since the figure is already on the card", async () => {
+  it("uses the shared attendance art without announcing duplicate images", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
       {
@@ -744,9 +731,9 @@ describe("дүрслэл", () => {
     const { container } = renderWithProviders(<AttendanceToday />);
     await screen.findByText("50%");
 
-    // No illustration on this card any more — see the note above.
-    expect(container.querySelector('img[src*="icon-attendance"]')).toBeNull();
-    // Nothing on this card may be exposed as an image.
+    const art = container.querySelector('img[src*="icon-attendance"]');
+    expect(art).not.toBeNull();
+    expect(art).toHaveAttribute("alt", "");
     expect(screen.queryByRole("img")).toBeNull();
   });
 

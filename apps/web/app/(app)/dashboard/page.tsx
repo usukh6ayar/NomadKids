@@ -255,34 +255,30 @@ function TeacherDashboard() {
     <div className="page-band">
       {header}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <QuickAction
           href={group ? `/groups/${group.id}/attendance` : "/attendance"}
           title="Ирц"
           description="Өнөөдрийн ирц бүртгэх"
           art="attendance"
-          tone="sky"
         />
         <QuickAction
           href="/notifications/new"
           title="Мэдээ"
           description="Зураг, мэдээ нийтлэх"
           art="notice"
-          tone="mint"
         />
         <QuickAction
           href="/surveys"
           title="Судалгаа"
           description="Шинэ судалгаа үүсгэх"
-          art="analytics"
-          tone="sun"
+          art="survey"
         />
         <QuickAction
           href={group ? `/groups/${group.id}/assessment` : "/children"}
           title="Явцын үнэлгээ"
           description="Хүүхдийн үнэлгээ оруулах"
           art="progress"
-          tone="peach"
         />
       </div>
 
@@ -310,37 +306,25 @@ function QuickAction({
   title,
   description,
   art,
-  tone,
 }: {
   href: string;
   title: string;
   description: string;
   art: ArtName;
-  tone: "sky" | "mint" | "sun" | "peach";
 }) {
-  const toneClass = {
-    sky: "bg-sky/55 text-sky-ink hover:border-sky",
-    mint: "bg-mint/60 text-mint-ink hover:border-mint",
-    sun: "bg-sun/60 text-sun-ink hover:border-sun",
-    peach: "bg-peach/60 text-peach-ink hover:border-peach",
-  }[tone];
-
   return (
     <Link
       href={href}
-      className="group flex min-h-[92px] items-center gap-3 rounded-card border border-border bg-surface/88 p-3.5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+      className="group relative flex min-h-[136px] flex-col items-start gap-2 rounded-card border border-border bg-surface/88 p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:min-h-[92px] sm:flex-row sm:items-center sm:gap-3 sm:p-3.5"
     >
-      <span
-        aria-hidden="true"
-        className={`grid size-14 shrink-0 place-items-center rounded-card ${toneClass}`}
-      >
+      <span aria-hidden="true" className="grid size-12 shrink-0 place-items-center sm:size-14">
         <Art name={art} size={42} />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-lead font-semibold leading-heading text-ink">{title}</span>
         <span className="mt-0.5 block text-caption leading-snug text-muted">{description}</span>
       </span>
-      <span className="grid size-9 shrink-0 place-items-center rounded-pill bg-surface text-primary shadow-sm transition group-hover:bg-primary group-hover:text-white">
+      <span className="absolute right-3 top-3 grid size-8 shrink-0 place-items-center rounded-pill bg-surface text-primary shadow-sm transition group-hover:bg-primary group-hover:text-white sm:static sm:size-9">
         <ArrowRight size={17} aria-hidden="true" />
       </span>
     </Link>

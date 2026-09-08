@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { z } from "zod";
 import {
   FileBadge,
-  GraduationCap,
   KeyRound,
   Pencil,
   ShieldPlus,
@@ -45,6 +44,7 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { InvitationHandover } from "@/components/admin/invitation-handover";
 import { StaffRecordsDialog } from "@/components/admin/staff-records-dialog";
+import { Art } from "@/components/ui/art";
 
 const listSchema = paginated(adminUserSchema);
 
@@ -256,7 +256,8 @@ function AdminUsers() {
           value={overview.data?.counts.staff ?? "—"}
           unit="бүртгэл"
           tone="cornflower"
-          art={<GraduationCap size={22} aria-hidden />}
+          art={<Art name="teacher" size={36} />}
+          artSurface={false}
         />
       </section>
 

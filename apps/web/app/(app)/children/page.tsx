@@ -12,7 +12,6 @@ import {
   Plus,
   Search,
   Upload,
-  UsersRound,
   Venus,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -50,6 +49,7 @@ import { useSelectedChild } from "@/lib/selected-child";
 import { formatAge, formatDate, fullName } from "@/lib/format";
 import { MY_CHILDREN } from "@/lib/vocabulary";
 import { z } from "zod";
+import { Art } from "@/components/ui/art";
 
 const listSchema = paginated(childSummarySchema);
 const ownSchema = z.array(childSummarySchema);
@@ -1014,7 +1014,8 @@ function RosterSummary({ search, facets }: { search: string; facets: RosterFacet
           label="Нийт хүүхэд"
           value={data.total}
           unit="хүүхэд"
-          art={<UsersRound size={22} />}
+          art={<Art name="child" size={36} />}
+          artSurface={false}
           tone="sky"
           className="teacher-stat-card teacher-stat-sky col-span-2 md:col-span-1"
         />

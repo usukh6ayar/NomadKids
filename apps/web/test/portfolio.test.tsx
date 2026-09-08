@@ -9,6 +9,7 @@ import {
   stubApi,
 } from "./support/render";
 import GrowthPage from "@/app/(app)/children/[childId]/portfolio/growth/page";
+import PortfolioPage from "@/app/(app)/children/[childId]/portfolio/page";
 
 const CHILD_ID = "44444444-4444-4444-8444-444444444444";
 
@@ -75,6 +76,32 @@ beforeEach(() => {
   setParams({ childId: CHILD_ID });
   setSearchParams("");
   window.location.hash = "";
+});
+
+describe("portfolio launcher", () => {
+  it("uses the four supplied transparent drawings in the requested order", async () => {
+    stubGrowth(bornYearsAgo(3));
+
+    renderWithProviders(<PortfolioPage />);
+
+    const nav = await screen.findByRole("navigation", { name: "Цахим хавтасны хэсгүүд" });
+    const expected = [
+      ["Хөгжил", "icon-portfolio-development-3d"],
+      ["Зургийн цомог", "icon-portfolio-gallery-3d"],
+      ["Миний тухай", "icon-portfolio-about-me-3d"],
+      ["Насны харьцуулалт", "icon-portfolio-age-comparison-3d"],
+    ] as const;
+    const links = within(nav).getAllByRole("link");
+
+    expect(links).toHaveLength(expected.length);
+    expected.forEach(([label, asset], index) => {
+      expect(links[index]).toHaveAccessibleName(label);
+      const icon = links[index]!.querySelector("img");
+      expect(icon).not.toBeNull();
+      expect(icon!.getAttribute("src")).toContain(asset);
+      expect(icon!.parentElement!.className).not.toMatch(/\bbg-/);
+    });
+  });
 });
 
 describe("portfolio age sections", () => {
