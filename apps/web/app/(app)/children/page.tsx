@@ -5,17 +5,7 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import {
-  AlertTriangle,
-  ChevronRight,
-  Download,
-  Mars,
-  Plus,
-  Search,
-  Upload,
-  Venus,
-} from "lucide-react";
-import { useEffect, useState } from "react";
+import { Download, Mars, Plus, Upload, Venus } from "lucide-react";
 import {
   CHILD_STATUS_LABEL,
   SEX_LABEL,
@@ -33,6 +23,7 @@ import { useSession } from "@/lib/auth/session";
 import { RequireRole } from "@/components/shell/require-role";
 import { downloadUrl } from "@/lib/api/client";
 import { useDebounced } from "@/lib/use-debounced";
+import { Art } from "@/components/ui/art";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { formatAge, fullName } from "@/lib/format";
@@ -42,7 +33,6 @@ import { StatCard } from "@/components/ui/stat-card";
 import { useSelectedChild } from "@/lib/selected-child";
 import { MY_CHILDREN } from "@/lib/vocabulary";
 import { z } from "zod";
-import { Art } from "@/components/ui/art";
 
 const listSchema = paginated(childSummarySchema);
 const ownSchema = z.array(childSummarySchema);

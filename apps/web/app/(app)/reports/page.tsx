@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
-import { CalendarDays, CheckCircle2, Percent, UsersRound } from "lucide-react";
+import { CalendarDays, CheckCircle2, Percent } from "lucide-react";
 import { useState } from "react";
 import { groupAttendanceSummarySchema, type GroupAttendanceSummary } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
 import { GroupSwitcher, useSwitchableGroups } from "@/components/shell/group-switcher";
+import { Art } from "@/components/ui/art";
 import { Card, SectionHeader, SunkenPanel } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
@@ -24,7 +25,6 @@ import {
 } from "@/lib/attendance-meta";
 import { fullName } from "@/lib/format";
 import { StatCard } from "@/components/ui/stat-card";
-import { Art } from "@/components/ui/art";
 
 /**
  * "Тайлан" — a teacher's own group, a month at a time.
