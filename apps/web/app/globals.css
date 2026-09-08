@@ -53,14 +53,32 @@
      from #0f172a costs nothing in legibility and takes the hard edge off a
      screen that is mostly text on white. */
   --color-ink: #1e293b;
-  /* slate-500. 4.76:1 on white — the floor is 4.5:1, so this is secondary text
-     and not a third heading colour. ★ It is 4.34:1 on `--color-track`
-     (slate-100) and must not be used on it. */
-  --color-muted: #64748b;
-  /* The third step — for text that is present but not being offered, such as a
-     menu entry naming a part of the product that is not built yet.
-     Decorative contrast only; never the sole carrier of meaning. */
-  --color-faint: #94a3b8;
+  /* ★ slate-600, raised from slate-500 on 2026-09-09 after the ratios were
+     measured against the page rather than against white.
+
+     slate-500 is 4.76:1 on `--color-surface` and passes — but the product's
+     own background is `--color-canvas` (#eef8ff), where the same grey is
+     4.42:1 and fails. Every card sits on that canvas, and the text between
+     cards sits directly on it. Measuring against white was measuring the
+     wrong surface. 7.04:1 on canvas, 7.58:1 on white. */
+  --color-muted: #475569;
+  /* ★ Was slate-400 (#94a3b8) until 2026-09-09, at 2.56:1 on white and 2.38:1
+     on canvas — roughly half the 4.5:1 floor, and a WCAG AA failure wherever
+     it carried words.
+
+     The comment that stood here called it "decorative contrast only; never the
+     sole carrier of meaning", and that was the licence it was read under: it
+     went on to carry timestamps, field hints and empty-state lines, which are
+     all text a person has to read. A token whose own documentation says it
+     must not be used for text, in a codebase that uses it for text 450 times,
+     is a rule that lost.
+
+     4.62:1 on canvas, 4.97:1 on white and 4.54:1 on `--color-track` — the
+     quietest value that still clears the floor on all three surfaces the
+     product paints text on. It is visibly lighter than `--color-muted` above
+     it, which is what the three steps were for; it is simply no longer
+     lighter than legibility. */
+  --color-faint: #617188;
 
   /*
    * Primary — the E-Mongolia blue, in three steps.

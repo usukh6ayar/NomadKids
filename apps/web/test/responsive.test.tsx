@@ -224,9 +224,54 @@ describe("design tokens", () => {
     expect(GLOBALS_CSS).toContain("#1e40af"); // primary-strong/hover — blue-800
     expect(GLOBALS_CSS).toContain("#eff6ff"); // primary-soft — blue-50
     expect(GLOBALS_CSS).toContain("#1e293b"); // ink — slate-800
-    expect(GLOBALS_CSS).toContain("#64748b"); // muted — slate-500
+    // ★ muted moved slate-500 → slate-600 on 2026-09-09; see the contrast
+    // case below for why. The old value failed on the product's own canvas.
+    expect(GLOBALS_CSS).toContain("#475569"); // muted — slate-600
     expect(GLOBALS_CSS).toContain("#e2e8f0"); // border — slate-200
     expect(GLOBALS_CSS).toContain("#f1f5f9"); // track — slate-100
+  });
+
+  /**
+   * ★ Text tokens are asserted as *ratios*, not as hexes.
+   *
+   * The case above pins the palette so a drifted colour is caught. This one
+   * pins the property the palette exists to have, and it is the one a hex
+   * cannot express: `--color-faint` was slate-400 for months, matching its
+   * approved value exactly, while measuring 2.56:1 on white — a WCAG AA
+   * failure that every "the hex is correct" assertion passed straight over.
+   *
+   * All three surfaces, because the product paints text on all three and the
+   * old values were measured only against white. `--color-canvas` is the page
+   * itself and is the harder background; `--color-track` is a progress bar's
+   * unfilled half, which carries labels.
+   */
+  it("every text colour clears 4.5:1 on every surface it is painted on", () => {
+    const hex = (token: string): string => {
+      const found = new RegExp(`--color-${token}:\\s*(#[0-9a-f]{6})`, "i").exec(GLOBALS_CSS);
+      if (!found) throw new Error(`--color-${token} is not defined`);
+      return found[1]!;
+    };
+
+    const luminance = (value: string): number => {
+      const channels = [1, 3, 5].map((i) => parseInt(value.slice(i, i + 2), 16) / 255);
+      const linear = channels.map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+      return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
+    };
+
+    const ratio = (a: string, b: string): number => {
+      const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+      return (hi! + 0.05) / (lo! + 0.05);
+    };
+
+    for (const text of ["ink", "muted", "faint"]) {
+      for (const surface of ["surface", "canvas", "track"]) {
+        const measured = ratio(hex(text), hex(surface));
+        expect(
+          measured,
+          `--color-${text} on --color-${surface} is ${measured.toFixed(2)}:1`,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+    }
   });
 
   /**

@@ -65,18 +65,30 @@ describe("tone contrast", () => {
   });
 
   /*
-   * ★ The measurement that shaped the design.
+   * ★ The measurement that shaped the design — and the repaint it predicted.
    *
-   * `--color-muted` is between 3.46:1 and 4.08:1 on these six tints — under the
-   * floor on every one. That is why `TONE_SURFACE` names an explicit ink rather
-   * than letting a chip inherit, and why a toned `Card` keeps text at
-   * `--color-ink`. If a future repaint makes muted safe here, this test fails
-   * and the rule can be revisited deliberately rather than by accident.
+   * This read "`--color-muted` is NOT safe on the tints": it was slate-500,
+   * between 3.46:1 and 4.08:1 on all six, under the floor on every one. The
+   * comment ended "if a future repaint makes muted safe here, this test fails
+   * and the rule can be revisited deliberately rather than by accident."
+   *
+   * That is exactly what happened. On 2026-09-09 muted moved to slate-600 to
+   * clear 4.5:1 on `--color-canvas`, and it now measures 5.52:1 to 6.49:1 on
+   * the tints — safe on all of them. `--color-faint` inherited the role: it is
+   * 3.62:1 to 4.26:1 there and is the value a chip must not fall back to.
+   *
+   * The design rule is unchanged and is why both halves are asserted:
+   * `TONE_SURFACE` names an explicit ink rather than letting a chip inherit,
+   * so a tinted surface never depends on which grey happens to be in scope.
    */
-  it("confirms --color-muted is NOT safe on the tints", () => {
+  it("keeps the tints legible: muted now clears them, faint still does not", () => {
     const muted = token("--color-muted");
+    const faint = token("--color-faint");
     for (const tone of TONES) {
-      expect(contrast(token(`--color-${tone}`), muted), `muted on ${tone}`).toBeLessThan(4.5);
+      expect(contrast(token(`--color-${tone}`), muted), `muted on ${tone}`).toBeGreaterThanOrEqual(
+        4.5,
+      );
+      expect(contrast(token(`--color-${tone}`), faint), `faint on ${tone}`).toBeLessThan(4.5);
     }
   });
 });
