@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, CloudDownload, Database } from "lucide-react";
+import { CloudDownload, Database } from "lucide-react";
 import { useState } from "react";
 import {
   esisOverviewSchema,
@@ -21,7 +21,7 @@ import {
 } from "@/components/esis/esis-params";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, SectionHeader } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/field";
 import { LoadingState } from "@/components/ui/states";
 
@@ -54,9 +54,20 @@ const ERROR_LABEL: Record<string, string> = {
  * whose data appears only after a press invites the reader to assume the press
  * called the ministry, whether or not it did.
  *
- * ★★★ Never mixed. Live rows replace the demo set entirely, and the badge
- * changes with them, so an invented tenant name is never on screen beside a
- * real one — the rule `esis.fields.ts` states and every ESIS surface keeps.
+ * ★★★ Never mixed. Live rows replace the demo set entirely, so an invented
+ * tenant name is never on screen beside a real one.
+ *
+ * ★★★★ **The `Demo ESIS синк` badge is gone from this panel — 2026-09-08, at
+ * the client's explicit instruction**, asked for twice: the screen is to read
+ * as a connected system, "яг л ESIS-тэй холбогдчихсон датагаа тэндээс нь авч
+ * байгаа мэт". The concern was put to them in writing first — that the demo
+ * tenant is invented, so an unlabelled panel puts "Бяцхан нүүдэлчид (жишээ)"
+ * on a director's screen as if it were their own record — and they chose it
+ * anyway, with the demo values kept as they are.
+ *
+ * So the label is recorded here instead of on screen. `/admin/integrations/esis`
+ * keeps its badges: that screen exists to say which services are live and which
+ * are not, and is where anybody asking "is this real?" is sent.
  */
 export function EsisDataPanel({
   resource,
@@ -142,26 +153,18 @@ export function EsisDataPanel({
   }
 
   return (
-    <section aria-labelledby={heading}>
-      <SectionHeader
-        id={heading}
-        title={title ?? `ESIS мэдээлэл — ${endpoint.name}`}
-        action={
-          <Badge tone={live ? "sky" : "mint"}>
-            <CheckCircle2 size={13} aria-hidden />
-            {live ? "Бодит ESIS синк" : "Demo ESIS синк"}
-          </Badge>
-        }
-      />
-
+    <section aria-label={title ?? endpoint.name}>
       <Card pad="roomy" className="flex flex-col gap-5">
         <div className="flex flex-wrap items-start gap-3 border-b border-border-soft pb-5">
           <span className="flex size-11 shrink-0 items-center justify-center rounded-control bg-sky text-sky-ink">
             <Database size={21} aria-hidden />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="font-semibold text-ink">{description ?? endpoint.usage}</p>
-            <p className="mt-0.5 break-all font-mono text-caption text-muted">
+            <h2 id={heading} className="font-semibold text-ink">
+              {title ?? endpoint.name}
+            </h2>
+            <p className="mt-0.5 text-body text-muted">{description ?? endpoint.usage}</p>
+            <p className="mt-1 break-all font-mono text-caption text-faint">
               {endpoint.slug} · {esisApiIdLabel(endpoint.apiId)} · {endpoint.method} {endpoint.path}
             </p>
           </div>
@@ -200,9 +203,7 @@ export function EsisDataPanel({
             <p className="mt-2 text-caption text-muted">
               {required.some(isPersonalParam)
                 ? "Регистрийн дугаарыг ESIS рүү илгээх ба хадгалахгүй."
-                : demoMode
-                  ? "Demo sandbox mapping-аас автоматаар бөглөгдсөн."
-                  : "ESIS-ийн өөрийн дугаарыг ашиглана."}
+                : "ESIS-ийн өөрийн дугаарыг ашиглана."}
             </p>
           </div>
         ) : null}

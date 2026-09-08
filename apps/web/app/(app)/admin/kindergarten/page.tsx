@@ -331,52 +331,25 @@ function AdminKindergarten() {
             </div>
           </form>
         </Card>
-      ) : (
-        <Card pad="roomy">
-          <dl className="flex flex-col gap-4">
-            <DetailRow label="Цэцэрлэгийн нэр" value={data?.name} />
-            <DetailRow label="Хаяг" value={data?.address} />
-            <DetailRow label="Утас" value={data?.phone} />
-            <DetailRow label="И-мэйл" value={data?.email} />
-            <DetailRow label="Танилцуулга" value={data?.description} />
-          </dl>
-        </Card>
-      )}
+      ) : null}
 
       {/*
-        ★ ESIS's own record of this kindergarten, under the local one.
+        ★ The kindergarten's record, from ESIS — 2026-09-08, at the client's
+        instruction.
 
-        Reading order is the argument for the position. The five fields above
-        are what the director typed; the sixteen below are what the ministry
-        holds — the official name, the classification, the аймаг/сум/хороо
-        chain — and the only useful thing to do with the second is check it
-        against the first. Stacked, that is one downward read. Behind a button
-        it is two screens and a memory test.
+        This screen used to read the local record back as a card of five
+        fields; that card is gone and the sixteen ESIS fields are the reading
+        state. The local values are still what "Засах" edits and what every
+        report prints — they are simply no longer *displayed* here, because the
+        client asked that the screen read as one connected source rather than
+        two lists of the same kindergarten.
 
-        It is out of edit mode on purpose: the panel is a source to compare
-        against, and putting it beside a half-typed form invites the reader to
-        think one of the two saves the other. Import is a separate step that
-        does not exist yet (`ESIS_API_READINESS.md` C5).
+        Out of edit mode on purpose: putting a read-only source beside a
+        half-typed form invites the reader to think one of the two saves the
+        other. Import is a separate step that does not exist yet
+        (`ESIS_API_READINESS.md` C5).
       */}
       {editing ? null : <EsisDataPanel resource="organization" />}
-    </div>
-  );
-}
-
-/**
- * One label/value pair in the reading state.
- *
- * An empty field says so rather than rendering a blank line: "—" on its own
- * leaves the reader unsure whether the value is missing or the screen failed
- * to load it, and this form has four optional fields.
- */
-function DetailRow({ label, value }: { label: string; value?: string | null }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <dt className="text-caption text-muted">{label}</dt>
-      <dd className={value ? "text-body text-ink" : "text-body text-faint"}>
-        {value || "Бөглөөгүй"}
-      </dd>
     </div>
   );
 }
