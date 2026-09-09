@@ -282,7 +282,7 @@ export function groupByQuarter(
 }
 
 /**
- * "Хуваалцсан мөчүүд" — a photo-forward teaser for the parent's "Хөгжил"
+ * "Тэмдэглэл" — a photo-forward teaser for the parent's "Хөгжил"
  * page, replacing the assessments-based "Хүүхдийн тэмдэглэлүүд" (removed
  * 2026-09-04, on the client's instruction — that section's own subtitle had
  * promised "багш, эцэг эхийн тэмдэглэл", which it never actually showed;
@@ -319,8 +319,8 @@ export function SharedMomentsTeaser({ childId }: { childId: string }) {
     <section aria-labelledby="moments-heading">
       <SectionHeader
         id="moments-heading"
-        title="Хуваалцсан мөчүүд"
-        lede="Багш, эцэг эхийн бичсэн зурагтай тэмдэглэлийг улирлаар харуулж байна."
+        title="Тэмдэглэл"
+        lede="Хүүхдийн хөгжилд гарч буй ахиц дэвшлийг багш, эцэг эх хамтран тэмдэглэнэ"
       />
 
       {observations.isPending ? <LoadingState rows={2} /> : null}
@@ -345,12 +345,7 @@ function MomentsFeed({
   const withPhotos = items.filter((observation) => observation.media.length > 0);
 
   if (withPhotos.length === 0) {
-    return (
-      <EmptyState
-        title="Одоогоор зурагтай мөч алга"
-        description="Багшийн хуваалцсан ажиглалт, бүтээл энд харагдана."
-      />
-    );
+    return <EmptyState title="Тэмдэглэл ороогүй" />;
   }
 
   const quarters = groupByQuarter(withPhotos, terms);
