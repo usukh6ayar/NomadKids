@@ -11,9 +11,7 @@ import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { ErrorState, LoadingState } from "@/components/ui/states";
-import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { ReportDialog } from "@/components/reports/report-dialog";
-import { useSession } from "@/lib/auth/session";
 import { PORTFOLIO } from "@/lib/vocabulary";
 import { Art, type ArtName } from "@/components/ui/art";
 
@@ -48,8 +46,6 @@ import { Art, type ArtName } from "@/components/ui/art";
 export default function PortfolioPage() {
   const params = useParams<{ childId: string }>();
   const childId = params.childId;
-  const { hasRole } = useSession();
-  const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
 
   const child = useQuery({
     queryKey: qk.child(childId),
@@ -109,26 +105,22 @@ export default function PortfolioPage() {
         ) : null}
       </section>
 
-      <ChildHeroProfile
-        child={data}
-        showHealthAlert={isStaff}
-        actions={
-          <ReportDialog
-            childId={childId}
-            // The current enrolment's year — what the annual report compares.
-            schoolYearId={
-              data.enrollments?.find((e) => e.status === "ACTIVE")?.schoolYear?.id ??
-              data.enrollments?.[0]?.schoolYear?.id
-            }
-            trigger={
-              <Button variant="secondary" size="sm">
-                <FileText size={18} />
-                PDF татах
-              </Button>
-            }
-          />
-        }
-      />
+      <div className="flex justify-end">
+        <ReportDialog
+          childId={childId}
+          // The current enrolment's year — what the annual report compares.
+          schoolYearId={
+            data.enrollments?.find((e) => e.status === "ACTIVE")?.schoolYear?.id ??
+            data.enrollments?.[0]?.schoolYear?.id
+          }
+          trigger={
+            <Button variant="secondary" size="sm">
+              <FileText size={18} />
+              PDF татах
+            </Button>
+          }
+        />
+      </div>
 
       <PortfolioHubNav childId={childId} />
     </div>

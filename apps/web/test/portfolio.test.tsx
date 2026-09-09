@@ -125,9 +125,13 @@ describe("portfolio launcher", () => {
 
 describe("portfolio age sections", () => {
   it("shows the parent's three share actions as white illustrated cards with accent lines", async () => {
+    const user = userEvent.setup();
     stubGrowth(bornYearsAgo(3), [], "MALE", ["PARENT"]);
 
     renderWithProviders(<GrowthPage />);
+
+    // The three doors are collapsed behind the header's "+" until asked for.
+    await user.click(await screen.findByRole("button", { name: "Шинэ тэмдэглэл нэмэх" }));
 
     const expected = [
       ["Ажиглалт", "icon-observation-3d", "before:bg-[#16a96f]"],
