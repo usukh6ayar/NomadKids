@@ -329,9 +329,16 @@ export class EsisAdminService {
     return {
       mode: deployment.configured ? ("LIVE" as const) : ("DEMO" as const),
       canRead: deployment.demoMode || deployment.configured,
-      endpoints: ESIS_RESOURCE_CATALOG.filter((endpoint) => keys.has(endpoint.key)).map(
-        (endpoint) => ({ ...endpoint, accessStatus: "UNKNOWN" as const }),
-      ),
+      /*
+       * ★ The catalog entry as it stands, with no sync state bolted on.
+       *
+       * `overview()` decorates each service with `accessStatus`, `syncStatus`,
+       * `lastSyncAt` and the rest, all derived from the deployment and its run
+       * history. None of that belongs in a teacher's payload, and adding an
+       * `accessStatus: "UNKNOWN"` here — which an earlier version did — put a
+       * field in the response whose only honest value was "we did not look".
+       */
+      endpoints: ESIS_RESOURCE_CATALOG.filter((endpoint) => keys.has(endpoint.key)),
     };
   }
 

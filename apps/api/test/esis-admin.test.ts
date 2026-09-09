@@ -1,4 +1,5 @@
 import type { INestApplication } from "@nestjs/common";
+import { esisScopedCatalogSchema } from "@kinder/contracts";
 import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
@@ -257,6 +258,39 @@ describe("role-scoped ESIS catalog", () => {
     expect(res.body).not.toHaveProperty("connection");
     expect(res.body).not.toHaveProperty("blockers");
     expect(res.body).not.toHaveProperty("recentRuns");
+
+    /*
+     * ★★ Nor per-service sync state, which is the same information one row at
+     * a time: which run last touched this service, whether it failed and with
+     * what code. The overview decorates every endpoint with those; this
+     * payload carries the catalog entry and stops.
+     */
+    for (const key of [
+      "accessStatus",
+      "responseMode",
+      "httpStatus",
+      "syncStatus",
+      "syncErrorCode",
+      "lastSyncAt",
+    ]) {
+      expect(res.body.endpoints[0], key).not.toHaveProperty(key);
+    }
+  });
+
+  /*
+   * ★ The contract, parsed — the assertion that would have caught this on the
+   * day it shipped.
+   *
+   * The first version of this payload reused the overview's endpoint shape,
+   * which had since grown six sync-state fields it did not send. The browser's
+   * `get()` parses every response, so it threw, the panel's query resolved to
+   * nothing, and every panel on every teacher screen rendered blank — silently,
+   * because a failed parse is not a failed request.
+   */
+  it("matches the schema the browser parses it with", async () => {
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), teacherA);
+
+    expect(() => esisScopedCatalogSchema.parse(res.body)).not.toThrow();
   });
 
   it("returns 404 to a guardian, who reaches no ESIS service at all", async () => {
