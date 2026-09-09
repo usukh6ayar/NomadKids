@@ -6,20 +6,14 @@ import {
   ArrowRight,
   BarChart3,
   BookOpenCheck,
-  Calculator,
-  ChefHat,
-  GraduationCap,
   Heart,
-  LayoutDashboard,
   LockKeyhole,
   Menu,
   Sparkles,
-  Stethoscope,
   UserRound,
   Users,
   X,
   Zap,
-  type LucideIcon,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -66,43 +60,38 @@ const featureItems = [
   },
 ] as const;
 
-const audienceItems: ReadonlyArray<{
-  icon: LucideIcon;
-  title: string;
-  copy: string;
-  tone: string;
-}> = [
+const audienceItems = [
   {
-    icon: GraduationCap,
+    imageSrc: "/illustrations/audience-teacher.png",
+    imageAlt: "Багш",
     title: "Багшийн веб",
     copy: "Өдрийн тайлан, ирц, хүүхдийн хөгжил, эцэг эхтэй харилцах ажлыг хялбарчилна.",
-    tone: "bg-[#fff8d9] text-[#d99c13]",
   },
   {
-    icon: LayoutDashboard,
+    imageSrc: "/illustrations/audience-parent.png",
+    imageAlt: "Эцэг эх хүүхдийн хамт",
+    title: "Эцэг эхийн веб",
+    copy: "Хүүхдийн ирц, хоол, хөгжлийн мэдээлэл болон цэцэрлэгийн мэдэгдлийг нэг дороос харна.",
+  },
+  {
+    imageSrc: "/illustrations/audience-management.png",
+    imageAlt: "Удирдлагын ажилтан",
     title: "Удирдлагын самбар",
     copy: "Бүх бүлгийн нэгтгэл, тайлан, гүйцэтгэлийг бодит хугацаанд хянана.",
-    tone: "bg-[#e9f5ff] text-[#2388e8]",
   },
   {
-    icon: Calculator,
-    title: "Нягтлангийн веб",
-    copy: "Төлбөр, орлого, зарлага, нэхэмжлэхийн бүртгэлийг нэг дор удирдана.",
-    tone: "bg-[#eafaf2] text-[#26ad70]",
-  },
-  {
-    icon: ChefHat,
+    imageSrc: "/illustrations/audience-cook.png",
+    imageAlt: "Тогооч",
     title: "Гал тогооны веб",
     copy: "Өдрийн цэс, порц, харшлын анхааруулга, зарцуулалтыг хөтөлнө.",
-    tone: "bg-[#fff0e9] text-[#ef7646]",
   },
   {
-    icon: Stethoscope,
-    title: "Эмчийн веб",
-    copy: "Хүүхдийн эрүүл мэнд, үзлэг, зөвлөгөөний түүхийг найдвартай хадгална.",
-    tone: "bg-[#f1edff] text-[#7969d6]",
+    imageSrc: "/illustrations/audience-accountant.png",
+    imageAlt: "Нягтлан бодогч",
+    title: "Нягтлангийн веб",
+    copy: "Төлбөр, орлого, зарлага, нэхэмжлэхийн бүртгэлийг нэг дор удирдана.",
   },
-];
+] as const;
 
 const benefitItems = [
   {
@@ -152,13 +141,13 @@ const landingFaqItems = [
 function Brand({ compact = false }: { compact?: boolean }) {
   return (
     <Link href="#home" className="inline-flex items-center gap-2" aria-label={`${BRAND} нүүр`}>
-      <span className="grid size-12 shrink-0 place-items-center">
+      <span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-control bg-white p-0.5 shadow-sm">
         <Image
-          src="/logo-transparent.png"
+          src="/brand-mark.png"
           alt=""
-          width={48}
-          height={48}
-          className="size-full object-contain"
+          width={40}
+          height={29}
+          className="w-full object-contain"
         />
       </span>
       <span className="min-w-0">
@@ -170,6 +159,31 @@ function Brand({ compact = false }: { compact?: boolean }) {
         ) : null}
       </span>
     </Link>
+  );
+}
+
+function HeroBrand() {
+  return (
+    <div className="flex flex-col items-center text-center">
+      <Image
+        src="/brand-logo.png"
+        alt="Бяцхан нүүдэлчид"
+        width={1400}
+        height={1400}
+        priority
+        sizes="(max-width: 1023px) 132px, 168px"
+        className="size-[132px] object-contain lg:size-[168px]"
+      />
+      <p className="-mt-2 text-compact font-extrabold text-[#54a9fb] sm:text-body lg:mt-2 lg:text-lead">
+        Цэцэрлэгийн ухаалаг цахим систем
+      </p>
+      <p className="my-1.5 scale-125 bg-gradient-to-r from-[#0758c8] via-[#596fe5] to-[#ba55df] bg-clip-text text-figure font-black leading-none tracking-[-0.055em] text-transparent lg:my-3 lg:scale-150">
+        NomadKids
+      </p>
+      <p className="mt-1 text-compact font-black uppercase tracking-[-0.02em] text-[#5779e4] sm:text-body lg:text-lead">
+        Цахимжуулах цогц шийдэл
+      </p>
+    </div>
   );
 }
 
@@ -254,7 +268,7 @@ function LoginCard() {
   return (
     <div
       id="login-card"
-      className="w-full max-w-[390px] rounded-control border border-[#e2edf7] bg-white p-5 text-left shadow-[0_16px_45px_rgba(32,88,132,.12)] sm:p-6"
+      className="w-full max-w-[420px] rounded-card border border-[#e2edf7] bg-white p-5 text-left shadow-[0_16px_45px_rgba(32,88,132,.12)] sm:p-6"
     >
       <h2 className="text-title font-extrabold text-[#173e70]">Системд нэвтрэх</h2>
       <p className="mt-1 text-caption leading-5 text-slate-500">
@@ -337,7 +351,7 @@ function LoginCard() {
         </Link>
       </div>
 
-      <p className="mt-3 border-t border-[#edf2f7] pt-3 text-center text-caption leading-5 text-slate-500">
+      <p className="mt-3 hidden border-t border-[#edf2f7] pt-3 text-center text-caption leading-5 text-slate-500 lg:block">
         Нэвтрэхдээ{" "}
         <Link href="/terms" className="font-semibold text-[#2588ed] hover:underline">
           Үйлчилгээний нөхцөл
@@ -443,7 +457,7 @@ function LoginLanding() {
 
   return (
     <main className="min-h-dvh overflow-hidden bg-white text-[#173e70]">
-      <header className="sticky top-0 z-50 border-b border-[#e8f0f7] bg-white/95 px-4 backdrop-blur sm:px-6">
+      <header className="sticky top-0 z-50 hidden border-b border-[#e8f0f7] bg-white/95 px-4 backdrop-blur sm:px-6 lg:block">
         <div className="mx-auto flex h-[70px] max-w-[1180px] items-center justify-between gap-4">
           <Brand />
 
@@ -504,34 +518,26 @@ function LoginLanding() {
         ) : null}
       </header>
 
-      <section id="home" className="relative bg-[#eef9ff] px-5 py-10 sm:px-8 sm:py-14 lg:py-16">
-        <div className="pointer-events-none absolute left-0 top-16 h-28 w-28 rounded-pill bg-white/55" />
-        <div className="pointer-events-none absolute right-[8%] top-9 h-20 w-32 rounded-pill bg-white/50" />
-
-        <div className="relative mx-auto grid max-w-[1180px] items-center gap-x-10 gap-y-7 lg:grid-cols-[420px_1fr] lg:grid-rows-[auto_auto]">
-          <div className="text-center lg:col-start-1 lg:row-start-1 lg:text-left">
-            <h1 className="text-figure font-black leading-[1.08] text-[#102f5d] sm:text-figure">
-              Хүүхэд бүрийн өдөр тутмыг илүү ойрхон
-            </h1>
-            <p className="mx-auto mt-4 max-w-[46ch] text-body leading-6 text-slate-600 sm:text-lead lg:mx-0">
-              {BRAND} нь цэцэрлэг, сургуулийн өдөр тутмын үйл ажиллагааг нэгтгэсэн, хүүхэд төвтэй
-              удирдлагын веб систем юм.
-            </p>
+      <section
+        id="home"
+        data-testid="login-hero"
+        className="relative isolate min-h-dvh bg-[#f1f9ff] bg-[url('/background/login-mobile.png')] bg-cover bg-top bg-no-repeat px-5 pb-[42vw] pt-[7vw] sm:px-8 lg:min-h-[calc(100dvh-70px)] lg:bg-[url('/background/login-desktop.png')] lg:px-[7vw] lg:pb-8 lg:pt-8"
+      >
+        <div className="relative mx-auto grid w-full max-w-[1680px] items-start gap-y-7 lg:grid-cols-[440px_minmax(0,1fr)] lg:gap-x-[7vw] xl:grid-cols-[480px_minmax(0,1fr)]">
+          <div className="order-1 flex justify-center lg:order-2 lg:pt-0 xl:pt-2">
+            <HeroBrand />
           </div>
 
-          <div className="relative mx-auto aspect-[3/2] w-full max-w-[720px] lg:col-start-2 lg:row-span-2 lg:row-start-1">
-            <Image
-              src="/illustrations/nomadkids-login-hero.png"
-              alt="Багш дөрвөн хүүхдийн хамт цэцэрлэгийн гадаа инээмсэглэж байна"
-              fill
-              priority
-              sizes="(max-width: 1023px) 100vw, 720px"
-              className="object-contain"
-            />
-          </div>
-
-          <div className="mx-auto w-full max-w-[390px] lg:col-start-1 lg:row-start-2 lg:mx-0 lg:mt-3">
-            <LoginCard />
+          <div className="order-2 mx-auto w-full max-w-[420px] lg:order-1 lg:mx-0 lg:pt-[7vh]">
+            <Link
+              href="/register"
+              className="mb-3 flex min-h-11 items-center justify-center text-body font-extrabold text-[#1686f5] hover:underline lg:justify-end lg:pr-1 lg:text-lead"
+            >
+              Байгууллагын бүртгэл
+            </Link>
+            <div className="rounded-card bg-[#eaf7ff]/80 p-2.5 shadow-[0_18px_55px_rgba(48,107,153,.08)] backdrop-blur-[2px]">
+              <LoginCard />
+            </div>
           </div>
         </div>
       </section>
@@ -567,36 +573,35 @@ function LoginLanding() {
           copy="Тус бүрийн хэрэгцээнд тохирсон, хэрэглэхэд хялбар бөгөөд үр дүнтэй ажлын орчин."
         />
 
-        <div className="relative mx-auto mt-6 aspect-[5/2] w-full max-w-[980px] sm:mt-8">
-          <Image
-            src="/illustrations/nomadkids-audience-roles.png"
-            alt="Багш, захирал, нягтлан бодогч, тогооч, эмч"
-            fill
-            sizes="(max-width: 1023px) 100vw, 980px"
-            className="object-contain"
-          />
-        </div>
-
-        <div className="mx-auto mt-3 grid max-w-[1120px] grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
-          {audienceItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <article
-                key={item.title}
-                className="rounded-control border border-[#e8eef5] bg-white p-4 text-center shadow-sm sm:p-5"
-              >
-                <span
-                  className={`mx-auto grid size-10 place-items-center rounded-control ${item.tone}`}
-                >
-                  <Icon className="size-5" aria-hidden="true" />
-                </span>
-                <h3 className="mt-3 text-body font-extrabold leading-5 text-[#173e70]">
+        <div className="mx-auto mt-9 grid max-w-[1180px] grid-cols-2 items-stretch gap-x-3 gap-y-7 sm:gap-x-5 sm:gap-y-9 lg:grid-cols-5">
+          {audienceItems.map((item) => (
+            <article
+              key={item.title}
+              className="flex w-full min-w-0 flex-col text-center last:col-span-2 last:max-w-[190px] last:justify-self-center lg:last:col-span-1 lg:last:max-w-none"
+            >
+              <div className="relative z-10 mx-auto aspect-square w-[78%] max-w-[190px]">
+                <Image
+                  src={item.imageSrc}
+                  alt={item.imageAlt}
+                  fill
+                  sizes="(max-width: 639px) 38vw, (max-width: 1023px) 190px, 180px"
+                  className={
+                    item.imageAlt === "Багш"
+                      ? "origin-bottom scale-[.94] object-contain object-bottom"
+                      : "object-contain object-bottom"
+                  }
+                />
+              </div>
+              <div className="flex flex-1 flex-col rounded-card border border-[#e8eef5] bg-white px-3 pb-5 pt-7 shadow-sm sm:px-5 sm:pb-6 sm:pt-8">
+                <h3 className="text-body font-extrabold leading-5 text-[#173e70] sm:text-lead">
                   {item.title}
                 </h3>
-                <p className="mt-2 text-caption leading-5 text-slate-500">{item.copy}</p>
-              </article>
-            );
-          })}
+                <p className="mt-2 text-caption leading-5 text-slate-500 sm:text-body">
+                  {item.copy}
+                </p>
+              </div>
+            </article>
+          ))}
         </div>
       </section>
 
@@ -681,8 +686,8 @@ function LoginLanding() {
           </div>
           <div className="relative mx-auto mt-4 aspect-[4/3] w-full max-w-[330px] lg:absolute lg:-bottom-16 lg:right-4 lg:mt-0 lg:w-[360px]">
             <Image
-              src="/illustrations/nomadkids-cta-boy.png"
-              alt="Цаасан онгоц нисгэж буй хүүхэд"
+              src="/illustrations/nomadkids-cta-children.png"
+              alt="Од руу зааж буй хоёр хүүхэд"
               fill
               sizes="(max-width: 1023px) 330px, 360px"
               className="object-contain"

@@ -34,7 +34,7 @@ export function PublicInfoShell({
           >
             <span className="grid size-12 shrink-0 place-items-center">
               <Image
-                src="/logo-transparent.png"
+                src="/brand-mark.png"
                 alt=""
                 width={48}
                 height={48}

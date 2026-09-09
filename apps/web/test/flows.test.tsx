@@ -1517,6 +1517,9 @@ describe("teacher dashboard", () => {
     expect(
       await screen.findByRole("heading", { name: /Сайн байна уу, Тест Хэрэглэгч/ }),
     ).toBeInTheDocument();
+    expect(screen.getByAltText("Багш хоёр хүүхдэд ном уншиж байна").getAttribute("src")).toContain(
+      "teacher-reading-with-children.png",
+    );
 
     for (const action of ["Ирц", "Мэдээ", "Судалгаа", "Явцын үнэлгээ"]) {
       expect(

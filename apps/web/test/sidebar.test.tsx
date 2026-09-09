@@ -119,7 +119,7 @@ describe("the brand header", () => {
     // The filename is asserted rather than merely "some image", because the
     // sidebar renders it through next/image and a missing public asset is a 404
     // the component itself never notices.
-    expect(mark.getAttribute("src")).toContain("logo-transparent.png");
+    expect(mark.getAttribute("src")).toContain("brand-mark.png");
   });
 
   it("links the brand home", async () => {

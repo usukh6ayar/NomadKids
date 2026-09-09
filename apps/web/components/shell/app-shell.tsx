@@ -821,7 +821,7 @@ function Brand({ subtitle }: { subtitle: string }) {
       */}
       <span data-brand-mark className="grid size-[52px] shrink-0 place-items-center">
         <Image
-          src="/logo-transparent.png"
+          src="/brand-mark.png"
           alt={BRAND}
           width={52}
           height={52}
@@ -1098,11 +1098,8 @@ function SidebarContent({
 
       {showTeacherArt ? (
         <div className="relative hidden h-36 shrink-0 overflow-hidden rounded-card bg-mint/70 xl:block">
-          <p className="relative z-[1] max-w-[116px] px-3 pt-4 text-caption font-semibold leading-relaxed text-ink">
-            Жижиг алхам том ирээдүй
-          </p>
           <Image
-            src="/illustrations/nomadkids-cta-boy.png"
+            src="/illustrations/teacher-talking-with-children.png"
             alt=""
             fill
             priority
@@ -1428,7 +1425,7 @@ function MobileHeader({ subtitle }: { subtitle: string }) {
       <Link href="/" className="flex min-h-[44px] items-center gap-3">
         <span data-brand-mark className="grid size-[42px] shrink-0 place-items-center">
           <Image
-            src="/logo-transparent.png"
+            src="/brand-mark.png"
             alt={BRAND}
             width={42}
             height={42}
