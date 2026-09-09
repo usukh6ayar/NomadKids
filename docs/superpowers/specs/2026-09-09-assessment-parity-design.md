@@ -118,65 +118,47 @@ asserted through HTTP against the real route.
 
 ---
 
-## 5. Stage 3 — `DevelopmentIndicator`
+## 5. Stage 3 — `DevelopmentIndicator` — **struck 2026-09-09**
 
-★ **This reverses a written decision.** `docs/MIGRATION_PLAN.md:76` records
-`DevelopmentIndicator` as deliberately dropped — "The MVP assesses at domain
-level; the FK on `Assessment` is already nullable and unused by every screen."
-The client asked for it on 2026-09-09. **That line must be amended in the same
-commit**, saying what changed and when: a document the codebase contradicts
-stops being read, which is the argument CLAUDE.md §7 makes four times over.
+★ **It is unused in the reference too**, which the first draft of this spec did
+not know. `grep -rn indicator` over the whole Django project outside migrations
+returns `apps/assessment/models.py` and nothing else — no admin, no view, no
+template, no selector, no service. The model's own docstring says why:
 
-**The model**, following Django's fields and v2's conventions:
+> "Deliberately unused in Phase 1: assessment happens at the domain level
+> (§6.4, §6.5 and §12.3 all aggregate per domain). The table and the nullable
+> `Assessment.indicator` column exist now so that criteria can be added later."
 
-```prisma
-model DevelopmentIndicator {
-  id             String  @id @default(uuid()) @db.Uuid
-  kindergartenId String  @db.Uuid          // §3.1, denormalised
-  domainId       String  @db.Uuid
-  name           String
-  ageFrom        Int     @default(2) @db.SmallInt
-  ageTo          Int     @default(5) @db.SmallInt
-  order          Int     @default(0)
-  isActive       Boolean @default(true)
-  deletedAt      DateTime?                  // §3.2
-}
-```
+And on `Assessment`: "`indicator` stays NULL in Phase 1 and is deliberately
+left out of the constraint."
 
-`ageFrom`/`ageTo` are Django's `age_from`/`age_to`: an indicator applies to part
-of the 2–5 range, so a two-year-old's grid does not show a five-year-old's
-criteria.
+So `MIGRATION_PLAN.md`'s DROP line was never a v2 decision — it faithfully
+carried over the reference's own.
 
-### The constraint, which decides the migration
+★★ **The RFP does not ask for it either.** "Шалгуур" appears three times, and
+all three mean the **domains**: §6.1 is titled "Хөгжлийн чиглэл" and its
+examples are Бие бялдар, Хэл яриа, Танин мэдэхүй; §6.3's "Хөгжлийн шалгуураар
+шүүх" is the grid's one-domain-at-a-time filter; the admin list's entry is
+domain and level configuration. All three already ship — `catalog` has CRUD for
+domains, levels _and_ observation types.
 
-`Assessment` carries `@@unique([childId, termId, domainId])` and both write
-paths upsert on it (`assessment.repository.ts`). Adding a nullable `indicatorId`
-naively breaks that: Postgres treats NULLs as **distinct**, so a child could
-accumulate unlimited domain-level rows for one term.
+★★★ So building it would have been **inventing a feature, not porting one**:
+the teacher's screen, the admin screen, the age filter and how sub-criteria sit
+beside the domain-level grid would all have been mine to design, against a
+production migration and two reversed decisions. The client was told and chose
+to drop it — which is what "яг адилхан" pointed at all along.
 
-★ **Postgres 17 in both production and CI**, so the fix is exact:
+The migration analysis is kept below, because it was correct and the next
+person to consider this should not redo it.
 
-```sql
-ALTER TABLE assessments DROP CONSTRAINT assessments_childId_termId_domainId_key;
-ALTER TABLE assessments
-  ADD CONSTRAINT assessments_child_term_domain_indicator_key
-  UNIQUE NULLS NOT DISTINCT ("childId", "termId", "domainId", "indicatorId");
-```
-
-`NULLS NOT DISTINCT` (PG 15+) makes two domain-level rows collide exactly as
-before, while allowing one row per indicator. The compound stays declared in
-`schema.prisma` so Prisma keeps generating the upsert `where` input — the
-generated SQL differs from the hand-written migration in that one clause, and
-the migration says why.
-
-### What stays domain-level
-
-A dish of nuance worth stating: assessing by indicator does **not** remove
-assessing by domain. `indicatorId` is nullable, the existing rows keep meaning
-what they meant, and the group grid keeps its domain column. Indicators are an
-additional depth on the child's own screen, which is where Django puts them.
-
----
+> `Assessment` carries `@@unique([childId, termId, domainId])` and both write
+> paths upsert on it. Adding a nullable `indicatorId` naively breaks that:
+> Postgres treats NULLs as distinct, so a child could accumulate unlimited
+> domain-level rows for one term. Postgres 17 runs in both production and CI,
+> so the fix would be `UNIQUE NULLS NOT DISTINCT ("childId", "termId",
+"domainId", "indicatorId")` — two domain-level rows collide exactly as
+> before, one row per indicator is allowed. Django hit the same wall and chose
+> the other way: leave `indicator` out of the constraint and never write it.
 
 ## 6. Not in this spec
 
