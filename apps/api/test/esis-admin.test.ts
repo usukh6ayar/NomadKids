@@ -99,7 +99,7 @@ describe("ESIS administration authorization", () => {
     );
 
     expect(own.status).toBe(200);
-    expect(own.body.endpoints).toHaveLength(22);
+    expect(own.body.endpoints).toHaveLength(39);
     expect(other.status).toBe(404);
   });
 
@@ -234,7 +234,7 @@ describe("role-scoped ESIS catalog", () => {
     const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
 
     expect(res.status).toBe(200);
-    expect(res.body.endpoints).toHaveLength(22);
+    expect(res.body.endpoints).toHaveLength(39);
   });
 
   /*
@@ -310,7 +310,22 @@ describe("role-scoped ESIS catalog", () => {
     ]);
   });
 
-  it("gives a teacher the seven their screens draw, and no others", async () => {
+  /*
+   * ★ Seven until 2026-09-10, sixteen now — and the count is not the point.
+   *
+   * The nine added that day are the суралцагч services the client placed on a
+   * child's own record (registration check, guardians, household, living
+   * conditions, and the movement history on Суралцсан түүх), their three
+   * writes, and the teacher's own заах аргын нэгдэл on `/settings`. Every one
+   * is a service a teacher's screen draws, which is the rule this list has
+   * always been: not "what may a teacher see" in the abstract, but "what do
+   * their screens ask for".
+   *
+   * `teacherMovements` is the one deliberately withheld. It answers for the
+   * whole institution's appointments and releases — a director's question —
+   * and lives on `/admin/users`, so it must not appear here.
+   */
+  it("gives a teacher the sixteen their screens draw, and no others", async () => {
     const res = await authed(request(server()).get(url(a.kindergarten.id)), teacherA);
 
     expect(res.status).toBe(200);
@@ -323,8 +338,18 @@ describe("role-scoped ESIS catalog", () => {
         "studentInfo",
         "students",
         "teachers",
+        "studentMovements",
+        "studentCheck",
+        "studentContacts",
+        "studentContactsSave",
+        "studentStatistics",
+        "studentStatisticsSave",
+        "studentCondition",
+        "studentConditionSave",
+        "teacherAcademicOrg",
       ].sort(),
     );
+    expect(res.body.endpoints.map((e: { key: string }) => e.key)).not.toContain("teacherMovements");
   });
 
   /*

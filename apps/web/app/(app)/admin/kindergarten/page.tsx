@@ -74,10 +74,17 @@ function AdminKindergarten() {
       760px is the page-level counterpart to the measures the modal forms
       already keep — `auth-shell` at 440 and `FormDialog` at 480 — which are
       narrower because a dialog floats over the page and a full screen would
-      look thin at either. It applies to the wrapper, so the logo card above
-      and the form below stay the same width instead of stepping.
+      look thin at either.
+
+      ★★ It applies to the *logo card*, not to the wrapper — changed
+      2026-09-10, at the client's instruction that the ESIS panels run the full
+      width ("дэлгэц дүүрэн"). The measure above is an argument about form
+      controls, and the panels below are not controls: they are tables of
+      ministry records, where 760px is the thing that was squeezing five
+      columns into a third of the screen. So the cap stays where the reasoning
+      holds and comes off where it never did.
     */
-    <div className="flex max-w-[760px] flex-col gap-6 lg:gap-8">
+    <div className="flex w-full flex-col gap-6 lg:gap-8">
       <PageHeader title="Цэцэрлэгийн мэдээлэл" />
 
       {/*
@@ -104,7 +111,7 @@ function AdminKindergarten() {
         and `SingleImageUpload` saves on selection — there was never a Хадгалах
         between the file picker and the change.
       */}
-      <Card pad="roomy">
+      <Card pad="roomy" className="max-w-[760px]">
         <SectionHeader title="Лого" />
         <SingleImageUpload
           endpoint={`/kindergartens/${primaryKindergartenId}/logo`}
@@ -150,6 +157,19 @@ function AdminKindergarten() {
         resource="buildings"
         title="Барилга байгууламж"
         description="Зориулалт, багтаамж, эзэмшлийн төрөл, бүртгэлийн үнэ"
+      />
+
+      {/*
+        ★ The rooms inside them — 2026-09-10, at the client's request for
+        "сургалтын орчны ерөнхий мэдээллүүд". `api-29` was deliberately absent
+        from the catalog until today with a note saying it would "join the
+        catalog the day a screen needs it"; this is that screen, and the note
+        on `buildings` in `esis.endpoints.ts` has been rewritten to match.
+      */}
+      <EsisDataPanel
+        resource="rooms"
+        title="Өрөө, танхим"
+        description="Барилга доторх өрөө, зориулалт, багтаамж, талбай"
       />
     </div>
   );

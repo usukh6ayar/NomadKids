@@ -26,21 +26,58 @@ describe("ESIS v2 endpoint registry", () => {
     const endpoints = Object.values(ESIS_ENDPOINTS);
     const withId = endpoints.filter((item) => item.apiId !== null);
 
-    expect(endpoints).toHaveLength(22);
+    expect(endpoints).toHaveLength(39);
     expect(new Set(withId.map((item) => item.apiId)).size).toBe(withId.length);
     expect(endpoints.every((item) => item.path.startsWith("/svc/api/hub/v2/"))).toBe(true);
   });
 
   /*
-   * A null id is a service whose portal entry has not been read. Every selected
-   * service is currently resolved, so any new null means catalog work remains.
+   * A null id is a service whose numeric portal id has not been read.
+   *
+   * ★ **This assertion was `toEqual([])` until 2026-09-10**, when seventeen
+   * services were added and every one of them arrived without a numeric id.
+   * That is not catalog work left undone, which is what the empty expectation
+   * was written to catch — it is two different facts about the portal:
+   *
+   *   - the public catalog page prints a numeric id only for the `API-0000nn`
+   *     services, not for the `api-nn` ones, so `api-34`, `api-12`, `api-42`
+   *     and their neighbours have a slug and no number;
+   *   - the суралцагч section is not publicly rendered at all, so the seven
+   *     services taken from the client's own URLs have neither.
+   *
+   * Pinning the exact set keeps the original intent — a *new* null still fails
+   * this test — while saying out loud which services are waiting on what. Each
+   * one resolves when somebody reads it from a signed-in portal session.
    */
   it("names every service still missing its portal id", () => {
     const missing = Object.entries(ESIS_ENDPOINTS)
       .filter(([, item]) => item.apiId === null)
-      .map(([key]) => key);
+      .map(([key]) => key)
+      .sort();
 
-    expect(missing).toEqual([]);
+    expect(missing).toEqual(
+      [
+        // Not on the public catalog page — paths from the client, 2026-09-10.
+        "studentCheck",
+        "studentContacts",
+        "studentContactsSave",
+        "studentStatistics",
+        "studentStatisticsSave",
+        "studentCondition",
+        "studentConditionSave",
+        // Listed on the page under an `api-nn` slug, which carries no number.
+        "teacherAcademicOrg",
+        "teacherMovements",
+        "groupsNextYear",
+        "programs",
+        "programStages",
+        "programPlans",
+        "programCourses",
+        "rooms",
+        "academicOrg",
+        "subjectAreas",
+      ].sort(),
+    );
   });
 
   it("pins the official API ids and encodes path parameters", () => {

@@ -167,6 +167,129 @@ const META: Record<EsisEndpointKey, EsisEndpointMeta> = {
     usage: "Иж бүрдэлд орсон бүтээгдэхүүн",
     previewable: false,
   },
+
+  /* ══ Added 2026-09-10 ═══════════════════════════════════════════════════ */
+
+  studentCheck: {
+    name: "ЭСИС-д бүртгэлтэй эсэх",
+    domain: "ROSTER",
+    usage: "Хүүхэд ЭСИС-д бүртгэлтэй эсэх, ямар бүлэгт байгааг шалгах",
+    previewable: false,
+    note:
+      "★ Порталын нээлттэй каталогт **баталгаажаагүй**. Тэнд байгаа цорын ганц " +
+      "`check` сервис нь `api-11` — багшийнх (`teacher/check/:personId`). " +
+      "Суралцагчийн хэсэг нээлттэй хуудсанд ачаалагддаггүй тул «байхгүй» гэж " +
+      "дүгнэх ч боломжгүй. Token ирэхэд эхний дуудлагаар тодорно.",
+  },
+  studentContacts: {
+    name: "Асран хамгаалагчийн жагсаалт",
+    domain: "ROSTER",
+    usage: "Цэцэрлэгийн бүх хүүхдийн асран хамгаалагчийн холбоо барих мэдээлэл",
+    previewable: true,
+    note:
+      "Регистрийн дугаар, иргэний бүртгэлийн дугаарыг авахгүй — эцэг эхийн утас " +
+      "харуулахад үндэсний дугаар шаардлагагүй (ESIS_REQUEST.md §1.1 (b)).",
+  },
+  studentContactsSave: {
+    name: "Асран хамгаалагч илгээх",
+    domain: "ROSTER",
+    usage: "Хүүхдийн асран хамгаалагчийн мэдээллийг ЭСИС рүү илгээх",
+    previewable: false,
+    note: "Бичих сервис. Доорх талбарууд нь гаралт биш, илгээх орц.",
+  },
+  studentStatistics: {
+    name: "Өрхийн мэдээлэл",
+    domain: "ROSTER",
+    usage: "Өрхийн бүрэлдэхүүн, амьжиргаа, халамжийн байдал",
+    previewable: false,
+  },
+  studentStatisticsSave: {
+    name: "Өрхийн мэдээлэл илгээх",
+    domain: "ROSTER",
+    usage: "Хүүхдийн өрхийн мэдээллийг ЭСИС рүү илгээх",
+    previewable: false,
+    note: "Бичих сервис. Доорх талбарууд нь гаралт биш, илгээх орц.",
+  },
+  studentCondition: {
+    name: "Амьдрах орчин",
+    domain: "ROSTER",
+    usage: "Орон сууц, халаалт, ус, ариун цэврийн байгууламж",
+    previewable: false,
+  },
+  studentConditionSave: {
+    name: "Амьдрах орчин илгээх",
+    domain: "ROSTER",
+    usage: "Хүүхдийн амьдрах орчны мэдээллийг ЭСИС рүү илгээх",
+    previewable: false,
+    note: "Бичих сервис. Доорх талбарууд нь гаралт биш, илгээх орц.",
+  },
+  teacherAcademicOrg: {
+    name: "Багшийн заах аргын нэгдэл",
+    domain: "ROSTER",
+    usage: "Багш аль заах аргын нэгдэлд харьяалагдахыг харуулна",
+    previewable: false,
+  },
+  teacherMovements: {
+    name: "Багшийн шилжилт хөдөлгөөн",
+    domain: "ROSTER",
+    usage: "Томилгоо, шилжилт, чөлөөлөлтийн бүртгэл",
+    previewable: false,
+  },
+  groupsNextYear: {
+    name: "Дараа жилийн бүлэг",
+    domain: "ROSTER",
+    usage: "Дараагийн хичээлийн жилд бүлэг хэрхэн бүрэлдэхийг ЭСИС-ээс харах",
+    previewable: true,
+    note:
+      "★ Бүлэг ИЛГЭЭХ сервис порталын каталогт байхгүй тул зохиогоогүй. Энэ бол " +
+      "`POST /v1/groups/:id/promotions` бүлэг ахиулахдаа эх сурвалж болгох унших " +
+      "сервис.",
+  },
+  programs: {
+    name: "Сургалтын хөтөлбөр",
+    domain: "ORGANIZATION",
+    usage: "Байгууллагын сургалтын хөтөлбөрүүд",
+    previewable: true,
+  },
+  programStages: {
+    name: "Хөтөлбөрийн үе шат",
+    domain: "ORGANIZATION",
+    usage: "Хөтөлбөр доторх үе шат, түвшин",
+    previewable: false,
+    note: "Хөтөлбөрийн мөрөн дээр дарахад татагдана — :programOfStudyId шаардана.",
+  },
+  programPlans: {
+    name: "Сургалтын төлөвлөгөө",
+    domain: "ORGANIZATION",
+    usage: "Үе шат тус бүрийн сургалтын төлөвлөгөө",
+    previewable: false,
+    note: "Үе шатны мөрөн дээр дарахад татагдана.",
+  },
+  programCourses: {
+    name: "Төлөвлөгөөний хичээл",
+    domain: "ORGANIZATION",
+    usage: "Төлөвлөгөөнд багтсан хичээл, судлагдахуун, цаг",
+    previewable: false,
+    note: "Төлөвлөгөөний мөрөн дээр дарахад татагдана.",
+  },
+  rooms: {
+    name: "Өрөөний жагсаалт",
+    domain: "ORGANIZATION",
+    usage: "Барилга доторх өрөө, зориулалт, багтаамж",
+    previewable: true,
+  },
+  academicOrg: {
+    name: "Академик нэгж",
+    domain: "ORGANIZATION",
+    usage: "Байгууллагын дотоод академик нэгж, заах аргын нэгдэл",
+    previewable: true,
+  },
+  subjectAreas: {
+    name: "Судлагдахууны чиглэл",
+    domain: "ORGANIZATION",
+    usage: "Хөтөлбөрийн хичээлүүдийн судлагдахууны лавлах",
+    previewable: true,
+  },
 };
 
 const READABLE = new Set<string>(ESIS_READABLE_KEYS);
@@ -219,6 +342,37 @@ function targetModel(key: EsisEndpointKey): string {
   if (key === "teachers" || key === "staff") return "User / Membership";
   if (key === "groupAttendance" || key === "saveAttendanceV3") return "Attendance";
   if (key === "foodProducts") return "Recipe ESIS reference (DISPLAY_ONLY)";
+
+  /* ── Added 2026-09-10 ──────────────────────────────────────────────────── */
+  if (key === "studentCheck") return "Child / Enrollment";
+  if (key === "studentContacts" || key === "studentContactsSave") {
+    return "Guardian / Guardianship";
+  }
+  if (
+    key === "studentStatistics" ||
+    key === "studentStatisticsSave" ||
+    key === "studentCondition" ||
+    key === "studentConditionSave"
+  ) {
+    // No column holds these yet: they are shown beside the child's record and
+    // sent back, never stored. A `Child` field for "өрхийн төрөл" is a schema
+    // decision nobody has asked for, and inventing one here would make the
+    // mapping table claim a home that does not exist.
+    return "Child ESIS reference (NOT STORED)";
+  }
+  if (key === "teacherAcademicOrg" || key === "teacherMovements") return "User / Membership";
+  if (key === "groupsNextYear") return "Group (promotion source)";
+  if (
+    key === "programs" ||
+    key === "programStages" ||
+    key === "programPlans" ||
+    key === "programCourses"
+  ) {
+    return "Curriculum reference (DISPLAY_ONLY)";
+  }
+  if (key === "rooms") return "Kindergarten premises (DISPLAY_ONLY)";
+  if (key === "academicOrg" || key === "subjectAreas") return "Reference (DISPLAY_ONLY)";
+
   return "Ingredient / Recipe (NOT ENABLED)";
 }
 
@@ -235,6 +389,13 @@ export const ESIS_PREVIEW_RESOURCES = [
   "foodMaterials",
   "foodProducts",
   "foodProductMaterials",
+  // Added 2026-09-10 — the institution-level reads that need no operator input.
+  "studentContacts",
+  "groupsNextYear",
+  "programs",
+  "rooms",
+  "academicOrg",
+  "subjectAreas",
 ] as const satisfies readonly EsisEndpointKey[];
 
 /**
@@ -282,6 +443,35 @@ const ROLE_SERVICES: Partial<Record<Role, readonly EsisEndpointKey[]>> = {
     "saveAttendanceV3",
     "groupAttendance",
     "teachers",
+    /*
+     * ★ Added 2026-09-10, with the screens that draw them.
+     *
+     * The five суралцагч services sit on a child's own record — the guardian
+     * block, the household and living-condition sections beneath it, and the
+     * movement history on Суралцсан түүх. A teacher already reaches all of
+     * those screens through `canAccessChild`, and a service a role's screens
+     * draw is exactly what this list is for.
+     *
+     * ★★ The three writes are here because the teacher is who fills them in.
+     * `studentContactsSave` without `studentContacts` would be a form with
+     * nothing to correct; the read and its write travel together or neither
+     * is useful.
+     *
+     * ★★★ `teacherAcademicOrg` is the teacher's *own* заах аргын нэгдэл on
+     * `/settings`, beside the profile `my-profile` already draws.
+     * `teacherMovements` is deliberately absent: it is the whole staff's
+     * appointment history, which is a director's question, and it stays
+     * ADMIN-only on `/admin/users`.
+     */
+    "studentMovements",
+    "studentCheck",
+    "studentContacts",
+    "studentContactsSave",
+    "studentStatistics",
+    "studentStatisticsSave",
+    "studentCondition",
+    "studentConditionSave",
+    "teacherAcademicOrg",
   ],
   /*
    * The cook's seven — every `cook/*` read in the catalog.

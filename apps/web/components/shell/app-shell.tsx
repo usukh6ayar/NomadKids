@@ -35,6 +35,7 @@ import { Art } from "@/components/ui/art";
 import { cn } from "@/lib/utils";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
 import { ChildAvatar } from "@/components/media/media-image";
+import { ChatWidget } from "@/components/chat/chat-widget";
 
 /** The bell panel reads five rows; the feed reads fifteen and paginates. */
 const bellListSchema = paginated(notificationSchema);
@@ -612,6 +613,15 @@ export function AppShell({
   const pathname = usePathname();
   const resolvedTheme = workspaceTheme ?? (teacherTheme ? "teacher" : null);
   const isTeacherWorkspace = resolvedTheme === "teacher";
+  /*
+   * ★ Restored 2026-09-10. It was dropped — with the `<ChatWidget />` below —
+   * by `d8af069`, a commit about ESIS demo mode that had no business touching
+   * either. Nothing referenced the widget afterwards, so it simply stopped
+   * rendering anywhere in the product and no test caught it: `sidebar.test.tsx`
+   * asserts chat has no *menu row*, which stayed true, and the floating button
+   * it names as the reason for that is the thing that had gone.
+   */
+  const hasDedicatedChatNavigation = resolvedTheme === "teacher" || resolvedTheme === "admin";
   const isChatPage = pathname === "/chat";
 
   // Every role gets the sidebar from `lg` up; only the bottom bar is
@@ -741,6 +751,14 @@ export function AppShell({
         </div>
 
         <BottomBar nav={bottomNav} hideOnDesktop={desktopSidebar} />
+
+        {/*
+          Teachers and administrators already have Chat in the sidebar, the
+          mobile menu and the dashboard preview. The floating trigger covered
+          register actions and form controls, so it stays only for audiences
+          without that navigation — a parent, a cook, an accountant.
+        */}
+        {!hasDedicatedChatNavigation ? <ChatWidget /> : null}
 
         <MobileMenuDrawer
           open={menuOpen}
@@ -1002,15 +1020,57 @@ function SidebarContent({
 
               {sectionEntries.length ? (
                 <div data-testid="nav-sections" className="contents">
-                  {sectionEntries.map((entry, index) => (
-                    <NavLink
-                      key={`${entry.href ?? entry.label}-${index}`}
-                      item={{ ...entry, icon: entry.icon ?? null }}
-                      pathname={pathname}
-                      orientation="vertical"
-                      activeHref={activeHref}
-                    />
-                  ))}
+                  {/*
+                    ★ **An administrator's menu keeps its section headings;
+                    nobody else's does — 2026-09-10, at the client's request:**
+                    "захирал илүү их зүйлтэй болохоор category хэрэгтэй
+                    байна... бусдыг категорилох хэрэггүй".
+
+                    `staffSections` has always returned titled sections, and
+                    this list has always thrown the titles away with a
+                    `flatMap`. For a teacher that is right: six rows read fine
+                    as one list, and headings over them are furniture. A
+                    director sees fourteen, and at that length the same list
+                    needs the headings the data already carries.
+
+                    ★★ **Flat headings, never a disclosure.** The client was
+                    explicit — "тэгэхдээ хураагддаараар биш". Nothing folds; a
+                    heading is a heading.
+
+                    ★★★ The grouping is `staffSections`' own, unchanged. An
+                    earlier attempt at this moved rows between sections and
+                    renamed two of them, which is not what was asked: the
+                    categories existed already and only needed drawing.
+                  */}
+                  {isAdmin && sections
+                    ? sections.map((section, sectionIndex) => (
+                        <div key={section.title} className="contents">
+                          <p
+                            className={cn(
+                              "px-3 pb-1 pt-5 text-caption font-semibold uppercase tracking-wide text-faint",
+                              sectionIndex === 0 && "pt-2",
+                            )}
+                          >
+                            {section.title}
+                          </p>
+                          {section.entries.map((entry, index) => (
+                            <NavLink
+                              key={`${entry.href ?? entry.label}-${index}`}
+                              item={{ ...entry, icon: entry.icon ?? null }}
+                              pathname={pathname}
+                              orientation="vertical"
+                            />
+                          ))}
+                        </div>
+                      ))
+                    : sectionEntries.map((entry, index) => (
+                        <NavLink
+                          key={`${entry.href ?? entry.label}-${index}`}
+                          item={{ ...entry, icon: entry.icon ?? null }}
+                          pathname={pathname}
+                          orientation="vertical"
+                        />
+                      ))}
                 </div>
               ) : (
                 nav

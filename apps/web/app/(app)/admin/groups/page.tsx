@@ -159,6 +159,20 @@ function AdminGroups() {
         assignment is the "Багш" dialog on each row above; ESIS's answer is the
         `Багшийн код` and `Багшийн нэр` columns below, in one downward read.
       */}
+      {/*
+        ★ Next year's groups — 2026-09-10. The client asked for a "татах,
+        илгээх" pair here; the read half already existed (`api-40` below) and
+        there is no group *write* service in the ministry's catalog, so nothing
+        was invented to fill the other half. `API-000113` is the read that the
+        ahead-of-time question actually needs, and it is the source
+        `POST /v1/groups/:id/promotions` has been missing.
+      */}
+      <EsisDataPanel
+        resource="groupsNextYear"
+        title="Дараа жилийн бүлэг"
+        description="Дараагийн хичээлийн жилд бүлэг хэрхэн бүрэлдэхийг ЭСИС-ээс харах"
+      />
+
       <EsisDataPanel
         resource="groups"
         title="Бүлгүүд"

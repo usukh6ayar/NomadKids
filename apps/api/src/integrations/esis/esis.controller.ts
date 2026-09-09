@@ -9,9 +9,11 @@ import { EsisAdminService } from "./esis-admin.service";
 import {
   esisPreviewSchema,
   esisReadSchema,
+  esisWriteSchema,
   updateEsisMappingSchema,
   type EsisPreviewDto,
   type EsisReadDto,
+  type EsisWriteDto,
   type UpdateEsisMappingDto,
 } from "./esis.dto";
 
@@ -84,6 +86,24 @@ export class KindergartenEsisController {
     @Query(new ZodValidationPipe(esisReadQuerySchema)) query: EsisReadDto,
   ) {
     return this.service.read(actor, params.id, query);
+  }
+
+  /**
+   * One write to ESIS.
+   *
+   * ★ `@Roles` mirrors `read` above rather than narrowing to ADMIN: the three
+   * write services sit on a child's record and the teacher is who fills them
+   * in. The service still decides — `assertReadable` answers 404 for a service
+   * outside the caller's own list, which is the check that actually gates this.
+   */
+  @Post("write")
+  @Roles("ADMIN", "TEACHER")
+  write(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(esisWriteSchema)) body: EsisWriteDto,
+  ) {
+    return this.service.write(actor, params.id, body);
   }
 
   @Post("preview")

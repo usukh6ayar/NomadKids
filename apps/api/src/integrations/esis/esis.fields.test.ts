@@ -91,9 +91,32 @@ describe("ESIS field catalog", () => {
       livelihoodForm2: ["academicYear", "academicMonth", "studentGroupId"],
       foodKit: ["productId"],
       foodKitProducts: ["productId"],
+      // Added 2026-09-10. The curriculum chain is the reason `programStageId`
+      // and `programPlanId` exist: each service takes the ids the one above it
+      // returned, which is what makes it a drill-down rather than four panels.
+      studentCheck: ["personId"],
+      studentStatistics: ["personId"],
+      studentCondition: ["personId"],
+      teacherAcademicOrg: ["personId"],
+      teacherMovements: ["beginDate"],
+      programStages: ["programOfStudyId"],
+      programPlans: ["programOfStudyId", "programStageId"],
+      programCourses: ["programOfStudyId", "programStageId", "programPlanId"],
     });
-    // The one write service is not readable, so no button can reach it.
-    expect(ESIS_READABLE_KEYS as string[]).not.toContain("saveAttendanceV3");
+    /*
+     * The write services are not readable, so no read button can reach one.
+     * ★ There are four now, not one — 2026-09-10. The three суралцагч saves
+     * travel with their reads, and this is the assertion that keeps them off
+     * the generic "ESIS-ээс татах" path they have no business on.
+     */
+    for (const key of [
+      "saveAttendanceV3",
+      "studentContactsSave",
+      "studentStatisticsSave",
+      "studentConditionSave",
+    ]) {
+      expect(ESIS_READABLE_KEYS as string[]).not.toContain(key);
+    }
   });
 
   /*
@@ -106,11 +129,42 @@ describe("ESIS field catalog", () => {
         (entry) => entry.key,
       );
 
-    // `studentByRegister` was read off the portal on 2026-09-09; `studentInfo`
-    // sits in the catalog block the public page truncates before, so its field
-    // list is still `students`' — see their endpoints' notes.
-    expect(keysBySource("ADAPTER")).toEqual(["studentInfo"]);
-    expect([...keysBySource("PORTAL"), "studentInfo"].sort()).toEqual(
+    /*
+     * ★ `ADAPTER` was one key until 2026-09-10 and is eighteen now.
+     *
+     * `studentInfo` sits in the catalog block the public page truncates before.
+     * The seventeen added that day are the same situation twice over: the
+     * суралцагч services are in a section the page does not render without a
+     * session, and the ten listed under an `api-nn` slug are named on the page
+     * without their output fields being published. In both cases the column
+     * names are this adapter's, and the operator screen says so.
+     *
+     * The set is pinned rather than counted, so a service quietly demoted from
+     * PORTAL to ADAPTER still fails here.
+     */
+    expect(keysBySource("ADAPTER").sort()).toEqual(
+      [
+        "studentInfo",
+        "studentCheck",
+        "studentContacts",
+        "studentContactsSave",
+        "studentStatistics",
+        "studentStatisticsSave",
+        "studentCondition",
+        "studentConditionSave",
+        "teacherAcademicOrg",
+        "teacherMovements",
+        "groupsNextYear",
+        "programs",
+        "programStages",
+        "programPlans",
+        "programCourses",
+        "rooms",
+        "academicOrg",
+        "subjectAreas",
+      ].sort(),
+    );
+    expect([...keysBySource("PORTAL"), ...keysBySource("ADAPTER")].sort()).toEqual(
       Object.keys(ESIS_ENDPOINTS).sort(),
     );
   });
@@ -157,8 +211,18 @@ describe("ESIS field catalog", () => {
     for (const entry of ESIS_RESOURCE_CATALOG) {
       const columns = Object.keys(entry.sampleRow).sort();
       for (const row of sampleRows(entry.key)) {
-        // The write service has no outputs; its demo row is the request body.
-        const expected = entry.key === "saveAttendanceV3" ? Object.keys(row).sort() : columns;
+        /*
+         * A write service has no outputs; its demo row is the request body.
+         *
+         * ★ Keyed off `direction` rather than the name `saveAttendanceV3` —
+         * 2026-09-10. It was the only write for as long as there was one, and
+         * naming it worked until three суралцагч saves arrived and this test
+         * failed for each of them in turn. The catalog already knows which
+         * way a service points; asking it means the next write needs no edit
+         * here at all.
+         */
+        const isWrite = entry.direction === "NOMADKIDS_TO_ESIS";
+        const expected = isWrite ? Object.keys(row).sort() : columns;
         expect({ key: entry.key, columns: Object.keys(row).sort() }).toEqual({
           key: entry.key,
           columns: expected,
@@ -171,7 +235,9 @@ describe("ESIS field catalog", () => {
   it("starts the demo set with the row the field catalog illustrates", () => {
     for (const entry of ESIS_RESOURCE_CATALOG) {
       expect(entry.sampleRows.length).toBeGreaterThan(0);
-      if (entry.key === "saveAttendanceV3") continue;
+      // Same reasoning as the test above: a write service's `sampleRow` is
+      // empty by construction, because `sampleRow` keeps outputs only.
+      if (entry.direction === "NOMADKIDS_TO_ESIS") continue;
       expect({ key: entry.key, first: entry.sampleRows[0] }).toEqual({
         key: entry.key,
         first: entry.sampleRow,

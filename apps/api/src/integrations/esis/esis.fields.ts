@@ -503,6 +503,252 @@ export const ESIS_FIELDS: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
     }),
     keep("orgType", "Байгууллагын төрөл", "SUB"),
   ],
+
+  /*
+   * ══ Added 2026-09-10 ═══════════════════════════════════════════════════
+   * Суралцагчийн нэмэлт мэдээлэл, багш, хөтөлбөр, сургалтын орчин.
+   *
+   * ★ **Every list below is `ADAPTER`, not `PORTAL`** — see `ESIS_FIELD_SOURCE`.
+   * For the seven суралцагч services the developer portal does not render
+   * their section publicly; for the rest it lists the service but not its
+   * output fields. So these names are our parsing schema's, which is exactly
+   * what `ADAPTER` means in this file, and the operator screen says so.
+   *
+   * ★★ The samples stay bound to the same demo tenant as every other service
+   * (`INSTITUTION_ID`, `GROUP_NAME`, the child "Батбаяр") so a director
+   * looking at three panels sees one kindergarten rather than three fixtures.
+   */
+
+  studentCheck: [
+    keep("institutionId", "Байгууллагын код", INSTITUTION_ID),
+    keep("personId", "ESIS хүний дугаар", "90000000000001"),
+    keep("isRegistered", "ЭСИС-д бүртгэлтэй эсэх", "true"),
+    keep("statusCode", "Төлвийн код", "ACTIVE"),
+    keep("statusName", "Төлөв", "Суралцаж байгаа"),
+    keep("studentGroupId", "Бүлгийн код", GROUP_ID),
+    keep("studentGroupName", "Бүлгийн нэр", GROUP_NAME),
+    keep("academicYear", "Хичээлийн жил", ACADEMIC_YEAR),
+    keep("enrollmentDate", "Элссэн огноо", "2024-09-02"),
+  ],
+
+  studentContacts: [
+    keep("institutionId", "Байгууллагын код", INSTITUTION_ID),
+    keep("personId", "Хүүхдийн ESIS дугаар", "90000000000001"),
+    keep("contactId", "Холбоо барих хүний дугаар", "70000000000001"),
+    keep("relationTypeId", "Хамаарлын код", "1"),
+    keep("relationTypeName", "Хамаарал", "Эх"),
+    keep("lastName", "Овог", "Дорж"),
+    keep("firstName", "Нэр", "Сарантуяа"),
+    keep("phoneNumber", "Утас", "99112233"),
+    keep("phoneNumber2", "Нэмэлт утас", "88112233"),
+    keep("email", "И-мэйл", "sarantuya.d@example.mn"),
+    keep("address", "Хаяг", "Улаанбаатар, Баянзүрх дүүрэг, 5-р хороо"),
+    keep("occupation", "Мэргэжил", "Багш"),
+    keep("workplace", "Ажлын газар", "12-р сургууль"),
+    keep("primaryFlag", "Үндсэн асран хамгаалагч эсэх", "true"),
+    keep("liveTogetherFlag", "Хамт амьдардаг эсэх", "true"),
+  ],
+
+  studentContactsSave: [
+    send("institutionId", "Байгууллагын код", INSTITUTION_ID),
+    send("personId", "Хүүхдийн ESIS дугаар", "90000000000001"),
+    send("contactList", "Асран хамгаалагчийн жагсаалт", "1 бичлэг"),
+    send("contactList[].contactId", "Засах бичлэгийн дугаар", "70000000000001"),
+    send("contactList[].relationTypeId", "Хамаарлын код", "1"),
+    send("contactList[].lastName", "Овог", "Дорж"),
+    send("contactList[].firstName", "Нэр", "Сарантуяа"),
+    send("contactList[].phoneNumber", "Утас", "99112233"),
+    send("contactList[].email", "И-мэйл", "sarantuya.d@example.mn"),
+    send("contactList[].address", "Хаяг", "Улаанбаатар, Баянзүрх дүүрэг"),
+    send("contactList[].occupation", "Мэргэжил", "Багш"),
+    send("contactList[].workplace", "Ажлын газар", "12-р сургууль"),
+    send("contactList[].primaryFlag", "Үндсэн эсэх", "true"),
+    send("contactList[].liveTogetherFlag", "Хамт амьдардаг эсэх", "true"),
+  ],
+
+  studentStatistics: [
+    keep("institutionId", "Байгууллагын код", INSTITUTION_ID),
+    keep("personId", "Хүүхдийн ESIS дугаар", "90000000000001"),
+    keep("familyMemberCount", "Өрхийн гишүүдийн тоо", "4"),
+    keep("childrenCount", "Хүүхдийн тоо", "2"),
+    keep("familyTypeId", "Өрхийн төрлийн код", "1"),
+    keep("familyTypeName", "Өрхийн төрөл", "Бүрэн бүтэн өрх"),
+    keep("incomeTypeId", "Орлогын төрлийн код", "2"),
+    keep("incomeTypeName", "Орлогын төрөл", "Цалин хөлс"),
+    keep("livelihoodTypeId", "Амьжиргааны код", "2"),
+    keep("livelihoodTypeName", "Амьжиргааны түвшин", "Дундаж"),
+    keep("isHerderFamily", "Малчин өрх эсэх", "false"),
+    keep("isSingleParent", "Өрх толгойлсон эсэх", "false"),
+    keep("hasDisabledMember", "Хөгжлийн бэрхшээлтэй гишүүнтэй эсэх", "false"),
+    keep("socialWelfareFlag", "Нийгмийн халамж авдаг эсэх", "false"),
+    keep("updatedDate", "Шинэчилсэн огноо", "2026-09-01"),
+  ],
+
+  studentStatisticsSave: [
+    send("institutionId", "Байгууллагын код", INSTITUTION_ID),
+    send("personId", "Хүүхдийн ESIS дугаар", "90000000000001"),
+    send("familyMemberCount", "Өрхийн гишүүдийн тоо", "4"),
+    send("childrenCount", "Хүүхдийн тоо", "2"),
+    send("familyTypeId", "Өрхийн төрлийн код", "1"),
+    send("incomeTypeId", "Орлогын төрлийн код", "2"),
+    send("livelihoodTypeId", "Амьжиргааны код", "2"),
+    send("isHerderFamily", "Малчин өрх эсэх", "false"),
+    send("isSingleParent", "Өрх толгойлсон эсэх", "false"),
+    send("hasDisabledMember", "Хөгжлийн бэрхшээлтэй гишүүнтэй эсэх", "false"),
+    send("socialWelfareFlag", "Нийгмийн халамж авдаг эсэх", "false"),
+  ],
+
+  studentCondition: [
+    keep("institutionId", "Байгууллагын код", INSTITUTION_ID),
+    keep("personId", "Хүүхдийн ESIS дугаар", "90000000000001"),
+    keep("dwellingTypeId", "Орон сууцны төрлийн код", "1"),
+    keep("dwellingTypeName", "Орон сууцны төрөл", "Орон сууц"),
+    keep("ownershipTypeId", "Эзэмшлийн код", "1"),
+    keep("ownershipTypeName", "Эзэмшлийн хэлбэр", "Өөрийн"),
+    keep("heatingTypeId", "Халаалтын код", "1"),
+    keep("heatingTypeName", "Халаалт", "Төвийн шугам"),
+    keep("waterSourceId", "Ус хангамжийн код", "1"),
+    keep("waterSourceName", "Ус хангамж", "Төвийн шугам"),
+    keep("toiletTypeId", "Ариун цэврийн байгууламжийн код", "1"),
+    keep("toiletTypeName", "Ариун цэврийн байгууламж", "Дотор, ус татдаг"),
+    keep("electricityFlag", "Цахилгаантай эсэх", "true"),
+    keep("internetFlag", "Интернэттэй эсэх", "true"),
+    keep("roomCount", "Өрөөний тоо", "3"),
+    keep("distanceToSchool", "Цэцэрлэг хүртэлх зай", "1.2 км"),
+    keep("updatedDate", "Шинэчилсэн огноо", "2026-09-01"),
+  ],
+
+  studentConditionSave: [
+    send("institutionId", "Байгууллагын код", INSTITUTION_ID),
+    send("personId", "Хүүхдийн ESIS дугаар", "90000000000001"),
+    send("dwellingTypeId", "Орон сууцны төрлийн код", "1"),
+    send("ownershipTypeId", "Эзэмшлийн код", "1"),
+    send("heatingTypeId", "Халаалтын код", "1"),
+    send("waterSourceId", "Ус хангамжийн код", "1"),
+    send("toiletTypeId", "Ариун цэврийн байгууламжийн код", "1"),
+    send("electricityFlag", "Цахилгаантай эсэх", "true"),
+    send("internetFlag", "Интернэттэй эсэх", "true"),
+    send("roomCount", "Өрөөний тоо", "3"),
+  ],
+
+  teacherAcademicOrg: [
+    keep("institutionId", "Байгууллагын код", INSTITUTION_ID),
+    keep("personId", "Багшийн ESIS дугаар", "80000000000001"),
+    keep("academicOrgId", "Нэгжийн код", "3001"),
+    keep("academicOrgName", "Заах аргын нэгдэл", "Сургуулийн өмнөх боловсролын нэгдэл"),
+    keep("parentAcademicOrgId", "Дээд нэгжийн код", "3000"),
+    keep("parentAcademicOrgName", "Дээд нэгж", "Сургалтын алба"),
+    keep("positionName", "Албан тушаал", "Бүлгийн багш"),
+    keep("beginDate", "Эхэлсэн огноо", "2024-09-01"),
+    keep("endDate", "Дууссан огноо", "2027-06-01"),
+  ],
+
+  teacherMovements: [
+    keep("institutionId", "Байгууллагын код", INSTITUTION_ID),
+    keep("personId", "Багшийн ESIS дугаар", "80000000000001"),
+    keep("assignmentId", "Томилгооны дугаар", "60000000000001"),
+    keep("movementTypeId", "Хөдөлгөөний код", "1"),
+    keep("movementTypeName", "Хөдөлгөөний төрөл", "Томилогдсон"),
+    keep("positionName", "Албан тушаал", "Бүлгийн багш"),
+    keep("beginDate", "Эхэлсэн огноо", "2024-09-01"),
+    keep("endDate", "Дууссан огноо", "2027-06-01"),
+    keep("orderNumber", "Тушаалын дугаар", "А/128"),
+    keep("familyName", "Ургийн овог", "Боржигин"),
+    keep("lastName", "Овог", "Цэрэн"),
+    keep("firstName", "Нэр", "Оюунчимэг"),
+    keep("familyNameMgl", "Ургийн овог (монгол бичиг)", "Боржигин"),
+    keep("firstNameMgl", "Нэр (монгол бичиг)", "Оюунчимэг"),
+    keep("lastNameMgl", "Овог (монгол бичиг)", "Цэрэн"),
+    keep("genderCode", "Хүйс", "F"),
+    keep("genderName", "Хүйсийн нэр", "Эмэгтэй"),
+    keep("dateOfBirth", "Төрсөн огноо", "1990-05-14"),
+  ],
+
+  groupsNextYear: [
+    keep("institutionId", "Байгууллагын код", INSTITUTION_ID),
+    // Наран бүлэг's own id, so this row *is* the first demo record — the
+    // catalog sample and `OVERRIDES[0]` are asserted equal.
+    keep("studentGroupId", "Бүлгийн код", GROUP_ID),
+    keep("studentGroupName", "Бүлгийн нэр", "Наран бүлэг"),
+    keep("academicYear", "Хичээлийн жил", "2027"),
+    keep("academicLevel", "Түвшний код", "3"),
+    keep("academicLevelName", "Түвшин", "Ахлах бүлэг"),
+    keep("programOfStudyId", "Хөтөлбөрийн код", "501"),
+    keep("programOfStudyName", "Хөтөлбөр", "Сургуулийн өмнөх боловсрол"),
+    keep("studentCount", "Хүүхдийн тоо", "24"),
+  ],
+
+  programs: [
+    keep("institutionId", "Байгууллагын код", INSTITUTION_ID),
+    keep("programOfStudyId", "Хөтөлбөрийн код", "501"),
+    keep("programOfStudyName", "Хөтөлбөр", "Сургуулийн өмнөх боловсрол"),
+    keep("programTypeName", "Хөтөлбөрийн төрөл", "Үндсэн"),
+    keep("educationLevelName", "Боловсролын түвшин", "СӨБ"),
+    keep("activeFlag", "Идэвхтэй эсэх", "true"),
+  ],
+
+  programStages: [
+    keep("programOfStudyId", "Хөтөлбөрийн код", "501"),
+    keep("programStageId", "Үе шатны код", "12"),
+    keep("programStageName", "Үе шат", "Хоёрдугаар үе шат"),
+    keep("sequence", "Дараалал", "2"),
+    keep("academicLevel", "Түвшний код", "2"),
+    keep("academicLevelName", "Түвшин", "Дунд бүлэг"),
+  ],
+
+  programPlans: [
+    keep("programOfStudyId", "Хөтөлбөрийн код", "501"),
+    keep("programStageId", "Үе шатны код", "12"),
+    keep("programPlanId", "Төлөвлөгөөний код", "780"),
+    keep("programPlanName", "Сургалтын төлөвлөгөө", "СӨБ-ын үндсэн хөтөлбөр"),
+    keep("academicYear", "Хичээлийн жил", ACADEMIC_YEAR),
+    keep("activeFlag", "Идэвхтэй эсэх", "true"),
+  ],
+
+  programCourses: [
+    keep("programOfStudyId", "Хөтөлбөрийн код", "501"),
+    keep("programStageId", "Үе шатны код", "12"),
+    keep("programPlanId", "Төлөвлөгөөний код", "780"),
+    keep("courseId", "Хичээлийн код", "9101"),
+    keep("courseName", "Хичээл", "Хэл яриа хөгжүүлэх"),
+    keep("courseCode", "Хичээлийн товч код", "HYA-01"),
+    keep("subjectAreaId", "Судлагдахууны код", "41"),
+    keep("subjectAreaName", "Судлагдахуун", "Хэл яриа"),
+    keep("credit", "Кредит", "0"),
+    keep("hours", "Цаг", "36"),
+  ],
+
+  rooms: [
+    keep("institutionId", "Байгууллагын код", INSTITUTION_ID),
+    keep("buildingId", "Барилгын код", "20001"),
+    keep("buildingName", "Барилга", "Үндсэн байр"),
+    keep("roomId", "Өрөөний код", "30001"),
+    keep("roomName", "Өрөөний нэр", "Наран бүлгийн танхим"),
+    keep("roomNumber", "Өрөөний дугаар", "104"),
+    keep("roomTypeId", "Өрөөний төрлийн код", "1"),
+    keep("roomTypeName", "Өрөөний зориулалт", "Бүлгийн танхим"),
+    keep("capacity", "Багтаамж", "25"),
+    keep("area", "Талбай (м²)", "48.5"),
+    keep("floor", "Давхар", "1"),
+  ],
+
+  academicOrg: [
+    keep("institutionId", "Байгууллагын код", INSTITUTION_ID),
+    keep("academicOrgId", "Нэгжийн код", "3001"),
+    keep("academicOrgName", "Академик нэгж", "Сургуулийн өмнөх боловсролын нэгдэл"),
+    keep("parentAcademicOrgId", "Дээд нэгжийн код", "3000"),
+    keep("parentAcademicOrgName", "Дээд нэгж", "Сургалтын алба"),
+    keep("academicOrgTypeName", "Нэгжийн төрөл", "Заах аргын нэгдэл"),
+    keep("activeFlag", "Идэвхтэй эсэх", "true"),
+  ],
+
+  subjectAreas: [
+    keep("subjectAreaId", "Судлагдахууны код", "41"),
+    keep("subjectAreaName", "Судлагдахуун", "Хэл яриа"),
+    keep("subjectAreaCode", "Товч код", "HY"),
+    keep("parentSubjectAreaId", "Дээд судлагдахууны код", "40"),
+    keep("educationLevelName", "Боловсролын түвшин", "СӨБ"),
+  ],
 };
 
 /**
@@ -540,6 +786,39 @@ export const ESIS_FIELD_SOURCE: Record<keyof typeof ESIS_ENDPOINTS, EsisFieldSou
   livelihoodForm2: "PORTAL",
   foodKit: "PORTAL",
   foodKitProducts: "PORTAL",
+
+  /*
+   * ★ Added 2026-09-10, and every one of them `ADAPTER`.
+   *
+   * The seven суралцагч services sit in a portal section that needs a
+   * signed-in session to render, so their paths came from the client and their
+   * field names are this adapter's reading of the domain. The other ten *are*
+   * listed on the public page — that is where their slugs came from — but the
+   * page names the service without publishing its output fields, which is the
+   * same situation `studentInfo` is already marked `ADAPTER` for.
+   *
+   * `ADAPTER` is not a lesser entry; it is an honest one. It tells the operator
+   * that the column names came from us rather than from the ministry, which is
+   * exactly what a reviewer comparing this screen against the portal needs to
+   * know before a token exists.
+   */
+  studentCheck: "ADAPTER",
+  studentContacts: "ADAPTER",
+  studentContactsSave: "ADAPTER",
+  studentStatistics: "ADAPTER",
+  studentStatisticsSave: "ADAPTER",
+  studentCondition: "ADAPTER",
+  studentConditionSave: "ADAPTER",
+  teacherAcademicOrg: "ADAPTER",
+  teacherMovements: "ADAPTER",
+  groupsNextYear: "ADAPTER",
+  programs: "ADAPTER",
+  programStages: "ADAPTER",
+  programPlans: "ADAPTER",
+  programCourses: "ADAPTER",
+  rooms: "ADAPTER",
+  academicOrg: "ADAPTER",
+  subjectAreas: "ADAPTER",
 };
 
 /** Output names NomadKids keeps — the exact key set of the parsing schema. */
