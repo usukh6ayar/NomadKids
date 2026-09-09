@@ -56,22 +56,46 @@ body:has([data-app-theme="admin"]) {
   --workspace-background: linear-gradient(120deg, #f4f8fb 0%, #eef7f7 100%);
 }
 
+/*
+ * ★★ The parent workspace turned blue — 2026-09-09, at the client's request:
+ * "selected ntr хэсгүүдийг ягаан биш цэнхэр болгоод өг".
+ *
+ * It was the only shell of the six with a warm accent (`#d65f52`, a coral that
+ * reads as pink), and every selected state derives from this token family —
+ * the active nav item, selected pills, checked controls, focus rings, filled
+ * buttons. Changing the selected states alone would have put two accent
+ * colours on one screen, so the family moves together.
+ *
+ * ★ `#1d4ed8` rather than the `#2563eb` first proposed, and the reason is
+ * measurable rather than aesthetic. `--color-primary` on `--color-primary-soft`
+ * is the pairing `globals.css` singles out as the one to watch, and it
+ * documents **6.16:1** there. `#2563eb` on `#eff6ff` gives 4.75:1 — it passes
+ * AA, but it would have made this the worst-contrasting shell in the product
+ * for the sake of a shade nobody asked for by name. `#1d4ed8` on `#eff6ff` is
+ * exactly that documented 6.16:1, because it is the same base blue.
+ *
+ * ★★★ The canvas stays warm. `--color-canvas: #fff8f7` is a 3% blush, not a
+ * colour anybody would call pink, and it is what keeps a family's screen from
+ * looking like the administrator's. What the client was pointing at was the
+ * accent, and that is what moved. If the whole shell should go cool, the three
+ * lines below are where it happens — but that is a different request.
+ */
 body:has([data-app-theme="parent"]) {
   --color-canvas: #fff8f7;
   --color-sunken: #fff1ee;
   --color-border: #ecdeda;
   --color-border-soft: #f5e9e6;
   --color-ink: #3d405b;
-  --color-primary: #d65f52;
-  --color-primary-strong: #a94137;
-  --color-primary-hover: #bc4b40;
-  --color-primary-soft: #fff0ed;
-  --workspace-accent: #d65f52;
+  --color-primary: #1d4ed8;
+  --color-primary-strong: #1e40af;
+  --color-primary-hover: #1e40af;
+  --color-primary-soft: #eff6ff;
+  --workspace-accent: #1d4ed8;
   --workspace-accent-secondary: #55a883;
-  --workspace-button-start: #d65f52;
-  --workspace-button-end: #e68165;
-  --workspace-button-hover: #bc4b40;
-  --workspace-background: linear-gradient(120deg, #fff8f7 0%, #f3fbf8 100%);
+  --workspace-button-start: #1d4ed8;
+  --workspace-button-end: #3b6fe0;
+  --workspace-button-hover: #1e40af;
+  --workspace-background: linear-gradient(120deg, #f7faff 0%, #f3fbf8 100%);
 }
 
 body:has([data-app-theme="kitchen"]) {
