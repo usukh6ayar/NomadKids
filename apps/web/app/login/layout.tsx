@@ -26,7 +26,19 @@ export const metadata: Metadata = {
   description:
     `${BRAND_LATIN} (${BRAND}) системд багш, эцэг эх, цэцэрлэгийн удирдлага нэвтрэх хуудас. ` +
     "Ажиглалт, явцын үнэлгээ, ирц, хоолны цэс, тайланг нэг дороос.",
-  alternates: { canonical: "/login" },
+  /*
+   * ★ Canonical to `/`, not to itself — 2026-09-10.
+   *
+   * The root renders the same `PublicLanding` component now, so these two URLs
+   * serve identical content. Two self-canonicals would ask Google to rank the
+   * same page twice and let it pick; pointing both at `/` consolidates the
+   * signal on the URL people actually link to and type, which is the one a
+   * brand search should land on.
+   *
+   * `/login` keeps existing and keeps working — every invitation e-mail and
+   * saved bookmark points here. It simply is not the canonical spelling of it.
+   */
+  alternates: { canonical: "/" },
 };
 
 export default function LoginLayout({ children }: { children: ReactNode }) {

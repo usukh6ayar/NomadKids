@@ -1,32 +1,54 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { useSession } from "@/lib/auth/session";
-import { LoadingState } from "@/components/ui/states";
+import { PublicLanding } from "@/components/public/landing";
 
 /**
- * The root, which only ever redirects.
+ * The root — the public landing page, and a redirect for anyone signed in.
  *
- * Where someone lands is a role question, and the role lives in the session —
- * which is only known once `/auth/me` has answered. So this renders a loading
- * state and then forwards, rather than guessing and bouncing the user twice.
+ * ★ It used to render a spinner and nothing else, and Google said so:
+ * `https://nomadkids.mn/` came back **"Crawled – currently not indexed"** on
+ * 2026-09-10. The fetch succeeded, the metadata was correct, and the crawler
+ * declined anyway — because the page it was offered had one line of text on it.
+ * Metadata does not substitute for content. `/login` had the whole marketing
+ * page all along, one route away, so the root now renders the same component.
  *
- * The rule matches the API's own `primaryDashboard`: most capable role first,
- * so an admin who is also a parent starts on the admin screen and navigates to
- * their child from there.
+ * ★★ The redirect is unchanged in every respect that matters. A signed-in
+ * teacher opening `nomadkids.mn` still lands on their dashboard; the rule is
+ * still "most capable role first", still matching the API's `primaryDashboard`,
+ * so an admin who is also a parent starts on the admin screen.
+ *
+ * ★★★ What a signed-in visitor sees for the moment before the redirect is the
+ * landing page rather than a spinner, and that is the right trade. The
+ * redirect fires as soon as `/auth/me` answers — the same instant it did
+ * before — and a crawler, which never has a session, gets the whole page and
+ * never a flash of anything. Rendering the spinner for everybody in order to
+ * spare the signed-in the flash is what put the root outside the index.
  */
 export default function RootPage() {
+  return (
+    <Suspense fallback={<div className="min-h-dvh bg-white" />}>
+      <RootRedirect />
+      <PublicLanding />
+    </Suspense>
+  );
+}
+
+/**
+ * Sends a signed-in visitor to their own screen. Renders nothing.
+ *
+ * Split out so the landing is not remounted when the session resolves: the
+ * effect lives in its own component, and `PublicLanding` beside it is
+ * untouched by the state change.
+ */
+function RootRedirect() {
   const { session, isLoading, hasRole, isSuperAdmin } = useSession();
   const router = useRouter();
 
   useEffect(() => {
-    if (isLoading) return;
-
-    if (!session) {
-      router.replace("/login");
-      return;
-    }
+    if (isLoading || !session) return;
 
     // Checked first, and not folded into the role chain below: the platform
     // operator holds no kindergarten membership at all (CLAUDE.md §1.1), so
@@ -41,9 +63,5 @@ export default function RootPage() {
     else router.replace("/no-access");
   }, [isLoading, session, hasRole, isSuperAdmin, router]);
 
-  return (
-    <main className="mx-auto w-full max-w-[1200px] px-4 py-10">
-      <LoadingState label="Ачаалж байна…" rows={2} />
-    </main>
-  );
+  return null;
 }
