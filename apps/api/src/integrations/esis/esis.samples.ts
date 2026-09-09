@@ -338,6 +338,8 @@ const OVERRIDES: Record<EsisEndpointKey, Override[]> = {
   students: STUDENTS,
   /* One child — the register number finds exactly one, or nothing. */
   studentByRegister: [STUDENTS[0]!],
+  /* One child — a register number identifies exactly one, or nothing. */
+  studentInfo: [STUDENTS[0]!],
   groupStudents: NARAN_STUDENTS,
 
   studentMovements: [

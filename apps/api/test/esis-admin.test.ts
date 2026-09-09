@@ -99,7 +99,7 @@ describe("ESIS administration authorization", () => {
     );
 
     expect(own.status).toBe(200);
-    expect(own.body.endpoints).toHaveLength(21);
+    expect(own.body.endpoints).toHaveLength(22);
     expect(other.status).toBe(404);
   });
 
@@ -234,7 +234,7 @@ describe("role-scoped ESIS catalog", () => {
     const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
 
     expect(res.status).toBe(200);
-    expect(res.body.endpoints).toHaveLength(21);
+    expect(res.body.endpoints).toHaveLength(22);
   });
 
   /*
@@ -269,12 +269,20 @@ describe("role-scoped ESIS catalog", () => {
     ]);
   });
 
-  it("gives a teacher the five their screens draw, and no others", async () => {
+  it("gives a teacher the seven their screens draw, and no others", async () => {
     const res = await authed(request(server()).get(url(a.kindergarten.id)), teacherA);
 
     expect(res.status).toBe(200);
     expect(res.body.endpoints.map((e: { key: string }) => e.key).sort()).toEqual(
-      ["groupAttendance", "groupStudents", "saveAttendanceV3", "students", "teachers"].sort(),
+      [
+        "groupAttendance",
+        "groupStudents",
+        "saveAttendanceV3",
+        "studentByRegister",
+        "studentInfo",
+        "students",
+        "teachers",
+      ].sort(),
     );
   });
 
@@ -372,10 +380,17 @@ describe("single-resource ESIS read", () => {
     expect(res.body.resource).toBe("students");
   });
 
+  /*
+   * ★ `studentByRegister` left this list on 2026-09-09 — the client asked that
+   * a teacher be able to search by register number. It is a service they may
+   * *use*, not a number they may read: `personRegNumber` is a refused output
+   * on it as on every roster service, and `read` keeps the value they typed
+   * out of the audit row.
+   */
   it.each([
     ["organization", "resource=organization"],
     ["foodMaterials", "resource=foodMaterials"],
-    ["studentByRegister", "resource=studentByRegister&personRegNumber=УБ00000000"],
+    ["buildings", "resource=buildings"],
   ])("returns 404 to a teacher for %s, and never calls ESIS", async (_label, query) => {
     await mapInstitution(a.kindergarten.id, superAdmin);
 

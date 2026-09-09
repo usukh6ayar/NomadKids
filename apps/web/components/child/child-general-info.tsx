@@ -33,6 +33,7 @@ import { GuardianAccessButton } from "@/components/child/guardian-access-button"
 import { InviteGuardianDialog } from "@/components/child/invite-guardian-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
@@ -143,6 +144,37 @@ export function ChildGeneralInfo({
           </Card>
         </section>
       ) : null}
+
+      {/*
+        ★ This child's record as ESIS holds it — 2026-09-09, at the client's
+        request: from the roster, click a child and their general information is
+        here, inside Ерөнхий.
+
+        `student/info/:personRegNumber` is keyed by the register number, and the
+        one passed is the child's own — already on their record because this
+        product collects it (the roster has a Регистр column). So the number
+        travels *to* ESIS and is never read back: `personRegNumber` is a refused
+        output on this service as on every roster service, and `read` keeps the
+        value out of the audit row.
+
+        ★★ It never asks for the number, and never explains its absence
+        either — `askForParams={false}`. Searching by register is how you find
+        a child *among many*, which is the roster's own panel; a box here would
+        be a second search on a screen about one person, and a sentence in its
+        place is a screen explaining itself instead of showing the record. A
+        child with no регистр on file simply cannot be pulled live yet.
+
+        ★★★ It renders nothing for a guardian: `studentInfo` is on the teacher's
+        and the administrator's service lists and on nobody else's, so the
+        scoped catalog simply omits it.
+      */}
+      <EsisDataPanel
+        resource="studentInfo"
+        title="Сурагчийн ерөнхий мэдээлэл"
+        description="ESIS дэх энэ хүүхдийн бүртгэл"
+        params={{ personRegNumber: child.nationalId ?? undefined }}
+        askForParams={false}
+      />
     </div>
   );
 }

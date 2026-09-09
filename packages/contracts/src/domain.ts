@@ -3062,6 +3062,7 @@ export const esisResourceKeySchema = z.enum([
   "groups",
   "students",
   "studentByRegister",
+  "studentInfo",
   "groupStudents",
   "studentMovements",
   "teachers",

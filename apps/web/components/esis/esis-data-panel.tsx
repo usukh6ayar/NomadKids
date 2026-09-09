@@ -78,6 +78,7 @@ export function EsisDataPanel({
   title,
   description,
   headingId,
+  askForParams = true,
 }: {
   resource: EsisResourceKey;
   /** Path values the caller already knows — a group id, a date. */
@@ -98,6 +99,19 @@ export function EsisDataPanel({
   hrefs?: (string | null)[];
   /** Which column carries the link — the name, on a roster. */
   linkField?: string;
+  /**
+   * Whether the panel may ask the reader for a path value it lacks.
+   *
+   * ★ False on a screen that is already about one record — 2026-09-09, at the
+   * client's instruction. A child's own page identifies the child; a register
+   * box there is a second search on a screen about one person, and the client
+   * did not want the "add a регистр first" sentence either. So the panel shows
+   * what ESIS holds and simply cannot run a live pull until the number is on
+   * the record.
+   *
+   * True everywhere else, which is where searching among many belongs.
+   */
+  askForParams?: boolean;
   /** Overrides the service's catalog name in the section header. */
   title?: string;
   description?: string;
@@ -142,6 +156,20 @@ export function EsisDataPanel({
   const value = (name: string) =>
     entered[name] ?? params?.[name] ?? (demoMode ? (ESIS_DEMO_PARAM[name] ?? "") : "") ?? "";
   const missing = required.filter((name) => !value(name));
+
+  /*
+   * ★ Ask only for what the caller has not already supplied — 2026-09-09, at
+   * the client's instruction: "регистрийн дугаараар хайх зөвхөн олон хүүхэд
+   * дундаас хайх үед л хэрэгтэй учир, зөвхөн нэг хүүхдэд хэрэггүй шүүдээ".
+   *
+   * A parameter this screen knows is not a question. On a child's own record
+   * the register number is on the record; asking for it again turns a panel
+   * that should simply show what ESIS holds into a form to fill in, and puts
+   * a second register search on a screen about one child. The roster's
+   * `studentByRegister` is where searching among many belongs, and there the
+   * caller supplies nothing — so every field it needs is still asked for.
+   */
+  const asks = askForParams ? required.filter((name) => !params?.[name]) : [];
 
   const query = new URLSearchParams({ resource });
   for (const name of required) {
@@ -220,10 +248,10 @@ export function EsisDataPanel({
           </div>
         </div>
 
-        {required.length > 0 ? (
+        {asks.length > 0 ? (
           <div>
             <div className="grid gap-3 sm:grid-cols-2">
-              {required.map((name) => (
+              {asks.map((name) => (
                 <Field key={name} label={ESIS_PARAM_LABEL[name] ?? name}>
                   {({ id }) => (
                     <Input
@@ -239,7 +267,7 @@ export function EsisDataPanel({
               ))}
             </div>
             <p className="mt-2 text-caption text-muted">
-              {required.some(isPersonalParam)
+              {asks.some(isPersonalParam)
                 ? "Регистрийн дугаарыг ESIS рүү илгээх ба хадгалахгүй."
                 : "ESIS-ийн өөрийн дугаарыг ашиглана."}
             </p>

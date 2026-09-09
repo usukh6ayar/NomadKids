@@ -291,6 +291,47 @@ describe("ESIS мэдээллийн панел", () => {
    * teacher's panel should see the screen, not a hole where a permission
    * failed.
    */
+  /*
+   * ★ A parameter the screen already knows is not a question — 2026-09-09.
+   *
+   * The panel asked for every path value a service declares, so a child's own
+   * record showed a register-number box beside data drawn from that very
+   * number: a second search on a screen about one person. Searching by
+   * register is how you find a child *among many*, and that is the roster's
+   * panel, where the caller supplies nothing and the field is still asked for.
+   */
+  /*
+   * ★★ And a screen already about one record asks for nothing at all — the
+   * client did not want the "add a регистр first" sentence in its place
+   * either. The panel shows what ESIS holds; a live pull simply waits for the
+   * number to reach the record.
+   */
+  it("asks for nothing on a screen that identifies its own record", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: CATALOG_PATH, body: catalog(false) },
+    ]);
+    renderWithProviders(<EsisDataPanel resource="studentByRegister" askForParams={false} />);
+
+    expect(await screen.findByText("Регистрээр хайх")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Регистрийн дугаар")).toBeNull();
+    // The record is still drawn, which is the point of not asking.
+    expect(screen.getByText("Батбаяр")).toBeInTheDocument();
+  });
+
+  it("asks for nothing the caller already supplied", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: CATALOG_PATH, body: catalog(false) },
+    ]);
+    renderWithProviders(
+      <EsisDataPanel resource="studentByRegister" params={{ personRegNumber: "УБ11223344" }} />,
+    );
+
+    expect(await screen.findByText("Регистрээр хайх")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Регистрийн дугаар")).toBeNull();
+  });
+
   it("renders nothing for a service the catalog does not carry", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },

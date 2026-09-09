@@ -85,7 +85,14 @@ export default function SettingsPage() {
         */}
         <EsisDataPanel
           resource="teachers"
-          title="Багшийн ерөнхий мэдээлэл"
+          /*
+            ★ "Жагсаалт" for the same reason the roster panel took it —
+            2026-09-09. `api-41` is `teacher/list` and returns the roll; the
+            reader's *own* ESIS record is the panel above this one, built from
+            `my-profile`. Two panels, two questions, and only the first is a
+            list.
+          */
+          title="Багшийн жагсаалт"
           description="ESIS-д бүртгэлтэй багш нарын томилгоо"
         />
         <SignOutCard />

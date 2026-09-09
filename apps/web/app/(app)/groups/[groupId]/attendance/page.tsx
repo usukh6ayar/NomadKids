@@ -506,18 +506,6 @@ function GroupAttendance() {
         for: our group ids are uuids the ministry has never seen, and §15's
         external-id history is what would let this be filled in automatically.
       */}
-      {/*
-        ★★★★ `groupStudents` is here rather than on `/groups/:id`, which is
-        where it was first put and where nobody would have found it: nothing in
-        this product links to that hub page. The sidebar's group entries go
-        straight to the three registers, so the roster ESIS keeps belongs on the
-        register a teacher actually opens — beside the day sheet drawn from it.
-      */}
-      <EsisDataPanel
-        resource="groupStudents"
-        title="Бүлгийн суралцагчийн ерөнхий мэдээлэл"
-        description="ESIS-д энэ бүлэгт бүртгэлтэй хүүхдүүд"
-      />
       <EsisDataPanel
         resource="saveAttendanceV3"
         title="Ирц хадгалах"
