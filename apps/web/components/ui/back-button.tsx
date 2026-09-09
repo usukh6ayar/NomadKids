@@ -25,6 +25,20 @@ import { cn } from "@/lib/utils";
  * ★★★ Which is why the label is "Буцах" rather than the destination's name.
  * The button no longer knows where it lands, so naming a screen would be a
  * guess printed as a fact — the failure this component exists to fix.
+ *
+ * ★★★★ **The label is no longer drawn — 2026-09-09**, at the client's
+ * instruction: "буцах гэсэн text-ийн оронд зөвхөн icon-ууд байх."
+ *
+ * It is `sr-only`, not deleted. A bare arrow with no accessible name is
+ * announced as "link" and nothing else, which makes the one control that gets
+ * a reader off a screen the one control they cannot identify — and CLAUDE.md
+ * §5 asks for a label on every control for exactly this reason. Keeping the
+ * word in the DOM also means the button is still *named* Буцах: every test
+ * that finds it by role and name keeps working, because nothing about what it
+ * is has changed, only what is painted.
+ *
+ * The square `icon` size rather than a narrowed `sm`: at 44×44 the arrow keeps
+ * the touch target the text used to justify. §5 — it works on a phone first.
  */
 export function BackButton({
   href,
@@ -39,7 +53,7 @@ export function BackButton({
   const goBack = useGoBack(href);
 
   return (
-    <Button asChild variant="ghost" size="sm" className={cn("-ml-2 self-start", className)}>
+    <Button asChild variant="ghost" size="icon" className={cn("-ml-2 self-start", className)}>
       <Link
         href={href}
         onClick={(event) => {
@@ -61,8 +75,8 @@ export function BackButton({
           goBack();
         }}
       >
-        <ArrowLeft size={18} aria-hidden />
-        {label}
+        <ArrowLeft size={20} aria-hidden />
+        <span className="sr-only">{label}</span>
       </Link>
     </Button>
   );
