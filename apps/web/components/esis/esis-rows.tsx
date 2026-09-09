@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Fragment, useState, type ReactNode } from "react";
 import type { EsisField } from "@kinder/contracts";
 import { Card } from "@/components/ui/card";
 import { TableShell, Td, Th } from "@/components/ui/table";
@@ -21,16 +22,30 @@ export function esisSampleColumns(fields: EsisField[]): EsisField[] {
 }
 
 /**
- * A width class picked from a fixed set.
+ * How many of a service's fields the table itself shows.
  *
- * ★ Not interpolated. Tailwind reads class names out of the source, so
- * `min-w-[${n}px]` compiles to no rule at all and a 27-column staff table
- * would squeeze instead of scrolling. Three literals cover every service.
+ * ★★★ **The table no longer scrolls sideways — 2026-09-09, at the client's
+ * instruction: "хүснэгтүүдийг зүгээр энгийн харагдуул. хажуу тийшээ scroll
+ * ntr хийхгүй."**
+ *
+ * What stood here was `rowTableWidth`, which set a floor of 720, 1400 or
+ * 2400 pixels by column count so that a 27-column staff service scrolled
+ * rather than squeezed. That was the right call while the table was the only
+ * view of a record: dropping columns would have dropped what the service
+ * carries, and the panel exists to show exactly that.
+ *
+ * The floor can go now because the columns did not have to. A row opens
+ * (`EsisRowValues` below) into the complete record, so the five here are a
+ * summary rather than a truncation — every field is one press away, and the
+ * fields that no longer fit across are precisely the ones the drill-down was
+ * asked for. Five is what a phone holds without the text collapsing to one
+ * word per line.
  */
-function rowTableWidth(columns: number): string {
-  if (columns > 16) return "min-w-[2400px]";
-  if (columns > 8) return "min-w-[1400px]";
-  return "min-w-[720px]";
+const TABLE_COLUMNS = 5;
+
+/** The columns the table draws. The opened row draws all of them. */
+export function esisVisibleColumns(fields: EsisField[]): EsisField[] {
+  return fields.slice(0, TABLE_COLUMNS);
 }
 
 /**
@@ -39,6 +54,15 @@ function rowTableWidth(columns: number): string {
  * ★ One component on purpose. If the demonstration drew its own view the two
  * would drift, and the first thing to drift would be which fields appear —
  * making the sample a promise the live view does not keep.
+ *
+ * ★★★ **A row opens — 2026-09-09, at the client's request:** "жагсаалт харах
+ * дээр дандаа жагсаалт гэсэн api-ууд. дээр нь дарахад дэлгэрэнгүй ерөнхий
+ * мэдээлэл байх." Pressing a row reveals the complete record beneath it, in
+ * the same definition-list layout ★★ describes — so the drill-down introduces
+ * no new visual language, it reaches the one-record view this component
+ * already had. `renderDetail` extends it to a *second service* read for that
+ * row, which is how `foodKit` and `foodKitProducts` are reachable without
+ * asking a cook to type a ministry product code.
  *
  * ★★ **One record is a definition list; many are a table.** A single
  * organisation across 16 columns is a horizontal scrollbar with one row under
@@ -53,6 +77,7 @@ export function EsisRowValues({
   rows,
   hrefs,
   linkField,
+  renderDetail,
 }: {
   columns: EsisField[];
   rows: Record<string, string | null>[];
@@ -61,6 +86,15 @@ export function EsisRowValues({
    * leads nowhere.
    */
   hrefs?: (string | null)[];
+  /**
+   * Extra content for an opened row — another ESIS service, read for this
+   * record.
+   *
+   * ★ Rendered *under* the record's own fields, so an opened row reads as one
+   * thing: what ESIS holds about this product, then what its иж бүрдэл
+   * contains. See `EsisDataPanel`'s `detail` prop, which is what supplies it.
+   */
+  renderDetail?: (row: Record<string, string | null>) => ReactNode;
   /**
    * Which column carries the link — the name, on a roster.
    *
@@ -73,58 +107,104 @@ export function EsisRowValues({
   linkField?: string;
 }) {
   const router = useRouter();
+  const [openRow, setOpenRow] = useState<number | null>(null);
 
   if (rows.length === 1) return <EsisRecordFields columns={columns} row={rows[0]!} />;
 
-  const anchorColumn = columns.find((field) => field.name === linkField) ?? columns[0];
+  const shown = esisVisibleColumns(columns);
+  const anchorColumn = shown.find((field) => field.name === linkField) ?? shown[0];
+
+  /*
+   * ★ A row does one thing or the other, never both.
+   *
+   * `/children`'s roster passes `hrefs` so a name leads to that child's own
+   * page — which *is* the дэлгэрэнгүй for a child, and a better one than any
+   * panel could draw. Where a row already leads somewhere, opening it in place
+   * would put a second, worse answer under the first. So the link wins, and
+   * expansion is for the rows that lead nowhere: the ministry's reference
+   * data, which has no page of its own anywhere in this product.
+   */
+  const expandable = !hrefs;
 
   return (
-    <TableShell caption="ESIS сервисийн мөрүүд" minWidth={rowTableWidth(columns.length)}>
+    /*
+      `min-w-0` rather than a pixel floor: with five columns the table fits its
+      container at every width this product supports, so the wrapper's
+      `overflow-x-auto` never has anything to scroll. `table-fixed` is what
+      makes the truncation below possible — an auto table sizes to its content
+      and would push past the container instead of ellipsing inside it.
+    */
+    <TableShell caption="ESIS сервисийн мөрүүд" minWidth="min-w-0" tableClassName="table-fixed">
       <thead>
         <tr>
-          {columns.map((field) => (
-            <Th key={field.name}>{field.label}</Th>
+          {shown.map((field) => (
+            <Th key={field.name} className="truncate">
+              {field.label}
+            </Th>
           ))}
         </tr>
       </thead>
       <tbody>
         {rows.map((row, index) => {
           const href = hrefs?.[index] ?? null;
+          const isOpen = openRow === index;
+
           return (
-            <tr
-              key={index}
-              className={cn(href && "cursor-pointer transition-colors hover:bg-canvas")}
-              onClick={
-                href
-                  ? (event) => {
-                      // The anchor inside handles its own click, including
-                      // ⌘-click and "open in new tab". Only bare clicks on the
-                      // rest of the row need routing.
-                      if (event.defaultPrevented) return;
-                      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-                      if ((event.target as HTMLElement).closest("a")) return;
-                      if (window.getSelection()?.toString()) return;
-                      router.push(href);
-                    }
-                  : undefined
-              }
-            >
-              {columns.map((field) => {
-                const value = row[field.name] ?? "—";
-                const isAnchor = href && field.name === anchorColumn?.name;
-                return (
-                  <Td key={field.name}>
-                    {isAnchor ? (
-                      <Link href={href} className="font-medium text-ink hover:underline">
-                        {value}
-                      </Link>
-                    ) : (
-                      value
-                    )}
-                  </Td>
-                );
-              })}
-            </tr>
+            <Fragment key={index}>
+              <tr
+                className={cn(
+                  (href || expandable) && "cursor-pointer transition-colors hover:bg-canvas",
+                  isOpen && "bg-canvas",
+                )}
+                // The opened panel is a sibling row rather than a child, so
+                // `aria-expanded` on the row is what tells a screen reader the
+                // press did something.
+                aria-expanded={expandable ? isOpen : undefined}
+                onClick={(event) => {
+                  // The anchor inside handles its own click, including ⌘-click
+                  // and "open in new tab". Only bare clicks on the rest of the
+                  // row need handling here.
+                  if (event.defaultPrevented) return;
+                  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                  if ((event.target as HTMLElement).closest("a")) return;
+                  if (window.getSelection()?.toString()) return;
+                  if (href) router.push(href);
+                  else if (expandable) setOpenRow(isOpen ? null : index);
+                }}
+              >
+                {shown.map((field) => {
+                  const value = row[field.name] ?? "—";
+                  const isAnchor = href && field.name === anchorColumn?.name;
+                  return (
+                    <Td key={field.name} className="truncate">
+                      {isAnchor ? (
+                        <Link href={href} className="font-medium text-ink hover:underline">
+                          {value}
+                        </Link>
+                      ) : (
+                        value
+                      )}
+                    </Td>
+                  );
+                })}
+              </tr>
+
+              {expandable && isOpen ? (
+                <tr>
+                  <td colSpan={shown.length} className="border-b border-border bg-canvas p-3">
+                    <div className="flex flex-col gap-3">
+                      {/*
+                        Every field, including the ones the table does not
+                        draw — this is the whole reason five columns is a
+                        summary rather than a loss.
+                      */}
+                      <EsisRecordFields columns={columns} row={row} />
+                      {renderDetail?.(row)}
+                    </div>
+                  </td>
+                </tr>
+              ) : null}
+            </Fragment>
           );
         })}
       </tbody>

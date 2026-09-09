@@ -26,18 +26,32 @@ export function TableShell({
   caption,
   minWidth = "min-w-[860px]",
   className,
+  tableClassName,
 }: {
   children: ReactNode;
   /** Screen-reader only — what this table is of. */
   caption: string;
   /** Below this the wrapper scrolls rather than the columns squeezing. */
   minWidth?: string;
+  /** Goes on the wrapping `Card`. */
   className?: string;
+  /**
+   * Goes on the `<table>` itself.
+   *
+   * ★ Separate from `className`, because the two are not interchangeable and
+   * the difference is invisible in a diff. `className` lands on the Card;
+   * `table-fixed` there does nothing at all, and a caller who wanted fixed
+   * layout gets auto layout plus whatever `truncate` they put on the cells —
+   * which does not ellipse, it pushes the table past its container and hands
+   * the scroll back to `overflow-x-auto`. `esis-rows.tsx` was written that way
+   * for exactly as long as it took to look.
+   */
+  tableClassName?: string;
 }) {
   return (
     <Card data-ui-table="true" className={cn("overflow-hidden p-0", className)}>
       <div className="overflow-x-auto">
-        <table className={cn("w-full border-collapse text-body", minWidth)}>
+        <table className={cn("w-full border-collapse text-body", minWidth, tableClassName)}>
           <caption className="sr-only">{caption}</caption>
           {children}
         </table>
