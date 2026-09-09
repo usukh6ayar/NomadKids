@@ -176,11 +176,30 @@ function Recipes() {
         the screen that writes the cards is where a cook checks one.
       */}
       <EsisDataPanel
+        resource="foodProductTypes"
+        title="Бүтээгдэхүүний төрөл"
+        description="ESIS-ийн хоолны ангиллын лавлах — шөл, хоол, ундаа"
+        autoRead
+      />
+      {/*
+        ★★ The row opens into its иж бүрдэл — 2026-09-09.
+
+        `foodKit` and `foodKitProducts` both key on `:productId`, and neither
+        has a panel of its own for the reason `esis.catalog.ts` records: a box
+        asking a cook for a ministry product code is not a feature. Pressing
+        "Цуйван" here supplies the id from the row that was pressed, so the two
+        detail services are reached the only way they are usable.
+      */}
+      <EsisDataPanel
         resource="foodProducts"
         title="Бэлэн бүтээгдэхүүн"
-        description="ESIS-ийн хоол, бүтээгдэхүүний лавлах — хэмжих нэгж, илчлэг, шимт бодис"
+        description="ESIS-ийн хоол, бүтээгдэхүүний лавлах — мөр дээр дарж дэлгэрэнгүйг харна"
         autoRead
         showResponseDetails
+        detail={{
+          resources: ["foodKit", "foodKitProducts"],
+          param: { name: "productId", from: "productId" },
+        }}
       />
 
       {creating && kindergartenId ? (

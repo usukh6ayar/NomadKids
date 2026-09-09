@@ -13,15 +13,15 @@ Twenty-two ESIS services are in `ESIS_ENDPOINTS`. Fifteen are drawn on a
 screen. **Seven have never been placed**, so a token scoped to them buys
 nothing:
 
-| Key | ID / slug | Path | Params |
-| --- | --------- | ---- | ------ |
-| `studentMovements` | `2` | `student/movement/v2/:beginDate` | `beginDate` |
-| `foodProductTypes` | 111 · API-000210 | `cook/product/type` | — |
-| `foodMaterialGroups` | 112 · API-000211 | `cook/materialGroup` | — |
-| `foodMaterials` | 123 · API-000222 | `cook/material` | — |
-| `foodProductMaterials` | 125 · API-000224 | `cook/productMaterials` | — |
-| `foodKit` | 126 · API-000225 | `cook/kit/:productId` | `productId` |
-| `foodKitProducts` | 127 · API-000226 | `cook/kit/product/:productId` | `productId` |
+| Key                    | ID / slug        | Path                             | Params      |
+| ---------------------- | ---------------- | -------------------------------- | ----------- |
+| `studentMovements`     | `2`              | `student/movement/v2/:beginDate` | `beginDate` |
+| `foodProductTypes`     | 111 · API-000210 | `cook/product/type`              | —           |
+| `foodMaterialGroups`   | 112 · API-000211 | `cook/materialGroup`             | —           |
+| `foodMaterials`        | 123 · API-000222 | `cook/material`                  | —           |
+| `foodProductMaterials` | 125 · API-000224 | `cook/productMaterials`          | —           |
+| `foodKit`              | 126 · API-000225 | `cook/kit/:productId`            | `productId` |
+| `foodKitProducts`      | 127 · API-000226 | `cook/kit/product/:productId`    | `productId` |
 
 All seven already carry a `PORTAL`-verified field list (`esis.fields.ts`) and
 demo rows (`esis.samples.ts`). Nothing about the catalog needs inventing —
@@ -71,12 +71,12 @@ on 2026-09-09, and the note records that.
 
 ## 3. Where each panel lands
 
-| Screen | Panels added |
-| ------ | ------------ |
-| `/kitchen/ingredients` | `foodMaterialGroups` (түүхий эдийн бүлэг), `foodMaterials` (түүхий эд) |
-| `/kitchen/recipes` | `foodProductTypes` (бүтээгдэхүүний төрөл), above the existing `foodProducts` |
-| `/kitchen/recipes/[id]` | `foodProductMaterials` (бүтээгдэхүүний орц) |
-| `/children` | `studentMovements` (суралцагчийн хөдөлгөөн) |
+| Screen                  | Panels added                                                                 |
+| ----------------------- | ---------------------------------------------------------------------------- |
+| `/kitchen/ingredients`  | `foodMaterialGroups` (түүхий эдийн бүлэг), `foodMaterials` (түүхий эд)       |
+| `/kitchen/recipes`      | `foodProductTypes` (бүтээгдэхүүний төрөл), above the existing `foodProducts` |
+| `/kitchen/recipes/[id]` | `foodProductMaterials` (бүтээгдэхүүний орц)                                  |
+| `/children`             | `studentMovements` (суралцагчийн хөдөлгөөн)                                  |
 
 `foodKit` and `foodKitProducts` get **no panel of their own**, deliberately.
 Both take `:productId`, and `EsisDataPanel`'s answer to a missing path
@@ -124,7 +124,7 @@ navigates, and where it is not the row expands. A row never does both.
 ### The nested drill-down
 
 A new optional prop carries the second half of the client's sentence — the
-detail is sometimes *another service*, not just more columns:
+detail is sometimes _another service_, not just more columns:
 
 ```ts
 detail?: {
@@ -161,7 +161,7 @@ would point the menu at a row that does not exist.
 `useRecipe` is — `fromDraft` still emits the same `saveMenuDaySchema` payload,
 so nothing about the meals contract changes and a dish saved from ESIS is
 indistinguishable from one typed by hand. That is the point: the ministry's
-reference is where the cook *reads* the calories, not a foreign key the menu
+reference is where the cook _reads_ the calories, not a foreign key the menu
 carries forever.
 
 The picker is offered only where the recipe picker already is — behind the

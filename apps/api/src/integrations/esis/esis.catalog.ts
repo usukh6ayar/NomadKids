@@ -284,12 +284,35 @@ const ROLE_SERVICES: Partial<Record<Role, readonly EsisEndpointKey[]>> = {
     "teachers",
   ],
   /*
-   * The cook's one, named 2026-09-09: "бэлэн бүтээгдэхүүн" — the ministry's
-   * finished-dish reference (`cook/product`), which a technology card is
-   * written against. The other six food services stay off this list until they
-   * are asked for; a role gets the services its own screens draw.
+   * The cook's seven — every `cook/*` read in the catalog.
+   *
+   * ★ This began as one, `foodProducts`, with a note saying the other six
+   * "stay off this list until they are asked for". They were asked for later
+   * the same day — "тогоочид хамаарах бусад API-уудыг дууд ашигла" — so the
+   * note is replaced rather than deleted. The principle it stated still holds
+   * and still decides the two below it: a role gets the services its own
+   * screens draw.
+   *
+   * ★★ `foodKit` and `foodKitProducts` take `:productId` and have **no panel
+   * of their own**. `EsisDataPanel` asks the reader to type a missing path
+   * parameter, and a cook typing a ministry product code into a box is not a
+   * feature. They are reachable only as the drill-down of a `foodProducts`
+   * row, which supplies the id — the grant is what makes that read legal.
+   *
+   * ★★★ The two `POST cook/form1|form2 …/save` services are still absent, for
+   * the reason `esis.endpoints.ts` gives: nothing here files a school's income
+   * return. Granting a role a write it has no screen for is how a scope
+   * request grows past what the product can honestly use.
    */
-  [Role.COOK]: ["foodProducts"],
+  [Role.COOK]: [
+    "foodProductTypes",
+    "foodMaterialGroups",
+    "foodMaterials",
+    "foodProducts",
+    "foodProductMaterials",
+    "foodKit",
+    "foodKitProducts",
+  ],
   /*
    * The accountant's two: "хоолны төвлөрүүлэх орлого маягт 1, 2" — the school's
    * monthly food-income statement and its per-child breakdown.

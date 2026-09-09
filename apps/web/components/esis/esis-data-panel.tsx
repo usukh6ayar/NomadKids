@@ -82,6 +82,7 @@ export function EsisDataPanel({
   autoRead = false,
   showResponseDetails = false,
   actionLabel,
+  detail,
 }: {
   resource: EsisResourceKey;
   /** Path values the caller already knows — a group id, a date. */
@@ -125,6 +126,24 @@ export function EsisDataPanel({
   showResponseDetails?: boolean;
   /** Overrides the generic pull command for a task-specific action. */
   actionLabel?: string;
+  /**
+   * Services to read for an opened row — the second half of "дээр нь дарахад
+   * дэлгэрэнгүй", where the detail is another service rather than more columns.
+   *
+   * ★ This is the only way `foodKit` and `foodKitProducts` are reachable. Both
+   * take `:productId`, and a panel of their own would ask the cook to type a
+   * ministry product code into a box. Opening a `foodProducts` row supplies
+   * the id from the record the reader just pressed.
+   *
+   * ★★ Read per opened row, never for the list. A list of forty products would
+   * otherwise be forty outbound calls to the ministry and forty `AuditLog`
+   * VIEW rows on first paint — §3.4's N+1, pointed at somebody else's server.
+   */
+  detail?: {
+    resources: EsisResourceKey[];
+    /** `name` is the path parameter; `from` is the row field that fills it. */
+    param: { name: string; from: string };
+  };
 }) {
   const { primaryKindergartenId } = useSession();
   const [entered, setEntered] = useState<Record<string, string>>({});
@@ -413,6 +432,26 @@ export function EsisDataPanel({
             rows={rows}
             hrefs={live ? undefined : hrefs}
             linkField={linkField}
+            renderDetail={
+              detail
+                ? (row) => {
+                    const id = row[detail.param.from];
+                    // A record the ministry returned without the id its detail
+                    // services key on. Nothing honest to read, so nothing drawn
+                    // — rather than a call with an empty path segment.
+                    if (!id) return null;
+                    return detail.resources.map((key) => (
+                      <EsisDataPanel
+                        key={key}
+                        resource={key}
+                        params={{ [detail.param.name]: id }}
+                        askForParams={false}
+                        autoRead
+                      />
+                    ));
+                  }
+                : undefined
+            }
           />
         )}
 

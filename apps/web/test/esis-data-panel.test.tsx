@@ -63,6 +63,46 @@ const studentFields: StubField[] = [
   },
 ];
 
+/**
+ * A service wide enough to prove the table drops columns — eight fields.
+ *
+ * ★ Modelled on the real `foodProducts`, which carries fifteen. Five is what
+ * the table draws; the rest are what pressing a row reveals.
+ */
+const wideFields: StubField[] = [
+  { name: "productId", label: "Код", io: "OUTPUT", ingested: true, sample: "5107" },
+  { name: "productName", label: "Нэр", io: "OUTPUT", ingested: true, sample: "Гурилтай шөл" },
+  { name: "measureCode", label: "Хэмжих нэгж", io: "OUTPUT", ingested: true, sample: "порц" },
+  { name: "productType", label: "Төрөл", io: "OUTPUT", ingested: true, sample: "SOUP" },
+  { name: "calories", label: "Илчлэг", io: "OUTPUT", ingested: true, sample: "245" },
+  { name: "proteins", label: "Уураг", io: "OUTPUT", ingested: true, sample: "9.8" },
+  { name: "fats", label: "Өөх тос", io: "OUTPUT", ingested: true, sample: "7.2" },
+  { name: "sequence", label: "Дараалал", io: "OUTPUT", ingested: true, sample: "17" },
+];
+
+const wideRows = [
+  {
+    productId: "5107",
+    productName: "Гурилтай шөл",
+    measureCode: "порц",
+    productType: "SOUP",
+    calories: "245",
+    proteins: "9.8",
+    fats: "7.2",
+    sequence: "17",
+  },
+  {
+    productId: "5108",
+    productName: "Ногоотой шөл",
+    measureCode: "порц",
+    productType: "SOUP",
+    calories: "168",
+    proteins: "6.4",
+    fats: "5.1",
+    sequence: "18",
+  },
+];
+
 const endpoint = (
   key: string,
   name: string,
@@ -123,6 +163,12 @@ function catalog(live: boolean) {
     canRead: live,
     endpoints: [
       endpoint("organization", "Байгууллагын мэдээлэл", organizationFields),
+      endpoint("foodProducts", "Бэлэн бүтээгдэхүүн", wideFields, {
+        key: "foodProducts",
+        apiId: 124,
+        slug: "API-000223",
+        domain: "FOOD",
+      }),
       endpoint("studentByRegister", "Суралцагчийг РД-ээр хайх", studentFields, {
         key: "studentByRegister",
         apiId: 45,
@@ -260,6 +306,103 @@ describe("ESIS мэдээллийн панел", () => {
     );
   });
 
+  /*
+   * ★ "хүснэгтүүдийг зүгээр энгийн харагдуул. хажуу тийшээ scroll ntr
+   * хийхгүй" — the client, 2026-09-09.
+   *
+   * `esis-rows.tsx` used to set a pixel floor by column count (720, 1400 or
+   * 2400), so a wide service scrolled sideways by construction. These three
+   * cases are the replacement contract: the table shows five columns, the rest
+   * of the record is one press away, and no floor is emitted.
+   */
+  it("shows at most five columns, however many the service carries", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: CATALOG_PATH, body: catalog(false) },
+    ]);
+    renderWithProviders(<EsisDataPanel resource="foodProducts" rows={wideRows} />);
+
+    await screen.findByText("Гурилтай шөл");
+
+    const headers = screen.getAllByRole("columnheader").map((cell) => cell.textContent);
+    expect(headers).toEqual(["Код", "Нэр", "Хэмжих нэгж", "Төрөл", "Илчлэг"]);
+    // The sixth and eighth fields exist on the record and not in the table.
+    expect(headers).not.toContain("Уураг");
+    expect(headers).not.toContain("Дараалал");
+  });
+
+  it("puts no minimum width on the table, so nothing scrolls sideways", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: CATALOG_PATH, body: catalog(false) },
+    ]);
+    const { container } = renderWithProviders(
+      <EsisDataPanel resource="foodProducts" rows={wideRows} />,
+    );
+
+    await screen.findByText("Гурилтай шөл");
+
+    const table = container.querySelector("table");
+    // `min-w-0`, never a pixel floor — the assertion is on the *class*, since
+    // jsdom computes no layout to measure.
+    expect(table?.className).not.toMatch(/min-w-\[/);
+    expect(table?.className).toContain("min-w-0");
+  });
+
+  it("reveals every field of the row that was pressed", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: CATALOG_PATH, body: catalog(false) },
+    ]);
+    renderWithProviders(<EsisDataPanel resource="foodProducts" rows={wideRows} />);
+
+    await screen.findByText("Гурилтай шөл");
+    // Absent until asked for — it is one of the columns the table drops.
+    expect(screen.queryByText("Уураг")).toBeNull();
+
+    await user.click(screen.getByText("Гурилтай шөл"));
+
+    // The dropped fields, and this row's values for them.
+    expect(await screen.findByText("Уураг")).toBeInTheDocument();
+    expect(screen.getByText("Дараалал")).toBeInTheDocument();
+    expect(screen.getByText("9.8")).toBeInTheDocument();
+    // And not the other row's — one row opens, not the table.
+    expect(screen.queryByText("6.4")).toBeNull();
+  });
+
+  /*
+   * ★ A row does one thing or the other. `/children`'s roster leads to a
+   * child's own page, which is a better дэлгэрэнгүй than any panel draws, and
+   * opening a second answer underneath the first would be worse than either.
+   */
+  it("does not expand a row that already leads somewhere", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: CATALOG_PATH, body: catalog(false) },
+    ]);
+    renderWithProviders(
+      <EsisDataPanel
+        resource="organization"
+        rows={[
+          { institutionId: "1", institutionName: "Нэг" },
+          { institutionId: "2", institutionName: "Хоёр" },
+        ]}
+        hrefs={["/children/aaa/general", null]}
+        linkField="institutionName"
+      />,
+    );
+
+    await screen.findByText("Нэг");
+    await user.click(screen.getByText("Хоёр"));
+
+    // No second copy of the value appeared beneath it, and no row announces
+    // itself as expandable.
+    expect(screen.getAllByText("Хоёр")).toHaveLength(1);
+    expect(document.querySelector("[aria-expanded]")).toBeNull();
+  });
+
   it("offers no link when the caller supplies none", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
@@ -312,7 +455,7 @@ describe("ESIS мэдээллийн панел", () => {
     ]);
     renderWithProviders(<EsisDataPanel resource="studentByRegister" askForParams={false} />);
 
-    expect(await screen.findByText("Регистрээр хайх")).toBeInTheDocument();
+    expect(await screen.findByText("Суралцагчийг РД-ээр хайх")).toBeInTheDocument();
     expect(screen.queryByLabelText("Регистрийн дугаар")).toBeNull();
     // The record is still drawn, which is the point of not asking.
     expect(screen.getByText("Батбаяр")).toBeInTheDocument();
@@ -327,7 +470,7 @@ describe("ESIS мэдээллийн панел", () => {
       <EsisDataPanel resource="studentByRegister" params={{ personRegNumber: "УБ11223344" }} />,
     );
 
-    expect(await screen.findByText("Регистрээр хайх")).toBeInTheDocument();
+    expect(await screen.findByText("Суралцагчийг РД-ээр хайх")).toBeInTheDocument();
     expect(screen.queryByLabelText("Регистрийн дугаар")).toBeNull();
   });
 
