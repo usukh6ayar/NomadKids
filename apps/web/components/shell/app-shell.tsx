@@ -855,9 +855,23 @@ function WhoAmI({ variant, isAdmin }: { variant: Variant; isAdmin: boolean }) {
       stopping at this card's own inset.
     */
     <div className="-mx-1 shrink-0 border-t border-border-soft pt-3">
+      {/*
+        ★ Named "Тохиргоо", not "Профайл" — 2026-09-10, with the rename that
+        gave `/settings` one name in every role's menu.
+
+        This row is the sidebar's only door to that screen (`SidebarContent`
+        filters the `/settings` entry out of the nav lists so it is not offered
+        twice), so its accessible name is what a screen-reader user is told the
+        destination is called. "Профайл" here and "Тохиргоо" in the menu is the
+        same screen under two names, which is the confusion this pass removes.
+
+        The person's name stays in the label: the row shows their name and
+        their role, and an accessible name of just "Тохиргоо" would drop what
+        the row visibly says.
+      */}
       <Link
         href="/settings"
-        aria-label={`Профайл: ${fullName(session?.user)}`}
+        aria-label={`Тохиргоо: ${fullName(session?.user)}`}
         className="group flex min-h-[56px] items-center gap-2.5 rounded-card bg-canvas/70 px-3 py-2 transition-colors hover:bg-primary-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
       >
         <span className="grid size-9 shrink-0 place-items-center rounded-pill bg-primary-soft text-compact font-bold text-primary">

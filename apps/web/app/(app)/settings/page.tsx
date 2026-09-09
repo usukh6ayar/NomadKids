@@ -63,7 +63,7 @@ export default function SettingsPage() {
       on the page, the line is the page.
     */
     <div className="flex w-full flex-col gap-6 lg:gap-8">
-      <PageHeader title="Хувийн тохиргоо" />
+      <PageHeader title="Тохиргоо" />
 
       <div className="flex w-full max-w-[760px] flex-col gap-6 lg:gap-8">
         <ProfileCard />
@@ -94,6 +94,7 @@ export default function SettingsPage() {
           title="Багшийн жагсаалт"
           description="ESIS-д бүртгэлтэй багш нарын томилгоо"
         />
+        <SignOutCard />
       </div>
     </div>
   );
@@ -259,7 +260,7 @@ function EsisFieldGroup({
  * person, and the client's position is that it is not a thing to hand-correct
  * here.
  *
- * ★★ Three profile controls live together here, and each is deliberate:
+ * ★★ Two profile controls live together here, and each is deliberate:
  *
  *   The **picture**, because ESIS supplies none. Removing its badge would mean
  *   nobody could ever set a profile photo again, which is not information
@@ -272,12 +273,15 @@ function EsisFieldGroup({
  *   its own credentials. It sits on the page now, folded shut, which is the
  *   shape it already had inside the form.
  *
- *   **Sign-out** moved into the same card from a standalone panel below all
- *   ESIS data. The shell now routes every role here first, so the action is
- *   both intentional and immediately reachable.
+ * ★★★ **Sign-out is not one of them any more** — 2026-09-10, at the client's
+ * request that it sit at the very foot of this screen. It was moved *into*
+ * this card in the shell redesign, on the argument that routing every role
+ * here made it "intentional and immediately reachable"; that argument holds
+ * for the screen and not for the card, and inside the card it sat above the
+ * ESIS panels, which put a destructive action in the middle of a page of
+ * read-only records. `SignOutCard` is the last thing on the page instead.
  */
 function ProfileCard() {
-  const logout = useLogout();
   const { data, isLoading, isError, error } = useQuery({
     queryKey: qk.profile(),
     queryFn: () => get("/me/profile", profileSchema),
@@ -287,7 +291,7 @@ function ProfileCard() {
   if (isError) return <ErrorState description={errorMessage(error)} />;
 
   return (
-    <section aria-label="Хувийн тохиргоо">
+    <section aria-label="Хувийн мэдээлэл">
       <Card pad="roomy" className="flex flex-col gap-5">
         {/*
           ★ The picture is the control — 2026-09-06, at the client's request:
@@ -317,19 +321,38 @@ function ProfileCard() {
         <div className="border-t border-border-soft pt-5">
           <PasswordSection identifier={data?.email || data?.username || ""} email={data?.email} />
         </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border-soft pt-5">
-          <div>
-            <p className="font-medium text-ink">Системээс гарах</p>
-            <p className="text-body text-muted">Энэ төхөөрөмжөөс гарна.</p>
-          </div>
-          <Button variant="secondary" onClick={() => void logout()}>
-            <LogOut aria-hidden="true" />
-            Гарах
-          </Button>
-        </div>
       </Card>
     </section>
+  );
+}
+
+/**
+ * The way out of the system — the last thing on this screen, for every role.
+ *
+ * ★ It is the *only* way out, which is what makes its position worth a note.
+ *
+ * The shell carries no sign-out control of its own: the sidebar's foot is an
+ * identity row that links here (`WhoAmI`), the phone's header holds one bell,
+ * and every role's menu names this screen "Тохиргоо". So this card is the end
+ * of the only path there is, and it sits at the end of the page — below the
+ * account, the password and the ESIS panels — because a sign-out button in the
+ * middle of a page of read-only records is one a reader presses by accident on
+ * the way to something else.
+ */
+function SignOutCard() {
+  const logout = useLogout();
+
+  return (
+    <Card pad="roomy" className="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <p className="font-medium text-ink">Системээс гарах</p>
+        <p className="text-body text-muted">Энэ төхөөрөмжөөс гарч, нэвтрэх хуудас руу буцна.</p>
+      </div>
+      <Button variant="secondary" onClick={() => void logout()}>
+        <LogOut aria-hidden="true" />
+        Системээс гарах
+      </Button>
+    </Card>
   );
 }
 
