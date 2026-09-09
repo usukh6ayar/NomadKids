@@ -249,8 +249,12 @@ function LoginCard() {
                 // instead (`app/(app)/layout.tsx`'s `supportNav`), not `/dashboard`.
                 primary.dashboard === "cook"
                 ? "/kitchen/dashboard"
-                : primary.dashboard === "accountant"
-                  ? "/finance"
+                : // ★ `/finance/dashboard` since 2026-09-09, not `/finance`.
+                  // The accountant's own board — what came in, what is unpaid,
+                  // and what needs a decision today. `/finance` is the
+                  // state-funding register beneath it.
+                  primary.dashboard === "accountant"
+                  ? "/finance/dashboard"
                   : primary.dashboard === "parent"
                     ? "/home"
                     : "/no-access",

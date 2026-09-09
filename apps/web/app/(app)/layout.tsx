@@ -317,6 +317,7 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
   "/documents": FileText,
   "/settings": Settings,
   "/finance/audit-log": ScrollText,
+  "/finance/dashboard": LayoutGrid,
   "/kitchen/dashboard": LayoutGrid,
   "/kitchen/ingredients": Carrot,
   "/kitchen/suppliers": Truck,
@@ -850,7 +851,9 @@ function supportNav(isCook: boolean): NavItem[] {
         { href: "/settings", label: "Цэс", icon: <Menu {...iconProps} /> },
       ]
     : [
-        { href: "/finance", label: "Санхүү", icon: artIcon("finance", 20) },
+        // ★ Самбар first, matching the cook's row above — 2026-09-09. It was
+        // `/finance`, which is now the register rather than the overview.
+        { href: "/finance/dashboard", label: "Самбар", icon: <LayoutGrid {...iconProps} /> },
         { href: "/invoices", label: "Нэхэмжлэл", icon: artIcon("finance", 20) },
         { href: "/attendance/journal", label: "Ирц", icon: artIcon("attendance", 20) },
         { href: "/settings", label: "Цэс", icon: <Menu {...iconProps} /> },
@@ -890,6 +893,22 @@ function supportSections(isCook: boolean): NavSection[] {
             navEntry("Тайлан", "/kitchen/reports"),
           ]
         : [
+            /*
+             * ★ **No "Самбар" row here** — 2026-09-09, and the omission is the
+             * point.
+             *
+             * `supportNav`'s first entry is the board, and `SidebarContent`
+             * renders that entry *above* the sections as the rail's primary
+             * link. A `navEntry` for the same route put "Самбар" on the rail
+             * twice, one above the other, which is the duplication this whole
+             * change set set out to remove rather than a new one to add. The
+             * cook's rail has the same shape and the same absence.
+             *
+             * ★★ "Санхүүжилт" keeps its name. It briefly read "Улсын
+             * санхүүжилт" — precise, and one word too many once the board sits
+             * above it under its own name: the client asked for the short one
+             * back the moment they saw the two together.
+             */
             navEntry("Санхүүжилт", "/finance"),
             navEntry("Нэхэмжлэл", "/invoices"),
             /*

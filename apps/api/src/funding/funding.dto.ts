@@ -73,8 +73,21 @@ export const updateFundingRuleSchema = z
   .refine((body) => Object.keys(body).length > 0, { message: "Өөрчлөх талбар алга" });
 export type UpdateFundingRuleDto = z.infer<typeof updateFundingRuleSchema>;
 
+/**
+ * Running the month — `нэмэлт.md` §6.
+ *
+ * ★ `source` is **optional**, and omitting it means "every source that has a
+ * tariff in force", not "some default".
+ *
+ * A rule set is per source, so the engine has always run one at a time and the
+ * screens asked the accountant to pick before pressing. That is right when they
+ * are working on one claim and wrong at month end, when the answer is always
+ * "all of them" — and asking four times is how the fourth gets forgotten. The
+ * service loops; the response is the same array of rows either way, so nothing
+ * downstream has to know which shape it asked for.
+ */
 export const calculateMonthSchema = z
-  .object({ month: isoMonth, source: fundingSourceSchema })
+  .object({ month: isoMonth, source: fundingSourceSchema.optional() })
   .strict();
 export type CalculateMonthDto = z.infer<typeof calculateMonthSchema>;
 

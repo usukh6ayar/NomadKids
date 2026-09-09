@@ -232,7 +232,24 @@ export const qk = {
       ["kitchen", "sufficiency", kindergartenId, date] as const,
   },
   /** One kindergarten's own funding — not the platform's revenue. */
-  kindergartenFunding: (kindergartenId: string, month: string) =>
+  /**
+   * The month's calculations, narrowed by source.
+   *
+   * ★ `source` is part of the key — "ALL" when unfiltered. Without it the
+   * screen kept the previous source's rows while the request for the new one
+   * was in flight, which is how a filter reads as broken.
+   */
+  kindergartenFunding: (kindergartenId: string, month: string, source = "ALL") =>
+    ["funding", kindergartenId, month, source] as const,
+  /**
+   * Every source's view of one month — the prefix to invalidate after a run.
+   *
+   * ★ A run writes rows for one source or for all of them, and the screen may
+   * be filtered to a different one than the accountant just recalculated.
+   * Invalidating the exact key would leave the filter they switch to next
+   * showing what it read before the button was pressed.
+   */
+  kindergartenFundingMonth: (kindergartenId: string, month: string) =>
     ["funding", kindergartenId, month] as const,
   fundingRules: (kindergartenId: string) => ["funding", "rules", kindergartenId] as const,
   /** нэмэлт.md §13 — the accountant's own door to the audit trail. */
@@ -259,6 +276,16 @@ export const qk = {
   /** The month's financial summary — `нэмэлт.md` §9. */
   financeDashboard: (kindergartenId: string, month: string) =>
     ["funding", kindergartenId, "dashboard", month] as const,
+  /**
+   * The accountant's board — client request, 2026-09-09.
+   *
+   * ★ Under the same `"funding"` root as the §9 summary above, deliberately:
+   * running the month or settling an invoice invalidates `["funding"]` and
+   * every one of these screens refetches. Two roots would leave the board
+   * quoting a figure the register had already corrected.
+   */
+  financeBoard: (kindergartenId: string, month: string) =>
+    ["funding", kindergartenId, "board", month] as const,
   /** One child's balance and funding history — `нэмэлт.md` §10. */
   childFinance: (childId: string) => ["child", childId, "finance"] as const,
   /** One of §16's reports. The period is part of the key — switching month refetches. */

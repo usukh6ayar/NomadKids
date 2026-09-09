@@ -4237,6 +4237,72 @@ export const childFinanceSchema = z.object({
 });
 export type ChildFinance = z.infer<typeof childFinanceSchema>;
 
+// ── The accountant's board ──────────────────────────────────────────────────
+
+/**
+ * Анхаарах зүйл — one thing the board wants the accountant to look at.
+ *
+ * ★ Computed on the server, not assembled in the browser. "What needs
+ * attention" is a business rule — an unrun month, an unpaid arrear, funding
+ * still outstanding — and a screen that derived it from four other fields would
+ * be a second, quieter definition of the same rule the day a report disagrees.
+ *
+ * `href` is a route in this app, always internal, so the card can be pressed.
+ */
+export const financeAlertSchema = z.object({
+  key: z.string(),
+  tone: z.enum(["warn", "info"]),
+  title: z.string(),
+  detail: z.string(),
+  href: z.string(),
+});
+export type FinanceAlert = z.infer<typeof financeAlertSchema>;
+
+/**
+ * Нягтлангийн самбар — the screen an accountant lands on.
+ *
+ * ★ Not a second copy of `financeDashboardSchema`. That one answers §9's
+ * question — how do this month's funding and billing stand, broken out by who
+ * owes it — and it still renders inside `/finance`. This one answers the
+ * question above it: what arrived, who still owes, and what needs a decision
+ * today.
+ *
+ * ★★ There is no expenditure figure, and its absence is deliberate rather than
+ * pending. A recorded-outgoings ledger was built and removed on 2026-09-09 at
+ * the client's request; what a kindergarten *spends* is not in this product, so
+ * the board reports what it receives and is owed and does not imply a
+ * profit it cannot compute.
+ */
+export const financeBoardSchema = z.object({
+  month: z.string(),
+  income: z.object({
+    total: z.string(),
+    /** Families' payments against this month's invoices. */
+    parents: z.string(),
+    /** State funding actually received for the month. */
+    state: z.string(),
+    /** `approved − received` — confirmed by the state, not yet transferred. */
+    statePending: z.string(),
+  }),
+  unpaid: z.object({
+    /** Billed − paid for the month, clamped at zero. */
+    amount: z.string(),
+    invoices: z.number(),
+    /** Distinct children carrying a balance, across every month. */
+    children: z.number(),
+    overdueCount: z.number(),
+    overdueAmount: z.string(),
+  }),
+  meals: z.object({
+    total: z.string(),
+    perChild: z.string(),
+    children: z.number(),
+    fedDays: z.number(),
+  }),
+  alerts: z.array(financeAlertSchema).default([]),
+});
+export type FinanceBoard = z.infer<typeof financeBoardSchema>;
+
 // ── The financial reports — `нэмэлт.md` §16 ──────────────────────────────────
 
 /**

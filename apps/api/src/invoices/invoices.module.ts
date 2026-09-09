@@ -4,8 +4,10 @@ import { ReportsModule } from "../reports/reports.module";
 import {
   ChildFinanceController,
   FinanceReportPdfController,
+  KindergartenFinanceBoardController,
   KindergartenFinanceController,
 } from "./finance.controller";
+import { FinanceBoardService } from "./finance-board.service";
 import { FinanceDashboardRepository } from "./finance-dashboard.repository";
 import { FinanceDashboardService } from "./finance-dashboard.service";
 import { FinanceReportPdfService } from "./finance-report-pdf.service";
@@ -39,6 +41,7 @@ import { InvoicesService } from "./invoices.service";
     ChildInvoicesController,
     KindergartenInvoicesController,
     KindergartenFinanceController,
+    KindergartenFinanceBoardController,
     InvoicesController,
     PaymentsController,
     ChildFinanceController,
@@ -49,6 +52,7 @@ import { InvoicesService } from "./invoices.service";
     InvoicesRepository,
     FinanceDashboardService,
     FinanceDashboardRepository,
+    FinanceBoardService,
     FinanceReportPdfService,
   ],
   exports: [InvoicesService, InvoicesRepository],

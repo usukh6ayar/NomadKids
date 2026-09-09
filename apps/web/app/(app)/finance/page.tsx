@@ -1,9 +1,9 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Calculator, ChevronRight, ScrollText } from "lucide-react";
+import { Calculator, ScrollText } from "lucide-react";
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { z } from "zod";
 import {
   FUNDING_SOURCE_LABEL,
@@ -22,6 +22,7 @@ import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Disclosure } from "@/components/ui/disclosure";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
@@ -43,6 +44,43 @@ function thisMonth(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
+
+/**
+ * `"2026-02"` → `"2026-02-28"`, as a string.
+ *
+ * ★ Compared as text, never as `Date`. ISO dates sort correctly as strings, so
+ * this avoids parsing a bare calendar day into a `Date` — which is where a
+ * timezone offset turns a rule that starts on the 1st into one that starts the
+ * previous evening.
+ */
+function endOfMonth(month: string): string {
+  const [year, index] = month.split("-").map(Number) as [number, number];
+  const last = new Date(Date.UTC(year, index, 0));
+  return last.toISOString().slice(0, 10);
+}
+
+/**
+ * The calendar day out of whatever the API sent.
+ *
+ * ★ `FundingRule.effectiveFrom` is a `@db.Date` and reaches the browser as a
+ * full instant — `"2026-02-28T00:00:00.000Z"`, not `"2026-02-28"`. Compared as
+ * text against a bare `"2026-02-28"` the longer string sorts *after* it, so a
+ * tariff starting on the last day of the month read as not yet in force and
+ * the run button greyed out on a month the API would have calculated happily.
+ * Ten characters is the whole fix, and it is why this is a named function
+ * rather than an inline `<=`.
+ */
+const day = (value: string) => value.slice(0, 10);
+
+/**
+ * The screen's source filter: one of the four, or every one of them.
+ *
+ * ★ "ALL" is a UI state, not a `FundingSource`. The API expresses "every
+ * source" by the query parameter being absent, and inventing a fifth enum
+ * member here to mean the same thing would put a value on the wire that the
+ * server has no rule for.
+ */
+type SourceFilter = FundingSource | "ALL";
 
 /**
  * Санхүүжилт — one kindergarten's own money.
@@ -85,12 +123,29 @@ function Finance() {
   const { session } = useSession();
   const kindergartenId = session?.memberships?.[0]?.kindergartenId ?? null;
   const [month, setMonth] = useState(thisMonth());
+  /*
+    ★ The screen's working source — "ALL" until an accountant narrows it.
+
+    It used to be local state inside `RunMonth`, where it named the source the
+    button would calculate and nothing else. The register below and the totals
+    beside it ignored it entirely, so a control labelled "Эх үүсвэр" changed
+    nothing visible until the button was pressed — reported 2026-09-09 as
+    "ажиллахгүй байна", and fairly.
+
+    Now it is the page's: it scopes what the register lists, what the totals
+    add up, and what the button runs. One control, one meaning.
+  */
+  const [source, setSource] = useState<SourceFilter>("ALL");
 
   const funding = useQuery({
     enabled: Boolean(kindergartenId),
-    queryKey: qk.kindergartenFunding(kindergartenId ?? "", month),
+    queryKey: qk.kindergartenFunding(kindergartenId ?? "", month, source),
     queryFn: () =>
-      get(`/kindergartens/${kindergartenId}/funding?month=${month}`, fundingMonthSchema),
+      get(
+        `/kindergartens/${kindergartenId}/funding?month=${month}` +
+          (source === "ALL" ? "" : `&source=${source}`),
+        fundingMonthSchema,
+      ),
   });
 
   const rules = useQuery({
@@ -101,6 +156,26 @@ function Finance() {
 
   const items = funding.data?.items ?? [];
   const totals = funding.data?.totals ?? [];
+
+  /*
+    ★★ "Is there a tariff to bill under, for what is selected?" — asked here
+    rather than by pressing the button and reading a 400.
+
+    A rule is in force for a month when it started on or before the month's last
+    day and has not been closed before it. `sourcesInForce` on the API applies
+    exactly this test; the button would otherwise offer to run a source the
+    server is about to refuse.
+  */
+  const monthEnd = endOfMonth(month);
+  const rulesInForce = (rules.data ?? []).filter(
+    (rule) =>
+      day(rule.effectiveFrom) <= monthEnd &&
+      (!rule.effectiveTo || day(rule.effectiveTo) >= monthEnd),
+  );
+  const hasRules =
+    source === "ALL"
+      ? rulesInForce.length > 0
+      : rulesInForce.some((rule) => rule.source === source);
 
   return (
     <div className="flex flex-col gap-5 lg:gap-6">
@@ -132,6 +207,29 @@ function Finance() {
                 />
               )}
             </Field>
+            {/*
+              ★ Beside the month, because it is the same kind of control: both
+              say which slice of the ledger this screen is about. It sat inside
+              the "Энэ сарын тооцоо" card, where it looked like a filter and
+              behaved like an argument to one button.
+            */}
+            <Field label="Эх үүсвэр">
+              {({ id }) => (
+                <Select
+                  id={id}
+                  value={source}
+                  onChange={(event) => setSource(event.target.value as SourceFilter)}
+                  className="w-[170px]"
+                >
+                  <option value="ALL">Бүгд</option>
+                  {Object.entries(FUNDING_SOURCE_LABEL).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
           </div>
         }
       />
@@ -150,7 +248,8 @@ function Finance() {
         <RunMonth
           kindergartenId={kindergartenId}
           month={month}
-          hasRules={(rules.data ?? []).length > 0}
+          source={source}
+          hasRules={hasRules}
           done={totals.length > 0}
           children_={totals.reduce((sum, total) => sum + total.children, 0)}
         />
@@ -175,7 +274,18 @@ function Finance() {
       {funding.data ? (
         <Disclosure
           title="Хүүхэд тус бүрээр"
-          hint={items.length > 0 ? `${items.length} мөр` : "Тооцоо хийгдээгүй"}
+          /*
+            ★ The active source is named in the hint, because this section is
+            closed by default: a filter whose only visible effect is inside a
+            collapsed panel is a filter nobody can see working.
+          */
+          hint={
+            items.length > 0
+              ? `${items.length} мөр${source === "ALL" ? "" : ` · ${FUNDING_SOURCE_LABEL[source]}`}`
+              : source === "ALL"
+                ? "Тооцоо хийгдээгүй"
+                : `${FUNDING_SOURCE_LABEL[source]} — тооцоо хийгдээгүй`
+          }
           disabled={items.length === 0}
         >
           <div className="flex flex-col gap-4">
@@ -221,56 +331,6 @@ function Finance() {
         description="Бүлгийн хүүхэд тус бүрийн ирц, төлөх ба төлсөн дүн"
       />
     </div>
-  );
-}
-
-/**
- * A section that opens on demand.
- *
- * ★ A native `<details>`, not a scripted accordion. It opens with no
- * JavaScript, the browser gives it the right ARIA for free, and — the reason
- * that matters here — the browser's own "find in page" expands it to reveal a
- * match inside. An accountant searching a hundred-row register for one child's
- * name is a real thing to do, and a `useState` accordion silently fails it.
- *
- * ★★ `disabled` renders the row without a toggle rather than as a `<details>`
- * that opens onto nothing. "Тооцоо хийгдээгүй" beside it says why, which is
- * the same information the empty panel would have carried and one press
- * cheaper — CLAUDE.md §5, an empty state says what to do next.
- */
-function Disclosure({
-  title,
-  hint,
-  disabled = false,
-  children,
-}: {
-  title: string;
-  hint?: string;
-  disabled?: boolean;
-  children: ReactNode;
-}) {
-  if (disabled) {
-    return (
-      <Card pad="roomy" className="flex items-center justify-between gap-3">
-        <span className="text-lead font-semibold text-faint">{title}</span>
-        {hint ? <span className="text-caption text-muted">{hint}</span> : null}
-      </Card>
-    );
-  }
-
-  return (
-    <details className="group rounded-card border border-border bg-surface">
-      <summary className="flex min-h-[60px] cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
-        <ChevronRight
-          size={18}
-          aria-hidden="true"
-          className="shrink-0 text-muted transition-transform group-open:rotate-90"
-        />
-        <span className="flex-1 text-lead font-semibold text-ink">{title}</span>
-        {hint ? <span className="shrink-0 text-caption text-muted">{hint}</span> : null}
-      </summary>
-      <div className="border-t border-border-soft px-4 py-4">{children}</div>
-    </details>
   );
 }
 
@@ -329,12 +389,15 @@ function Row({ label, value, accent = false }: { label: string; value: string; a
 function RunMonth({
   kindergartenId,
   month,
+  source,
   hasRules,
   done,
   children_,
 }: {
   kindergartenId: string;
   month: string;
+  /** The screen's filter. "ALL" runs every source that has a tariff in force. */
+  source: SourceFilter;
   hasRules: boolean;
   done: boolean;
   /** How many children the month's rows cover — the one figure that says the
@@ -343,18 +406,28 @@ function RunMonth({
 }) {
   const queryClient = useQueryClient();
   const toast = useToast();
-  const [source, setSource] = useState<FundingSource>("STATE");
 
   const run = useMutation({
     mutationFn: () =>
       mutate(`/kindergartens/${kindergartenId}/funding/calculate`, z.unknown(), {
         method: "POST",
-        body: { month, source },
+        // ★ The key is omitted for "Бүгд", not sent as a sentinel: the API
+        // reads an absent `source` as "every source with a tariff in force".
+        body: source === "ALL" ? { month } : { month, source },
       }),
     onSuccess: () => {
-      toast.success("Сарын тооцоо гүйцэтгэлээ.");
+      toast.success(
+        source === "ALL"
+          ? "Бүх эх үүсвэрийн сарын тооцоо гүйцэтгэлээ."
+          : `${FUNDING_SOURCE_LABEL[source]} эх үүсвэрийн тооцоо гүйцэтгэлээ.`,
+      );
+      /*
+       * ★ The month's prefix, not this filter's exact key. A run for "Бүгд"
+       * rewrites every source's rows, and an accountant who then switches the
+       * filter must not be shown what that view read before the press.
+       */
       void queryClient.invalidateQueries({
-        queryKey: qk.kindergartenFunding(kindergartenId, month),
+        queryKey: qk.kindergartenFundingMonth(kindergartenId, month),
       });
       /*
        * ★ The dashboard reads the same calculations, so it goes stale the
@@ -387,24 +460,21 @@ function RunMonth({
           : "Ирц болон хоолны бүртгэлээс хүүхэд тус бүрийн дүнг бодно."}
       </p>
 
-      <div className="flex flex-wrap items-end gap-3">
-        <Field label="Эх үүсвэр">
-          {({ id }) => (
-            <Select
-              id={id}
-              value={source}
-              onChange={(event) => setSource(event.target.value as FundingSource)}
-              className="w-[180px]"
-            >
-              {Object.entries(FUNDING_SOURCE_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
+      {/*
+        ★ No source picker here any more — the page header carries it, and this
+        button follows it. Two controls named "Эх үүсвэр" on one screen, one
+        filtering and one arming a button, is the confusion this card created.
 
+        The sentence below names what will run, so the header's selection is
+        legible from the button rather than only from the control that set it.
+      */}
+      <p className="text-caption text-muted">
+        {source === "ALL"
+          ? "Тариф хүчинтэй бүх эх үүсвэрээр тооцно."
+          : `${FUNDING_SOURCE_LABEL[source]} эх үүсвэрээр тооцно.`}
+      </p>
+
+      <div className="flex flex-wrap items-end gap-3">
         <Button disabled={run.isPending || !hasRules} onClick={() => run.mutate()}>
           <Calculator size={16} aria-hidden="true" />
           {run.isPending ? "Бодож байна…" : done ? "Дахин тооцох" : "Сарын тооцоо хийх"}
@@ -415,10 +485,16 @@ function RunMonth({
         The API answers "Энэ сард хүчинтэй санхүүжилтийн дүрэм алга" with a 400.
         Saying it before the press is the same information, one round trip
         earlier — and it names the fix.
+
+        ★ Scoped to the selection: a kindergarten with a state tariff and no
+        parent tariff must be told that *this* source has none, not that it has
+        no tariffs at all.
       */}
       {!hasRules ? (
         <p className="text-caption text-muted">
-          Эхлээд тариф үүсгэнэ үү — доорх “Тариф” хэсгээс харна.
+          {source === "ALL"
+            ? "Энэ сард хүчинтэй тариф алга — доорх “Тариф” хэсгээс үүсгэнэ үү."
+            : `${FUNDING_SOURCE_LABEL[source]} эх үүсвэрт энэ сард хүчинтэй тариф алга — доорх “Тариф” хэсгээс үүсгэнэ үү.`}
         </p>
       ) : null}
     </Card>
