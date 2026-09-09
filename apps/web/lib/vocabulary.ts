@@ -41,6 +41,21 @@
  */
 export const BRAND = "Бяцхан нүүдэлчид";
 
+/**
+ * The product's Latin name — the one people actually type into Google.
+ *
+ * ★ Added 2026-09-09, because searching "nomadkids" found nothing. The site's
+ * every visible string is Cyrillic, so `nomadkids` appeared in exactly one
+ * place a search engine could see: the domain. A name a user types and the
+ * page never says is a name the page cannot be found by.
+ *
+ * It is a *second* name, never a replacement. Every screen stays Mongolian
+ * (CLAUDE.md §5); this belongs in `<title>`, the description and the
+ * structured data's `alternateName`, which is where a search engine reads and
+ * a teacher does not.
+ */
+export const BRAND_LATIN = "NomadKids";
+
 /** The RFP §4 record: "Миний тухай", ages 2–5, the album, the birthday notes. */
 export const PORTFOLIO = "Цахим хувийн хавтас";
 
