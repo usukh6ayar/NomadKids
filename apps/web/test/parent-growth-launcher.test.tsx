@@ -1,4 +1,5 @@
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChildDetail } from "@kinder/contracts";
 import { renderWithProviders, sessionFor, stubApi } from "./support/render";
@@ -50,15 +51,50 @@ describe("parent growth launcher copy", () => {
     expect(screen.queryByText("БИ ЦЭЦЭРЛЭГТЭЭ")).not.toBeInTheDocument();
     expect(screen.queryByText("Батбаяр-ийн өхөөрдөм ахиц")).not.toBeInTheDocument();
 
-    expect(screen.getByRole("heading", { level: 2, name: "Тэмдэглэл" })).toBeInTheDocument();
+    // The lede sits under the page's own heading now, and only there — it
+    // used to repeat under "Тэмдэглэл" too, which read as a mistake once both
+    // were on screen together.
     expect(
       screen.getByText("Хүүхдийн хөгжилд гарч буй ахиц дэвшлийг багш, эцэг эх хамтран тэмдэглэнэ"),
     ).toBeInTheDocument();
+
+    expect(screen.getByRole("heading", { level: 2, name: "Тэмдэглэл" })).toBeInTheDocument();
 
     expect(await screen.findByText("Тэмдэглэл ороогүй")).toBeInTheDocument();
     expect(screen.queryByText("Одоогоор зурагтай мөч алга")).not.toBeInTheDocument();
     expect(
       screen.queryByText("Багшийн хуваалцсан ажиглалт, бүтээл энд харагдана."),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps the three doors collapsed behind a single + trigger", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["PARENT"]) },
+      {
+        path: `/children/${CHILD_ID}/observations`,
+        body: { items: [], page: 1, pageSize: 100, total: 0, totalPages: 0 },
+      },
+      {
+        path: "/kindergartens/33333333-3333-4333-8333-333333333333/terms",
+        body: [],
+      },
+    ]);
+
+    renderWithProviders(<ParentGrowthLauncher child={child} />);
+
+    for (const label of ["Ажиглалт", "Ярилцлага", "Бүтээл"]) {
+      expect(screen.queryByRole("button", { name: label })).not.toBeInTheDocument();
+    }
+
+    const trigger = screen.getByRole("button", { name: "Шинэ тэмдэглэл нэмэх" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(trigger);
+
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    for (const label of ["Ажиглалт", "Ярилцлага", "Бүтээл"]) {
+      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+    }
   });
 });

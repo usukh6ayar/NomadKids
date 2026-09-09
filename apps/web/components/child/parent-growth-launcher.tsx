@@ -2,7 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { observationSchema, type ChildDetail } from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -90,21 +90,52 @@ const CARD_TONE_FOR_BUCKET: Record<GradientTone, Tone> = {
  */
 export function ParentGrowthLauncher({ child }: { child: ChildDetail }) {
   const [open, setOpen] = useState<BucketKey | null>(null);
+  // Whether the three doors are shown at all. Collapsed behind the "+" until
+  // asked for, so the header carries one action instead of three.
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   return (
     <div className="flex flex-col gap-6">
-      <SectionHeader as="h1" title="Хүүхдийн явцын үнэлгээ" className="mb-0" />
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <SectionHeader as="h1" title="Хүүхдийн явцын үнэлгээ" className="mb-0" />
+          <p className="mt-1 text-body text-muted">
+            Хүүхдийн хөгжилд гарч буй ахиц дэвшлийг багш, эцэг эх хамтран тэмдэглэнэ
+          </p>
+        </div>
 
-      <div className="grid grid-cols-3 gap-2.5">
-        {BUCKETS.map((bucket) => (
-          <QuickShareBar
-            key={bucket.key}
-            bucket={bucket}
-            active={open === bucket.key}
-            onClick={() => setOpen((was) => (was === bucket.key ? null : bucket.key))}
-          />
-        ))}
+        {/*
+          One trigger rather than three always-visible doors. Opening it
+          reveals the same `QuickShareBar` row below, so nothing about how a
+          door works changed — only when it is on screen.
+        */}
+        <button
+          type="button"
+          aria-haspopup="true"
+          aria-expanded={pickerOpen}
+          aria-label="Шинэ тэмдэглэл нэмэх"
+          onClick={() => setPickerOpen((was) => !was)}
+          className="grid size-11 shrink-0 place-items-center rounded-pill bg-primary text-primary-ink shadow-sm transition-transform hover:scale-105"
+        >
+          <Plus size={22} aria-hidden="true" />
+        </button>
       </div>
+
+      {pickerOpen ? (
+        <div role="menu" aria-label="Тэмдэглэлийн төрөл" className="grid grid-cols-3 gap-2.5">
+          {BUCKETS.map((bucket) => (
+            <QuickShareBar
+              key={bucket.key}
+              bucket={bucket}
+              active={open === bucket.key}
+              onClick={() => {
+                setOpen((was) => (was === bucket.key ? null : bucket.key));
+                setPickerOpen(false);
+              }}
+            />
+          ))}
+        </div>
+      ) : null}
 
       {open ? (
         <QuickShareForm

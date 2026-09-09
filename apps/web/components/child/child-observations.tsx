@@ -317,11 +317,13 @@ export function SharedMomentsTeaser({ childId }: { childId: string }) {
 
   return (
     <section aria-labelledby="moments-heading">
-      <SectionHeader
-        id="moments-heading"
-        title="Тэмдэглэл"
-        lede="Хүүхдийн хөгжилд гарч буй ахиц дэвшлийг багш, эцэг эх хамтран тэмдэглэнэ"
-      />
+      {/*
+        ★ No lede here — it moved to the page's own header
+        (`parent-growth-launcher.tsx`) when that gained one, and the same
+        sentence sitting under two headings on one screen reads as a mistake
+        rather than emphasis.
+      */}
+      <SectionHeader id="moments-heading" title="Тэмдэглэл" />
 
       {observations.isPending ? <LoadingState rows={2} /> : null}
       {observations.isError ? <ErrorState description={errorMessage(observations.error)} /> : null}
