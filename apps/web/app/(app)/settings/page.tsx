@@ -120,6 +120,24 @@ export default function SettingsPage() {
         title="Багшийн жагсаалт"
         description="ESIS-д бүртгэлтэй багш нарын томилгоо"
       />
+
+      {/*
+        ★ Sign-out, at the very foot of the screen — #88's own instruction,
+        recorded in `ProfileCard`'s note above: "`SignOutCard` is the last
+        thing on the page instead."
+        
+        It was lost resolving the conflict between #88 and this branch: #88's
+        diff showed `- <SignOutCard />` where the row left the profile card,
+        and the resolution read that as a deletion rather than a move. Nothing
+        rendered it afterwards, which is what `no-unused-vars` caught on main.
+
+        The 760px column is the same one the profile form sits in — this is a
+        control, not a record, so it keeps the reading measure the ESIS panels
+        above it deliberately do not.
+      */}
+      <div className="flex w-full max-w-[760px] flex-col gap-6 lg:gap-8">
+        <SignOutCard />
+      </div>
     </div>
   );
 }

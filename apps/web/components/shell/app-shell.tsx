@@ -1059,6 +1059,7 @@ function SidebarContent({
                               item={{ ...entry, icon: entry.icon ?? null }}
                               pathname={pathname}
                               orientation="vertical"
+                              activeHref={activeHref}
                             />
                           ))}
                         </div>
@@ -1069,6 +1070,7 @@ function SidebarContent({
                           item={{ ...entry, icon: entry.icon ?? null }}
                           pathname={pathname}
                           orientation="vertical"
+                          activeHref={activeHref}
                         />
                       ))}
                 </div>

@@ -11,12 +11,7 @@ import { TenantAccessService } from "../../authz/tenant-access.service";
 import type { Actor } from "../../authz/actor";
 import { EsisError } from "./esis.client";
 import { ESIS_RESOURCE_CATALOG, esisServicesForActor, type EsisEndpointKey } from "./esis.catalog";
-import type {
-  EsisPreviewDto,
-  EsisReadDto,
-  EsisWriteDto,
-  UpdateEsisMappingDto,
-} from "./esis.dto";
+import type { EsisPreviewDto, EsisReadDto, EsisWriteDto, UpdateEsisMappingDto } from "./esis.dto";
 import { ESIS_FIELDS, ingestedFieldNames } from "./esis.fields";
 import { EsisRepository } from "./esis.repository";
 import { EsisService, esisReaderParams } from "./esis.service";
