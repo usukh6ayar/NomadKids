@@ -1,19 +1,17 @@
+import Image from "next/image";
 import Link from "next/link";
-import { Baby, BarChart3, GraduationCap, Palette, Puzzle, type LucideIcon } from "lucide-react";
-import { AGE_TONE } from "@/lib/age-content";
-import { GRADIENT_TONE_STYLE } from "@/lib/gradient-tones";
+import { BarChart3, ChevronRight } from "lucide-react";
 import { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
-import { cn } from "@/lib/utils";
 
-/** Comparison shortcut plus the four colourful age-folder cards. */
+const AGE_NUMBER_ART: Record<(typeof PORTFOLIO_AGES)[number], string> = {
+  2: "/icons/icon-age-2-3d.png",
+  3: "/icons/icon-age-3-3d.png",
+  4: "/icons/icon-age-4-3d.png",
+  5: "/icons/icon-age-5-3d.png",
+};
+
+/** Comparison shortcut plus the four white, illustrated age-folder cards. */
 export function AgeStepper({ childId }: { childId: string }) {
-  const ageIcons: Record<(typeof PORTFOLIO_AGES)[number], LucideIcon> = {
-    2: Baby,
-    3: Puzzle,
-    4: Palette,
-    5: GraduationCap,
-  };
-
   return (
     <nav aria-label="Насны хуудсууд" className="flex flex-col gap-2">
       <Link
@@ -24,24 +22,24 @@ export function AgeStepper({ childId }: { childId: string }) {
         2-5 насны мэдээлэл
       </Link>
 
-      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <ul className="grid grid-cols-2 gap-4">
         {PORTFOLIO_AGES.map((age) => {
-          const tone = GRADIENT_TONE_STYLE[AGE_TONE[age]];
-          const Icon = ageIcons[age];
-
           return (
             <li key={age}>
               <Link
                 href={`/children/${childId}/portfolio/growth/age/${age}`}
-                className={cn(
-                  "group flex min-h-24 flex-col items-center justify-center gap-1.5 rounded-card border border-white/30 px-2 py-3 text-body font-bold text-white shadow-md transition-transform hover:-translate-y-0.5 md:min-h-28",
-                  tone.gradient,
-                )}
+                aria-label={`${age} нас`}
+                className="group flex aspect-[3/2] min-h-44 flex-col items-center justify-center rounded-card border border-[#eadfd8] bg-white px-4 py-5 text-ink shadow-sm transition-all hover:-translate-y-0.5 hover:border-border hover:shadow-md"
               >
-                <span className="grid size-10 place-items-center rounded-pill bg-white/20 transition-transform group-hover:scale-105">
-                  <Icon size={21} aria-hidden="true" />
-                </span>
-                {age} нас
+                <Image
+                  src={AGE_NUMBER_ART[age]}
+                  alt=""
+                  width={96}
+                  height={96}
+                  className="size-20 object-contain transition-transform group-hover:scale-105 sm:size-24"
+                />
+                <span className="mt-1 text-title font-medium text-ink">Нас</span>
+                <ChevronRight className="mt-2 size-5 text-[#9fb1c9]" aria-hidden="true" />
               </Link>
             </li>
           );

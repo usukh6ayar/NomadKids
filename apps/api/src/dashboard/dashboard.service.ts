@@ -302,6 +302,7 @@ export class DashboardService {
         id: c.id,
         lastName: c.lastName,
         firstName: c.firstName,
+        sex: c.sex,
         dateOfBirth: c.dateOfBirth,
         photoMediaFileId: c.photoMediaFileId,
         group: c.enrollments[0]?.group ?? null,

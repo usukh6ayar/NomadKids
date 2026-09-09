@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Cake, ClipboardList, MessageCircle } from "lucide-react";
+import { Cake, ClipboardList } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { Art, type ArtName } from "@/components/ui/art";
@@ -105,14 +105,16 @@ function BoardIcon({ title }: { title: string }) {
                   ? "teacher"
                   : title.includes("хоол") || title.includes("Хоол")
                     ? "food"
-                    : title.includes("цэцэрлэг") || title.includes("Цэцэрлэг")
-                      ? "kindergarten"
-                      : title.includes("санхүү") ||
-                          title.includes("Санхүү") ||
-                          title.includes("төлбөр") ||
-                          title.includes("Төлбөр")
-                        ? "finance"
-                        : null;
+                    : title.includes("чат") || title.includes("Чат")
+                      ? "chat"
+                      : title.includes("цэцэрлэг") || title.includes("Цэцэрлэг")
+                        ? "kindergarten"
+                        : title.includes("санхүү") ||
+                            title.includes("Санхүү") ||
+                            title.includes("төлбөр") ||
+                            title.includes("Төлбөр")
+                          ? "finance"
+                          : null;
 
   if (artMatch) {
     return (
@@ -124,9 +126,7 @@ function BoardIcon({ title }: { title: string }) {
 
   const match = title.includes("Төрсөн")
     ? { icon: Cake, className: "bg-sun text-sun-ink" }
-    : title.includes("чат")
-      ? { icon: MessageCircle, className: "bg-sky text-sky-ink" }
-      : { icon: ClipboardList, className: "bg-peach text-peach-ink" };
+    : { icon: ClipboardList, className: "bg-peach text-peach-ink" };
   const Icon = match.icon;
 
   return (
@@ -158,11 +158,14 @@ function BoardIcon({ title }: { title: string }) {
  */
 export function BoardCardEmpty({
   icon,
+  iconSurface = true,
   title,
   hint,
 }: {
   /** A lucide glyph at 22px. Decorative — the title carries the meaning. */
   icon: ReactNode;
+  /** Supplied artwork already carries its own shape and needs no tinted disc. */
+  iconSurface?: boolean;
   title: string;
   hint?: string;
 }) {
@@ -179,7 +182,10 @@ export function BoardCardEmpty({
     <div className="flex flex-col items-center gap-2 text-center sm:flex-row sm:gap-3 sm:text-left">
       <span
         aria-hidden="true"
-        className="grid size-12 shrink-0 place-items-center rounded-pill bg-track text-faint"
+        className={cn(
+          "grid size-12 shrink-0 place-items-center rounded-pill",
+          iconSurface ? "bg-track text-faint" : "bg-transparent",
+        )}
       >
         {icon}
       </span>

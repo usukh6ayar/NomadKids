@@ -55,22 +55,26 @@ beforeEach(() => {
 });
 
 describe("growth age navigation and editing", () => {
-  it("renders a compact comparison link above four colourful age links", () => {
+  it("renders a compact comparison link above four white illustrated age cards", () => {
     renderWithProviders(<AgeFolderLandingPage />);
 
     const navigation = screen.getByRole("navigation", { name: "Насны хуудсууд" });
     const links = within(navigation).getAllByRole("link");
-    expect(links.map((link) => link.textContent)).toEqual([
-      "2-5 насны мэдээлэл",
-      "2 нас",
-      "3 нас",
-      "4 нас",
-      "5 нас",
-    ]);
+    expect(links).toHaveLength(5);
     expect(within(navigation).getByRole("link", { name: "2-5 насны мэдээлэл" })).toHaveAttribute(
       "href",
       `/children/${CHILD_ID}/portfolio/growth/compare`,
     );
+
+    for (const age of [2, 3, 4, 5] as const) {
+      const link = within(navigation).getByRole("link", { name: `${age} нас` });
+      expect(link).toHaveClass("bg-white");
+      expect(link.getAttribute("href")).toBe(`/children/${CHILD_ID}/portfolio/growth/age/${age}`);
+      expect(link.querySelector("img")?.getAttribute("src")).toContain(`icon-age-${age}-3d.png`);
+    }
+
+    expect(navigation.querySelector("ul")).toHaveClass("grid-cols-2");
+    expect(navigation.querySelector("ul")?.className).not.toContain("sm:grid-cols-4");
   });
 
   it("shows the five requested sections and a top-right edit menu for each", async () => {

@@ -2,7 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Eye, Images, MessageCircle, X } from "lucide-react";
+import { X } from "lucide-react";
 import { observationSchema, type ChildDetail } from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -15,7 +15,8 @@ import { useToast } from "@/components/ui/toast";
 import { SharedMomentsTeaser } from "@/components/child/child-observations";
 import { PortfolioHero, GradientUnderline } from "@/components/child/portfolio-hero";
 import { ObservationPhotos } from "@/components/observations/observation-photos";
-import { GRADIENT_TONE_STYLE, type GradientTone } from "@/lib/gradient-tones";
+import { Art } from "@/components/ui/art";
+import { ACTION_ACCENT_LINE, type GradientTone } from "@/lib/gradient-tones";
 import type { Tone } from "@/components/ui/tone";
 import { todayLocal } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -39,21 +40,21 @@ const BUCKETS = [
     label: "Ажиглалт",
     verb: "Ажиглалт нэмэх",
     tone: "green" as GradientTone,
-    Icon: Eye,
+    art: "observation" as const,
   },
   {
     key: "conversation",
     label: "Ярилцлага",
     verb: "Ярилцлага нэмэх",
     tone: "blue" as GradientTone,
-    Icon: MessageCircle,
+    art: "conversation" as const,
   },
   {
     key: "artwork",
     label: "Бүтээл",
     verb: "Бүтээл нэмэх",
     tone: "orange" as GradientTone,
-    Icon: Images,
+    art: "artwork" as const,
   },
 ] as const;
 
@@ -131,28 +132,24 @@ function QuickShareBar({
   active: boolean;
   onClick: () => void;
 }) {
-  const tone = GRADIENT_TONE_STYLE[bucket.tone];
+  const accent = ACTION_ACCENT_LINE[bucket.tone];
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="secondary"
+      size="md"
+      block
       aria-expanded={active}
       onClick={onClick}
       className={cn(
-        "flex min-h-20 flex-col items-center justify-center gap-2 rounded-card px-2 py-3 text-center text-white transition-transform hover:scale-[1.01] sm:min-h-13 sm:flex-row sm:justify-start sm:gap-3 sm:px-3.5 sm:text-left",
-        tone.gradient,
-        tone.shadow,
-        active && "ring-2 ring-white ring-offset-2 ring-offset-canvas",
+        "relative justify-start overflow-hidden bg-white px-3 before:absolute before:inset-y-2.5 before:left-0 before:w-0.5 before:rounded-r-pill",
+        accent,
+        active && "ring-2 ring-primary ring-offset-2 ring-offset-canvas",
       )}
     >
-      <span
-        aria-hidden="true"
-        className="flex size-9 shrink-0 items-center justify-center rounded-pill bg-white/25"
-      >
-        <bucket.Icon size={18} aria-hidden="true" />
-      </span>
-      <span className="min-w-0 flex-1 truncate text-body font-semibold">{bucket.label}</span>
-    </button>
+      <Art name={bucket.art} size={32} className="size-8 shrink-0 object-contain" />
+      <span className="min-w-0 flex-1 truncate">{bucket.label}</span>
+    </Button>
   );
 }
 

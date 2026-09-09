@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, CloudOff, MessageCircle } from "lucide-react";
+import { ArrowRight, CloudOff } from "lucide-react";
 import { chatRoomsSchema } from "@/components/chat/chat-widget";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -10,6 +10,7 @@ import { formatRelative, fullName } from "@/lib/format";
 import { BoardCard, BoardCardEmpty } from "./board-card";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/states";
+import { Art } from "@/components/ui/art";
 
 /** A real room preview; the full conversation stays on the dedicated chat page. */
 export function DashboardChatPreview() {
@@ -52,7 +53,8 @@ export function DashboardChatPreview() {
         />
       ) : !rooms.data?.length ? (
         <BoardCardEmpty
-          icon={<MessageCircle size={22} />}
+          icon={<Art name="chat" size={32} className="size-8 object-contain" />}
+          iconSurface={false}
           title="Нээлттэй чат алга"
           hint="Бүлгийн чат үүсэхэд энд харагдана."
         />

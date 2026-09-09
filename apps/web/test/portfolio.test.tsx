@@ -41,9 +41,14 @@ function bornYearsAgo(years: number): string {
   return dob.toISOString().slice(0, 10);
 }
 
-function stubGrowth(dateOfBirth: string, ageProfiles: unknown[] = []) {
+function stubGrowth(
+  dateOfBirth: string,
+  ageProfiles: unknown[] = [],
+  sex: "MALE" | "FEMALE" | null = "MALE",
+  roles: Parameters<typeof sessionFor>[0] = ["TEACHER"],
+) {
   stubApi([
-    { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+    { path: "/auth/me", body: sessionFor(roles) },
     { path: `/children/${CHILD_ID}/age-profiles`, body: ageProfiles },
     { path: `/children/${CHILD_ID}/milestones`, body: [] },
     {
@@ -52,7 +57,7 @@ function stubGrowth(dateOfBirth: string, ageProfiles: unknown[] = []) {
         id: CHILD_ID,
         lastName: "Ганболд",
         firstName: "Батбаяр",
-        sex: "MALE",
+        sex,
         dateOfBirth,
         status: "ACTIVE",
         photoMediaFileId: null,
@@ -101,10 +106,44 @@ describe("portfolio launcher", () => {
       expect(icon!.getAttribute("src")).toContain(asset);
       expect(icon!.parentElement!.className).not.toMatch(/\bbg-/);
     });
+
+    const profile = screen.getByTestId("portfolio-profile-art");
+    expect(profile.querySelector("img")!.getAttribute("src")).toContain("icon-portfolio-boy-3d");
+    expect(profile.className).toContain("bg-transparent");
+  });
+
+  it("selects the girl artwork from the child's stored sex", async () => {
+    stubGrowth(bornYearsAgo(3), [], "FEMALE");
+
+    renderWithProviders(<PortfolioPage />);
+
+    const profile = await screen.findByTestId("portfolio-profile-art");
+    expect(profile.querySelector("img")!.getAttribute("src")).toContain("icon-portfolio-girl-3d");
+    expect(profile.className).toContain("bg-transparent");
   });
 });
 
 describe("portfolio age sections", () => {
+  it("shows the parent's three share actions as white illustrated cards with accent lines", async () => {
+    stubGrowth(bornYearsAgo(3), [], "MALE", ["PARENT"]);
+
+    renderWithProviders(<GrowthPage />);
+
+    const expected = [
+      ["Ажиглалт", "icon-observation-3d", "before:bg-[#16a96f]"],
+      ["Ярилцлага", "icon-conversation-3d", "before:bg-[#3378e5]"],
+      ["Бүтээл", "icon-artwork-3d", "before:bg-[#f59e0b]"],
+    ] as const;
+
+    for (const [label, asset, accent] of expected) {
+      const button = await screen.findByRole("button", { name: label });
+      expect(button).toHaveClass("h-[48px]", "rounded-button", "bg-white");
+      expect(button.className).toContain(accent);
+      expect(button.className).not.toContain("linear-gradient");
+      expect(button.querySelector("img")?.getAttribute("src")).toContain(asset);
+    }
+  });
+
   it("renders a section for every age 2–5 whatever the child's age (RFP §4.3)", async () => {
     stubGrowth(bornYearsAgo(2));
 

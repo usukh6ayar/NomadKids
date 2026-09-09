@@ -40,3 +40,6 @@ apps/api/src/generated/
 # Local object storage, for a machine running MinIO without Docker.
 # See scripts/storage-dev.sh — the bytes are uploads, not source.
 .minio-data/
+
+# pnpm's local content-addressable package store. A cache, not source.
+.pnpm-store/

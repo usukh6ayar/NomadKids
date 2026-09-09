@@ -635,6 +635,7 @@ export class DashboardRepository {
         id: true,
         lastName: true,
         firstName: true,
+        sex: true,
         dateOfBirth: true,
         photoMediaFileId: true,
         enrollments: {
