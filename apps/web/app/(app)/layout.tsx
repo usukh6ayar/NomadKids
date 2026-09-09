@@ -334,6 +334,7 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
   "/admin/assessment-config": SlidersHorizontal,
   "/admin/audit": ScrollText,
   "/admin/integrations/esis": Database,
+  "/admin/curriculum": BookOpen,
 };
 
 /** The section-level icon for a route, or nothing if it has no destination. */
@@ -777,6 +778,13 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         ...adminEntry("Хэрэглэгч ба эрх", "/admin/users"),
         ...adminEntry("Хичээлийн жил", "/admin/school-years"),
         ...adminEntry("Улирал", "/admin/terms"),
+        /*
+         * ★ Added 2026-09-10 with the four ESIS curriculum services. It sits
+         * after Улирал because it answers the same kind of question — what
+         * shape does the year take — and before the ESIS hub, which is the
+         * operator's whole-catalog view rather than a working screen.
+         */
+        ...adminEntry("Сургалтын хөтөлбөр", "/admin/curriculum"),
         ...adminEntry("ESIS мэдээллийн төв", "/admin/integrations/esis"),
         /*
          * ★ "Үнэлгээний тохиргоо" and "Аудит" lost their rows on 2026-09-06,
