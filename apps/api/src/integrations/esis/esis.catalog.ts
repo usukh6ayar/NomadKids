@@ -252,7 +252,23 @@ const ROLE_SERVICES: Partial<Record<Role, readonly EsisEndpointKey[]>> = {
    *   groupAttendance   ирц харах
    *   teachers          багшийн ерөнхий мэдээлэл
    */
-  [Role.TEACHER]: ["students", "groupStudents", "saveAttendanceV3", "groupAttendance", "teachers"],
+  [Role.TEACHER]: [
+    "students",
+    "groupStudents",
+    /*
+     * ★ Added 2026-09-09: "регистрээр нь хайж болдог байх бас".
+     *
+     * The number is typed by the teacher from the document in front of them
+     * and sent; `personRegNumber` stays a refused *output* here as on every
+     * roster service, and `read` keeps it out of the audit row. Giving a
+     * teacher the search does not give them a register number — it lets them
+     * use one they already hold.
+     */
+    "studentByRegister",
+    "saveAttendanceV3",
+    "groupAttendance",
+    "teachers",
+  ],
   /*
    * The cook's one, named 2026-09-09: "бэлэн бүтээгдэхүүн" — the ministry's
    * finished-dish reference (`cook/product`), which a technology card is

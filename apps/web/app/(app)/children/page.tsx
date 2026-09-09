@@ -4,8 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Download, Mars, Plus, Upload, Venus } from "lucide-react";
-import { useState } from "react";
+import { Download, Mars, Plus, Search, Upload, Venus } from "lucide-react";
+import { useEffect, useState } from "react";
 import {
   CHILD_STATUS_LABEL,
   SEX_LABEL,
@@ -27,6 +27,7 @@ import { Art } from "@/components/ui/art";
 import { Donut } from "@/components/ui/chart/donut";
 import { Ring } from "@/components/ui/chart/ring";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/field";
 import { Card } from "@/components/ui/card";
 import { formatAge, fullName } from "@/lib/format";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
@@ -111,6 +112,19 @@ function StaffChildren() {
   const urlQuery = searchParams.get("q") ?? "";
 
   /*
+   * ★ A search box on the screen again — 2026-09-09, at the client's request
+   * ("нэмэлтээр хайдаг болгох").
+   *
+   * `?q=` from the header search has driven this roster all along, but with no
+   * field on the page the only way to narrow it was to type in the header and
+   * navigate. The state seeds from the URL so arriving from the header still
+   * shows the term, and typing here does not touch the URL — a search is a
+   * view of this screen, not a place to come back to.
+   */
+  const [typed, setTyped] = useState(urlQuery);
+  useEffect(() => setTyped(urlQuery), [urlQuery]);
+
+  /*
    * ★ What is left of the roster query: a total and an export.
    *
    * The list it fed is gone (see the panel below), but two things above still
@@ -118,7 +132,7 @@ function StaffChildren() {
    * the whole roster now that there are no filters on screen to narrow it.
    */
   const [facets] = useState<RosterFacets>(NO_FACETS);
-  const search = useDebounced(urlQuery.trim());
+  const search = useDebounced(typed.trim());
 
   const exportParams = rosterParams(search, facets).toString();
   const exportQuery = exportParams ? `?${exportParams}` : "";
@@ -245,6 +259,24 @@ function StaffChildren() {
 
       <RosterSummary search={search} facets={facets} esisCount={rosterRows?.length} />
 
+      <div className="relative">
+        <Search
+          size={18}
+          aria-hidden
+          className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
+        />
+        <Input
+          type="search"
+          // A visible label would be redundant beside a magnifier and a
+          // placeholder this explicit, but a screen reader still needs one.
+          aria-label="Хүүхдийн нэрээр хайх"
+          placeholder="Нэр эсвэл овгоор хайх"
+          value={typed}
+          onChange={(event) => setTyped(event.target.value)}
+          className="pl-11"
+        />
+      </div>
+
       {/*
         ★ The roster, from ESIS — 2026-09-08, at the client's instruction,
         given twice with the consequence written out first.
@@ -281,6 +313,17 @@ function StaffChildren() {
         rows={rosterRows}
         hrefs={rosterHrefs}
         linkField="firstName"
+      />
+      {/*
+        ★ The group roster, beside the whole one — 2026-09-09, at the client's
+        request ("тэр хүүхдүүд дээр бүлгийн суралцагчийн жагсаалт api-13").
+        It was on the attendance register; one home per service, and this is
+        the screen about children.
+      */}
+      <EsisDataPanel
+        resource="groupStudents"
+        title="Бүлгийн суралцагчийн жагсаалт"
+        description="ESIS-д нэг бүлэгт бүртгэлтэй хүүхдүүд"
       />
       <EsisDataPanel
         resource="studentByRegister"
