@@ -1,74 +1,63 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import { headers } from "next/headers";
 import { Providers } from "./providers";
-import { BRAND } from "@/lib/vocabulary";
+import { BRAND, BRAND_LATIN } from "@/lib/vocabulary";
+import { siteOrigin } from "@/lib/site-origin";
 import "./globals.css";
 
-const DESCRIPTION = "Цэцэрлэгийн хүүхдийн хөгжлийн цахим бүртгэл.";
-
-const FALLBACK_ORIGIN = "http://localhost:3000";
-
-/**
- * The site's own origin, or the localhost default if the setting is missing or
- * unparseable.
+/*
+ * ★ Both names, deliberately — 2026-09-09.
  *
- * ★ The `try` is not decoration. `new URL()` throws on a malformed value, this
- * runs while the root layout's metadata is being built, and a throw there is
- * every page in the product returning 500 — not a missing preview image.
- *
- * That is not hypothetical. The deployment's `API_DOMAIN` had become
- * `api.nomadkids.mn, api-vps.nomadkids.mn` during the cutover, because Caddy
- * takes a comma-separated list of site addresses, and compose was interpolating
- * that same variable into a URL. The settings are separated now
- * (`.env.production.example`), but the same shape of mistake is one careless
- * edit away and the cost of surviving it is four lines.
- *
- * `middleware.ts` guards `NEXT_PUBLIC_MEDIA_URL` the same way and for the same
- * stated reason: a typo in an environment variable should cost a missing photo,
- * not the whole site.
+ * The description is what Google prints under the link, and it is also text
+ * the query is matched against. "NomadKids" was absent from every string on
+ * the site, so a search for it had nothing but the domain to go on.
  */
-function siteOrigin(): URL {
-  try {
-    return new URL(process.env.NEXT_PUBLIC_SITE_URL ?? FALLBACK_ORIGIN);
-  } catch {
-    return new URL(FALLBACK_ORIGIN);
-  }
-}
+const DESCRIPTION =
+  "NomadKids (Бяцхан нүүдэлчид) — цэцэрлэгийн хүүхдийн хөгжлийн цахим бүртгэл. " +
+  "Багш, эцэг эх, удирдлагад зориулсан ажиглалт, явцын үнэлгээ, ирц, цэс, тайлан.";
 
 /**
- * ★ `metadataBase` is the setting that decides whether a shared link previews.
- *
- * `app/opengraph-image.png` is a *relative* asset, and Next has to turn it into
- * an absolute URL before a chat app or a search engine can fetch it. With no
- * base it falls back to `http://localhost:3000` and says so in a build warning
- * — which is to say the deploy is green, the page is correct, and every link
- * anyone pastes into Messenger renders a broken image.
- *
- * The value is inlined at build time (`NEXT_PUBLIC_`), so it is a Docker build
- * argument, not an environment variable on the running container —
- * `apps/web/Dockerfile` and `docker-compose.prod.yml`. The localhost default is
- * for `next dev` only.
- *
- * The icons themselves are **not** declared here. `app/favicon.ico`,
+ * ★ The icons are **not** declared in `metadata.icons`. `app/favicon.ico`,
  * `app/icon.png` and `app/apple-icon.png` are file conventions: Next reads
  * their real dimensions and emits the `<link>` tags with correct `sizes`.
- * Listing them in `metadata.icons` as well would emit each tag twice.
+ * Listing them here as well would emit each tag twice.
  */
 export const metadata: Metadata = {
   metadataBase: siteOrigin(),
-  title: BRAND,
+  /*
+   * ★ A template, so every page carries both names.
+   *
+   * `default` is what the root and any page without its own title gets;
+   * `template` wraps the ones that set one (`/faq`, `/privacy`, `/terms` do).
+   * Cyrillic first because that is what the product is called to the people
+   * using it — the Latin name is the one being searched for, not the one on
+   * the wall.
+   */
+  title: { default: `${BRAND} — ${BRAND_LATIN}`, template: `%s | ${BRAND} · ${BRAND_LATIN}` },
   description: DESCRIPTION,
   applicationName: BRAND,
+  /*
+   * ★★ Canonical. Without it `https://nomadkids.mn/` and any variant a link
+   * arrives as — a trailing `?fbclid=…`, `www.`, a trailing slash — are
+   * separate URLs to a crawler, splitting whatever ranking the domain earns
+   * across several of them.
+   */
+  alternates: { canonical: "/" },
   openGraph: {
     type: "website",
     locale: "mn_MN",
-    siteName: BRAND,
-    title: BRAND,
+    siteName: `${BRAND} · ${BRAND_LATIN}`,
+    title: `${BRAND} — ${BRAND_LATIN}`,
     description: DESCRIPTION,
   },
   // No `twitter.images`: with `summary_large_image` and no image of its own,
   // the card falls back to the OpenGraph one, which is the same picture.
-  twitter: { card: "summary_large_image", title: BRAND, description: DESCRIPTION },
+  twitter: {
+    card: "summary_large_image",
+    title: `${BRAND} — ${BRAND_LATIN}`,
+    description: DESCRIPTION,
+  },
   // The iOS home-screen name. Without it Safari uses the <title>, which is the
   // full brand and is truncated to about eleven characters under the icon.
   appleWebApp: { capable: true, title: BRAND, statusBarStyle: "default" },
@@ -109,10 +98,54 @@ export const viewport: Viewport = {
  * `lang="mn"`: all user-facing text is Mongolian, and screen readers need to
  * know which language to pronounce.
  */
-export default function RootLayout({ children }: { children: ReactNode }) {
+/**
+ * Structured data — 2026-09-09.
+ *
+ * ★ `alternateName` is the whole point. It is the field that tells a search
+ * engine "this organisation is also called NomadKids", which is what a person
+ * typing the Latin name is asking for. Everything visible on the site is
+ * Cyrillic, so without this the two names are unrelated strings.
+ *
+ * ★★ Kept to what is true. No `aggregateRating`, no invented `foundingDate`,
+ * no address this repository does not know — structured data that overstates
+ * is the kind Google penalises, and a schema is not a place to be optimistic.
+ */
+function organisationJsonLd(origin: string) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: BRAND,
+    alternateName: BRAND_LATIN,
+    url: origin,
+    logo: `${origin}/icon.png`,
+    description: DESCRIPTION,
+    areaServed: "MN",
+  };
+}
+
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const origin = siteOrigin().toString().replace(/\/$/, "");
+  /*
+   * ★ The nonce, or the tag is dropped on the floor.
+   *
+   * `middleware.ts` sets `script-src 'self' 'nonce-…' 'strict-dynamic'`, and
+   * although a browser does not *execute* `application/ld+json`, the policy is
+   * enforced against the element rather than against what it contains. Without
+   * the nonce this renders, is refused, and shows up nowhere except a console
+   * warning nobody reads — the failure being fixed here, in a different form.
+   */
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <html lang="mn">
       <body>
+        <script
+          type="application/ld+json"
+          nonce={nonce}
+          // The payload is ours and contains no user input — the two strings
+          // are compile-time constants and the origin is a parsed `URL`.
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(organisationJsonLd(origin)) }}
+        />
         <Providers>{children}</Providers>
       </body>
     </html>
