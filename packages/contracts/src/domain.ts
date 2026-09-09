@@ -3057,6 +3057,7 @@ export type PlatformKindergartenDetail = z.infer<typeof platformKindergartenDeta
 
 export const esisResourceKeySchema = z.enum([
   "organization",
+  "buildings",
   "academicYearStatuses",
   "groups",
   "students",
@@ -3072,6 +3073,9 @@ export const esisResourceKeySchema = z.enum([
   "foodMaterials",
   "foodProducts",
   "foodProductMaterials",
+  /* `нэмэлт.md`'s food income, as the ministry keeps it — read only. */
+  "livelihoodForm1",
+  "livelihoodForm2",
   "foodKit",
   "foodKitProducts",
 ]);
@@ -3079,6 +3083,7 @@ export type EsisResourceKey = z.infer<typeof esisResourceKeySchema>;
 
 export const esisPreviewResourceKeySchema = z.enum([
   "organization",
+  "buildings",
   "academicYearStatuses",
   "groups",
   "students",
@@ -3218,6 +3223,42 @@ export const esisOverviewSchema = z.object({
   blockers: z.array(z.string()),
 });
 export type EsisOverview = z.infer<typeof esisOverviewSchema>;
+
+/**
+ * `GET /kindergartens/:id/esis/catalog` — the services this role uses.
+ *
+ * ★ Not a subset of `esisOverviewSchema`, and deliberately so. The overview
+ * carries the deployment's token state, base URL, blockers and run history for
+ * the operator screen; a teacher's day sheet needs the service list and whether
+ * a live read is possible, and shipping the rest to every staff member would be
+ * infrastructure detail handed out for no reason.
+ */
+export const esisScopedCatalogSchema = z.object({
+  mode: z.enum(["DEMO", "LIVE"]),
+  /** Whether "ESIS-ээс мэдээллээ татах" can reach anything yet. */
+  canRead: z.boolean(),
+  /**
+   * ★ The catalog half of a service, without its sync state.
+   *
+   * `accessStatus`, `responseMode`, `httpStatus`, `syncStatus`, `syncErrorCode`
+   * and `lastSyncAt` are derived from the deployment and its run history — the
+   * operator screen's material, and exactly what this payload exists not to
+   * carry. Omitted by name rather than by writing the shape out again, so a
+   * field added to the overview's endpoint appears here too unless somebody
+   * decides otherwise.
+   */
+  endpoints: z.array(
+    esisOverviewSchema.shape.endpoints.element.omit({
+      accessStatus: true,
+      responseMode: true,
+      httpStatus: true,
+      syncStatus: true,
+      syncErrorCode: true,
+      lastSyncAt: true,
+    }),
+  ),
+});
+export type EsisScopedCatalog = z.infer<typeof esisScopedCatalogSchema>;
 
 export const esisPreviewResultSchema = z.object({
   runId: uuidSchema,

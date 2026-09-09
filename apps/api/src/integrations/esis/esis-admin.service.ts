@@ -10,7 +10,7 @@ import { PlatformAccessService } from "../../authz/platform-access.service";
 import { TenantAccessService } from "../../authz/tenant-access.service";
 import type { Actor } from "../../authz/actor";
 import { EsisError } from "./esis.client";
-import { ESIS_RESOURCE_CATALOG, type EsisEndpointKey } from "./esis.catalog";
+import { ESIS_RESOURCE_CATALOG, esisServicesForActor, type EsisEndpointKey } from "./esis.catalog";
 import type { EsisPreviewDto, EsisReadDto, UpdateEsisMappingDto } from "./esis.dto";
 import { ESIS_FIELDS, ingestedFieldNames } from "./esis.fields";
 import { EsisRepository } from "./esis.repository";
@@ -301,6 +301,48 @@ export class EsisAdminService {
   }
 
   /**
+   * The catalog, scoped to what this actor's role actually uses.
+   *
+   * ★ A second entry point rather than a widened `overview()` — added
+   * 2026-09-09, when the client began placing services on the teacher's
+   * screens.
+   *
+   * `overview()` is the operator's view: the token's state, the deployment's
+   * base URL, which kindergarten has been mapped, the blockers left and the
+   * recent run history. None of that is a teacher's business, and all of it
+   * would have come along had the role list on that route simply grown. This
+   * returns the services their own screens draw and whether a live read is
+   * possible — the whole of what `EsisDataPanel` reads.
+   *
+   * ★★ `assertMember`, not `assertStaff`. The role list is what narrows this:
+   * a cook or a parent passes the tenant check and then gets an empty service
+   * list, which is a 404 — the same answer a stranger gets, per CLAUDE.md §1.7.
+   */
+  async catalogForActor(actor: Actor, kindergartenId: string) {
+    this.tenants.assertMember(actor, kindergartenId);
+
+    const keys = new Set(esisServicesForActor(actor, kindergartenId));
+    if (keys.size === 0) throw new NotFoundException();
+
+    const deployment = this.esis.status();
+
+    return {
+      mode: deployment.configured ? ("LIVE" as const) : ("DEMO" as const),
+      canRead: deployment.demoMode || deployment.configured,
+      /*
+       * ★ The catalog entry as it stands, with no sync state bolted on.
+       *
+       * `overview()` decorates each service with `accessStatus`, `syncStatus`,
+       * `lastSyncAt` and the rest, all derived from the deployment and its run
+       * history. None of that belongs in a teacher's payload, and adding an
+       * `accessStatus: "UNKNOWN"` here — which an earlier version did — put a
+       * field in the response whose only honest value was "we did not look".
+       */
+      endpoints: ESIS_RESOURCE_CATALOG.filter((endpoint) => keys.has(endpoint.key)),
+    };
+  }
+
+  /**
    * The guard every ESIS read shares.
    *
    * ★ Tenant first, always. `assertAdmin` runs before the kindergarten is even
@@ -308,8 +350,25 @@ export class EsisAdminService {
    * has an ESIS mapping. The two configuration failures below are only
    * reachable by someone who already administers this tenant.
    */
-  private async assertReadable(actor: Actor, kindergartenId: string) {
-    this.tenants.assertAdmin(actor, kindergartenId);
+  private async assertReadable(actor: Actor, kindergartenId: string, resource?: EsisEndpointKey) {
+    /*
+     * ★ Tenant first, then the service — 2026-09-09.
+     *
+     * This asserted `assertAdmin` outright until the teacher's screens got
+     * their five services. It now asks whether *this* actor may read *this*
+     * service, which for an admin is every one of them and so is the same
+     * check it was. A service outside the caller's list answers 404 rather
+     * than 403: a teacher asking for the food catalog should not learn that it
+     * exists, which is CLAUDE.md §1.7 applied to a service name.
+     */
+    this.tenants.assertMember(actor, kindergartenId);
+    if (resource) {
+      const allowed = esisServicesForActor(actor, kindergartenId);
+      if (!allowed.includes(resource)) throw new NotFoundException();
+    } else {
+      this.tenants.assertAdmin(actor, kindergartenId);
+    }
+
     const kindergarten = await this.repo.findKindergarten(kindergartenId);
     if (!kindergarten) throw new NotFoundException();
 
@@ -341,7 +400,7 @@ export class EsisAdminService {
    * toast that says something went wrong.
    */
   async read(actor: Actor, kindergartenId: string, dto: EsisReadDto) {
-    const { institutionId } = await this.assertReadable(actor, kindergartenId);
+    const { institutionId } = await this.assertReadable(actor, kindergartenId, dto.resource);
 
     const params = Object.fromEntries(
       Object.entries(dto.params ?? {}).filter(([, value]) => value !== undefined),
@@ -351,13 +410,30 @@ export class EsisAdminService {
       throw new ConflictException(`Дараах утга дутуу байна: ${missing.join(", ")}`);
     }
 
+    /*
+     * ★ The audit row records the lookup, not the person looked up.
+     *
+     * `params` carried every path value straight into `AuditLog.metadata`,
+     * which for `studentByRegister` means writing a child's register number
+     * into an append-only table — the one identifier `ESIS_REQUEST.md` §1.1 (b)
+     * promises the ministry this product does not keep. It is sent to ESIS and
+     * kept nowhere, and "nowhere" has to include the row that says somebody
+     * asked.
+     *
+     * The rest stay: a group id, a date and an academic month are what make the
+     * entry answerable later, and none of them is a person.
+     */
+    const auditedParams = Object.fromEntries(
+      Object.entries(params).filter(([name]) => name !== "personRegNumber"),
+    );
+
     await this.audit.append({
       action: "VIEW",
       kindergartenId,
       actorUserId: actor.userId,
       objectType: "EsisResource",
       objectId: dto.resource,
-      metadata: { resource: dto.resource, params },
+      metadata: { resource: dto.resource, params: auditedParams },
     });
 
     const fields = ESIS_FIELDS[dto.resource];
@@ -477,6 +553,7 @@ export class EsisAdminService {
       () => Promise<{ data: unknown[]; durationMs: number; source: "MOCK" | "LIVE" }>
     > = {
       organization: () => this.esis.organization(institutionId),
+      buildings: () => this.esis.buildings(institutionId),
       academicYearStatuses: () => this.esis.academicYearStatuses(institutionId),
       groups: () => this.esis.groups(institutionId),
       students: () => this.esis.students(institutionId),

@@ -15,6 +15,7 @@ import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
+import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
@@ -168,6 +169,20 @@ function Recipes() {
           ))}
         </DataList>
       ) : null}
+
+      {/*
+        ★ The ministry's finished-dish reference, under the cards written
+        against it — 2026-09-09, at the client's request ("бэлэн бүтээгдэхүүн").
+
+        A technology card names a product; `cook/product` is the list those
+        names come from, with the portion's calories and macros beside each. On
+        the screen that writes the cards is where a cook checks one.
+      */}
+      <EsisDataPanel
+        resource="foodProducts"
+        title="Бэлэн бүтээгдэхүүн"
+        description="ESIS-ийн хоол, бүтээгдэхүүний лавлах — хэмжих нэгж, илчлэг, шимт бодис"
+      />
 
       {creating && kindergartenId ? (
         <CreateRecipeDialog kindergartenId={kindergartenId} onClose={() => setCreating(false)} />

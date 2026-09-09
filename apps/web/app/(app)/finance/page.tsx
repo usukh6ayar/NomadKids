@@ -15,6 +15,7 @@ import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
+import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { Art } from "@/components/ui/art";
 import { RequireRole } from "@/components/shell/require-role";
@@ -193,6 +194,32 @@ function Finance() {
       <Disclosure title="Тариф" hint={rules.data ? `${rules.data.length} дүрэм` : undefined}>
         <Rules rules={rules} />
       </Disclosure>
+
+      {/*
+        ★ The ministry's own food-income statements — 2026-09-09, at the
+        client's request ("хоолны төвлөрүүлэх орлого маягт 1, 2").
+
+        Маягт 1 is the month in one row: how many children, how many carry the
+        livelihood discount, what is owed and what came in. Маягт 2 is the same
+        month broken to a child at a time, with the days each attended. They sit
+        under Тариф because that is the order the figures are built in — the
+        rate, then what the month made of it.
+
+        ★★ Both are read-only here. The catalog carries a `save` for each, and
+        neither is wired: filing a return is a decision an accountant makes
+        against their own ledger, and this screen is not yet the thing that
+        files it.
+      */}
+      <EsisDataPanel
+        resource="livelihoodForm1"
+        title="Хоолны төвлөрүүлэх орлого — маягт 1"
+        description="Сарын нэгдсэн дүн: сурагчийн тоо, төвлөрүүлэх ба төвлөрүүлсэн орлого"
+      />
+      <EsisDataPanel
+        resource="livelihoodForm2"
+        title="Хоолны төвлөрүүлэх орлого — маягт 2"
+        description="Бүлгийн хүүхэд тус бүрийн ирц, төлөх ба төлсөн дүн"
+      />
     </div>
   );
 }

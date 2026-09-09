@@ -10,6 +10,9 @@ import {
   esisFoodMaterialSchema,
   esisFoodKitProductSchema,
   esisFoodKitSchema,
+  esisBuildingSchema,
+  esisLivelihoodForm1Schema,
+  esisLivelihoodForm2Schema,
   esisFoodProductMaterialSchema,
   esisFoodProductSchema,
   esisFoodProductTypeSchema,
@@ -91,6 +94,18 @@ export const ESIS_READERS = {
     endpoint: ESIS_ENDPOINTS.foodProducts,
     schema: esisFoodProductSchema,
     institution: false,
+  },
+  // Institution-scoped, like `organization` — the flag defaults to true.
+  buildings: { endpoint: ESIS_ENDPOINTS.buildings, schema: esisBuildingSchema },
+  livelihoodForm1: {
+    endpoint: ESIS_ENDPOINTS.livelihoodForm1,
+    schema: esisLivelihoodForm1Schema,
+    params: ["academicYear", "academicMonth"],
+  },
+  livelihoodForm2: {
+    endpoint: ESIS_ENDPOINTS.livelihoodForm2,
+    schema: esisLivelihoodForm2Schema,
+    params: ["academicYear", "academicMonth", "studentGroupId"],
   },
   foodProductMaterials: {
     endpoint: ESIS_ENDPOINTS.foodProductMaterials,
@@ -229,6 +244,10 @@ export class EsisService {
 
   organization(institutionId: string | number) {
     return this.read("organization", {}, institutionId);
+  }
+
+  buildings(institutionId: string | number) {
+    return this.read("buildings", {}, institutionId);
   }
 
   academicYearStatuses(institutionId: string | number) {

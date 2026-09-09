@@ -296,6 +296,21 @@ function nutrition(values: [string, string, string, string, string]): Override {
 const OVERRIDES: Record<EsisEndpointKey, Override[]> = {
   organization: [{}],
 
+  /* Two: the main block and the kitchen wing, which is what a kindergarten of
+     this size has and what makes the capacity figures read as a pair. */
+  buildings: [
+    {},
+    {
+      buildingId: "70211",
+      buildingName: "Хоолны блок",
+      createdYear: "2018",
+      buildingPurposeName: "Хоол үйлдвэрлэлийн зориулалттай",
+      normalCapacity: "60",
+      totalCapacity: "60",
+      firstCost: "96000000",
+      lastCost: "118000000",
+    },
+  ],
   academicYearStatuses: [
     {},
     {
@@ -643,6 +658,34 @@ const OVERRIDES: Record<EsisEndpointKey, Override[]> = {
       grossWeight: "200.0",
       netWeight: "200.0",
       sequence: "6",
+    },
+  ],
+
+  /* One school, one month — the statement is a single row by construction. */
+  livelihoodForm1: [{}],
+
+  /*
+   * Наран бүлэг's six children, at the tariff the demo funding rules use.
+   * `arrivalDays` never exceeds `comingDays`, and the two money columns move
+   * with it — a statement whose own arithmetic does not hold is the first thing
+   * an accountant notices.
+   */
+  livelihoodForm2: [
+    {},
+    { personId: "90000000000002", arrivalDays: "22", amountPaid: "184800" },
+    { personId: "90000000000003", arrivalDays: "19", amountPaid: "159600" },
+    {
+      personId: "90000000000004",
+      arrivalDays: "14",
+      amountPaid: "117600",
+      livelihoodDiscount: "58800",
+    },
+    { personId: "90000000000005", arrivalDays: "21", amountPaid: "176400" },
+    {
+      personId: "90000000000006",
+      arrivalDays: "17",
+      amountPaid: "142800",
+      livelihoodDiscount: "42000",
     },
   ],
 

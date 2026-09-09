@@ -50,7 +50,9 @@ function setup(overrides: { configured?: boolean; mappedId?: string | null } = {
     })),
     finishRun: vi.fn(async () => undefined),
   };
-  const tenants = { assertAdmin: vi.fn() };
+  // `assertMember` since 2026-09-09: a read now asks whether *this* actor may
+  // reach *this* service, and an admin's own list is still every one of them.
+  const tenants = { assertAdmin: vi.fn(), assertMember: vi.fn() };
   const platform = { assertSuperAdmin: vi.fn() };
   const audit = { append: vi.fn(async () => undefined) };
   const service = new EsisAdminService(

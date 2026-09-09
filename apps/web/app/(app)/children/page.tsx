@@ -10,7 +10,7 @@ import {
   CHILD_STATUS_LABEL,
   SEX_LABEL,
   childSummarySchema,
-  esisOverviewSchema,
+  esisScopedCatalogSchema,
   paginated,
   rosterSummarySchema,
 } from "@kinder/contracts";
@@ -106,7 +106,7 @@ export default function ChildrenPage() {
 const ROSTER_SIZE = 100;
 
 function StaffChildren() {
-  const { primaryKindergartenId, hasRole } = useSession();
+  const { primaryKindergartenId } = useSession();
   const searchParams = useSearchParams();
   const urlQuery = searchParams.get("q") ?? "";
 
@@ -133,10 +133,19 @@ function StaffChildren() {
     },
   });
 
+  /*
+   * ★ The scoped catalog, so a teacher gets these rows too — 2026-09-09.
+   *
+   * This read the operator's `/esis`, which is `@Roles("ADMIN")`, so the roster
+   * table below rendered for administrators alone. `students` is one of the
+   * teacher's five services, and this screen is theirs as much as anybody's.
+   */
   const esis = useQuery({
-    queryKey: qk.esis(primaryKindergartenId ?? "none"),
-    queryFn: () => get(`/kindergartens/${primaryKindergartenId}/esis`, esisOverviewSchema),
-    enabled: Boolean(primaryKindergartenId) && hasRole("ADMIN"),
+    queryKey: qk.esisCatalog(primaryKindergartenId ?? "none"),
+    queryFn: () =>
+      get(`/kindergartens/${primaryKindergartenId}/esis/catalog`, esisScopedCatalogSchema),
+    enabled: Boolean(primaryKindergartenId),
+    retry: false,
   });
 
   /*
@@ -259,14 +268,16 @@ function StaffChildren() {
         output here exactly as it is on the roster service (`ESIS_REQUEST.md`
         §1.1 (b)).
 
-        ★★★★ Neither panel renders for a teacher: the route behind them
-        answers 404 to anybody but an administrator of this kindergarten. A
-        teacher opening `/children` now sees the summary and nothing else.
+        ★★★★ `students` renders for a teacher and `studentByRegister` does
+        not — 2026-09-09. The panel reads the role-scoped catalog, and the
+        roster is one of the teacher's five services while the register search
+        is not. Neither carries a role check of its own: a service the caller
+        cannot reach is absent from the payload.
       */}
       <EsisDataPanel
         resource="students"
-        title="Хүүхдүүд"
-        description="Суралцагчийн бүртгэл, бүлэг, элсэлтийн төлөв"
+        title="Суралцагчийн ерөнхий мэдээлэл"
+        description="Бүртгэл, бүлэг, элсэлтийн төлөв"
         rows={rosterRows}
         hrefs={rosterHrefs}
         linkField="firstName"

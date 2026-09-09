@@ -13,6 +13,7 @@ import {
   type EsisAttendancePreview,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
+import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { GroupSwitcher, useSwitchableGroups } from "@/components/shell/group-switcher";
 import { qk } from "@/lib/api/keys";
@@ -485,6 +486,48 @@ function GroupAttendance() {
         mark by hand might already have been explained on a different screen.
       */}
       <AttendanceRequestQueue heading="Эцэг эхийн мэдэгдэл" />
+
+      {/*
+        ★ The two ESIS attendance services, on the sheet they are about —
+        2026-09-09, at the client's request ("ирц хадгалах", "ирц харах").
+
+        They are the two halves of one exchange and belong together: the fields
+        this screen *sends* when a confirmed day goes up, and the record that
+        comes back when it is read again. Reading them apart is how a teacher
+        ends up believing a day was filed because the button said so.
+
+        ★★ `saveAttendanceV3` is the catalog's only write service, so its panel
+        shows the request payload rather than a response — the eight fields
+        `API-000269` takes. Nothing here submits: the submit is
+        `GroupEsisPayload` above, which is this screen's own control and writes
+        an `AttendanceSubmission` when it succeeds.
+
+        ★★★ Both are keyed by ESIS's `studentGroupId`, which the panel asks
+        for: our group ids are uuids the ministry has never seen, and §15's
+        external-id history is what would let this be filled in automatically.
+      */}
+      {/*
+        ★★★★ `groupStudents` is here rather than on `/groups/:id`, which is
+        where it was first put and where nobody would have found it: nothing in
+        this product links to that hub page. The sidebar's group entries go
+        straight to the three registers, so the roster ESIS keeps belongs on the
+        register a teacher actually opens — beside the day sheet drawn from it.
+      */}
+      <EsisDataPanel
+        resource="groupStudents"
+        title="Бүлгийн суралцагчийн ерөнхий мэдээлэл"
+        description="ESIS-д энэ бүлэгт бүртгэлтэй хүүхдүүд"
+      />
+      <EsisDataPanel
+        resource="saveAttendanceV3"
+        title="Ирц хадгалах"
+        description="Баталгаажсан өдрийн ирцээр ESIS рүү илгээх талбарууд"
+      />
+      <EsisDataPanel
+        resource="groupAttendance"
+        title="Ирц харах"
+        description="Илгээсэн ирцийг ESIS-ээс буцааж уншсан нь"
+      />
     </div>
   );
 }

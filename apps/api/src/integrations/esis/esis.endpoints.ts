@@ -32,6 +32,21 @@ export const ESIS_ENDPOINTS = {
     method: "GET",
     path: "/svc/api/hub/v2/organization/info",
   }),
+  /*
+   * The kindergarten's buildings — RFP §3.2's premises, as the ministry keeps
+   * them.
+   *
+   * ★ `room/list` (api-29) is its companion and is deliberately not here. A
+   * building is a fact about the institution and belongs on the screen that
+   * describes it; a room list is the seating plan, which nothing in this
+   * product reads yet. It joins the catalog the day a screen needs it.
+   */
+  buildings: endpoint({
+    apiId: 100004874669798,
+    slug: "api-28",
+    method: "GET",
+    path: "/svc/api/hub/v2/building/list",
+  }),
   academicYearStatuses: endpoint({
     apiId: 61,
     slug: "API-000160",
@@ -137,6 +152,28 @@ export const ESIS_ENDPOINTS = {
     slug: "API-000224",
     method: "GET",
     path: "/svc/api/hub/v2/cook/productMaterials",
+  }),
+  /*
+   * The two "төвлөрүүлэх орлого" statements — `нэмэлт.md`'s food income, as the
+   * ministry keeps it.
+   *
+   * ★ Read services only. The catalog also has `POST /cook/form1/…/save` and
+   * its form-2 twin, and neither is here: filing a school's income return is a
+   * decision an accountant makes against their own ledger, and nothing in this
+   * product is close to being the thing that files it. When it is, they get
+   * added the way `saveAttendanceV3` was — as inputs, next to the read.
+   */
+  livelihoodForm1: endpoint({
+    apiId: 130,
+    slug: "API-000229",
+    method: "GET",
+    path: "/svc/api/hub/v2/cook/form1/school/list/:academicYear/:academicMonth",
+  }),
+  livelihoodForm2: endpoint({
+    apiId: 132,
+    slug: "API-000231",
+    method: "GET",
+    path: "/svc/api/hub/v2/cook/form2/school/list/:academicYear/:academicMonth/:studentGroupId",
   }),
   foodKit: endpoint({
     apiId: 126,

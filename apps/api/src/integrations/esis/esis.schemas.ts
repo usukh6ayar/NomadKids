@@ -3,7 +3,21 @@ import { z } from "zod";
 const identifier = z.union([z.string(), z.number()]).transform(String);
 const nullableIdentifier = identifier.nullable().optional();
 const nullableString = z.string().nullable().optional();
-const nullableNumber = z.number().nullable().optional();
+/*
+ * ★ `nullableNumber` takes the mixed shape too — 2026-09-09.
+ *
+ * It was a bare `z.number()`, and the note below explains exactly why that
+ * fails: one field arriving as `"187"` throws away every row. The demo
+ * fixtures are the proof — they are built from the catalog's own sample
+ * values, which are strings, so every service with a numeric field answered
+ * `INVALID_RESPONSE` in demo mode. That is why the food services were marked
+ * `NOT_ENABLED` on the operator screen rather than fixed.
+ */
+const nullableNumber = z
+  .union([z.string(), z.number()])
+  .nullable()
+  .optional()
+  .transform((value) => (value === null || value === undefined ? value : Number(value)));
 
 /**
  * A scalar whose live JSON representation may vary from the catalog type.
@@ -280,6 +294,49 @@ export const esisFoodProductSchema = z.object({
   hasRecipeFlag: nullableString,
   kitFlag: nullableString,
   sequence: nullableCount,
+});
+
+/** `API-000229` — one row: the school's month, and what it owes against it. */
+/** `api-28` — one building, with its purpose, capacity and valuation. */
+export const esisBuildingSchema = z.object({
+  buildingId: identifier,
+  buildingName: nullableString,
+  createdYear: nullableString,
+  buildingPurposeCode: nullableString,
+  buildingPurposeName: nullableString,
+  standardFlag: nullableFlag,
+  buildingPropertyType: nullableIdentifier,
+  buildingPropertyTypeName: nullableString,
+  normalCapacity: nullableCount,
+  totalCapacity: nullableCount,
+  firstCost: nullableNumber,
+  lastCost: nullableNumber,
+  approvalStatusCode: nullableString,
+});
+
+export const esisLivelihoodForm1Schema = z.object({
+  orgName: nullableString,
+  academicYear: nullableString,
+  academicMonth: nullableString,
+  studentCnt: nullableCount,
+  livelihoodCnt: nullableCount,
+  livelihoodBudget: nullableNumber,
+  livelihoodAmount: nullableNumber,
+});
+
+/** `API-000231` — one row per child in a group, with days and money. */
+export const esisLivelihoodForm2Schema = z.object({
+  orgName: nullableString,
+  academicYear: nullableString,
+  academicMonth: nullableString,
+  studentGroupId: nullableIdentifier,
+  studentGroupName: nullableString,
+  personId: nullableIdentifier,
+  comingDays: nullableCount,
+  arrivalDays: nullableCount,
+  amountDue: nullableNumber,
+  amountPaid: nullableNumber,
+  livelihoodDiscount: nullableNumber,
 });
 
 export const esisFoodKitSchema = z.object({

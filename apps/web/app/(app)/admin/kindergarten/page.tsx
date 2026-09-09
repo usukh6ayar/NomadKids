@@ -132,6 +132,25 @@ function AdminKindergarten() {
         not exist yet (`ESIS_API_READINESS.md` C5).
       */}
       <EsisDataPanel resource="organization" />
+
+      {/*
+        ★ The premises, under the institution they belong to — 2026-09-09, at
+        the client's request ("байгууллагын барилга байгууламж").
+
+        `organization/info` describes the kindergarten as a legal entity;
+        `building/list` describes what it occupies — purpose, capacity,
+        ownership and the valuation the ministry carries. RFP §3.2 asks for the
+        premises, and this is the screen that already answers "what is this
+        kindergarten", so it is where the second half of that answer goes.
+
+        ★★ `room/list` (api-29) is its companion and is not carried: a room
+        list is a seating plan, and nothing in this product reads one yet.
+      */}
+      <EsisDataPanel
+        resource="buildings"
+        title="Барилга байгууламж"
+        description="Зориулалт, багтаамж, эзэмшлийн төрөл, бүртгэлийн үнэ"
+      />
     </div>
   );
 }
