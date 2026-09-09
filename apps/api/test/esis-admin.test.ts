@@ -99,7 +99,7 @@ describe("ESIS administration authorization", () => {
     );
 
     expect(own.status).toBe(200);
-    expect(own.body.endpoints).toHaveLength(20);
+    expect(own.body.endpoints).toHaveLength(21);
     expect(other.status).toBe(404);
   });
 
@@ -234,7 +234,7 @@ describe("role-scoped ESIS catalog", () => {
     const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
 
     expect(res.status).toBe(200);
-    expect(res.body.endpoints).toHaveLength(20);
+    expect(res.body.endpoints).toHaveLength(21);
   });
 
   /*

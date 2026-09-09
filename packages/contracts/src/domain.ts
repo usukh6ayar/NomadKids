@@ -3056,6 +3056,7 @@ export type PlatformKindergartenDetail = z.infer<typeof platformKindergartenDeta
 
 export const esisResourceKeySchema = z.enum([
   "organization",
+  "buildings",
   "academicYearStatuses",
   "groups",
   "students",
@@ -3081,6 +3082,7 @@ export type EsisResourceKey = z.infer<typeof esisResourceKeySchema>;
 
 export const esisPreviewResourceKeySchema = z.enum([
   "organization",
+  "buildings",
   "academicYearStatuses",
   "groups",
   "students",

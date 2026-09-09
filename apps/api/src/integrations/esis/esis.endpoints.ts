@@ -32,6 +32,21 @@ export const ESIS_ENDPOINTS = {
     method: "GET",
     path: "/svc/api/hub/v2/organization/info",
   }),
+  /*
+   * The kindergarten's buildings — RFP §3.2's premises, as the ministry keeps
+   * them.
+   *
+   * ★ `room/list` (api-29) is its companion and is deliberately not here. A
+   * building is a fact about the institution and belongs on the screen that
+   * describes it; a room list is the seating plan, which nothing in this
+   * product reads yet. It joins the catalog the day a screen needs it.
+   */
+  buildings: endpoint({
+    apiId: 100004874669798,
+    slug: "api-28",
+    method: "GET",
+    path: "/svc/api/hub/v2/building/list",
+  }),
   academicYearStatuses: endpoint({
     apiId: 61,
     slug: "API-000160",

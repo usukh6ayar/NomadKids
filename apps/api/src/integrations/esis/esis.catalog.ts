@@ -25,6 +25,12 @@ const META: Record<EsisEndpointKey, EsisEndpointMeta> = {
     usage: "Цэцэрлэгийн албан нэр, хаяг, ангилал",
     previewable: true,
   },
+  buildings: {
+    name: "Барилга байгууламж",
+    domain: "ORGANIZATION",
+    usage: "Цэцэрлэгийн барилга, зориулалт, багтаамж, эзэмшил",
+    previewable: true,
+  },
   academicYearStatuses: {
     name: "Хичээлийн жилийн төлөв",
     domain: "ORGANIZATION",
@@ -206,6 +212,7 @@ function targetModel(key: EsisEndpointKey): string {
 
 export const ESIS_PREVIEW_RESOURCES = [
   "organization",
+  "buildings",
   "academicYearStatuses",
   "groups",
   "students",

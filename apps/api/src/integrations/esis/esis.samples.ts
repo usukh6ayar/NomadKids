@@ -296,6 +296,21 @@ function nutrition(values: [string, string, string, string, string]): Override {
 const OVERRIDES: Record<EsisEndpointKey, Override[]> = {
   organization: [{}],
 
+  /* Two: the main block and the kitchen wing, which is what a kindergarten of
+     this size has and what makes the capacity figures read as a pair. */
+  buildings: [
+    {},
+    {
+      buildingId: "70211",
+      buildingName: "Хоолны блок",
+      createdYear: "2018",
+      buildingPurposeName: "Хоол үйлдвэрлэлийн зориулалттай",
+      normalCapacity: "60",
+      totalCapacity: "60",
+      firstCost: "96000000",
+      lastCost: "118000000",
+    },
+  ],
   academicYearStatuses: [
     {},
     {

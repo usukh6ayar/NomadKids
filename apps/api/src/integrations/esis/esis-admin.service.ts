@@ -553,6 +553,7 @@ export class EsisAdminService {
       () => Promise<{ data: unknown[]; durationMs: number; source: "MOCK" | "LIVE" }>
     > = {
       organization: () => this.esis.organization(institutionId),
+      buildings: () => this.esis.buildings(institutionId),
       academicYearStatuses: () => this.esis.academicYearStatuses(institutionId),
       groups: () => this.esis.groups(institutionId),
       students: () => this.esis.students(institutionId),

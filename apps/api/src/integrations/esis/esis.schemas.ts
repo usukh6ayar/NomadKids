@@ -297,6 +297,23 @@ export const esisFoodProductSchema = z.object({
 });
 
 /** `API-000229` — one row: the school's month, and what it owes against it. */
+/** `api-28` — one building, with its purpose, capacity and valuation. */
+export const esisBuildingSchema = z.object({
+  buildingId: identifier,
+  buildingName: nullableString,
+  createdYear: nullableString,
+  buildingPurposeCode: nullableString,
+  buildingPurposeName: nullableString,
+  standardFlag: nullableFlag,
+  buildingPropertyType: nullableIdentifier,
+  buildingPropertyTypeName: nullableString,
+  normalCapacity: nullableCount,
+  totalCapacity: nullableCount,
+  firstCost: nullableNumber,
+  lastCost: nullableNumber,
+  approvalStatusCode: nullableString,
+});
+
 export const esisLivelihoodForm1Schema = z.object({
   orgName: nullableString,
   academicYear: nullableString,

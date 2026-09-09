@@ -222,6 +222,22 @@ export const ESIS_FIELDS: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
     keep("institutionClassificationId", "Ангиллын код", "1"),
     keep("institutionClassificationName", "Ангилал", "Сургуулийн өмнөх боловсрол"),
   ],
+  /* Read name by name off the developer portal on 2026-09-09, labels included. */
+  buildings: [
+    keep("buildingId", "Барилга байгууламжийн дугаар", "70210"),
+    keep("buildingName", "Барилга байгууламжийн нэр", "Үндсэн байр"),
+    keep("createdYear", "Үүсгэсэн он", "2014"),
+    keep("buildingPurposeCode", "Зориулалтын код", "KG"),
+    keep("buildingPurposeName", "Барилга байгууламжийн зориулалт", "Цэцэрлэгийн зориулалттай"),
+    keep("standardFlag", "Стандартын эсэх", "Y"),
+    keep("buildingPropertyType", "Эзэмшлийн төрлийн код", "2"),
+    keep("buildingPropertyTypeName", "Эзэмшлийн төрөл", "Хувийн"),
+    keep("normalCapacity", "Багтаамж", "120"),
+    keep("totalCapacity", "Нийт багтаамж", "150"),
+    keep("firstCost", "Анхны үнэ", "480000000"),
+    keep("lastCost", "Эцсийн үнэ", "612000000"),
+    keep("approvalStatusCode", "Баталгаажуулалтын төлөв", "APPROVED"),
+  ],
   academicYearStatuses: [
     keep("academicYear", "Хичээлийн жил", ACADEMIC_YEAR),
     keep("currentAcademicYearFlag", "Идэвхтэй жил эсэх", "Y"),
@@ -469,6 +485,7 @@ export const ESIS_FIELDS: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
  */
 export const ESIS_FIELD_SOURCE: Record<keyof typeof ESIS_ENDPOINTS, EsisFieldSource> = {
   organization: "PORTAL",
+  buildings: "PORTAL",
   academicYearStatuses: "PORTAL",
   groups: "PORTAL",
   students: "PORTAL",
