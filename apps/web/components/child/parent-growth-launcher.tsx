@@ -8,12 +8,12 @@ import { mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { SharedMomentsTeaser } from "@/components/child/child-observations";
-import { PortfolioHero, GradientUnderline } from "@/components/child/portfolio-hero";
+import { GradientUnderline } from "@/components/child/portfolio-hero";
 import { ObservationPhotos } from "@/components/observations/observation-photos";
 import { Art } from "@/components/ui/art";
 import { ACTION_ACCENT_LINE, type GradientTone } from "@/lib/gradient-tones";
@@ -93,11 +93,7 @@ export function ParentGrowthLauncher({ child }: { child: ChildDetail }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <PortfolioHero
-        child={child}
-        overline="БИ ЦЭЦЭРЛЭГТЭЭ"
-        title={`${child.firstName}-ийн өхөөрдөм ахиц`}
-      />
+      <SectionHeader as="h1" title="Хүүхдийн явцын үнэлгээ" className="mb-0" />
 
       <div className="grid grid-cols-3 gap-2.5">
         {BUCKETS.map((bucket) => (
