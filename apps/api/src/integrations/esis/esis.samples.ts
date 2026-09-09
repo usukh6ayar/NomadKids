@@ -646,6 +646,34 @@ const OVERRIDES: Record<EsisEndpointKey, Override[]> = {
     },
   ],
 
+  /* One school, one month — the statement is a single row by construction. */
+  livelihoodForm1: [{}],
+
+  /*
+   * Наран бүлэг's six children, at the tariff the demo funding rules use.
+   * `arrivalDays` never exceeds `comingDays`, and the two money columns move
+   * with it — a statement whose own arithmetic does not hold is the first thing
+   * an accountant notices.
+   */
+  livelihoodForm2: [
+    {},
+    { personId: "90000000000002", arrivalDays: "22", amountPaid: "184800" },
+    { personId: "90000000000003", arrivalDays: "19", amountPaid: "159600" },
+    {
+      personId: "90000000000004",
+      arrivalDays: "14",
+      amountPaid: "117600",
+      livelihoodDiscount: "58800",
+    },
+    { personId: "90000000000005", arrivalDays: "21", amountPaid: "176400" },
+    {
+      personId: "90000000000006",
+      arrivalDays: "17",
+      amountPaid: "142800",
+      livelihoodDiscount: "42000",
+    },
+  ],
+
   foodKit: [
     {},
     {

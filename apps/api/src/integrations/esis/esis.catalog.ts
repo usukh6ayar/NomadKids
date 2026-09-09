@@ -126,6 +126,20 @@ const META: Record<EsisEndpointKey, EsisEndpointMeta> = {
     usage: "Жорын орц, бохир болон цэвэр жин",
     previewable: true,
   },
+  livelihoodForm1: {
+    name: "Хоолны төвлөрүүлэх орлого — маягт 1",
+    domain: "FOOD",
+    usage: "Сарын нэгдсэн дүн: сурагчийн тоо, төвлөрүүлэх ба төвлөрүүлсэн орлого",
+    previewable: false,
+    note: "Жил, сарыг сонгосны дараа татна. Бичих сервис нь тусад нь — энд зөвхөн уншина.",
+  },
+  livelihoodForm2: {
+    name: "Хоолны төвлөрүүлэх орлого — маягт 2",
+    domain: "FOOD",
+    usage: "Бүлгийн хүүхэд тус бүрийн ирц, төлөх ба төлсөн дүн",
+    previewable: false,
+    note: "Жил, сар, бүлгийг сонгосны дараа татна.",
+  },
   foodKit: {
     name: "Иж бүрдлийн шимт бодис",
     domain: "FOOD",
@@ -232,6 +246,23 @@ const ROLE_SERVICES: Partial<Record<Role, readonly EsisEndpointKey[]>> = {
    *   teachers          багшийн ерөнхий мэдээлэл
    */
   [Role.TEACHER]: ["students", "groupStudents", "saveAttendanceV3", "groupAttendance", "teachers"],
+  /*
+   * The cook's one, named 2026-09-09: "бэлэн бүтээгдэхүүн" — the ministry's
+   * finished-dish reference (`cook/product`), which a technology card is
+   * written against. The other six food services stay off this list until they
+   * are asked for; a role gets the services its own screens draw.
+   */
+  [Role.COOK]: ["foodProducts"],
+  /*
+   * The accountant's two: "хоолны төвлөрүүлэх орлого маягт 1, 2" — the school's
+   * monthly food-income statement and its per-child breakdown.
+   *
+   * ★ Read only. The catalog carries `POST /cook/form1/…/save` and its form-2
+   * twin, and neither is here: filing a school's income return is a decision
+   * made against a ledger, and nothing in this product is yet the thing that
+   * files it. When it is, they arrive the way `saveAttendanceV3` did.
+   */
+  [Role.ACCOUNTANT]: ["livelihoodForm1", "livelihoodForm2"],
 };
 
 /** Every service key, for the role that gets all of them. */

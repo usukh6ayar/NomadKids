@@ -26,7 +26,7 @@ describe("ESIS v2 endpoint registry", () => {
     const endpoints = Object.values(ESIS_ENDPOINTS);
     const withId = endpoints.filter((item) => item.apiId !== null);
 
-    expect(endpoints).toHaveLength(18);
+    expect(endpoints).toHaveLength(20);
     expect(new Set(withId.map((item) => item.apiId)).size).toBe(withId.length);
     expect(endpoints.every((item) => item.path.startsWith("/svc/api/hub/v2/"))).toBe(true);
   });

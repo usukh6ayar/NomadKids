@@ -3071,6 +3071,9 @@ export const esisResourceKeySchema = z.enum([
   "foodMaterials",
   "foodProducts",
   "foodProductMaterials",
+  /* `нэмэлт.md`'s food income, as the ministry keeps it — read only. */
+  "livelihoodForm1",
+  "livelihoodForm2",
   "foodKit",
   "foodKitProducts",
 ]);

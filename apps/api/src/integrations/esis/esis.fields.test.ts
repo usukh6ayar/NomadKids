@@ -4,7 +4,13 @@ import { ESIS_RESOURCE_CATALOG } from "./esis.catalog";
 import { ESIS_ENDPOINTS } from "./esis.endpoints";
 import { ESIS_FIELDS, ingestedFieldNames } from "./esis.fields";
 import { sampleRows, unknownOverrideKeys } from "./esis.samples";
-import { ESIS_READABLE_KEYS, ESIS_READERS, type EsisReadableKey } from "./esis.service";
+import { ESIS_READ_PARAMS } from "./esis.dto";
+import {
+  ESIS_READABLE_KEYS,
+  ESIS_READERS,
+  esisReaderParams,
+  type EsisReadableKey,
+} from "./esis.service";
 
 /**
  * The field catalog is what an operator checks against the ministry's own
@@ -80,6 +86,8 @@ describe("ESIS field catalog", () => {
       groupStudents: ["studentGroupId"],
       studentMovements: ["beginDate"],
       groupAttendance: ["studentGroupId", "dayDate"],
+      livelihoodForm1: ["academicYear", "academicMonth"],
+      livelihoodForm2: ["academicYear", "academicMonth", "studentGroupId"],
       foodKit: ["productId"],
       foodKitProducts: ["productId"],
     });
@@ -196,6 +204,35 @@ describe("ESIS field catalog", () => {
         expect(Object.keys(row).filter((name) => refused.has(name))).toEqual([]);
       }
     }
+  });
+
+  /*
+   * ★ The DTO must accept every path value a reader asks for.
+   *
+   * Nothing ties `ESIS_READ_PARAMS` to `esisReaderParams`, and the failure is
+   * silent in the worst way: the validation pipe drops the unknown key, `read`
+   * then reports the parameter as missing, and the caller sees a 409 about a
+   * value they supplied. `studentByRegister` shipped that way, and both
+   * livelihood statements repeated it.
+   */
+  it("validates every path value the readers declare", () => {
+    const declared = new Set(
+      (ESIS_READABLE_KEYS as EsisReadableKey[]).flatMap((key) => esisReaderParams(key)),
+    );
+
+    expect([...declared].filter((name) => !(name in ESIS_READ_PARAMS))).toEqual([]);
+  });
+
+  /*
+   * ★★ And nothing may be validated that no reader asks for — a name left
+   * behind after a service is dropped is a value the API keeps accepting.
+   */
+  it("validates nothing the readers do not declare", () => {
+    const declared = new Set(
+      (ESIS_READABLE_KEYS as EsisReadableKey[]).flatMap((key) => esisReaderParams(key)),
+    );
+
+    expect(Object.keys(ESIS_READ_PARAMS).filter((name) => !declared.has(name))).toEqual([]);
   });
 
   it("resolves a readable key to a path in the reviewed catalog", () => {

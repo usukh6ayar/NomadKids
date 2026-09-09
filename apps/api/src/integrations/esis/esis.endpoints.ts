@@ -138,6 +138,28 @@ export const ESIS_ENDPOINTS = {
     method: "GET",
     path: "/svc/api/hub/v2/cook/productMaterials",
   }),
+  /*
+   * The two "төвлөрүүлэх орлого" statements — `нэмэлт.md`'s food income, as the
+   * ministry keeps it.
+   *
+   * ★ Read services only. The catalog also has `POST /cook/form1/…/save` and
+   * its form-2 twin, and neither is here: filing a school's income return is a
+   * decision an accountant makes against their own ledger, and nothing in this
+   * product is close to being the thing that files it. When it is, they get
+   * added the way `saveAttendanceV3` was — as inputs, next to the read.
+   */
+  livelihoodForm1: endpoint({
+    apiId: 130,
+    slug: "API-000229",
+    method: "GET",
+    path: "/svc/api/hub/v2/cook/form1/school/list/:academicYear/:academicMonth",
+  }),
+  livelihoodForm2: endpoint({
+    apiId: 132,
+    slug: "API-000231",
+    method: "GET",
+    path: "/svc/api/hub/v2/cook/form2/school/list/:academicYear/:academicMonth/:studentGroupId",
+  }),
   foodKit: endpoint({
     apiId: 126,
     slug: "API-000225",

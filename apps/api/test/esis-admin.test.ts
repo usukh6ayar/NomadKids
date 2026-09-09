@@ -9,6 +9,7 @@ import { createTestApp } from "./support/app";
 import { resetData, testDb, uniq } from "./support/db";
 import {
   authed,
+  createMembership,
   createScenario,
   createUser,
   login,
@@ -98,7 +99,7 @@ describe("ESIS administration authorization", () => {
     );
 
     expect(own.status).toBe(200);
-    expect(own.body.endpoints).toHaveLength(18);
+    expect(own.body.endpoints).toHaveLength(20);
     expect(other.status).toBe(404);
   });
 
@@ -233,7 +234,39 @@ describe("role-scoped ESIS catalog", () => {
     const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
 
     expect(res.status).toBe(200);
-    expect(res.body.endpoints).toHaveLength(18);
+    expect(res.body.endpoints).toHaveLength(20);
+  });
+
+  /*
+   * ★ One case per role, because the map is the authorization.
+   *
+   * `esisServicesForActor` is the whole of who may reach what, and the mistake
+   * it invites is a paste: a role's list widened by copying the one above it.
+   * Naming each set here makes that a failing test rather than a quiet grant.
+   */
+  it("gives a cook the one their screens draw", async () => {
+    const cook = await createUser({ username: uniq("esis-cook") });
+    await createMembership(cook.id, a.kindergarten.id, "COOK");
+    const session = await login(app, cook.username);
+
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), session);
+
+    expect(res.status).toBe(200);
+    expect(res.body.endpoints.map((e: { key: string }) => e.key)).toEqual(["foodProducts"]);
+  });
+
+  it("gives an accountant the two income statements, and no roster", async () => {
+    const accountant = await createUser({ username: uniq("esis-accountant") });
+    await createMembership(accountant.id, a.kindergarten.id, "ACCOUNTANT");
+    const session = await login(app, accountant.username);
+
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), session);
+
+    expect(res.status).toBe(200);
+    expect(res.body.endpoints.map((e: { key: string }) => e.key)).toEqual([
+      "livelihoodForm1",
+      "livelihoodForm2",
+    ]);
   });
 
   it("gives a teacher the five their screens draw, and no others", async () => {
@@ -434,6 +467,38 @@ describe("single-resource ESIS read", () => {
         where: { kindergartenId: a.kindergarten.id, objectType: "EsisResource", action: "VIEW" },
       }),
     ).toBe(1);
+  });
+
+  /*
+   * ★ The register number is sent and kept nowhere — including the row that
+   * says somebody asked.
+   *
+   * `AuditLog` is append-only (CLAUDE.md §3.2), so a register number written
+   * into `metadata` is one this product can never take back, and
+   * `ESIS_REQUEST.md` §1.1 (b) is a promise to the ministry that it holds none.
+   * The audit row still has to be answerable, so the lookup is recorded and the
+   * person is not.
+   */
+  it("audits a register lookup without recording the register number", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    read.mockResolvedValueOnce({ data: [] });
+
+    const res = await authed(
+      request(server()).get(
+        url(a.kindergarten.id, "resource=studentByRegister&personRegNumber=УБ99887766"),
+      ),
+      adminA,
+    );
+
+    expect(res.status).toBe(200);
+
+    const rows = await db.auditLog.findMany({
+      where: { kindergartenId: a.kindergarten.id, objectType: "EsisResource", action: "VIEW" },
+    });
+    expect(rows).toHaveLength(1);
+    expect(JSON.stringify(rows[0]!.metadata)).not.toContain("УБ99887766");
+    // The lookup itself is still on the record.
+    expect(rows[0]!.objectId).toBe("studentByRegister");
   });
 
   it("reports an upstream failure as a result rather than an error", async () => {

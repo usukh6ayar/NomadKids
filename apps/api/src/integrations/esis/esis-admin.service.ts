@@ -410,13 +410,30 @@ export class EsisAdminService {
       throw new ConflictException(`Дараах утга дутуу байна: ${missing.join(", ")}`);
     }
 
+    /*
+     * ★ The audit row records the lookup, not the person looked up.
+     *
+     * `params` carried every path value straight into `AuditLog.metadata`,
+     * which for `studentByRegister` means writing a child's register number
+     * into an append-only table — the one identifier `ESIS_REQUEST.md` §1.1 (b)
+     * promises the ministry this product does not keep. It is sent to ESIS and
+     * kept nowhere, and "nowhere" has to include the row that says somebody
+     * asked.
+     *
+     * The rest stay: a group id, a date and an academic month are what make the
+     * entry answerable later, and none of them is a person.
+     */
+    const auditedParams = Object.fromEntries(
+      Object.entries(params).filter(([name]) => name !== "personRegNumber"),
+    );
+
     await this.audit.append({
       action: "VIEW",
       kindergartenId,
       actorUserId: actor.userId,
       objectType: "EsisResource",
       objectId: dto.resource,
-      metadata: { resource: dto.resource, params },
+      metadata: { resource: dto.resource, params: auditedParams },
     });
 
     const fields = ESIS_FIELDS[dto.resource];

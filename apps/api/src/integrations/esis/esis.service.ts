@@ -10,6 +10,8 @@ import {
   esisFoodMaterialSchema,
   esisFoodKitProductSchema,
   esisFoodKitSchema,
+  esisLivelihoodForm1Schema,
+  esisLivelihoodForm2Schema,
   esisFoodProductMaterialSchema,
   esisFoodProductSchema,
   esisFoodProductTypeSchema,
@@ -91,6 +93,16 @@ export const ESIS_READERS = {
     endpoint: ESIS_ENDPOINTS.foodProducts,
     schema: esisFoodProductSchema,
     institution: false,
+  },
+  livelihoodForm1: {
+    endpoint: ESIS_ENDPOINTS.livelihoodForm1,
+    schema: esisLivelihoodForm1Schema,
+    params: ["academicYear", "academicMonth"],
+  },
+  livelihoodForm2: {
+    endpoint: ESIS_ENDPOINTS.livelihoodForm2,
+    schema: esisLivelihoodForm2Schema,
+    params: ["academicYear", "academicMonth", "studentGroupId"],
   },
   foodProductMaterials: {
     endpoint: ESIS_ENDPOINTS.foodProductMaterials,
