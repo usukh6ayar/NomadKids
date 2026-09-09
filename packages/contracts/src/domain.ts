@@ -3110,6 +3110,27 @@ export const esisResourceKeySchema = z.enum([
   "livelihoodForm2",
   "foodKit",
   "foodKitProducts",
+  /*
+   * Added 2026-09-10 — суралцагчийн нэмэлт мэдээлэл, багш, хөтөлбөр, орчин.
+   * The three `…Save` keys are writes; every other one is a read.
+   */
+  "studentCheck",
+  "studentContacts",
+  "studentContactsSave",
+  "studentStatistics",
+  "studentStatisticsSave",
+  "studentCondition",
+  "studentConditionSave",
+  "teacherAcademicOrg",
+  "teacherMovements",
+  "groupsNextYear",
+  "programs",
+  "programStages",
+  "programPlans",
+  "programCourses",
+  "rooms",
+  "academicOrg",
+  "subjectAreas",
 ]);
 export type EsisResourceKey = z.infer<typeof esisResourceKeySchema>;
 
@@ -3126,6 +3147,14 @@ export const esisPreviewResourceKeySchema = z.enum([
   "foodMaterials",
   "foodProducts",
   "foodProductMaterials",
+  // Added 2026-09-10 — the institution-level reads a dry run can call without
+  // asking the operator for a group id, a date or a register number.
+  "studentContacts",
+  "groupsNextYear",
+  "programs",
+  "rooms",
+  "academicOrg",
+  "subjectAreas",
 ]);
 export type EsisPreviewResourceKey = z.infer<typeof esisPreviewResourceKeySchema>;
 
@@ -3333,6 +3362,27 @@ export const esisResourceReadSchema = z.object({
   }),
 });
 export type EsisResourceRead = z.infer<typeof esisResourceReadSchema>;
+
+/**
+ * The answer to one write to ESIS.
+ *
+ * ★ No `rows` and no `RESULT`. A write returns whether the ministry accepted
+ * the record, not a copy of it — echoing the payload back would put a family's
+ * household details on screen a second time with nothing gained, and would
+ * invite a reader to take the echo as confirmation ESIS stored it.
+ */
+export const esisWriteResultSchema = z.object({
+  resource: esisResourceKeySchema,
+  source: z.enum(["MOCK", "LIVE"]),
+  status: z.enum(["SUCCEEDED", "FAILED"]),
+  errorCode: z.string().nullable(),
+  durationMs: z.number().nullable(),
+  response: z.object({
+    SUCCESS_CODE: z.number(),
+    RESPONSE_MESSAGE: z.string(),
+  }),
+});
+export type EsisWriteResult = z.infer<typeof esisWriteResultSchema>;
 
 /**
  * Safe ESIS student output used while registering a child.

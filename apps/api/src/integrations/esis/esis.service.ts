@@ -24,7 +24,27 @@ import {
   esisStudentSchema,
   esisStudentByRegisterSchema,
   esisTeacherSchema,
+  esisStudentCheckSchema,
+  esisStudentContactSchema,
+  esisStudentStatisticsSchema,
+  esisStudentConditionSchema,
+  esisTeacherAcademicOrgSchema,
+  esisTeacherMovementSchema,
+  esisGroupNextYearSchema,
+  esisProgramSchema,
+  esisProgramStageSchema,
+  esisProgramPlanSchema,
+  esisProgramCourseSchema,
+  esisRoomSchema,
+  esisAcademicOrgSchema,
+  esisSubjectAreaSchema,
+  esisStudentContactsUploadSchema,
+  esisStudentStatisticsUploadSchema,
+  esisStudentConditionUploadSchema,
   type EsisAttendanceUpload,
+  type EsisStudentContactsUpload,
+  type EsisStudentStatisticsUpload,
+  type EsisStudentConditionUpload,
 } from "./esis.schemas";
 import type { EsisRequest, EsisResponse } from "./esis.types";
 
@@ -129,6 +149,80 @@ export const ESIS_READERS = {
     schema: esisFoodKitProductSchema,
     institution: false,
     params: ["productId"],
+  },
+
+  /*
+   * ── Added 2026-09-10 ────────────────────────────────────────────────────
+   * All fourteen are institution-scoped: every one displays
+   * `?institutionId=:institutionId` on the developer portal, and the three
+   * whose page is not public (`studentCheck`, `studentStatistics`,
+   * `studentCondition`) were given with that query by the client. The flag
+   * therefore stays at its `true` default — unlike the national food catalog,
+   * which rejects the filter.
+   */
+  studentCheck: {
+    endpoint: ESIS_ENDPOINTS.studentCheck,
+    schema: esisStudentCheckSchema,
+    params: ["personId"],
+  },
+  studentContacts: {
+    endpoint: ESIS_ENDPOINTS.studentContacts,
+    schema: esisStudentContactSchema,
+  },
+  studentStatistics: {
+    endpoint: ESIS_ENDPOINTS.studentStatistics,
+    schema: esisStudentStatisticsSchema,
+    params: ["personId"],
+  },
+  studentCondition: {
+    endpoint: ESIS_ENDPOINTS.studentCondition,
+    schema: esisStudentConditionSchema,
+    params: ["personId"],
+  },
+  teacherAcademicOrg: {
+    endpoint: ESIS_ENDPOINTS.teacherAcademicOrg,
+    schema: esisTeacherAcademicOrgSchema,
+    params: ["personId"],
+  },
+  teacherMovements: {
+    endpoint: ESIS_ENDPOINTS.teacherMovements,
+    schema: esisTeacherMovementSchema,
+    params: ["beginDate"],
+  },
+  groupsNextYear: {
+    endpoint: ESIS_ENDPOINTS.groupsNextYear,
+    schema: esisGroupNextYearSchema,
+  },
+  programs: {
+    endpoint: ESIS_ENDPOINTS.programs,
+    schema: esisProgramSchema,
+  },
+  programStages: {
+    endpoint: ESIS_ENDPOINTS.programStages,
+    schema: esisProgramStageSchema,
+    params: ["programOfStudyId"],
+  },
+  programPlans: {
+    endpoint: ESIS_ENDPOINTS.programPlans,
+    schema: esisProgramPlanSchema,
+    params: ["programOfStudyId", "programStageId"],
+  },
+  programCourses: {
+    endpoint: ESIS_ENDPOINTS.programCourses,
+    schema: esisProgramCourseSchema,
+    params: ["programOfStudyId", "programStageId", "programPlanId"],
+  },
+  rooms: {
+    endpoint: ESIS_ENDPOINTS.rooms,
+    schema: esisRoomSchema,
+  },
+  academicOrg: {
+    endpoint: ESIS_ENDPOINTS.academicOrg,
+    schema: esisAcademicOrgSchema,
+  },
+  subjectAreas: {
+    endpoint: ESIS_ENDPOINTS.subjectAreas,
+    schema: esisSubjectAreaSchema,
   },
 } as const satisfies Record<
   string,
@@ -328,6 +422,123 @@ export class EsisService {
 
   foodKitProducts(productId: string | number) {
     return this.read("foodKitProducts", { productId });
+  }
+
+  /* ── Суралцагчийн нэмэлт мэдээлэл ─────────────────────────────────────── */
+
+  studentCheck(institutionId: string | number, personId: string | number) {
+    return this.read("studentCheck", { personId }, institutionId);
+  }
+
+  studentContacts(institutionId: string | number) {
+    return this.read("studentContacts", {}, institutionId);
+  }
+
+  studentStatistics(institutionId: string | number, personId: string | number) {
+    return this.read("studentStatistics", { personId }, institutionId);
+  }
+
+  studentCondition(institutionId: string | number, personId: string | number) {
+    return this.read("studentCondition", { personId }, institutionId);
+  }
+
+  /* ── Багш ─────────────────────────────────────────────────────────────── */
+
+  teacherAcademicOrg(institutionId: string | number, personId: string | number) {
+    return this.read("teacherAcademicOrg", { personId }, institutionId);
+  }
+
+  teacherMovements(institutionId: string | number, beginDate: string) {
+    return this.read("teacherMovements", { beginDate }, institutionId);
+  }
+
+  /* ── Бүлэг, хөтөлбөр, орчин ───────────────────────────────────────────── */
+
+  groupsNextYear(institutionId: string | number) {
+    return this.read("groupsNextYear", {}, institutionId);
+  }
+
+  programs(institutionId: string | number) {
+    return this.read("programs", {}, institutionId);
+  }
+
+  programStages(institutionId: string | number, programOfStudyId: string | number) {
+    return this.read("programStages", { programOfStudyId }, institutionId);
+  }
+
+  programPlans(
+    institutionId: string | number,
+    programOfStudyId: string | number,
+    programStageId: string | number,
+  ) {
+    return this.read("programPlans", { programOfStudyId, programStageId }, institutionId);
+  }
+
+  programCourses(
+    institutionId: string | number,
+    programOfStudyId: string | number,
+    programStageId: string | number,
+    programPlanId: string | number,
+  ) {
+    return this.read(
+      "programCourses",
+      { programOfStudyId, programStageId, programPlanId },
+      institutionId,
+    );
+  }
+
+  rooms(institutionId: string | number) {
+    return this.read("rooms", {}, institutionId);
+  }
+
+  academicOrg(institutionId: string | number) {
+    return this.read("academicOrg", {}, institutionId);
+  }
+
+  subjectAreas(institutionId: string | number) {
+    return this.read("subjectAreas", {}, institutionId);
+  }
+
+  /*
+   * ── The three writes ──────────────────────────────────────────────────────
+   *
+   * ★ Each parses before it sends, exactly as `saveAttendance` does. The parse
+   * is not ceremony: the upload schemas are `.strict()`, so a key this product
+   * invented cannot reach the ministry's database — it fails here instead.
+   *
+   * ★★ `demoFixture` is the endpoint key, so a deployment without a token gets
+   * the generic DEMO_SUCCESS envelope rather than a network call. Nothing is
+   * sent to ESIS until `ESIS_TOKEN` is set.
+   */
+
+  async saveStudentContacts(input: EsisStudentContactsUpload) {
+    const parsed = esisStudentContactsUploadSchema.parse(input);
+    return this.client.request({
+      path: ESIS_ENDPOINTS.studentContactsSave.path,
+      method: ESIS_ENDPOINTS.studentContactsSave.method,
+      body: parsed,
+      demoFixture: "studentContactsSave",
+    });
+  }
+
+  async saveStudentStatistics(input: EsisStudentStatisticsUpload) {
+    const parsed = esisStudentStatisticsUploadSchema.parse(input);
+    return this.client.request({
+      path: ESIS_ENDPOINTS.studentStatisticsSave.path,
+      method: ESIS_ENDPOINTS.studentStatisticsSave.method,
+      body: parsed,
+      demoFixture: "studentStatisticsSave",
+    });
+  }
+
+  async saveStudentCondition(input: EsisStudentConditionUpload) {
+    const parsed = esisStudentConditionUploadSchema.parse(input);
+    return this.client.request({
+      path: ESIS_ENDPOINTS.studentConditionSave.path,
+      method: ESIS_ENDPOINTS.studentConditionSave.method,
+      body: parsed,
+      demoFixture: "studentConditionSave",
+    });
   }
 
   private async getList<T>(

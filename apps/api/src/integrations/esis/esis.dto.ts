@@ -49,6 +49,18 @@ export const ESIS_READ_PARAMS = {
     .optional(),
   dayDate: z.iso.date().optional(),
   beginDate: z.iso.date().optional(),
+  /*
+   * ── Added 2026-09-10 ────────────────────────────────────────────────────
+   * `personId` is an **ESIS** person id, not a national identifier: it is the
+   * number the roster services already return and the one the суралцагч
+   * services key on. Unlike `personRegNumber` it is safe to pre-fill and safe
+   * in an audit row, so it is shape-checked the same way every other ESIS id
+   * is rather than being given the register number's special handling.
+   */
+  personId: z.string().trim().min(1).max(64).optional(),
+  programOfStudyId: z.string().trim().min(1).max(64).optional(),
+  programStageId: z.string().trim().min(1).max(64).optional(),
+  programPlanId: z.string().trim().min(1).max(64).optional(),
 } as const;
 
 export const esisReadSchema = z.object({
@@ -56,6 +68,36 @@ export const esisReadSchema = z.object({
   params: z.object(ESIS_READ_PARAMS).optional(),
 });
 export type EsisReadDto = z.infer<typeof esisReadSchema>;
+
+/**
+ * One write to ESIS.
+ *
+ * ★ **`institutionId` is deliberately not accepted from the caller.** Every
+ * upload schema requires it, and the service fills it from the tenant's own
+ * confirmed mapping — the same place `getList` gets it. Taking it from the
+ * request body would let a signed-in teacher at one kindergarten write a
+ * record into another institution's ESIS entry, which no role check on this
+ * route could catch because the route's tenant is the one in the path.
+ *
+ * ★★ `payload` is loose here and strict one layer down: the three
+ * `…UploadSchema`s in `esis.schemas.ts` are `.strict()`, so an invented key
+ * fails before anything is sent. Validating twice with two different shapes is
+ * how a field would drift; validating loosely here and strictly there is one
+ * shape, checked where the payload is actually assembled.
+ */
+export const ESIS_WRITE_RESOURCES = [
+  "studentContactsSave",
+  "studentStatisticsSave",
+  "studentConditionSave",
+] as const;
+
+export type EsisWriteResource = (typeof ESIS_WRITE_RESOURCES)[number];
+
+export const esisWriteSchema = z.object({
+  resource: z.enum(ESIS_WRITE_RESOURCES),
+  payload: z.record(z.string(), z.unknown()),
+});
+export type EsisWriteDto = z.infer<typeof esisWriteSchema>;
 
 export const updateEsisMappingSchema = z.discriminatedUnion("mapped", [
   z.object({ mapped: z.literal(false) }),

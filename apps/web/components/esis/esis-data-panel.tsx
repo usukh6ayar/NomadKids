@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/field";
 import { LoadingState } from "@/components/ui/states";
+import { cn } from "@/lib/utils";
 
 /** The Mongolian sentence behind each upstream failure code. */
 const ERROR_LABEL: Record<string, string> = {
@@ -84,6 +85,7 @@ export function EsisDataPanel({
   actionLabel,
   detail,
   compact = false,
+  className,
 }: {
   resource: EsisResourceKey;
   /** Path values the caller already knows — a group id, a date. */
@@ -161,6 +163,19 @@ export function EsisDataPanel({
    * the same question.
    */
   compact?: boolean;
+  /**
+   * Extra classes for the panel's own `<section>`.
+   *
+   * ★ Added 2026-09-10 so a page whose body sits in a narrow reading column
+   * can still give the panel the full width. `/settings` and
+   * `/admin/kindergarten` cap their content at 760px — the right width for a
+   * form, and far too narrow for a table of ESIS records, which is what the
+   * client was looking at when they asked for "дэлгэц дүүрэн".
+   *
+   * It is a class rather than a `wide` flag because the two callers want the
+   * same thing by different means, and a boolean would have to guess which.
+   */
+  className?: string;
 }) {
   const { primaryKindergartenId } = useSession();
   const [entered, setEntered] = useState<Record<string, string>>({});
@@ -294,7 +309,7 @@ export function EsisDataPanel({
   }
 
   return (
-    <section aria-label={title ?? endpoint.name}>
+    <section aria-label={title ?? endpoint.name} className={cn("w-full", className)}>
       <Card pad="roomy" className="flex flex-col gap-5">
         <div className="flex flex-wrap items-start gap-3 border-b border-border-soft pb-5">
           <span className="flex size-11 shrink-0 items-center justify-center rounded-control bg-sky text-sky-ink">

@@ -65,36 +65,61 @@ export default function SettingsPage() {
     <div className="flex w-full flex-col gap-6 lg:gap-8">
       <PageHeader title="Хувийн тохиргоо" />
 
+      {/*
+        ★ The reading measure holds the form, not the ESIS panels —
+        2026-09-10, at the client's instruction ("дэлгэц дүүрэн"). A profile
+        form and a sign-out button are controls, and 760px is the right width
+        for those; the two ESIS sections below are the ministry's records, and
+        capping a table of them at a third of the screen is what made the
+        columns squeeze. So the column wraps what it was reasoned for and the
+        panels sit outside it.
+      */}
       <div className="flex w-full max-w-[760px] flex-col gap-6 lg:gap-8">
         <ProfileCard />
-
-        <EsisProfileSection />
-        {/*
-          ★ The kindergarten's teaching staff, under the reader's own record —
-          2026-09-09, at the client's request ("багшийн ерөнхий мэдээлэл").
-
-          `EsisProfileSection` above is `my-profile`: one person, matched to
-          whoever is signed in. This is `teacher/list`, the whole roll — the
-          instructor ids the group services refer to, and the assignment each
-          one carries. A teacher's own screen is where it belongs, because the
-          user list that would otherwise hold it is `@Roles("ADMIN")`.
-
-          It renders nothing for a cook or an accountant: `teachers` is not in
-          their service list, so the catalog does not return it.
-        */}
-        <EsisDataPanel
-          resource="teachers"
-          /*
-            ★ "Жагсаалт" for the same reason the roster panel took it —
-            2026-09-09. `api-41` is `teacher/list` and returns the roll; the
-            reader's *own* ESIS record is the panel above this one, built from
-            `my-profile`. Two panels, two questions, and only the first is a
-            list.
-          */
-          title="Багшийн жагсаалт"
-          description="ESIS-д бүртгэлтэй багш нарын томилгоо"
-        />
       </div>
+
+      <EsisProfileSection />
+
+      {/*
+        ★ The kindergarten's teaching staff, under the reader's own record —
+        2026-09-09, at the client's request ("багшийн ерөнхий мэдээлэл").
+
+        `EsisProfileSection` above is `my-profile`: one person, matched to
+        whoever is signed in. This is `teacher/list`, the whole roll — the
+        instructor ids the group services refer to, and the assignment each
+        one carries. A teacher's own screen is where it belongs, because the
+        user list that would otherwise hold it is `@Roles("ADMIN")`.
+
+        It renders nothing for a cook or an accountant: `teachers` is not in
+        their service list, so the catalog does not return it.
+      */}
+      {/*
+        ★ The reader's own заах аргын нэгдэл — 2026-09-10, at the client's
+        request. `api-34` takes a `:personId`, so it is one person's record
+        rather than a roll, which is why it sits here beside `my-profile`
+        rather than on `/admin/users` where the staff-wide lists live.
+
+        Nothing stores an ESIS person id yet, so the panel asks for one. See
+        `child-esis.tsx` for the same note and the same reason.
+      */}
+      <EsisDataPanel
+        resource="teacherAcademicOrg"
+        title="Заах аргын нэгдэл"
+        description="ЭСИС-д бүртгэлтэй заах аргын нэгдэл, албан тушаал"
+      />
+
+      <EsisDataPanel
+        resource="teachers"
+        /*
+          ★ "Жагсаалт" for the same reason the roster panel took it —
+          2026-09-09. `api-41` is `teacher/list` and returns the roll; the
+          reader's *own* ESIS record is the panel above this one, built from
+          `my-profile`. Two panels, two questions, and only the first is a
+          list.
+        */
+        title="Багшийн жагсаалт"
+        description="ESIS-д бүртгэлтэй багш нарын томилгоо"
+      />
     </div>
   );
 }

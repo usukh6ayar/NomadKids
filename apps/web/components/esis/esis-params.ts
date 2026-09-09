@@ -5,6 +5,20 @@ export const ESIS_PARAM_LABEL: Record<string, string> = {
   personRegNumber: "РД (регистрийн дугаар)",
   dayDate: "Огноо",
   beginDate: "Эхлэх огноо",
+  /*
+   * ★ Added 2026-09-10. `personId` is an **ESIS** person id — the number the
+   * roster services return — not a national identifier, so it is labelled and
+   * treated like every other ESIS id rather than like `personRegNumber`.
+   *
+   * Nothing stores it yet: `Child` and `User` carry no ESIS person column, and
+   * `my-profile` matches a signed-in teacher by reading the roster. Until a
+   * mapping exists the panel asks for the id, which is why it needs a label a
+   * director can actually answer.
+   */
+  personId: "ESIS хүний дугаар",
+  programOfStudyId: "ESIS хөтөлбөрийн дугаар",
+  programStageId: "ESIS үе шатны дугаар",
+  programPlanId: "ESIS төлөвлөгөөний дугаар",
 };
 
 /**
@@ -20,6 +34,12 @@ export const ESIS_DEMO_PARAM: Record<string, string> = {
   productId: "51001",
   dayDate: "2026-09-08",
   beginDate: "2026-09-01",
+  // The demo tenant's own ids, so a panel is complete on first paint. Every
+  // one of these is an ESIS identifier, never a person's national number.
+  personId: "90000000000001",
+  programOfStudyId: "501",
+  programStageId: "12",
+  programPlanId: "780",
 };
 
 /** Whether a parameter is a personal identifier rather than an ESIS id. */

@@ -29,10 +29,12 @@ export const ESIS_ENDPOINTS = {
    * The kindergarten's buildings — RFP §3.2's premises, as the ministry keeps
    * them.
    *
-   * ★ `room/list` (api-29) is its companion and is deliberately not here. A
-   * building is a fact about the institution and belongs on the screen that
-   * describes it; a room list is the seating plan, which nothing in this
-   * product reads yet. It joins the catalog the day a screen needs it.
+   * ★ `room/list` (api-29) is its companion and **is now here too** — added
+   * 2026-09-10 at the client's request for "сургалтын орчны ерөнхий
+   * мэдээллүүд". This note used to say a room list was the seating plan and
+   * would "join the catalog the day a screen needs it"; that day is this one,
+   * and the note is rewritten rather than left to contradict the entry six
+   * lines below it. See `rooms`.
    */
   buildings: endpoint({
     apiId: 100004874669798,
@@ -197,6 +199,174 @@ export const ESIS_ENDPOINTS = {
     slug: "API-000226",
     method: "GET",
     path: "/svc/api/hub/v2/cook/kit/product/:productId",
+  }),
+  /*
+   * ────────────────────────────────────────────────────────────────────────
+   * Суралцагчийн нэмэлт мэдээлэл — added 2026-09-10 at the client's request.
+   *
+   * ★ **These seven are not in the portal's public catalog page.** That page
+   * renders only the Хоол, Багш and Байгууллага sections; the Суралцагч
+   * section needs a signed-in session, so the paths below come from the
+   * client's own list rather than from `developerv2.esis.edu.mn/api/structure`.
+   * `slug: "UNLISTED"` and `apiId: null` say exactly that on the operator
+   * screen ("ID тодруулах"), because access is granted per service id and the
+   * id is the one thing our side cannot supply.
+   *
+   * ★★ **Three of them are writes**, which is a change of policy this file
+   * recorded twice before: `saveAttendanceV3` was the only write we carried,
+   * and the food form1/form2 saves were refused because "nothing in this
+   * product is close to being the thing that files it". The client asked for
+   * these three with their read pairs on 2026-09-10 — the product *is* the
+   * thing that records a child's guardians and household — so they are here
+   * with screens that send them, which is the condition the refusal named.
+   * ────────────────────────────────────────────────────────────────────────
+   */
+
+  /**
+   * Whether ESIS already holds this child.
+   *
+   * ★ **UNVERIFIED, and marked so on purpose.** The client asked for this path
+   * and asked for it to be checked; the public catalog's only `check` service
+   * is `api-11` `HUB_SERVICE_SCHOOL_SEARCH_TEACHER_CHECK_UPDATE` at
+   * `/teacher/check/:personId` — the *teacher* check, not this. The student
+   * section is not publicly rendered, so "absent from the portal page" is not
+   * evidence of absence. It is carried with the source marked `ADAPTER` and
+   * the catalog note saying the portal name is unconfirmed; the first live
+   * call against a real token settles it.
+   */
+  studentCheck: endpoint({
+    apiId: null,
+    slug: "UNLISTED",
+    method: "GET",
+    path: "/svc/api/hub/v2/student/check/:personId",
+  }),
+  /** Every guardian contact the institution holds, for the whole roster. */
+  studentContacts: endpoint({
+    apiId: null,
+    slug: "UNLISTED",
+    method: "GET",
+    path: "/svc/api/hub/v2/stdnt/all/contacts",
+  }),
+  studentContactsSave: endpoint({
+    apiId: null,
+    slug: "UNLISTED",
+    method: "POST",
+    path: "/svc/api/hub/v2/student/contacts/save",
+  }),
+  /** One child's household statistics — өрхийн мэдээлэл. */
+  studentStatistics: endpoint({
+    apiId: null,
+    slug: "UNLISTED",
+    method: "GET",
+    path: "/svc/api/hub/v2/stdnt/statistics/info/:personId",
+  }),
+  studentStatisticsSave: endpoint({
+    apiId: null,
+    slug: "UNLISTED",
+    method: "POST",
+    path: "/svc/api/hub/v2/stdnt/statistics/info/save",
+  }),
+  /** One child's living conditions — амьдрах орчин. */
+  studentCondition: endpoint({
+    apiId: null,
+    slug: "UNLISTED",
+    method: "GET",
+    path: "/svc/api/hub/v2/student/live/condition/:personId",
+  }),
+  studentConditionSave: endpoint({
+    apiId: null,
+    slug: "UNLISTED",
+    method: "POST",
+    path: "/svc/api/hub/v2/condition/save",
+  }),
+
+  /*
+   * ── Багш ────────────────────────────────────────────────────────────────
+   * Both read from the portal's public catalog, so both carry their real
+   * slug. The numeric ids are not printed on that page for `api-*` services,
+   * which is why `apiId` stays null and the screen says "ID тодруулах".
+   */
+  teacherAcademicOrg: endpoint({
+    apiId: null,
+    slug: "api-34",
+    method: "GET",
+    path: "/svc/api/hub/v2/teacher/academic/org/:personId",
+  }),
+  teacherMovements: endpoint({
+    apiId: null,
+    slug: "api-12",
+    method: "GET",
+    path: "/svc/api/hub/v2/teacher/movements/:beginDate",
+  }),
+
+  /*
+   * ── Бүлэг ───────────────────────────────────────────────────────────────
+   * ★ The client asked for a "татах, илгээх" pair on the group screen. There
+   * is no group *write* service in the portal's catalog, so nothing is
+   * invented to fill the second half: this is the read that the ahead-of-time
+   * question ("what will next year's groups be?") actually needs, and it is
+   * what `POST /v1/groups/:id/promotions` has been missing a source for.
+   */
+  groupsNextYear: endpoint({
+    apiId: null,
+    slug: "API-000113",
+    method: "GET",
+    path: "/svc/api/hub/v2/group/next/academicYear",
+  }),
+
+  /*
+   * ── Хөтөлбөр ────────────────────────────────────────────────────────────
+   * Four services in one chain: программ → үе шат → төлөвлөгөө → хичээл. Each
+   * takes the ids the one above it returns, which is why they get a screen of
+   * their own (`/admin/curriculum`) rather than four unrelated panels.
+   */
+  programs: endpoint({
+    apiId: null,
+    slug: "api-42",
+    method: "GET",
+    path: "/svc/api/hub/v2/program/list",
+  }),
+  programStages: endpoint({
+    apiId: null,
+    slug: "api-43",
+    method: "GET",
+    path: "/svc/api/hub/v2/program/stage/list/:programOfStudyId",
+  }),
+  programPlans: endpoint({
+    apiId: null,
+    slug: "api-2",
+    method: "GET",
+    path: "/svc/api/hub/v2/program/stage/plan/list/:programOfStudyId/:programStageId",
+  }),
+  programCourses: endpoint({
+    apiId: null,
+    slug: "api-44",
+    method: "GET",
+    path: "/svc/api/hub/v2/program/stage/plan/course/list/:programOfStudyId/:programStageId/:programPlanId",
+  }),
+
+  /*
+   * ── Сургалтын орчин ─────────────────────────────────────────────────────
+   * The premises beyond the building: its rooms, the institution's academic
+   * units, and the subject areas its programmes draw on.
+   */
+  rooms: endpoint({
+    apiId: null,
+    slug: "api-29",
+    method: "GET",
+    path: "/svc/api/hub/v2/room/list",
+  }),
+  academicOrg: endpoint({
+    apiId: null,
+    slug: "api-26",
+    method: "GET",
+    path: "/svc/api/hub/v2/academic/org",
+  }),
+  subjectAreas: endpoint({
+    apiId: null,
+    slug: "api-27",
+    method: "GET",
+    path: "/svc/api/hub/v2/subject/area",
   }),
 } as const;
 

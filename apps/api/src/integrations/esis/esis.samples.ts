@@ -715,6 +715,167 @@ const OVERRIDES: Record<EsisEndpointKey, Override[]> = {
       ...nutrition(["0.4", "47", "0.4", "0.4", "9.8"]),
     },
   ],
+
+  /* ══ Added 2026-09-10 ═══════════════════════════════════════════════════
+     The same demo tenant, extended: Батбаяр's household and guardians, the
+     two groups as they stand next year, the curriculum chain the roster's
+     `programOfStudyId` already points at, and the rooms of the two buildings
+     `buildings` already describes. Ids line up with those services so the
+     picture stays one kindergarten. */
+
+  studentCheck: [{}],
+
+  /* Three contacts for one child: mother, father, and the grandmother who
+     collects him — which is the shape a kindergarten actually holds. */
+  studentContacts: [
+    {},
+    {
+      contactId: "70000000000002",
+      relationTypeId: "2",
+      relationTypeName: "Эцэг",
+      lastName: "Ганболд",
+      firstName: "Батсүрэн",
+      phoneNumber: "99114455",
+      phoneNumber2: "99667788",
+      email: "batsuren.g@example.mn",
+      occupation: "Инженер",
+      workplace: "Эрчим хүчний газар",
+      primaryFlag: "false",
+    },
+    {
+      contactId: "70000000000003",
+      relationTypeId: "5",
+      relationTypeName: "Эмээ",
+      lastName: "Пүрэв",
+      firstName: "Долгорсүрэн",
+      phoneNumber: "95446677",
+      phoneNumber2: "70112233",
+      email: "dolgorsuren.p@example.mn",
+      occupation: "Тэтгэвэрт",
+      workplace: "Ажиллаагүй",
+      primaryFlag: "false",
+      liveTogetherFlag: "false",
+    },
+  ],
+  studentContactsSave: [{}],
+
+  studentStatistics: [{}],
+  studentStatisticsSave: [{}],
+  studentCondition: [{}],
+  studentConditionSave: [{}],
+
+  teacherAcademicOrg: [{}],
+
+  /* One teacher appointed, one released — the two ends of a movement list. */
+  teacherMovements: [
+    {},
+    {
+      personId: "80000000000002",
+      assignmentId: "60000000000002",
+      movementTypeId: "3",
+      movementTypeName: "Чөлөөлөгдсөн",
+      positionName: "Туслах багш",
+      beginDate: "2023-09-01",
+      endDate: "2026-06-01",
+      orderNumber: "А/072",
+      lastName: "Батаа",
+      firstName: "Мөнхзул",
+      lastNameMgl: "Батаа",
+      firstNameMgl: "Мөнхзул",
+      genderCode: "F",
+      genderName: "Эмэгтэй",
+      dateOfBirth: "1995-11-02",
+    },
+  ],
+
+  /* Both groups, one level higher than they stand this year. */
+  groupsNextYear: [
+    // Наран, one level up — which is exactly the catalog's illustrated row.
+    {},
+    {
+      ...TENGER,
+      academicYear: "2027",
+      academicLevel: "4",
+      academicLevelName: "Бэлтгэл бүлэг",
+      studentCount: "22",
+    },
+  ],
+
+  programs: [{}],
+
+  programStages: [
+    {},
+    {
+      programStageId: "13",
+      programStageName: "Гуравдугаар үе шат",
+      sequence: "3",
+      academicLevel: "3",
+      academicLevelName: "Ахлах бүлэг",
+    },
+  ],
+
+  programPlans: [{}],
+
+  programCourses: [
+    {},
+    {
+      courseId: "9102",
+      courseName: "Тоо тоолол",
+      courseCode: "TOO-01",
+      subjectAreaId: "42",
+      subjectAreaName: "Математик",
+      hours: "30",
+    },
+    {
+      courseId: "9103",
+      courseName: "Байгаль орчин таниулах",
+      courseCode: "BOT-01",
+      subjectAreaId: "43",
+      subjectAreaName: "Байгаль шинжлэл",
+      hours: "24",
+    },
+  ],
+
+  /* Two rooms in the main block, one in the kitchen wing — matching the two
+     buildings `buildings` already demonstrates. */
+  rooms: [
+    {},
+    {
+      roomId: "30002",
+      roomName: "Тэнгэр бүлгийн танхим",
+      roomNumber: "106",
+      capacity: "22",
+      area: "46.0",
+    },
+    {
+      buildingId: "70211",
+      buildingName: "Хоолны блок",
+      roomId: "30010",
+      roomName: "Гал тогоо",
+      roomNumber: "201",
+      roomTypeId: "4",
+      roomTypeName: "Үйлдвэрлэлийн",
+      capacity: "8",
+      area: "62.0",
+      floor: "2",
+    },
+  ],
+
+  academicOrg: [
+    {},
+    {
+      academicOrgId: "3002",
+      academicOrgName: "Хүмүүжлийн ажлын нэгдэл",
+      academicOrgTypeName: "Дэд нэгж",
+    },
+  ],
+
+  subjectAreas: [
+    {},
+    { subjectAreaId: "42", subjectAreaName: "Математик", subjectAreaCode: "MA" },
+    { subjectAreaId: "43", subjectAreaName: "Байгаль шинжлэл", subjectAreaCode: "BSH" },
+  ],
+
 };
 
 /**

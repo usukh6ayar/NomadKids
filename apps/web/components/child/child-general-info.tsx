@@ -39,6 +39,12 @@ import { Field, Input, Select } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { EmptyState, FormError } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
+import {
+  ChildEsisGuardians,
+  ChildEsisHousehold,
+  ChildEsisLiving,
+  ChildEsisRegistration,
+} from "@/components/child/child-esis";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
@@ -131,6 +137,23 @@ export function ChildGeneralInfo({
         canEditAny={hasRole("ADMIN")}
         currentUserId={session?.user.id ?? null}
       />
+
+      {/*
+        ★ The ESIS half of this page — 2026-09-10, at the client's instruction.
+        Contacts sit with the guardians they describe; өрхийн мэдээлэл and
+        амьдрах орчин are two further sections of the same record.
+
+        Staff only. The services are also absent from a parent's own ESIS list,
+        so each panel would draw nothing anyway — see `child-esis.tsx`, which
+        explains why both guards are wanted for this particular data.
+      */}
+      {isStaff ? (
+        <>
+          <ChildEsisRegistration childId={childId} />
+          <ChildEsisHousehold />
+          <ChildEsisLiving />
+        </>
+      ) : null}
 
       <Enrollments child={child} archive={archive.data} />
 
@@ -369,6 +392,7 @@ function Guardians({
           }
           action={canManage ? invite : undefined}
         />
+        {canManage ? <ChildEsisGuardians child={child} /> : null}
       </section>
     );
   }
@@ -449,6 +473,18 @@ function Guardians({
           );
         })}
       </div>
+
+      {/*
+        ★ ESIS's own guardian record, **inside** the Guardian section —
+        2026-09-10, at the client's instruction that it live in
+        "Ерөнхий мэдээлэл → Асран хамгаалагч". It was briefly a sibling section
+        of its own, which put two headings reading "Асран хамгаалагч" one after
+        the other on the same page.
+
+        Staff only: a guardian sees their own record here, not the ministry's
+        copy of the whole institution's contact list.
+      */}
+      {canManage ? <ChildEsisGuardians child={child} /> : null}
     </section>
   );
 }

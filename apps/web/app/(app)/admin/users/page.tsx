@@ -220,6 +220,19 @@ function AdminUsers() {
         description="Эрхлэгч, эмч, тогооч, нягтлан — албан тушаал ба ажил эрхлэлт"
       />
 
+      {/*
+        ★ Appointments and releases — 2026-09-10, at the client's request.
+        `api-12` takes a `:beginDate` and answers for the whole institution,
+        which is a director's question rather than a teacher's: it stays off
+        the TEACHER service list and therefore off `/settings`, where a teacher
+        sees only their own заах аргын нэгдэл.
+      */}
+      <EsisDataPanel
+        resource="teacherMovements"
+        title="Багшийн шилжилт хөдөлгөөн"
+        description="Томилгоо, шилжилт, чөлөөлөлт — сонгосон огнооноос хойш"
+      />
+
       {inviting && primaryKindergartenId ? (
         <InviteUserDialog
           kindergartenId={primaryKindergartenId}
