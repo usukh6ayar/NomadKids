@@ -268,14 +268,16 @@ function StaffChildren() {
         output here exactly as it is on the roster service (`ESIS_REQUEST.md`
         §1.1 (b)).
 
-        ★★★★ Neither panel renders for a teacher: the route behind them
-        answers 404 to anybody but an administrator of this kindergarten. A
-        teacher opening `/children` now sees the summary and nothing else.
+        ★★★★ `students` renders for a teacher and `studentByRegister` does
+        not — 2026-09-09. The panel reads the role-scoped catalog, and the
+        roster is one of the teacher's five services while the register search
+        is not. Neither carries a role check of its own: a service the caller
+        cannot reach is absent from the payload.
       */}
       <EsisDataPanel
         resource="students"
-        title="Хүүхдүүд"
-        description="Суралцагчийн бүртгэл, бүлэг, элсэлтийн төлөв"
+        title="Суралцагчийн ерөнхий мэдээлэл"
+        description="Бүртгэл, бүлэг, элсэлтийн төлөв"
         rows={rosterRows}
         hrefs={rosterHrefs}
         linkField="firstName"

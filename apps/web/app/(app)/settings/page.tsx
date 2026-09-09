@@ -85,7 +85,7 @@ export default function SettingsPage() {
         */}
         <EsisDataPanel
           resource="teachers"
-          title="Багш нар"
+          title="Багшийн ерөнхий мэдээлэл"
           description="ESIS-д бүртгэлтэй багш нарын томилгоо"
         />
         <SignOutCard />
