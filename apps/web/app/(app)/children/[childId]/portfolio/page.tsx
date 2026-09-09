@@ -11,9 +11,7 @@ import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { SectionHeader } from "@/components/ui/card";
 import { ErrorState, LoadingState } from "@/components/ui/states";
-import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { ReportDialog } from "@/components/reports/report-dialog";
-import { useSession } from "@/lib/auth/session";
 import { PORTFOLIO } from "@/lib/vocabulary";
 import { TONE_SURFACE, type Tone } from "@/components/ui/tone";
 import { cn } from "@/lib/utils";
@@ -21,8 +19,8 @@ import { cn } from "@/lib/utils";
 /**
  * The portfolio — RFP §4.3.
  *
- * ★ A hero card and three doors, not a single long scroll — 2026-08-29, on
- * the client's instruction, with a reference screenshot of exactly this hub.
+ * ★ A compact PDF action and three doors, not a single long scroll — 2026-08-29,
+ * on the client's instruction, with a reference screenshot of exactly this hub.
  * Everything the old single-scroll page rendered inline still exists; it
  * moved to whichever door now owns it:
  *
@@ -41,8 +39,6 @@ import { cn } from "@/lib/utils";
 export default function PortfolioPage() {
   const params = useParams<{ childId: string }>();
   const childId = params.childId;
-  const { hasRole } = useSession();
-  const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
 
   const child = useQuery({
     queryKey: qk.child(childId),
@@ -82,26 +78,22 @@ export default function PortfolioPage() {
 
       <SectionHeader as="h1" title={PORTFOLIO} className="mb-0" />
 
-      <ChildHeroProfile
-        child={data}
-        showHealthAlert={isStaff}
-        actions={
-          <ReportDialog
-            childId={childId}
-            // The current enrolment's year — what the annual report compares.
-            schoolYearId={
-              data.enrollments?.find((e) => e.status === "ACTIVE")?.schoolYear?.id ??
-              data.enrollments?.[0]?.schoolYear?.id
-            }
-            trigger={
-              <Button variant="secondary" size="sm">
-                <FileText size={18} />
-                PDF татах
-              </Button>
-            }
-          />
-        }
-      />
+      <div className="flex justify-end">
+        <ReportDialog
+          childId={childId}
+          // The current enrolment's year — what the annual report compares.
+          schoolYearId={
+            data.enrollments?.find((e) => e.status === "ACTIVE")?.schoolYear?.id ??
+            data.enrollments?.[0]?.schoolYear?.id
+          }
+          trigger={
+            <Button variant="secondary" size="sm">
+              <FileText size={18} />
+              PDF татах
+            </Button>
+          }
+        />
+      </div>
 
       <PortfolioHubNav childId={childId} />
     </div>
