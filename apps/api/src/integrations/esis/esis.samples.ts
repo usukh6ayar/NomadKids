@@ -875,7 +875,6 @@ const OVERRIDES: Record<EsisEndpointKey, Override[]> = {
     { subjectAreaId: "42", subjectAreaName: "Математик", subjectAreaCode: "MA" },
     { subjectAreaId: "43", subjectAreaName: "Байгаль шинжлэл", subjectAreaCode: "BSH" },
   ],
-
 };
 
 /**
