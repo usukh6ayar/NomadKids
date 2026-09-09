@@ -59,6 +59,16 @@ export class ChatRepository {
         body: true,
         createdAt: true,
         author: { select: { id: true, lastName: true, firstName: true, photoMediaFileId: true } },
+        /*
+         * ★ A count, not the rows. The preview line needs to know only *that*
+         * the newest message carried photographs — a message may now be a
+         * picture with no text at all, and without this the room list drew an
+         * unread badge above an empty line.
+         *
+         * `_count` is one aggregate in the same query, so the room list keeps
+         * its fixed number of queries for any number of rooms (§3.4).
+         */
+        _count: { select: { media: { where: { deletedAt: null } } } },
       },
     });
   }

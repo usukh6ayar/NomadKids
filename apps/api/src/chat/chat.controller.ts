@@ -8,9 +8,11 @@ import {
   Post,
   Query,
   UploadedFiles,
+  UseGuards,
   UseInterceptors,
 } from "@nestjs/common";
 import { FilesInterceptor } from "@nestjs/platform-express";
+import { RateLimit, RateLimitGuard } from "../common/rate-limit/rate-limit.guard";
 import { sendChatMessageSchema, type SendChatMessageDto } from "@kinder/contracts";
 import { z } from "zod";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
@@ -48,6 +50,7 @@ const historyQuerySchema = z.object({ before: z.string().datetime().optional() }
  * The controller parses, calls one service method and shapes nothing — §2.1.
  */
 @Controller("chat")
+@UseGuards(RateLimitGuard)
 export class ChatController {
   constructor(private readonly service: ChatService) {}
 
@@ -93,6 +96,19 @@ export class ChatController {
    * it decides from their **content** (§1.6).
    */
   @Post("rooms/:roomKey/messages")
+  /*
+   * ★ A limit this route did not need until 2026-09-09.
+   *
+   * It carried a 2000-character string, and a chat is meant to be typed in
+   * quickly. It now accepts four files of five megabytes and runs a sharp
+   * decode over each — on a 4 GB server that also has to keep about a gigabyte
+   * free for Chromium whenever a report generates. Every upload route in
+   * `MediaController` already carries one for the same reason.
+   *
+   * 120 an hour is well above anybody typing, and far below what it takes to
+   * hold the box down.
+   */
+  @RateLimit({ limit: 120, windowMs: 60 * 60 * 1000, byUser: true })
   @UseInterceptors(
     FilesInterceptor("images", MAX_CHAT_IMAGES, {
       limits: { fileSize: CHAT_MAX_UPLOAD_BYTES, files: MAX_CHAT_IMAGES },

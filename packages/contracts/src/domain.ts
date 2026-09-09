@@ -3496,6 +3496,16 @@ export const chatRoomSchema = z.object({
       body: z.string(),
       createdAt: z.string(),
       author: personRefSchema.nullish(),
+      /**
+       * How many photographs the newest message carried.
+       *
+       * ★ A count, not the images. The room list draws a one-line preview, and
+       * `body` alone stopped being enough the moment a message could be a
+       * photograph with nothing typed — that row rendered an unread badge over
+       * an empty line. The list needs to know *that* there were pictures, not
+       * which; fetching their ids to render "📷" would be payload nobody reads.
+       */
+      mediaCount: z.number().default(0),
     })
     .nullable()
     .default(null),

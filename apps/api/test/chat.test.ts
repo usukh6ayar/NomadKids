@@ -337,27 +337,88 @@ describe("chat photographs", () => {
       .expect(400);
   });
 
-  it("accepts four photographs in attachment order, and refuses a fifth", async () => {
-    const four = authed(
-      request(server()).post(`/v1/chat/rooms/${groupRoom(a)}/messages`),
-      teacherA,
-    );
+  /*
+   * ★ The ORDER, not just the count. `@@index([chatMessageId, order])` and the
+   * repository's `orderBy` exist for exactly this, and a length assertion
+   * would pass just as happily with the pictures shuffled — which in a chat
+   * means a teacher's "before" and "after" arriving the wrong way round.
+   *
+   * The names are the only thing that distinguishes four otherwise identical
+   * squares, so `originalName` is what the assertion reads.
+   */
+  it("keeps four photographs in the order they were attached", async () => {
+    const req = authed(request(server()).post(`/v1/chat/rooms/${groupRoom(a)}/messages`), teacherA);
     for (const name of ["нэг", "хоёр", "гурав", "дөрөв"]) {
-      four.attach("images", await chatPhoto(), `${name}.jpg`);
+      req.attach("images", await chatPhoto(), `${name}.jpg`);
     }
-    const ok = await four;
-    expect(ok.status).toBe(201);
-    expect(ok.body.media).toHaveLength(4);
+    const res = await req;
 
-    const five = authed(
-      request(server()).post(`/v1/chat/rooms/${groupRoom(a)}/messages`),
-      teacherA,
-    );
+    expect(res.status).toBe(201);
+    expect(res.body.media).toHaveLength(4);
+
+    const stored = await db.mediaFile.findMany({
+      where: { id: { in: res.body.media.map((m: { id: string }) => m.id) } },
+      orderBy: { order: "asc" },
+    });
+    expect(stored.map((row) => row.originalName)).toEqual([
+      "нэг.jpg",
+      "хоёр.jpg",
+      "гурав.jpg",
+      "дөрөв.jpg",
+    ]);
+    // And the payload is in that order too, not merely the table.
+    expect(res.body.media.map((m: { id: string }) => m.id)).toEqual(stored.map((row) => row.id));
+  });
+
+  /*
+   * ★ Pinned to 400, deliberately not `>= 400`.
+   *
+   * Multer's own `files:` limit fires before `ChatService.send` can count, so
+   * the question this asserts is which of the two answers the caller gets. A
+   * loose assertion would have hidden a 500 — an unhandled multer error is not
+   * a Mongolian message anybody can act on, and the service's own
+   * `BadRequestException` would have been dead code nobody noticed.
+   */
+  it("refuses a fifth photograph with a 400", async () => {
+    const req = authed(request(server()).post(`/v1/chat/rooms/${groupRoom(a)}/messages`), teacherA);
     for (const name of ["1", "2", "3", "4", "5"]) {
-      five.attach("images", await chatPhoto(), `${name}.jpg`);
+      req.attach("images", await chatPhoto(), `${name}.jpg`);
     }
-    const tooMany = await five;
-    expect(tooMany.status).toBeGreaterThanOrEqual(400);
+    const res = await req;
+
+    expect(res.status).toBe(400);
+    // Nothing was stored from the four that were within the limit.
+    expect(await db.chatMessage.count()).toBe(0);
+  });
+
+  /*
+   * ★ The room list's preview line. `lastMessage.body` is legitimately `""`
+   * for a photograph sent with nothing typed, and without a count beside it
+   * the list drew an unread badge over an empty line — which reads as a bug
+   * rather than as a picture.
+   */
+  it("tells the room list that the newest message was photographs", async () => {
+    const req = authed(request(server()).post(`/v1/chat/rooms/${groupRoom(a)}/messages`), teacherA);
+    req.attach("images", await chatPhoto(), "нэг.jpg");
+    req.attach("images", await chatPhoto(), "хоёр.jpg");
+    expect((await req).status).toBe(201);
+
+    const res = await authed(request(server()).get("/v1/chat/rooms"), parentA);
+    const room = res.body.find((r: { key: string }) => r.key === groupRoom(a));
+
+    expect(room.lastMessage.body).toBe("");
+    expect(room.lastMessage.mediaCount).toBe(2);
+  });
+
+  it("reports no photographs for an ordinary text message", async () => {
+    await authed(request(server()).post(`/v1/chat/rooms/${groupRoom(a)}/messages`), teacherA)
+      .send({ body: "зурaггүй" })
+      .expect(201);
+
+    const res = await authed(request(server()).get("/v1/chat/rooms"), parentA);
+    const room = res.body.find((r: { key: string }) => r.key === groupRoom(a));
+
+    expect(room.lastMessage.mediaCount).toBe(0);
   });
 
   /*

@@ -337,7 +337,7 @@ export function ChatList({
                   </span>
                   <span className="mt-1 flex items-center justify-between gap-2">
                     <span className="truncate text-caption text-muted">
-                      {room.lastMessage?.body ?? `${room.memberCount} гишүүн`}
+                      {roomPreview(room.lastMessage, `${room.memberCount} гишүүн`)}
                     </span>
                     {room.unreadCount > 0 ? (
                       <span className="flex min-w-[22px] shrink-0 items-center justify-center rounded-pill bg-primary px-1.5 text-caption font-bold leading-[22px] text-primary-ink">
@@ -938,6 +938,27 @@ function PendingImage({ file, onRemove }: { file: File; onRemove: () => void }) 
       </button>
     </li>
   );
+}
+
+/**
+ * The one line a room shows under its name.
+ *
+ * ★ `lastMessage.body` alone stopped being enough when a message could be a
+ * photograph with nothing typed: that room rendered an unread badge above an
+ * empty line, which reads as a bug rather than as a picture. So the count of
+ * images decides what is said, and the text is preferred when there is any —
+ * "Зураг" under a message that also had words would be the less useful half.
+ */
+export function roomPreview(
+  lastMessage: { body: string; mediaCount: number } | null | undefined,
+  fallback: string,
+): string {
+  if (!lastMessage) return fallback;
+  if (lastMessage.body) return lastMessage.body;
+  if (lastMessage.mediaCount > 0) {
+    return lastMessage.mediaCount === 1 ? "📷 Зураг" : `📷 ${lastMessage.mediaCount} зураг`;
+  }
+  return fallback;
 }
 
 /** `10:32` — a chat shows the clock, not a date. */

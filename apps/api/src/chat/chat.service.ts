@@ -85,6 +85,7 @@ export class ChatService {
               body: last.body,
               createdAt: last.createdAt.toISOString(),
               author: last.author,
+              mediaCount: last._count.media,
             }
           : null,
         unreadCount: unread.get(room.key) ?? 0,
