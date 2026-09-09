@@ -78,10 +78,32 @@ function Recipes() {
         title="Технологийн карт"
         actions={
           kindergartenId ? (
-            <Button size="sm" onClick={() => setCreating(true)}>
-              <Plus size={18} />
-              Карт нэмэх
-            </Button>
+            <>
+              {/*
+            ★ The search sits in the header row — 2026-09-09, at the client's
+            request ("search хэсгийг header хэсэгт оруул").
+
+            It had a row of its own under the title on all four kitchen
+            screens, which spent a whole line on one control and pushed the
+            list itself further down every phone screen. `SearchField` is
+            `flex-1` by design — it grows to fill a filter row — so it is given
+            a width here instead: full on a phone, where the header wraps it
+            onto its own line anyway, and fixed beside the action button from
+            `sm` up.
+          */}
+              <div className="w-full sm:w-[240px]">
+                <SearchField
+                  label="Картын нэр, зааврын үгээр хайх"
+                  placeholder="Нэрээр хайх"
+                  value={query}
+                  onChange={setQuery}
+                />
+              </div>
+              <Button size="sm" onClick={() => setCreating(true)}>
+                <Plus size={18} />
+                Карт нэмэх
+              </Button>
+            </>
           ) : null
         }
       />
@@ -108,17 +130,6 @@ function Recipes() {
           </button>
         ))}
       </div>
-
-      {kindergartenId ? (
-        <div className="flex flex-wrap items-end gap-3">
-          <SearchField
-            label="Картын нэр, зааврын үгээр хайх"
-            placeholder="Нэрээр хайх"
-            value={query}
-            onChange={setQuery}
-          />
-        </div>
-      ) : null}
 
       {list.isLoading ? <LoadingState rows={4} /> : null}
       {list.isError ? <ErrorState description={errorMessage(list.error)} /> : null}

@@ -89,6 +89,26 @@ function Ingredients() {
         actions={
           kindergartenId ? (
             <>
+              {/*
+                ★ The search sits in the header row — 2026-09-09, at the
+                client's request ("search хэсгийг header хэсэгт оруул").
+
+                Only the search moves. The "Ангилал" select stays in the filter
+                row below, and the split is deliberate: searching is how you
+                find one thing you can already name, and it is the same control
+                on every screen in the product. A category filter is this
+                screen's own, and hoisting a screen-specific dropdown into a
+                header shared by 34 pages is how a header stops meaning
+                anything.
+              */}
+              <div className="w-full sm:w-[240px]">
+                <SearchField
+                  label="Орцын нэр, тэмдэглэлээр хайх"
+                  placeholder="Нэрээр хайх"
+                  value={query}
+                  onChange={setQuery}
+                />
+              </div>
               <Badge tone="peach">ESIS · NOT ENABLED</Badge>
               <Button size="sm" onClick={() => setCreating(true)}>
                 <Plus size={18} />
@@ -106,14 +126,6 @@ function Ingredients() {
       */}
       {kindergartenId ? (
         <div className="flex flex-wrap items-end gap-3">
-          <SearchField
-            label="Орцын нэр, тэмдэглэлээр хайх"
-            placeholder="Нэрээр хайх"
-            className="min-w-[200px]"
-            value={query}
-            onChange={setQuery}
-          />
-
           <Field label="Ангилал" className="min-w-[200px]">
             {({ id }) => (
               <Select id={id} value={category} onChange={(e) => setCategory(e.target.value)}>
