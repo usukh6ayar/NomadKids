@@ -42,6 +42,36 @@ export class FundingRepository {
     });
   }
 
+  /**
+   * Which sources have a rule in force for the month — what "run every source"
+   * actually means.
+   *
+   * ★ One `distinct` read rather than four `rulesInForce` calls. The answer is
+   * a set of at most four values and the caller only needs to know *which*; the
+   * rules themselves are fetched per source afterwards, by the code that
+   * actually picks between them by age band.
+   *
+   * ★★ A source with no rule in force is left out rather than run and skipped.
+   * Running it would soft-delete that source's previous rows and write nothing
+   * back — a month that was correct yesterday would silently empty because
+   * somebody closed a tariff.
+   */
+  async sourcesInForce(kindergartenId: string, monthEnd: Date): Promise<FundingSource[]> {
+    const rows = await this.prisma.fundingRule.findMany({
+      where: {
+        kindergartenId,
+        deletedAt: null,
+        effectiveFrom: { lte: monthEnd },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gte: monthEnd } }],
+      },
+      distinct: ["source"],
+      select: { source: true },
+      orderBy: { source: "asc" },
+    });
+
+    return rows.map((row) => row.source);
+  }
+
   async findRule(id: string) {
     return this.prisma.fundingRule.findFirst({
       where: { id, deletedAt: null },
@@ -229,10 +259,10 @@ export class FundingRepository {
   }
 
   /** The month's totals — нэмэлт.md §6 and the §9 dashboard. */
-  async monthTotals(kindergartenId: string, month: Date) {
+  async monthTotals(kindergartenId: string, month: Date, source?: FundingSource) {
     const rows = await this.prisma.fundingCalculation.groupBy({
       by: ["source"],
-      where: { kindergartenId, month, deletedAt: null },
+      where: { kindergartenId, month, deletedAt: null, ...(source ? { source } : {}) },
       _sum: { calculatedAmount: true, approvedAmount: true, receivedAmount: true },
       _count: { _all: true },
     });

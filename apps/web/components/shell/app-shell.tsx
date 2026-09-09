@@ -873,9 +873,23 @@ function WhoAmI({ variant, isAdmin }: { variant: Variant; isAdmin: boolean }) {
       stopping at this card's own inset.
     */
     <div className="-mx-1 shrink-0 border-t border-border-soft pt-3">
+      {/*
+        ★ Named "Тохиргоо", not "Профайл" — 2026-09-10, with the rename that
+        gave `/settings` one name in every role's menu.
+
+        This row is the sidebar's only door to that screen (`SidebarContent`
+        filters the `/settings` entry out of the nav lists so it is not offered
+        twice), so its accessible name is what a screen-reader user is told the
+        destination is called. "Профайл" here and "Тохиргоо" in the menu is the
+        same screen under two names, which is the confusion this pass removes.
+
+        The person's name stays in the label: the row shows their name and
+        their role, and an accessible name of just "Тохиргоо" would drop what
+        the row visibly says.
+      */}
       <Link
         href="/settings"
-        aria-label={`Профайл: ${fullName(session?.user)}`}
+        aria-label={`Тохиргоо: ${fullName(session?.user)}`}
         className="group flex min-h-[56px] items-center gap-2.5 rounded-card bg-canvas/70 px-3 py-2 transition-colors hover:bg-primary-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
       >
         <span className="grid size-9 shrink-0 place-items-center rounded-pill bg-primary-soft text-compact font-bold text-primary">
@@ -940,6 +954,18 @@ function SidebarContent({
   // below and from the bottom bar on a phone.
   const [primary] = nav;
 
+  /*
+    ★ Resolved once for the whole rail, not per row.
+
+    The primary link and every section entry are one visual list, so they
+    compete for the same highlight — see `activeHrefIn` for what went wrong
+    when each row decided for itself.
+  */
+  const activeHref = activeHrefIn(pathname, [
+    primary?.href,
+    ...(sections ? sectionEntries : nav.slice(1)).map((entry) => entry.href),
+  ]);
+
   return (
     <>
       <Brand subtitle={subtitle} />
@@ -984,7 +1010,12 @@ function SidebarContent({
           <div className="relative flex min-h-0 flex-1 flex-col">
             <div className="-mr-1.5 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1.5">
               {primary ? (
-                <NavLink item={primary} pathname={pathname} orientation="vertical" />
+                <NavLink
+                  item={primary}
+                  pathname={pathname}
+                  orientation="vertical"
+                  activeHref={activeHref}
+                />
               ) : null}
 
               {sectionEntries.length ? (
@@ -1051,6 +1082,7 @@ function SidebarContent({
                       item={item}
                       pathname={pathname}
                       orientation="vertical"
+                      activeHref={activeHref}
                     />
                   ))
               )}
@@ -1118,13 +1150,22 @@ function ParentSidebarContent({
   pathname: string;
   childSwitcher?: ChildSwitcher;
 }) {
+  // One highlight for the whole rail — the primary row and the sections are a
+  // single visual list. See `activeHrefIn`.
+  const activeHref = activeHrefIn(pathname, [
+    primary?.href,
+    ...sections.flatMap((section) => section.entries).map((entry) => entry.href),
+  ]);
+
   return (
     <>
       {childSwitcher ? <ChildSwitcherControl switcher={childSwitcher} /> : null}
 
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div className="-mr-1.5 flex min-h-0 flex-1 flex-col overflow-y-auto pr-1.5">
-          {primary ? <ParentSidebarRow item={primary} pathname={pathname} /> : null}
+          {primary ? (
+            <ParentSidebarRow item={primary} pathname={pathname} activeHref={activeHref} />
+          ) : null}
 
           <div data-testid="nav-sections" className="flex flex-col">
             {sections
@@ -1134,6 +1175,7 @@ function ParentSidebarContent({
                   key={`${item.href ?? item.label}-${index}`}
                   item={item}
                   pathname={pathname}
+                  activeHref={activeHref}
                 />
               ))}
           </div>
@@ -1148,9 +1190,21 @@ function ParentSidebarContent({
   );
 }
 
-function ParentSidebarRow({ item, pathname }: { item: ParentSidebarEntry; pathname: string }) {
+function ParentSidebarRow({
+  item,
+  pathname,
+  activeHref,
+}: {
+  item: ParentSidebarEntry;
+  pathname: string;
+  /** The one href this rail resolved as current — see `activeHrefIn`. */
+  activeHref?: string | null;
+}) {
   const active = Boolean(
-    item.href?.startsWith("/") && (pathname === item.href || pathname.startsWith(`${item.href}/`)),
+    item.href?.startsWith("/") &&
+    (activeHref !== undefined
+      ? item.href === activeHref
+      : pathname === item.href || pathname.startsWith(`${item.href}/`)),
   );
 
   const content = (
@@ -1413,6 +1467,13 @@ function MobileHeader({ subtitle }: { subtitle: string }) {
 function BottomBar({ nav, hideOnDesktop }: { nav: NavItem[]; hideOnDesktop: boolean }) {
   const pathname = usePathname();
 
+  // One tab lit, resolved across the bar's own five — see `activeHrefIn`. The
+  // bar and the sidebar carry different sets, so each answers for itself.
+  const activeHref = activeHrefIn(
+    pathname,
+    nav.map((entry) => entry.href),
+  );
+
   return (
     <nav
       data-print-hide
@@ -1453,29 +1514,80 @@ function BottomBar({ nav, hideOnDesktop }: { nav: NavItem[]; hideOnDesktop: bool
       )}
     >
       {nav.map((item) => (
-        <NavLink key={item.label} item={item} pathname={pathname} orientation="horizontal" />
+        <NavLink
+          key={item.label}
+          item={item}
+          pathname={pathname}
+          orientation="horizontal"
+          activeHref={activeHref}
+        />
       ))}
     </nav>
   );
+}
+
+/**
+ * Which one of a menu's own entries is the current page.
+ *
+ * ★ **The longest match wins, and only one row lights up.**
+ *
+ * A bare prefix test is right for `/children/abc` keeping "Хүүхдүүд" lit, and
+ * wrong the moment a menu carries both a route and a route beneath it: on
+ * `/finance/dashboard` both "Улсын санхүүжилт" (`/finance`) and "Самбар"
+ * (`/finance/dashboard`) satisfied `startsWith`, so the sidebar highlighted two
+ * rows and `aria-current="page"` appeared twice — which is not a thing a page
+ * can be. `/finance/audit-log` had done this quietly since it shipped.
+ *
+ * Resolving it per **list** rather than per row is what makes it correct: a row
+ * cannot know whether a more specific sibling exists, and the answer differs
+ * between the sidebar and the phone bar, which carry different sets.
+ *
+ * Returns `null` when nothing matches, which is a real state — `/no-access` and
+ * a child's own sub-pages belong to no row.
+ */
+function activeHrefIn(pathname: string, hrefs: (string | undefined)[]): string | null {
+  let best: string | null = null;
+
+  for (const href of hrefs) {
+    if (!href?.startsWith("/")) continue;
+
+    // Exact match for the root, or every row would match `/`.
+    const matches =
+      href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
+
+    if (matches && (best === null || href.length > best.length)) best = href;
+  }
+
+  return best;
 }
 
 function NavLink({
   item,
   pathname,
   orientation,
+  activeHref,
 }: {
   item: NavItem;
   pathname: string;
   orientation: "vertical" | "horizontal";
+  /**
+   * The one href this list resolved as current — see `activeHrefIn`. Omitted
+   * only by callers that render a single item with no siblings to lose to.
+   */
+  activeHref?: string | null;
 }) {
-  // Prefix match so `/children/abc` keeps "Хүүхдүүд" lit. Exact match for the
-  // root of a section, or every item would match `/`. A button-style item
-  // (no `href`) opens something in place — it is never the current page.
+  // A button-style item (no `href`) opens something in place — it is never the
+  // current page. Otherwise the list has already resolved which single row is
+  // current (`activeHrefIn`); a caller that passes nothing falls back to the
+  // per-row prefix test, which is the same answer whenever no sibling sits
+  // beneath another.
   const active = !item.href
     ? false
-    : item.href === "/"
-      ? pathname === "/"
-      : pathname === item.href || pathname.startsWith(`${item.href}/`);
+    : activeHref !== undefined
+      ? item.href === activeHref
+      : item.href === "/"
+        ? pathname === "/"
+        : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
   const horizontal = orientation === "horizontal";
   const backgroundlessIcon = isBackgroundlessArt(item.icon);

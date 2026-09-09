@@ -5,6 +5,7 @@ import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
 import type { Actor } from "../authz/actor";
+import { FinanceBoardService } from "./finance-board.service";
 import { FinanceDashboardService } from "./finance-dashboard.service";
 import { FinanceReportPdfService } from "./finance-report-pdf.service";
 import { FinanceReportsService } from "./finance-reports.service";
@@ -110,6 +111,35 @@ export class KindergartenFinanceController {
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
   ) {
     return this.reportPdf.list(actor, params.id);
+  }
+}
+
+/**
+ * Нягтлангийн самбар — the accountant's landing screen. Client request,
+ * 2026-09-09.
+ *
+ * ★ Its own path segment rather than a sixth route under `.../invoices`.
+ * The board reads the funding calculations and the meal register as well as
+ * the invoices; filing it under the invoice surface would have made the URL a
+ * lie about what the screen is, and this controller's whole neighbour exists
+ * because a merge once replaced a file whose name promised more than it held.
+ *
+ * ★★ Same gate as everything else in this file: `@Roles` on the route,
+ * `assertCanReadFinance` in the service against the kindergarten in the URL.
+ * TEACHER is absent by design — `нэмэлт.md` §13.
+ */
+@Controller("kindergartens/:id/finance")
+@Roles("ADMIN", "ACCOUNTANT")
+export class KindergartenFinanceBoardController {
+  constructor(private readonly board: FinanceBoardService) {}
+
+  @Get("board")
+  async financeBoard(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(financeDashboardQuerySchema)) query: FinanceDashboardQuery,
+  ) {
+    return this.board.month(actor, params.id, query.month);
   }
 }
 

@@ -357,8 +357,8 @@ describe("role-based navigation", () => {
     expect(within(nav).getByRole("link", { name: "Хоол ба цэс" })).toBeInTheDocument();
     // Харилцаа холбоо
     expect(within(nav).getByRole("link", { name: "Судалгаа" })).toBeInTheDocument();
-    // Багш ба байгууллага: the account card is the single profile route.
-    expect(within(nav).getByRole("link", { name: /Профайл: Тест Хэрэглэгч/ })).toBeInTheDocument();
+    // Багш ба байгууллага: the account card is the single route to /settings.
+    expect(within(nav).getByRole("link", { name: /Тохиргоо: Тест Хэрэглэгч/ })).toBeInTheDocument();
   });
 
   /**
@@ -423,6 +423,55 @@ describe("role-based navigation", () => {
       within(nav).queryByRole("link", { name: "Үнэлгээний тохиргоо" }),
     ).not.toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: "Аудит" })).not.toBeInTheDocument();
+  });
+
+  /**
+   * ★ The accountant's rail — client request, 2026-09-09.
+   *
+   * "Самбар" is `supportNav`'s first entry, which the rail renders *above* the
+   * sections as its primary link. Giving the same route a section row as well
+   * drew "Самбар" twice, one under the other — reported from a screenshot the
+   * same day, and the duplication this change set exists to remove rather than
+   * a new one to add. So the board appears once, and "Санхүүжилт" keeps its
+   * short name below it.
+   */
+  it("names the board once, above a section that keeps its own name", async () => {
+    renderShell(["ACCOUNTANT"], "/finance/dashboard");
+    const nav = await sidebar();
+
+    expect(within(nav).getAllByRole("link", { name: "Самбар" })).toHaveLength(1);
+    expect(within(nav).getByRole("link", { name: "Самбар" })).toHaveAttribute(
+      "href",
+      "/finance/dashboard",
+    );
+    expect(within(nav).getByRole("link", { name: "Санхүүжилт" })).toHaveAttribute(
+      "href",
+      "/finance",
+    );
+    expect(
+      within(await sections()).queryByRole("link", { name: "Самбар" }),
+    ).not.toBeInTheDocument();
+  });
+
+  /**
+   * ★★ One row lights up, not two.
+   *
+   * `/finance/dashboard` sits beneath `/finance`, so a bare prefix test marked
+   * both rows current and emitted `aria-current="page"` twice — which is not a
+   * thing a page can be. `activeHrefIn` resolves the longest match per menu,
+   * across the primary link and the sections together; this is what pins it.
+   */
+  it("marks only the most specific row when one route sits beneath another", async () => {
+    renderShell(["ACCOUNTANT"], "/finance/dashboard");
+    const nav = await sidebar();
+
+    expect(within(nav).getByRole("link", { name: "Самбар" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(within(nav).getByRole("link", { name: "Санхүүжилт" })).not.toHaveAttribute(
+      "aria-current",
+    );
   });
 
   it("gives a parent their own sections, not the staff ones", async () => {
@@ -552,7 +601,7 @@ describe("the sidebar footer", () => {
     renderShell(["PARENT"], "/home", [OWN_CHILD]);
     const nav = await sidebar();
 
-    expect(within(nav).getByRole("link", { name: /Профайл: Тест Хэрэглэгч/ })).toHaveAttribute(
+    expect(within(nav).getByRole("link", { name: /Тохиргоо: Тест Хэрэглэгч/ })).toHaveAttribute(
       "href",
       "/settings",
     );
@@ -563,7 +612,7 @@ describe("the sidebar footer", () => {
     renderShell(["TEACHER"]);
     const nav = await sidebar();
 
-    expect(within(nav).getByRole("link", { name: /Профайл: Тест Хэрэглэгч/ })).toHaveAttribute(
+    expect(within(nav).getByRole("link", { name: /Тохиргоо: Тест Хэрэглэгч/ })).toHaveAttribute(
       "href",
       "/settings",
     );
@@ -578,7 +627,7 @@ describe("the sidebar footer", () => {
     renderShell([...roles]);
     const nav = await sidebar();
 
-    expect(within(nav).getByRole("link", { name: /Профайл: Тест Хэрэглэгч/ })).toHaveAttribute(
+    expect(within(nav).getByRole("link", { name: /Тохиргоо: Тест Хэрэглэгч/ })).toHaveAttribute(
       "href",
       "/settings",
     );
@@ -589,7 +638,7 @@ describe("the sidebar footer", () => {
     renderShell([], "/platform", [], GROUPS, 0, true);
     const nav = await sidebar();
 
-    expect(within(nav).getByRole("link", { name: /Профайл: Тест Хэрэглэгч/ })).toHaveAttribute(
+    expect(within(nav).getByRole("link", { name: /Тохиргоо: Тест Хэрэглэгч/ })).toHaveAttribute(
       "href",
       "/settings",
     );

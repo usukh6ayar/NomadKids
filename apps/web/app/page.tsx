@@ -57,6 +57,23 @@ function RootRedirect() {
     if (isSuperAdmin) router.replace("/platform");
     else if (hasRole("ADMIN")) router.replace("/admin");
     else if (hasRole("TEACHER")) router.replace("/dashboard");
+    /*
+     * ★ COOK and ACCOUNTANT, added 2026-09-09 — they were missing.
+     *
+     * The docblock above says this rule matches the API's `primaryDashboard`,
+     * and it did not: that method has returned "cook" and "accountant" since
+     * 2026-08-30, so `/login` sent them to their own screens while opening the
+     * app at the root fell past every branch to `/no-access` — a revoked
+     * account's screen, shown to someone who was just hired. Found while
+     * pointing the accountant at their new board.
+     *
+     * Same order and the same reasoning as the API's: below TEACHER, because
+     * someone who both teaches and cooks should land on the teaching screen;
+     * above PARENT, because landing an employee on their own child's page
+     * instead of their work is the wrong default at 8am.
+     */
+    else if (hasRole("COOK")) router.replace("/kitchen/dashboard");
+    else if (hasRole("ACCOUNTANT")) router.replace("/finance/dashboard");
     else if (hasRole("PARENT")) router.replace("/home");
     // Signed in with no membership — a real state after a revocation, and one
     // that must not redirect in a loop.
