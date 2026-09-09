@@ -81,6 +81,16 @@ export class MediaRepository {
         // Who uploaded it — a guardian may edit their own photograph's caption
         // and nobody else's. `MediaService.updateMetadata`.
         uploadedById: true,
+        /*
+         * ★ The owning message's room, for a `CHAT_MESSAGE` photograph.
+         *
+         * The `roomKey` is what `ChatAccessService` authorises against, and it
+         * is selected here rather than fetched in the service so the whole
+         * decision still rests on one query. `deletedAt` comes with it: a
+         * photograph on a deleted message is not readable, and answering that
+         * from the same row is what stops a second query from disagreeing.
+         */
+        chatMessage: { select: { roomKey: true, deletedAt: true } },
       },
     });
   }

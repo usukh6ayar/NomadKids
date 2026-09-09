@@ -123,6 +123,41 @@ export function isUnsupportedHeifFamily(buffer: Buffer): boolean {
 export const MAX_IMAGE_EDGE = 2000;
 
 /**
+ * A chat photograph is smaller than an album one, on purpose.
+ *
+ * ★ "зураг нь гэхдээ бага хэмжээтэй" — the client, 2026-09-09, in the same
+ * breath as dropping video from the feature.
+ *
+ * An album photograph is kept because somebody may want it later — printed in
+ * a report, or downloaded at the end of the year. A chat photograph is looked
+ * at once, on a phone, usually on mobile data, and then scrolled past. 1280px
+ * is still sharp full-screen on every phone this product supports, and the
+ * stored file lands around 200 KB against the album's ~800 KB.
+ *
+ * The 5 MB ceiling is on the **accepted** file, before the re-encode. Four of
+ * them is 20 MB through one request, which is what multer is told to allow.
+ */
+export const CHAT_MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+export const CHAT_IMAGE_EDGE = 1280;
+export const CHAT_IMAGE_QUALITY = 78;
+export const MAX_CHAT_IMAGES = 4;
+
+/**
+ * How one call to `validateImageUpload` differs from the default.
+ *
+ * ★ Options with defaults, rather than a second function. Everything that
+ * makes this file security-critical — the magic-byte sniff, the HEIC message,
+ * the decompression-bomb ceiling, the re-encode that strips EXIF — is
+ * identical for a chat photograph and an album one, and a copy of it would be
+ * a second place to fix the next thing found wrong with the first.
+ */
+export interface ImageUploadLimits {
+  maxBytes?: number;
+  maxEdge?: number;
+  quality?: number;
+}
+
+/**
  * Validates and normalises an uploaded image.
  *
  * The order matters: size first (cheapest, and bounds everything after it),
@@ -138,12 +173,19 @@ export const MAX_IMAGE_EDGE = 2000;
  * rather than editing metadata in place also neutralises anything hiding in the
  * container that the type sniff did not object to.
  */
-export async function validateImageUpload(input: Buffer): Promise<ValidatedUpload> {
+export async function validateImageUpload(
+  input: Buffer,
+  limits: ImageUploadLimits = {},
+): Promise<ValidatedUpload> {
+  const maxBytes = limits.maxBytes ?? MAX_UPLOAD_BYTES;
+  const maxEdge = limits.maxEdge ?? MAX_IMAGE_EDGE;
+  const quality = limits.quality ?? 88;
+
   if (input.length === 0) throw new UploadRejected("Файл хоосон байна");
 
-  if (input.length > MAX_UPLOAD_BYTES) {
+  if (input.length > maxBytes) {
     throw new UploadRejected(
-      `Файл хэт том байна. Дээд хэмжээ ${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)} MB`,
+      `Файл хэт том байна. Дээд хэмжээ ${Math.floor(maxBytes / 1024 / 1024)} MB`,
     );
   }
 
@@ -185,12 +227,12 @@ export async function validateImageUpload(input: Buffer): Promise<ValidatedUploa
       // After `rotate`, so a portrait photograph is bounded on the edge it
       // actually has rather than the one EXIF claimed.
       .resize({
-        width: MAX_IMAGE_EDGE,
-        height: MAX_IMAGE_EDGE,
+        width: maxEdge,
+        height: maxEdge,
         fit: "inside",
         withoutEnlargement: true,
       })
-      .toFormat(keepPng ? "png" : "jpeg", { quality: 88 })
+      .toFormat(keepPng ? "png" : "jpeg", { quality })
       .toBuffer({ resolveWithObject: true });
 
     return {
