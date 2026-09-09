@@ -33,13 +33,14 @@ export function AuthShell({ children }: { children: ReactNode }) {
           {/*
             ★ The drawn logo carries the name; no wordmark is set beside it.
 
-            The logo has "БЯЦХАН НҮҮДЭЛЧИД" lettered into the artwork. Setting
+            `brand-logo.png` has "БЯЦХАН НҮҮДЭЛЧИД" lettered into the artwork. Setting
             another wordmark next to it would put two names for one product on the
             first screen anybody sees, so the heading below is the logo itself —
             `alt` is what a screen reader announces, and it is the only place
             the name appears in text here.
 
-            ★★ Client's decision, 2026-09-06: keep the lettering everywhere.
+            ★★ Client's decision, 2026-09-06: keep the lettering. The
+            alternative was `brand-mark.png`, the same illustration with none.
           */}
           <div className="mb-[22px] flex items-center gap-3.5">
             {/*
@@ -53,7 +54,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
             */}
             <h1 className="shrink-0">
               <Image
-                src="/logo-transparent.png"
+                src="/brand-logo.png"
                 alt={BRAND}
                 width={76}
                 height={76}
@@ -102,16 +103,16 @@ export function AuthShell({ children }: { children: ReactNode }) {
             ★ This was capped at 210px, and the cap was a workaround, not a
             design: the old `/logo-160.png` was 149px wide, so 380 rendered
             visibly soft and a blurred logo on the first screen anyone sees is
-            worse than a small sharp one. `/logo-transparent.png` keeps the
+            worse than a small sharp one. `/brand-logo.png` is the supplied
             1400² original, so the cap has nothing left to protect against.
-            300 on a 2× display asks for 600 source pixels; there are 1400.
+            300 on a 2× display asks for 600 source pixels; there are 1254.
 
             ★★ No wordmark under it either — the lettering is in the artwork,
             and this panel is `aria-hidden`, so a name repeated here would be
             decoration that says the same thing twice.
           */}
           <Image
-            src="/logo-transparent.png"
+            src="/brand-logo.png"
             alt=""
             width={300}
             height={300}

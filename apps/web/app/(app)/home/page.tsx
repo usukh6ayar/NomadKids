@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import NextImage from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, type ReactNode } from "react";
 import { z } from "zod";
@@ -16,6 +15,7 @@ import { ChildAvatar } from "@/components/media/media-image";
 import { useSelectedChild } from "@/lib/selected-child";
 import { formatAge, fullName } from "@/lib/format";
 import { PORTFOLIO } from "@/lib/vocabulary";
+import { Art } from "@/components/ui/art";
 
 /**
  * A parent's home.
@@ -88,6 +88,8 @@ export default function ParentHomePage() {
   // screen's own loading state blocked on a value that only ever matters for
   // *which* child renders, not whether the page can render at all.
   const selected = children.find((child) => child.id === selectedChildId) ?? children[0]!;
+  const portfolioProfileArt =
+    selected.sex === "FEMALE" ? "portfolioGirl" : selected.sex === "MALE" ? "portfolioBoy" : null;
 
   return (
     <HomeBackdrop>
@@ -118,18 +120,19 @@ export default function ParentHomePage() {
           className="group flex w-full items-center justify-between gap-5 overflow-hidden rounded-card border border-gray-100 bg-gradient-to-r from-white to-gray-100/80 px-6 py-4 shadow-sm transition-[border-color,box-shadow] hover:border-primary/30 hover:shadow-md lg:min-w-[390px] lg:max-w-[430px]"
         >
           <span className="text-title font-bold text-gray-800">{PORTFOLIO}</span>
-          <span
-            className="relative grid size-20 shrink-0 place-items-end overflow-hidden rounded-card bg-amber-100"
-            aria-hidden="true"
-          >
-            <NextImage
-              src="/background/mascot-girl-teal-b.webp"
-              alt=""
-              width={88}
-              height={132}
-              className="h-[76px] w-auto translate-y-2 object-contain transition-transform group-hover:scale-105"
-            />
-          </span>
+          {portfolioProfileArt ? (
+            <span
+              className="relative flex h-28 w-32 shrink-0 items-end justify-center overflow-hidden bg-transparent"
+              aria-hidden="true"
+              data-testid="parent-home-portfolio-art"
+            >
+              <Art
+                name={portfolioProfileArt}
+                size={160}
+                className="h-40 w-auto max-w-none object-contain object-bottom transition-transform group-hover:scale-105"
+              />
+            </span>
+          ) : null}
         </Link>
       </div>
 

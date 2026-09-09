@@ -30,3 +30,12 @@ export const GRADIENT_TONE_STYLE: Record<GradientTone, { gradient: string; shado
     shadow: "shadow-[0_12px_24px_rgba(236,72,153,.30)]",
   },
 };
+
+/** White action cards use colour only as a slim identifying line. */
+export const ACTION_ACCENT_LINE: Record<GradientTone, string> = {
+  blue: "before:bg-[#3378e5]",
+  green: "before:bg-[#16a96f]",
+  orange: "before:bg-[#f59e0b]",
+  purple: "before:bg-[#8b5cf6]",
+  pink: "before:bg-[#ec4899]",
+};

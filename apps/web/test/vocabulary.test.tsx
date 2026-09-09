@@ -202,6 +202,49 @@ describe("the child hero", () => {
 });
 
 describe("signing in", () => {
+  it("uses the supplied responsive login artwork and transparent brand logo", () => {
+    stubApi([{ path: "/auth/me", body: sessionFor([]) }]);
+
+    renderWithProviders(<LoginPage />);
+
+    const hero = screen.getByTestId("login-hero");
+    expect(hero).toHaveClass("bg-[url('/background/login-mobile.png')]");
+    expect(hero).toHaveClass("lg:bg-[url('/background/login-desktop.png')]");
+    expect(screen.getByAltText("Бяцхан нүүдэлчид").getAttribute("src")).toContain("brand-logo.png");
+    expect(screen.getByAltText("Од руу зааж буй хоёр хүүхэд").getAttribute("src")).toContain(
+      "nomadkids-cta-children.png",
+    );
+  });
+
+  it("shows the five supplied audience characters in the requested order", () => {
+    stubApi([{ path: "/auth/me", body: sessionFor([]) }]);
+
+    renderWithProviders(<LoginPage />);
+
+    const section = screen
+      .getByRole("heading", { name: "Бүх оролцогчдод зориулсан шийдэл" })
+      .closest("section");
+    expect(section).not.toBeNull();
+
+    const audience = within(section!);
+    expect(
+      audience.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent),
+    ).toEqual([
+      "Багшийн веб",
+      "Эцэг эхийн веб",
+      "Удирдлагын самбар",
+      "Гал тогооны веб",
+      "Нягтлангийн веб",
+    ]);
+    expect(audience.getAllByRole("img").map((image) => image.getAttribute("alt"))).toEqual([
+      "Багш",
+      "Эцэг эх хүүхдийн хамт",
+      "Удирдлагын ажилтан",
+      "Тогооч",
+      "Нягтлан бодогч",
+    ]);
+  });
+
   /**
    * ★ The tabs asked a question the API never received.
    *

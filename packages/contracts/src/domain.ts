@@ -2678,6 +2678,7 @@ export const parentDashboardSchema = z.object({
       id: uuidSchema,
       lastName: z.string(),
       firstName: z.string(),
+      sex: sexSchema.nullish(),
       dateOfBirth: z.string().nullish(),
       photoMediaFileId: uuidSchema.nullish(),
       group: namedRefSchema.nullish(),

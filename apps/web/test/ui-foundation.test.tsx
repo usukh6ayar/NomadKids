@@ -196,8 +196,12 @@ describe("StatCard artwork", () => {
 describe("supplied module artwork", () => {
   it.each([
     ["child", "icon-children-3d"],
+    ["observation", "icon-observation-3d"],
+    ["conversation", "icon-conversation-3d"],
+    ["artwork", "icon-artwork-3d"],
     ["group", "icon-group-3d"],
     ["attendance", "icon-attendance-3d"],
+    ["chat", "icon-chat-3d"],
     ["teacher", "icon-teacher-3d"],
     ["food", "icon-food-3d"],
     ["kindergarten", "icon-kindergarten-3d"],
@@ -206,6 +210,8 @@ describe("supplied module artwork", () => {
     ["portfolioGallery", "icon-portfolio-gallery-3d"],
     ["portfolioAboutMe", "icon-portfolio-about-me-3d"],
     ["portfolioAgeComparison", "icon-portfolio-age-comparison-3d"],
+    ["portfolioBoy", "icon-portfolio-boy-3d"],
+    ["portfolioGirl", "icon-portfolio-girl-3d"],
   ] as const)("maps %s to its transparent owner-supplied asset", (name, asset) => {
     const { container } = render(<Art name={name} />);
     const icon = container.querySelector("img");

@@ -10,7 +10,6 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
-import { SectionHeader } from "@/components/ui/card";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { ReportDialog } from "@/components/reports/report-dialog";
@@ -78,12 +77,37 @@ export default function PortfolioPage() {
   }
 
   const data = child.data!;
+  const profileArt =
+    data.sex === "FEMALE" ? "portfolioGirl" : data.sex === "MALE" ? "portfolioBoy" : null;
 
   return (
     <div className="flex flex-col gap-6 py-2">
       <BackButton href={`/children/${childId}/general`} />
 
-      <SectionHeader as="h1" title={PORTFOLIO} className="mb-0" />
+      <section
+        aria-labelledby="portfolio-heading"
+        className="relative flex min-h-32 items-center overflow-hidden rounded-card border border-border bg-surface px-5 py-6 shadow-sm sm:min-h-40 sm:px-8"
+      >
+        <h1
+          id="portfolio-heading"
+          className="relative z-10 max-w-[70%] text-heading font-semibold leading-heading text-ink sm:text-display"
+        >
+          {PORTFOLIO}
+        </h1>
+        {profileArt ? (
+          <span
+            aria-hidden="true"
+            data-testid="portfolio-profile-art"
+            className="absolute bottom-0 right-2 flex h-full w-28 items-end justify-center bg-transparent sm:right-6 sm:w-40"
+          >
+            <Art
+              name={profileArt}
+              size={160}
+              className="h-28 w-28 object-contain object-bottom sm:h-40 sm:w-40"
+            />
+          </span>
+        ) : null}
+      </section>
 
       <ChildHeroProfile
         child={data}

@@ -286,6 +286,7 @@ describe("parent home", () => {
     expect(res.status).toBe(200);
     expect(res.body.children).toHaveLength(1);
     expect(res.body.children[0].id).toBe(a.child.id);
+    expect(res.body.children[0].sex).toBe(a.child.sex);
   });
 
   it("★ the feed EXCLUDES private teacher observations", async () => {

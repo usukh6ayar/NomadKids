@@ -37,7 +37,7 @@ import Image from "next/image";
  *
  * ★★★★ Keep the supplied feature drawings central.
  *
- * `child`, `group`, `attendance`, `teacher`, `food`, `kindergarten`, `finance`,
+ * `child`, `group`, `attendance`, `teacher`, `food`, `kindergarten`, `finance`, `chat`,
  * `notice`, `survey`, `progress`, and the four portfolio launcher drawings are
  * the owner's 1254×1254 transparent PNGs, kept at their original resolution.
  * Every dashboard tile, navigation item and page identity reaches them through
@@ -47,9 +47,11 @@ import Image from "next/image";
  */
 const SOURCE = {
   analytics: "/icons/icon-analytics.png",
+  artwork: "/icons/icon-artwork-3d.png",
   attendance: "/icons/icon-attendance-3d.png",
   chat: "/icons/icon-chat-3d.png",
   child: "/icons/icon-children-3d.png",
+  conversation: "/icons/icon-conversation-3d.png",
   dashboard: "/icons/icon-dashboard-3d.png",
   documents: "/icons/icon-documents-3d.png",
   finance: "/icons/icon-finance-payment-3d.png",
@@ -57,11 +59,14 @@ const SOURCE = {
   group: "/icons/icon-group-3d.png",
   kindergarten: "/icons/icon-kindergarten-3d.png",
   notice: "/icons/icon-notice-3d.png",
+  observation: "/icons/icon-observation-3d.png",
   portfolio: "/icons/icon-portfolio.png",
   portfolioAboutMe: "/icons/icon-portfolio-about-me-3d.png",
   portfolioAgeComparison: "/icons/icon-portfolio-age-comparison-3d.png",
+  portfolioBoy: "/icons/icon-portfolio-boy-3d.png",
   portfolioDevelopment: "/icons/icon-portfolio-development-3d.png",
   portfolioGallery: "/icons/icon-portfolio-gallery-3d.png",
+  portfolioGirl: "/icons/icon-portfolio-girl-3d.png",
   progress: "/icons/icon-progress-3d.png",
   register: "/icons/icon-register.png",
   report: "/icons/icon-report-3d.png",

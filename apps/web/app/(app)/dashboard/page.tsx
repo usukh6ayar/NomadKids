@@ -175,7 +175,7 @@ function TeacherDashboard() {
   const header = (
     <div className="teacher-dashboard-header">
       <PageHeader
-        title={`Сайн байна уу, ${greetingName}! 👋`}
+        title={`Сайн байна уу, ${greetingName}!`}
         meta={
           <>
             {group ? (
@@ -192,10 +192,9 @@ function TeacherDashboard() {
         }
       />
       <div className="teacher-dashboard-banner">
-        <p>Хүүхэд бүр өөрийн гэсэн гэрэлтэй</p>
         <Image
-          src="/illustrations/nomadkids-login-hero.png"
-          alt="Багш хүүхдүүдтэйгээ"
+          src="/illustrations/teacher-reading-with-children.png"
+          alt="Багш хоёр хүүхдэд ном уншиж байна"
           fill
           sizes="(min-width: 1280px) 420px, 100vw"
           className="object-cover"

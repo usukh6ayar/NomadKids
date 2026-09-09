@@ -27,6 +27,7 @@ import { Input } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/states";
 import { fullName } from "@/lib/format";
 import { PersonAvatar } from "@/components/media/media-image";
+import { Art } from "@/components/ui/art";
 import { cn } from "@/lib/utils";
 
 const roomsSchema = z.array(chatRoomSchema);
@@ -137,11 +138,11 @@ export function ChatWidget() {
         aria-label={count > 0 ? `Чат, ${count} шинэ мессеж` : "Чат"}
         data-print-hide
         className={cn(
-          "fixed right-4 z-30 grid size-14 place-items-center rounded-pill bg-primary text-primary-ink shadow-lg transition-colors hover:bg-primary-hover",
+          "fixed right-4 z-30 grid size-14 place-items-center rounded-pill bg-transparent shadow-lg transition-transform hover:scale-105",
           "bottom-[calc(var(--size-bottom-nav)+env(safe-area-inset-bottom)+0.5rem)] lg:bottom-6 lg:right-6",
         )}
       >
-        <MessageCircle size={24} strokeWidth={2} aria-hidden="true" />
+        <Art name="chat" size={56} className="size-14 object-contain" />
         {count > 0 ? (
           <span
             aria-hidden="true"
