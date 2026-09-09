@@ -15,7 +15,7 @@ import { Field, Textarea } from "@/components/ui/field";
 import { FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
-import { YEAR_ANIMAL_ICON, ZODIAC_ICON } from "@/lib/zodiac-icons";
+import { YearAnimalArt, ZodiacArt } from "@/components/child/identity-art";
 
 /**
  * The three facts RFP §4.2 asks for beside the identity tiles: the age, the
@@ -50,12 +50,12 @@ export function ChildBirthdayFacts({
       value: `${section.ageYears} нас`,
     },
     {
-      icon: <span aria-hidden="true">{ZODIAC_ICON[section.zodiac.code] ?? "✨"}</span>,
+      icon: <ZodiacArt code={section.zodiac.code} size={20} />,
       label: "Өрнийн орд",
       value: section.zodiac.name,
     },
     {
-      icon: <span aria-hidden="true">{YEAR_ANIMAL_ICON[section.yearAnimal.code] ?? "⭐"}</span>,
+      icon: <YearAnimalArt code={section.yearAnimal.code} size={20} />,
       label: "Монгол жил",
       value: `${section.yearAnimal.name} жил`,
     },

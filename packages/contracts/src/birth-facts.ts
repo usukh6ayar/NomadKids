@@ -53,10 +53,10 @@ const ZODIAC_BOUNDARIES: { month: number; day: number; code: string; name: strin
   { month: 5, day: 21, code: "gemini", name: "Ихэр" },
   { month: 6, day: 22, code: "cancer", name: "Хавч" },
   { month: 7, day: 23, code: "leo", name: "Арслан" },
-  { month: 8, day: 23, code: "virgo", name: "Онгон" },
-  { month: 9, day: 23, code: "libra", name: "Дэнс" },
+  { month: 8, day: 23, code: "virgo", name: "Охин" },
+  { month: 9, day: 23, code: "libra", name: "Жинлүүр" },
   { month: 10, day: 23, code: "scorpio", name: "Хилэнц" },
-  { month: 11, day: 22, code: "sagittarius", name: "Нумч" },
+  { month: 11, day: 22, code: "sagittarius", name: "Нум" },
   { month: 12, day: 22, ...CAPRICORN },
 ];
 
