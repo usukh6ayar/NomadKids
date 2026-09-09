@@ -54,15 +54,15 @@ const META: Record<EsisEndpointKey, EsisEndpointMeta> = {
       "`personId`-аар хийнэ.",
   },
   studentByRegister: {
-    name: "Регистрээр хайх",
+    name: "Суралцагчийг РД-ээр хайх",
     domain: "ROSTER",
     usage: "Нэг хүүхдийг регистрийн дугаараар ESIS-ээс олох",
     previewable: false,
     note:
-      "Регистрийн дугаарыг эрхлэгч гараар бичиж **илгээнэ** — ESIS_REQUEST.md §1.1 (b) " +
+      "Регистрийн дугаарыг багш эсвэл эрхлэгч гараар бичиж **илгээнэ** — ESIS_REQUEST.md §1.1 (b) " +
       "нь регистрийн дугаарыг хүлээж авч хадгалахыг татгалзсан бөгөөд энэ нь тэр биш. " +
-      "Буцаж ирсэн бичлэг `students`-ийн ижил талбаруудаар хязгаарлагдана: " +
-      "`personRegNumber` энд ч мөн адил авахгүй талбар.",
+      "Буцаж ирсэн бичлэг API-000144-ийн output schema-аар хязгаарлагдана: " +
+      "`civilId`, `personRegNumber` болон provider нууц үгийг авахгүй.",
   },
   studentInfo: {
     name: "Сурагчийн ерөнхий мэдээлэл",
@@ -212,10 +212,13 @@ function targetModel(key: EsisEndpointKey): string {
   if (key === "organization") return "Kindergarten";
   if (key === "academicYearStatuses") return "SchoolYear";
   if (key === "groups") return "Group / GroupTeacher";
-  if (key === "students" || key === "groupStudents") return "Child / Enrollment";
+  if (key === "students" || key === "studentByRegister" || key === "groupStudents") {
+    return "Child / Enrollment";
+  }
   if (key === "studentMovements") return "Enrollment";
   if (key === "teachers" || key === "staff") return "User / Membership";
   if (key === "groupAttendance" || key === "saveAttendanceV3") return "Attendance";
+  if (key === "foodProducts") return "Recipe ESIS reference (DISPLAY_ONLY)";
   return "Ingredient / Recipe (NOT ENABLED)";
 }
 
@@ -240,7 +243,7 @@ export const ESIS_PREVIEW_RESOURCES = [
  * ★ A role gets the services its own screens draw, and nothing else — this is
  * the list, not a filter applied on the way out. The overview at
  * `/admin/integrations/esis` is the operator's whole-catalog view and stays
- * `@Roles("ADMIN")`; a teacher's screens need five of the eighteen and have no
+ * `@Roles("ADMIN")`; a teacher's screens need six of the catalog and have no
  * business knowing the token's state, the deployment's base URL or which
  * kindergarten has been mapped.
  *
@@ -253,9 +256,10 @@ export const ESIS_PREVIEW_RESOURCES = [
  */
 const ROLE_SERVICES: Partial<Record<Role, readonly EsisEndpointKey[]>> = {
   /*
-   * The teacher's five, named by the client on 2026-09-09:
+   * The teacher's six, named by the client on 2026-09-09:
    *
    *   students          суралцагчийн ерөнхий мэдээлэл
+   *   studentByRegister суралцагчийг РД-аар хайх
    *   groupStudents     бүлгийн сурагчийн ерөнхий мэдээлэл
    *   saveAttendanceV3  ирц хадгалах — the one write service
    *   groupAttendance   ирц харах
@@ -306,7 +310,7 @@ const ALL_KEYS = Object.keys(ESIS_ENDPOINTS) as EsisEndpointKey[];
  *
  * Roles are read from the actor's memberships *in that kindergarten* rather
  * than globally: a teacher at one kindergarten and an admin at another gets the
- * teacher's five here and the whole catalog there.
+ * teacher's six here and the whole catalog there.
  */
 export function esisServicesForActor(
   actor: { memberships: readonly { kindergartenId: string; role: Role }[] },

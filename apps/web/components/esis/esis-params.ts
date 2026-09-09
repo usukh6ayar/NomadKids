@@ -2,7 +2,7 @@
 export const ESIS_PARAM_LABEL: Record<string, string> = {
   studentGroupId: "ESIS бүлгийн дугаар",
   productId: "ESIS бүтээгдэхүүний дугаар",
-  personRegNumber: "Регистрийн дугаар",
+  personRegNumber: "РД (регистрийн дугаар)",
   dayDate: "Огноо",
   beginDate: "Эхлэх огноо",
 };
@@ -13,7 +13,7 @@ export const ESIS_PARAM_LABEL: Record<string, string> = {
  * ★ `personRegNumber` is deliberately absent. Every other value here is an
  * ESIS id from the demo tenant; a register number is a real person's national
  * identifier and there is no such thing as a safe invented one to pre-fill a
- * form with. The director types it, or the search does not run.
+ * form with. The authorised staff member types it, or the search does not run.
  */
 export const ESIS_DEMO_PARAM: Record<string, string> = {
   studentGroupId: "10001",

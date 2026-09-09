@@ -78,13 +78,10 @@ function Recipes() {
         title="Технологийн карт"
         actions={
           kindergartenId ? (
-            <>
-              <Badge tone="peach">ESIS · NOT ENABLED</Badge>
-              <Button size="sm" onClick={() => setCreating(true)}>
-                <Plus size={18} />
-                Карт нэмэх
-              </Button>
-            </>
+            <Button size="sm" onClick={() => setCreating(true)}>
+              <Plus size={18} />
+              Карт нэмэх
+            </Button>
           ) : null
         }
       />
@@ -182,6 +179,8 @@ function Recipes() {
         resource="foodProducts"
         title="Бэлэн бүтээгдэхүүн"
         description="ESIS-ийн хоол, бүтээгдэхүүний лавлах — хэмжих нэгж, илчлэг, шимт бодис"
+        autoRead
+        showResponseDetails
       />
 
       {creating && kindergartenId ? (

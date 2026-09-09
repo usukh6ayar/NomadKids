@@ -152,7 +152,7 @@ function StaffChildren() {
    *
    * This read the operator's `/esis`, which is `@Roles("ADMIN")`, so the roster
    * table below rendered for administrators alone. `students` is one of the
-   * teacher's five services, and this screen is theirs as much as anybody's.
+   * teacher's six services, and this screen is theirs as much as anybody's.
    */
   const esis = useQuery({
     queryKey: qk.esisCatalog(primaryKindergartenId ?? "none"),
@@ -289,22 +289,20 @@ function StaffChildren() {
         age", and a tile is not a second copy of a table.
 
         ★★ Both services, because they answer different questions: `students`
-        is the whole roster, `studentByRegister` is one child the director
-        already holds a document for.
+        is the whole roster, `studentByRegister` is one child a teacher or
+        director already holds a document for.
 
         ★★★ The register search is the one panel whose parameter is a person.
         Every other service pre-fills its ids in demo mode; this one cannot,
         because there is no such thing as a safe invented national identifier
-        to put in a form. It stays empty until the director types the number,
+        to put in a form. It stays empty until the staff member types the number,
         we send it, and we keep none of it — `personRegNumber` is a refused
         output here exactly as it is on the roster service (`ESIS_REQUEST.md`
         §1.1 (b)).
 
-        ★★★★ `students` renders for a teacher and `studentByRegister` does
-        not — 2026-09-09. The panel reads the role-scoped catalog, and the
-        roster is one of the teacher's five services while the register search
-        is not. Neither carries a role check of its own: a service the caller
-        cannot reach is absent from the payload.
+        ★★★★ Both panels read the role-scoped catalog. API-000144 belongs to
+        both ADMIN and TEACHER, while every other role receives neither the
+        catalog entry nor permission to call it.
       */}
       <EsisDataPanel
         resource="students"
@@ -337,8 +335,10 @@ function StaffChildren() {
       />
       <EsisDataPanel
         resource="studentByRegister"
-        title="Регистрээр хайх"
-        description="Нэг хүүхдийг регистрийн дугаараар олох"
+        title="РД-ээр хайх"
+        description="Суралцагчийн мэдээллийг регистрийн дугаараар ESIS-ээс хайх"
+        actionLabel="РД-ээр хайх"
+        showResponseDetails
       />
     </div>
   );

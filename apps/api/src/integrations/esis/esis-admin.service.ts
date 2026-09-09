@@ -355,7 +355,7 @@ export class EsisAdminService {
      * ★ Tenant first, then the service — 2026-09-09.
      *
      * This asserted `assertAdmin` outright until the teacher's screens got
-     * their five services. It now asks whether *this* actor may read *this*
+     * their role-scoped services. It now asks whether *this* actor may read *this*
      * service, which for an admin is every one of them and so is the same
      * check it was. A service outside the caller's list answers 404 rather
      * than 403: a teacher asking for the food catalog should not learn that it
@@ -439,6 +439,8 @@ export class EsisAdminService {
     const fields = ESIS_FIELDS[dto.resource];
     try {
       const response = await this.esis.read(dto.resource, params, institutionId);
+      const rowLimit = dto.resource === "foodProducts" ? response.data.length : READ_ROWS;
+      const rows = rowValues(dto.resource, response.data, rowLimit);
       return {
         resource: dto.resource,
         source: response.source,
@@ -447,11 +449,11 @@ export class EsisAdminService {
         count: response.data.length,
         durationMs: response.durationMs,
         fields,
-        rows: rowValues(dto.resource, response.data, READ_ROWS),
+        rows,
         response: {
           SUCCESS_CODE: 200,
           RESPONSE_MESSAGE: response.source === "MOCK" ? "DEMO_SUCCESS" : "SUCCESS",
-          RESULT: rowValues(dto.resource, response.data, READ_ROWS),
+          RESULT: rows,
         },
       };
     } catch (error) {

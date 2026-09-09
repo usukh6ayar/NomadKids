@@ -283,6 +283,35 @@ export const enrollmentArchiveTeacherSchema = z.object({
   role: teacherRoleSchema,
 });
 
+const enrollmentArchiveEsisSchema = z.object({
+  mode: z.enum(["DEMO", "LIVE"]),
+  status: z.enum(["DEMO_SUCCESS", "SUCCESS"]),
+  syncedAt: z.string(),
+  organization: z.object({
+    name: z.string(),
+    shortName: z.string().nullable(),
+    longName: z.string().nullable(),
+    legalName: z.string().nullable(),
+    legalNameMgl: z.string().nullable(),
+    propertyTypeName: z.string().nullable(),
+    institutionTypeName: z.string().nullable(),
+    provinceName: z.string().nullable(),
+    districtName: z.string().nullable(),
+    subDistrictName: z.string().nullable(),
+    regionName: z.string().nullable(),
+    address: z.string().nullable(),
+    classificationName: z.string().nullable(),
+  }),
+  group: z
+    .object({
+      name: z.string(),
+      academicLevelName: z.string().nullable(),
+      academicYear: z.string(),
+      instructorName: z.string().nullable(),
+    })
+    .nullable(),
+});
+
 export const enrollmentArchiveSchema = z.object({
   /** For the hero — saves the page a second `/children/:id` fetch. */
   child: z.object({
@@ -313,6 +342,8 @@ export const enrollmentArchiveSchema = z.object({
         })
         .nullable(),
       teachers: z.array(enrollmentArchiveTeacherSchema),
+      /** Parent-safe ESIS projection. It never contains endpoint details, credentials or raw IDs. */
+      esis: enrollmentArchiveEsisSchema.nullable().optional(),
     })
     .nullable(),
   /** Past placements only (`status !== "ACTIVE"`), newest first. */

@@ -79,6 +79,9 @@ export function EsisDataPanel({
   description,
   headingId,
   askForParams = true,
+  autoRead = false,
+  showResponseDetails = false,
+  actionLabel,
 }: {
   resource: EsisResourceKey;
   /** Path values the caller already knows — a group id, a date. */
@@ -116,6 +119,12 @@ export function EsisDataPanel({
   title?: string;
   description?: string;
   headingId?: string;
+  /** Calls the role-authorised ESIS reader as soon as its catalog is ready. */
+  autoRead?: boolean;
+  /** Shows request metadata and the complete ESIS response envelope inline. */
+  showResponseDetails?: boolean;
+  /** Overrides the generic pull command for a task-specific action. */
+  actionLabel?: string;
 }) {
   const { primaryKindergartenId } = useSession();
   const [entered, setEntered] = useState<Record<string, string>>({});
@@ -180,7 +189,7 @@ export function EsisDataPanel({
     queryKey: qk.esisResource(primaryKindergartenId ?? "none", resource, query.toString()),
     queryFn: () =>
       get(`/kindergartens/${primaryKindergartenId}/esis/resource?${query}`, esisResourceReadSchema),
-    enabled: pulled && Boolean(catalog.data?.canRead) && missing.length === 0,
+    enabled: (autoRead || pulled) && Boolean(catalog.data?.canRead) && missing.length === 0,
     /*
      * ★ Opts out of the app-wide refetch policy, deliberately — the same
      * reasoning as `EsisPullButton`. This query calls the *ministry*: every
@@ -206,6 +215,9 @@ export function EsisDataPanel({
   const rows = live ? live.rows : (given ?? endpoint.sampleRows);
   const columns = esisSampleColumns(live ? live.fields : endpoint.fields);
   const heading = headingId ?? `esis-panel-${resource}`;
+  const receivedAt = read.dataUpdatedAt
+    ? new Date(read.dataUpdatedAt).toLocaleString("mn-MN")
+    : null;
 
   async function pull() {
     setPulled(true);
@@ -235,15 +247,26 @@ export function EsisDataPanel({
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {showResponseDetails ? (
+              <Badge tone={demoMode ? "sun" : "mint"}>
+                {demoMode ? "ESIS DEMO DATA" : "ESIS LIVE"}
+              </Badge>
+            ) : null}
             <Badge tone="sky">{rows.length} бичлэг</Badge>
             <Button
               size="sm"
               variant="secondary"
-              disabled={read.isFetching}
+              disabled={read.isFetching || missing.length > 0}
               onClick={() => void pull()}
             >
               <CloudDownload aria-hidden />
-              {read.isFetching ? "Татаж байна…" : "ESIS-ээс мэдээллээ татах"}
+              {read.isFetching
+                ? resource === "studentByRegister"
+                  ? "Хайж байна…"
+                  : "Татаж байна…"
+                : autoRead && read.data
+                  ? "Дахин татах"
+                  : (actionLabel ?? "ESIS-ээс мэдээллээ татах")}
             </Button>
           </div>
         </div>
@@ -257,10 +280,16 @@ export function EsisDataPanel({
                     <Input
                       id={id}
                       type={name.endsWith("Date") ? "date" : "text"}
+                      autoComplete={isPersonalParam(name) ? "off" : undefined}
+                      autoCapitalize={isPersonalParam(name) ? "characters" : undefined}
+                      maxLength={isPersonalParam(name) ? 32 : undefined}
                       value={value(name)}
-                      onChange={(event) =>
-                        setEntered((current) => ({ ...current, [name]: event.target.value }))
-                      }
+                      onChange={(event) => {
+                        const nextValue = isPersonalParam(name)
+                          ? event.target.value.toUpperCase()
+                          : event.target.value;
+                        setEntered((current) => ({ ...current, [name]: nextValue }));
+                      }}
                     />
                   )}
                 </Field>
@@ -271,6 +300,89 @@ export function EsisDataPanel({
                 ? "Регистрийн дугаарыг ESIS рүү илгээх ба хадгалахгүй."
                 : "ESIS-ийн өөрийн дугаарыг ашиглана."}
             </p>
+          </div>
+        ) : null}
+
+        {showResponseDetails ? (
+          <div className="flex flex-col gap-4" aria-label="ESIS хүсэлт ба хариу">
+            {demoMode ? (
+              <p className="rounded-control border border-sun-ink/20 bg-sun px-4 py-3 text-body font-semibold text-sun-ink">
+                ESIS DEMO DATA — LIVE CONNECTION NOT ACTIVE
+              </p>
+            ) : null}
+
+            <dl className="grid overflow-hidden rounded-control border border-border-soft sm:grid-cols-2 xl:grid-cols-4">
+              <ResponseFact label="Method" value={endpoint.method} />
+              <ResponseFact
+                label="Response mode"
+                value={read.data?.source ?? (demoMode ? "MOCK" : "LIVE")}
+              />
+              <ResponseFact
+                label="HTTP status"
+                value={
+                  read.data
+                    ? `${read.data.response.SUCCESS_CODE}${read.data.source === "MOCK" ? " MOCK" : ""}`
+                    : "Хүлээж байна"
+                }
+              />
+              <ResponseFact label="Sync status" value={read.data?.status ?? "PENDING"} />
+              <ResponseFact
+                label="Request parameter"
+                value={
+                  required.length > 0
+                    ? required
+                        .map((name) => {
+                          const currentValue = value(name);
+                          return `${name}=${
+                            isPersonalParam(name) && currentValue ? "••••••••" : currentValue || "—"
+                          }`;
+                        })
+                        .join(", ")
+                    : "Параметргүй"
+                }
+              />
+              <ResponseFact
+                label="Response message"
+                value={read.data?.response.RESPONSE_MESSAGE ?? "Хүлээж байна"}
+              />
+              <ResponseFact
+                label="Response count"
+                value={read.data ? String(read.data.count) : "—"}
+              />
+              <ResponseFact
+                label="Duration"
+                value={
+                  read.data?.durationMs === null || read.data?.durationMs === undefined
+                    ? "—"
+                    : `${read.data.durationMs} ms`
+                }
+              />
+            </dl>
+
+            <div>
+              <p className="text-caption font-semibold uppercase text-muted">Request URL</p>
+              <p className="mt-1 break-all rounded-control bg-canvas px-3 py-2 font-mono text-caption text-ink">
+                {endpoint.method} {endpoint.path}
+              </p>
+            </div>
+
+            <div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-semibold text-ink">Response output · Бүтэн JSON</h3>
+                <span className="text-caption text-muted">
+                  {receivedAt ? `Хүлээн авсан: ${receivedAt}` : "ESIS response хүлээж байна"}
+                </span>
+              </div>
+              {read.isFetching && !read.data ? (
+                <LoadingState rows={2} />
+              ) : read.data ? (
+                <pre className="mt-3 max-h-[520px] overflow-auto rounded-control bg-[#142033] p-4 font-mono text-caption leading-5 text-[#e8f2ff]">
+                  {JSON.stringify(read.data.response, null, 2)}
+                </pre>
+              ) : (
+                <p className="mt-3 text-body text-muted">Response хараахан ирээгүй байна.</p>
+              )}
+            </div>
           </div>
         ) : null}
 
@@ -310,5 +422,14 @@ export function EsisDataPanel({
         </p>
       </Card>
     </section>
+  );
+}
+
+function ResponseFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 border-b border-border-soft px-4 py-3 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0 xl:border-b-0 xl:border-r xl:last:border-r-0">
+      <dt className="text-caption text-muted">{label}</dt>
+      <dd className="mt-1 break-words font-mono text-caption font-semibold text-ink">{value}</dd>
+    </div>
   );
 }

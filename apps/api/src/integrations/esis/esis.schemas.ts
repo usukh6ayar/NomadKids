@@ -144,6 +144,32 @@ export const esisStudentSchema = z.object({
   programStatusName: nullableString,
 });
 
+/** API-000144 output after data-minimisation; sensitive upstream keys are ignored. */
+export const esisStudentByRegisterSchema = esisStudentSchema.pick({
+  institutionId: true,
+  personId: true,
+  familyName: true,
+  firstName: true,
+  lastName: true,
+  familyNameMgl: true,
+  firstNameMgl: true,
+  lastNameMgl: true,
+  dateOfBirth: true,
+  genderCode: true,
+  genderName: true,
+  academicLevel: true,
+  academicLevelName: true,
+  studentGroupId: true,
+  studentGroupName: true,
+  programOfStudyId: true,
+  programOfStudyName: true,
+  programPlanId: true,
+  programPlanName: true,
+  microsoftEmail: true,
+  googleEmail: true,
+  academicYear: true,
+});
+
 export const esisMovementSchema = z.object({
   institutionId: identifier,
   studentProgramId: nullableIdentifier,

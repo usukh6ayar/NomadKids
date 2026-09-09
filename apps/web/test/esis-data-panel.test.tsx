@@ -123,14 +123,14 @@ function catalog(live: boolean) {
     canRead: live,
     endpoints: [
       endpoint("organization", "Байгууллагын мэдээлэл", organizationFields),
-      endpoint("studentByRegister", "Регистрээр хайх", studentFields, {
+      endpoint("studentByRegister", "Суралцагчийг РД-ээр хайх", studentFields, {
         key: "studentByRegister",
-        apiId: null,
-        slug: "student/:personRegNumber",
+        apiId: 45,
+        slug: "API-000144",
         domain: "ROSTER",
         previewable: false,
         params: ["personRegNumber"],
-        fieldSource: "ADAPTER",
+        fieldSource: "PORTAL",
       }),
     ],
   };
@@ -213,11 +213,10 @@ describe("ESIS мэдээллийн панел", () => {
     ]);
     renderWithProviders(<EsisDataPanel resource="studentByRegister" />);
 
-    const input = await screen.findByLabelText("Регистрийн дугаар");
+    const input = await screen.findByLabelText("РД (регистрийн дугаар)");
     expect(input).toHaveValue("");
     expect(screen.getByText(/хадгалахгүй/)).toBeInTheDocument();
-    // A service whose portal entry has not been read says so rather than "ID null".
-    expect(screen.getByText(/ID тодруулах/)).toBeInTheDocument();
+    expect(screen.getByText(/ID 45/)).toBeInTheDocument();
   });
 
   /*
