@@ -64,6 +64,15 @@ const META: Record<EsisEndpointKey, EsisEndpointMeta> = {
       "Буцаж ирсэн бичлэг `students`-ийн ижил талбаруудаар хязгаарлагдана: " +
       "`personRegNumber` энд ч мөн адил авахгүй талбар.",
   },
+  studentInfo: {
+    name: "Сурагчийн ерөнхий мэдээлэл",
+    domain: "ROSTER",
+    usage: "Нэг хүүхдийн ESIS дэх бүртгэл, регистрийн дугаараар",
+    previewable: false,
+    note:
+      "Хүүхдийн бүртгэлд байгаа регистрийн дугаараар татна. Регистрийн дугаарыг " +
+      "ESIS рүү илгээх ба ESIS-ээс авахгүй — ESIS_REQUEST.md §1.1 (b).",
+  },
   groupStudents: {
     name: "Бүлгийн суралцагч",
     domain: "ROSTER",
@@ -265,6 +274,7 @@ const ROLE_SERVICES: Partial<Record<Role, readonly EsisEndpointKey[]>> = {
      * use one they already hold.
      */
     "studentByRegister",
+    "studentInfo",
     "saveAttendanceV3",
     "groupAttendance",
     "teachers",

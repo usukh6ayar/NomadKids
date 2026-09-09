@@ -87,6 +87,25 @@ export const ESIS_ENDPOINTS = {
     method: "GET",
     path: "/svc/api/hub/v2/student/:personRegNumber",
   }),
+  /**
+   * One child's record, by the register number the kindergarten already holds.
+   *
+   * ★ Path from the client, 2026-09-09; the public catalog page truncates
+   * before the суралцагч block, so the field list below is our parsing schema's
+   * rather than the portal's — marked `ADAPTER` for that reason.
+   *
+   * ★★ It does not weaken `ESIS_REQUEST.md` §1.1 (b) any more than
+   * `studentByRegister` does. The number travels *to* ESIS: it is the child's
+   * own регистр, already on their record here because this product collects it
+   * (the roster has a Регистр column). `personRegNumber` stays a refused output,
+   * and `read` keeps the value out of the audit row.
+   */
+  studentInfo: endpoint({
+    apiId: 147,
+    slug: "API-000147",
+    method: "GET",
+    path: "/svc/api/hub/v2/student/info/:personRegNumber",
+  }),
   groupStudents: endpoint({
     apiId: 100004874669783,
     slug: "api-13",

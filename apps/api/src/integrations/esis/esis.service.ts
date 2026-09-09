@@ -58,6 +58,11 @@ export const ESIS_READERS = {
     schema: esisStudentSchema,
     params: ["personRegNumber"],
   },
+  studentInfo: {
+    endpoint: ESIS_ENDPOINTS.studentInfo,
+    schema: esisStudentSchema,
+    params: ["personRegNumber"],
+  },
   groupStudents: {
     endpoint: ESIS_ENDPOINTS.groupStudents,
     schema: esisStudentSchema,

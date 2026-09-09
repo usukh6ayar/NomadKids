@@ -273,6 +273,7 @@ export const ESIS_FIELDS: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
   ],
   students: STUDENT_FIELDS,
   studentByRegister: STUDENT_FIELDS,
+  studentInfo: STUDENT_FIELDS,
   groupStudents: STUDENT_FIELDS,
   studentMovements: [
     keep("institutionId", "Байгууллагын код", INSTITUTION_ID),
@@ -493,6 +494,8 @@ export const ESIS_FIELD_SOURCE: Record<keyof typeof ESIS_ENDPOINTS, EsisFieldSou
   // list is `students`' — the same record, found a different way — rather than
   // a list read off the portal. Marked ADAPTER until somebody can read it.
   studentByRegister: "ADAPTER",
+  // Same truncated catalog block, same reason — see the endpoint's note.
+  studentInfo: "ADAPTER",
   groupStudents: "PORTAL",
   studentMovements: "PORTAL",
   teachers: "PORTAL",

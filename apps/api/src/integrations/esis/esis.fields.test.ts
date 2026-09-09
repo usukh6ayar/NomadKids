@@ -83,6 +83,7 @@ describe("ESIS field catalog", () => {
 
     expect(params).toEqual({
       studentByRegister: ["personRegNumber"],
+      studentInfo: ["personRegNumber"],
       groupStudents: ["studentGroupId"],
       studentMovements: ["beginDate"],
       groupAttendance: ["studentGroupId", "dayDate"],
@@ -107,8 +108,10 @@ describe("ESIS field catalog", () => {
         (entry) => entry.key,
       );
 
-    expect(keysBySource("ADAPTER")).toEqual(["studentByRegister"]);
-    expect([...keysBySource("PORTAL"), "studentByRegister"].sort()).toEqual(
+    // Both are keyed by register number and both sit in the catalog block the
+    // public page truncates before — see their endpoints' notes.
+    expect(keysBySource("ADAPTER")).toEqual(["studentByRegister", "studentInfo"]);
+    expect([...keysBySource("PORTAL"), "studentByRegister", "studentInfo"].sort()).toEqual(
       Object.keys(ESIS_ENDPOINTS).sort(),
     );
   });

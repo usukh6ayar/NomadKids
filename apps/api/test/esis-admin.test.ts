@@ -99,7 +99,7 @@ describe("ESIS administration authorization", () => {
     );
 
     expect(own.status).toBe(200);
-    expect(own.body.endpoints).toHaveLength(21);
+    expect(own.body.endpoints).toHaveLength(22);
     expect(other.status).toBe(404);
   });
 
@@ -234,7 +234,7 @@ describe("role-scoped ESIS catalog", () => {
     const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
 
     expect(res.status).toBe(200);
-    expect(res.body.endpoints).toHaveLength(21);
+    expect(res.body.endpoints).toHaveLength(22);
   });
 
   /*
@@ -269,7 +269,7 @@ describe("role-scoped ESIS catalog", () => {
     ]);
   });
 
-  it("gives a teacher the six their screens draw, and no others", async () => {
+  it("gives a teacher the seven their screens draw, and no others", async () => {
     const res = await authed(request(server()).get(url(a.kindergarten.id)), teacherA);
 
     expect(res.status).toBe(200);
@@ -279,6 +279,7 @@ describe("role-scoped ESIS catalog", () => {
         "groupStudents",
         "saveAttendanceV3",
         "studentByRegister",
+        "studentInfo",
         "students",
         "teachers",
       ].sort(),
