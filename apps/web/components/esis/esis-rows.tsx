@@ -134,7 +134,7 @@ export function EsisRowValues({
       makes the truncation below possible — an auto table sizes to its content
       and would push past the container instead of ellipsing inside it.
     */
-    <TableShell caption="ESIS сервисийн мөрүүд" minWidth="min-w-0" className="table-fixed">
+    <TableShell caption="ESIS сервисийн мөрүүд" minWidth="min-w-0" tableClassName="table-fixed">
       <thead>
         <tr>
           {shown.map((field) => (

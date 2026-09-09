@@ -100,10 +100,19 @@ show what ESIS holds.
 
 A list shows **at most five columns**; the whole record is one click away.
 
-- `TableShell` is given `minWidth="min-w-0"` and the table gets `table-fixed`
+- `TableShell` is given `minWidth="min-w-0"` and `tableClassName="table-fixed"`,
   with truncating cells, so it fits whatever width it has. `rowTableWidth` is
   deleted.
-- `esisSampleColumns` keeps returning every field. A new `visibleColumns`
+
+  ★ `tableClassName` is a **new prop**, and the reason is a bug this spec
+  originally shipped: `TableShell`'s existing `className` lands on the wrapping
+  `Card`, not the `<table>`. `table-fixed` passed there does nothing, the table
+  falls back to auto layout, and `truncate` on the cells stops ellipsing and
+  starts widening — handing the sideways scroll straight back to
+  `overflow-x-auto`. The test asserts on the `<table>` element for that reason,
+  not on the component's props.
+
+- `esisSampleColumns` keeps returning every field. A new `esisVisibleColumns`
   helper takes the first five for the table; the row's own expansion renders
   **all** of them.
 - Clicking a row toggles a full-width `<tr>` underneath it containing
@@ -141,8 +150,20 @@ on its `foodProducts` panel. Opening "Цуйван" reads `cook/kit/5201` and
 `cook/kit/product/5201` for that row and nothing else — one press, one call,
 per `EsisDataPanel`'s existing `refetchOnWindowFocus: false` discipline.
 
-The nested panels render without their own header chrome (`compact`), so an
-opened row reads as one record rather than a page inside a page.
+The nested panels take a new `compact` prop — a heading and the records, and
+none of the page furniture. Without it the drill-down renders a _second
+complete panel_ inside a table cell (icon, `<h2>`, slug/ID/path line, record
+badge, pull button, footer disclaimer), twice over for the two detail services:
+a page inside a page, on the screen whose instruction was "зүгээр энгийн
+харагдуул". There is no pull button on a compact panel because there is nothing
+to press — `autoRead` has already run for the id the row supplied.
+
+★ **In demo mode the nested read never fires** (`canRead` is false), so opening
+"Цуйван" (`5201`) shows `foodKit`'s canned row for `5245`. That is demo data
+presented as _this record's_ detail, a stronger claim than a demo list panel
+makes. It is left as-is, consistent with the client's 2026-09-08 decision to
+drop the demo badge entirely, and recorded here rather than discovered on the
+server.
 
 ---
 
@@ -180,8 +201,11 @@ The picker is offered only where the recipe picker already is — behind the
 
 Web:
 
-- `esis-rows` renders at most five columns and no `min-w-[` class
+- `esis-rows` renders at most five columns, and the `<table>` itself carries
+  `min-w-0` + `table-fixed` and no `min-w-[` floor
 - clicking a row reveals every field, including ones absent from the table
+- opening a row reads the detail service, and renders it compact — one pull
+  button and one footer on the screen, not three
 - a row with an `href` navigates and does **not** expand
 
 ---

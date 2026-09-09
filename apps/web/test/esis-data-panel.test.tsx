@@ -80,6 +80,14 @@ const wideFields: StubField[] = [
   { name: "sequence", label: "Дараалал", io: "OUTPUT", ingested: true, sample: "17" },
 ];
 
+/** The drill-down target — keyed on `:productId`, so it has no panel of its
+ * own and is only reachable by opening a `foodProducts` row. */
+const kitFields: StubField[] = [
+  { name: "productId", label: "Код", io: "OUTPUT", ingested: true, sample: "5240" },
+  { name: "productType", label: "Хоолны төрөл", io: "OUTPUT", ingested: true, sample: "BREAKFAST" },
+  { name: "calories", label: "Илчлэг", io: "OUTPUT", ingested: true, sample: "318" },
+];
+
 const wideRows = [
   {
     productId: "5107",
@@ -168,6 +176,13 @@ function catalog(live: boolean) {
         apiId: 124,
         slug: "API-000223",
         domain: "FOOD",
+      }),
+      endpoint("foodKit", "Иж бүрдэл", kitFields, {
+        key: "foodKit",
+        apiId: 126,
+        slug: "API-000225",
+        domain: "FOOD",
+        params: ["productId"],
       }),
       endpoint("studentByRegister", "Суралцагчийг РД-ээр хайх", studentFields, {
         key: "studentByRegister",
@@ -347,6 +362,20 @@ describe("ESIS мэдээллийн панел", () => {
     // jsdom computes no layout to measure.
     expect(table?.className).not.toMatch(/min-w-\[/);
     expect(table?.className).toContain("min-w-0");
+
+    /*
+     * ★★ And on the `<table>`, not the Card around it.
+     *
+     * `TableShell`'s `className` lands on the wrapping Card, so `table-fixed`
+     * passed there does nothing — the table falls back to auto layout, the
+     * `truncate` on each cell stops ellipsing and starts *widening*, and the
+     * sideways scroll this whole change removed comes straight back through
+     * `overflow-x-auto`. That was the shipped state until it was looked for;
+     * asserting on the element rather than the component is what makes the
+     * difference visible. `tableClassName` is the prop that lands here.
+     */
+    expect(table?.className).toContain("table-fixed");
+    expect(container.querySelector("[data-ui-table]")?.className).not.toContain("table-fixed");
   });
 
   it("reveals every field of the row that was pressed", async () => {
@@ -369,6 +398,46 @@ describe("ESIS мэдээллийн панел", () => {
     expect(screen.getByText("9.8")).toBeInTheDocument();
     // And not the other row's — one row opens, not the table.
     expect(screen.queryByText("6.4")).toBeNull();
+  });
+
+  /*
+   * ★ The drill-down to a *second service* — how `foodKit` is reachable at
+   * all. It keys on `:productId`, so a panel of its own would ask the cook to
+   * type a ministry product code; opening a row supplies it.
+   */
+  it("reads the detail service for the row that was opened", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: CATALOG_PATH, body: catalog(false) },
+    ]);
+    renderWithProviders(
+      <EsisDataPanel
+        resource="foodProducts"
+        rows={wideRows}
+        detail={{
+          resources: ["foodKit"],
+          param: { name: "productId", from: "productId" },
+        }}
+      />,
+    );
+
+    await screen.findByText("Гурилтай шөл");
+    // Closed: the detail service is not on the screen at all.
+    expect(screen.queryByText("Иж бүрдэл")).toBeNull();
+
+    await user.click(screen.getByText("Гурилтай шөл"));
+
+    expect(await screen.findByText("Иж бүрдэл")).toBeInTheDocument();
+
+    /*
+     * ★★ Compact, not a second full panel. A nested panel with its own
+     * database icon, slug line, record badge, pull button and footer
+     * disclaimer is a page inside a table cell — and there would be one per
+     * detail service, per opened row.
+     */
+    expect(screen.getAllByRole("button", { name: /ESIS-ээс мэдээллээ татах/ })).toHaveLength(1);
+    expect(screen.getAllByText(/Татахгүй талбар/)).toHaveLength(1);
   });
 
   /*
