@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { z } from "zod";
 import {
   BookOpen,
@@ -32,7 +32,13 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
-import { YEAR_ANIMAL_ICON, ZODIAC_ICON } from "@/lib/zodiac-icons";
+import {
+  EYE_COLOR_OPTIONS,
+  EyeColorArt,
+  YearAnimalArt,
+  ZodiacArt,
+  eyeColorHex,
+} from "@/components/child/identity-art";
 import { cn } from "@/lib/utils";
 
 // `/about-me` answers with `{ exists: false }` when nothing is written yet.
@@ -80,23 +86,6 @@ const STORY_TONE: Record<string, string> = {
   sun: "bg-sun text-sun-ink",
   peach: "bg-peach text-peach-ink",
 };
-
-/**
- * A swatch stands in for a photo of the child's own eyes — 2026-08-28, on
- * the client's instruction, with the swatch itself named as a placeholder
- * for real art the client is supplying later. The label renders in the same
- * hex the swatch does ("Бор" in brown, literally), which is the reason this
- * is a fixed list rather than the free-text field it replaces: colouring
- * arbitrary typed text would need to guess a colour from a word.
- */
-const EYE_COLOR_OPTIONS = [
-  { label: "Хар", hex: "#2b2118" },
-  { label: "Бор", hex: "#6b3f1d" },
-  { label: "Хүрэн", hex: "#8b5a2b" },
-  { label: "Ногоон", hex: "#4a7c59" },
-  { label: "Цэнхэр", hex: "#4a7ba6" },
-  { label: "Саарал", hex: "#8a8f94" },
-] as const;
 
 /** The edit screen's exact, user-facing order before the two visual pickers. */
 const EDIT_FIELDS = [
@@ -292,23 +281,10 @@ export function ChildAboutMe({
                 className="min-w-0 rounded-row border border-border bg-canvas px-2.5 py-3 md:px-4 md:py-3.5"
               >
                 <h3 className="mb-1.5 flex items-center gap-2 text-caption font-semibold text-ink">
-                  <span
-                    aria-hidden="true"
-                    className="size-6 shrink-0 rounded-check border border-border/60"
-                    style={{
-                      backgroundColor:
-                        EYE_COLOR_OPTIONS.find((o) => o.label === data.eyeColor)?.hex ??
-                        "var(--color-border)",
-                    }}
-                  />
+                  <EyeColorArt label={data.eyeColor} size={24} />
                   Нүдний өнгө
                 </h3>
-                <p
-                  className="text-body font-medium"
-                  style={{
-                    color: EYE_COLOR_OPTIONS.find((o) => o.label === data.eyeColor)?.hex,
-                  }}
-                >
+                <p className="text-body font-medium" style={{ color: eyeColorHex(data.eyeColor) }}>
                   {data.eyeColor}
                 </p>
               </article>
@@ -410,11 +386,7 @@ export function ChildAboutMe({
                           : "border-border bg-surface hover:border-primary",
                       )}
                     >
-                      <span
-                        aria-hidden="true"
-                        className="size-8 rounded-pill border border-border/60"
-                        style={{ backgroundColor: option.hex }}
-                      />
+                      <EyeColorArt label={option.label} size={32} />
                       <span className="text-caption font-medium" style={{ color: option.hex }}>
                         {option.label}
                       </span>
@@ -435,7 +407,7 @@ export function ChildAboutMe({
           <CyclePicker
             label="Арван хоёр жил"
             options={YEAR_ANIMALS}
-            iconFor={(code) => YEAR_ANIMAL_ICON[code] ?? "⭐"}
+            renderIcon={(code, size) => <YearAnimalArt code={code} size={size} />}
             value={form.yearAnimalCode ?? ""}
             onChange={(code) => setForm((f) => ({ ...f, yearAnimalCode: code }))}
           />
@@ -443,7 +415,7 @@ export function ChildAboutMe({
           <CyclePicker
             label="Одны орд"
             options={ZODIAC_SIGNS}
-            iconFor={(code) => ZODIAC_ICON[code] ?? "✨"}
+            renderIcon={(code, size) => <ZodiacArt code={code} size={size} />}
             value={form.zodiacCode ?? ""}
             onChange={(code) => setForm((f) => ({ ...f, zodiacCode: code }))}
           />
@@ -480,13 +452,18 @@ export function ChildAboutMe({
 function CyclePicker({
   label,
   options,
-  iconFor,
+  renderIcon,
   value,
   onChange,
 }: {
   label: string;
   options: { code: string; name: string }[];
-  iconFor: (code: string) => string;
+  /**
+   * The drawing for one code, at the pixel size the slot wants — the closed
+   * trigger shows it smaller than the twelve tiles behind it, and passing the
+   * size in keeps that one decision here rather than in both call sites.
+   */
+  renderIcon: (code: string, size: number) => ReactNode;
   value: string;
   onChange: (code: string) => void;
 }) {
@@ -501,9 +478,16 @@ function CyclePicker({
       >
         <summary className="flex min-h-[48px] cursor-pointer list-none items-center justify-between gap-2 px-3.5 text-body text-ink [&::-webkit-details-marker]:hidden">
           <span className="flex min-w-0 items-center gap-2">
-            <span aria-hidden="true" className="text-title leading-none">
-              {current ? iconFor(current.code) : "⭐"}
-            </span>
+            {current ? (
+              renderIcon(current.code, 24)
+            ) : (
+              <span
+                aria-hidden="true"
+                className="inline-flex size-6 shrink-0 items-center justify-center text-title leading-none"
+              >
+                ⭐
+              </span>
+            )}
             <span className={cn("truncate", !current && "text-muted")}>
               {current?.name ?? "Сонгох…"}
             </span>
@@ -531,9 +515,7 @@ function CyclePicker({
                     : "border-border bg-surface text-ink hover:border-primary",
                 )}
               >
-                <span aria-hidden="true" className="text-heading leading-none">
-                  {iconFor(option.code)}
-                </span>
+                {renderIcon(option.code, 32)}
                 {option.name}
               </button>
             );
