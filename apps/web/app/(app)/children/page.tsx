@@ -308,7 +308,17 @@ function StaffChildren() {
       */}
       <EsisDataPanel
         resource="students"
-        title="Суралцагчийн ерөнхий мэдээлэл"
+        /*
+          ★ "Жагсаалт", not "ерөнхий мэдээлэл" — 2026-09-09, the client's own
+          correction: "ерөөсөө ерөнхий мэдээлэл биш байсан байна".
+
+          `api-8` is `students/list` and returns the roll. A per-student general
+          record is a different service (`API-000147`), and a panel titled for
+          it would send a director looking for one child's file in a table of
+          every child. The catalog's own name for this service has been
+          "Суралцагчийн жагсаалт" all along.
+        */
+        title="Суралцагчийн жагсаалт"
         description="Бүртгэл, бүлэг, элсэлтийн төлөв"
         rows={rosterRows}
         hrefs={rosterHrefs}
