@@ -190,7 +190,14 @@ const FOOD: Record<string, Target> = {
 function resourceTargets(key: EsisEndpointKey): Record<string, Target> {
   if (key === "saveAttendanceV3") return ATTENDANCE_REQUEST;
   if (key === "groupAttendance") return ATTENDANCE;
-  if (key === "students" || key === "groupStudents" || key === "studentMovements") return CHILD;
+  if (
+    key === "students" ||
+    key === "studentByRegister" ||
+    key === "groupStudents" ||
+    key === "studentMovements"
+  ) {
+    return CHILD;
+  }
   if (key === "teachers" || key === "staff") return STAFF;
   if (key.startsWith("food")) return FOOD;
   return {};

@@ -18,8 +18,7 @@ import { ESIS_ENDPOINTS } from "./esis.endpoints";
  * about them and declined. Deleting the row would look like an oversight.
  *
  * ★★★ `source` says where the names came from. The selected services were
- * checked against https://developerv2.esis.edu.mn/api/structure on 2026-09-08 —
- * all but `studentByRegister`, whose block the catalog page truncates before.
+ * checked against https://developerv2.esis.edu.mn/api/structure on 2026-09-09.
  * `io` keeps the attendance write service honest: its eight fields are request
  * inputs, while every other service exposes response outputs.
  *
@@ -100,12 +99,11 @@ const GROUP_ID = "10001";
 const GROUP_NAME = "Наран бүлэг";
 
 /**
- * The child record, shared by every service that returns one.
+ * The child record shared by the two roster services.
  *
- * `students`, `groupStudents` and `studentByRegister` differ in how the record
- * is *found* — the whole roster, one group's roster, one register number — and
- * not in what comes back, so one field list serves all three and the refusals
- * cannot drift apart between them.
+ * `students` and `groupStudents` return this wider roster shape. API-000144 is
+ * intentionally separate below because its published output omits movement
+ * and instructor fields and names its provider-password fields differently.
  */
 const STUDENT_FIELDS: EsisField[] = [
   keep("institutionId", "Байгууллагын код", INSTITUTION_ID),
@@ -141,6 +139,36 @@ const STUDENT_FIELDS: EsisField[] = [
   drop("personRegNumber", "Регистрийн дугаар", NO_REG_NUMBER),
   drop("microsoftPassword", "Microsoft нууц үг", NO_CREDENTIAL),
   drop("googlePassword", "Google нууц үг", NO_CREDENTIAL),
+];
+
+/** Exact API-000144 output contract, with the four sensitive values refused. */
+const STUDENT_BY_REGISTER_FIELDS: EsisField[] = [
+  keep("institutionId", "Байгууллагын код", INSTITUTION_ID),
+  keep("personId", "ESIS хүний дугаар", "90000000000001"),
+  drop("civilId", "Иргэний бүртгэлийн дугаар", NO_CIVIL_ID),
+  drop("personRegNumber", "Регистрийн дугаар", NO_REG_NUMBER),
+  keep("familyName", "Ургийн овог", "Боржигин"),
+  keep("firstName", "Нэр", "Батбаяр"),
+  keep("lastName", "Овог", "Ганболд"),
+  keep("familyNameMgl", "Ургийн овог (монгол бичиг)", "Боржигин"),
+  keep("firstNameMgl", "Нэр (монгол бичиг)", "Батбаяр"),
+  keep("lastNameMgl", "Овог (монгол бичиг)", "Ганболд"),
+  keep("dateOfBirth", "Төрсөн огноо", "2021-04-12"),
+  keep("genderCode", "Хүйсийн код", "M"),
+  keep("genderName", "Хүйс", "Эрэгтэй"),
+  keep("academicLevel", "Түвшний код", "2"),
+  keep("academicLevelName", "Түвшин", "Дунд бүлэг"),
+  keep("studentGroupId", "Бүлгийн код", GROUP_ID),
+  keep("studentGroupName", "Бүлгийн нэр", GROUP_NAME),
+  keep("programOfStudyId", "Хөтөлбөрийн код", "501"),
+  keep("programOfStudyName", "Хөтөлбөр", "Сургуулийн өмнөх боловсрол"),
+  keep("programPlanId", "Сургалтын төлөвлөгөөний код", "780"),
+  keep("programPlanName", "Сургалтын төлөвлөгөө", "СӨБ-ын үндсэн хөтөлбөр"),
+  keep("microsoftEmail", "Microsoft албан и-мэйл", "batbayar.g@esis.edu.mn"),
+  drop("microsoftEmailPass", "Microsoft нууц үг", NO_CREDENTIAL),
+  keep("googleEmail", "Google албан и-мэйл", "batbayar.g@moes.edu.mn"),
+  drop("googleEmailPass", "Google нууц үг", NO_CREDENTIAL),
+  keep("academicYear", "Хичээлийн жил", ACADEMIC_YEAR),
 ];
 
 /**
@@ -272,7 +300,7 @@ export const ESIS_FIELDS: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
     keep("academicYear", "Хичээлийн жил", ACADEMIC_YEAR),
   ],
   students: STUDENT_FIELDS,
-  studentByRegister: STUDENT_FIELDS,
+  studentByRegister: STUDENT_BY_REGISTER_FIELDS,
   studentInfo: STUDENT_FIELDS,
   groupStudents: STUDENT_FIELDS,
   studentMovements: [
@@ -481,7 +509,7 @@ export const ESIS_FIELDS: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
  * Where each field list came from.
  *
  * All selected services were read name-by-name from the developer portal on
- * 2026-09-08. The attendance save service has inputs only; every other entry
+ * 2026-09-09. The attendance save service has inputs only; every other entry
  * below describes output fields.
  */
 export const ESIS_FIELD_SOURCE: Record<keyof typeof ESIS_ENDPOINTS, EsisFieldSource> = {
@@ -490,11 +518,12 @@ export const ESIS_FIELD_SOURCE: Record<keyof typeof ESIS_ENDPOINTS, EsisFieldSou
   academicYearStatuses: "PORTAL",
   groups: "PORTAL",
   students: "PORTAL",
+  // API-000144's exact output contract, read off the public developer portal
+  // on 2026-09-09 — see `STUDENT_BY_REGISTER_FIELDS` and the endpoint's note.
+  studentByRegister: "PORTAL",
   // The catalog page truncates before the суралцагч block, so this one's field
   // list is `students`' — the same record, found a different way — rather than
   // a list read off the portal. Marked ADAPTER until somebody can read it.
-  studentByRegister: "ADAPTER",
-  // Same truncated catalog block, same reason — see the endpoint's note.
   studentInfo: "ADAPTER",
   groupStudents: "PORTAL",
   studentMovements: "PORTAL",

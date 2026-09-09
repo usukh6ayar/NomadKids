@@ -404,6 +404,7 @@ export class ChildrenRepository {
                 phone: true,
                 email: true,
                 description: true,
+                esisInstitutionId: true,
               },
             },
             group: { select: { id: true, name: true, schedule: true, rules: true } },

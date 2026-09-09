@@ -15,6 +15,7 @@ import { ChildrenRepository, type CreateChildData } from "./children.repository"
 import { childKey, parseChildWorkbook } from "./child-import";
 import { buildChildWorkbook } from "./child-export";
 import { UploadRejected, validateSpreadsheetUpload } from "../media/upload-validation";
+import { EsisService } from "../integrations/esis/esis.service";
 import type {
   AddGuardianDto,
   CreateChildDto,
@@ -26,6 +27,11 @@ import type {
   UpdateGuardianshipDto,
 } from "./children.dto";
 
+type EnrollmentArchiveRecord = NonNullable<
+  Awaited<ReturnType<ChildrenRepository["findEnrollmentArchive"]>>
+>;
+type EnrollmentArchivePlacement = EnrollmentArchiveRecord["enrollments"][number];
+
 @Injectable()
 export class ChildrenService {
   constructor(
@@ -35,6 +41,7 @@ export class ChildrenService {
     private readonly authz: AuthzRepository,
     private readonly users: UsersService,
     private readonly audit: AuditRepository,
+    private readonly esis: EsisService,
   ) {}
 
   /**
@@ -428,6 +435,7 @@ export class ChildrenService {
 
     const active = child.enrollments.find((e) => e.status === "ACTIVE") ?? null;
     const teachers = active?.group ? await this.repo.listActiveGroupTeachers(active.group.id) : [];
+    const esisPlacement = active ? await this.getEsisEnrollmentPlacement(child, active) : null;
 
     return {
       child: {
@@ -449,6 +457,7 @@ export class ChildrenService {
               firstName: t.membership.user.firstName,
               role: t.role,
             })),
+            esis: esisPlacement,
           }
         : null,
       history: child.enrollments
@@ -463,6 +472,78 @@ export class ChildrenService {
           schoolYear: e.schoolYear,
         })),
     };
+  }
+
+  /**
+   * Reads the child's current institution and group from ESIS, then reduces it
+   * to the parent-safe fields used by the archive. Integration diagnostics and
+   * external IDs remain on the administrator screen.
+   */
+  private async getEsisEnrollmentPlacement(
+    child: EnrollmentArchiveRecord,
+    active: EnrollmentArchivePlacement,
+  ) {
+    if (!this.esis.isAvailable) return null;
+
+    const institutionId =
+      active.kindergarten.esisInstitutionId ?? (this.esis.isDemoMode ? "40305" : null);
+    if (!institutionId) return null;
+
+    try {
+      const [organizationResponse, groupsResponse, studentsResponse] = await Promise.all([
+        this.esis.organization(institutionId),
+        this.esis.groups(institutionId),
+        this.esis.students(institutionId),
+      ]);
+      const organization =
+        organizationResponse.data.find((row) => row.institutionId === institutionId) ??
+        organizationResponse.data[0];
+      if (!organization) return null;
+
+      const birthDate = child.dateOfBirth.toISOString().slice(0, 10);
+      const student = studentsResponse.data.find(
+        (row) =>
+          row.lastName.trim() === child.lastName.trim() &&
+          row.firstName.trim() === child.firstName.trim() &&
+          row.dateOfBirth.slice(0, 10) === birthDate,
+      );
+      const group = student?.studentGroupId
+        ? (groupsResponse.data.find((row) => row.studentGroupId === student.studentGroupId) ?? null)
+        : null;
+      const mode = organizationResponse.source === "MOCK" ? "DEMO" : "LIVE";
+
+      return {
+        mode,
+        status: mode === "DEMO" ? "DEMO_SUCCESS" : "SUCCESS",
+        syncedAt: new Date().toISOString(),
+        organization: {
+          name: organization.institutionName,
+          shortName: organization.shortName ?? null,
+          longName: organization.longName ?? null,
+          legalName: organization.legalName ?? null,
+          legalNameMgl: organization.legalNameMgl ?? null,
+          propertyTypeName: organization.propertyTypeName ?? null,
+          institutionTypeName: organization.institutionTypeName ?? null,
+          provinceName: organization.provinceName ?? null,
+          districtName: organization.districtName ?? null,
+          subDistrictName: organization.subDistrictName ?? null,
+          regionName: organization.regionName ?? null,
+          address: organization.institutionAddress ?? null,
+          classificationName: organization.institutionClassificationName ?? null,
+        },
+        group: group
+          ? {
+              name: group.studentGroupName,
+              academicLevelName: group.academicLevelName ?? null,
+              academicYear: group.academicYear,
+              instructorName: group.instructorName ?? null,
+            }
+          : null,
+      } as const;
+    } catch {
+      // ESIS downtime must not hide the child's locally authorised archive.
+      return null;
+    }
   }
 
   /**

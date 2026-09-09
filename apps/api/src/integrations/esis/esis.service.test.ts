@@ -32,21 +32,20 @@ describe("ESIS v2 endpoint registry", () => {
   });
 
   /*
-   * ★ A null id is a service whose portal entry has not been read, not a
-   * service without one. It cannot be named in a token scope request, so the
-   * list of them is pinned: it shrinks when somebody reads the portal, and any
-   * growth is a service that was added without checking the catalog.
+   * A null id is a service whose portal entry has not been read. Every selected
+   * service is currently resolved, so any new null means catalog work remains.
    */
   it("names every service still missing its portal id", () => {
     const missing = Object.entries(ESIS_ENDPOINTS)
       .filter(([, item]) => item.apiId === null)
       .map(([key]) => key);
 
-    expect(missing).toEqual(["studentByRegister"]);
+    expect(missing).toEqual([]);
   });
 
   it("pins the official API ids and encodes path parameters", () => {
     expect(ESIS_ENDPOINTS.organization.apiId).toBe(59);
+    expect(ESIS_ENDPOINTS.studentByRegister.apiId).toBe(45);
     expect(ESIS_ENDPOINTS.saveAttendanceV3.apiId).toBe(171);
     expect(
       esisPath(ESIS_ENDPOINTS.groupAttendance.path, {

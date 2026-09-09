@@ -97,10 +97,8 @@ describe("ESIS field catalog", () => {
   });
 
   /*
-   * ★ `ADAPTER` is the honest label for a field list our schema supplies rather
-   * than the catalog. Pinned rather than counted, for the reason the null
-   * `apiId` is pinned: it should shrink when somebody reads the portal, and it
-   * growing means a service shipped without being checked against it.
+   * Every selected service is pinned to a field list checked against the
+   * developer portal rather than inferred from a neighbouring API.
    */
   it("marks every selected service as checked against the developer portal", () => {
     const keysBySource = (source: string) =>
@@ -108,10 +106,11 @@ describe("ESIS field catalog", () => {
         (entry) => entry.key,
       );
 
-    // Both are keyed by register number and both sit in the catalog block the
-    // public page truncates before — see their endpoints' notes.
-    expect(keysBySource("ADAPTER")).toEqual(["studentByRegister", "studentInfo"]);
-    expect([...keysBySource("PORTAL"), "studentByRegister", "studentInfo"].sort()).toEqual(
+    // `studentByRegister` was read off the portal on 2026-09-09; `studentInfo`
+    // sits in the catalog block the public page truncates before, so its field
+    // list is still `students`' — see their endpoints' notes.
+    expect(keysBySource("ADAPTER")).toEqual(["studentInfo"]);
+    expect([...keysBySource("PORTAL"), "studentInfo"].sort()).toEqual(
       Object.keys(ESIS_ENDPOINTS).sort(),
     );
   });

@@ -357,7 +357,7 @@ describe("single-resource ESIS read", () => {
     `/v1/kindergartens/${kindergartenId}/esis/resource?${query}`;
 
   /*
-   * ★ A teacher reads the five services their own screens draw — 2026-09-09.
+   * ★ A teacher reads the services their own screens draw — 2026-09-09.
    *
    * This asserted 404 for every teacher on every service, which was the whole
    * rule until the client began placing panels on the day sheet and the group
@@ -366,18 +366,18 @@ describe("single-resource ESIS read", () => {
    * 404 rather than 403 — a teacher asking for the food catalog should not
    * learn it exists (CLAUDE.md §1.7).
    */
-  it("lets a teacher read a service their own screens draw", async () => {
+  it.each([
+    ["students", "resource=students"],
+    ["studentByRegister", "resource=studentByRegister&personRegNumber=УБ00000000"],
+  ])("lets a teacher read %s", async (resource, query) => {
     await mapInstitution(a.kindergarten.id, superAdmin);
     // `Once`: a persistent mock would leak into the assertions below it.
     read.mockResolvedValueOnce({ data: [] });
 
-    const res = await authed(
-      request(server()).get(url(a.kindergarten.id, "resource=students")),
-      teacherA,
-    );
+    const res = await authed(request(server()).get(url(a.kindergarten.id, query)), teacherA);
 
     expect(res.status).toBe(200);
-    expect(res.body.resource).toBe("students");
+    expect(res.body.resource).toBe(resource);
   });
 
   /*

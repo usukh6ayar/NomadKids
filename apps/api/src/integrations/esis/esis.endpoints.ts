@@ -1,7 +1,7 @@
 /**
  * ESIS v2 services used by NomadKids.
  *
- * Source: https://developerv2.esis.edu.mn/api/structure, reviewed 2026-09-08.
+ * Source: https://developerv2.esis.edu.mn/api/structure, reviewed 2026-09-09.
  * Keep the API id beside the path: access is granted per service in the ESIS
  * developer portal, so an operator needs both when requesting or auditing a
  * token's scope.
@@ -9,13 +9,6 @@
 export interface EsisEndpoint {
   /**
    * The portal's own id for the service, or `null` when it is not yet read.
-   *
-   * ★ Nullable because one service reached us from the client rather than from
-   * the catalog page, which truncates before the суралцагч block. Access is
-   * granted per id, so writing a plausible number here would send the ministry
-   * a scope request for whichever service actually holds it. A null renders as
-   * "тодруулах" and stays visibly unfinished until somebody reads it off the
-   * portal.
    */
   apiId: number | null;
   slug: string;
@@ -71,19 +64,18 @@ export const ESIS_ENDPOINTS = {
    * ★ **This does not weaken `ESIS_REQUEST.md` §1.1 (b).** That paragraph
    * refuses to *receive and keep* register numbers: `personRegNumber` is a
    * refused output on every roster service and is stored nowhere. Here the
-   * number travels the other way — the director already has the child's
+   * number travels the other way — authorised staff already has the child's
    * registration document in front of them and types it in to find the ESIS
-   * record. We send it, we never save it, and the record that comes back is
-   * minimised by the same field list as `students`.
+   * record. We send it, we never save it, and the response is minimised by the
+   * API-000144-specific field list.
    *
-   * ★★ `apiId` is unknown. The endpoint came from the client (2026-09-08) and
-   * the public catalog page truncates before the суралцагч services, so the
-   * portal id has to be read off the portal before this appears in a token
-   * scope request. Guessing it would request the wrong service.
+   * API-000144 was checked against the public developer portal on 2026-09-09.
+   * Its second required input, `institutionId`, is added as the query parameter
+   * by `EsisService.getList`, as it is for every institution-scoped reader.
    */
   studentByRegister: endpoint({
-    apiId: null,
-    slug: "student/:personRegNumber",
+    apiId: 45,
+    slug: "API-000144",
     method: "GET",
     path: "/svc/api/hub/v2/student/:personRegNumber",
   }),

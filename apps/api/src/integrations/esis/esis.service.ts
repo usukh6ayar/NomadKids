@@ -22,6 +22,7 @@ import {
   esisOrganizationSchema,
   esisStaffSchema,
   esisStudentSchema,
+  esisStudentByRegisterSchema,
   esisTeacherSchema,
   type EsisAttendanceUpload,
 } from "./esis.schemas";
@@ -55,7 +56,7 @@ export const ESIS_READERS = {
    */
   studentByRegister: {
     endpoint: ESIS_ENDPOINTS.studentByRegister,
-    schema: esisStudentSchema,
+    schema: esisStudentByRegisterSchema,
     params: ["personRegNumber"],
   },
   studentInfo: {

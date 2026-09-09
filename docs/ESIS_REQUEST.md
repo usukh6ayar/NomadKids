@@ -188,17 +188,14 @@ Portal-ийн 2026-03-31-ний мэдэгдлээр эхний хувилбар
 | 4   | 100004874669783 / `api-13`                           | Бүлгийн суралцагчийн жагсаалт  | `GET /svc/api/hub/v2/group/student/list/:studentGroupId`             | `enrollments`            |
 | 5   | 100004874669777 / `api-8`                            | Суралцагчийн жагсаалт          | `GET /svc/api/hub/v2/students/list`                                  | `children`               |
 | 6   | 100004874669778 / `2`                                | Суралцагчийн шилжилт хөдөлгөөн | `GET /svc/api/hub/v2/student/movement/v2/:beginDate`                 | `enrollments`            |
-| 6b  | **тодруулах** / `student/:personRegNumber`           | Суралцагчийг РД-аар хайх       | `GET /svc/api/hub/v2/student/:personRegNumber`                       | `children`               |
+| 6b  | 45 / `API-000144`                                    | Суралцагчийг РД-аар хайх       | `GET /svc/api/hub/v2/student/:personRegNumber`                       | `children`               |
 | 7   | 100004874669812 / `api-41`                           | Багшийн жагсаалт               | `GET /svc/api/hub/v2/teacher/list`                                   | `users`, `memberships`   |
 | 8   | 55 / `API-000154`                                    | Байгууллагын ажилчдын жагсаалт | `GET /svc/api/hub/v2/school/staff`                                   | `users`, `memberships`   |
 | 9   | 100004874669792 / `api-22`                           | Өдрийн ирц харах               | `GET /svc/api/hub/v2/group/list/attendance/:studentGroupId/:dayDate` | `attendance_records`     |
 | 10  | 111, 112, 123-127 / `API-000210`, `211`, `222`-`226` | Хоолны 7 нэгдсэн лавлах        | `GET /svc/api/hub/v2/cook/*`                                         | `ingredients`, `recipes` |
 
-★ **№6b-ийн API ID-г тодруулж өгөхийг хүсэж байна.** Endpoint-ыг захиалагч
-2026-09-08-нд өгсөн бөгөөд public catalog-ийн хуудас суралцагчийн блокоос өмнө
-таслагддаг тул portal дээрх дугаарыг бид уншиж чадаагүй. Эрх нь ID-аар олгогддог
-учир бид дугаарыг таамаглахгүй — код дотор `apiId: null` гэж үлдээж, дэлгэцэнд
-"ID тодруулах" гэж харуулж байна.
+★ **№6b-ийн API ID болон output schema-г 2026-09-09-нд developer portal-оос
+баталгаажуулсан.** Багш болон эрхлэгч `/children` дэлгэцээс ашиглана.
 
 ★★ **№6b нь §1.1 (b)-г зөрчихгүй.** Тэр заалт нь регистрийн дугаарыг **хүлээж
 авч хадгалахгүй** гэсэн үүрэг: `personRegNumber` нь энэ сервис дээр ч мөн адил

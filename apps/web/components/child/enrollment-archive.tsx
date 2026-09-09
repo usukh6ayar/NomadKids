@@ -7,6 +7,7 @@ import {
   CalendarDays,
   ChevronDown,
   ClipboardList,
+  Database,
   GraduationCap,
   Mail,
   MapPin,
@@ -135,7 +136,12 @@ function ArchiveHero({
   current: EnrollmentArchive["current"];
 }) {
   const subtitle = current
-    ? [current.kindergarten.name, current.group?.name].filter(Boolean).join(" · ")
+    ? [
+        current.esis?.organization.name ?? current.kindergarten.name,
+        current.esis?.group?.name ?? current.group?.name,
+      ]
+        .filter(Boolean)
+        .join(" · ")
     : "Одоо бүртгэлгүй";
 
   return (
@@ -159,12 +165,21 @@ function ArchiveHero({
 
 function CurrentEnrollmentCard({ current }: { current: Current }) {
   const teacherNames = current.teachers.map(fullName).join(", ");
+  const kindergartenName = current.esis?.organization.name ?? current.kindergarten.name;
+  const groupName = current.esis?.group?.name ?? current.group?.name;
 
   return (
     <div className="overflow-hidden rounded-card border border-primary/30 bg-surface shadow-sm">
       <div className="flex items-center justify-between gap-3 border-b border-border bg-primary-soft px-4 py-4 md:px-5">
         <h3 className="text-lead font-semibold text-ink">Одоогийн бүртгэл</h3>
-        <Badge tone="mint">Суралцаж байгаа</Badge>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {current.esis ? (
+            <Badge tone={current.esis.mode === "DEMO" ? "sun" : "sky"}>
+              {current.esis.mode === "DEMO" ? "ESIS demo data" : "ESIS синк"}
+            </Badge>
+          ) : null}
+          <Badge tone="mint">Суралцаж байгаа</Badge>
+        </div>
       </div>
 
       <details open className="group">
@@ -174,11 +189,9 @@ function CurrentEnrollmentCard({ current }: { current: Current }) {
               <Art name="kindergarten" size={40} className="size-10" />
             </span>
             <div className="min-w-0">
-              <p className="truncate text-lead font-semibold text-ink">
-                {current.kindergarten.name}
-              </p>
+              <p className="truncate text-lead font-semibold text-ink">{kindergartenName}</p>
               <p className="mt-1 text-body text-muted">
-                {current.group?.name ?? "Бүлэггүй"} · {formatDate(current.startedOn)}-ээс
+                {groupName ?? "Бүлэггүй"} · {formatDate(current.startedOn)}-ээс
               </p>
             </div>
           </div>
@@ -364,25 +377,62 @@ function buildTimeline(
     .reverse();
 }
 
-/** The teacher-entered introduction and the kindergarten's own contact details. */
+/** ESIS organization output reduced to fields appropriate for a parent. */
 function KindergartenInfoCard({ current }: { current: Current }) {
   const rows: { icon: ReactNode; label: string; value: ReactNode }[] = [];
+  const esis = current.esis;
 
-  if (current.kindergarten.description) {
+  if (esis) {
+    const organization = esis.organization;
+    const esisRows: Array<[string, string | null]> = [
+      ["Байгууллагын нэр", organization.name],
+      ["Товчилсон нэр", organization.shortName],
+      ["Бүтэн нэр", organization.longName],
+      ["Хуулийн этгээдийн нэр", organization.legalName],
+      ["Хуулийн этгээдийн нэр (монгол бичиг)", organization.legalNameMgl],
+      ["Байгууллагын төрөл", organization.institutionTypeName],
+      ["Өмчийн хэлбэр", organization.propertyTypeName],
+      ["Ангилал", organization.classificationName],
+      ["Аймаг, нийслэл", organization.provinceName],
+      ["Сум, дүүрэг", organization.districtName],
+      ["Баг, хороо", organization.subDistrictName],
+      ["Бүс", organization.regionName],
+      ["Хаяг", organization.address],
+      ["Бүлэг", esis.group?.name ?? null],
+      ["Сургалтын түвшин", esis.group?.academicLevelName ?? null],
+      ["Хичээлийн жил", esis.group?.academicYear ?? null],
+      ["Хариуцсан багш", esis.group?.instructorName ?? null],
+    ];
+
+    for (const [label, value] of esisRows) {
+      if (value) {
+        rows.push({
+          icon:
+            label === "Хаяг" ? (
+              <MapPin size={16} aria-hidden="true" />
+            ) : (
+              <Database size={16} aria-hidden="true" />
+            ),
+          label,
+          value,
+        });
+      }
+    }
+  } else if (current.kindergarten.description) {
     rows.push({
       icon: <Art name="kindergarten" size={18} className="size-[18px]" />,
       label: "Танилцуулга",
       value: <span className="whitespace-pre-wrap">{current.kindergarten.description}</span>,
     });
   }
-  if (current.kindergarten.address) {
+  if (!esis && current.kindergarten.address) {
     rows.push({
       icon: <MapPin size={16} aria-hidden="true" />,
       label: "Хаяг",
       value: current.kindergarten.address,
     });
   }
-  if (current.kindergarten.phone) {
+  if (!esis && current.kindergarten.phone) {
     rows.push({
       icon: <Phone size={16} aria-hidden="true" />,
       label: "Утас",
@@ -393,7 +443,7 @@ function KindergartenInfoCard({ current }: { current: Current }) {
       ),
     });
   }
-  if (current.kindergarten.email) {
+  if (!esis && current.kindergarten.email) {
     rows.push({
       icon: <Mail size={16} aria-hidden="true" />,
       label: "И-мэйл",
@@ -404,14 +454,14 @@ function KindergartenInfoCard({ current }: { current: Current }) {
       ),
     });
   }
-  if (current.group?.schedule) {
+  if (!esis && current.group?.schedule) {
     rows.push({
       icon: <CalendarDays size={16} aria-hidden="true" />,
       label: "Хичээлийн хуваарь",
       value: <span className="whitespace-pre-wrap">{current.group.schedule}</span>,
     });
   }
-  if (current.group?.rules) {
+  if (!esis && current.group?.rules) {
     rows.push({
       icon: <ClipboardList size={16} aria-hidden="true" />,
       label: "Бүлгийн дүрэм",
@@ -423,9 +473,23 @@ function KindergartenInfoCard({ current }: { current: Current }) {
     <section aria-label="Одоогийн цэцэрлэг, бүлгийн мэдээлэл">
       <SectionHeader
         title="Одоогийн цэцэрлэг, бүлгийн мэдээлэл"
-        lede="Багшийн оруулсан танилцуулга, холбоо барих мэдээлэл."
+        lede={
+          esis
+            ? "ESIS-ээс синк хийгдсэн байгууллага болон бүлгийн мэдээлэл."
+            : "ESIS мэдээлэл түр боломжгүй тул системд хадгалсан мэдээллийг харуулж байна."
+        }
       />
       <Card pad="roomy">
+        {esis ? (
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+            <Badge tone={esis.mode === "DEMO" ? "sun" : "mint"}>
+              {esis.mode === "DEMO" ? "ESIS DEMO DATA" : "ESIS LIVE"}
+            </Badge>
+            <p className="text-caption text-muted">
+              Сүүлийн синк: {formatDate(esis.syncedAt)} · {esis.status}
+            </p>
+          </div>
+        ) : null}
         {rows.length === 0 ? (
           <p className="text-body text-muted">Дэлгэрэнгүй мэдээлэл оруулаагүй байна.</p>
         ) : (
@@ -450,7 +514,12 @@ function KindergartenInfoCard({ current }: { current: Current }) {
 
 /** The current group's homeroom teacher(s) — name and role only, no contact details. */
 function TeacherContactCard({ current }: { current: Current }) {
-  const place = [current.kindergarten.name, current.group?.name].filter(Boolean).join(" · ");
+  const place = [
+    current.esis?.organization.name ?? current.kindergarten.name,
+    current.esis?.group?.name ?? current.group?.name,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <section aria-label="Багштай холбогдох">
