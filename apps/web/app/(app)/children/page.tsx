@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Download, Mars, Plus, Search, Upload, Venus } from "lucide-react";
+import { Download, Mars, Plus, Upload, Venus } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   CHILD_STATUS_LABEL,
@@ -27,7 +27,7 @@ import { Art } from "@/components/ui/art";
 import { Donut } from "@/components/ui/chart/donut";
 import { Ring } from "@/components/ui/chart/ring";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/field";
+import { SearchField } from "@/components/ui/search-field";
 import { Card } from "@/components/ui/card";
 import { formatAge, fullName } from "@/lib/format";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
@@ -213,6 +213,35 @@ function StaffChildren() {
             where all four still share a line — nothing moves.
           */
           <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+            {/*
+              ★ The search sits in the header row — 2026-09-09, at the client's
+              request, and the same move the four kitchen screens made.
+
+              It was a full-width row of its own beneath `RosterSummary`, which
+              put the one control a teacher reaches for first *below* four
+              summary tiles. First in the cluster rather than last: it is what
+              this screen is for, and reading order should say so.
+
+              ★★ `SearchField` rather than the hand-written box that stood
+              here. That box predated the shared control — its own comment
+              explained why a visible label was redundant beside a magnifier,
+              which is exactly the reasoning `SearchField` now carries once for
+              every list in the product (Order А/261, шалгуур 21). The
+              `aria-label` is preserved verbatim: it names the fields actually
+              searched, which is the one thing that must not be lost.
+
+              ★★★ A width, because `SearchField` is `flex-1` by design and
+              would otherwise fight the header's `shrink-0` cluster. Full on a
+              phone, where this row wraps anyway; 260px from `sm` up.
+            */}
+            <div className="w-full sm:w-[260px]">
+              <SearchField
+                label="Хүүхдийн нэрээр хайх"
+                placeholder="Нэр эсвэл овгоор хайх"
+                value={typed}
+                onChange={setTyped}
+              />
+            </div>
             {data ? (
               <p className="text-body text-muted" aria-live="polite">
                 Нийт {data.total}
@@ -258,24 +287,6 @@ function StaffChildren() {
       />
 
       <RosterSummary search={search} facets={facets} esisCount={rosterRows?.length} />
-
-      <div className="relative">
-        <Search
-          size={18}
-          aria-hidden
-          className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
-        />
-        <Input
-          type="search"
-          // A visible label would be redundant beside a magnifier and a
-          // placeholder this explicit, but a screen reader still needs one.
-          aria-label="Хүүхдийн нэрээр хайх"
-          placeholder="Нэр эсвэл овгоор хайх"
-          value={typed}
-          onChange={(event) => setTyped(event.target.value)}
-          className="pl-11"
-        />
-      </div>
 
       {/*
         ★ The roster, from ESIS — 2026-09-08, at the client's instruction,
