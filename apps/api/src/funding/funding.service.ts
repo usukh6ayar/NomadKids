@@ -145,9 +145,16 @@ export class FundingService {
     this.tenants.assertCanReadFinance(actor, kindergartenId);
 
     const { first } = monthBounds(query.month);
+
+    /*
+     * ★ `source` narrows **both** halves, and that is a fix rather than a
+     * flourish. The rows honoured the filter and the totals did not, so
+     * choosing "Эцэг эхийн" returned that source's children under a footer
+     * adding up every source — a screen that contradicts itself in one glance.
+     */
     const [items, totals] = await Promise.all([
       this.repo.listCalculations(kindergartenId, first, query.source),
-      this.repo.monthTotals(kindergartenId, first),
+      this.repo.monthTotals(kindergartenId, first, query.source),
     ]);
 
     return { month: query.month, items, totals };
@@ -164,14 +171,35 @@ export class FundingService {
    * what stops a later attendance correction silently changing a figure that
    * was already submitted — the previous run is superseded, not overwritten,
    * so both answers survive.
+   *
+   * ★★ **`source` is optional: omitting it runs every source with a tariff in
+   * force.** A rule set is per source, so the engine still computes one source
+   * at a time and each still gets its own `replaceMonth` transaction and its
+   * own audit row — nothing about a single run changed. What changed is who
+   * does the looping: asking an accountant to press the button four times at
+   * month end is how the fourth claim gets forgotten.
+   *
+   * ★★★ The attendance and meal counts are read **once**, above the loop. They
+   * do not depend on the source — §17's whole point — and re-reading them per
+   * source would multiply the heaviest query on this path by four for an
+   * identical answer.
    */
   async calculateMonth(actor: Actor, kindergartenId: string, dto: CalculateMonthDto) {
     this.tenants.assertCanReadFinance(actor, kindergartenId);
 
     const { first, last, lastIso } = monthBounds(dto.month);
-    const rules = await this.repo.rulesInForce(kindergartenId, dto.source, last);
 
-    if (rules.length === 0) {
+    /*
+     * ★ An explicit source that has no rule is an error; "all sources" with no
+     * rule anywhere is the same error. Both say the same sentence, because
+     * from the accountant's side it is the same problem — there is no tariff to
+     * bill under — and the fix is the same screen.
+     */
+    const sources = dto.source
+      ? [dto.source]
+      : await this.repo.sourcesInForce(kindergartenId, last);
+
+    if (sources.length === 0) {
       throw new BadRequestException("Энэ сард хүчинтэй санхүүжилтийн дүрэм алга");
     }
 
@@ -184,50 +212,68 @@ export class FundingService {
     const attendedBy = new Map(attendance.map((row) => [row.childId, row._count._all]));
     const fedBy = new Map(meals.map((row) => [row.childId, row.daysFed]));
 
-    const rows = enrollments.flatMap((enrollment) => {
-      const rule = pickRule(rules, enrollment.group?.ageBand ?? null, lastIso);
-      // A child whose age band no rule covers is left out rather than funded at
-      // zero: a zero row asserts "this child earns nothing", and the truth is
-      // that nobody has written a rule for them yet.
-      if (!rule) return [];
+    const saved: Awaited<ReturnType<FundingRepository["replaceMonth"]>> = [];
 
-      const counts = {
-        daysAttended: attendedBy.get(enrollment.childId) ?? 0,
-        daysFed: fedBy.get(enrollment.childId) ?? 0,
-      };
+    for (const source of sources) {
+      const rules = await this.repo.rulesInForce(kindergartenId, source, last);
 
-      const input: RuleInput = {
-        dailyRate: rule.dailyRate === null ? null : Number(rule.dailyRate),
-        monthlyRate: rule.monthlyRate === null ? null : Number(rule.monthlyRate),
-        dependsOnAttendance: rule.dependsOnAttendance,
-        dependsOnMeals: rule.dependsOnMeals,
-      };
+      /*
+       * Only reachable for an explicit source — `sourcesInForce` cannot return
+       * one without a rule. Kept so the single-source call keeps answering the
+       * 400 the screens already show, rather than silently writing nothing.
+       */
+      if (rules.length === 0) {
+        throw new BadRequestException("Энэ сард хүчинтэй санхүүжилтийн дүрэм алга");
+      }
 
-      return [
-        {
-          kindergartenId,
-          childId: enrollment.childId,
-          source: dto.source,
-          month: first,
-          daysAttended: counts.daysAttended,
-          daysFed: counts.daysFed,
-          dailyRate: rule.dailyRate,
-          fundingRuleId: rule.id,
-          calculatedAmount: String(calculateFunding(input, counts)),
-        },
-      ];
-    });
+      const rows = enrollments.flatMap((enrollment) => {
+        const rule = pickRule(rules, enrollment.group?.ageBand ?? null, lastIso);
+        // A child whose age band no rule covers is left out rather than funded at
+        // zero: a zero row asserts "this child earns nothing", and the truth is
+        // that nobody has written a rule for them yet.
+        if (!rule) return [];
 
-    const saved = await this.repo.replaceMonth(kindergartenId, first, dto.source, rows);
+        const counts = {
+          daysAttended: attendedBy.get(enrollment.childId) ?? 0,
+          daysFed: fedBy.get(enrollment.childId) ?? 0,
+        };
 
-    await this.audit.append({
-      action: "CREATE",
-      kindergartenId,
-      actorUserId: actor.userId,
-      objectType: "FundingCalculation",
-      objectId: kindergartenId,
-      metadata: { month: dto.month, source: dto.source, children: saved.length },
-    });
+        const input: RuleInput = {
+          dailyRate: rule.dailyRate === null ? null : Number(rule.dailyRate),
+          monthlyRate: rule.monthlyRate === null ? null : Number(rule.monthlyRate),
+          dependsOnAttendance: rule.dependsOnAttendance,
+          dependsOnMeals: rule.dependsOnMeals,
+        };
+
+        return [
+          {
+            kindergartenId,
+            childId: enrollment.childId,
+            source,
+            month: first,
+            daysAttended: counts.daysAttended,
+            daysFed: counts.daysFed,
+            dailyRate: rule.dailyRate,
+            fundingRuleId: rule.id,
+            calculatedAmount: String(calculateFunding(input, counts)),
+          },
+        ];
+      });
+
+      const written = await this.repo.replaceMonth(kindergartenId, first, source, rows);
+      saved.push(...written);
+
+      // One row per source, not one per press: §14 asks what changed, and a
+      // combined entry would lose which claim was re-run.
+      await this.audit.append({
+        action: "CREATE",
+        kindergartenId,
+        actorUserId: actor.userId,
+        objectType: "FundingCalculation",
+        objectId: kindergartenId,
+        metadata: { month: dto.month, source, children: written.length },
+      });
+    }
 
     return saved;
   }

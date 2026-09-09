@@ -50,10 +50,19 @@ export function FinanceDashboardPanel({
 
   return (
     <section aria-labelledby="finance-dashboard-heading" className="flex flex-col gap-4">
+      {/*
+        ★ "бүх эх үүсвэрээр" is stated, because the page above this panel gained
+        a source filter on 2026-09-09 and this panel does not follow it.
+
+        It cannot, and that is not an omission: §9's three groups *are* the
+        sources — state funding, parent billing, meal cost — so filtering to one
+        would blank two of the three cards. Saying so is one word; leaving it
+        unsaid makes the panel look like the filter is broken again.
+      */}
       <SectionHeader
         id="finance-dashboard-heading"
         title="Санхүүгийн тойм"
-        lede="Ирц, хоол, нэхэмжлэлээс автоматаар нэгтгэв."
+        lede="Ирц, хоол, нэхэмжлэлээс автоматаар нэгтгэв · бүх эх үүсвэрээр."
       />
 
       {data.parents.overdueCount > 0 && <OverdueCard parents={data.parents} />}

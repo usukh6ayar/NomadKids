@@ -167,6 +167,65 @@ export class FinanceDashboardRepository {
   }
 
   /**
+   * How many children are carrying a balance right now — the board's
+   * "Төлбөр төлөх ёстой хүүхдийн тоо".
+   *
+   * ★ **Not scoped to a month**, for the same reason `overdue` is not: a
+   * family that owes for February still owes in March, and a count that reset
+   * on the first would tell an accountant their chasing list was empty.
+   *
+   * ★★ Reads `Invoice.balance` rather than recomputing from payments. That
+   * column is maintained inside the same transaction as every payment and void
+   * (`InvoicesRepository.recomputeTotals`) and is what `/invoices` already
+   * filters and sorts by — a count derived a second way here would eventually
+   * disagree with the list it sends the accountant to.
+   *
+   * ★★★ A grouped count, not a `findMany` the caller measures: a kindergarten
+   * with two years of arrears must not pull every invoice across to produce
+   * one integer (§3.4).
+   */
+  async childrenOwing(kindergartenId: string) {
+    const rows = await this.prisma.invoice.groupBy({
+      by: ["childId"],
+      where: {
+        kindergartenId,
+        deletedAt: null,
+        status: { not: "REFUNDED" },
+        balance: { gt: 0 },
+      },
+      _count: { _all: true },
+    });
+
+    return rows.length;
+  }
+
+  /**
+   * Whether this month is ready to be reported on — two counts, for the
+   * board's "Анхаарах зүйлс".
+   *
+   * ★ Counts, not rows. The board needs to know *whether* a tariff is in force
+   * and *whether* the month has been run; which rules and which children are
+   * the register's job, one press away.
+   */
+  async fundingReadiness(kindergartenId: string, month: Date, monthEnd: Date) {
+    const [rules, calculations] = await Promise.all([
+      this.prisma.fundingRule.count({
+        where: {
+          kindergartenId,
+          deletedAt: null,
+          effectiveFrom: { lte: monthEnd },
+          OR: [{ effectiveTo: null }, { effectiveTo: { gte: monthEnd } }],
+        },
+      }),
+      this.prisma.fundingCalculation.count({
+        where: { kindergartenId, month, deletedAt: null },
+      }),
+    ]);
+
+    return { rules, calculations };
+  }
+
+  /**
    * Which kindergartens a child has been enrolled in, and who may view them.
    *
    * ★ A **tenancy** lookup, deliberately not `ChildAccessService`.
