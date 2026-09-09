@@ -404,7 +404,15 @@ function FieldCatalog({
         caption={
           outputCount > 0 ? "ESIS сервисийн гаралтын талбарууд" : "ESIS рүү илгээх талбарууд"
         }
-        minWidth={showSamples ? "min-w-[720px]" : "min-w-[560px]"}
+        /*
+          ★ No pixel floor — 2026-09-10. It was 720/560, which put a horizontal
+          scrollbar inside a dialog on every phone: the dialog is already
+          narrower than the page, so the floor was guaranteed to bite. `stacked`
+          lays the five columns out as one labelled block per field below `md`,
+          which is what a field list actually is.
+        */
+        minWidth="min-w-0"
+        stacked
       >
         <thead>
           <tr>
@@ -418,17 +426,17 @@ function FieldCatalog({
         <tbody>
           {fields.map((field) => (
             <tr key={field.name}>
-              <Td>
+              <Td data-label="Талбар">
                 <span className="font-mono text-caption text-ink">{field.name}</span>
               </Td>
-              <Td>{field.label}</Td>
-              <Td>
+              <Td data-label="Утга">{field.label}</Td>
+              <Td data-label="Чиглэл">
                 <Badge tone={field.io === "OUTPUT" ? "sky" : "peach"}>
                   {field.io === "OUTPUT" ? "Гаралт" : "Оролт"}
                 </Badge>
               </Td>
               {showSamples ? (
-                <Td>
+                <Td data-label="Жишээ">
                   {/* Refused fields have no sample — see `esis.fields.ts`. */}
                   {field.sample ? (
                     <span className="text-caption text-ink">{field.sample}</span>
@@ -437,7 +445,7 @@ function FieldCatalog({
                   )}
                 </Td>
               ) : null}
-              <Td>
+              <Td data-label="Төлөв">
                 {field.io === "INPUT" ? (
                   <Badge tone="peach">Илгээнэ</Badge>
                 ) : field.ingested ? (

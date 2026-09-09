@@ -38,8 +38,13 @@ export function esisSampleColumns(fields: EsisField[]): EsisField[] {
  * (`EsisRowValues` below) into the complete record, so the five here are a
  * summary rather than a truncation — every field is one press away, and the
  * fields that no longer fit across are precisely the ones the drill-down was
- * asked for. Five is what a phone holds without the text collapsing to one
- * word per line.
+ * asked for.
+ *
+ * ★★★★ **Five is the count for the table; below `md` the same five stack** —
+ * 2026-09-10. The table lays itself out as cards on a phone, one field per
+ * line, so this number is no longer doing the work of keeping text from
+ * collapsing to one word per column. It only decides how much of a record is
+ * worth showing before the reader opens it. See `EsisRowValues`.
  */
 const TABLE_COLUMNS = 5;
 
@@ -131,14 +136,34 @@ export function EsisRowValues({
       `min-w-0` rather than a pixel floor: with five columns the table fits its
       container at every width this product supports, so the wrapper's
       `overflow-x-auto` never has anything to scroll. `table-fixed` is what
-      makes the truncation below possible — an auto table sizes to its content
-      and would push past the container instead of ellipsing inside it.
+      shares the width evenly between the columns, so one long value wraps
+      inside its own cell instead of pushing the rest off the edge.
+
+      ★★★★ **Below `md` the same table is laid out as cards — 2026-09-10, at
+      the client's instruction:** "хойш гүйлгэхгүйгээр бүхэлдээ харуулдаг
+      болгох", pointing at `/settings`'s Ажилтны бүртгэл as the shape to copy.
+
+      Five columns are legible on a laptop and cramped on a phone, where each
+      cell gets about sixty pixels and every value collapses to one word per
+      line — which is what `truncate` was hiding, and why a value could not be
+      read to its end.
+
+      `stacked` is what does it, and the rule behind it lives once in
+      `globals.css` rather than as eight `max-md:` utilities spread across this
+      table — see its note. All this file owes it is a `data-label` on every
+      cell, which is the column heading the phone layout shows in place of the
+      hidden `thead`.
     */
-    <TableShell caption="ESIS сервисийн мөрүүд" minWidth="min-w-0" tableClassName="table-fixed">
+    <TableShell
+      caption="ESIS сервисийн мөрүүд"
+      minWidth="min-w-0"
+      tableClassName="table-fixed"
+      stacked
+    >
       <thead>
         <tr>
           {shown.map((field) => (
-            <Th key={field.name} className="truncate">
+            <Th key={field.name} className="whitespace-normal break-words">
               {field.label}
             </Th>
           ))}
@@ -176,7 +201,7 @@ export function EsisRowValues({
                   const value = row[field.name] ?? "—";
                   const isAnchor = href && field.name === anchorColumn?.name;
                   return (
-                    <Td key={field.name} className="truncate">
+                    <Td key={field.name} data-label={field.label} className="align-top break-words">
                       {isAnchor ? (
                         <Link href={href} className="font-medium text-ink hover:underline">
                           {value}
