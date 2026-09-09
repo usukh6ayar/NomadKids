@@ -934,7 +934,7 @@ function supportSections(isCook: boolean): NavSection[] {
     },
     {
       title: "Миний мэдээлэл",
-      entries: [navEntry("Профайл", "/settings")],
+      entries: [navEntry("Хувийн тохиргоо", "/settings")],
     },
   ];
 }
@@ -973,7 +973,7 @@ function platformNav(): NavItem[] {
       label: "Байгууллагын хүсэлт",
       icon: artIcon("kindergarten", 20),
     },
-    { href: "/settings", label: "Профайл", icon: <Settings {...iconProps} /> },
+    { href: "/settings", label: "Хувийн тохиргоо", icon: <Settings {...iconProps} /> },
   ];
 }
 
