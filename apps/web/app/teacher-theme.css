@@ -270,28 +270,10 @@ body:has([data-app-theme]) nav a[aria-current="page"] {
   border-color: color-mix(in srgb, var(--workspace-accent) 24%, white);
 }
 
-/* Every role workspace opens with the same hierarchy, in its own palette. */
+/* Keep page headers compact: title, context and actions only. */
 [data-app-theme] main [data-ui="page-header"] {
-  position: relative;
-  margin-bottom: 0;
-  padding-bottom: 18px;
-  border-bottom: 1px solid var(--color-border-soft);
-}
-
-[data-app-theme] main [data-ui="page-header"]::after {
-  content: "";
-  position: absolute;
-  bottom: -1px;
-  left: 0;
-  width: 72px;
-  height: 3px;
-  border-radius: var(--radius-pill);
-  background: linear-gradient(90deg, var(--workspace-accent), var(--workspace-accent-secondary));
-}
-
-[data-app-theme="teacher"] main[data-layout="content"] [data-ui="page-header"] {
-  min-height: 70px;
-  align-content: center;
+  border: 0;
+  padding: 0;
 }
 
 [data-app-theme="teacher"] main[data-layout="content"] [data-ui="page-header"] h1 {
@@ -473,10 +455,6 @@ body:has([data-app-theme]) button:hover [data-nav-icon][data-icon-surface="none"
 [data-app-theme="teacher"] .teacher-dashboard-header [data-ui="page-header"] {
   padding-bottom: 0;
   border-bottom: 0;
-}
-
-[data-app-theme="teacher"] .teacher-dashboard-header [data-ui="page-header"]::after {
-  display: none;
 }
 
 [data-app-theme="teacher"] .teacher-dashboard-header .teacher-page-icon {

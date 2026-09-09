@@ -39,25 +39,16 @@ describe("heading hierarchy", () => {
    * looks wrong; the `<h1>` is a real `<h1>` and the outline is correct. Only
    * the visual weight was inverted.
    */
-  /**
-   * ★ 2026-09-09 — this asserted the `<h1>` was at least as heavy as the
-   * `<h2>`s under it. There is no visible `<h1>` any more.
-   *
-   * Every screen repeated, in 23px type, the words of the sidebar row that had
-   * just been pressed, and the client asked for the duplication to go. The
-   * heading is `sr-only` now, so a weight comparison has nothing to compare —
-   * but the reason it was worth asserting has not changed: the page must still
-   * *have* a heading, or it has no name in a screen reader's landmark list and
-   * no top level in its outline. That is what this checks instead.
-   */
-  it("keeps a page heading for assistive technology, with nothing drawn", async () => {
+  /** The compact header still gives every screen a visible top-level name. */
+  it("renders one compact, visible page heading", async () => {
     stubApi([{ path: "/auth/me", body: sessionFor(["PARENT"]) }]);
 
     const { container } = renderWithProviders(<PageHeader title="Гарчиг" />);
     const h1 = await waitFor(() => container.querySelector("h1")!);
 
     expect(h1).toHaveTextContent("Гарчиг");
-    expect(h1.className, "the page title is present but not painted").toContain("sr-only");
+    expect(h1.className).toContain("text-display");
+    expect(h1.className).not.toContain("sr-only");
 
     // The section headings below it are still the visible hierarchy.
     const { container: section } = render(<SectionHeader title="Дэд гарчиг" />);
@@ -82,11 +73,8 @@ describe("heading hierarchy", () => {
 
     const failed = renderWithProviders(<DashboardPage />);
     await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
-    // ★ `sr-only` since 2026-09-09 — see the test above. What this case is
-    // for is unchanged: the heading must not change between the error branch
-    // and the loaded branch, which is what the final assertion compares.
     const whenFailed = failed.container.querySelector("h1")!.className;
-    expect(whenFailed).toContain("sr-only");
+    expect(whenFailed).toContain("text-display");
     failed.unmount();
 
     stubApi([
@@ -96,8 +84,7 @@ describe("heading hierarchy", () => {
 
     const loaded = renderWithProviders(<DashboardPage />);
     // Any string from the loaded branch's quick-action tiles signals the query
-    // has settled — the header itself no longer carries a lede to wait on
-    // (removed 2026-09-07, along with every other page's header subtitle).
+    // has settled.
     await waitFor(() => expect(screen.getByText("Ирц")).toBeInTheDocument());
 
     expect(loaded.container.querySelector("h1")!.className).toBe(whenFailed);

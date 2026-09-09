@@ -120,6 +120,20 @@ async function openPasswordForm(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("settings — changing a password", () => {
+  it("keeps sign-out inside the profile card", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: "/me/profile", body: PROFILE },
+    ]);
+
+    renderWithProviders(<SettingsPage />);
+
+    const signOut = await screen.findByRole("button", { name: "Гарах" });
+    const profileCard = signOut.closest('[data-ui="card"]');
+    expect(profileCard).toHaveTextContent("Ганбат Болд");
+    expect(profileCard).toHaveTextContent("Системээс гарах");
+  });
+
   /**
    * ★ The third screen that sets a password, and the one that did not say how.
    *

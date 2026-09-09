@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { BriefcaseBusiness, Building2, Database, KeyRound, Mail } from "lucide-react";
+import { BriefcaseBusiness, Building2, Database, KeyRound, LogOut, Mail } from "lucide-react";
 import { z } from "zod";
 import {
   esisMyProfileSchema,
@@ -33,9 +33,8 @@ const profileSchema = userProfileSchema.extend({
 /**
  * Own profile and password.
  *
- * Two independent forms on one page. Deliberately separate mutations: a failed
- * password change must not discard edits to the name field, and a single
- * combined save would make "what exactly did I just change" unanswerable.
+ * The profile record is read-only; photo, password and sign-out remain the
+ * signed-in person's account controls.
  */
 export default function SettingsPage() {
   return (
@@ -43,10 +42,9 @@ export default function SettingsPage() {
       ★ Capped, and one column again — 2026-09-06.
 
       It was two columns from `xl`: the profile on the left, the password form
-      and the sign-out row on the right. That split existed because there were
-      two forms; there is one now. "Нууц үг солих" is a dialog opened from the
-      profile card (see `PasswordDialog`), so the right-hand column held a
-      single sign-out row — a column of chrome beside a column of content.
+      and the sign-out row on the right. There is one account card now:
+      password and sign-out both belong to the signed-in profile, while the
+      ESIS records below remain read-only content.
 
       The reasoning the old note recorded, kept because it is still the reason
       for the 760px cap:
@@ -69,6 +67,7 @@ export default function SettingsPage() {
 
       <div className="flex w-full max-w-[760px] flex-col gap-6 lg:gap-8">
         <ProfileCard />
+
         <EsisProfileSection />
         {/*
           ★ The kindergarten's teaching staff, under the reader's own record —
@@ -95,7 +94,6 @@ export default function SettingsPage() {
           title="Багшийн жагсаалт"
           description="ESIS-д бүртгэлтэй багш нарын томилгоо"
         />
-        <SignOutCard />
       </div>
     </div>
   );
@@ -261,7 +259,7 @@ function EsisFieldGroup({
  * person, and the client's position is that it is not a thing to hand-correct
  * here.
  *
- * ★★ Two things stayed, and both are deliberate:
+ * ★★ Three profile controls live together here, and each is deliberate:
  *
  *   The **picture**, because ESIS supplies none. Removing its badge would mean
  *   nobody could ever set a profile photo again, which is not information
@@ -273,8 +271,13 @@ function EsisFieldGroup({
  *   losing it with the form would have left an account with no way to rotate
  *   its own credentials. It sits on the page now, folded shut, which is the
  *   shape it already had inside the form.
+ *
+ *   **Sign-out** moved into the same card from a standalone panel below all
+ *   ESIS data. The shell now routes every role here first, so the action is
+ *   both intentional and immediately reachable.
  */
 function ProfileCard() {
+  const logout = useLogout();
   const { data, isLoading, isError, error } = useQuery({
     queryKey: qk.profile(),
     queryFn: () => get("/me/profile", profileSchema),
@@ -313,6 +316,17 @@ function ProfileCard() {
 
         <div className="border-t border-border-soft pt-5">
           <PasswordSection identifier={data?.email || data?.username || ""} email={data?.email} />
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border-soft pt-5">
+          <div>
+            <p className="font-medium text-ink">Системээс гарах</p>
+            <p className="text-body text-muted">Энэ төхөөрөмжөөс гарна.</p>
+          </div>
+          <Button variant="secondary" onClick={() => void logout()}>
+            <LogOut aria-hidden="true" />
+            Гарах
+          </Button>
         </div>
       </Card>
     </section>
@@ -602,21 +616,5 @@ function PasswordSection({
         </form>
       ) : null}
     </div>
-  );
-}
-
-function SignOutCard() {
-  const logout = useLogout();
-
-  return (
-    <Card pad="roomy" className="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <p className="font-medium text-ink">Системээс гарах</p>
-        <p className="text-body text-muted">Энэ төхөөрөмжөөс гарна.</p>
-      </div>
-      <Button variant="secondary" onClick={() => void logout()}>
-        Гарах
-      </Button>
-    </Card>
   );
 }

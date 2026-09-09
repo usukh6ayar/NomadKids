@@ -5,7 +5,7 @@ import AppLayout from "@/app/(app)/layout";
 import { BRAND } from "@/lib/vocabulary";
 
 /**
- * The sidebar: brand, icons, active state, role and the way out.
+ * The sidebar: brand, icons, active state, role and the profile entry point.
  *
  * ★ Rendered through `AppLayout`, not through `AppShell` directly.
  *
@@ -66,10 +66,15 @@ function renderShell(
    */
   groups: unknown = GROUPS,
   unreadCount = 0,
+  isSuperAdmin = false,
 ) {
   setPathname(pathname);
+  const session = sessionFor(roles);
   stubApi([
-    { path: "/auth/me", body: sessionFor(roles) },
+    {
+      path: "/auth/me",
+      body: isSuperAdmin ? { ...session, user: { ...session.user, isSuperAdmin: true } } : session,
+    },
     { path: "/groups", body: groups },
     { path: "/children/mine", body: ownChildren },
     { path: "/notifications/unread-count", body: { count: unreadCount } },
@@ -161,7 +166,6 @@ describe("navigation icons", () => {
       "Улирал",
       "Бүлгүүд",
       "Баримт бичгийн сан",
-      "Хувийн тохиргоо",
     ];
 
     for (const label of entries) {
@@ -353,8 +357,8 @@ describe("role-based navigation", () => {
     expect(within(nav).getByRole("link", { name: "Хоол ба цэс" })).toBeInTheDocument();
     // Харилцаа холбоо
     expect(within(nav).getByRole("link", { name: "Судалгаа" })).toBeInTheDocument();
-    // Багш ба байгууллага
-    expect(within(nav).getByRole("link", { name: "Хувийн тохиргоо" })).toBeInTheDocument();
+    // Багш ба байгууллага: the account card is the single profile route.
+    expect(within(nav).getByRole("link", { name: /Профайл: Тест Хэрэглэгч/ })).toBeInTheDocument();
   });
 
   /**
@@ -544,28 +548,52 @@ describe("the sidebar footer", () => {
     expect(within(nav).queryByText("Дэлбээ бүлэг")).not.toBeInTheDocument();
   });
 
-  it("gives a parent the full-width sign-out action from the reference", async () => {
+  it("routes a parent through their profile before sign-out", async () => {
     renderShell(["PARENT"], "/home", [OWN_CHILD]);
     const nav = await sidebar();
 
-    expect(within(nav).getByRole("button", { name: "Системээс гарах" })).toBeInTheDocument();
-    expect(within(nav).queryByText("Эцэг эх")).not.toBeInTheDocument();
-  });
-
-  it("keeps settings and the way out reachable", async () => {
-    renderShell(["TEACHER"]);
-    const nav = await sidebar();
-
-    // ★ The identity block stopped being the settings link on 2026-09-06 —
-    // see the note in `WhoAmI`. `/settings` has three other doors and the foot
-    // of the sidebar carries the one thing none of them do, so the only
-    // control in that card is the way out.
-    expect(within(nav).queryByRole("link", { name: /Тест Хэрэглэгч/ })).not.toBeInTheDocument();
-    expect(within(nav).getByRole("link", { name: "Хувийн тохиргоо" })).toHaveAttribute(
+    expect(within(nav).getByRole("link", { name: /Профайл: Тест Хэрэглэгч/ })).toHaveAttribute(
       "href",
       "/settings",
     );
-    expect(within(nav).getByRole("button", { name: "Гарах" })).toBeInTheDocument();
+    expect(within(nav).queryByRole("button", { name: /гарах/i })).not.toBeInTheDocument();
+  });
+
+  it("opens settings from the account card and keeps sign-out out of the shell", async () => {
+    renderShell(["TEACHER"]);
+    const nav = await sidebar();
+
+    expect(within(nav).getByRole("link", { name: /Профайл: Тест Хэрэглэгч/ })).toHaveAttribute(
+      "href",
+      "/settings",
+    );
+    expect(within(nav).queryByRole("button", { name: /гарах/i })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { label: "admin", roles: ["ADMIN"] as const },
+    { label: "cook", roles: ["COOK"] as const },
+    { label: "accountant", roles: ["ACCOUNTANT"] as const },
+  ])("uses the same profile-only sign-out flow for $label", async ({ roles }) => {
+    renderShell([...roles]);
+    const nav = await sidebar();
+
+    expect(within(nav).getByRole("link", { name: /Профайл: Тест Хэрэглэгч/ })).toHaveAttribute(
+      "href",
+      "/settings",
+    );
+    expect(within(nav).queryByRole("button", { name: /гарах/i })).not.toBeInTheDocument();
+  });
+
+  it("uses the same profile-only sign-out flow for the platform role", async () => {
+    renderShell([], "/platform", [], GROUPS, 0, true);
+    const nav = await sidebar();
+
+    expect(within(nav).getByRole("link", { name: /Профайл: Тест Хэрэглэгч/ })).toHaveAttribute(
+      "href",
+      "/settings",
+    );
+    expect(within(nav).queryByRole("button", { name: /гарах/i })).not.toBeInTheDocument();
   });
 
   it("truncates a long name rather than pushing the controls off the panel", async () => {

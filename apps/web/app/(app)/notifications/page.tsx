@@ -41,7 +41,6 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RowCard, RowList } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
 import { Field, Input } from "@/components/ui/field";
@@ -256,107 +255,72 @@ export default function NotificationsPage() {
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   return (
-    <div className="page-band">
+    <div className="flex flex-col gap-4 lg:gap-5">
       <PageHeader title={tab === "news" ? "Мэдээ" : "Судалгаа"} />
 
-      {/*
-        Capped from `lg` up. Full width is right on a phone, where the field is
-        the only thing on its row; at 1336px an unbounded search box for a
-        two-word query is the widest element on the screen and reads as the
-        page's main event rather than as a way past the list — the same
-        reasoning that put `HeaderSearch` (`app-shell.tsx`) on a 280px cap.
-      */}
-      {/*
-        ★ The tabs come first, because they decide what the rest of the page is
-        about.
-
-        They sat below the search field and the filter chips, which put a
-        "Мэдээнээс хайх" placeholder and a "Чухал" filter above the control that
-        chooses between Мэдээ and Судалгаа — so a parent read two narrowing
-        controls before the one that says what is being narrowed. Search and
-        filters both change meaning with the tab; the tab changes meaning with
-        nothing.
-      */}
-      {isGuardian ? (
-        <div role="tablist" aria-label="Мэдээ эсвэл судалгаа" className="flex gap-2">
-          <TabButton
-            active={tab === "news"}
-            onClick={() => setTab("news")}
-            icon={<Art name="notice" size={18} className="size-[18px]" />}
-          >
-            Мэдээ
-          </TabButton>
-          <TabButton
-            active={tab === "surveys"}
-            onClick={() => setTab("surveys")}
-            icon={<Art name="survey" size={18} className="size-[18px]" />}
-            badge={totalPending > 0 ? totalPending : undefined}
-          >
-            Судалгаа
-          </TabButton>
-        </div>
-      ) : null}
-
-      {/*
-        ★ The search field and the compose button share a row.
-
-        They were two stacked blocks with a `gap-6` between them, and with the
-        filter chips below that the screen spent three rows and ~200px of
-        chrome before the first post. None of the three is the page's subject;
-        the feed is.
-
-        Both keep the sizing their own notes argue for — the field capped so it
-        does not read as the page's main event, the button full-width on a
-        phone where it is the one primary action on its own line. From `sm` they
-        sit side by side because there is room for both and no reason for the
-        button to have a row of its own.
-      */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative w-full sm:max-w-[420px]">
-          <Search
-            size={18}
-            aria-hidden="true"
-            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
-          />
-          <Input
-            type="search"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder={tab === "news" ? "Мэдээнээс хайх" : "Судалгаанаас хайх"}
-            aria-label={tab === "news" ? "Мэдээнээс хайх" : "Судалгаанаас хайх"}
-            className="pl-11"
-          />
-        </div>
-
-        {isStaff && tab === "news" ? (
-          <Button asChild className="w-full sm:w-auto">
-            <Link href="/notifications/new">
-              <PenLine size={18} aria-hidden="true" />
-              Пост оруулах
-            </Link>
-          </Button>
+      <section
+        aria-label={tab === "news" ? "Мэдээний удирдлага" : "Судалгааны удирдлага"}
+        data-ui="communications-toolbar"
+        className="overflow-hidden rounded-card border border-border bg-surface shadow-sm"
+      >
+        {isGuardian ? (
+          <div className="border-b border-border-soft bg-sunken p-1.5">
+            <div
+              role="tablist"
+              aria-label="Мэдээ эсвэл судалгаа"
+              data-ui="communication-tabs"
+              className="grid max-w-[520px] grid-cols-2 gap-1"
+            >
+              <TabButton
+                active={tab === "news"}
+                onClick={() => setTab("news")}
+                icon={<Art name="notice" size={20} className="size-5" />}
+              >
+                Мэдээ
+              </TabButton>
+              <TabButton
+                active={tab === "surveys"}
+                onClick={() => setTab("surveys")}
+                icon={<Art name="survey" size={20} className="size-5" />}
+                badge={totalPending > 0 ? totalPending : undefined}
+              >
+                Судалгаа
+              </TabButton>
+            </div>
+          </div>
         ) : null}
-      </div>
 
-      {/*
-        ★ The category row — the work the note that stood here predicted.
+        <div className="flex flex-col gap-3 p-3 sm:p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative w-full sm:max-w-[440px]">
+              <Search
+                size={18}
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
+              />
+              <Input
+                type="search"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder={tab === "news" ? "Мэдээнээс хайх" : "Судалгаанаас хайх"}
+                aria-label={tab === "news" ? "Мэдээнээс хайх" : "Судалгаанаас хайх"}
+                className="border-border-soft bg-canvas pl-11 focus:bg-surface"
+              />
+            </div>
 
-        It read: "A real category needs a column, a value in the compose form
-        and a query parameter. It is a small piece of work and not one a
-        component can do." `Notification.category` is that column, the composer
-        sets it, and `?category=` is the parameter. The chips filter on the
-        server now rather than sorting nothing.
+            {isStaff && tab === "news" ? (
+              <Button asChild className="w-full sm:ml-auto sm:w-auto">
+                <Link href="/notifications/new">
+                  <PenLine size={18} aria-hidden="true" />
+                  Шинэ мэдээ
+                </Link>
+              </Button>
+            ) : null}
+          </div>
 
-        `scroll` keeps ten chips on one line — see `FilterChipRow`. Wrapped they
-        take three rows and 130px above the first post.
-
-        Уншаагүй and Чухал stay: they are not categories but they are how a
-        parent finds what they have not seen, and dropping them to make room
-        would trade a working filter for a taxonomy.
-      */}
-      {tab === "news" ? (
-        <div className="flex flex-col gap-2">
-          {/*
+          {tab === "news" ? (
+            <div className="flex flex-col gap-3 border-t border-border-soft pt-3">
+              {/*
             ★ Two filter rows, and they are not the same kind of question.
 
             "Бүлгийн самбар" chooses *whose* board this is; the category chips
@@ -366,66 +330,66 @@ export default function NotificationsPage() {
             audience comes first, because it is the question the other depends
             on.
           */}
-          {isStaff && (boardGroups.data?.items.length ?? 0) > 1 ? (
-            <FilterChipRow label="Бүлгийн самбар">
-              <FilterChip active={!groupId} onClick={() => setGroupId("")}>
-                Бүх бүлэг
-              </FilterChip>
-              {(boardGroups.data?.items ?? []).map((group) => (
+              {isStaff && (boardGroups.data?.items.length ?? 0) > 1 ? (
+                <FilterChipRow label="Бүлгийн самбар">
+                  <FilterChip active={!groupId} onClick={() => setGroupId("")}>
+                    Бүх бүлэг
+                  </FilterChip>
+                  {(boardGroups.data?.items ?? []).map((group) => (
+                    <FilterChip
+                      key={group.id}
+                      active={groupId === group.id}
+                      onClick={() => setGroupId(group.id)}
+                    >
+                      {group.name}
+                    </FilterChip>
+                  ))}
+                </FilterChipRow>
+              ) : null}
+
+              <FilterChipRow label="Мэдээг ангиллаар шүүх" scroll>
                 <FilterChip
-                  key={group.id}
-                  active={groupId === group.id}
-                  onClick={() => setGroupId(group.id)}
+                  active={category === null && !showUnreadOnly && !importantOnly}
+                  onClick={() => {
+                    setCategory(null);
+                    setShowUnreadOnly(false);
+                    setImportantOnly(false);
+                  }}
                 >
-                  {group.name}
+                  Бүгд
                 </FilterChip>
-              ))}
-            </FilterChipRow>
-          ) : null}
+                {NOTIFICATION_CATEGORIES.map((value) => (
+                  <FilterChip
+                    key={value}
+                    active={category === value}
+                    onClick={() => setCategory(category === value ? null : value)}
+                  >
+                    {NOTIFICATION_CATEGORY_LABEL[value]}
+                  </FilterChip>
+                ))}
+              </FilterChipRow>
 
-          <FilterChipRow label="Мэдээг ангиллаар шүүх" scroll>
-            <FilterChip
-              active={category === null && !showUnreadOnly && !importantOnly}
-              onClick={() => {
-                setCategory(null);
-                setShowUnreadOnly(false);
-                setImportantOnly(false);
-              }}
-            >
-              Бүгд
-            </FilterChip>
-            {NOTIFICATION_CATEGORIES.map((value) => (
-              <FilterChip
-                key={value}
-                active={category === value}
-                onClick={() => setCategory(category === value ? null : value)}
-              >
-                {NOTIFICATION_CATEGORY_LABEL[value]}
-              </FilterChip>
-            ))}
-          </FilterChipRow>
+              <div className="flex flex-wrap items-center gap-2">
+                <FilterChip
+                  active={showUnreadOnly}
+                  onClick={() => {
+                    setShowUnreadOnly(!showUnreadOnly);
+                    setImportantOnly(false);
+                  }}
+                >
+                  Уншаагүй
+                </FilterChip>
+                <FilterChip
+                  active={importantOnly}
+                  onClick={() => {
+                    setImportantOnly(!importantOnly);
+                    setShowUnreadOnly(false);
+                  }}
+                >
+                  Чухал
+                </FilterChip>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <FilterChip
-              active={showUnreadOnly}
-              onClick={() => {
-                setShowUnreadOnly(!showUnreadOnly);
-                setImportantOnly(false);
-              }}
-            >
-              Уншаагүй
-            </FilterChip>
-            <FilterChip
-              active={importantOnly}
-              onClick={() => {
-                setImportantOnly(!importantOnly);
-                setShowUnreadOnly(false);
-              }}
-            >
-              Чухал
-            </FilterChip>
-
-            {/*
+                {/*
               ★ The date range is behind a toggle, not two inputs always on
               screen.
 
@@ -436,53 +400,55 @@ export default function NotificationsPage() {
               chip carries the range once it is set, so a filter that is on is
               never invisible.
             */}
-            <FilterChip active={Boolean(from || to)} onClick={() => setDatesOpen(!datesOpen)}>
-              <CalendarRange size={14} aria-hidden="true" />
-              {from || to ? `${from || "…"} — ${to || "…"}` : "Огноогоор"}
-            </FilterChip>
+                <FilterChip active={Boolean(from || to)} onClick={() => setDatesOpen(!datesOpen)}>
+                  <CalendarRange size={14} aria-hidden="true" />
+                  {from || to ? `${from || "…"} — ${to || "…"}` : "Огноогоор"}
+                </FilterChip>
 
-            {from || to ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setFrom("");
-                  setTo("");
-                }}
-                className="text-caption text-muted underline-offset-2 hover:text-ink hover:underline"
-              >
-                Огноог арилгах
-              </button>
-            ) : null}
-          </div>
+                {from || to ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFrom("");
+                      setTo("");
+                    }}
+                    className="text-caption text-muted underline-offset-2 hover:text-ink hover:underline"
+                  >
+                    Огноог арилгах
+                  </button>
+                ) : null}
+              </div>
 
-          {datesOpen ? (
-            <div className="grid gap-3 rounded-card border border-border bg-surface p-3 sm:max-w-[420px] sm:grid-cols-2">
-              <Field label="Эхлэх огноо">
-                {({ id }) => (
-                  <Input
-                    id={id}
-                    type="date"
-                    value={from}
-                    max={to || undefined}
-                    onChange={(event) => setFrom(event.target.value)}
-                  />
-                )}
-              </Field>
-              <Field label="Дуусах огноо">
-                {({ id }) => (
-                  <Input
-                    id={id}
-                    type="date"
-                    value={to}
-                    min={from || undefined}
-                    onChange={(event) => setTo(event.target.value)}
-                  />
-                )}
-              </Field>
+              {datesOpen ? (
+                <div className="grid gap-3 rounded-row bg-sunken p-3 sm:max-w-[440px] sm:grid-cols-2">
+                  <Field label="Эхлэх огноо">
+                    {({ id }) => (
+                      <Input
+                        id={id}
+                        type="date"
+                        value={from}
+                        max={to || undefined}
+                        onChange={(event) => setFrom(event.target.value)}
+                      />
+                    )}
+                  </Field>
+                  <Field label="Дуусах огноо">
+                    {({ id }) => (
+                      <Input
+                        id={id}
+                        type="date"
+                        value={to}
+                        min={from || undefined}
+                        onChange={(event) => setTo(event.target.value)}
+                      />
+                    )}
+                  </Field>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
-      ) : null}
+      </section>
 
       {tab === "surveys" && isGuardian ? (
         <SurveysTab
@@ -503,14 +469,6 @@ export default function NotificationsPage() {
         filters in force — not a fold over the pages loaded so far, which would
         creep upward as the reader scrolls and read as posts arriving.
       */}
-      {tab === "news" && data ? (
-        <p className="-mt-2 text-caption text-muted" aria-live="polite">
-          {boardName} · {data.pages[0]?.total ?? 0} мэдээ
-          {showUnreadOnly ? " · зөвхөн уншаагүй" : ""}
-          {importantOnly ? " · зөвхөн чухал" : ""}
-        </p>
-      ) : null}
-
       {tab === "news" ? (
         <>
           {isLoading ? <LoadingState rows={4} /> : null}
@@ -555,11 +513,20 @@ export default function NotificationsPage() {
              */
             <section
               aria-labelledby="news-feed-heading"
-              className="flex w-full max-w-[640px] flex-col gap-3 lg:max-w-[760px] xl:max-w-[880px]"
+              className="flex w-full max-w-[920px] flex-col gap-3"
             >
-              <h2 id="news-feed-heading" className="text-title font-semibold text-ink">
-                Сүүлийн мэдээ
-              </h2>
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <h2 id="news-feed-heading" className="text-title font-semibold text-ink">
+                    {boardName}
+                  </h2>
+                  <p className="mt-0.5 text-body text-muted" aria-live="polite">
+                    {data?.pages[0]?.total ?? 0} мэдээ
+                    {showUnreadOnly ? " · зөвхөн уншаагүй" : ""}
+                    {importantOnly ? " · зөвхөн чухал" : ""}
+                  </p>
+                </div>
+              </div>
 
               {/*
                 ★ One column, capped — not the two-across grid this carried
@@ -633,16 +600,13 @@ export default function NotificationsPage() {
             same cap the section carries puts it back under its own column.
           */}
           {isFetchingNextPage ? (
-            <p
-              role="status"
-              className="max-w-[640px] py-2 text-center text-body text-muted lg:max-w-[760px] xl:max-w-[880px]"
-            >
+            <p role="status" className="max-w-[920px] py-2 text-center text-body text-muted">
               Ачаалж байна…
             </p>
           ) : null}
 
           {!hasNextPage && items.length > 0 ? (
-            <p className="max-w-[640px] py-2 text-center text-body text-muted lg:max-w-[760px] xl:max-w-[880px]">
+            <p className="max-w-[920px] py-2 text-center text-body text-muted">
               Бүх мэдэгдлийг үзлээ.
             </p>
           ) : null}
@@ -673,10 +637,10 @@ function TabButton({
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "flex min-h-11 items-center gap-2 rounded-pill border px-4 text-body font-medium transition-colors",
+        "flex min-h-[48px] items-center justify-center gap-2 rounded-control border px-3 text-body font-semibold transition-all",
         active
-          ? "border-primary bg-primary-soft text-primary"
-          : "border-border bg-surface text-muted hover:text-ink",
+          ? "border-border bg-surface text-primary shadow-sm"
+          : "border-transparent text-muted hover:bg-surface/70 hover:text-ink",
       )}
     >
       {icon}
@@ -732,29 +696,31 @@ function SurveysTab({
   );
 
   return (
-    <div className="flex flex-col gap-4">
+    <section aria-label="Идэвхтэй судалгаа" className="flex w-full max-w-[920px] flex-col gap-4">
       {familyChildren.length > 1 ? (
-        <div role="group" aria-label="Хүүхэд сонгох" className="flex gap-2 overflow-x-auto pb-1">
-          {familyChildren.map((child) => {
-            const active = child.id === selectedChild?.id;
-            return (
-              <button
-                key={child.id}
-                type="button"
-                aria-pressed={active}
-                onClick={() => onSelectChild(child.id)}
-                className={cn(
-                  "flex min-h-[44px] shrink-0 items-center gap-2 rounded-pill border px-3 py-1.5 text-body font-medium transition-colors",
-                  active
-                    ? "border-primary bg-primary-soft text-primary"
-                    : "border-border bg-surface text-muted hover:text-ink",
-                )}
-              >
-                <ChildAvatar child={child} size={24} />
-                <span className="max-w-[140px] truncate">{child.firstName}</span>
-              </button>
-            );
-          })}
+        <div className="rounded-card border border-border bg-surface p-2 shadow-sm">
+          <div role="group" aria-label="Хүүхэд сонгох" className="flex gap-1.5 overflow-x-auto">
+            {familyChildren.map((child) => {
+              const active = child.id === selectedChild?.id;
+              return (
+                <button
+                  key={child.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => onSelectChild(child.id)}
+                  className={cn(
+                    "flex min-h-[44px] shrink-0 items-center gap-2 rounded-control border px-3 py-1.5 text-body font-semibold transition-colors",
+                    active
+                      ? "border-primary bg-primary-soft text-primary"
+                      : "border-transparent text-muted hover:bg-sunken hover:text-ink",
+                  )}
+                >
+                  <ChildAvatar child={child} size={24} />
+                  <span className="max-w-[140px] truncate">{child.firstName}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       ) : null}
 
@@ -773,7 +739,7 @@ function SurveysTab({
       ) : null}
 
       {data.length > 0 ? (
-        <RowList>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {data.map((survey) => {
             const answered = Boolean(survey.respondedByMe);
             const open = !answered && survey.status !== "CLOSED";
@@ -782,18 +748,18 @@ function SurveysTab({
 
             const body = (
               <>
-                <span
-                  className={cn(
-                    "grid size-11 shrink-0 place-items-center rounded-control",
-                    SURVEY_TONE_BG[meta.tone],
-                  )}
-                  aria-hidden="true"
-                >
-                  <meta.Icon size={20} aria-hidden="true" />
-                </span>
+                <span className="flex items-start justify-between gap-3">
+                  <span
+                    className={cn(
+                      "grid size-12 shrink-0 place-items-center rounded-control",
+                      SURVEY_TONE_BG[meta.tone],
+                    )}
+                    aria-hidden="true"
+                  >
+                    <meta.Icon size={22} aria-hidden="true" />
+                  </span>
 
-                <span className="min-w-0 flex-1">
-                  <span className="mb-1 flex flex-wrap items-center gap-1.5">
+                  <span className="flex flex-wrap justify-end gap-1.5">
                     <Badge tone={meta.tone}>{meta.label}</Badge>
                     {answered ? (
                       <Badge tone="mint">Хариулсан</Badge>
@@ -803,15 +769,30 @@ function SurveysTab({
                       <Badge tone="neutral">Хаагдсан</Badge>
                     )}
                   </span>
-                  <span className="block font-semibold text-ink">{survey.title}</span>
-                  <span className="mt-0.5 block text-caption text-muted">
-                    {questionCount > 0 ? `Нийт ${questionCount} асуулттай` : survey.description}
-                  </span>
                 </span>
 
-                {open ? (
-                  <ChevronRight size={18} className="shrink-0 text-faint" aria-hidden />
-                ) : null}
+                <span className="min-w-0 flex-1">
+                  <span className="block text-lead font-semibold leading-snug text-ink">
+                    {survey.title}
+                  </span>
+                  {survey.description ? (
+                    <span className="mt-1 line-clamp-2 block text-body text-muted">
+                      {survey.description}
+                    </span>
+                  ) : null}
+                </span>
+
+                <span className="flex items-center justify-between border-t border-border-soft pt-3 text-caption text-muted">
+                  <span>{questionCount} асуулт</span>
+                  {open ? (
+                    <span className="inline-flex items-center gap-1 font-semibold text-primary">
+                      Хариулах
+                      <ChevronRight size={16} aria-hidden />
+                    </span>
+                  ) : (
+                    <span>{answered ? "Хариулт илгээгдсэн" : "Хугацаа дууссан"}</span>
+                  )}
+                </span>
               </>
             );
 
@@ -819,19 +800,22 @@ function SurveysTab({
               <Link
                 key={survey.id}
                 href={`/children/${selectedChild?.id}/surveys/${survey.id}`}
-                className="flex items-start gap-3 rounded-row border border-border bg-surface px-4 py-3.5 transition-colors hover:border-primary"
+                className="group flex min-h-[220px] flex-col gap-4 rounded-card border border-border bg-surface p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary hover:shadow-md sm:p-5"
               >
                 {body}
               </Link>
             ) : (
-              <RowCard key={survey.id} className="flex items-start gap-3">
+              <article
+                key={survey.id}
+                className="flex min-h-[220px] flex-col gap-4 rounded-card border border-border-soft bg-sunken p-4 sm:p-5"
+              >
                 {body}
-              </RowCard>
+              </article>
             );
           })}
-        </RowList>
+        </div>
       ) : null}
-    </div>
+    </section>
   );
 }
 

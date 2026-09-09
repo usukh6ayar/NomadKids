@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, ChevronDown, LogOut, Search, X } from "lucide-react";
+import { Bell, ChevronDown, ChevronRight, Search, X } from "lucide-react";
 import {
   createContext,
   isValidElement,
@@ -28,7 +28,7 @@ import { z } from "zod";
 import { Input } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/states";
 import { qk } from "@/lib/api/keys";
-import { useLogout, useSession } from "@/lib/auth/session";
+import { useSession } from "@/lib/auth/session";
 import { formatRelative, fullName, initials } from "@/lib/format";
 import { BRAND } from "@/lib/vocabulary";
 import { Art } from "@/components/ui/art";
@@ -153,8 +153,8 @@ function isBackgroundlessArt(icon: ReactNode) {
  *
  * Identity and notification controls stay out of this per-page component.
  * Desktop reaches them from the sidebar; mobile carries the notification bell
- * in its compact header. That keeps the page title row focused on the current
- * screen instead of rebuilding application chrome at every call site.
+ * in its compact header. The row stays focused on the current screen and its
+ * actions.
  */
 export function PageHeader({
   title,
@@ -194,60 +194,18 @@ export function PageHeader({
    */
   meta?: ReactNode;
 }) {
-  /*
-    ★ With the title `sr-only`, this row can be empty — and an empty row still
-    spends its own bottom margin.
-
-    Before, the heading guaranteed something was always drawn here, so the
-    24px below it was always separating two visible things. On a screen that
-    passes only a `title`, the header is now nothing at all, and the margin
-    became a gap at the top of the page with no cause a reader could see. The
-    margin is therefore conditional on the row actually rendering something.
-  */
-  const hasVisibleRow = Boolean(lede || meta || search || actions);
-
   return (
     <div
       data-ui="page-header"
-      className={cn(
-        "flex flex-wrap items-center justify-between gap-3",
-        hasVisibleRow && "mb-4 lg:mb-6",
-      )}
+      className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 lg:mb-5"
     >
-      {/*
-        ★ 2026-09-09 — the screen's icon went with the title.
-
-        The chip existed to give a heading a face. With the heading `sr-only`
-        it had nothing to sit beside: a 48px illustrated square alone at the
-        left of a row of buttons reads as a stray graphic, not as the identity
-        of anything. Removed on the client's instruction, in the same pass.
-
-        The `icon` prop stays in the signature: 9 screens pass one, and taking
-        it away would be 9 edits to say the same thing this line already says.
-        `workspacePageIcon` and `WorkspacePageIconArt` had no other caller and
-        are gone with it.
-      */}
-      <div className="flex min-w-0 items-start gap-3">
+      {/* `icon` remains a compatibility prop, but the compact header does not
+          spend a second visual slot on decorative artwork. */}
+      <div className="flex min-w-0 flex-1 items-start gap-3">
         <div className="min-w-0">
-          {/*
-          ★ 2026-09-09 — the title is `sr-only`. It is not gone.
-
-          Every screen opened by repeating, in 23px type, the exact words of
-          the sidebar row that had just been pressed: "Хувийн тохиргоо" in the
-          menu, then "Хувийн тохиргоо" again at the top of the page. On the
-          client's instruction the duplication comes off all 58 screens.
-
-          It stays in the accessibility tree rather than being deleted. A
-          document with no `<h1>` has no name in a screen reader's landmark
-          list and no top level in its outline, so removing the element would
-          trade a visual annoyance for a navigational one — and the sidebar's
-          `aria-current="page"`, which is what makes the visible copy
-          redundant, is not a substitute for the page's own heading.
-
-          `sr-only` and not `lg:sr-only`: the request was for every width. On a
-          phone the drawer's own header and the bottom bar carry the location.
-        */}
-          <h1 className="sr-only">{title}</h1>
+          <h1 className="text-display font-semibold leading-heading tracking-[-0.02em] text-ink">
+            {title}
+          </h1>
 
           {lede ? <div className="mt-1 text-body text-muted">{lede}</div> : null}
 
@@ -289,9 +247,11 @@ export function PageHeader({
         the button was clipped rather than reachable by scrolling, which is the
         worse of the two failures and the reason this went unnoticed.
       */}
-      <div className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">
-        {actions}
-      </div>
+      {actions ? (
+        <div className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">
+          {actions}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -837,12 +797,7 @@ function Brand({ subtitle }: { subtitle: string }) {
 }
 
 /**
- * Who is signed in, and the way out — at the foot of the sidebar.
- *
- * Ported from `.whoami`; the logout control is a 44px square, as it is there.
- */
-/**
- * The sidebar's foot: who is signed in, where they are, and the way out.
+ * The sidebar's foot: who is signed in and the route to their profile.
  *
  * ★ The second line names the person's **context**, not the section they are
  * looking at.
@@ -864,7 +819,6 @@ function Brand({ subtitle }: { subtitle: string }) {
  */
 function WhoAmI({ variant, isAdmin }: { variant: Variant; isAdmin: boolean }) {
   const { session, hasRole } = useSession();
-  const logout = useLogout();
 
   // The teacher variant covers three staff roles; only a real teacher has a
   // group to show beneath their name.
@@ -900,87 +854,30 @@ function WhoAmI({ variant, isAdmin }: { variant: Variant; isAdmin: boolean }) {
       negative margin makes the rule span the panel's full width rather than
       stopping at this card's own inset.
     */
-    /*
-      ★ REDESIGN 2026-09-03 — the footer reads as an account card.
-
-      It was a flat `bg-canvas` strip with a 28px initials dot, which at the
-      foot of a white panel was barely distinguishable from the nav rows above
-      it. A bordered sunken card with a 36px avatar gives the identity a
-      surface of its own, which is what makes "this is you, and this is the way
-      out" legible at a glance rather than on inspection.
-
-      `bg-sunken` and not a tint: this is chrome, not content, and a coloured
-      footer would be the loudest thing in a panel whose active row is supposed
-      to be.
-    */
-    <div className="-mx-3.5 shrink-0 border-t border-border px-3.5 pt-3">
-      <div className="flex min-h-[44px] items-center gap-2.5 rounded-row border border-border bg-sunken px-2.5 py-2.5">
+    <div className="-mx-1 shrink-0 border-t border-border-soft pt-3">
+      <Link
+        href="/settings"
+        aria-label={`Профайл: ${fullName(session?.user)}`}
+        className="group flex min-h-[56px] items-center gap-2.5 rounded-card bg-canvas/70 px-3 py-2 transition-colors hover:bg-primary-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+      >
         <span className="grid size-9 shrink-0 place-items-center rounded-pill bg-primary-soft text-compact font-bold text-primary">
           {initials(session?.user)}
         </span>
 
-        {/*
-          `min-w-0` on the growing column and `truncate` on both lines: a
-          Mongolian full name and a group name are each long enough to push the
-          two buttons off the 244px panel, and the name is what has to give.
-        */}
-        {/*
-          ★ The identity *is* the settings link, rather than a third control
-          beside the other two.
-
-          A separate 44px settings button is the obvious reading of "settings in
-          the footer", and it does not fit: the panel is 244px, and an avatar plus
-          two tap targets plus padding leaves about 96px for the name — which
-          truncates a Mongolian full name to a few characters. Tapping your own
-          name to reach your own account is the conventional affordance anyway,
-          and it costs no width, so the column keeps ~140px.
-        */}
-        {/*
-          ★ `min-h-[44px]` and centred — measured at 33.6px in browser QA,
-          2026-09-03.
-
-          The row around it carries the 44px floor, but this link is the actual
-          tap target for `/settings` and it was only as tall as its own two
-          lines of text. `justify-center` keeps the name optically centred in
-          the taller box rather than pinned to its top.
-        */}
-        {/*
-          ★ Not a link any more — 2026-09-06, at the client's request.
-
-          It pointed at `/settings`, and by the time it did, `/settings` already
-          had the "Хувийн тохиргоо" row in this very menu and the phone's bottom
-          bar. Repeating the link in the identity card is not another useful affordance, it is a
-          reader wondering whether they differ — the client's words were
-          "хэт олон profile болоод байна".
-
-          What the foot of the sidebar is *for* is the one thing no other
-          chrome carries: the way out. So the identity is now plain text that
-          answers "who am I signed in as", and the only control in the card
-          logs you out.
-        */}
-        <div className="flex min-h-[44px] min-w-0 flex-1 flex-col justify-center">
+        {/* The whole row is the one profile affordance. Long names yield to
+            the route chevron instead of widening the sidebar. */}
+        <div className="flex min-w-0 flex-1 flex-col justify-center">
           <span className="block truncate text-compact font-semibold leading-[1.2] text-ink">
             {fullName(session?.user)}
           </span>
           <span className="block truncate text-caption text-muted">{context}</span>
         </div>
-
-        {/*
-          Icon *and* label: the square with a glyph in it read as "settings" to
-          about as many people as it read as "log out", and this is the one
-          control in the shell that must not be pressed by accident or missed
-          when wanted. `shrink-0` keeps the word whole and lets the name above
-          truncate instead, which is the right thing to give up at 244px.
-        */}
-        <button
-          type="button"
-          onClick={() => void logout()}
-          className="flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-control px-2.5 text-caption font-medium text-muted transition-colors hover:bg-surface hover:text-danger"
-        >
-          <LogOut size={16} aria-hidden="true" />
-          Гарах
-        </button>
-      </div>
+        <ChevronRight
+          size={17}
+          className="shrink-0 text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
+          aria-hidden="true"
+        />
+      </Link>
     </div>
   );
 }
@@ -1016,36 +913,36 @@ function SidebarContent({
   showTeacherArt?: boolean;
 }) {
   const pathname = usePathname();
-  const sectionEntries = sections?.flatMap((section) => section.entries) ?? [];
+  const sectionEntries =
+    sections?.flatMap((section) => section.entries).filter((entry) => entry.href !== "/settings") ??
+    [];
 
   // The first item stays a top-level link above the sections, as "Хяналтын
   // самбар" does in the reference. The rest are reachable from the sections
   // below and from the bottom bar on a phone.
   const [primary] = nav;
 
-  if (variant === "parent") {
-    return (
-      <ParentSidebarContent
-        primary={primary}
-        sections={sections ?? []}
-        pathname={pathname}
-        childSwitcher={childSwitcher}
-      />
-    );
-  }
-
   return (
     <>
       <Brand subtitle={subtitle} />
 
-      {/*
+      {variant === "parent" ? (
+        <ParentSidebarContent
+          primary={primary}
+          sections={sections ?? []}
+          pathname={pathname}
+          childSwitcher={childSwitcher}
+        />
+      ) : (
+        <>
+          {/*
         Above the scrolling list rather than inside it: which child the sidebar
         is about is not one of the rows it scrolls past, and a switcher that
         can scroll out of sight is a switcher a parent cannot find.
       */}
-      {childSwitcher ? <ChildSwitcherControl switcher={childSwitcher} /> : null}
+          {childSwitcher ? <ChildSwitcherControl switcher={childSwitcher} /> : null}
 
-      {/*
+          {/*
         ★ A fade at the bottom edge, so a cut-off row reads as "there is more"
         rather than as a layout fault.
 
@@ -1066,49 +963,59 @@ function SidebarContent({
         shipped for a reason — the switcher went in one commit above the list,
         the fade one commit below it, and neither touches the other's job.
       */}
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        <div className="-mr-1.5 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1.5">
-          {primary ? <NavLink item={primary} pathname={pathname} orientation="vertical" /> : null}
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            <div className="-mr-1.5 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1.5">
+              {primary ? (
+                <NavLink item={primary} pathname={pathname} orientation="vertical" />
+              ) : null}
 
-          {sectionEntries.length ? (
-            <div data-testid="nav-sections" className="contents">
-              {sectionEntries.map((entry, index) => (
-                <NavLink
-                  key={`${entry.href ?? entry.label}-${index}`}
-                  item={{ ...entry, icon: entry.icon ?? null }}
-                  pathname={pathname}
-                  orientation="vertical"
-                />
-              ))}
+              {sectionEntries.length ? (
+                <div data-testid="nav-sections" className="contents">
+                  {sectionEntries.map((entry, index) => (
+                    <NavLink
+                      key={`${entry.href ?? entry.label}-${index}`}
+                      item={{ ...entry, icon: entry.icon ?? null }}
+                      pathname={pathname}
+                      orientation="vertical"
+                    />
+                  ))}
+                </div>
+              ) : (
+                nav
+                  .slice(1)
+                  .filter((item) => item.href !== "/settings")
+                  .map((item) => (
+                    <NavLink
+                      key={item.label}
+                      item={item}
+                      pathname={pathname}
+                      orientation="vertical"
+                    />
+                  ))
+              )}
             </div>
-          ) : (
-            nav
-              .slice(1)
-              .map((item) => (
-                <NavLink key={item.label} item={item} pathname={pathname} orientation="vertical" />
-              ))
-          )}
-        </div>
 
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-surface to-transparent"
-        />
-      </div>
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-surface to-transparent"
+            />
+          </div>
 
-      {showTeacherArt ? (
-        <div className="relative hidden h-36 shrink-0 overflow-hidden rounded-card bg-mint/70 xl:block">
-          <Image
-            src="/illustrations/teacher-talking-with-children.png"
-            alt=""
-            fill
-            priority
-            unoptimized
-            sizes="264px"
-            className="object-cover object-[68%_43%]"
-          />
-        </div>
-      ) : null}
+          {showTeacherArt ? (
+            <div className="relative hidden h-36 shrink-0 overflow-hidden rounded-card bg-mint/70 xl:block">
+              <Image
+                src="/illustrations/teacher-talking-with-children.png"
+                alt=""
+                fill
+                priority
+                unoptimized
+                sizes="264px"
+                className="object-cover object-[68%_43%]"
+              />
+            </div>
+          ) : null}
+        </>
+      )}
 
       {/*
         ★ Both sides of this conflict were carrying a real improvement, and the
@@ -1150,8 +1057,6 @@ function ParentSidebarContent({
   pathname: string;
   childSwitcher?: ChildSwitcher;
 }) {
-  const logout = useLogout();
-
   return (
     <>
       {childSwitcher ? <ChildSwitcherControl switcher={childSwitcher} /> : null}
@@ -1177,17 +1082,6 @@ function ParentSidebarContent({
           aria-hidden="true"
           className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-surface to-transparent"
         />
-      </div>
-
-      <div className="-mx-1 shrink-0 border-t border-slate-100 pt-3">
-        <button
-          type="button"
-          onClick={() => void logout()}
-          className="flex min-h-[48px] w-full items-center gap-3 rounded-card px-3 text-left text-lead font-semibold text-rose-600 transition-colors hover:bg-rose-50"
-        >
-          <LogOut size={21} className="text-sky-500" aria-hidden="true" />
-          <span>Системээс гарах</span>
-        </button>
       </div>
     </>
   );
@@ -1265,8 +1159,8 @@ function Sidebar({
        *
        * The sidebar can be taller than a laptop viewport, and when the whole
        * panel scrolled, `WhoAmI`'s row sat at the foot of the *content* rather
-       * than the panel — so it overlapped the last section and the way out
-       * scrolled off the screen. The brand and the identity are fixed now, and
+       * than the panel — so it overlapped the last section and the profile
+       * route scrolled off the screen. The brand and the identity are fixed now, and
        * the nav between them takes the overflow.
        */
       className={cn(
@@ -1335,9 +1229,8 @@ function ChildSwitcherControl({ switcher }: { switcher: ChildSwitcher }) {
  *
  * ★★ Closes itself on a link tap, via event delegation on the one wrapper
  * rather than threading a callback through `NavLink`. Every
- * real destination in this menu is an `<a>` — `WhoAmI`'s logout button is
- * not, and does not need to close anything it is about to navigate away from
- * regardless.
+ * real destination in this menu is an `<a>`, including the profile row, so
+ * one delegated handler closes the sheet for every navigation.
  */
 function MobileMenuDrawer({
   open,
@@ -1407,12 +1300,12 @@ function MobileMenuDrawer({
  * The phone header.
  *
  * ★ Ported from the reference's `.mhead`, and it exists so the bottom bar does
- * not have to carry a logout beside the tabs. On a phone the sidebar is gone
+ * not have to carry account actions beside the tabs. On a phone the sidebar is gone
  * entirely — this plus the bottom navigation is a deliberate mobile layout
  * rather than a folded desktop one.
  *
  * Hidden from `lg` up on every variant, where the sidebar already carries all
- * three facts (brand, identity, logout). Showing them twice is what crowded
+ * the brand and identity. Showing them twice is what crowded
  * the page title in the reference, which solved it the same way.
  */
 function MobileHeader({ subtitle }: { subtitle: string }) {
@@ -1441,16 +1334,13 @@ function MobileHeader({ subtitle }: { subtitle: string }) {
       </Link>
 
       {/*
-        ★ The bell, and only the bell — the avatar and the logout left on
-        2026-08-28.
+        The bell, and only the bell.
 
         The client's drawing puts one control up here: a bell with its unread
         count. Both of the others were already reachable one tap away and are
         still there: `MobileMenuDrawer`, behind the bottom bar's "Цэс" tab,
-        renders `WhoAmI` with the signed-in name (a link to `/settings`) and
-        the logout button beside it. Two identity controls in a header three
-        inches above the tab that opens the same two is the duplication the
-        drawer exists to remove.
+        renders the signed-in name as the route to `/settings`. Sign-out lives
+        inside that profile screen for every role.
       */}
       <div className="ml-auto flex items-center">
         <NotificationBell />
