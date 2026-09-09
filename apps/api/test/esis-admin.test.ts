@@ -216,19 +216,114 @@ describe("read-only preview", () => {
  * `TenantAccessService` in isolation, which would pass even if the controller
  * forgot to call it.
  */
+/**
+ * The role-scoped catalog — `GET /kindergartens/:id/esis/catalog`.
+ *
+ * ★ Added 2026-09-09, when the client began placing services on the teacher's
+ * screens. The operator's `/esis` stayed `@Roles("ADMIN")`; this is what a
+ * working screen's panel reads, and what it must *not* carry is as much the
+ * point as what it does — a teacher has no business with the token's state or
+ * which kindergarten has been mapped.
+ */
+describe("role-scoped ESIS catalog", () => {
+  const url = (kindergartenId: string) => `/v1/kindergartens/${kindergartenId}/esis/catalog`;
+
+  it("gives an admin every service in the reviewed catalog", async () => {
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
+
+    expect(res.status).toBe(200);
+    expect(res.body.endpoints).toHaveLength(18);
+  });
+
+  it("gives a teacher the five their screens draw, and no others", async () => {
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), teacherA);
+
+    expect(res.status).toBe(200);
+    expect(res.body.endpoints.map((e: { key: string }) => e.key).sort()).toEqual(
+      ["groupAttendance", "groupStudents", "saveAttendanceV3", "students", "teachers"].sort(),
+    );
+  });
+
+  /*
+   * ★ The deployment is absent, not empty. Widening `/esis`'s role list would
+   * have handed every teacher the base URL, the token's state, the blockers and
+   * the run history; this asserts the payload never grew those keys back.
+   */
+  it("tells a teacher nothing about the deployment", async () => {
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), teacherA);
+
+    expect(Object.keys(res.body).sort()).toEqual(["canRead", "endpoints", "mode"]);
+    expect(res.body).not.toHaveProperty("deployment");
+    expect(res.body).not.toHaveProperty("connection");
+    expect(res.body).not.toHaveProperty("blockers");
+    expect(res.body).not.toHaveProperty("recentRuns");
+  });
+
+  it("returns 404 to a guardian, who reaches no ESIS service at all", async () => {
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), parentA);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 to a teacher of another kindergarten", async () => {
+    const res = await authed(request(server()).get(url(b.kindergarten.id)), teacherA);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("requires authentication", async () => {
+    const res = await request(server()).get(url(a.kindergarten.id));
+    expect(res.status).toBe(401);
+  });
+});
+
 describe("single-resource ESIS read", () => {
   const url = (kindergartenId: string, query: string) =>
     `/v1/kindergartens/${kindergartenId}/esis/resource?${query}`;
 
+  /*
+   * ★ A teacher reads the five services their own screens draw — 2026-09-09.
+   *
+   * This asserted 404 for every teacher on every service, which was the whole
+   * rule until the client began placing panels on the day sheet and the group
+   * page. The rule that replaces it is narrower and is the one worth pinning:
+   * `esisServicesForActor` decides, and everything outside that list answers
+   * 404 rather than 403 — a teacher asking for the food catalog should not
+   * learn it exists (CLAUDE.md §1.7).
+   */
+  it("lets a teacher read a service their own screens draw", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    // `Once`: a persistent mock would leak into the assertions below it.
+    read.mockResolvedValueOnce({ data: [] });
+
+    const res = await authed(
+      request(server()).get(url(a.kindergarten.id, "resource=students")),
+      teacherA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.resource).toBe("students");
+  });
+
   it.each([
-    ["teacher", () => teacherA],
-    ["guardian", () => parentA],
-  ])("returns 404 to a %s and never calls ESIS", async (_label, session) => {
+    ["organization", "resource=organization"],
+    ["foodMaterials", "resource=foodMaterials"],
+    ["studentByRegister", "resource=studentByRegister&personRegNumber=УБ00000000"],
+  ])("returns 404 to a teacher for %s, and never calls ESIS", async (_label, query) => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+
+    const res = await authed(request(server()).get(url(a.kindergarten.id, query)), teacherA);
+
+    expect(res.status).toBe(404);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 to a guardian and never calls ESIS", async () => {
     await mapInstitution(a.kindergarten.id, superAdmin);
 
     const res = await authed(
       request(server()).get(url(a.kindergarten.id, "resource=students")),
-      session(),
+      parentA,
     );
 
     expect(res.status).toBe(404);

@@ -34,6 +34,22 @@ export class KindergartenEsisController {
     return this.service.overview(actor, params.id);
   }
 
+  /**
+   * The catalog, scoped to the caller's role.
+   *
+   * ★ Separate from `overview()` above, which stays `@Roles("ADMIN")`. That one
+   * is the operator's view — token state, base URL, blockers, run history — and
+   * the working screens need none of it. See `catalogForActor`.
+   */
+  @Get("catalog")
+  @Roles("ADMIN", "TEACHER", "COOK", "ACCOUNTANT")
+  catalog(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.catalogForActor(actor, params.id);
+  }
+
   /** Minimized ESIS student output for the staff child-registration form. */
   @Get("student-registration-template")
   @Roles("ADMIN", "TEACHER")
@@ -61,6 +77,7 @@ export class KindergartenEsisController {
    * the `AuditLog` entry that says who looked.
    */
   @Get("resource")
+  @Roles("ADMIN", "TEACHER", "COOK", "ACCOUNTANT")
   read(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },

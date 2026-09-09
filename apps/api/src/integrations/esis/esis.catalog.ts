@@ -1,3 +1,4 @@
+import { Role } from "../../domain/enums";
 import { ESIS_ENDPOINTS } from "./esis.endpoints";
 import { ESIS_FIELDS, ESIS_FIELD_SOURCE, sampleRow } from "./esis.fields";
 import { sampleRows } from "./esis.samples";
@@ -202,3 +203,57 @@ export const ESIS_PREVIEW_RESOURCES = [
   "foodProducts",
   "foodProductMaterials",
 ] as const satisfies readonly EsisEndpointKey[];
+
+/**
+ * Which ESIS services each role may see, and read.
+ *
+ * ★ A role gets the services its own screens draw, and nothing else — this is
+ * the list, not a filter applied on the way out. The overview at
+ * `/admin/integrations/esis` is the operator's whole-catalog view and stays
+ * `@Roles("ADMIN")`; a teacher's screens need five of the eighteen and have no
+ * business knowing the token's state, the deployment's base URL or which
+ * kindergarten has been mapped.
+ *
+ * ★★ Absent means none. A parent holds a membership and reaches no ESIS
+ * service at all, so the lookup returns an empty list and the endpoint answers
+ * 404 — the same answer a stranger gets, per CLAUDE.md §1.7.
+ *
+ * ★★★ ADMIN is deliberately not listed. It takes every key, and writing them
+ * out would be a second catalog to keep in step with the first.
+ */
+const ROLE_SERVICES: Partial<Record<Role, readonly EsisEndpointKey[]>> = {
+  /*
+   * The teacher's five, named by the client on 2026-09-09:
+   *
+   *   students          суралцагчийн ерөнхий мэдээлэл
+   *   groupStudents     бүлгийн сурагчийн ерөнхий мэдээлэл
+   *   saveAttendanceV3  ирц хадгалах — the one write service
+   *   groupAttendance   ирц харах
+   *   teachers          багшийн ерөнхий мэдээлэл
+   */
+  [Role.TEACHER]: ["students", "groupStudents", "saveAttendanceV3", "groupAttendance", "teachers"],
+};
+
+/** Every service key, for the role that gets all of them. */
+const ALL_KEYS = Object.keys(ESIS_ENDPOINTS) as EsisEndpointKey[];
+
+/**
+ * The services this actor may see in this kindergarten, in catalog order.
+ *
+ * Roles are read from the actor's memberships *in that kindergarten* rather
+ * than globally: a teacher at one kindergarten and an admin at another gets the
+ * teacher's five here and the whole catalog there.
+ */
+export function esisServicesForActor(
+  actor: { memberships: readonly { kindergartenId: string; role: Role }[] },
+  kindergartenId: string,
+): EsisEndpointKey[] {
+  const roles = actor.memberships
+    .filter((membership) => membership.kindergartenId === kindergartenId)
+    .map((membership) => membership.role);
+
+  if (roles.includes(Role.ADMIN)) return ALL_KEYS;
+
+  const allowed = new Set(roles.flatMap((role) => ROLE_SERVICES[role] ?? []));
+  return ALL_KEYS.filter((key) => allowed.has(key));
+}

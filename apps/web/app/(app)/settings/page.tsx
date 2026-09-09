@@ -11,6 +11,7 @@ import {
   validatePasswordStrength,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
+import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
@@ -69,6 +70,24 @@ export default function SettingsPage() {
       <div className="flex w-full max-w-[760px] flex-col gap-6 lg:gap-8">
         <ProfileCard />
         <EsisProfileSection />
+        {/*
+          ★ The kindergarten's teaching staff, under the reader's own record —
+          2026-09-09, at the client's request ("багшийн ерөнхий мэдээлэл").
+
+          `EsisProfileSection` above is `my-profile`: one person, matched to
+          whoever is signed in. This is `teacher/list`, the whole roll — the
+          instructor ids the group services refer to, and the assignment each
+          one carries. A teacher's own screen is where it belongs, because the
+          user list that would otherwise hold it is `@Roles("ADMIN")`.
+
+          It renders nothing for a cook or an accountant: `teachers` is not in
+          their service list, so the catalog does not return it.
+        */}
+        <EsisDataPanel
+          resource="teachers"
+          title="Багш нар"
+          description="ESIS-д бүртгэлтэй багш нарын томилгоо"
+        />
         <SignOutCard />
       </div>
     </div>

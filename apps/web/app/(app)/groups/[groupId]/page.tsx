@@ -13,6 +13,7 @@ import {
 import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
+import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
@@ -217,6 +218,22 @@ function GroupDetail() {
           Нийт {roster.data.total} хүүхдээс эхний {roster.data.items.length} нь харагдаж байна.
         </p>
       ) : null}
+
+      {/*
+        ★ This group's roster as ESIS keeps it — 2026-09-09, at the client's
+        request ("бүлгийн сурагчийн ерөнхий мэдээлэл").
+
+        `group/student/list/:studentGroupId` is keyed by the ministry's own
+        group id, not ours, so the panel asks for it rather than sending a
+        NomadKids uuid the ministry has never seen — the same reason
+        `/attendance/daily` passes no `studentGroupId` to its own pull. §15's
+        external-id history is what removes the question.
+      */}
+      <EsisDataPanel
+        resource="groupStudents"
+        title="Бүлгийн суралцагчид"
+        description="ESIS-д энэ бүлэгт бүртгэлтэй хүүхдүүд"
+      />
     </div>
   );
 }

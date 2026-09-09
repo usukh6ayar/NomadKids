@@ -3218,6 +3218,23 @@ export const esisOverviewSchema = z.object({
 });
 export type EsisOverview = z.infer<typeof esisOverviewSchema>;
 
+/**
+ * `GET /kindergartens/:id/esis/catalog` — the services this role uses.
+ *
+ * ★ Not a subset of `esisOverviewSchema`, and deliberately so. The overview
+ * carries the deployment's token state, base URL, blockers and run history for
+ * the operator screen; a teacher's day sheet needs the service list and whether
+ * a live read is possible, and shipping the rest to every staff member would be
+ * infrastructure detail handed out for no reason.
+ */
+export const esisScopedCatalogSchema = z.object({
+  mode: z.enum(["DEMO", "LIVE"]),
+  /** Whether "ESIS-ээс мэдээллээ татах" can reach anything yet. */
+  canRead: z.boolean(),
+  endpoints: esisOverviewSchema.shape.endpoints,
+});
+export type EsisScopedCatalog = z.infer<typeof esisScopedCatalogSchema>;
+
 export const esisPreviewResultSchema = z.object({
   runId: uuidSchema,
   dryRun: z.literal(true),

@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
@@ -19,6 +19,7 @@ import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 
 const KG = "33333333-3333-4333-8333-333333333333";
 const ESIS_PATH = `/kindergartens/${KG}/esis`;
+const CATALOG_PATH = `${ESIS_PATH}/catalog`;
 
 /*
  * `stubApi` matches by `startsWith` in array order, so `…/esis/resource` has to
@@ -108,30 +109,18 @@ const endpoint = (
   ...extra,
 });
 
-function overview(configured: boolean) {
+/**
+ * `GET /kindergartens/:id/esis/catalog` — what the panel actually reads.
+ *
+ * ★ It read the operator's `/esis` until 2026-09-09, which is `@Roles("ADMIN")`
+ * and carries the deployment's token state, blockers and run history. The panel
+ * needed the service list and one flag; the teacher's screens needed to render
+ * at all. This payload is that, and nothing else.
+ */
+function catalog(live: boolean) {
   return {
-    deployment: {
-      configured,
-      // `configured` doubles as "is this deployment talking to the real ESIS".
-      demoMode: !configured,
-      mode: configured ? ("LIVE" as const) : ("MOCK" as const),
-      baseUrl: "https://hubv2.esis.edu.mn",
-      hasToken: configured,
-    },
-    connection: {
-      mapped: configured,
-      institutionId: configured ? "40305" : null,
-      environment: configured ? ("TEST" as const) : null,
-      mappedAt: null,
-      mappingMatchesDeployment: configured,
-    },
-    stages: [
-      { code: "C1", label: "API каталог", status: "READY" },
-      { code: "C2", label: "Код ба schema", status: "READY" },
-      { code: "C3", label: "Token ба API эрх", status: configured ? "READY" : "WAITING" },
-      { code: "C4", label: "Test орчны шалгалт", status: "WAITING" },
-      { code: "C5", label: "Production sync", status: "WAITING" },
-    ],
+    mode: live ? ("LIVE" as const) : ("DEMO" as const),
+    canRead: live,
     endpoints: [
       endpoint("organization", "Байгууллагын мэдээлэл", organizationFields),
       endpoint("studentByRegister", "Регистрээр хайх", studentFields, {
@@ -144,9 +133,6 @@ function overview(configured: boolean) {
         fieldSource: "ADAPTER",
       }),
     ],
-    recentRuns: [],
-    canPreview: configured,
-    blockers: configured ? [] : ["Server дээр ESIS token болон endpoint тохируулаагүй байна."],
   };
 }
 
@@ -159,7 +145,7 @@ describe("ESIS мэдээллийн панел", () => {
   it("shows the ESIS record on the screen without anything being pressed", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
-      { path: ESIS_PATH, body: overview(false) },
+      { path: CATALOG_PATH, body: catalog(false) },
     ]);
     renderWithProviders(<EsisDataPanel resource="organization" />);
 
@@ -205,7 +191,7 @@ describe("ESIS мэдээллийн панел", () => {
           },
         },
       },
-      { path: ESIS_PATH, body: overview(true) },
+      { path: CATALOG_PATH, body: catalog(true) },
     ]);
     renderWithProviders(<EsisDataPanel resource="organization" />);
 
@@ -223,7 +209,7 @@ describe("ESIS мэдээллийн панел", () => {
   it("never pre-fills a register number, and says it is not kept", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
-      { path: ESIS_PATH, body: overview(false) },
+      { path: CATALOG_PATH, body: catalog(false) },
     ]);
     renderWithProviders(<EsisDataPanel resource="studentByRegister" />);
 
@@ -246,7 +232,7 @@ describe("ESIS мэдээллийн панел", () => {
   it("opens the record a row names when the caller supplies one", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
-      { path: ESIS_PATH, body: overview(false) },
+      { path: CATALOG_PATH, body: catalog(false) },
     ]);
     renderWithProviders(
       <EsisDataPanel
@@ -278,7 +264,7 @@ describe("ESIS мэдээллийн панел", () => {
   it("offers no link when the caller supplies none", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
-      { path: ESIS_PATH, body: overview(false) },
+      { path: CATALOG_PATH, body: catalog(false) },
     ]);
     renderWithProviders(
       <EsisDataPanel
@@ -295,15 +281,40 @@ describe("ESIS мэдээллийн панел", () => {
     expect(screen.queryByRole("link", { name: "Хоёр" })).toBeNull();
   });
 
-  it("renders nothing for a teacher, because the route answers 404", async () => {
+  /*
+   * ★ The role gate moved into the payload — 2026-09-09.
+   *
+   * The panel used to check `hasRole("ADMIN")` itself, because the endpoint it
+   * read was admin-only. It reads the role-scoped catalog now, so a service the
+   * caller may not reach is simply not in the response and the panel has
+   * nothing to draw. The screens are shared: a cook opening one that carries a
+   * teacher's panel should see the screen, not a hole where a permission
+   * failed.
+   */
+  it("renders nothing for a service the catalog does not carry", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      { path: ESIS_PATH, body: overview(false) },
+      { path: CATALOG_PATH, body: catalog(false) },
     ]);
-    const { container } = renderWithProviders(<EsisDataPanel resource="organization" />);
+    renderWithProviders(<EsisDataPanel resource="foodMaterials" />);
 
-    await screen.findByText((_, node) => node === container, { exact: false }).catch(() => null);
-    expect(screen.queryByRole("button", { name: /ESIS-ээс мэдээллээ татах/ })).toBeNull();
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /ESIS-ээс мэдээллээ татах/ })).toBeNull(),
+    );
+    expect(screen.queryByText("Бяцхан нүүдэлчид (жишээ)")).toBeNull();
+  });
+
+  /* A role with no ESIS services at all — the endpoint answers 404. */
+  it("renders nothing when the role reaches no ESIS service", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["PARENT"]) },
+      { path: CATALOG_PATH, status: 404, body: { title: "Олдсонгүй", status: 404 } },
+    ]);
+    renderWithProviders(<EsisDataPanel resource="organization" />);
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /ESIS-ээс мэдээллээ татах/ })).toBeNull(),
+    );
   });
 
   it("explains an upstream refusal instead of showing an empty panel", async () => {
@@ -332,7 +343,7 @@ describe("ESIS мэдээллийн панел", () => {
           },
         },
       },
-      { path: ESIS_PATH, body: overview(true) },
+      { path: CATALOG_PATH, body: catalog(true) },
     ]);
     renderWithProviders(<EsisDataPanel resource="organization" />);
 

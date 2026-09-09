@@ -13,6 +13,7 @@ import {
   type EsisAttendancePreview,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
+import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { GroupSwitcher, useSwitchableGroups } from "@/components/shell/group-switcher";
 import { qk } from "@/lib/api/keys";
@@ -485,6 +486,36 @@ function GroupAttendance() {
         mark by hand might already have been explained on a different screen.
       */}
       <AttendanceRequestQueue heading="Эцэг эхийн мэдэгдэл" />
+
+      {/*
+        ★ The two ESIS attendance services, on the sheet they are about —
+        2026-09-09, at the client's request ("ирц хадгалах", "ирц харах").
+
+        They are the two halves of one exchange and belong together: the fields
+        this screen *sends* when a confirmed day goes up, and the record that
+        comes back when it is read again. Reading them apart is how a teacher
+        ends up believing a day was filed because the button said so.
+
+        ★★ `saveAttendanceV3` is the catalog's only write service, so its panel
+        shows the request payload rather than a response — the eight fields
+        `API-000269` takes. Nothing here submits: the submit is
+        `GroupEsisPayload` above, which is this screen's own control and writes
+        an `AttendanceSubmission` when it succeeds.
+
+        ★★★ Both are keyed by ESIS's `studentGroupId`, which the panel asks
+        for: our group ids are uuids the ministry has never seen, and §15's
+        external-id history is what would let this be filled in automatically.
+      */}
+      <EsisDataPanel
+        resource="saveAttendanceV3"
+        title="ESIS рүү илгээх ирц"
+        description="Баталгаажсан өдрийн ирцээр илгээх талбарууд"
+      />
+      <EsisDataPanel
+        resource="groupAttendance"
+        title="ESIS дэх ирц"
+        description="Илгээсэн ирцийг ESIS-ээс буцааж уншсан нь"
+      />
     </div>
   );
 }

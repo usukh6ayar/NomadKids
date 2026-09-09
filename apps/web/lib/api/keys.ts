@@ -68,6 +68,8 @@ export const qk = {
   consent: (childId: string) => ["child", childId, "consent"] as const,
   audit: (filters: Record<string, unknown> = {}) => ["admin", "audit", filters] as const,
   esis: (kindergartenId: string) => ["admin", "esis", kindergartenId] as const,
+  /** The role-scoped service list every working screen's panel reads. */
+  esisCatalog: (kindergartenId: string) => ["esis", kindergartenId, "catalog"] as const,
   esisStudentRegistration: (kindergartenId: string) =>
     ["esis", kindergartenId, "student-registration-template"] as const,
   /** One read-only ESIS service. The query string is part of the key because

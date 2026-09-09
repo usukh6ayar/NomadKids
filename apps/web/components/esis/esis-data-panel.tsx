@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CloudDownload, Database } from "lucide-react";
 import { useState } from "react";
 import {
-  esisOverviewSchema,
+  esisScopedCatalogSchema,
   esisResourceReadSchema,
   type EsisResourceKey,
 } from "@kinder/contracts";
@@ -103,19 +103,35 @@ export function EsisDataPanel({
   description?: string;
   headingId?: string;
 }) {
-  const { primaryKindergartenId, hasRole } = useSession();
+  const { primaryKindergartenId } = useSession();
   const [entered, setEntered] = useState<Record<string, string>>({});
   const [pulled, setPulled] = useState(false);
   const [syncedAt, setSyncedAt] = useState<string | null>(null);
 
-  const overview = useQuery({
-    queryKey: qk.esis(primaryKindergartenId ?? "none"),
-    queryFn: () => get(`/kindergartens/${primaryKindergartenId}/esis`, esisOverviewSchema),
-    enabled: Boolean(primaryKindergartenId) && hasRole("ADMIN"),
+  /*
+   * ★ The role-scoped catalog, not the operator's overview — 2026-09-09.
+   *
+   * This read `/esis`, which is `@Roles("ADMIN")`, so the panel rendered for
+   * nobody else — and the client began placing services on the teacher's
+   * screens. `/esis/catalog` answers with the services the caller's own role
+   * uses and nothing about the deployment, so a teacher's day sheet can draw
+   * one without being handed the token's state and the run history.
+   *
+   * A service outside the caller's list simply is not in the response, and the
+   * panel renders nothing rather than an error: the screens are shared, and a
+   * cook opening one that carries a teacher's panel should see the screen, not
+   * a hole where a permission failed.
+   */
+  const catalog = useQuery({
+    queryKey: qk.esisCatalog(primaryKindergartenId ?? "none"),
+    queryFn: () =>
+      get(`/kindergartens/${primaryKindergartenId}/esis/catalog`, esisScopedCatalogSchema),
+    enabled: Boolean(primaryKindergartenId),
+    retry: false,
   });
 
-  const endpoint = overview.data?.endpoints.find((item) => item.key === resource);
-  const demoMode = Boolean(overview.data && !overview.data.deployment.configured);
+  const endpoint = catalog.data?.endpoints.find((item) => item.key === resource);
+  const demoMode = catalog.data?.mode === "DEMO";
   const required = endpoint?.params ?? [];
 
   /*
@@ -136,7 +152,7 @@ export function EsisDataPanel({
     queryKey: qk.esisResource(primaryKindergartenId ?? "none", resource, query.toString()),
     queryFn: () =>
       get(`/kindergartens/${primaryKindergartenId}/esis/resource?${query}`, esisResourceReadSchema),
-    enabled: pulled && Boolean(overview.data?.canPreview) && missing.length === 0,
+    enabled: pulled && Boolean(catalog.data?.canRead) && missing.length === 0,
     /*
      * ★ Opts out of the app-wide refetch policy, deliberately — the same
      * reasoning as `EsisPullButton`. This query calls the *ministry*: every
@@ -150,9 +166,10 @@ export function EsisDataPanel({
     retry: false,
   });
 
-  // The route answers 404 to anyone but an administrator of this kindergarten.
-  if (!primaryKindergartenId || !hasRole("ADMIN")) return null;
-  if (overview.isPending) return <LoadingState rows={3} />;
+  if (!primaryKindergartenId) return null;
+  if (catalog.isPending) return <LoadingState rows={3} />;
+  // 404 for a role with no ESIS services, and absent for one this role does not
+  // hold — either way there is nothing honest to draw.
   if (!endpoint) return null;
 
   const live = read.data?.status === "SUCCEEDED" ? read.data : null;
@@ -164,11 +181,11 @@ export function EsisDataPanel({
 
   async function pull() {
     setPulled(true);
-    if (overview.data?.canPreview) {
+    if (catalog.data?.canRead) {
       await read.refetch();
     } else {
       // No token: re-read our own catalog, which is what is actually shown.
-      await overview.refetch();
+      await catalog.refetch();
     }
     setSyncedAt(new Date().toLocaleString("mn-MN"));
   }
