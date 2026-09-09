@@ -61,6 +61,21 @@ export const metadata: Metadata = {
   // The iOS home-screen name. Without it Safari uses the <title>, which is the
   // full brand and is truncated to about eleven characters under the icon.
   appleWebApp: { capable: true, title: BRAND, statusBarStyle: "default" },
+  /*
+   * Google Search Console ownership — 2026-09-10.
+   *
+   * ★ Not a secret, and not `.env`. The token's entire job is to be readable
+   * in the page source by anyone who fetches it; that is how the check works.
+   * §1.5 is about credentials, and treating a public proof-of-ownership string
+   * as one would mean a `NEXT_PUBLIC_` build argument on every deploy for a
+   * value that is fixed to one domain and useless anywhere else.
+   *
+   * ★★ It stays after verification passes. Search Console re-checks
+   * periodically and silently un-verifies a property whose tag has gone,
+   * taking the sitemap and the indexing reports with it — the kind of thing
+   * nobody notices for months.
+   */
+  verification: { google: "NrBNrgk-ae3z563Dnae6EUTsXtU8iWTBIQF-9JE-9cI" },
 };
 
 /**
