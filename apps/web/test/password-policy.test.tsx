@@ -120,7 +120,16 @@ async function openPasswordForm(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("settings — changing a password", () => {
-  it("keeps sign-out inside the profile card", async () => {
+  /*
+   * ★ Sign-out left the profile card on 2026-09-10, at the client's request
+   * that it sit at the very foot of this screen — see `SignOutCard`.
+   *
+   * The assertion is inverted rather than deleted: this is the only way out of
+   * the product, so "it is on this page, in its own card, and that card is not
+   * the profile" is the property worth pinning. A card that swallowed it again
+   * would otherwise pass unnoticed.
+   */
+  it("keeps sign-out at the foot of the page, in a card of its own", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
       { path: "/me/profile", body: PROFILE },
@@ -128,10 +137,11 @@ describe("settings — changing a password", () => {
 
     renderWithProviders(<SettingsPage />);
 
-    const signOut = await screen.findByRole("button", { name: "Гарах" });
-    const profileCard = signOut.closest('[data-ui="card"]');
-    expect(profileCard).toHaveTextContent("Ганбат Болд");
-    expect(profileCard).toHaveTextContent("Системээс гарах");
+    const signOut = await screen.findByRole("button", { name: "Системээс гарах" });
+    const card = signOut.closest('[data-ui="card"]');
+    expect(card).toHaveTextContent("Системээс гарах");
+    // The profile card names the signed-in person; this one must not be it.
+    expect(card).not.toHaveTextContent("Ганбат Болд");
   });
 
   /**

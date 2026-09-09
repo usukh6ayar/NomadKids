@@ -357,8 +357,8 @@ describe("role-based navigation", () => {
     expect(within(nav).getByRole("link", { name: "Хоол ба цэс" })).toBeInTheDocument();
     // Харилцаа холбоо
     expect(within(nav).getByRole("link", { name: "Судалгаа" })).toBeInTheDocument();
-    // Багш ба байгууллага: the account card is the single profile route.
-    expect(within(nav).getByRole("link", { name: /Профайл: Тест Хэрэглэгч/ })).toBeInTheDocument();
+    // Багш ба байгууллага: the account card is the single route to /settings.
+    expect(within(nav).getByRole("link", { name: /Тохиргоо: Тест Хэрэглэгч/ })).toBeInTheDocument();
   });
 
   /**
@@ -552,7 +552,7 @@ describe("the sidebar footer", () => {
     renderShell(["PARENT"], "/home", [OWN_CHILD]);
     const nav = await sidebar();
 
-    expect(within(nav).getByRole("link", { name: /Профайл: Тест Хэрэглэгч/ })).toHaveAttribute(
+    expect(within(nav).getByRole("link", { name: /Тохиргоо: Тест Хэрэглэгч/ })).toHaveAttribute(
       "href",
       "/settings",
     );
@@ -563,7 +563,7 @@ describe("the sidebar footer", () => {
     renderShell(["TEACHER"]);
     const nav = await sidebar();
 
-    expect(within(nav).getByRole("link", { name: /Профайл: Тест Хэрэглэгч/ })).toHaveAttribute(
+    expect(within(nav).getByRole("link", { name: /Тохиргоо: Тест Хэрэглэгч/ })).toHaveAttribute(
       "href",
       "/settings",
     );
@@ -578,7 +578,7 @@ describe("the sidebar footer", () => {
     renderShell([...roles]);
     const nav = await sidebar();
 
-    expect(within(nav).getByRole("link", { name: /Профайл: Тест Хэрэглэгч/ })).toHaveAttribute(
+    expect(within(nav).getByRole("link", { name: /Тохиргоо: Тест Хэрэглэгч/ })).toHaveAttribute(
       "href",
       "/settings",
     );
@@ -589,7 +589,7 @@ describe("the sidebar footer", () => {
     renderShell([], "/platform", [], GROUPS, 0, true);
     const nav = await sidebar();
 
-    expect(within(nav).getByRole("link", { name: /Профайл: Тест Хэрэглэгч/ })).toHaveAttribute(
+    expect(within(nav).getByRole("link", { name: /Тохиргоо: Тест Хэрэглэгч/ })).toHaveAttribute(
       "href",
       "/settings",
     );

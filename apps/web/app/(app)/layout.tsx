@@ -740,17 +740,22 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
       title: "Багш ба байгууллага",
       entries: [
         /*
-         * ★ "Хувийн тохиргоо", not "Багшийн мэдээлэл" — renamed 2026-09-06 at
-         * the client's request.
+         * ★ "Тохиргоо" — one name for this destination in every role's menu,
+         * renamed 2026-09-10 at the client's request.
+         *
+         * The name has been three things at once: "Багшийн мэдээлэл", then
+         * "Хувийн тохиргоо" here (2026-09-06) while the cook's and the
+         * accountant's rail said "Профайл" and the sidebar's own identity card
+         * said "Профайл" a third time. The client read that as three screens.
+         * One screen gets one name.
          *
          * The row points at `/settings`, which is the signed-in person's *own*
-         * account: their name, their contact details, their password. It is
-         * not a directory of the kindergarten's teachers — that is
-         * "Хэрэглэгч ба эрх" one row below, and the old name promised this row
-         * was it. A cook and an accountant share this menu too, so "Багшийн"
-         * was wrong for them in a second way.
+         * account: their picture, their password, and — since this change —
+         * the way out of the system at the foot of it. It is not a directory
+         * of the kindergarten's teachers: that is "Хэрэглэгч ба эрх" one row
+         * below, and "Багшийн мэдээлэл" promised this row was it.
          */
-        entry("Хувийн тохиргоо", "/settings"),
+        entry("Тохиргоо", "/settings"),
         /*
          * ★ The administration screens, named — and no "Удирдлага" row above
          * them any more.
@@ -934,7 +939,7 @@ function supportSections(isCook: boolean): NavSection[] {
     },
     {
       title: "Миний мэдээлэл",
-      entries: [navEntry("Хувийн тохиргоо", "/settings")],
+      entries: [navEntry("Тохиргоо", "/settings")],
     },
   ];
 }
@@ -973,7 +978,7 @@ function platformNav(): NavItem[] {
       label: "Байгууллагын хүсэлт",
       icon: artIcon("kindergarten", 20),
     },
-    { href: "/settings", label: "Хувийн тохиргоо", icon: <Settings {...iconProps} /> },
+    { href: "/settings", label: "Тохиргоо", icon: <Settings {...iconProps} /> },
   ];
 }
 
