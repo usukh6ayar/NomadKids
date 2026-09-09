@@ -32,6 +32,23 @@ itself: "бодит өгөгдөлтэй холбогдоход энд хара�
 So "backend ntr-тэй нь" is the whole request: **the same screen, actually
 wired.** That is not a port. It is building what the reference only drew.
 
+**★★ CORRECTION, found while building stage 1: stage 2 was already built.**
+`apps/web/components/assessment/group-coverage.tsx` (412 lines) is mounted on
+this very screen and already draws all four panels — the goal board
+("Хүүхэд бүрийн үнэлгээний хамралт"), observation-type coverage, domain
+coverage, activity progress and monthly note coverage — backed by a real
+endpoint, `GET /groups/:id/observation-stats`, whose repository does the whole
+thing in one `Promise.all` of `groupBy`s (§3.4). §4 below described building
+what exists. **Stage 2 is struck**; the finding stands as a warning that this
+screen is larger than it reads, and that the reference's dead panels have live
+counterparts here under different names.
+
+★★★ That also softens (c): v2's third chart is real, it simply groups by the
+free-text `activityName` and shows whatever teachers actually typed, rather
+than the reference's four invented categories. The client's decision to drop
+the categorised version therefore costs nothing at all — the panel is already
+there and already honest.
+
 **(c) One panel has no data anywhere.** "Үйл ажиллагааны явц" charts four fixed
 categories — Чөлөөт тоглоом, Хичээл, Гадаа, Өдөр тутмын дэглэм. Neither project
 has such a field: Django's `activity_name` is a free-text `CharField(200)` and
@@ -51,11 +68,11 @@ expensively. The other two charts run on data this product already has.
 
 Deliberately three branches, smallest and least risky first.
 
-| Stage | What                                                                             | Backend                    |
-| ----- | -------------------------------------------------------------------------------- | -------------------------- |
-| **1** | Child search on the grid · child-progress drawer with the radar                  | none — the endpoint exists |
-| **2** | Coverage: observation types, development domains, monthly notes · the goal board | one aggregate endpoint     |
-| **3** | `DevelopmentIndicator` — per-criterion assessment                                | schema, migration, API, UI |
+| Stage     | What                                                                    | Backend                    |
+| --------- | ----------------------------------------------------------------------- | -------------------------- |
+| **1**     | Child search on the grid · child-progress drawer with the radar         | none — the endpoint exists |
+| ~~**2**~~ | ~~Coverage · goal board~~ — **already built**, see the correction in §1 | —                          |
+| **3**     | `DevelopmentIndicator` — per-criterion assessment                       | schema, migration, API, UI |
 
 ---
 
