@@ -3521,6 +3521,25 @@ export const chatAuthorSchema = personRefSchema.extend({
 });
 export type ChatAuthor = z.infer<typeof chatAuthorSchema>;
 
+/**
+ * One photograph on a message.
+ *
+ * ★ An id and a shape, never a URL. `MediaPurpose.CHAT_MESSAGE` lives in a
+ * private bucket like everything else (§1.4); the client builds
+ * `/media/:id`, which authorises against the room and redirects to a
+ * five-minute presigned URL.
+ *
+ * ★★ `width`/`height` are here so a bubble can reserve the right space before
+ * the bytes arrive. Without them a room jumps under the reader's thumb as each
+ * photograph loads, which on a phone means tapping the wrong message.
+ */
+export const chatMediaSchema = z.object({
+  id: uuidSchema,
+  width: z.number().nullable(),
+  height: z.number().nullable(),
+});
+export type ChatMedia = z.infer<typeof chatMediaSchema>;
+
 export const chatMessageSchema = z.object({
   id: uuidSchema,
   roomKey: z.string(),
@@ -3529,12 +3548,28 @@ export const chatMessageSchema = z.object({
   author: chatAuthorSchema.nullish(),
   /** Whether the signed-in reader wrote it — the client aligns their own right. */
   mine: z.boolean().default(false),
+  /**
+   * Up to four photographs, in the order they were attached.
+   *
+   * Defaulted rather than required, so a client written before this existed
+   * parses a message unchanged.
+   */
+  media: z.array(chatMediaSchema).default([]),
 });
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
 
-/** Bodies are bounded: a chat message is not a document. */
+/**
+ * Bodies are bounded: a chat message is not a document.
+ *
+ * ★ `body` became **optional** on 2026-09-09, when photographs arrived: a
+ * message may be a picture with nothing typed. What replaced the old
+ * `min(1)` is not a weaker rule but one this schema cannot express — a
+ * message must carry text *or* an image — and only the service knows how many
+ * files the request actually held. `ChatService.send` refuses the empty case,
+ * and `chat.test.ts` asserts it.
+ */
 export const sendChatMessageSchema = z.object({
-  body: z.string().trim().min(1, "Мессеж хоосон байна").max(2000),
+  body: z.string().trim().max(2000).optional(),
 });
 export type SendChatMessageDto = z.infer<typeof sendChatMessageSchema>;
 

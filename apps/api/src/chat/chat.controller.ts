@@ -1,10 +1,23 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  UploadedFiles,
+  UseInterceptors,
+} from "@nestjs/common";
+import { FilesInterceptor } from "@nestjs/platform-express";
 import { sendChatMessageSchema, type SendChatMessageDto } from "@kinder/contracts";
 import { z } from "zod";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
 import type { Actor } from "../authz/actor";
-import { ChatService } from "./chat.service";
+import { CHAT_MAX_UPLOAD_BYTES, MAX_CHAT_IMAGES } from "../media/upload-validation";
+import { ChatService, type ChatUpload } from "./chat.service";
 
 /**
  * A room key in a URL path.
@@ -65,13 +78,33 @@ export class ChatController {
     return this.service.listMessages(actor, params.roomKey, query.before);
   }
 
+  /**
+   * Text, photographs, or both.
+   *
+   * ★ The same route it always was. `FilesInterceptor` leaves a non-multipart
+   * request alone, so every existing caller — the web composer's JSON post,
+   * and `chat.test.ts` — reaches the same method unchanged. A second
+   * `/messages/with-images` route would have been two paths to authorise and
+   * two to keep in step.
+   *
+   * ★★ The multer limits are a ceiling, not the validation. They stop 200 MB
+   * from being read into memory before anything looks at it;
+   * `validateImageUpload` is what decides whether the bytes are an image, and
+   * it decides from their **content** (§1.6).
+   */
   @Post("rooms/:roomKey/messages")
+  @UseInterceptors(
+    FilesInterceptor("images", MAX_CHAT_IMAGES, {
+      limits: { fileSize: CHAT_MAX_UPLOAD_BYTES, files: MAX_CHAT_IMAGES },
+    }),
+  )
   async send(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(roomParamSchema)) params: { roomKey: string },
     @Body(new ZodValidationPipe(sendChatMessageSchema)) body: SendChatMessageDto,
+    @UploadedFiles() images: ChatUpload[] | undefined,
   ) {
-    return this.service.send(actor, params.roomKey, body.body);
+    return this.service.send(actor, params.roomKey, body.body, images ?? []);
   }
 
   /** Moves this reader's cursor to now. No body — the time is the server's. */

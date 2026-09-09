@@ -1,11 +1,27 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import type { ChatMessage, ChatRoom } from "@kinder/contracts";
 import type { Actor } from "../authz/actor";
 import { ChatAccessService } from "../authz/chat-access.service";
+import { StorageService } from "../storage/storage.service";
+import {
+  CHAT_IMAGE_EDGE,
+  CHAT_IMAGE_QUALITY,
+  CHAT_MAX_UPLOAD_BYTES,
+  MAX_CHAT_IMAGES,
+  UploadRejected,
+  sanitiseFilename,
+  validateImageUpload,
+} from "../media/upload-validation";
 import { ChatRepository } from "./chat.repository";
 
 /** One page of history. 30 fills a phone screen twice over. */
 const PAGE_SIZE = 30;
+
+/** A file as multer hands it over. */
+export interface ChatUpload {
+  buffer: Buffer;
+  originalname: string;
+}
 
 /**
  * Chat — the rules and the ordering, and nothing about storage.
@@ -24,6 +40,7 @@ export class ChatService {
   constructor(
     private readonly access: ChatAccessService,
     private readonly repo: ChatRepository,
+    private readonly storage: StorageService,
   ) {}
 
   /**
@@ -120,14 +137,93 @@ export class ChatService {
         createdAt: row.createdAt.toISOString(),
         author: row.author,
         mine: row.authorId === actor.userId,
+        media: row.media,
       })),
       nextCursor: hasMore ? page[page.length - 1]!.createdAt.toISOString() : null,
     };
   }
 
-  async send(actor: Actor, roomKey: string, body: string): Promise<ChatMessage> {
+  /**
+   * Send a message, with up to four photographs.
+   *
+   * ★ One request, not two. The alternative — upload the files, then send a
+   * message naming them — is how `MENU_DISH` works and it is wrong here: it
+   * creates a window in which a stored file exists with no room to authorise
+   * it against. `assertMember` runs first and once, and nothing is written
+   * until it has.
+   *
+   * ★★ Storage before database, deliberately. A failure between the two
+   * leaves objects in the bucket that no row points at; `storageKey` is a
+   * random UUID, so they are unreachable rather than exposed. The other order
+   * leaves rows pointing at objects that were never written — a broken image
+   * in a parent's chat for as long as the message exists.
+   */
+  async send(
+    actor: Actor,
+    roomKey: string,
+    body: string | undefined,
+    files: ChatUpload[] = [],
+  ): Promise<ChatMessage> {
     const room = await this.access.assertMember(actor, roomKey);
-    const row = await this.repo.createMessage({ room, authorId: actor.userId, body });
+
+    const text = body?.trim() ?? "";
+
+    /*
+     * ★ The rule `sendChatMessageSchema` cannot express. `body` had to become
+     * optional so a photograph can travel with nothing typed, and only this
+     * layer knows how many files actually arrived — so the "not both empty"
+     * check lives here rather than in the DTO.
+     */
+    if (!text && files.length === 0) {
+      throw new BadRequestException("Мессеж хоосон байна");
+    }
+
+    if (files.length > MAX_CHAT_IMAGES) {
+      throw new BadRequestException(`Нэг мессежид дээд тал нь ${MAX_CHAT_IMAGES} зураг хавсаргана`);
+    }
+
+    /*
+     * Validated together, before a single object is written. A request whose
+     * fourth file is not an image must leave nothing behind from the first
+     * three.
+     */
+    const validated = [];
+    for (const file of files) {
+      try {
+        validated.push({
+          file,
+          image: await validateImageUpload(file.buffer, {
+            maxBytes: CHAT_MAX_UPLOAD_BYTES,
+            maxEdge: CHAT_IMAGE_EDGE,
+            quality: CHAT_IMAGE_QUALITY,
+          }),
+        });
+      } catch (error) {
+        if (error instanceof UploadRejected) throw new BadRequestException(error.reason);
+        throw error;
+      }
+    }
+
+    const media = [];
+    for (const { file, image } of validated) {
+      const storageKey = this.storage.buildKindergartenKey(room.kindergartenId, "chat");
+      await this.storage.put(storageKey, image.buffer, image.mimeType);
+      media.push({
+        storageKey,
+        originalName: sanitiseFilename(file.originalname),
+        mimeType: image.mimeType,
+        sizeBytes: image.sizeBytes,
+        width: image.width,
+        height: image.height,
+      });
+    }
+
+    const row = await this.repo.createMessage({
+      room,
+      authorId: actor.userId,
+      body: text,
+      media,
+    });
 
     /*
       Sending is reading. The author has by definition seen everything up to
@@ -143,6 +239,7 @@ export class ChatService {
       createdAt: row.createdAt.toISOString(),
       author: row.author,
       mine: true,
+      media: row.media,
     };
   }
 

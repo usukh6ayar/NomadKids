@@ -20,6 +20,8 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "rea
 import { z } from "zod";
 import { chatMessageSchema, chatRoomSchema, unreadCountSchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
+import { mediaUrl } from "@/lib/api/client";
+import { MAX_CHAT_IMAGES } from "@/lib/chat-media";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
@@ -420,14 +422,45 @@ export function ChatRoom({
     */
   }, [room.key]);
 
+  /**
+   * Text, photographs, or both — one request either way.
+   *
+   * ★ JSON when there is nothing attached, `FormData` when there is. Not
+   * always multipart: every existing test and the whole room history were
+   * written against the JSON body, and a form-encoded post of a plain message
+   * would change what the server sees for no gain. `apiFetch` passes a
+   * `FormData` through untouched so the browser can set its own boundary.
+   *
+   * ★★ The files go up on **send**, not on pick. A photograph chosen and then
+   * removed is never uploaded, and there is no half-attached state to clean up
+   * if the person closes the panel.
+   */
+  /**
+   * Photographs chosen but not yet sent.
+   *
+   * ★ `File` objects, not uploaded ids. Nothing leaves the browser until the
+   * send button is pressed, so a picture picked and then removed costs the
+   * server nothing and leaves no orphan behind — see the mutation below.
+   */
+  const [pending, setPending] = useState<File[]>([]);
+  const fileInput = useRef<HTMLInputElement>(null);
+
   const send = useMutation({
-    mutationFn: (body: string) =>
-      mutate(`/chat/rooms/${encodeURIComponent(room.key)}/messages`, chatMessageSchema, {
-        method: "POST",
-        body: { body },
-      }),
+    mutationFn: ({ body, files }: { body: string; files: File[] }) => {
+      const path = `/chat/rooms/${encodeURIComponent(room.key)}/messages`;
+
+      if (files.length === 0) {
+        return mutate(path, chatMessageSchema, { method: "POST", body: { body } });
+      }
+
+      const form = new FormData();
+      if (body) form.append("body", body);
+      for (const file of files) form.append("images", file);
+      return mutate(path, chatMessageSchema, { method: "POST", body: form });
+    },
     onSuccess: () => {
       setDraft("");
+      setPending([]);
       void queryClient.invalidateQueries({ queryKey: qk.chatMessages(room.key) });
       void queryClient.invalidateQueries({ queryKey: qk.chatRooms() });
     },
@@ -631,20 +664,62 @@ export function ChatRoom({
           </div>
         ) : null}
 
+        {/*
+          The chosen photographs, before they are sent.
+
+          ★ Object URLs, revoked when the strip unmounts — a room left open all
+          day would otherwise hold every picture anybody previewed in memory.
+        */}
+        {pending.length > 0 ? (
+          <ul className="mx-auto mb-2 flex w-full max-w-[940px] flex-wrap gap-2">
+            {pending.map((file, index) => (
+              <PendingImage
+                key={`${file.name}-${index}`}
+                file={file}
+                onRemove={() => setPending((current) => current.filter((_, i) => i !== index))}
+              />
+            ))}
+          </ul>
+        ) : null}
+
         <form
           onSubmit={(event) => {
             event.preventDefault();
             const body = draft.trim();
-            if (body && !send.isPending) send.mutate(body);
+            // Either one is enough now — a photograph may travel with nothing
+            // typed, which is what `sendChatMessageSchema`'s optional `body`
+            // and `ChatService.send`'s own check are there for.
+            if ((body || pending.length > 0) && !send.isPending)
+              send.mutate({ body, files: pending });
           }}
           className="mx-auto flex w-full max-w-[940px] items-center gap-2"
         >
+          <input
+            ref={fileInput}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            hidden
+            onChange={(event) => {
+              const chosen = Array.from(event.target.files ?? []);
+              // Silently keeping only the first four would be worse than
+              // saying so — the person watched themselves pick six.
+              setPending((current) => [...current, ...chosen].slice(0, MAX_CHAT_IMAGES));
+              // Reset, so picking the same file twice in a row still fires.
+              event.target.value = "";
+            }}
+          />
           <button
             type="button"
-            disabled
-            aria-label="Файл хавсаргах боломж одоогоор идэвхгүй"
-            title="Файл хавсаргах үйлчилгээ одоогоор идэвхгүй"
-            className="grid size-12 shrink-0 place-items-center rounded-control border border-border text-faint"
+            onClick={() => fileInput.current?.click()}
+            disabled={pending.length >= MAX_CHAT_IMAGES || send.isPending}
+            aria-label="Зураг хавсаргах"
+            title={
+              pending.length >= MAX_CHAT_IMAGES
+                ? `Нэг мессежид ${MAX_CHAT_IMAGES} зураг хүртэл`
+                : "Зураг хавсаргах"
+            }
+            className="grid size-12 shrink-0 place-items-center rounded-control border border-border text-muted transition-colors hover:bg-canvas hover:text-ink disabled:text-faint"
           >
             <Paperclip size={20} aria-hidden="true" />
           </button>
@@ -677,7 +752,7 @@ export function ChatRoom({
           <button
             type="submit"
             aria-label="Илгээх"
-            disabled={!draft.trim() || send.isPending}
+            disabled={(!draft.trim() && pending.length === 0) || send.isPending}
             className="grid size-12 shrink-0 place-items-center rounded-control bg-primary text-primary-ink shadow-sm transition-all hover:bg-primary-hover hover:shadow-md disabled:bg-track disabled:text-faint disabled:shadow-none"
           >
             <Send size={20} aria-hidden="true" />
@@ -755,7 +830,61 @@ function MessageBubble({ message }: { message: z.infer<typeof chatMessageSchema>
               : "border border-border bg-surface text-ink",
           )}
         >
-          <p className="whitespace-pre-wrap break-words text-body">{message.body}</p>
+          {message.media.length > 0 ? (
+            /*
+              One photograph fills the bubble; two to four go in a grid.
+
+              ★ `aspect-square` with `object-cover` on the grid, and the
+              natural ratio on a lone image. A single photograph is the message
+              and should be seen whole; four are a contact sheet, and four
+              different shapes in a 300px bubble is a ragged edge nobody reads.
+            */
+            <ul
+              className={cn(
+                "grid gap-1",
+                message.media.length === 1 ? "grid-cols-1" : "grid-cols-2",
+                message.body ? "mb-2" : "",
+              )}
+            >
+              {message.media.map((image) => (
+                <li key={image.id} className="min-w-0">
+                  <a href={mediaUrl(image.id)} target="_blank" rel="noopener noreferrer">
+                    {/*
+                      A plain `<img>`, deliberately — the same reasoning
+                      `media-image.tsx` sets out at the top of the file:
+                      `next/image` would cache the object behind a public
+                      `/_next/image` path, which is the exact rule §1.4 exists
+                      to enforce. The `src` is the authorising endpoint, and
+                      the `SameSite=Lax` cookie rides along with the image
+                      request itself.
+                    */}
+                    <img
+                      src={mediaUrl(image.id)}
+                      width={image.width ?? undefined}
+                      height={image.height ?? undefined}
+                      /*
+                        ★ Whose photograph and when, not "зураг". A screen
+                        reader user cannot be told what is in the picture, but
+                        who sent it and at what time is knowable and is the
+                        part that makes a room followable.
+                      */
+                      alt={`${message.mine ? "Таны" : fullName(message.author)} илгээсэн зураг · ${timeOfDay(message.createdAt)}`}
+                      loading="lazy"
+                      className={cn(
+                        "w-full rounded-control bg-canvas object-cover",
+                        message.media.length === 1
+                          ? "max-h-[320px] object-contain"
+                          : "aspect-square",
+                      )}
+                    />
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {message.body ? (
+            <p className="whitespace-pre-wrap break-words text-body">{message.body}</p>
+          ) : null}
         </div>
       </div>
       <span
@@ -767,6 +896,46 @@ function MessageBubble({ message }: { message: z.infer<typeof chatMessageSchema>
       >
         {timeOfDay(message.createdAt)}
       </span>
+    </li>
+  );
+}
+
+/**
+ * One chosen photograph, before it is sent.
+ *
+ * ★ Its own component so the object URL has a lifetime. Built in an effect and
+ * revoked on unmount, rather than made inline during render — an inline
+ * `createObjectURL` runs on every re-render of the composer (every keystroke)
+ * and leaks one blob handle each time.
+ */
+function PendingImage({ file, onRemove }: { file: File; onRemove: () => void }) {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const objectUrl = URL.createObjectURL(file);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+
+  return (
+    <li className="relative">
+      {url ? (
+        <img
+          src={url}
+          alt={file.name}
+          className="size-16 rounded-control border border-border object-cover"
+        />
+      ) : (
+        <div className="size-16 rounded-control border border-border bg-canvas" />
+      )}
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`${file.name} хасах`}
+        className="absolute -right-1.5 -top-1.5 grid size-6 place-items-center rounded-pill bg-ink text-surface shadow-sm"
+      >
+        <X size={14} aria-hidden="true" />
+      </button>
     </li>
   );
 }

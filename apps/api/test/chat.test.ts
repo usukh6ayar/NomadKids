@@ -1,10 +1,12 @@
 import type { INestApplication } from "@nestjs/common";
+import sharp from "sharp";
 import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestApp } from "./support/app";
 import { resetData, testDb } from "./support/db";
 import { authed, createScenario, login, type AuthSession, type Scenario } from "./support/fixtures";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
+import { StorageService } from "../src/storage/storage.service";
 
 /**
  * Chat — RFP Phase IV, in scope from 2026-08-29 (CLAUDE.md §7).
@@ -266,5 +268,226 @@ describe("messages", () => {
     const res = await authed(request(server()).get("/v1/chat/rooms"), parentA);
     expect(res.body[0].unreadCount).toBe(3);
     expect(res.body[0].lastMessage.body).toBe("гурав");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Photographs — 2026-09-09
+//
+// ★ The client asked for images and video, then withdrew video the same day:
+// "бичлэг ороохыг болиулъя. зураг оруулдаг байхад болно."
+//
+// ★★ The §4.1 three are repeated here **on the image**, not only on the
+// message, and that repetition is the point of this block. A chat photograph
+// is authorised by the ROOM, through `ChatAccessService`, because the tempting
+// shortcut — adding `CHAT_MESSAGE` to `TENANT_IMAGE_PURPOSES` — would make it
+// readable by anyone holding a membership in the kindergarten. A guardian
+// whose child is in group A holds one. These cases are what fails if somebody
+// later moves the purpose into that set.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** A real JPEG, small. Content is what the validator reads, never the name. */
+async function chatPhoto(colour = "red", size = 48): Promise<Buffer> {
+  return sharp({ create: { width: size, height: size, channels: 3, background: colour } })
+    .jpeg()
+    .toBuffer();
+}
+
+/** Posts a message with one photograph and returns its media id. */
+async function sendPhoto(session: AuthSession, room: string, body = "зураг"): Promise<string> {
+  const res = await authed(request(server()).post(`/v1/chat/rooms/${room}/messages`), session)
+    .field("body", body)
+    .attach("images", await chatPhoto(), "зураг.jpg");
+
+  expect(res.status).toBe(201);
+  expect(res.body.media).toHaveLength(1);
+  return res.body.media[0].id as string;
+}
+
+describe("chat photographs", () => {
+  it("carries a photograph on a message, and gives it back with the history", async () => {
+    const mediaId = await sendPhoto(teacherA, groupRoom(a), "өнөөдрийн хичээл");
+
+    const res = await authed(
+      request(server()).get(`/v1/chat/rooms/${groupRoom(a)}/messages`),
+      parentA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.items[0].body).toBe("өнөөдрийн хичээл");
+    expect(res.body.items[0].media).toEqual([
+      { id: mediaId, width: expect.any(Number), height: expect.any(Number) },
+    ]);
+  });
+
+  it("lets a photograph travel with no text at all", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/chat/rooms/${groupRoom(a)}/messages`),
+      teacherA,
+    ).attach("images", await chatPhoto(), "ганц.jpg");
+
+    expect(res.status).toBe(201);
+    expect(res.body.body).toBe("");
+    expect(res.body.media).toHaveLength(1);
+  });
+
+  it("still refuses a message with neither text nor a photograph", async () => {
+    await authed(request(server()).post(`/v1/chat/rooms/${groupRoom(a)}/messages`), teacherA)
+      .field("body", "   ")
+      .expect(400);
+  });
+
+  it("accepts four photographs in attachment order, and refuses a fifth", async () => {
+    const four = authed(
+      request(server()).post(`/v1/chat/rooms/${groupRoom(a)}/messages`),
+      teacherA,
+    );
+    for (const name of ["нэг", "хоёр", "гурав", "дөрөв"]) {
+      four.attach("images", await chatPhoto(), `${name}.jpg`);
+    }
+    const ok = await four;
+    expect(ok.status).toBe(201);
+    expect(ok.body.media).toHaveLength(4);
+
+    const five = authed(
+      request(server()).post(`/v1/chat/rooms/${groupRoom(a)}/messages`),
+      teacherA,
+    );
+    for (const name of ["1", "2", "3", "4", "5"]) {
+      five.attach("images", await chatPhoto(), `${name}.jpg`);
+    }
+    const tooMany = await five;
+    expect(tooMany.status).toBeGreaterThanOrEqual(400);
+  });
+
+  /*
+   * ★ The type comes from the CONTENT (§1.6). A Mach-O executable named
+   * `.jpg` is the same probe `media.test.ts` uses, and it must be refused here
+   * for the same reason — a browser asked to render it may do something other
+   * than display a picture.
+   */
+  it("refuses a renamed executable", async () => {
+    const machO = Buffer.concat([
+      Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 0x0c, 0x00, 0x00, 0x01]),
+      Buffer.alloc(512),
+    ]);
+
+    const res = await authed(
+      request(server()).post(`/v1/chat/rooms/${groupRoom(a)}/messages`),
+      teacherA,
+    ).attach("images", machO, "гэмгүй.jpg");
+
+    expect(res.status).toBe(400);
+  });
+
+  /*
+   * ★ "зураг нь гэхдээ бага хэмжээтэй" — the client. A chat photograph is
+   * bounded at 1280px, not the album's 2000px, so this asserts the *chat*
+   * number rather than that some resize happened.
+   */
+  it("stores a large photograph at the chat's own smaller size", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/chat/rooms/${groupRoom(a)}/messages`),
+      teacherA,
+    ).attach("images", await chatPhoto("blue", 2400), "том.jpg");
+
+    expect(res.status).toBe(201);
+    expect(res.body.media[0].width).toBe(1280);
+
+    const stored = await db.mediaFile.findFirstOrThrow({
+      where: { id: res.body.media[0].id as string },
+    });
+    expect(stored.purpose).toBe("CHAT_MESSAGE");
+    // Small enough to be worth sending over mobile data.
+    expect(stored.sizeBytes).toBeLessThan(400_000);
+  });
+
+  /*
+   * ★ The EXIF strip, asserted on the STORED BYTES — §1.6.
+   *
+   * This is the property that matters most and is the easiest to lose. A
+   * classroom photograph off a phone carries the kindergarten's GPS
+   * coordinates and the moment it was taken; a chat is the one place in this
+   * product where a parent can forward that on. The strip is not a step of its
+   * own — it is a consequence of re-encoding through sharp — which is exactly
+   * why it needs a test: a future "skip the re-encode when the image is
+   * already small enough" optimisation would silently undo it.
+   */
+  it("strips EXIF from a photograph before storing it", async () => {
+    const withExif = await sharp({
+      create: { width: 64, height: 64, channels: 3, background: "green" },
+    })
+      .withExif({ IFD0: { Make: "NOMADKIDS-CAMERA", Software: "SECRET-LOCATION" } })
+      .jpeg()
+      .toBuffer();
+
+    // The marker really is in the bytes we are about to send.
+    expect(withExif.includes(Buffer.from("NOMADKIDS-CAMERA"))).toBe(true);
+
+    const res = await authed(
+      request(server()).post(`/v1/chat/rooms/${groupRoom(a)}/messages`),
+      teacherA,
+    ).attach("images", withExif, "gps.jpg");
+
+    expect(res.status).toBe(201);
+
+    const stored = await db.mediaFile.findFirstOrThrow({
+      where: { id: res.body.media[0].id as string },
+    });
+    const bytes = await app.get(StorageService).get(stored.storageKey);
+
+    expect(bytes.includes(Buffer.from("NOMADKIDS-CAMERA"))).toBe(false);
+    expect(bytes.includes(Buffer.from("SECRET-LOCATION"))).toBe(false);
+  });
+
+  // ── The §4.1 three, on the image ──────────────────────────────────────────
+
+  it("teacher from another kindergarten gets 404 on the photograph", async () => {
+    const mediaId = await sendPhoto(teacherA, groupRoom(a));
+
+    const res = await authed(request(server()).get(`/v1/media/${mediaId}`), teacherB);
+    expect(res.status).toBe(404);
+  });
+
+  it("guardian of another child gets 404 on the photograph", async () => {
+    const mediaId = await sendPhoto(teacherA, groupRoom(a));
+
+    const res = await authed(request(server()).get(`/v1/media/${mediaId}`), parentB);
+    expect(res.status).toBe(404);
+  });
+
+  /*
+   * ★ The case the tenant-image shortcut would have broken. This guardian is
+   * in the SAME kindergarten as the photograph and holds a live membership —
+   * `assertMember` would pass. They are not in the staff room, so they must
+   * still get 404.
+   */
+  it("guardian of this kindergarten gets 404 on a staff-room photograph", async () => {
+    const mediaId = await sendPhoto(teacherA, staffRoom(a));
+
+    const res = await authed(request(server()).get(`/v1/media/${mediaId}`), parentA);
+    expect(res.status).toBe(404);
+  });
+
+  it("a member of the room is redirected to the file", async () => {
+    const mediaId = await sendPhoto(teacherA, groupRoom(a));
+
+    const res = await authed(request(server()).get(`/v1/media/${mediaId}`), parentA);
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain("http");
+  });
+
+  /*
+   * A soft-deleted message takes its photographs out of reach. Nothing in the
+   * product deletes a chat message yet, which is exactly why this is asserted
+   * now rather than discovered later.
+   */
+  it("stops serving a photograph whose message was deleted", async () => {
+    const mediaId = await sendPhoto(teacherA, groupRoom(a));
+
+    await db.chatMessage.updateMany({ where: {}, data: { deletedAt: new Date() } });
+
+    const res = await authed(request(server()).get(`/v1/media/${mediaId}`), parentA);
+    expect(res.status).toBe(404);
   });
 });

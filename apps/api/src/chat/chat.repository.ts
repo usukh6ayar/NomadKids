@@ -21,6 +21,23 @@ export class ChatRepository {
   private readonly visible = { deletedAt: null } as const;
 
   /**
+   * A message's photographs, in attachment order.
+   *
+   * ★ `deletedAt: null` here too. A soft-deleted `MediaFile` is gone from
+   * every other surface in the product, and a chat bubble that kept drawing
+   * one would be the single place a deleted photograph still renders.
+   *
+   * ★★ Included in the message `select` rather than fetched per message —
+   * §3.4. A page is thirty messages, and a query each would be thirty round
+   * trips to draw one screen.
+   */
+  private readonly mediaSelect = {
+    where: { deletedAt: null },
+    orderBy: { order: "asc" },
+    select: { id: true, width: true, height: true },
+  } as const;
+
+  /**
    * The newest message in each of several rooms, in one query.
    *
    * ★ `distinct` on `roomKey` with a descending sort, not N queries.
@@ -104,12 +121,39 @@ export class ChatRepository {
         createdAt: true,
         authorId: true,
         author: { select: { id: true, lastName: true, firstName: true, photoMediaFileId: true } },
+        media: this.mediaSelect,
       },
     });
   }
 
-  async createMessage(input: { room: Room; authorId: string; body: string }) {
-    const { room, authorId, body } = input;
+  /**
+   * A message and its photographs, in one transaction.
+   *
+   * ★ The bytes are already in the bucket by the time this runs — see
+   * `ChatService.send`. Storage first, database second, deliberately: a
+   * failure here leaves objects nobody points at, which are unreachable
+   * because `storageKey` is a random UUID. The other order leaves rows
+   * pointing at objects that were never written, which is a broken image in a
+   * parent's chat for as long as the message exists.
+   *
+   * ★★ `kindergartenId` on every media row, from the room — §3.1. It is
+   * reachable through the message, and denormalised anyway so that one filter
+   * enforces the isolation.
+   */
+  async createMessage(input: {
+    room: Room;
+    authorId: string;
+    body: string;
+    media?: {
+      storageKey: string;
+      originalName: string;
+      mimeType: string;
+      sizeBytes: number;
+      width: number | null;
+      height: number | null;
+    }[];
+  }) {
+    const { room, authorId, body, media = [] } = input;
 
     return this.prisma.chatMessage.create({
       data: {
@@ -119,6 +163,20 @@ export class ChatRepository {
         roomKey: room.key,
         authorId,
         body,
+        media: {
+          create: media.map((file, index) => ({
+            kindergartenId: room.kindergartenId,
+            purpose: "CHAT_MESSAGE" as const,
+            order: index,
+            storageKey: file.storageKey,
+            originalName: file.originalName,
+            mimeType: file.mimeType,
+            sizeBytes: file.sizeBytes,
+            width: file.width,
+            height: file.height,
+            uploadedById: authorId,
+          })),
+        },
       },
       select: {
         id: true,
@@ -127,6 +185,7 @@ export class ChatRepository {
         createdAt: true,
         authorId: true,
         author: { select: { id: true, lastName: true, firstName: true, photoMediaFileId: true } },
+        media: this.mediaSelect,
       },
     });
   }
