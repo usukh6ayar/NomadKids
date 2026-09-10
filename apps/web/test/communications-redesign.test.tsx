@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   renderWithProviders,
@@ -53,7 +54,19 @@ describe("communications redesign", () => {
     expect(
       within(toolbar as HTMLElement).getByRole("searchbox", { name: "Судалгаа хайх" }),
     ).toBeVisible();
+    // The six categories fold behind the filter icon now, the same shape the
+    // class board uses — so they are in the toolbar but not on screen until
+    // it is opened.
+    const filters = within(toolbar as HTMLElement).getByRole("button", { name: "Шүүлтүүр" });
+    // `hidden` takes the panel out of the accessibility tree, so the chips are
+    // not merely invisible — `getByRole` cannot reach them at all.
+    expect(
+      within(toolbar as HTMLElement).queryByRole("button", { name: "Бүгд" }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.setup().click(filters);
     expect(within(toolbar as HTMLElement).getByRole("button", { name: "Бүгд" })).toBeVisible();
+
     await waitFor(() => expect(screen.getByText("Судалгаа алга")).toBeInTheDocument());
     expect(container.querySelectorAll('[data-ui="communications-toolbar"]')).toHaveLength(1);
   });

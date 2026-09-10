@@ -1,13 +1,27 @@
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { z } from "zod";
-import { ChevronRight, ListChecks, Plus, Search, Users } from "lucide-react";
+import {
+  ChevronRight,
+  Copy,
+  Download,
+  ListChecks,
+  MoreVertical,
+  Pencil,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  Trash2,
+  Users,
+  UsersRound,
+} from "lucide-react";
 import {
   SURVEY_CATEGORY_LABEL,
+  personRefSchema,
   SURVEY_KIND_HINT,
   SURVEY_KIND_LABEL,
   groupListItemSchema,
@@ -22,11 +36,22 @@ import {
 /** The two kinds in the order the client's drawing puts them: Пол, then Форм. */
 const SURVEY_KINDS = surveyKindSchema.options;
 const SURVEY_CATEGORIES = surveyCategorySchema.options;
+
+/** What `GET /surveys/:id/participation` answers — the roster, split. */
+const participationRowSchema = z.object({
+  child: personRefSchema,
+  group: z.object({ id: z.string(), name: z.string() }).nullish(),
+});
+const participationSchema = z.object({
+  answered: z.array(participationRowSchema.extend({ submittedAt: z.string() })),
+  pending: z.array(participationRowSchema),
+  familyResponses: z.number(),
+  roster: z.number(),
+});
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
-import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,8 +59,13 @@ import { Card } from "@/components/ui/card";
 import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
-import { formatDate } from "@/lib/format";
+import { formatDate, fullName } from "@/lib/format";
 import { SURVEY_CATEGORY_META, SURVEY_TONE_BG } from "@/lib/survey-meta";
+import { downloadUrl } from "@/lib/api/client";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { FormDialog } from "@/components/ui/form-dialog";
+import { RowMenu } from "@/components/ui/menu";
+import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 
 const surveysSchema = z.array(surveySchema);
@@ -84,6 +114,7 @@ const TABS = [
 function SurveysList() {
   const { primaryKindergartenId } = useSession();
   const [creating, setCreating] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [tab, setTab] = useState<"active" | "closed">("active");
   const [category, setCategory] = useState<SurveyCategory | null>(null);
   /**
@@ -119,41 +150,24 @@ function SurveysList() {
 
   return (
     <div className="flex flex-col gap-5 lg:gap-6">
-      <PageHeader
-        title="Судалгаа"
-        actions={
-          <Button onClick={() => setCreating(true)}>
-            <Plus size={18} aria-hidden="true" />
-            Санал асуулга үүсгэх
-          </Button>
-        }
-      />
+      {/*
+        ★ The client's own order — 2026-09-10: search first, then the create
+        button, then the two counts.
+
+        It read tabs · search · a row of category chips, under a page header
+        that carried the create button a scroll away from everything it
+        relates to. The order now matches how the screen is used: find one,
+        make one, or pick which pile you are looking at.
+      */}
+      <h1 className="sr-only">Судалгаа</h1>
 
       <section
         aria-label="Судалгааны удирдлага"
         data-ui="communications-toolbar"
-        className="overflow-hidden rounded-card border border-border bg-surface shadow-sm"
+        className="flex flex-col gap-3"
       >
-        <div className="flex flex-col gap-3 bg-sunken p-1.5 sm:flex-row sm:items-center sm:justify-between">
-          <div
-            role="tablist"
-            aria-label="Судалгааны төлөв"
-            data-ui="communication-tabs"
-            className="grid grid-cols-2 gap-1 sm:w-[360px]"
-          >
-            {TABS.map((t) => (
-              <TabPill
-                key={t.key}
-                active={tab === t.key}
-                count={countFor(t.key)}
-                onClick={() => setTab(t.key)}
-              >
-                {t.label}
-              </TabPill>
-            ))}
-          </div>
-
-          <div className="relative m-1 mt-0 sm:mt-1 sm:w-[320px]">
+        <div className="flex items-center gap-2">
+          <div className="relative min-w-0 flex-1">
             <Search
               size={18}
               aria-hidden="true"
@@ -165,12 +179,40 @@ function SurveysList() {
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Судалгаа хайх"
               aria-label="Судалгаа хайх"
-              className="border-border-soft bg-surface pl-11"
+              className="border-border-soft bg-canvas pl-11 focus:bg-surface"
             />
           </div>
+
+          {/*
+            The six categories fold behind one icon, the same shape the class
+            board uses — and for the same reason: a row of chips above a list
+            is most of a phone screen spent on a filter nobody has asked for
+            yet. The count says when one is on.
+          */}
+          <Button
+            type="button"
+            variant={filtersOpen ? "primary" : "secondary"}
+            size="icon"
+            aria-expanded={filtersOpen}
+            aria-controls="survey-filters"
+            aria-label="Шүүлтүүр"
+            className="relative shrink-0"
+            onClick={() => setFiltersOpen(!filtersOpen)}
+          >
+            <SlidersHorizontal aria-hidden="true" />
+            {category ? (
+              <span className="absolute -right-1 -top-1 grid min-w-5 place-items-center rounded-pill bg-danger px-1 text-compact font-bold text-white">
+                1<span className="sr-only">шүүлтүүр идэвхтэй</span>
+              </span>
+            ) : null}
+          </Button>
         </div>
 
-        <div className="border-t border-border-soft p-3 sm:p-4">
+        <div
+          id="survey-filters"
+          hidden={!filtersOpen}
+          className={cn("flex-col gap-3", filtersOpen && "flex")}
+        >
           <FilterChipRow label="Судалгааны ангиллаар шүүх" scroll>
             <FilterChip active={category === null} onClick={() => setCategory(null)}>
               Бүгд
@@ -181,6 +223,29 @@ function SurveysList() {
               </FilterChip>
             ))}
           </FilterChipRow>
+        </div>
+
+        <Button block onClick={() => setCreating(true)} className="sm:w-auto sm:self-start">
+          <Plus size={18} aria-hidden="true" />
+          Санал асуулга үүсгэх
+        </Button>
+
+        <div
+          role="tablist"
+          aria-label="Судалгааны төлөв"
+          data-ui="communication-tabs"
+          className="grid grid-cols-2 gap-1 rounded-card bg-sunken p-1 sm:w-[360px]"
+        >
+          {TABS.map((t) => (
+            <TabPill
+              key={t.key}
+              active={tab === t.key}
+              count={countFor(t.key)}
+              onClick={() => setTab(t.key)}
+            >
+              {t.label}
+            </TabPill>
+          ))}
         </div>
       </section>
 
@@ -310,46 +375,138 @@ function SurveyCard({ survey }: { survey: z.infer<typeof surveySchema> }) {
   const meta = SURVEY_CATEGORY_META[survey.category];
   const questionCount = survey.questions.length;
   const date = survey.closedAt ?? survey.publishedAt ?? survey.createdAt;
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [participation, setParticipation] = useState(false);
+
+  const clone = useMutation({
+    mutationFn: () =>
+      mutate(`/surveys/${survey.id}/clone`, surveySchema, { method: "POST", body: {} }),
+    onSuccess: (copy) => {
+      toast.success("Судалгаа хуулагдлаа.");
+      router.push(`/surveys/${copy.id}`);
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const remove = useMutation({
+    mutationFn: () => mutate(`/surveys/${survey.id}`, z.unknown(), { method: "DELETE" }),
+    onSuccess: () => {
+      setConfirmDelete(false);
+      toast.success("Судалгаа устгагдлаа.");
+      void queryClient.invalidateQueries({ queryKey: ["surveys"] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
 
   return (
-    <Link href={`/surveys/${survey.id}`} className="group h-full">
-      <Card
-        pad="roomy"
-        className="flex h-full min-h-[260px] flex-col gap-4 transition-all group-hover:-translate-y-0.5 group-hover:border-primary group-hover:shadow-md"
-      >
-        <div className="flex items-start justify-between gap-3">
-          <span
-            className={cn(
-              "grid size-12 shrink-0 place-items-center rounded-control",
-              SURVEY_TONE_BG[meta.tone],
-            )}
-            aria-hidden="true"
-          >
-            <meta.Icon size={22} />
-          </span>
+    <div className="group relative h-full">
+      {/*
+        ★ The menu sits outside the link, not inside it — 2026-09-10.
 
-          <div className="flex flex-wrap justify-end gap-1.5">
-            <Badge tone={meta.tone}>{meta.label}</Badge>
-            <Badge tone={STATUS_TONE[survey.status]}>{STATUS_LABEL[survey.status]}</Badge>
+        A `<button>` nested in an `<a>` is invalid HTML and, more to the point,
+        every menu press would also follow the card. It is absolutely
+        positioned over the card's corner instead, above the link in the stack.
+      */}
+      <div className="absolute right-2 top-2 z-10">
+        <RowMenu
+          ariaLabel={`${survey.title} үйлдэл`}
+          triggerIcon={<MoreVertical size={18} aria-hidden="true" />}
+          items={[
+            {
+              label: "Засах",
+              icon: <Pencil size={16} />,
+              onSelect: () => router.push(`/surveys/${survey.id}`),
+            },
+            {
+              label: "Оролцоо",
+              icon: <UsersRound size={16} />,
+              hint: "Хэн бөглөсөн, хэн бөглөөгүй",
+              onSelect: () => setParticipation(true),
+            },
+            {
+              label: "Тайлан татах",
+              icon: <Download size={16} />,
+              onSelect: () => {
+                window.location.href = downloadUrl(`/surveys/${survey.id}/export`);
+              },
+            },
+            {
+              label: "Дахин ашиглах",
+              icon: <Copy size={16} />,
+              hint: "Асуултуудыг хуулж шинэ ноорог үүсгэнэ",
+              onSelect: () => clone.mutate(),
+            },
+            {
+              label: "Устгах",
+              icon: <Trash2 size={16} />,
+              tone: "danger",
+              separated: true,
+              onSelect: () => setConfirmDelete(true),
+            },
+          ]}
+        />
+      </div>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={(next) => (next ? undefined : setConfirmDelete(false))}
+        title="Энэ судалгааг устгах уу?"
+        description="Жагсаалтаас хасагдана. Өгсөн хариултууд хэвээр үлдэж, бүртгэлд тэмдэглэгдэнэ."
+        confirmLabel="Устгах"
+        cancelLabel="Болих"
+        tone="danger"
+        pending={remove.isPending}
+        onConfirm={() => remove.mutate()}
+      />
+
+      <SurveyParticipation
+        surveyId={survey.id}
+        title={survey.title}
+        open={participation}
+        onClose={() => setParticipation(false)}
+      />
+
+      <Link href={`/surveys/${survey.id}`} className="block h-full">
+        <Card
+          pad="roomy"
+          className="flex h-full min-h-[260px] flex-col gap-4 transition-all group-hover:-translate-y-0.5 group-hover:border-primary group-hover:shadow-md"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <span
+              className={cn(
+                "grid size-12 shrink-0 place-items-center rounded-control",
+                SURVEY_TONE_BG[meta.tone],
+              )}
+              aria-hidden="true"
+            >
+              <meta.Icon size={22} />
+            </span>
+
+            <div className="flex flex-wrap justify-end gap-1.5">
+              <Badge tone={meta.tone}>{meta.label}</Badge>
+              <Badge tone={STATUS_TONE[survey.status]}>{STATUS_LABEL[survey.status]}</Badge>
+            </div>
           </div>
-        </div>
 
-        <div className="min-w-0 flex-1">
-          <h3 className="text-lead font-semibold leading-[1.35] text-ink transition-colors group-hover:text-primary">
-            {survey.title}
-          </h3>
-          {survey.description ? (
-            <p className="mt-1 line-clamp-2 text-body text-muted">{survey.description}</p>
-          ) : null}
-        </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-lead font-semibold leading-[1.35] text-ink transition-colors group-hover:text-primary">
+              {survey.title}
+            </h3>
+            {survey.description ? (
+              <p className="mt-1 line-clamp-2 text-body text-muted">{survey.description}</p>
+            ) : null}
+          </div>
 
-        {/*
+          {/*
           The footer sits on a hairline and carries the three facts a teacher
           scans a list of surveys for: who it asks, how long it is, and when it
           last moved.
         */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border-soft pt-3 text-caption text-muted">
-          {/*
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border-soft pt-3 text-caption text-muted">
+            {/*
             ★ The audience, before the answering shape — 2026-09-06.
 
             A survey aimed at one group is a different thing from a survey the
@@ -357,29 +514,132 @@ function SurveyCard({ survey }: { survey: z.infer<typeof surveySchema> }) {
             list could not say which this was. It leads the footer because it
             is the question a teacher scans for; the scope follows it.
           */}
-          <span className="inline-flex items-center gap-1.5">
-            <Users size={14} aria-hidden="true" />
-            {survey.group?.name ?? "Бүх бүлэг"}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <ListChecks size={14} aria-hidden="true" />
-            {SCOPE_LABEL[survey.scope]}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <ListChecks size={14} aria-hidden="true" />
-            {questionCount} асуулт
-          </span>
-          <span className="ml-auto inline-flex items-center gap-1.5 tabular-nums">
-            {formatDate(date)}
-            <ChevronRight
-              size={16}
-              className="text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
-              aria-hidden="true"
-            />
-          </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Users size={14} aria-hidden="true" />
+              {survey.group?.name ?? "Бүх бүлэг"}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <ListChecks size={14} aria-hidden="true" />
+              {SCOPE_LABEL[survey.scope]}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <ListChecks size={14} aria-hidden="true" />
+              {questionCount} асуулт
+            </span>
+            <span className="ml-auto inline-flex items-center gap-1.5 tabular-nums">
+              {formatDate(date)}
+              <ChevronRight
+                size={16}
+                className="text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
+                aria-hidden="true"
+              />
+            </span>
+          </div>
+        </Card>
+      </Link>
+    </div>
+  );
+}
+
+/**
+ * Оролцоо — who answered and who has not, at the client's request.
+ *
+ * ★ The pending half leads. `results` already reports how many replied; what
+ * a teacher opens this for is the list to ring, so the names with nothing
+ * against them come first and the answered list is the reassurance under it.
+ *
+ * Fetched only while open: a grid of twelve cards would otherwise fire twelve
+ * requests for panels nobody has opened.
+ */
+function SurveyParticipation({
+  surveyId,
+  title,
+  open,
+  onClose,
+}: {
+  surveyId: string;
+  title: string;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const data = useQuery({
+    queryKey: ["surveys", surveyId, "participation"],
+    queryFn: () => get(`/surveys/${surveyId}/participation`, participationSchema),
+    enabled: open,
+  });
+
+  return (
+    <FormDialog
+      open={open}
+      onOpenChange={(next) => (next ? undefined : onClose())}
+      title="Оролцоо"
+      description={title}
+      footer={
+        <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+          Хаах
+        </Button>
+      }
+    >
+      {data.isLoading ? <LoadingState rows={3} /> : null}
+      {data.isError ? <ErrorState description={errorMessage(data.error)} /> : null}
+
+      {data.data ? (
+        <div className="flex flex-col gap-4">
+          <p className="text-body text-muted">
+            <span className="font-semibold text-ink">{data.data.answered.length}</span> /{" "}
+            {data.data.roster} бөглөсөн
+            {data.data.familyResponses > 0 ? (
+              <> · гэр бүлээр {data.data.familyResponses} хариулт</>
+            ) : null}
+          </p>
+
+          <ParticipationList
+            heading="Бөглөөгүй"
+            tone="peach"
+            names={data.data.pending.map((row) => fullName(row.child))}
+            empty="Бүгд бөглөсөн."
+          />
+          <ParticipationList
+            heading="Бөглөсөн"
+            tone="mint"
+            names={data.data.answered.map((row) => fullName(row.child))}
+            empty="Одоогоор хэн ч бөглөөгүй."
+          />
         </div>
-      </Card>
-    </Link>
+      ) : null}
+    </FormDialog>
+  );
+}
+
+function ParticipationList({
+  heading,
+  tone,
+  names,
+  empty,
+}: {
+  heading: string;
+  tone: "peach" | "mint";
+  names: string[];
+  empty: string;
+}) {
+  return (
+    <section>
+      <h3 className="mb-1.5 flex items-center gap-2 text-body font-semibold text-ink">
+        {heading}
+        <Badge tone={tone}>{names.length}</Badge>
+      </h3>
+      {names.length === 0 ? (
+        <p className="text-caption text-muted">{empty}</p>
+      ) : (
+        <ul className="flex flex-wrap gap-1.5">
+          {names.map((name) => (
+            <li key={name} className="rounded-pill bg-canvas px-2.5 py-1 text-caption text-ink">
+              {name}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
