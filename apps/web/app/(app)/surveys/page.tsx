@@ -829,10 +829,13 @@ function CreateSurveyDialog({
             )}
           </Field>
 
-          <Field
-            label="Хариулах хэлбэр"
-            hint="Хүүхэд тус бүрээр гэвэл эцэг эх хүүхдийнхээ нэрээр хариулна."
-          >
+          {/*
+            ★ No hint — 2026-09-10, at the client's request. The two options
+            below say it themselves: "Хүүхэд тус бүрээр" against "Цэцэрлэгээр
+            нэг удаа" is the whole distinction, and a sentence restating one of
+            them under the control was a line to read past.
+          */}
+          <Field label="Хариулах хэлбэр">
             {({ id, describedBy }) => (
               <Select
                 id={id}

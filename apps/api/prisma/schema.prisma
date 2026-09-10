@@ -3088,6 +3088,13 @@ enum SurveyCategory {
   PHYSICAL_DEVELOPMENT
   COGNITIVE_DEVELOPMENT
   HABITS_INDEPENDENCE
+  /// Added 2026-09-10 at the client's request. The six above are all
+  /// developmental or attitudinal; a kindergarten also asks about the group
+  /// itself — an outing, a parents' evening — and had nowhere to file it.
+  CLASS_GROUP
+  /// The escape hatch every vocabulary needs, so a survey that fits none of
+  /// the others is filed rather than mislabelled as one of them.
+  OTHER
 }
 
 model Survey {

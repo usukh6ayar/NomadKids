@@ -978,6 +978,12 @@ export const surveyCategorySchema = z.enum([
   "PHYSICAL_DEVELOPMENT",
   "COGNITIVE_DEVELOPMENT",
   "HABITS_INDEPENDENCE",
+  // ★ Added 2026-09-10. The six above are developmental or attitudinal; a
+  // kindergarten also asks about the group itself, and about things that fit
+  // none of them — `OTHER` is the escape hatch that stops a survey being
+  // mislabelled as one of the six to get it filed at all.
+  "CLASS_GROUP",
+  "OTHER",
 ]);
 export type SurveyCategory = z.infer<typeof surveyCategorySchema>;
 
@@ -988,6 +994,8 @@ export const SURVEY_CATEGORY_LABEL: Record<SurveyCategory, string> = {
   PHYSICAL_DEVELOPMENT: "Бие бялдрын хөгжлийн үнэлгээ",
   COGNITIVE_DEVELOPMENT: "Танин мэдэхүйн хөгжлийн үнэлгээ",
   HABITS_INDEPENDENCE: "Дадал хэвшил, бие даах чадварын үнэлгээ",
+  CLASS_GROUP: "Анги бүлэг",
+  OTHER: "Бусад",
 };
 
 /** RFP Module 1.1's archival classification, and Module 1.2's pairing key. */
