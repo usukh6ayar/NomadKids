@@ -170,100 +170,20 @@ export class AssessmentRepository {
     return { enrollments, assessments };
   }
 
-  /**
-   * Everything the coverage screen counts, for one group and one term.
-   *
-   * ★ Four queries for the whole screen, not one per domain (§3.4).
-   *
-   * The screen breaks the same work down four ways — by child, by development
-   * domain, by the kind of note, and by month — and the tempting shape is a
-   * count per bar: seven domains and twelve months is nineteen round trips for
-   * a page that reports on nine children. All of it comes from two row sets
-   * instead, grouped in application code the way `results()` does, because a
-   * kindergarten's volume (dozens of rows, not thousands) makes that the
-   * cheaper and far simpler choice.
-   *
-   * ★★ `groupBy` for the assessments, plain rows for the observations.
-   *
-   * An assessment is one row per child per domain per term, so grouping in the
-   * database returns at most `roster × domains` counts. Observations carry a
-   * date and a type and are wanted split two ways at once, which a single
-   * `groupBy` cannot do — so those come back as rows and are bucketed here.
-   */
-  async loadGroupCoverage(
-    groupId: string,
-    schoolYearId: string,
-    termId: string,
-    kindergartenId: string,
-    window: { from: Date; to: Date },
-  ) {
-    const enrollments = await this.prisma.enrollment.findMany({
-      where: { groupId, schoolYearId, status: "ACTIVE", deletedAt: null },
-      select: {
-        child: { select: { id: true, lastName: true, firstName: true, photoMediaFileId: true } },
-      },
-      orderBy: [{ child: { lastName: "asc" } }, { child: { firstName: "asc" } }],
+  /** The kindergarten's monthly note goal, or null when none is set. */
+  async monthlyNoteGoal(kindergartenId: string): Promise<number | null> {
+    const row = await this.prisma.kindergarten.findUnique({
+      where: { id: kindergartenId },
+      select: { monthlyNoteGoal: true },
     });
+    return row?.monthlyNoteGoal ?? null;
+  }
 
-    const childIds = enrollments.map((e) => e.child.id);
-
-    if (childIds.length === 0) {
-      return { enrollments, assessments: [], observations: [], domains: [], types: [] };
-    }
-
-    const [assessments, observations, domains, types] = await Promise.all([
-      this.prisma.assessment.findMany({
-        where: { childId: { in: childIds }, termId, deletedAt: null },
-        select: { childId: true, domainId: true },
-      }),
-      /*
-        ★ Bounded by the term's own dates, not by "everything ever".
-
-        A note from last April is not coverage of this term, and an unbounded
-        read here is the one query on this screen that would grow without
-        limit as a kindergarten's history does.
-      */
-      this.prisma.observation.findMany({
-        where: {
-          childId: { in: childIds },
-          deletedAt: null,
-          observedOn: { gte: window.from, lte: window.to },
-        },
-        /*
-          ★ `activityName` is free text on the row, and that is where the
-          activity breakdown comes from.
-
-          The client's design lists twelve activities of the daily routine as
-          though they were configuration. They are not a table here — a teacher
-          types the activity when they write the note — so the breakdown is
-          built from what has actually been recorded rather than from a list
-          somebody would have to maintain in two places. What a teacher sees is
-          therefore the activities their kindergarten really uses, which is the
-          question the screen is asking.
-        */
-        select: { childId: true, typeId: true, observedOn: true, activityName: true },
-      }),
-      this.prisma.developmentDomain.findMany({
-        where: {
-          isActive: true,
-          deletedAt: null,
-          OR: [{ kindergartenId }, { kindergartenId: null }],
-        },
-        orderBy: { order: "asc" },
-        select: { id: true, name: true, color: true, order: true },
-      }),
-      this.prisma.observationType.findMany({
-        where: {
-          isActive: true,
-          deletedAt: null,
-          OR: [{ kindergartenId }, { kindergartenId: null }],
-        },
-        orderBy: { order: "asc" },
-        select: { id: true, name: true, code: true, order: true },
-      }),
-    ]);
-
-    return { enrollments, assessments, observations, domains, types };
+  async setMonthlyNoteGoal(kindergartenId: string, monthlyNoteGoal: number | null) {
+    await this.prisma.kindergarten.update({
+      where: { id: kindergartenId },
+      data: { monthlyNoteGoal },
+    });
   }
 
   /**

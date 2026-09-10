@@ -163,8 +163,8 @@ export const qk = {
    * Keyed beside `groupAssessment` so saving a column can invalidate both with
    * one prefix: the overview counts exactly what the column writes.
    */
-  groupCoverage: (groupId: string, termId: string) =>
-    ["group", groupId, "assessment-coverage", termId] as const,
+  groupCoverage: (groupId: string, termId: string, month = "") =>
+    ["group", groupId, "assessment-coverage", termId, month] as const,
 
   /** The coverage dashboard. Keyed by window, so a new school year is a new entry. */
   groupObservationStats: (groupId: string, from: string, to: string) =>

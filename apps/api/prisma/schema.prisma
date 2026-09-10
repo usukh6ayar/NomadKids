@@ -585,6 +585,22 @@ model Kindergarten {
   /// directly reachable, so there is no address a `logo String` could hold that
   /// this system is allowed to hand out. The column mirrors
   /// `Child.photoMediaFileId` exactly — one image pattern, not two.
+  /// How many observation notes each child is expected to have per month —
+  /// the client's "Сарын зорилт", 2026-09-10.
+  ///
+  /// ★ A column, not a table, and that is not a §2.3 exception.
+  ///
+  /// §2.3 asks that anything an administrator edits be a table rather than a
+  /// TypeScript enum — the failure it prevents is a *vocabulary* baked into
+  /// code. This is a single scalar setting per kindergarten, like `phone`; a
+  /// table of one row per kindergarten with one integer in it would be the
+  /// same column with a join in front of it.
+  ///
+  /// NULL is "no goal set", which is the default and what every kindergarten
+  /// has today. The screen draws no goal card at all in that case rather than
+  /// inventing a target nobody agreed to.
+  monthlyNoteGoal Int?
+
   logoMediaFileId String? @unique @db.Uuid
 
   createdAt DateTime  @default(now())

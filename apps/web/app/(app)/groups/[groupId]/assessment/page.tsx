@@ -20,15 +20,15 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { useSwitchableGroups } from "@/components/shell/group-switcher";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
+import { RowMenu } from "@/components/ui/menu";
 import { useToast } from "@/components/ui/toast";
 import Link from "next/link";
-import { Eye, Images, MessageCircle } from "lucide-react";
+import { Eye, Images, MessageCircle, Printer, Users } from "lucide-react";
 import { observationTypeSchema } from "@kinder/contracts";
 
 /** The kindergarten's configured record kinds — one shortcut button each. */
 const observationTypesSchema = z.array(observationTypeSchema);
 import { Card, SectionHeader } from "@/components/ui/card";
-import { CoverageOverview } from "@/components/assessment/coverage-overview";
 import { Badge } from "@/components/ui/badge";
 import { GroupCoverage } from "@/components/assessment/group-coverage";
 import { RegisterProgress } from "@/components/register/register-progress";
@@ -339,9 +339,36 @@ function GroupAssessment() {
         the only page heading that did not. The same mistake `dashboard/page.tsx`
         records fixing in its own three branches.
       */}
+      {/*
+        ★ The overflow menu carries what the screen does *to* the whole group —
+        2026-09-10, the ⋮ on the client's design.
+
+        Both entries were reachable before and both are one press from here
+        now: the term report is the document this register feeds, and the
+        printable sheet is what a director asks for. Neither belongs among the
+        controls that change what is on screen, which is what a header menu is
+        for.
+      */}
       <PageHeader
         title="Явцын үнэлгээ"
         lede="Бүлгийн бүх хүүхдийг нэг чиглэлээр дараалан үнэлнэ."
+        actions={
+          <RowMenu
+            ariaLabel="Явцын үнэлгээний үйлдэл"
+            items={[
+              {
+                label: "Хэвлэх",
+                icon: <Printer size={16} />,
+                onSelect: () => window.print(),
+              },
+              {
+                label: "Бүлгийн мэдээлэл",
+                icon: <Users size={16} />,
+                onSelect: () => router.push(`/groups/${groupId}`),
+              },
+            ]}
+          />
+        }
       />
 
       {/*
@@ -357,12 +384,6 @@ function GroupAssessment() {
         dropdowns to configure before anything appears.
       */}
       <NewRecordStrip children={children} />
-
-      <GroupCoverage
-        groupId={groupId}
-        startsOn={groupSchoolYear?.startsOn}
-        endsOn={groupSchoolYear?.endsOn}
-      />
 
       {column.data ? (
         <p className="flex flex-wrap items-center gap-2 text-body text-muted">
@@ -558,7 +579,15 @@ function GroupAssessment() {
         ))}
       </div>
 
-      {tab === "overview" ? <CoverageOverview groupId={groupId} termId={termId} /> : null}
+      {tab === "overview" ? (
+        <GroupCoverage
+          groupId={groupId}
+          kindergartenId={kindergartenId}
+          termId={termId}
+          startsOn={groupSchoolYear?.startsOn}
+          endsOn={groupSchoolYear?.endsOn}
+        />
+      ) : null}
 
       {tab === "assess" && column.isLoading ? <LoadingState rows={6} shape="register" /> : null}
 

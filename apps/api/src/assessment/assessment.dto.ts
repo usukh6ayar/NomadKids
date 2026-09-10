@@ -89,3 +89,17 @@ export type SaveTermReportDto = z.infer<typeof saveTermReportSchema>;
 
 export const termIdQuerySchema = z.object({ termId: uuidSchema.optional() });
 export const requiredTermSchema = z.object({ termId: uuidSchema });
+
+/**
+ * Сарын зорилт — how many notes each child should have per month.
+ *
+ * ★ Bounded at twenty, and nullable rather than zero-able.
+ *
+ * Null is "no goal", which draws no card. Zero would be a goal every group
+ * meets without writing anything — a bar permanently at 100% saying nothing,
+ * which is worse than no bar at all.
+ */
+export const monthlyNoteGoalSchema = z
+  .object({ monthlyNoteGoal: z.number().int().min(1).max(20).nullable() })
+  .strict();
+export type MonthlyNoteGoalDto = z.infer<typeof monthlyNoteGoalSchema>;

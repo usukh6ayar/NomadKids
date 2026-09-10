@@ -1338,54 +1338,6 @@ export type SurveyResults = z.infer<typeof surveyResultsSchema>;
 
 // ── Assessment ───────────────────────────────────────────────────────────────
 
-/**
- * How far a group's assessment work has got — the 2026-09-10 overview.
- *
- * ★ Counts, never a level for a child.
- *
- * That is what keeps this endpoint from being the children × domains matrix
- * the assessment scope excludes: there is nothing in this shape that names
- * what any one child scored, so no amount of reading it reconstructs one.
- *
- * ★★ Every domain and every note type appears, including those with nothing
- * recorded. A zero row is the most useful line on the screen — it is the work
- * that has not been started — and a list built only from rows that exist would
- * drop exactly those.
- */
-export const groupCoverageSchema = z.object({
-  group: namedRefSchema,
-  term: z.object({ id: uuidSchema, number: z.number(), name: z.string() }),
-  /** Children actively enrolled in the group — every bar's denominator. */
-  roster: z.number(),
-  /** Children with at least one domain recorded, not all of them. */
-  assessedChildren: z.number(),
-  /** Assessment rows in the term — the client's "Нийт үзүүлэлт". */
-  totalEntries: z.number(),
-  totalNotes: z.number(),
-  domains: z.array(
-    z.object({
-      id: uuidSchema,
-      name: z.string(),
-      color: z.string().nullish(),
-      assessed: z.number(),
-    }),
-  ),
-  types: z.array(
-    z.object({ id: uuidSchema, name: z.string(), code: z.string(), assessed: z.number() }),
-  ),
-  /**
-   * The activities notes were written against, busiest first.
-   *
-   * There is no activity table — a teacher types the name on the note — so
-   * this is what has actually been recorded rather than a list somebody would
-   * maintain in two places.
-   */
-  activities: z.array(z.object({ name: z.string(), assessed: z.number() })),
-  /** `2026-09`, oldest first, within the term's own dates. */
-  months: z.array(z.object({ month: z.string(), assessed: z.number() })),
-});
-export type GroupCoverage = z.infer<typeof groupCoverageSchema>;
-
 export const domainSchema = z.object({
   id: uuidSchema,
   name: z.string(),
@@ -1403,6 +1355,19 @@ export const levelSchema = z.object({
 export const assessmentConfigSchema = z.object({
   domains: z.array(domainSchema),
   levels: z.array(levelSchema),
+  /**
+   * Сарын зорилт — how many notes each child should have per month.
+   *
+   * ★ Configuration, which is why it rides with the domains and levels.
+   *
+   * It lived in `localStorage` until 2026-09-10, so the two teachers of one
+   * group could hold different targets, a director saw neither, and clearing
+   * site data lost it. A shared commitment stored per browser is not one.
+   *
+   * Nullish for a response from an API that predates the field; null means no
+   * goal is set and the screen draws no goal card rather than inventing one.
+   */
+  monthlyNoteGoal: z.number().nullish(),
 });
 
 export const termSchema = z.object({
