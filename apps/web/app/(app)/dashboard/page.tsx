@@ -8,7 +8,7 @@ import { get } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
-import { formatLongDate, formatWeekday, fullName } from "@/lib/format";
+import { formatLongDate, formatWeekday } from "@/lib/format";
 import { useSession } from "@/lib/auth/session";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
@@ -168,8 +168,17 @@ function TeacherDashboard() {
    * where it submits to `/children?q=...`. The action menu's destinations are
    * the four illustrated quick tiles immediately under the greeting.
    */
-  const teacherName = fullName(session?.user);
-  const greetingName = teacherName === "—" ? "багш" : teacherName;
+  /*
+   * Keep the dashboard identity quiet and compact. Teacher records in this
+   * screen carry the called name in `lastName` and the patronymic in
+   * `firstName`, so "Дэлгэрмаа Сувдаа" becomes "С.Дэлгэрмаа".
+   */
+  const calledName = session?.user?.lastName?.trim();
+  const patronymic = session?.user?.firstName?.trim();
+  const teacherName =
+    calledName && patronymic
+      ? `${patronymic[0]!.toUpperCase()}.${calledName}`
+      : calledName || patronymic || "Багш";
   const today = new Date();
   /*
    * ★ Not `Intl` — 2026-09-10. `mn-MN` is not stable across runtimes: a Node
@@ -180,7 +189,7 @@ function TeacherDashboard() {
   const header = (
     <div className="teacher-dashboard-header">
       <PageHeader
-        title={`Сайн байна уу, ${greetingName}!`}
+        title={teacherName}
         meta={
           <>
             {group ? (
@@ -284,24 +293,47 @@ function TeacherDashboard() {
       {header}
 
       {/*
-        ★ Six tiles, not four — 2026-09-10, at the client's request.
+        ★ Eight tiles — four on 2026-09-10, then Тайлан and Баримт бичгийн сан
+        the same day, then Хүүхдүүд and Хоол ба цэс, each at the client's
+        request.
 
-        `xl:grid-cols-3` rather than the previous `xl:grid-cols-4`: six tiles
-        across four columns leaves a row of four above a row of two, and the
-        two orphans read as an afterthought rather than as part of the set.
-        Three columns give two even rows of three, and the phone's own
-        `grid-cols-2` becomes three rows of two — even at both sizes.
+        None of these destinations is new. Every one of them is already a row
+        in `staffSections`, and this band takes its label, its href and its
+        drawing from that row rather than inventing any — two names for one
+        door is how a teacher ends up believing there are two screens.
 
-        Both destinations already existed and are already in the sidebar
-        (`staffSections`); what they lacked was a door on the screen a teacher
-        actually starts from.
+        The column count follows the tile count so neither row is a remainder:
+        four gave two rows of two, six went to `xl:grid-cols-3`, and eight goes
+        back to four. The phone's `grid-cols-2` divides all three evenly, which
+        is why it never had to change.
+
+        The order is the reading, not the history — the first row is what a
+        teacher opens before lunch (Ирц · Хүүхдүүд · Хоол ба цэс · Мэдээ), the
+        second what they open on a schedule.
       */}
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-3" data-testid="teacher-quick-actions">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4" data-testid="teacher-quick-actions">
         <QuickAction
           href={group ? `/groups/${group.id}/attendance` : "/attendance"}
           title="Ирц"
           description="Өнөөдрийн ирц бүртгэх"
           art="attendance"
+        />
+        <QuickAction href="/children" title="Хүүхдүүд" description="Бүлгийн нэрс" art="child" />
+        {/*
+          ★ Group-scoped, like Ирц and Явцын үнэлгээ beside it.
+
+          `/meals` resolves the first group and forwards, so the bare route is
+          a working fallback rather than a dead end — but a teacher who has a
+          group should not spend a redirect on a question their account already
+          answers. The label is `staffSections`' "Хоол ба цэс", which is the
+          day sheet; `/menu`'s "Хоолны цэс" is the kitchen's week and a
+          different screen.
+        */}
+        <QuickAction
+          href={group ? `/groups/${group.id}/meals` : "/meals"}
+          title="Хоол ба цэс"
+          description="Өдрийн хоол, харшил"
+          art="food"
         />
         <QuickAction
           href="/notifications/new"

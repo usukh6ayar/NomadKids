@@ -4,16 +4,22 @@ import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./sup
 import DashboardPage from "@/app/(app)/dashboard/page";
 
 /**
- * The teacher dashboard's tile band — the six doors under the greeting.
+ * The teacher dashboard's tile band — the eight doors under the greeting.
  *
- * ★ Six since 2026-09-10, at the client's request: "Тайлан" and "Баримт
- * бичгийн сан" joined Ирц · Мэдээ · Судалгаа · Явцын үнэлгээ.
+ * ★ Eight since 2026-09-10, all at the client's request and all in one day:
+ * Ирц · Мэдээ · Судалгаа · Явцын үнэлгээ, then Тайлан and Баримт бичгийн сан,
+ * then Хүүхдүүд and Хоол ба цэс.
  *
- * Both destinations already existed and were already in the sidebar. What
- * this file is really guarding is the pair of things that made them worth
- * adding here and can silently rot: that the hrefs are real routes, and that
- * every tile carries its own illustration. `sidebar.test.tsx` exists because
- * eight section rows once shipped with no icon at all and nothing failed.
+ * Every destination already existed and was already in the sidebar. What this
+ * file is really guarding is the pair of things that made them worth adding
+ * here and can silently rot: that the hrefs are real routes, and that every
+ * tile carries its own illustration. `sidebar.test.tsx` exists because eight
+ * section rows once shipped with no icon at all and nothing failed.
+ *
+ * ★★ The band is asserted **in order**, not as a set. Which tiles are on it is
+ * the client's list; the order is a claim of its own — the first row is the
+ * morning's work — and a set assertion would let a refactor reshuffle it into
+ * the history's order without a word.
  */
 
 const GROUP_ID = "66666666-6666-4666-8666-666666666666";
@@ -64,13 +70,15 @@ async function tiles() {
 }
 
 describe("the teacher dashboard's quick actions", () => {
-  it("offers all six doors, each with its own drawing", async () => {
+  it("offers all eight doors in order, each with its own drawing", async () => {
     stubDashboard();
     renderWithProviders(<DashboardPage />);
     const band = await tiles();
 
     const expected = [
       ["Ирц", "/attendance", "icon-attendance-3d.png"],
+      ["Хүүхдүүд", "/children", "icon-children-3d.png"],
+      ["Хоол ба цэс", "/meals", "icon-food-3d.png"],
       ["Мэдээ", "/notifications/new", "icon-notice-3d.png"],
       ["Судалгаа", "/surveys", "icon-survey-3d.png"],
       ["Явцын үнэлгээ", "/assessment", "icon-progress-3d.png"],
@@ -78,19 +86,21 @@ describe("the teacher dashboard's quick actions", () => {
       ["Баримт бичгийн сан", "/documents", "icon-documents-3d.png"],
     ] as const;
 
-    expect(band.getAllByRole("link")).toHaveLength(expected.length);
+    const links = band.getAllByRole("link");
+    expect(links).toHaveLength(expected.length);
 
-    for (const [title, href, asset] of expected) {
-      const tile = band.getByRole("link", { name: new RegExp(title) });
+    expected.forEach(([title, href, asset], index) => {
+      const tile = links[index]!;
+      expect(tile.textContent, `tile ${index} is not ${title}`).toContain(title);
       expect(tile.getAttribute("href"), `${title} points somewhere unexpected`).toContain(href);
       expect(
         within(tile).getByRole("presentation", { hidden: true }).getAttribute("src"),
         `${title} has no drawing`,
       ).toContain(asset);
-    }
+    });
   });
 
-  it("sends the two new tiles at the routes that exist", async () => {
+  it("sends the kindergarten-wide tiles at the routes that exist", async () => {
     stubDashboard();
     renderWithProviders(<DashboardPage />);
     const band = await tiles();
@@ -100,6 +110,29 @@ describe("the teacher dashboard's quick actions", () => {
       "href",
       "/documents",
     );
+    expect(band.getByRole("link", { name: /Хүүхдүүд/ })).toHaveAttribute("href", "/children");
+  });
+
+  /**
+   * ★ Хоол ба цэс is group-scoped, like Ирц and Явцын үнэлгээ.
+   *
+   * `/meals` is a doorway that resolves the first group and forwards, so the
+   * bare route works — but a teacher who has a group should not spend a
+   * redirect on a question their session already answers. Asserted on the
+   * exact href rather than a substring: `/meals` alone would pass against the
+   * scoped URL too, which is the assertion that would notice nothing.
+   */
+  it("takes the teacher's own group straight to its meal sheet", async () => {
+    stubDashboard();
+    renderWithProviders(<DashboardPage />);
+    const band = await tiles();
+
+    await waitFor(() =>
+      expect(band.getByRole("link", { name: /Хоол ба цэс/ })).toHaveAttribute(
+        "href",
+        `/groups/${GROUP_ID}/meals`,
+      ),
+    );
   });
 
   /*
@@ -108,7 +141,7 @@ describe("the teacher dashboard's quick actions", () => {
    * group from meeting `/groups/undefined/reports` — the failure the
    * group-scoped tiles already guard against with their own fallbacks.
    */
-  it("keeps the two new tiles group-independent when a teacher has no group", async () => {
+  it("falls back to the doorways when a teacher has no group", async () => {
     stubDashboard(false);
     renderWithProviders(<DashboardPage />);
     const band = await tiles();
@@ -116,6 +149,7 @@ describe("the teacher dashboard's quick actions", () => {
     await waitFor(() =>
       expect(band.getByRole("link", { name: /Ирц/ })).toHaveAttribute("href", "/attendance"),
     );
+    expect(band.getByRole("link", { name: /Хоол ба цэс/ })).toHaveAttribute("href", "/meals");
     expect(band.getByRole("link", { name: /Тайлан/ })).toHaveAttribute("href", "/reports");
     expect(band.getByRole("link", { name: /Баримт бичгийн сан/ })).toHaveAttribute(
       "href",
