@@ -90,6 +90,13 @@ export const qk = {
   groupAttendanceEsis: (groupId: string, date: string) =>
     ["group", groupId, "attendance", date, "esis-preview"] as const,
   /**
+   * The register's week grid. Under the same `["group", id, "attendance"]`
+   * prefix as the day sheet, so the save that invalidates one invalidates the
+   * grid it is drawn in.
+   */
+  groupAttendanceRange: (groupId: string, from: string, to: string) =>
+    ["group", groupId, "attendance", "range", from, to] as const,
+  /**
    * One group's month, for the register's own panel.
    *
    * ★ Shares the `["group", id, "attendance"]` prefix with the day sheet on

@@ -59,6 +59,44 @@ export const ATTENDANCE_STATUS_BG: Record<string, string> = {
   ABSENT: "bg-danger",
 };
 
+/**
+ * The four a teacher may *choose* — Ирсэн · Өвчтэй · Чөлөөтэй · Тасалсан.
+ *
+ * ★ A narrower set than the six the data holds, and deliberately so —
+ * 2026-09-10, at the client's request ("4 сонголт л байна").
+ *
+ * `HALF_DAY` and `OTHER` are **not** removed. They are load-bearing in money:
+ * the state funding claim counts `PRESENT` + `HALF_DAY`
+ * (`funding.repository.ts`), the parent invoice bills the same pair
+ * (`invoices.repository.ts`), and both spreadsheets carry a column each. Rows
+ * already written with them keep rendering everywhere, this register included
+ * — what changes is only what a teacher can newly assign.
+ *
+ * So this is a picker, not a vocabulary. Every *reader* in the product still
+ * maps `ATTENDANCE_STATUS_LABEL`, which names all six, and a cell holding
+ * "Хагас өдөр" draws it. `ATTENDANCE_STATUS_ORDER` below is untouched: the
+ * legends and the funding register's columns are a settled report format.
+ */
+export const TEACHER_ATTENDANCE_STATUSES = ["PRESENT", "SICK", "EXCUSED", "ABSENT"] as const;
+
+/**
+ * The single Cyrillic letter a register cell shows — И, Ө, Ч, Т and the two
+ * older values it must still be able to draw.
+ *
+ * ★ Not `label[0]`. "Ирсэн" and "Өвчтэй" would give И and Ө correctly, but
+ * "Хагас өдөр" gives Х and "Тасалсан" gives Т — and the client's own sheet
+ * uses Х for Хагас өдөр and Т for Тасалсан, so deriving them would be right by
+ * luck rather than by decision. Written out, one letter per status.
+ */
+export const ATTENDANCE_STATUS_LETTER: Record<string, string> = {
+  PRESENT: "И",
+  SICK: "Ө",
+  EXCUSED: "Ч",
+  ABSENT: "Т",
+  HALF_DAY: "Х",
+  OTHER: "Б",
+};
+
 /** The order every legend and stacked bar renders in — fixed, never sorted by count. */
 export const ATTENDANCE_STATUS_ORDER = [
   "PRESENT",

@@ -9,6 +9,7 @@ import {
   attendanceRecordSchema,
   attendanceSubmissionSchema,
   esisAttendancePreviewSchema,
+  groupAttendanceRangeSchema,
   groupAttendanceRowSchema,
   type EsisAttendancePreview,
 } from "@kinder/contracts";
@@ -26,32 +27,19 @@ import { Badge } from "@/components/ui/badge";
 import { TableShell, Td, Th } from "@/components/ui/table";
 import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
-import { ChildAvatar } from "@/components/media/media-image";
-import { SelectBox, SelectionBar, useSelection } from "@/components/ui/selection";
 import { RegisterProgress } from "@/components/register/register-progress";
 import { AttendanceRequestQueue } from "@/components/attendance/request-queue";
 import { AttendanceMonthPanel } from "@/components/attendance/month-panel";
-import { TONE_SURFACE } from "@/components/ui/tone";
+import { AttendanceWeekGrid } from "@/components/attendance/week-grid";
 import {
   ATTENDANCE_STATUS_CHART_TONE,
   ATTENDANCE_STATUS_LABEL,
   ATTENDANCE_STATUS_ORDER,
 } from "@/lib/attendance-meta";
+import { useSession } from "@/lib/auth/session";
 import { fullName } from "@/lib/format";
-import { cn } from "@/lib/utils";
 
 const daySheetSchema = z.array(groupAttendanceRowSchema);
-
-/*
- * ★ The five statuses come from `lib/attendance-meta.ts`, not from a copy here.
- *
- * This file kept its own map, which is how the day sheet came to be the one
- * screen where the summary strip above the list could disagree with the buttons
- * inside it. The order is fixed there too — best to worst, never sorted by
- * count — and the tones are the product's own status palette, so a red count in
- * this strip is the same red as the calendar on the child's page.
- */
-const STATUS_LABEL = ATTENDANCE_STATUS_LABEL;
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -76,6 +64,7 @@ function GroupAttendance() {
   const params = useParams<{ groupId: string }>();
   const groupId = params.groupId;
   const queryClient = useQueryClient();
+  const { session } = useSession();
 
   /*
    * ★ A director reads this sheet; they do not fill it in — 2026-09-06.
@@ -117,6 +106,16 @@ function GroupAttendance() {
       ? requested
       : today();
   });
+  /*
+   * ★ The span the grid draws, and `date` is its last column — 2026-09-10.
+   *
+   * The client's sheet opens on "огноо" with two fields and shows the month so
+   * far, which is what a teacher checks before filing: not "is today done" but
+   * "is anything behind me missing". `date` keeps its old meaning — the one day
+   * being written — and is simply the right-hand end of that span, so `?date=`
+   * from the director's register still lands on the day it names.
+   */
+  const [from, setFrom] = useState(() => `${date.slice(0, 7)}-01`);
   const [editing, setEditing] = useState(() => search.get("edit") === "1");
   const [draft, setDraft] = useState<Record<string, string>>({});
 
@@ -129,6 +128,14 @@ function GroupAttendance() {
   const sheet = useQuery({
     queryKey: qk.groupAttendance(groupId, date),
     queryFn: () => get(`/groups/${groupId}/attendance?date=${date}`, daySheetSchema),
+  });
+  const range = useQuery({
+    queryKey: qk.groupAttendanceRange(groupId, from, date),
+    queryFn: () =>
+      get(
+        `/groups/${groupId}/attendance/range?from=${from}&to=${date}`,
+        groupAttendanceRangeSchema,
+      ),
   });
   const rows = sheet.data ?? [];
   const savedComplete = rows.length > 0 && rows.every((row) => row.record);
@@ -170,9 +177,6 @@ function GroupAttendance() {
    * their own status pills for that, and for the corrections that carry a note
    * or a drop-off, which the batch endpoint deliberately cannot send.
    */
-  // Nothing to select when nothing can be written — the bulk bar's only
-  // controls are the six status buttons.
-  const selection = useSelection(editing ? rows.map((row) => row.child.id) : []);
 
   const save = useMutation({
     mutationFn: () =>
@@ -187,16 +191,25 @@ function GroupAttendance() {
       toast.success(`${saved.length} хүүхдийн ирц хадгалагдлаа.`);
       setEditing(false);
       setDraft({});
-      selection.clear();
       void queryClient.invalidateQueries({ queryKey: ["group", groupId, "attendance"] });
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  /*
+   * ★ Opens with everybody marked Ирсэн — the client's instruction, and the
+   * register's own shape.
+   *
+   * A kindergarten morning is "everybody came except two". Starting from an
+   * empty sheet made the common case twenty taps and the exception two, which
+   * is the wrong way round; starting from present makes it two taps either
+   * way. A child already marked keeps what they were marked, so re-opening a
+   * saved day never quietly overwrites a recorded absence with PRESENT.
+   */
   function beginEdit() {
     const saved: Record<string, string> = {};
     for (const row of rows) {
-      if (row.record) saved[row.child.id] = row.record.status;
+      saved[row.child.id] = row.record?.status ?? "PRESENT";
     }
     setDraft(saved);
     setEditing(true);
@@ -205,14 +218,6 @@ function GroupAttendance() {
   function cancelEdit() {
     setEditing(false);
     setDraft({});
-    selection.clear();
-  }
-
-  function setSelectedStatus(status: string) {
-    setDraft((current) => ({
-      ...current,
-      ...Object.fromEntries(selection.ids.map((childId) => [childId, status])),
-    }));
   }
 
   const esisPreview = useQuery({
@@ -305,7 +310,7 @@ function GroupAttendance() {
                   disabled={save.isPending || dirtyEntries.length === 0}
                 >
                   <Save aria-hidden />
-                  {save.isPending ? "Хадгалж байна…" : `Хадгалах (${dirtyEntries.length})`}
+                  {save.isPending ? "Бүртгэж байна…" : `Ирц бүртгэх (${dirtyEntries.length})`}
                 </Button>
               </>
             ) : (
@@ -354,20 +359,44 @@ function GroupAttendance() {
       */}
       <Card className="grid gap-5 px-4 py-4 sm:px-5 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] lg:gap-8">
         <div className="flex flex-col gap-3.5">
-          <Field label="Огноо">
-            {({ id }) => (
-              <Input
-                id={id}
-                type="date"
-                max={today()}
-                value={date}
-                onChange={(e) => {
-                  setDate(e.target.value);
-                  cancelEdit();
-                }}
-              />
-            )}
-          </Field>
+          {/*
+            ★ A span, not one date — the client's sheet, 2026-09-10.
+
+            The right-hand field is still the day being written; the left one
+            only widens what the grid shows behind it. Both cancel an open
+            edit, because a draft belongs to the day it was started on and
+            carrying it to another date is how the wrong morning gets saved.
+          */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Эхлэх огноо">
+              {({ id }) => (
+                <Input
+                  id={id}
+                  type="date"
+                  max={date}
+                  value={from}
+                  onChange={(e) => {
+                    setFrom(e.target.value);
+                    cancelEdit();
+                  }}
+                />
+              )}
+            </Field>
+            <Field label="Дуусах огноо">
+              {({ id }) => (
+                <Input
+                  id={id}
+                  type="date"
+                  max={today()}
+                  value={date}
+                  onChange={(e) => {
+                    setDate(e.target.value);
+                    cancelEdit();
+                  }}
+                />
+              )}
+            </Field>
+          </div>
 
           {sheet.data && rows.length > 0 ? (
             <RegisterProgress inset recorded={recorded} total={rows.length} breakdown={breakdown} />
@@ -400,19 +429,7 @@ function GroupAttendance() {
         <>
           <SectionHeader
             title="Бүлгийн ирц"
-            action={
-              <span className="flex items-center gap-2">
-                <span className="text-body text-muted">{sheet.data.length} хүүхэд</span>
-                {sheet.data.length > 0 && editing ? (
-                  <SelectBox
-                    checked={selection.allSelected}
-                    indeterminate={selection.someSelected}
-                    onChange={selection.toggleAll}
-                    label="Бүх хүүхдийг сонгох"
-                  />
-                ) : null}
-              </span>
-            }
+            action={<span className="text-body text-muted">{sheet.data.length} хүүхэд</span>}
           />
 
           {sheet.data.length === 0 ? (
@@ -421,49 +438,43 @@ function GroupAttendance() {
               description="Энэ хичээлийн жилд идэвхтэй бүртгэлтэй хүүхэд байхгүй байна."
             />
           ) : (
-            <Card className="divide-y divide-border">
-              {sheet.data.map((row) => (
-                <ChildRow
-                  key={row.enrollmentId}
-                  child={row.child}
-                  status={draftStatus(row.child.id, row.record?.status ?? null)}
-                  readOnly={!editing}
-                  pending={save.isPending}
-                  onSelect={(status) =>
-                    setDraft((current) => ({ ...current, [row.child.id]: status }))
+            <Card className="px-2 py-3 sm:px-4">
+              {/*
+                ★ The week the chosen date sits in, one child per row — the
+                client's own sheet, 2026-09-10. It replaced a list of the
+                selected day alone, which could show a teacher that today was
+                filled in without showing that Tuesday never was.
+
+                Only `date`'s column takes input; see `AttendanceWeekGrid`.
+              */}
+              {range.isLoading ? <LoadingState rows={6} shape="register" /> : null}
+              {range.isError ? <ErrorState description={errorMessage(range.error)} /> : null}
+              {range.data ? (
+                <AttendanceWeekGrid
+                  data={range.data}
+                  editableDay={editing ? date : null}
+                  draft={draft}
+                  disabled={save.isPending}
+                  onSet={(childId, status) =>
+                    setDraft((current) => ({ ...current, [childId]: status }))
                   }
-                  checked={selection.has(row.child.id)}
-                  onToggle={() => selection.toggle(row.child.id)}
                 />
-              ))}
+              ) : null}
             </Card>
           )}
 
           {/*
-            ★ The same six statuses as the rows, in the same order and the same
-            tints, because they mean the same thing.
-
-            A second, shorter set here — "Ирсэн" and nothing else — would be the
-            common case at the cost of making the register's other half (a
-            correction pass: three sick, one excused) go back to one tap per
-            child. `ATTENDANCE_STATUS_LABEL` is the one source both read.
+            ★ Who gave this account of the morning — shown once the day is
+            saved, at the client's request. The register is the teacher's own
+            statement and the funding claim is built on it, so "who said this
+            child was here" should be readable on the sheet rather than only
+            in the audit log.
           */}
-          <SelectionBar count={editing ? selection.count : 0} onClear={selection.clear}>
-            {Object.entries(STATUS_LABEL).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                disabled={save.isPending}
-                onClick={() => setSelectedStatus(value)}
-                className={cn(
-                  "min-h-11 rounded-control border border-transparent px-3 text-body font-semibold transition-all duration-150 active:translate-y-[1px] disabled:opacity-60",
-                  TONE_SURFACE[ATTENDANCE_STATUS_CHART_TONE[value] ?? "sky"],
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </SelectionBar>
+          {savedComplete && !editing ? (
+            <p className="px-1 text-right text-caption italic text-muted">
+              Ирц авсан бүлгийн багш {fullName(session?.user)}
+            </p>
+          ) : null}
 
           {!editing && esisPreview.data ? (
             <GroupEsisPayload
@@ -630,123 +641,6 @@ function PayloadField({ label, value }: { label: string; value: string | number 
     <div>
       <dt className="font-mono text-caption text-muted">{label}</dt>
       <dd className="mt-1 text-body font-semibold text-ink">{value}</dd>
-    </div>
-  );
-}
-
-function ChildRow({
-  child,
-  status,
-  readOnly,
-  pending,
-  onSelect,
-  checked,
-  onToggle,
-}: {
-  child: { id: string; lastName: string; firstName: string };
-  status: string | null;
-  /** Saved view until the user explicitly enters edit mode. */
-  readOnly: boolean;
-  pending: boolean;
-  onSelect: (status: string) => void;
-  checked: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <div className="flex flex-col gap-3 px-4 py-3.5 transition-colors hover:bg-sunken sm:flex-row sm:items-center sm:gap-4">
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        {/*
-          Leading the row, before the avatar: a column of boxes down the left
-          edge is scannable as a column, and one tucked between the face and
-          the name is not.
-        */}
-        {readOnly ? null : (
-          <SelectBox checked={checked} onChange={onToggle} label={`${fullName(child)} — сонгох`} />
-        )}
-        <ChildAvatar child={child} size={40} />
-        <span className="min-w-0 truncate text-lead font-semibold text-ink">{fullName(child)}</span>
-      </div>
-
-      {/*
-        ★ One tinted chip instead of six buttons, when this is being read.
-
-        Not six disabled buttons: a greyed-out row of controls still says "you
-        may press these, but not now", and there is no "now" in which a
-        director may. The chip carries the same tone the selected button would
-        have, so the sheet scans identically — the exceptions stand out in the
-        same colours — and it simply has nothing to press.
-      */}
-      {readOnly ? (
-        <div className="flex flex-wrap gap-2 sm:justify-end">
-          {status ? (
-            <span
-              className={cn(
-                "inline-flex min-h-9 items-center rounded-control px-3 text-body font-semibold",
-                TONE_SURFACE[ATTENDANCE_STATUS_CHART_TONE[status] ?? "sky"],
-              )}
-            >
-              {STATUS_LABEL[status] ?? status}
-            </span>
-          ) : (
-            <span className="inline-flex min-h-9 items-center rounded-control border border-dashed border-border px-3 text-body text-faint">
-              Бүртгээгүй
-            </span>
-          )}
-        </div>
-      ) : (
-        <div
-          role="radiogroup"
-          aria-label={`${fullName(child)} — ирц`}
-          className="flex flex-wrap gap-2"
-        >
-          {Object.entries(STATUS_LABEL).map(([value, label]) => {
-            const selected = value === status;
-            return (
-              <button
-                key={value}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                disabled={pending}
-                onClick={() => onSelect(value)}
-                className={cn(
-                  /*
-                  ★ REDESIGN 2026-09-03 — the chosen status is coloured for what
-                  it *means*, not filled with the brand blue.
-
-                  Every selected pill was `bg-primary`, so a register of thirty
-                  children read as thirty identical blue buttons and the one
-                  fact a teacher scans this sheet for — who is missing — could
-                  only be got by reading each label. The tint ramp is what the
-                  design direction asks for ("Ирсэн filled mint, Өвчтэй filled
-                  peach") and it makes the exceptions findable at a glance.
-
-                  `ATTENDANCE_STATUS_CHART_TONE` is reused rather than a second
-                  map: the same status must not be mint on the register and
-                  peach on the month panel beside it. `TONE_SURFACE` pairs each
-                  tint with an ink measured at 4.5:1 or better
-                  (`ui-foundation.test.tsx`), which a hand-picked pastel would
-                  not be.
-
-                  Colour is not the only signal — `aria-checked` carries the
-                  state, and the selected pill also takes a heavier weight and
-                  a matching border.
-                */
-                  "min-h-11 rounded-control border px-3 text-body font-medium transition-all duration-150 active:translate-y-[1px] disabled:opacity-60",
-                  selected
-                    ? cn(
-                        TONE_SURFACE[ATTENDANCE_STATUS_CHART_TONE[value] ?? "sky"],
-                        "border-transparent font-semibold shadow-sm",
-                      )
-                    : "border-border bg-surface text-muted hover:border-faint hover:bg-canvas hover:text-ink",
-                )}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }

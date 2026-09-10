@@ -175,6 +175,28 @@ export function fullName(
   return [person.lastName, person.firstName].filter(Boolean).join(" ") || "—";
 }
 
+/**
+ * `Б.Батзориг` — the surname as one initial, then the given name.
+ *
+ * ★ The register's own convention, asked for by the client on 2026-09-10, and
+ * it is a column-width decision rather than a stylistic one: a register is a
+ * name against twenty date columns, and "Батжаргал Ануужин" spends most of the
+ * row's width on the half a teacher does not read. Mongolian names are given
+ * as patronymic-then-given, so the initial is the surname's and the name that
+ * survives in full is the one a teacher calls the child by.
+ *
+ * Falls back to whichever half exists — `fullName`'s "—" for neither, the
+ * given name alone when there is no surname to abbreviate.
+ */
+export function shortName(
+  person: { lastName?: string | null; firstName?: string | null } | null | undefined,
+): string {
+  const last = person?.lastName?.trim();
+  const first = person?.firstName?.trim();
+  if (!first) return last || "—";
+  return last ? `${last[0]!.toUpperCase()}.${first}` : first;
+}
+
 /** Initials for a photoless avatar. */
 export function initials(
   person: { lastName?: string | null; firstName?: string | null } | null | undefined,
