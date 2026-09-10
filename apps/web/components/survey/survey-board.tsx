@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { z } from "zod";
 import {
   CalendarCheck,
@@ -27,8 +27,6 @@ import {
   personRefSchema,
   SURVEY_KIND_HINT,
   SURVEY_KIND_LABEL,
-  groupListItemSchema,
-  paginated,
   surveyCategorySchema,
   surveySchema,
   type SurveyCategory,
@@ -51,15 +49,16 @@ const participationSchema = z.object({
 });
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
-import { errorMessage, fieldErrors } from "@/lib/api/errors";
+import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
+import { CreateSurveyWizard } from "@/components/survey/create-survey-wizard";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
-import { Field, Input, Select } from "@/components/ui/field";
-import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { Field, Input } from "@/components/ui/field";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { formatDate, fullName } from "@/lib/format";
 import { SURVEY_CATEGORY_META, SURVEY_TONE_BG } from "@/lib/survey-meta";
 import { downloadUrl } from "@/lib/api/client";
@@ -71,7 +70,6 @@ import { TERM_NUMBERS, termLabel, termNumberForDay } from "@/lib/terms";
 import { cn } from "@/lib/utils";
 
 const surveysSchema = z.array(surveySchema);
-const groupsSchema = paginated(groupListItemSchema);
 
 const STATUS_LABEL: Record<string, string> = {
   DRAFT: "Ноорог",
@@ -461,9 +459,9 @@ function SurveysList({ kind }: { kind: SurveyKind }) {
       ) : null}
 
       {creating && primaryKindergartenId ? (
-        <CreateSurveyDialog
+        <CreateSurveyWizard
           kindergartenId={primaryKindergartenId}
-          initialKind={creating}
+          kind={creating}
           onClose={() => setCreating(null)}
         />
       ) : null}
@@ -867,277 +865,5 @@ function ParticipationList({
         </ul>
       )}
     </section>
-  );
-}
-
-function CreateSurveyDialog({
-  kindergartenId,
-  initialKind,
-  onClose,
-}: {
-  kindergartenId: string;
-  /** Which button opened it — the choice is made before the dialog appears. */
-  initialKind: SurveyKind;
-  onClose: () => void;
-}) {
-  const router = useRouter();
-  const [title, setTitle] = useState("");
-  const [category, setCategory] = useState<SurveyCategory>("PARENT_ENGAGEMENT");
-  const [scope, setScope] = useState<"CHILD" | "KINDERGARTEN">("CHILD");
-  /**
-   * Which group the survey is for — "" is every group.
-   *
-   * ★ Added 2026-09-06, at the client's request: "хэнд зориулсан гэхэд бүх
-   * бүлэг / бүлэг сонгох болгох". `Survey.groupId` carries it, and null there
-   * means every group rather than a frozen list of the ones that exist today.
-   */
-  /*
-    ★ A teacher's dialog opens on their first group, not on "every group".
-
-    "" is the whole kindergarten, which is the administrator's audience since
-    2026-09-10 — so for a teacher it is not a default, it is the one value the
-    server will refuse. The first group is chosen once the list arrives (see
-    the effect below) rather than left empty, because a select whose only
-    invalid state is its initial one is a form that opens broken.
-  */
-  const [groupId, setGroupId] = useState("");
-  /**
-   * ★ Fixed by the tab that opened this dialog, and not editable here —
-   * 2026-09-10, at the client's request ("Асуулга гэдэг товчин дээр судалгаа
-   * гэсэн хажууд нь хэсэг орж ирж болохгүй. Энэ 2 тусдаа байх ёстой").
-   *
-   * It used to be a radio pair drawn as tabs, and it was asking the same
-   * question twice: the teacher had already pressed Асуулга to get here, and
-   * the dialog opened with Судалгаа sitting beside it as though the press had
-   * not counted. Worse, changing it here left the teacher on the Асуулга tab
-   * having made a Судалгаа — a survey that vanishes from the list the moment
-   * it is created.
-   *
-   * `useState` rather than a plain `const` because the value still belongs to
-   * this component's form state; nothing sets it, which is the point.
-   */
-  const [kind] = useState<SurveyKind>(initialKind);
-  /**
-   * The optional closing date, as the `yyyy-mm-dd` an `<input type="date">`
-   * produces. Empty means no deadline, which the client asked to keep possible.
-   */
-  const [closesOn, setClosesOn] = useState("");
-
-  // The audience options. Same key every register uses, so this normally reads
-  // a cache the shell has already filled.
-  const groups = useQuery({
-    queryKey: qk.groups({ pageSize: 100 }),
-    queryFn: () => get("/groups?page=1&pageSize=100", groupsSchema),
-    staleTime: 60_000,
-  });
-
-  /*
-    ★ `isLoading` counts as "not yet known", not as "not an administrator".
-
-    `hasRole` answers false for everybody while `/auth/me` is in flight, so
-    without this the dialog would drop "Бүх бүлэг" for an administrator for a
-    frame and — worse — the effect below would pick a group for them.
-  */
-  const { hasRole, isLoading: sessionLoading } = useSession();
-  const canAddressEveryone = sessionLoading || hasRole("ADMIN");
-
-  const firstGroupId = groups.data?.items[0]?.id;
-  useEffect(() => {
-    if (!sessionLoading && !canAddressEveryone && !groupId && firstGroupId) {
-      setGroupId(firstGroupId);
-    }
-  }, [sessionLoading, canAddressEveryone, groupId, firstGroupId]);
-
-  const create = useMutation({
-    mutationFn: () =>
-      mutate(`/kindergartens/${kindergartenId}/surveys`, surveySchema, {
-        method: "POST",
-        body: {
-          title,
-          category,
-          scope,
-          kind,
-          /*
-            ★ End of the chosen day, not its midnight.
-
-            `<input type="date">` yields `2026-09-15`, which parses as
-            00:00 — so sending it raw would close the survey at the start of
-            the day a teacher wrote down, and everyone answering on the 15th
-            would be a day late. `T23:59:59` makes the date inclusive, which is
-            what "хаагдах огноо: 9-р сарын 15" means to the person typing it.
-          */
-          closesAt: closesOn ? new Date(`${closesOn}T23:59:59`).toISOString() : null,
-          // "" is the whole kindergarten, which the API stores as a null
-          // column rather than as every group listed.
-          groupId: groupId || null,
-        },
-      }),
-    onSuccess: (survey) => router.push(`/surveys/${survey.id}`),
-  });
-
-  const errors = fieldErrors(create.error);
-  const createTitle = `Шинээр ${SURVEY_KIND_LABEL[kind].toLowerCase()} үүсгэх`;
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={createTitle}
-      className="fixed inset-0 z-50 grid items-end overflow-y-auto bg-ink/50 p-0 sm:place-items-center sm:p-4"
-    >
-      <div className="max-h-[calc(100dvh-0.5rem)] w-full max-w-[520px] overflow-y-auto rounded-t-card border border-border bg-surface p-4 shadow-lg sm:max-h-[calc(100vh-2rem)] sm:rounded-card sm:p-5">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!create.isPending) create.mutate();
-          }}
-          className="flex flex-col gap-3.5"
-          noValidate
-        >
-          <h2 className="text-title font-semibold text-ink">{createTitle}</h2>
-
-          <FormError message={create.isError ? errorMessage(create.error) : null} />
-
-          {/*
-            ★ What kind this is, stated rather than asked.
-
-            The heading above already says "Шинээр асуулга үүсгэх", so this
-            line is not repeating the choice — it is the one-line description
-            of what that kind *does*, which the radio pair used to carry as a
-            hint under each option and which is the half of that control worth
-            keeping.
-          */}
-          <p className="-mt-1 text-caption text-muted">{SURVEY_KIND_HINT[kind]}</p>
-
-          <Field label="Гарчиг" error={errors.title} required>
-            {({ id, describedBy, invalid }) => (
-              <Input
-                id={id}
-                aria-describedby={describedBy}
-                invalid={invalid}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                autoFocus
-              />
-            )}
-          </Field>
-
-          <div className="grid grid-cols-2 gap-3" data-testid="survey-create-fields-primary">
-            <Field label="Судалгааны ангилал" error={errors.category} required>
-              {({ id, describedBy, invalid }) => (
-                <Select
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value as SurveyCategory)}
-                >
-                  {SURVEY_CATEGORIES.map((value) => (
-                    <option key={value} value={value}>
-                      {SURVEY_CATEGORY_LABEL[value]}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </Field>
-
-            {/*
-              ★ "Бүх бүлэг" is the administrator's option — client, 2026-09-10:
-              "багш ... зөвхөн өөрийн бүлэгтээ л судалгаа авна. Удирдлага л бүх
-              цэцэрлэг болон бүлэг сонгон судалгаа ... оруулж болно."
-
-              It hides a control; it does not enforce anything.
-              `TenantAccessService.assertCanAddressAudience` is the rule (§1.1)
-              and answers 404 to a teacher who omits `groupId` whatever this
-              screen drew. What this prevents is a teacher meeting that 404
-              after filling the form in.
-
-              The options themselves are `GET /groups`, which is already scoped
-              to the actor's memberships — so a teacher's list is their own
-              groups without this screen deciding anything about whose they
-              are.
-            */}
-            <Field
-              label="Хэнд зориулагдсан"
-              hint={
-                canAddressEveryone
-                  ? "Сонгосон бүлгийн эцэг эхэд л харагдана."
-                  : "Өөрийн бүлгээ сонгоно уу."
-              }
-            >
-              {({ id, describedBy }) => (
-                <Select
-                  id={id}
-                  aria-describedby={describedBy}
-                  value={groupId}
-                  onChange={(e) => setGroupId(e.target.value)}
-                >
-                  {canAddressEveryone ? <option value="">Бүх бүлэг</option> : null}
-                  {(groups.data?.items ?? []).map((group) => (
-                    <option key={group.id} value={group.id}>
-                      {group.name}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </Field>
-          </div>
-
-          {/*
-            ★ No hint — 2026-09-10, at the client's request. The two options
-            below say it themselves: "Хүүхэд тус бүрээр" against "Цэцэрлэгээр
-            нэг удаа" is the whole distinction, and a sentence restating one of
-            them under the control was a line to read past.
-          */}
-          <div className="grid grid-cols-2 gap-3" data-testid="survey-create-fields-secondary">
-            <Field label="Хариулах хэлбэр">
-              {({ id, describedBy }) => (
-                <Select
-                  id={id}
-                  aria-describedby={describedBy}
-                  value={scope}
-                  onChange={(e) => setScope(e.target.value as "CHILD" | "KINDERGARTEN")}
-                >
-                  <option value="CHILD">Хүүхэд тус бүрээр</option>
-                  <option value="KINDERGARTEN">Цэцэрлэгээр нэг удаа</option>
-                </Select>
-              )}
-            </Field>
-
-            <Field
-              label="Хаагдах огноо"
-              hint="Заавал биш — хоосон орхивол гараар хаах хүртэл нээлттэй байна."
-              error={errors.closesAt}
-            >
-              {({ id, describedBy, invalid }) => (
-                <Input
-                  id={id}
-                  type="date"
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  value={closesOn}
-                  onChange={(e) => setClosesOn(e.target.value)}
-                />
-              )}
-            </Field>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 border-t border-border pt-3">
-            <Button type="submit" className="w-full" disabled={create.isPending}>
-              {create.isPending ? "Үүсгэж байна…" : "Үргэлжлүүлэх"}
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              className="w-full"
-              onClick={onClose}
-              disabled={create.isPending}
-            >
-              Болих
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
   );
 }

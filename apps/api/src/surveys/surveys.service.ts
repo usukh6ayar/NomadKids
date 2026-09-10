@@ -55,6 +55,20 @@ export class SurveysService {
       if (!group) throw new BadRequestException("Бүлэг олдсонгүй");
     }
 
+    /*
+      ★ The term must be this kindergarten's, for the same reason the group
+      must be.
+
+      The id comes from a client, and `Term` is per-kindergarten configuration
+      (§2.3). Without this a member of staff could file their survey against
+      another kindergarten's term — which would then appear in that
+      kindergarten's term grouping and in nobody's own.
+    */
+    if (dto.termId) {
+      const term = await this.repo.findTermInKindergarten(dto.termId, kindergartenId);
+      if (!term) throw new BadRequestException("Улирал олдсонгүй");
+    }
+
     const survey = await this.repo.create({
       kindergartenId,
       title: dto.title,
@@ -70,6 +84,20 @@ export class SurveysService {
       period: dto.period ?? null,
       // Null is every group — see `Survey.groupId`.
       groupId: dto.groupId ?? null,
+      /*
+        ★ Every one of these falls back to what a survey did before the field
+        existed: open from publication, no stated purpose, no term, named
+        answers, one response each, questions in written order, the product's
+        own thank-you. A caller that predates the wizard keeps creating exactly
+        what it created before.
+      */
+      opensAt: dto.opensAt ?? null,
+      purpose: dto.purpose ?? null,
+      termId: dto.termId ?? null,
+      isAnonymous: dto.isAnonymous ?? false,
+      allowMultipleResponses: dto.allowMultipleResponses ?? false,
+      shuffleQuestions: dto.shuffleQuestions ?? false,
+      closingNote: dto.closingNote ?? null,
     });
 
     await this.audit.append({
@@ -246,7 +274,19 @@ export class SurveysService {
   async listActiveForChild(actor: Actor, childId: string) {
     const facts = await this.childAccess.assertCanAccess(actor, childId);
     const groupId = await this.repo.activeGroupIdForChild(childId);
-    const surveys = await this.repo.findActiveForKindergarten(facts.childKindergartenId, groupId);
+    const all = await this.repo.findActiveForKindergarten(facts.childKindergartenId, groupId);
+
+    /*
+      ★ A survey that has not opened yet is not on the family's list.
+
+      `submitResponse` refuses it either way — that is the rule, and it is the
+      one place it is enforced. This is the courtesy beside it: offering a
+      family a survey that answers "хараахан эхлээгүй" the moment they finish
+      it is worse than not offering it, and `closesAt` has never had the same
+      problem because `findActiveForKindergarten` predates neither.
+    */
+    const now = Date.now();
+    const surveys = all.filter((survey) => !survey.opensAt || survey.opensAt.getTime() <= now);
 
     return Promise.all(
       surveys.map(async (survey) => {
@@ -452,6 +492,19 @@ export class SurveysService {
       throw new BadRequestException("Энэ судалгааны хугацаа дууссан байна");
     }
 
+    /*
+      ★ The other end of the same window — 2026-09-10.
+
+      `opensAt` is the mirror of `closesAt` and is asked in the same one place
+      for the same reason: it is an intention rather than a state, nothing
+      sweeps it, and the survey stays PUBLISHED throughout. A survey published
+      on Monday for Friday's meeting refuses answers until Friday, and null —
+      every survey written before the field — is "from publication".
+    */
+    if (survey.opensAt && survey.opensAt.getTime() > Date.now()) {
+      throw new BadRequestException("Энэ судалгаа хараахан эхлээгүй байна");
+    }
+
     let childId: string | null = null;
 
     if (survey.scope === "CHILD") {
@@ -474,8 +527,19 @@ export class SurveysService {
       }
     }
 
-    const existing = await this.repo.findResponse(surveyId, actor.userId, childId);
-    if (existing) throw new BadRequestException("Та энэ судалгааг аль хэдийн бөглөсөн байна");
+    /*
+      ★ One response each, unless the survey says otherwise — 2026-09-10.
+
+      This was an unconditional rule in the code, and it is the right one for a
+      questionnaire: a family's considered answers, submitted once. It is the
+      wrong one for the standing polls the client wants — "Маргаашийн аялалд
+      хэн ирэх вэ", asked every week. The rule moved onto the row so the person
+      writing the survey chooses, and the default is what it always did.
+    */
+    if (!survey.allowMultipleResponses) {
+      const existing = await this.repo.findResponse(surveyId, actor.userId, childId);
+      if (existing) throw new BadRequestException("Та энэ судалгааг аль хэдийн бөглөсөн байна");
+    }
 
     const validQuestionIds = await this.repo.questionIds(surveyId);
     for (const answer of dto.answers) {
@@ -615,6 +679,29 @@ export class SurveysService {
       responses.filter((row) => row.childId).map((row) => [row.childId!, row]),
     );
 
+    /*
+      ★ An anonymous survey answers with counts and nothing else — 2026-09-10.
+
+      "Оролцоо" names who has replied and who has not, which is exactly what a
+      survey promising anonymity must not do. Both halves go, not just the
+      answered list: a roster of everyone who has *not* replied names the
+      others by subtraction, which is the same disclosure with an extra step.
+
+      The rows are still there and `respondentId` is still written — the flag
+      is named `isAnonymous` rather than "anonymous" for that reason
+      (`Survey.isAnonymous`). What changes is what the product will show.
+    */
+    if (survey.isAnonymous) {
+      return {
+        anonymous: true as const,
+        answered: [],
+        pending: [],
+        answeredCount: responses.length,
+        familyResponses: responses.filter((row) => !row.childId).length,
+        roster: enrollments.length,
+      };
+    }
+
     const answered = [];
     const pending = [];
     for (const enrollment of enrollments) {
@@ -636,7 +723,14 @@ export class SurveysService {
     // them against.
     const familyResponses = responses.filter((row) => !row.childId).length;
 
-    return { answered, pending, familyResponses, roster: enrollments.length };
+    return {
+      anonymous: false as const,
+      answered,
+      pending,
+      answeredCount: answered.length,
+      familyResponses,
+      roster: enrollments.length,
+    };
   }
 
   async results(actor: Actor, surveyId: string, groupId?: string) {
@@ -970,6 +1064,9 @@ export class SurveysService {
       title: row.title,
       schoolYear: row.schoolYear,
       period: row.period,
+      // Carried into the workbook so Sheet 2 can keep the promise this survey
+      // made — see `SurveyWave.isAnonymous`.
+      isAnonymous: row.isAnonymous,
       questions: row.questions.map((q) => ({
         id: q.id,
         type: q.type,

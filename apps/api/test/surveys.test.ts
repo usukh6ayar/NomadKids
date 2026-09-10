@@ -1,5 +1,6 @@
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
+import ExcelJS from "exceljs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestApp } from "./support/app";
 import { resetData, testDb } from "./support/db";
@@ -1280,5 +1281,268 @@ describe("the results breakdown's per-group denominator", () => {
     );
     expect(row.responseCount).toBe(1);
     expect(row.expectedChildren).toBe(0);
+  });
+});
+
+/**
+ * The wizard's settings — client, 2026-09-10.
+ *
+ * ★ Every one of these is tested because every one of them *does* something.
+ *
+ * A toggle that stores a boolean nothing reads is worse than a missing
+ * feature: it tells the person who set it that they have changed the survey.
+ * So each case below is written against the behaviour the setting promises,
+ * not against the column.
+ *
+ * ★★ And each asserts its default separately, because the defaults are the
+ * contract with every survey written before the fields existed.
+ */
+describe("a survey's schedule", () => {
+  async function pollOpening(opensAt: string | null, closesAt?: string) {
+    const created = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
+      teacherA,
+    ).send({
+      title: "Хугацаатай",
+      scope: "CHILD",
+      groupId: a.group.id,
+      ...(opensAt ? { opensAt } : {}),
+      ...(closesAt ? { closesAt } : {}),
+    });
+    if (created.status !== 201) return { status: created.status, surveyId: null, questionId: null };
+
+    await authed(request(server()).put(`/v1/surveys/${created.body.id}/questions`), teacherA).send({
+      questions: [{ order: 0, type: "RATING", prompt: "Хэр вэ?" }],
+    });
+    await authed(request(server()).post(`/v1/surveys/${created.body.id}/publish`), teacherA);
+
+    const withQuestions = await db.survey.findUniqueOrThrow({
+      where: { id: created.body.id },
+      include: { questions: true },
+    });
+    return {
+      status: created.status,
+      surveyId: created.body.id as string,
+      questionId: withQuestions.questions[0]!.id,
+    };
+  }
+
+  const tomorrow = () => new Date(Date.now() + 86_400_000).toISOString();
+  const yesterday = () => new Date(Date.now() - 86_400_000).toISOString();
+
+  it("refuses an answer before the survey has opened", async () => {
+    const { surveyId, questionId } = await pollOpening(tomorrow());
+
+    const res = await authed(
+      request(server()).post(`/v1/surveys/${surveyId}/responses`),
+      parentA,
+    ).send({ childId: a.child.id, answers: [{ questionId, value: 4 }] });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts one once it has opened", async () => {
+    const { surveyId, questionId } = await pollOpening(yesterday());
+
+    const res = await authed(
+      request(server()).post(`/v1/surveys/${surveyId}/responses`),
+      parentA,
+    ).send({ childId: a.child.id, answers: [{ questionId, value: 4 }] });
+
+    expect(res.status).toBe(201);
+  });
+
+  /**
+   * ★ Not offered before it opens, either.
+   *
+   * `submitResponse` is the rule and refuses it regardless; this is the
+   * courtesy beside it. Offering a family a survey that answers "хараахан
+   * эхлээгүй" the moment they finish is worse than not offering it.
+   */
+  it("keeps an unopened survey off the family's list", async () => {
+    const { surveyId } = await pollOpening(tomorrow());
+
+    const list = await authed(request(server()).get(`/v1/children/${a.child.id}/surveys`), parentA);
+
+    expect(list.body.map((s: { id: string }) => s.id)).not.toContain(surveyId);
+  });
+
+  it("still offers one with no opening date at all", async () => {
+    const { surveyId } = await pollOpening(null);
+
+    const list = await authed(request(server()).get(`/v1/children/${a.child.id}/surveys`), parentA);
+
+    expect(list.body.map((s: { id: string }) => s.id)).toContain(surveyId);
+  });
+
+  /** A window that closes before it opens is refused at the door. */
+  it("refuses a window that ends before it starts", async () => {
+    const { status } = await pollOpening(tomorrow(), yesterday());
+    expect(status).toBe(400);
+  });
+});
+
+describe("answering more than once", () => {
+  async function surveyAllowing(allowMultipleResponses: boolean) {
+    const created = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
+      teacherA,
+    ).send({
+      title: "Долоо хоног бүрийн асуулга",
+      scope: "CHILD",
+      kind: "POLL",
+      groupId: a.group.id,
+      allowMultipleResponses,
+    });
+
+    await authed(request(server()).put(`/v1/surveys/${created.body.id}/questions`), teacherA).send({
+      questions: [{ order: 0, type: "YES_NO", prompt: "Ирэх үү?" }],
+    });
+    await authed(request(server()).post(`/v1/surveys/${created.body.id}/publish`), teacherA);
+
+    const withQuestions = await db.survey.findUniqueOrThrow({
+      where: { id: created.body.id },
+      include: { questions: true },
+    });
+    return {
+      surveyId: created.body.id as string,
+      questionId: withQuestions.questions[0]!.id,
+    };
+  }
+
+  const answer = (surveyId: string, questionId: string, value: boolean) =>
+    authed(request(server()).post(`/v1/surveys/${surveyId}/responses`), parentA).send({
+      childId: a.child.id,
+      answers: [{ questionId, value }],
+    });
+
+  /**
+   * ★ The default is what the code did unconditionally before this field.
+   *
+   * A family's considered answers, submitted once — right for a questionnaire,
+   * and the behaviour every existing survey relies on.
+   */
+  it("refuses a second answer by default", async () => {
+    const { surveyId, questionId } = await surveyAllowing(false);
+
+    expect((await answer(surveyId, questionId, true)).status).toBe(201);
+    expect((await answer(surveyId, questionId, false)).status).toBe(400);
+  });
+
+  it("accepts a second answer when the survey allows it", async () => {
+    const { surveyId, questionId } = await surveyAllowing(true);
+
+    expect((await answer(surveyId, questionId, true)).status).toBe(201);
+    expect((await answer(surveyId, questionId, false)).status).toBe(201);
+
+    const results = await authed(request(server()).get(`/v1/surveys/${surveyId}/results`), adminA);
+    expect(results.body.totalResponses).toBe(2);
+  });
+});
+
+describe("an anonymous survey", () => {
+  async function anonymousSurvey(isAnonymous: boolean) {
+    const created = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
+      teacherA,
+    ).send({
+      title: "Нэргүй санал",
+      scope: "CHILD",
+      groupId: a.group.id,
+      isAnonymous,
+    });
+
+    await authed(request(server()).put(`/v1/surveys/${created.body.id}/questions`), teacherA).send({
+      questions: [{ order: 0, type: "RATING", prompt: "Хэр вэ?" }],
+    });
+    await authed(request(server()).post(`/v1/surveys/${created.body.id}/publish`), teacherA);
+
+    const withQuestions = await db.survey.findUniqueOrThrow({
+      where: { id: created.body.id },
+      include: { questions: true },
+    });
+    const questionId = withQuestions.questions[0]!.id;
+
+    await authed(request(server()).post(`/v1/surveys/${created.body.id}/responses`), parentA).send({
+      childId: a.child.id,
+      answers: [{ questionId, value: 5 }],
+    });
+
+    return created.body.id as string;
+  }
+
+  /**
+   * ★ Both halves of Оролцоо go, not only the answered list.
+   *
+   * A roster of everyone who has *not* replied names the others by
+   * subtraction, which is the same disclosure with an extra step.
+   */
+  it("reports counts instead of names", async () => {
+    const surveyId = await anonymousSurvey(true);
+
+    const res = await authed(
+      request(server()).get(`/v1/surveys/${surveyId}/participation`),
+      teacherA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.anonymous).toBe(true);
+    expect(res.body.answered).toEqual([]);
+    expect(res.body.pending).toEqual([]);
+    expect(res.body.answeredCount).toBe(1);
+    // Nobody is named anywhere in the payload.
+    expect(JSON.stringify(res.body)).not.toContain(a.child.firstName);
+  });
+
+  it("still names people on a survey that is not anonymous", async () => {
+    const surveyId = await anonymousSurvey(false);
+
+    const res = await authed(
+      request(server()).get(`/v1/surveys/${surveyId}/participation`),
+      teacherA,
+    );
+
+    expect(res.body.anonymous).toBe(false);
+    expect(res.body.answered).toHaveLength(1);
+    expect(JSON.stringify(res.body)).toContain(a.child.firstName);
+  });
+
+  /**
+   * ★ The raw sheet is where the promise is kept or broken — §4.3 asks the
+   * assertion to be on extracted content, not on "did it produce a file".
+   *
+   * Sheet 2 is one row per answer carrying the child's name, group, age, sex
+   * and who submitted it: a re-identification table for a survey that told
+   * families their answers were unnamed.
+   */
+  it("keeps names out of the workbook", async () => {
+    const surveyId = await anonymousSurvey(true);
+
+    const res = await authed(request(server()).get(`/v1/surveys/${surveyId}/export`), adminA)
+      .buffer(true)
+      .parse((response, callback) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk: Buffer) => chunks.push(chunk));
+        response.on("end", () => callback(null, Buffer.concat(chunks)));
+      });
+
+    expect(res.status).toBe(200);
+
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(res.body as Buffer);
+
+    const text = book.worksheets
+      .flatMap((sheet) => {
+        const rows: string[] = [];
+        sheet.eachRow((row) => rows.push(row.values?.toString() ?? ""));
+        return rows;
+      })
+      .join("\n");
+
+    expect(text).not.toContain(a.child.firstName);
+    expect(text).not.toContain(a.parentUser.lastName);
+    // The group survives: it is not identifying and it is the unit every
+    // analysis of this sheet is grouped by.
+    expect(text).toContain(a.group.name);
   });
 });

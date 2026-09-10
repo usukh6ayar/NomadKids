@@ -90,7 +90,17 @@ function SurveyDetail() {
     <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title={data.title}
-        lede={SURVEY_CATEGORY_LABEL[data.category]}
+        /*
+          ★ The purpose leads the category when there is one — 2026-09-10.
+
+          "Сэтгэл ханамжийн судалгаа" is a filing label; "Сургуулийн үйл
+          ажиллагаа, орчин, хоолны чанарт эцэг эхийн сэтгэл ханамжийг
+          тодруулах" is why this survey was run, and it is what a director
+          reads a year later to decide whether it answered anything. The
+          category is on the card in the list and in the filter above it, so it
+          is not lost.
+        */
+        lede={data.purpose?.trim() || SURVEY_CATEGORY_LABEL[data.category]}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {data.status !== "DRAFT" ? (

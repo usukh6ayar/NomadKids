@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { z } from "zod";
 import { surveySchema, type SurveyAnswerValue } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
@@ -37,6 +37,27 @@ export default function SurveyResponsePage() {
   });
 
   const [answers, setAnswers] = useState<Record<string, SurveyAnswerValue>>({});
+  /**
+   * The question order this family sees — see `ordered` below.
+   *
+   * A `useMemo` keyed on the survey rather than `useState`, because the survey
+   * arrives after the first render: state initialised from it would be empty
+   * and never refill.
+   */
+  const shuffled = useMemo(() => {
+    const questions = active.data?.find((s) => s.id === surveyId)?.questions ?? [];
+    if (!questions.length) return questions;
+
+    const found = active.data?.find((s) => s.id === surveyId);
+    if (!found?.shuffleQuestions) return questions;
+
+    const copy = [...questions];
+    for (let i = copy.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copy[i], copy[j]] = [copy[j]!, copy[i]!];
+    }
+    return copy;
+  }, [active.data, surveyId]);
 
   const submit = useMutation({
     mutationFn: () =>
@@ -48,7 +69,16 @@ export default function SurveyResponsePage() {
         },
       }),
     onSuccess: () => {
-      toast.success("Саналыг хүлээж авлаа. Баярлалаа.");
+      /*
+        ★ The survey's own closing note, when it wrote one.
+
+        A kindergarten that wants to say what happens next — "Хариултыг 9-р
+        сарын 20-нд хэлэлцэнэ" — writes it on the survey rather than in the
+        description, where a family would read it *before* answering instead of
+        after. Null falls back to the product's own thank-you, which is what
+        every survey written before the field says.
+      */
+      toast.success(survey?.closingNote?.trim() || "Саналыг хүлээж авлаа. Баярлалаа.");
       void queryClient.invalidateQueries({ queryKey: qk.childSurveys(childId) });
       router.replace(`/children/${childId}/general`);
     },
@@ -88,6 +118,20 @@ export default function SurveyResponsePage() {
 
   const unanswered = survey.questions.some((q) => answers[q.id] === undefined);
 
+  /*
+    ★ Shuffled once per mount, not on every render.
+
+    Order effects are real — the first question of a satisfaction survey is
+    answered more generously than the fifth — and `shuffleQuestions` is the
+    author saying theirs is the kind that can bear reordering. Reshuffling as
+    the form re-renders (which it does on every keystroke) would move questions
+    under the reader's hand, so the order is fixed the first time and kept.
+
+    Seeded by nothing in particular: the point is that the order differs
+    between families, not that it is reproducible.
+  */
+  const ordered = shuffled;
+
   return (
     <div className="flex flex-col gap-6 py-2">
       <PageHeader title={survey.title} />
@@ -102,7 +146,7 @@ export default function SurveyResponsePage() {
       >
         <FormError message={submit.isError ? errorMessage(submit.error) : null} />
 
-        {survey.questions.map((question) => (
+        {ordered.map((question) => (
           <Card key={question.id} className="flex flex-col gap-3 px-4 py-4">
             <p className="font-medium text-ink">{question.prompt}</p>
 

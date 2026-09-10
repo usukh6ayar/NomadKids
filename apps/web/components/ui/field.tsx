@@ -474,6 +474,77 @@ export function CheckControl({
   );
 }
 
+/**
+ * A switch — on or off, applied immediately in meaning if not in transport.
+ *
+ * ★ `<input type="checkbox" role="switch">`, not a `div`.
+ *
+ * The same argument `CheckControl` makes: the space bar, form association,
+ * `:focus-visible` and the label relationship are the browser's, and a
+ * `role="switch"` div is the version of "restyled" that actually loses things.
+ * `role="switch"` is the one attribute that changes: a screen reader says "on"
+ * and "off" rather than "checked", which is what this control means.
+ *
+ * ★★ Separate from `Checkbox` because the two answer different questions.
+ *
+ * A checkbox is "is this one of the things I am choosing"; a switch is "is this
+ * behaviour on". They read the same to a parser and differently to a person,
+ * and the client's design uses both on the same screen — options ticked, then
+ * settings switched.
+ *
+ * ★★★ The track is the label's sibling and the whole row is the target, so a
+ * thumb landing on the description toggles it. Same 44px floor as everything
+ * else.
+ */
+export function Switch({
+  label,
+  description,
+  className,
+  ...props
+}: ComponentProps<"input"> & { label: string; description?: string }) {
+  const id = useId();
+
+  return (
+    <label
+      htmlFor={id}
+      className={cn(
+        "flex min-h-[44px] cursor-pointer select-none items-start gap-3 py-1",
+        props.disabled && "cursor-not-allowed opacity-60",
+        className,
+      )}
+    >
+      <span className="min-w-0 flex-1">
+        <span className="block text-body font-medium leading-snug text-ink">{label}</span>
+        {description ? (
+          <span className="mt-0.5 block text-caption leading-snug text-muted">{description}</span>
+        ) : null}
+      </span>
+
+      <span className="relative mt-0.5 inline-flex shrink-0">
+        <input
+          id={id}
+          type="checkbox"
+          role="switch"
+          className={cn(
+            "peer h-6 w-11 shrink-0 appearance-none rounded-pill bg-track transition-colors",
+            "checked:bg-primary",
+            "disabled:cursor-not-allowed",
+          )}
+          {...props}
+        />
+        {/*
+          The knob. `pointer-events-none` for `CheckControl`'s reason — a press
+          that landed on the knob rather than the track would do nothing.
+        */}
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute left-0.5 top-0.5 size-5 rounded-pill bg-surface shadow-sm transition-transform peer-checked:translate-x-5"
+        />
+      </span>
+    </label>
+  );
+}
+
 /** A checkbox with its label as one 44px target. */
 export function Checkbox({
   label,

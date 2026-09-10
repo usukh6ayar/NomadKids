@@ -251,11 +251,10 @@ describe("the two boards", () => {
 
     await user.click(screen.getByRole("button", { name: "Шинэ" }));
 
-    const dialog = await screen.findByRole("dialog", { name: "Шинээр асуулга үүсгэх" });
+    const dialog = await screen.findByRole("dialog", { name: "Шинэ асуулга" });
+    // Nothing in the wizard asks which kind it is: the board decided.
     expect(within(dialog).queryByRole("radio", { name: /Судалгаа/ })).not.toBeInTheDocument();
-    expect(within(dialog).queryByRole("radio", { name: /Асуулга/ })).not.toBeInTheDocument();
-    expect(within(dialog).getByTestId("survey-create-fields-primary")).toHaveClass("grid-cols-2");
-    expect(within(dialog).getByTestId("survey-create-fields-secondary")).toHaveClass("grid-cols-2");
+    expect(within(dialog).getByRole("heading", { name: "Шинэ асуулга" })).toBeInTheDocument();
   });
 
   /*

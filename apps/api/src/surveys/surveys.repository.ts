@@ -31,9 +31,29 @@ export class SurveysRepository {
     period?: SurveyPeriod | null;
     /** Null is every group — see `Survey.groupId`. */
     groupId?: string | null;
+    /* The wizard's settings — every one optional, and every default is the
+       behaviour a survey had before the column existed. */
+    opensAt?: Date | null;
+    purpose?: string | null;
+    termId?: string | null;
+    isAnonymous?: boolean;
+    allowMultipleResponses?: boolean;
+    shuffleQuestions?: boolean;
+    closingNote?: string | null;
     clonedFromSurveyId?: string | null;
   }) {
     return this.prisma.survey.create({ data });
+  }
+
+  /**
+   * A term, only if it is this kindergarten's — the check `create` makes
+   * before filing a survey against an id that came from a client.
+   */
+  async findTermInKindergarten(termId: string, kindergartenId: string) {
+    return this.prisma.term.findFirst({
+      where: { id: termId, kindergartenId, deletedAt: null },
+      select: { id: true },
+    });
   }
 
   /**
@@ -135,6 +155,16 @@ export class SurveysRepository {
         scope: true,
         status: true,
         closesAt: true,
+        /*
+          ★ Selected for the same reason `closesAt` is, and the note above
+          applies word for word: `submitResponse` enforces both ends of the
+          window from this row, and a column omitted from the select reads
+          `undefined` — which is falsy, so every check would silently pass
+          rather than fail loudly.
+        */
+        opensAt: true,
+        allowMultipleResponses: true,
+        isAnonymous: true,
         // Which group was asked. `participation` builds its roster from it,
         // and null is every group — see `Survey.groupId`.
         groupId: true,

@@ -51,8 +51,38 @@ export const createSurveySchema = z
       `surveys.test.ts` — keeps compiling and keeps meaning what it meant.
     */
     groupId: uuidSchema.nullable().optional(),
+    /*
+      ★ The wizard's remaining fields — 2026-09-10, all optional.
+
+      Every one of them is a *setting*, and every setting's omitted value is
+      the behaviour every survey written before them had: no opening date, no
+      stated purpose, no term, named answers, one response each, questions in
+      the order they were written, and the product's own thank-you. So the
+      clone endpoint, the seeds and every existing test keep compiling and keep
+      meaning what they meant — the same argument `kind` and `groupId` make
+      above, and the reason none of these is required.
+    */
+    opensAt: z.coerce.date().nullable().optional(),
+    purpose: z.string().max(2000).nullable().optional(),
+    termId: uuidSchema.nullable().optional(),
+    isAnonymous: z.boolean().optional(),
+    allowMultipleResponses: z.boolean().optional(),
+    shuffleQuestions: z.boolean().optional(),
+    closingNote: z.string().max(500).nullable().optional(),
   })
-  .strict();
+  .strict()
+  /*
+    ★ A window that closes before it opens is refused here, not discovered by a
+    family who cannot answer.
+
+    Checked in the schema rather than the service because it is a property of
+    the two values alone — no row, no actor, nothing to look up. `notifications
+    .dto.ts` states the same rule for `startsOn`/`endsOn`.
+  */
+  .refine((dto) => !dto.opensAt || !dto.closesAt || dto.opensAt <= dto.closesAt, {
+    message: "Эхлэх огноо дуусах огнооноос хойш байж болохгүй",
+    path: ["closesAt"],
+  });
 export type CreateSurveyDto = z.infer<typeof createSurveySchema>;
 
 /**

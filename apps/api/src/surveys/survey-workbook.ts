@@ -51,6 +51,22 @@ export interface SurveyWave {
   title: string;
   schoolYear: string | null;
   period: string | null;
+  /**
+   * Whether this wave promised its respondents anonymity — 2026-09-10.
+   *
+   * ★ The raw sheet is where that promise is kept or broken.
+   *
+   * Sheet 2 is one row per answer carrying the child's name, the group, the
+   * age, the sex and who submitted it — which is a re-identification table for
+   * a survey that told families their answers were unnamed. The aggregates on
+   * every other sheet are safe; this one is not, so the identifying columns
+   * are blanked here rather than the sheet being dropped: an administrator
+   * still needs the answers, they just do not get the names.
+   *
+   * Optional so a caller that predates the field keeps its current behaviour,
+   * which is the correct one for every survey written before it.
+   */
+  isAnonymous?: boolean;
   questions: WaveQuestion[];
   answers: (Wave["answers"][number] & { responseId: string })[];
   responses: WorkbookResponse[];
@@ -187,6 +203,7 @@ function writeRawData(
   headerStyle(sheet);
 
   const { survey } = input;
+  const hidden = survey.isAnonymous === true;
   const questionById = new Map(survey.questions.map((q) => [q.id, q]));
   const responseById = new Map(survey.responses.map((r) => [r.id, r]));
 
@@ -209,10 +226,20 @@ function writeRawData(
         survey: survey.title,
         year: survey.schoolYear ?? "—",
         period: survey.period ? (PERIOD_LABEL[survey.period] ?? survey.period) : "—",
+        /*
+          ★ The group survives anonymity; the child does not.
+
+          A group of eighteen is not identifying and it is the unit every
+          analysis of this sheet is grouped by — losing it would make the
+          export useless for the question it is run for. A name, a birth date
+          and a sex together identify one family in any kindergarten, and the
+          age is dropped with the name for that reason rather than because
+          anybody asked.
+        */
         group: child?.groupName ?? "—",
-        child: child ? `${child.lastName} ${child.firstName}` : "—",
-        age: child?.dateOfBirth ? ageOn(child.dateOfBirth) : "—",
-        sex: child?.sex === "MALE" ? "Хүү" : child?.sex === "FEMALE" ? "Охин" : "—",
+        child: hidden ? "—" : child ? `${child.lastName} ${child.firstName}` : "—",
+        age: hidden ? "—" : child?.dateOfBirth ? ageOn(child.dateOfBirth) : "—",
+        sex: hidden ? "—" : child?.sex === "MALE" ? "Хүү" : child?.sex === "FEMALE" ? "Охин" : "—",
         question: question.prompt,
         indicator:
           rowKey !== null
@@ -220,7 +247,9 @@ function writeRawData(
             : (question.indicatorKey ?? "—"),
         answer: readableAnswer(question, answer.value, rowKey),
         score: score ?? "—",
-        respondent: response?.respondentName ?? "—",
+        respondent: hidden ? "—" : (response?.respondentName ?? "—"),
+        // The role stays: "a guardian answered" names nobody, and Module 1.3
+        // asks for the teacher/guardian split.
         role: response ? (ROLE_LABEL[response.respondentRole] ?? response.respondentRole) : "—",
         submitted: response ? response.submittedAt.slice(0, 10) : "—",
       });

@@ -1106,6 +1106,27 @@ export const surveySchema = z.object({
    * to stay possible — see `Survey.closesAt` for why it is not `closedAt`.
    */
   closesAt: z.string().nullish(),
+  /** When it starts accepting answers. Null is "from publication". */
+  opensAt: z.string().nullish(),
+  /** Why the kindergarten is running it — staff-facing, not on the form. */
+  purpose: z.string().nullish(),
+  /** Which term of the school year, as a `Term` row. */
+  termId: uuidSchema.nullish(),
+  term: z.object({ id: uuidSchema, number: z.number(), name: z.string() }).nullish(),
+  /**
+   * Answers recorded without naming who gave them.
+   *
+   * ★ It hides the respondent from readers, not from the database — see
+   * `Survey.isAnonymous`. `participation` reports counts instead of names and
+   * the workbook omits the respondent column.
+   */
+  isAnonymous: z.boolean().default(false),
+  /** Whether one respondent may answer more than once. */
+  allowMultipleResponses: z.boolean().default(false),
+  /** Whether the answering form shuffles its questions. */
+  shuffleQuestions: z.boolean().default(false),
+  /** What a family reads after submitting. Null falls back to the default. */
+  closingNote: z.string().nullish(),
   createdAt: z.string(),
   /** "2025-2026" — a school year spans two calendar years. */
   schoolYear: z.string().nullish(),

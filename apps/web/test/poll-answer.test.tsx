@@ -279,3 +279,108 @@ describe("a questionnaire, which is not a poll", () => {
     );
   });
 });
+
+/**
+ * The wizard's answering-side settings — 2026-09-10.
+ *
+ * ★ Asserted here because this is where they take effect.
+ *
+ * `shuffleQuestions` and `closingNote` are stored by the create wizard and
+ * read by the family's form. A toggle that stores a boolean nothing reads is
+ * worse than a missing feature — it tells the person who set it that they
+ * changed the survey — so each is tested against the behaviour it promises.
+ */
+describe("a questionnaire's own settings", () => {
+  const FORM_ID = "77777777-7777-4777-8777-777777777777";
+
+  function form(overrides: Record<string, unknown>) {
+    const prompts = ["Нэг", "Хоёр", "Гурав", "Дөрөв", "Тав", "Зургаа"];
+    return {
+      ...POLL,
+      id: FORM_ID,
+      kind: "FORM",
+      questions: prompts.map((prompt, index) => ({
+        id: `${index}0000000-0000-4000-8000-00000000000${index}`,
+        order: index,
+        type: "TEXT",
+        prompt,
+        options: null,
+      })),
+      ...overrides,
+    };
+  }
+
+  function stubForm(overrides: Record<string, unknown>) {
+    return stubApi([
+      { path: "/auth/me", body: sessionFor(["PARENT"]) },
+      { path: `/surveys/${FORM_ID}/responses`, method: "POST", body: {} },
+      { path: `/children/${CHILD}/surveys`, body: [form(overrides)] },
+    ]);
+  }
+
+  const prompts = () => screen.getAllByRole("paragraph").map((p) => p.textContent);
+
+  /**
+   * ★ Written order by default, which is what every survey did before the
+   * field existed — and what a questionnaire building an argument across its
+   * questions needs.
+   */
+  it("keeps the written order unless the survey asks otherwise", async () => {
+    setParams({ childId: CHILD, surveyId: FORM_ID });
+    stubForm({ shuffleQuestions: false });
+    renderWithProviders(<SurveyResponsePage />);
+
+    await screen.findByText("Нэг");
+    const shown = prompts().filter((text) => text && text.length <= 6);
+    expect(shown.slice(0, 3)).toEqual(["Нэг", "Хоёр", "Гурав"]);
+  });
+
+  /**
+   * ★ Shuffled once, not on every render.
+   *
+   * The form re-renders on every keystroke, and reshuffling there would move
+   * questions under the reader's hand. Asserted by typing and checking the
+   * order has not changed — a per-render shuffle passes any test that only
+   * looks once.
+   */
+  it("holds a shuffled order still while the family types", async () => {
+    const user = userEvent.setup();
+    setParams({ childId: CHILD, surveyId: FORM_ID });
+    stubForm({ shuffleQuestions: true });
+    renderWithProviders(<SurveyResponsePage />);
+
+    await screen.findByText("Нэг");
+    const before = prompts().filter((text) => text && text.length <= 6);
+
+    await user.type(screen.getAllByRole("textbox")[0]!, "хариулт");
+
+    const after = prompts().filter((text) => text && text.length <= 6);
+    expect(after).toEqual(before);
+  });
+
+  it("says the survey's own words after submitting", async () => {
+    const user = userEvent.setup();
+    setParams({ childId: CHILD, surveyId: FORM_ID });
+    stubForm({ shuffleQuestions: false, closingNote: "Хариултыг 9-р сарын 20-нд хэлэлцэнэ." });
+    renderWithProviders(<SurveyResponsePage />);
+
+    await screen.findByText("Нэг");
+    for (const box of screen.getAllByRole("textbox")) await user.type(box, "х");
+    await user.click(screen.getByRole("button", { name: "Илгээх" }));
+
+    expect(await screen.findByText("Хариултыг 9-р сарын 20-нд хэлэлцэнэ.")).toBeInTheDocument();
+  });
+
+  it("falls back to the product's thank-you when the survey wrote none", async () => {
+    const user = userEvent.setup();
+    setParams({ childId: CHILD, surveyId: FORM_ID });
+    stubForm({ shuffleQuestions: false });
+    renderWithProviders(<SurveyResponsePage />);
+
+    await screen.findByText("Нэг");
+    for (const box of screen.getAllByRole("textbox")) await user.type(box, "х");
+    await user.click(screen.getByRole("button", { name: "Илгээх" }));
+
+    expect(await screen.findByText("Саналыг хүлээж авлаа. Баярлалаа.")).toBeInTheDocument();
+  });
+});
