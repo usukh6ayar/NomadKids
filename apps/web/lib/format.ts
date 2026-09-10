@@ -50,6 +50,23 @@ export function formatDate(value: string | Date | null | undefined): string {
   return `${date.getFullYear()}.${m}.${d}`;
 }
 
+/**
+ * `Пүрэв` — the weekday, written out rather than asked of `Intl`.
+ *
+ * ★ `toLocaleDateString("mn-MN", { weekday: "long" })` is not stable across
+ * runtimes: a Node build without full ICU answers in English, which is how the
+ * teacher's dashboard came to greet them with "Thursday". Seven strings cost
+ * nothing and cannot regress on a different server.
+ *
+ * Sunday first, because `getDay()` calls it 0.
+ */
+const WEEKDAYS = ["Ням", "Даваа", "Мягмар", "Лхагва", "Пүрэв", "Баасан", "Бямба"] as const;
+
+export function formatWeekday(value: string | Date | null | undefined): string {
+  const date = toDate(value);
+  return date ? WEEKDAYS[date.getDay()]! : "—";
+}
+
 /** `2026 оны 8-р сар` — a month, not a day, for a calendar heading. */
 export function formatMonthLabel(monthKey: string): string {
   const [year, month] = monthKey.split("-").map(Number);

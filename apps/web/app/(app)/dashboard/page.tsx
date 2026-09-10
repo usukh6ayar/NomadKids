@@ -8,7 +8,7 @@ import { get } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
-import { formatDate, fullName } from "@/lib/format";
+import { formatLongDate, formatWeekday, fullName } from "@/lib/format";
 import { useSession } from "@/lib/auth/session";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
@@ -171,7 +171,12 @@ function TeacherDashboard() {
   const teacherName = fullName(session?.user);
   const greetingName = teacherName === "—" ? "багш" : teacherName;
   const today = new Date();
-  const weekday = new Intl.DateTimeFormat("mn-MN", { weekday: "long" }).format(today);
+  /*
+   * ★ Not `Intl` — 2026-09-10. `mn-MN` is not stable across runtimes: a Node
+   * build without full ICU answers in English, which is how this greeted a
+   * teacher with "Thursday". `formatWeekday` writes the seven out.
+   */
+  const weekday = formatWeekday(today);
   const header = (
     <div className="teacher-dashboard-header">
       <PageHeader
@@ -179,14 +184,19 @@ function TeacherDashboard() {
         meta={
           <>
             {group ? (
-              <span className="inline-flex min-h-7 items-center gap-1.5 rounded-pill bg-surface px-2.5 text-caption font-semibold text-ink shadow-sm">
-                <UsersRound size={14} aria-hidden="true" className="text-primary" />
+              /*
+                ★ A step quieter than the greeting — the client's reading.
+                Which group and which day are context for the name above them,
+                not two more headings.
+              */
+              <span className="inline-flex min-h-6 items-center gap-1 rounded-pill bg-surface px-2 text-compact font-medium text-muted shadow-sm">
+                <UsersRound size={12} aria-hidden="true" className="text-primary" />
                 {group.name}
               </span>
             ) : null}
-            <span className="inline-flex min-h-7 items-center gap-1.5 rounded-pill bg-surface px-2.5 text-caption font-medium text-muted shadow-sm">
-              <CalendarDays size={14} aria-hidden="true" className="text-mint-ink" />
-              {formatDate(today)} · {weekday}
+            <span className="inline-flex min-h-6 items-center gap-1 rounded-pill bg-surface px-2 text-compact font-medium text-muted shadow-sm">
+              <CalendarDays size={12} aria-hidden="true" className="text-mint-ink" />
+              {formatLongDate(today)} · {weekday}
             </span>
           </>
         }
