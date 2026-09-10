@@ -161,7 +161,14 @@ function downloadAgeCard({
   ]
     .filter(Boolean)
     .join(", ");
-  const family = [profile.familyMemberTypes.join(", "), profile.familyDescription]
+  const family = [
+    profile.familyMemberTypes.join(", "),
+    profile.familyDescription,
+    // The memories the family wrote for this year belong on the card they take
+    // home — a "Гэр бүл" line that names only the tick-boxes would leave the
+    // most personal thing in the section off the printed keepsake.
+    ...profile.familyMemories.map((memory) => memory.title),
+  ]
     .filter(Boolean)
     .join(" · ");
   const rows = [

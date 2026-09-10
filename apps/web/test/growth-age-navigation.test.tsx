@@ -206,16 +206,28 @@ describe("growth age navigation and editing", () => {
     });
     renderWithProviders(<AgeProfilePage />);
 
-    await openEditor(user, "Миний гэр бүл");
-    const description = screen.getByRole("textbox", {
-      name: "Гэр бүлийн тухай, хамтдаа хийх дуртай зүйлс",
+    /*
+      ★ Asked of "Миний зан араншин", not "Миний гэр бүл".
+
+      What is under test is `FormDialog` + `useAgeProfileSave` keeping a draft
+      and staying open when the PATCH fails — shared behaviour, and every one of
+      the five cards exercises it. It used to be asked of the family card's
+      "Хамтдаа хийх дуртай зүйлс" box, which the client had removed on
+      2026-09-10 — so the assertion moved to a card that still has a free-text
+      field rather than being weakened to fit. The family dialog's own version
+      of this, where the draft is a whole memory, is in
+      `family-memories.test.tsx`.
+    */
+    await openEditor(user, "Миний зан араншин");
+    const observation = screen.getByRole("textbox", {
+      name: "Миний 3 насны зан араншин",
     });
-    await user.type(description, "Амралтын өдөр хамт ном уншдаг.");
+    await user.type(observation, "Шинэ орчинд хурдан дасдаг.");
     await user.click(screen.getByRole("button", { name: "Хадгалах" }));
 
     expect(await screen.findAllByText("Түр хүлээгээд дахин оролдоно уу.")).toHaveLength(2);
-    expect(description).toHaveValue("Амралтын өдөр хамт ном уншдаг.");
-    expect(screen.getByRole("dialog", { name: "Миний гэр бүл" })).toBeInTheDocument();
+    expect(observation).toHaveValue("Шинэ орчинд хурдан дасдаг.");
+    expect(screen.getByRole("dialog", { name: "Миний зан араншин" })).toBeInTheDocument();
   });
 
   it("compares each question across ages and marks empty cells with a dash", async () => {
