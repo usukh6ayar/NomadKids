@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, CloudOff } from "lucide-react";
-import { chatRoomsSchema } from "@/components/chat/chat-widget";
+import { chatRoomsSchema, roomPreview } from "@/components/chat/chat-widget";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { formatRelative, fullName } from "@/lib/format";
@@ -82,7 +82,7 @@ export function DashboardChatPreview() {
                       ) : null}
                     </span>
                     <span className="block truncate text-caption text-muted">
-                      {room.lastMessage?.body ?? `${room.name} · ${room.memberCount} гишүүн`}
+                      {roomPreview(room.lastMessage, `${room.name} · ${room.memberCount} гишүүн`)}
                     </span>
                   </span>
                   {room.unreadCount > 0 ? (

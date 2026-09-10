@@ -1,10 +1,25 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  UploadedFiles,
+  UseGuards,
+  UseInterceptors,
+} from "@nestjs/common";
+import { FilesInterceptor } from "@nestjs/platform-express";
+import { RateLimit, RateLimitGuard } from "../common/rate-limit/rate-limit.guard";
 import { sendChatMessageSchema, type SendChatMessageDto } from "@kinder/contracts";
 import { z } from "zod";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
 import type { Actor } from "../authz/actor";
-import { ChatService } from "./chat.service";
+import { CHAT_MAX_UPLOAD_BYTES, MAX_CHAT_IMAGES } from "../media/upload-validation";
+import { ChatService, type ChatUpload } from "./chat.service";
 
 /**
  * A room key in a URL path.
@@ -35,6 +50,7 @@ const historyQuerySchema = z.object({ before: z.string().datetime().optional() }
  * The controller parses, calls one service method and shapes nothing — §2.1.
  */
 @Controller("chat")
+@UseGuards(RateLimitGuard)
 export class ChatController {
   constructor(private readonly service: ChatService) {}
 
@@ -65,13 +81,46 @@ export class ChatController {
     return this.service.listMessages(actor, params.roomKey, query.before);
   }
 
+  /**
+   * Text, photographs, or both.
+   *
+   * ★ The same route it always was. `FilesInterceptor` leaves a non-multipart
+   * request alone, so every existing caller — the web composer's JSON post,
+   * and `chat.test.ts` — reaches the same method unchanged. A second
+   * `/messages/with-images` route would have been two paths to authorise and
+   * two to keep in step.
+   *
+   * ★★ The multer limits are a ceiling, not the validation. They stop 200 MB
+   * from being read into memory before anything looks at it;
+   * `validateImageUpload` is what decides whether the bytes are an image, and
+   * it decides from their **content** (§1.6).
+   */
   @Post("rooms/:roomKey/messages")
+  /*
+   * ★ A limit this route did not need until 2026-09-09.
+   *
+   * It carried a 2000-character string, and a chat is meant to be typed in
+   * quickly. It now accepts four files of five megabytes and runs a sharp
+   * decode over each — on a 4 GB server that also has to keep about a gigabyte
+   * free for Chromium whenever a report generates. Every upload route in
+   * `MediaController` already carries one for the same reason.
+   *
+   * 120 an hour is well above anybody typing, and far below what it takes to
+   * hold the box down.
+   */
+  @RateLimit({ limit: 120, windowMs: 60 * 60 * 1000, byUser: true })
+  @UseInterceptors(
+    FilesInterceptor("images", MAX_CHAT_IMAGES, {
+      limits: { fileSize: CHAT_MAX_UPLOAD_BYTES, files: MAX_CHAT_IMAGES },
+    }),
+  )
   async send(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(roomParamSchema)) params: { roomKey: string },
     @Body(new ZodValidationPipe(sendChatMessageSchema)) body: SendChatMessageDto,
+    @UploadedFiles() images: ChatUpload[] | undefined,
   ) {
-    return this.service.send(actor, params.roomKey, body.body);
+    return this.service.send(actor, params.roomKey, body.body, images ?? []);
   }
 
   /** Moves this reader's cursor to now. No body — the time is the server's. */

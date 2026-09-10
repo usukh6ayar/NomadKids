@@ -87,24 +87,32 @@ function FoodOrders() {
         title="Хүнсний захиалга"
         actions={
           kindergartenId ? (
-            <Button size="sm" onClick={() => setCreating(true)}>
-              <Plus size={18} />
-              Захиалга үүсгэх
-            </Button>
+            <>
+              {/*
+                ★ The search sits in the header row — 2026-09-09, at the
+                client's request ("search хэсгийг header хэсэгт оруул"). It had
+                a row of its own under the title, which spent a whole line on
+                one control. `SearchField` is `flex-1` by design, so it is
+                given a width here: full on a phone, where the header wraps it
+                onto its own line anyway, and fixed beside the action button
+                from `sm` up.
+              */}
+              <div className="w-full sm:w-[240px]">
+                <SearchField
+                  label="Нийлүүлэгч, тэмдэглэлээр хайх"
+                  placeholder="Нийлүүлэгчээр хайх"
+                  value={query}
+                  onChange={setQuery}
+                />
+              </div>
+              <Button size="sm" onClick={() => setCreating(true)}>
+                <Plus size={18} />
+                Захиалга үүсгэх
+              </Button>
+            </>
           ) : null
         }
       />
-
-      {kindergartenId ? (
-        <div className="flex flex-wrap items-end gap-3">
-          <SearchField
-            label="Нийлүүлэгч, тэмдэглэлээр хайх"
-            placeholder="Нийлүүлэгчээр хайх"
-            value={query}
-            onChange={setQuery}
-          />
-        </div>
-      ) : null}
 
       {list.isLoading ? <LoadingState rows={3} /> : null}
       {list.isError ? <ErrorState description={errorMessage(list.error)} /> : null}

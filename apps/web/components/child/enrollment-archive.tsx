@@ -28,6 +28,7 @@ import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
+import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { formatDate, fullName, initials } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -271,6 +272,28 @@ function EnrollmentTimeline({
           ))}
         </ol>
       )}
+
+      {/*
+        ★ ESIS's own movement record, under this product's — 2026-09-10, at the
+        client's instruction: "хүүхэд дээр дараад орохад суралцсан түүх гэдэгт
+        шилжилтийн түүх гэдэг хэсэгт л харагдана".
+
+        The timeline above is built from `Enrollment` rows this kindergarten
+        wrote. `student/movement/v2` is the ministry's version of the same
+        history — enrolments, transfers, releases across every institution the
+        child has attended. Side by side is the point: a gap between them is
+        exactly what a director needs to see before a token goes live.
+
+        It renders nothing for a parent: `studentMovements` is not in a
+        guardian's ESIS service list, so `/esis/catalog` omits it.
+      */}
+      <div className="mt-8">
+        <EsisDataPanel
+          resource="studentMovements"
+          title="ЭСИС дэх шилжилтийн түүх"
+          description="Элсэлт, шилжилт, гаралт — ЭСИС-ийн бүртгэлээр"
+        />
+      </div>
     </section>
   );
 }

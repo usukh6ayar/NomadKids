@@ -187,10 +187,16 @@ function FundingRegister() {
    * who has already submitted it. CLAUDE.md §5 asks for a confirmation before
    * a delete; this is not a delete, but it is the same surprise.
    *
-   * It runs one source at a time because the API does: a rule set is per
-   * source, and "recalculate everything" would hide which of four claims just
-   * moved. When no source filter is set the button asks for one rather than
-   * guessing.
+   * ★★ It runs **one source at a time, by choice** — the API stopped requiring
+   * it on 2026-09-09, when `/finance` gained a month-end "run every source in
+   * force" (omit `source` and the service loops). This screen keeps asking.
+   *
+   * The difference is what the two screens are for. `/finance` is the month-end
+   * close, where the answer is always "all of them". This is the register an
+   * administrator opens to inspect and correct one claim, filtered to it, and
+   * quietly re-running the other three from a row-level confirmation would move
+   * figures nobody was looking at. So when no source filter is set the button
+   * asks for one rather than guessing.
    */
   const calculate = useMutation({
     mutationFn: (forSource: FundingSource) =>

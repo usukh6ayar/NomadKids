@@ -16,6 +16,7 @@ import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { useDebounced } from "@/lib/use-debounced";
+import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { ArchiveButton } from "@/components/ui/archive-button";
@@ -88,6 +89,26 @@ function Ingredients() {
         actions={
           kindergartenId ? (
             <>
+              {/*
+                ★ The search sits in the header row — 2026-09-09, at the
+                client's request ("search хэсгийг header хэсэгт оруул").
+
+                Only the search moves. The "Ангилал" select stays in the filter
+                row below, and the split is deliberate: searching is how you
+                find one thing you can already name, and it is the same control
+                on every screen in the product. A category filter is this
+                screen's own, and hoisting a screen-specific dropdown into a
+                header shared by 34 pages is how a header stops meaning
+                anything.
+              */}
+              <div className="w-full sm:w-[240px]">
+                <SearchField
+                  label="Орцын нэр, тэмдэглэлээр хайх"
+                  placeholder="Нэрээр хайх"
+                  value={query}
+                  onChange={setQuery}
+                />
+              </div>
               <Badge tone="peach">ESIS · NOT ENABLED</Badge>
               <Button size="sm" onClick={() => setCreating(true)}>
                 <Plus size={18} />
@@ -105,14 +126,6 @@ function Ingredients() {
       */}
       {kindergartenId ? (
         <div className="flex flex-wrap items-end gap-3">
-          <SearchField
-            label="Орцын нэр, тэмдэглэлээр хайх"
-            placeholder="Нэрээр хайх"
-            className="min-w-[200px]"
-            value={query}
-            onChange={setQuery}
-          />
-
           <Field label="Ангилал" className="min-w-[200px]">
             {({ id }) => (
               <Select id={id} value={category} onChange={(e) => setCategory(e.target.value)}>
@@ -157,6 +170,31 @@ function Ingredients() {
           <Pagination page={page} totalPages={list.data?.totalPages ?? 1} onPage={setPage} />
         </>
       ) : null}
+
+      {/*
+        ★ The ministry's own raw-material reference, under the kindergarten's
+        store card — 2026-09-09, at the client's request ("тогоочид хамаарах
+        бусад API-уудыг дууд ашигла").
+
+        The group list first and the materials under it, because that is the
+        order they nest in: `materialGroup` names the бүлэг each material in
+        `material` belongs to. A cook checking what a material is called in
+        ESIS is doing it while looking at their own list of the same thing,
+        which is the argument for the panel being on this screen rather than
+        behind an integrations menu.
+      */}
+      <EsisDataPanel
+        resource="foodMaterialGroups"
+        title="Түүхий эдийн бүлэг"
+        description="ESIS-ийн түүхий эдийн ангиллын лавлах"
+        autoRead
+      />
+      <EsisDataPanel
+        resource="foodMaterials"
+        title="Түүхий эд"
+        description="ESIS-ийн түүхий эдийн лавлах — хэмжих нэгж, бүлэг, илчлэг"
+        autoRead
+      />
 
       {creating && kindergartenId ? (
         <IngredientFormDialog

@@ -3110,6 +3110,27 @@ export const esisResourceKeySchema = z.enum([
   "livelihoodForm2",
   "foodKit",
   "foodKitProducts",
+  /*
+   * Added 2026-09-10 — суралцагчийн нэмэлт мэдээлэл, багш, хөтөлбөр, орчин.
+   * The three `…Save` keys are writes; every other one is a read.
+   */
+  "studentCheck",
+  "studentContacts",
+  "studentContactsSave",
+  "studentStatistics",
+  "studentStatisticsSave",
+  "studentCondition",
+  "studentConditionSave",
+  "teacherAcademicOrg",
+  "teacherMovements",
+  "groupsNextYear",
+  "programs",
+  "programStages",
+  "programPlans",
+  "programCourses",
+  "rooms",
+  "academicOrg",
+  "subjectAreas",
 ]);
 export type EsisResourceKey = z.infer<typeof esisResourceKeySchema>;
 
@@ -3126,6 +3147,14 @@ export const esisPreviewResourceKeySchema = z.enum([
   "foodMaterials",
   "foodProducts",
   "foodProductMaterials",
+  // Added 2026-09-10 — the institution-level reads a dry run can call without
+  // asking the operator for a group id, a date or a register number.
+  "studentContacts",
+  "groupsNextYear",
+  "programs",
+  "rooms",
+  "academicOrg",
+  "subjectAreas",
 ]);
 export type EsisPreviewResourceKey = z.infer<typeof esisPreviewResourceKeySchema>;
 
@@ -3335,6 +3364,27 @@ export const esisResourceReadSchema = z.object({
 export type EsisResourceRead = z.infer<typeof esisResourceReadSchema>;
 
 /**
+ * The answer to one write to ESIS.
+ *
+ * ★ No `rows` and no `RESULT`. A write returns whether the ministry accepted
+ * the record, not a copy of it — echoing the payload back would put a family's
+ * household details on screen a second time with nothing gained, and would
+ * invite a reader to take the echo as confirmation ESIS stored it.
+ */
+export const esisWriteResultSchema = z.object({
+  resource: esisResourceKeySchema,
+  source: z.enum(["MOCK", "LIVE"]),
+  status: z.enum(["SUCCEEDED", "FAILED"]),
+  errorCode: z.string().nullable(),
+  durationMs: z.number().nullable(),
+  response: z.object({
+    SUCCESS_CODE: z.number(),
+    RESPONSE_MESSAGE: z.string(),
+  }),
+});
+export type EsisWriteResult = z.infer<typeof esisWriteResultSchema>;
+
+/**
  * Safe ESIS student output used while registering a child.
  *
  * This deliberately contains the catalog row after field minimization, so
@@ -3496,6 +3546,16 @@ export const chatRoomSchema = z.object({
       body: z.string(),
       createdAt: z.string(),
       author: personRefSchema.nullish(),
+      /**
+       * How many photographs the newest message carried.
+       *
+       * ★ A count, not the images. The room list draws a one-line preview, and
+       * `body` alone stopped being enough the moment a message could be a
+       * photograph with nothing typed — that row rendered an unread badge over
+       * an empty line. The list needs to know *that* there were pictures, not
+       * which; fetching their ids to render "📷" would be payload nobody reads.
+       */
+      mediaCount: z.number().default(0),
     })
     .nullable()
     .default(null),
@@ -3521,6 +3581,25 @@ export const chatAuthorSchema = personRefSchema.extend({
 });
 export type ChatAuthor = z.infer<typeof chatAuthorSchema>;
 
+/**
+ * One photograph on a message.
+ *
+ * ★ An id and a shape, never a URL. `MediaPurpose.CHAT_MESSAGE` lives in a
+ * private bucket like everything else (§1.4); the client builds
+ * `/media/:id`, which authorises against the room and redirects to a
+ * five-minute presigned URL.
+ *
+ * ★★ `width`/`height` are here so a bubble can reserve the right space before
+ * the bytes arrive. Without them a room jumps under the reader's thumb as each
+ * photograph loads, which on a phone means tapping the wrong message.
+ */
+export const chatMediaSchema = z.object({
+  id: uuidSchema,
+  width: z.number().nullable(),
+  height: z.number().nullable(),
+});
+export type ChatMedia = z.infer<typeof chatMediaSchema>;
+
 export const chatMessageSchema = z.object({
   id: uuidSchema,
   roomKey: z.string(),
@@ -3529,12 +3608,28 @@ export const chatMessageSchema = z.object({
   author: chatAuthorSchema.nullish(),
   /** Whether the signed-in reader wrote it — the client aligns their own right. */
   mine: z.boolean().default(false),
+  /**
+   * Up to four photographs, in the order they were attached.
+   *
+   * Defaulted rather than required, so a client written before this existed
+   * parses a message unchanged.
+   */
+  media: z.array(chatMediaSchema).default([]),
 });
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
 
-/** Bodies are bounded: a chat message is not a document. */
+/**
+ * Bodies are bounded: a chat message is not a document.
+ *
+ * ★ `body` became **optional** on 2026-09-09, when photographs arrived: a
+ * message may be a picture with nothing typed. What replaced the old
+ * `min(1)` is not a weaker rule but one this schema cannot express — a
+ * message must carry text *or* an image — and only the service knows how many
+ * files the request actually held. `ChatService.send` refuses the empty case,
+ * and `chat.test.ts` asserts it.
+ */
 export const sendChatMessageSchema = z.object({
-  body: z.string().trim().min(1, "Мессеж хоосон байна").max(2000),
+  body: z.string().trim().max(2000).optional(),
 });
 export type SendChatMessageDto = z.infer<typeof sendChatMessageSchema>;
 
@@ -4191,6 +4286,72 @@ export const childFinanceSchema = z.object({
   funding: z.array(childFundingRowSchema).optional(),
 });
 export type ChildFinance = z.infer<typeof childFinanceSchema>;
+
+// ── The accountant's board ──────────────────────────────────────────────────
+
+/**
+ * Анхаарах зүйл — one thing the board wants the accountant to look at.
+ *
+ * ★ Computed on the server, not assembled in the browser. "What needs
+ * attention" is a business rule — an unrun month, an unpaid arrear, funding
+ * still outstanding — and a screen that derived it from four other fields would
+ * be a second, quieter definition of the same rule the day a report disagrees.
+ *
+ * `href` is a route in this app, always internal, so the card can be pressed.
+ */
+export const financeAlertSchema = z.object({
+  key: z.string(),
+  tone: z.enum(["warn", "info"]),
+  title: z.string(),
+  detail: z.string(),
+  href: z.string(),
+});
+export type FinanceAlert = z.infer<typeof financeAlertSchema>;
+
+/**
+ * Нягтлангийн самбар — the screen an accountant lands on.
+ *
+ * ★ Not a second copy of `financeDashboardSchema`. That one answers §9's
+ * question — how do this month's funding and billing stand, broken out by who
+ * owes it — and it still renders inside `/finance`. This one answers the
+ * question above it: what arrived, who still owes, and what needs a decision
+ * today.
+ *
+ * ★★ There is no expenditure figure, and its absence is deliberate rather than
+ * pending. A recorded-outgoings ledger was built and removed on 2026-09-09 at
+ * the client's request; what a kindergarten *spends* is not in this product, so
+ * the board reports what it receives and is owed and does not imply a
+ * profit it cannot compute.
+ */
+export const financeBoardSchema = z.object({
+  month: z.string(),
+  income: z.object({
+    total: z.string(),
+    /** Families' payments against this month's invoices. */
+    parents: z.string(),
+    /** State funding actually received for the month. */
+    state: z.string(),
+    /** `approved − received` — confirmed by the state, not yet transferred. */
+    statePending: z.string(),
+  }),
+  unpaid: z.object({
+    /** Billed − paid for the month, clamped at zero. */
+    amount: z.string(),
+    invoices: z.number(),
+    /** Distinct children carrying a balance, across every month. */
+    children: z.number(),
+    overdueCount: z.number(),
+    overdueAmount: z.string(),
+  }),
+  meals: z.object({
+    total: z.string(),
+    perChild: z.string(),
+    children: z.number(),
+    fedDays: z.number(),
+  }),
+  alerts: z.array(financeAlertSchema).default([]),
+});
+export type FinanceBoard = z.infer<typeof financeBoardSchema>;
 
 // ── The financial reports — `нэмэлт.md` §16 ──────────────────────────────────
 

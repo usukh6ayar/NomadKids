@@ -689,6 +689,71 @@ fieldset {
  * chart. `print-color-adjust: exact` is honoured by Chrome and Safari; Firefox
  * needs the `-webkit-` spelling, which is why both are here.
  */
+/*
+ * A table that becomes a list of cards on a phone.
+ *
+ * ★ Opt-in, through `TableShell`'s `stacked` prop — 2026-09-10, when the
+ * client asked that ESIS data be readable "хойш гүйлгэхгүйгээр бүхэлдээ",
+ * pointing at `/settings`'s Ажилтны бүртгэл as the shape to copy.
+ *
+ * ★★ **Defined once here rather than as a string of utilities per table.**
+ * The first version of this lived inline in `esis-rows.tsx` as eight
+ * `max-md:` classes spread across the table, thead, tbody, tr and td. That
+ * worked for one table and would have been copied — wrongly, eventually —
+ * across the five other ESIS tables that need it. One rule, one data
+ * attribute, and the markup stays a plain semantic table at every width.
+ *
+ * ★★★ The label comes from `content: attr(data-label)`, so it exists in CSS
+ * and not in the document. A `<span class="md:hidden">` beside every value
+ * would put each record's text in the DOM twice — announced twice by a screen
+ * reader, and matched twice by `getByText`, which is how the first attempt at
+ * this failed `esis-fields.test.tsx`. Give every `Td` a `data-label`.
+ */
+@media (max-width: 47.99rem) {
+  [data-ui-table="stacked"] table,
+  [data-ui-table="stacked"] tbody,
+  [data-ui-table="stacked"] tr {
+    display: block;
+  }
+
+  /* The column headings are carried by each cell's own label instead. */
+  [data-ui-table="stacked"] thead {
+    display: none;
+  }
+
+  [data-ui-table="stacked"] tbody tr {
+    border-bottom: 1px solid var(--color-border);
+    padding: 0.875rem 0.875rem;
+  }
+
+  [data-ui-table="stacked"] tbody tr:last-child {
+    border-bottom: 0;
+  }
+
+  [data-ui-table="stacked"] td {
+    display: block;
+    border: 0;
+    padding: 0.125rem 0;
+    text-align: left;
+  }
+
+  [data-ui-table="stacked"] td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.125rem;
+    color: var(--color-muted);
+    font-size: var(--text-caption, 0.8125rem);
+  }
+
+  /*
+   * A cell spanning the row — an opened detail panel — keeps its own padding
+   * and must not grow a label it has no name for.
+   */
+  [data-ui-table="stacked"] td[colspan] {
+    padding: 0.75rem 0;
+  }
+}
+
 @media print {
   [data-print-hide] {
     display: none !important;

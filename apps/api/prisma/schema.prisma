@@ -255,6 +255,19 @@ enum MediaPurpose {
   /// authorised through `canAccessChild` exactly like an album photo, and it
   /// deliberately does NOT join the tenant-image set above.
   MILESTONE
+  /// A photograph attached to a chat message.
+  ///
+  /// ★★ It is **not** a tenant image, and that distinction is the whole
+  /// security design of the feature. `TENANT_IMAGE_PURPOSES` is readable by
+  /// anyone holding a membership in the file's kindergarten; a chat photograph
+  /// belongs to one *room*. A guardian whose child is in group A holds a
+  /// perfectly good membership and must not read a photograph posted in group
+  /// B's room.
+  ///
+  /// So `MediaService` authorises it through `ChatAccessService` against the
+  /// owning message's `roomKey` — the same authority that decides whether the
+  /// message may be read, answering the same 404 (§1.7).
+  CHAT_MESSAGE
 }
 
 /// Who a photograph came from — RFP §4.4, "багшийн, эцэг эхийн эсвэл хамтын".
@@ -3373,6 +3386,9 @@ model MediaFile {
   /// Set only for `ATTENDANCE_ATTACHMENT`; unique because one leave request
   /// accepts one supporting document.
   attendanceRequestId String? @unique @db.Uuid
+  /// Set for `CHAT_MESSAGE` — up to four per message. Not unique, unlike the
+  /// line above: a message may carry several photographs, ordered by `order`.
+  chatMessageId       String? @db.Uuid
   order               Int     @default(0)
 
   purpose MediaPurpose
@@ -3442,6 +3458,7 @@ model MediaFile {
   milestone          Milestone?          @relation("MilestoneMedia", fields: [milestoneId], references: [id], onDelete: Cascade)
   incident           SafetyIncident?     @relation("IncidentMedia", fields: [incidentId], references: [id], onDelete: Cascade)
   attendanceRequest  AttendanceRequest?  @relation("AttendanceRequestAttachment", fields: [attendanceRequestId], references: [id], onDelete: Cascade)
+  chatMessage        ChatMessage?        @relation("ChatMessageMedia", fields: [chatMessageId], references: [id], onDelete: Cascade)
   uploadedBy         User?               @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
   childPhotoOf       Child?              @relation("ChildPhoto")
   comparisonEarlier  ArtworkComparison[] @relation("ComparisonEarlier")
@@ -3455,6 +3472,8 @@ model MediaFile {
   contractPdf        Contract?           @relation("ContractPdf")
 
   @@unique([childId, albumCoverAge])
+  /// A message's photographs, in the order they were attached.
+  @@index([chatMessageId, order])
   @@index([childId, purpose, uploadedAt(sort: Desc)])
   @@index([kindergartenId, uploadedAt(sort: Desc)])
   @@index([observationId, order])
@@ -3747,6 +3766,9 @@ model ChatMessage {
   kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   group        Group?       @relation(fields: [groupId], references: [id], onDelete: Cascade)
   author       User         @relation("ChatAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  /// Up to four photographs, `MediaPurpose.CHAT_MESSAGE`. Read through
+  /// `/media/:id`, never by URL — §1.4.
+  media        MediaFile[]  @relation("ChatMessageMedia")
 
   /// The only access pattern: one room, newest first, paginated (§3.4).
   @@index([roomKey, createdAt(sort: Desc)])

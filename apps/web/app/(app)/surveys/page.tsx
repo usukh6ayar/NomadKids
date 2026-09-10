@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { z } from "zod";
-import { ListChecks, Plus, Search, Users } from "lucide-react";
+import { ChevronRight, ListChecks, Plus, Search, Users } from "lucide-react";
 import {
   SURVEY_CATEGORY_LABEL,
   SURVEY_KIND_HINT,
@@ -129,71 +129,60 @@ function SurveysList() {
         }
       />
 
-      {/*
-        ★ Search on its own row, chips on theirs — at every width.
-
-        They shared a row from `lg` up in the first pass and it measured badly:
-        six chips need about 900px, so beside a 320px field they wrapped, and
-        the field sat vertically centred against a two-line block with a gap the
-        width of a card between them. Stacked, the field is capped where a
-        two-word query needs it and the chips get a full row to fit on one line.
-      */}
-      <div className="relative lg:w-[320px]">
-        <Search
-          size={18}
-          aria-hidden="true"
-          className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
-        />
-        <Input
-          type="search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Судалгаа хайх"
-          aria-label="Судалгаа хайх"
-          className="pl-11"
-        />
-      </div>
-
-      {/*
-        `overflow-x-auto` on a phone, wrapping from `lg`: six chips do not fit a
-        375px row, and a horizontal scroller is how the rest of this product
-        already handles that (`SurveysTab`'s child switcher). The negative
-        margin lets the scroller bleed to the screen edge so a half-visible chip
-        reads as "there is more", rather than stopping short inside the page
-        padding where it reads as the end of the row.
-      */}
-      <FilterChipRow label="Судалгааны ангиллаар шүүх">
-        <FilterChip active={category === null} onClick={() => setCategory(null)}>
-          Бүгд
-        </FilterChip>
-        {SURVEY_CATEGORIES.map((key) => (
-          <FilterChip key={key} active={category === key} onClick={() => setCategory(key)}>
-            {SURVEY_CATEGORY_LABEL[key]}
-          </FilterChip>
-        ))}
-      </FilterChipRow>
-
-      {/*
-        An underlined tab strip rather than a second row of pills: the chips
-        above are already pills, and two pill rows in a column read as ten
-        equal filters instead of "which set, then narrowed how".
-      */}
-      <div
-        role="tablist"
-        aria-label="Судалгааны төлөв"
-        className="flex gap-6 border-b border-border"
+      <section
+        aria-label="Судалгааны удирдлага"
+        data-ui="communications-toolbar"
+        className="overflow-hidden rounded-card border border-border bg-surface shadow-sm"
       >
-        {TABS.map((t) => (
-          <TabPill
-            key={t.key}
-            active={tab === t.key}
-            count={countFor(t.key)}
-            onClick={() => setTab(t.key)}
+        <div className="flex flex-col gap-3 bg-sunken p-1.5 sm:flex-row sm:items-center sm:justify-between">
+          <div
+            role="tablist"
+            aria-label="Судалгааны төлөв"
+            data-ui="communication-tabs"
+            className="grid grid-cols-2 gap-1 sm:w-[360px]"
           >
-            {t.label}
-          </TabPill>
-        ))}
-      </div>
+            {TABS.map((t) => (
+              <TabPill
+                key={t.key}
+                active={tab === t.key}
+                count={countFor(t.key)}
+                onClick={() => setTab(t.key)}
+              >
+                {t.label}
+              </TabPill>
+            ))}
+          </div>
+
+          <div className="relative m-1 mt-0 sm:mt-1 sm:w-[320px]">
+            <Search
+              size={18}
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
+            />
+            <Input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Судалгаа хайх"
+              aria-label="Судалгаа хайх"
+              className="border-border-soft bg-surface pl-11"
+            />
+          </div>
+        </div>
+
+        <div className="border-t border-border-soft p-3 sm:p-4">
+          <FilterChipRow label="Судалгааны ангиллаар шүүх" scroll>
+            <FilterChip active={category === null} onClick={() => setCategory(null)}>
+              Бүгд
+            </FilterChip>
+            {SURVEY_CATEGORIES.map((key) => (
+              <FilterChip key={key} active={category === key} onClick={() => setCategory(key)}>
+                {SURVEY_CATEGORY_LABEL[key]}
+              </FilterChip>
+            ))}
+          </FilterChipRow>
+        </div>
+      </section>
 
       {surveys.isLoading ? <LoadingState rows={3} /> : null}
       {surveys.isError ? <ErrorState description={errorMessage(surveys.error)} /> : null}
@@ -284,14 +273,21 @@ function TabPill({
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        // `-mb-px` pulls the underline onto the container's own hairline so the
-        // two are one line rather than two a pixel apart.
-        "-mb-px min-h-[44px] border-b-2 px-1 text-lead font-semibold transition-colors",
-        active ? "border-primary text-primary" : "border-transparent text-muted hover:text-ink",
+        "flex min-h-[48px] items-center justify-center rounded-control border px-3 text-body font-semibold transition-all",
+        active
+          ? "border-border bg-surface text-primary shadow-sm"
+          : "border-transparent text-muted hover:bg-surface/70 hover:text-ink",
       )}
     >
       {children}
-      <span className="ml-2 text-body font-medium tabular-nums text-faint">{count}</span>
+      <span
+        className={cn(
+          "ml-2 inline-flex min-w-6 items-center justify-center rounded-pill px-1.5 text-caption font-bold tabular-nums",
+          active ? "bg-primary-soft text-primary" : "bg-canvas text-faint",
+        )}
+      >
+        {count}
+      </span>
     </button>
   );
 }
@@ -319,23 +315,27 @@ function SurveyCard({ survey }: { survey: z.infer<typeof surveySchema> }) {
     <Link href={`/surveys/${survey.id}`} className="group h-full">
       <Card
         pad="roomy"
-        className="flex h-full flex-col gap-3 transition-colors hover:border-primary"
+        className="flex h-full min-h-[260px] flex-col gap-4 transition-all group-hover:-translate-y-0.5 group-hover:border-primary group-hover:shadow-md"
       >
-        <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="flex items-start justify-between gap-3">
           <span
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-caption font-semibold",
+              "grid size-12 shrink-0 place-items-center rounded-control",
               SURVEY_TONE_BG[meta.tone],
             )}
+            aria-hidden="true"
           >
-            <meta.Icon size={14} aria-hidden="true" />
-            {meta.label}
+            <meta.Icon size={22} />
           </span>
-          <Badge tone={STATUS_TONE[survey.status]}>{STATUS_LABEL[survey.status]}</Badge>
+
+          <div className="flex flex-wrap justify-end gap-1.5">
+            <Badge tone={meta.tone}>{meta.label}</Badge>
+            <Badge tone={STATUS_TONE[survey.status]}>{STATUS_LABEL[survey.status]}</Badge>
+          </div>
         </div>
 
         <div className="min-w-0 flex-1">
-          <h3 className="text-lead font-semibold leading-[1.35] text-ink group-hover:underline">
+          <h3 className="text-lead font-semibold leading-[1.35] text-ink transition-colors group-hover:text-primary">
             {survey.title}
           </h3>
           {survey.description ? (
@@ -369,7 +369,14 @@ function SurveyCard({ survey }: { survey: z.infer<typeof surveySchema> }) {
             <ListChecks size={14} aria-hidden="true" />
             {questionCount} асуулт
           </span>
-          <span className="ml-auto tabular-nums">{formatDate(date)}</span>
+          <span className="ml-auto inline-flex items-center gap-1.5 tabular-nums">
+            {formatDate(date)}
+            <ChevronRight
+              size={16}
+              className="text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
+              aria-hidden="true"
+            />
+          </span>
         </div>
       </Card>
     </Link>

@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { AuditRepository } from "../audit/audit.repository";
 import { ChildAccessService } from "../authz/child-access.service";
+import { ChatAccessService } from "../authz/chat-access.service";
 import { TenantAccessService } from "../authz/tenant-access.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { isGuardianOf } from "../authz/child-access";
@@ -79,6 +80,13 @@ export class MediaService {
     private readonly storage: StorageService,
     private readonly childAccess: ChildAccessService,
     private readonly tenants: TenantAccessService,
+    /*
+     * ★ The room authority, for `CHAT_MESSAGE` photographs. It lives in the
+     * `@Global` `AuthzModule`, so this needs no import wiring — §1.1's rule
+     * that authorization lives in exactly one module is what makes asking it
+     * cheaper than copying it.
+     */
+    private readonly chatAccess: ChatAccessService,
     private readonly notifications: NotificationsService,
     private readonly audit: AuditRepository,
   ) {}
@@ -358,6 +366,38 @@ export class MediaService {
     if (media.notificationId) {
       const readable = await this.notifications.isReadable(actor, media.notificationId);
       if (!readable) throw new NotFoundException();
+
+      await this.audit.append({
+        action: "DOWNLOAD",
+        kindergartenId: media.kindergartenId,
+        actorUserId: actor.userId,
+        objectType: "MediaFile",
+        objectId: mediaId,
+      });
+
+      return this.storage.presignedGetUrl(media.storageKey, media.originalName);
+    }
+
+    /*
+     * ★★ A chat photograph — authorised by the ROOM, never by the tenant.
+     *
+     * This branch exists because the obvious shortcut is a leak. Putting
+     * `CHAT_MESSAGE` in `TENANT_IMAGE_PURPOSES` below would make it readable by
+     * anyone holding a membership in the kindergarten — and a guardian whose
+     * child is in group A holds one. They would be able to read a photograph
+     * posted in group B's room, of somebody else's children.
+     *
+     * So the authority is `ChatAccessService`, the same one that decides
+     * whether the message may be read, answering the same 404 (§1.7). One
+     * question, one place (§1.1).
+     */
+    if (media.purpose === "CHAT_MESSAGE") {
+      // A photograph whose message was deleted, or which never had one, is not
+      // readable: there is no room to ask about.
+      if (!media.chatMessage || media.chatMessage.deletedAt) throw new NotFoundException();
+
+      // Throws 404 for a room the actor is not in.
+      await this.chatAccess.assertMember(actor, media.chatMessage.roomKey);
 
       await this.audit.append({
         action: "DOWNLOAD",

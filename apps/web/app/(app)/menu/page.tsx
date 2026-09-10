@@ -29,6 +29,7 @@ import {
   type DishDraft,
   type RecipeOption,
 } from "@/components/menu/menu-dish-editor";
+import { useEsisFoodProducts } from "@/components/esis/use-esis-food-products";
 import { formatDate, formatMonthLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -401,6 +402,7 @@ function MenuDayCard({
 }) {
   const queryClient = useQueryClient();
   const toast = useToast();
+  const esisProducts = useEsisFoodProducts();
   const [draftDishes, setDraftDishes] = useState<DishDraft[]>(() => toDraft(day?.dishes ?? []));
   const [dirty, setDirty] = useState(false);
 
@@ -546,7 +548,16 @@ function MenuDayCard({
         onSave={() => save.mutate()}
         saving={save.isPending}
         error={save.isError ? errorMessage(save.error) : null}
-        kitchen={{ kindergartenId, recipes }}
+        /*
+          ★ ESIS-ийн бэлэн бүтээгдэхүүн joins the same picker as the local
+          cards — 2026-09-09, at the client's request ("тогоочийн хэсэгт бэлэн
+          хоол сонгох хэсэгт API-г дуудах").
+
+          `useEsisFoodProducts` reads the role-scoped catalog first, so a
+          teacher opening this screen gets an empty list and a picker that
+          looks exactly as it did before. Nothing here has to know that.
+        */
+        kitchen={{ kindergartenId, recipes, esisProducts }}
       />
 
       {isKitchen ? (

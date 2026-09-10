@@ -26,18 +26,49 @@ export function TableShell({
   caption,
   minWidth = "min-w-[860px]",
   className,
+  tableClassName,
+  stacked = false,
 }: {
   children: ReactNode;
   /** Screen-reader only — what this table is of. */
   caption: string;
   /** Below this the wrapper scrolls rather than the columns squeezing. */
   minWidth?: string;
+  /** Goes on the wrapping `Card`. */
   className?: string;
+  /**
+   * Goes on the `<table>` itself.
+   *
+   * ★ Separate from `className`, because the two are not interchangeable and
+   * the difference is invisible in a diff. `className` lands on the Card;
+   * `table-fixed` there does nothing at all, and a caller who wanted fixed
+   * layout gets auto layout plus whatever `truncate` they put on the cells —
+   * which does not ellipse, it pushes the table past its container and hands
+   * the scroll back to `overflow-x-auto`. `esis-rows.tsx` was written that way
+   * for exactly as long as it took to look.
+   */
+  tableClassName?: string;
+  /**
+   * Below `md`, lay the rows out as cards instead of a scrolling grid.
+   *
+   * ★ The rule lives in `globals.css` under `[data-ui-table="stacked"]`, not
+   * here — see its note for why it is one definition rather than a string of
+   * utilities per table. Every `Td` in a stacked table needs a `data-label`,
+   * which is what the phone layout shows in place of the hidden column head.
+   *
+   * ★★ Pair it with `minWidth="min-w-0"`. A stacked table has nothing to
+   * scroll on a phone, and a pixel floor left behind would put the horizontal
+   * scrollbar back on the tablet widths where the table is still a table.
+   */
+  stacked?: boolean;
 }) {
   return (
-    <Card data-ui-table="true" className={cn("overflow-hidden p-0", className)}>
+    <Card
+      data-ui-table={stacked ? "stacked" : "true"}
+      className={cn("overflow-hidden p-0", className)}
+    >
       <div className="overflow-x-auto">
-        <table className={cn("w-full border-collapse text-body", minWidth)}>
+        <table className={cn("w-full border-collapse text-body", minWidth, tableClassName)}>
           <caption className="sr-only">{caption}</caption>
           {children}
         </table>

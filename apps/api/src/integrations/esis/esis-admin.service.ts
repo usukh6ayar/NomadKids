@@ -11,7 +11,7 @@ import { TenantAccessService } from "../../authz/tenant-access.service";
 import type { Actor } from "../../authz/actor";
 import { EsisError } from "./esis.client";
 import { ESIS_RESOURCE_CATALOG, esisServicesForActor, type EsisEndpointKey } from "./esis.catalog";
-import type { EsisPreviewDto, EsisReadDto, UpdateEsisMappingDto } from "./esis.dto";
+import type { EsisPreviewDto, EsisReadDto, EsisWriteDto, UpdateEsisMappingDto } from "./esis.dto";
 import { ESIS_FIELDS, ingestedFieldNames } from "./esis.fields";
 import { EsisRepository } from "./esis.repository";
 import { EsisService, esisReaderParams } from "./esis.service";
@@ -350,6 +350,89 @@ export class EsisAdminService {
    * has an ESIS mapping. The two configuration failures below are only
    * reachable by someone who already administers this tenant.
    */
+  /**
+   * One write to ESIS, for the "ЭСИС рүү илгээх" button on a child's record.
+   *
+   * ★ The same authorisation as a read, and deliberately so. `assertReadable`
+   * asks whether *this* actor may reach *this* service in *this* kindergarten,
+   * and the three write services are in the teacher's list beside the reads
+   * they belong to. A separate write check would be a second place deciding
+   * who may reach a service — the thing CLAUDE.md §1.1 exists to prevent.
+   *
+   * ★★ `institutionId` comes from the tenant's confirmed mapping, never from
+   * the request. See `esisWriteSchema`'s note.
+   *
+   * ★★★ The audit row is `UPDATE`, not `VIEW`, and it records the resource and
+   * the ESIS person the write was about — but not the payload. A household's
+   * income band and a family's living conditions are what these services
+   * carry, and copying them into an append-only table would keep, forever,
+   * exactly the material `ESIS_REQUEST.md` restricts us to passing through.
+   */
+  async write(actor: Actor, kindergartenId: string, dto: EsisWriteDto) {
+    const { institutionId } = await this.assertReadable(actor, kindergartenId, dto.resource);
+
+    const body = { ...dto.payload, institutionId: Number(institutionId) };
+    const personId = typeof dto.payload.personId === "number" ? dto.payload.personId : null;
+
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "EsisResource",
+      objectId: dto.resource,
+      metadata: { resource: dto.resource, personId },
+    });
+
+    try {
+      const response = await this.esisWrite(dto.resource, body);
+      return {
+        resource: dto.resource,
+        source: response.source,
+        status: "SUCCEEDED" as const,
+        errorCode: null,
+        durationMs: response.durationMs,
+        response: {
+          SUCCESS_CODE: 200,
+          RESPONSE_MESSAGE: response.source === "MOCK" ? "DEMO_SUCCESS" : "SUCCESS",
+        },
+      };
+    } catch (error) {
+      return {
+        resource: dto.resource,
+        source: this.esis.isDemoMode ? ("MOCK" as const) : ("LIVE" as const),
+        status: "FAILED" as const,
+        errorCode: safeErrorCode(error),
+        durationMs: null,
+        response: { SUCCESS_CODE: 0, RESPONSE_MESSAGE: "FAILED" },
+      };
+    }
+  }
+
+  /**
+   * Routes a write key to its own typed method.
+   *
+   * ★ A `switch` rather than a lookup table, because each upload schema has a
+   * different shape and the parse belongs with the send. `EsisService` does
+   * the parsing — the schemas are `.strict()`, so a key this product invented
+   * fails here rather than at the ministry.
+   */
+  private esisWrite(resource: EsisWriteDto["resource"], body: Record<string, unknown>) {
+    switch (resource) {
+      case "studentContactsSave":
+        return this.esis.saveStudentContacts(
+          body as Parameters<EsisService["saveStudentContacts"]>[0],
+        );
+      case "studentStatisticsSave":
+        return this.esis.saveStudentStatistics(
+          body as Parameters<EsisService["saveStudentStatistics"]>[0],
+        );
+      case "studentConditionSave":
+        return this.esis.saveStudentCondition(
+          body as Parameters<EsisService["saveStudentCondition"]>[0],
+        );
+    }
+  }
+
   private async assertReadable(actor: Actor, kindergartenId: string, resource?: EsisEndpointKey) {
     /*
      * ★ Tenant first, then the service — 2026-09-09.
@@ -566,6 +649,14 @@ export class EsisAdminService {
       foodMaterials: () => this.esis.foodMaterials(),
       foodProducts: () => this.esis.foodProducts(),
       foodProductMaterials: () => this.esis.foodProductMaterials(),
+      // Added 2026-09-10 with the six new institution-level reads that need no
+      // operator input — which is exactly what `ESIS_PREVIEW_RESOURCES` means.
+      studentContacts: () => this.esis.studentContacts(institutionId),
+      groupsNextYear: () => this.esis.groupsNextYear(institutionId),
+      programs: () => this.esis.programs(institutionId),
+      rooms: () => this.esis.rooms(institutionId),
+      academicOrg: () => this.esis.academicOrg(institutionId),
+      subjectAreas: () => this.esis.subjectAreas(institutionId),
     };
     return calls[resource]();
   }

@@ -99,7 +99,7 @@ describe("ESIS administration authorization", () => {
     );
 
     expect(own.status).toBe(200);
-    expect(own.body.endpoints).toHaveLength(22);
+    expect(own.body.endpoints).toHaveLength(39);
     expect(other.status).toBe(404);
   });
 
@@ -234,7 +234,7 @@ describe("role-scoped ESIS catalog", () => {
     const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
 
     expect(res.status).toBe(200);
-    expect(res.body.endpoints).toHaveLength(22);
+    expect(res.body.endpoints).toHaveLength(39);
   });
 
   /*
@@ -244,7 +244,13 @@ describe("role-scoped ESIS catalog", () => {
    * it invites is a paste: a role's list widened by copying the one above it.
    * Naming each set here makes that a failing test rather than a quiet grant.
    */
-  it("gives a cook the one their screens draw", async () => {
+  /*
+   * ★ Seven since 2026-09-09 — every `cook/*` read, at the client's request.
+   * It was one, `foodProducts`. The two `POST cook/form1|form2 …/save`
+   * services are the assertion that matters here: a role gets the services its
+   * screens draw, and nothing in this product files a school's income return.
+   */
+  it("gives a cook every cook service, and no write", async () => {
     const cook = await createUser({ username: uniq("esis-cook") });
     await createMembership(cook.id, a.kindergarten.id, "COOK");
     const session = await login(app, cook.username);
@@ -252,7 +258,42 @@ describe("role-scoped ESIS catalog", () => {
     const res = await authed(request(server()).get(url(a.kindergarten.id)), session);
 
     expect(res.status).toBe(200);
-    expect(res.body.endpoints.map((e: { key: string }) => e.key)).toEqual(["foodProducts"]);
+    expect(res.body.endpoints.map((e: { key: string }) => e.key).sort()).toEqual(
+      [
+        "foodKit",
+        "foodKitProducts",
+        "foodMaterialGroups",
+        "foodMaterials",
+        "foodProductMaterials",
+        "foodProductTypes",
+        "foodProducts",
+      ].sort(),
+    );
+    // Not a roster service among them, and not the accountant's statements.
+    expect(res.body.endpoints.every((e: { method: string }) => e.method === "GET")).toBe(true);
+  });
+
+  /*
+   * ★★ The grant is one-directional. `foodKit` and `foodKitProducts` reached
+   * the cook's catalog on 2026-09-09 as the drill-down of a `foodProducts`
+   * row; nothing about that widened anybody else's list, and this is what
+   * would fail if a later edit pasted the cook's array into the teacher's.
+   */
+  it("keeps the cook's food services away from a teacher", async () => {
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), teacherA);
+
+    const keys = res.body.endpoints.map((e: { key: string }) => e.key);
+    for (const key of [
+      "foodKit",
+      "foodKitProducts",
+      "foodMaterialGroups",
+      "foodMaterials",
+      "foodProductMaterials",
+      "foodProductTypes",
+      "foodProducts",
+    ]) {
+      expect(keys).not.toContain(key);
+    }
   });
 
   it("gives an accountant the two income statements, and no roster", async () => {
@@ -269,7 +310,22 @@ describe("role-scoped ESIS catalog", () => {
     ]);
   });
 
-  it("gives a teacher the seven their screens draw, and no others", async () => {
+  /*
+   * ★ Seven until 2026-09-10, sixteen now — and the count is not the point.
+   *
+   * The nine added that day are the суралцагч services the client placed on a
+   * child's own record (registration check, guardians, household, living
+   * conditions, and the movement history on Суралцсан түүх), their three
+   * writes, and the teacher's own заах аргын нэгдэл on `/settings`. Every one
+   * is a service a teacher's screen draws, which is the rule this list has
+   * always been: not "what may a teacher see" in the abstract, but "what do
+   * their screens ask for".
+   *
+   * `teacherMovements` is the one deliberately withheld. It answers for the
+   * whole institution's appointments and releases — a director's question —
+   * and lives on `/admin/users`, so it must not appear here.
+   */
+  it("gives a teacher the sixteen their screens draw, and no others", async () => {
     const res = await authed(request(server()).get(url(a.kindergarten.id)), teacherA);
 
     expect(res.status).toBe(200);
@@ -282,8 +338,18 @@ describe("role-scoped ESIS catalog", () => {
         "studentInfo",
         "students",
         "teachers",
+        "studentMovements",
+        "studentCheck",
+        "studentContacts",
+        "studentContactsSave",
+        "studentStatistics",
+        "studentStatisticsSave",
+        "studentCondition",
+        "studentConditionSave",
+        "teacherAcademicOrg",
       ].sort(),
     );
+    expect(res.body.endpoints.map((e: { key: string }) => e.key)).not.toContain("teacherMovements");
   });
 
   /*

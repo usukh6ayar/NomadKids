@@ -346,7 +346,18 @@ function ApiScope({ data }: { data: EsisOverview }) {
         title="API эрхийн матриц"
         lede={`${data.endpoints.length} endpoint · ${totalOutputs} гаралтын талбар · ${totalInputs} илгээх талбар · ${data.deployment.demoMode ? "mock transport" : "live access"} идэвхтэй.`}
       />
-      <TableShell caption="ESIS endpoint-ийн ашиглалт ба эрхийн төлөв" minWidth="min-w-[1040px]">
+      <TableShell
+        caption="ESIS endpoint-ийн ашиглалт ба эрхийн төлөв"
+        /*
+          ★ 2026-09-10: the four tables on this screen all carried a pixel
+          floor (1040, 900, 760, 720) and therefore all scrolled sideways on
+          anything narrower than a laptop. `stacked` gives each row a
+          labelled block per column below `md` — the rule is defined once in
+          `globals.css`.
+        */
+        minWidth="min-w-0"
+        stacked
+      >
         <thead>
           <tr>
             <Th>API</Th>
@@ -360,19 +371,19 @@ function ApiScope({ data }: { data: EsisOverview }) {
         <tbody>
           {data.endpoints.map((endpoint) => (
             <tr key={endpoint.key}>
-              <Td>
+              <Td data-label="API">
                 <p className="font-semibold text-ink">{endpoint.slug}</p>
                 <p className="text-caption text-muted">{esisApiIdLabel(endpoint.apiId)}</p>
               </Td>
-              <Td>
+              <Td data-label="Мэдээлэл">
                 <p className="font-medium text-ink">{endpoint.name}</p>
                 <p className="text-caption text-muted">{DOMAIN_LABEL[endpoint.domain]}</p>
               </Td>
-              <Td>{endpoint.usage}</Td>
-              <Td>
+              <Td data-label="Ашиглах хэсэг">{endpoint.usage}</Td>
+              <Td data-label="Method">
                 <Badge tone={endpoint.method === "GET" ? "sky" : "peach"}>{endpoint.method}</Badge>
               </Td>
-              <Td>
+              <Td data-label="Талбар">
                 <p className="font-medium text-ink">
                   {endpoint.fields.filter((field) => field.io === "OUTPUT").length > 0
                     ? `${endpoint.fields.filter((field) => field.io === "OUTPUT").length} гаралт`
@@ -385,7 +396,7 @@ function ApiScope({ data }: { data: EsisOverview }) {
                     : "ESIS рүү илгээнэ"}
                 </p>
               </Td>
-              <Td>
+              <Td data-label="Эрх">
                 <Badge tone={accessTone(endpoint.accessStatus)}>
                   {endpoint.accessStatus.replace("_", " ")}
                 </Badge>
@@ -602,7 +613,7 @@ function EndpointFields({
 
         {view === "mapping" ? (
           <div className="mt-4">
-            <TableShell caption={`${endpoint.name} field mapping`} minWidth="min-w-[900px]">
+            <TableShell caption={`${endpoint.name} field mapping`} minWidth="min-w-0" stacked>
               <thead>
                 <tr>
                   <Th>ESIS field</Th>
@@ -614,14 +625,14 @@ function EndpointFields({
               <tbody>
                 {endpoint.mappings.map((mapping) => (
                   <tr key={mapping.sourceField}>
-                    <Td>
+                    <Td data-label="ESIS field">
                       <code>{mapping.sourceField}</code>
                     </Td>
-                    <Td>{mapping.targetField}</Td>
-                    <Td>
+                    <Td data-label="NomadKids model / field">{mapping.targetField}</Td>
+                    <Td data-label="Strategy">
                       <Badge tone={mappingTone(mapping.strategy)}>{mapping.strategy}</Badge>
                     </Td>
-                    <Td>{mapping.note}</Td>
+                    <Td data-label="Тайлбар">{mapping.note}</Td>
                   </tr>
                 ))}
               </tbody>
@@ -791,7 +802,7 @@ function RoleCoverage() {
         title="Role тус бүрийн ESIS харагдац"
         lede="Raw endpoint мэдээллийг зөвхөн удирдлага харна; бусад role ажлын хүрээндээ багасгасан мэдээлэл авна."
       />
-      <TableShell caption="Role бүрийн ESIS мэдээллийн хүрээ" minWidth="min-w-[760px]">
+      <TableShell caption="Role бүрийн ESIS мэдээллийн хүрээ" minWidth="min-w-0" stacked>
         <thead>
           <tr>
             <Th>Role</Th>
@@ -802,11 +813,11 @@ function RoleCoverage() {
         <tbody>
           {rows.map(([role, scope, status]) => (
             <tr key={role}>
-              <Td>
+              <Td data-label="Role">
                 <span className="font-semibold text-ink">{role}</span>
               </Td>
-              <Td>{scope}</Td>
-              <Td>
+              <Td data-label="Харагдах мэдээлэл">{scope}</Td>
+              <Td data-label="Төлөв">
                 <Badge
                   tone={status === "ENABLED" ? "mint" : status === "LIMITED" ? "sky" : "peach"}
                 >
@@ -995,7 +1006,7 @@ function RunHistory({ runs }: { runs: EsisOverview["recentRuns"] }) {
   return (
     <section aria-labelledby="esis-history-heading">
       <SectionHeader id="esis-history-heading" title="Сүүлийн ажиллагаа" />
-      <TableShell caption="ESIS dry-run ажиллагааны түүх" minWidth="min-w-[720px]">
+      <TableShell caption="ESIS dry-run ажиллагааны түүх" minWidth="min-w-0" stacked>
         <thead>
           <tr>
             <Th>Эхэлсэн</Th>
@@ -1008,13 +1019,13 @@ function RunHistory({ runs }: { runs: EsisOverview["recentRuns"] }) {
         <tbody>
           {runs.map((run) => (
             <tr key={run.id}>
-              <Td>{formatRelative(run.startedAt)}</Td>
-              <Td>{run.resources.length} багц</Td>
-              <Td>{run.initiatedBy}</Td>
-              <Td>
+              <Td data-label="Эхэлсэн">{formatRelative(run.startedAt)}</Td>
+              <Td data-label="Мэдээллийн багц">{run.resources.length} багц</Td>
+              <Td data-label="Ажиллуулсан">{run.initiatedBy}</Td>
+              <Td data-label="Эх үүсвэр">
                 <Badge tone={run.mode === "MOCK" ? "sun" : "mint"}>{run.mode}</Badge>
               </Td>
-              <Td>
+              <Td data-label="Төлөв">
                 <RunStatus status={run.status} />
               </Td>
             </tr>

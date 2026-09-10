@@ -35,7 +35,22 @@ body:has([data-app-theme="teacher"]) {
   --workspace-button-start: #2582eb;
   --workspace-button-end: #3d9cf5;
   --workspace-button-hover: #1d73d3;
-  --workspace-background: linear-gradient(135deg, #f7fbff 0%, #f3f8fb 58%, #f7fbf6 100%);
+  /*
+   * ★★★★ Plain white — 2026-09-09, at the client's instruction: "яг нь цав
+   * цагаан өнгөтэй болго fff өнгө. сонин шаргал цагаан байгаад байна."
+   *
+   * Every shell opened on a tinted gradient. Read one at a time they were
+   * pleasant; read as a set they were six slightly different off-whites, and
+   * the warm ones — the kitchen's ended on `#fff9e8` — do go yellow next to a
+   * white card. White is the one background that cannot be *slightly* wrong.
+   *
+   * ★ A card is still legible on it. `[data-ui="card"]` carries `border` and
+   * `shadow-sm` as well as `bg-surface`, so it is separated by its edge rather
+   * than by a tint — flatter than before, and deliberate. Each role keeps its
+   * identity in `--color-primary` and `--workspace-accent`, which is where a
+   * workspace's colour was always doing the work.
+   */
+  --workspace-background: #ffffff;
 }
 
 body:has([data-app-theme="admin"]) {
@@ -53,25 +68,80 @@ body:has([data-app-theme="admin"]) {
   --workspace-button-start: #236da8;
   --workspace-button-end: #2f8eba;
   --workspace-button-hover: #174f7d;
-  --workspace-background: linear-gradient(120deg, #f4f8fb 0%, #eef7f7 100%);
+  --workspace-background: #ffffff;
 }
 
+/*
+ * ★★ The parent workspace turned blue — 2026-09-09, at the client's request:
+ * "selected ntr хэсгүүдийг ягаан биш цэнхэр болгоод өг".
+ *
+ * It was the only shell of the six with a warm accent (`#d65f52`, a coral that
+ * reads as pink), and every selected state derives from this token family —
+ * the active nav item, selected pills, checked controls, focus rings, filled
+ * buttons. Changing the selected states alone would have put two accent
+ * colours on one screen, so the family moves together.
+ *
+ * ★ `#1d4ed8` rather than the `#2563eb` first proposed, and the reason is
+ * measurable rather than aesthetic. `--color-primary` on `--color-primary-soft`
+ * is the pairing `globals.css` singles out as the one to watch, and it
+ * documents **6.16:1** there. `#2563eb` on `#eff6ff` gives 4.75:1 — it passes
+ * AA, but it would have made this the worst-contrasting shell in the product
+ * for the sake of a shade nobody asked for by name. `#1d4ed8` on `#eff6ff` is
+ * exactly that documented 6.16:1, because it is the same base blue.
+ *
+ * ★★★ The canvas went cool a few hours later, and the reason arrived rather
+ * than being argued: the client supplied the sky artwork below. A warm blush
+ * (`#fff8f7`) behind a pale-blue sky is the one pairing that would have read
+ * as a mistake, so `canvas`, `sunken` and the two borders moved to the same
+ * blue family as the image. `--color-ink` on the new canvas measures 9.45:1 —
+ * nothing was traded for this.
+ *
+ * What still keeps a family's screen from looking like the administrator's is
+ * the artwork itself, which is a stronger identity than a 3% tint ever was.
+ */
 body:has([data-app-theme="parent"]) {
-  --color-canvas: #fff8f7;
-  --color-sunken: #fff1ee;
-  --color-border: #ecdeda;
-  --color-border-soft: #f5e9e6;
+  --color-canvas: #f4f8fd;
+  --color-sunken: #eaf2fb;
+  --color-border: #d9e5f2;
+  --color-border-soft: #eaf1f8;
   --color-ink: #3d405b;
-  --color-primary: #d65f52;
-  --color-primary-strong: #a94137;
-  --color-primary-hover: #bc4b40;
-  --color-primary-soft: #fff0ed;
-  --workspace-accent: #d65f52;
+  --color-primary: #1d4ed8;
+  --color-primary-strong: #1e40af;
+  --color-primary-hover: #1e40af;
+  --color-primary-soft: #eff6ff;
+  --workspace-accent: #1d4ed8;
   --workspace-accent-secondary: #55a883;
-  --workspace-button-start: #d65f52;
-  --workspace-button-end: #e68165;
-  --workspace-button-hover: #bc4b40;
-  --workspace-background: linear-gradient(120deg, #fff8f7 0%, #f3fbf8 100%);
+  --workspace-button-start: #1d4ed8;
+  --workspace-button-end: #3b6fe0;
+  --workspace-button-hover: #1e40af;
+  /*
+   * ★★★ The client's own artwork — эвэр угалз cloud scrolls on a pale sky,
+   * supplied 2026-09-09 as `30.png` (landscape) and `31.png` (portrait).
+   *
+   * White underneath, not a tint. The images fade to `#ffffff` at their bottom
+   * edge (sampled, not guessed), so a page taller than the artwork continues
+   * into white with no seam — which is what lets `100% auto` be used instead
+   * of `cover`. `cover` on a long page would scale the clouds up until they
+   * were the size of cards.
+   *
+   * ★ No `background-attachment: fixed`. It is the obvious way to hold the sky
+   * still while a parent scrolls, and it janks badly on mobile Safari — on the
+   * one shell whose readers are almost entirely on phones.
+   */
+  --workspace-background: #ffffff url("/background/parent-mobile.webp") top center / 100% auto
+    no-repeat;
+}
+
+/*
+ * The landscape crop from `lg` up, the same breakpoint `login/page.tsx`
+ * switches its own pair on. The portrait artwork stretched across a desktop
+ * would put four clouds on a 1400px band; the landscape one is drawn for it.
+ */
+@media (min-width: 1024px) {
+  body:has([data-app-theme="parent"]) {
+    --workspace-background: #ffffff url("/background/parent-desktop.webp") top center / 100% auto
+      no-repeat;
+  }
 }
 
 body:has([data-app-theme="kitchen"]) {
@@ -89,7 +159,7 @@ body:has([data-app-theme="kitchen"]) {
   --workspace-button-start: #2d8055;
   --workspace-button-end: #4a9c68;
   --workspace-button-hover: #205f3f;
-  --workspace-background: linear-gradient(120deg, #f5faf6 0%, #fff9e8 100%);
+  --workspace-background: #ffffff;
 }
 
 body:has([data-app-theme="finance"]) {
@@ -107,7 +177,7 @@ body:has([data-app-theme="finance"]) {
   --workspace-button-start: #167b83;
   --workspace-button-end: #2f9a9c;
   --workspace-button-hover: #0f5c63;
-  --workspace-background: linear-gradient(120deg, #f3fafa 0%, #eef6fc 100%);
+  --workspace-background: #ffffff;
 }
 
 body:has([data-app-theme="platform"]) {
@@ -125,7 +195,7 @@ body:has([data-app-theme="platform"]) {
   --workspace-button-start: #49647f;
   --workspace-button-end: #607f9c;
   --workspace-button-hover: #33495f;
-  --workspace-background: linear-gradient(120deg, #f5f7fa 0%, #eef5fb 100%);
+  --workspace-background: #ffffff;
 }
 
 [data-app-theme] {
@@ -200,28 +270,10 @@ body:has([data-app-theme]) nav a[aria-current="page"] {
   border-color: color-mix(in srgb, var(--workspace-accent) 24%, white);
 }
 
-/* Every role workspace opens with the same hierarchy, in its own palette. */
+/* Keep page headers compact: title, context and actions only. */
 [data-app-theme] main [data-ui="page-header"] {
-  position: relative;
-  margin-bottom: 0;
-  padding-bottom: 18px;
-  border-bottom: 1px solid var(--color-border-soft);
-}
-
-[data-app-theme] main [data-ui="page-header"]::after {
-  content: "";
-  position: absolute;
-  bottom: -1px;
-  left: 0;
-  width: 72px;
-  height: 3px;
-  border-radius: var(--radius-pill);
-  background: linear-gradient(90deg, var(--workspace-accent), var(--workspace-accent-secondary));
-}
-
-[data-app-theme="teacher"] main[data-layout="content"] [data-ui="page-header"] {
-  min-height: 70px;
-  align-content: center;
+  border: 0;
+  padding: 0;
 }
 
 [data-app-theme="teacher"] main[data-layout="content"] [data-ui="page-header"] h1 {
@@ -403,10 +455,6 @@ body:has([data-app-theme]) button:hover [data-nav-icon][data-icon-surface="none"
 [data-app-theme="teacher"] .teacher-dashboard-header [data-ui="page-header"] {
   padding-bottom: 0;
   border-bottom: 0;
-}
-
-[data-app-theme="teacher"] .teacher-dashboard-header [data-ui="page-header"]::after {
-  display: none;
 }
 
 [data-app-theme="teacher"] .teacher-dashboard-header .teacher-page-icon {

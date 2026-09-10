@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/field";
 import { LoadingState } from "@/components/ui/states";
+import { cn } from "@/lib/utils";
 
 /** The Mongolian sentence behind each upstream failure code. */
 const ERROR_LABEL: Record<string, string> = {
@@ -82,6 +83,9 @@ export function EsisDataPanel({
   autoRead = false,
   showResponseDetails = false,
   actionLabel,
+  detail,
+  compact = false,
+  className,
 }: {
   resource: EsisResourceKey;
   /** Path values the caller already knows — a group id, a date. */
@@ -125,6 +129,53 @@ export function EsisDataPanel({
   showResponseDetails?: boolean;
   /** Overrides the generic pull command for a task-specific action. */
   actionLabel?: string;
+  /**
+   * Services to read for an opened row — the second half of "дээр нь дарахад
+   * дэлгэрэнгүй", where the detail is another service rather than more columns.
+   *
+   * ★ This is the only way `foodKit` and `foodKitProducts` are reachable. Both
+   * take `:productId`, and a panel of their own would ask the cook to type a
+   * ministry product code into a box. Opening a `foodProducts` row supplies
+   * the id from the record the reader just pressed.
+   *
+   * ★★ Read per opened row, never for the list. A list of forty products would
+   * otherwise be forty outbound calls to the ministry and forty `AuditLog`
+   * VIEW rows on first paint — §3.4's N+1, pointed at somebody else's server.
+   */
+  detail?: {
+    resources: EsisResourceKey[];
+    /** `name` is the path parameter; `from` is the row field that fills it. */
+    param: { name: string; from: string };
+  };
+  /**
+   * A panel nested inside an opened row: the service's name and its records,
+   * and none of the page furniture.
+   *
+   * ★ Without this the drill-down renders a *second complete panel* inside a
+   * table cell — database icon, `<h2>`, the slug/ID/path line, the record-count
+   * badge, a "татах" button and the footer disclaimer — twice over, for the two
+   * detail services. A page inside a page, on the screen whose instruction was
+   * "зүгээр энгийн харагдуул".
+   *
+   * So a compact panel is a heading and the rows. There is no pull button
+   * because there is nothing to press: `autoRead` has already run for the id
+   * the row supplied, and a second button would offer to re-ask the ministry
+   * the same question.
+   */
+  compact?: boolean;
+  /**
+   * Extra classes for the panel's own `<section>`.
+   *
+   * ★ Added 2026-09-10 so a page whose body sits in a narrow reading column
+   * can still give the panel the full width. `/settings` and
+   * `/admin/kindergarten` cap their content at 760px — the right width for a
+   * form, and far too narrow for a table of ESIS records, which is what the
+   * client was looking at when they asked for "дэлгэц дүүрэн".
+   *
+   * It is a class rather than a `wide` flag because the two callers want the
+   * same thing by different means, and a boolean would have to guess which.
+   */
+  className?: string;
 }) {
   const { primaryKindergartenId } = useSession();
   const [entered, setEntered] = useState<Record<string, string>>({});
@@ -204,7 +255,7 @@ export function EsisDataPanel({
   });
 
   if (!primaryKindergartenId) return null;
-  if (catalog.isPending) return <LoadingState rows={3} />;
+  if (catalog.isPending) return <LoadingState rows={compact ? 1 : 3} />;
   // 404 for a role with no ESIS services, and absent for one this role does not
   // hold — either way there is nothing honest to draw.
   if (!endpoint) return null;
@@ -214,6 +265,33 @@ export function EsisDataPanel({
   // are a stand-in for the catalog's, not something to merge with a real one.
   const rows = live ? live.rows : (given ?? endpoint.sampleRows);
   const columns = esisSampleColumns(live ? live.fields : endpoint.fields);
+
+  /*
+   * ★ The nested form: a heading, the records, and nothing else. Everything
+   * the full panel adds — the icon, the slug/ID/path line, the badges, the
+   * pull button, the response envelope, the footer — is page furniture, and a
+   * table cell is not a page. See the `compact` prop for the whole argument.
+   *
+   * It sits below `rows`/`columns` rather than beside the earlier guards so it
+   * reads the *same* two values the full panel draws — a compact panel that
+   * recomputed them could disagree with its own expanded form.
+   */
+  if (compact) {
+    return (
+      <div className="flex flex-col gap-2">
+        <h3 className="text-caption font-semibold uppercase text-muted">
+          {title ?? endpoint.name}
+        </h3>
+        {read.isFetching && !read.data ? (
+          <LoadingState rows={1} />
+        ) : rows.length === 0 ? (
+          <p className="text-body text-muted">ESIS энэ сервисээр бичлэг буцаасангүй.</p>
+        ) : (
+          <EsisRowValues columns={columns} rows={rows} />
+        )}
+      </div>
+    );
+  }
   const heading = headingId ?? `esis-panel-${resource}`;
   const receivedAt = read.dataUpdatedAt
     ? new Date(read.dataUpdatedAt).toLocaleString("mn-MN")
@@ -231,7 +309,7 @@ export function EsisDataPanel({
   }
 
   return (
-    <section aria-label={title ?? endpoint.name}>
+    <section aria-label={title ?? endpoint.name} className={cn("w-full", className)}>
       <Card pad="roomy" className="flex flex-col gap-5">
         <div className="flex flex-wrap items-start gap-3 border-b border-border-soft pb-5">
           <span className="flex size-11 shrink-0 items-center justify-center rounded-control bg-sky text-sky-ink">
@@ -413,6 +491,27 @@ export function EsisDataPanel({
             rows={rows}
             hrefs={live ? undefined : hrefs}
             linkField={linkField}
+            renderDetail={
+              detail
+                ? (row) => {
+                    const id = row[detail.param.from];
+                    // A record the ministry returned without the id its detail
+                    // services key on. Nothing honest to read, so nothing drawn
+                    // — rather than a call with an empty path segment.
+                    if (!id) return null;
+                    return detail.resources.map((key) => (
+                      <EsisDataPanel
+                        key={key}
+                        resource={key}
+                        params={{ [detail.param.name]: id }}
+                        askForParams={false}
+                        autoRead
+                        compact
+                      />
+                    ));
+                  }
+                : undefined
+            }
           />
         )}
 

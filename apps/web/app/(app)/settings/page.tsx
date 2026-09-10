@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { BriefcaseBusiness, Building2, Database, KeyRound, Mail } from "lucide-react";
+import { BriefcaseBusiness, Building2, Database, KeyRound, LogOut, Mail } from "lucide-react";
 import { z } from "zod";
 import {
   esisMyProfileSchema,
@@ -33,9 +33,8 @@ const profileSchema = userProfileSchema.extend({
 /**
  * Own profile and password.
  *
- * Two independent forms on one page. Deliberately separate mutations: a failed
- * password change must not discard edits to the name field, and a single
- * combined save would make "what exactly did I just change" unanswerable.
+ * The profile record is read-only; photo, password and sign-out remain the
+ * signed-in person's account controls.
  */
 export default function SettingsPage() {
   return (
@@ -43,10 +42,9 @@ export default function SettingsPage() {
       ★ Capped, and one column again — 2026-09-06.
 
       It was two columns from `xl`: the profile on the left, the password form
-      and the sign-out row on the right. That split existed because there were
-      two forms; there is one now. "Нууц үг солих" is a dialog opened from the
-      profile card (see `PasswordDialog`), so the right-hand column held a
-      single sign-out row — a column of chrome beside a column of content.
+      and the sign-out row on the right. There is one account card now:
+      password and sign-out both belong to the signed-in profile, while the
+      ESIS records below remain read-only content.
 
       The reasoning the old note recorded, kept because it is still the reason
       for the 760px cap:
@@ -65,36 +63,79 @@ export default function SettingsPage() {
       on the page, the line is the page.
     */
     <div className="flex w-full flex-col gap-6 lg:gap-8">
-      <PageHeader title="Хувийн тохиргоо" />
+      <PageHeader title="Тохиргоо" />
 
+      {/*
+        ★ The reading measure holds the form, not the ESIS panels —
+        2026-09-10, at the client's instruction ("дэлгэц дүүрэн"). A profile
+        form and a sign-out button are controls, and 760px is the right width
+        for those; the two ESIS sections below are the ministry's records, and
+        capping a table of them at a third of the screen is what made the
+        columns squeeze. So the column wraps what it was reasoned for and the
+        panels sit outside it.
+      */}
       <div className="flex w-full max-w-[760px] flex-col gap-6 lg:gap-8">
         <ProfileCard />
-        <EsisProfileSection />
-        {/*
-          ★ The kindergarten's teaching staff, under the reader's own record —
-          2026-09-09, at the client's request ("багшийн ерөнхий мэдээлэл").
+      </div>
 
-          `EsisProfileSection` above is `my-profile`: one person, matched to
-          whoever is signed in. This is `teacher/list`, the whole roll — the
-          instructor ids the group services refer to, and the assignment each
-          one carries. A teacher's own screen is where it belongs, because the
-          user list that would otherwise hold it is `@Roles("ADMIN")`.
+      <EsisProfileSection />
 
-          It renders nothing for a cook or an accountant: `teachers` is not in
-          their service list, so the catalog does not return it.
-        */}
-        <EsisDataPanel
-          resource="teachers"
-          /*
-            ★ "Жагсаалт" for the same reason the roster panel took it —
-            2026-09-09. `api-41` is `teacher/list` and returns the roll; the
-            reader's *own* ESIS record is the panel above this one, built from
-            `my-profile`. Two panels, two questions, and only the first is a
-            list.
-          */
-          title="Багшийн жагсаалт"
-          description="ESIS-д бүртгэлтэй багш нарын томилгоо"
-        />
+      {/*
+        ★ The kindergarten's teaching staff, under the reader's own record —
+        2026-09-09, at the client's request ("багшийн ерөнхий мэдээлэл").
+
+        `EsisProfileSection` above is `my-profile`: one person, matched to
+        whoever is signed in. This is `teacher/list`, the whole roll — the
+        instructor ids the group services refer to, and the assignment each
+        one carries. A teacher's own screen is where it belongs, because the
+        user list that would otherwise hold it is `@Roles("ADMIN")`.
+
+        It renders nothing for a cook or an accountant: `teachers` is not in
+        their service list, so the catalog does not return it.
+      */}
+      {/*
+        ★ The reader's own заах аргын нэгдэл — 2026-09-10, at the client's
+        request. `api-34` takes a `:personId`, so it is one person's record
+        rather than a roll, which is why it sits here beside `my-profile`
+        rather than on `/admin/users` where the staff-wide lists live.
+
+        Nothing stores an ESIS person id yet, so the panel asks for one. See
+        `child-esis.tsx` for the same note and the same reason.
+      */}
+      <EsisDataPanel
+        resource="teacherAcademicOrg"
+        title="Заах аргын нэгдэл"
+        description="ЭСИС-д бүртгэлтэй заах аргын нэгдэл, албан тушаал"
+      />
+
+      <EsisDataPanel
+        resource="teachers"
+        /*
+          ★ "Жагсаалт" for the same reason the roster panel took it —
+          2026-09-09. `api-41` is `teacher/list` and returns the roll; the
+          reader's *own* ESIS record is the panel above this one, built from
+          `my-profile`. Two panels, two questions, and only the first is a
+          list.
+        */
+        title="Багшийн жагсаалт"
+        description="ESIS-д бүртгэлтэй багш нарын томилгоо"
+      />
+
+      {/*
+        ★ Sign-out, at the very foot of the screen — #88's own instruction,
+        recorded in `ProfileCard`'s note above: "`SignOutCard` is the last
+        thing on the page instead."
+        
+        It was lost resolving the conflict between #88 and this branch: #88's
+        diff showed `- <SignOutCard />` where the row left the profile card,
+        and the resolution read that as a deletion rather than a move. Nothing
+        rendered it afterwards, which is what `no-unused-vars` caught on main.
+
+        The 760px column is the same one the profile form sits in — this is a
+        control, not a record, so it keeps the reading measure the ESIS panels
+        above it deliberately do not.
+      */}
+      <div className="flex w-full max-w-[760px] flex-col gap-6 lg:gap-8">
         <SignOutCard />
       </div>
     </div>
@@ -261,7 +302,7 @@ function EsisFieldGroup({
  * person, and the client's position is that it is not a thing to hand-correct
  * here.
  *
- * ★★ Two things stayed, and both are deliberate:
+ * ★★ Two profile controls live together here, and each is deliberate:
  *
  *   The **picture**, because ESIS supplies none. Removing its badge would mean
  *   nobody could ever set a profile photo again, which is not information
@@ -273,6 +314,14 @@ function EsisFieldGroup({
  *   losing it with the form would have left an account with no way to rotate
  *   its own credentials. It sits on the page now, folded shut, which is the
  *   shape it already had inside the form.
+ *
+ * ★★★ **Sign-out is not one of them any more** — 2026-09-10, at the client's
+ * request that it sit at the very foot of this screen. It was moved *into*
+ * this card in the shell redesign, on the argument that routing every role
+ * here made it "intentional and immediately reachable"; that argument holds
+ * for the screen and not for the card, and inside the card it sat above the
+ * ESIS panels, which put a destructive action in the middle of a page of
+ * read-only records. `SignOutCard` is the last thing on the page instead.
  */
 function ProfileCard() {
   const { data, isLoading, isError, error } = useQuery({
@@ -284,7 +333,7 @@ function ProfileCard() {
   if (isError) return <ErrorState description={errorMessage(error)} />;
 
   return (
-    <section aria-label="Хувийн тохиргоо">
+    <section aria-label="Хувийн мэдээлэл">
       <Card pad="roomy" className="flex flex-col gap-5">
         {/*
           ★ The picture is the control — 2026-09-06, at the client's request:
@@ -316,6 +365,36 @@ function ProfileCard() {
         </div>
       </Card>
     </section>
+  );
+}
+
+/**
+ * The way out of the system — the last thing on this screen, for every role.
+ *
+ * ★ It is the *only* way out, which is what makes its position worth a note.
+ *
+ * The shell carries no sign-out control of its own: the sidebar's foot is an
+ * identity row that links here (`WhoAmI`), the phone's header holds one bell,
+ * and every role's menu names this screen "Тохиргоо". So this card is the end
+ * of the only path there is, and it sits at the end of the page — below the
+ * account, the password and the ESIS panels — because a sign-out button in the
+ * middle of a page of read-only records is one a reader presses by accident on
+ * the way to something else.
+ */
+function SignOutCard() {
+  const logout = useLogout();
+
+  return (
+    <Card pad="roomy" className="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <p className="font-medium text-ink">Системээс гарах</p>
+        <p className="text-body text-muted">Энэ төхөөрөмжөөс гарч, нэвтрэх хуудас руу буцна.</p>
+      </div>
+      <Button variant="secondary" onClick={() => void logout()}>
+        <LogOut aria-hidden="true" />
+        Системээс гарах
+      </Button>
+    </Card>
   );
 }
 
@@ -602,21 +681,5 @@ function PasswordSection({
         </form>
       ) : null}
     </div>
-  );
-}
-
-function SignOutCard() {
-  const logout = useLogout();
-
-  return (
-    <Card pad="roomy" className="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <p className="font-medium text-ink">Системээс гарах</p>
-        <p className="text-body text-muted">Энэ төхөөрөмжөөс гарна.</p>
-      </div>
-      <Button variant="secondary" onClick={() => void logout()}>
-        Гарах
-      </Button>
-    </Card>
   );
 }

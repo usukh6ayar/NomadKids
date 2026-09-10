@@ -78,10 +78,32 @@ function Recipes() {
         title="Технологийн карт"
         actions={
           kindergartenId ? (
-            <Button size="sm" onClick={() => setCreating(true)}>
-              <Plus size={18} />
-              Карт нэмэх
-            </Button>
+            <>
+              {/*
+            ★ The search sits in the header row — 2026-09-09, at the client's
+            request ("search хэсгийг header хэсэгт оруул").
+
+            It had a row of its own under the title on all four kitchen
+            screens, which spent a whole line on one control and pushed the
+            list itself further down every phone screen. `SearchField` is
+            `flex-1` by design — it grows to fill a filter row — so it is given
+            a width here instead: full on a phone, where the header wraps it
+            onto its own line anyway, and fixed beside the action button from
+            `sm` up.
+          */}
+              <div className="w-full sm:w-[240px]">
+                <SearchField
+                  label="Картын нэр, зааврын үгээр хайх"
+                  placeholder="Нэрээр хайх"
+                  value={query}
+                  onChange={setQuery}
+                />
+              </div>
+              <Button size="sm" onClick={() => setCreating(true)}>
+                <Plus size={18} />
+                Карт нэмэх
+              </Button>
+            </>
           ) : null
         }
       />
@@ -108,17 +130,6 @@ function Recipes() {
           </button>
         ))}
       </div>
-
-      {kindergartenId ? (
-        <div className="flex flex-wrap items-end gap-3">
-          <SearchField
-            label="Картын нэр, зааврын үгээр хайх"
-            placeholder="Нэрээр хайх"
-            value={query}
-            onChange={setQuery}
-          />
-        </div>
-      ) : null}
 
       {list.isLoading ? <LoadingState rows={4} /> : null}
       {list.isError ? <ErrorState description={errorMessage(list.error)} /> : null}
@@ -176,11 +187,30 @@ function Recipes() {
         the screen that writes the cards is where a cook checks one.
       */}
       <EsisDataPanel
+        resource="foodProductTypes"
+        title="Бүтээгдэхүүний төрөл"
+        description="ESIS-ийн хоолны ангиллын лавлах — шөл, хоол, ундаа"
+        autoRead
+      />
+      {/*
+        ★★ The row opens into its иж бүрдэл — 2026-09-09.
+
+        `foodKit` and `foodKitProducts` both key on `:productId`, and neither
+        has a panel of its own for the reason `esis.catalog.ts` records: a box
+        asking a cook for a ministry product code is not a feature. Pressing
+        "Цуйван" here supplies the id from the row that was pressed, so the two
+        detail services are reached the only way they are usable.
+      */}
+      <EsisDataPanel
         resource="foodProducts"
         title="Бэлэн бүтээгдэхүүн"
-        description="ESIS-ийн хоол, бүтээгдэхүүний лавлах — хэмжих нэгж, илчлэг, шимт бодис"
+        description="ESIS-ийн хоол, бүтээгдэхүүний лавлах — мөр дээр дарж дэлгэрэнгүйг харна"
         autoRead
         showResponseDetails
+        detail={{
+          resources: ["foodKit", "foodKitProducts"],
+          param: { name: "productId", from: "productId" },
+        }}
       />
 
       {creating && kindergartenId ? (

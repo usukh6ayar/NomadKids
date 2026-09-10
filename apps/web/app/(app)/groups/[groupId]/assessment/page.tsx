@@ -6,6 +6,7 @@ import { Suspense, useEffect, useState } from "react";
 import { z } from "zod";
 import {
   assessmentConfigSchema,
+  assessmentRadarSchema,
   groupColumnSchema,
   groupSchema,
   schoolYearSchema,
@@ -33,7 +34,10 @@ import { RegisterProgress } from "@/components/register/register-progress";
 import { RegisterSaveBar } from "@/components/register/save-bar";
 import { TONE_SURFACE, type Tone } from "@/components/ui/tone";
 import { Field, Select } from "@/components/ui/field";
-import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { EmptyState, ErrorState, FormError, LoadingState, Skeleton } from "@/components/ui/states";
+import { FormDialog } from "@/components/ui/form-dialog";
+import { SearchField } from "@/components/ui/search-field";
+import { DevelopmentRadar } from "@/components/assessment/development-radar";
 import { ChildAvatar } from "@/components/media/media-image";
 import { formatDate, fullName } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -175,6 +179,15 @@ function GroupAssessment() {
 
   /** Pending level choices, keyed by child. Empty until something is tapped. */
   const [draft, setDraft] = useState<Record<string, string>>({});
+  /*
+   * ★ Declared here, beside `draft`, and not beside the code that uses them
+   * three hundred lines down — this component early-returns for the loading
+   * and error states (`if (group.isLoading) return …`), so a `useState` below
+   * one of those changes the hook order between renders. React says so out
+   * loud, and `flows.test.tsx` catches it, which is how this was found.
+   */
+  const [childQuery, setChildQuery] = useState("");
+  const [progressChildId, setProgressChildId] = useState<string | null>(null);
 
   // Cleared whenever the column changes: a pending choice for "Хэл яриа" must
   // not be carried into "Танин мэдэхүй" and saved against the wrong domain.
@@ -258,6 +271,33 @@ function GroupAssessment() {
   const levelFor = (child: (typeof children)[number]) =>
     draft[child.childId] ?? child.assessment?.levelId ?? null;
 
+  /*
+   * ★ The child search and the progress drawer — 2026-09-09, matching the
+   * reference's teacher screen ("Хүүхэд хайх, эсвэл сонгох..." and its
+   * "ХҮҮХДИЙН АХИЦ" dialog).
+   *
+   * Both are client-side over `children`, which is already the whole group in
+   * one payload — a round trip per keystroke would be slower and would drop
+   * the teacher's unsaved level chips, which live in `draft` and are keyed by
+   * child id.
+   */
+  const normalizedChildQuery = childQuery.trim().toLocaleLowerCase("mn");
+  const visibleChildren = normalizedChildQuery
+    ? children.filter((child) =>
+        fullName(child).toLocaleLowerCase("mn").includes(normalizedChildQuery),
+      )
+    : children;
+
+  const progressChild = children.find((child) => child.childId === progressChildId) ?? null;
+
+  /*
+   * ★ Counted over the whole group, never over the filtered view.
+   *
+   * "12 of 20 assessed" is a fact about the group; recomputing it as the
+   * teacher types would make the summary agree with the search box instead of
+   * with the register, and a headcount that moves while you look for one child
+   * is the kind of number nobody trusts again.
+   */
   const assessed = children.filter((child) => levelFor(child) !== null).length;
   const breakdown = levels.map((level, index) => ({
     key: level.id,
@@ -480,21 +520,51 @@ function GroupAssessment() {
               description="Энэ хичээлийн жилд идэвхтэй бүртгэлтэй хүүхэд байхгүй байна."
             />
           ) : (
-            <Card className="divide-y divide-border">
-              {column.data.children.map((child) => (
-                <ChildRow
-                  key={child.childId}
-                  child={child}
-                  previous={child.previous ?? null}
-                  levels={column.data!.levels}
-                  selectedLevelId={draft[child.childId] ?? child.assessment?.levelId ?? null}
-                  isDirty={Boolean(draft[child.childId])}
-                  onSelect={(levelId) =>
-                    setDraft((current) => ({ ...current, [child.childId]: levelId }))
+            <>
+              {/*
+                Offered only where it earns its line. Under about a dozen rows
+                a teacher finds a name faster by looking than by typing, and
+                the box would cost more vertical space than it saves on the
+                screen the client already called cramped.
+              */}
+              {column.data.children.length > 8 ? (
+                <SearchField
+                  label="Хүүхдийн нэр, овгоор хайх"
+                  placeholder="Хүүхэд хайх"
+                  value={childQuery}
+                  onChange={setChildQuery}
+                />
+              ) : null}
+
+              {visibleChildren.length === 0 ? (
+                <EmptyState
+                  title="Хайлтад тохирох хүүхэд алга"
+                  description={`«${childQuery.trim()}» гэсэн нэртэй хүүхэд энэ бүлэгт байхгүй байна.`}
+                  action={
+                    <Button variant="secondary" onClick={() => setChildQuery("")}>
+                      Хайлтыг цэвэрлэх
+                    </Button>
                   }
                 />
-              ))}
-            </Card>
+              ) : (
+                <Card className="divide-y divide-border">
+                  {visibleChildren.map((child) => (
+                    <ChildRow
+                      key={child.childId}
+                      child={child}
+                      previous={child.previous ?? null}
+                      levels={column.data!.levels}
+                      selectedLevelId={draft[child.childId] ?? child.assessment?.levelId ?? null}
+                      isDirty={Boolean(draft[child.childId])}
+                      onSelect={(levelId) =>
+                        setDraft((current) => ({ ...current, [child.childId]: levelId }))
+                      }
+                      onOpenProgress={() => setProgressChildId(child.childId)}
+                    />
+                  ))}
+                </Card>
+              )}
+            </>
           )}
 
           <FormError message={save.isError ? errorMessage(save.error) : null} />
@@ -523,7 +593,88 @@ function GroupAssessment() {
           */}
         </>
       ) : null}
+
+      {/*
+        ★ ХҮҮХДИЙН АХИЦ — the reference's dialog, with the radar it only drew a
+        placeholder for.
+
+        `term` is the one on screen, so the drawer answers "how is this child
+        doing in the term I am assessing" rather than opening a second term
+        picker over the first.
+      */}
+      {progressChild && termId ? (
+        <ChildProgressDrawer
+          child={progressChild}
+          termId={termId}
+          onClose={() => setProgressChildId(null)}
+        />
+      ) : null}
     </div>
+  );
+}
+
+/**
+ * One child's progress, over the term the grid is showing.
+ *
+ * ★ No new endpoint. `GET /children/:id/assessment-radar` has existed since the
+ * child's own screen shipped, and `DevelopmentRadar` is the same hand-drawn SVG
+ * that screen uses — so a teacher meets one radar in this product, not two that
+ * drift apart.
+ *
+ * ★★ `FormDialog` rather than a new drawer primitive. It already owns the
+ * focus trap, the Escape handler and the labelled title, and a second component
+ * that did those slightly differently is how a keyboard user finds one dialog
+ * they cannot leave.
+ */
+function ChildProgressDrawer({
+  child,
+  termId,
+  onClose,
+}: {
+  child: { childId: string; lastName: string; firstName: string };
+  termId: string;
+  onClose: () => void;
+}) {
+  const radar = useQuery({
+    queryKey: qk.assessmentRadar(child.childId, termId),
+    queryFn: () =>
+      get(`/children/${child.childId}/assessment-radar?termId=${termId}`, assessmentRadarSchema),
+  });
+
+  const nothingAssessed = radar.data?.axes.every((axis) => axis.score === null) ?? false;
+
+  return (
+    <FormDialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title={fullName(child)}
+      description="Энэ улирлын хөгжлийн ахиц"
+      footer={
+        <Button asChild variant="secondary">
+          <Link href={`/children/${child.childId}/assessments`}>Бүрэн түүхийг харах</Link>
+        </Button>
+      }
+    >
+      {radar.isPending ? <Skeleton className="h-[220px] w-full" /> : null}
+
+      {radar.isError ? <ErrorState description={errorMessage(radar.error)} /> : null}
+
+      {/*
+        ★ An empty radar is not drawn. Five axes all at the origin is a dot,
+        which reads as a broken chart rather than as "not assessed yet" — the
+        same reason `child-assessments.tsx` skips it.
+      */}
+      {radar.data && nothingAssessed ? (
+        <EmptyState
+          title="Энэ улиралд үнэлгээ алга"
+          description="Доорх мөрөнд түвшин сонгоод хадгалснаар ахиц энд харагдана."
+        />
+      ) : null}
+
+      {radar.data && !nothingAssessed ? <DevelopmentRadar radar={radar.data} /> : null}
+    </FormDialog>
   );
 }
 
@@ -541,6 +692,7 @@ function ChildRow({
   selectedLevelId,
   isDirty,
   onSelect,
+  onOpenProgress,
 }: {
   child: {
     childId: string;
@@ -554,13 +706,31 @@ function ChildRow({
   selectedLevelId: string | null;
   isDirty: boolean;
   onSelect: (levelId: string) => void;
+  /** Opens this child's progress — the radar for the term on screen. */
+  onOpenProgress: () => void;
 }) {
   return (
     <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:gap-4">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <ChildAvatar child={child} size={40} />
         <span className="min-w-0">
-          <span className="block truncate font-medium text-ink">{fullName(child)}</span>
+          {/*
+            ★ The name is the control, not a separate "Ахиц" button.
+
+            The row already carries a `radiogroup` of level chips, so making
+            the whole row clickable would put a second meaning on every press
+            a teacher makes to assess. The name is the one part of the row that
+            does nothing else, and "press a person to see the person" needs no
+            label. A real `<button>` rather than a click handler on the span,
+            so it is reachable by keyboard and announced as a control.
+          */}
+          <button
+            type="button"
+            onClick={onOpenProgress}
+            className="block max-w-full truncate text-start font-medium text-ink hover:text-primary hover:underline"
+          >
+            {fullName(child)}
+          </button>
 
           {/*
             ★ RFP §6.3 — "өмнөх үнэлгээтэй харьцуулах".

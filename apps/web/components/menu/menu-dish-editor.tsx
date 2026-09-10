@@ -3,6 +3,7 @@
 import { ChefHat, PencilLine, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { MEAL_KIND_LABEL, type MealKind, type MenuDish } from "@kinder/contracts";
+import type { EsisFoodProduct } from "@/components/esis/use-esis-food-products";
 import { SingleImageUpload } from "@/components/media/single-image-upload";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -78,6 +79,22 @@ export interface DishDraft {
    * takes its mode with it.
    */
   useRecipe: boolean;
+  /**
+   * The ESIS бэлэн бүтээгдэхүүн this row was filled from — **UI only, never
+   * saved**, like `useRecipe` above.
+   *
+   * ★ It is not `recipeId` and must never become it. `recipeId` is a foreign
+   * key into this kindergarten's own `Recipe` table, and `MealsService.saveDay`
+   * looks the row up to freeze the dish's name, allergens and calories from
+   * it. A ministry product id there would point at nothing.
+   *
+   * ★★ So what the ESIS pick actually does is copy values *onto the draft* —
+   * name and calories — and a dish saved that way is indistinguishable from
+   * one typed by hand. That is deliberate: the ministry's reference is where
+   * the cook reads the илчлэг, not a key the menu carries forever. If ESIS
+   * renumbers a product next year, no saved menu breaks.
+   */
+  esisProductId: string;
 }
 
 export function toDraft(dishes: MenuDish[]): DishDraft[] {
@@ -93,6 +110,13 @@ export function toDraft(dishes: MenuDish[]): DishDraft[] {
     recipeId: dish.recipeId ?? "",
     photoMediaFileId: dish.photoMediaFileId ?? "",
     useRecipe: Boolean(dish.recipeId),
+    /*
+     * Always blank on load, and it has to be: nothing is stored that says a
+     * saved dish came from ESIS, by the design `DishDraft.esisProductId`
+     * argues for. Re-opening a menu shows the dish as the free-text row it
+     * became on save, which is what it is.
+     */
+    esisProductId: "",
   }));
 }
 
@@ -138,6 +162,7 @@ export function newDraft(kind: MealKind, useRecipe = false): DishDraft {
     recipeId: "",
     photoMediaFileId: "",
     useRecipe,
+    esisProductId: "",
   };
 }
 
@@ -167,7 +192,25 @@ export interface KitchenOptions {
   kindergartenId: string;
   /** Every APPROVED recipe — `GET /kindergartens/:id/recipes/approved`. */
   recipes: RecipeOption[];
+  /**
+   * ESIS-ийн бэлэн бүтээгдэхүүн — `useEsisFoodProducts()`.
+   *
+   * ★ Added 2026-09-09, at the client's request: "тогоочийн хэсэгт бэлэн хоол
+   * сонгох хэсэгт API-г дуудах." They join the *same* picker as the local
+   * cards rather than getting a third mode button, because from the cook's
+   * side both answer one question — "which ready dish is this?" — and a mode
+   * switch would make them choose a source before choosing a dish.
+   *
+   * Optional and defaulted to empty, so `child-menu.tsx`'s quick edit and
+   * every existing test keep working unchanged.
+   */
+  esisProducts?: EsisFoodProduct[];
 }
+
+/** Value prefix that tells an ESIS product apart from a local recipe id in
+ * the one `<select>` that carries both. Recipe ids are UUIDs, so no local
+ * value can collide with it. */
+const ESIS_OPTION_PREFIX = "esis:";
 
 /**
  * The picker's `<optgroup>`s, in sitting order with unassigned cards last.
@@ -309,6 +352,13 @@ export function MenuDishEditor({
    * quick edit that has neither reference data nor a reason to offer them. */
   kitchen?: KitchenOptions;
 }) {
+  const esisProducts = kitchen?.esisProducts ?? [];
+  /* Either source makes "Бэлэн хоол" a real choice. Before ESIS joined the
+     picker this was `kitchen.recipes.length > 0` in three places, and a
+     kitchen with no approved card but a live ministry list would have had the
+     mode disabled over a dropdown that was ready to use. */
+  const hasReadyDishes = (kitchen?.recipes.length ?? 0) > 0 || esisProducts.length > 0;
+
   function update(index: number, patch: Partial<DishDraft>) {
     onChange(draftDishes.map((d, i) => (i === index ? { ...d, ...patch } : d)));
   }
@@ -326,7 +376,7 @@ export function MenuDishEditor({
      * Module 2's cross-check, and one typed by hand carries whatever the cook
      * remembers to type. Free text stays one press away, never removed.
      */
-    onChange([...draftDishes, newDraft(lastKind, (kitchen?.recipes.length ?? 0) > 0)]);
+    onChange([...draftDishes, newDraft(lastKind, hasReadyDishes)]);
   }
 
   return (
@@ -351,7 +401,7 @@ export function MenuDishEditor({
                 {kitchen ? (
                   <ModeSwitch
                     value={dish.useRecipe}
-                    hasRecipes={kitchen.recipes.length > 0}
+                    hasRecipes={hasReadyDishes}
                     onChange={(useRecipe) =>
                       /*
                        * ★ Switching to free text clears `recipeId`, and it has
@@ -377,23 +427,73 @@ export function MenuDishEditor({
                       <Field
                         label="Бэлэн хоол"
                         hint={
-                          kitchen.recipes.length === 0
+                          !hasReadyDishes
                             ? undefined
-                            : "Орц, илчлэг, харшил нь картаас өөрөө бөглөгдөнө"
+                            : dish.esisProductId
+                              ? /*
+                                   ★ A different promise, because a different
+                                   thing happens. A local card's values are
+                                   frozen server-side from the card; an ESIS
+                                   product's are copied onto this form and
+                                   saved as ordinary values — and it carries no
+                                   allergen list at all, which the cook has to
+                                   know before RFP Module 2's cross-check
+                                   silently has nothing to check.
+                                */
+                                "ESIS-ээс нэр, илчлэг бөглөгдлөө. Харшлын мэдээллийг гараар нэмнэ үү"
+                              : "Орц, илчлэг, харшил нь картаас өөрөө бөглөгдөнө"
                         }
                       >
                         {({ id, describedBy }) =>
-                          kitchen.recipes.length === 0 ? (
+                          kitchen.recipes.length === 0 && esisProducts.length === 0 ? (
                             <NoApprovedRecipes />
                           ) : (
                             <Select
                               id={id}
                               aria-describedby={describedBy}
-                              value={dish.recipeId}
+                              value={
+                                dish.recipeId ||
+                                (dish.esisProductId
+                                  ? `${ESIS_OPTION_PREFIX}${dish.esisProductId}`
+                                  : "")
+                              }
                               onChange={(e) => {
-                                const picked = kitchen.recipes.find((r) => r.id === e.target.value);
+                                const value = e.target.value;
+
+                                /*
+                                 * ★ An ESIS product copies its values onto the
+                                 * draft and leaves `recipeId` empty — see
+                                 * `DishDraft.esisProductId` for why it must
+                                 * never be written there.
+                                 *
+                                 * `portions` is deliberately not defaulted to
+                                 * "1" the way a card's is. A технологийн карт
+                                 * declares a `yieldPortions`, so "one batch"
+                                 * means something; the ministry's reference is
+                                 * a single порц with no batch size to multiply,
+                                 * and pre-filling a count nobody stated would
+                                 * be inventing data.
+                                 */
+                                if (value.startsWith(ESIS_OPTION_PREFIX)) {
+                                  const productId = value.slice(ESIS_OPTION_PREFIX.length);
+                                  const product = esisProducts.find(
+                                    (p) => p.productId === productId,
+                                  );
+                                  update(i, {
+                                    recipeId: "",
+                                    esisProductId: productId,
+                                    name: product?.name ?? "",
+                                    calories: product?.calories ?? "",
+                                  });
+                                  return;
+                                }
+
+                                const picked = kitchen.recipes.find((r) => r.id === value);
                                 update(i, {
-                                  recipeId: e.target.value,
+                                  recipeId: value,
+                                  // Picking a local card drops any ESIS origin;
+                                  // a row has one source at a time.
+                                  esisProductId: "",
                                   /*
                                    * ★★ The name is copied onto the draft, not
                                    * left to the server.
@@ -413,7 +513,7 @@ export function MenuDishEditor({
                                   // Default to one batch of the card — a cook
                                   // doubling or tripling it for a bigger group
                                   // edits the number in place.
-                                  portions: e.target.value ? dish.portions || "1" : "",
+                                  portions: value ? dish.portions || "1" : "",
                                   // Follow the card's own sitting when it names
                                   // one; the cook can still move it.
                                   ...(picked?.mealKind ? { kind: picked.mealKind } : {}),
@@ -430,6 +530,25 @@ export function MenuDishEditor({
                                   ))}
                                 </optgroup>
                               ))}
+                              {/*
+                                ★ Last, and in a group that names its source.
+                                The kindergarten's own approved cards are what
+                                a cook should reach for first — those carry the
+                                allergen list RFP Module 2's cross-check reads,
+                                and an ESIS product carries none.
+                              */}
+                              {esisProducts.length > 0 ? (
+                                <optgroup label="ESIS — бэлэн бүтээгдэхүүн">
+                                  {esisProducts.map((product) => (
+                                    <option
+                                      key={product.productId}
+                                      value={`${ESIS_OPTION_PREFIX}${product.productId}`}
+                                    >
+                                      {product.name}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              ) : null}
                             </Select>
                           )
                         }
@@ -498,7 +617,24 @@ export function MenuDishEditor({
                     )}
                   </Field>
 
-                  {dish.useRecipe ? (
+                  {/*
+                    ★ An ESIS-picked dish takes the free-text fields, not the
+                    card's "Багцын тоо".
+
+                    A технологийн карт declares a `yieldPortions`, so a batch
+                    count multiplies into "хэдэн хүүхдэд" — the hint below does
+                    exactly that arithmetic. The ministry's reference declares
+                    no batch size, so the same control would multiply by zero
+                    and say "0 хүүхдэд" under every ESIS dish.
+
+                    ★★ More importantly it is the only way the cook can reach
+                    "Харшлын орц". `MealsService.saveDay` freezes allergens from
+                    a *card*; an ESIS product carries none, and RFP Module 2's
+                    cross-check reads `dish.allergenTags` and nothing else. A
+                    dish with no route to that field is a dish the allergy
+                    warning can never fire for.
+                  */}
+                  {dish.useRecipe && !dish.esisProductId ? (
                     <Field
                       label="Багцын тоо"
                       hint={

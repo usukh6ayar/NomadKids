@@ -318,6 +318,7 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
   "/documents": FileText,
   "/settings": Settings,
   "/finance/audit-log": ScrollText,
+  "/finance/dashboard": LayoutGrid,
   "/kitchen/dashboard": LayoutGrid,
   "/kitchen/ingredients": Carrot,
   "/kitchen/suppliers": Truck,
@@ -335,6 +336,7 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
   "/admin/assessment-config": SlidersHorizontal,
   "/admin/audit": ScrollText,
   "/admin/integrations/esis": Database,
+  "/admin/curriculum": BookOpen,
 };
 
 /** The section-level icon for a route, or nothing if it has no destination. */
@@ -741,17 +743,22 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
       title: "Багш ба байгууллага",
       entries: [
         /*
-         * ★ "Хувийн тохиргоо", not "Багшийн мэдээлэл" — renamed 2026-09-06 at
-         * the client's request.
+         * ★ "Тохиргоо" — one name for this destination in every role's menu,
+         * renamed 2026-09-10 at the client's request.
+         *
+         * The name has been three things at once: "Багшийн мэдээлэл", then
+         * "Хувийн тохиргоо" here (2026-09-06) while the cook's and the
+         * accountant's rail said "Профайл" and the sidebar's own identity card
+         * said "Профайл" a third time. The client read that as three screens.
+         * One screen gets one name.
          *
          * The row points at `/settings`, which is the signed-in person's *own*
-         * account: their name, their contact details, their password. It is
-         * not a directory of the kindergarten's teachers — that is
-         * "Хэрэглэгч ба эрх" one row below, and the old name promised this row
-         * was it. A cook and an accountant share this menu too, so "Багшийн"
-         * was wrong for them in a second way.
+         * account: their picture, their password, and — since this change —
+         * the way out of the system at the foot of it. It is not a directory
+         * of the kindergarten's teachers: that is "Хэрэглэгч ба эрх" one row
+         * below, and "Багшийн мэдээлэл" promised this row was it.
          */
-        entry("Хувийн тохиргоо", "/settings"),
+        entry("Тохиргоо", "/settings"),
         /*
          * ★ The administration screens, named — and no "Удирдлага" row above
          * them any more.
@@ -778,6 +785,13 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         ...adminEntry("Хэрэглэгч ба эрх", "/admin/users"),
         ...adminEntry("Хичээлийн жил", "/admin/school-years"),
         ...adminEntry("Улирал", "/admin/terms"),
+        /*
+         * ★ Added 2026-09-10 with the four ESIS curriculum services. It sits
+         * after Улирал because it answers the same kind of question — what
+         * shape does the year take — and before the ESIS hub, which is the
+         * operator's whole-catalog view rather than a working screen.
+         */
+        ...adminEntry("Сургалтын хөтөлбөр", "/admin/curriculum"),
         ...adminEntry("ESIS мэдээллийн төв", "/admin/integrations/esis"),
         /*
          * ★ "Үнэлгээний тохиргоо" and "Аудит" lost their rows on 2026-09-06,
@@ -846,7 +860,9 @@ function supportNav(isCook: boolean): NavItem[] {
         { href: "/settings", label: "Цэс", icon: <Menu {...iconProps} /> },
       ]
     : [
-        { href: "/finance", label: "Санхүү", icon: artIcon("finance", 20) },
+        // ★ Самбар first, matching the cook's row above — 2026-09-09. It was
+        // `/finance`, which is now the register rather than the overview.
+        { href: "/finance/dashboard", label: "Самбар", icon: <LayoutGrid {...iconProps} /> },
         { href: "/invoices", label: "Нэхэмжлэл", icon: artIcon("finance", 20) },
         { href: "/attendance/journal", label: "Ирц", icon: artIcon("attendance", 20) },
         { href: "/settings", label: "Цэс", icon: <Menu {...iconProps} /> },
@@ -886,6 +902,22 @@ function supportSections(isCook: boolean): NavSection[] {
             navEntry("Тайлан", "/kitchen/reports"),
           ]
         : [
+            /*
+             * ★ **No "Самбар" row here** — 2026-09-09, and the omission is the
+             * point.
+             *
+             * `supportNav`'s first entry is the board, and `SidebarContent`
+             * renders that entry *above* the sections as the rail's primary
+             * link. A `navEntry` for the same route put "Самбар" on the rail
+             * twice, one above the other, which is the duplication this whole
+             * change set set out to remove rather than a new one to add. The
+             * cook's rail has the same shape and the same absence.
+             *
+             * ★★ "Санхүүжилт" keeps its name. It briefly read "Улсын
+             * санхүүжилт" — precise, and one word too many once the board sits
+             * above it under its own name: the client asked for the short one
+             * back the moment they saw the two together.
+             */
             navEntry("Санхүүжилт", "/finance"),
             navEntry("Нэхэмжлэл", "/invoices"),
             /*
@@ -935,7 +967,7 @@ function supportSections(isCook: boolean): NavSection[] {
     },
     {
       title: "Миний мэдээлэл",
-      entries: [navEntry("Профайл", "/settings")],
+      entries: [navEntry("Тохиргоо", "/settings")],
     },
   ];
 }
@@ -974,7 +1006,7 @@ function platformNav(): NavItem[] {
       label: "Байгууллагын хүсэлт",
       icon: artIcon("kindergarten", 20),
     },
-    { href: "/settings", label: "Профайл", icon: <Settings {...iconProps} /> },
+    { href: "/settings", label: "Тохиргоо", icon: <Settings {...iconProps} /> },
   ];
 }
 
