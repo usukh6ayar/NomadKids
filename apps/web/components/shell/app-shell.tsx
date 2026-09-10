@@ -1195,6 +1195,7 @@ function ParentSidebarContent({
                     key={`${item.href ?? item.label}-${index}`}
                     item={item}
                     pathname={pathname}
+                    activeHref={activeHref}
                   />
                 ))
               ),
@@ -1224,7 +1225,16 @@ function ParentSidebarContent({
  * toggle. `hidden` rather than an unmount keeps the panel's ids stable for
  * `aria-controls`.
  */
-function ParentSidebarDisclosure({ section, pathname }: { section: NavSection; pathname: string }) {
+function ParentSidebarDisclosure({
+  section,
+  pathname,
+  activeHref,
+}: {
+  section: NavSection;
+  pathname: string;
+  /** The one href the whole rail resolved as current — see `activeHrefIn`. */
+  activeHref?: string | null;
+}) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
 
@@ -1260,6 +1270,7 @@ function ParentSidebarDisclosure({ section, pathname }: { section: NavSection; p
             key={`${item.href ?? item.label}-${index}`}
             item={item}
             pathname={pathname}
+            activeHref={activeHref}
           />
         ))}
       </div>
@@ -1267,7 +1278,19 @@ function ParentSidebarDisclosure({ section, pathname }: { section: NavSection; p
   );
 }
 
-function ParentSidebarRow({ item, pathname }: { item: ParentSidebarEntry; pathname: string }) {
+function ParentSidebarRow({
+  item,
+  pathname,
+  activeHref,
+}: {
+  item: ParentSidebarEntry;
+  pathname: string;
+  /**
+   * The one href this rail resolved as current (`activeHrefIn`). A caller that
+   * passes nothing falls back to prefix matching on `pathname`.
+   */
+  activeHref?: string | null;
+}) {
   const active = Boolean(
     item.href?.startsWith("/") &&
     (activeHref !== undefined
