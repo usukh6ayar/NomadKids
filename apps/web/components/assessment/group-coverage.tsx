@@ -26,7 +26,7 @@ const DEVELOPMENT_DOMAINS = [
   "Зураг, урлал",
   "Хөгжим",
 ] as const;
-const DAILY_ACTIVITIES = [
+export const DAILY_ACTIVITIES = [
   "Өглөөний хүлээн авалт",
   "Тоглоомын цаг",
   "Өглөөний дасгал",

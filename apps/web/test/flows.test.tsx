@@ -185,7 +185,7 @@ describe("recording an observation", () => {
     // select itself renders — `selectOption`'s own wait is what makes this
     // deterministic rather than the types list happening to be there in time.
     await selectOption(user, /Ажиглалтын төрөл/, "Чөлөөт");
-    await user.type(screen.getByLabelText(/Нөхцөл байдал/), "Тоглоомын талбайд");
+    await user.type(screen.getByLabelText(/Ажиглагдсан байдал/), "Тоглоомын талбайд");
     await user.click(screen.getByLabelText(/Эцэг эх харах боломжтой/));
     await user.click(screen.getByRole("button", { name: "Хадгалах" }));
 
@@ -226,13 +226,13 @@ describe("recording an observation", () => {
 
     renderWithProviders(<NewObservationPage />);
 
-    await screen.findByLabelText(/Нөхцөл байдал/);
+    await screen.findByLabelText(/Ажиглагдсан байдал/);
 
     // The teacher's controls are simply not rendered.
     expect(screen.queryByLabelText(/Эцэг эх харах боломжтой/)).toBeNull();
     expect(screen.queryByLabelText(/Ажиглалтын төрөл/)).toBeNull();
 
-    await user.type(screen.getByLabelText(/Нөхцөл байдал/), "Гэртээ ном уншлаа");
+    await user.type(screen.getByLabelText(/Ажиглагдсан байдал/), "Гэртээ ном уншлаа");
     await user.click(screen.getByRole("button", { name: "Хадгалах" }));
 
     await waitFor(() =>

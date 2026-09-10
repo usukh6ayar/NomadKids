@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   renderWithProviders,
+  selectOption,
   sessionFor,
   setParams,
   setSearchParams,
@@ -30,6 +31,8 @@ import NewObservationPage from "@/app/(app)/children/[childId]/observations/new/
 
 const CHILD = "66666666-6666-4666-8666-666666666666";
 const TYPE = "77777777-7777-4777-8777-777777777777";
+const DOMAIN_ID = "88888888-8888-4888-8888-888888888888";
+const KINDERGARTEN_ID = "33333333-3333-4333-8333-333333333333";
 
 const CHILD_DETAIL = {
   id: CHILD,
@@ -50,7 +53,28 @@ function routes() {
     { path: "/auth/me", body: sessionFor(["TEACHER"]) },
     { path: `/children/${CHILD}/observations/types`, body: TYPES },
     { path: `/children/${CHILD}`, body: CHILD_DETAIL },
+    {
+      path: `/kindergartens/${KINDERGARTEN_ID}/assessment-config`,
+      body: {
+        domains: [
+          { id: DOMAIN_ID, name: "Хэл яриа, харилцаа", color: "#3b82f6", order: 3 },
+          { id: "99999999-9999-4999-8999-999999999999", name: "Танин мэдэхүй", order: 4 },
+        ],
+        levels: [],
+      },
+    },
+    {
+      path: `/children/${CHILD}/observations`,
+      method: "POST",
+      body: { id: "created" },
+      status: 201,
+    },
   ];
+}
+
+/** The form with everything it reads answered. */
+function stubNewObservation() {
+  return stubApi(routes());
 }
 
 beforeEach(() => {
@@ -83,7 +107,7 @@ describe("Шинэ ажиглалт — ноорог", () => {
 
       const first = renderWithProviders(<NewObservationPage />);
 
-      const situation = await screen.findByLabelText("Нөхцөл байдал");
+      const situation = await screen.findByLabelText("Ажиглагдсан байдал");
       await user.type(situation, "Цэцэрлэгийн талбайд");
 
       // The write is debounced, so the draft lands a moment after typing stops.
@@ -99,7 +123,7 @@ describe("Шинэ ажиглалт — ноорог", () => {
       stubApi(routes());
       renderWithProviders(<NewObservationPage />);
 
-      expect(await screen.findByLabelText("Нөхцөл байдал")).toHaveValue("Цэцэрлэгийн талбайд");
+      expect(await screen.findByLabelText("Ажиглагдсан байдал")).toHaveValue("Цэцэрлэгийн талбайд");
     },
   );
 
@@ -130,7 +154,7 @@ describe("Шинэ ажиглалт — ноорог", () => {
     stubApi(routes());
     renderWithProviders(<NewObservationPage />);
 
-    await screen.findByLabelText("Нөхцөл байдал");
+    await screen.findByLabelText("Ажиглагдсан байдал");
     expect(screen.queryByText("Хадгалаагүй ноорог сэргээгдлээ.")).not.toBeInTheDocument();
   });
 
@@ -154,7 +178,7 @@ describe("Шинэ ажиглалт — ноорог", () => {
       ]);
 
       renderWithProviders(<NewObservationPage />);
-      await user.type(await screen.findByLabelText("Нөхцөл байдал"), "Хашаанд");
+      await user.type(await screen.findByLabelText("Ажиглагдсан байдал"), "Хашаанд");
       const key = `nomadkids:observation-draft:staff:${CHILD}`;
       await waitFor(() => expect(window.localStorage.getItem(key)).toBeTruthy());
 
@@ -204,7 +228,7 @@ describe("Шинэ ажиглалт — ноорог", () => {
       ]);
 
       renderWithProviders(<NewObservationPage />);
-      await user.type(await screen.findByLabelText("Нөхцөл байдал"), "Богино тэмдэглэл");
+      await user.type(await screen.findByLabelText("Ажиглагдсан байдал"), "Богино тэмдэглэл");
 
       // No `waitFor` on the draft: the point is to save while it is still armed.
       await user.click(screen.getByRole("button", { name: "Хадгалах" }));
@@ -248,7 +272,7 @@ describe("Шинэ ажиглалт — ноорог", () => {
     ]);
 
     renderWithProviders(<NewObservationPage />);
-    await user.type(await screen.findByLabelText("Нөхцөл байдал"), "Эхний ажиглалт");
+    await user.type(await screen.findByLabelText("Ажиглагдсан байдал"), "Эхний ажиглалт");
     await waitFor(() => expect(window.localStorage.getItem(key)).toBeTruthy());
 
     await user.click(screen.getByRole("button", { name: "Хадгалах" }));
@@ -257,7 +281,7 @@ describe("Шинэ ажиглалт — ноорог", () => {
     await waitFor(() => expect(window.localStorage.getItem(key)).toBeNull());
 
     await user.click(await screen.findByRole("button", { name: "Дахин бичих" }));
-    await user.type(await screen.findByLabelText("Нөхцөл байдал"), "Хоёр дахь ажиглалт");
+    await user.type(await screen.findByLabelText("Ажиглагдсан байдал"), "Хоёр дахь ажиглалт");
 
     await waitFor(() => expect(window.localStorage.getItem(key)).toContain("Хоёр дахь ажиглалт"));
   });
@@ -273,7 +297,7 @@ describe("Шинэ ажиглалт — ноорог", () => {
       ]);
 
       const parent = renderWithProviders(<NewObservationPage />);
-      await user.type(await screen.findByLabelText("Нөхцөл байдал"), "Гэртээ ном уншив");
+      await user.type(await screen.findByLabelText("Ажиглагдсан байдал"), "Гэртээ ном уншив");
       await waitFor(() =>
         expect(
           window.localStorage.getItem(`nomadkids:observation-draft:parent:${CHILD}`),
@@ -286,7 +310,82 @@ describe("Шинэ ажиглалт — ноорог", () => {
       stubApi(routes());
       renderWithProviders(<NewObservationPage />);
 
-      expect(await screen.findByLabelText("Нөхцөл байдал")).toHaveValue("");
+      expect(await screen.findByLabelText("Ажиглагдсан байдал")).toHaveValue("");
     },
   );
+});
+
+/**
+ * The compose form's 2026-09-11 shape — the client's design.
+ *
+ * ★ Two of these fields were never on the form, and one of them was the reason
+ * a whole panel elsewhere read almost zero.
+ *
+ * `domainIds` has been on `createObservationSchema` since it was written and
+ * only the review screen ever set it, so every note a teacher filed arrived
+ * untagged and "Сургалтын чиглэлийн хамралт" counted nothing. The activity was
+ * free text, which produced "Өглөөний цай", "өглөөний цай" and "Өглөөний цай "
+ * as three separate activities on the same breakdown.
+ */
+describe("Шинэ ажиглалт — the form's own fields", () => {
+  it("picks the activity from the day's stages rather than typing it", async () => {
+    const user = userEvent.setup();
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    const activity = await screen.findByLabelText("Үйл ажиллагааны явц");
+    await user.click(activity);
+
+    // The same reference list the coverage breakdown groups by, so the form
+    // and the panel cannot disagree about what an activity is called.
+    expect(await screen.findByRole("option", { name: "Өглөөний цай" })).toBeInTheDocument();
+  });
+
+  it("tags the note with one development strand", async () => {
+    const user = userEvent.setup();
+    const api = stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
+    await user.type(await screen.findByLabelText(/Ажиглагдсан байдал/), "Тэмдэглэл");
+    await user.click(screen.getByRole("button", { name: /Хадгалах/ }));
+
+    await waitFor(() =>
+      expect(
+        api.calls.find((call) => call.method === "POST")?.body as Record<string, unknown>,
+      ).toMatchObject({ domainIds: [DOMAIN_ID] }),
+    );
+  });
+
+  /**
+   * ★ An unchosen strand sends nothing, not an empty array.
+   *
+   * The schema accepts `[]` and the service would store it as "tagged with
+   * nothing" — indistinguishable from a note nobody classified, and it would
+   * make the untagged case invisible.
+   */
+  it("sends no strand at all when none is chosen", async () => {
+    const user = userEvent.setup();
+    const api = stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    await user.type(await screen.findByLabelText(/Ажиглагдсан байдал/), "Тэмдэглэл");
+    await user.click(screen.getByRole("button", { name: /Хадгалах/ }));
+
+    await waitFor(() => expect(api.calls.some((call) => call.method === "POST")).toBe(true));
+    const body = api.calls.find((call) => call.method === "POST")?.body as Record<string, unknown>;
+    expect(body).not.toHaveProperty("domainIds");
+  });
+
+  /** A limit nobody can see is a limit discovered by losing the end of a sentence. */
+  it("counts the characters against the limit", async () => {
+    const user = userEvent.setup();
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    expect(await screen.findByText("0/1000")).toBeInTheDocument();
+    await user.type(screen.getByLabelText(/Ажиглагдсан байдал/), "Тэмдэглэл");
+    expect(screen.getByText("9/1000")).toBeInTheDocument();
+    expect(screen.getByText("0/500")).toBeInTheDocument();
+  });
 });

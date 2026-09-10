@@ -6,11 +6,17 @@ import { ChevronLeft } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { z } from "zod";
-import { childDetailSchema, observationSchema, observationTypeSchema } from "@kinder/contracts";
+import {
+  assessmentConfigSchema,
+  childDetailSchema,
+  observationSchema,
+  observationTypeSchema,
+} from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
+import { DAILY_ACTIVITIES } from "@/components/assessment/group-coverage";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { PORTFOLIO } from "@/lib/vocabulary";
@@ -30,6 +36,8 @@ const typesSchema = z.array(observationTypeSchema);
 interface ObservationDraft {
   typeId: string;
   activityName: string;
+  /** The development strand, added to the form 2026-09-11. */
+  domainId: string;
   situation: string;
   childDid: string;
   childSaid: string;
@@ -99,12 +107,25 @@ function NewObservationForm() {
   const childId = params.childId;
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { hasRole } = useSession();
+  const { hasRole, primaryKindergartenId } = useSession();
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
 
   const child = useQuery({
     queryKey: qk.child(childId),
     queryFn: () => get(`/children/${childId}`, childDetailSchema),
+  });
+
+  /*
+    The kindergarten's strands. `assessment-config` is readable by every
+    member — the same query the assessment screen makes, so this normally reads
+    a warm cache rather than a request.
+  */
+  const config = useQuery({
+    queryKey: qk.assessmentConfig(primaryKindergartenId ?? ""),
+    queryFn: () =>
+      get(`/kindergartens/${primaryKindergartenId}/assessment-config`, assessmentConfigSchema),
+    enabled: Boolean(primaryKindergartenId),
+    staleTime: 5 * 60_000,
   });
 
   const types = useQuery({
@@ -153,6 +174,14 @@ function NewObservationForm() {
   // under the day it is being written, not the day it was abandoned.
   const [observedOn, setObservedOn] = useState(todayLocal());
   const [activityName, setActivityName] = useState(draft?.activityName ?? "");
+  /**
+   * Which development strand this note is about.
+   *
+   * ★ One, not the array's ten. The client's design has a single select, and a
+   * note about one moment is about one thing — `domainIds` still takes an
+   * array because the review screen tags several after the fact.
+   */
+  const [domainId, setDomainId] = useState(draft?.domainId ?? "");
   const [situation, setSituation] = useState(draft?.situation ?? "");
   const [childDid, setChildDid] = useState(draft?.childDid ?? "");
   const [childSaid, setChildSaid] = useState(draft?.childSaid ?? "");
@@ -171,6 +200,7 @@ function NewObservationForm() {
   const { clear: clearDraft, resume: resumeDraft } = useDraftAutosave<ObservationDraft>(draftKey, {
     typeId,
     activityName,
+    domainId,
     situation,
     childDid,
     childSaid,
@@ -208,6 +238,10 @@ function NewObservationForm() {
           typeId,
           observedOn,
           activityName: optional(activityName),
+          // An empty select sends nothing rather than an empty array, which the
+          // schema would accept and the service would store as "tagged with
+          // nothing" — indistinguishable from a note nobody classified.
+          ...(domainId ? { domainIds: [domainId] } : {}),
           situation: optional(situation),
           childDid: optional(childDid),
           childSaid: optional(childSaid),
@@ -414,24 +448,86 @@ function NewObservationForm() {
           </div>
 
           {isStaff ? (
-            <Field label="Үйл ажиллагааны нэр" error={errors.activityName}>
-              {({ id, describedBy, invalid }) => (
-                <Input
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  value={activityName}
-                  onChange={(e) => setActivityName(e.target.value)}
-                />
-              )}
-            </Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {/*
+                ★ A list, not a free-text box — 2026-09-11, the client's design.
+
+                `Observation.activityName` is a `String?` and stays one: the
+                thirteen stages of the day are what a teacher picks from, and
+                typing them produced "Өглөөний цай", "өглөөний цай" and
+                "Өглөөний цай " as three activities on the coverage screen. The
+                same reference list `group-coverage.tsx` groups by, so the
+                breakdown and the form cannot disagree about what an activity
+                is called.
+              */}
+              <Field label="Үйл ажиллагааны явц" error={errors.activityName}>
+                {({ id, describedBy, invalid }) => (
+                  <Select
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    value={activityName}
+                    onChange={(e) => setActivityName(e.target.value)}
+                  >
+                    <option value="">Сонгоно уу</option>
+                    {DAILY_ACTIVITIES.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+
+              {/*
+                ★ The development strand, which this form never asked for.
+
+                `domainIds` has been on `createObservationSchema` since it was
+                written and only the review screen ever set it — so every note
+                a teacher filed arrived untagged, and "Сургалтын чиглэлийн
+                хамралт" counted almost nothing. One strand per note rather
+                than the array's ten: the client's design has one select, and a
+                note about one moment is about one thing.
+              */}
+              <Field label="Сургалтын чиглэл" error={errors.domainIds}>
+                {({ id, describedBy, invalid }) => (
+                  <Select
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    value={domainId}
+                    onChange={(e) => setDomainId(e.target.value)}
+                  >
+                    <option value="">Сонгоно уу</option>
+                    {(config.data?.domains ?? []).map((domain) => (
+                      <option key={domain.id} value={domain.id}>
+                        {domain.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            </div>
           ) : null}
         </Card>
 
         <section>
           <SectionHeader title="Юу болсон бэ?" as="h2" />
           <Card pad="roomy" className="flex flex-col gap-4">
-            <Field label="Нөхцөл байдал" error={errors.situation}>
+            {/*
+              ★ "Ажиглагдсан байдал", with a counter — 2026-09-11's design.
+
+              It was "Нөхцөл байдал", which asks for the setting; what a
+              teacher actually writes here is what happened, and the label was
+              answering a narrower question than the box. The counter is the
+              client's: a 1000-character limit nobody can see is a limit
+              discovered by losing the end of a sentence.
+            */}
+            <Field
+              label="Ажиглагдсан байдал"
+              error={errors.situation}
+              hint={`${situation.length}/1000`}
+            >
               {({ id, describedBy, invalid }) => (
                 <Textarea
                   id={id}
@@ -456,7 +552,11 @@ function NewObservationForm() {
               )}
             </Field>
 
-            <Field label="Хүүхэд юу хэлсэн бэ?" error={errors.childSaid}>
+            <Field
+              label="Хүүхдийн хэлсэн үг"
+              error={errors.childSaid}
+              hint={`${childSaid.length}/500`}
+            >
               {({ id, describedBy, invalid }) => (
                 <Textarea
                   id={id}
