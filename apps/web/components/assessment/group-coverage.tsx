@@ -81,7 +81,14 @@ function academicMonthList(from: string): MonthPoint[] {
   });
 }
 
-function defaultWindow(): { from: string; to: string } {
+/**
+ * The academic window when the group's own year has not resolved.
+ *
+ * ★ Exported since 2026-09-11, so the note strip's class figure is taken over
+ * the same span the summary behind it uses. Two components computing "this
+ * school year" independently is how one of them ends up a year out.
+ */
+export function defaultWindow(): { from: string; to: string } {
   const today = new Date();
   const year = today.getMonth() >= 8 ? today.getFullYear() : today.getFullYear() - 1;
   return { from: `${year}-09-01`, to: `${year + 1}-05-31` };

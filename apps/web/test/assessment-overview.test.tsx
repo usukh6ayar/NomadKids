@@ -524,10 +524,45 @@ describe("the new-record strip", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await user.click(observation);
 
-    const picker = await screen.findByRole("dialog", { name: "Хүүхдээ сонгох" });
+    const picker = await screen.findByRole("dialog", { name: "Ажиглалт" });
     // A face, a name and what distinguishes two Ануs — the age and the group.
     expect(within(picker).getByRole("radio", { name: /Батжаргал Ану/ })).toBeInTheDocument();
     expect(within(picker).getByLabelText("Хүүхдийн нэрээр хайх")).toBeInTheDocument();
+  });
+
+  /**
+   * ★ The class's own figure sits above the roster — 2026-09-11, at the
+   * client's request ("ангийн нийт ажиглалт болон хүүхэд сонгох гарна").
+   *
+   * A teacher pressing a door is choosing a child, and the number that makes
+   * that choice easier is how much of this kind the class already has. It
+   * belongs at the moment it is used, not on the screen behind.
+   */
+  it("shows the class's total for the kind above the children", async () => {
+    const user = userEvent.setup();
+    stubPage();
+    renderWithProviders(<AssessmentPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Ажиглалт/ }));
+
+    const picker = await screen.findByRole("dialog", { name: "Ажиглалт" });
+    expect(within(picker).getByText("Ангийн нийт ажиглалт")).toBeInTheDocument();
+    // `STATS.byType` has seven under "Ажиглалт".
+    expect(within(picker).getByText("7")).toBeInTheDocument();
+  });
+
+  /**
+   * ★ The dialog is named for the kind, so the two questions it answers are
+   * both on screen: which record, and for whom.
+   */
+  it("names the dialog for the kind that was pressed", async () => {
+    const user = userEvent.setup();
+    stubPage();
+    renderWithProviders(<AssessmentPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Ярилцлага/ }));
+
+    expect(await screen.findByRole("dialog", { name: "Ярилцлага" })).toBeInTheDocument();
   });
 
   /**
@@ -542,7 +577,7 @@ describe("the new-record strip", () => {
     renderWithProviders(<AssessmentPage />);
 
     await user.click(await screen.findByRole("button", { name: /Ажиглалт/ }));
-    const picker = await screen.findByRole("dialog", { name: "Хүүхдээ сонгох" });
+    const picker = await screen.findByRole("dialog", { name: "Ажиглалт" });
 
     expect(within(picker).getByRole("button", { name: "Сонгох" })).toBeDisabled();
     await user.click(within(picker).getByRole("radio", { name: /Батжаргал Ану/ }));

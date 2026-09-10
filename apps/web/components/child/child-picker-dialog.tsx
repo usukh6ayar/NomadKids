@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Check, Search, X } from "lucide-react";
 import { MAX_PAGE_SIZE, childSummarySchema, paginated } from "@kinder/contracts";
@@ -42,12 +42,23 @@ const childrenPageSchema = paginated(childSummarySchema);
 export function ChildPickerDialog({
   groupId,
   selectedId,
+  title = "Хүүхдээ сонгох",
+  summary,
   onSelect,
   onClose,
 }: {
   /** Narrows the roster to one group; omitted, it is every child the actor sees. */
   groupId?: string;
   selectedId?: string;
+  /** Names the kind of record when the picker is opened from one of its doors. */
+  title?: string;
+  /**
+   * What the class as a whole has done — shown above the roster.
+   *
+   * ★ Optional, because the same picker is opened from Солих on a child's own
+   * screen, where a group figure would answer a question nobody asked.
+   */
+  summary?: ReactNode;
   onSelect: (childId: string) => void;
   onClose: () => void;
 }) {
@@ -73,18 +84,20 @@ export function ChildPickerDialog({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Хүүхдээ сонгох"
+      aria-label={title}
       className="fixed inset-0 z-50 grid items-end bg-ink/50 p-0 sm:place-items-center sm:p-4"
     >
       <div className="flex max-h-[calc(100dvh-1rem)] w-full max-w-[480px] flex-col gap-3 rounded-t-card border border-border bg-surface p-4 shadow-lg sm:max-h-[calc(100vh-2rem)] sm:rounded-card sm:p-5">
         <div className="flex items-center gap-2">
           <h2 className="min-w-0 flex-1 text-title font-semibold leading-heading text-ink">
-            Хүүхдээ сонгох
+            {title}
           </h2>
           <Button variant="ghost" size="icon" aria-label="Хаах" onClick={onClose}>
             <X size={18} aria-hidden="true" />
           </Button>
         </div>
+
+        {summary}
 
         <div className="relative">
           <Search
@@ -112,11 +125,7 @@ export function ChildPickerDialog({
         ) : null}
 
         {items.length > 0 ? (
-          <ul
-            role="radiogroup"
-            aria-label="Хүүхдээ сонгох"
-            className="min-h-0 flex-1 overflow-y-auto"
-          >
+          <ul role="radiogroup" aria-label={title} className="min-h-0 flex-1 overflow-y-auto">
             {items.map((child) => {
               const chosen = pending === child.id;
               const group = child.enrollments?.find((row) => row.group)?.group?.name;

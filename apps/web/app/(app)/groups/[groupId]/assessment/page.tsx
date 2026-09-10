@@ -28,6 +28,7 @@ import { Eye, Images, MessageCircle, Printer, Users } from "lucide-react";
 import {
   MAX_PAGE_SIZE,
   childSummarySchema,
+  groupObservationStatsSchema,
   observationTypeSchema,
   paginated,
 } from "@kinder/contracts";
@@ -37,7 +38,7 @@ const observationTypesSchema = z.array(observationTypeSchema);
 /** The group's roster — one request, independent of term and domain. */
 const childrenPageSchema = paginated(childSummarySchema);
 import { Card, SectionHeader } from "@/components/ui/card";
-import { GroupCoverage } from "@/components/assessment/group-coverage";
+import { GroupCoverage, defaultWindow } from "@/components/assessment/group-coverage";
 import { RegisterProgress } from "@/components/register/register-progress";
 import { RegisterSaveBar } from "@/components/register/save-bar";
 import { TONE_SURFACE, type Tone } from "@/components/ui/tone";
@@ -568,7 +569,14 @@ function GroupAssessment() {
           termId={termId}
           startsOn={groupSchoolYear?.startsOn}
           endsOn={groupSchoolYear?.endsOn}
-          recordComposer={<NewRecordStrip groupId={groupId} embedded />}
+          recordComposer={
+            <NewRecordStrip
+              groupId={groupId}
+              embedded
+              startsOn={groupSchoolYear?.startsOn}
+              endsOn={groupSchoolYear?.endsOn}
+            />
+          }
         />
       ) : null}
 
@@ -992,9 +1000,41 @@ const KIND_STYLE: Record<string, { tone: Tone; Icon: typeof Eye }> = {
 
 const KIND_FALLBACK = { tone: "cornflower" as Tone, Icon: Eye };
 
-function NewRecordStrip({ groupId, embedded = false }: { groupId: string; embedded?: boolean }) {
+function NewRecordStrip({
+  groupId,
+  embedded = false,
+  startsOn,
+  endsOn,
+}: {
+  groupId: string;
+  embedded?: boolean;
+  /** The school year the class figure is taken over. */
+  startsOn?: string | null;
+  endsOn?: string | null;
+}) {
   const router = useRouter();
   const [selectedType, setSelectedType] = useState<{ code: string; name: string } | null>(null);
+
+  /*
+    ★ The same query key `GroupCoverage` uses, so this is a cached read.
+
+    The summary above the picker is one number out of a payload the screen
+    behind it has already fetched — asking for it again on every door press
+    would be a request for data in memory.
+  */
+  const fallback = defaultWindow();
+  const from = startsOn ? `${startsOn.slice(0, 4)}-09-01` : fallback.from;
+  const to = endsOn ? `${endsOn.slice(0, 4)}-05-31` : fallback.to;
+  const stats = useQuery({
+    queryKey: qk.groupObservationStats(groupId, from, to),
+    queryFn: () =>
+      get(
+        `/groups/${groupId}/observation-stats?from=${from}&to=${to}`,
+        groupObservationStatsSchema,
+      ),
+    enabled: Boolean(groupId),
+    staleTime: 60_000,
+  });
 
   /*
     ★ The group's own roster, not the assessment column's — fixed 2026-09-10.
@@ -1047,6 +1087,19 @@ function NewRecordStrip({ groupId, embedded = false }: { groupId: string; embedd
     strip is the first thing under the heading, and an empty space there reads
     as a screen that failed rather than one that is loading.
   */
+  /*
+    ★ Matched on the type's *name*, because `byType` carries no code.
+
+    `statBucketSchema` is an id, a name and a count, and the id is the
+    kindergarten's own row — which is what the door carries too, so the name is
+    the one field both sides agree on here. Null when the stats have not
+    arrived, and the summary draws "—" rather than a zero that would read as
+    "the class has written none".
+  */
+  const classTotal = stats.data
+    ? (stats.data.byType.find((row) => row.name === selectedType?.name)?.count ?? 0)
+    : null;
+
   if (roster.isLoading) return <LoadingState rows={1} />;
   if (children.length === 0) return null;
 
@@ -1084,6 +1137,27 @@ function NewRecordStrip({ groupId, embedded = false }: { groupId: string; embedd
       {selectedType ? (
         <ChildPickerDialog
           groupId={groupId}
+          title={selectedType.name}
+          /*
+            ★ The class's own figure above the roster — 2026-09-11, at the
+            client's request ("ангийн нийт ажиглалт болон хүүхэд сонгох
+            гарна").
+
+            A teacher pressing a door is choosing a child, and the number that
+            makes that choice easier is how much of this kind the class has
+            already. It sits above the list rather than on the screen behind,
+            because that is the moment it is being used.
+          */
+          summary={
+            <div className="flex items-baseline justify-between gap-3 rounded-card bg-sunken px-3.5 py-3">
+              <span className="text-caption text-muted">
+                Ангийн нийт {selectedType.name.toLowerCase()}
+              </span>
+              <span className="text-title font-semibold tabular-nums leading-none text-ink">
+                {classTotal === null ? "—" : classTotal}
+              </span>
+            </div>
+          }
           onClose={() => setSelectedType(null)}
           onSelect={(childId) =>
             router.push(`/children/${childId}/observations?type=${selectedType.code}`)
