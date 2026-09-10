@@ -710,7 +710,7 @@ export function AppShell({
         <div
           className={cn(
             desktopSidebar &&
-              (isTeacherWorkspace
+              (isTeacherWorkspace || isAdmin
                 ? "lg:pl-[276px]"
                 : variant === "parent"
                   ? "lg:pl-[256px]"
@@ -1282,7 +1282,7 @@ function Sidebar({
        */
       className={cn(
         "fixed inset-y-0 left-0 z-20 hidden flex-col overflow-hidden border-r border-border-soft bg-surface/92 py-[18px] shadow-[8px_0_28px_-22px_rgb(29_78_216_/_0.28)] backdrop-blur lg:flex",
-        teacherTheme
+        teacherTheme || isAdmin
           ? "w-[264px] gap-5 px-3.5"
           : variant === "parent"
             ? "w-[244px] gap-4 px-4"

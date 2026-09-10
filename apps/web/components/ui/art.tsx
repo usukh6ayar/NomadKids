@@ -46,6 +46,15 @@ import Image from "next/image";
  * across the product.
  */
 const SOURCE = {
+  accountingAttendanceCalculation: "/icons/icon-accounting-attendance-calculation-3d.png",
+  accountingAttendanceDetails: "/icons/icon-accounting-attendance-details-3d.png",
+  accountingAudit: "/icons/icon-accounting-audit-3d.png",
+  accountingInvoice: "/icons/icon-accounting-invoice-3d.png",
+  adminCurriculum: "/icons/icon-admin-curriculum-3d.png",
+  adminEsisHub: "/icons/icon-admin-esis-hub-3d.png",
+  adminSchoolYear: "/icons/icon-admin-school-year-3d.png",
+  adminTerm: "/icons/icon-admin-term-3d.png",
+  adminUsersPermissions: "/icons/icon-admin-users-permissions-3d.png",
   analytics: "/icons/icon-analytics.png",
   artwork: "/icons/icon-artwork-3d.png",
   attendance: "/icons/icon-attendance-3d.png",
@@ -58,6 +67,8 @@ const SOURCE = {
   food: "/icons/icon-food-3d.png",
   group: "/icons/icon-group-3d.png",
   kindergarten: "/icons/icon-kindergarten-3d.png",
+  kitchenIngredients: "/icons/icon-kitchen-ingredients-3d.png",
+  kitchenRecipeCard: "/icons/icon-kitchen-recipe-card-3d.png",
   notice: "/icons/icon-notice-3d.png",
   observation: "/icons/icon-observation-3d.png",
   portfolio: "/icons/icon-portfolio.png",
