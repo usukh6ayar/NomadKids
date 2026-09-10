@@ -87,10 +87,13 @@ export function AudiencePicker({
   value,
   onChange,
   disabled,
+  showSummary = true,
 }: {
   value: Audience;
   onChange: (next: Audience) => void;
   disabled: boolean;
+  /** The compact composer already makes the selected audience explicit. */
+  showSummary?: boolean;
 }) {
   const groups = useQuery({
     queryKey: qk.groups({ pageSize: 100 }),
@@ -237,13 +240,15 @@ export function AudiencePicker({
         </div>
       ) : null}
 
-      <p className="text-caption text-muted">
-        {everyone
-          ? "Бүх бүлгийн эцэг эхэд харагдана."
-          : named === 0
-            ? "Хараахан сонгоогүй байна — сонгохгүй бол бүх бүлэгт харагдана."
-            : `${groupIds.length} бүлэг, ${childIds.length} хүүхдийн эцэг эхэд харагдана.`}
-      </p>
+      {showSummary ? (
+        <p className="text-caption text-muted">
+          {everyone
+            ? "Бүх бүлгийн эцэг эхэд харагдана."
+            : named === 0
+              ? "Хараахан сонгоогүй байна — сонгохгүй бол бүх бүлэгт харагдана."
+              : `${groupIds.length} бүлэг, ${childIds.length} хүүхдийн эцэг эхэд харагдана.`}
+        </p>
+      ) : null}
     </fieldset>
   );
 }

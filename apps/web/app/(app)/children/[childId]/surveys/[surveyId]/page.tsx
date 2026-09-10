@@ -14,6 +14,7 @@ import { useToast } from "@/components/ui/toast";
 import { Card } from "@/components/ui/card";
 import { Checkbox, Field, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { PollAnswer } from "@/components/survey/poll-answer";
 import { cn } from "@/lib/utils";
 
 const activeSurveysSchema = z.array(surveySchema);
@@ -63,6 +64,24 @@ export default function SurveyResponsePage() {
     return (
       <div className="py-6">
         <ErrorState title="Олдсонгүй" description="Энэ судалгаа олдсонгүй эсвэл хаагдсан байна." />
+      </div>
+    );
+  }
+
+  /*
+    ★ A poll is a different screen, not a form with fewer fields — 2026-09-10,
+    at the client's request.
+
+    `PollAnswer` explains why in full: a form is filled in and submitted, a
+    poll is one tap that submits and answers back with where the class stands.
+    Routed here rather than inside the form so the form below keeps exactly one
+    interaction model.
+  */
+  if (survey.kind === "POLL") {
+    return (
+      <div className="flex flex-col gap-6 py-2">
+        <PageHeader title={survey.title} />
+        <PollAnswer survey={survey} childId={childId} />
       </div>
     );
   }
@@ -151,6 +170,45 @@ export default function SurveyResponsePage() {
                   />
                 )}
               </Field>
+            ) : null}
+
+            {/*
+              ★ SINGLE_CHOICE, which this form did not render at all.
+
+              The type has existed since 2026-08-31 and every other surface
+              knows it — the composer offers it, `survey-scoring.ts` scores it,
+              the API validates it — but the answering form stopped at
+              CHECKBOX. A "Нэг сонголт" question therefore drew its prompt and
+              no controls, and because `unanswered` counts questions with no
+              answer, the submit button stayed disabled for ever: the family
+              could neither answer it nor send the rest of the form.
+
+              A radio group rather than checkboxes with a rule, so the "exactly
+              one" the type promises is what the control physically permits.
+            */}
+            {question.type === "SINGLE_CHOICE" ? (
+              <div role="radiogroup" aria-label={question.prompt} className="flex flex-col gap-2">
+                {stringOptions(question.options).map((option) => {
+                  const selected = answers[question.id] === option;
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => setAnswers((a) => ({ ...a, [question.id]: option }))}
+                      className={cn(
+                        "min-h-11 rounded-control border px-3.5 text-left text-body transition-colors",
+                        selected
+                          ? "border-primary bg-primary-soft font-medium text-primary"
+                          : "border-border bg-surface text-ink hover:bg-canvas",
+                      )}
+                    >
+                      {option}
+                    </button>
+                  );
+                })}
+              </div>
             ) : null}
 
             {question.type === "CHECKBOX" ? (

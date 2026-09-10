@@ -132,6 +132,15 @@ export const qk = {
     ["kindergarten", kindergartenId, "incidents", filters] as const,
 
   childSurveys: (childId: string) => ["child", childId, "surveys"] as const,
+  /**
+   * One poll's running count for one child.
+   *
+   * ★ Nested under `childSurveys` so answering a poll can invalidate both with
+   * one prefix — the tally is what the screen redraws and the list carries the
+   * `respondedByMe` that stops the board offering the poll again.
+   */
+  childSurveyTally: (childId: string, surveyId: string) =>
+    ["child", childId, "surveys", surveyId, "tally"] as const,
   kindergartenSurveys: (kindergartenId: string) =>
     ["kindergarten", kindergartenId, "surveys"] as const,
   survey: (surveyId: string) => ["survey", surveyId] as const,

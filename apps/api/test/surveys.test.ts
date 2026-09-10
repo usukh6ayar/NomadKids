@@ -704,3 +704,432 @@ describe("results by group", () => {
     expect(res.status).toBe(404);
   });
 });
+
+/**
+ * The family's side of a poll — the client's 2026-09-10 request: "Авсан
+ * асуулгууд фэйсбүүкийн пост шиг эцэг эх дарахаар шууд хувь үзүүлэлт нь
+ * харагдана. Эцэг эх түүн дээр нэмж шинэ хариулт үүсгэж болно."
+ *
+ * ★ Two routes that a guardian may call against child data, so §4.1's three
+ * cases are mandatory and are asserted for both.
+ *
+ * ★★ The write is the unusual one and gets the most attention here. It is the
+ * only place in the product where a parent edits an object a teacher owns, and
+ * everything that keeps that narrow is a test below: polls only, open polls
+ * only, option-bearing questions only, bounded, append-only, and never a form.
+ */
+async function publishedPoll(options = ["Ирнэ", "Ирэхгүй"]) {
+  const created = await authed(
+    request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
+    teacherA,
+  ).send({ title: "Аялалд оролцох уу?", scope: "CHILD", kind: "POLL" });
+
+  await authed(request(server()).put(`/v1/surveys/${created.body.id}/questions`), teacherA).send({
+    questions: [{ order: 0, type: "SINGLE_CHOICE", prompt: "Аялалд оролцох уу?", options }],
+  });
+
+  await authed(request(server()).post(`/v1/surveys/${created.body.id}/publish`), teacherA);
+
+  const withQuestions = await db.survey.findUniqueOrThrow({
+    where: { id: created.body.id },
+    include: { questions: true },
+  });
+  return { surveyId: created.body.id as string, questionId: withQuestions.questions[0]!.id };
+}
+
+const tallyUrl = (childId: string, surveyId: string) =>
+  `/v1/children/${childId}/surveys/${surveyId}/tally`;
+
+const optionsUrl = (childId: string, surveyId: string, questionId: string) =>
+  `/v1/children/${childId}/surveys/${surveyId}/questions/${questionId}/options`;
+
+describe("a poll's tally, as the family sees it", () => {
+  it("lists every choice with its count, including one nobody picked", async () => {
+    const { surveyId, questionId } = await publishedPoll();
+
+    await authed(request(server()).post(`/v1/surveys/${surveyId}/responses`), parentA).send({
+      childId: a.child.id,
+      answers: [{ questionId, value: "Ирнэ" }],
+    });
+
+    const res = await authed(request(server()).get(tallyUrl(a.child.id, surveyId)), parentA);
+
+    expect(res.status).toBe(200);
+    expect(res.body.respondedByMe).toBe(true);
+    expect(res.body.questions[0].totalResponses).toBe(1);
+    // "Ирэхгүй" has no votes and is still a bar — on a poll the empty choice
+    // is the interesting one, and it is every choice for the first reader.
+    expect(res.body.questions[0].options).toEqual([
+      { label: "Ирнэ", count: 1 },
+      { label: "Ирэхгүй", count: 0 },
+    ]);
+  });
+
+  it("says which choice is this family's, and nobody else's", async () => {
+    const { surveyId, questionId } = await publishedPoll();
+
+    await authed(request(server()).post(`/v1/surveys/${surveyId}/responses`), parentA).send({
+      childId: a.child.id,
+      answers: [{ questionId, value: "Ирэхгүй" }],
+    });
+
+    const res = await authed(request(server()).get(tallyUrl(a.child.id, surveyId)), parentA);
+
+    expect(res.body.questions[0].myAnswer).toBe("Ирэхгүй");
+    // The payload carries counts and the asker's own answer. Nothing in it
+    // names a respondent — a parent must not be able to work out how another
+    // family voted, which is why the tally and `myAnswer` are two queries.
+    expect(JSON.stringify(res.body)).not.toContain(a.parentUser.id);
+  });
+
+  it("reports nothing chosen before the family has answered", async () => {
+    const { surveyId } = await publishedPoll();
+
+    const res = await authed(request(server()).get(tallyUrl(a.child.id, surveyId)), parentA);
+
+    expect(res.status).toBe(200);
+    expect(res.body.respondedByMe).toBe(false);
+    expect(res.body.questions[0].myAnswer).toBeNull();
+    expect(res.body.questions[0].options).toEqual([
+      { label: "Ирнэ", count: 0 },
+      { label: "Ирэхгүй", count: 0 },
+    ]);
+  });
+
+  /**
+   * ★ A questionnaire's aggregate is not a family's to read.
+   *
+   * 404 rather than 403: a form the teacher has published to this very child
+   * exists and is answerable, but its results belong to staff, and saying
+   * "that exists and is not yours" is the confirmation §1.7 forbids.
+   */
+  it("gives 404 for a form rather than a form's results", async () => {
+    const { surveyId } = await publishedChildSurvey();
+
+    const res = await authed(request(server()).get(tallyUrl(a.child.id, surveyId)), parentA);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("guardian of another child gets 404", async () => {
+    const { surveyId } = await publishedPoll();
+
+    const res = await authed(request(server()).get(tallyUrl(a.child.id, surveyId)), parentB);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("user from another kindergarten gets 404", async () => {
+    const { surveyId } = await publishedPoll();
+    const teacherB = await login(app, b.teacherUser.username);
+
+    const res = await authed(request(server()).get(tallyUrl(a.child.id, surveyId)), teacherB);
+
+    expect(res.status).toBe(404);
+  });
+
+  /**
+   * ★ The poll must be on *this* child's board, not merely in the kindergarten.
+   *
+   * A poll addressed to one group is invisible to a family in another, and the
+   * tally has to answer that the same way the list does — otherwise the id
+   * alone would read a poll the family cannot see on any screen.
+   */
+  it("gives 404 for a poll addressed to another group", async () => {
+    const otherGroup = await db.group.findFirstOrThrow({ where: { id: a.group.id } });
+
+    const created = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
+      teacherA,
+    ).send({ title: "Өөр бүлгийн асуулга", scope: "CHILD", kind: "POLL" });
+
+    await authed(request(server()).put(`/v1/surveys/${created.body.id}/questions`), teacherA).send({
+      questions: [{ order: 0, type: "SINGLE_CHOICE", prompt: "Уу?", options: ["A", "B"] }],
+    });
+    await authed(request(server()).post(`/v1/surveys/${created.body.id}/publish`), teacherA);
+
+    // Move the child out of the poll's audience by ending their enrolment.
+    await db.enrollment.updateMany({
+      where: { childId: a.child.id, groupId: otherGroup.id },
+      data: { status: "ENDED" },
+    });
+    await db.survey.update({
+      where: { id: created.body.id },
+      data: { groupId: otherGroup.id },
+    });
+
+    const res = await authed(request(server()).get(tallyUrl(a.child.id, created.body.id)), parentA);
+
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("a family adding a choice to a poll", () => {
+  it("appends the option and returns the new list", async () => {
+    const { surveyId, questionId } = await publishedPoll();
+
+    const res = await authed(
+      request(server()).post(optionsUrl(a.child.id, surveyId, questionId)),
+      parentA,
+    ).send({ label: "Хожим шийднэ" });
+
+    expect(res.status).toBe(201);
+    expect(res.body.added).toBe(true);
+    expect(res.body.options).toEqual(["Ирнэ", "Ирэхгүй", "Хожим шийднэ"]);
+
+    // And it is a real choice: the tally draws it immediately.
+    const tally = await authed(request(server()).get(tallyUrl(a.child.id, surveyId)), parentA);
+    expect(tally.body.questions[0].options).toContainEqual({ label: "Хожим шийднэ", count: 0 });
+  });
+
+  /**
+   * ★ A duplicate is success, not an error.
+   *
+   * Two families type "Хожим шийднэ" within a second of each other; the second
+   * one wanted that choice to exist and it does. Failing them would report a
+   * race as their mistake.
+   */
+  it("treats a choice somebody already added as success, without duplicating it", async () => {
+    const { surveyId, questionId } = await publishedPoll();
+
+    await authed(
+      request(server()).post(optionsUrl(a.child.id, surveyId, questionId)),
+      parentA,
+    ).send({ label: "Хожим шийднэ" });
+
+    const again = await authed(
+      request(server()).post(optionsUrl(a.child.id, surveyId, questionId)),
+      parentA,
+    ).send({ label: "хожим   шийднэ" });
+
+    expect(again.status).toBe(201);
+    expect(again.body.added).toBe(false);
+    expect(again.body.options).toEqual(["Ирнэ", "Ирэхгүй", "Хожим шийднэ"]);
+  });
+
+  it("records who added it", async () => {
+    const { surveyId, questionId } = await publishedPoll();
+
+    await authed(
+      request(server()).post(optionsUrl(a.child.id, surveyId, questionId)),
+      parentA,
+    ).send({ label: "Хожим шийднэ" });
+
+    const entry = await db.auditLog.findFirst({
+      where: { objectType: "SurveyQuestion", objectId: questionId },
+    });
+
+    expect(entry?.actorUserId).toBe(a.parentUser.id);
+    expect(entry?.metadata).toMatchObject({ addedOption: "Хожим шийднэ" });
+  });
+
+  /** ★ Append-only. A parent may add a choice and never remove or rewrite one. */
+  it("never removes or rewrites the teacher's own choices", async () => {
+    const { surveyId, questionId } = await publishedPoll();
+
+    await authed(
+      request(server()).post(optionsUrl(a.child.id, surveyId, questionId)),
+      parentA,
+    ).send({ label: "Хожим шийднэ" });
+
+    const question = await db.surveyQuestion.findUniqueOrThrow({ where: { id: questionId } });
+    expect(question.options).toEqual(["Ирнэ", "Ирэхгүй", "Хожим шийднэ"]);
+  });
+
+  it("stops at the cap rather than growing without bound", async () => {
+    const { surveyId, questionId } = await publishedPoll(
+      Array.from({ length: 20 }, (_, i) => `Сонголт ${i + 1}`),
+    );
+
+    const res = await authed(
+      request(server()).post(optionsUrl(a.child.id, surveyId, questionId)),
+      parentA,
+    ).send({ label: "Нэг илүү" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("refuses a blank label", async () => {
+    const { surveyId, questionId } = await publishedPoll();
+
+    const res = await authed(
+      request(server()).post(optionsUrl(a.child.id, surveyId, questionId)),
+      parentA,
+    ).send({ label: "   " });
+
+    expect(res.status).toBe(400);
+  });
+
+  /** A closed poll grows no new choices — the same deadline `submitResponse` enforces. */
+  it("refuses once the poll has closed", async () => {
+    const { surveyId, questionId } = await publishedPoll();
+    await db.survey.update({
+      where: { id: surveyId },
+      data: { closesAt: new Date(Date.now() - 60_000) },
+    });
+
+    const res = await authed(
+      request(server()).post(optionsUrl(a.child.id, surveyId, questionId)),
+      parentA,
+    ).send({ label: "Хожим шийднэ" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("refuses a question that carries no option list", async () => {
+    const { surveyId } = await publishedPoll();
+    const question = await db.surveyQuestion.findFirstOrThrow({ where: { surveyId } });
+    await db.surveyQuestion.update({ where: { id: question.id }, data: { type: "TEXT" } });
+
+    const res = await authed(
+      request(server()).post(optionsUrl(a.child.id, surveyId, question.id)),
+      parentA,
+    ).send({ label: "Хожим шийднэ" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("gives 404 on a form's question rather than editing it", async () => {
+    const { surveyId, questionId } = await publishedChildSurvey();
+
+    const res = await authed(
+      request(server()).post(optionsUrl(a.child.id, surveyId, questionId)),
+      parentA,
+    ).send({ label: "Хожим шийднэ" });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("guardian of another child gets 404", async () => {
+    const { surveyId, questionId } = await publishedPoll();
+
+    const res = await authed(
+      request(server()).post(optionsUrl(a.child.id, surveyId, questionId)),
+      parentB,
+    ).send({ label: "Хожим шийднэ" });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("user from another kindergarten gets 404", async () => {
+    const { surveyId, questionId } = await publishedPoll();
+    const teacherB = await login(app, b.teacherUser.username);
+
+    const res = await authed(
+      request(server()).post(optionsUrl(a.child.id, surveyId, questionId)),
+      teacherB,
+    ).send({ label: "Хожим шийднэ" });
+
+    expect(res.status).toBe(404);
+  });
+
+  /** A question from another poll, named against this one — the id is the client's. */
+  it("gives 404 for a question belonging to a different poll", async () => {
+    const mine = await publishedPoll();
+    const other = await publishedPoll(["Тийм", "Үгүй"]);
+
+    const res = await authed(
+      request(server()).post(optionsUrl(a.child.id, mine.surveyId, other.questionId)),
+      parentA,
+    ).send({ label: "Хожим шийднэ" });
+
+    expect(res.status).toBe(404);
+  });
+});
+
+/**
+ * "23 / 35 харуулсан" on every card — the client's 2026-09-10 list design.
+ *
+ * ★ The point of these is the denominator, not the numerator.
+ *
+ * `expectedCount` is who was *asked*, and the two scopes ask different
+ * populations: a CHILD survey once per enrolled child, a KINDERGARTEN one once
+ * per parent however many children they have. Getting that wrong makes a
+ * family of three look like three non-responders on a survey they answered,
+ * and it is the kind of wrong that looks plausible on screen.
+ *
+ * ★★ Counted in three queries for the whole list rather than two per row —
+ * §3.4. Nothing here asserts the query count (`query-counts.test.ts` is where
+ * that guard lives); these assert that batching did not change the answers.
+ */
+describe("the staff list's participation counts", () => {
+  it("counts a group's children as the audience of a group survey", async () => {
+    const second = await createChild(a.kindergarten.id, { firstName: "Хоёрдугаар" });
+    await enrollChild(a.kindergarten.id, second.id, a.group.id, a.schoolYear.id);
+
+    const created = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
+      teacherA,
+    ).send({ title: "Бүлгийн судалгаа", scope: "CHILD", groupId: a.group.id });
+
+    const res = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
+      teacherA,
+    );
+
+    const row = res.body.find((s: { id: string }) => s.id === created.body.id);
+    expect(row.expectedCount).toBe(2);
+    expect(row.respondedCount).toBe(0);
+  });
+
+  it("counts answers as they arrive", async () => {
+    const { surveyId, questionId } = await publishedChildSurvey();
+
+    await authed(request(server()).post(`/v1/surveys/${surveyId}/responses`), parentA).send({
+      childId: a.child.id,
+      answers: [{ questionId, value: 4 }],
+    });
+
+    const res = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
+      teacherA,
+    );
+
+    const row = res.body.find((s: { id: string }) => s.id === surveyId);
+    expect(row.respondedCount).toBe(1);
+  });
+
+  /**
+   * ★ A parent of two children is one respondent on a kindergarten-wide survey.
+   *
+   * The CHILD denominator would say two, and the card would read "1 / 2" for a
+   * family that has answered everything asked of them.
+   */
+  it("counts parents, not children, for a kindergarten-wide survey", async () => {
+    const second = await createChild(a.kindergarten.id, { firstName: "Дүү" });
+    await enrollChild(a.kindergarten.id, second.id, a.group.id, a.schoolYear.id);
+    await linkGuardian(a.kindergarten.id, second.id, a.parentUser.id);
+
+    const created = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
+      teacherA,
+    ).send({ title: "Цэцэрлэгийн судалгаа", scope: "KINDERGARTEN" });
+
+    const res = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
+      teacherA,
+    );
+
+    const row = res.body.find((s: { id: string }) => s.id === created.body.id);
+    // One parent in this kindergarten, guardian of two children.
+    expect(row.expectedCount).toBe(1);
+  });
+
+  /** Another kindergarten's rows never reach these totals — §3.1. */
+  it("never counts another kindergarten's responses", async () => {
+    const { surveyId } = await publishedChildSurvey();
+
+    const created = await authed(
+      request(server()).post(`/v1/kindergartens/${b.kindergarten.id}/surveys`),
+      await login(app, b.teacherUser.username),
+    ).send({ title: "Өөр цэцэрлэгийн судалгаа", scope: "CHILD" });
+
+    const res = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
+      teacherA,
+    );
+
+    expect(res.body.map((s: { id: string }) => s.id)).toContain(surveyId);
+    expect(res.body.map((s: { id: string }) => s.id)).not.toContain(created.body.id);
+  });
+});

@@ -188,3 +188,30 @@ export function matrixOptions(question: ScorableQuestion): MatrixOptions | null 
 
   return { rows: validRows, columns: validColumns };
 }
+
+/**
+ * Reads `options` as a plain list of choices, dropping anything that is not a
+ * string.
+ *
+ * Defensive for the same reason `matrixOptions` is: `options` is a `Json`
+ * column, so a hand-edited row or a question whose type changed after it was
+ * written can hold a matrix shape, a number, or null. A poll that renders no
+ * bars is a better failure than one that throws on the family's screen.
+ */
+export function optionStrings(options: unknown): string[] {
+  if (!Array.isArray(options)) return [];
+  return options.filter((option): option is string => typeof option === "string");
+}
+
+/**
+ * How many choices one poll question may carry.
+ *
+ * ★ A bound because families add to this list, not because a teacher would
+ * write thirty (§3.4 — nothing unbounded).
+ *
+ * Twenty is well past any poll a kindergarten actually runs and low enough
+ * that the column stays small and the bars stay readable. The number is here
+ * rather than in the service so the message a parent sees and the check that
+ * produces it cannot disagree.
+ */
+export const MAX_POLL_OPTIONS = 20;

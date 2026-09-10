@@ -8,7 +8,7 @@ import {
   setSearchParams,
   stubApi,
 } from "./support/render";
-import SurveysPage from "@/app/(app)/surveys/page";
+import { SurveyBoard } from "@/components/survey/survey-board";
 
 /**
  * The survey card's overflow menu, and the participation panel behind it.
@@ -95,19 +95,24 @@ describe("a survey card's menu", () => {
   it("offers the five actions the client asked for", async () => {
     const user = userEvent.setup();
     stubSurveys();
-    renderWithProviders(<SurveysPage />);
+    renderWithProviders(<SurveyBoard kind="FORM" />);
 
     await openMenu(user);
 
     for (const label of ["Засах", "Оролцоо", "Тайлан татах", "Дахин ашиглах", "Устгах"]) {
       expect(screen.getByRole("menuitem", { name: new RegExp(label) })).toBeInTheDocument();
     }
+
+    expect(screen.getByText(SURVEY.title).closest('[data-ui="card"]')).toHaveClass(
+      "min-h-[190px]",
+      "p-3",
+    );
   });
 
   it("names who has not answered, before who has", async () => {
     const user = userEvent.setup();
     stubSurveys();
-    renderWithProviders(<SurveysPage />);
+    renderWithProviders(<SurveyBoard kind="FORM" />);
 
     await openMenu(user);
     await user.click(screen.getByRole("menuitem", { name: /Оролцоо/ }));
@@ -128,7 +133,7 @@ describe("a survey card's menu", () => {
   it("confirms before withdrawing, then withdraws", async () => {
     const user = userEvent.setup();
     const api = stubSurveys();
-    renderWithProviders(<SurveysPage />);
+    renderWithProviders(<SurveyBoard kind="FORM" />);
 
     await openMenu(user);
     await user.click(screen.getByRole("menuitem", { name: /Устгах/ }));
@@ -148,56 +153,109 @@ describe("a survey card's menu", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// The two kinds, and creating one
+// The two kinds, which are two screens
 // ═══════════════════════════════════════════════════════════════════════════
 
-describe("the kind tabs", () => {
-  /*
-   * ★ Tabs, not two create buttons over one pile.
-   *
-   * A poll and a form are answered differently and read differently, and one
-   * undifferentiated list meant a teacher looking for last term's poll read
-   * past every form to find it. The press that chooses what to look at is now
-   * also the press that chooses what to make.
-   */
-  it("names both kinds in the client's words", async () => {
+/**
+ * ★ Two boards, not a tab strip — 2026-09-10, at the client's request, and
+ * their words settle it: "Энэ 2 тусдаа байх ёстой."
+ *
+ * They were one page with a kind tab on it, which claims two views of one
+ * thing. A poll is answered in a tap and read as a bar; a questionnaire is
+ * filled in and read as a report. `SurveyBoard` takes the kind as a prop and
+ * `/surveys/forms` and `/surveys/polls` each mount it once.
+ */
+describe("the two boards", () => {
+  it("shows only its own kind, whichever board is mounted", async () => {
     stubSurveys();
-    renderWithProviders(<SurveysPage />);
+    const form = renderWithProviders(<SurveyBoard kind="FORM" />);
 
-    const strip = await screen.findByRole("tablist", { name: "Судалгааны төрөл" });
-    // "Пол" and "Форм судалгаа" until 2026-09-10: a transliteration and a
-    // compound nobody says.
-    expect(within(strip).getByRole("tab", { name: "Асуулга" })).toBeInTheDocument();
-    expect(within(strip).getByRole("tab", { name: "Судалгаа" })).toBeInTheDocument();
-  });
-
-  it("shows only the open kind's surveys", async () => {
-    const user = userEvent.setup();
-    stubSurveys();
-    renderWithProviders(<SurveysPage />);
-
-    // Судалгаа is the tab a teacher lands on.
     expect(await screen.findByText(SURVEY.title)).toBeInTheDocument();
     expect(screen.queryByText(OLD_POLL.title)).not.toBeInTheDocument();
+    form.unmount();
 
-    await user.click(screen.getByRole("tab", { name: "Асуулга" }));
+    stubSurveys();
+    renderWithProviders(<SurveyBoard kind="POLL" />);
 
-    await waitFor(() => expect(screen.getByText(OLD_POLL.title)).toBeInTheDocument());
+    expect(await screen.findByText(OLD_POLL.title)).toBeInTheDocument();
     expect(screen.queryByText(SURVEY.title)).not.toBeInTheDocument();
   });
 
-  it("creates whichever kind is open", async () => {
+  /**
+   * ★ There is no kind tab left to press.
+   *
+   * Asserted as an absence because restoring the strip would leave every other
+   * test in this file passing — the boards would still work, and the client's
+   * "тусдаа" would be quietly undone.
+   */
+  it("offers no way to switch kind from inside a board", async () => {
+    stubSurveys();
+    renderWithProviders(<SurveyBoard kind="FORM" />);
+
+    await screen.findByText(SURVEY.title);
+    expect(screen.queryByRole("tablist", { name: "Судалгааны төрөл" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Асуулга" })).not.toBeInTheDocument();
+  });
+
+  /** The heading names the board, in the client's words for each kind. */
+  it("names itself in the client's words", async () => {
+    stubSurveys();
+    renderWithProviders(<SurveyBoard kind="POLL" />);
+
+    // "Пол" and "Форм судалгаа" until 2026-09-10: a transliteration and a
+    // compound nobody says.
+    expect(await screen.findByRole("heading", { level: 1, name: "Асуулга" })).toBeInTheDocument();
+  });
+
+  /**
+   * ★ Three tabs since 2026-09-10 — and Ноорог is the new one.
+   *
+   * `DRAFT` used to be folded into Идэвхтэй, which made that count answer two
+   * questions at once: a teacher reading "Идэвхтэй 2" could not tell whether
+   * either was actually out with families.
+   */
+  it("separates drafts from what is actually out with families", async () => {
     const user = userEvent.setup();
     stubSurveys();
-    renderWithProviders(<SurveysPage />);
-    await screen.findByText(SURVEY.title);
+    renderWithProviders(<SurveyBoard kind="FORM" />);
 
-    await user.click(screen.getByRole("tab", { name: "Асуулга" }));
-    await user.click(screen.getByRole("button", { name: /Шинэ асуулга үүсгэх/ }));
+    // The list first: the tab strip renders before the query resolves, so
+    // waiting on the strip alone would assert against an empty board.
+    expect(await screen.findByText(SURVEY.title)).toBeInTheDocument();
 
-    const dialog = await screen.findByRole("dialog");
-    // The radio inside is still what the dialog reads; the tab seeds it.
-    expect(within(dialog).getByRole("radio", { name: /Асуулга/ })).toBeChecked();
+    const strip = screen.getByRole("tablist", { name: "Судалгааны төлөв" });
+    expect(within(strip).getByRole("tab", { name: /Ноорог/ })).toBeInTheDocument();
+    await user.click(within(strip).getByRole("tab", { name: /Ноорог/ }));
+    await waitFor(() => expect(screen.queryByText(SURVEY.title)).not.toBeInTheDocument());
+  });
+
+  /**
+   * ★ The board decides the kind, and the dialog does not ask again —
+   * 2026-09-10, at the client's request ("Асуулга гэдэг товчин дээр судалгаа
+   * гэсэн хажууд нь хэсэг орж ирж болохгүй").
+   *
+   * The dialog used to open with a radio pair drawn as tabs, so a teacher who
+   * had just chosen Асуулга met Судалгаа sitting beside it as though the
+   * choice had not counted — and switching there left them on the poll board
+   * having made a form, which disappears from the list the moment it exists.
+   *
+   * Asserted as the *absence* of either kind's control rather than as the
+   * presence of a heading: a heading would still read correctly with the radio
+   * pair restored underneath it.
+   */
+  it("creates its own kind, without asking again", async () => {
+    const user = userEvent.setup();
+    stubSurveys();
+    renderWithProviders(<SurveyBoard kind="POLL" />);
+    await screen.findByText(OLD_POLL.title);
+
+    await user.click(screen.getByRole("button", { name: "Шинэ" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Шинээр асуулга үүсгэх" });
+    expect(within(dialog).queryByRole("radio", { name: /Судалгаа/ })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("radio", { name: /Асуулга/ })).not.toBeInTheDocument();
+    expect(within(dialog).getByTestId("survey-create-fields-primary")).toHaveClass("grid-cols-2");
+    expect(within(dialog).getByTestId("survey-create-fields-secondary")).toHaveClass("grid-cols-2");
   });
 
   /*
@@ -206,7 +264,7 @@ describe("the kind tabs", () => {
    */
   it("groups the list under term headings", async () => {
     stubSurveys();
-    renderWithProviders(<SurveysPage />);
+    renderWithProviders(<SurveyBoard kind="FORM" />);
 
     // The September form falls in the first term.
     expect(await screen.findByRole("heading", { name: /1-р улирал/ })).toBeInTheDocument();
@@ -216,14 +274,25 @@ describe("the kind tabs", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Narrowing the list
-// ═══════════════════════════════════════════════════════════════════════════
-
 describe("the survey filters", () => {
   const openFilters = async (user: ReturnType<typeof userEvent.setup>) => {
     await user.click(await screen.findByRole("button", { name: "Шүүлтүүр" }));
   };
+
+  it("opens category and date controls inside one compact panel", async () => {
+    const user = userEvent.setup();
+    stubSurveys();
+    renderWithProviders(<SurveyBoard kind="FORM" />);
+
+    await openFilters(user);
+
+    const panel = screen.getByTestId("survey-filter-panel");
+    expect(panel).toHaveClass("rounded-card", "border-border", "bg-surface", "p-3");
+    expect(screen.getByLabelText("Эхлэх огноо").parentElement?.parentElement).toHaveClass(
+      "grid-cols-2",
+    );
+    expect(within(panel).getByRole("group", { name: "Судалгааны ангиллаар шүүх" })).toBeVisible();
+  });
 
   /*
    * ★ Three separate rows, because they are three separate questions. A chip
@@ -238,7 +307,7 @@ describe("the survey filters", () => {
   it("narrows by the date the card shows", async () => {
     const user = userEvent.setup();
     stubSurveys();
-    renderWithProviders(<SurveysPage />);
+    renderWithProviders(<SurveyBoard kind="FORM" />);
     await screen.findByText(SURVEY.title);
 
     await openFilters(user);
@@ -255,7 +324,7 @@ describe("the survey filters", () => {
   it("counts every narrowing choice on the icon", async () => {
     const user = userEvent.setup();
     stubSurveys();
-    renderWithProviders(<SurveysPage />);
+    renderWithProviders(<SurveyBoard kind="FORM" />);
     await screen.findByText(SURVEY.title);
 
     const trigger = screen.getByRole("button", { name: "Шүүлтүүр" });

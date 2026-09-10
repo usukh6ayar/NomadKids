@@ -1,18 +1,20 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Query, Res } from "@nestjs/common";
 import type { Response } from "express";
-import { idParamSchema } from "@kinder/contracts";
+import { idParamSchema, uuidSchema } from "@kinder/contracts";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
 import type { Actor } from "../authz/actor";
 import { SurveysService } from "./surveys.service";
 import {
+  addPollOptionSchema,
   cloneSurveySchema,
   compareSurveyQuerySchema,
   createSurveySchema,
   saveQuestionsSchema,
   submitResponseSchema,
   surveyResultsQuerySchema,
+  type AddPollOptionDto,
   type CloneSurveyDto,
   type CompareSurveyQuery,
   type CreateSurveyDto,
@@ -46,6 +48,15 @@ export class KindergartenSurveysController {
   }
 }
 
+/**
+ * The child in the path and the poll under it.
+ *
+ * Composed from `idParamSchema` rather than spelled out so the child id keeps
+ * one definition — the same reason every dated register extends it.
+ */
+const pollParamsSchema = idParamSchema.extend({ surveyId: uuidSchema });
+const pollQuestionParamsSchema = pollParamsSchema.extend({ questionId: uuidSchema });
+
 /** A child's own view — which published surveys are relevant right now. */
 @Controller("children/:id/surveys")
 export class ChildSurveysController {
@@ -57,6 +68,46 @@ export class ChildSurveysController {
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
   ) {
     return this.service.listActiveForChild(actor, params.id);
+  }
+
+  /*
+   * ★ Both poll routes hang off the *child*, not off `/surveys/:id`.
+   *
+   * The survey-scoped controller answers to staff; these two answer to a
+   * family, and the child in the path is what makes the authorization
+   * question askable at all — `canAccessChild` first, then whether the poll is
+   * on that child's board. A `/surveys/:id/tally` open to guardians would have
+   * no child to check and would have to re-derive the audience from the actor,
+   * which is the second copy of the visibility rule §1.1 forbids.
+   *
+   * No `@Roles`: a guardian reads these, and so may a teacher looking at a
+   * child they are entitled to. The service decides, as `submit` does.
+   */
+
+  /** A poll's running count, as the family answering it sees it. */
+  @Get(":surveyId/tally")
+  async tally(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(pollParamsSchema)) params: { id: string; surveyId: string },
+  ) {
+    return this.service.pollTally(actor, params.id, params.surveyId);
+  }
+
+  /** A family adds a choice of their own to an open poll. */
+  @Post(":surveyId/questions/:questionId/options")
+  async addOption(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(pollQuestionParamsSchema))
+    params: { id: string; surveyId: string; questionId: string },
+    @Body(new ZodValidationPipe(addPollOptionSchema)) body: AddPollOptionDto,
+  ) {
+    return this.service.addPollOption(
+      actor,
+      params.id,
+      params.surveyId,
+      params.questionId,
+      body.label,
+    );
   }
 }
 

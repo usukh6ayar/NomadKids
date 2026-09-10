@@ -7,7 +7,8 @@ import type { Actor } from "../authz/actor";
 import { SurveysRepository } from "./surveys.repository";
 import { buildSurveyWorkbook, type SurveyWave } from "./survey-workbook";
 import { compareWaves, compareWavesByChild } from "./survey-comparison";
-import { matrixOptions } from "./survey-scoring";
+import { MAX_POLL_OPTIONS, matrixOptions, optionStrings } from "./survey-scoring";
+import { hasOptionList } from "@kinder/contracts";
 import type {
   CloneSurveyDto,
   CreateSurveyDto,
@@ -73,9 +74,42 @@ export class SurveysService {
     return survey;
   }
 
+  /**
+   * The staff list, each survey carrying how far it has got.
+   *
+   * ★ "23 / 35 харуулсан" on every card — the client's 2026-09-10 design.
+   *
+   * The counts are attached here rather than fetched by the screen because a
+   * card cannot ask for them without becoming a request per card. `repo
+   * .participationCounts` answers the whole list in three queries; this method
+   * only decides which denominator each survey takes, which is a property of
+   * its scope and its audience and nothing else.
+   *
+   * ★★ `expected` is what the *audience* is, not what the roster is.
+   *
+   * A survey aimed at one group is measured against that group. Aimed at
+   * everyone (`groupId: null`) it is measured against the kindergarten — and
+   * against its parents rather than its children when the scope is
+   * KINDERGARTEN, because that survey is answered once per family.
+   */
   async listForKindergarten(actor: Actor, kindergartenId: string) {
     this.tenants.assertStaff(actor, kindergartenId);
-    return this.repo.findForKindergarten(kindergartenId);
+
+    const [surveys, counts] = await Promise.all([
+      this.repo.findForKindergarten(kindergartenId),
+      this.repo.participationCounts(kindergartenId),
+    ]);
+
+    return surveys.map((survey) => ({
+      ...survey,
+      respondedCount: counts.responded.get(survey.id) ?? 0,
+      expectedCount:
+        survey.scope === "KINDERGARTEN"
+          ? counts.parentCount
+          : survey.groupId
+            ? (counts.childrenByGroup.get(survey.groupId) ?? 0)
+            : counts.childrenTotal,
+    }));
   }
 
   async getOne(actor: Actor, surveyId: string) {
@@ -211,6 +245,174 @@ export class SurveysService {
         return { ...survey, respondedByMe: Boolean(existing) };
       }),
     );
+  }
+
+  /**
+   * ★ The one thing every parent-facing poll route shares: is this poll on
+   * this child's board at all?
+   *
+   * Reuses `listActiveForChild`'s own two reads — `assertCanAccess`, then the
+   * kindergarten-and-group filter — rather than re-deriving the visibility
+   * rule. A second copy of "which surveys may this family see" is the §1.1
+   * failure exactly: the list screen and the vote screen would answer
+   * differently, and the one that answered wrongly would be whichever was
+   * edited last.
+   *
+   * ★★ 404 for a form, not 403 and not the form's tally.
+   *
+   * A family may read a poll's running count because that is what a poll *is*
+   * — the client's "эцэг эх дарахаар шууд хувь үзүүлэлт нь харагдана". A
+   * questionnaire's aggregate is the teacher's, and answering "that exists but
+   * is not yours" would confirm it (§1.7).
+   */
+  private async pollForChild(actor: Actor, childId: string, surveyId: string) {
+    const facts = await this.childAccess.assertCanAccess(actor, childId);
+    const groupId = await this.repo.activeGroupIdForChild(childId);
+    const surveys = await this.repo.findActiveForKindergarten(facts.childKindergartenId, groupId);
+
+    const survey = surveys.find((row) => row.id === surveyId);
+    if (!survey || survey.kind !== "POLL") throw new NotFoundException();
+
+    return { survey, facts };
+  }
+
+  /**
+   * A poll as a family sees it: every choice with its count, and which one is
+   * theirs.
+   *
+   * ★ Counts, never names. `allAnswers` selects a question id and a value and
+   * nothing else, so there is no identity in the tally to leak — the same rule
+   * `notificationSchema` states for reactions, and for the same reason: a
+   * parent must not be able to work out how another family voted.
+   *
+   * ★★ `myAnswer` comes from a separate query keyed on the asker.
+   *
+   * The alternative — tagging each answer with its respondent and filtering
+   * client-side — would put every family's vote in a payload the browser
+   * receives, which is a leak whether or not the screen draws it.
+   */
+  async pollTally(actor: Actor, childId: string, surveyId: string) {
+    const { survey } = await this.pollForChild(actor, childId, surveyId);
+
+    const answers = await this.repo.allAnswers(surveyId);
+    const responseChildId = survey.scope === "CHILD" ? childId : null;
+    const mine = await this.repo.findMyAnswers(surveyId, actor.userId, responseChildId);
+    const myAnswers = new Map(mine.map((row) => [row.questionId, row.value]));
+
+    const questions = survey.questions.map((question) => {
+      const values = answers
+        .filter((row) => row.questionId === question.id)
+        .map((row) => row.value);
+
+      /*
+        ★ The option list is the question's, not the answers'.
+
+        Tallying the answers alone would drop a choice nobody has picked yet —
+        which on a poll is the most interesting bar there is, and is also every
+        option for the first family to look. Same argument `results()` makes
+        for keeping a group with no answers on its chart.
+      */
+      const options = optionStrings(question.options);
+      const counts = new Map(options.map((option) => [option, 0]));
+
+      for (const value of values) {
+        // CHECKBOX answers are arrays; SINGLE_CHOICE is one string. Both are
+        // counted per choice, which is what a bar chart of a poll means.
+        for (const choice of Array.isArray(value) ? value : [value]) {
+          if (typeof choice !== "string") continue;
+          // An option a teacher has since removed still has votes. Counting it
+          // under a bar that is no longer drawn would make the percentages sum
+          // to less than the votes cast, so it is dropped from the tally too.
+          if (counts.has(choice)) counts.set(choice, counts.get(choice)! + 1);
+        }
+      }
+
+      return {
+        questionId: question.id,
+        prompt: question.prompt,
+        type: question.type,
+        totalResponses: values.length,
+        options: options.map((label) => ({ label, count: counts.get(label) ?? 0 })),
+        myAnswer: (myAnswers.get(question.id) ?? null) as unknown,
+      };
+    });
+
+    return { surveyId, respondedByMe: mine.length > 0, questions };
+  }
+
+  /**
+   * A family adds a choice of their own — the client's "эцэг эх түүн дээр
+   * нэмж шинэ хариулт үүсгэж болно".
+   *
+   * ★ It edits the teacher's question, which is unusual enough to say why.
+   *
+   * A poll's options are not a fixed vocabulary the way a development domain
+   * is (§2.3): they are the wording of one question, and the client's model is
+   * a social poll where "Бусад: ..." is added by whoever needs it. The
+   * alternative — a parallel table of parent-suggested options merged at read
+   * time — would double every tally path and give the same poll two kinds of
+   * choice that vote differently.
+   *
+   * What keeps that safe is narrow scope rather than trust: only a poll, only
+   * an option-bearing question, only while it is open, a bounded list, and an
+   * `AuditLog` row naming who added what. There is no edit and no delete —
+   * a parent may add a choice, never rewrite or remove somebody else's.
+   */
+  async addPollOption(
+    actor: Actor,
+    childId: string,
+    surveyId: string,
+    questionId: string,
+    rawLabel: string,
+  ) {
+    const { survey } = await this.pollForChild(actor, childId, surveyId);
+
+    /*
+      ★ The same deadline check `submitResponse` makes, for the same reason.
+
+      `closesAt` is an intention rather than a state and nothing sweeps it, so
+      every write path has to ask. A closed poll that still accepted new
+      options would grow choices nobody can vote for.
+    */
+    if (survey.closesAt && survey.closesAt.getTime() <= Date.now()) {
+      throw new BadRequestException("Энэ асуулгын хугацаа дууссан байна");
+    }
+
+    const question = survey.questions.find((row) => row.id === questionId);
+    if (!question) throw new NotFoundException();
+    if (!hasOptionList(question.type)) {
+      throw new BadRequestException("Энэ асуултад сонголт нэмэх боломжгүй");
+    }
+
+    const label = rawLabel.trim().replace(/\s+/g, " ");
+    if (!label) throw new BadRequestException("Хариултаа бичнэ үү");
+
+    const result = await this.repo.appendQuestionOption(questionId, label, MAX_POLL_OPTIONS);
+    if (!result) throw new NotFoundException();
+    if (result.full) {
+      throw new BadRequestException(`Сонголт хамгийн ихдээ ${MAX_POLL_OPTIONS} байна`);
+    }
+
+    /*
+      ★ Audited only when it changed something.
+
+      A duplicate is success for the parent — somebody else added the same
+      choice a moment earlier — but it is not an event, and an audit trail that
+      records non-events is one nobody reads (§3.2's argument for why the
+      deletion record lives here rather than in a column).
+    */
+    if (result.added) {
+      await this.audit.append({
+        action: "UPDATE",
+        kindergartenId: survey.kindergartenId,
+        actorUserId: actor.userId,
+        objectType: "SurveyQuestion",
+        objectId: questionId,
+        metadata: { addedOption: label, surveyId, childId },
+      });
+    }
+
+    return { questionId, options: result.options, added: result.added };
   }
 
   // ── Responding ────────────────────────────────────────────────────────────

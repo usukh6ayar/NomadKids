@@ -212,62 +212,45 @@ function ComposeNotice() {
   }
 
   return (
-    <div className="flex flex-col gap-6 lg:gap-8">
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-0 [&_[data-ui=page-header]]:mb-2 [&_[data-ui=page-header]_h1]:text-title">
       <PageHeader title="Шинэ мэдэгдэл" />
 
-      <Card pad="roomy">
-        <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+      <Card className="overflow-hidden">
+        <form onSubmit={onSubmit} className="flex flex-col gap-3 p-3 sm:p-4" noValidate>
           <FormError message={publishAll.isError ? errorMessage(publishAll.error) : null} />
 
-          {/*
-            ★ The category leads, and is a `<select>` — 2026-09-10, at the
-            client's request.
+          <div className="grid grid-cols-2 gap-2.5" data-testid="notice-compact-fields">
+            <Field label="Төрөл">
+              {({ id }) => (
+                <Select
+                  id={id}
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value as NotificationCategory)}
+                  disabled={busy}
+                >
+                  {NOTIFICATION_CATEGORIES.map((value) => (
+                    <option key={value} value={value}>
+                      {NOTIFICATION_CATEGORY_LABEL[value]}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
 
-            It was a scrolling chip row under the heading. Two things were
-            wrong with that here: it is the first decision a teacher makes —
-            what kind of notice is this — and nine chips on a phone scroll
-            sideways, so everything past "Зөвлөмж" was found by dragging. The
-            feed still filters with chips, where scanning many at once is the
-            job; choosing exactly one is a select's job.
-          */}
-          <Field label="Төрөл">
-            {({ id }) => (
-              <Select
-                id={id}
-                value={category}
-                onChange={(e) => setCategory(e.target.value as NotificationCategory)}
-                disabled={busy}
-              >
-                {NOTIFICATION_CATEGORIES.map((value) => (
-                  <option key={value} value={value}>
-                    {NOTIFICATION_CATEGORY_LABEL[value]}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
-
-          {/*
-            ★ No longer `required` — the client asked for it on 2026-08-30.
-
-            A post can be a photograph and a sentence. Requiring a heading
-            produced titles that restated the first line of the body, and the
-            label now says so rather than leaving the teacher to discover it by
-            submitting.
-          */}
-          <Field label="Гарчиг (заавал биш)" error={errors.title}>
-            {({ id, describedBy, invalid }) => (
-              <Input
-                id={id}
-                aria-describedby={describedBy}
-                invalid={invalid}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                disabled={busy}
-                autoFocus
-              />
-            )}
-          </Field>
+            <Field label="Гарчиг" error={errors.title}>
+              {({ id, describedBy, invalid }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  disabled={busy}
+                  autoFocus
+                />
+              )}
+            </Field>
+          </div>
 
           <Field label="Дэлгэрэнгүй" error={errors.body} required>
             {({ id, describedBy, invalid }) => (
@@ -278,12 +261,20 @@ function ComposeNotice() {
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 disabled={busy}
-                placeholder="Огноо, цаг, юу авчрахыг бичнэ үү."
+                placeholder="Бичих"
+                className="min-h-[80px]"
               />
             )}
           </Field>
 
-          <AudiencePicker value={audience} onChange={setAudience} disabled={busy} />
+          <div className="rounded-row bg-sunken p-2.5 sm:p-3">
+            <AudiencePicker
+              value={audience}
+              onChange={setAudience}
+              disabled={busy}
+              showSummary={false}
+            />
+          </div>
 
           {/* Photographs, chosen here and sent when the post is. */}
           <div className="flex flex-col gap-2">
@@ -326,27 +317,25 @@ function ComposeNotice() {
               className="sr-only"
               onChange={(e) => addFiles(e.target.files)}
             />
-            <Button asChild variant="secondary" disabled={busy} className="self-start">
-              <label htmlFor={fileInputId} className="cursor-pointer">
-                <ImagePlus size={18} />
-                Зураг нэмэх
-              </label>
-            </Button>
-            <p className="text-caption text-muted">
-              JPEG, PNG эсвэл WebP. Нэг зураг дээд тал нь {MAX_UPLOAD_MB} MB.
-            </p>
+            <div className="grid grid-cols-2 gap-2.5" data-testid="notice-compact-actions">
+              <Button asChild variant="secondary" disabled={busy} className="w-full">
+                <label htmlFor={fileInputId} className="cursor-pointer justify-center">
+                  <ImagePlus size={18} />
+                  Зураг нэмэх
+                </label>
+              </Button>
+              <Checkbox
+                label="Чухал"
+                checked={isImportant}
+                onChange={(e) => setIsImportant(e.target.checked)}
+                disabled={busy}
+                className="min-h-[48px] items-center rounded-control border border-border bg-surface px-3 py-0"
+              />
+            </div>
           </div>
 
-          <Checkbox
-            label="Чухал"
-            description="Жагсаалтын дээд талд, тэмдэглэгээтэй харагдана."
-            checked={isImportant}
-            onChange={(e) => setIsImportant(e.target.checked)}
-            disabled={busy}
-          />
-
-          <div className="flex flex-wrap gap-2 border-t border-border pt-4">
-            <Button type="submit" disabled={busy}>
+          <div className="grid grid-cols-2 gap-2.5 border-t border-border pt-3">
+            <Button type="submit" disabled={busy} className="w-full">
               {step === "saving"
                 ? "Хадгалж байна…"
                 : step === "uploading"
@@ -356,7 +345,13 @@ function ComposeNotice() {
                     : "Нийтлэх"}
             </Button>
 
-            <Button type="button" variant="ghost" onClick={() => router.back()} disabled={busy}>
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full"
+              onClick={() => router.back()}
+              disabled={busy}
+            >
               Болих
             </Button>
           </div>

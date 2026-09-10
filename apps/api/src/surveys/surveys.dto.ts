@@ -218,3 +218,16 @@ export type CompareSurveyQuery = z.infer<typeof compareSurveyQuerySchema>;
  */
 export const surveyResultsQuerySchema = z.object({ groupId: uuidSchema.optional() }).strict();
 export type SurveyResultsQuery = z.infer<typeof surveyResultsQuerySchema>;
+
+/**
+ * One choice a family adds to a poll question.
+ *
+ * ★ Bounded at the same 80 characters the composer's own option inputs use.
+ *
+ * This is the one field on a teacher's object that a parent writes, so the
+ * limit is the whole validation story: no markup is stripped and none needs to
+ * be, because the value is rendered as text and never as HTML — but a 10 kB
+ * "option" would break the bars for everyone reading the poll.
+ */
+export const addPollOptionSchema = z.object({ label: z.string().min(1).max(80) }).strict();
+export type AddPollOptionDto = z.infer<typeof addPollOptionSchema>;

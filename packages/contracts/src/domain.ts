@@ -1127,8 +1127,64 @@ export const surveySchema = z.object({
   /** Set only on the child-facing list — has this guardian already answered
    * for this child (or, for a KINDERGARTEN-scope survey, at all)? */
   respondedByMe: z.boolean().nullish(),
+  /**
+   * How far this survey has got, on the staff list only.
+   *
+   * ★ Counted in bulk by the API, never per card.
+   *
+   * `expectedCount` is the size of the *audience* — one group, or the whole
+   * kindergarten, and its parents rather than its children when the scope is
+   * KINDERGARTEN. Nullish because the child-facing list does not carry them
+   * and should not: a family has no business knowing who else has not replied.
+   */
+  respondedCount: z.number().nullish(),
+  expectedCount: z.number().nullish(),
 });
 export type Survey = z.infer<typeof surveySchema>;
+
+/**
+ * A poll's running count, as the family answering it sees it.
+ *
+ * ★ Counts and the asker's own answer. Never a respondent.
+ *
+ * `GET /children/:id/surveys/:surveyId/tally` builds this from two queries for
+ * exactly that reason — the aggregate carries no identity to leak, and
+ * `myAnswer` is read separately keyed on whoever asked. The shape is flat here
+ * so nothing about "whose" can be smuggled in later without changing it.
+ *
+ * ★★ `options` lists the question's choices, not the answered ones. A choice
+ * nobody has picked is the most informative bar on a poll, and it is every bar
+ * for the first family to look.
+ */
+export const pollTallySchema = z.object({
+  surveyId: uuidSchema,
+  respondedByMe: z.boolean(),
+  questions: z.array(
+    z.object({
+      questionId: uuidSchema,
+      prompt: z.string(),
+      type: surveyQuestionTypeSchema,
+      /** How many families answered this question — the percentage's denominator. */
+      totalResponses: z.number(),
+      options: z.array(z.object({ label: z.string(), count: z.number() })),
+      /**
+       * This family's own answer: a string for SINGLE_CHOICE, an array for
+       * CHECKBOX, null before they have answered. `unknown` because the column
+       * is `Json` and the reader narrows by the question's type.
+       */
+      myAnswer: z.unknown(),
+    }),
+  ),
+});
+export type PollTally = z.infer<typeof pollTallySchema>;
+
+/** What `POST …/questions/:id/options` answers — the list after the append. */
+export const pollOptionAddedSchema = z.object({
+  questionId: uuidSchema,
+  options: z.array(z.string()),
+  /** False when the choice was already there, which is success, not an error. */
+  added: z.boolean(),
+});
 
 /** One indicator's begin-to-end movement — RFP Module 1.2. */
 export const indicatorComparisonSchema = z.object({

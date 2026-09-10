@@ -457,6 +457,12 @@ body:has([data-app-theme]) button:hover [data-nav-icon][data-icon-surface="none"
   border-bottom: 0;
 }
 
+[data-app-theme="teacher"] .teacher-dashboard-header [data-ui="page-header"] h1 {
+  font-size: var(--text-title);
+  line-height: var(--leading-heading);
+  letter-spacing: 0;
+}
+
 [data-app-theme="teacher"] .teacher-dashboard-header .teacher-page-icon {
   display: none;
 }

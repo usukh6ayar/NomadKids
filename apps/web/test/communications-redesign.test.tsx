@@ -9,7 +9,7 @@ import {
   stubApi,
 } from "./support/render";
 import NotificationsPage from "@/app/(app)/notifications/page";
-import SurveysPage from "@/app/(app)/surveys/page";
+import { SurveyBoard } from "@/components/survey/survey-board";
 
 const KINDERGARTEN_ID = "33333333-3333-4333-8333-333333333333";
 
@@ -45,7 +45,7 @@ describe("communications redesign", () => {
       { path: `/kindergartens/${KINDERGARTEN_ID}/surveys`, body: [] },
     ]);
 
-    const { container } = renderWithProviders(<SurveysPage />);
+    const { container } = renderWithProviders(<SurveyBoard kind="FORM" />);
 
     const tabs = await screen.findByRole("tablist", { name: "Судалгааны төлөв" });
     const toolbar = tabs.closest('[data-ui="communications-toolbar"]');
