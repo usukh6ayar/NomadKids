@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, Query, Res } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, Res } from "@nestjs/common";
 import type { Response } from "express";
 import { idParamSchema } from "@kinder/contracts";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
@@ -136,6 +136,16 @@ export class SurveysController {
     return this.service.saveQuestions(actor, params.id, body);
   }
 
+  /** Withdraws a survey. Soft — the answers behind it stay (§3.2). */
+  @Delete(":id")
+  @Roles("TEACHER", "ADMIN")
+  async remove(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.remove(actor, params.id);
+  }
+
   @Post(":id/publish")
   @Roles("TEACHER", "ADMIN")
   async publish(
@@ -152,6 +162,16 @@ export class SurveysController {
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
   ) {
     return this.service.close(actor, params.id);
+  }
+
+  /** Who answered and who has not — the card's "Оролцоо". */
+  @Get(":id/participation")
+  @Roles("TEACHER", "ADMIN")
+  async participation(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.participation(actor, params.id);
   }
 
   @Get(":id/results")

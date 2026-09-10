@@ -68,6 +68,115 @@ async function publishedChildSurvey(session = teacherA) {
   return { surveyId: created.body.id as string, questionId: withQuestions.questions[0]!.id };
 }
 
+describe("who answered and who has not", () => {
+  /*
+   * ★ Names, not a percentage. `results` already says how many replied; what a
+   * teacher does with this panel is ring the families who have not, and a
+   * count cannot be rung.
+   */
+  it("lists the roster split by whether they answered", async () => {
+    const { surveyId, questionId } = await publishedChildSurvey();
+
+    await authed(request(server()).post(`/v1/surveys/${surveyId}/responses`), parentA).send({
+      childId: a.child.id,
+      answers: [{ questionId, value: "4" }],
+    });
+
+    const res = await authed(
+      request(server()).get(`/v1/surveys/${surveyId}/participation`),
+      teacherA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.answered.map((r: { child: { id: string } }) => r.child.id)).toEqual([
+      a.child.id,
+    ]);
+    expect(res.body.answered[0].respondent).toBeTruthy();
+    expect(res.body.answered[0].submittedAt).toBeTruthy();
+    expect(res.body.roster).toBe(1);
+  });
+
+  /*
+   * ★ The half the panel exists for. A list built from the responses can only
+   * show who replied; the roster is what surfaces the ones to chase.
+   */
+  it("names the children nobody has answered for", async () => {
+    const { surveyId } = await publishedChildSurvey();
+
+    const res = await authed(
+      request(server()).get(`/v1/surveys/${surveyId}/participation`),
+      teacherA,
+    );
+
+    expect(res.body.answered).toEqual([]);
+    expect(res.body.pending.map((r: { child: { id: string } }) => r.child.id)).toEqual([
+      a.child.id,
+    ]);
+  });
+
+  it("a teacher from another kindergarten gets 404", async () => {
+    const { surveyId } = await publishedChildSurvey();
+    const teacherB = await login(app, b.teacherUser.username);
+
+    expect(
+      (await authed(request(server()).get(`/v1/surveys/${surveyId}/participation`), teacherB))
+        .status,
+    ).toBe(404);
+  });
+
+  it("a guardian cannot read it", async () => {
+    const { surveyId } = await publishedChildSurvey();
+
+    expect(
+      (await authed(request(server()).get(`/v1/surveys/${surveyId}/participation`), parentA))
+        .status,
+    ).toBe(404);
+  });
+});
+
+describe("withdrawing a survey", () => {
+  /*
+   * ★ Soft, and the answers stay — §3.2.
+   *
+   * A family answered in good faith, and a teacher taking the survey off their
+   * own screen is not a reason to destroy what was said. The audit row names
+   * who withdrew it, which is the fact somebody asks about later.
+   */
+  it("takes it out of the list without deleting the answers", async () => {
+    const { surveyId } = await publishedChildSurvey();
+
+    const res = await authed(request(server()).delete(`/v1/surveys/${surveyId}`), teacherA);
+    expect(res.status).toBe(200);
+
+    const row = await db.survey.findUniqueOrThrow({ where: { id: surveyId } });
+    expect(row.deletedAt).not.toBeNull();
+
+    const list = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
+      teacherA,
+    );
+    expect(list.body.map((s: { id: string }) => s.id)).not.toContain(surveyId);
+  });
+
+  it("a teacher from another kindergarten gets 404", async () => {
+    const { surveyId } = await publishedChildSurvey();
+    const teacherB = await login(app, b.teacherUser.username);
+
+    expect(
+      (await authed(request(server()).delete(`/v1/surveys/${surveyId}`), teacherB)).status,
+    ).toBe(404);
+  });
+
+  /** 404, not 403 — the guard answers before the route does. */
+  it("a guardian cannot withdraw one", async () => {
+    const { surveyId } = await publishedChildSurvey();
+
+    expect(
+      (await authed(request(server()).delete(`/v1/surveys/${surveyId}`), parentA)).status,
+    ).toBe(404);
+  });
+});
+
 describe("management — staff only", () => {
   it("creates a draft, adds questions, and publishes", async () => {
     const created = await authed(

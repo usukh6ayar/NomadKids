@@ -79,6 +79,9 @@ export class SurveysRepository {
         scope: true,
         status: true,
         closesAt: true,
+        // Which group was asked. `participation` builds its roster from it,
+        // and null is every group — see `Survey.groupId`.
+        groupId: true,
       },
     });
   }
@@ -128,6 +131,53 @@ export class SurveysRepository {
     if (status === "PUBLISHED") data.publishedAt = timestamp;
     if (status === "CLOSED") data.closedAt = timestamp;
     return this.prisma.survey.update({ where: { id: surveyId }, data });
+  }
+
+  /** §3.2 — sets `deletedAt`; the row and its answers stay for the audit. */
+  async softDelete(surveyId: string) {
+    return this.prisma.survey.update({
+      where: { id: surveyId },
+      data: { deletedAt: new Date() },
+    });
+  }
+
+  /**
+   * Who a survey was asked of, and who has answered — the "Оролцоо" panel.
+   *
+   * ★ The roster comes from `Enrollment`, not from the responses.
+   *
+   * A list built from the answers can only ever show the families who replied,
+   * which is the half nobody needs to chase. The children with nothing against
+   * their name are the point of the panel, so the roster has to be the active
+   * enrollments and the responses are matched onto it.
+   *
+   * `groupId` null is the whole kindergarten — the same "null is every group"
+   * contract `Survey.groupId` carries.
+   */
+  async participation(surveyId: string, kindergartenId: string, groupId: string | null) {
+    const [enrollments, responses] = await Promise.all([
+      this.prisma.enrollment.findMany({
+        where: {
+          status: "ACTIVE",
+          deletedAt: null,
+          ...(groupId ? { groupId } : { group: { kindergartenId, deletedAt: null } }),
+        },
+        select: {
+          child: { select: { id: true, lastName: true, firstName: true } },
+          group: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.surveyResponse.findMany({
+        where: { surveyId, deletedAt: null },
+        select: {
+          childId: true,
+          submittedAt: true,
+          respondent: { select: { id: true, lastName: true, firstName: true } },
+        },
+      }),
+    ]);
+
+    return { enrollments, responses };
   }
 
   // ── Reading (parent + staff) ─────────────────────────────────────────────

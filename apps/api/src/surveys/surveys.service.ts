@@ -141,6 +141,36 @@ export class SurveysService {
     return updated;
   }
 
+  /**
+   * Withdraws a survey — §3.2's soft delete.
+   *
+   * ★ The answers are not deleted with it.
+   *
+   * `deletedAt` on the survey takes it out of every list; the `SurveyResponse`
+   * rows behind it stay exactly where they are. A family answered a question in
+   * good faith, and a teacher removing the survey from their own screen is not
+   * a reason to destroy what was said — the audit row names who withdrew it and
+   * when, which is the fact somebody will actually ask about later.
+   */
+  async remove(actor: Actor, surveyId: string) {
+    const survey = await this.repo.findForAuthorization(surveyId);
+    if (!survey) throw new NotFoundException();
+    this.tenants.assertStaff(actor, survey.kindergartenId);
+
+    const removed = await this.repo.softDelete(surveyId);
+
+    await this.audit.append({
+      action: "DELETE",
+      kindergartenId: survey.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "Survey",
+      objectId: surveyId,
+      metadata: { status: survey.status },
+    });
+
+    return { id: removed.id };
+  }
+
   async close(actor: Actor, surveyId: string) {
     const survey = await this.repo.findForAuthorization(surveyId);
     if (!survey) throw new NotFoundException();
@@ -344,6 +374,59 @@ export class SurveysService {
    * one selected would be a bar chart with one bar. So the filter changes what
    * the top of the screen counts and leaves the chart beneath it whole.
    */
+  /**
+   * Who answered and who has not — RFP §8's follow-up, at the client's request.
+   *
+   * ★ Names, not a percentage. `results` already says how many replied; what a
+   * teacher does with this screen is ring the four families who have not, and
+   * a count cannot be rung.
+   *
+   * ★★ A response with no `childId` still counts as answered.
+   *
+   * A KINDERGARTEN-scoped survey is asked of the family rather than about one
+   * child, so its responses carry a respondent and no child. Matching only on
+   * `childId` would report every one of those as pending — the whole roster
+   * outstanding on a survey everybody had answered.
+   */
+  async participation(actor: Actor, surveyId: string) {
+    const survey = await this.repo.findForAuthorization(surveyId);
+    if (!survey) throw new NotFoundException();
+    this.tenants.assertStaff(actor, survey.kindergartenId);
+
+    const { enrollments, responses } = await this.repo.participation(
+      surveyId,
+      survey.kindergartenId,
+      survey.groupId ?? null,
+    );
+
+    const byChild = new Map(
+      responses.filter((row) => row.childId).map((row) => [row.childId!, row]),
+    );
+
+    const answered = [];
+    const pending = [];
+    for (const enrollment of enrollments) {
+      const response = byChild.get(enrollment.child.id);
+      const row = { child: enrollment.child, group: enrollment.group };
+      if (response) {
+        answered.push({
+          ...row,
+          respondent: response.respondent,
+          submittedAt: response.submittedAt.toISOString(),
+        });
+      } else {
+        pending.push(row);
+      }
+    }
+
+    // Responses with no child — a survey asked of the family rather than about
+    // one of them. Reported as a count, because there is no roster to match
+    // them against.
+    const familyResponses = responses.filter((row) => !row.childId).length;
+
+    return { answered, pending, familyResponses, roster: enrollments.length };
+  }
+
   async results(actor: Actor, surveyId: string, groupId?: string) {
     const survey = await this.repo.findForAuthorization(surveyId);
     if (!survey) throw new NotFoundException();
