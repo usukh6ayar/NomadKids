@@ -232,7 +232,7 @@ export class ObservationsService {
 
     const enrollment = await this.resolveEnrollment(childId);
 
-    const type = await this.parentObservationType(enrollment.kindergartenId);
+    const type = await this.parentObservationType(enrollment.kindergartenId, dto.categoryCode);
     if (!type) throw new BadRequestException("Эцэг эхийн ажиглалтын төрөл тохируулагдаагүй байна");
 
     const observation = await this.repo.create(
@@ -272,8 +272,7 @@ export class ObservationsService {
    * Edits an observation.
    *
    * Staff may change anything. A guardian may edit **their own** parent
-   * submission, and only until a teacher approves it — after that it is part of
-   * a record the teacher has signed off on.
+   * submission. Editing a reviewed note returns it to the teacher queue.
    *
    * ★ The three teacher decisions of RFP §5.4 — visibility, report inclusion
    * and development domains — are stripped from a guardian's payload even if
@@ -305,7 +304,12 @@ export class ObservationsService {
 
       // An edited submission returns to the queue: the teacher approved the
       // text they read, not the text it became.
-      if (row.reviewStatus === "RETURNED") data.reviewStatus = "PENDING";
+      if (row.reviewStatus !== "PENDING") {
+        data.reviewStatus = "PENDING";
+        data.reviewedById = null;
+        data.reviewedAt = null;
+        data.reviewNote = null;
+      }
     }
 
     if (domainIds) await this.assertDomainsValid(domainIds, row.kindergartenId);
@@ -319,12 +323,22 @@ export class ObservationsService {
     return updated;
   }
 
-  /** Soft-deletes. Staff only — a guardian cannot retract an approved note. */
+  /**
+   * Soft-deletes. Staff may archive any reachable note; a guardian may remove
+   * only their own still-editable parent submission.
+   */
   async archive(actor: Actor, observationId: string) {
     const row = await this.repo.findForAuthorization(observationId);
     if (!row) throw new NotFoundException();
 
-    await this.childAccess.assertCanRecord(actor, row.childId);
+    const facts = await this.childAccess.assertCanAccess(actor, row.childId);
+    if (!canRecordForChild(actor, facts)) {
+      const verdict = guardianMayEdit(row, actor.userId);
+      if (!verdict.allowed) {
+        if (verdict.reason) throw new ForbiddenException(verdict.reason);
+        throw new NotFoundException();
+      }
+    }
 
     const archived = await this.repo.softDelete(observationId);
     await this.auditObservation(
@@ -399,8 +413,12 @@ export class ObservationsService {
     return enrollment;
   }
 
-  private async parentObservationType(kindergartenId: string) {
+  private async parentObservationType(
+    kindergartenId: string,
+    categoryCode?: "daily" | "conversation" | "artwork",
+  ) {
     const types = await this.repo.listTypes(kindergartenId);
+    if (categoryCode) return types.find((t) => t.code === categoryCode) ?? null;
     return types.find((t) => t.code === "parent") ?? types[0] ?? null;
   }
 

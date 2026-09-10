@@ -1,19 +1,26 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Pencil, Plus, Trash2 } from "lucide-react";
+import { type ReactNode, useState } from "react";
 import { MAX_PAGE_SIZE, observationSchema, paginated, termSchema } from "@kinder/contracts";
 import { z } from "zod";
-import { get } from "@/lib/api/browser";
+import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, SectionHeader } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Field, Input, Select, Textarea } from "@/components/ui/field";
+import { FormDialog } from "@/components/ui/form-dialog";
+import { RowMenu } from "@/components/ui/menu";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
+import { useToast } from "@/components/ui/toast";
+import { Art } from "@/components/ui/art";
 import { MediaThumb } from "@/components/media/media-image";
 import { ObservationRow } from "@/components/observations/observation-row";
 import { excerpt, formatDate } from "@/lib/format";
@@ -22,6 +29,8 @@ const observationsSchema = paginated(observationSchema);
 const termsSchema = z.array(termSchema);
 
 type Observation = z.infer<typeof observationSchema>;
+
+type ParentCategoryCode = "daily" | "conversation" | "artwork";
 
 /** One quarter and the notes that fall inside it. */
 export interface Quarter {
@@ -282,24 +291,23 @@ export function groupByQuarter(
 }
 
 /**
- * "Тэмдэглэл" — a photo-forward teaser for the parent's "Хөгжил"
- * page, replacing the assessments-based "Хүүхдийн тэмдэглэлүүд" (removed
- * 2026-09-04, on the client's instruction — that section's own subtitle had
- * promised "багш, эцэг эхийн тэмдэглэл", which it never actually showed;
- * this one does). Reuses `groupByQuarter` rather than a second grouping, and
- * `Observation.source` for the same teacher/parent distinction
- * `ObservationRow` already draws — just badged on every card instead of only
- * the parent-authored ones, since here the badge is the point of the card
- * rather than the exception in a list.
- *
- * ★ Only the current quarter, and only observations with a photo — a teaser,
- * not the list. The full, ungrouped history is `/observations`, already one
- * tap away via this page's own "Ажиглалт" quick action; showing every
- * quarter here again would be the same "route and tab both show the same
- * thing" duplication `growth/page.tsx`'s own doc comment already avoids for
- * staff.
+ * The parent's compact note library. It intentionally includes text-only
+ * records: the empty state is about whether a note exists, not whether that
+ * note happens to carry a photograph.
  */
-export function SharedMomentsTeaser({ childId }: { childId: string }) {
+export function SharedMomentsTeaser({
+  childId,
+  categoryCode,
+  title,
+  onAdd,
+  composer,
+}: {
+  childId: string;
+  categoryCode: ParentCategoryCode;
+  title: string;
+  onAdd: () => void;
+  composer?: ReactNode;
+}) {
   const { primaryKindergartenId } = useSession();
 
   const observations = useQuery({
@@ -316,20 +324,33 @@ export function SharedMomentsTeaser({ childId }: { childId: string }) {
   });
 
   return (
-    <section aria-labelledby="moments-heading">
+    <section aria-label={title}>
       {/*
-        ★ No lede here — it moved to the page's own header
-        (`parent-growth-launcher.tsx`) when that gained one, and the same
-        sentence sitting under two headings on one screen reads as a mistake
-        rather than emphasis.
+        ★ No repeated title here.
+        The bucket's name is already the label on the button above that
+        selected it; showing it again as a heading was a button-less repeat
+        of a word already on screen. The "+" is all this row needs — `title`
+        still names the section for a screen reader and the add button's
+        accessible name.
       */}
-      <SectionHeader id="moments-heading" title="Тэмдэглэл" />
+      <div className="mb-2.5 flex justify-end">
+        <Button size="icon" className="rounded-pill" aria-label={`${title} нэмэх`} onClick={onAdd}>
+          <Plus aria-hidden="true" />
+        </Button>
+      </div>
+
+      {composer ? <div className="mb-4">{composer}</div> : null}
 
       {observations.isPending ? <LoadingState rows={2} /> : null}
       {observations.isError ? <ErrorState description={errorMessage(observations.error)} /> : null}
 
       {!observations.isPending && !observations.isError ? (
-        <MomentsFeed childId={childId} items={observations.data.items} terms={terms.data ?? []} />
+        <MomentsFeed
+          childId={childId}
+          items={observations.data.items}
+          terms={terms.data ?? []}
+          categoryCode={categoryCode}
+        />
       ) : null}
     </section>
   );
@@ -339,61 +360,419 @@ function MomentsFeed({
   childId,
   items,
   terms,
+  categoryCode,
 }: {
   childId: string;
   items: Observation[];
   terms: z.infer<typeof termsSchema>;
+  categoryCode: ParentCategoryCode;
 }) {
-  const withPhotos = items.filter((observation) => observation.media.length > 0);
+  const { session } = useSession();
+  const [source, setSource] = useState<"all" | "TEACHER" | "PARENT">("all");
+  const [selectedTerm, setSelectedTerm] = useState<number | null>(null);
+  const [detail, setDetail] = useState<Observation | null>(null);
+  const [editing, setEditing] = useState<Observation | null>(null);
+  const [deleting, setDeleting] = useState<Observation | null>(null);
+  const userId = session?.user.id ?? null;
+  const termNumber = selectedTerm ?? termNumberForDay(todayIso(), terms);
 
-  if (withPhotos.length === 0) {
-    return <EmptyState title="Тэмдэглэл ороогүй" />;
-  }
-
-  const quarters = groupByQuarter(withPhotos, terms);
-  const current = quarters.find((quarter) => quarter.current) ?? quarters.at(-1);
-  // No terms configured yet — the same fallback `ChildObservations` uses:
-  // newest first, uncapped by a quarter nothing has drawn boundaries for.
-  const shown = current
-    ? current.items
-    : [...withPhotos].sort((a, b) => (a.observedOn < b.observedOn ? 1 : -1));
+  const shown = items.filter((observation) => {
+    const code = observation.type?.code === "parent" ? "daily" : observation.type?.code;
+    return (
+      code === categoryCode &&
+      (source === "all" || observation.source === source) &&
+      termNumberForDay(observation.observedOn.slice(0, 10), terms) === termNumber
+    );
+  });
 
   return (
-    <div className="flex flex-col gap-3">
-      {current ? <p className="text-caption text-muted">{current.label}</p> : null}
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3 rounded-card border border-border bg-surface p-3">
+        <div className="max-w-[220px]">
+          <Field label="Улирал">
+            {({ id }) => (
+              <Select
+                id={id}
+                value={String(termNumber)}
+                onChange={(event) => setSelectedTerm(Number(event.target.value))}
+              >
+                <option value="1">1-р улирал</option>
+                <option value="2">2-р улирал</option>
+                <option value="3">3-р улирал</option>
+              </Select>
+            )}
+          </Field>
+        </div>
 
-      <ul className="flex gap-3 overflow-x-auto pb-1">
-        {shown.slice(0, 8).map((observation) => (
-          <li key={observation.id} className="w-36 shrink-0">
-            <MomentCard observation={observation} />
-          </li>
-        ))}
-      </ul>
+        <div className="grid grid-cols-2 gap-2" role="group" aria-label="Тэмдэглэлийн эх сурвалж">
+          <Button
+            size="sm"
+            variant={source === "TEACHER" ? "primary" : "secondary"}
+            aria-pressed={source === "TEACHER"}
+            onClick={() => setSource((current) => (current === "TEACHER" ? "all" : "TEACHER"))}
+          >
+            Багшийн тэмдэглэл
+          </Button>
+          <Button
+            size="sm"
+            variant={source === "PARENT" ? "primary" : "secondary"}
+            aria-pressed={source === "PARENT"}
+            onClick={() => setSource((current) => (current === "PARENT" ? "all" : "PARENT"))}
+          >
+            Эцэг эхийн тэмдэглэл
+          </Button>
+        </div>
+      </div>
 
-      <Link
-        href={`/children/${childId}/observations`}
-        className="self-start text-body font-semibold text-primary underline underline-offset-4"
-      >
-        Бүгдийг харах
-      </Link>
+      {shown.length === 0 ? (
+        <EmptyState title="Тэмдэглэл ороогүй" />
+      ) : (
+        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {shown.map((observation) => {
+            const canManage = Boolean(
+              userId && observation.source === "PARENT" && observation.author?.id === userId,
+            );
+            return (
+              <li key={observation.id}>
+                <MomentCard
+                  observation={observation}
+                  canManage={canManage}
+                  onOpen={() => setDetail(observation)}
+                  onEdit={() => setEditing(observation)}
+                  onDelete={() => setDeleting(observation)}
+                />
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <ObservationDetailDialog observation={detail} onClose={() => setDetail(null)} />
+      {editing ? (
+        <EditObservationDialog
+          childId={childId}
+          observation={editing}
+          terms={terms}
+          onClose={() => setEditing(null)}
+        />
+      ) : null}
+      <DeleteObservationDialog
+        childId={childId}
+        observation={deleting}
+        onClose={() => setDeleting(null)}
+      />
     </div>
   );
 }
 
-function MomentCard({ observation }: { observation: Observation }) {
-  const photo = observation.media[0]!;
-  const comment = observation.teacherComment || observation.situation || observation.childDid || "";
+function MomentCard({
+  observation,
+  canManage,
+  onOpen,
+  onEdit,
+  onDelete,
+}: {
+  observation: Observation;
+  canManage: boolean;
+  onOpen: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const photo = observation.media[0];
+  const comment = observationText(observation);
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <MediaThumb mediaId={photo.id} caption={photo.caption ?? comment} className="h-32 w-full" />
-      <div className="flex items-center gap-1.5">
-        <Badge tone={observation.source === "PARENT" ? "sky" : "mint"}>
-          {observation.source === "PARENT" ? "Эцэг эх" : "Багш"}
-        </Badge>
-        <span className="text-caption text-muted">{formatDate(observation.observedOn)}</span>
-      </div>
-      {comment ? <p className="text-caption text-ink">{excerpt(comment, 60)}</p> : null}
-    </div>
+    <article className="relative h-full rounded-card border border-border bg-surface shadow-sm transition-transform hover:-translate-y-0.5">
+      <button
+        type="button"
+        className="flex h-full w-full flex-col overflow-hidden rounded-card text-left"
+        onClick={onOpen}
+      >
+        {photo ? (
+          <MediaThumb
+            mediaId={photo.id}
+            caption={photo.caption ?? comment}
+            className="h-28 w-full sm:h-32"
+            flush
+          />
+        ) : (
+          <div className="flex h-28 w-full items-center justify-center bg-canvas sm:h-32">
+            <Art
+              name={artForObservation(observation)}
+              size={64}
+              className="size-16 object-contain"
+            />
+          </div>
+        )}
+        <div className="flex w-full flex-1 flex-col gap-1.5 p-2.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge tone={observation.source === "PARENT" ? "sky" : "mint"}>
+              {observation.source === "PARENT" ? "Эцэг эх" : "Багш"}
+            </Badge>
+            <span className="text-caption text-muted">{formatDate(observation.observedOn)}</span>
+          </div>
+          <p className="line-clamp-3 text-caption text-ink">
+            {excerpt(comment || "Тэмдэглэл", 90)}
+          </p>
+        </div>
+      </button>
+      {canManage ? (
+        <RowMenu
+          className="absolute right-1 top-1 rounded-pill bg-surface/90"
+          ariaLabel="Тэмдэглэлийн үйлдэл"
+          items={[
+            {
+              label: "Засах",
+              icon: <Pencil size={16} aria-hidden="true" />,
+              onSelect: onEdit,
+            },
+            {
+              label: "Устгах",
+              icon: <Trash2 size={16} aria-hidden="true" />,
+              onSelect: onDelete,
+              tone: "danger",
+            },
+          ]}
+        />
+      ) : null}
+    </article>
   );
+}
+
+function ObservationDetailDialog({
+  observation,
+  onClose,
+}: {
+  observation: Observation | null;
+  onClose: () => void;
+}) {
+  const text = observation ? observationText(observation) : "";
+
+  return (
+    <FormDialog
+      open={Boolean(observation)}
+      onOpenChange={(open) => !open && onClose()}
+      title={observation?.type?.name ?? "Тэмдэглэл"}
+      description={observation ? formatDate(observation.observedOn) : undefined}
+      footer={
+        <Button variant="secondary" onClick={onClose}>
+          Хаах
+        </Button>
+      }
+    >
+      {observation ? (
+        <div className="flex flex-col gap-4">
+          <Badge tone={observation.source === "PARENT" ? "sky" : "mint"}>
+            {observation.source === "PARENT" ? "Эцэг эхийн тэмдэглэл" : "Багшийн тэмдэглэл"}
+          </Badge>
+          {observation.media.length > 0 ? (
+            <div className="grid grid-cols-2 gap-2">
+              {observation.media.map((media) => (
+                <MediaThumb
+                  key={media.id}
+                  mediaId={media.id}
+                  caption={media.caption ?? text}
+                  className="w-full"
+                />
+              ))}
+            </div>
+          ) : null}
+          <p className="whitespace-pre-wrap text-body text-ink">{text || "Тэмдэглэл"}</p>
+        </div>
+      ) : null}
+    </FormDialog>
+  );
+}
+
+function EditObservationDialog({
+  childId,
+  observation,
+  terms,
+  onClose,
+}: {
+  childId: string;
+  observation: Observation;
+  terms: z.infer<typeof termsSchema>;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const [observedOn, setObservedOn] = useState(observation.observedOn.slice(0, 10));
+  const [situation, setSituation] = useState(observationText(observation));
+  const update = useMutation({
+    mutationFn: () =>
+      mutate(`/observations/${observation.id}`, observationSchema, {
+        method: "PATCH",
+        // Older parent forms split one note across these three fields. The
+        // editor presents one clean note and consolidates it on save so the
+        // next render cannot repeat the old fragments.
+        body: {
+          observedOn,
+          situation: situation.trim() || null,
+          childDid: null,
+          childSaid: null,
+        },
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: qk.child(childId) });
+      toast.success("Тэмдэглэл шинэчлэгдлээ.");
+      onClose();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  return (
+    <FormDialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title="Тэмдэглэл засах"
+      busy={update.isPending}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={update.isPending}>
+            Болих
+          </Button>
+          <Button onClick={() => update.mutate()} disabled={update.isPending || !situation.trim()}>
+            {update.isPending ? "Хадгалж байна…" : "Хадгалах"}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Огноо">
+            {({ id }) => (
+              <Input
+                id={id}
+                type="date"
+                max={todayIso()}
+                value={observedOn}
+                onChange={(event) => setObservedOn(event.target.value)}
+              />
+            )}
+          </Field>
+          <Field label="Улирал">
+            {({ id }) => (
+              <Select
+                id={id}
+                value={String(termNumberForDay(observedOn, terms))}
+                onChange={(event) =>
+                  setObservedOn(
+                    firstAvailableDateForTerm(Number(event.target.value), todayIso(), terms),
+                  )
+                }
+              >
+                <option value="1">1-р улирал</option>
+                <option value="2">2-р улирал</option>
+                <option value="3">3-р улирал</option>
+              </Select>
+            )}
+          </Field>
+        </div>
+        <Field label="Тэмдэглэл">
+          {({ id }) => (
+            <Textarea
+              id={id}
+              value={situation}
+              onChange={(event) => setSituation(event.target.value)}
+            />
+          )}
+        </Field>
+      </div>
+    </FormDialog>
+  );
+}
+
+function DeleteObservationDialog({
+  childId,
+  observation,
+  onClose,
+}: {
+  childId: string;
+  observation: Observation | null;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const remove = useMutation({
+    mutationFn: () => mutate(`/observations/${observation!.id}`, z.unknown(), { method: "DELETE" }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: qk.child(childId) });
+      toast.success("Тэмдэглэл устгагдлаа.");
+      onClose();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  return (
+    <ConfirmDialog
+      open={Boolean(observation)}
+      onOpenChange={(open) => !open && onClose()}
+      title="Тэмдэглэл устгах уу?"
+      description="Энэ үйлдлийг буцаах боломжгүй."
+      confirmLabel="Устгах"
+      pendingLabel="Устгаж байна…"
+      tone="danger"
+      pending={remove.isPending}
+      onConfirm={() => remove.mutate()}
+    />
+  );
+}
+
+function observationText(observation: Observation): string {
+  return [
+    observation.situation,
+    observation.childDid,
+    observation.childSaid,
+    observation.teacherComment,
+    observation.nextSteps,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function artForObservation(observation: Observation): "observation" | "conversation" | "artwork" {
+  if (observation.type?.code === "conversation") return "conversation";
+  if (observation.type?.code === "artwork") return "artwork";
+  return "observation";
+}
+
+function todayIso(): string {
+  const now = new Date();
+  const offset = now.getTimezoneOffset();
+  return new Date(now.getTime() - offset * 60_000).toISOString().slice(0, 10);
+}
+
+function termNumberForDay(day: string, terms: z.infer<typeof termsSchema>): number {
+  const configured = terms.find(
+    (candidate) =>
+      candidate.startsOn &&
+      candidate.endsOn &&
+      day >= candidate.startsOn &&
+      day <= candidate.endsOn,
+  );
+  if (configured && configured.number >= 1 && configured.number <= 3) return configured.number;
+
+  const month = Number(day.slice(5, 7));
+  if (month >= 9) return 1;
+  if (month <= 3) return 2;
+  return 3;
+}
+
+function firstAvailableDateForTerm(
+  term: number,
+  today: string,
+  terms: z.infer<typeof termsSchema>,
+): string {
+  const configured = terms.find((candidate) => candidate.number === term && candidate.startsOn);
+  if (configured?.startsOn) return configured.startsOn > today ? today : configured.startsOn;
+
+  const schoolYear = Number(today.slice(0, 4)) - (Number(today.slice(5, 7)) < 9 ? 1 : 0);
+  const candidate =
+    term === 1
+      ? `${schoolYear}-09-01`
+      : term === 2
+        ? `${schoolYear + 1}-01-01`
+        : `${schoolYear + 1}-04-01`;
+  return candidate > today ? today : candidate;
 }

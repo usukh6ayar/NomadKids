@@ -52,7 +52,8 @@ export default function ChildMenuPage() {
     <div className="flex flex-col gap-6 py-2">
       <BackButton href={`/children/${childId}/general`} />
 
-      <ChildHeroProfile child={data} showHealthAlert={isStaff} />
+      {/* ★ Staff only, 2026-09-09 — see assessments/page.tsx's note. */}
+      {isStaff ? <ChildHeroProfile child={data} showHealthAlert={isStaff} /> : null}
 
       <ChildMenu
         kindergartenId={data.kindergarten?.id ?? ""}

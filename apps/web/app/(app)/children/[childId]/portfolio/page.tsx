@@ -82,24 +82,21 @@ export default function PortfolioPage() {
 
       <section
         aria-labelledby="portfolio-heading"
-        className="relative flex min-h-32 items-center overflow-hidden rounded-card border border-border bg-surface px-5 py-6 shadow-sm sm:min-h-40 sm:px-8"
+        className="flex h-28 w-full items-center justify-between gap-5 overflow-hidden rounded-card border border-gray-100 bg-gradient-to-r from-white to-gray-100/80 px-6 shadow-sm"
       >
-        <h1
-          id="portfolio-heading"
-          className="relative z-10 max-w-[70%] text-heading font-semibold leading-heading text-ink sm:text-display"
-        >
+        <h1 id="portfolio-heading" className="text-title font-bold text-gray-800">
           {PORTFOLIO}
         </h1>
         {profileArt ? (
           <span
             aria-hidden="true"
             data-testid="portfolio-profile-art"
-            className="absolute bottom-0 right-2 flex h-full w-28 items-end justify-center bg-transparent sm:right-6 sm:w-40"
+            className="relative flex h-full w-32 shrink-0 items-end justify-center overflow-hidden bg-transparent"
           >
             <Art
               name={profileArt}
               size={160}
-              className="h-28 w-28 object-contain object-bottom sm:h-40 sm:w-40"
+              className="h-40 w-auto max-w-none object-contain object-bottom"
             />
           </span>
         ) : null}
@@ -151,7 +148,14 @@ export default function PortfolioPage() {
  * from here and only one way back.
  */
 function PortfolioHubNav({ childId }: { childId: string }) {
+  // ★ Order: Миний тухай, Хөгжил, Зургийн цомог, Насны харьцуулалт — the
+  // client's requested sequence, 2026-09-09.
   const items: { href: string; label: string; art: ArtName }[] = [
+    {
+      href: `/children/${childId}/portfolio/about-me`,
+      label: "Миний тухай",
+      art: "portfolioAboutMe",
+    },
     {
       href: `/children/${childId}/portfolio/growth`,
       label: "Хөгжил",
@@ -163,11 +167,6 @@ function PortfolioHubNav({ childId }: { childId: string }) {
       href: `/children/${childId}/portfolio/gallery`,
       label: "Зургийн цомог",
       art: "portfolioGallery",
-    },
-    {
-      href: `/children/${childId}/portfolio/about-me`,
-      label: "Миний тухай",
-      art: "portfolioAboutMe",
     },
     // The landing is navigation-only; details appear only after choosing the
     // comparison action or one of the four age folders.

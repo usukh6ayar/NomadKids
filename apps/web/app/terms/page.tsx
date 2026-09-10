@@ -6,9 +6,12 @@ import {
 } from "@/components/public/public-info-shell";
 import { BRAND } from "@/lib/vocabulary";
 
+// `canonical` and the brand-free title: see `app/faq/page.tsx`, which carries
+// the reasoning for all three public information pages.
 export const metadata: Metadata = {
-  title: `Үйлчилгээний нөхцөл | ${BRAND}`,
+  title: "Үйлчилгээний нөхцөл",
   description: `${BRAND} системийг ашиглах эрх, үүрэг, хариуцлагын үндсэн нөхцөл.`,
+  alternates: { canonical: "/terms" },
 };
 
 export default function TermsPage() {

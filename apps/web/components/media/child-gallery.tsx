@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
-import { Star, Trash2, X } from "lucide-react";
+import { MoreVertical, Pencil, Star, Trash2, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { z } from "zod";
 import {
@@ -18,7 +18,11 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
-import { Field, Select } from "@/components/ui/field";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Field, Input, Select } from "@/components/ui/field";
+import { FormDialog } from "@/components/ui/form-dialog";
+import { RowMenu } from "@/components/ui/menu";
+import { useSession } from "@/lib/auth/session";
 import { GALLERY } from "@/lib/vocabulary";
 import { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
@@ -113,8 +117,27 @@ export function ChildGallery({
 }) {
   const queryClient = useQueryClient();
   const toast = useToast();
+  const { session, hasRole } = useSession();
   const [viewing, setViewing] = useState<string | null>(null);
+  /** The photo whose caption is being rewritten, and the draft text. */
+  const [editing, setEditing] = useState<z.infer<typeof mediaSchema> | null>(null);
+  const [draftCaption, setDraftCaption] = useState("");
+  const [deleting, setDeleting] = useState<z.infer<typeof mediaSchema> | null>(null);
   const filters = { pageSize: GALLERY_PAGE_SIZE, category, age };
+
+  /*
+   * ★ Who may retitle or remove *this* photograph.
+   *
+   * Staff may manage any photo of a child they record for; a guardian may
+   * manage only what they uploaded themselves. That is exactly the rule
+   * `MediaService.updateMetadata` and `archive` enforce, mirrored here so the
+   * menu is absent rather than present-and-404. `uploadedBy` can be null on
+   * rows that predate it, which stays staff-only for the same reason.
+   */
+  const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
+  const canManage = (photo: z.infer<typeof mediaSchema>) =>
+    canEdit &&
+    (isStaff || (photo.uploadedBy?.id !== undefined && photo.uploadedBy.id === session?.user.id));
 
   const photos = useQuery({
     queryKey: qk.childMedia(childId, filters),
@@ -142,21 +165,47 @@ export function ChildGallery({
     mutationFn: (mediaId: string) => mutate(`/media/${mediaId}`, z.unknown(), { method: "DELETE" }),
     onSuccess: () => {
       setViewing(null);
+      setDeleting(null);
+      toast.success("Зураг устгагдлаа.");
       void queryClient.invalidateQueries({ queryKey: qk.childMedia(childId) });
       void queryClient.invalidateQueries({ queryKey: qk.child(childId) });
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
-  /** The tag editor — album `category`/`age`, RFP §4.4. */
+  /**
+   * The metadata editor — caption plus album `category`/`age`, RFP §4.4.
+   *
+   * ★ `caption` was missing until 2026-09-10. The API has always accepted it
+   * (`updateMediaSchema`), and `PhotoUpload` can set one at upload time, but
+   * nothing in the product could change it afterwards — so a caption typed
+   * wrongly, or left blank, was permanent.
+   */
   const update = useMutation({
     mutationFn: ({
       mediaId,
       patch,
     }: {
       mediaId: string;
-      patch: { category?: string | null; age?: number | null };
+      patch: { caption?: string | null; category?: string | null; age?: number | null };
     }) => mutate(`/media/${mediaId}`, mediaSchema, { method: "PATCH", body: patch }),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: qk.childMedia(childId) }),
+  });
+
+  const saveCaption = useMutation({
+    mutationFn: ({ mediaId, caption }: { mediaId: string; caption: string }) =>
+      mutate(`/media/${mediaId}`, mediaSchema, {
+        method: "PATCH",
+        // Emptied means cleared, not "leave alone" — `updateMediaSchema` is
+        // `.nullable()` for exactly this, and sending "" would store a blank.
+        body: { caption: caption.trim() || null },
+      }),
+    onSuccess: () => {
+      setEditing(null);
+      toast.success("Зургийн тайлбар шинэчлэгдлээ.");
+      void queryClient.invalidateQueries({ queryKey: qk.childMedia(childId) });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   const setAgeCover = useMutation({
@@ -236,6 +285,37 @@ export function ChildGallery({
                     </span>
                   ) : null}
 
+                  {/*
+                    ★ The per-photo menu — 2026-09-10, on the client's request.
+                    Editing and removing used to live only inside the lightbox,
+                    which meant opening a photograph full-screen to fix a typo
+                    in its caption. `bottom-1.5` keeps it clear of the cover
+                    star, which owns the top-right corner when `coverAge` is set.
+                  */}
+                  {canManage(photo) ? (
+                    <RowMenu
+                      className="absolute bottom-1.5 right-1.5"
+                      ariaLabel={`${photo.caption || "Тэмдэглэлгүй зураг"} үйлдэл`}
+                      triggerIcon={<MoreVertical size={18} aria-hidden="true" />}
+                      items={[
+                        {
+                          label: "Засах",
+                          icon: <Pencil size={16} />,
+                          onSelect: () => {
+                            setDraftCaption(photo.caption ?? "");
+                            setEditing(photo);
+                          },
+                        },
+                        {
+                          label: "Устгах",
+                          icon: <Trash2 size={16} />,
+                          tone: "danger",
+                          onSelect: () => setDeleting(photo),
+                        },
+                      ]}
+                    />
+                  ) : null}
+
                   {coverAge ? (
                     <Button
                       type="button"
@@ -304,6 +384,78 @@ export function ChildGallery({
           updating={update.isPending}
         />
       ) : null}
+
+      <FormDialog
+        open={editing !== null}
+        onOpenChange={(next) => (next ? undefined : setEditing(null))}
+        busy={saveCaption.isPending}
+        title="Зургийн тайлбар"
+        description="Энэ зургийн тайлбарыг өөрчилнө."
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={saveCaption.isPending}
+              onClick={() => setEditing(null)}
+            >
+              Болих
+            </Button>
+            <Button
+              type="submit"
+              form="gallery-caption-form"
+              size="sm"
+              disabled={saveCaption.isPending}
+            >
+              {saveCaption.isPending ? "Хадгалж байна…" : "Хадгалах"}
+            </Button>
+          </>
+        }
+      >
+        <form
+          id="gallery-caption-form"
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!editing || saveCaption.isPending) return;
+            saveCaption.mutate({ mediaId: editing.id, caption: draftCaption });
+          }}
+        >
+          <Field label="Тайлбар">
+            {({ id, describedBy, invalid }) => (
+              <Input
+                id={id}
+                aria-describedby={describedBy}
+                invalid={invalid}
+                value={draftCaption}
+                maxLength={255}
+                autoFocus
+                placeholder="Жишээ: Манай гэр бүлийн дурсамж"
+                onChange={(event) => setDraftCaption(event.target.value)}
+              />
+            )}
+          </Field>
+        </form>
+      </FormDialog>
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(next) => (next ? undefined : setDeleting(null))}
+        title="Зургийг устгах уу?"
+        description={
+          deleting?.caption
+            ? `"${deleting.caption}" цомгоос хасагдана.`
+            : "Энэ зураг цомгоос хасагдана."
+        }
+        confirmLabel="Устгах"
+        pendingLabel="Устгаж байна…"
+        tone="danger"
+        pending={remove.isPending}
+        onConfirm={() => {
+          if (deleting) remove.mutate(deleting.id);
+        }}
+      />
     </section>
   );
 }
@@ -312,9 +464,18 @@ export function ChildGallery({
  * Full-size view.
  *
  * A thumbnail is a 100px crop of a drawing, which is not enough to see what a
- * child made. Escape closes it, focus is trapped by the backdrop being the only
- * other target, and the actions live here rather than on every tile — a delete
- * button on a grid of forty photos is forty chances to lose one by mistake.
+ * child made. Escape closes it, and focus is trapped by the backdrop being the
+ * only other target.
+ *
+ * ★ The actions are no longer only here — 2026-09-10.
+ *
+ * They used to be, and the reason given was that "a delete button on a grid of
+ * forty photos is forty chances to lose one by mistake". That reason still
+ * holds and is what shapes the tile menu rather than what rules it out: the
+ * tile carries an overflow menu, not a delete button, and choosing "Устгах"
+ * opens the same confirmation. Two deliberate acts, which is what the original
+ * objection was actually asking for. What it cost meanwhile was making someone
+ * open a photograph full-screen to fix a typo in its caption.
  */
 function PhotoViewer({
   mediaId,

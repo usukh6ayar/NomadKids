@@ -457,9 +457,29 @@ describe("observation photos inherit visibility", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("lifecycle", () => {
-  it("a guardian cannot delete a photo", async () => {
+  it("a guardian cannot delete a TEACHER's photo", async () => {
     const id = await upload();
     expect((await authed(request(server()).delete(`/v1/media/${id}`), parentA)).status).toBe(404);
+  });
+
+  /*
+   * ★ Authorship, not role — the same rule `updateMetadata` already applied.
+   *
+   * A family may add a photograph to their own album and title it (RFP §4.4);
+   * being unable to take it back made a mistaken upload permanent. The case
+   * above is what keeps this from being a widening: a teacher's photograph is
+   * still 404, so the test that matters is who uploaded it.
+   */
+  it("a guardian CAN delete a photo they uploaded themselves", async () => {
+    const id = await upload(parentA);
+
+    expect((await authed(request(server()).delete(`/v1/media/${id}`), parentA)).status).toBe(200);
+    expect((await db.mediaFile.findUniqueOrThrow({ where: { id } })).status).toBe("ARCHIVED");
+  });
+
+  it("a guardian of another child cannot delete this one's photo", async () => {
+    const id = await upload(parentA);
+    expect((await authed(request(server()).delete(`/v1/media/${id}`), parentB)).status).toBe(404);
   });
 
   it("archiving is soft — the row survives for recovery", async () => {
@@ -962,12 +982,24 @@ describe("a guardian contributing to the album", () => {
     expect(res.status).toBe(404);
   });
 
-  it("still cannot delete their own upload", async () => {
-    // Deletion of child media stays a staff act — it is not in RFP §2.3, and
-    // retention is the kindergarten's responsibility. Recorded as an open
-    // question rather than assumed either way.
+  /*
+   * ★ The open question above it was answered — 2026-09-10, by the client.
+   *
+   * This case used to assert the opposite, and said why: deletion "stays a
+   * staff act — it is not in RFP §2.3, and retention is the kindergarten's
+   * responsibility. Recorded as an open question rather than assumed either
+   * way." It was right to leave it restrictive and flagged. The client has now
+   * asked for a "Устгах" beside "Засах" on the family's own album photographs,
+   * which is the answer that was being waited for.
+   *
+   * Two things keep this narrow. It is authorship, not role — "still cannot
+   * delete a TEACHER's photo" above is the guard on that. And `archive` is a
+   * soft delete: the row is `ARCHIVED` and the object stays in R2 until the
+   * sweep, so a kindergarten that must retain a family's upload still has it.
+   */
+  it("can delete their own upload", async () => {
     const id = await upload(parentA, a.child.id);
-    expect((await authed(request(server()).delete(`/v1/media/${id}`), parentA)).status).toBe(404);
+    expect((await authed(request(server()).delete(`/v1/media/${id}`), parentA)).status).toBe(200);
   });
 
   it("still cannot set the child's profile photo", async () => {

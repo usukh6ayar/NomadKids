@@ -31,7 +31,46 @@ const uploadResultSchema = z.object({
   failed: z.array(z.object({ name: z.string(), reason: z.string() })),
 });
 
+export type PhotoUploadResult = z.infer<typeof uploadResultSchema>;
+
 export const ACCEPTED_TYPES = "image/jpeg,image/png,image/webp";
+
+/**
+ * Stores an already-picked set of photos, preserving the media endpoint's
+ * six-files-per-request ceiling. Exported so a note form can create the note
+ * and attach its selected photos behind one Save button.
+ */
+export async function uploadChildPhotos({
+  childId,
+  files,
+  observationId,
+  purpose,
+}: {
+  childId: string;
+  files: File[];
+  observationId?: string;
+  purpose?: "CHILD_PHOTO" | "OBSERVATION" | "MILESTONE";
+}): Promise<PhotoUploadResult> {
+  const combined: PhotoUploadResult = { items: [], failed: [] };
+
+  for (let index = 0; index < files.length; index += MAX_FILES_PER_REQUEST) {
+    const form = new FormData();
+    for (const file of files.slice(index, index + MAX_FILES_PER_REQUEST)) {
+      form.append("file", file);
+    }
+    if (observationId) form.append("observationId", observationId);
+    if (purpose) form.append("purpose", purpose);
+
+    const result = await mutate(`/children/${childId}/media`, uploadResultSchema, {
+      method: "POST",
+      body: form,
+    });
+    combined.items.push(...result.items);
+    combined.failed.push(...result.failed);
+  }
+
+  return combined;
+}
 
 /**
  * Picking and uploading photos.
@@ -71,6 +110,7 @@ export function PhotoUpload({
   label = "Зураг нэмэх",
   hint,
   onUploaded,
+  onDone,
   variant = "secondary",
   withCaption = false,
   children,
@@ -90,6 +130,15 @@ export function PhotoUpload({
   /** Replaces the default "JPEG, PNG or WebP…" line. Pass `null` for none. */
   hint?: ReactNode | null;
   onUploaded?: (mediaId: string) => void | Promise<void>;
+  /**
+   * Fires once after the whole selection has been sent, with how many files
+   * were stored — never when none were.
+   *
+   * Distinct from `onUploaded`, which fires per file and per batch: a caller
+   * that closes a dialog or raises a toast must do it once for the selection,
+   * not six times for twelve photographs.
+   */
+  onDone?: (stored: number) => void | Promise<void>;
   variant?: "primary" | "secondary";
   /** Shows one short caption field and sends it with every file in this batch. */
   withCaption?: boolean;
@@ -157,12 +206,21 @@ export function PhotoUpload({
 
     // In batches, because the endpoint caps a request at six files — a teacher
     // selecting a whole morning's photographs should not have to know that.
+    let stored = 0;
     for (let i = 0; i < sendable.length; i += MAX_FILES_PER_REQUEST) {
-      await upload.mutateAsync(sendable.slice(i, i + MAX_FILES_PER_REQUEST)).catch(() => undefined);
+      const result = await upload
+        .mutateAsync(sendable.slice(i, i + MAX_FILES_PER_REQUEST))
+        .catch(() => undefined);
+      stored += result?.items.length ?? 0;
     }
 
     // Cleared so picking the same file again still fires a change event.
     if (inputRef.current) inputRef.current.value = "";
+
+    // After the loop, not inside it: one selection is one outcome, however
+    // many requests it took. Skipped when nothing was stored, so a caller
+    // that closes a dialog leaves it open on the error the user must read.
+    if (stored > 0) await onDone?.(stored);
   }
 
   return (

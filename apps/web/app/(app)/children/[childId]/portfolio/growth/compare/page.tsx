@@ -172,7 +172,10 @@ const AGE_COMPARE_SECTIONS: CompareSection[] = [
   },
   {
     id: "family",
-    title: "Гэр бүл",
+    // Named to match `FamilyCard`: the comparison is the same five sections
+    // read across four ages, so a section that answers to two different names
+    // depending on the screen is the one thing it must not do.
+    title: "Миний гэр бүл",
     questions: [
       {
         id: "familyMemberTypes",

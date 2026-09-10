@@ -10,6 +10,7 @@ import { BackButton } from "@/components/ui/back-button";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildInvoices } from "@/components/child/child-invoices";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
+import { useSession } from "@/lib/auth/session";
 
 /**
  * A specific child's invoices, payment history and balance — нэмэлт.md §7,
@@ -29,6 +30,8 @@ import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 export default function ChildFinancePage() {
   const params = useParams<{ childId: string }>();
   const childId = params.childId;
+  const { hasRole } = useSession();
+  const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
 
   const child = useQuery({
     queryKey: qk.child(childId),
@@ -56,7 +59,13 @@ export default function ChildFinancePage() {
     <div className="flex flex-col gap-6 py-2">
       <BackButton href={`/children/${childId}/general`} />
 
-      <ChildHeroProfile child={data} />
+      {/*
+        ★ Staff only, 2026-09-09 — see assessments/page.tsx's note. Still
+        shown to a teacher, which is what keeps this page's own 404-not-403
+        reasoning true above: a teacher sees the header and gets 404 from the
+        invoice list, never a 403 that would leak whether a record exists.
+      */}
+      {isStaff ? <ChildHeroProfile child={data} /> : null}
 
       <ChildInvoices childId={childId} />
     </div>

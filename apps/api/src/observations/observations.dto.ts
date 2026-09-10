@@ -43,6 +43,8 @@ export type CreateObservationDto = z.infer<typeof createObservationSchema>;
  */
 export const createParentObservationSchema = z
   .object({
+    /** The parent screen's three real, persisted buckets. */
+    categoryCode: z.enum(["daily", "conversation", "artwork"]).optional(),
     observedOn: z.coerce.date().refine((d) => d <= new Date(), {
       message: "Ажиглалтын огноо ирээдүйд байж болохгүй",
     }),
