@@ -170,20 +170,8 @@ export class AssessmentRepository {
     return { enrollments, assessments };
   }
 
-  /** The kindergarten's monthly note goal, or null when none is set. */
-  async monthlyNoteGoal(kindergartenId: string): Promise<number | null> {
-    const row = await this.prisma.kindergarten.findUnique({
-      where: { id: kindergartenId },
-      select: { monthlyNoteGoal: true },
-    });
-    return row?.monthlyNoteGoal ?? null;
-  }
-
-  async setMonthlyNoteGoal(kindergartenId: string, monthlyNoteGoal: number | null) {
-    await this.prisma.kindergarten.update({
-      where: { id: kindergartenId },
-      data: { monthlyNoteGoal },
-    });
+  async setGroupNoteGoal(groupId: string, monthlyNoteGoal: number | null) {
+    await this.prisma.group.update({ where: { id: groupId }, data: { monthlyNoteGoal } });
   }
 
   /**

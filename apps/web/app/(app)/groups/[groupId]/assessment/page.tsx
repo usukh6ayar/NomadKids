@@ -425,7 +425,21 @@ function GroupAssessment() {
         both — so this select pushes a route, and the chips are gone rather
         than the addressing.
       */}
-      <Card pad="roomy" className="flex flex-col gap-4">
+      {/*
+        ★ Hidden on Тойм — 2026-09-10, at the client's request ("энэ байх
+        шаардлагагүй").
+
+        Бүлэг, Хичээлийн жил, Улирал and Хөгжлийн чиглэл are what the *column*
+        is keyed on: they decide which children and which criterion the
+        register below lists. Тойм answers a different question — how is the
+        group doing this month — and reports across every criterion, so all
+        four of these narrowed nothing a reader could see while taking most of
+        the first screen on a phone.
+
+        Hidden rather than unmounted: the selection is what the Үнэлэх tab
+        needs the moment it opens, and re-mounting these would drop it.
+      */}
+      <Card pad="roomy" className={cn("flex-col gap-4", tab === "assess" ? "flex" : "hidden")}>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Field label="Бүлэг">
             {({ id }) => (
@@ -589,7 +603,6 @@ function GroupAssessment() {
       {tab === "overview" ? (
         <GroupCoverage
           groupId={groupId}
-          kindergartenId={kindergartenId}
           termId={termId}
           startsOn={groupSchoolYear?.startsOn}
           endsOn={groupSchoolYear?.endsOn}

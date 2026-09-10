@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -52,13 +52,24 @@ const STATS = {
   ],
 };
 
-function stubStats(monthlyNoteGoal: number | null = 2) {
+function stubStats(
+  monthlyNoteGoal: number | null = 2,
+  roles: Parameters<typeof sessionFor>[0] = ["TEACHER"],
+) {
   return stubApi([
-    { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+    { path: "/auth/me", body: sessionFor(roles) },
     { path: `/groups/${GROUP_ID}/observation-stats`, body: STATS },
+    // The goal is the group's own row now — not the kindergarten's config, and
+    // not this browser's `localStorage`.
     {
-      path: `/kindergartens/${KINDERGARTEN_ID}/assessment-config`,
-      body: { domains: [], levels: [], monthlyNoteGoal },
+      path: `/groups/${GROUP_ID}`,
+      body: {
+        id: GROUP_ID,
+        name: "Дэлбээ бүлэг",
+        kindergartenId: KINDERGARTEN_ID,
+        schoolYearId: "66666666-6666-4666-8666-666666666666",
+        monthlyNoteGoal,
+      },
     },
   ]);
 }
@@ -73,13 +84,7 @@ const TERM_ID = "99999999-9999-4999-8999-999999999999";
 
 const summary = (termId?: string) =>
   renderWithProviders(
-    <GroupCoverage
-      groupId={GROUP_ID}
-      kindergartenId={KINDERGARTEN_ID}
-      termId={termId}
-      startsOn="2025-09-01"
-      endsOn="2026-05-31"
-    />,
+    <GroupCoverage groupId={GROUP_ID} termId={termId} startsOn="2025-09-01" endsOn="2026-05-31" />,
   );
 
 describe("the assessment summary", () => {
@@ -161,7 +166,7 @@ describe("the assessment summary", () => {
    * A goal counted in notes is met by writing twenty about one child. This one
    * is only met by reaching twenty different children.
    */
-  it("reads the goal from the kindergarten and counts children against it", async () => {
+  it("reads the group's goal and counts children against it", async () => {
     stubStats(2);
     summary();
 
@@ -179,30 +184,57 @@ describe("the assessment summary", () => {
   });
 
   /**
-   * ★ Only an administrator may set it, and the button is absent for a teacher
-   * rather than disabled — a control that will never work for this account
-   * promises something it cannot give.
+   * ★ The teacher sets it, not only the administrator — client, 2026-09-10:
+   * "багш өөрөө сонгох".
+   *
+   * That reversal is what moved the number from `Kindergarten` to `Group`: a
+   * kindergarten-wide target set by one teacher would silently change every
+   * other group's. The server still refuses a teacher who does not teach this
+   * group, which is the check the screen cannot make.
    */
-  it("does not offer a teacher the goal control", async () => {
+  it("lets the group's own teacher set the goal", async () => {
     stubStats();
     summary();
 
-    await screen.findByText("Энэ сарын зорилт");
-    expect(screen.queryByRole("button", { name: "Зорилт тохируулах" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Зорилт тохируулах" })).toBeInTheDocument();
   });
 
-  it("offers an administrator the goal control", async () => {
-    stubApi([
-      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
-      { path: `/groups/${GROUP_ID}/observation-stats`, body: STATS },
-      {
-        path: `/kindergartens/${KINDERGARTEN_ID}/assessment-config`,
-        body: { domains: [], levels: [], monthlyNoteGoal: 2 },
-      },
-    ]);
+  it("writes the goal to the group, not to the kindergarten", async () => {
+    const user = userEvent.setup();
+    const api = stubStats();
     summary();
 
-    expect(await screen.findByRole("button", { name: "Зорилт тохируулах" })).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Зорилт тохируулах" }));
+    const field = await screen.findByLabelText(/Сард хэдэн хүүхдийн/);
+    await user.clear(field);
+    await user.type(field, "12");
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
+
+    await waitFor(() =>
+      expect(
+        api.calls.find(
+          (call) =>
+            call.method === "PUT" &&
+            call.url === `/groups/${GROUP_ID}/assessments/monthly-note-goal`,
+        )?.body,
+      ).toEqual({ monthlyNoteGoal: 12 }),
+    );
+  });
+
+  /**
+   * ★ The bars show whether each row reaches the month's figure — 2026-09-10,
+   * at the client's request.
+   *
+   * Scaled to the target rather than to the busiest row: a full bar means the
+   * target is met and a short one says how far off it is. The caption counts
+   * how many reached it, so a teacher does not have to.
+   */
+  it("marks which rows have reached the month's figure", async () => {
+    stubStats(10);
+    summary();
+
+    // Ten of fifteen domain notes are on one strand, so one row clears 10.
+    expect(await screen.findByText("Зорилт 10 — 1 / 7 хүрсэн.")).toBeInTheDocument();
   });
 
   /**

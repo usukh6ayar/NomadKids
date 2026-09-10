@@ -41,45 +41,49 @@ export class AssessmentService {
    */
   async listConfig(actor: Actor, kindergartenId: string) {
     this.tenants.assertMember(actor, kindergartenId);
-    const [domains, levels, monthlyNoteGoal] = await Promise.all([
+    const [domains, levels] = await Promise.all([
       this.repo.listDomains(kindergartenId),
       this.repo.listLevels(kindergartenId),
-      this.repo.monthlyNoteGoal(kindergartenId),
     ]);
-    /*
-      ★ The monthly goal rides with the domains and levels because it is the
-      same kind of thing: configuration this screen needs before it can draw
-      anything, read by everybody who can see the screen.
-
-      It used to live in `localStorage`, which meant the two teachers of one
-      group could hold different targets, a director saw neither, and clearing
-      site data lost it. A shared commitment stored per browser is not a shared
-      commitment.
-    */
-    return { domains, levels, monthlyNoteGoal };
+    return { domains, levels };
   }
 
   /**
-   * Sets the kindergarten's monthly documentation goal — administrator only.
+   * Sets a group's monthly documentation goal — how many *children* to
+   * document each month.
    *
-   * ★ Narrower than who reads it, deliberately.
+   * ★ The teacher of the group sets it, not only the administrator — client,
+   * 2026-09-10: "багш өөрөө сонгох".
    *
-   * Every member of staff needs to see the target; deciding it is the
-   * director's, and it was previously whatever each teacher had typed into
-   * their own browser. Null clears it, and the screen then draws no goal card
-   * rather than falling back to a number nobody chose.
+   * That reverses what this endpoint did for one day, and the reversal is what
+   * made the column move from `Kindergarten` to `Group`: a kindergarten-wide
+   * target set by a teacher would silently change every other group's number.
+   * On the group it is theirs.
+   *
+   * ★★ The same assignment check the column editor makes. Membership is not
+   * enough — a teacher may only act on a group they are assigned to — and
+   * `getGroupColumn` states why. 404 either way (§1.7).
    */
-  async setMonthlyNoteGoal(actor: Actor, kindergartenId: string, goal: number | null) {
-    this.tenants.assertAdmin(actor, kindergartenId);
+  async setGroupNoteGoal(actor: Actor, groupId: string, goal: number | null) {
+    const group = await this.repo.findGroupForAssessment(
+      groupId,
+      this.tenants.memberKindergartenIds(actor),
+    );
+    if (!group) throw new NotFoundException();
 
-    await this.repo.setMonthlyNoteGoal(kindergartenId, goal);
+    if (!this.tenants.isAdmin(actor, group.kindergartenId)) {
+      const assigned = await this.authz.loadActiveTeachingGroupIds(actor);
+      if (!assigned.includes(groupId)) throw new NotFoundException();
+    }
+
+    await this.repo.setGroupNoteGoal(groupId, goal);
 
     await this.audit.append({
       action: "UPDATE",
-      kindergartenId,
+      kindergartenId: group.kindergartenId,
       actorUserId: actor.userId,
-      objectType: "Kindergarten",
-      objectId: kindergartenId,
+      objectType: "Group",
+      objectId: groupId,
       metadata: { monthlyNoteGoal: goal },
     });
 

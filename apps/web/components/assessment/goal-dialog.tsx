@@ -4,7 +4,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { z } from "zod";
 import { mutate } from "@/lib/api/browser";
-import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
@@ -12,7 +11,7 @@ import { FormError } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 
 /**
- * Зорилт тохируулах — the administrator sets the month's documentation goal.
+ * Зорилт тохируулах — the group's teacher sets the month's documentation goal.
  *
  * ★ How many *children* to document, not how many notes to write.
  *
@@ -20,17 +19,12 @@ import { useToast } from "@/components/ui/toast";
  * is only met by reaching twenty different children, which is what "хүүхэд
  * бүрийн хөгжлийн явц" asks for — and the card reads it back in those words.
  *
- * ★★ Administrator only, and the button is absent for a teacher rather than
- * disabled. Deciding the target is the director's; a control that will never
- * work for this account promises something it cannot give.
+ * ★★ The teacher of the group sets it — client, 2026-09-10: "багш өөрөө
+ * сонгох". That is why the number lives on the group rather than on the
+ * kindergarten: a kindergarten-wide target set by one teacher would silently
+ * change every other group's.
  */
-export function GoalDialog({
-  kindergartenId,
-  current,
-}: {
-  kindergartenId: string;
-  current: number | null;
-}) {
+export function GoalDialog({ groupId, current }: { groupId: string; current: number | null }) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -38,13 +32,13 @@ export function GoalDialog({
 
   const save = useMutation({
     mutationFn: (goal: number | null) =>
-      mutate(`/kindergartens/${kindergartenId}/monthly-note-goal`, z.unknown(), {
+      mutate(`/groups/${groupId}/assessments/monthly-note-goal`, z.unknown(), {
         method: "PUT",
         body: { monthlyNoteGoal: goal },
       }),
     onSuccess: () => {
       toast.success("Зорилт хадгалагдлаа.");
-      void queryClient.invalidateQueries({ queryKey: qk.assessmentConfig(kindergartenId) });
+      void queryClient.invalidateQueries({ queryKey: ["group", groupId] });
       setOpen(false);
     },
     onError: (error) => toast.error(errorMessage(error)),

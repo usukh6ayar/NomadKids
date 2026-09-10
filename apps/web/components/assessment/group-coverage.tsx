@@ -1,10 +1,10 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Eye, Lightbulb, MessageCircle, Palette, Target } from "lucide-react";
+import { Check, CheckCircle2, Eye, Lightbulb, MessageCircle, Palette, Target } from "lucide-react";
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
-import { assessmentConfigSchema, groupObservationStatsSchema } from "@kinder/contracts";
+import { groupObservationStatsSchema, groupSchema } from "@kinder/contracts";
 import { useSession } from "@/lib/auth/session";
 import { Donut } from "@/components/ui/chart/donut";
 import { GoalDialog } from "./goal-dialog";
@@ -219,13 +219,11 @@ export function GroupCoverage({
   groupId,
   startsOn,
   endsOn,
-  kindergartenId,
   termId,
 }: {
   groupId: string;
   startsOn?: string | null;
   endsOn?: string | null;
-  kindergartenId: string;
   /** The term the register behind this summary has open, carried into the links. */
   termId?: string;
 }) {
@@ -244,25 +242,25 @@ export function GroupCoverage({
   } = rows;
 
   /*
-    ★ The goal comes from the kindergarten, not from this browser.
+    ★ The goal is the group's own — read off the group row, not a browser and
+    not the kindergarten.
 
     It was `localStorage`, so the two teachers of one group could hold
     different targets, a director saw neither, and clearing site data lost it.
-    A shared commitment stored per browser is not a shared commitment — it now
-    rides with the domains and levels on `assessment-config`.
+    It then spent a day on `Kindergarten`, which had the opposite fault: one
+    teacher's decision would have moved every other group's number. On the
+    group, set by whoever teaches it, it is the number the client asked for.
   */
-  const config = useQuery({
-    queryKey: qk.assessmentConfig(kindergartenId),
-    queryFn: () =>
-      get(`/kindergartens/${kindergartenId}/assessment-config`, assessmentConfigSchema),
-    enabled: Boolean(kindergartenId),
-    staleTime: 5 * 60_000,
+  const group = useQuery({
+    queryKey: ["group", groupId],
+    queryFn: () => get(`/groups/${groupId}`, groupSchema),
+    enabled: Boolean(groupId),
   });
 
   if (stats.isPending) return <LoadingState rows={4} />;
   if (stats.isError) return <ErrorState description={errorMessage(stats.error)} />;
 
-  const target = config.data?.monthlyNoteGoal ?? null;
+  const target = group.data?.monthlyNoteGoal ?? null;
   const completed = selected.childrenCount;
   const percent = target ? Math.min(100, Math.round((completed / target) * 100)) : 0;
   const targetMet = target !== null && completed >= target;
@@ -277,7 +275,15 @@ export function GroupCoverage({
 
   const enrolled = data?.enrolled ?? 0;
   const withNotes = data?.childrenWithNotes ?? 0;
-  const isAdmin = hasRole("ADMIN");
+  /*
+    ★ Any member of staff on this screen may set it, not only an administrator.
+
+    `RequireRole` already gates the page to TEACHER and ADMIN, and the server
+    checks that a teacher is actually assigned to the group — so the control is
+    offered to everyone who can reach it and refused by the one place that can
+    refuse it properly (§1.1).
+  */
+  const canSetGoal = hasRole("TEACHER") || hasRole("ADMIN");
 
   /*
     ★ "Сайн байна" only when the recent months are genuinely even.
@@ -368,15 +374,12 @@ export function GroupCoverage({
               teacher — the rule the sidebar note states: a control that will
               never work for this account promises something it cannot give.
             */}
-            {isAdmin ? <GoalDialog kindergartenId={kindergartenId} current={target} /> : null}
+            {canSetGoal ? <GoalDialog groupId={groupId} current={target} /> : null}
           </div>
         </div>
 
         {target === null ? (
-          <p className="text-body text-ink">
-            Сарын зорилт тохируулаагүй байна.
-            {isAdmin ? "" : " Цэцэрлэгийн удирдлага тохируулна."}
-          </p>
+          <p className="text-body text-ink">Сарын зорилт тохируулаагүй байна.</p>
         ) : (
           <>
             <p className="flex items-baseline gap-2 text-body text-ink">
@@ -531,12 +534,14 @@ export function GroupCoverage({
         href={href("domains")}
         rows={domainRows}
         tone="sky"
+        goal={target}
       />
       <InlineBars
         title="Үйл ажиллагааны үеийн хамралт"
         href={href("activities")}
         rows={activityRows}
         tone="sun"
+        goal={target}
       />
 
       <MonthBalance months={months} href={href("months")} />
@@ -685,13 +690,31 @@ function InlineBars({
   href,
   rows,
   tone,
+  goal,
 }: {
   title: string;
   href: string;
   rows: CountRow[];
   tone: Tone;
+  /** The month's target, when the group has set one. */
+  goal: number | null;
 }) {
-  const peak = Math.max(...rows.map((row) => row.count), 1);
+  /*
+    ★ Scaled to the goal when there is one, to the busiest row when there is
+    not — 2026-09-10, at the client's request that these show whether they
+    reach the month's figure.
+
+    A bar scaled to the peak answers "which strand is ahead of which", which is
+    useful but is not the question they asked. Scaled to the target, a full bar
+    means the target is met and a short one says how far off it is — and the
+    two readings cannot be confused because the scale itself changes.
+
+    ★★ The counts are notes and the target counts children, so a row at the
+    line has *as many notes as the month's child target*, not that many
+    children. The caption says so rather than leaving the two units to be
+    assumed equal.
+  */
+  const scale = goal && goal > 0 ? goal : Math.max(...rows.map((row) => row.count), 1);
 
   return (
     <Card pad="roomy" className="flex flex-col gap-2.5">
@@ -702,25 +725,47 @@ function InlineBars({
         </Link>
       </div>
 
-      {rows.map((row) => (
-        <div
-          key={row.id}
-          className="grid grid-cols-[minmax(110px,1fr)_minmax(64px,1.3fr)_28px] items-center gap-2"
-        >
-          <span className="min-w-0 truncate text-caption leading-snug text-ink">{row.name}</span>
-          <span
-            role="img"
-            aria-label={`${row.name}: ${row.count} тэмдэглэл`}
-            className="h-2 overflow-hidden rounded-pill bg-track"
+      {rows.map((row) => {
+        const reached = goal !== null && goal > 0 && row.count >= goal;
+
+        return (
+          <div
+            key={row.id}
+            className="grid grid-cols-[minmax(110px,1fr)_minmax(64px,1.3fr)_44px] items-center gap-2"
           >
+            <span className="min-w-0 truncate text-caption leading-snug text-ink">{row.name}</span>
             <span
-              className="block h-full rounded-pill"
-              style={{ width: `${(row.count / peak) * 100}%`, background: TONE_VAR[tone] }}
-            />
-          </span>
-          <strong className="text-right text-caption tabular-nums text-ink">{row.count}</strong>
-        </div>
-      ))}
+              role="img"
+              aria-label={
+                goal
+                  ? `${row.name}: ${row.count} тэмдэглэл, зорилт ${goal}${reached ? " — хүрсэн" : ""}`
+                  : `${row.name}: ${row.count} тэмдэглэл`
+              }
+              className="relative h-2 overflow-hidden rounded-pill bg-track"
+            >
+              <span
+                className="block h-full rounded-pill"
+                style={{
+                  width: `${Math.min(100, (row.count / scale) * 100)}%`,
+                  background: reached ? TONE_VAR.mint : TONE_VAR[tone],
+                }}
+              />
+            </span>
+            <strong className="flex items-center justify-end gap-1 text-caption tabular-nums text-ink">
+              {row.count}
+              {reached ? (
+                <Check size={13} strokeWidth={3} aria-hidden="true" className="text-mint-ink" />
+              ) : null}
+            </strong>
+          </div>
+        );
+      })}
+
+      {goal ? (
+        <p className="text-caption text-muted">
+          Зорилт {goal} — {rows.filter((row) => row.count >= goal).length} / {rows.length} хүрсэн.
+        </p>
+      ) : null}
     </Card>
   );
 }

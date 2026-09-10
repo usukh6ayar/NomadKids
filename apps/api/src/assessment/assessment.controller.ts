@@ -50,17 +50,6 @@ export class AssessmentConfigController {
     return this.service.listTerms(actor, params.id, query.schoolYearId);
   }
 
-  /** Сарын зорилт — how many notes each child should have per month. */
-  @Put("monthly-note-goal")
-  @Roles("ADMIN")
-  async setGoal(
-    @CurrentActor() actor: Actor,
-    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
-    @Body(new ZodValidationPipe(monthlyNoteGoalSchema)) body: MonthlyNoteGoalDto,
-  ) {
-    return this.service.setMonthlyNoteGoal(actor, params.id, body.monthlyNoteGoal);
-  }
-
   @Post("terms")
   @Roles("ADMIN")
   async createTerm(
@@ -183,6 +172,22 @@ export class GroupAssessmentController {
     @Query(new ZodValidationPipe(groupColumnQuerySchema)) query: GroupColumnQuery,
   ) {
     return this.service.getGroupColumn(actor, params.id, query);
+  }
+
+  /**
+   * Энэ сарын зорилт — how many children this group documents each month.
+   *
+   * On the group's own controller because it is the group's number, and set by
+   * whoever teaches it. See `setGroupNoteGoal`.
+   */
+  @Put("monthly-note-goal")
+  @Roles("TEACHER", "ADMIN")
+  async setGoal(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(monthlyNoteGoalSchema)) body: MonthlyNoteGoalDto,
+  ) {
+    return this.service.setGroupNoteGoal(actor, params.id, body.monthlyNoteGoal);
   }
 
   @Put()

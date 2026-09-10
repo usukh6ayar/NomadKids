@@ -1355,23 +1355,6 @@ export const levelSchema = z.object({
 export const assessmentConfigSchema = z.object({
   domains: z.array(domainSchema),
   levels: z.array(levelSchema),
-  /**
-   * Энэ сарын зорилт — how many *children* to document each month.
-   *
-   * ★ Children, not notes. A goal counted in notes is met by writing twenty
-   * about one child; this one is only met by reaching twenty different
-   * children, which is what the card's own words ask for.
-   *
-   * ★ Configuration, which is why it rides with the domains and levels.
-   *
-   * It lived in `localStorage` until 2026-09-10, so the two teachers of one
-   * group could hold different targets, a director saw neither, and clearing
-   * site data lost it. A shared commitment stored per browser is not one.
-   *
-   * Nullish for a response from an API that predates the field; null means no
-   * goal is set and the screen draws no goal card rather than inventing one.
-   */
-  monthlyNoteGoal: z.number().nullish(),
 });
 
 export const termSchema = z.object({
@@ -2615,6 +2598,19 @@ export const groupSchema = z.object({
    */
   programKind: programKindSchema.nullish(),
   attendanceForm: attendanceFormSchema.nullish(),
+  /**
+   * Энэ сарын зорилт — how many *children* this group documents each month.
+   *
+   * ★ Children, not notes. A goal counted in notes is met by writing twenty
+   * about one child; this one is only met by reaching twenty different
+   * children, which is what "хүүхэд бүрийн хөгжлийн явц" asks for.
+   *
+   * On the group rather than the kindergarten because the teacher sets it, and
+   * a kindergarten-wide number set by one teacher would silently change every
+   * other group's. Nullish for the same reason `programKind` is — this schema
+   * doubles as the bare group reference other payloads embed.
+   */
+  monthlyNoteGoal: z.number().nullish(),
 });
 
 /**

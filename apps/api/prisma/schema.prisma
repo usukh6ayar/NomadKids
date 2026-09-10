@@ -585,29 +585,6 @@ model Kindergarten {
   /// directly reachable, so there is no address a `logo String` could hold that
   /// this system is allowed to hand out. The column mirrors
   /// `Child.photoMediaFileId` exactly — one image pattern, not two.
-  /// How many *children* the group is expected to document each month — the
-  /// client's "Энэ сарын зорилт", 2026-09-10.
-  ///
-  /// ★ Children, not notes, and the distinction is the whole point.
-  ///
-  /// The client's card reads "20 хүүхдийн хөгжлийн явцыг баримтжуулах" and
-  /// "Одоогоор 14 / 20 хүүхэд". A goal counted in notes is met by writing
-  /// twenty about one child; this one is only met by reaching twenty
-  /// different children, which is what "хүүхэд бүрийн хөгжлийн явц" asks for.
-  ///
-  /// ★ A column, not a table, and that is not a §2.3 exception.
-  ///
-  /// §2.3 asks that anything an administrator edits be a table rather than a
-  /// TypeScript enum — the failure it prevents is a *vocabulary* baked into
-  /// code. This is a single scalar setting per kindergarten, like `phone`; a
-  /// table of one row per kindergarten with one integer in it would be the
-  /// same column with a join in front of it.
-  ///
-  /// NULL is "no goal set", which is the default and what every kindergarten
-  /// has today. The screen draws no goal card at all in that case rather than
-  /// inventing a target nobody agreed to.
-  monthlyNoteGoal Int?
-
   logoMediaFileId String? @unique @db.Uuid
 
   createdAt DateTime  @default(now())
@@ -739,6 +716,25 @@ model Group {
   kindergartenId String      @db.Uuid
   schoolYearId   String      @db.Uuid
   name           String
+
+  /// How many *children* this group aims to document each month — the client's
+  /// "Энэ сарын зорилт", 2026-09-10.
+  ///
+  /// ★ Children, not notes, and the distinction is the whole point.
+  ///
+  /// The card reads "20 хүүхдийн хөгжлийн явцыг баримтжуулах" and "14 / 20
+  /// хүүхэд". A goal counted in notes is met by writing twenty about one child;
+  /// this one is only met by reaching twenty different children.
+  ///
+  /// ★★ On the group rather than the kindergarten, and that is what lets the
+  /// teacher set it (client, 2026-09-10: "багш өөрөө сонгох"). It lived on
+  /// `Kindergarten` for one day, which would have meant one teacher's decision
+  /// silently changing every other group's target — the same defect as the
+  /// `localStorage` version it replaced, one level up.
+  ///
+  /// NULL is "no goal set", which is the default. The screen draws no goal card
+  /// rather than inventing a target nobody agreed to.
+  monthlyNoteGoal Int?
   ageBand        AgeBand
   status         GroupStatus @default(ACTIVE)
 

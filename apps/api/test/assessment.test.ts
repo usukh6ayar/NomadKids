@@ -1118,59 +1118,73 @@ describe("★ previous term", () => {
 });
 
 /**
- * Сарын зорилт — the client's 2026-09-10 goal, moved out of the browser.
+ * Энэ сарын зорилт — the group's own monthly documentation target.
  *
- * ★ It lived in `localStorage` until now, and that was a real defect rather
- * than a shortcut: the two teachers of one group could hold different targets,
- * a director saw neither, and clearing site data lost it. A shared commitment
- * stored per browser is not a shared commitment.
+ * ★ It has moved twice, and both moves fixed a real fault.
  *
- * ★★ Everyone reads it; only an administrator sets it. Deciding the target is
- * the director's job — it was previously whatever each teacher had typed.
+ * It began in `localStorage`, so the two teachers of one group could hold
+ * different targets, a director saw neither, and clearing site data lost it.
+ * It then spent a day on `Kindergarten`, which had the opposite fault: the
+ * client asked that the teacher set it ("багш өөрөө сонгох"), and a
+ * kindergarten-wide number set by one teacher would silently change every
+ * other group's. On the group, set by whoever teaches it, it is theirs.
+ *
+ * ★★ Children, not notes. A goal counted in notes is met by writing twenty
+ * about one child.
  */
-describe("the monthly note goal", () => {
-  const config = (session: AuthSession) =>
+describe("a group's monthly documentation goal", () => {
+  const setGoal = (session: AuthSession, monthlyNoteGoal: number | null, group = a.group.id) =>
     authed(
-      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/assessment-config`),
+      request(server()).put(`/v1/groups/${group}/assessments/monthly-note-goal`),
       session,
-    );
+    ).send({
+      monthlyNoteGoal,
+    });
 
-  const setGoal = (session: AuthSession, monthlyNoteGoal: number | null) =>
-    authed(
-      request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/monthly-note-goal`),
-      session,
-    ).send({ monthlyNoteGoal });
+  const readGoal = async (group = a.group.id) =>
+    (await authed(request(server()).get(`/v1/groups/${group}`), teacherA)).body.monthlyNoteGoal;
 
   it("is null until somebody sets one", async () => {
-    expect((await config(teacherA)).body.monthlyNoteGoal).toBeNull();
+    expect(await readGoal()).toBeNull();
   });
 
-  it("an administrator sets it and everybody sees it", async () => {
-    expect((await setGoal(adminA, 3)).status).toBe(200);
-
-    expect((await config(teacherA)).body.monthlyNoteGoal).toBe(3);
-    expect((await config(parentA)).body.monthlyNoteGoal).toBe(3);
+  it("the group's own teacher sets it", async () => {
+    expect((await setGoal(teacherA, 20)).status).toBe(200);
+    expect(await readGoal()).toBe(20);
   });
 
-  it("a teacher cannot set it", async () => {
-    expect((await setGoal(teacherA, 3)).status).toBe(404);
-    expect((await config(teacherA)).body.monthlyNoteGoal).toBeNull();
+  it("an administrator sets it too", async () => {
+    expect((await setGoal(adminA, 15)).status).toBe(200);
+    expect(await readGoal()).toBe(15);
   });
 
-  it("a guardian cannot set it", async () => {
-    expect((await setGoal(parentA, 3)).status).toBe(404);
+  /**
+   * ★ Membership is not enough — the same rule the column editor makes.
+   *
+   * A teacher may only act on a group they are assigned to. This is the check
+   * the screen cannot make, and it is why the control can be offered to every
+   * member of staff who reaches the page.
+   */
+  it("a teacher not assigned to the group gets 404", async () => {
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Тэдний биш бүлэг");
+
+    expect((await setGoal(teacherA, 20, other.id)).status).toBe(404);
   });
 
-  it("an administrator of another kindergarten cannot set it", async () => {
-    const adminB = await login(app, b.adminUser.username);
-    expect((await setGoal(adminB, 3)).status).toBe(404);
+  it("a teacher from another kindergarten gets 404", async () => {
+    const teacherB = await login(app, b.teacherUser.username);
+    expect((await setGoal(teacherB, 20)).status).toBe(404);
+  });
+
+  it("a guardian gets 404", async () => {
+    expect((await setGoal(parentA, 20)).status).toBe(404);
   });
 
   /** Null clears it; the screen then draws no goal card. */
   it("can be cleared", async () => {
-    await setGoal(adminA, 3);
-    expect((await setGoal(adminA, null)).status).toBe(200);
-    expect((await config(teacherA)).body.monthlyNoteGoal).toBeNull();
+    await setGoal(teacherA, 20);
+    expect((await setGoal(teacherA, null)).status).toBe(200);
+    expect(await readGoal()).toBeNull();
   });
 
   /**
@@ -1180,19 +1194,32 @@ describe("the monthly note goal", () => {
    * permanently at 100% saying nothing, which is worse than no bar.
    */
   it("refuses a goal of zero or an absurd one", async () => {
-    expect((await setGoal(adminA, 0)).status).toBe(400);
-    expect((await setGoal(adminA, 99)).status).toBe(400);
+    expect((await setGoal(teacherA, 0)).status).toBe(400);
+    expect((await setGoal(teacherA, 99)).status).toBe(400);
+  });
+
+  /** ★ One group's target does not move another's. */
+  it("belongs to the group and nobody else", async () => {
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Өөр бүлэг");
+
+    await setGoal(adminA, 20);
+    await setGoal(adminA, 8, other.id);
+
+    expect(await readGoal()).toBe(20);
+    expect(
+      (await authed(request(server()).get(`/v1/groups/${other.id}`), adminA)).body.monthlyNoteGoal,
+    ).toBe(8);
   });
 
   it("records who changed it", async () => {
-    await setGoal(adminA, 4);
+    await setGoal(teacherA, 12);
 
     const entry = await db.auditLog.findFirst({
-      where: { objectType: "Kindergarten", action: "UPDATE" },
+      where: { objectType: "Group", action: "UPDATE" },
       orderBy: { createdAt: "desc" },
     });
 
-    expect(entry?.actorUserId).toBe(a.adminUser.id);
-    expect(entry?.metadata).toMatchObject({ monthlyNoteGoal: 4 });
+    expect(entry?.actorUserId).toBe(a.teacherUser.id);
+    expect(entry?.metadata).toMatchObject({ monthlyNoteGoal: 12 });
   });
 });
