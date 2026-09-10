@@ -216,8 +216,9 @@ function TeacherDashboard() {
           §4.1 asks loading and error to share the header so nothing shifts;
           the body has to hold up its half of that.
         */}
-        <div className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, index) => (
+        {/* Six and three-across, matching the real tile band below. */}
+        <div className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, index) => (
             <Skeleton key={index} className="h-[112px] w-full rounded-card" />
           ))}
         </div>
@@ -272,7 +273,20 @@ function TeacherDashboard() {
     <div className="page-band">
       {header}
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      {/*
+        ★ Six tiles, not four — 2026-09-10, at the client's request.
+
+        `xl:grid-cols-3` rather than the previous `xl:grid-cols-4`: six tiles
+        across four columns leaves a row of four above a row of two, and the
+        two orphans read as an afterthought rather than as part of the set.
+        Three columns give two even rows of three, and the phone's own
+        `grid-cols-2` becomes three rows of two — even at both sizes.
+
+        Both destinations already existed and are already in the sidebar
+        (`staffSections`); what they lacked was a door on the screen a teacher
+        actually starts from.
+      */}
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-3" data-testid="teacher-quick-actions">
         <QuickAction
           href={group ? `/groups/${group.id}/attendance` : "/attendance"}
           title="Ирц"
@@ -296,6 +310,18 @@ function TeacherDashboard() {
           title="Явцын үнэлгээ"
           description="Хүүхдийн үнэлгээ оруулах"
           art="progress"
+        />
+        <QuickAction
+          href="/reports"
+          title="Тайлан"
+          description="Бүлгээ сараар харах"
+          art="report"
+        />
+        <QuickAction
+          href="/documents"
+          title="Баримт бичгийн сан"
+          description="Хөтөлбөр, арга зүй, журам"
+          art="documents"
         />
       </div>
 
