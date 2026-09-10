@@ -76,6 +76,20 @@ const SOURCE = {
   kindergarten: "/icons/icon-kindergarten-3d.png",
   kitchenIngredients: "/icons/icon-kitchen-ingredients-3d.png",
   kitchenRecipeCard: "/icons/icon-kitchen-recipe-card-3d.png",
+  /*
+   * ★ The guardian's phone bar. Restored 2026-09-11 — they were added by #92
+   * and deleted by #93, which was cut before it and carried the older map.
+   *
+   * Nothing about #93 wanted them gone: it is a commit about giving the
+   * accountant and administrator rails distinct glyphs, and it removed these
+   * four only because its branch had never seen them. The four PNGs stayed on
+   * disk the whole time and `layout.tsx` never stopped asking for them, so
+   * what shipped was a bottom bar naming icons this map could not resolve.
+   */
+  navFood: "/icons/icon-nav-food.png",
+  navGallery: "/icons/icon-nav-gallery.png",
+  navHome: "/icons/icon-nav-home.png",
+  navNews: "/icons/icon-nav-news.png",
   notice: "/icons/icon-notice-3d.png",
   observation: "/icons/icon-observation-3d.png",
   portfolio: "/icons/icon-portfolio.png",
