@@ -6,6 +6,7 @@ import { createTestApp } from "./support/app";
 import { resetData, testDb, uniq } from "./support/db";
 import {
   authed,
+  createGroup,
   createMembership,
   createScenario,
   createUser,
@@ -457,6 +458,86 @@ describe("observation photos inherit visibility", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("lifecycle", () => {
+  /*
+   * ★ RFP §2.3 — a family may keep what the kindergarten shows them.
+   *
+   * The photograph is *copied*, not referenced: two rows on one storage key
+   * would share a lifetime, so the orphan sweep collecting the post's copy
+   * would empty the family's album months later with nothing to say why.
+   */
+  describe("keeping a class-board photograph", () => {
+    /** Publishes a notice with one photo on it, and returns that photo's id. */
+    async function postWithPhoto(targets: { groupId?: string }[] = []) {
+      const created = await authed(
+        request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/notifications`),
+        teacherA,
+      ).send({ title: "Өнөөдрийн зураг", body: "Дэлгэрэнгүй", targets });
+      if (created.status !== 201) throw new Error(`notify failed: ${created.text}`);
+
+      const upload = await authed(
+        request(server()).post(`/v1/notifications/${created.body.id}/media`),
+        teacherA,
+      ).attach("file", await photoBytes(), "зураг.jpg");
+      if (upload.status !== 201) throw new Error(`attach failed: ${upload.text}`);
+
+      await authed(
+        request(server()).post(`/v1/notifications/${created.body.id}/publish`),
+        teacherA,
+      );
+      return upload.body.id as string;
+    }
+
+    const save = (session: AuthSession, childId: string, mediaId: string, age?: number) =>
+      authed(request(server()).post(`/v1/children/${childId}/media/save-from-post`), session).send(
+        age === undefined ? { mediaId } : { mediaId, age },
+      );
+
+    it("a guardian keeps a post's photo in their child's album", async () => {
+      const mediaId = await postWithPhoto();
+
+      const res = await save(parentA, a.child.id, mediaId, 4);
+
+      expect(res.status).toBe(201);
+      expect(res.body.age).toBe(4);
+      expect(res.body.purpose).toBe("CHILD_PHOTO");
+
+      // A copy, not a second row on the same object.
+      const source = await db.mediaFile.findUniqueOrThrow({ where: { id: mediaId } });
+      const saved = await db.mediaFile.findUniqueOrThrow({ where: { id: res.body.id } });
+      expect(saved.storageKey).not.toBe(source.storageKey);
+      expect(saved.childId).toBe(a.child.id);
+      expect(saved.uploadedById).not.toBeNull();
+    });
+
+    it("refuses a post written for another group", async () => {
+      /*
+       * A second group in the *same* kindergarten: `b.group` would be rejected
+       * at creation ("Бүлэг олдсонгүй") for being in another kindergarten,
+       * which would test the compose guard rather than this one. This notice
+       * is validly published and simply never reaches child A's family, so
+       * `NotificationsService.get` 404s on it.
+       */
+      const other = await createGroup(a.kindergarten.id, a.schoolYear.id);
+      const mediaId = await postWithPhoto([{ groupId: other.id }]);
+
+      expect((await save(parentA, a.child.id, mediaId)).status).toBe(404);
+    });
+
+    it("refuses saving into another family's child", async () => {
+      const mediaId = await postWithPhoto();
+
+      expect((await save(parentB, a.child.id, mediaId)).status).toBe(404);
+    });
+
+    it("refuses a photo that is not on a post at all", async () => {
+      // An album photograph, not a notice attachment — the source has to be
+      // something the kindergarten published, not any file an id names.
+      const albumPhoto = await upload(teacherA, a.child.id);
+
+      expect((await save(parentA, a.child.id, albumPhoto)).status).toBe(404);
+    });
+  });
+
   it("a guardian cannot delete a TEACHER's photo", async () => {
     const id = await upload();
     expect((await authed(request(server()).delete(`/v1/media/${id}`), parentA)).status).toBe(404);

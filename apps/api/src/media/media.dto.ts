@@ -69,3 +69,19 @@ export const uploadMetadataSchema = z.object({
   attribution: mediaAttributionSchema.nullable().optional(),
 });
 export type UploadMetadataDto = z.infer<typeof uploadMetadataSchema>;
+
+/**
+ * `POST /children/:id/media/save-from-post` — keeping a class-board photograph.
+ *
+ * `age` and `category` are the album facets the parent is filing it under, and
+ * both are optional: "save this" with no album chosen is a real request, and
+ * the photograph then sits in the child's ungrouped gallery.
+ */
+export const saveNotificationPhotoSchema = z
+  .object({
+    mediaId: z.string().uuid(),
+    age: z.coerce.number().int().min(2).max(5).nullable().optional(),
+    category: mediaCategorySchema.nullable().optional(),
+  })
+  .strict();
+export type SaveNotificationPhotoDto = z.infer<typeof saveNotificationPhotoSchema>;

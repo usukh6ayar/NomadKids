@@ -9,10 +9,12 @@ import {
 } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import {
   NOTIFICATION_CATEGORIES,
+  type ChildSummary,
   NOTIFICATION_CATEGORY_LABEL,
   childSummarySchema,
   notificationSchema,
@@ -21,8 +23,9 @@ import {
   type NotificationCategory,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
-import { PageHeader } from "@/components/shell/app-shell";
 import { useSwitchableGroups } from "@/components/shell/group-switcher";
+import { RowMenu } from "@/components/ui/menu";
+import { SavePostPhoto } from "@/components/notifications/save-post-photo";
 import { LikeButton } from "@/components/notifications/like-button";
 import { ChildAvatar, MediaThumb } from "@/components/media/media-image";
 import { useSession } from "@/lib/auth/session";
@@ -31,6 +34,7 @@ import {
   CalendarRange,
   ChevronRight,
   PenLine,
+  MoreVertical,
   Search,
   Pencil,
   SlidersHorizontal,
@@ -47,7 +51,7 @@ import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
 import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
-import { excerpt, formatRelative, fullName } from "@/lib/format";
+import { excerpt, formatRelative, shortName } from "@/lib/format";
 import { SURVEY_CATEGORY_META, SURVEY_TONE_BG } from "@/lib/survey-meta";
 import { cn } from "@/lib/utils";
 
@@ -282,7 +286,17 @@ export default function NotificationsPage() {
 
   return (
     <div className="flex flex-col gap-4 lg:gap-5">
-      <PageHeader title={tab === "news" ? "Мэдээ" : "Судалгаа"} />
+      {/*
+        ★ The heading is `sr-only` — 2026-09-10, at the client's request that
+        the first word go and the page move up.
+
+        `PageHeader` already draws its `<h1>` `sr-only` on every other screen
+        (see `page-header.test.tsx`); what this removes is the block's own
+        vertical space above a toolbar that names the tab anyway. The heading
+        itself stays, because a page with no `<h1>` has no name in a screen
+        reader's landmark list and no top level in its outline.
+      */}
+      <h1 className="sr-only">{tab === "news" ? "Мэдээ" : "Судалгаа"}</h1>
 
       <section
         aria-label={tab === "news" ? "Мэдээний удирдлага" : "Судалгааны удирдлага"}
@@ -681,6 +695,7 @@ export default function NotificationsPage() {
                     canDelete={
                       hasRole("ADMIN") || (isStaff && notification.author?.id === session?.user?.id)
                     }
+                    savableChildren={isGuardian ? surveyChildren : undefined}
                   />
                 ))}
               </div>
@@ -952,6 +967,7 @@ function SurveysTab({
 function NotificationRow({
   notification,
   canDelete,
+  savableChildren,
 }: {
   notification: z.infer<typeof notificationSchema>;
   /**
@@ -966,9 +982,17 @@ function NotificationRow({
    * server side of it with a second teacher in the same kindergarten.
    */
   canDelete: boolean;
+  /**
+   * The reader's own children, when they are a guardian — what "Хадгалах" on
+   * a photograph files into. `undefined` for staff, who already own the album
+   * and have no child of their own on this board.
+   */
+  savableChildren?: ChildSummary[];
 }) {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const toast = useToast();
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const isUnread = notification.reads.length === 0;
 
   const remove = useMutation({
@@ -1073,14 +1097,31 @@ function NotificationRow({
           does. `truncate` on the name and `shrink-0` on the time means a long
           Mongolian name gives way rather than pushing the date off the row.
         */}
-        <p className="flex min-w-[9rem] flex-1 items-baseline gap-1.5">
+        {/*
+          ★ The role leads and the name sits under it — 2026-09-10, at the
+          client's request ("Бүлгийн багш гээд доор жижиг С.Дэлгэрмаа").
+
+          A parent reading the board wants to know *who is speaking* before
+          which person it is: "the group's teacher" is what tells them whether
+          this is about their child's day, and the name is how they answer it
+          later. `shortName` for the same reason the register uses it — a card
+          header is not the place to spend a line on a patronymic.
+        */}
+        <p className="flex min-w-[9rem] flex-1 flex-col">
           <span className="truncate text-body font-semibold text-ink">
-            {fullName(notification.author)}
+            {notification.author ? "Бүлгийн багш" : "Цэцэрлэг"}
           </span>
-          <span aria-hidden="true" className="text-faint">
-            ·
+          <span className="flex items-baseline gap-1.5 text-caption text-muted">
+            {notification.author ? (
+              <span className="truncate">{shortName(notification.author)}</span>
+            ) : null}
+            {notification.author ? (
+              <span aria-hidden="true" className="text-faint">
+                ·
+              </span>
+            ) : null}
+            <span className="shrink-0">{formatRelative(when)}</span>
           </span>
-          <span className="shrink-0 text-caption text-muted">{formatRelative(when)}</span>
         </p>
         {/*
           ★ Both classifications sit here, and both are `Badge`.
@@ -1138,51 +1179,52 @@ function NotificationRow({
           {isUnread ? <Badge tone="primary">Шинэ</Badge> : null}
 
           {/*
-            ★ Editing, added 2026-08-31 at the client's request, and gated on
-            the same flag as the delete below.
+            ★ One overflow menu in the corner, not two icon buttons in the
+            footer — 2026-09-10, at the client's request.
 
-            `canDelete` is "this reader authored this post, or administers this
-            kindergarten" — which is exactly `requireStaffOwned`, the rule
-            `PATCH /notifications/:id` already enforces. One flag for both
-            actions because one server-side rule governs both; a second
-            `canEdit` computed separately would be a second answer to the same
-            question, and the two would drift.
+            `canDelete` gates both, and deliberately: it is "this reader wrote
+            this post, or administers this kindergarten", which is exactly
+            `requireStaffOwned`, the rule `PATCH` and `DELETE` both enforce.
+            One flag for both actions because one server rule governs both — a
+            second `canEdit` computed separately would be a second answer to
+            the same question, and the two would drift.
+
+            The delete opens `ConfirmDialog` from this component's own state
+            rather than from a trigger: a menu closes when an entry is chosen,
+            and a `Dialog.Trigger` that unmounts on the same click takes the
+            dialog with it. `ConfirmDialog`'s own docblock names this case.
           */}
           {canDelete ? (
-            <Link
-              href={`/notifications/${notification.id}/edit`}
-              aria-label="Постыг засах"
-              className="grid size-11 place-items-center rounded-control text-muted transition-colors hover:bg-canvas hover:text-ink"
-            >
-              <Pencil size={16} aria-hidden="true" />
-            </Link>
-          ) : null}
-
-          {/*
-            Withdrawing a post. `ConfirmDialog` owns its own open state and
-            takes the control that opens it, so the button *is* the trigger —
-            CLAUDE.md §5 asks for a confirmation before a delete and this is
-            the shape the rest of the product uses for one.
-          */}
-          {canDelete ? (
-            <ConfirmDialog
-              trigger={
-                <button
-                  type="button"
-                  aria-label="Постыг устгах"
-                  className="grid size-11 place-items-center rounded-control text-muted transition-colors hover:bg-canvas hover:text-danger"
-                >
-                  <Trash2 size={16} aria-hidden="true" />
-                </button>
-              }
-              title="Энэ постыг устгах уу?"
-              description="Эцэг эхийн самбараас хасагдана. Хэн устгасныг бүртгэлд үлдээнэ."
-              confirmLabel="Устгах"
-              cancelLabel="Цуцлах"
-              tone="danger"
-              pending={remove.isPending}
-              onConfirm={() => remove.mutate()}
-            />
+            <>
+              <RowMenu
+                ariaLabel="Постын үйлдэл"
+                triggerIcon={<MoreVertical size={18} aria-hidden="true" />}
+                items={[
+                  {
+                    label: "Засах",
+                    icon: <Pencil size={16} />,
+                    onSelect: () => router.push(`/notifications/${notification.id}/edit`),
+                  },
+                  {
+                    label: "Устгах",
+                    icon: <Trash2 size={16} />,
+                    tone: "danger",
+                    onSelect: () => setConfirmDelete(true),
+                  },
+                ]}
+              />
+              <ConfirmDialog
+                open={confirmDelete}
+                onOpenChange={(next) => (next ? undefined : setConfirmDelete(false))}
+                title="Энэ постыг устгах уу?"
+                description="Эцэг эхийн самбараас хасагдана. Хэн устгасныг бүртгэлд үлдээнэ."
+                confirmLabel="Устгах"
+                cancelLabel="Цуцлах"
+                tone="danger"
+                pending={remove.isPending}
+                onConfirm={() => remove.mutate()}
+              />
+            </>
           ) : null}
         </span>
       </div>
@@ -1293,12 +1335,23 @@ function NotificationRow({
           )}
         >
           {notification.media.slice(0, 4).map((photo) => (
-            <MediaThumb
-              key={photo.id}
-              mediaId={photo.id}
-              caption={photo.caption}
-              className={notification.media.length === 1 ? "aspect-[16/9]" : "aspect-square"}
-            />
+            /*
+              ★ "Хадгалах" on each photograph — RFP §2.3, at the client's
+              request. A teacher posts the morning's pictures and a parent
+              recognising their own child had no way to keep it; the API copies
+              the object into that child's album rather than pointing a second
+              row at the same key. Guardians only: staff already own the album.
+            */
+            <div key={photo.id} className="relative">
+              <MediaThumb
+                mediaId={photo.id}
+                caption={photo.caption}
+                className={notification.media.length === 1 ? "aspect-[16/9]" : "aspect-square"}
+              />
+              {savableChildren ? (
+                <SavePostPhoto mediaId={photo.id} children={savableChildren} />
+              ) : null}
+            </div>
           ))}
         </div>
       ) : null}

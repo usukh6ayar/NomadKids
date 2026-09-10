@@ -27,8 +27,10 @@ import {
   listMediaQuerySchema,
   updateMediaSchema,
   uploadMetadataSchema,
+  saveNotificationPhotoSchema,
   type ListMediaQuery,
   type UpdateMediaDto,
+  type SaveNotificationPhotoDto,
 } from "./media.dto";
 import { MAX_UPLOAD_BYTES } from "./upload-validation";
 
@@ -140,6 +142,16 @@ export class ChildMediaController {
     }
 
     return result;
+  }
+
+  /** Keeps a class-board photograph in this child's own album — RFP §2.3. */
+  @Post("save-from-post")
+  async saveFromPost(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(saveNotificationPhotoSchema)) body: SaveNotificationPhotoDto,
+  ) {
+    return this.service.saveNotificationPhotoToChild(actor, params.id, body);
   }
 
   /** Makes an existing photo the child's profile picture. */
