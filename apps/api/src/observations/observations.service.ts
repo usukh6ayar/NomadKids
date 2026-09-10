@@ -85,6 +85,7 @@ export class ObservationsService {
       total: stats.total,
       enrolled: stats.enrolled,
       childrenWithNotes: stats.childrenWithNotes,
+      byChild: stats.byChild.map((row) => ({ childId: row.childId, count: row._count._all })),
       byType: types.map((type) => ({
         id: type.id,
         name: type.name,

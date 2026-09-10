@@ -170,8 +170,11 @@ export class AssessmentRepository {
     return { enrollments, assessments };
   }
 
-  async setGroupNoteGoal(groupId: string, monthlyNoteGoal: number | null) {
-    await this.prisma.group.update({ where: { id: groupId }, data: { monthlyNoteGoal } });
+  async setGroupNoteGoal(
+    groupId: string,
+    goal: { monthlyNoteGoal?: number | null; monthlyNotesPerChildGoal?: number | null },
+  ) {
+    await this.prisma.group.update({ where: { id: groupId }, data: goal });
   }
 
   /**
@@ -409,7 +412,14 @@ export class AssessmentRepository {
   async findGroupForAssessment(groupId: string, kindergartenIds: string[]) {
     return this.prisma.group.findFirst({
       where: { id: groupId, deletedAt: null, kindergartenId: { in: kindergartenIds } },
-      select: { id: true, kindergartenId: true, schoolYearId: true, name: true },
+      select: {
+        id: true,
+        kindergartenId: true,
+        schoolYearId: true,
+        name: true,
+        monthlyNoteGoal: true,
+        monthlyNotesPerChildGoal: true,
+      },
     });
   }
 }

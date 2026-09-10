@@ -1153,6 +1153,20 @@ describe("a group's monthly documentation goal", () => {
     expect(await readGoal()).toBe(20);
   });
 
+  it("stores how many notes each targeted child should receive", async () => {
+    const response = await authed(
+      request(server()).put(`/v1/groups/${a.group.id}/assessments/monthly-note-goal`),
+      teacherA,
+    ).send({ monthlyNotesPerChildGoal: 3 });
+
+    expect(response.status).toBe(200);
+    expect(response.body.monthlyNotesPerChildGoal).toBe(3);
+    expect(
+      (await authed(request(server()).get(`/v1/groups/${a.group.id}`), teacherA)).body
+        .monthlyNotesPerChildGoal,
+    ).toBe(3);
+  });
+
   it("an administrator sets it too", async () => {
     expect((await setGoal(adminA, 15)).status).toBe(200);
     expect(await readGoal()).toBe(15);
@@ -1196,6 +1210,12 @@ describe("a group's monthly documentation goal", () => {
   it("refuses a goal of zero or an absurd one", async () => {
     expect((await setGoal(teacherA, 0)).status).toBe(400);
     expect((await setGoal(teacherA, 99)).status).toBe(400);
+
+    const tooManyNotes = await authed(
+      request(server()).put(`/v1/groups/${a.group.id}/assessments/monthly-note-goal`),
+      teacherA,
+    ).send({ monthlyNotesPerChildGoal: 11 });
+    expect(tooManyNotes.status).toBe(400);
   });
 
   /** ★ One group's target does not move another's. */

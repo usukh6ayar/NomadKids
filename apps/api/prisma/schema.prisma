@@ -712,9 +712,9 @@ model SchoolYear {
 }
 
 model Group {
-  id             String      @id @default(uuid()) @db.Uuid
-  kindergartenId String      @db.Uuid
-  schoolYearId   String      @db.Uuid
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  schoolYearId   String @db.Uuid
   name           String
 
   /// How many *children* this group aims to document each month — the client's
@@ -734,9 +734,11 @@ model Group {
   ///
   /// NULL is "no goal set", which is the default. The screen draws no goal card
   /// rather than inventing a target nobody agreed to.
-  monthlyNoteGoal Int?
-  ageBand        AgeBand
-  status         GroupStatus @default(ACTIVE)
+  monthlyNoteGoal          Int?
+  /// How many notes each targeted child should receive in the month.
+  monthlyNotesPerChildGoal Int?
+  ageBand                  AgeBand
+  status                   GroupStatus @default(ACTIVE)
 
   /// Order А/261, Annex 2 §1 items 5, 6, 13, 14 and 16. Both default to the
   /// ordinary case, so every group that existed before this migration is a
@@ -3157,7 +3159,7 @@ model Survey {
   /// `status` stays PUBLISHED, and `submitResponse` is the single place that
   /// asks. A scheduled job flipping a status at midnight would still leave the
   /// window between the instant and the sweep wrong.
-  opensAt  DateTime?
+  opensAt DateTime?
 
   /// Why it is being run — the client's "Зорилго", 2026-09-10.
   ///
@@ -3166,7 +3168,7 @@ model Survey {
   /// on the results sheet and in the archive rather than on the answering
   /// form: "did we get an answer to the question we ran this for" is what a
   /// director asks of a survey a year later.
-  purpose  String?
+  purpose String?
 
   /// Which term of the school year — the client's "Улирал", 2026-09-10.
   ///
@@ -3177,7 +3179,7 @@ model Survey {
   /// Nullable and `onDelete: Restrict`: a survey may sit outside any term (the
   /// summer), and a term with surveys filed against it must not be deletable
   /// out from under them.
-  termId   String?       @db.Uuid
+  termId String? @db.Uuid
 
   /// Whether answers are recorded without naming who gave them — the client's
   /// "Хариулт нуух" / "Нэрээ харах", 2026-09-10.
@@ -3190,7 +3192,7 @@ model Survey {
   /// counts instead of names and the workbook omits the respondent column.
   /// Promising true anonymity while storing the id would be the worse of the
   /// two failures, so the flag is named for what it does.
-  isAnonymous            Boolean @default(false)
+  isAnonymous Boolean @default(false)
 
   /// Whether one respondent may answer more than once — the client's "Олон
   /// удаа хариулахыг хязгаарлах" toggle, inverted.
@@ -3210,7 +3212,7 @@ model Survey {
   /// answered more generously than the fifth. It is off by default because a
   /// questionnaire that builds an argument across its questions is ruined by
   /// shuffling, and the person writing it knows which kind theirs is.
-  shuffleQuestions       Boolean @default(false)
+  shuffleQuestions Boolean @default(false)
 
   /// What a family reads after submitting — "Нэмэлт тэмдэглэл".
   ///
@@ -3218,7 +3220,7 @@ model Survey {
   /// to say what happens next ("Хариултыг 9-р сарын 20-нд хэлэлцэнэ") writes it
   /// here rather than in the description, where it would be read before
   /// answering instead of after.
-  closingNote            String?
+  closingNote String?
 
   /// "2025-2026". A string, not a year number: a school year spans two.
   schoolYear String?

@@ -2611,6 +2611,8 @@ export const groupSchema = z.object({
    * doubles as the bare group reference other payloads embed.
    */
   monthlyNoteGoal: z.number().nullish(),
+  /** How many notes each targeted child should receive in the month. */
+  monthlyNotesPerChildGoal: z.number().nullish(),
 });
 
 /**
@@ -4177,6 +4179,15 @@ export const groupObservationStatsSchema = z.object({
   enrolled: z.number(),
   /** How many *different* children were written about, not how many notes. */
   childrenWithNotes: z.number(),
+  /**
+   * Notes per child in the window — what the per-child depth goal counts
+   * against.
+   *
+   * ★ Ids and counts, no names. The screen needs "how many children have four
+   * or more", which is a count over this array; sending who they are would put
+   * a roster into a payload that reports on a group.
+   */
+  byChild: z.array(z.object({ childId: uuidSchema, count: z.number() })).default([]),
   /** Every configured type, including the ones sitting at zero. */
   byType: z.array(statBucketSchema).default([]),
   byDomain: z.array(statBucketSchema).default([]),

@@ -334,44 +334,51 @@ export class ObservationsRepository {
       observedOn: { gte: from, lte: to },
     };
 
-    const [byType, byDomain, byActivity, distinctChildren, total, enrolled] = await Promise.all([
-      this.prisma.observation.groupBy({
-        by: ["typeId"],
-        where: window,
-        _count: { _all: true },
-      }),
-      this.prisma.observationDomain.groupBy({
-        by: ["domainId"],
-        where: { deletedAt: null, observation: window },
-        _count: { _all: true },
-      }),
-      this.prisma.observation.groupBy({
-        by: ["activityName"],
-        where: { ...window, activityName: { not: null } },
-        _count: { _all: true },
-        orderBy: { _count: { activityName: "desc" } },
-        take: 12,
-      }),
-      /*
+    const [byType, byDomain, byActivity, byChild, distinctChildren, total, enrolled] =
+      await Promise.all([
+        this.prisma.observation.groupBy({
+          by: ["typeId"],
+          where: window,
+          _count: { _all: true },
+        }),
+        this.prisma.observationDomain.groupBy({
+          by: ["domainId"],
+          where: { deletedAt: null, observation: window },
+          _count: { _all: true },
+        }),
+        this.prisma.observation.groupBy({
+          by: ["activityName"],
+          where: { ...window, activityName: { not: null } },
+          _count: { _all: true },
+          orderBy: { _count: { activityName: "desc" } },
+          take: 12,
+        }),
+        this.prisma.observation.groupBy({
+          by: ["childId"],
+          where: window,
+          _count: { _all: true },
+        }),
+        /*
         "How many *different* children were written about" — the client's
         Зорилт. `distinct` on the row rather than a `groupBy` count, because the
         question is the size of the set, not the shape of it.
       */
-      this.prisma.observation.findMany({
-        where: window,
-        select: { childId: true },
-        distinct: ["childId"],
-      }),
-      this.prisma.observation.count({ where: window }),
-      this.prisma.enrollment.count({
-        where: { groupId, status: "ACTIVE", deletedAt: null },
-      }),
-    ]);
+        this.prisma.observation.findMany({
+          where: window,
+          select: { childId: true },
+          distinct: ["childId"],
+        }),
+        this.prisma.observation.count({ where: window }),
+        this.prisma.enrollment.count({
+          where: { groupId, status: "ACTIVE", deletedAt: null },
+        }),
+      ]);
 
     return {
       byType,
       byDomain,
       byActivity,
+      byChild,
       childrenWithNotes: distinctChildren.length,
       total,
       enrolled,

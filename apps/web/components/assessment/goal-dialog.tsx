@@ -1,124 +1,95 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
 import { z } from "zod";
 import { mutate } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
-import { Button } from "@/components/ui/button";
-import { Field, Input } from "@/components/ui/field";
-import { FormError } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 
-/**
- * Зорилт тохируулах — the group's teacher sets the month's documentation goal.
- *
- * ★ How many *children* to document, not how many notes to write.
- *
- * A goal counted in notes is met by writing twenty about one child. This one
- * is only met by reaching twenty different children, which is what "хүүхэд
- * бүрийн хөгжлийн явц" asks for — and the card reads it back in those words.
- *
- * ★★ The teacher of the group sets it — client, 2026-09-10: "багш өөрөө
- * сонгох". That is why the number lives on the group rather than on the
- * kindergarten: a kindergarten-wide target set by one teacher would silently
- * change every other group's.
- */
-export function GoalDialog({ groupId, current }: { groupId: string; current: number | null }) {
+type GoalPatch = {
+  monthlyNoteGoal?: number | null;
+  monthlyNotesPerChildGoal?: number | null;
+};
+
+/** Two compact, auto-saving goal selectors beside the month selector. */
+export function GoalDialog({
+  groupId,
+  current,
+  currentNotesPerChild,
+  maxChildren,
+}: {
+  groupId: string;
+  current: number | null;
+  currentNotesPerChild: number | null;
+  maxChildren: number;
+}) {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
-  const [value, setValue] = useState(String(current ?? 20));
+  const ceiling = Math.max(maxChildren, 1);
 
   const save = useMutation({
-    mutationFn: (goal: number | null) =>
+    mutationFn: (goal: GoalPatch) =>
       mutate(`/groups/${groupId}/assessments/monthly-note-goal`, z.unknown(), {
         method: "PUT",
-        body: { monthlyNoteGoal: goal },
+        body: goal,
       }),
     onSuccess: () => {
       toast.success("Зорилт хадгалагдлаа.");
       void queryClient.invalidateQueries({ queryKey: ["group", groupId] });
-      setOpen(false);
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  if (!open) {
-    return (
-      <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
-        Зорилт тохируулах
-      </Button>
-    );
-  }
-
-  const parsed = Number(value);
-  const valid = Number.isInteger(parsed) && parsed >= 1 && parsed <= 20;
+  const controlClass =
+    "h-10 w-full rounded-control border border-mint bg-surface px-3 text-body font-semibold text-ink disabled:opacity-60";
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Сарын зорилт тохируулах"
-      className="fixed inset-0 z-50 grid items-end bg-ink/50 p-0 sm:place-items-center sm:p-4"
-    >
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (valid && !save.isPending) save.mutate(parsed);
-        }}
-        className="flex w-full max-w-[420px] flex-col gap-3.5 rounded-t-card border border-border bg-surface p-4 shadow-lg sm:rounded-card sm:p-5"
-        noValidate
-      >
-        <h2 className="text-title font-semibold text-ink">Сарын зорилт</h2>
-
-        <FormError message={save.isError ? errorMessage(save.error) : null} />
-
-        <Field
-          label="Сард хэдэн хүүхдийн явцыг баримтжуулах вэ?"
-          hint="1–20 хооронд. Хоосон болговол зорилт харагдахаа болино."
+    <>
+      <label className="flex min-w-0 flex-col gap-1">
+        <span className="text-caption font-medium text-muted">Зорилтот хүүхэд</span>
+        <select
+          aria-label="Зорилтот хүүхдийн тоо"
+          value={current ?? ""}
+          disabled={save.isPending}
+          onChange={(event) =>
+            save.mutate({ monthlyNoteGoal: event.target.value ? Number(event.target.value) : null })
+          }
+          className={controlClass}
         >
-          {({ id, describedBy }) => (
-            <Input
-              id={id}
-              aria-describedby={describedBy}
-              type="number"
-              min={1}
-              max={20}
-              inputMode="numeric"
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-              autoFocus
-            />
-          )}
-        </Field>
+          <option value="">Сонгох</option>
+          {Array.from({ length: ceiling }, (_, index) => index + 1).map((count) => (
+            <option key={count} value={count}>
+              {count} хүүхэд
+            </option>
+          ))}
+        </select>
+      </label>
 
-        <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-          <Button type="submit" disabled={!valid || save.isPending}>
-            {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
-          </Button>
-          <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
-            Болих
-          </Button>
-          {/*
-            ★ Clearing is a deliberate third action, not the empty field.
+      <label className="flex min-w-0 flex-col gap-1">
+        <span className="text-caption font-medium text-muted">Нэг хүүхдэд</span>
+        <select
+          aria-label="Нэг хүүхдэд бичих тэмдэглэлийн тоо"
+          value={currentNotesPerChild ?? ""}
+          disabled={save.isPending}
+          onChange={(event) =>
+            save.mutate({
+              monthlyNotesPerChildGoal: event.target.value ? Number(event.target.value) : null,
+            })
+          }
+          className={controlClass}
+        >
+          <option value="">Сонгох</option>
+          {Array.from({ length: 10 }, (_, index) => index + 1).map((count) => (
+            <option key={count} value={count}>
+              {count} тэмдэглэл
+            </option>
+          ))}
+        </select>
+      </label>
 
-            A goal is a commitment somebody made; removing it should read as a
-            decision rather than as having deleted the number by accident.
-          */}
-          {current !== null ? (
-            <Button
-              type="button"
-              variant="ghost"
-              className="ms-auto text-danger"
-              disabled={save.isPending}
-              onClick={() => save.mutate(null)}
-            >
-              Зорилт болих
-            </Button>
-          ) : null}
-        </div>
-      </form>
-    </div>
+      <span className="sr-only" role="status" aria-live="polite">
+        {save.isPending ? "Зорилтыг хадгалж байна" : ""}
+      </span>
+    </>
   );
 }

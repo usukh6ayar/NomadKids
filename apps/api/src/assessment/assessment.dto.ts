@@ -100,6 +100,13 @@ export const requiredTermSchema = z.object({ termId: uuidSchema });
  * which is worse than no bar at all.
  */
 export const monthlyNoteGoalSchema = z
-  .object({ monthlyNoteGoal: z.number().int().min(1).max(20).nullable() })
+  .object({
+    monthlyNoteGoal: z.number().int().min(1).max(20).nullable().optional(),
+    monthlyNotesPerChildGoal: z.number().int().min(1).max(10).nullable().optional(),
+  })
+  .refine(
+    (value) => value.monthlyNoteGoal !== undefined || value.monthlyNotesPerChildGoal !== undefined,
+    { message: "At least one goal field is required" },
+  )
   .strict();
 export type MonthlyNoteGoalDto = z.infer<typeof monthlyNoteGoalSchema>;

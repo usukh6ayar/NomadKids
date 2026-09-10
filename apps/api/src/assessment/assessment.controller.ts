@@ -187,7 +187,7 @@ export class GroupAssessmentController {
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
     @Body(new ZodValidationPipe(monthlyNoteGoalSchema)) body: MonthlyNoteGoalDto,
   ) {
-    return this.service.setGroupNoteGoal(actor, params.id, body.monthlyNoteGoal);
+    return this.service.setGroupNoteGoal(actor, params.id, body);
   }
 
   @Put()

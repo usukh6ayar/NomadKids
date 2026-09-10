@@ -149,15 +149,34 @@ export function useCoverageRows({
     : monthTemplate[0]!.key;
   const [selectedMonth, setSelectedMonth] = useState(initialMonth);
 
-  const data = stats.data;
+  const annualData = stats.data;
 
-  const monthStats = new Map((data?.byMonth ?? []).map((month) => [month.month, month]));
+  const monthStats = new Map((annualData?.byMonth ?? []).map((month) => [month.month, month]));
   const months = monthTemplate.map((month) => ({
     ...month,
     count: monthStats.get(month.key)?.count ?? 0,
     childrenCount: monthStats.get(month.key)?.childrenCount ?? 0,
   }));
   const selected = months.find((month) => month.key === selectedMonth) ?? months[0]!;
+
+  /*
+   * The cards below the goal describe the selected month, so their source must
+   * change with that month too. The year query remains for the 9–5 trend; this
+   * second query drives coverage, type, domain and activity percentages.
+   */
+  const [selectedYear, selectedMonthNumber] = selected.key.split("-").map(Number);
+  const lastDay = new Date(selectedYear!, selectedMonthNumber!, 0).getDate();
+  const selectedFrom = `${selected.key}-01`;
+  const selectedTo = `${selected.key}-${String(lastDay).padStart(2, "0")}`;
+  const selectedStats = useQuery({
+    queryKey: qk.groupObservationStats(groupId, selectedFrom, selectedTo),
+    queryFn: () =>
+      get(
+        `/groups/${groupId}/observation-stats?from=${selectedFrom}&to=${selectedTo}`,
+        groupObservationStatsSchema,
+      ),
+  });
+  const data = selectedStats.data;
 
   /*
     ★ "Гэр бүлээс ирсэн" is dropped from the type breakdown.
@@ -192,6 +211,7 @@ export function useCoverageRows({
 
   return {
     stats,
+    selectedStats,
     data,
     months,
     selected,
@@ -220,17 +240,21 @@ export function GroupCoverage({
   startsOn,
   endsOn,
   termId,
+  recordComposer,
 }: {
   groupId: string;
   startsOn?: string | null;
   endsOn?: string | null;
   /** The term the register behind this summary has open, carried into the links. */
   termId?: string;
+  /** Child picker and note shortcuts, placed inside the monthly goal card. */
+  recordComposer?: ReactNode;
 }) {
   const { hasRole } = useSession();
   const rows = useCoverageRows({ groupId, startsOn, endsOn });
   const {
     stats,
+    selectedStats,
     data,
     months,
     selected,
@@ -257,13 +281,25 @@ export function GroupCoverage({
     enabled: Boolean(groupId),
   });
 
-  if (stats.isPending) return <LoadingState rows={4} />;
+  if (stats.isPending || selectedStats.isPending) return <LoadingState rows={4} />;
   if (stats.isError) return <ErrorState description={errorMessage(stats.error)} />;
+  if (selectedStats.isError) {
+    return <ErrorState description={errorMessage(selectedStats.error)} />;
+  }
 
   const target = group.data?.monthlyNoteGoal ?? null;
-  const completed = selected.childrenCount;
-  const percent = target ? Math.min(100, Math.round((completed / target) * 100)) : 0;
-  const targetMet = target !== null && completed >= target;
+  const notesPerChildTarget = group.data?.monthlyNotesPerChildGoal ?? null;
+  const completed = data?.childrenWithNotes ?? selected.childrenCount;
+  const childrenMeetingNoteTarget = notesPerChildTarget
+    ? (data?.byChild ?? []).filter((row) => row.count >= notesPerChildTarget).length
+    : completed;
+  const goalCompleted = notesPerChildTarget ? childrenMeetingNoteTarget : completed;
+  const percent = target ? Math.min(100, Math.round((goalCompleted / target) * 100)) : 0;
+  const targetMet = target !== null && goalCompleted >= target;
+  const totalNoteTarget = target && notesPerChildTarget ? target * notesPerChildTarget : null;
+  const totalNotePercent = totalNoteTarget
+    ? Math.min(100, Math.round(((data?.total ?? 0) / totalNoteTarget) * 100))
+    : null;
   const selectedMonthLocative = selected.label.replace(" сар", " сард");
   const selectedMonthGenitive = selected.label.replace(" сар", " сарын");
   const shouldRemind =
@@ -274,7 +310,10 @@ export function GroupCoverage({
     (data?.enrolled ?? 0) > 0;
 
   const enrolled = data?.enrolled ?? 0;
-  const withNotes = data?.childrenWithNotes ?? 0;
+  const coverageBase = target && target > 0 ? target : enrolled;
+  const coverageCompleted = Math.min(completed, coverageBase);
+  const coveragePercent =
+    coverageBase === 0 ? 0 : Math.min(100, Math.round((completed / coverageBase) * 100));
   /*
     ★ Any member of staff on this screen may set it, not only an administrator.
 
@@ -295,21 +334,22 @@ export function GroupCoverage({
   const elapsed = months.filter((month) => month.key <= currentMonth);
   const steady = elapsed.length >= 2 && elapsed.every((month) => month.childrenCount > 0);
 
-  /*
-    ★ "Санал" names the strands that are running ahead, and only when one
-    genuinely is.
-
-    A strand carrying more than a third of every note is lopsided; an even
-    spread gets no advice rather than hedged advice.
-  */
   const domainTotal = domainRows.reduce((sum, row) => sum + row.count, 0);
-  const lopsided =
-    domainTotal >= 6
-      ? domainRows
-          .filter((row) => row.count / domainTotal >= 0.33)
-          .map((row) => row.name)
-          .join(", ")
-      : "";
+  const highestDomainCount = Math.max(...domainRows.map((row) => row.count), 0);
+  const leadingDomains = domainRows.filter(
+    (row) => highestDomainCount > 0 && row.count === highestDomainCount,
+  );
+  const emptyDomains = domainRows.filter((row) => row.count === 0);
+  const lowestPositiveCount = Math.min(
+    ...domainRows.filter((row) => row.count > 0).map((row) => row.count),
+    Number.POSITIVE_INFINITY,
+  );
+  const trailingDomains = domainRows.filter(
+    (row) => row.count > 0 && row.count === lowestPositiveCount,
+  );
+  const typeTotal = typeRows.reduce((sum, row) => sum + row.count, 0);
+  const typeScale =
+    target && target > 0 ? target : Math.max(...typeRows.map((row) => row.count), 1);
   /*
     ★ The term rides along, so Буцах returns to the one the teacher had open.
 
@@ -330,8 +370,8 @@ export function GroupCoverage({
         >
           <span aria-hidden="true" className="mt-0.5 size-2.5 shrink-0 rounded-pill bg-sun-ink" />
           <p>
-            {selectedMonthLocative} зорилтоо биелүүлэхэд {Math.max(target - completed, 0)} хүүхдэд
-            тэмдэглэл хөтлөх үлдлээ.
+            {selectedMonthLocative} зорилтоо биелүүлэхэд {Math.max(target - goalCompleted, 0)}
+            хүүхдийн тэмдэглэлийг гүйцээх үлдлээ.
           </p>
         </div>
       ) : null}
@@ -348,79 +388,93 @@ export function GroupCoverage({
         number used to be exactly that, whatever each teacher had typed into
         their own browser.
       */}
-      <Card tone="mint" pad="compact" className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="flex items-center gap-1.5 text-body font-semibold text-ink">
-            <Target size={16} aria-hidden="true" className="text-mint-ink" />
-            Энэ сарын зорилт
-          </span>
-          <div className="flex items-center gap-2">
-            <label>
-              <span className="sr-only">Тайлант сар сонгох</span>
-              <select
-                value={selected.key}
-                onChange={(event) => setSelectedMonth(event.target.value)}
-                className="h-9 rounded-control border border-mint bg-surface px-3 text-body font-semibold text-mint-ink"
-              >
-                {months.map((month) => (
-                  <option key={month.key} value={month.key}>
-                    {month.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {/*
-              ★ Administrator only, and absent rather than disabled for a
-              teacher — the rule the sidebar note states: a control that will
-              never work for this account promises something it cannot give.
-            */}
-            {canSetGoal ? <GoalDialog groupId={groupId} current={target} /> : null}
-          </div>
+      <Card tone="mint" pad="compact" className="flex flex-col gap-4">
+        <div className="flex items-center gap-1.5 text-body font-semibold text-ink">
+          <Target size={16} aria-hidden="true" className="text-mint-ink" />
+          Энэ сарын зорилт
         </div>
 
-        {target === null ? (
-          <p className="text-body text-ink">Сарын зорилт тохируулаагүй байна.</p>
-        ) : (
-          <>
-            <p className="flex items-baseline gap-2 text-body text-ink">
-              <strong className="text-display font-semibold tabular-nums leading-none">
-                {target}
-              </strong>
-              хүүхдийн хөгжлийн явцыг баримтжуулах
-            </p>
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+          <label className="flex min-w-0 flex-col gap-1">
+            <span className="text-caption font-medium text-muted">Сар</span>
+            <select
+              aria-label="Тайлант сар сонгох"
+              value={selected.key}
+              onChange={(event) => setSelectedMonth(event.target.value)}
+              className="h-10 w-full rounded-control border border-mint bg-surface px-3 text-body font-semibold text-ink"
+            >
+              {months.map((month) => (
+                <option key={month.key} value={month.key}>
+                  {month.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {canSetGoal ? (
+            <GoalDialog
+              groupId={groupId}
+              current={target}
+              currentNotesPerChild={notesPerChildTarget}
+              maxChildren={enrolled}
+            />
+          ) : null}
+        </div>
 
+        <p className="text-caption text-muted">
+          Сараа сонгоход доорх бүх үзүүлэлт тухайн сарын мэдээллээр шинэчлэгдэнэ.
+        </p>
+
+        {recordComposer ? (
+          <div className="border-t border-mint/70 pt-3">{recordComposer}</div>
+        ) : null}
+
+        <div className="rounded-row border border-mint/70 bg-surface/80 p-3">
+          <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="flex items-baseline justify-between gap-4 text-body">
-                <span className="text-ink">
-                  Одоогоор{" "}
-                  <strong className="tabular-nums">
-                    {completed} / {target}
-                  </strong>{" "}
-                  хүүхэд
-                </span>
-                <span className="font-bold tabular-nums text-mint-ink">{percent}%</span>
-              </div>
-              <div
-                role="progressbar"
-                aria-label={`${selected.label}: ${target} хүүхдийн зорилтоос ${completed} хүүхэд`}
-                aria-valuemin={0}
-                aria-valuemax={target}
-                aria-valuenow={Math.min(completed, target)}
-                className="mt-2 h-2.5 overflow-hidden rounded-pill bg-surface"
-              >
-                <div
-                  className="h-full rounded-pill bg-mint-ink transition-[width]"
-                  style={{ width: `${percent}%` }}
-                />
-              </div>
-              <p className="mt-2 text-caption text-muted">
-                {targetMet
-                  ? `${selectedMonthGenitive} зорилт биелсэн байна.`
-                  : `${Math.max(target - completed, 0)} хүүхдийн явцыг баримтжуулах үлдсэн.`}
+              <p className="text-body font-semibold text-ink">Зорилтын биелэлт</p>
+              <p className="text-caption text-muted">
+                {target && notesPerChildTarget
+                  ? `${target} хүүхэд · хүүхэд бүрт ${notesPerChildTarget} тэмдэглэл`
+                  : "Хүүхэд болон тэмдэглэлийн зорилтоо сонгоно уу."}
               </p>
             </div>
-          </>
-        )}
+            <strong className="text-title tabular-nums text-mint-ink">
+              {target ? `${percent}%` : "—"}
+            </strong>
+          </div>
+
+          {target ? (
+            <div className="mt-3 flex flex-col gap-3">
+              <GoalProgressRow
+                label="Тэмдэглэлтэй хүүхэд"
+                value={completed}
+                total={target}
+                tone="sky"
+              />
+              {notesPerChildTarget ? (
+                <GoalProgressRow
+                  label={`${notesPerChildTarget} тэмдэглэлтэй болсон`}
+                  value={childrenMeetingNoteTarget}
+                  total={target}
+                  tone="mint"
+                />
+              ) : null}
+              {totalNoteTarget && totalNotePercent !== null ? (
+                <GoalProgressRow
+                  label="Нийт тэмдэглэл"
+                  value={data?.total ?? 0}
+                  total={totalNoteTarget}
+                  tone="sun"
+                />
+              ) : null}
+              <p className="text-caption text-muted">
+                {targetMet
+                  ? `${selectedMonthGenitive} зорилт биелсэн байна.`
+                  : `${Math.max(target - goalCompleted, 0)} хүүхдийн тэмдэглэлийг гүйцээх үлдсэн.`}
+              </p>
+            </div>
+          ) : null}
+        </div>
       </Card>
 
       {/*
@@ -437,58 +491,55 @@ export function GroupCoverage({
       */}
       <Card pad="roomy" className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="text-body font-semibold text-ink">Ангийн хамрагдалт</h3>
+          <h3 className="text-body font-semibold text-ink">Нийт ангийн хамрагдалт</h3>
         </div>
 
         <div className="flex items-center gap-5">
           <Donut
             size={120}
             segments={[
-              { label: "Хамрагдсан", value: withNotes, tone: "mint" },
+              { label: "Хамрагдсан", value: coverageCompleted, tone: "mint" },
               {
                 label: "Хараахан баримтгүй",
-                value: Math.max(0, enrolled - withNotes),
+                value: Math.max(0, coverageBase - coverageCompleted),
                 tone: "sun",
               },
             ]}
-            label={`${enrolled} хүүхдээс ${withNotes} нь баримттай`}
+            label={
+              target
+                ? `${target} хүүхдийн зорилтоос ${completed} нь хамрагдсан`
+                : `${enrolled} хүүхдээс ${completed} нь баримттай`
+            }
             centre={
               <span className="text-lead font-semibold tabular-nums leading-none text-ink">
-                {enrolled === 0 ? "—" : `${Math.round((withNotes / enrolled) * 100)}%`}
+                {coverageBase === 0 ? "—" : `${coveragePercent}%`}
               </span>
             }
           />
 
           <dl className="min-w-0 flex-1 text-body">
-            <dt className="text-caption text-muted">Нийт хүүхэд</dt>
+            <dt className="text-caption text-muted">
+              {target ? "Зорилтот хүүхэд" : "Нийт хүүхэд"}
+            </dt>
             <dd className="mb-2 text-title font-semibold tabular-nums leading-none text-ink">
-              {enrolled}
+              {coverageBase}
             </dd>
             <div className="flex items-center gap-2">
               <span aria-hidden="true" className="size-2.5 shrink-0 rounded-pill bg-mint-ink" />
               <dt className="flex-1 text-muted">Хамрагдсан</dt>
-              <dd className="font-semibold tabular-nums text-ink">{withNotes}</dd>
+              <dd className="font-semibold tabular-nums text-ink">{completed}</dd>
             </div>
             <div className="mt-1 flex items-center gap-2">
               <span aria-hidden="true" className="size-2.5 shrink-0 rounded-pill bg-sun-ink" />
-              <dt className="flex-1 text-muted">Хараахан баримтгүй</dt>
+              <dt className="flex-1 text-muted">Үлдсэн</dt>
               <dd className="font-semibold tabular-nums text-ink">
-                {Math.max(0, enrolled - withNotes)}
+                {Math.max(0, coverageBase - completed)}
               </dd>
             </div>
           </dl>
         </div>
       </Card>
 
-      {/*
-        ★ Баримтжуулалтын хэлбэр — the three kinds as figures, not bars.
-
-        Bars compare against a denominator; these three are compared against
-        each other, and the question is whether one has been neglected. Three
-        numbers side by side answer that at a glance, which is why the client's
-        design draws them as tiles and the breakdown screen behind them as
-        bars.
-      */}
       <section aria-labelledby="record-kinds" className="flex flex-col gap-2.5">
         <div className="flex items-center justify-between gap-2">
           <h3 id="record-kinds" className="text-body font-semibold text-ink">
@@ -502,22 +553,49 @@ export function GroupCoverage({
           </Link>
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
-          {typeRows.map((row) => (
-            <Card key={row.id} pad="compact" className="flex flex-col gap-1.5 bg-sunken">
-              <span aria-hidden="true" className="text-muted">
-                {observationTypeIcon(row.name)}
-              </span>
-              <span className="text-caption leading-snug text-muted">{row.name}</span>
-              <span className="text-title font-semibold tabular-nums leading-none text-ink">
-                {row.count}
-              </span>
-            </Card>
-          ))}
-        </div>
+        <Card pad="compact" className="flex flex-col gap-3">
+          {typeRows.map((row) => {
+            const rowPercent =
+              target && target > 0
+                ? Math.min(100, Math.round((row.count / target) * 100))
+                : typeTotal > 0
+                  ? Math.round((row.count / typeTotal) * 100)
+                  : 0;
+            const barWidth = Math.min(100, (row.count / typeScale) * 100);
+
+            return (
+              <div
+                key={row.id}
+                className="grid grid-cols-[minmax(92px,1fr)_minmax(72px,1.4fr)_64px] items-center gap-2.5"
+              >
+                <span className="flex min-w-0 items-center gap-1.5 text-caption font-medium text-ink">
+                  <span aria-hidden="true" className="shrink-0 text-muted">
+                    {observationTypeIcon(row.name)}
+                  </span>
+                  <span className="truncate">{row.name}</span>
+                </span>
+                <span
+                  role="img"
+                  aria-label={`${row.name}: ${row.count} тэмдэглэл, ${rowPercent}%`}
+                  className="h-2.5 overflow-hidden rounded-pill bg-track"
+                >
+                  <span
+                    className="block h-full rounded-pill bg-sky-ink transition-[width]"
+                    style={{ width: `${barWidth}%` }}
+                  />
+                </span>
+                <span className="text-right text-caption tabular-nums text-muted">
+                  <strong className="text-ink">{row.count}</strong> · {rowPercent}%
+                </span>
+              </div>
+            );
+          })}
+        </Card>
 
         <p className="text-caption text-muted">
-          Нийт {typeRows.reduce((sum, row) => sum + row.count, 0)} баримт
+          {target
+            ? `Зорилт ${target} хүүхэдтэй харьцуулсан хувь`
+            : `Нийт ${typeRows.reduce((sum, row) => sum + row.count, 0)} баримт`}
         </p>
       </section>
 
@@ -546,15 +624,6 @@ export function GroupCoverage({
 
       <MonthBalance months={months} href={href("months")} />
 
-      {/*
-        ★ Both notes are computed, and each is absent when it has nothing to
-        say.
-
-        The client's mock prints a green "Сайн байна" and an amber "Санал". A
-        fixed pair would keep congratulating a group that had stopped and keep
-        advising one that was already even — which is worse than silence,
-        because a caption that never changes stops being read.
-      */}
       {steady ? (
         <Card pad="roomy" tone="mint" className="flex items-start gap-2.5">
           <CheckCircle2 size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-mint-ink" />
@@ -565,12 +634,22 @@ export function GroupCoverage({
         </Card>
       ) : null}
 
-      {lopsided ? (
+      {domainTotal > 0 && leadingDomains.length > 0 ? (
         <Card pad="roomy" tone="sun" className="flex items-start gap-2.5">
           <Lightbulb size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-sun-ink" />
           <p className="text-body leading-snug text-ink">
-            <strong className="block">Санал</strong>
-            Тэмдэглэл {lopsided} чиглэлээр түлхүү байна. Бусад чиглэлд нэмэгдүүлэх боломжтой.
+            <strong className="block">Чиглэлийн зөвлөмж</strong>
+            Энэ сард {leadingDomains.map((row) => row.name).join(", ")} чиглэлд хамгийн олон буюу{" "}
+            {highestDomainCount} тэмдэглэл ({Math.round((highestDomainCount / domainTotal) * 100)}%)
+            бүртгэгдсэн.{" "}
+            {emptyDomains.length > 0
+              ? `${emptyDomains.length} чиглэлд тэмдэглэл ороогүй байна. Дараагийн тэмдэглэлээ ${emptyDomains
+                  .slice(0, 2)
+                  .map((row) => row.name)
+                  .join(", ")} чиглэлээс эхлүүлбэл хамралт жигдэрнэ.`
+              : trailingDomains.length > 0 && trailingDomains[0]!.count < highestDomainCount
+                ? `${trailingDomains.map((row) => row.name).join(", ")} чиглэл хамгийн бага (${trailingDomains[0]!.count}) байгаа тул дараагийн тэмдэглэлдээ түлхүү сонгоорой.`
+                : "Чиглэлүүд жигд хамрагдсан байна."}
           </p>
         </Card>
       ) : null}
@@ -583,6 +662,44 @@ export function observationTypeIcon(name: string): ReactNode {
   if (value.includes("ярилц")) return <MessageCircle size={14} aria-hidden="true" />;
   if (value.includes("бүтээл")) return <Palette size={14} aria-hidden="true" />;
   return <Eye size={14} aria-hidden="true" />;
+}
+
+function GoalProgressRow({
+  label,
+  value,
+  total,
+  tone,
+}: {
+  label: string;
+  value: number;
+  total: number;
+  tone: Tone;
+}) {
+  const percent = total > 0 ? Math.min(100, Math.round((value / total) * 100)) : 0;
+
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center justify-between gap-3 text-caption">
+        <span className="text-muted">{label}</span>
+        <strong className="tabular-nums text-ink">
+          {value} / {total}
+        </strong>
+      </div>
+      <div
+        role="progressbar"
+        aria-label={`${label}: ${value} / ${total}`}
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-valuenow={Math.min(value, total)}
+        className="h-2.5 overflow-hidden rounded-pill bg-track"
+      >
+        <div
+          className="h-full rounded-pill transition-[width]"
+          style={{ width: `${percent}%`, background: TONE_VAR[tone] }}
+        />
+      </div>
+    </div>
+  );
 }
 
 export function CoveragePanel({
@@ -752,7 +869,7 @@ function InlineBars({
               />
             </span>
             <strong className="flex items-center justify-end gap-1 text-caption tabular-nums text-ink">
-              {row.count}
+              {goal ? `${Math.min(100, Math.round((row.count / goal) * 100))}%` : row.count}
               {reached ? (
                 <Check size={13} strokeWidth={3} aria-hidden="true" className="text-mint-ink" />
               ) : null}

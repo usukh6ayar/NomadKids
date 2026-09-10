@@ -64,7 +64,11 @@ export class AssessmentService {
    * enough — a teacher may only act on a group they are assigned to — and
    * `getGroupColumn` states why. 404 either way (§1.7).
    */
-  async setGroupNoteGoal(actor: Actor, groupId: string, goal: number | null) {
+  async setGroupNoteGoal(
+    actor: Actor,
+    groupId: string,
+    goal: { monthlyNoteGoal?: number | null; monthlyNotesPerChildGoal?: number | null },
+  ) {
     const group = await this.repo.findGroupForAssessment(
       groupId,
       this.tenants.memberKindergartenIds(actor),
@@ -84,10 +88,17 @@ export class AssessmentService {
       actorUserId: actor.userId,
       objectType: "Group",
       objectId: groupId,
-      metadata: { monthlyNoteGoal: goal },
+      metadata: goal,
     });
 
-    return { monthlyNoteGoal: goal };
+    return {
+      monthlyNoteGoal:
+        goal.monthlyNoteGoal === undefined ? group.monthlyNoteGoal : goal.monthlyNoteGoal,
+      monthlyNotesPerChildGoal:
+        goal.monthlyNotesPerChildGoal === undefined
+          ? group.monthlyNotesPerChildGoal
+          : goal.monthlyNotesPerChildGoal,
+    };
   }
 
   // ── Terms ─────────────────────────────────────────────────────────────────

@@ -36,7 +36,6 @@ const observationTypesSchema = z.array(observationTypeSchema);
 /** The group's roster — one request, independent of term and domain. */
 const childrenPageSchema = paginated(childSummarySchema);
 import { Card, SectionHeader } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { GroupCoverage } from "@/components/assessment/group-coverage";
 import { RegisterProgress } from "@/components/register/register-progress";
 import { RegisterSaveBar } from "@/components/register/save-bar";
@@ -101,7 +100,10 @@ function GroupAssessment() {
    * at is not: it is a glance, and putting it in the address bar would add a
    * history entry every time somebody looked at the summary.
    */
-  const [tab, setTab] = useState<"overview" | "assess">("overview");
+  // The page is now one documentation overview. The old Үнэлэх tab is kept
+  // out of the interface; `tab` remains fixed only while the legacy register
+  // code below is retired without changing its data contract.
+  const [tab] = useState<"overview" | "assess">("overview");
   const domainId = searchParams.get("domainId") ?? "";
 
   function setSelection(next: { termId?: string; domainId?: string }) {
@@ -193,7 +195,7 @@ function GroupAssessment() {
         `/groups/${groupId}/assessments?termId=${termId}&domainId=${domainId}`,
         groupColumnSchema,
       ),
-    enabled: Boolean(termId && domainId),
+    enabled: Boolean(termId && domainId && tab === "assess"),
   });
 
   /** Pending level choices, keyed by child. Empty until something is tapped. */
@@ -358,7 +360,6 @@ function GroupAssessment() {
       */}
       <PageHeader
         title="Явцын үнэлгээ"
-        lede="Бүлгийн бүх хүүхдийг нэг чиглэлээр дараалан үнэлнэ."
         actions={
           <RowMenu
             ariaLabel="Явцын үнэлгээний үйлдэл"
@@ -390,20 +391,6 @@ function GroupAssessment() {
         thing on the screen is what the group looks like rather than two
         dropdowns to configure before anything appears.
       */}
-      <NewRecordStrip groupId={groupId} />
-
-      {column.data ? (
-        <p className="flex flex-wrap items-center gap-2 text-body text-muted">
-          <span>Нийт {children.length} хүүхэд</span>
-          <span aria-hidden="true">·</span>
-          <Badge tone={assessed === children.length ? "mint" : "sun"}>
-            {assessed === children.length
-              ? "Бүгд үнэлэгдсэн"
-              : `${Math.max(children.length - assessed, 0)} үнэлэгдээгүй`}
-          </Badge>
-        </p>
-      ) : null}
-
       {/* `pad="roomy"` rather than four inline padding values — `card.tsx`
           documents the two named steps and why call sites stopped inventing
           their own. */}
@@ -574,38 +561,13 @@ function GroupAssessment() {
         on a second page is how the two come to disagree about which term is
         open.
       */}
-      <div
-        role="tablist"
-        aria-label="Явцын үнэлгээ"
-        data-ui="communication-tabs"
-        className="grid grid-cols-2 gap-1 rounded-card bg-sunken p-1 sm:w-[320px]"
-      >
-        {[
-          { key: "overview" as const, label: "Тойм" },
-          { key: "assess" as const, label: "Үнэлэх" },
-        ].map((entry) => (
-          <button
-            key={entry.key}
-            type="button"
-            role="tab"
-            aria-selected={tab === entry.key}
-            onClick={() => setTab(entry.key)}
-            className={cn(
-              "min-h-10 rounded-card px-3 text-body font-semibold transition-colors",
-              tab === entry.key ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink",
-            )}
-          >
-            {entry.label}
-          </button>
-        ))}
-      </div>
-
       {tab === "overview" ? (
         <GroupCoverage
           groupId={groupId}
           termId={termId}
           startsOn={groupSchoolYear?.startsOn}
           endsOn={groupSchoolYear?.endsOn}
+          recordComposer={<NewRecordStrip groupId={groupId} embedded />}
         />
       ) : null}
 
@@ -1029,8 +991,12 @@ const KIND_STYLE: Record<string, { tone: Tone; Icon: typeof Eye }> = {
 
 const KIND_FALLBACK = { tone: "cornflower" as Tone, Icon: Eye };
 
-function NewRecordStrip({ groupId }: { groupId: string }) {
-  const [childId, setChildId] = useState("");
+function NewRecordStrip({ groupId, embedded = false }: { groupId: string; embedded?: boolean }) {
+  const router = useRouter();
+  const [selectedType, setSelectedType] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   /*
     ★ The group's own roster, not the assessment column's — fixed 2026-09-10.
@@ -1072,8 +1038,6 @@ function NewRecordStrip({ groupId }: { groupId: string }) {
     staleTime: 5 * 60_000,
   });
 
-  const selectedId = childId || children[0]?.childId || "";
-  const selected = children.find((child) => child.childId === selectedId);
   const doors = (types.data ?? []).filter((type) =>
     ["daily", "conversation", "artwork"].includes(type.code ?? ""),
   );
@@ -1088,54 +1052,71 @@ function NewRecordStrip({ groupId }: { groupId: string }) {
   if (roster.isLoading) return <LoadingState rows={1} />;
   if (children.length === 0) return null;
 
-  return (
-    <Card pad="compact" className="grid items-end gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
-      {/*
-        ★ `aria-label` on the control, not a `sr-only` span inside a wrapping
-        `<label>` — fixed 2026-09-10.
-
-        `Select` is a Radix listbox: a `<button role="combobox">` with a popup,
-        not a native `<select>`. A `<label>` wrapping it renders the words and
-        associates with nothing that a screen reader or a query can resolve, so
-        this control had a visible-to-nobody name. Naming the control directly
-        is the version that works for both.
-      */}
-      <label>
-        <Select
-          aria-label="Хүүхэд сонгох"
-          value={selectedId}
-          onChange={(event) => setChildId(event.target.value)}
-        >
-          {children.map((child) => (
-            <option key={child.childId} value={child.childId}>
-              {child.lastName ? `${child.lastName} ` : ""}
-              {child.firstName}
-            </option>
-          ))}
-        </Select>
-      </label>
-
-      <div className="min-w-0">
-        <p className="mb-1.5 text-caption font-semibold uppercase text-muted">Шинэ тэмдэглэл</p>
-        <div className="flex flex-wrap gap-2">
-          {doors.map((type) => {
-            const style = KIND_STYLE[type.code ?? ""] ?? KIND_FALLBACK;
-            return (
-              <Link
-                key={type.id}
-                href={`/children/${selected!.childId}/observations/new?typeId=${type.id}`}
-                className={cn(
-                  "flex min-h-[48px] min-w-[112px] items-center justify-center gap-2 rounded-control border border-transparent px-3.5 text-body font-semibold transition-transform hover:-translate-y-0.5",
-                  TONE_SURFACE[style.tone],
-                )}
-              >
-                <style.Icon size={18} aria-hidden="true" />
-                <span>{type.name}</span>
-              </Link>
-            );
-          })}
-        </div>
+  const content = (
+    <div className="min-w-0">
+      <div className="grid grid-cols-3 gap-2">
+        {doors.map((type) => {
+          const style = KIND_STYLE[type.code ?? ""] ?? KIND_FALLBACK;
+          return (
+            <button
+              key={type.id}
+              type="button"
+              onClick={() => setSelectedType({ id: type.id, name: type.name })}
+              className={cn(
+                "flex min-h-[48px] min-w-0 items-center justify-center gap-1.5 rounded-control border border-transparent px-2 text-caption font-semibold transition-transform hover:-translate-y-0.5 sm:text-body",
+                TONE_SURFACE[style.tone],
+              )}
+            >
+              <style.Icon size={18} aria-hidden="true" className="shrink-0" />
+              <span className="truncate">{type.name}</span>
+            </button>
+          );
+        })}
       </div>
-    </Card>
+
+      {selectedType ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${selectedType.name} тэмдэглэлд хүүхэд сонгох`}
+          className="fixed inset-0 z-50 grid items-end bg-ink/45 sm:place-items-center sm:p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setSelectedType(null);
+          }}
+        >
+          <div className="flex max-h-[78dvh] w-full max-w-[440px] flex-col rounded-t-card border border-border bg-surface p-4 shadow-lg sm:rounded-card">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-title font-semibold text-ink">Хүүхэд сонгох</h2>
+                <p className="text-caption text-muted">{selectedType.name} тэмдэглэл бичнэ.</p>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => setSelectedType(null)}>
+                Хаах
+              </Button>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
+              {children.map((child) => (
+                <button
+                  key={child.childId}
+                  type="button"
+                  onClick={() =>
+                    router.push(
+                      `/children/${child.childId}/observations/new?typeId=${selectedType.id}`,
+                    )
+                  }
+                  className="min-h-12 rounded-control border border-border bg-sunken px-3 py-2 text-left text-body font-medium text-ink transition-colors hover:border-primary hover:bg-surface"
+                >
+                  {child.lastName ? `${child.lastName} ` : ""}
+                  {child.firstName}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
+
+  if (embedded) return content;
+  return <Card pad="compact">{content}</Card>;
 }
