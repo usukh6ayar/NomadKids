@@ -148,48 +148,71 @@ describe("a survey card's menu", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Choosing what to create
+// The two kinds, and creating one
 // ═══════════════════════════════════════════════════════════════════════════
 
-describe("the two create buttons", () => {
+describe("the kind tabs", () => {
   /*
-   * ★ One button opened a dialog whose first control was the choice between
-   * the two kinds, so the decision was made twice — once by pressing the
-   * button and again inside it. Naming the kinds on the buttons makes the
-   * press *be* the choice.
+   * ★ Tabs, not two create buttons over one pile.
+   *
+   * A poll and a form are answered differently and read differently, and one
+   * undifferentiated list meant a teacher looking for last term's poll read
+   * past every form to find it. The press that chooses what to look at is now
+   * also the press that chooses what to make.
    */
   it("names both kinds in the client's words", async () => {
     stubSurveys();
     renderWithProviders(<SurveysPage />);
 
+    const strip = await screen.findByRole("tablist", { name: "Судалгааны төрөл" });
     // "Пол" and "Форм судалгаа" until 2026-09-10: a transliteration and a
     // compound nobody says.
-    expect(await screen.findByRole("button", { name: /Асуулга/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Судалгаа$/ })).toBeInTheDocument();
+    expect(within(strip).getByRole("tab", { name: "Асуулга" })).toBeInTheDocument();
+    expect(within(strip).getByRole("tab", { name: "Судалгаа" })).toBeInTheDocument();
   });
 
-  it("opens the dialog on the kind that was pressed", async () => {
+  it("shows only the open kind's surveys", async () => {
     const user = userEvent.setup();
     stubSurveys();
     renderWithProviders(<SurveysPage />);
 
-    await user.click(await screen.findByRole("button", { name: /Асуулга/ }));
+    // Судалгаа is the tab a teacher lands on.
+    expect(await screen.findByText(SURVEY.title)).toBeInTheDocument();
+    expect(screen.queryByText(OLD_POLL.title)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Асуулга" }));
+
+    await waitFor(() => expect(screen.getByText(OLD_POLL.title)).toBeInTheDocument());
+    expect(screen.queryByText(SURVEY.title)).not.toBeInTheDocument();
+  });
+
+  it("creates whichever kind is open", async () => {
+    const user = userEvent.setup();
+    stubSurveys();
+    renderWithProviders(<SurveysPage />);
+    await screen.findByText(SURVEY.title);
+
+    await user.click(screen.getByRole("tab", { name: "Асуулга" }));
+    await user.click(screen.getByRole("button", { name: /Шинэ асуулга үүсгэх/ }));
 
     const dialog = await screen.findByRole("dialog");
-    // The radio inside is still what the dialog reads; the button seeds it.
+    // The radio inside is still what the dialog reads; the tab seeds it.
     expect(within(dialog).getByRole("radio", { name: /Асуулга/ })).toBeChecked();
-    expect(within(dialog).getByRole("radio", { name: /Судалгаа/ })).not.toBeChecked();
   });
 
-  it("opens on Судалгаа when that is the one pressed", async () => {
-    const user = userEvent.setup();
+  /*
+   * ★ Grouped by the school year's term. What a teacher asks of an old survey
+   * is which term it belonged to, not which week.
+   */
+  it("groups the list under term headings", async () => {
     stubSurveys();
     renderWithProviders(<SurveysPage />);
 
-    await user.click(await screen.findByRole("button", { name: /^Судалгаа$/ }));
-
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByRole("radio", { name: /Судалгаа/ })).toBeChecked();
+    // The September form falls in the first term.
+    expect(await screen.findByRole("heading", { name: /1-р улирал/ })).toBeInTheDocument();
+    // A term with nothing in it draws no heading — an empty one reads as
+    // missing data rather than as a quiet term.
+    expect(screen.queryByRole("heading", { name: /2-р улирал/ })).not.toBeInTheDocument();
   });
 });
 
@@ -207,20 +230,6 @@ describe("the survey filters", () => {
    * row mixing "Асуулга" with "Сэтгэл ханамжийн судалгаа" would read as one
    * set of alternatives and behave as two.
    */
-  it("narrows by kind", async () => {
-    const user = userEvent.setup();
-    stubSurveys();
-    renderWithProviders(<SurveysPage />);
-    await screen.findByText(SURVEY.title);
-
-    await openFilters(user);
-    const kinds = screen.getByRole("group", { name: "Төрлөөр шүүх" });
-    await user.click(within(kinds).getByRole("button", { name: "Асуулга" }));
-
-    await waitFor(() => expect(screen.queryByText(SURVEY.title)).not.toBeInTheDocument());
-    expect(screen.getByText(OLD_POLL.title)).toBeInTheDocument();
-  });
-
   /*
    * The range filters on the date the *card shows* — closed, else published,
    * else created. Filtering on `createdAt` while the card reads a later
@@ -235,8 +244,12 @@ describe("the survey filters", () => {
     await openFilters(user);
     await user.type(screen.getByLabelText("Эхлэх огноо"), "2026-08-01");
 
-    await waitFor(() => expect(screen.queryByText(OLD_POLL.title)).not.toBeInTheDocument());
-    expect(screen.getByText(SURVEY.title)).toBeInTheDocument();
+    // The September form survives; nothing older is in this tab to drop, so
+    // the assertion is that the range did not take the one it should keep.
+    await waitFor(() => expect(screen.getByText(SURVEY.title)).toBeInTheDocument());
+
+    await user.type(screen.getByLabelText("Дуусах огноо"), "2026-08-31");
+    await waitFor(() => expect(screen.queryByText(SURVEY.title)).not.toBeInTheDocument());
   });
 
   it("counts every narrowing choice on the icon", async () => {
@@ -249,12 +262,12 @@ describe("the survey filters", () => {
     expect(within(trigger).queryByText("1")).not.toBeInTheDocument();
 
     await user.click(trigger);
-    const kinds = screen.getByRole("group", { name: "Төрлөөр шүүх" });
-    await user.click(within(kinds).getByRole("button", { name: "Асуулга" }));
-    await waitFor(() => expect(within(trigger).getByText("1")).toBeInTheDocument());
-
     await user.type(screen.getByLabelText("Эхлэх огноо"), "2026-08-01");
     // A range counts once however many of its two ends are set.
+    await waitFor(() => expect(within(trigger).getByText("1")).toBeInTheDocument());
+
+    const categories = screen.getByRole("group", { name: "Судалгааны ангиллаар шүүх" });
+    await user.click(within(categories).getByRole("button", { name: "Сэтгэл ханамжийн судалгаа" }));
     await waitFor(() => expect(within(trigger).getByText("2")).toBeInTheDocument());
   });
 });

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import {
   SURVEY_CATEGORY_LABEL,
+  termSchema,
   personRefSchema,
   SURVEY_KIND_HINT,
   SURVEY_KIND_LABEL,
@@ -36,6 +37,7 @@ import {
 /** The two kinds in the order the client's drawing puts them: Пол, then Форм. */
 const SURVEY_KINDS = surveyKindSchema.options;
 const SURVEY_CATEGORIES = surveyCategorySchema.options;
+const termsSchema = z.array(termSchema);
 
 /** What `GET /surveys/:id/participation` answers — the roster, split. */
 const participationRowSchema = z.object({
@@ -66,6 +68,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { RowMenu } from "@/components/ui/menu";
 import { useToast } from "@/components/ui/toast";
+import { TERM_NUMBERS, termLabel, termNumberForDay } from "@/lib/terms";
 import { cn } from "@/lib/utils";
 
 const surveysSchema = z.array(surveySchema);
@@ -121,7 +124,14 @@ function SurveysList() {
    */
   const [creating, setCreating] = useState<SurveyKind | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [kindFilter, setKindFilter] = useState<SurveyKind | null>(null);
+  /**
+   * Which kind's list is open — the tab strip above, not a filter.
+   *
+   * ★ It is a tab rather than a chip because the two are different lists, not
+   * two ways of looking at one: a poll and a form are answered differently and
+   * read differently, and "Бүгд" over both was a pile a teacher searched.
+   */
+  const [kindTab, setKindTab] = useState<SurveyKind>("FORM");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [tab, setTab] = useState<"active" | "closed">("active");
@@ -143,7 +153,7 @@ function SurveysList() {
   const all = surveys.data ?? [];
   const term = search.trim().toLowerCase();
   /** How many narrowing choices are on — the number on the filter icon. */
-  const activeFilters = (category ? 1 : 0) + (kindFilter ? 1 : 0) + (from || to ? 1 : 0);
+  const activeFilters = (category ? 1 : 0) + (from || to ? 1 : 0);
 
   const statuses = TABS.find((t) => t.key === tab)!.statuses;
 
@@ -156,7 +166,7 @@ function SurveysList() {
     return (
       statuses.includes(survey.status) &&
       (!category || survey.category === category) &&
-      (!kindFilter || survey.kind === kindFilter) &&
+      survey.kind === kindTab &&
       (!from || day >= from) &&
       (!to || day <= to) &&
       (!term ||
@@ -164,6 +174,25 @@ function SurveysList() {
         (survey.description ?? "").toLowerCase().includes(term))
     );
   });
+
+  /*
+   * The kindergarten's configured terms. `termNumberForDay` falls back to the
+   * Mongolian school year when none are set, so a fresh deployment groups
+   * rather than showing a blank page — see `lib/terms.ts`.
+   */
+  const terms = useQuery({
+    queryKey: qk.terms(primaryKindergartenId ?? ""),
+    queryFn: () => get(`/kindergartens/${primaryKindergartenId}/terms`, termsSchema),
+    enabled: Boolean(primaryKindergartenId),
+    staleTime: 5 * 60_000,
+  });
+
+  const byTerm = TERM_NUMBERS.map((number) => ({
+    number,
+    surveys: visible.filter(
+      (survey) => termNumberForDay(surveyDay(survey), terms.data ?? []) === number,
+    ),
+  })).filter((group) => group.surveys.length > 0);
 
   /** The tab counts, which the filters above must not change — see `TabPill`. */
   const countFor = (key: "active" | "closed") =>
@@ -244,21 +273,6 @@ function SurveysList() {
             and behave as two, which is the same mistake the class board's own
             filter note records avoiding.
           */}
-          <FilterChipRow label="Төрлөөр шүүх">
-            <FilterChip active={kindFilter === null} onClick={() => setKindFilter(null)}>
-              Бүгд
-            </FilterChip>
-            {SURVEY_KINDS.map((value) => (
-              <FilterChip
-                key={value}
-                active={kindFilter === value}
-                onClick={() => setKindFilter(kindFilter === value ? null : value)}
-              >
-                {SURVEY_KIND_LABEL[value]}
-              </FilterChip>
-            ))}
-          </FilterChipRow>
-
           <FilterChipRow label="Судалгааны ангиллаар шүүх" scroll>
             <FilterChip active={category === null} onClick={() => setCategory(null)}>
               Бүгд
@@ -303,28 +317,47 @@ function SurveysList() {
         </div>
 
         {/*
-          ★ Two buttons, not one — 2026-09-10, at the client's request.
+          ★ The two kinds are a tab strip, and each carries its own "+" —
+          2026-09-10, at the client's request ("асуулга дээр дараад нэмэх
+          тэмдэг дарвал шинээр асуулга үүснэ").
 
-          "Санал асуулга үүсгэх" opened a dialog whose first control was the
-          choice between the two kinds, so the decision was made twice: once by
-          pressing the button and again inside it. Naming the kinds on the
-          buttons makes the press *be* the choice, and the dialog opens on the
-          title with the kind already settled.
-
-          The radio inside stays and is still what the dialog reads — see
-          `CreateSurveyDialog`. What these do is seed it.
+          They were two create buttons over one undifferentiated list, so a
+          teacher looking for last term's poll read past every form to find it.
+          Pressing a kind now *filters* to it, and the "+" beside the strip
+          creates one of whichever kind is open — the press that chose what to
+          look at is the same press that chose what to make.
         */}
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:self-start">
-          {SURVEY_KINDS.map((value) => (
-            <Button
-              key={value}
-              variant={value === "FORM" ? "primary" : "secondary"}
-              onClick={() => setCreating(value)}
-            >
-              <Plus size={18} aria-hidden="true" />
-              {SURVEY_KIND_LABEL[value]}
-            </Button>
-          ))}
+        <div className="flex items-center gap-2">
+          <div
+            role="tablist"
+            aria-label="Судалгааны төрөл"
+            className="grid flex-1 grid-cols-2 gap-1 rounded-card bg-sunken p-1"
+          >
+            {SURVEY_KINDS.map((value) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={kindTab === value}
+                onClick={() => setKindTab(value)}
+                className={cn(
+                  "min-h-10 rounded-card px-3 text-body font-semibold transition-colors",
+                  kindTab === value ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink",
+                )}
+              >
+                {SURVEY_KIND_LABEL[value]}
+              </button>
+            ))}
+          </div>
+
+          <Button
+            size="icon"
+            className="shrink-0"
+            aria-label={`Шинэ ${SURVEY_KIND_LABEL[kindTab].toLowerCase()} үүсгэх`}
+            onClick={() => setCreating(kindTab)}
+          >
+            <Plus size={18} aria-hidden="true" />
+          </Button>
         </div>
 
         <div
@@ -388,10 +421,32 @@ function SurveysList() {
         `items-stretch` is the default and is what makes cards in a row end
         level regardless of how long their titles wrap.
       */}
+      {/*
+        ★ Grouped by the school year's term — 2026-09-10, at the client's
+        request ("хичээлийн жилийн улиралаар ангилж харагд").
+
+        A kindergarten's year has three, and what a teacher asks of an old
+        survey is which term it belonged to rather than which week. Empty
+        terms are dropped: a heading over nothing is a term that reads as
+        missing data instead of as a term nothing happened in.
+      */}
       {visible.length > 0 ? (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 2xl:grid-cols-3">
-          {visible.map((survey) => (
-            <SurveyCard key={survey.id} survey={survey} />
+        <div className="flex flex-col gap-6">
+          {byTerm.map(({ number, surveys }) => (
+            <section key={number} aria-labelledby={`term-${number}-surveys`}>
+              <h2
+                id={`term-${number}-surveys`}
+                className="mb-3 flex items-baseline gap-2 text-lead font-semibold text-ink"
+              >
+                {termLabel(number)}
+                <span className="text-caption font-normal text-muted">{surveys.length}</span>
+              </h2>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 2xl:grid-cols-3">
+                {surveys.map((survey) => (
+                  <SurveyCard key={survey.id} survey={survey} />
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       ) : null}
