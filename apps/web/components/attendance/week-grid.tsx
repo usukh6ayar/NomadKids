@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 const WEEKDAY_SHORT = ["Ня", "Да", "Мя", "Лх", "Пү", "Ба", "Бя"] as const;
 
 /** Saturday and Sunday, which a kindergarten register greys rather than hides. */
-function isWeekend(iso: string): boolean {
+export function isWeekend(iso: string): boolean {
   const day = new Date(`${iso}T00:00:00.000Z`).getUTCDay();
   return day === 0 || day === 6;
 }
@@ -152,12 +152,23 @@ export function AttendanceWeekGrid({
                   scope="col"
                   className={cn(
                     "w-12 px-1 py-2.5 text-center text-caption font-medium",
-                    isWeekend(day) ? "text-faint" : "text-muted",
-                    day === editableDay && "rounded-t-control bg-sky/40 text-sky-ink",
+                    isWeekend(day)
+                      ? "bg-canvas text-faint"
+                      : cn(
+                          "text-muted",
+                          day === editableDay && "rounded-t-control bg-sky/40 text-sky-ink",
+                        ),
                   )}
                 >
                   <span className="block leading-tight">{weekday}</span>
-                  <span className="block font-semibold text-ink">{number}</span>
+                  <span
+                    className={cn(
+                      "block font-semibold",
+                      isWeekend(day) ? "text-faint" : "text-ink",
+                    )}
+                  >
+                    {number}
+                  </span>
                 </th>
               );
             })}
@@ -189,12 +200,33 @@ export function AttendanceWeekGrid({
                 {shortName(row.child)}
               </td>
               {data.days.map((day) => (
-                <td key={day} className={cn("px-1 py-2", day === editableDay && "bg-sky/25")}>
+                <td
+                  key={day}
+                  className={cn(
+                    "px-1 py-2",
+                    isWeekend(day) ? "bg-canvas" : day === editableDay && "bg-sky/25",
+                  )}
+                >
+                  {/*
+                    ★ A weekend is greyed and never offered a control —
+                    2026-09-10, at the client's request. The kindergarten is
+                    shut, so there is no attendance to give an account of, and
+                    a markable Saturday is a cell somebody eventually fills in
+                    by mistake. Grey rather than hidden: the column still has
+                    to be there for the dates around it to line up.
+
+                    ★★ A record that already exists on a weekend is still
+                    drawn. Refusing to *create* one is the rule; hiding one
+                    that is in the database would make this grid disagree with
+                    the totals beside it and with the funding claim built on
+                    the same rows.
+                  */}
                   <StatusCell
                     childName={shortName(row.child)}
                     day={day}
                     status={statusFor(row, day)}
-                    editable={day === editableDay && !disabled}
+                    editable={!isWeekend(day) && day === editableDay && !disabled}
+                    muted={isWeekend(day)}
                     onSet={(status) => onSet(row.child.id, status)}
                   />
                 </td>
@@ -231,8 +263,10 @@ export function AttendanceWeekGrid({
                 <td
                   key={day}
                   className={cn(
-                    "px-1 py-0.5 text-center tabular-nums text-ink",
-                    day === editableDay && "bg-sky/25",
+                    "px-1 py-0.5 text-center tabular-nums",
+                    isWeekend(day)
+                      ? "bg-canvas text-faint"
+                      : cn("text-ink", day === editableDay && "bg-sky/25"),
                   )}
                 >
                   {counts[status] ?? 0}
@@ -250,8 +284,10 @@ export function AttendanceWeekGrid({
               <td
                 key={day}
                 className={cn(
-                  "px-1 pb-1 pt-0.5 text-center font-bold tabular-nums text-ink",
-                  day === editableDay && "rounded-b-control bg-sky/25",
+                  "px-1 pb-1 pt-0.5 text-center font-bold tabular-nums",
+                  isWeekend(day)
+                    ? "bg-canvas text-faint"
+                    : cn("text-ink", day === editableDay && "rounded-b-control bg-sky/25"),
                 )}
               >
                 {recorded}
@@ -270,18 +306,25 @@ function StatusCell({
   day,
   status,
   editable,
+  muted = false,
   onSet,
 }: {
   childName: string;
   day: string;
   status: string | null;
   editable: boolean;
+  /** A day the kindergarten is shut: no dashed outline inviting a mark. */
+  muted?: boolean;
   onSet: (status: string) => void;
 }) {
   const letter = status ? (ATTENDANCE_STATUS_LETTER[status] ?? "?") : "";
   const chip = cn(
     "grid size-8 place-items-center rounded-pill text-caption font-bold",
-    status ? cellSurface(status) : "border border-dashed border-border text-transparent",
+    status
+      ? cellSurface(status)
+      : muted
+        ? "text-transparent"
+        : "border border-dashed border-border text-transparent",
   );
 
   if (!editable) {
@@ -290,7 +333,7 @@ function StatusCell({
         <span className={chip}>
           {letter}
           <span className="sr-only">
-            {status ? ATTENDANCE_STATUS_LABEL[status] : "тэмдэглээгүй"}
+            {status ? ATTENDANCE_STATUS_LABEL[status] : muted ? "амралтын өдөр" : "тэмдэглээгүй"}
           </span>
         </span>
       </span>

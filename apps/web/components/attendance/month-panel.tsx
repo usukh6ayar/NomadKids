@@ -1,11 +1,13 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { groupAttendanceSummarySchema, ATTENDANCE_STATUS_LABEL } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { BarRow } from "@/components/ui/chart/bar-row";
 import { ColumnChart } from "@/components/ui/chart/columns";
+import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/states";
 import { RegisterProgress, type RegisterCount } from "@/components/register/register-progress";
 import { ATTENDANCE_STATUS_CHART_TONE, ATTENDANCE_STATUS_ORDER } from "@/lib/attendance-meta";
@@ -93,6 +95,15 @@ export function AttendanceMonthPanel({
   month: string;
   progress?: { recorded: number; total: number; breakdown: RegisterCount[] };
 }) {
+  const auto = workingDaysIn(month, new Date().toISOString().slice(0, 10));
+  const [workingDays, setWorkingDays] = useState(auto.total);
+  /** Which of the two readings of the same statuses is on screen. */
+  const [view, setView] = useState<"day" | "month">("month");
+
+  // A different month is a different calendar; the last month's correction is
+  // not an assertion about this one.
+  useEffect(() => setWorkingDays(auto.total), [auto.total]);
+
   const summary = useQuery({
     queryKey: qk.groupAttendanceSummary(groupId, month),
     queryFn: () =>
@@ -132,10 +143,15 @@ export function AttendanceMonthPanel({
     );
   }
 
-  const today = new Date().toISOString().slice(0, 10);
-  const working = workingDaysIn(month, today);
-  const remainingDays = Math.max(0, working.total - working.elapsed);
   const monthLabel = `${month.slice(0, 4)} оны ${Number(month.slice(5, 7))}-р сар`;
+  /*
+   * The override shifts the whole month, so the elapsed half moves with it —
+   * a holiday that removed two working days removed two that have passed, not
+   * two that are still to come.
+   */
+  const adjustment = workingDays - auto.total;
+  const elapsedDays = Math.max(0, Math.min(workingDays, auto.elapsed + adjustment));
+  const remainingDays = Math.max(0, workingDays - elapsedDays);
 
   const marks = Object.values(totals).reduce((sum, n) => sum + n, 0);
   const attended = totals.PRESENT + totals.HALF_DAY;
@@ -186,6 +202,32 @@ export function AttendanceMonthPanel({
     .sort((a, b) => b.away - a.away)
     .slice(0, 3);
 
+  /*
+   * `OTHER` is out of `ATTENDANCE_STATUS_ORDER` — the map predates the sixth
+   * status — so it joins the list only when it has been used, rather than
+   * adding a permanent "Бусад: 0" row to every group's panel.
+   */
+  const monthStatuses = [
+    ...ATTENDANCE_STATUS_ORDER,
+    ...(totals.OTHER > 0 ? (["OTHER"] as const) : []),
+  ];
+
+  const breakdownRows =
+    view === "day" && progress
+      ? progress.breakdown
+          .filter((row) => row.count > 0)
+          .map((row) => ({
+            ...row,
+            percent: progress.total === 0 ? 0 : Math.round((row.count / progress.total) * 100),
+          }))
+      : monthStatuses.map((status) => ({
+          key: status,
+          label: ATTENDANCE_STATUS_LABEL[status] ?? status,
+          count: totals[status],
+          tone: ATTENDANCE_STATUS_CHART_TONE[status] ?? "sky",
+          percent: share(totals[status]),
+        }));
+
   return (
     <div className="flex flex-col gap-4">
       {progress && progress.total > 0 ? (
@@ -198,8 +240,31 @@ export function AttendanceMonthPanel({
       ) : null}
 
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h3 className="text-lead font-semibold text-ink">
-          {monthLabel} · ажлын {working.total} хоног
+        <h3 className="flex flex-wrap items-baseline gap-x-1.5 text-lead font-semibold text-ink">
+          <span>{monthLabel} · ажлын</span>
+          {/*
+            ★ Auto from the calendar, and correctable — the client asked for
+            both. Mon–Fri is right for most months and wrong for the ones with
+            a public holiday in them, and nothing in the product carries a
+            holiday calendar to know which. So the number is computed and the
+            teacher can say otherwise.
+
+            ★★ It does not persist. There is nowhere to put it: a working-day
+            count is a fact about a kindergarten's month, which by §2.3 would
+            be a table rather than a column somewhere, and inventing one to
+            hold a number nobody has asked to store yet is the wrong order.
+            Typing over it corrects the two figures below for this visit.
+          */}
+          <input
+            type="number"
+            min={0}
+            max={31}
+            value={workingDays}
+            aria-label={`${monthLabel}-ийн ажлын хоног`}
+            onChange={(event) => setWorkingDays(Number(event.target.value))}
+            className="w-14 rounded-control border border-border bg-surface px-1.5 py-0.5 text-center text-lead font-semibold tabular-nums text-ink focus-visible:outline-2 focus-visible:outline-primary"
+          />
+          <span>хоног</span>
         </h3>
         {/*
           Two facts, not one: how much of the month is filled in, and how much
@@ -207,7 +272,7 @@ export function AttendanceMonthPanel({
           whether they are up to date or four days behind.
         */}
         <p className="text-caption text-muted">
-          {recordedDays}/{working.elapsed} бүртгэсэн · {remainingDays} үлдсэн · {roster} хүүхэд
+          {recordedDays}/{elapsedDays} бүртгэсэн · {remainingDays} үлдсэн · {roster} хүүхэд
         </p>
       </div>
 
@@ -222,35 +287,65 @@ export function AttendanceMonthPanel({
           <ColumnChart columns={columns} height={104} />
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          {ATTENDANCE_STATUS_ORDER.map((status) => (
-            <BarRow
-              key={status}
-              inline
-              label={ATTENDANCE_STATUS_LABEL[status] ?? status}
-              percent={share(totals[status])}
-              value={totals[status]}
-              tone={ATTENDANCE_STATUS_CHART_TONE[status] ?? "sky"}
-              accessibleLabel={`${ATTENDANCE_STATUS_LABEL[status]}: ${totals[status]} өдөр`}
-              labelWidth="w-[92px]"
-            />
-          ))}
-          {/*
-            OTHER is out of `ATTENDANCE_STATUS_ORDER` — the map predates the
-            sixth status — so it is rendered only when it has been used, rather
-            than adding a permanent "Бусад: 0" row to every group's panel.
-          */}
-          {totals.OTHER > 0 ? (
-            <BarRow
-              inline
-              label={ATTENDANCE_STATUS_LABEL.OTHER ?? "Бусад"}
-              percent={share(totals.OTHER)}
-              value={totals.OTHER}
-              tone="sky"
-              accessibleLabel={`Бусад: ${totals.OTHER} өдөр`}
-              labelWidth="w-[92px]"
-            />
-          ) : null}
+        {/*
+          ★ The same four statuses, two ways — 2026-09-10, at the client's
+          request that this section read "өдрийн ... ба сарын".
+
+          One breakdown that silently means "the month" is the version a
+          teacher misreads on the morning they are checking today. Naming the
+          reading, and letting it switch, is cheaper than a second panel:
+          `progress` already carries the day's counts, because the register
+          above is counting them for its own ring.
+        */}
+        <div className="flex flex-col gap-2">
+          <div
+            role="group"
+            aria-label="Ирцийн задаргааны хугацаа"
+            className="flex gap-1 self-start rounded-pill bg-canvas p-0.5"
+          >
+            {(
+              [
+                ["day", "Өдрийн"],
+                ["month", "Сарын"],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={view === key}
+                disabled={key === "day" && !progress}
+                onClick={() => setView(key)}
+                className={cn(
+                  "min-h-8 rounded-pill px-3 text-caption font-semibold transition-colors disabled:opacity-40",
+                  view === key ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            {breakdownRows.map((row) => (
+              <BarRow
+                key={row.key}
+                inline
+                label={row.label}
+                percent={row.percent}
+                value={row.count}
+                tone={row.tone}
+                accessibleLabel={`${row.label}: ${row.count} ${view === "day" ? "хүүхэд" : "өдөр"}`}
+                labelWidth="w-[92px]"
+              />
+            ))}
+            <p className="mt-0.5 text-caption text-muted" data-testid="breakdown-total">
+              Нийт{" "}
+              <span className="font-semibold text-ink">
+                {breakdownRows.reduce((sum, row) => sum + row.count, 0)}
+              </span>{" "}
+              {view === "day" ? "хүүхэд бүртгэсэн" : "өдрийн тэмдэглэгээ"}
+            </p>
+          </div>
         </div>
       </div>
 

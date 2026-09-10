@@ -393,18 +393,30 @@ describe("the register's controls", () => {
     expect(after(/илгээх/), "ESIS илгээх is above the register").toBe(true);
   });
 
-  it("offers Болих and Ирц бүртгэх under the grid while editing", async () => {
+  /*
+   * ★ All three are present at once, and disabled rather than absent when
+   * their turn has not come — a control that appears only once some other
+   * condition is met is a control a teacher never learns they have.
+   */
+  it("keeps all three controls on screen, enabling them in turn", async () => {
     const user = userEvent.setup();
-    stubRegister();
+    stubRegister({ recorded: true });
     renderWithProviders(<GroupAttendancePage />);
     await grid();
 
+    // Read mode: nothing to save, so бүртгэх waits.
+    expect(screen.getByRole("button", { name: /Засах/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Ирц бүртгэх/ })).toBeDisabled();
+
     await user.click(screen.getByRole("button", { name: /Засах/ }));
 
-    expect(screen.getByRole("button", { name: /Ирц бүртгэх/ })).toBeInTheDocument();
+    // Editing: Засах becomes Болих, and filing a day still being changed waits.
     expect(screen.getByRole("button", { name: /Болих/ })).toBeInTheDocument();
-    // Editing is not the moment to file a day that is still being changed.
-    expect(screen.queryByRole("button", { name: /илгээх/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /илгээх/ })).toBeDisabled();
+
+    const table = await grid();
+    await user.selectOptions(within(table).getAllByRole("combobox")[0]!, "SICK");
+    expect(screen.getByRole("button", { name: /Ирц бүртгэх/ })).toBeEnabled();
   });
 
   /*
@@ -444,5 +456,109 @@ describe("the register's controls", () => {
         ),
       ).toBe(true),
     );
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Days the kindergarten is shut
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** A Saturday and the Friday before it, both in the past. */
+const FRIDAY = "2026-02-06";
+const SATURDAY = "2026-02-07";
+
+function stubWeekend() {
+  return stubApi([
+    { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+    {
+      path: `/groups/${GROUP}/attendance/range`,
+      method: "GET",
+      body: {
+        days: [FRIDAY, SATURDAY],
+        rows: [
+          {
+            child: CHILDREN[0]!,
+            enrollmentId: ENROL_A,
+            records: { [SATURDAY]: { id: RECORD_A, status: "PRESENT", note: null } },
+          },
+        ],
+      },
+    },
+    {
+      path: `/groups/${GROUP}/attendance/summary`,
+      method: "GET",
+      body: {
+        month: "2026-02",
+        totals: { PRESENT: 0, HALF_DAY: 0, EXCUSED: 0, SICK: 0, ABSENT: 0, OTHER: 0 },
+        days: [],
+        children: [],
+        roster: 1,
+      },
+    },
+    { path: `/groups/${GROUP}/attendance`, method: "PUT", body: [] },
+    {
+      path: `/groups/${GROUP}/attendance`,
+      method: "GET",
+      body: [{ child: CHILDREN[0]!, enrollmentId: ENROL_A, record: null }],
+    },
+    {
+      path: "/attendance-requests/review-queue",
+      body: { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 },
+    },
+    { path: "/groups", body: { items: [], page: 1, pageSize: 25, total: 0, totalPages: 0 } },
+  ]);
+}
+
+describe("weekends", () => {
+  it("names a Saturday column as a closed day", async () => {
+    setSearchParams(`date=${SATURDAY}`);
+    stubWeekend();
+    renderWithProviders(<GroupAttendancePage />);
+    const table = await grid();
+
+    // "Бя" is Saturday's own abbreviation, so the column is still drawn — the
+    // dates around it have to line up.
+    expect(within(table).getByText("Бя")).toBeInTheDocument();
+  });
+
+  /*
+   * ★ A record that already exists on a weekend is still drawn.
+   *
+   * Refusing to *create* one is the rule; hiding one that is in the database
+   * would make this grid disagree with the totals beside it and with the
+   * funding claim built on the same rows.
+   */
+  it("still draws a mark somebody already made on a closed day", async () => {
+    setSearchParams(`date=${SATURDAY}`);
+    stubWeekend();
+    renderWithProviders(<GroupAttendancePage />);
+    const table = await grid();
+
+    expect(within(table).getByText("И")).toBeInTheDocument();
+  });
+
+  it("refuses to open the editor on a closed day", async () => {
+    setSearchParams(`date=${SATURDAY}`);
+    stubWeekend();
+    renderWithProviders(<GroupAttendancePage />);
+    await grid();
+
+    // `beginEdit` fills the draft for every child on the editable day, so a
+    // Saturday editor would queue a register nobody could see.
+    expect(screen.getByRole("button", { name: /Засах/ })).toBeDisabled();
+  });
+
+  it("offers no control on a Saturday even while another day is being edited", async () => {
+    const user = userEvent.setup();
+    setSearchParams(`date=${FRIDAY}`);
+    stubWeekend();
+    renderWithProviders(<GroupAttendancePage />);
+    await grid();
+
+    await user.click(screen.getByRole("button", { name: /Засах/ }));
+
+    const table = await grid();
+    // One child, two columns, and only the Friday one takes input.
+    expect(within(table).getAllByRole("combobox")).toHaveLength(1);
   });
 });

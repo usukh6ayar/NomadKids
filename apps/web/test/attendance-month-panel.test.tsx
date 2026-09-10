@@ -1,4 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, stubApi } from "./support/render";
 import { AttendanceMonthPanel } from "@/components/attendance/month-panel";
@@ -49,13 +50,31 @@ beforeEach(() => {
 });
 
 describe("the month report", () => {
-  it("names the month and how many working days it holds", async () => {
+  it("counts the month's working days off the calendar", async () => {
     stubSummary([{ date: "2026-02-02", counts: { PRESENT: 2 } }]);
     renderWithProviders(<AttendanceMonthPanel groupId={GROUP} month={MONTH} />);
 
-    // Weekdays off the calendar, not days that carry rows — February 2026 has
-    // 28 days and 20 weekdays.
-    expect(await screen.findByText(/2026 оны 2-р сар · ажлын 20 хоног/)).toBeInTheDocument();
+    // Weekdays, not days that carry rows — February 2026 has 28 days and 20
+    // weekdays. It is a field rather than text: Mon–Fri is wrong for a month
+    // with a public holiday in it, and nothing here carries a holiday calendar.
+    expect(await screen.findByLabelText(/2026 оны 2-р сар-ийн ажлын хоног/)).toHaveValue(20);
+  });
+
+  /*
+   * ★ Correcting the count moves the two figures under it, and moves the
+   * *elapsed* half — a holiday removed two days that have passed, not two
+   * still to come.
+   */
+  it("lets a teacher correct the count for a month with a holiday in it", async () => {
+    const user = userEvent.setup();
+    stubSummary([{ date: "2026-02-02", counts: { PRESENT: 2 } }]);
+    renderWithProviders(<AttendanceMonthPanel groupId={GROUP} month={MONTH} />);
+
+    const field = await screen.findByLabelText(/ажлын хоног/);
+    await user.clear(field);
+    await user.type(field, "18");
+
+    await waitFor(() => expect(screen.getByText(/1\/18 бүртгэсэн/)).toBeInTheDocument());
   });
 
   /*
@@ -74,6 +93,45 @@ describe("the month report", () => {
     // The month is in the past, so every one of its 20 weekdays has elapsed
     // and none remain.
     expect(await screen.findByText(/2\/20 бүртгэсэн · 0 үлдсэн/)).toBeInTheDocument();
+  });
+
+  /*
+   * ★ The client asked this section to read two ways. One breakdown that
+   * silently means "the month" is the version a teacher misreads on the
+   * morning they are checking today.
+   */
+  it("reads the same statuses as the day or as the month", async () => {
+    const user = userEvent.setup();
+    stubSummary([
+      { date: "2026-02-02", counts: { PRESENT: 4, SICK: 2 } },
+      { date: "2026-02-03", counts: { PRESENT: 6 } },
+    ]);
+    renderWithProviders(
+      <AttendanceMonthPanel
+        groupId={GROUP}
+        month={MONTH}
+        progress={{
+          recorded: 2,
+          total: 2,
+          breakdown: [
+            { key: "PRESENT", label: "Ирсэн", count: 1, tone: "mint" },
+            { key: "SICK", label: "Өвчтэй", count: 1, tone: "sun" },
+          ],
+        }}
+      />,
+    );
+
+    // The month: 12 marks across two days (10 present, 2 sick).
+    expect(await screen.findByTestId("breakdown-total")).toHaveTextContent(
+      "Нийт 12 өдрийн тэмдэглэгээ",
+    );
+
+    await user.click(screen.getByRole("button", { name: "Өдрийн" }));
+
+    // The day: two children, one of each.
+    await waitFor(() =>
+      expect(screen.getByTestId("breakdown-total")).toHaveTextContent("Нийт 2 хүүхэд бүртгэсэн"),
+    );
   });
 
   it("breaks the month down by status, each in its own colour", async () => {

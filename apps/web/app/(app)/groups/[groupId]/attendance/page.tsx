@@ -33,7 +33,7 @@ import {
 } from "@/components/attendance/request-queue";
 import { TeacherJournal } from "@/components/attendance/teacher-journal";
 import { AttendanceMonthPanel } from "@/components/attendance/month-panel";
-import { AttendanceWeekGrid } from "@/components/attendance/week-grid";
+import { AttendanceWeekGrid, isWeekend } from "@/components/attendance/week-grid";
 import {
   ATTENDANCE_STATUS_CHART_TONE,
   ATTENDANCE_STATUS_LABEL,
@@ -218,7 +218,18 @@ function GroupAttendance() {
    * way. A child already marked keeps what they were marked, so re-opening a
    * saved day never quietly overwrites a recorded absence with PRESENT.
    */
+  /*
+   * ★ Never on a weekend.
+   *
+   * The grid refuses to draw a control on a Saturday, but `beginEdit` fills
+   * the draft for every child on the editable day — so opening the editor on
+   * a closed day would queue a register nobody could see and the save button
+   * would offer to write it.
+   */
+  const closedDay = isWeekend(date);
+
   function beginEdit() {
+    if (closedDay) return;
     const saved: Record<string, string> = {};
     for (const row of rows) {
       saved[row.child.id] = row.record?.status ?? "PRESENT";
@@ -439,45 +450,51 @@ function GroupAttendance() {
           ) : null}
 
           {/*
-            The three acts of a register, in the order they happen and beneath
-            the sheet they are about. `Илгээх` is disabled rather than hidden
-            until the day is complete and previewed: a button that appears only
-            once some other condition is met is a button a teacher never learns
-            they have.
+            ★ All three, always — the client asked for three buttons after a
+            register is taken, not two that swap.
+
+            Засах · Ирц бүртгэх · ESIS рүү илгээх is the order the work
+            happens, and each is *disabled* rather than absent when its turn
+            has not come: a control that appears only once some other condition
+            is met is a control a teacher never learns they have. Болих is the
+            one addition, and only while there is a draft to abandon.
           */}
           {rows.length > 0 ? (
             <div className="flex flex-wrap items-center gap-2">
               {editing ? (
-                <>
-                  <Button variant="secondary" onClick={cancelEdit} disabled={save.isPending}>
-                    <X aria-hidden /> Болих
-                  </Button>
-                  <Button
-                    onClick={() => save.mutate()}
-                    disabled={save.isPending || dirtyEntries.length === 0}
-                  >
-                    <Save aria-hidden />
-                    {save.isPending ? "Бүртгэж байна…" : `Ирц бүртгэх (${dirtyEntries.length})`}
-                  </Button>
-                </>
+                <Button variant="secondary" onClick={cancelEdit} disabled={save.isPending}>
+                  <X aria-hidden /> Болих
+                </Button>
               ) : (
-                <>
-                  <Button variant="secondary" onClick={beginEdit}>
-                    <Pencil aria-hidden /> Засах
-                  </Button>
-                  <Button
-                    onClick={() => submitEsis.mutate()}
-                    disabled={!esisPreview.data || submitEsis.isPending}
-                  >
-                    <Send aria-hidden />
-                    {submitEsis.isPending
-                      ? "Илгээж байна…"
-                      : submitEsis.data
-                        ? "Дахин илгээх"
-                        : "ESIS рүү илгээх"}
-                  </Button>
-                </>
+                <Button variant="secondary" onClick={beginEdit} disabled={closedDay}>
+                  <Pencil aria-hidden /> Засах
+                </Button>
               )}
+
+              <Button
+                onClick={() => save.mutate()}
+                disabled={save.isPending || dirtyEntries.length === 0}
+              >
+                <Save aria-hidden />
+                {save.isPending
+                  ? "Бүртгэж байна…"
+                  : dirtyEntries.length > 0
+                    ? `Ирц бүртгэх (${dirtyEntries.length})`
+                    : "Ирц бүртгэх"}
+              </Button>
+
+              <Button
+                variant="secondary"
+                onClick={() => submitEsis.mutate()}
+                disabled={editing || !esisPreview.data || submitEsis.isPending}
+              >
+                <Send aria-hidden />
+                {submitEsis.isPending
+                  ? "Илгээж байна…"
+                  : submitEsis.data
+                    ? "Дахин илгээх"
+                    : "ESIS рүү илгээх"}
+              </Button>
             </div>
           ) : null}
 
