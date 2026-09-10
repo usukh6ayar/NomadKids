@@ -92,9 +92,14 @@ export default function AgeProfilePage() {
     <div className="flex flex-col gap-4 py-1 sm:gap-5 sm:py-2">
       {backLink}
 
+      {/*
+        ★ One heading, not a heading over a subtitle — 2026-09-10.
+        "Миний {age} нас" with "{age} насны дурсамж" beneath it said the same
+        thing twice at two weights, which reads as a mistake rather than
+        emphasis. The subtitle was never carrying anything the title did not.
+      */}
       <div className="text-center">
-        <h1 className="text-display font-bold text-ink">Миний {age} нас</h1>
-        <p className="mt-1 text-body font-semibold text-ink">{age} насны дурсамж</p>
+        <h1 className="text-display font-bold text-ink">Миний {age} нас дурсамжууд</h1>
       </div>
 
       <AgeProfileProgress

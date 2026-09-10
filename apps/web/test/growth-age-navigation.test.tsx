@@ -83,7 +83,10 @@ describe("growth age navigation and editing", () => {
     stubAgeProfile();
     renderWithProviders(<AgeProfilePage />);
 
-    await screen.findByRole("heading", { name: "Миний 3 нас" });
+    // One heading, not a title over a subtitle repeating it — the page's own
+    // comment says why. `name` is an exact match, so this also asserts the
+    // "3 насны дурсамж" line is gone rather than merely reworded.
+    await screen.findByRole("heading", { name: "Миний 3 нас дурсамжууд" });
     expect(screen.queryByRole("navigation", { name: "Насны хуудсууд" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "2-5 насны мэдээлэл" })).not.toBeInTheDocument();
     expect(
