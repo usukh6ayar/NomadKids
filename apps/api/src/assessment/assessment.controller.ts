@@ -181,4 +181,25 @@ export class GroupAssessmentController {
   ) {
     return this.service.saveGroupColumn(actor, params.id, body);
   }
+
+  /**
+   * How far the group has got — the 2026-09-10 "Явцын үнэлгээ" overview.
+   *
+   * ★ `domainId` is deliberately *not* a parameter here, which is the opposite
+   * of the rule above and for the same reason.
+   *
+   * The column endpoint requires it so it cannot drift into a children ×
+   * domains matrix. This one reports across every domain by design — but it
+   * returns **counts**, never a level for a child, so it cannot become that
+   * matrix by any amount of reading.
+   */
+  @Get("coverage")
+  @Roles("TEACHER", "ADMIN")
+  async coverage(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(requiredTermSchema)) query: { termId: string },
+  ) {
+    return this.service.getGroupCoverage(actor, params.id, query.termId);
+  }
 }

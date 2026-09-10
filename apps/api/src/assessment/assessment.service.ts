@@ -344,6 +344,136 @@ export class AssessmentService {
     };
   }
 
+  /**
+   * How far this group's assessment work has got — the client's 2026-09-10
+   * "Явцын үнэлгээ" overview.
+   *
+   * ★ Four breakdowns of one question: what is left to do.
+   *
+   * By child (who has nothing yet), by development domain (which strand is
+   * behind), by the kind of note, and by activity. Every one of them is a
+   * count against the same roster, so they add up on screen — a breakdown
+   * whose parts disagree with the headline is one nobody trusts.
+   *
+   * ★★ The same authorization the column editor makes, in the same order.
+   *
+   * Membership is not enough: a teacher may only see a group they are assigned
+   * to, and `getGroupColumn` above states why. Copied deliberately rather than
+   * extracted — the two are one rule and if they ever diverge this is the
+   * place to notice.
+   */
+  async getGroupCoverage(actor: Actor, groupId: string, termId: string) {
+    const group = await this.repo.findGroupForAssessment(
+      groupId,
+      this.tenants.memberKindergartenIds(actor),
+    );
+    if (!group) throw new NotFoundException();
+
+    if (!this.tenants.isAdmin(actor, group.kindergartenId)) {
+      const assigned = await this.authz.loadActiveTeachingGroupIds(actor);
+      if (!assigned.includes(groupId)) throw new NotFoundException();
+    }
+
+    const term = await this.requireTerm(actor, termId, group.kindergartenId);
+
+    const { enrollments, assessments, observations, domains, types } =
+      await this.repo.loadGroupCoverage(groupId, term.schoolYearId, termId, group.kindergartenId, {
+        from: term.startsOn,
+        to: term.endsOn,
+      });
+
+    const roster = enrollments.length;
+
+    /*
+      ★ "Assessed" means at least one domain, not all of them.
+
+      A teacher who has recorded Хэл яриа for a child has started that child;
+      the domain breakdown below is where "which of the seven is missing" is
+      answered. Conflating the two would make the headline read 0% until
+      somebody finished all seven for somebody, which is the number least
+      likely to be true and least useful when it is.
+    */
+    const assessedChildren = new Set(assessments.map((row) => row.childId));
+
+    const count = <T>(rows: T[], key: (row: T) => string | null) => {
+      const buckets = new Map<string, Set<string>>();
+      for (const row of rows) {
+        const bucket = key(row);
+        if (!bucket) continue;
+        if (!buckets.has(bucket)) buckets.set(bucket, new Set());
+      }
+      return buckets;
+    };
+
+    /* Children per domain — a child counted once however many rows they have. */
+    const byDomain = count(assessments, (row) => row.domainId);
+    for (const row of assessments) byDomain.get(row.domainId)?.add(row.childId);
+
+    /* Children per kind of note. */
+    const byType = count(observations, (row) => row.typeId);
+    for (const row of observations) byType.get(row.typeId)?.add(row.childId);
+
+    /*
+      ★ Activities come from the rows, and their order is by coverage.
+
+      There is no activity table — a teacher types the name on the note — so
+      the list is what has actually been recorded. Ordered by how many children
+      each covers rather than alphabetically, because the screen is read to
+      find the thin ones and the thin ones then sit together at the end.
+    */
+    const byActivity = new Map<string, Set<string>>();
+    for (const row of observations) {
+      const name = row.activityName?.trim();
+      if (!name) continue;
+      if (!byActivity.has(name)) byActivity.set(name, new Set());
+      byActivity.get(name)!.add(row.childId);
+    }
+
+    /* Children per calendar month of the term, oldest first. */
+    const byMonth = new Map<string, Set<string>>();
+    for (const row of observations) {
+      const key = row.observedOn.toISOString().slice(0, 7);
+      if (!byMonth.has(key)) byMonth.set(key, new Set());
+      byMonth.get(key)!.add(row.childId);
+    }
+
+    return {
+      group: { id: group.id, name: group.name },
+      term: { id: term.id, number: term.number, name: term.name },
+      roster,
+      assessedChildren: assessedChildren.size,
+      /** Every assessment row in the term — the client's "Нийт үзүүлэлт". */
+      totalEntries: assessments.length,
+      totalNotes: observations.length,
+      /*
+        ★ Every domain and every type appears, including the ones with nothing.
+
+        A zero row is the most useful line on this screen — it is the work that
+        has not been started — and building the list from the rows that exist
+        would drop exactly those. Same argument `results()` makes for keeping a
+        group with no answers on its chart.
+      */
+      domains: domains.map((domain) => ({
+        id: domain.id,
+        name: domain.name,
+        color: domain.color,
+        assessed: byDomain.get(domain.id)?.size ?? 0,
+      })),
+      types: types.map((type) => ({
+        id: type.id,
+        name: type.name,
+        code: type.code,
+        assessed: byType.get(type.id)?.size ?? 0,
+      })),
+      activities: [...byActivity.entries()]
+        .map(([name, children]) => ({ name, assessed: children.size }))
+        .sort((a, b) => b.assessed - a.assessed || a.name.localeCompare(b.name, "mn")),
+      months: [...byMonth.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([month, children]) => ({ month, assessed: children.size })),
+    };
+  }
+
   /** Saves the whole column in one transaction. */
   async saveGroupColumn(actor: Actor, groupId: string, dto: SaveGroupColumnDto) {
     const group = await this.repo.findGroupForAssessment(

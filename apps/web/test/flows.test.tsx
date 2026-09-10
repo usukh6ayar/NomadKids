@@ -250,6 +250,11 @@ describe("recording an observation", () => {
 
 // ── Assessment ──────────────────────────────────────────────────────────────
 
+/** The column lives behind Үнэлэх now; Тойм is what opens. */
+async function openAssessTab() {
+  await userEvent.setup().click(await screen.findByRole("tab", { name: "Үнэлэх" }));
+}
+
 describe("group assessment", () => {
   const SCHOOL_YEAR_ID = "77777777-7777-4777-8777-777777777777";
 
@@ -333,6 +338,13 @@ describe("group assessment", () => {
 
     renderWithProviders(<GroupAssessmentPage />);
 
+    /*
+      ★ The page opens on Тойм since 2026-09-10 — the client's own design, and
+      the right default: the question a teacher brings here is "what is left".
+      The column this test is about lives on the second tab.
+    */
+    await openAssessTab();
+
     await waitFor(() => expect(screen.getByLabelText(/Хөгжлийн чиглэл/)).toBeInTheDocument());
 
     // Exactly one domain selector. It's Radix's `Select`, which has no
@@ -352,6 +364,7 @@ describe("group assessment", () => {
     const { calls } = stubAssessment();
 
     renderWithProviders(<GroupAssessmentPage />);
+    await openAssessTab();
 
     // ★ `getAllByText` since 2026-09-09: `GroupCoverage` grew a second panel
     // ("Үйл ажиллагааны явц") that names children too, so the roster is no

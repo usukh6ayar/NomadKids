@@ -157,6 +157,14 @@ export const qk = {
     ["child", childId, "term-report", termId] as const,
   groupAssessment: (groupId: string, termId: string, domainId: string) =>
     ["group", groupId, "assessment", termId, domainId] as const,
+  /**
+   * One group's assessment coverage for one term — the Явцын үнэлгээ overview.
+   *
+   * Keyed beside `groupAssessment` so saving a column can invalidate both with
+   * one prefix: the overview counts exactly what the column writes.
+   */
+  groupCoverage: (groupId: string, termId: string) =>
+    ["group", groupId, "assessment-coverage", termId] as const,
 
   /** The coverage dashboard. Keyed by window, so a new school year is a new entry. */
   groupObservationStats: (groupId: string, from: string, to: string) =>

@@ -1116,3 +1116,145 @@ describe("★ previous term", () => {
     expect(await countPreviousQueries(20)).toBe(1);
   });
 });
+
+/**
+ * The 2026-09-10 "Явцын үнэлгээ" overview — how far a group has got.
+ *
+ * ★ Counts, never a level, and that is what these assert first.
+ *
+ * The column endpoint requires `domainId` so it cannot drift into the children
+ * × domains matrix the scope excludes. This one reports across every domain by
+ * design, and the thing that keeps it safe is the *shape*: nothing in the
+ * payload names what any one child scored. A change that added a level per
+ * child would pass every other assertion here, so it has its own.
+ */
+describe("group coverage", () => {
+  const coverage = (session: AuthSession, group = a.group.id, term = termId) =>
+    authed(
+      request(server()).get(`/v1/groups/${group}/assessments/coverage?termId=${term}`),
+      session,
+    );
+
+  async function assess(childId: string, domain: string) {
+    await authed(request(server()).put(`/v1/groups/${a.group.id}/assessments`), teacherA).send({
+      termId,
+      domainId: domain,
+      entries: [{ childId, levelId: levelIds[2] }],
+    });
+  }
+
+  it("counts the roster and what has been started", async () => {
+    const second = await createChild(a.kindergarten.id, { firstName: "Хоёрдугаар" });
+    await enrollChild(a.kindergarten.id, second.id, a.group.id, a.schoolYear.id);
+    await assess(a.child.id, domainId);
+
+    const res = await coverage(teacherA);
+
+    expect(res.status).toBe(200);
+    expect(res.body.roster).toBe(2);
+    expect(res.body.assessedChildren).toBe(1);
+    expect(res.body.totalEntries).toBe(1);
+  });
+
+  /**
+   * ★ "Assessed" is at least one domain, not all of them.
+   *
+   * Conflating the two would make the headline read 0% until somebody finished
+   * every domain for somebody — the number least likely to be true and least
+   * useful when it is. The domain breakdown is where "which one is missing"
+   * gets answered.
+   */
+  it("counts a child as started after one domain", async () => {
+    await assess(a.child.id, domainId);
+
+    const res = await coverage(teacherA);
+
+    expect(res.body.assessedChildren).toBe(1);
+    const started = res.body.domains.find((d: { id: string }) => d.id === domainId);
+    const untouched = res.body.domains.find((d: { id: string }) => d.id === otherDomainId);
+    expect(started.assessed).toBe(1);
+    expect(untouched.assessed).toBe(0);
+  });
+
+  /**
+   * ★ Every domain appears, including the ones with nothing.
+   *
+   * A zero row is the most useful line on the screen — it is the work that has
+   * not been started — and building the list from the rows that exist would
+   * drop exactly those.
+   */
+  it("lists every domain, not only the ones with work in them", async () => {
+    const res = await coverage(teacherA);
+
+    const domains = await db.developmentDomain.count({
+      where: { kindergartenId: null, isActive: true, deletedAt: null },
+    });
+    expect(res.body.domains).toHaveLength(domains);
+    expect(res.body.domains.every((d: { assessed: number }) => d.assessed === 0)).toBe(true);
+  });
+
+  /** No level for any child, however the payload is read. */
+  it("never reports what a child scored", async () => {
+    await assess(a.child.id, domainId);
+
+    const res = await coverage(teacherA);
+
+    const text = JSON.stringify(res.body);
+    expect(text).not.toContain(levelIds[2]);
+    expect(text).not.toContain(a.child.id);
+  });
+
+  it("a teacher from another kindergarten gets 404", async () => {
+    const teacherB = await login(app, b.teacherUser.username);
+    expect((await coverage(teacherB)).status).toBe(404);
+  });
+
+  it("a guardian gets 404", async () => {
+    expect((await coverage(parentA)).status).toBe(404);
+  });
+
+  /**
+   * ★ Membership is not enough — the same rule the column editor makes.
+   *
+   * A teacher may only see a group they are assigned to. Copied from
+   * `getGroupColumn` deliberately: the two are one rule, and this is where a
+   * divergence would show.
+   */
+  it("a teacher not assigned to the group gets 404", async () => {
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Тэдний биш бүлэг");
+
+    expect((await coverage(teacherA, other.id)).status).toBe(404);
+  });
+
+  it("an administrator sees any group in their kindergarten", async () => {
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Аль ч бүлэг");
+
+    expect((await coverage(adminA, other.id)).status).toBe(200);
+  });
+
+  /**
+   * A term from another kindergarten is not a way in.
+   *
+   * ★ 400, matching `requireTerm` — deliberately, not by accident.
+   *
+   * §1.7's 404 rule protects against confirming that a *child* record exists.
+   * A term is kindergarten configuration and every other assessment endpoint
+   * answers 400 here through the same helper; a new route inventing its own
+   * code would make the module's behaviour depend on which URL you tried.
+   * Authorization has already run above, so a stranger never reaches this.
+   */
+  it("refuses a term that is not this kindergarten's", async () => {
+    const foreign = await db.term.create({
+      data: {
+        kindergartenId: b.kindergarten.id,
+        schoolYearId: b.schoolYear.id,
+        number: 1,
+        name: "I улирал",
+        startsOn: new Date("2025-09-01"),
+        endsOn: new Date("2025-12-31"),
+      },
+    });
+
+    expect((await coverage(teacherA, a.group.id, foreign.id)).status).toBe(400);
+  });
+});

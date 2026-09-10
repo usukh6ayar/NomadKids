@@ -28,6 +28,7 @@ import { observationTypeSchema } from "@kinder/contracts";
 /** The kindergarten's configured record kinds — one shortcut button each. */
 const observationTypesSchema = z.array(observationTypeSchema);
 import { Card, SectionHeader } from "@/components/ui/card";
+import { CoverageOverview } from "@/components/assessment/coverage-overview";
 import { Badge } from "@/components/ui/badge";
 import { GroupCoverage } from "@/components/assessment/group-coverage";
 import { RegisterProgress } from "@/components/register/register-progress";
@@ -83,6 +84,17 @@ function GroupAssessment() {
   // The selection lives in the URL, so a teacher can bookmark "this term, this
   // domain" and a reload does not throw them back to the first option.
   const termId = searchParams.get("termId") ?? "";
+  /**
+   * Which of the two readings is open.
+   *
+   * ★ Component state, not the URL, unlike `termId` and `domainId`.
+   *
+   * Those two are what makes a register linkable — "this term, this domain" is
+   * worth bookmarking and worth surviving a reload. Which tab you were looking
+   * at is not: it is a glance, and putting it in the address bar would add a
+   * history entry every time somebody looked at the summary.
+   */
+  const [tab, setTab] = useState<"overview" | "assess">("overview");
   const domainId = searchParams.get("domainId") ?? "";
 
   function setSelection(next: { termId?: string; domainId?: string }) {
@@ -458,7 +470,19 @@ function GroupAssessment() {
             )}
           </Field>
 
-          <Field label="Хөгжлийн чиглэл" hint="Нэг удаад нэг чиглэлээр үнэлнэ.">
+          {/*
+            ★ Hidden on Тойм, because Тойм is every domain at once.
+
+            A select that narrows nothing on the view in front of you is a
+            control that invites a press and changes the screen you are not
+            looking at — and worse, it would then be set to something
+            unexpected when Үнэлэх opens.
+          */}
+          <Field
+            label="Хөгжлийн чиглэл"
+            hint="Нэг удаад нэг чиглэлээр үнэлнэ."
+            className={tab === "overview" ? "hidden" : undefined}
+          >
             {({ id, describedBy }) => (
               <Select
                 id={id}
@@ -477,7 +501,7 @@ function GroupAssessment() {
           </Field>
         </div>
 
-        {column.data && children.length > 0 ? (
+        {tab === "assess" && column.data && children.length > 0 ? (
           <RegisterProgress
             inset
             recorded={assessed}
@@ -495,9 +519,50 @@ function GroupAssessment() {
         />
       ) : null}
 
-      {column.isLoading ? <LoadingState rows={6} shape="register" /> : null}
+      {/*
+        ★ Тойм opens first — the client's 2026-09-10 design.
 
-      {column.isError ? (
+        The question a teacher brings to this screen is "what is left", and
+        until now the only answer was to pick a domain and count the blanks
+        down a column — once per domain. Тойм answers it across every domain at
+        once, and Үнэлэх is where the work is then done.
+
+        ★★ Tabs rather than two routes: they are one dataset read two ways, the
+        selection above (group, year, term) belongs to both, and duplicating it
+        on a second page is how the two come to disagree about which term is
+        open.
+      */}
+      <div
+        role="tablist"
+        aria-label="Явцын үнэлгээ"
+        data-ui="communication-tabs"
+        className="grid grid-cols-2 gap-1 rounded-card bg-sunken p-1 sm:w-[320px]"
+      >
+        {[
+          { key: "overview" as const, label: "Тойм" },
+          { key: "assess" as const, label: "Үнэлэх" },
+        ].map((entry) => (
+          <button
+            key={entry.key}
+            type="button"
+            role="tab"
+            aria-selected={tab === entry.key}
+            onClick={() => setTab(entry.key)}
+            className={cn(
+              "min-h-10 rounded-card px-3 text-body font-semibold transition-colors",
+              tab === entry.key ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink",
+            )}
+          >
+            {entry.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "overview" ? <CoverageOverview groupId={groupId} termId={termId} /> : null}
+
+      {tab === "assess" && column.isLoading ? <LoadingState rows={6} shape="register" /> : null}
+
+      {tab === "assess" && column.isError ? (
         <ErrorState
           description={errorMessage(column.error)}
           action={
@@ -508,7 +573,7 @@ function GroupAssessment() {
         />
       ) : null}
 
-      {column.data ? (
+      {tab === "assess" && column.data ? (
         <>
           {/* The headcount moved into the strip above — see the meal
               register's note on not printing one figure twice. */}
