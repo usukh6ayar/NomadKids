@@ -27,6 +27,7 @@ import {
   FileCheck2,
   Headphones,
   HelpCircle,
+  LifeBuoy,
   LockKeyhole,
   // `X` was the picker modal's close button and went with it. The type stays:
   // `ICON_FOR` below is keyed by href and annotated with it.
@@ -1048,15 +1049,19 @@ function parentNav(
   const hoolHref = activeId ? `/children/${activeId}/menu` : "/children";
 
   return [
-    { href: "/home", label: "Нүүр", icon: <Home {...iconProps} /> },
-    { href: "/notifications", label: "Мэдээ", icon: artIcon("notice", 20), badge: "unread" },
-    { href: zuragHref, label: "Зураг", icon: <Images {...iconProps} /> },
-    { href: hoolHref, label: "Хоол", icon: artIcon("food", 20) },
+    { href: "/home", label: "Нүүр", icon: artIcon("navHome", 20) },
+    { href: "/notifications", label: "Мэдээ", icon: artIcon("navNews", 20), badge: "unread" },
+    { href: zuragHref, label: "Зураг", icon: artIcon("navGallery", 20) },
+    { href: hoolHref, label: "Хоол", icon: artIcon("navFood", 20) },
     { href: "/settings", label: "Цэс", icon: <Menu {...iconProps} /> },
   ];
 }
 
-/** The flat guardian menu; the selected child supplies every child-scoped URL. */
+/**
+ * The guardian menu; the selected child supplies every child-scoped URL.
+ *
+ * Two groups: the rows a parent navigates with, then "Тусламж", which folds.
+ */
 function parentSections(
   myChildren: ChildSummary[] | undefined,
   selectedChildId: string | undefined,
@@ -1095,28 +1100,43 @@ function parentSections(
           href: "/chat",
           icon: artIcon("chat", 20),
         },
-      ],
-    },
-    {
-      title: "Үйлчилгээ ба тусламж",
-      separatorBefore: true,
-      entries: [
         {
           label: "Үйлчилгээний эрх",
           href: selected ? `${childBase}/finance` : childBase,
           icon: <ShieldCheck {...iconProps} />,
           tag: "Жилийн",
         },
+      ],
+    },
+    /*
+     * ★ The six reference rows fold away — 2026-09-10, on the client's own
+     * sketch of this menu.
+     *
+     * They used to sit flat under the seven a guardian actually navigates
+     * with, which made the menu fourteen rows and pushed "Системээс гарах"
+     * off a phone screen. None of the six is a daily destination: a contract,
+     * a manual and three policy pages are read once. Grouping them behind one
+     * named row keeps them reachable while the part of the menu that does the
+     * work fits without scrolling.
+     *
+     * "Холбоо барих" moves to the foot of the group because it is the one to
+     * reach for when the five above it did not answer the question.
+     */
+    {
+      title: "Тусламж",
+      collapsible: true,
+      icon: <LifeBuoy {...iconProps} />,
+      entries: [
         { label: "Миний гэрээ", icon: <FileText {...iconProps} /> },
         { label: "Гарын авлага", icon: <BookOpen {...iconProps} /> },
         { label: "Түгээмэл асуулт", icon: <HelpCircle {...iconProps} /> },
+        { label: "Үйлчилгээний нөхцөл", icon: <FileCheck2 {...iconProps} /> },
+        { label: "Нууцлалын бодлого", icon: <LockKeyhole {...iconProps} /> },
         {
           label: "Холбоо барих",
           href: "mailto:Nomadkidsmn@gmail.com",
           icon: <Headphones {...iconProps} />,
         },
-        { label: "Үйлчилгээний нөхцөл", icon: <FileCheck2 {...iconProps} /> },
-        { label: "Нууцлалын бодлого", icon: <LockKeyhole {...iconProps} /> },
       ],
     },
   ];

@@ -198,7 +198,13 @@ describe("photo album landing page", () => {
     expect(
       await screen.findByRole("heading", { name: "Зургийн цомог 2-5 нас" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("2-оос 5 насны бүх дурсамж · 2 зураг")).toBeInTheDocument();
+    expect(
+      screen.getByText("Зургийн төрлөөр насны ахицыг харьцуулна · 2 зураг"),
+    ).toBeInTheDocument();
+
+    // Both stubbed photos carry no category, so both fall into one "Бусад"
+    // section — proof this page groups by type now, not by age.
+    expect(screen.getByRole("heading", { name: "Бусад" })).toBeInTheDocument();
 
     const photoButtons = screen.getAllByRole("button", { name: /томоор харах/ });
     expect(photoButtons).toHaveLength(2);
@@ -206,5 +212,59 @@ describe("photo album landing page", () => {
 
     await user.click(screen.getByRole("button", { name: "2 нас — Эхний зураг томоор харах" }));
     expect(screen.getByRole("dialog", { name: "Эхний зураг" })).toBeInTheDocument();
+  });
+
+  it("groups by photo type so the same kind of photo reads as an age progression", async () => {
+    stubApi(
+      [2, 3, 4, 5].map((age) => ({
+        path: `/children/${CHILD_ID}/media?age=${age}&pageSize=100&page=1`,
+        body: {
+          items: [
+            {
+              id: `aaaaaaaa-aaaa-4aaa-8aaa-${String(age).padStart(12, "0")}`,
+              caption: `Цээж зураг ${age}`,
+              purpose: "CHILD_PHOTO",
+              age,
+              category: "PORTRAIT",
+            },
+            {
+              id: `bbbbbbbb-bbbb-4bbb-8bbb-${String(age).padStart(12, "0")}`,
+              caption: `Аялал ${age}`,
+              purpose: "CHILD_PHOTO",
+              age,
+              category: "TRAVEL",
+            },
+          ],
+          page: 1,
+          pageSize: 100,
+          total: 2,
+          totalPages: 1,
+        },
+      })),
+    );
+
+    renderWithProviders(<PhotoHistoryPage />);
+
+    const portraitSection = (await screen.findByRole("heading", { name: "Цээж зураг" })).closest(
+      "section",
+    )!;
+    const portraitButtons = within(portraitSection).getAllByRole("button", {
+      name: /томоор харах/,
+    });
+    // In age order — 2, 3, 4, 5 — not grouped or shuffled by anything else.
+    expect(portraitButtons.map((button) => button.getAttribute("aria-label"))).toEqual([
+      "2 нас — Цээж зураг 2 томоор харах",
+      "3 нас — Цээж зураг 3 томоор харах",
+      "4 нас — Цээж зураг 4 томоор харах",
+      "5 нас — Цээж зураг 5 томоор харах",
+    ]);
+
+    const travelSection = (await screen.findByRole("heading", { name: "Аялал, зугаалга" })).closest(
+      "section",
+    )!;
+    expect(within(travelSection).getAllByRole("button", { name: /томоор харах/ })).toHaveLength(4);
+
+    // The two types don't mix into one section.
+    expect(within(portraitSection).queryByText(/Аялал/)).not.toBeInTheDocument();
   });
 });

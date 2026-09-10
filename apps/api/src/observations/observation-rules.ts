@@ -59,10 +59,9 @@ export function initialReviewStatus(source: ObservationSource): ReviewStatus {
 /**
  * May a guardian edit this observation?
  *
- * Three conditions, all required: it is a parent submission, they wrote it, and
- * a teacher has not yet approved it. Once approved it is part of the record the
- * teacher has signed off on, and the message tells the parent to speak to the
- * teacher rather than leaving them guessing.
+ * Two conditions, both required: it is a parent submission and they wrote it.
+ * An edit to an already-reviewed note is sent back to the review queue by the
+ * service, so a teacher's old approval is never attached to changed text.
  */
 export function guardianMayEdit(
   facts: ObservationFacts,
@@ -70,11 +69,5 @@ export function guardianMayEdit(
 ): { allowed: boolean; reason?: string } {
   if (facts.source !== "PARENT") return { allowed: false };
   if (facts.authorId !== actorUserId) return { allowed: false };
-  if (facts.reviewStatus === "APPROVED") {
-    return {
-      allowed: false,
-      reason: "Багш баталсан ажиглалтыг засах боломжгүй. Багштайгаа холбогдоно уу.",
-    };
-  }
   return { allowed: true };
 }

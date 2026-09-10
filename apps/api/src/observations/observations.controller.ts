@@ -127,7 +127,6 @@ export class ObservationsController {
   }
 
   @Delete(":id")
-  @Roles("TEACHER", "ADMIN")
   async archive(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },

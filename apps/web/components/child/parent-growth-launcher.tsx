@@ -1,38 +1,34 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { Plus, X } from "lucide-react";
+import { useId, useRef, useState } from "react";
+import { ImagePlus, Trash2, X } from "lucide-react";
 import { observationSchema, type ChildDetail } from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
-import { Field, Input, Textarea } from "@/components/ui/field";
+import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { SharedMomentsTeaser } from "@/components/child/child-observations";
 import { GradientUnderline } from "@/components/child/portfolio-hero";
-import { ObservationPhotos } from "@/components/observations/observation-photos";
+import {
+  ACCEPTED_TYPES,
+  MAX_UPLOAD_BYTES,
+  uploadChildPhotos,
+} from "@/components/media/photo-upload";
 import { Art } from "@/components/ui/art";
-import { ACTION_ACCENT_LINE, type GradientTone } from "@/lib/gradient-tones";
+import type { GradientTone } from "@/lib/gradient-tones";
 import type { Tone } from "@/components/ui/tone";
 import { todayLocal } from "@/lib/format";
-import { cn } from "@/lib/utils";
 
 /**
- * The three quick-share doors — client reference screenshot, 2026-08-30.
+ * The three growth-note sections — client reference screenshot, 2026-08-30.
  *
- * ★ All three submit through the exact same endpoint,
- * `POST /children/:id/parent-observations` — `createParentObservationSchema`
- * has no field that distinguishes "an observation" from "a conversation" from
- * "a piece of artwork", and inventing one wasn't asked for this pass. The
- * split is presentational: three doors into one real, working "share a
- * moment" flow, each pre-labelled for the kind of thing a parent is about to
- * write about. A later pass can give `Ярилцлага`/`Бүтээл` their own stored
- * distinction if the client asks for one; nothing here has to change shape to
- * add it, since each still posts a plain `CreateParentObservationDto`.
+ * All three submit through the parent's endpoint with a persisted type code,
+ * so the same distinction powers the category filters below.
  */
 const BUCKETS = [
   {
@@ -59,6 +55,12 @@ const BUCKETS = [
 ] as const;
 
 type BucketKey = (typeof BUCKETS)[number]["key"];
+
+const CATEGORY_CODE: Record<BucketKey, "daily" | "conversation" | "artwork"> = {
+  observation: "daily",
+  conversation: "conversation",
+  artwork: "artwork",
+};
 
 /** The closest match in `Card`'s own tone vocabulary — it has no green/blue/orange as such. */
 const CARD_TONE_FOR_BUCKET: Record<GradientTone, Tone> = {
@@ -89,68 +91,53 @@ const CARD_TONE_FOR_BUCKET: Record<GradientTone, Tone> = {
  * where it resurfaces rather than this one guessing.
  */
 export function ParentGrowthLauncher({ child }: { child: ChildDetail }) {
-  const [open, setOpen] = useState<BucketKey | null>(null);
-  // Whether the three doors are shown at all. Collapsed behind the "+" until
-  // asked for, so the header carries one action instead of three.
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [activeBucket, setActiveBucket] = useState<BucketKey>("observation");
+  const [composerOpen, setComposerOpen] = useState(false);
+  const bucket = BUCKETS.find((item) => item.key === activeBucket)!;
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <SectionHeader as="h1" title="Хүүхдийн явцын үнэлгээ" className="mb-0" />
-          <p className="mt-1 text-body text-muted">
-            Хүүхдийн хөгжилд гарч буй ахиц дэвшлийг багш, эцэг эх хамтран тэмдэглэнэ
-          </p>
-        </div>
+      <SectionHeader
+        as="h1"
+        title="Хүүхдийн явцын үнэлгээ"
+        lede="Хүүхдийн хөгжилд гарч буй ахиц дэвшлийг багш, эцэг эх хамтран тэмдэглэнэ"
+        className="mb-0"
+      />
 
-        {/*
-          One trigger rather than three always-visible doors. Opening it
-          reveals the same `QuickShareBar` row below, so nothing about how a
-          door works changed — only when it is on screen.
-        */}
-        <button
-          type="button"
-          aria-haspopup="true"
-          aria-expanded={pickerOpen}
-          aria-label="Шинэ тэмдэглэл нэмэх"
-          onClick={() => setPickerOpen((was) => !was)}
-          className="grid size-11 shrink-0 place-items-center rounded-pill bg-primary text-primary-ink shadow-sm transition-transform hover:scale-105"
-        >
-          <Plus size={22} aria-hidden="true" />
-        </button>
+      <div className="grid grid-cols-3 gap-2.5">
+        {BUCKETS.map((bucket) => (
+          <CategoryBar
+            key={bucket.key}
+            bucket={bucket}
+            active={activeBucket === bucket.key}
+            onClick={() => {
+              setActiveBucket(bucket.key);
+              setComposerOpen(false);
+            }}
+          />
+        ))}
       </div>
 
-      {pickerOpen ? (
-        <div role="menu" aria-label="Тэмдэглэлийн төрөл" className="grid grid-cols-3 gap-2.5">
-          {BUCKETS.map((bucket) => (
-            <QuickShareBar
-              key={bucket.key}
+      <SharedMomentsTeaser
+        childId={child.id}
+        categoryCode={CATEGORY_CODE[activeBucket]}
+        title={bucket.label}
+        onAdd={() => setComposerOpen(true)}
+        composer={
+          composerOpen ? (
+            <QuickShareForm
+              childId={child.id}
               bucket={bucket}
-              active={open === bucket.key}
-              onClick={() => {
-                setOpen((was) => (was === bucket.key ? null : bucket.key));
-                setPickerOpen(false);
-              }}
+              onClose={() => setComposerOpen(false)}
             />
-          ))}
-        </div>
-      ) : null}
-
-      {open ? (
-        <QuickShareForm
-          childId={child.id}
-          bucket={BUCKETS.find((b) => b.key === open)!}
-          onClose={() => setOpen(null)}
-        />
-      ) : null}
-
-      <SharedMomentsTeaser childId={child.id} />
+          ) : null
+        }
+      />
     </div>
   );
 }
 
-function QuickShareBar({
+function CategoryBar({
   bucket,
   active,
   onClick,
@@ -159,20 +146,14 @@ function QuickShareBar({
   active: boolean;
   onClick: () => void;
 }) {
-  const accent = ACTION_ACCENT_LINE[bucket.tone];
-
   return (
     <Button
-      variant="secondary"
+      variant={active ? "primary" : "secondary"}
       size="md"
       block
       aria-expanded={active}
       onClick={onClick}
-      className={cn(
-        "relative justify-start overflow-hidden bg-white px-3 before:absolute before:inset-y-2.5 before:left-0 before:w-0.5 before:rounded-r-pill",
-        accent,
-        active && "ring-2 ring-primary ring-offset-2 ring-offset-canvas",
-      )}
+      className="justify-start px-3"
     >
       <Art name={bucket.art} size={32} className="size-8 shrink-0 object-contain" />
       <span className="min-w-0 flex-1 truncate">{bucket.label}</span>
@@ -180,21 +161,7 @@ function QuickShareBar({
   );
 }
 
-/**
- * One text field, one textarea, one date — then a photo, once saved.
- *
- * ★ "Гарчиг" has no column of its own on `CreateParentObservationDto` — the
- * schema is deliberately narrower than the staff form (see its own doc
- * comment in `observations.dto.ts`), and adding a field for one screen was
- * not part of this pass. Rather than silently drop what a parent typed, the
- * title becomes the opening line of `situation`, which is exactly the kind of
- * free narrative that field already holds.
- *
- * ★★ The photo step happens after saving, same as the full "Гэрийн мөч
- * хуваалцах" form (`observations/new/page.tsx`) — `ObservationPhotos` needs a
- * real observation id to attach to, and this form creates one through the
- * same endpoint that page does.
- */
+/** One save creates the note first, then attaches every pre-selected photo. */
 function QuickShareForm({
   childId,
   bucket,
@@ -209,21 +176,49 @@ function QuickShareForm({
   const [observedOn, setObservedOn] = useState(todayLocal());
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [savedId, setSavedId] = useState<string | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const inputId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const save = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const situation = [title.trim(), content.trim()].filter(Boolean).join("\n\n") || undefined;
-      // `observationSchema`, not the request DTO — this is what the endpoint
-      // hands back (id, source, reviewStatus, …), and `savedId` below needs it.
-      return mutate(`/children/${childId}/parent-observations`, observationSchema, {
-        method: "POST",
-        body: { observedOn, situation },
-      });
+      const observation = await mutate(
+        `/children/${childId}/parent-observations`,
+        observationSchema,
+        {
+          method: "POST",
+          body: { observedOn, situation, categoryCode: CATEGORY_CODE[bucket.key] },
+        },
+      );
+
+      let photoWarning: string | null = null;
+      if (files.length > 0) {
+        try {
+          const uploaded = await uploadChildPhotos({
+            childId,
+            files,
+            observationId: observation.id,
+            purpose: "OBSERVATION",
+          });
+          if (uploaded.failed.length > 0) {
+            photoWarning = uploaded.failed.map((file) => `${file.name}: ${file.reason}`).join("; ");
+          }
+        } catch (error) {
+          // The note already exists at this point. Return it instead of making
+          // a second press create a duplicate; the warning names the photo step.
+          photoWarning = errorMessage(error);
+        }
+      }
+
+      return { observation, photoWarning };
     },
-    onSuccess: (observation) => {
-      setSavedId(observation.id);
-      void queryClient.invalidateQueries({ queryKey: qk.child(childId) });
+    onSuccess: async ({ photoWarning }) => {
+      await queryClient.invalidateQueries({ queryKey: qk.child(childId) });
+      toast.success("Тэмдэглэл хадгалагдлаа.");
+      if (photoWarning) toast.error(`Тэмдэглэл хадгалагдсан ч зураг орсонгүй: ${photoWarning}`);
+      onClose();
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -243,93 +238,177 @@ function QuickShareForm({
         </Button>
       </div>
 
-      {savedId ? (
-        <div className="flex flex-col gap-4">
-          <p role="status" className="font-medium text-mint-ink">
-            Хадгаллаа. Багш хянаад баталгаажуулна.
-          </p>
-          <ObservationPhotos childId={childId} observationId={savedId} />
-          <Button variant="secondary" onClick={onClose} className="self-start">
-            Дуусгах
-          </Button>
-        </div>
-      ) : (
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!save.isPending) save.mutate();
-          }}
-          className="flex flex-col gap-4"
-          noValidate
-        >
-          <FormError
-            message={
-              save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null
-            }
-          />
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!save.isPending) save.mutate();
+        }}
+        className="flex flex-col gap-4"
+        noValidate
+      >
+        <FormError
+          message={
+            save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null
+          }
+        />
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Огноо" error={errors.observedOn} required>
-              {({ id, describedBy, invalid }) => (
-                <Input
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  type="date"
-                  value={observedOn}
-                  max={todayLocal()}
-                  onChange={(e) => setObservedOn(e.target.value)}
-                  required
-                />
-              )}
-            </Field>
-
-            <Field label="Гарчиг">
-              {({ id }) => (
-                <Input
-                  id={id}
-                  value={title}
-                  placeholder="Жишээ: Өнөөдрийн хөөрхөн мөч"
-                  onChange={(e) => setTitle(e.target.value)}
-                />
-              )}
-            </Field>
-          </div>
-
-          <Field label="Агуулга" error={errors.situation}>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field label="Огноо" error={errors.observedOn} required>
             {({ id, describedBy, invalid }) => (
-              <Textarea
+              <Input
                 id={id}
                 aria-describedby={describedBy}
                 invalid={invalid}
-                value={content}
-                placeholder="Юу хийсэн, ямар шинэ зүйл ажиглагдсан бэ?"
-                onChange={(e) => setContent(e.target.value)}
+                type="date"
+                value={observedOn}
+                max={todayLocal()}
+                onChange={(e) => setObservedOn(e.target.value)}
+                required
               />
             )}
           </Field>
 
-          {/*
-            No picker here yet — see this component's own doc comment. The
-            dashed box names the step so it does not read as a missing one.
-          */}
-          <div>
-            <span className="mb-1.5 block text-body font-medium text-ink">Зураг / баримт</span>
-            <div className="rounded-control border border-dashed border-border bg-canvas px-3.5 py-3 text-body text-muted">
-              Хадгалсны дараа зураг нэмэх боломжтой.
-            </div>
-          </div>
+          <Field label="Улирал">
+            {({ id }) => (
+              <Select
+                id={id}
+                value={String(termNumberForDate(observedOn))}
+                onChange={(event) => {
+                  setObservedOn(
+                    firstAvailableDateForTerm(Number(event.target.value), todayLocal()),
+                  );
+                }}
+              >
+                {[1, 2, 3].map((number) => (
+                  <option
+                    key={number}
+                    value={number}
+                    disabled={firstDateForTerm(number, todayLocal()) > todayLocal()}
+                  >
+                    {number}-р улирал
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
 
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" disabled={save.isPending}>
-              {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
+          <Field label="Гарчиг">
+            {({ id }) => (
+              <Input
+                id={id}
+                value={title}
+                placeholder="Жишээ: Өнөөдрийн хөөрхөн мөч"
+                onChange={(e) => setTitle(e.target.value)}
+              />
+            )}
+          </Field>
+        </div>
+
+        <Field label="Агуулга" error={errors.situation}>
+          {({ id, describedBy, invalid }) => (
+            <Textarea
+              id={id}
+              aria-describedby={describedBy}
+              invalid={invalid}
+              value={content}
+              placeholder="Юу хийсэн, ямар шинэ зүйл ажиглагдсан бэ?"
+              onChange={(e) => setContent(e.target.value)}
+            />
+          )}
+        </Field>
+
+        <div>
+          <span className="mb-1.5 block text-body font-medium text-ink">Зураг / баримт</span>
+          <FormError message={fileError} />
+          <input
+            ref={inputRef}
+            id={inputId}
+            type="file"
+            accept={ACCEPTED_TYPES}
+            multiple
+            className="sr-only"
+            onChange={(event) => {
+              const selected = Array.from(event.target.files ?? []);
+              const tooBig = selected.filter((file) => file.size > MAX_UPLOAD_BYTES);
+              setFileError(
+                tooBig.length > 0
+                  ? `${tooBig.map((file) => file.name).join(", ")} хэт том байна.`
+                  : null,
+              );
+              setFiles((current) => [
+                ...current,
+                ...selected.filter((file) => file.size <= MAX_UPLOAD_BYTES),
+              ]);
+              if (inputRef.current) inputRef.current.value = "";
+            }}
+          />
+          <div className="flex flex-wrap items-center gap-2 rounded-control border border-dashed border-border bg-canvas p-3">
+            <Button asChild variant="secondary" disabled={save.isPending}>
+              <label htmlFor={inputId} className="cursor-pointer">
+                <ImagePlus size={18} aria-hidden="true" />
+                Зураг сонгох
+              </label>
             </Button>
-            <Button type="button" variant="secondary" onClick={onClose}>
-              Болих
-            </Button>
+            <span className="text-caption text-muted">
+              {files.length > 0 ? `${files.length} зураг сонгосон` : "JPEG, PNG эсвэл WebP"}
+            </span>
           </div>
-        </form>
-      )}
+          {files.length > 0 ? (
+            <ul className="mt-2 flex flex-col gap-1">
+              {files.map((file, index) => (
+                <li
+                  key={`${file.name}-${file.lastModified}-${index}`}
+                  className="flex items-center gap-2 text-caption text-ink"
+                >
+                  <span className="min-w-0 flex-1 truncate">{file.name}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`${file.name} зургийг хасах`}
+                    onClick={() =>
+                      setFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))
+                    }
+                  >
+                    <Trash2 size={16} aria-hidden="true" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit" disabled={save.isPending}>
+            {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
+          </Button>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Болих
+          </Button>
+        </div>
+      </form>
     </Card>
   );
+}
+
+/** Academic-year quarters: Sep–Dec, Jan–Mar, Apr–Aug. */
+export function termNumberForDate(day: string): 1 | 2 | 3 {
+  const month = Number(day.slice(5, 7));
+  if (month >= 9) return 1;
+  if (month <= 3) return 2;
+  return 3;
+}
+
+function firstDateForTerm(term: number, today: string): string {
+  const year = Number(today.slice(0, 4));
+  const month = Number(today.slice(5, 7));
+  const schoolYearStart = month >= 9 ? year : year - 1;
+  if (term === 1) return `${schoolYearStart}-09-01`;
+  if (term === 2) return `${schoolYearStart + 1}-01-01`;
+  return `${schoolYearStart + 1}-04-01`;
+}
+
+function firstAvailableDateForTerm(term: number, today: string): string {
+  const first = firstDateForTerm(term, today);
+  return first > today ? today : first;
 }

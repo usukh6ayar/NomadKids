@@ -91,9 +91,9 @@ describe("portfolio launcher", () => {
 
     const nav = await screen.findByRole("navigation", { name: "Цахим хавтасны хэсгүүд" });
     const expected = [
+      ["Миний тухай", "icon-portfolio-about-me-3d"],
       ["Хөгжил", "icon-portfolio-development-3d"],
       ["Зургийн цомог", "icon-portfolio-gallery-3d"],
-      ["Миний тухай", "icon-portfolio-about-me-3d"],
       ["Насны харьцуулалт", "icon-portfolio-age-comparison-3d"],
     ] as const;
     const links = within(nav).getAllByRole("link");
@@ -109,7 +109,12 @@ describe("portfolio launcher", () => {
 
     const profile = screen.getByTestId("portfolio-profile-art");
     expect(profile.querySelector("img")!.getAttribute("src")).toContain("icon-portfolio-boy-3d");
-    expect(profile.className).toContain("bg-transparent");
+    expect(profile).toHaveClass("h-full", "w-32", "items-end", "overflow-hidden", "bg-transparent");
+    expect(profile.querySelector("img")).toHaveClass("h-40", "object-bottom");
+    expect(screen.getByRole("heading", { name: "Цахим хувийн хавтас" }).parentElement).toHaveClass(
+      "h-28",
+      "bg-gradient-to-r",
+    );
   });
 
   it("selects the girl artwork from the child's stored sex", async () => {
@@ -124,26 +129,29 @@ describe("portfolio launcher", () => {
 });
 
 describe("portfolio age sections", () => {
-  it("shows the parent's three share actions as white illustrated cards with accent lines", async () => {
-    const user = userEvent.setup();
+  it("shows the parent's three share actions as illustrated cards, one active in blue", async () => {
     stubGrowth(bornYearsAgo(3), [], "MALE", ["PARENT"]);
 
     renderWithProviders(<GrowthPage />);
 
-    // The three doors are collapsed behind the header's "+" until asked for.
-    await user.click(await screen.findByRole("button", { name: "Шинэ тэмдэглэл нэмэх" }));
-
+    // ★ One shared colour, not one per category.
+    //
+    // A green/blue/orange accent line was how the three used to tell
+    // themselves apart; now the active one is filled `bg-primary` like every
+    // other primary action in the product, and the other two stay plain
+    // `secondary` — the same pattern the teacher's own source-filter buttons
+    // already use.
     const expected = [
-      ["Ажиглалт", "icon-observation-3d", "before:bg-[#16a96f]"],
-      ["Ярилцлага", "icon-conversation-3d", "before:bg-[#3378e5]"],
-      ["Бүтээл", "icon-artwork-3d", "before:bg-[#f59e0b]"],
+      ["Ажиглалт", "icon-observation-3d", true],
+      ["Ярилцлага", "icon-conversation-3d", false],
+      ["Бүтээл", "icon-artwork-3d", false],
     ] as const;
 
-    for (const [label, asset, accent] of expected) {
+    for (const [label, asset, active] of expected) {
       const button = await screen.findByRole("button", { name: label });
-      expect(button).toHaveClass("h-[48px]", "rounded-button", "bg-white");
-      expect(button.className).toContain(accent);
-      expect(button.className).not.toContain("linear-gradient");
+      expect(button).toHaveClass("h-[48px]", "rounded-button", "w-full");
+      expect(button).toHaveClass(active ? "bg-primary" : "bg-surface");
+      expect(button.className).not.toMatch(/before:bg-\[#/);
       expect(button.querySelector("img")?.getAttribute("src")).toContain(asset);
     }
   });

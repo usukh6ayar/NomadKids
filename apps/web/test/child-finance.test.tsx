@@ -91,6 +91,23 @@ function invoicesPage(items: unknown[]) {
  * raw ISO string `Invoice.month` actually is on the wire.
  */
 describe("a guardian's own view of a child's finances", () => {
+  it("skips the repeated name/status card a guardian already gets from the hub", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["PARENT"]) },
+      { path: `/children/${CHILD_ID}/invoices`, method: "GET", body: invoicesPage([]) },
+      { path: `/children/${CHILD_ID}`, method: "GET", body: childFixture() },
+    ]);
+
+    renderFinancePage();
+
+    // ★ 2026-09-09 — the identity card repeated on every child sub-screen a
+    // guardian opened; "Ерөнхий мэдээлэл" already carries it once. Only the
+    // page's own back button and content survive here now.
+    await screen.findByText("Нэхэмжлэл алга");
+    expect(screen.queryByRole("heading", { name: "Ганболд Төгөлдөр" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Суралцаж байгаа")).not.toBeInTheDocument();
+  });
+
   it("shows the month, status and balance on an unpaid bill", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["PARENT"]) },

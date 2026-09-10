@@ -66,8 +66,8 @@ export interface NavItem {
 
 /**
  * A navigation section used to organize route configuration and permissions.
- * The sidebar flattens these entries into one list; section titles are not
- * shown to users.
+ * The sidebar flattens these entries into one list, and a section's title is
+ * not shown — unless it sets `collapsible`, which is what that title names.
  *
  * Every entry is a link *or* a plain, non-interactive label — never a link to
  * nowhere. `staffSections` below uses only links: a teacher's whole product
@@ -82,8 +82,19 @@ export interface NavItem {
  */
 export interface NavSection {
   title: string;
-  /** A light divider before the service/help block in the parent menu. */
-  separatorBefore?: boolean;
+  /**
+   * Renders the section as one folding row named by `title`, instead of
+   * flattening its entries into the list around it. The parent menu's
+   * "Тусламж" is the only one; see `parentSections`.
+   *
+   * ★ This replaced `separatorBefore`, which was set once and read nowhere —
+   * the divider it promised had never been drawn. A folding header separates
+   * the same two blocks and is the thing the client asked for, so the dead
+   * flag went rather than being left beside a working one.
+   */
+  collapsible?: boolean;
+  /** The mark on a `collapsible` section's own header row. */
+  icon?: ReactNode;
   entries: {
     label: string;
     href?: string;
@@ -1170,16 +1181,24 @@ function ParentSidebarContent({
           ) : null}
 
           <div data-testid="nav-sections" className="flex flex-col">
-            {sections
-              .flatMap((section) => section.entries)
-              .map((item, index) => (
-                <ParentSidebarRow
-                  key={`${item.href ?? item.label}-${index}`}
-                  item={item}
+            {sections.map((section) =>
+              section.collapsible ? (
+                <ParentSidebarDisclosure
+                  key={section.title}
+                  section={section}
                   pathname={pathname}
                   activeHref={activeHref}
                 />
-              ))}
+              ) : (
+                section.entries.map((item, index) => (
+                  <ParentSidebarRow
+                    key={`${item.href ?? item.label}-${index}`}
+                    item={item}
+                    pathname={pathname}
+                  />
+                ))
+              ),
+            )}
           </div>
         </div>
 
@@ -1192,16 +1211,63 @@ function ParentSidebarContent({
   );
 }
 
-function ParentSidebarRow({
-  item,
-  pathname,
-  activeHref,
-}: {
-  item: ParentSidebarEntry;
-  pathname: string;
-  /** The one href this rail resolved as current — see `activeHrefIn`. */
-  activeHref?: string | null;
-}) {
+/**
+ * One named group of the guardian menu, folded away until asked for.
+ *
+ * Closed on mount rather than remembered: the rows inside are read once, so
+ * the state worth restoring is the short menu, not whichever way this was
+ * left. That also keeps the phone drawer and the desktop column agreeing
+ * without anything to persist between them.
+ *
+ * The header is a `<button>`, so `MobileMenuDrawer`'s close-on-link-click —
+ * which fires on `closest("a")` — steps over it and the drawer survives the
+ * toggle. `hidden` rather than an unmount keeps the panel's ids stable for
+ * `aria-controls`.
+ */
+function ParentSidebarDisclosure({ section, pathname }: { section: NavSection; pathname: string }) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+
+  return (
+    <div className="flex flex-col">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => setOpen((current) => !current)}
+        className="flex min-h-[47px] w-full items-center gap-3 rounded-card px-3 py-2.5 text-left text-lead text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"
+      >
+        <span className="grid size-7 shrink-0 place-items-center text-sky-500">{section.icon}</span>
+        <span className="min-w-0 flex-1 leading-snug">{section.title}</span>
+        <ChevronDown
+          size={18}
+          aria-hidden="true"
+          className={cn("shrink-0 text-slate-400 transition-transform", open && "rotate-180")}
+        />
+      </button>
+
+      {/*
+        `flex` only while open: `display:flex` would beat the user agent's
+        `[hidden] { display: none }` and the panel would never actually close.
+      */}
+      <div
+        id={panelId}
+        hidden={!open}
+        className={cn("ml-[26px] flex-col border-l border-slate-100", open && "flex")}
+      >
+        {section.entries.map((item, index) => (
+          <ParentSidebarRow
+            key={`${item.href ?? item.label}-${index}`}
+            item={item}
+            pathname={pathname}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ParentSidebarRow({ item, pathname }: { item: ParentSidebarEntry; pathname: string }) {
   const active = Boolean(
     item.href?.startsWith("/") &&
     (activeHref !== undefined

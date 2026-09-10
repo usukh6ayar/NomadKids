@@ -553,12 +553,28 @@ export class MediaService {
       : this.repo.ageAlbumSummaryForStaff(childId, age);
   }
 
-  /** Archives a photo. Record access — a guardian cannot delete gallery items. */
+  /**
+   * Archives a photo.
+   *
+   * ★ Staff may archive any photograph of a child they record for. A guardian
+   * may archive **only the ones they uploaded themselves** — the same test
+   * `updateMetadata` applies, and for the same reason.
+   *
+   * This used to be staff-only, which left a family able to add a photograph
+   * to their own album and title it, but never take it back. RFP §4.4 gives
+   * them the album; an upload that cannot be undone makes a mistyped or
+   * mistaken photograph permanent, and the only remedy was to ask a teacher.
+   * Authorship, not role, is what separates the two cases — a guardian still
+   * cannot touch a teacher's photograph, and gets 404 rather than 403 for it.
+   */
   async archive(actor: Actor, mediaId: string) {
     const media = await this.repo.findForAuthorization(mediaId);
     if (!media || !media.childId) throw new NotFoundException();
 
-    await this.childAccess.assertCanRecord(actor, media.childId);
+    const facts = await this.childAccess.assertCanContributeMedia(actor, media.childId);
+    if (isGuardianOf(actor, facts) && media.uploadedById !== actor.userId) {
+      throw new NotFoundException();
+    }
 
     // Soft: the object stays in R2 until the sweep collects it, so an
     // accidental delete is recoverable for the grace period.

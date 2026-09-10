@@ -48,7 +48,13 @@ export default function ChildAssessmentsPage() {
     <div className="flex flex-col gap-6 py-2">
       <BackButton href={`/children/${childId}/general`} />
 
-      <ChildHeroProfile child={data} showHealthAlert={isStaff} />
+      {/*
+        ★ Staff only, 2026-09-09 — a guardian already knows whose record this
+        is (there is one child on their screen at a time); repeating the same
+        name/status/age card on every tab they open added nothing a parent
+        needed and was the thing they asked to stop seeing.
+      */}
+      {isStaff ? <ChildHeroProfile child={data} showHealthAlert={isStaff} /> : null}
 
       <ChildAssessments childId={childId} isStaff={isStaff} />
     </div>
