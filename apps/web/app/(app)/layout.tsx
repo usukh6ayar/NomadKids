@@ -279,7 +279,8 @@ const ROUTE_ART: Partial<Record<string, ArtName>> = {
   "/incidents": "safety",
   "/admin/groups": "group",
   "/menu": "food",
-  "/kitchen/recipes": "food",
+  "/kitchen/ingredients": "kitchenIngredients",
+  "/kitchen/recipes": "kitchenRecipeCard",
   "/finance": "finance",
   "/invoices": "finance",
   "/admin/funding": "finance",
@@ -463,7 +464,10 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
   const entry = navEntry;
 
   /** An entry only an administrator has, dropped entirely for anyone else. */
-  const adminEntry = (label: string, href: string) => (isAdmin ? [entry(label, href)] : []);
+  const adminEntry = (label: string, href: string, art?: ArtName) =>
+    isAdmin
+      ? [{ label, href, icon: art ? artIcon(art, 18) : routeIcon(href) }]
+      : [];
 
   /*
    * ★ A teacher with one group links straight at it; everybody else takes the
@@ -782,17 +786,17 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
          * rather than merely tolerable.
          */
         ...adminEntry("Цэцэрлэгийн мэдээлэл", "/admin/kindergarten"),
-        ...adminEntry("Хэрэглэгч ба эрх", "/admin/users"),
-        ...adminEntry("Хичээлийн жил", "/admin/school-years"),
-        ...adminEntry("Улирал", "/admin/terms"),
+        ...adminEntry("Хэрэглэгч ба эрх", "/admin/users", "adminUsersPermissions"),
+        ...adminEntry("Хичээлийн жил", "/admin/school-years", "adminSchoolYear"),
+        ...adminEntry("Улирал", "/admin/terms", "adminTerm"),
         /*
          * ★ Added 2026-09-10 with the four ESIS curriculum services. It sits
          * after Улирал because it answers the same kind of question — what
          * shape does the year take — and before the ESIS hub, which is the
          * operator's whole-catalog view rather than a working screen.
          */
-        ...adminEntry("Сургалтын хөтөлбөр", "/admin/curriculum"),
-        ...adminEntry("ESIS мэдээллийн төв", "/admin/integrations/esis"),
+        ...adminEntry("Сургалтын хөтөлбөр", "/admin/curriculum", "adminCurriculum"),
+        ...adminEntry("ESIS мэдээллийн төв", "/admin/integrations/esis", "adminEsisHub"),
         /*
          * ★ "Үнэлгээний тохиргоо" and "Аудит" lost their rows on 2026-09-06,
          * at the client's request — and, as with the two review queues above,
@@ -856,15 +860,15 @@ function supportNav(isCook: boolean): NavItem[] {
     ? [
         { href: "/kitchen/dashboard", label: "Самбар", icon: <LayoutGrid {...iconProps} /> },
         { href: "/menu", label: "Хоолны цэс", icon: artIcon("food", 20) },
-        { href: "/kitchen/recipes", label: "Технологийн карт", icon: artIcon("food", 20) },
+        { href: "/kitchen/recipes", label: "Технологийн карт", icon: artIcon("kitchenRecipeCard", 20) },
         { href: "/settings", label: "Цэс", icon: <Menu {...iconProps} /> },
       ]
     : [
         // ★ Самбар first, matching the cook's row above — 2026-09-09. It was
         // `/finance`, which is now the register rather than the overview.
         { href: "/finance/dashboard", label: "Самбар", icon: <LayoutGrid {...iconProps} /> },
-        { href: "/invoices", label: "Нэхэмжлэл", icon: artIcon("finance", 20) },
-        { href: "/attendance/journal", label: "Ирц", icon: artIcon("attendance", 20) },
+        { href: "/invoices", label: "Нэхэмжлэл", icon: artIcon("accountingInvoice", 20) },
+        { href: "/attendance/journal", label: "Ирц", icon: artIcon("accountingAttendanceDetails", 20) },
         { href: "/settings", label: "Цэс", icon: <Menu {...iconProps} /> },
       ];
 }
@@ -919,7 +923,7 @@ function supportSections(isCook: boolean): NavSection[] {
              * back the moment they saw the two together.
              */
             navEntry("Санхүүжилт", "/finance"),
-            navEntry("Нэхэмжлэл", "/invoices"),
+            navEntry("Нэхэмжлэл", "/invoices", "accountingInvoice"),
             /*
              * ★ Added 2026-09-02. `/admin/funding` widened to
              * `RequireRole(["ADMIN", "ACCOUNTANT"])` the same day — see that
@@ -930,7 +934,7 @@ function supportSections(isCook: boolean): NavSection[] {
              * reach by typing the URL, which is the same kind of gap this
              * screen exists to close.
              */
-            navEntry("Ирц ба тооцоолол", "/admin/funding"),
+            navEntry("Ирц ба тооцоолол", "/admin/funding", "accountingAttendanceCalculation"),
             /*
              * ★ The raw grid the figure above is computed from — child by
              * child, day by day, over any range of dates. `/admin/funding`
@@ -938,8 +942,8 @@ function supportSections(isCook: boolean): NavSection[] {
              * here, and when", which is the question that precedes it and the
              * one an accountant is asked when a number is queried.
              */
-            navEntry("Ирцийн дэлгэрэнгүй", "/attendance/journal"),
-            navEntry("Санхүүгийн аудит", "/finance/audit-log"),
+            navEntry("Ирцийн дэлгэрэнгүй", "/attendance/journal", "accountingAttendanceDetails"),
+            navEntry("Санхүүгийн аудит", "/finance/audit-log", "accountingAudit"),
           ],
     },
     {
