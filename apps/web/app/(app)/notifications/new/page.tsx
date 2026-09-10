@@ -20,8 +20,7 @@ import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Checkbox, Field, Input, Textarea } from "@/components/ui/field";
-import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
+import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
 import { ImagePlus, X } from "lucide-react";
@@ -221,6 +220,34 @@ function ComposeNotice() {
           <FormError message={publishAll.isError ? errorMessage(publishAll.error) : null} />
 
           {/*
+            ★ The category leads, and is a `<select>` — 2026-09-10, at the
+            client's request.
+
+            It was a scrolling chip row under the heading. Two things were
+            wrong with that here: it is the first decision a teacher makes —
+            what kind of notice is this — and nine chips on a phone scroll
+            sideways, so everything past "Зөвлөмж" was found by dragging. The
+            feed still filters with chips, where scanning many at once is the
+            job; choosing exactly one is a select's job.
+          */}
+          <Field label="Төрөл">
+            {({ id }) => (
+              <Select
+                id={id}
+                value={category}
+                onChange={(e) => setCategory(e.target.value as NotificationCategory)}
+                disabled={busy}
+              >
+                {NOTIFICATION_CATEGORIES.map((value) => (
+                  <option key={value} value={value}>
+                    {NOTIFICATION_CATEGORY_LABEL[value]}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+
+          {/*
             ★ No longer `required` — the client asked for it on 2026-08-30.
 
             A post can be a photograph and a sentence. Requiring a heading
@@ -241,29 +268,6 @@ function ComposeNotice() {
               />
             )}
           </Field>
-
-          {/*
-            The category, as chips rather than a `<select>`.
-
-            Nine options that are each two or three words read faster laid out
-            than opened one at a time, and this is the same control the feed
-            filters with — a teacher picking "Зарлал" here sees the chip they
-            just pressed on the list afterwards.
-          */}
-          <fieldset>
-            <legend className="mb-2 text-body font-medium text-ink">Төрөл</legend>
-            <FilterChipRow label="Мэдээний төрөл" scroll>
-              {NOTIFICATION_CATEGORIES.map((value) => (
-                <FilterChip
-                  key={value}
-                  active={category === value}
-                  onClick={() => setCategory(value)}
-                >
-                  {NOTIFICATION_CATEGORY_LABEL[value]}
-                </FilterChip>
-              ))}
-            </FilterChipRow>
-          </fieldset>
 
           <Field label="Дэлгэрэнгүй" error={errors.body} required>
             {({ id, describedBy, invalid }) => (

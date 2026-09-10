@@ -166,7 +166,7 @@ export function AudiencePicker({
         onChange={(event) => setScope(event.target.value as "all" | "named")}
         className="max-w-[280px]"
       >
-        <option value="all">Бүх бүлэг</option>
+        <option value="all">Бүх хүүхэд</option>
         <option value="named">Сонгосон бүлэг, хүүхэд</option>
       </Select>
 
@@ -194,21 +194,24 @@ export function AudiencePicker({
             )}
           </div>
 
-          <details className="rounded-card border border-border">
-            {/*
-              ★ Folded, because it is the exception.
+          {/*
+            ★ Open, not folded — 2026-09-10, at the client's request that
+            choosing from all the children be visible straight away.
 
-              A whole group is what almost every notice is for. The individual
-              children are still one click away — "эдгээр гурван гэр бүлд" is a
-              real message — but forty checkboxes should not be the first thing
-              under the group list, pushing the publish button off the screen.
-            */}
-            <summary className="cursor-pointer px-3.5 py-2.5 text-body text-ink">
+            It sat behind a `<details>` whose note said why: forty checkboxes
+            under the group list would push the publish button off a phone
+            screen. That concern is real and is answered by the height cap
+            below rather than by the fold — the list scrolls inside its own
+            220px, so it can be open without moving anything under it. What
+            the fold cost was a teacher having to know the option existed.
+          */}
+          <div className="rounded-card border border-border">
+            <p className="px-3.5 py-2.5 text-body text-ink">
               Тодорхой хүүхэд сонгох
               {childIds.length > 0 ? (
                 <span className="text-muted"> · {childIds.length} сонгосон</span>
               ) : null}
-            </summary>
+            </p>
 
             <div className="max-h-[220px] overflow-y-auto border-t border-border p-3">
               {children.isLoading ? (
@@ -230,7 +233,7 @@ export function AudiencePicker({
                 </ul>
               )}
             </div>
-          </details>
+          </div>
         </div>
       ) : null}
 
