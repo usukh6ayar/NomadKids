@@ -33,6 +33,7 @@ import {
   PenLine,
   Search,
   Pencil,
+  SlidersHorizontal,
   Trash2,
   Users,
 } from "lucide-react";
@@ -111,6 +112,7 @@ export default function NotificationsPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [datesOpen, setDatesOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setQ(searchInput.trim()), 350);
     return () => clearTimeout(t);
@@ -134,6 +136,14 @@ export default function NotificationsPage() {
   const filters = { unread: showUnreadOnly, q, groupId, category, from, to };
 
   /*
+   * How many narrowing choices are on — the number on the filter icon. The
+   * group board is not counted: it is which board this is, not a filter over
+   * it, and a teacher always has one selected.
+   */
+  const activeFilters =
+    (category ? 1 : 0) + (showUnreadOnly ? 1 : 0) + (importantOnly ? 1 : 0) + (from || to ? 1 : 0);
+
+  /*
    * ★ Two tabs, one screen — the mock-up's own pairing of Мэдээ and Судалгаа
    * under the bottom bar's single "Мэдээ" tab. Staff never sees the second
    * tab: a teacher's surveys are the ones they manage from the sidebar's own
@@ -151,6 +161,22 @@ export default function NotificationsPage() {
    * with names of groups they may not have a child in.
    */
   const boardGroups = useSwitchableGroups(isStaff);
+
+  /*
+   * ★ A teacher lands on their own group, not on an unfiltered feed.
+   *
+   * The "Бүх бүлэг" chip is administrator-only now, so leaving `groupId` empty
+   * for a teacher would show every group's board with no chip lit to say so —
+   * the state the chip row was added to end, reached by removing its escape
+   * hatch. An administrator keeps the empty default: reading across the
+   * kindergarten is what their board is for.
+   */
+  const isAdmin = hasRole("ADMIN");
+  const firstGroupId = boardGroups.data?.items[0]?.id;
+  useEffect(() => {
+    if (isAdmin || !isStaff || !firstGroupId) return;
+    setGroupId((current) => current || firstGroupId);
+  }, [isAdmin, isStaff, firstGroupId]);
 
   const myChildren = useQuery({
     queryKey: qk.myChildren(),
@@ -291,8 +317,8 @@ export default function NotificationsPage() {
         ) : null}
 
         <div className="flex flex-col gap-3 p-3 sm:p-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative w-full sm:max-w-[440px]">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <div className="relative min-w-0 flex-1 sm:max-w-[440px]">
               <Search
                 size={18}
                 aria-hidden="true"
@@ -307,6 +333,37 @@ export default function NotificationsPage() {
                 className="border-border-soft bg-canvas pl-11 focus:bg-surface"
               />
             </div>
+
+            {/*
+              ★ The filters fold behind one icon — 2026-09-10, at the client's
+              request ("шүүлтүүр гэсэн товч үсэггүй зургаар бай").
+
+              Nine categories, two flags and a date range is four rows of chips
+              above a feed, which on a phone is most of the first screen spent
+              on controls nobody has asked for yet. The icon opens them; the
+              dot on it says some are on, so a filter that is set is never
+              invisible — the same concern the date chip's own note records.
+            */}
+            {tab === "news" ? (
+              <Button
+                type="button"
+                variant={filtersOpen ? "primary" : "secondary"}
+                size="icon"
+                aria-expanded={filtersOpen}
+                aria-controls="news-filters"
+                aria-label="Шүүлтүүр"
+                className="relative shrink-0"
+                onClick={() => setFiltersOpen(!filtersOpen)}
+              >
+                <SlidersHorizontal aria-hidden="true" />
+                {activeFilters > 0 ? (
+                  <span className="absolute -right-1 -top-1 grid min-w-5 place-items-center rounded-pill bg-danger px-1 text-compact font-bold text-white">
+                    {activeFilters}
+                    <span className="sr-only">шүүлтүүр идэвхтэй</span>
+                  </span>
+                ) : null}
+              </Button>
+            ) : null}
 
             {isStaff && tab === "news" ? (
               <Button asChild className="w-full sm:ml-auto sm:w-auto">
@@ -330,11 +387,25 @@ export default function NotificationsPage() {
             audience comes first, because it is the question the other depends
             on.
           */}
+              {/*
+                ★ "Бүх бүлэг" is an administrator's chip — 2026-09-10, at the
+                client's request that a teacher see only their own group.
+
+                A director reads across the kindergarten and needs the
+                unfiltered board; a teacher's own board is their group's, and
+                offering them "all groups" invited the scroll past Наран
+                бүлэг's notices that this chip row exists to end. A teacher
+                assigned to two groups still picks between those two — the row
+                itself is unchanged, only the "everything" escape hatch is
+                administrator-only.
+              */}
               {isStaff && (boardGroups.data?.items.length ?? 0) > 1 ? (
                 <FilterChipRow label="Бүлгийн самбар">
-                  <FilterChip active={!groupId} onClick={() => setGroupId("")}>
-                    Бүх бүлэг
-                  </FilterChip>
+                  {isAdmin ? (
+                    <FilterChip active={!groupId} onClick={() => setGroupId("")}>
+                      Бүх бүлэг
+                    </FilterChip>
+                  ) : null}
                   {(boardGroups.data?.items ?? []).map((group) => (
                     <FilterChip
                       key={group.id}
@@ -347,49 +418,59 @@ export default function NotificationsPage() {
                 </FilterChipRow>
               ) : null}
 
-              <FilterChipRow label="Мэдээг ангиллаар шүүх" scroll>
-                <FilterChip
-                  active={category === null && !showUnreadOnly && !importantOnly}
-                  onClick={() => {
-                    setCategory(null);
-                    setShowUnreadOnly(false);
-                    setImportantOnly(false);
-                  }}
-                >
-                  Бүгд
-                </FilterChip>
-                {NOTIFICATION_CATEGORIES.map((value) => (
+              {/*
+                `flex` only while open: `display:flex` beats the user agent's
+                `[hidden] { display: none }`, so the panel would never close —
+                the same trap `ParentSidebarDisclosure` records.
+              */}
+              <div
+                id="news-filters"
+                hidden={!filtersOpen}
+                className={cn("flex-col gap-3", filtersOpen && "flex")}
+              >
+                <FilterChipRow label="Мэдээг ангиллаар шүүх" scroll>
                   <FilterChip
-                    key={value}
-                    active={category === value}
-                    onClick={() => setCategory(category === value ? null : value)}
+                    active={category === null && !showUnreadOnly && !importantOnly}
+                    onClick={() => {
+                      setCategory(null);
+                      setShowUnreadOnly(false);
+                      setImportantOnly(false);
+                    }}
                   >
-                    {NOTIFICATION_CATEGORY_LABEL[value]}
+                    Бүгд
                   </FilterChip>
-                ))}
-              </FilterChipRow>
+                  {NOTIFICATION_CATEGORIES.map((value) => (
+                    <FilterChip
+                      key={value}
+                      active={category === value}
+                      onClick={() => setCategory(category === value ? null : value)}
+                    >
+                      {NOTIFICATION_CATEGORY_LABEL[value]}
+                    </FilterChip>
+                  ))}
+                </FilterChipRow>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <FilterChip
-                  active={showUnreadOnly}
-                  onClick={() => {
-                    setShowUnreadOnly(!showUnreadOnly);
-                    setImportantOnly(false);
-                  }}
-                >
-                  Уншаагүй
-                </FilterChip>
-                <FilterChip
-                  active={importantOnly}
-                  onClick={() => {
-                    setImportantOnly(!importantOnly);
-                    setShowUnreadOnly(false);
-                  }}
-                >
-                  Чухал
-                </FilterChip>
+                <div className="flex flex-wrap items-center gap-2">
+                  <FilterChip
+                    active={showUnreadOnly}
+                    onClick={() => {
+                      setShowUnreadOnly(!showUnreadOnly);
+                      setImportantOnly(false);
+                    }}
+                  >
+                    Уншаагүй
+                  </FilterChip>
+                  <FilterChip
+                    active={importantOnly}
+                    onClick={() => {
+                      setImportantOnly(!importantOnly);
+                      setShowUnreadOnly(false);
+                    }}
+                  >
+                    Чухал
+                  </FilterChip>
 
-                {/*
+                  {/*
               ★ The date range is behind a toggle, not two inputs always on
               screen.
 
@@ -400,51 +481,52 @@ export default function NotificationsPage() {
               chip carries the range once it is set, so a filter that is on is
               never invisible.
             */}
-                <FilterChip active={Boolean(from || to)} onClick={() => setDatesOpen(!datesOpen)}>
-                  <CalendarRange size={14} aria-hidden="true" />
-                  {from || to ? `${from || "…"} — ${to || "…"}` : "Огноогоор"}
-                </FilterChip>
+                  <FilterChip active={Boolean(from || to)} onClick={() => setDatesOpen(!datesOpen)}>
+                    <CalendarRange size={14} aria-hidden="true" />
+                    {from || to ? `${from || "…"} — ${to || "…"}` : "Огноогоор"}
+                  </FilterChip>
 
-                {from || to ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFrom("");
-                      setTo("");
-                    }}
-                    className="text-caption text-muted underline-offset-2 hover:text-ink hover:underline"
-                  >
-                    Огноог арилгах
-                  </button>
+                  {from || to ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFrom("");
+                        setTo("");
+                      }}
+                      className="text-caption text-muted underline-offset-2 hover:text-ink hover:underline"
+                    >
+                      Огноог арилгах
+                    </button>
+                  ) : null}
+                </div>
+
+                {datesOpen ? (
+                  <div className="grid gap-3 rounded-row bg-sunken p-3 sm:max-w-[440px] sm:grid-cols-2">
+                    <Field label="Эхлэх огноо">
+                      {({ id }) => (
+                        <Input
+                          id={id}
+                          type="date"
+                          value={from}
+                          max={to || undefined}
+                          onChange={(event) => setFrom(event.target.value)}
+                        />
+                      )}
+                    </Field>
+                    <Field label="Дуусах огноо">
+                      {({ id }) => (
+                        <Input
+                          id={id}
+                          type="date"
+                          value={to}
+                          min={from || undefined}
+                          onChange={(event) => setTo(event.target.value)}
+                        />
+                      )}
+                    </Field>
+                  </div>
                 ) : null}
               </div>
-
-              {datesOpen ? (
-                <div className="grid gap-3 rounded-row bg-sunken p-3 sm:max-w-[440px] sm:grid-cols-2">
-                  <Field label="Эхлэх огноо">
-                    {({ id }) => (
-                      <Input
-                        id={id}
-                        type="date"
-                        value={from}
-                        max={to || undefined}
-                        onChange={(event) => setFrom(event.target.value)}
-                      />
-                    )}
-                  </Field>
-                  <Field label="Дуусах огноо">
-                    {({ id }) => (
-                      <Input
-                        id={id}
-                        type="date"
-                        value={to}
-                        min={from || undefined}
-                        onChange={(event) => setTo(event.target.value)}
-                      />
-                    )}
-                  </Field>
-                </div>
-              ) : null}
             </div>
           ) : null}
         </div>
