@@ -121,6 +121,9 @@ function SurveysList() {
    */
   const [creating, setCreating] = useState<SurveyKind | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [kindFilter, setKindFilter] = useState<SurveyKind | null>(null);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   const [tab, setTab] = useState<"active" | "closed">("active");
   const [category, setCategory] = useState<SurveyCategory | null>(null);
   /**
@@ -139,16 +142,28 @@ function SurveysList() {
 
   const all = surveys.data ?? [];
   const term = search.trim().toLowerCase();
+  /** How many narrowing choices are on — the number on the filter icon. */
+  const activeFilters = (category ? 1 : 0) + (kindFilter ? 1 : 0) + (from || to ? 1 : 0);
+
   const statuses = TABS.find((t) => t.key === tab)!.statuses;
 
-  const visible = all.filter(
-    (survey) =>
+  /** The date a card shows — closed, else published, else created. */
+  const surveyDay = (survey: z.infer<typeof surveySchema>) =>
+    (survey.closedAt ?? survey.publishedAt ?? survey.createdAt).slice(0, 10);
+
+  const visible = all.filter((survey) => {
+    const day = surveyDay(survey);
+    return (
       statuses.includes(survey.status) &&
       (!category || survey.category === category) &&
+      (!kindFilter || survey.kind === kindFilter) &&
+      (!from || day >= from) &&
+      (!to || day <= to) &&
       (!term ||
         survey.title.toLowerCase().includes(term) ||
-        (survey.description ?? "").toLowerCase().includes(term)),
-  );
+        (survey.description ?? "").toLowerCase().includes(term))
+    );
+  });
 
   /** The tab counts, which the filters above must not change — see `TabPill`. */
   const countFor = (key: "active" | "closed") =>
@@ -206,9 +221,10 @@ function SurveysList() {
             onClick={() => setFiltersOpen(!filtersOpen)}
           >
             <SlidersHorizontal aria-hidden="true" />
-            {category ? (
+            {activeFilters > 0 ? (
               <span className="absolute -right-1 -top-1 grid min-w-5 place-items-center rounded-pill bg-danger px-1 text-compact font-bold text-white">
-                1<span className="sr-only">шүүлтүүр идэвхтэй</span>
+                {activeFilters}
+                <span className="sr-only">шүүлтүүр идэвхтэй</span>
               </span>
             ) : null}
           </Button>
@@ -219,6 +235,30 @@ function SurveysList() {
           hidden={!filtersOpen}
           className={cn("flex-col gap-3", filtersOpen && "flex")}
         >
+          {/*
+            ★ Three questions behind the icon, not one — 2026-09-10.
+
+            Which kind, which subject, and when. They are separate rows because
+            they are separate questions: a chip row that mixed "Асуулга" with
+            "Сэтгэл ханамжийн судалгаа" would read as one set of alternatives
+            and behave as two, which is the same mistake the class board's own
+            filter note records avoiding.
+          */}
+          <FilterChipRow label="Төрлөөр шүүх">
+            <FilterChip active={kindFilter === null} onClick={() => setKindFilter(null)}>
+              Бүгд
+            </FilterChip>
+            {SURVEY_KINDS.map((value) => (
+              <FilterChip
+                key={value}
+                active={kindFilter === value}
+                onClick={() => setKindFilter(kindFilter === value ? null : value)}
+              >
+                {SURVEY_KIND_LABEL[value]}
+              </FilterChip>
+            ))}
+          </FilterChipRow>
+
           <FilterChipRow label="Судалгааны ангиллаар шүүх" scroll>
             <FilterChip active={category === null} onClick={() => setCategory(null)}>
               Бүгд
@@ -229,6 +269,37 @@ function SurveysList() {
               </FilterChip>
             ))}
           </FilterChipRow>
+
+          {/*
+            The range filters on whichever date describes the survey's own
+            state — closed, else published, else created — which is the date
+            the card shows. Filtering on `createdAt` while the card reads
+            "хаагдсан 9-р сарын 2" would be a list that disagrees with itself.
+          */}
+          <div className="grid gap-2 sm:max-w-[420px] sm:grid-cols-2">
+            <Field label="Эхлэх огноо">
+              {({ id }) => (
+                <Input
+                  id={id}
+                  type="date"
+                  value={from}
+                  max={to || undefined}
+                  onChange={(e) => setFrom(e.target.value)}
+                />
+              )}
+            </Field>
+            <Field label="Дуусах огноо">
+              {({ id }) => (
+                <Input
+                  id={id}
+                  type="date"
+                  value={to}
+                  min={from || undefined}
+                  onChange={(e) => setTo(e.target.value)}
+                />
+              )}
+            </Field>
+          </div>
         </div>
 
         {/*
@@ -512,7 +583,14 @@ function SurveyCard({ survey }: { survey: z.infer<typeof surveySchema> }) {
               <meta.Icon size={22} />
             </span>
 
-            <div className="flex flex-wrap justify-end gap-1.5">
+            {/*
+              ★ `pe-9` — 2026-09-10. The overflow menu is absolutely positioned
+              over this same corner, so without a reserved lane the two
+              overlapped: the status badge sat under the three dots. The menu's
+              trigger is a 44px icon button inset by 8px, and 36px of padding
+              plus the row's own gap clears it.
+            */}
+            <div className="flex flex-wrap justify-end gap-1.5 pe-9">
               <Badge tone={meta.tone}>{meta.label}</Badge>
               <Badge tone={STATUS_TONE[survey.status]}>{STATUS_LABEL[survey.status]}</Badge>
             </div>

@@ -28,10 +28,11 @@ const CHILD_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 const SURVEY = {
   id: SURVEY_ID,
-  title: "Сэтгэл ханамжийн судалгаа",
+  title: "Намрын эцэг эхийн уулзалт",
   description: null,
   category: "SATISFACTION",
   scope: "CHILD",
+  kind: "FORM",
   status: "PUBLISHED",
   questions: [],
   group: null,
@@ -40,10 +41,20 @@ const SURVEY = {
   closedAt: null,
 };
 
+/** A poll from an earlier month — what the kind and date filters exclude. */
+const OLD_POLL = {
+  ...SURVEY,
+  id: "88888888-8888-4888-8888-888888888888",
+  title: "Зугаалгын санал асуулга",
+  kind: "POLL",
+  createdAt: "2026-07-01T00:00:00.000Z",
+  publishedAt: "2026-07-02T00:00:00.000Z",
+};
+
 function stubSurveys() {
   return stubApi([
     { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-    { path: `/kindergartens/${KINDERGARTEN_ID}/surveys`, body: [SURVEY] },
+    { path: `/kindergartens/${KINDERGARTEN_ID}/surveys`, body: [SURVEY, OLD_POLL] },
     {
       path: `/surveys/${SURVEY_ID}/participation`,
       method: "GET",
@@ -179,5 +190,71 @@ describe("the two create buttons", () => {
 
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByRole("radio", { name: /Судалгаа/ })).toBeChecked();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Narrowing the list
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("the survey filters", () => {
+  const openFilters = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(await screen.findByRole("button", { name: "Шүүлтүүр" }));
+  };
+
+  /*
+   * ★ Three separate rows, because they are three separate questions. A chip
+   * row mixing "Асуулга" with "Сэтгэл ханамжийн судалгаа" would read as one
+   * set of alternatives and behave as two.
+   */
+  it("narrows by kind", async () => {
+    const user = userEvent.setup();
+    stubSurveys();
+    renderWithProviders(<SurveysPage />);
+    await screen.findByText(SURVEY.title);
+
+    await openFilters(user);
+    const kinds = screen.getByRole("group", { name: "Төрлөөр шүүх" });
+    await user.click(within(kinds).getByRole("button", { name: "Асуулга" }));
+
+    await waitFor(() => expect(screen.queryByText(SURVEY.title)).not.toBeInTheDocument());
+    expect(screen.getByText(OLD_POLL.title)).toBeInTheDocument();
+  });
+
+  /*
+   * The range filters on the date the *card shows* — closed, else published,
+   * else created. Filtering on `createdAt` while the card reads a later
+   * publication date would be a list that disagrees with itself.
+   */
+  it("narrows by the date the card shows", async () => {
+    const user = userEvent.setup();
+    stubSurveys();
+    renderWithProviders(<SurveysPage />);
+    await screen.findByText(SURVEY.title);
+
+    await openFilters(user);
+    await user.type(screen.getByLabelText("Эхлэх огноо"), "2026-08-01");
+
+    await waitFor(() => expect(screen.queryByText(OLD_POLL.title)).not.toBeInTheDocument());
+    expect(screen.getByText(SURVEY.title)).toBeInTheDocument();
+  });
+
+  it("counts every narrowing choice on the icon", async () => {
+    const user = userEvent.setup();
+    stubSurveys();
+    renderWithProviders(<SurveysPage />);
+    await screen.findByText(SURVEY.title);
+
+    const trigger = screen.getByRole("button", { name: "Шүүлтүүр" });
+    expect(within(trigger).queryByText("1")).not.toBeInTheDocument();
+
+    await user.click(trigger);
+    const kinds = screen.getByRole("group", { name: "Төрлөөр шүүх" });
+    await user.click(within(kinds).getByRole("button", { name: "Асуулга" }));
+    await waitFor(() => expect(within(trigger).getByText("1")).toBeInTheDocument());
+
+    await user.type(screen.getByLabelText("Эхлэх огноо"), "2026-08-01");
+    // A range counts once however many of its two ends are set.
+    await waitFor(() => expect(within(trigger).getByText("2")).toBeInTheDocument());
   });
 });

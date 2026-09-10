@@ -61,11 +61,17 @@ describe("communications redesign", () => {
     // `hidden` takes the panel out of the accessibility tree, so the chips are
     // not merely invisible — `getByRole` cannot reach them at all.
     expect(
-      within(toolbar as HTMLElement).queryByRole("button", { name: "Бүгд" }),
+      within(toolbar as HTMLElement).queryByRole("group", { name: "Судалгааны ангиллаар шүүх" }),
     ).not.toBeInTheDocument();
 
     await userEvent.setup().click(filters);
-    expect(within(toolbar as HTMLElement).getByRole("button", { name: "Бүгд" })).toBeVisible();
+
+    // Two rows carry a "Бүгд" now — one for the kind, one for the category —
+    // so the assertion names which row it means.
+    const categories = within(toolbar as HTMLElement).getByRole("group", {
+      name: "Судалгааны ангиллаар шүүх",
+    });
+    expect(within(categories).getByRole("button", { name: "Бүгд" })).toBeVisible();
 
     await waitFor(() => expect(screen.getByText("Судалгаа алга")).toBeInTheDocument());
     expect(container.querySelectorAll('[data-ui="communications-toolbar"]')).toHaveLength(1);
