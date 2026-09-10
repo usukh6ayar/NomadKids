@@ -1048,9 +1048,17 @@ export function hasOptionList(type: SurveyQuestionType): boolean {
 export const surveyKindSchema = z.enum(["POLL", "FORM"]);
 export type SurveyKind = z.infer<typeof surveyKindSchema>;
 
+/*
+ * ★ "Асуулга" and "Судалгаа" — the client's own words, 2026-09-10.
+ *
+ * They were "Пол" and "Форм судалгаа": one a transliteration of an English
+ * word and the other a compound nobody says. The enum values stay `POLL` and
+ * `FORM`, which is the point of keeping labels out of the enum — renaming what
+ * a teacher reads is a one-line change here and not a migration.
+ */
 export const SURVEY_KIND_LABEL: Record<SurveyKind, string> = {
-  POLL: "Пол",
-  FORM: "Форм судалгаа",
+  POLL: "Асуулга",
+  FORM: "Судалгаа",
 };
 
 /** The one-line description each kind carries on the composer's two tabs. */

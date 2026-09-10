@@ -196,7 +196,21 @@ export class DashboardRepository {
 
     return this.prisma.notification.findFirst({
       where: { deletedAt: null, status: "PUBLISHED", kindergartenId: { in: kindergartenIds } },
-      orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+      /*
+       * ★ `id` last, as a tiebreak — 2026-09-10.
+       *
+       * Two notices published inside the same millisecond tie on both dates,
+       * and an `ORDER BY` with no unique final term lets Postgres return
+       * either — so the same data answered differently between runs. `id` is
+       * not chronological and is not pretending to be: when the timestamps are
+       * equal "most recent" has no answer, and what this buys is that the
+       * answer at least stops changing under the reader's feet.
+       *
+       * Found by `dashboard.test.ts`'s own board-notice case failing in a full
+       * run and passing alone — the shape CLAUDE.md §4.4 warns not to wave
+       * through, which here had a real cause.
+       */
+      orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
       select: {
         id: true,
         title: true,

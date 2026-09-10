@@ -1267,14 +1267,26 @@ describe("this month's birthdays", () => {
 });
 
 describe("the class board notice", () => {
+  /**
+   * ★ `publishedAt` is passed in, not `new Date()` — 2026-09-10.
+   *
+   * Two notices created back to back can land on the same millisecond, and
+   * `createdAt` ties with them; the ordering then has no unique term and
+   * Postgres may return either. "Shows the most recent" was therefore testing
+   * a coin flip, and lost one in a full run. Distinct times make it test
+   * recency; the repository gained an `id` tiebreak for the case where two
+   * really are simultaneous.
+   */
+  let publishedTick = 0;
   async function publish(title: string | null) {
+    publishedTick += 1;
     const notice = await db.notification.create({
       data: {
         kindergartenId: a.kindergarten.id,
         title,
         body: "Ангийн хурал болно.",
         status: "PUBLISHED",
-        publishedAt: new Date(),
+        publishedAt: new Date(Date.now() + publishedTick * 1000),
         authorId: a.teacherUser.id,
       },
     });

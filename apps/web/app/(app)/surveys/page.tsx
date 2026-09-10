@@ -113,7 +113,13 @@ const TABS = [
 
 function SurveysList() {
   const { primaryKindergartenId } = useSession();
-  const [creating, setCreating] = useState(false);
+  /**
+   * Which kind is being created, or `null` for "no dialog open".
+   *
+   * ★ Not a boolean any more: the two buttons above choose the kind, and the
+   * dialog needs to open on it rather than on its own default.
+   */
+  const [creating, setCreating] = useState<SurveyKind | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [tab, setTab] = useState<"active" | "closed">("active");
   const [category, setCategory] = useState<SurveyCategory | null>(null);
@@ -225,10 +231,30 @@ function SurveysList() {
           </FilterChipRow>
         </div>
 
-        <Button block onClick={() => setCreating(true)} className="sm:w-auto sm:self-start">
-          <Plus size={18} aria-hidden="true" />
-          Санал асуулга үүсгэх
-        </Button>
+        {/*
+          ★ Two buttons, not one — 2026-09-10, at the client's request.
+
+          "Санал асуулга үүсгэх" opened a dialog whose first control was the
+          choice between the two kinds, so the decision was made twice: once by
+          pressing the button and again inside it. Naming the kinds on the
+          buttons makes the press *be* the choice, and the dialog opens on the
+          title with the kind already settled.
+
+          The radio inside stays and is still what the dialog reads — see
+          `CreateSurveyDialog`. What these do is seed it.
+        */}
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:self-start">
+          {SURVEY_KINDS.map((value) => (
+            <Button
+              key={value}
+              variant={value === "FORM" ? "primary" : "secondary"}
+              onClick={() => setCreating(value)}
+            >
+              <Plus size={18} aria-hidden="true" />
+              {SURVEY_KIND_LABEL[value]}
+            </Button>
+          ))}
+        </div>
 
         <div
           role="tablist"
@@ -256,7 +282,7 @@ function SurveysList() {
         <EmptyState
           title="Судалгаа алга"
           description="Эхний судалгаагаа үүсгэж эхэлнэ үү."
-          action={<Button onClick={() => setCreating(true)}>Шинэ судалгаа</Button>}
+          action={<Button onClick={() => setCreating("FORM")}>Шинэ судалгаа</Button>}
         />
       ) : null}
 
@@ -302,7 +328,8 @@ function SurveysList() {
       {creating && primaryKindergartenId ? (
         <CreateSurveyDialog
           kindergartenId={primaryKindergartenId}
-          onClose={() => setCreating(false)}
+          initialKind={creating}
+          onClose={() => setCreating(null)}
         />
       ) : null}
     </div>
@@ -645,9 +672,12 @@ function ParticipationList({
 
 function CreateSurveyDialog({
   kindergartenId,
+  initialKind,
   onClose,
 }: {
   kindergartenId: string;
+  /** Which button opened it — the choice is made before the dialog appears. */
+  initialKind: SurveyKind;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -662,7 +692,7 @@ function CreateSurveyDialog({
    * means every group rather than a frozen list of the ones that exist today.
    */
   const [groupId, setGroupId] = useState("");
-  const [kind, setKind] = useState<SurveyKind>("POLL");
+  const [kind, setKind] = useState<SurveyKind>(initialKind);
   /**
    * The optional closing date, as the `yyyy-mm-dd` an `<input type="date">`
    * produces. Empty means no deadline, which the client asked to keep possible.

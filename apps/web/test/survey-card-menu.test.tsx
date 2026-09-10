@@ -135,3 +135,49 @@ describe("a survey card's menu", () => {
     );
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Choosing what to create
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("the two create buttons", () => {
+  /*
+   * ★ One button opened a dialog whose first control was the choice between
+   * the two kinds, so the decision was made twice — once by pressing the
+   * button and again inside it. Naming the kinds on the buttons makes the
+   * press *be* the choice.
+   */
+  it("names both kinds in the client's words", async () => {
+    stubSurveys();
+    renderWithProviders(<SurveysPage />);
+
+    // "Пол" and "Форм судалгаа" until 2026-09-10: a transliteration and a
+    // compound nobody says.
+    expect(await screen.findByRole("button", { name: /Асуулга/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Судалгаа$/ })).toBeInTheDocument();
+  });
+
+  it("opens the dialog on the kind that was pressed", async () => {
+    const user = userEvent.setup();
+    stubSurveys();
+    renderWithProviders(<SurveysPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Асуулга/ }));
+
+    const dialog = await screen.findByRole("dialog");
+    // The radio inside is still what the dialog reads; the button seeds it.
+    expect(within(dialog).getByRole("radio", { name: /Асуулга/ })).toBeChecked();
+    expect(within(dialog).getByRole("radio", { name: /Судалгаа/ })).not.toBeChecked();
+  });
+
+  it("opens on Судалгаа when that is the one pressed", async () => {
+    const user = userEvent.setup();
+    stubSurveys();
+    renderWithProviders(<SurveysPage />);
+
+    await user.click(await screen.findByRole("button", { name: /^Судалгаа$/ }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("radio", { name: /Судалгаа/ })).toBeChecked();
+  });
+});
