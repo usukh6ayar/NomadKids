@@ -446,9 +446,20 @@ longer carries `quantity × unitAmount`) are in `docs/FINANCE_MODULE.md` §1.
   "Ирц–санхүүжилтийн тулгалт" is the monthly register, which shipped with §6 and
   already exports. ★ A `FINANCE_REPORT` job carries **no `childId`**, which is
   what keeps every `canAccessChild`-gated report route from ever serving one
-- §14 the financial audit log — **partial**: `AuditLog` records every financial
-  action, but not consistently as `Өмнөх утга → Шинэ утга`, and the reversal
-  rule for confirmed transactions is not built
+- §14 the financial audit log — **partial**, and half of it is now done.
+  ★ **The reversal rule is built**, which this line said it was not until
+  2026-09-11. `Payment.reversalOfId`, `InvoicesRepository.voidPayment()` — it
+  sets `voidedAt` on the original and inserts a reversing row rather than
+  touching the amount — and it refuses to void a reversal, because voiding a
+  reversal is not a thing this schema can express. The dashboard counts the
+  void, since the reversal is what cancels it, and `finance-reports` reads
+  `reversalOfId`. That is §14's "Залруулга эсвэл reversal transaction
+  ашиглана", and the ★ below §16 already treats it as the rule.
+  **What is still missing is `Өмнөх утга → Шинэ утга`**, and the measure is
+  exact: of the fourteen `audit.append()` calls across `invoices.service.ts`
+  and `funding.service.ts`, twelve carry `metadata` but only **two** carry a
+  `before` — `voidPayment` and `markRefunded`. Everything else records what the
+  value became and not what it was.
 - §15 the external-ID history — **not started**
 
 ★ §14 asks that a confirmed financial transaction is **never deleted** —
