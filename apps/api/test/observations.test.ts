@@ -28,7 +28,7 @@ import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
  *  - a teacher's observation is APPROVED on save; a parent's is PENDING
  *  - a teacher's note is private by default; a parent's own note is not
  *  - a guardian sees `visible AND approved`, OR their own submission
- *  - a guardian may edit their own submission only until it is approved
+ *  - a guardian may edit their own submission; reviewed text returns to queue
  */
 
 let app: INestApplication;
@@ -253,6 +253,20 @@ describe("filing rules", () => {
     expect(res.status).toBe(201);
   });
 
+  it("stores the parent screen's selected category as the observation type", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/parent-observations`),
+      parentA,
+    ).send({ observedOn: "2026-02-11", situation: "Ярилцсан", categoryCode: "conversation" });
+
+    expect(res.status).toBe(201);
+    const row = await db.observation.findUniqueOrThrow({
+      where: { id: res.body.id },
+      include: { type: true },
+    });
+    expect(row.type.code).toBe("conversation");
+  });
+
   it("a TEACHER cannot use the parent route", async () => {
     // Would misattribute the note in the family's report.
     const res = await authed(
@@ -334,7 +348,7 @@ describe("editing", () => {
     expect(res.body.situation).toBe("Засварласан");
   });
 
-  it("a guardian CANNOT edit once a teacher has approved it", async () => {
+  it("a guardian edit after approval returns the note to review", async () => {
     const id = await parentObservation();
     await authed(request(server()).post(`/v1/observations/${id}/review`), teacherA).send({
       decision: "APPROVED",
@@ -344,10 +358,8 @@ describe("editing", () => {
       situation: "Дараа нь засах оролдлого",
     });
 
-    // 403 with a reason, not 404: the parent can see this record, so telling
-    // them "speak to the teacher" is more useful than pretending it vanished.
-    expect(res.status).toBe(403);
-    expect(res.body.detail).toContain("Багштайгаа холбогдоно уу");
+    expect(res.status).toBe(200);
+    expect(res.body.reviewStatus).toBe("PENDING");
   });
 
   it("a guardian CANNOT edit another guardian's submission", async () => {
@@ -661,8 +673,16 @@ describe("filters and lifecycle", () => {
     expect(row.deletedAt).not.toBeNull();
   });
 
-  it("a guardian cannot archive", async () => {
+  it("a guardian can archive their own pending submission", async () => {
     const id = await parentObservation();
+    expect((await authed(request(server()).delete(`/v1/observations/${id}`), parentA)).status).toBe(
+      200,
+    );
+    expect((await db.observation.findUniqueOrThrow({ where: { id } })).deletedAt).not.toBeNull();
+  });
+
+  it("a guardian cannot archive a teacher observation", async () => {
+    const id = await teacherObservation({ visibleToParents: true });
     expect((await authed(request(server()).delete(`/v1/observations/${id}`), parentA)).status).toBe(
       404,
     );

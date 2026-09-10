@@ -53,10 +53,9 @@ describe("guardianMayEdit", () => {
     expect(guardianMayEdit({ ...own, reviewStatus: "RETURNED" }, "parent-1").allowed).toBe(true);
   });
 
-  it("REFUSES once a teacher has approved it, and says why", () => {
+  it("allows the author to revise an approved submission for re-review", () => {
     const result = guardianMayEdit({ ...own, reviewStatus: "APPROVED" }, "parent-1");
-    expect(result.allowed).toBe(false);
-    expect(result.reason).toContain("Багштайгаа холбогдоно уу");
+    expect(result.allowed).toBe(true);
   });
 
   it("refuses another guardian's submission", () => {
