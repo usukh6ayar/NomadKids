@@ -45,6 +45,11 @@ function stubSummary(days: { date: string; counts: Partial<typeof ZERO> }[]) {
   ]);
 }
 
+/** One labelled figure in the month header, by the label above it. */
+function fact(label: string): HTMLElement {
+  return screen.getByText(label).parentElement!;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -74,7 +79,9 @@ describe("the month report", () => {
     await user.clear(field);
     await user.type(field, "18");
 
-    await waitFor(() => expect(screen.getByText(/1\/18 бүртгэсэн/)).toBeInTheDocument());
+    // The figures are labelled facts now, not a sentence: the label names the
+    // question and the value under it answers it.
+    await waitFor(() => expect(fact("Бүртгэсэн")).toHaveTextContent("1/18"));
   });
 
   /*
@@ -92,7 +99,9 @@ describe("the month report", () => {
 
     // The month is in the past, so every one of its 20 weekdays has elapsed
     // and none remain.
-    expect(await screen.findByText(/2\/20 бүртгэсэн · 0 үлдсэн/)).toBeInTheDocument();
+    await screen.findByText("2026 оны 2-р сар");
+    expect(fact("Бүртгэсэн")).toHaveTextContent("2/20");
+    expect(fact("Үлдсэн")).toHaveTextContent("0");
   });
 
   /*

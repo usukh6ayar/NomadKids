@@ -37,6 +37,16 @@ import { ATTENDANCE_STATUS_CHART_TONE, ATTENDANCE_STATUS_ORDER } from "@/lib/att
  * on a calendar — the same definition the funding register uses. A weekend
  * padded in as a zero column would read as a day the whole group missed.
  */
+/** One labelled figure in the month's header row. */
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="truncate text-caption text-muted">{label}</dt>
+      <dd className="mt-0.5 text-title font-bold leading-none tabular-nums text-ink">{value}</dd>
+    </div>
+  );
+}
+
 /**
  * Weekdays in `YYYY-MM`, and how many of them have already passed.
  *
@@ -258,41 +268,52 @@ export function AttendanceMonthPanel({
         />
       ) : null}
 
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h3 className="flex flex-wrap items-baseline gap-x-1.5 text-lead font-semibold text-ink">
-          <span>{monthLabel} · ажлын</span>
-          {/*
-            ★ Auto from the calendar, and correctable — the client asked for
-            both. Mon–Fri is right for most months and wrong for the ones with
-            a public holiday in them, and nothing in the product carries a
-            holiday calendar to know which. So the number is computed and the
-            teacher can say otherwise.
+      {/*
+        ★ Four labelled facts, not one sentence — 2026-09-10, at the client's
+        request that these numbers be easier to take in.
 
-            ★★ It does not persist. There is nowhere to put it: a working-day
-            count is a fact about a kindergarten's month, which by §2.3 would
-            be a table rather than a column somewhere, and inventing one to
-            hold a number nobody has asked to store yet is the wrong order.
-            Typing over it corrects the two figures below for this visit.
-          */}
-          <input
-            type="number"
-            min={0}
-            max={31}
-            value={workingDays}
-            aria-label={`${monthLabel}-ийн ажлын хоног`}
-            onChange={(event) => setWorkingDays(Number(event.target.value))}
-            className="w-14 rounded-control border border-border bg-surface px-1.5 py-0.5 text-center text-lead font-semibold tabular-nums text-ink focus-visible:outline-2 focus-visible:outline-primary"
-          />
-          <span>хоног</span>
-        </h3>
-        {/*
-          Two facts, not one: how much of the month is filled in, and how much
-          of it is still to come. "8 өдөр бүртгэсэн" alone cannot tell a teacher
-          whether they are up to date or four days behind.
-        */}
-        <p className="text-caption text-muted">
-          {recordedDays}/{elapsedDays} бүртгэсэн · {remainingDays} үлдсэн · {roster} хүүхэд
-        </p>
+        It read "2026 оны 9-р сар · ажлын [22] хоног" with an editable box
+        wedged mid-sentence, and a second line running four more figures
+        together with dots between them. Nobody could tell at a glance which
+        number answered which question. Each now carries its own label above
+        it, and the month is a heading rather than the first clause of a
+        sentence about something else.
+      */}
+      <div className="flex flex-col gap-3">
+        <h3 className="text-lead font-semibold text-ink">{monthLabel}</h3>
+
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
+          <div className="min-w-0">
+            <dt className="text-caption text-muted">Ажлын хоног</dt>
+            <dd className="mt-0.5">
+              {/*
+                ★ Auto from the calendar, and correctable — the client asked
+                for both. Mon–Fri is right for most months and wrong for the
+                ones with a public holiday in them, and nothing in the product
+                carries a holiday calendar to know which.
+
+                ★★ It does not persist. There is nowhere to put it: a
+                working-day count is a fact about a kindergarten's month, which
+                by §2.3 would be a table rather than a column invented to hold
+                a number nobody has asked to store yet. Typing over it corrects
+                the figures beside it for this visit.
+              */}
+              <input
+                type="number"
+                min={0}
+                max={31}
+                value={workingDays}
+                aria-label={`${monthLabel}-ийн ажлын хоног`}
+                onChange={(event) => setWorkingDays(Number(event.target.value))}
+                className="w-16 rounded-control border border-border bg-surface px-2 py-0.5 text-title font-bold tabular-nums text-ink focus-visible:outline-2 focus-visible:outline-primary"
+              />
+            </dd>
+          </div>
+
+          <Fact label="Бүртгэсэн" value={`${recordedDays}/${elapsedDays}`} />
+          <Fact label="Үлдсэн" value={String(remainingDays)} />
+          <Fact label="Хүүхэд" value={String(roster)} />
+        </dl>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,260px)] xl:gap-6">

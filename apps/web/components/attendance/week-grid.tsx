@@ -153,9 +153,19 @@ export function AttendanceWeekGrid({
             >
               <span className="sr-only">Дугаар</span>
             </th>
+            {/*
+              ★ `w-full` on the name — 2026-09-10, at the client's request that
+              the name and the week sit closer together.
+
+              A table shares slack among its columns, so five 36px day columns
+              in a 390px row left ~180px of nothing between the name and Monday.
+              Giving the *name* the full-width claim makes it absorb all of it:
+              the day columns close up to their own width and the register
+              reads as one block instead of two halves either side of a gap.
+            */}
             <th
               scope="col"
-              className="px-1 py-2.5 text-left text-caption font-medium text-muted sm:px-2"
+              className="w-full px-1 py-2.5 text-left text-caption font-medium text-muted sm:px-2"
             >
               Хүүхэд
             </th>
@@ -166,7 +176,7 @@ export function AttendanceWeekGrid({
                   key={day}
                   scope="col"
                   className={cn(
-                    "w-9 px-0.5 py-2.5 text-center text-caption font-medium sm:w-12 sm:px-1",
+                    "w-9 px-0 py-2.5 text-center text-caption font-medium sm:w-10 sm:px-0.5",
                     isWeekend(day)
                       ? "bg-canvas text-faint"
                       : cn(
@@ -193,7 +203,7 @@ export function AttendanceWeekGrid({
                     key={key}
                     scope="col"
                     className={cn(
-                      "w-9 px-0.5 py-2.5 text-center text-caption font-semibold text-ink sm:w-12 sm:px-1",
+                      "w-9 px-0 py-2.5 text-center text-caption font-semibold text-ink sm:w-10 sm:px-0.5",
                       index === 0 && "border-l border-border",
                     )}
                   >
@@ -218,14 +228,14 @@ export function AttendanceWeekGrid({
                 name against five date columns, and the dates are the part that
                 must not shrink.
               */}
-              <td className="max-w-[92px] truncate px-1 py-2 text-caption font-medium text-ink sm:max-w-none sm:px-2 sm:text-body">
+              <td className="truncate px-1 py-2 text-caption font-medium text-ink sm:px-2 sm:text-body">
                 {shortName(row.child)}
               </td>
               {data.days.map((day) => (
                 <td
                   key={day}
                   className={cn(
-                    "px-0.5 py-1.5 sm:px-1 sm:py-2",
+                    "px-0 py-1.5 sm:px-0.5 sm:py-2",
                     isWeekend(day) ? "bg-canvas" : day === editableDay && "bg-sky/25",
                   )}
                 >
@@ -260,7 +270,7 @@ export function AttendanceWeekGrid({
                       <td
                         key={key}
                         className={cn(
-                          "px-0.5 py-2 text-center text-compact tabular-nums sm:px-1 sm:text-caption",
+                          "px-0 py-2 text-center text-compact tabular-nums sm:px-0.5 sm:text-caption",
                           index === 0 && "border-l border-border",
                           key === "TOTAL" ? "font-bold text-ink" : "text-muted",
                         )}
@@ -288,7 +298,7 @@ export function AttendanceWeekGrid({
                 <td
                   key={day}
                   className={cn(
-                    "px-0.5 py-0.5 text-center tabular-nums sm:px-1",
+                    "px-0 py-0.5 text-center tabular-nums sm:px-0.5",
                     isWeekend(day)
                       ? "bg-canvas text-faint"
                       : cn("text-ink", day === editableDay && "bg-sky/25"),
@@ -312,7 +322,7 @@ export function AttendanceWeekGrid({
               <td
                 key={day}
                 className={cn(
-                  "px-0.5 pb-1 pt-0.5 text-center font-bold tabular-nums sm:px-1",
+                  "px-0 pb-1 pt-0.5 text-center font-bold tabular-nums sm:px-0.5",
                   isWeekend(day)
                     ? "bg-canvas text-faint"
                     : cn("text-ink", day === editableDay && "rounded-b-control bg-sky/25"),

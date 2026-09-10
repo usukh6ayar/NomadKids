@@ -389,55 +389,53 @@ function GroupAttendance() {
         graphs to be one, and they were answering the same question a scroll
         apart.
       */}
-      <Card className="px-4 py-4 sm:px-5">
+      {/*
+        ★ One row on a phone too — the client asked for the three to stay
+        together. `min-w-0` on the field wrapper is what makes it possible:
+        a `<input type="date">` carries a wide intrinsic size, so without it
+        the pair refuses to shrink and pushes Хайх onto its own line.
+      */}
+      <form
+        className="flex items-end gap-2 sm:gap-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          applyRange();
+        }}
+      >
+        <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 sm:gap-3">
+          <Field label="Эхлэх огноо">
+            {({ id }) => (
+              <Input
+                id={id}
+                type="date"
+                max={draftTo}
+                value={draftFrom}
+                onChange={(e) => setDraftFrom(e.target.value)}
+              />
+            )}
+          </Field>
+          <Field label="Дуусах огноо">
+            {({ id }) => (
+              <Input
+                id={id}
+                type="date"
+                max={today()}
+                value={draftTo}
+                onChange={(e) => setDraftTo(e.target.value)}
+              />
+            )}
+          </Field>
+        </div>
         {/*
-          ★ One row on a phone too — the client asked for the three to stay
-          together. `min-w-0` on the field wrapper is what makes it possible:
-          a `<input type="date">` carries a wide intrinsic size, so without it
-          the pair refuses to shrink and pushes Хайх onto its own line.
+          The label goes at `sm`, leaving the magnifier: three controls on a
+          390px row cannot all carry words, and the icon is the one of the
+          three whose meaning survives without them.
         */}
-        <form
-          className="flex items-end gap-2 sm:gap-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            applyRange();
-          }}
-        >
-          <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 sm:gap-3">
-            <Field label="Эхлэх огноо">
-              {({ id }) => (
-                <Input
-                  id={id}
-                  type="date"
-                  max={draftTo}
-                  value={draftFrom}
-                  onChange={(e) => setDraftFrom(e.target.value)}
-                />
-              )}
-            </Field>
-            <Field label="Дуусах огноо">
-              {({ id }) => (
-                <Input
-                  id={id}
-                  type="date"
-                  max={today()}
-                  value={draftTo}
-                  onChange={(e) => setDraftTo(e.target.value)}
-                />
-              )}
-            </Field>
-          </div>
-          {/*
-            The label goes at `sm`, leaving the magnifier: three controls on a
-            390px row cannot all carry words, and the icon is the one of the
-            three whose meaning survives without them.
-          */}
-          <Button type="submit" variant="secondary" size="sm" className="shrink-0 sm:h-[48px]">
-            <Search aria-hidden />
-            <span className="sr-only sm:not-sr-only">Хайх</span>
-          </Button>
-        </form>
-      </Card>
+        <Button type="submit" variant="secondary" size="sm" className="shrink-0 sm:h-[48px]">
+          <Search aria-hidden />
+          <span className="sr-only sm:not-sr-only">Хайх</span>
+        </Button>
+      </form>
 
       {sheet.isLoading ? <LoadingState rows={6} shape="register" /> : null}
 
@@ -670,11 +668,16 @@ function RegisterPanels({
         own border, radius and hover written inline, which is how a screen ends
         up with two button languages a few pixels apart.
 
+        ★★ They wrap rather than squeeze. Forcing the three onto one 390px row
+        truncated all three labels to a few characters each, which is worse
+        than a second line: "Ирцийн дэлг…" beside "Чөлөөний ху…" tells a
+        teacher nothing the icons had not already said.
+
         The open one is `primary` and the rest are `secondary`: that is the
         same pair the register's own controls use above, so "this is the one
         you are looking at" reads the same way twice on one page.
       */}
-      <div className="flex gap-2 sm:gap-2.5">
+      <div className="flex flex-wrap gap-2 sm:gap-2.5">
         {doors.map((door) => {
           const active = open === door.key;
           const Icon = door.icon;
@@ -683,13 +686,12 @@ function RegisterPanels({
               key={door.key}
               variant={active ? "primary" : "secondary"}
               size="sm"
-              className="min-w-0 flex-1 px-2 sm:flex-none sm:px-4"
               aria-expanded={active}
               aria-controls={panelId}
               onClick={() => setOpen(active ? null : door.key)}
             >
               <Icon aria-hidden />
-              <span className="truncate">{door.label}</span>
+              {door.label}
               {door.count > 0 ? (
                 <span
                   className={cn(

@@ -287,10 +287,20 @@ export default function NotificationsPage() {
       <section
         aria-label={tab === "news" ? "Мэдээний удирдлага" : "Судалгааны удирдлага"}
         data-ui="communications-toolbar"
-        className="overflow-hidden rounded-card border border-border bg-surface shadow-sm"
+        /*
+         * ★ No card around the controls — 2026-09-10, at the client's request
+         * that the box behind "Мэдээ хайх" and "Шинэ мэдээ" go.
+         *
+         * The feed under it is a column of cards, so a bordered panel above
+         * them read as one more card that happened to hold controls, and its
+         * padding pushed the first post further down a phone screen. The
+         * guardian's tab strip keeps its own surface below — that one is a
+         * control that needs a ground to sit on.
+         */
+        className="flex flex-col gap-3"
       >
         {isGuardian ? (
-          <div className="border-b border-border-soft bg-sunken p-1.5">
+          <div className="rounded-card bg-sunken p-1.5">
             <div
               role="tablist"
               aria-label="Мэдээ эсвэл судалгаа"
@@ -316,7 +326,7 @@ export default function NotificationsPage() {
           </div>
         ) : null}
 
-        <div className="flex flex-col gap-3 p-3 sm:p-4">
+        <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <div className="relative min-w-0 flex-1 sm:max-w-[440px]">
               <Search
@@ -597,17 +607,25 @@ export default function NotificationsPage() {
               aria-labelledby="news-feed-heading"
               className="flex w-full max-w-[920px] flex-col gap-3"
             >
-              <div className="flex flex-wrap items-end justify-between gap-2">
-                <div>
-                  <h2 id="news-feed-heading" className="text-title font-semibold text-ink">
-                    {boardName}
-                  </h2>
-                  <p className="mt-0.5 text-body text-muted" aria-live="polite">
-                    {data?.pages[0]?.total ?? 0} мэдээ
-                    {showUnreadOnly ? " · зөвхөн уншаагүй" : ""}
-                    {importantOnly ? " · зөвхөн чухал" : ""}
-                  </p>
-                </div>
+              {/*
+                ★ The heading is `sr-only` — 2026-09-10, at the client's
+                request ("Дэлбээ бүлэг / 3 мэдээ энэ бичиг арилга").
+
+                The chip row above already names whose board this is, and the
+                count restated what the feed under it shows. Two lines of
+                chrome between the filters and the first post is what a reader
+                came past, not for. It stays in the accessibility tree, because
+                a section that `aria-labelledby` points at must have something
+                to point at — and the live count goes with it, so a screen
+                reader is still told when filtering changes the total.
+              */}
+              <div className="sr-only">
+                <h2 id="news-feed-heading">{boardName}</h2>
+                <p aria-live="polite">
+                  {data?.pages[0]?.total ?? 0} мэдээ
+                  {showUnreadOnly ? " · зөвхөн уншаагүй" : ""}
+                  {importantOnly ? " · зөвхөн чухал" : ""}
+                </p>
               </div>
 
               {/*
@@ -1010,17 +1028,20 @@ function NotificationRow({
       be marked three ways and the brief calls out that a dot alone is not
       enough.
 
-      Unread now carries a 3px brand rule down its leading edge plus the
-      resting card shadow, so it reads as raised and flagged; read notices lose
-      the shadow and sit flat on the canvas. Together with the heavier title,
-      the "Шинэ" badge and the `sr-only` "Уншаагүй" already present, that is
-      four signals and none of them is colour alone.
+      ★★ The 3px brand rule down the leading edge went on 2026-09-10, at the
+      client's request. It was one of four signals and the only one that was
+      pure decoration on the card's edge; the three that carry the meaning
+      remain — an unread notice sits raised on `bg-surface` with the resting
+      shadow while a read one lies flat on the canvas, its title is heavier,
+      and it carries the "Шинэ" badge and the `sr-only` "Уншаагүй". So the rule
+      the paragraph above states is intact: none of what is left is colour
+      alone.
     */
     <article
       className={cn(
         "flex flex-col gap-2.5 rounded-card border p-4 transition-all duration-150",
         isUnread
-          ? "border-l-[3px] border-border border-l-primary bg-surface shadow-sm hover:border-primary/50 hover:border-l-primary hover:shadow-md"
+          ? "border-border bg-surface shadow-sm hover:border-primary/50 hover:shadow-md"
           : "border-border-soft bg-canvas hover:border-border",
       )}
     >
