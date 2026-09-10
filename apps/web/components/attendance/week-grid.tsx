@@ -165,7 +165,7 @@ export function AttendanceWeekGrid({
             */}
             <th
               scope="col"
-              className="w-full px-1 py-2.5 text-left text-caption font-medium text-muted sm:px-2"
+              className="w-full py-2 pe-1 ps-0.5 text-left text-compact font-medium text-muted sm:py-2.5 sm:pe-2 sm:ps-1 sm:text-caption"
             >
               Хүүхэд
             </th>
@@ -176,7 +176,7 @@ export function AttendanceWeekGrid({
                   key={day}
                   scope="col"
                   className={cn(
-                    "w-9 px-0 py-2.5 text-center text-caption font-medium sm:w-10 sm:px-0.5",
+                    "w-8 px-0 py-2 text-center text-compact font-medium sm:w-10 sm:py-2.5 sm:text-caption",
                     isWeekend(day)
                       ? "bg-canvas text-faint"
                       : cn(
@@ -203,7 +203,7 @@ export function AttendanceWeekGrid({
                     key={key}
                     scope="col"
                     className={cn(
-                      "w-9 px-0 py-2.5 text-center text-caption font-semibold text-ink sm:w-10 sm:px-0.5",
+                      "w-8 px-0 py-2 text-center text-compact font-semibold text-ink sm:w-10 sm:py-2.5 sm:text-caption",
                       index === 0 && "border-l border-border",
                     )}
                   >
@@ -228,14 +228,14 @@ export function AttendanceWeekGrid({
                 name against five date columns, and the dates are the part that
                 must not shrink.
               */}
-              <td className="truncate px-1 py-2 text-caption font-medium text-ink sm:px-2 sm:text-body">
+              <td className="truncate py-1 pe-1 ps-0.5 text-caption font-medium text-ink sm:py-1.5 sm:pe-2 sm:ps-1 sm:text-body">
                 {shortName(row.child)}
               </td>
               {data.days.map((day) => (
                 <td
                   key={day}
                   className={cn(
-                    "px-0 py-1.5 sm:px-0.5 sm:py-2",
+                    "px-0 py-1 sm:px-0.5 sm:py-1.5",
                     isWeekend(day) ? "bg-canvas" : day === editableDay && "bg-sky/25",
                   )}
                 >

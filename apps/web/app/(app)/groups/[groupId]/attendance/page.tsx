@@ -3,17 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import {
-  CalendarRange,
-  CheckCircle2,
-  Database,
-  MailQuestion,
-  Pencil,
-  Save,
-  Search,
-  Send,
-  X,
-} from "lucide-react";
+import { CalendarRange, CheckCircle2, Database, MailQuestion, Search } from "lucide-react";
 import { z } from "zod";
 import {
   attendanceRecordSchema,
@@ -35,7 +25,6 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TableShell, Td, Th } from "@/components/ui/table";
-import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import {
   AttendanceRequestQueue,
@@ -390,50 +379,42 @@ function GroupAttendance() {
         apart.
       */}
       {/*
-        ★ One row on a phone too — the client asked for the three to stay
-        together. `min-w-0` on the field wrapper is what makes it possible:
-        a `<input type="date">` carries a wide intrinsic size, so without it
-        the pair refuses to shrink and pushes Хайх onto its own line.
+        ★ Quiet — 2026-09-10, at the client's request that this stop drawing
+        the eye.
+
+        It is how you change *which* week you are looking at, not the work, and
+        two 48px fields under their own labels announced it as the first task
+        on the screen. Two small controls on one line now, labels folded into
+        `aria-label`, against the register below which is what the page is for.
       */}
       <form
-        className="flex items-end gap-2 sm:gap-3"
+        className="flex items-center gap-1.5"
         onSubmit={(event) => {
           event.preventDefault();
           applyRange();
         }}
       >
-        <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 sm:gap-3">
-          <Field label="Эхлэх огноо">
-            {({ id }) => (
-              <Input
-                id={id}
-                type="date"
-                max={draftTo}
-                value={draftFrom}
-                onChange={(e) => setDraftFrom(e.target.value)}
-              />
-            )}
-          </Field>
-          <Field label="Дуусах огноо">
-            {({ id }) => (
-              <Input
-                id={id}
-                type="date"
-                max={today()}
-                value={draftTo}
-                onChange={(e) => setDraftTo(e.target.value)}
-              />
-            )}
-          </Field>
-        </div>
-        {/*
-          The label goes at `sm`, leaving the magnifier: three controls on a
-          390px row cannot all carry words, and the icon is the one of the
-          three whose meaning survives without them.
-        */}
-        <Button type="submit" variant="secondary" size="sm" className="shrink-0 sm:h-[48px]">
+        <input
+          type="date"
+          aria-label="Эхлэх огноо"
+          max={draftTo}
+          value={draftFrom}
+          onChange={(e) => setDraftFrom(e.target.value)}
+          className="min-w-0 flex-1 rounded-control border border-border-soft bg-canvas px-2 py-1.5 text-caption text-muted focus:bg-surface focus:text-ink focus-visible:outline-2 focus-visible:outline-primary"
+        />
+        <span aria-hidden="true" className="shrink-0 text-caption text-faint">
+          —
+        </span>
+        <input
+          type="date"
+          aria-label="Дуусах огноо"
+          max={today()}
+          value={draftTo}
+          onChange={(e) => setDraftTo(e.target.value)}
+          className="min-w-0 flex-1 rounded-control border border-border-soft bg-canvas px-2 py-1.5 text-caption text-muted focus:bg-surface focus:text-ink focus-visible:outline-2 focus-visible:outline-primary"
+        />
+        <Button type="submit" variant="ghost" size="icon" className="shrink-0" aria-label="Хайх">
           <Search aria-hidden />
-          <span className="sr-only sm:not-sr-only">Хайх</span>
         </Button>
       </form>
 
@@ -443,11 +424,11 @@ function GroupAttendance() {
 
       {sheet.data ? (
         <>
-          <SectionHeader
-            title="Бүлгийн ирц"
-            action={<span className="text-body text-muted">{sheet.data.length} хүүхэд</span>}
-          />
-
+          {/*
+            ★ No "Бүлгийн ирц" heading — 2026-09-10, at the client's request.
+            The grid under it is unmistakably the register, and the headcount
+            it carried is the last row of the grid's own tally.
+          */}
           {sheet.data.length === 0 ? (
             <EmptyState
               title="Бүлэгт хүүхэд алга"
@@ -512,7 +493,6 @@ function GroupAttendance() {
                   onClick={cancelEdit}
                   disabled={save.isPending}
                 >
-                  <X aria-hidden />
                   <span className="truncate">Болих</span>
                 </Button>
               ) : (
@@ -523,7 +503,6 @@ function GroupAttendance() {
                   onClick={beginEdit}
                   disabled={closedDay}
                 >
-                  <Pencil aria-hidden />
                   <span className="truncate">Засах</span>
                 </Button>
               )}
@@ -534,7 +513,6 @@ function GroupAttendance() {
                 onClick={() => save.mutate()}
                 disabled={save.isPending || dirtyEntries.length === 0}
               >
-                <Save aria-hidden />
                 <span className="truncate">
                   {save.isPending
                     ? "Бүртгэж байна…"
@@ -551,7 +529,6 @@ function GroupAttendance() {
                 onClick={() => submitEsis.mutate()}
                 disabled={editing || !esisPreview.data || submitEsis.isPending}
               >
-                <Send aria-hidden />
                 <span className="truncate">
                   {submitEsis.isPending
                     ? "Илгээж байна…"
@@ -668,16 +645,20 @@ function RegisterPanels({
         own border, radius and hover written inline, which is how a screen ends
         up with two button languages a few pixels apart.
 
-        ★★ They wrap rather than squeeze. Forcing the three onto one 390px row
-        truncated all three labels to a few characters each, which is worse
-        than a second line: "Ирцийн дэлг…" beside "Чөлөөний ху…" tells a
-        teacher nothing the icons had not already said.
+        ★★ One row at every width, with every word — 2026-09-10.
+
+        They wrapped to a second line for a while, which the client did not
+        want either. What makes three full labels fit a 390px row is dropping
+        the icons below `sm` and stepping the type down to `text-compact`:
+        "Ирцийн дэлгэрэнгүй · Чөлөөний хүсэлт · Esis ирц" is 41 characters, and
+        at 11px with 6px of padding each that is about 360px. The icons return
+        at `sm`, where there is room for both.
 
         The open one is `primary` and the rest are `secondary`: that is the
         same pair the register's own controls use above, so "this is the one
         you are looking at" reads the same way twice on one page.
       */}
-      <div className="flex flex-wrap gap-2 sm:gap-2.5">
+      <div className="flex gap-1.5 sm:gap-2.5">
         {doors.map((door) => {
           const active = open === door.key;
           const Icon = door.icon;
@@ -686,16 +667,17 @@ function RegisterPanels({
               key={door.key}
               variant={active ? "primary" : "secondary"}
               size="sm"
+              className="min-w-0 flex-1 px-1.5 text-compact sm:flex-none sm:px-4 sm:text-body"
               aria-expanded={active}
               aria-controls={panelId}
               onClick={() => setOpen(active ? null : door.key)}
             >
-              <Icon aria-hidden />
+              <Icon aria-hidden className="hidden sm:block" />
               {door.label}
               {door.count > 0 ? (
                 <span
                   className={cn(
-                    "grid min-w-6 place-items-center rounded-pill px-1.5 text-caption font-bold",
+                    "grid min-w-4 shrink-0 place-items-center rounded-pill px-1 text-compact font-bold sm:min-w-6 sm:px-1.5 sm:text-caption",
                     active ? "bg-white/25 text-primary-ink" : "bg-danger text-white",
                   )}
                 >

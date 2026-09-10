@@ -451,6 +451,26 @@ describe("the register's controls", () => {
     expect(screen.queryByText(/хадгалагдаагүй байна/)).not.toBeInTheDocument();
   });
 
+  /*
+   * ★ The heading went, and the fields' labels folded into `aria-label` —
+   * both at the client's request that the top of the screen stop competing
+   * with the register. What must not go with them is the naming: a date field
+   * a screen reader calls "blank" is not quieter, it is broken.
+   */
+  it("keeps the register's controls named after their labels were folded away", async () => {
+    stubRegister();
+    renderWithProviders(<GroupAttendancePage />);
+    await grid();
+
+    expect(screen.getByLabelText("Эхлэх огноо")).toHaveAttribute("type", "date");
+    expect(screen.getByLabelText("Дуусах огноо")).toHaveAttribute("type", "date");
+    expect(screen.getByRole("button", { name: "Хайх" })).toBeInTheDocument();
+
+    // The grid below is unmistakably the register; the heading restated it and
+    // its headcount is the tally's own last row.
+    expect(screen.queryByRole("heading", { name: "Бүлгийн ирц" })).not.toBeInTheDocument();
+  });
+
   it("applies a new span only when Хайх is pressed", async () => {
     const user = userEvent.setup();
     const api = stubRegister();
