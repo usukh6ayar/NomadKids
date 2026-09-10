@@ -118,7 +118,7 @@ describe("growth age navigation and editing", () => {
       "Миний цэцэрлэгтээ сурсан зүйлс",
       "Миний гэр бүлээсээ суралцсан зүйлс",
       "Миний зан араншин",
-      "Гэр бүл",
+      "Миний гэр бүл",
     ]) {
       expect(screen.getByRole("heading", { name: title })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: `${title} тэмдэглэх` })).toBeInTheDocument();
@@ -206,7 +206,7 @@ describe("growth age navigation and editing", () => {
     });
     renderWithProviders(<AgeProfilePage />);
 
-    await openEditor(user, "Гэр бүл");
+    await openEditor(user, "Миний гэр бүл");
     const description = screen.getByRole("textbox", {
       name: "Гэр бүлийн тухай, хамтдаа хийх дуртай зүйлс",
     });
@@ -215,7 +215,7 @@ describe("growth age navigation and editing", () => {
 
     expect(await screen.findAllByText("Түр хүлээгээд дахин оролдоно уу.")).toHaveLength(2);
     expect(description).toHaveValue("Амралтын өдөр хамт ном уншдаг.");
-    expect(screen.getByRole("dialog", { name: "Гэр бүл" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Миний гэр бүл" })).toBeInTheDocument();
   });
 
   it("compares each question across ages and marks empty cells with a dash", async () => {
@@ -252,7 +252,7 @@ describe("growth age navigation and editing", () => {
       "Миний цэцэрлэгтээ сурсан зүйлс",
       "Миний гэр бүлээсээ суралцсан зүйлс",
       "Миний зан араншин",
-      "Гэр бүл",
+      "Миний гэр бүл",
     ]) {
       expect(within(table).getByRole("rowheader", { name: title })).toBeInTheDocument();
     }

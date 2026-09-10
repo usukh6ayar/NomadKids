@@ -680,7 +680,7 @@ export function FamilyCard({
   return (
     <>
       <ProfileCard
-        title="Гэр бүл"
+        title="Миний гэр бүл"
         tone="orange"
         hasContent={rows.length > 0}
         emptyPrompt="Гэр бүлийнхээ тухай нандин дурсамжаа тэмдэглээрэй."
@@ -697,7 +697,7 @@ export function FamilyCard({
         open={open}
         onOpenChange={(next) => (next ? setOpen(true) : close())}
         busy={save.isPending}
-        title="Гэр бүл"
+        title="Миний гэр бүл"
         description={`${age} насны гэр бүлийн мэдээлэл.`}
         footer={<DialogActions formId={formId} busy={save.isPending} onCancel={close} />}
       >
