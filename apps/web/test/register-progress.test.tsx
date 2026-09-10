@@ -5,13 +5,18 @@ import { RegisterProgress } from "@/components/register/register-progress";
 /**
  * The strip above the three group registers.
  *
- * ★ What these protect is that it says the *actionable* number.
+ * ★ The headline is the *count*, and the line under it is what remains —
+ * 2026-09-10, at the client's request.
  *
- * "14 бүртгэсэн" is a fact about the past; "4 үлдсэн" is the instruction, and a
- * teacher stops when it reaches zero. A regression that swapped them would
- * still render a plausible summary — so the headline is asserted directly,
- * along with the two things a summary must never do: invent a count for an
- * empty group, or report a negative remainder.
+ * It used to lead with "4 үлдсэн" and say "Бүгд бүртгэгдсэн" at the end. The
+ * client could not read the finished state: "all registered" is a state, and a
+ * teacher checking a register wants a number they can compare with the
+ * children in front of them. Both facts are still on the strip; which one is
+ * the headline is what changed, so both are asserted directly — a regression
+ * that swapped them back would still render a plausible summary.
+ *
+ * The other two remain what they were: never invent a count for an empty
+ * group, never report a negative remainder.
  */
 
 const BREAKDOWN = [
@@ -21,17 +26,20 @@ const BREAKDOWN = [
 ];
 
 describe("бүртгэлийн явц", () => {
-  it("leads with how many are left, not how many are done", () => {
+  it("leads with the number registered, and still says what is left", () => {
     render(<RegisterProgress recorded={14} total={18} breakdown={BREAKDOWN} />);
 
-    expect(screen.getByText("4 үлдсэн")).toBeInTheDocument();
-    expect(screen.getByText("14/18 бүртгэсэн")).toBeInTheDocument();
+    expect(screen.getByText("14 хүүхэд бүртгэсэн")).toBeInTheDocument();
+    expect(screen.getByText("18 хүүхдээс · 4 үлдсэн")).toBeInTheDocument();
   });
 
-  it("says so when the register is finished", () => {
+  it("counts rather than announcing a state when the register is finished", () => {
     render(<RegisterProgress recorded={18} total={18} breakdown={BREAKDOWN} />);
 
-    expect(screen.getByText("Бүгд бүртгэгдсэн")).toBeInTheDocument();
+    // "Бүгд бүртгэгдсэн" was the headline here and could not be compared with
+    // anything; the count can.
+    expect(screen.getByText("18 хүүхэд бүртгэсэн")).toBeInTheDocument();
+    expect(screen.getByText("18 хүүхдээс бүгд")).toBeInTheDocument();
     expect(screen.queryByText("0 үлдсэн")).not.toBeInTheDocument();
   });
 
@@ -87,8 +95,10 @@ describe("бүртгэлийн явц", () => {
   it("does not claim progress for a group with no children", () => {
     render(<RegisterProgress recorded={0} total={0} breakdown={[]} />);
 
+    // The ring draws its own "—" for a percentage of nothing, so the strip
+    // carries two: this asserts the sub-line, not whichever came first.
     expect(screen.getByText("Хүүхэд алга")).toBeInTheDocument();
-    expect(screen.getByText("0/0 бүртгэсэн")).toBeInTheDocument();
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 
   /**
@@ -108,7 +118,7 @@ describe("бүртгэлийн явц", () => {
   it("takes the verb from the caller", () => {
     render(<RegisterProgress recorded={3} total={9} verb="үнэлсэн" breakdown={[]} />);
 
-    expect(screen.getByText("3/9 үнэлсэн")).toBeInTheDocument();
+    expect(screen.getByText("3 хүүхэд үнэлсэн")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "9 хүүхдээс 3 нь үнэлсэн" })).toBeInTheDocument();
   });
 
@@ -122,6 +132,7 @@ describe("бүртгэлийн явц", () => {
   it("clamps the remainder at zero rather than going negative", () => {
     render(<RegisterProgress recorded={20} total={18} breakdown={[]} />);
 
-    expect(screen.getByText("Бүгд бүртгэгдсэн")).toBeInTheDocument();
+    expect(screen.getByText("18 хүүхдээс бүгд")).toBeInTheDocument();
+    expect(screen.queryByText(/-2 үлдсэн/)).not.toBeInTheDocument();
   });
 });

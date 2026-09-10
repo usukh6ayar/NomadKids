@@ -34,6 +34,13 @@ const RECORD_A = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const MONTH_START = `${TODAY.slice(0, 7)}-01`;
+/** The Monday of the week today falls in — the register's own default span. */
+const MONDAY = (() => {
+  const date = new Date(`${TODAY}T00:00:00.000Z`);
+  const weekday = date.getUTCDay();
+  date.setUTCDate(date.getUTCDate() - (weekday === 0 ? 6 : weekday - 1));
+  return date.toISOString().slice(0, 10);
+})();
 /** A day that is always in the span and never today — the read-only column. */
 const EARLIER = `${TODAY.slice(0, 7)}-01`;
 
@@ -224,14 +231,26 @@ describe("the teacher's week register", () => {
     expect(await screen.findByText(/Ирц авсан бүлгийн багш/)).toBeInTheDocument();
   });
 
-  it("asks the API for the span the two date fields describe", async () => {
+  /*
+   * ★ The week, not the month so far — the client's own reading: "тухайн 7
+   * хоног харагдахад л болох юм байна".
+   *
+   * It opened on the first of the month, so by the end of September the sheet
+   * was twenty-two columns wide and a teacher scrolled sideways past three
+   * weeks they had already filed to reach today.
+   */
+  it("opens on the week the chosen day sits in", async () => {
     const api = stubRegister();
     renderWithProviders(<GroupAttendancePage />);
     await grid();
 
     const call = api.calls.find((item) => item.url.includes("/attendance/range"));
-    expect(call?.url).toContain(`from=${MONTH_START}`);
+    expect(call?.url).toContain(`from=${MONDAY}`);
     expect(call?.url).toContain(`to=${TODAY}`);
+
+    // Monday, whatever day the test runs on — and never after today.
+    expect(new Date(`${MONDAY}T00:00:00.000Z`).getUTCDay()).toBe(1);
+    expect(MONDAY <= TODAY).toBe(true);
   });
 });
 

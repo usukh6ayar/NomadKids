@@ -3,7 +3,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { CheckCircle2, Pencil, Save, Search, Send, X } from "lucide-react";
+import {
+  CalendarRange,
+  CheckCircle2,
+  Database,
+  MailQuestion,
+  Pencil,
+  Save,
+  Search,
+  Send,
+  X,
+} from "lucide-react";
 import { z } from "zod";
 import {
   attendanceRecordSchema,
@@ -47,6 +57,20 @@ const daySheetSchema = z.array(groupAttendanceRowSchema);
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * The Monday of the week `iso` falls in.
+ *
+ * ★ Monday, not Sunday. A Mongolian kindergarten week runs Даваа–Баасан, and
+ * `getUTCDay()` calls Sunday 0 — so Sunday has to reach *back* six days rather
+ * than forward one, which is the off-by-one this exists to name.
+ */
+function mondayOf(iso: string): string {
+  const date = new Date(`${iso}T00:00:00.000Z`);
+  const weekday = date.getUTCDay();
+  date.setUTCDate(date.getUTCDate() - (weekday === 0 ? 6 : weekday - 1));
+  return date.toISOString().slice(0, 10);
 }
 
 /**
@@ -120,7 +144,16 @@ function GroupAttendance() {
    * being written — and is simply the right-hand end of that span, so `?date=`
    * from the director's register still lands on the day it names.
    */
-  const [from, setFrom] = useState(() => `${date.slice(0, 7)}-01`);
+  /*
+   * ★ The week the chosen day sits in — 2026-09-10, at the client's request
+   * ("тухайн 7 хоног харагдахад л болох юм байна").
+   *
+   * It opened on the first of the month, so by the end of September the
+   * register was twenty-two columns wide and a teacher scrolled sideways past
+   * three weeks they had already filed to reach today. A week is what the
+   * sheet is for; the month is `Ирцийн дэлгэрэнгүй` one button below.
+   */
+  const [from, setFrom] = useState(() => mondayOf(date));
   /*
    * What the two fields hold, which is not yet what the grid is showing.
    * "Хайх" copies them across — see the card below for why the range is not
@@ -460,7 +493,7 @@ function GroupAttendance() {
             one addition, and only while there is a draft to abandon.
           */}
           {rows.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               {editing ? (
                 <Button variant="secondary" onClick={cancelEdit} disabled={save.isPending}>
                   <X aria-hidden /> Болих
@@ -581,9 +614,14 @@ function RegisterPanels({
   const panelId = "register-panel";
 
   const doors = [
-    { key: "journal" as const, label: "Ирцийн дэлгэрэнгүй", count: 0 },
-    { key: "requests" as const, label: "Чөлөөний хүсэлт", count: pendingRequests },
-    { key: "esis" as const, label: "Esis ирц", count: 0 },
+    { key: "journal" as const, label: "Ирцийн дэлгэрэнгүй", count: 0, icon: CalendarRange },
+    {
+      key: "requests" as const,
+      label: "Чөлөөний хүсэлт",
+      count: pendingRequests,
+      icon: MailQuestion,
+    },
+    { key: "esis" as const, label: "Esis ирц", count: 0, icon: Database },
   ];
 
   return (
@@ -592,36 +630,42 @@ function RegisterPanels({
         Ирцийн нэмэлт хэсгүүд
       </h2>
 
+      {/*
+        ★ The product's own `Button`, not a hand-rolled pill — 2026-09-10, at
+        the client's request that these match everything else. The row had its
+        own border, radius and hover written inline, which is how a screen ends
+        up with two button languages a few pixels apart.
+
+        The open one is `primary` and the rest are `secondary`: that is the
+        same pair the register's own controls use above, so "this is the one
+        you are looking at" reads the same way twice on one page.
+      */}
       <div className="flex flex-wrap gap-2.5">
         {doors.map((door) => {
           const active = open === door.key;
+          const Icon = door.icon;
           return (
-            <button
+            <Button
               key={door.key}
-              type="button"
+              variant={active ? "primary" : "secondary"}
               aria-expanded={active}
               aria-controls={panelId}
               onClick={() => setOpen(active ? null : door.key)}
-              className={cn(
-                "inline-flex min-h-11 items-center gap-2 rounded-pill border px-5 text-body font-medium transition-colors",
-                active
-                  ? "border-primary bg-primary text-primary-ink"
-                  : "border-border bg-surface text-ink hover:bg-canvas",
-              )}
             >
+              <Icon aria-hidden />
               {door.label}
               {door.count > 0 ? (
                 <span
                   className={cn(
                     "grid min-w-6 place-items-center rounded-pill px-1.5 text-caption font-bold",
-                    active ? "bg-primary-ink/20 text-primary-ink" : "bg-danger text-white",
+                    active ? "bg-white/25 text-primary-ink" : "bg-danger text-white",
                   )}
                 >
                   {door.count}
                   <span className="sr-only">хүлээгдэж буй</span>
                 </span>
               ) : null}
-            </button>
+            </Button>
           );
         })}
       </div>

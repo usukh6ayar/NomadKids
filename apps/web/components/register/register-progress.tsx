@@ -99,9 +99,14 @@ export function RegisterProgress({
         else in the product the figure is repeated as text on the same card.
       */}
       <div className="flex items-center gap-3">
+        {/*
+          `md` inset, `lg` standalone — one step up from what this used to
+          draw, at the client's request. The ring is the only thing on the
+          strip a teacher reads from across a room.
+        */}
         <Ring
           percent={percent}
-          size="sm"
+          size={inset ? "md" : "lg"}
           tone={remaining === 0 ? "mint" : "sky"}
           muted={total === 0}
           label={`${total} хүүхдээс ${recorded} нь ${verb}`}
@@ -131,14 +136,21 @@ export function RegisterProgress({
               says the same nothing twice; naming the reason says why the
               register below is empty.
             */}
-            {total === 0
-              ? "Хүүхэд алга"
-              : remaining === 0
-                ? "Бүгд бүртгэгдсэн"
-                : `${remaining} үлдсэн`}
+            {/*
+              ★ The count, not "Бүгд бүртгэгдсэн" — 2026-09-10, at the client's
+              request. "All registered" is a state, and a teacher checking a
+              register wants the number: it is what they compare against the
+              children in front of them, and "бүгд" cannot be compared with
+              anything. The line below still says what is left.
+            */}
+            {total === 0 ? "Хүүхэд алга" : `${recorded} хүүхэд ${verb}`}
           </p>
           <p className="text-caption tabular-nums text-muted">
-            {recorded}/{total} {verb}
+            {total === 0
+              ? "—"
+              : remaining === 0
+                ? `${total} хүүхдээс бүгд`
+                : `${total} хүүхдээс · ${remaining} үлдсэн`}
           </p>
         </div>
       </div>

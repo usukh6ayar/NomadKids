@@ -134,6 +134,28 @@ describe("the month report", () => {
     );
   });
 
+  /*
+   * ★ The caption read "Өдөр бүрийн ирц — 76% сарын дунджаар", which puts two
+   * measurements in one sentence: the words describe the daily columns and the
+   * percentage describes the month. The client could not tell which number
+   * belonged to which, so each is now a named figure of its own.
+   */
+  it("names the day figure and the month figure separately", async () => {
+    stubSummary([
+      // 4 of 5 present, then 3 of 6 — 70% across the month, 50% on the last day.
+      { date: "2026-02-02", counts: { PRESENT: 4, SICK: 1 } },
+      { date: "2026-02-03", counts: { PRESENT: 3, SICK: 3 } },
+    ]);
+    renderWithProviders(<AttendanceMonthPanel groupId={GROUP} month={MONTH} />);
+
+    // The last day that carries a register, named by its own date.
+    expect(await screen.findByText("2/3 — ирсэн")).toBeInTheDocument();
+    expect(screen.getByText(/3\/6 хүүхэд/)).toBeInTheDocument();
+
+    expect(screen.getByText("Сарын дундаж — ирсэн")).toBeInTheDocument();
+    expect(screen.getByText(/2 өдрийн дунджаар/)).toBeInTheDocument();
+  });
+
   it("breaks the month down by status, each in its own colour", async () => {
     stubSummary([{ date: "2026-02-02", counts: { PRESENT: 4, SICK: 2, EXCUSED: 1, ABSENT: 1 } }]);
     renderWithProviders(<AttendanceMonthPanel groupId={GROUP} month={MONTH} />);

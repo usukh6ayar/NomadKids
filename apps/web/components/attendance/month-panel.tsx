@@ -193,6 +193,24 @@ export function AttendanceMonthPanel({
    * and cut at three: this is a prompt to ring a family, not a second roster —
    * the sheet below already lists everyone.
    */
+  /*
+   * The most recent day that carries a register — the "today" figure whenever
+   * today has been filled in, and the last one filed otherwise. Taken from
+   * `days` rather than from the calendar so it can never name a day nobody
+   * registered.
+   */
+  const lastRecorded = days.at(-1) ?? null;
+  const lastDay = lastRecorded
+    ? (() => {
+        const marks = Object.values(lastRecorded.counts).reduce((sum, n) => sum + n, 0);
+        const here = lastRecorded.counts.PRESENT + lastRecorded.counts.HALF_DAY;
+        return { here, marks, percent: marks === 0 ? 0 : Math.round((here / marks) * 100) };
+      })()
+    : null;
+  const lastDayLabel = lastRecorded
+    ? `${Number(lastRecorded.date.slice(5, 7))}/${Number(lastRecorded.date.slice(8))}`
+    : null;
+
   const absentees = children
     .map((row) => ({
       name: `${row.child.lastName} ${row.child.firstName}`,
@@ -277,14 +295,51 @@ export function AttendanceMonthPanel({
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,260px)] xl:gap-6">
-        <div className="flex flex-col gap-2">
-          <p className="text-caption text-muted">
-            {recent.length === recordedDays
-              ? "Өдөр бүрийн ирц"
-              : `Сүүлийн ${recent.length} өдрийн ирц`}{" "}
-            — <span className="font-semibold text-ink">{share(attended)}%</span> сарын дунджаар
-          </p>
-          <ColumnChart columns={columns} height={104} />
+        <div className="flex flex-col gap-3">
+          {/*
+            ★ Two named figures above the chart — 2026-09-10, at the client's
+            request. The caption read "Өдөр бүрийн ирц — 76% сарын дунджаар",
+            which puts two different measurements in one sentence and leaves
+            the reader to work out which number belongs to which: the words
+            are about the daily columns and the percentage is about the month.
+
+            Named separately, each says what it is and over what. "Ирсэн" is
+            PRESENT + HALF_DAY on both, so the day and the month are the same
+            question asked over different spans rather than two definitions.
+          */}
+          <dl className="flex flex-wrap gap-x-6 gap-y-2">
+            <div>
+              <dt className="text-caption text-muted">
+                {lastDayLabel ? `${lastDayLabel} — ирсэн` : "Сүүлийн өдөр"}
+              </dt>
+              <dd className="text-title font-bold tabular-nums text-ink">
+                {lastDay ? `${lastDay.percent}%` : "—"}
+                {lastDay ? (
+                  <span className="ms-1.5 text-caption font-normal text-muted">
+                    {lastDay.here}/{lastDay.marks} хүүхэд
+                  </span>
+                ) : null}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-caption text-muted">Сарын дундаж — ирсэн</dt>
+              <dd className="text-title font-bold tabular-nums text-ink">
+                {share(attended)}%
+                <span className="ms-1.5 text-caption font-normal text-muted">
+                  {recordedDays} өдрийн дунджаар
+                </span>
+              </dd>
+            </div>
+          </dl>
+
+          <div className="flex flex-col gap-1.5">
+            <p className="text-caption text-muted">
+              {recent.length === recordedDays
+                ? "Өдөр бүрийн ирсэн хувь"
+                : `Сүүлийн ${recent.length} өдрийн ирсэн хувь`}
+            </p>
+            <ColumnChart columns={columns} height={104} />
+          </div>
         </div>
 
         {/*
