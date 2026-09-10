@@ -30,7 +30,6 @@ import { LikeButton } from "@/components/notifications/like-button";
 import { ChildAvatar, MediaThumb } from "@/components/media/media-image";
 import { useSession } from "@/lib/auth/session";
 import {
-  Building2,
   CalendarRange,
   ChevronRight,
   PenLine,
@@ -39,7 +38,6 @@ import {
   Pencil,
   SlidersHorizontal,
   Trash2,
-  Users,
 } from "lucide-react";
 import { Art } from "@/components/ui/art";
 import { qk } from "@/lib/api/keys";
@@ -1073,20 +1071,29 @@ function NotificationRow({
           lastName}` and draws initials when there is no photograph — an author
           has no `photoMediaFileId`, so it is always the initials here. */}
       {/*
-        ★ `flex-wrap`, with a floor under the name-and-time line.
+        ★ One row on a phone, and it cannot wrap — 2026-09-10, at the client's
+        request.
 
-        Three badges — a category, "Чухал", "Шинэ" — are `shrink-0`, so on a
-        390px phone they took the row and left the author line about 90px: less
-        than the timestamp alone, which is itself `shrink-0` and so spilled out
-        of its paragraph and was clipped mid-word by the card. The name it was
-        meant to give way to had already truncated to two letters.
+        This row used to be `flex-wrap` with a `min-w-[9rem]` floor under the
+        author line, and the wrapping was the point: three `shrink-0` badges
+        took the row on a 390px phone and left the author about 90px, less than
+        the timestamp alone. Wrapping fixed the clipping and cost four rows —
+        the client's screen read author, name, time, badges, audience, one
+        under another, before a single word of the actual notice.
 
-        The floor is what makes the wrap happen: without a minimum the author
-        line shrinks towards zero and the badges never move down, because a
-        flex item that can shrink is never a reason to wrap.
+        Wrapping is no longer needed because the row no longer holds anything
+        unbounded. The two admin-editable labels — the category and the
+        audience — moved down into the meta line under the name, where they
+        are text that truncates instead of badges that push. What is left on
+        the right is at most "Чухал", "Шинэ" and the menu: three fixed widths
+        that always fit, so `flex-nowrap` is safe rather than a clipping risk.
+
+        `min-w-0` on the author paragraph is what makes the truncation
+        possible — a flex item's default `min-width: auto` refuses to shrink
+        below its content, which is the usual reason `truncate` does nothing.
       */}
-      <div className="flex flex-wrap items-center gap-2.5">
-        <ChildAvatar child={notification.author ?? {}} size={40} />
+      <div className="flex items-center gap-2.5">
+        <ChildAvatar child={notification.author ?? {}} size={36} />
 
         {/*
           ★ One line, not two.
@@ -1107,20 +1114,31 @@ function NotificationRow({
           later. `shortName` for the same reason the register uses it — a card
           header is not the place to spend a line on a patronymic.
         */}
-        <p className="flex min-w-[9rem] flex-1 flex-col">
+        {/*
+          ★ Four facts on one line, ordered by what a parent loses least.
+
+          Name · time · audience · category, and `truncate` means the tail is
+          what goes when the line runs out. That order is the argument: a
+          parent scanning the board needs to know whose voice it is, how fresh
+          it is, and **whether it is aimed at their child** before they need
+          the category — and the category is the one label here with no upper
+          bound on its length, because an administrator writes it. Putting the
+          unbounded label last makes it the thing that gives way, which is also
+          the thing the chip row at the top of the feed already filters by.
+        */}
+        <p className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-body font-semibold text-ink">
             {notification.author ? "Бүлгийн багш" : "Цэцэрлэг"}
           </span>
-          <span className="flex items-baseline gap-1.5 text-caption text-muted">
-            {notification.author ? (
-              <span className="truncate">{shortName(notification.author)}</span>
-            ) : null}
-            {notification.author ? (
-              <span aria-hidden="true" className="text-faint">
-                ·
-              </span>
-            ) : null}
-            <span className="shrink-0">{formatRelative(when)}</span>
+          <span className="truncate text-caption text-muted">
+            {[
+              notification.author ? shortName(notification.author) : null,
+              formatRelative(when),
+              audienceLabel(notification.targets),
+              NOTIFICATION_CATEGORY_LABEL[notification.category],
+            ]
+              .filter(Boolean)
+              .join(" · ")}
           </span>
         </p>
         {/*
@@ -1141,40 +1159,34 @@ function NotificationRow({
           does about the notice; new only says they have not seen it yet.
         */}
         {/*
-          ★ `flex-wrap`, and no `shrink-0` — found in browser QA, 2026-09-03.
+          ★ `shrink-0` and no wrapping — and that is safe now, which it was not
+          before.
 
-          This row holds a category badge, "Чухал", "Шинэ" and two 44px icon
-          buttons, and it was `shrink-0` on one unwrappable line. A category is
-          administrator-editable text: "Сургалт, үйл ажиллагаа" made the row
-          **405px wide inside a 390px viewport**, so every notification card
-          pushed the whole document to 441px and the page overflowed
-          horizontally — hidden by `html { overflow-x: hidden }` rather than
-          scrollable, so the edit and delete buttons were simply off-screen.
+          Browser QA on 2026-09-03 found this row `shrink-0` on one unwrappable
+          line while it still held the category badge, and an administrator's
+          "Сургалт, үйл ажиллагаа" made it **405px wide inside a 390px
+          viewport**: every card pushed the document to 441px, the page
+          overflowed horizontally, `html { overflow-x: hidden }` swallowed it,
+          and the edit and delete buttons were simply off-screen. Wrapping was
+          the fix then and it was the right one — the unbounded label was still
+          in here.
 
-          Constraint 2 is exactly this: never assume a Mongolian label fits on
-          one line. Wrapping is the fix; `justify-end` keeps the badges against
-          the card's right edge when they do fit, so nothing moves at the widths
-          where the row was already fine.
+          It is not any more. Only statuses remain, and a status is a fixed
+          word this file chooses: "Чухал", "Шинэ", and a 36px menu. Constraint
+          2 — never assume a Mongolian label fits — is answered by having
+          nothing here that a Mongolian label can lengthen, rather than by
+          giving the row somewhere to spill.
+
+          ★★ Colour is what is left, and now it means one thing.
+
+          The category used to sit here as a `neutral` badge beside two
+          coloured ones, and that was the note's own compromise: a *label*
+          drawn as a badge because there was nowhere else to put it. There is
+          now — the meta line under the name — so what remains in this corner
+          is only ever "something to do" or "something unseen". A reader no
+          longer has to tell a status from a label by its tone.
         */}
-        <span className="flex flex-wrap items-center justify-end gap-1.5">
-          {/*
-            ★ The category, which the note above this component said could not
-            be rendered — until 2026-08-30 it was right.
-
-            It read: "There is no category on a notification. `isImportant` is
-            the only classification the model carries… Inventing a taxonomy
-            would mean a chip row that filters on a field nobody fills."
-            `Notification.category` is that field now, the composer sets it and
-            the feed filters on it, so the chip is a fact rather than an
-            invention.
-
-            `neutral`, not a colour per category: nine tones would make the
-            header a paint chart and none of them would mean anything. The two
-            coloured badges beside it are *statuses* — something to do, or
-            something unseen — and colour is how a reader tells those from a
-            label.
-          */}
-          <Badge tone="neutral">{NOTIFICATION_CATEGORY_LABEL[notification.category]}</Badge>
+        <span className="flex shrink-0 items-center gap-1.5">
           {notification.isImportant ? <Badge tone="danger">Чухал</Badge> : null}
           {isUnread ? <Badge tone="primary">Шинэ</Badge> : null}
 
@@ -1228,24 +1240,6 @@ function NotificationRow({
           ) : null}
         </span>
       </div>
-
-      {/*
-        ★ Who the notice is for, which the card never said.
-
-        `NotificationTarget` has carried the audience since §8.1 was built and
-        the API has always returned it — the card simply did not render it, so
-        a notice for Дэлбээ бүлэг and one for the whole kindergarten looked
-        identical on a board holding both. A parent could not tell whether "Маргааш
-        аялал" was about their child; a teacher could not tell whose class they
-        were reading.
-
-        ★★ "Бүх цэцэрлэг" is stated, not left blank.
-
-        No target rows means everyone (`targetSchema` in the API), and rendering
-        nothing for that case makes the most important audience the one with no
-        label — a reader would have to know the convention to read the absence.
-      */}
-      <AudienceBadge targets={notification.targets} />
 
       {/*
         The title is the link, not the whole card.
@@ -1384,7 +1378,7 @@ function NotificationRow({
 }
 
 /**
- * Who a notice was written for.
+ * Who a notice was written for, as one phrase.
  *
  * ★ It reads the targeting rows rather than a summary field, because there is
  * no summary field and there should not be one.
@@ -1401,30 +1395,27 @@ function NotificationRow({
  * their names on a board every other family reads would tell each of them who
  * else was written to. The same reasoning `notificationSchema` gives for
  * collapsing reactions to a count and reads to a boolean.
+ *
+ * ★★★ A string rather than a component, since 2026-09-10.
+ *
+ * This was a `<p>` with a building-or-people icon on the card's own row, and
+ * the row is what the client asked to reclaim. A phrase can join the meta line
+ * under the author's name; an element with an icon cannot, not inside a
+ * `truncate`. The icon is no loss — it distinguished "the kindergarten" from
+ * "some groups", which is precisely what the words it sat beside already say.
+ *
+ * ★★★★ "Бүх цэцэрлэг" is still stated, not left blank. No target rows means
+ * everyone, and rendering nothing for that case would make the widest audience
+ * the one with no label — a reader would have to know the convention to read
+ * the absence.
  */
-function AudienceBadge({ targets }: { targets: z.infer<typeof notificationSchema>["targets"] }) {
+function audienceLabel(targets: z.infer<typeof notificationSchema>["targets"]): string {
+  if (targets.length === 0) return "Бүх цэцэрлэг";
+
   const groups = targets.map((t) => t.group?.name).filter((name): name is string => Boolean(name));
   const childCount = targets.filter((t) => t.childId).length;
 
-  if (targets.length === 0) {
-    return (
-      <p className="flex items-center gap-1.5 text-caption text-muted">
-        <Building2 size={14} aria-hidden="true" className="shrink-0" />
-        Бүх цэцэрлэг
-      </p>
-    );
-  }
-
-  return (
-    <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-caption text-muted">
-      <Users size={14} aria-hidden="true" className="shrink-0" />
-      {groups.length > 0 ? <span>{groups.join(", ")}</span> : null}
-      {childCount > 0 ? (
-        <span>
-          {groups.length > 0 ? "· " : ""}
-          {childCount} хүүхэд
-        </span>
-      ) : null}
-    </p>
-  );
+  return [groups.join(", "), childCount > 0 ? `${childCount} хүүхэд` : ""]
+    .filter(Boolean)
+    .join(" · ");
 }
