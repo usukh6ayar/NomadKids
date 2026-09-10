@@ -131,17 +131,32 @@ export function AttendanceWeekGrid({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[560px] border-collapse text-body">
+      {/*
+        ★ No `min-w`, and every column as narrow as its content — 2026-09-10.
+
+        It forced 560px, so a week never fitted a 390px phone and the teacher
+        scrolled the sheet sideways to reach Friday. Five columns at 36px plus
+        a truncating name is under 300px, which fits; the journal's month still
+        overflows and still scrolls, which is the case the wrapper is for.
+      */}
+      <table className="w-full border-collapse text-body">
         <caption className="sr-only">Бүлгийн ирцийн бүртгэл — хүүхэд мөрөөр, өдөр баганаар</caption>
         <thead>
           <tr className="border-b border-border">
+            {/*
+              The row number is desktop-only: on a phone it costs a column and
+              says nothing the name beside it does not.
+            */}
             <th
               scope="col"
-              className="w-10 px-2 py-2.5 text-left text-caption font-medium text-muted"
+              className="hidden w-8 px-1 py-2.5 text-left text-caption font-medium text-muted sm:table-cell"
             >
               <span className="sr-only">Дугаар</span>
             </th>
-            <th scope="col" className="px-2 py-2.5 text-left text-caption font-medium text-muted">
+            <th
+              scope="col"
+              className="px-1 py-2.5 text-left text-caption font-medium text-muted sm:px-2"
+            >
               Хүүхэд
             </th>
             {data.days.map((day) => {
@@ -151,7 +166,7 @@ export function AttendanceWeekGrid({
                   key={day}
                   scope="col"
                   className={cn(
-                    "w-12 px-1 py-2.5 text-center text-caption font-medium",
+                    "w-9 px-0.5 py-2.5 text-center text-caption font-medium sm:w-12 sm:px-1",
                     isWeekend(day)
                       ? "bg-canvas text-faint"
                       : cn(
@@ -178,7 +193,7 @@ export function AttendanceWeekGrid({
                     key={key}
                     scope="col"
                     className={cn(
-                      "w-12 px-1 py-2.5 text-center text-caption font-semibold text-ink",
+                      "w-9 px-0.5 py-2.5 text-center text-caption font-semibold text-ink sm:w-12 sm:px-1",
                       index === 0 && "border-l border-border",
                     )}
                   >
@@ -195,15 +210,22 @@ export function AttendanceWeekGrid({
         <tbody>
           {data.rows.map((row, index) => (
             <tr key={row.enrollmentId} className="border-b border-border-soft">
-              <td className="px-2 py-2 text-caption tabular-nums text-faint">{index + 1}</td>
-              <td className="whitespace-nowrap px-2 py-2 font-medium text-ink">
+              <td className="hidden px-1 py-2 text-caption tabular-nums text-faint sm:table-cell">
+                {index + 1}
+              </td>
+              {/*
+                `truncate` with a width the column can give up: a register is a
+                name against five date columns, and the dates are the part that
+                must not shrink.
+              */}
+              <td className="max-w-[92px] truncate px-1 py-2 text-caption font-medium text-ink sm:max-w-none sm:px-2 sm:text-body">
                 {shortName(row.child)}
               </td>
               {data.days.map((day) => (
                 <td
                   key={day}
                   className={cn(
-                    "px-1 py-2",
+                    "px-0.5 py-1.5 sm:px-1 sm:py-2",
                     isWeekend(day) ? "bg-canvas" : day === editableDay && "bg-sky/25",
                   )}
                 >
@@ -238,7 +260,7 @@ export function AttendanceWeekGrid({
                       <td
                         key={key}
                         className={cn(
-                          "px-1 py-2 text-center text-caption tabular-nums",
+                          "px-0.5 py-2 text-center text-compact tabular-nums sm:px-1 sm:text-caption",
                           index === 0 && "border-l border-border",
                           key === "TOTAL" ? "font-bold text-ink" : "text-muted",
                         )}
@@ -255,15 +277,18 @@ export function AttendanceWeekGrid({
         <tfoot className="text-caption">
           {TEACHER_ATTENDANCE_STATUSES.map((status) => (
             <tr key={status}>
-              <td />
-              <th scope="row" className="px-2 py-0.5 text-right font-normal text-muted">
+              <td className="hidden sm:table-cell" />
+              <th
+                scope="row"
+                className="px-1 py-0.5 text-right text-compact font-normal text-muted sm:px-2 sm:text-caption"
+              >
                 {ATTENDANCE_STATUS_LABEL[status]}
               </th>
               {tally.map(({ day, counts }) => (
                 <td
                   key={day}
                   className={cn(
-                    "px-1 py-0.5 text-center tabular-nums",
+                    "px-0.5 py-0.5 text-center tabular-nums sm:px-1",
                     isWeekend(day)
                       ? "bg-canvas text-faint"
                       : cn("text-ink", day === editableDay && "bg-sky/25"),
@@ -276,15 +301,18 @@ export function AttendanceWeekGrid({
             </tr>
           ))}
           <tr>
-            <td />
-            <th scope="row" className="px-2 pb-1 pt-0.5 text-right font-semibold text-ink">
+            <td className="hidden sm:table-cell" />
+            <th
+              scope="row"
+              className="px-1 pb-1 pt-0.5 text-right text-compact font-semibold text-ink sm:px-2 sm:text-caption"
+            >
               нийт
             </th>
             {tally.map(({ day, recorded }) => (
               <td
                 key={day}
                 className={cn(
-                  "px-1 pb-1 pt-0.5 text-center font-bold tabular-nums",
+                  "px-0.5 pb-1 pt-0.5 text-center font-bold tabular-nums sm:px-1",
                   isWeekend(day)
                     ? "bg-canvas text-faint"
                     : cn("text-ink", day === editableDay && "rounded-b-control bg-sky/25"),
@@ -319,7 +347,7 @@ function StatusCell({
 }) {
   const letter = status ? (ATTENDANCE_STATUS_LETTER[status] ?? "?") : "";
   const chip = cn(
-    "grid size-8 place-items-center rounded-pill text-caption font-bold",
+    "grid size-7 place-items-center rounded-pill text-compact font-bold sm:size-8 sm:text-caption",
     status
       ? cellSurface(status)
       : muted

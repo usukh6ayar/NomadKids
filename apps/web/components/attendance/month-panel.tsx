@@ -8,6 +8,7 @@ import { qk } from "@/lib/api/keys";
 import { BarRow } from "@/components/ui/chart/bar-row";
 import { ColumnChart } from "@/components/ui/chart/columns";
 import { cn } from "@/lib/utils";
+import { TONE_SURFACE } from "@/components/ui/tone";
 import { Skeleton } from "@/components/ui/states";
 import { RegisterProgress, type RegisterCount } from "@/components/register/register-progress";
 import { ATTENDANCE_STATUS_CHART_TONE, ATTENDANCE_STATUS_ORDER } from "@/lib/attendance-meta";
@@ -307,29 +308,35 @@ export function AttendanceMonthPanel({
             PRESENT + HALF_DAY on both, so the day and the month are the same
             question asked over different spans rather than two definitions.
           */}
-          <dl className="flex flex-wrap gap-x-6 gap-y-2">
-            <div>
-              <dt className="text-caption text-muted">
-                {lastDayLabel ? `${lastDayLabel} — ирсэн` : "Сүүлийн өдөр"}
-              </dt>
-              <dd className="text-title font-bold tabular-nums text-ink">
-                {lastDay ? `${lastDay.percent}%` : "—"}
-                {lastDay ? (
-                  <span className="ms-1.5 text-caption font-normal text-muted">
-                    {lastDay.here}/{lastDay.marks} хүүхэд
-                  </span>
-                ) : null}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-caption text-muted">Сарын дундаж — ирсэн</dt>
-              <dd className="text-title font-bold tabular-nums text-ink">
-                {share(attended)}%
-                <span className="ms-1.5 text-caption font-normal text-muted">
-                  {recordedDays} өдрийн дунджаар
-                </span>
-              </dd>
-            </div>
+          <dl className="grid grid-cols-2 gap-2 sm:gap-3">
+            {[
+              {
+                key: "day",
+                term: lastDayLabel ? `${lastDayLabel} — ирсэн` : "Сүүлийн өдөр",
+                value: lastDay ? `${lastDay.percent}%` : "—",
+                note: lastDay ? `${lastDay.here}/${lastDay.marks} хүүхэд` : "бүртгэл алга",
+                tone: "sky" as const,
+              },
+              {
+                key: "month",
+                term: "Сарын дундаж — ирсэн",
+                value: `${share(attended)}%`,
+                note: `${recordedDays} өдрийн дунджаар`,
+                tone: "mint" as const,
+              },
+            ].map((tile) => (
+              <div
+                key={tile.key}
+                className={cn(
+                  "flex min-w-0 flex-col gap-0.5 rounded-card px-3 py-2.5",
+                  TONE_SURFACE[tile.tone],
+                )}
+              >
+                <dt className="truncate text-caption opacity-80">{tile.term}</dt>
+                <dd className="text-display font-bold leading-none tabular-nums">{tile.value}</dd>
+                <dd className="truncate text-caption opacity-80">{tile.note}</dd>
+              </div>
+            ))}
           </dl>
 
           <div className="flex flex-col gap-1.5">

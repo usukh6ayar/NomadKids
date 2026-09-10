@@ -390,14 +390,20 @@ function GroupAttendance() {
         apart.
       */}
       <Card className="px-4 py-4 sm:px-5">
+        {/*
+          ★ One row on a phone too — the client asked for the three to stay
+          together. `min-w-0` on the field wrapper is what makes it possible:
+          a `<input type="date">` carries a wide intrinsic size, so without it
+          the pair refuses to shrink and pushes Хайх onto its own line.
+        */}
         <form
-          className="flex flex-col gap-3 sm:flex-row sm:items-end"
+          className="flex items-end gap-2 sm:gap-3"
           onSubmit={(event) => {
             event.preventDefault();
             applyRange();
           }}
         >
-          <div className="grid flex-1 gap-3 sm:grid-cols-2">
+          <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 sm:gap-3">
             <Field label="Эхлэх огноо">
               {({ id }) => (
                 <Input
@@ -421,8 +427,14 @@ function GroupAttendance() {
               )}
             </Field>
           </div>
-          <Button type="submit" variant="secondary" className="sm:mb-0.5">
-            <Search aria-hidden /> Хайх
+          {/*
+            The label goes at `sm`, leaving the magnifier: three controls on a
+            390px row cannot all carry words, and the icon is the one of the
+            three whose meaning survives without them.
+          */}
+          <Button type="submit" variant="secondary" size="sm" className="shrink-0 sm:h-[48px]">
+            <Search aria-hidden />
+            <span className="sr-only sm:not-sr-only">Хайх</span>
           </Button>
         </form>
       </Card>
@@ -493,40 +505,62 @@ function GroupAttendance() {
             one addition, and only while there is a draft to abandon.
           */}
           {rows.length > 0 ? (
-            <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex items-center justify-end gap-2">
               {editing ? (
-                <Button variant="secondary" onClick={cancelEdit} disabled={save.isPending}>
-                  <X aria-hidden /> Болих
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="min-w-0 shrink"
+                  onClick={cancelEdit}
+                  disabled={save.isPending}
+                >
+                  <X aria-hidden />
+                  <span className="truncate">Болих</span>
                 </Button>
               ) : (
-                <Button variant="secondary" onClick={beginEdit} disabled={closedDay}>
-                  <Pencil aria-hidden /> Засах
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="min-w-0 shrink"
+                  onClick={beginEdit}
+                  disabled={closedDay}
+                >
+                  <Pencil aria-hidden />
+                  <span className="truncate">Засах</span>
                 </Button>
               )}
 
               <Button
+                size="sm"
+                className="min-w-0 shrink"
                 onClick={() => save.mutate()}
                 disabled={save.isPending || dirtyEntries.length === 0}
               >
                 <Save aria-hidden />
-                {save.isPending
-                  ? "Бүртгэж байна…"
-                  : dirtyEntries.length > 0
-                    ? `Ирц бүртгэх (${dirtyEntries.length})`
-                    : "Ирц бүртгэх"}
+                <span className="truncate">
+                  {save.isPending
+                    ? "Бүртгэж байна…"
+                    : dirtyEntries.length > 0
+                      ? `Ирц бүртгэх (${dirtyEntries.length})`
+                      : "Ирц бүртгэх"}
+                </span>
               </Button>
 
               <Button
                 variant="secondary"
+                size="sm"
+                className="min-w-0 shrink"
                 onClick={() => submitEsis.mutate()}
                 disabled={editing || !esisPreview.data || submitEsis.isPending}
               >
                 <Send aria-hidden />
-                {submitEsis.isPending
-                  ? "Илгээж байна…"
-                  : submitEsis.data
-                    ? "Дахин илгээх"
-                    : "ESIS рүү илгээх"}
+                <span className="truncate">
+                  {submitEsis.isPending
+                    ? "Илгээж байна…"
+                    : submitEsis.data
+                      ? "Дахин илгээх"
+                      : "ESIS рүү илгээх"}
+                </span>
               </Button>
             </div>
           ) : null}
@@ -640,7 +674,7 @@ function RegisterPanels({
         same pair the register's own controls use above, so "this is the one
         you are looking at" reads the same way twice on one page.
       */}
-      <div className="flex flex-wrap gap-2.5">
+      <div className="flex gap-2 sm:gap-2.5">
         {doors.map((door) => {
           const active = open === door.key;
           const Icon = door.icon;
@@ -648,12 +682,14 @@ function RegisterPanels({
             <Button
               key={door.key}
               variant={active ? "primary" : "secondary"}
+              size="sm"
+              className="min-w-0 flex-1 px-2 sm:flex-none sm:px-4"
               aria-expanded={active}
               aria-controls={panelId}
               onClick={() => setOpen(active ? null : door.key)}
             >
               <Icon aria-hidden />
-              {door.label}
+              <span className="truncate">{door.label}</span>
               {door.count > 0 ? (
                 <span
                   className={cn(
