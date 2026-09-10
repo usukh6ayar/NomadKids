@@ -1262,6 +1262,19 @@ export type SurveyQuestionResult = z.infer<typeof surveyQuestionResultSchema>;
 export const surveyGroupResultSchema = z.object({
   group: z.object({ id: uuidSchema.nullable(), name: z.string() }),
   responseCount: z.number(),
+  /**
+   * This group's own roster — the denominator behind "5 / 6 (83%)".
+   *
+   * ★ Children, always, even when the survey's headline counts parents.
+   *
+   * A parent belongs to no group and a family with two children belongs to
+   * two, so a per-group split is only expressible through the children. Zero
+   * for "Бүлэггүй", which has no roster to be a share of.
+   *
+   * Defaulted for a response from an API that predates it: a share of zero
+   * draws no bar, which is the honest picture of "not known".
+   */
+  expectedChildren: z.number().default(0),
   questions: z.array(
     z.object({
       questionId: uuidSchema,

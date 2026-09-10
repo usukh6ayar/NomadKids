@@ -703,6 +703,26 @@ export class SurveysService {
       }
     }
 
+    /*
+      ★ Each group's own denominator — the client's "5 / 6 (83%)", 2026-09-10.
+
+      A bare "5" beside another group's "1" says nothing: a group of six with
+      five replies is nearly done and a group of four with one has barely
+      started, and the bars would be drawn five-to-one either way. Counted for
+      every group in one query rather than per row (§3.4).
+
+      ★★ Children, always, even for a KINDERGARTEN-scope survey.
+
+      That survey's *headline* denominator is parents (one family answers once
+      however many children they have) — but a per-group split is only possible
+      through the children, because a parent is not in a group and a family with
+      two children is in two. So this bar answers "how many of this group's
+      families replied", which is the question the split is asked for, and the
+      headline above keeps its own count. Named `expectedChildren` rather than
+      `expected` so the two are not mistaken for the same number.
+    */
+    const counts = await this.repo.participationCounts(survey.kindergartenId);
+
     const byGroup = [...groups.values()]
       .sort((a, b) => a.name.localeCompare(b.name, "mn"))
       .map((group) => {
@@ -710,6 +730,9 @@ export class SurveysService {
         return {
           group,
           responseCount: responseCount(rows),
+          // "Бүлэггүй" has no roster to be a share of, and reporting the
+          // kindergarten's total there would draw a bar against everybody.
+          expectedChildren: group.id ? (counts.childrenByGroup.get(group.id) ?? 0) : 0,
           questions: tally(rows).map((entry) => ({
             questionId: entry.question.id,
             responseCount: entry.responseCount,

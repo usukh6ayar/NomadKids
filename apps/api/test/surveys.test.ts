@@ -1213,3 +1213,72 @@ describe("who may survey whom", () => {
     expect((await create(adminA, { groupId: b.group.id })).status).toBe(400);
   });
 });
+
+/**
+ * ★ Each group's own denominator on the results breakdown — the client's
+ * 2026-09-10 design, "5 / 6 (83%)".
+ *
+ * The bars used to be scaled against whichever group had replied most, which
+ * answers "who replied most" — a question nobody asks. What a director wants
+ * is how close each group is to done, and only the API can know a group's
+ * roster.
+ */
+describe("the results breakdown's per-group denominator", () => {
+  it("counts the group's own enrolled children", async () => {
+    const second = await createChild(a.kindergarten.id, { firstName: "Хоёрдугаар" });
+    await enrollChild(a.kindergarten.id, second.id, a.group.id, a.schoolYear.id);
+
+    const { surveyId, questionId } = await publishedChildSurvey();
+    await authed(request(server()).post(`/v1/surveys/${surveyId}/responses`), parentA).send({
+      childId: a.child.id,
+      answers: [{ questionId, value: 4 }],
+    });
+
+    const res = await authed(request(server()).get(`/v1/surveys/${surveyId}/results`), adminA);
+
+    const row = res.body.byGroup.find(
+      (entry: { group: { id: string } }) => entry.group.id === a.group.id,
+    );
+    expect(row.responseCount).toBe(1);
+    expect(row.expectedChildren).toBe(2);
+  });
+
+  /**
+   * ★ "Бүлэггүй" gets zero, not the kindergarten's total.
+   *
+   * A response with no child belongs to no group and has no roster to be a
+   * share of. Reporting the kindergarten there would draw that bar against
+   * everybody, which is the one reading guaranteed to be wrong.
+   */
+  it("gives the group-less bucket no roster at all", async () => {
+    const created = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
+      adminA,
+    ).send({ title: "Ажилтнуудад", scope: "KINDERGARTEN" });
+
+    await authed(request(server()).put(`/v1/surveys/${created.body.id}/questions`), adminA).send({
+      questions: [{ order: 0, type: "YES_NO", prompt: "Тийм үү?" }],
+    });
+    await authed(request(server()).post(`/v1/surveys/${created.body.id}/publish`), adminA);
+
+    const withQuestions = await db.survey.findUniqueOrThrow({
+      where: { id: created.body.id },
+      include: { questions: true },
+    });
+
+    await authed(request(server()).post(`/v1/surveys/${created.body.id}/responses`), teacherA).send(
+      { answers: [{ questionId: withQuestions.questions[0]!.id, value: true }] },
+    );
+
+    const res = await authed(
+      request(server()).get(`/v1/surveys/${created.body.id}/results`),
+      adminA,
+    );
+
+    const row = res.body.byGroup.find(
+      (entry: { group: { id: string | null } }) => entry.group.id === null,
+    );
+    expect(row.responseCount).toBe(1);
+    expect(row.expectedChildren).toBe(0);
+  });
+});
