@@ -21,6 +21,7 @@ import { useSwitchableGroups } from "@/components/shell/group-switcher";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
 import { RowMenu } from "@/components/ui/menu";
+import { ChildPickerDialog } from "@/components/child/child-picker-dialog";
 import { useToast } from "@/components/ui/toast";
 import Link from "next/link";
 import { Eye, Images, MessageCircle, Printer, Users } from "lucide-react";
@@ -993,10 +994,7 @@ const KIND_FALLBACK = { tone: "cornflower" as Tone, Icon: Eye };
 
 function NewRecordStrip({ groupId, embedded = false }: { groupId: string; embedded?: boolean }) {
   const router = useRouter();
-  const [selectedType, setSelectedType] = useState<{
-    id: string;
-    name: string;
-  } | null>(null);
+  const [selectedType, setSelectedType] = useState<{ code: string; name: string } | null>(null);
 
   /*
     ★ The group's own roster, not the assessment column's — fixed 2026-09-10.
@@ -1061,7 +1059,7 @@ function NewRecordStrip({ groupId, embedded = false }: { groupId: string; embedd
             <button
               key={type.id}
               type="button"
-              onClick={() => setSelectedType({ id: type.id, name: type.name })}
+              onClick={() => setSelectedType({ code: type.code ?? "daily", name: type.name })}
               className={cn(
                 "flex min-h-[48px] min-w-0 items-center justify-center gap-1.5 rounded-control border border-transparent px-2 text-caption font-semibold transition-transform hover:-translate-y-0.5 sm:text-body",
                 TONE_SURFACE[style.tone],
@@ -1074,45 +1072,23 @@ function NewRecordStrip({ groupId, embedded = false }: { groupId: string; embedd
         })}
       </div>
 
+      {/*
+        ★ The hub, not the compose form — 2026-09-11, the client's design.
+
+        Pressing a door used to open a blank form for the chosen child. That is
+        right when a teacher has already decided what to write and wrong when
+        they came to look, and the design puts a landing between the two: the
+        four things that can be done with this kind of record, the total, and
+        the terms.
+      */}
       {selectedType ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={`${selectedType.name} тэмдэглэлд хүүхэд сонгох`}
-          className="fixed inset-0 z-50 grid items-end bg-ink/45 sm:place-items-center sm:p-4"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setSelectedType(null);
-          }}
-        >
-          <div className="flex max-h-[78dvh] w-full max-w-[440px] flex-col rounded-t-card border border-border bg-surface p-4 shadow-lg sm:rounded-card">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-title font-semibold text-ink">Хүүхэд сонгох</h2>
-                <p className="text-caption text-muted">{selectedType.name} тэмдэглэл бичнэ.</p>
-              </div>
-              <Button size="sm" variant="ghost" onClick={() => setSelectedType(null)}>
-                Хаах
-              </Button>
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
-              {children.map((child) => (
-                <button
-                  key={child.childId}
-                  type="button"
-                  onClick={() =>
-                    router.push(
-                      `/children/${child.childId}/observations/new?typeId=${selectedType.id}`,
-                    )
-                  }
-                  className="min-h-12 rounded-control border border-border bg-sunken px-3 py-2 text-left text-body font-medium text-ink transition-colors hover:border-primary hover:bg-surface"
-                >
-                  {child.lastName ? `${child.lastName} ` : ""}
-                  {child.firstName}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+        <ChildPickerDialog
+          groupId={groupId}
+          onClose={() => setSelectedType(null)}
+          onSelect={(childId) =>
+            router.push(`/children/${childId}/observations?type=${selectedType.code}`)
+          }
+        />
       ) : null}
     </div>
   );

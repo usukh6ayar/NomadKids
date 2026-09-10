@@ -495,6 +495,15 @@ describe("the new-record strip", () => {
     expect(screen.queryByText("Шинэ тэмдэглэл")).not.toBeInTheDocument();
   });
 
+  /**
+   * ★ The picker is the client's own screen now — 2026-09-11.
+   *
+   * It was a grid of name buttons that went straight to a blank compose form.
+   * The design asks for a face, an age and a group beside each name, a search
+   * over them, and a confirmed choice — and it lands on the record hub rather
+   * than on the form, because a teacher pressing Ажиглалт is as often coming
+   * to look as to write.
+   */
   it("offers the three doors and asks for a child only after one is pressed", async () => {
     const user = userEvent.setup();
     const api = stubPage();
@@ -514,10 +523,30 @@ describe("the new-record strip", () => {
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await user.click(observation);
-    expect(
-      screen.getByRole("dialog", { name: /Ажиглалт тэмдэглэлд хүүхэд сонгох/ }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Батжаргал Ану" })).toBeInTheDocument();
+
+    const picker = await screen.findByRole("dialog", { name: "Хүүхдээ сонгох" });
+    // A face, a name and what distinguishes two Ануs — the age and the group.
+    expect(within(picker).getByRole("radio", { name: /Батжаргал Ану/ })).toBeInTheDocument();
+    expect(within(picker).getByLabelText("Хүүхдийн нэрээр хайх")).toBeInTheDocument();
+  });
+
+  /**
+   * ★ The choice is confirmed, not applied on tap.
+   *
+   * Picking the wrong child and landing on their file costs a navigation to
+   * undo; picking the wrong row and seeing the tick move costs nothing.
+   */
+  it("waits for Сонгох before leaving the screen", async () => {
+    const user = userEvent.setup();
+    stubPage();
+    renderWithProviders(<AssessmentPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Ажиглалт/ }));
+    const picker = await screen.findByRole("dialog", { name: "Хүүхдээ сонгох" });
+
+    expect(within(picker).getByRole("button", { name: "Сонгох" })).toBeDisabled();
+    await user.click(within(picker).getByRole("radio", { name: /Батжаргал Ану/ }));
+    expect(within(picker).getByRole("button", { name: "Сонгох" })).toBeEnabled();
   });
 
   /**
