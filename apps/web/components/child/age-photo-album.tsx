@@ -149,8 +149,27 @@ export function AgePhotoAlbum({ childId, age }: { childId: string; age: Age }) {
     );
   const canUploadTeacherPhotos = hasRole("TEACHER") || hasRole("ADMIN");
 
+  /*
+   * ★ Closes the dialog and says so — 2026-09-10.
+   *
+   * This only invalidated the summary. The upload really did succeed, but the
+   * modal stayed open over the album with nothing changed on it and no
+   * message, so the photograph appearing behind the dialog was the only
+   * evidence — and it is covered by the dialog. Every report of this read as
+   * "adding a photo does not work".
+   *
+   * `onUploaded` fires once per stored file, so the toast is raised after the
+   * batch rather than inside the loop.
+   */
   const refreshAlbum = async () => {
     await queryClient.invalidateQueries({ queryKey: qk.childAgeAlbum(childId, age) });
+    await queryClient.invalidateQueries({ queryKey: qk.childMedia(childId) });
+  };
+
+  const finishUpload = () => {
+    setUploadOpen(false);
+    setUploadTarget(null);
+    toast.success("Зураг нэмэгдлээ.");
   };
 
   const openUpload = (category: AlbumCategory) => {
@@ -329,6 +348,7 @@ export function AgePhotoAlbum({ childId, age }: { childId: string; age: Age }) {
             variant="primary"
             withCaption
             onUploaded={refreshAlbum}
+            onDone={finishUpload}
           />
         ) : null}
       </FormDialog>

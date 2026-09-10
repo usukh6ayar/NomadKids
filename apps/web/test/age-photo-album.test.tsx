@@ -9,7 +9,16 @@ const CHILD_ID = "44444444-4444-4444-8444-444444444444";
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const PHOTO_ID = "99999999-9999-4999-8999-999999999999";
 
-function stubAlbum(category = "", withPhoto = false, coverMediaFileId: string | null = null) {
+function stubAlbum(
+  category = "",
+  withPhoto = false,
+  coverMediaFileId: string | null = null,
+  uploadedBy: { id: string; lastName: string; firstName: string } = {
+    id: USER_ID,
+    lastName: "Дорж",
+    firstName: "Ээж",
+  },
+) {
   return stubApi([
     { path: "/auth/me", body: sessionFor(["PARENT"], USER_ID) },
     {
@@ -47,6 +56,10 @@ function stubAlbum(category = "", withPhoto = false, coverMediaFileId: string | 
                 purpose: "CHILD_PHOTO",
                 age: 5,
                 category,
+                // The per-tile menu is authorship-gated, exactly as the API
+                // is: point this at somebody else and the guardian gets no
+                // menu, which is what the last case in this file asserts.
+                uploadedBy,
               },
             ]
           : [],
@@ -64,6 +77,18 @@ function stubAlbum(category = "", withPhoto = false, coverMediaFileId: string | 
         coverMediaFileId: PHOTO_ID,
       },
     },
+    {
+      path: `/media/${PHOTO_ID}`,
+      method: "PATCH",
+      body: {
+        id: PHOTO_ID,
+        caption: "Шинэ тайлбар",
+        purpose: "CHILD_PHOTO",
+        age: 5,
+        category,
+      },
+    },
+    { path: `/media/${PHOTO_ID}`, method: "DELETE", body: {} },
     {
       path: `/children/${CHILD_ID}/media`,
       method: "POST",
@@ -268,5 +293,118 @@ describe("five-year photo library", () => {
     expect(form.get("category")).toBe("FAMILY");
     expect(form.get("caption")).toBe("Манай гэр бүл");
     expect(form.getAll("file")).toHaveLength(1);
+  });
+
+  /*
+   * ★ The upload really did work; it just never said so.
+   *
+   * The dialog stayed open over the album with nothing changed on it, so the
+   * new photograph — behind the dialog — was the only evidence it had worked.
+   * Every report of this read as "adding a photo does not work", which is why
+   * the assertion is on the dialog closing and not only on the POST firing.
+   */
+  it("closes the upload dialog and confirms once the photo is stored", async () => {
+    const user = userEvent.setup();
+    stubAlbum();
+    renderWithProviders(<AgePhotoAlbum childId={CHILD_ID} age={5} />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Миний гэр бүл ангилалд зураг нэмэх" }),
+    );
+    const input = document.querySelector("input[type=file]") as HTMLInputElement;
+    await user.upload(input, new File(["зураг"], "гэр-бүл.jpg", { type: "image/jpeg" }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Миний гэр бүл — зураг нэмэх" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(await screen.findByText("Зураг нэмэгдлээ.")).toBeInTheDocument();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Managing a photo already in the album
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("the per-photo menu", () => {
+  /** Opens the FAMILY album modal with one guardian-uploaded photo in it. */
+  async function openAlbumWithPhoto(user: ReturnType<typeof userEvent.setup>) {
+    const api = stubAlbum("FAMILY", true);
+    setSearchParams("category=FAMILY");
+    renderWithProviders(<AgePhotoAlbum childId={CHILD_ID} age={5} />);
+
+    await user.click(await screen.findByRole("button", { name: "Манай гэр бүл үйлдэл" }));
+    return api;
+  }
+
+  it("edits the caption of a photo the guardian uploaded", async () => {
+    const user = userEvent.setup();
+    const api = await openAlbumWithPhoto(user);
+
+    await user.click(screen.getByRole("menuitem", { name: "Засах" }));
+
+    // Pre-filled with what is there — this is a correction, not a re-entry.
+    const field = screen.getByRole("textbox", { name: "Тайлбар" });
+    expect(field).toHaveValue("Манай гэр бүл");
+
+    await user.clear(field);
+    await user.type(field, "Шинэ тайлбар");
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
+
+    await waitFor(() => {
+      const call = api.calls.find((item) => item.method === "PATCH");
+      expect(call?.url).toBe(`/media/${PHOTO_ID}`);
+      expect(call?.body).toEqual({ caption: "Шинэ тайлбар" });
+    });
+    expect(await screen.findByText("Зургийн тайлбар шинэчлэгдлээ.")).toBeInTheDocument();
+  });
+
+  it("clears the caption rather than storing an empty string", async () => {
+    const user = userEvent.setup();
+    const api = await openAlbumWithPhoto(user);
+
+    await user.click(screen.getByRole("menuitem", { name: "Засах" }));
+    await user.clear(screen.getByRole("textbox", { name: "Тайлбар" }));
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
+
+    // `null` is "clear it"; "" would store a blank caption the API accepts.
+    await waitFor(() =>
+      expect(api.calls.find((item) => item.method === "PATCH")?.body).toEqual({ caption: null }),
+    );
+  });
+
+  it("confirms before deleting, then removes it", async () => {
+    const user = userEvent.setup();
+    const api = await openAlbumWithPhoto(user);
+
+    await user.click(screen.getByRole("menuitem", { name: "Устгах" }));
+    expect(await screen.findByRole("dialog", { name: "Зургийг устгах уу?" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Устгах" }));
+
+    await waitFor(() => {
+      const call = api.calls.find((item) => item.method === "DELETE");
+      expect(call?.url).toBe(`/media/${PHOTO_ID}`);
+    });
+    expect(await screen.findByText("Зураг устгагдлаа.")).toBeInTheDocument();
+  });
+
+  /*
+   * The menu mirrors what `MediaService.updateMetadata` and `archive` enforce:
+   * a guardian manages what they uploaded and nothing else. Drawing it on a
+   * teacher's photograph would put a control there that answers 404.
+   */
+  it("gives a guardian no menu on a photo somebody else uploaded", async () => {
+    stubAlbum("FAMILY", true, null, {
+      id: "12121212-1212-4121-8121-121212121212",
+      lastName: "Багш",
+      firstName: "Сараа",
+    });
+    setSearchParams("category=FAMILY");
+    renderWithProviders(<AgePhotoAlbum childId={CHILD_ID} age={5} />);
+
+    expect(await screen.findByRole("dialog", { name: "Миний гэр бүл цомог" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Манай гэр бүл үйлдэл" })).not.toBeInTheDocument();
   });
 });

@@ -110,6 +110,7 @@ export function PhotoUpload({
   label = "Зураг нэмэх",
   hint,
   onUploaded,
+  onDone,
   variant = "secondary",
   withCaption = false,
   children,
@@ -129,6 +130,15 @@ export function PhotoUpload({
   /** Replaces the default "JPEG, PNG or WebP…" line. Pass `null` for none. */
   hint?: ReactNode | null;
   onUploaded?: (mediaId: string) => void | Promise<void>;
+  /**
+   * Fires once after the whole selection has been sent, with how many files
+   * were stored — never when none were.
+   *
+   * Distinct from `onUploaded`, which fires per file and per batch: a caller
+   * that closes a dialog or raises a toast must do it once for the selection,
+   * not six times for twelve photographs.
+   */
+  onDone?: (stored: number) => void | Promise<void>;
   variant?: "primary" | "secondary";
   /** Shows one short caption field and sends it with every file in this batch. */
   withCaption?: boolean;
@@ -196,12 +206,21 @@ export function PhotoUpload({
 
     // In batches, because the endpoint caps a request at six files — a teacher
     // selecting a whole morning's photographs should not have to know that.
+    let stored = 0;
     for (let i = 0; i < sendable.length; i += MAX_FILES_PER_REQUEST) {
-      await upload.mutateAsync(sendable.slice(i, i + MAX_FILES_PER_REQUEST)).catch(() => undefined);
+      const result = await upload
+        .mutateAsync(sendable.slice(i, i + MAX_FILES_PER_REQUEST))
+        .catch(() => undefined);
+      stored += result?.items.length ?? 0;
     }
 
     // Cleared so picking the same file again still fires a change event.
     if (inputRef.current) inputRef.current.value = "";
+
+    // After the loop, not inside it: one selection is one outcome, however
+    // many requests it took. Skipped when nothing was stored, so a caller
+    // that closes a dialog leaves it open on the error the user must read.
+    if (stored > 0) await onDone?.(stored);
   }
 
   return (
