@@ -309,3 +309,45 @@ describe("ESIS field catalog", () => {
     }
   });
 });
+
+/**
+ * Which way a service moves data, and why that is not the HTTP verb.
+ *
+ * ★ `studentContacts` is the service that separated the two. The ministry's
+ * own list calls it "Гэр бүлийн мэдээлэл **лавлах**" — a lookup — and answers
+ * it only over POST. A live probe on 2026-09-11 settled it: GET returns the
+ * same 404 a nonsense path returns, POST returns the same 403 every other real
+ * service returns.
+ *
+ * Before that, `direction` was derived from `method`, so writing the truth
+ * down would have reported a read-only service to the operator as one that
+ * writes into ESIS — on the screen an operator checks before granting access.
+ */
+describe("ESIS data direction", () => {
+  it("keeps the guardian-contact lookup a POST", () => {
+    expect(ESIS_ENDPOINTS.studentContacts.method).toBe("POST");
+  });
+
+  it("still calls that lookup a read", () => {
+    const entry = ESIS_RESOURCE_CATALOG.find((row) => row.key === "studentContacts");
+
+    expect(entry?.readable).toBe(true);
+    expect(entry?.direction).toBe("ESIS_TO_NOMADKIDS");
+  });
+
+  /*
+   * ★★ The invariant the fix rests on: direction follows the reader table, so
+   * a service reads if and only if something here can parse its rows. A future
+   * read added over POST inherits the right answer; a write can never claim to
+   * be a read without a schema to back it.
+   */
+  it("derives direction from the reader table, not the verb", () => {
+    const readable = new Set<string>(ESIS_READABLE_KEYS);
+
+    for (const entry of ESIS_RESOURCE_CATALOG) {
+      expect(entry.direction, entry.key).toBe(
+        readable.has(entry.key) ? "ESIS_TO_NOMADKIDS" : "NOMADKIDS_TO_ESIS",
+      );
+    }
+  });
+});

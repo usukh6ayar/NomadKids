@@ -240,11 +240,32 @@ export const ESIS_ENDPOINTS = {
     method: "GET",
     path: "/svc/api/hub/v2/student/check/:personId",
   }),
-  /** Every guardian contact the institution holds, for the whole roster. */
+  /**
+   * Every guardian contact the institution holds, for the whole roster.
+   *
+   * ★ **POST, and it is a read.** The ministry's own service list
+   * (`all-services.xlsx`, row 34, "Гэр бүлийн мэдээлэл лавлах") says POST, and
+   * a live probe against the real hub on 2026-09-11 settles it rather than
+   * leaving two sources disagreeing:
+   *
+   * ```
+   * GET  /svc/api/hub/v2/stdnt/all/contacts → 404 "Зам олдсонгүй: GET"
+   * POST /svc/api/hub/v2/stdnt/all/contacts → 403 "Энэ API-д хандах эрх байхгүй"
+   * ```
+   *
+   * A nonsense path returns the same 404 and every other real service returns
+   * the same 403, so the pair is conclusive: the route does not exist for GET
+   * and does exist for POST. It was carried as GET from the client-supplied
+   * list #90 worked from — that list is the older source.
+   *
+   * ★★ `direction` in `esis.catalog.ts` is derived from **readability**, not
+   * from this field, precisely so that a lookup issued over POST is not
+   * reported to the operator as data flowing NomadKids → ESIS.
+   */
   studentContacts: endpoint({
     apiId: null,
     slug: "UNLISTED",
-    method: "GET",
+    method: "POST",
     path: "/svc/api/hub/v2/stdnt/all/contacts",
   }),
   studentContactsSave: endpoint({

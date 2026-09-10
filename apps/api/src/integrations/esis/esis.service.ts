@@ -227,14 +227,21 @@ export const ESIS_READERS = {
 } as const satisfies Record<
   string,
   {
-    endpoint: { method: "GET"; path: string };
+    // "GET" | "POST": a read is not always a GET. `studentContacts` is a
+    // lookup the ministry answers only over POST — see `esis.endpoints.ts`.
+    endpoint: { method: "GET" | "POST"; path: string };
     schema: import("zod").ZodType;
     institution?: boolean;
     params?: readonly string[];
   }
 >;
 
-/** A GET service the operator screen may read. Excludes the attendance POST. */
+/**
+ * A service the operator screen may read.
+ *
+ * Membership of this table — not the HTTP verb — is what makes a service a
+ * read; the write services (`*Save`, `saveAttendanceV3`) are absent from it.
+ */
 export type EsisReadableKey = keyof typeof ESIS_READERS;
 
 export const ESIS_READABLE_KEYS = Object.keys(ESIS_READERS) as EsisReadableKey[];
@@ -541,9 +548,24 @@ export class EsisService {
     });
   }
 
+  /*
+   * ★ `method` is `"GET" | "POST"`, not `"GET"`.
+   *
+   * A read is not always a GET: `studentContacts` — "Гэр бүлийн мэдээлэл
+   * лавлах" — is a lookup the ministry answers only over POST, proven by probe
+   * in `esis.endpoints.ts`. Narrowing this to `"GET"` would refuse to compile
+   * the moment that fact was written down, which is the wrong way round: the
+   * transport is the ministry's to decide, and this signature should be able
+   * to express whatever they chose.
+   *
+   * No body is sent. The query string still carries `institutionId`, which is
+   * how the service is documented; if it turns out to want a JSON body, that
+   * is discoverable only once the service is actually granted — every call
+   * currently answers 403.
+   */
   private async getList<T>(
     key: EsisReadableKey,
-    endpoint: { method: "GET"; path: string },
+    endpoint: { method: "GET" | "POST"; path: string },
     schema: import("zod").ZodType<T>,
     pathValues: Record<string, string | number> = {},
     institutionScoped = true,
