@@ -28,7 +28,11 @@ import { TableShell, Td, Th } from "@/components/ui/table";
 import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { RegisterProgress } from "@/components/register/register-progress";
-import { AttendanceRequestQueue } from "@/components/attendance/request-queue";
+import {
+  AttendanceRequestQueue,
+  useAttendanceRequestCount,
+} from "@/components/attendance/request-queue";
+import { TeacherJournal } from "@/components/attendance/teacher-journal";
 import { AttendanceMonthPanel } from "@/components/attendance/month-panel";
 import { AttendanceWeekGrid } from "@/components/attendance/week-grid";
 import {
@@ -38,6 +42,7 @@ import {
 } from "@/lib/attendance-meta";
 import { useSession } from "@/lib/auth/session";
 import { fullName } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 const daySheetSchema = z.array(groupAttendanceRowSchema);
 
@@ -65,6 +70,7 @@ function GroupAttendance() {
   const groupId = params.groupId;
   const queryClient = useQueryClient();
   const { session } = useSession();
+  const pendingRequests = useAttendanceRequestCount();
 
   /*
    * ★ A director reads this sheet; they do not fill it in — 2026-09-06.
@@ -357,7 +363,12 @@ function GroupAttendance() {
         stack on a phone, work first, because a register is filled in one
         thumb at a time and the month can wait for a scroll.
       */}
-      <Card className="grid gap-5 px-4 py-4 sm:px-5 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] lg:gap-8">
+      {/*
+        ★ One column again. The right half held `AttendanceMonthPanel`, which
+        moved to the foot of the page — a chart about finished days was the
+        first thing on the screen a teacher opens to fill today in.
+      */}
+      <Card className="px-4 py-4 sm:px-5">
         <div className="flex flex-col gap-3.5">
           {/*
             ★ A span, not one date — the client's sheet, 2026-09-10.
@@ -402,12 +413,6 @@ function GroupAttendance() {
             <RegisterProgress inset recorded={recorded} total={rows.length} breakdown={breakdown} />
           ) : null}
         </div>
-
-        {/*
-          The month the chosen date falls in, so moving the date picker to
-          July shows July's shape rather than always this month's.
-        */}
-        <AttendanceMonthPanel groupId={groupId} month={date.slice(0, 7)} />
       </Card>
 
       <FormError message={save.isError ? errorMessage(save.error) : null} />
@@ -489,45 +494,144 @@ function GroupAttendance() {
       ) : null}
 
       {/*
-        ★ The guardians' notices, under the sheet they are about.
+        ★ Three doors, one panel — the client's sheet, 2026-09-10.
 
-        Approving one writes the `Attendance` rows for those days, so it is the
-        same register seen from the other end. It had a sidebar entry of its
-        own, which asked a teacher to know that the absence they were about to
-        mark by hand might already have been explained on a different screen.
+        All three of these were open on the page at once: the guardians' queue,
+        which is usually empty, and two ESIS field tables that between them run
+        to sixty rows. A teacher scrolled past all of it every morning to reach
+        nothing. They are the same three destinations, now named on buttons and
+        opened one at a time.
+
+        Toggle buttons rather than `Disclosure`'s `<details>`: the client drew
+        a row of three, and a stack of three summaries is a different shape. The
+        cost is find-in-page, which `Disclosure` documents caring about for the
+        accountant's hundred-row register — none of these three is a list
+        somebody searches by name, so the trade lands the other way here.
       */}
-      <AttendanceRequestQueue heading="Эцэг эхийн мэдэгдэл" />
+      <RegisterPanels
+        groupId={groupId}
+        month={date.slice(0, 7)}
+        pendingRequests={pendingRequests}
+      />
 
       {/*
-        ★ The two ESIS attendance services, on the sheet they are about —
-        2026-09-09, at the client's request ("ирц хадгалах", "ирц харах").
+        ★ The month, at the foot of the register rather than beside the date.
 
-        They are the two halves of one exchange and belong together: the fields
-        this screen *sends* when a confirmed day goes up, and the record that
-        comes back when it is read again. Reading them apart is how a teacher
-        ends up believing a day was filed because the button said so.
-
-        ★★ `saveAttendanceV3` is the catalog's only write service, so its panel
-        shows the request payload rather than a response — the eight fields
-        `API-000269` takes. Nothing here submits: the submit is
-        `GroupEsisPayload` above, which is this screen's own control and writes
-        an `AttendanceSubmission` when it succeeds.
-
-        ★★★ Both are keyed by ESIS's `studentGroupId`, which the panel asks
-        for: our group ids are uuids the ministry has never seen, and §15's
-        external-id history is what would let this be filled in automatically.
+        It sat in the header card's right half, above the sheet it summarises —
+        so the first thing on the screen a teacher opens to fill in today was a
+        chart about days already done. The client's own layout puts it last,
+        which is also the reading order: fill the day in, then see what the
+        month adds up to.
       */}
-      <EsisDataPanel
-        resource="saveAttendanceV3"
-        title="Ирц хадгалах"
-        description="Баталгаажсан өдрийн ирцээр ESIS рүү илгээх талбарууд"
-      />
-      <EsisDataPanel
-        resource="groupAttendance"
-        title="Ирц харах"
-        description="Илгээсэн ирцийг ESIS-ээс буцааж уншсан нь"
-      />
+      <Card pad="roomy">
+        <AttendanceMonthPanel groupId={groupId} month={date.slice(0, 7)} />
+      </Card>
     </div>
+  );
+}
+
+/**
+ * Ирцийн дэлгэрэнгүй · Чөлөөний хүсэлт · Esis ирц.
+ *
+ * ★ One open at a time, and none open to begin with.
+ *
+ * The default matters more than the mechanism: this screen is opened to fill
+ * in a morning, and every one of these three is something looked up
+ * afterwards. Opening none of them is what puts the register back at the top
+ * of the page.
+ *
+ * `aria-expanded`/`aria-controls` rather than a `tablist`: these are three
+ * disclosures that happen to share a row, not three views of one thing, and a
+ * tablist would promise arrow-key navigation between panels that have nothing
+ * to do with one another.
+ */
+function RegisterPanels({
+  groupId,
+  month,
+  pendingRequests,
+}: {
+  groupId: string;
+  month: string;
+  pendingRequests: number;
+}) {
+  const [open, setOpen] = useState<"journal" | "requests" | "esis" | null>(null);
+  const panelId = "register-panel";
+
+  const doors = [
+    { key: "journal" as const, label: "Ирцийн дэлгэрэнгүй", count: 0 },
+    { key: "requests" as const, label: "Чөлөөний хүсэлт", count: pendingRequests },
+    { key: "esis" as const, label: "Esis ирц", count: 0 },
+  ];
+
+  return (
+    <section aria-labelledby="register-panels-heading" className="flex flex-col gap-4">
+      <h2 id="register-panels-heading" className="sr-only">
+        Ирцийн нэмэлт хэсгүүд
+      </h2>
+
+      <div className="flex flex-wrap gap-2.5">
+        {doors.map((door) => {
+          const active = open === door.key;
+          return (
+            <button
+              key={door.key}
+              type="button"
+              aria-expanded={active}
+              aria-controls={panelId}
+              onClick={() => setOpen(active ? null : door.key)}
+              className={cn(
+                "inline-flex min-h-11 items-center gap-2 rounded-pill border px-5 text-body font-medium transition-colors",
+                active
+                  ? "border-primary bg-primary text-primary-ink"
+                  : "border-border bg-surface text-ink hover:bg-canvas",
+              )}
+            >
+              {door.label}
+              {door.count > 0 ? (
+                <span
+                  className={cn(
+                    "grid min-w-6 place-items-center rounded-pill px-1.5 text-caption font-bold",
+                    active ? "bg-primary-ink/20 text-primary-ink" : "bg-danger text-white",
+                  )}
+                >
+                  {door.count}
+                  <span className="sr-only">хүлээгдэж буй</span>
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+
+      <div id={panelId} hidden={open === null}>
+        {open === "journal" ? <TeacherJournal groupId={groupId} initialMonth={month} /> : null}
+        {open === "requests" ? <AttendanceRequestQueue heading="Эцэг эхийн мэдэгдэл" /> : null}
+        {open === "esis" ? (
+          <div className="flex flex-col gap-4">
+            {/*
+              The two halves of one exchange: the fields this screen sends when
+              a confirmed day goes up, and the record that comes back when it is
+              read again. Reading them apart is how a teacher ends up believing
+              a day was filed because the button said so.
+
+              Both are keyed by ESIS's `studentGroupId`, which the panel asks
+              for — our group ids are uuids the ministry has never seen, and
+              §15's external-id history is what would fill this in.
+            */}
+            <EsisDataPanel
+              resource="saveAttendanceV3"
+              title="Ирц хадгалах"
+              description="Баталгаажсан өдрийн ирцээр ESIS рүү илгээх талбарууд"
+            />
+            <EsisDataPanel
+              resource="groupAttendance"
+              title="Ирц харах"
+              description="Илгээсэн ирцийг ESIS-ээс буцааж уншсан нь"
+            />
+          </div>
+        ) : null}
+      </div>
+    </section>
   );
 }
 

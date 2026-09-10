@@ -42,7 +42,10 @@ const CHILDREN = [
   { id: CHILD_B, lastName: "Ганболд", firstName: "Батбаяр" },
 ];
 
-function stubRegister({ recorded = false }: { recorded?: boolean } = {}) {
+function stubRegister({
+  recorded = false,
+  pendingRequests = 0,
+}: { recorded?: boolean; pendingRequests?: number } = {}) {
   const daySheet = CHILDREN.map((child, index) => ({
     child,
     enrollmentId: index === 0 ? ENROL_A : ENROL_B,
@@ -72,7 +75,7 @@ function stubRegister({ recorded = false }: { recorded?: boolean } = {}) {
     { path: `/groups/${GROUP}/attendance`, method: "GET", body: daySheet },
     {
       path: "/attendance-requests/review-queue",
-      body: { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 },
+      body: { items: [], page: 1, pageSize: 20, total: pendingRequests, totalPages: 0 },
     },
     { path: "/groups", body: { items: [], page: 1, pageSize: 25, total: 0, totalPages: 0 } },
   ]);
@@ -229,5 +232,99 @@ describe("the teacher's week register", () => {
     const call = api.calls.find((item) => item.url.includes("/attendance/range"));
     expect(call?.url).toContain(`from=${MONTH_START}`);
     expect(call?.url).toContain(`to=${TODAY}`);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The three doors under the register
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("the register's three panels", () => {
+  const door = (name: string) => screen.getByRole("button", { name: new RegExp(name) });
+
+  /*
+   * ★ The default is the reason the buttons exist. All three panels used to be
+   * open at once — an empty queue and two ESIS tables of sixty rows between
+   * them — so a teacher scrolled past all of it every morning to reach nothing.
+   */
+  it("opens none of them until one is pressed", async () => {
+    stubRegister();
+    renderWithProviders(<GroupAttendancePage />);
+
+    await grid();
+    expect(door("Ирцийн дэлгэрэнгүй")).toHaveAttribute("aria-expanded", "false");
+    expect(door("Чөлөөний хүсэлт")).toHaveAttribute("aria-expanded", "false");
+    expect(door("Esis ирц")).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByLabelText("Сар")).not.toBeInTheDocument();
+  });
+
+  it("opens the journal as the same grid, read-only, over a whole month", async () => {
+    const user = userEvent.setup();
+    const api = stubRegister();
+    renderWithProviders(<GroupAttendancePage />);
+    await grid();
+
+    await user.click(door("Ирцийн дэлгэрэнгүй"));
+
+    expect(await screen.findByLabelText("Сар")).toBeInTheDocument();
+    // A journal is the record read back; writing it is the register above.
+    const tables = await screen.findAllByRole("table", { name: /Бүлгийн ирцийн бүртгэл/ });
+    expect(tables.length).toBeGreaterThan(1);
+
+    // The month, end to end — not the register's own span.
+    await waitFor(() =>
+      expect(
+        api.calls.some(
+          (call) => call.url.includes(`from=${MONTH_START}`) && call.url.includes("/range"),
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it("counts the waiting notices on the Чөлөөний хүсэлт button", async () => {
+    stubRegister({ pendingRequests: 3 });
+    renderWithProviders(<GroupAttendancePage />);
+    await grid();
+
+    const button = door("Чөлөөний хүсэлт");
+    await waitFor(() => expect(within(button).getByText("3")).toBeInTheDocument());
+  });
+
+  it("carries no badge when nothing is waiting", async () => {
+    stubRegister();
+    renderWithProviders(<GroupAttendancePage />);
+    await grid();
+
+    // A zero badge is a decoration that teaches a teacher to ignore the badge.
+    expect(within(door("Чөлөөний хүсэлт")).queryByText("0")).not.toBeInTheDocument();
+  });
+
+  it("shows only one panel at a time", async () => {
+    const user = userEvent.setup();
+    stubRegister();
+    renderWithProviders(<GroupAttendancePage />);
+    await grid();
+
+    await user.click(door("Ирцийн дэлгэрэнгүй"));
+    expect(await screen.findByLabelText("Сар")).toBeInTheDocument();
+
+    await user.click(door("Чөлөөний хүсэлт"));
+
+    await waitFor(() => expect(screen.queryByLabelText("Сар")).not.toBeInTheDocument());
+    expect(door("Ирцийн дэлгэрэнгүй")).toHaveAttribute("aria-expanded", "false");
+    expect(door("Чөлөөний хүсэлт")).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("closes a panel when its own button is pressed again", async () => {
+    const user = userEvent.setup();
+    stubRegister();
+    renderWithProviders(<GroupAttendancePage />);
+    await grid();
+
+    await user.click(door("Ирцийн дэлгэрэнгүй"));
+    await screen.findByLabelText("Сар");
+    await user.click(door("Ирцийн дэлгэрэнгүй"));
+
+    await waitFor(() => expect(screen.queryByLabelText("Сар")).not.toBeInTheDocument());
   });
 });

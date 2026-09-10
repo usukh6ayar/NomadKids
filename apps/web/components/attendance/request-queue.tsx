@@ -31,6 +31,21 @@ function toLocalTime(iso: string): string {
 }
 
 /**
+ * How many notices are waiting, for a caller that only wants the number.
+ *
+ * ★ The same query key as the queue below, so the two share one request.
+ * React Query dedupes by key, which is why this is a hook rather than a prop
+ * threaded down from a parent that would have to fetch it first.
+ */
+export function useAttendanceRequestCount(): number {
+  const { data } = useQuery({
+    queryKey: qk.attendanceReviewQueue(),
+    queryFn: () => get("/attendance-requests/review-queue?page=1&pageSize=25", queueSchema),
+  });
+  return data?.total ?? 0;
+}
+
+/**
  * Guardians' advance notices, waiting to be decided.
  *
  * ★ It lives on the attendance register now, not on a menu row of its own.

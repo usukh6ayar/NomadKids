@@ -33,6 +33,39 @@ import { ATTENDANCE_STATUS_CHART_TONE, ATTENDANCE_STATUS_ORDER } from "@/lib/att
  * on a calendar — the same definition the funding register uses. A weekend
  * padded in as a zero column would read as a day the whole group missed.
  */
+/**
+ * Weekdays in `YYYY-MM`, and how many of them have already passed.
+ *
+ * ★ A calendar count, and deliberately a different thing from the chart's
+ * "recorded days" above.
+ *
+ * The doc comment on this component says a kindergarten's working days are
+ * the days somebody recorded — that is right about *columns*, where padding a
+ * weekend in as a zero would read as a day the whole group missed. It is the
+ * wrong denominator for "how much of the month is filled in", which is the
+ * question the client asked: the days nobody recorded are exactly the ones
+ * that answer it, so they have to be counted from the calendar rather than
+ * from the rows.
+ *
+ * Mon–Fri. A kindergarten that opens on a Saturday would need its own
+ * calendar, which is a setting nothing in the product carries yet.
+ */
+function workingDaysIn(month: string, today: string): { total: number; elapsed: number } {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const last = new Date(Date.UTC(year!, monthNumber!, 0)).getUTCDate();
+
+  let total = 0;
+  let elapsed = 0;
+  for (let day = 1; day <= last; day += 1) {
+    const date = new Date(Date.UTC(year!, monthNumber! - 1, day));
+    const weekday = date.getUTCDay();
+    if (weekday === 0 || weekday === 6) continue;
+    total += 1;
+    if (date.toISOString().slice(0, 10) <= today) elapsed += 1;
+  }
+  return { total, elapsed };
+}
+
 export function AttendanceMonthPanel({ groupId, month }: { groupId: string; month: string }) {
   const summary = useQuery({
     queryKey: qk.groupAttendanceSummary(groupId, month),
@@ -72,6 +105,11 @@ export function AttendanceMonthPanel({ groupId, month }: { groupId: string; mont
       </div>
     );
   }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const working = workingDaysIn(month, today);
+  const remainingDays = Math.max(0, working.total - working.elapsed);
+  const monthLabel = `${month.slice(0, 4)} оны ${Number(month.slice(5, 7))}-р сар`;
 
   const marks = Object.values(totals).reduce((sum, n) => sum + n, 0);
   const attended = totals.PRESENT + totals.HALF_DAY;
@@ -125,9 +163,16 @@ export function AttendanceMonthPanel({ groupId, month }: { groupId: string; mont
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h3 className="text-lead font-semibold text-ink">Сарын дүр зураг</h3>
+        <h3 className="text-lead font-semibold text-ink">
+          {monthLabel} · ажлын {working.total} хоног
+        </h3>
+        {/*
+          Two facts, not one: how much of the month is filled in, and how much
+          of it is still to come. "8 өдөр бүртгэсэн" alone cannot tell a teacher
+          whether they are up to date or four days behind.
+        */}
         <p className="text-caption text-muted">
-          {recordedDays} өдөр бүртгэсэн · {roster} хүүхэд
+          {recordedDays}/{working.elapsed} бүртгэсэн · {remainingDays} үлдсэн · {roster} хүүхэд
         </p>
       </div>
 
