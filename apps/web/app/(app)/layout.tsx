@@ -1016,10 +1016,10 @@ function parentNav(
   const hoolHref = activeId ? `/children/${activeId}/menu` : "/children";
 
   return [
-    { href: "/home", label: "Нүүр", icon: <Home {...iconProps} /> },
-    { href: "/notifications", label: "Мэдээ", icon: artIcon("notice", 20), badge: "unread" },
-    { href: zuragHref, label: "Зураг", icon: <Images {...iconProps} /> },
-    { href: hoolHref, label: "Хоол", icon: artIcon("food", 20) },
+    { href: "/home", label: "Нүүр", icon: artIcon("navHome", 20) },
+    { href: "/notifications", label: "Мэдээ", icon: artIcon("navNews", 20), badge: "unread" },
+    { href: zuragHref, label: "Зураг", icon: artIcon("navGallery", 20) },
+    { href: hoolHref, label: "Хоол", icon: artIcon("navFood", 20) },
     { href: "/settings", label: "Цэс", icon: <Menu {...iconProps} /> },
   ];
 }

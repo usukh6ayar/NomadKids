@@ -31,7 +31,46 @@ const uploadResultSchema = z.object({
   failed: z.array(z.object({ name: z.string(), reason: z.string() })),
 });
 
+export type PhotoUploadResult = z.infer<typeof uploadResultSchema>;
+
 export const ACCEPTED_TYPES = "image/jpeg,image/png,image/webp";
+
+/**
+ * Stores an already-picked set of photos, preserving the media endpoint's
+ * six-files-per-request ceiling. Exported so a note form can create the note
+ * and attach its selected photos behind one Save button.
+ */
+export async function uploadChildPhotos({
+  childId,
+  files,
+  observationId,
+  purpose,
+}: {
+  childId: string;
+  files: File[];
+  observationId?: string;
+  purpose?: "CHILD_PHOTO" | "OBSERVATION" | "MILESTONE";
+}): Promise<PhotoUploadResult> {
+  const combined: PhotoUploadResult = { items: [], failed: [] };
+
+  for (let index = 0; index < files.length; index += MAX_FILES_PER_REQUEST) {
+    const form = new FormData();
+    for (const file of files.slice(index, index + MAX_FILES_PER_REQUEST)) {
+      form.append("file", file);
+    }
+    if (observationId) form.append("observationId", observationId);
+    if (purpose) form.append("purpose", purpose);
+
+    const result = await mutate(`/children/${childId}/media`, uploadResultSchema, {
+      method: "POST",
+      body: form,
+    });
+    combined.items.push(...result.items);
+    combined.failed.push(...result.failed);
+  }
+
+  return combined;
+}
 
 /**
  * Picking and uploading photos.

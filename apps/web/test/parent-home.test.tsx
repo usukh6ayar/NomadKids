@@ -49,8 +49,10 @@ describe("parent home portfolio artwork", () => {
     const artwork = link.querySelector('[data-testid="parent-home-portfolio-art"]');
     const image = artwork?.querySelector("img");
 
+    expect(link).toHaveClass("h-28");
     expect(image).not.toBeNull();
     expect(image!.getAttribute("src")).toContain(asset);
-    expect(artwork).toHaveClass("bg-transparent");
+    expect(artwork).toHaveClass("h-full", "items-end", "bg-transparent");
+    expect(image).toHaveClass("object-bottom");
   });
 });

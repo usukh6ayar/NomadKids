@@ -26,10 +26,12 @@ function stubAgeProfile({
   profile = { age: 3 },
   patchBody = { age: 3 },
   patchStatus = 200,
+  sex = "MALE",
 }: {
   profile?: Record<string, unknown>;
   patchBody?: Record<string, unknown>;
   patchStatus?: number;
+  sex?: "MALE" | "FEMALE";
 } = {}) {
   return stubApi([
     { path: "/auth/me", body: sessionFor(["PARENT"]) },
@@ -40,7 +42,7 @@ function stubAgeProfile({
       body: patchBody,
     },
     { path: `/children/${CHILD_ID}/age-profiles`, body: [profile] },
-    { path: `/children/${CHILD_ID}`, body: CHILD },
+    { path: `/children/${CHILD_ID}`, body: { ...CHILD, sex } },
   ]);
 }
 
@@ -88,6 +90,26 @@ describe("growth age navigation and editing", () => {
       screen.getByRole("progressbar", { name: "3 насны дурсамж 0% бөглөгдсөн" }),
     ).toHaveAttribute("aria-valuenow", "0");
 
+    expect(screen.getByTestId("age-profile-sections")).toHaveClass("grid-cols-2");
+    const expectedArt = [
+      ["ageFavorite", "icon-age-favorite-3d.png"],
+      ["ageKindergartenLearning", "icon-age-kindergarten-learning-3d.png"],
+      ["ageFamilyLearning", "icon-age-family-learning-3d.png"],
+      ["ageCharacter", "icon-age-character-3d.png"],
+      ["ageFamily", "icon-age-family-3d.png"],
+    ] as const;
+    for (const [name, asset] of expectedArt) {
+      expect(
+        screen.getByTestId(`age-profile-card-${name}`).querySelector("img")?.getAttribute("src"),
+      ).toContain(asset);
+    }
+    expect(screen.getByTestId("age-profile-card-ageFamily").parentElement).toHaveClass(
+      "col-span-2",
+    );
+    expect(
+      screen.getByTestId("age-progress-character").querySelector("img")?.getAttribute("src"),
+    ).toContain("icon-age-pointing-boy-3d.png");
+
     for (const title of [
       "Миний дуртай бүх зүйлс",
       "Миний цэцэрлэгтээ сурсан зүйлс",
@@ -99,6 +121,17 @@ describe("growth age navigation and editing", () => {
       expect(screen.getByRole("button", { name: `${title} тэмдэглэх` })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: `${title} үйлдэл` })).toBeInTheDocument();
     }
+  });
+
+  it("selects the pointing character from the child's stored sex", async () => {
+    stubAgeProfile({ sex: "FEMALE" });
+    renderWithProviders(<AgeProfilePage />);
+
+    expect(
+      (await screen.findByTestId("age-progress-character"))
+        .querySelector("img")
+        ?.getAttribute("src"),
+    ).toContain("icon-age-pointing-girl-3d.png");
   });
 
   it("saves all ten optional favourite fields only to the selected age", async () => {

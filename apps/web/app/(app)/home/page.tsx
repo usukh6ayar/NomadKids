@@ -117,12 +117,12 @@ export default function ParentHomePage() {
 
         <Link
           href={`/children/${selected.id}/portfolio`}
-          className="group flex w-full items-center justify-between gap-5 overflow-hidden rounded-card border border-gray-100 bg-gradient-to-r from-white to-gray-100/80 px-6 py-4 shadow-sm transition-[border-color,box-shadow] hover:border-primary/30 hover:shadow-md lg:min-w-[390px] lg:max-w-[430px]"
+          className="group flex h-28 w-full items-center justify-between gap-5 overflow-hidden rounded-card border border-gray-100 bg-gradient-to-r from-white to-gray-100/80 px-6 shadow-sm transition-[border-color,box-shadow] hover:border-primary/30 hover:shadow-md lg:min-w-[390px] lg:max-w-[430px]"
         >
           <span className="text-title font-bold text-gray-800">{PORTFOLIO}</span>
           {portfolioProfileArt ? (
             <span
-              className="relative flex h-28 w-32 shrink-0 items-end justify-center overflow-hidden bg-transparent"
+              className="relative flex h-full w-32 shrink-0 items-end justify-center overflow-hidden bg-transparent"
               aria-hidden="true"
               data-testid="parent-home-portfolio-art"
             >

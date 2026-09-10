@@ -61,7 +61,7 @@ type UploadTarget = {
   category?: string;
 };
 
-const CATEGORY_ICON: Record<AlbumCategory, LucideIcon> = {
+export const CATEGORY_ICON: Record<AlbumCategory, LucideIcon> = {
   PORTRAIT: CircleUserRound,
   FAMILY: HeartHandshake,
   TRAVEL: MapPinned,

@@ -3,17 +3,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import {
-  ChevronRight,
-  HandHeart,
-  Heart,
-  HouseHeart,
-  MoreVertical,
-  Pencil,
-  School,
-  Smile,
-  X,
-} from "lucide-react";
+import { ChevronRight, MoreVertical, Pencil, X } from "lucide-react";
 import { ageProfileSchema, type AgeProfile } from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -25,6 +15,7 @@ import { FormDialog } from "@/components/ui/form-dialog";
 import { RowMenu } from "@/components/ui/menu";
 import { FormError } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
+import { Art, type ArtName } from "@/components/ui/art";
 import {
   CHARACTER_TRAITS,
   FAMILY_MEMBER_TYPES,
@@ -34,27 +25,18 @@ import {
   kindergartenSkillCategories,
   type PortfolioAge,
 } from "@/lib/age-development";
-import { AGE_TONE } from "@/lib/age-content";
 import type { GradientTone } from "@/lib/gradient-tones";
 import { cn } from "@/lib/utils";
 
 type Profile = AgeProfile | undefined;
 type PatchBody = Record<string, string | null | string[] | Record<string, string>>;
 
-const BORDER_FOR_TONE: Record<GradientTone, string> = {
-  green: "border-mint",
-  blue: "border-sky",
-  orange: "border-peach",
-  purple: "border-cornflower",
-  pink: "border-peach",
-};
-
-const EMPTY_CARD_FOR_TONE: Record<GradientTone, string> = {
-  green: "bg-mint text-mint-ink",
-  blue: "bg-sky text-sky-ink",
-  orange: "bg-peach text-peach-ink",
-  purple: "bg-cornflower text-cornflower-ink",
-  pink: "bg-peach text-peach-ink",
+const CARD_FOR_TONE: Record<GradientTone, string> = {
+  green: "border-[#deefe3] bg-[linear-gradient(135deg,#fbfffc_0%,#effaf1_100%)]",
+  blue: "border-[#dfeef8] bg-[linear-gradient(135deg,#fbfeff_0%,#eef8ff_100%)]",
+  orange: "border-[#f4ead1] bg-[linear-gradient(135deg,#fffef9_0%,#fff7de_100%)]",
+  purple: "border-[#e8e4f8] bg-[linear-gradient(135deg,#fdfcff_0%,#f3f0ff_100%)]",
+  pink: "border-[#f8e4e3] bg-[linear-gradient(135deg,#fffafa_0%,#fff0ef_100%)]",
 };
 
 /**
@@ -93,8 +75,8 @@ function ProfileCard({
   hasContent,
   emptyPrompt,
   onEdit,
-  icon,
-  iconTone,
+  art,
+  wide = false,
   children,
 }: {
   title: string;
@@ -102,8 +84,8 @@ function ProfileCard({
   hasContent: boolean;
   emptyPrompt: string;
   onEdit: () => void;
-  icon: ReactNode;
-  iconTone: string;
+  art: ArtName;
+  wide?: boolean;
   children: ReactNode;
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -112,41 +94,53 @@ function ProfileCard({
     <Dialog.Root open={detailsOpen} onOpenChange={setDetailsOpen}>
       <Card
         className={cn(
-          "overflow-visible border-2 transition-shadow hover:shadow-md",
-          BORDER_FOR_TONE[tone],
-          !hasContent && EMPTY_CARD_FOR_TONE[tone],
+          "relative h-full min-h-[132px] overflow-visible border transition-shadow hover:shadow-md",
+          CARD_FOR_TONE[tone],
+          wide && "min-h-[124px]",
         )}
+        data-testid={`age-profile-card-${art}`}
       >
-        <div className="flex min-h-[72px] items-center gap-1 p-1.5 md:px-3 md:py-2">
+        <div className="flex h-full min-h-[inherit] items-stretch p-2 sm:p-3">
           <button
             type="button"
             aria-label={`${title} ${hasContent ? "дэлгэрэнгүй" : "тэмдэглэх"}`}
-            className="card-interactive flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-row px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className={cn(
+              "card-interactive relative grid min-w-0 flex-1 cursor-pointer grid-cols-[56px_minmax(0,1fr)] items-center gap-2 rounded-row p-1.5 pr-7 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:grid-cols-[72px_minmax(0,1fr)] sm:gap-3 sm:p-2 sm:pr-9",
+              wide && "grid-cols-[92px_minmax(0,1fr)] sm:grid-cols-[124px_minmax(0,1fr)]",
+            )}
             onClick={() => (hasContent ? setDetailsOpen(true) : onEdit())}
           >
             <span
               aria-hidden="true"
               className={cn(
-                "grid size-9 shrink-0 place-items-center rounded-row shadow-sm",
-                iconTone,
+                "grid size-14 shrink-0 place-items-center sm:size-[72px]",
+                wide && "h-24 w-[92px] sm:h-28 sm:w-[124px]",
               )}
             >
-              {icon}
+              <Art
+                name={art}
+                size={wide ? 132 : 80}
+                className={cn(
+                  "size-16 max-w-none object-contain sm:size-20",
+                  wide && "h-24 w-[108px] sm:h-32 sm:w-36",
+                )}
+              />
             </span>
             <span className="min-w-0 flex-1">
-              <span role="heading" aria-level={3} className="block font-semibold text-ink">
+              <span
+                role="heading"
+                aria-level={3}
+                className="block text-caption font-bold leading-snug text-ink sm:text-body"
+              >
                 {title}
               </span>
-              <span className="mt-0.5 line-clamp-2 block text-caption leading-snug text-muted">
-                {hasContent ? "Мэдээлэл бүртгэгдсэн" : emptyPrompt}
-              </span>
+              <span className="sr-only">{hasContent ? "Мэдээлэл бүртгэгдсэн" : emptyPrompt}</span>
             </span>
-            <span className="inline-flex shrink-0 items-center gap-0.5 rounded-pill bg-surface/80 px-2 py-1 text-caption font-semibold text-primary shadow-sm">
-              {hasContent ? "Харах" : "+ Тэмдэглэх"}
-              <ChevronRight size={14} aria-hidden="true" />
+            <span className="absolute bottom-1.5 right-1.5 inline-flex size-7 shrink-0 items-center justify-center rounded-pill bg-white/75 text-primary shadow-sm sm:bottom-2 sm:right-2 sm:size-8">
+              <ChevronRight size={18} aria-hidden="true" />
             </span>
           </button>
-          <div className="self-start">
+          <div className="absolute right-1 top-1 z-10 scale-75 sm:right-1.5 sm:top-1.5 sm:scale-90">
             <RowMenu
               ariaLabel={`${title} үйлдэл`}
               triggerIcon={<MoreVertical size={18} aria-hidden="true" />}
@@ -244,11 +238,10 @@ export function FavoritesCard({
     <>
       <ProfileCard
         title="Миний дуртай бүх зүйлс"
-        tone={AGE_TONE[age]}
+        tone="pink"
         hasContent={rows.length > 0}
         emptyPrompt={`${age} насандаа хамгийн дуртай ямар тоглоомтой байсан бэ?`}
-        icon={<Heart size={18} />}
-        iconTone="bg-peach text-peach-ink"
+        art="ageFavorite"
         onEdit={() => {
           reset();
           setOpen(true);
@@ -316,8 +309,8 @@ function SkillsSectionCard({
   otherKey,
   legacyKey,
   disclaimer,
-  icon,
-  iconTone,
+  art,
+  tone,
 }: {
   childId: string;
   age: PortfolioAge;
@@ -330,8 +323,8 @@ function SkillsSectionCard({
   otherKey: "kindergartenOtherSkill" | "familyLearningOther";
   legacyKey: "newSkills" | "familyMembers";
   disclaimer?: string;
-  icon: ReactNode;
-  iconTone: string;
+  art: ArtName;
+  tone: GradientTone;
 }) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
@@ -369,11 +362,10 @@ function SkillsSectionCard({
     <>
       <ProfileCard
         title={title}
-        tone={AGE_TONE[age]}
+        tone={tone}
         hasContent={rows.length > 0}
         emptyPrompt={emptyPrompt}
-        icon={icon}
-        iconTone={iconTone}
+        art={art}
         onEdit={() => {
           reset();
           setOpen(true);
@@ -492,8 +484,8 @@ export function KindergartenSkillsCard({
       otherKey="kindergartenOtherSkill"
       legacyKey="newSkills"
       disclaimer={OBSERVATION_DISCLAIMER}
-      icon={<School size={18} />}
-      iconTone="bg-sky text-sky-ink"
+      art="ageKindergartenLearning"
+      tone="green"
     />
   );
 }
@@ -519,8 +511,8 @@ export function FamilyLearningCard({
       notesKey="familyLearningNotes"
       otherKey="familyLearningOther"
       legacyKey="familyMembers"
-      icon={<HandHeart size={18} />}
-      iconTone="bg-mint text-mint-ink"
+      art="ageFamilyLearning"
+      tone="purple"
     />
   );
 }
@@ -569,11 +561,10 @@ export function CharacterCard({
     <>
       <ProfileCard
         title="Миний зан араншин"
-        tone={AGE_TONE[age]}
+        tone="blue"
         hasContent={rows.length > 0}
         emptyPrompt={`${age} насныхаа зан араншинг ажиглан тэмдэглээрэй.`}
-        icon={<Smile size={18} />}
-        iconTone="bg-cornflower text-cornflower-ink"
+        art="ageCharacter"
         onEdit={() => {
           reset();
           setOpen(true);
@@ -690,11 +681,11 @@ export function FamilyCard({
     <>
       <ProfileCard
         title="Гэр бүл"
-        tone={AGE_TONE[age]}
+        tone="orange"
         hasContent={rows.length > 0}
         emptyPrompt="Гэр бүлийнхээ тухай нандин дурсамжаа тэмдэглээрэй."
-        icon={<HouseHeart size={18} />}
-        iconTone="bg-sun text-sun-ink"
+        art="ageFamily"
+        wide
         onEdit={() => {
           reset();
           setOpen(true);

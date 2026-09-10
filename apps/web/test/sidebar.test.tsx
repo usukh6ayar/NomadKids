@@ -605,4 +605,24 @@ describe("mobile navigation", () => {
     expect(hrefs).toContain("/children");
     expect(hrefs).toContain("/notifications");
   });
+
+  it("gives the parent's four main tabs their own supplied drawing", async () => {
+    renderShell(["PARENT"], "/home", [OWN_CHILD]);
+
+    const bar = await waitFor(() => screen.getByRole("navigation", { name: "Доод цэс" }));
+    const expected = [
+      ["Нүүр", "icon-nav-home"],
+      ["Мэдээ", "icon-nav-news"],
+      ["Зураг", "icon-nav-gallery"],
+      ["Хоол", "icon-nav-food"],
+    ] as const;
+
+    for (const [label, asset] of expected) {
+      const link = within(bar).getByRole("link", { name: label });
+      expect(link.querySelector("img")?.getAttribute("src")).toContain(asset);
+      // The label itself stays on screen — this bar follows the same visible
+      // caption pattern every other tab bar in the shell already uses.
+      expect(within(link).getByText(label)).not.toHaveClass("sr-only");
+    }
+  });
 });

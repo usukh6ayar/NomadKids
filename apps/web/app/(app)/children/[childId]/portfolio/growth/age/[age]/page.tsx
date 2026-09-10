@@ -9,7 +9,6 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { BackButton } from "@/components/ui/back-button";
 import { ErrorState, LoadingState } from "@/components/ui/states";
-import { GradientUnderline } from "@/components/child/portfolio-hero";
 import { AgeProfileProgress } from "@/components/child/age-profile-progress";
 import {
   CharacterCard,
@@ -93,22 +92,34 @@ export default function AgeProfilePage() {
     <div className="flex flex-col gap-4 py-1 sm:gap-5 sm:py-2">
       {backLink}
 
-      <div>
-        <h1 className="text-heading font-semibold text-ink">Миний {age} нас</h1>
-        <GradientUnderline className="mt-1.5" />
-        <p className="mt-2 text-body text-muted">
-          {data.firstName}-ийн дуртай зүйлс, өсөлт, дурсамжийн мэдээлэл.
-        </p>
+      <div className="text-center">
+        <h1 className="text-display font-bold text-ink">Миний {age} нас</h1>
+        <p className="mt-1 text-body font-semibold text-ink">{age} насны дурсамж</p>
       </div>
 
-      <AgeProfileProgress age={age} childName={data.firstName} profile={profile} />
+      <AgeProfileProgress
+        age={age}
+        childName={data.firstName}
+        childSex={data.sex}
+        profile={profile}
+      />
 
-      <div className="flex flex-col gap-2.5 sm:gap-3">
-        <FavoritesCard childId={childId} age={age} profile={profile} />
-        <KindergartenSkillsCard childId={childId} age={age} profile={profile} />
-        <FamilyLearningCard childId={childId} age={age} profile={profile} />
-        <CharacterCard childId={childId} age={age} profile={profile} />
-        <FamilyCard childId={childId} age={age} profile={profile} />
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3" data-testid="age-profile-sections">
+        <div className="min-w-0">
+          <FavoritesCard childId={childId} age={age} profile={profile} />
+        </div>
+        <div className="min-w-0">
+          <KindergartenSkillsCard childId={childId} age={age} profile={profile} />
+        </div>
+        <div className="min-w-0">
+          <FamilyLearningCard childId={childId} age={age} profile={profile} />
+        </div>
+        <div className="min-w-0">
+          <CharacterCard childId={childId} age={age} profile={profile} />
+        </div>
+        <div className="col-span-2 min-w-0">
+          <FamilyCard childId={childId} age={age} profile={profile} />
+        </div>
       </div>
     </div>
   );

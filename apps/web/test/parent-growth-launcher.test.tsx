@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChildDetail } from "@kinder/contracts";
@@ -26,6 +26,7 @@ const child = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.setSystemTime(new Date("2026-09-09T04:00:00Z"));
 });
 
 describe("parent growth launcher copy", () => {
@@ -51,29 +52,65 @@ describe("parent growth launcher copy", () => {
     expect(screen.queryByText("БИ ЦЭЦЭРЛЭГТЭЭ")).not.toBeInTheDocument();
     expect(screen.queryByText("Батбаяр-ийн өхөөрдөм ахиц")).not.toBeInTheDocument();
 
-    // The lede sits under the page's own heading now, and only there — it
-    // used to repeat under "Тэмдэглэл" too, which read as a mistake once both
-    // were on screen together.
+    // The lede sits once, under the page's own h1 — the notes section below
+    // no longer repeats the active bucket's name as a second, button-less
+    // heading.
     expect(
       screen.getByText("Хүүхдийн хөгжилд гарч буй ахиц дэвшлийг багш, эцэг эх хамтран тэмдэглэнэ"),
     ).toBeInTheDocument();
-
-    expect(screen.getByRole("heading", { level: 2, name: "Тэмдэглэл" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 2, name: "Ажиглалт" })).not.toBeInTheDocument();
 
     expect(await screen.findByText("Тэмдэглэл ороогүй")).toBeInTheDocument();
+    expect(screen.getByLabelText("Улирал")).toHaveTextContent("1-р улирал");
+    expect(screen.queryByRole("group", { name: "Тэмдэглэлийн ангилал" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ажиглалт нэмэх" })).toHaveClass("rounded-pill");
     expect(screen.queryByText("Одоогоор зурагтай мөч алга")).not.toBeInTheDocument();
     expect(
       screen.queryByText("Багшийн хуваалцсан ажиглалт, бүтээл энд харагдана."),
     ).not.toBeInTheDocument();
   });
 
-  it("keeps the three doors collapsed behind a single + trigger", async () => {
-    const user = userEvent.setup();
+  it("shows a text-only note and hides the empty state", async () => {
+    vi.setSystemTime(new Date("2026-09-09T04:00:00Z"));
     stubApi([
       { path: "/auth/me", body: sessionFor(["PARENT"]) },
       {
         path: `/children/${CHILD_ID}/observations`,
-        body: { items: [], page: 1, pageSize: 100, total: 0, totalPages: 0 },
+        body: {
+          items: [
+            {
+              id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+              childId: CHILD_ID,
+              observedOn: "2026-09-09",
+              source: "PARENT",
+              reviewStatus: "PENDING",
+              visibleToParents: true,
+              includeInReport: false,
+              activityName: null,
+              situation: "Ө" + "сэн бичвэртэй тэмдэглэл",
+              childDid: null,
+              childSaid: null,
+              teacherComment: null,
+              nextSteps: null,
+              reviewNote: null,
+              type: {
+                id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                name: "Ажиглалт",
+                code: "daily",
+              },
+              author: {
+                id: "11111111-1111-4111-8111-111111111111",
+                lastName: "Тест",
+                firstName: "Хэрэглэгч",
+              },
+              media: [],
+            },
+          ],
+          page: 1,
+          pageSize: 100,
+          total: 1,
+          totalPages: 1,
+        },
       },
       {
         path: "/kindergartens/33333333-3333-4333-8333-333333333333/terms",
@@ -83,18 +120,180 @@ describe("parent growth launcher copy", () => {
 
     renderWithProviders(<ParentGrowthLauncher child={child} />);
 
-    for (const label of ["Ажиглалт", "Ярилцлага", "Бүтээл"]) {
-      expect(screen.queryByRole("button", { name: label })).not.toBeInTheDocument();
-    }
+    expect(await screen.findByRole("button", { name: "Тэмдэглэлийн үйлдэл" })).toBeInTheDocument();
+    expect(screen.queryByText("Тэмдэглэл ороогүй")).not.toBeInTheDocument();
+  });
 
-    const trigger = screen.getByRole("button", { name: "Шинэ тэмдэглэл нэмэх" });
-    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  it("shows each tab's own past notes — Ажиглалт, Ярилцлага, Бүтээл don't mix", async () => {
+    const user = userEvent.setup();
+    const author = {
+      id: "11111111-1111-4111-8111-111111111111",
+      lastName: "Тест",
+      firstName: "Хэрэглэгч",
+    };
+    const base = {
+      childId: CHILD_ID,
+      observedOn: "2026-09-09",
+      source: "PARENT" as const,
+      reviewStatus: "PENDING" as const,
+      visibleToParents: true,
+      includeInReport: false,
+      activityName: null,
+      childDid: null,
+      childSaid: null,
+      teacherComment: null,
+      nextSteps: null,
+      reviewNote: null,
+      author,
+      media: [],
+    };
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["PARENT"]) },
+      {
+        path: `/children/${CHILD_ID}/observations`,
+        body: {
+          items: [
+            {
+              ...base,
+              id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+              situation: "Өнгөрсөн ажиглалт",
+              type: { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1", name: "Ажиглалт", code: "daily" },
+            },
+            {
+              ...base,
+              id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2",
+              situation: "Өмнө бичсэн ярилцлага",
+              type: {
+                id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2",
+                name: "Ярилцлага",
+                code: "conversation",
+              },
+            },
+            {
+              ...base,
+              id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3",
+              situation: "Өмнө хийсэн бүтээл",
+              type: { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb3", name: "Бүтээл", code: "artwork" },
+            },
+          ],
+          page: 1,
+          pageSize: 100,
+          total: 3,
+          totalPages: 1,
+        },
+      },
+      {
+        path: "/kindergartens/33333333-3333-4333-8333-333333333333/terms",
+        body: [],
+      },
+    ]);
 
-    await user.click(trigger);
+    renderWithProviders(<ParentGrowthLauncher child={child} />);
 
-    expect(trigger).toHaveAttribute("aria-expanded", "true");
-    for (const label of ["Ажиглалт", "Ярилцлага", "Бүтээл"]) {
-      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
-    }
+    expect(await screen.findByText("Өнгөрсөн ажиглалт")).toBeInTheDocument();
+    expect(screen.queryByText("Өмнө бичсэн ярилцлага")).not.toBeInTheDocument();
+    expect(screen.queryByText("Өмнө хийсэн бүтээл")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Ярилцлага" }));
+    expect(await screen.findByText("Өмнө бичсэн ярилцлага")).toBeInTheDocument();
+    expect(screen.queryByText("Өнгөрсөн ажиглалт")).not.toBeInTheDocument();
+    expect(screen.queryByText("Өмнө хийсэн бүтээл")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Бүтээл" }));
+    expect(await screen.findByText("Өмнө хийсэн бүтээл")).toBeInTheDocument();
+    expect(screen.queryByText("Өнгөрсөн ажиглалт")).not.toBeInTheDocument();
+    expect(screen.queryByText("Өмнө бичсэн ярилцлага")).not.toBeInTheDocument();
+  });
+
+  it("saves the selected category and photo from one submit", async () => {
+    vi.setSystemTime(new Date("2026-09-09T04:00:00Z"));
+    const saved = {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      childId: CHILD_ID,
+      observedOn: "2026-09-09",
+      source: "PARENT",
+      reviewStatus: "PENDING",
+      visibleToParents: true,
+      includeInReport: false,
+      activityName: null,
+      situation: "Шинэ ахиц",
+      childDid: null,
+      childSaid: null,
+      teacherComment: null,
+      nextSteps: null,
+      reviewNote: null,
+      type: null,
+      author: null,
+      media: [],
+    };
+    const api = stubApi([
+      { path: "/auth/me", body: sessionFor(["PARENT"]) },
+      {
+        path: `/children/${CHILD_ID}/observations`,
+        body: { items: [], page: 1, pageSize: 100, total: 0, totalPages: 0 },
+      },
+      {
+        path: "/kindergartens/33333333-3333-4333-8333-333333333333/terms",
+        body: [],
+      },
+      {
+        path: `/children/${CHILD_ID}/parent-observations`,
+        method: "POST",
+        status: 201,
+        body: saved,
+      },
+      {
+        path: `/children/${CHILD_ID}/media`,
+        method: "POST",
+        status: 201,
+        body: {
+          items: [
+            {
+              id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+              caption: null,
+              originalName: "ahits.png",
+              mimeType: "image/png",
+              width: 10,
+              height: 10,
+              purpose: "OBSERVATION",
+              observationId: saved.id,
+              takenAt: null,
+              age: null,
+              category: null,
+              albumCoverAge: null,
+              attribution: null,
+              uploadedBy: null,
+            },
+          ],
+          failed: [],
+        },
+      },
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<ParentGrowthLauncher child={child} />);
+
+    await user.click(screen.getByRole("button", { name: "Ажиглалт нэмэх" }));
+    await user.type(screen.getByLabelText("Агуулга"), "Шинэ ахиц");
+    await user.upload(
+      screen.getByLabelText("Зураг сонгох"),
+      new File(["png"], "ahits.png", { type: "image/png" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
+
+    await waitFor(() =>
+      expect(
+        api.calls.some(
+          (call) =>
+            call.method === "POST" &&
+            call.url === `/children/${CHILD_ID}/parent-observations` &&
+            (call.body as { categoryCode?: string })?.categoryCode === "daily",
+        ),
+      ).toBe(true),
+    );
+    const upload = api.calls.find(
+      (call) => call.method === "POST" && call.url === `/children/${CHILD_ID}/media`,
+    );
+    expect(upload?.body).toBeInstanceOf(FormData);
+    expect((upload?.body as FormData).get("observationId")).toBe(saved.id);
   });
 });
