@@ -68,6 +68,10 @@ export type ListAttendanceQuery = z.infer<typeof listAttendanceQuerySchema>;
 export const groupDaySheetQuerySchema = z.object({ date: isoDate });
 export type GroupDaySheetQuery = z.infer<typeof groupDaySheetQuerySchema>;
 
+/** The span the register's week grid asks for. The service caps the width. */
+export const groupRangeSheetQuerySchema = z.object({ from: isoDate, to: isoDate });
+export type GroupRangeSheetQuery = z.infer<typeof groupRangeSheetQuerySchema>;
+
 /**
  * Many children, one status, one request — `PUT /groups/:id/attendance`.
  *

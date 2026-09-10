@@ -758,6 +758,36 @@ export const groupAttendanceRowSchema = z.object({
 });
 export type GroupAttendanceRow = z.infer<typeof groupAttendanceRowSchema>;
 
+/**
+ * A group's register over a span of days — a child per row, a day per column.
+ *
+ * ★ One request, not one per day. The teacher's register draws the week the
+ * chosen date falls in, and fetching that as seven day sheets would put seven
+ * round trips on the screen a teacher opens every morning, on a phone, on a
+ * kindergarten's connection.
+ *
+ * `days` is every date in the range in ascending order, so the client renders
+ * columns from it rather than recomputing the calendar and risking a different
+ * answer about which days the register covers. A child's `records` is keyed by
+ * that same ISO date, and a day nobody marked is simply absent from the map —
+ * "not recorded" and "recorded as absent" are different facts and the register
+ * draws them differently.
+ */
+export const groupAttendanceRangeSchema = z.object({
+  days: z.array(z.string()),
+  rows: z.array(
+    z.object({
+      child: personRefSchema,
+      enrollmentId: uuidSchema,
+      records: z.record(
+        z.string(),
+        z.object({ id: uuidSchema, status: attendanceStatusSchema, note: z.string().nullish() }),
+      ),
+    }),
+  ),
+});
+export type GroupAttendanceRange = z.infer<typeof groupAttendanceRangeSchema>;
+
 export const attendanceRequestSchema = z.object({
   id: uuidSchema,
   childId: uuidSchema,

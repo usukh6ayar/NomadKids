@@ -774,6 +774,91 @@ describe("group month summary", () => {
  * tempting to skip — the ids are "already known to be in the group" — and
  * `recordGroupMeals` had exactly that omission for a while.
  */
+// ═══════════════════════════════════════════════════════════════════════════
+// The week grid behind the teacher's register
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("group range sheet", () => {
+  async function mark(childId: string, date: string, status: string) {
+    const res = await authed(
+      request(server()).put(`/v1/children/${childId}/attendance/${date}`),
+      teacherA,
+    ).send({ status });
+    if (res.status !== 200) throw new Error(`mark failed: ${res.status} ${res.text}`);
+  }
+
+  const range = (from: string, to: string) =>
+    authed(
+      request(server()).get(`/v1/groups/${a.group.id}/attendance/range?from=${from}&to=${to}`),
+      teacherA,
+    );
+
+  it("returns every day in the span, in order, marked or not", async () => {
+    await mark(a.child.id, "2026-02-10", "PRESENT");
+    await mark(a.child.id, "2026-02-12", "SICK");
+
+    const res = await range("2026-02-09", "2026-02-13");
+
+    expect(res.status).toBe(200);
+    // Five columns, including the two nobody marked — the register draws a
+    // week, not only the days that happen to carry a row.
+    expect(res.body.days).toEqual([
+      "2026-02-09",
+      "2026-02-10",
+      "2026-02-11",
+      "2026-02-12",
+      "2026-02-13",
+    ]);
+
+    const row = res.body.rows.find((r: { child: { id: string } }) => r.child.id === a.child.id);
+    expect(row.records["2026-02-10"].status).toBe("PRESENT");
+    expect(row.records["2026-02-12"].status).toBe("SICK");
+    // Absent from the map, not present-and-null: "nobody marked this day" and
+    // "marked as absent" are different facts and the grid draws them apart.
+    expect(row.records["2026-02-11"]).toBeUndefined();
+  });
+
+  it("lists a child with nothing recorded at all", async () => {
+    const res = await range("2026-02-09", "2026-02-13");
+
+    const row = res.body.rows.find((r: { child: { id: string } }) => r.child.id === a.child.id);
+    expect(row).toBeDefined();
+    expect(row.records).toEqual({});
+  });
+
+  it("never reaches another group's records", async () => {
+    await mark(a.child.id, "2026-02-10", "PRESENT");
+
+    const res = await authed(
+      request(server()).get(
+        `/v1/groups/${b.group.id}/attendance/range?from=2026-02-09&to=2026-02-13`,
+      ),
+      teacherA,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("refuses a span wider than a month, rather than answering unbounded", () => {
+    // §3.4 — no endpoint returns an unbounded set.
+    return range("2026-01-01", "2026-06-30").expect(400);
+  });
+
+  it("refuses a range that ends before it starts", () => {
+    return range("2026-02-13", "2026-02-09").expect(400);
+  });
+
+  /** 404, not 403 — §1.7, and the same answer the day sheet beside it gives. */
+  it("a guardian cannot read the group's register", async () => {
+    const res = await authed(
+      request(server()).get(
+        `/v1/groups/${a.group.id}/attendance/range?from=2026-02-09&to=2026-02-13`,
+      ),
+      parentA,
+    );
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("group batch recording", () => {
   const DATE = "2026-02-10";
   const url = (groupId: string) => `/v1/groups/${groupId}/attendance`;
