@@ -38,7 +38,7 @@ const observationTypesSchema = z.array(observationTypeSchema);
 /** The group's roster — one request, independent of term and domain. */
 const childrenPageSchema = paginated(childSummarySchema);
 import { Card, SectionHeader } from "@/components/ui/card";
-import { GroupCoverage, defaultWindow } from "@/components/assessment/group-coverage";
+import { GroupCoverage } from "@/components/assessment/group-coverage";
 import { RegisterProgress } from "@/components/register/register-progress";
 import { RegisterSaveBar } from "@/components/register/save-bar";
 import { TONE_SURFACE, type Tone } from "@/components/ui/tone";
@@ -569,14 +569,15 @@ function GroupAssessment() {
           termId={termId}
           startsOn={groupSchoolYear?.startsOn}
           endsOn={groupSchoolYear?.endsOn}
-          recordComposer={
+          recordComposer={({ from, to, notesPerChildTarget }) => (
             <NewRecordStrip
               groupId={groupId}
               embedded
-              startsOn={groupSchoolYear?.startsOn}
-              endsOn={groupSchoolYear?.endsOn}
+              from={from}
+              to={to}
+              notesPerChildTarget={notesPerChildTarget}
             />
-          }
+          )}
         />
       ) : null}
 
@@ -1003,14 +1004,16 @@ const KIND_FALLBACK = { tone: "cornflower" as Tone, Icon: Eye };
 function NewRecordStrip({
   groupId,
   embedded = false,
-  startsOn,
-  endsOn,
+  from,
+  to,
+  notesPerChildTarget,
 }: {
   groupId: string;
   embedded?: boolean;
-  /** The school year the class figure is taken over. */
-  startsOn?: string | null;
-  endsOn?: string | null;
+  /** The month selected in the goal card. */
+  from: string;
+  to: string;
+  notesPerChildTarget: number | null;
 }) {
   const router = useRouter();
   const [selectedType, setSelectedType] = useState<{ code: string; name: string } | null>(null);
@@ -1022,9 +1025,6 @@ function NewRecordStrip({
     behind it has already fetched — asking for it again on every door press
     would be a request for data in memory.
   */
-  const fallback = defaultWindow();
-  const from = startsOn ? `${startsOn.slice(0, 4)}-09-01` : fallback.from;
-  const to = endsOn ? `${endsOn.slice(0, 4)}-05-31` : fallback.to;
   const stats = useQuery({
     queryKey: qk.groupObservationStats(groupId, from, to),
     queryFn: () =>
@@ -1157,6 +1157,23 @@ function NewRecordStrip({
                 {classTotal === null ? "—" : classTotal}
               </span>
             </div>
+          }
+          coverage={
+            stats.data
+              ? {
+                  counts: Object.fromEntries(
+                    stats.data.byChildType
+                      .filter((row) =>
+                        doors.some(
+                          (type) => type.id === row.typeId && type.name === selectedType.name,
+                        ),
+                      )
+                      .map((row) => [row.childId, row.count]),
+                  ),
+                  target: notesPerChildTarget ?? 1,
+                  title: `${selectedType.name} · ангийн хамралт`,
+                }
+              : undefined
           }
           onClose={() => setSelectedType(null)}
           onSelect={(childId) =>

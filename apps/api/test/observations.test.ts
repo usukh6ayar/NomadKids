@@ -780,6 +780,7 @@ describe("group observation stats", () => {
     expect(res.body.childrenWithNotes).toBe(1);
     expect(res.body.enrolled).toBe(1);
     expect(res.body.byChild).toEqual([{ childId: a.child.id, count: 2 }]);
+    expect(res.body.byChildType).toEqual([{ childId: a.child.id, typeId, count: 2 }]);
   });
 
   it("buckets notes by calendar month", async () => {

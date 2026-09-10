@@ -38,6 +38,13 @@ const STATS = {
     { childId: "10444444-4444-4444-8444-444444444444", count: 1 },
     { childId: "10555555-5555-4555-8555-555555555555", count: 1 },
   ],
+  byChildType: [
+    {
+      childId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      typeId: "11111111-1111-4111-8111-111111111111",
+      count: 2,
+    },
+  ],
   byType: [
     { id: "11111111-1111-4111-8111-111111111111", name: "Ажиглалт", count: 7 },
     { id: "22222222-2222-4222-8222-222222222222", name: "Ярилцлага", count: 0 },
@@ -133,40 +140,41 @@ describe("the assessment summary", () => {
     expect(screen.queryByText("Шинэ хүүхэд")).not.toBeInTheDocument();
   });
 
-  it("shows the count, percentage and graph for every record kind", async () => {
+  /**
+   * ★ A share of the records written, never of the children goal — corrected
+   * 2026-09-11 at the client's report that the figures below the goal were
+   * wrong.
+   *
+   * The goal counts **children** and these count **notes**. Dividing one by
+   * the other produced "Ажиглалт: 7 тэмдэглэл, 70%" against a target of ten
+   * children, which is a percentage of nothing. The question this panel asks
+   * is whether the three kinds are in balance, and the denominator for that is
+   * the notes themselves.
+   */
+  it("shows each record kind as a share of the records written", async () => {
     stubStats();
     summary();
 
     expect(await screen.findByText("Баримтжуулалтын хэлбэр")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Ажиглалт: 7 тэмдэглэл, 100%" })).toBeInTheDocument();
+    // 7 + 0 + 5 = 12 notes, so seven of them is 58%.
+    expect(screen.getByRole("img", { name: "Ажиглалт: 7 тэмдэглэл, 58%" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Ярилцлага: 0 тэмдэглэл, 0%" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Бүтээл: 5 тэмдэглэл, 100%" })).toBeInTheDocument();
-    expect(screen.getByText("Зорилт 2 хүүхэдтэй харьцуулсан хувь")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Бүтээл: 5 тэмдэглэл, 42%" })).toBeInTheDocument();
   });
 
-  it("recalculates coverage, record types and directions against the goal", async () => {
+  /**
+   * ★ The goal does not rescale the panels below it.
+   *
+   * Asserted with a goal set, because that is the state the client reported:
+   * the same shares, whatever the target is.
+   */
+  it("keeps those shares the same whatever the goal is", async () => {
     stubStats(10);
     summary();
 
-    const coverage = await screen.findByRole("img", {
-      name: "10 хүүхдийн зорилтоос 5 нь хамрагдсан",
-    });
-    expect(within(coverage).getByText("50%")).toBeInTheDocument();
-
-    const kinds = screen
-      .getByRole("heading", { name: "Баримтжуулалтын хэлбэр" })
-      .closest("section") as HTMLElement;
     expect(
-      within(kinds).getByRole("img", { name: "Ажиглалт: 7 тэмдэглэл, 70%" }),
+      await screen.findByRole("img", { name: "Ажиглалт: 7 тэмдэглэл, 58%" }),
     ).toBeInTheDocument();
-    expect(
-      within(kinds).getByRole("img", { name: "Бүтээл: 5 тэмдэглэл, 50%" }),
-    ).toBeInTheDocument();
-
-    const directions = screen
-      .getByRole("heading", { name: "Сургалтын чиглэлийн хамралт" })
-      .closest('[data-ui="card"]') as HTMLElement;
-    expect(within(directions).getByText("50%")).toBeInTheDocument();
   });
 
   /**
@@ -233,21 +241,35 @@ describe("the assessment summary", () => {
     expect(screen.getByLabelText("Нэг хүүхдэд бичих тэмдэглэлийн тоо")).toBeInTheDocument();
   });
 
-  it("writes the goal to the group, not to the kindergarten", async () => {
+  /**
+   * ★ Digits and two buttons, not a select spelling "5 хүүхэд" — 2026-09-11,
+   * at the client's request.
+   *
+   * The unit is on the label above; repeating it inside every option made each
+   * control about 140px and forced the row to stack on a phone. Steppers are
+   * also the right interaction for a number adjusted by one: two 44px targets
+   * and no keyboard over the figures below.
+   *
+   * ★★ Committed on a pause. Walking from 2 to 6 is four presses, and four
+   * PUTs would be three writes nobody asked for.
+   */
+  it("writes the goal to the group with a stepper, once the presses stop", async () => {
     const user = userEvent.setup();
-    const api = stubStats();
+    const api = stubStats(5);
     summary();
 
-    await user.selectOptions(await screen.findByLabelText("Зорилтот хүүхдийн тоо"), "8");
+    await user.click(await screen.findByRole("button", { name: /Зорилтот хүүхдийн тоо — нэмэх/ }));
 
-    await waitFor(() =>
-      expect(
-        api.calls.find(
-          (call) =>
-            call.method === "PUT" &&
-            call.url === `/groups/${GROUP_ID}/assessments/monthly-note-goal`,
-        )?.body,
-      ).toEqual({ monthlyNoteGoal: 8 }),
+    await waitFor(
+      () =>
+        expect(
+          api.calls.find(
+            (call) =>
+              call.method === "PUT" &&
+              call.url === `/groups/${GROUP_ID}/assessments/monthly-note-goal`,
+          )?.body,
+        ).toEqual({ monthlyNoteGoal: 6 }),
+      { timeout: 2000 },
     );
   });
 
@@ -261,32 +283,45 @@ describe("the assessment summary", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("5 хүүхэд · хүүхэд бүрт 2 тэмдэглэл")).toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText("Нэг хүүхдэд бичих тэмдэглэлийн тоо"), "3");
-    await waitFor(() =>
-      expect(
-        api.calls.find(
-          (call) =>
-            call.method === "PUT" &&
-            call.url === `/groups/${GROUP_ID}/assessments/monthly-note-goal`,
-        )?.body,
-      ).toEqual({ monthlyNotesPerChildGoal: 3 }),
+    await user.click(
+      screen.getByRole("button", { name: /Нэг хүүхдэд бичих тэмдэглэлийн тоо — нэмэх/ }),
+    );
+
+    await waitFor(
+      () =>
+        expect(
+          api.calls.find(
+            (call) =>
+              call.method === "PUT" &&
+              call.url === `/groups/${GROUP_ID}/assessments/monthly-note-goal`,
+          )?.body,
+        ).toEqual({ monthlyNotesPerChildGoal: 3 }),
+      { timeout: 2000 },
     );
   });
 
   /**
-   * ★ The bars show whether each row reaches the month's figure — 2026-09-10,
-   * at the client's request.
+   * ★ The direction bars are scaled to the busiest strand, not to the goal —
+   * corrected 2026-09-11.
    *
-   * Scaled to the target rather than to the busiest row: a full bar means the
-   * target is met and a short one says how far off it is. The caption counts
-   * how many reached it, so a teacher does not have to.
+   * They *were* scaled to it, from an earlier request that they show whether
+   * they reach the month's figure. That was the wrong reading of both numbers
+   * and produced exactly the nonsense the client reported: the goal counts
+   * children and these count notes, so a strand with six notes cleared a
+   * target of five children and took a tick while meaning nothing.
+   *
+   * Asserted as an absence, because a tick and a caption reappearing would
+   * look like a feature in review.
    */
-  it("marks which rows have reached the month's figure", async () => {
+  it("does not measure the direction bars against the children goal", async () => {
     stubStats(10);
     summary();
 
-    // Ten of fifteen domain notes are on one strand, so one row clears 10.
-    expect(await screen.findByText("Зорилт 10 — 1 / 7 хүрсэн.")).toBeInTheDocument();
+    const directions = (await screen.findByText("Сургалтын чиглэлийн хамралт")).closest(
+      '[data-ui="card"]',
+    ) as HTMLElement;
+
+    expect(within(directions).queryByText(/хүрсэн/)).not.toBeInTheDocument();
   });
 
   /**
@@ -549,6 +584,9 @@ describe("the new-record strip", () => {
     expect(within(picker).getByText("Ангийн нийт ажиглалт")).toBeInTheDocument();
     // `STATS.byType` has seven under "Ажиглалт".
     expect(within(picker).getByText("7")).toBeInTheDocument();
+    expect(within(picker).getByText("Ажиглалт · ангийн хамралт")).toBeInTheDocument();
+    expect(within(picker).getByText("1/1 хүүхэд")).toBeInTheDocument();
+    expect(within(picker).getByText("Зорилт биелсэн")).toBeInTheDocument();
   });
 
   /**

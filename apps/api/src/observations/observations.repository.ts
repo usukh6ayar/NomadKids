@@ -334,7 +334,7 @@ export class ObservationsRepository {
       observedOn: { gte: from, lte: to },
     };
 
-    const [byType, byDomain, byActivity, byChild, distinctChildren, total, enrolled] =
+    const [byType, byDomain, byActivity, byChild, byChildType, distinctChildren, total, enrolled] =
       await Promise.all([
         this.prisma.observation.groupBy({
           by: ["typeId"],
@@ -355,6 +355,11 @@ export class ObservationsRepository {
         }),
         this.prisma.observation.groupBy({
           by: ["childId"],
+          where: window,
+          _count: { _all: true },
+        }),
+        this.prisma.observation.groupBy({
+          by: ["childId", "typeId"],
           where: window,
           _count: { _all: true },
         }),
@@ -379,6 +384,7 @@ export class ObservationsRepository {
       byDomain,
       byActivity,
       byChild,
+      byChildType,
       childrenWithNotes: distinctChildren.length,
       total,
       enrolled,

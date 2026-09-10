@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Check, CheckCircle2, Eye, Lightbulb, MessageCircle, Palette, Target } from "lucide-react";
+import { CheckCircle2, Eye, Lightbulb, MessageCircle, Palette, Target } from "lucide-react";
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { groupObservationStatsSchema, groupSchema } from "@kinder/contracts";
@@ -96,6 +96,13 @@ export function defaultWindow(): { from: string; to: string } {
 
 function normalized(value: string): string {
   return value.trim().toLocaleLowerCase("mn-MN");
+}
+
+function calendarMonthWindow(key: string): { from: string; to: string } {
+  const year = Number(key.slice(0, 4));
+  const month = Number(key.slice(5, 7));
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return { from: `${key}-01`, to: `${key}-${String(lastDay).padStart(2, "0")}` };
 }
 
 /** Keep the source screen's fixed order while accepting legacy catalogue names. */
@@ -255,7 +262,11 @@ export function GroupCoverage({
   /** The term the register behind this summary has open, carried into the links. */
   termId?: string;
   /** Child picker and note shortcuts, placed inside the monthly goal card. */
-  recordComposer?: ReactNode;
+  recordComposer?: (context: {
+    from: string;
+    to: string;
+    notesPerChildTarget: number | null;
+  }) => ReactNode;
 }) {
   const { hasRole } = useSession();
   const rows = useCoverageRows({ groupId, startsOn, endsOn });
@@ -355,8 +366,9 @@ export function GroupCoverage({
     (row) => row.count > 0 && row.count === lowestPositiveCount,
   );
   const typeTotal = typeRows.reduce((sum, row) => sum + row.count, 0);
-  const typeScale =
-    target && target > 0 ? target : Math.max(...typeRows.map((row) => row.count), 1);
+  // Scaled to the busiest kind, for the same reason the percentage is a share
+  // of the records: these count notes and the goal counts children.
+  const typeScale = Math.max(...typeRows.map((row) => row.count), 1);
   /*
     ★ The term rides along, so Буцах returns to the one the teacher had open.
 
@@ -401,7 +413,17 @@ export function GroupCoverage({
           Энэ сарын зорилт
         </div>
 
-        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+        {/*
+          ★ Three across on a phone too — 2026-09-11, at the client's request.
+
+          The month and the two goal figures are one sentence: "in September,
+          five children, two notes each". Stacked they read as three unrelated
+          settings, and they cost three rows of a screen whose first job is the
+          figures underneath. The two goals are steppers rather than selects
+          precisely so they fit: a `− 5 +` is about 96px where a select
+          spelling out "5 хүүхэд" is not.
+        */}
+        <div className="grid grid-cols-3 gap-2">
           <label className="flex min-w-0 flex-col gap-1">
             <span className="text-caption font-medium text-muted">Сар</span>
             <select
@@ -432,7 +454,9 @@ export function GroupCoverage({
         </p>
 
         {recordComposer ? (
-          <div className="border-t border-mint/70 pt-3">{recordComposer}</div>
+          <div className="border-t border-mint/70 pt-3">
+            {recordComposer({ ...calendarMonthWindow(selected.key), notesPerChildTarget })}
+          </div>
         ) : null}
 
         <div className="rounded-row border border-mint/70 bg-surface/80 p-3">
@@ -562,12 +586,18 @@ export function GroupCoverage({
 
         <Card pad="compact" className="flex flex-col gap-3">
           {typeRows.map((row) => {
-            const rowPercent =
-              target && target > 0
-                ? Math.min(100, Math.round((row.count / target) * 100))
-                : typeTotal > 0
-                  ? Math.round((row.count / typeTotal) * 100)
-                  : 0;
+            /*
+              ★ A share of the records written, never of the children goal —
+              corrected 2026-09-11 at the client's report that the figures
+              below the goal were wrong.
+
+              The goal counts **children**; these count **notes**. Dividing one
+              by the other produced "Ажиглалт: 7 тэмдэглэл, 70%" against a
+              target of ten children — a percentage of nothing. The question
+              this panel asks is whether the three kinds are in balance, and
+              the denominator for that is the notes themselves.
+            */
+            const rowPercent = typeTotal > 0 ? Math.round((row.count / typeTotal) * 100) : 0;
             const barWidth = Math.min(100, (row.count / typeScale) * 100);
 
             return (
@@ -619,14 +649,12 @@ export function GroupCoverage({
         href={href("domains")}
         rows={domainRows}
         tone="sky"
-        goal={target}
       />
       <InlineBars
         title="Үйл ажиллагааны үеийн хамралт"
         href={href("activities")}
         rows={activityRows}
         tone="sun"
-        goal={target}
       />
 
       <MonthBalance months={months} href={href("months")} />
@@ -814,31 +842,28 @@ function InlineBars({
   href,
   rows,
   tone,
-  goal,
 }: {
   title: string;
   href: string;
   rows: CountRow[];
   tone: Tone;
-  /** The month's target, when the group has set one. */
-  goal: number | null;
 }) {
   /*
-    ★ Scaled to the goal when there is one, to the busiest row when there is
-    not — 2026-09-10, at the client's request that these show whether they
-    reach the month's figure.
+    ★ Scaled to the busiest row, never to the month's goal — corrected
+    2026-09-11, at the client's report that the graph below the goal was wrong.
 
-    A bar scaled to the peak answers "which strand is ahead of which", which is
-    useful but is not the question they asked. Scaled to the target, a full bar
-    means the target is met and a short one says how far off it is — and the
-    two readings cannot be confused because the scale itself changes.
+    It *was* scaled to the goal, from an earlier request that these show
+    whether they reach it. That was the wrong reading of both numbers and it
+    produced exactly the nonsense reported: the goal counts **children** and
+    these bars count **notes**, so a strand with six notes cleared a target of
+    five children, turned green and took a tick — while meaning nothing at all.
 
-    ★★ The counts are notes and the target counts children, so a row at the
-    line has *as many notes as the month's child target*, not that many
-    children. The caption says so rather than leaving the two units to be
-    assumed equal.
+    The goal's own progress belongs on the goal card, where the units match:
+    children reached, children at the per-child depth, notes against
+    children × notes. Here the question is which strand is ahead of which,
+    which is a comparison between the bars themselves.
   */
-  const scale = goal && goal > 0 ? goal : Math.max(...rows.map((row) => row.count), 1);
+  const peak = Math.max(...rows.map((row) => row.count), 1);
 
   return (
     <Card pad="roomy" className="flex flex-col gap-2.5">
@@ -849,47 +874,25 @@ function InlineBars({
         </Link>
       </div>
 
-      {rows.map((row) => {
-        const reached = goal !== null && goal > 0 && row.count >= goal;
-
-        return (
-          <div
-            key={row.id}
-            className="grid grid-cols-[minmax(110px,1fr)_minmax(64px,1.3fr)_44px] items-center gap-2"
+      {rows.map((row) => (
+        <div
+          key={row.id}
+          className="grid grid-cols-[minmax(110px,1fr)_minmax(64px,1.3fr)_28px] items-center gap-2"
+        >
+          <span className="min-w-0 truncate text-caption leading-snug text-ink">{row.name}</span>
+          <span
+            role="img"
+            aria-label={`${row.name}: ${row.count} тэмдэглэл`}
+            className="h-2 overflow-hidden rounded-pill bg-track"
           >
-            <span className="min-w-0 truncate text-caption leading-snug text-ink">{row.name}</span>
             <span
-              role="img"
-              aria-label={
-                goal
-                  ? `${row.name}: ${row.count} тэмдэглэл, зорилт ${goal}${reached ? " — хүрсэн" : ""}`
-                  : `${row.name}: ${row.count} тэмдэглэл`
-              }
-              className="relative h-2 overflow-hidden rounded-pill bg-track"
-            >
-              <span
-                className="block h-full rounded-pill"
-                style={{
-                  width: `${Math.min(100, (row.count / scale) * 100)}%`,
-                  background: reached ? TONE_VAR.mint : TONE_VAR[tone],
-                }}
-              />
-            </span>
-            <strong className="flex items-center justify-end gap-1 text-caption tabular-nums text-ink">
-              {goal ? `${Math.min(100, Math.round((row.count / goal) * 100))}%` : row.count}
-              {reached ? (
-                <Check size={13} strokeWidth={3} aria-hidden="true" className="text-mint-ink" />
-              ) : null}
-            </strong>
-          </div>
-        );
-      })}
-
-      {goal ? (
-        <p className="text-caption text-muted">
-          Зорилт {goal} — {rows.filter((row) => row.count >= goal).length} / {rows.length} хүрсэн.
-        </p>
-      ) : null}
+              className="block h-full rounded-pill"
+              style={{ width: `${(row.count / peak) * 100}%`, background: TONE_VAR[tone] }}
+            />
+          </span>
+          <strong className="text-right text-caption tabular-nums text-ink">{row.count}</strong>
+        </div>
+      ))}
     </Card>
   );
 }

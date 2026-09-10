@@ -4188,6 +4188,10 @@ export const groupObservationStatsSchema = z.object({
    * a roster into a payload that reports on a group.
    */
   byChild: z.array(z.object({ childId: uuidSchema, count: z.number() })).default([]),
+  /** Notes per child and kind, used by the teacher's class coverage picker. */
+  byChildType: z
+    .array(z.object({ childId: uuidSchema, typeId: uuidSchema, count: z.number() }))
+    .default([]),
   /** Every configured type, including the ones sitting at zero. */
   byType: z.array(statBucketSchema).default([]),
   byDomain: z.array(statBucketSchema).default([]),
