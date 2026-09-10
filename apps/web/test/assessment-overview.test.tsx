@@ -10,6 +10,7 @@ import {
 } from "./support/render";
 import { GroupCoverage } from "@/components/assessment/group-coverage";
 import { CoverageDetail } from "@/components/assessment/coverage-detail";
+import AssessmentPage from "@/app/(app)/groups/[groupId]/assessment/page";
 
 /**
  * Явцын үнэлгээ — the summary and its four breakdowns, 2026-09-10.
@@ -245,5 +246,133 @@ describe("a breakdown screen", () => {
 
     await screen.findByText("Математик");
     expect(screen.queryByRole("button", { name: /Үнэлгээ нэмэх/ })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The "Шинэ тэмдэглэл" strip — the child picker and the three doors.
+ *
+ * ★ It took its children from the assessment *column*, which is the roster
+ * joined to one term and one development domain.
+ *
+ * So it could not appear until three requests had finished in sequence —
+ * terms, then the config that seeds the domain, then the column keyed on both
+ * — and it renders nothing while that list is empty. A teacher opening the
+ * screen watched an empty space where the child picker belonged. A
+ * kindergarten with no domain configured never got past step two and never saw
+ * it at all.
+ *
+ * Which child to write a note about has nothing to do with which domain is
+ * selected. These assert that: the column is deliberately never answered.
+ */
+describe("the new-record strip", () => {
+  const CHILD_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
+  function stubPage() {
+    return stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: `/groups/${GROUP_ID}/assessments`, body: null, status: 500 },
+      /*
+        ★ The specific path first: `stubApi` matches on `startsWith` and takes
+        the first hit, so a bare "/children" listed above would also answer
+        "/children/:id/observations/types" — with a page of children, which
+        parses as nothing and leaves the three doors missing.
+      */
+      {
+        path: `/children/${CHILD_ID}/observations/types`,
+        body: [
+          { id: "11111111-1111-4111-8111-111111111111", name: "Ажиглалт", code: "daily", order: 1 },
+          {
+            id: "22222222-2222-4222-8222-222222222222",
+            name: "Ярилцлага",
+            code: "conversation",
+            order: 2,
+          },
+          {
+            id: "55555555-5555-4555-8555-555555555555",
+            name: "Бүтээл",
+            code: "artwork",
+            order: 3,
+          },
+        ],
+      },
+      {
+        path: "/children",
+        body: {
+          items: [
+            {
+              id: CHILD_ID,
+              lastName: "Батжаргал",
+              firstName: "Ану",
+              sex: "FEMALE",
+              // `dateOfBirth` is required on `childSummarySchema`; without it
+              // the page parses to nothing and the strip never appears.
+              dateOfBirth: "2021-04-12",
+            },
+          ],
+          page: 1,
+          pageSize: 100,
+          total: 1,
+          totalPages: 1,
+        },
+      },
+      {
+        path: `/groups/${GROUP_ID}`,
+        body: {
+          id: GROUP_ID,
+          name: "Дэлбээ бүлэг",
+          kindergartenId: KINDERGARTEN_ID,
+          schoolYearId: "66666666-6666-4666-8666-666666666666",
+        },
+      },
+      {
+        path: `/kindergartens/${KINDERGARTEN_ID}/assessment-config`,
+        body: { domains: [], levels: [], monthlyNoteGoal: null },
+      },
+      { path: `/kindergartens/${KINDERGARTEN_ID}/terms`, body: [] },
+      { path: `/kindergartens/${KINDERGARTEN_ID}/school-years`, body: [] },
+      { path: "/groups", body: { items: [], page: 1, pageSize: 25, total: 0, totalPages: 0 } },
+      { path: `/groups/${GROUP_ID}/observation-stats`, body: STATS },
+    ]);
+  }
+
+  /**
+   * ★ The column is stubbed to fail, and the strip still appears.
+   *
+   * That is the assertion: a 500 from the assessment column must not take the
+   * child picker with it, because the two answer different questions.
+   */
+  it("appears without waiting for the assessment column", async () => {
+    stubPage();
+    renderWithProviders(<AssessmentPage />);
+
+    expect(await screen.findByLabelText("Хүүхэд сонгох")).toBeInTheDocument();
+    expect(screen.getByText("Шинэ тэмдэглэл")).toBeInTheDocument();
+  });
+
+  it("names the child and offers the three doors", async () => {
+    stubPage();
+    renderWithProviders(<AssessmentPage />);
+
+    // The doors need a second request — the child's own note types — so the
+    // first is awaited rather than read in the same tick as the picker.
+    expect(await screen.findByRole("link", { name: /Ажиглалт/ })).toBeInTheDocument();
+    for (const door of ["Ярилцлага", "Бүтээл"]) {
+      expect(screen.getByRole("link", { name: new RegExp(door) })).toBeInTheDocument();
+    }
+  });
+
+  /**
+   * ★ A kindergarten with no development domain still gets the strip.
+   *
+   * `assessment-config` above returns none, so the column never becomes
+   * enabled at all — which is precisely the case that used to leave this
+   * screen with an empty space under its heading.
+   */
+  it("appears even when no development domain is configured", async () => {
+    stubPage();
+    renderWithProviders(<AssessmentPage />);
+
+    expect(await screen.findByLabelText("Хүүхэд сонгох")).toBeInTheDocument();
   });
 });

@@ -24,10 +24,17 @@ import { RowMenu } from "@/components/ui/menu";
 import { useToast } from "@/components/ui/toast";
 import Link from "next/link";
 import { Eye, Images, MessageCircle, Printer, Users } from "lucide-react";
-import { observationTypeSchema } from "@kinder/contracts";
+import {
+  MAX_PAGE_SIZE,
+  childSummarySchema,
+  observationTypeSchema,
+  paginated,
+} from "@kinder/contracts";
 
 /** The kindergarten's configured record kinds — one shortcut button each. */
 const observationTypesSchema = z.array(observationTypeSchema);
+/** The group's roster — one request, independent of term and domain. */
+const childrenPageSchema = paginated(childSummarySchema);
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { GroupCoverage } from "@/components/assessment/group-coverage";
@@ -383,7 +390,7 @@ function GroupAssessment() {
         thing on the screen is what the group looks like rather than two
         dropdowns to configure before anything appears.
       */}
-      <NewRecordStrip children={children} />
+      <NewRecordStrip groupId={groupId} />
 
       {column.data ? (
         <p className="flex flex-wrap items-center gap-2 text-body text-muted">
@@ -1009,12 +1016,40 @@ const KIND_STYLE: Record<string, { tone: Tone; Icon: typeof Eye }> = {
 
 const KIND_FALLBACK = { tone: "cornflower" as Tone, Icon: Eye };
 
-function NewRecordStrip({
-  children,
-}: {
-  children: { childId: string; lastName?: string | null; firstName: string }[];
-}) {
+function NewRecordStrip({ groupId }: { groupId: string }) {
   const [childId, setChildId] = useState("");
+
+  /*
+    ★ The group's own roster, not the assessment column's — fixed 2026-09-10.
+
+    This strip took its children from `column.data`, which is the roster
+    *joined to one term and one development domain*. So it could not appear
+    until three requests had finished in sequence — terms, then the config that
+    seeds the domain, then the column keyed on both — and it renders nothing
+    while `children` is empty, so a teacher opening the screen watched an empty
+    space where the child picker belonged. Worse, a kindergarten with no domain
+    configured never got past step two and the strip never appeared at all.
+
+    Which child to write a note about has nothing to do with which domain is
+    selected. One request, keyed on the group, and it arrives with the page.
+
+    ★★ `MAX_PAGE_SIZE`, not a number picked by eye. `pagination.ts` caps it at
+    100 and answers 400 above that — the mistake `audience-picker.tsx` records
+    making with `?pageSize=200`.
+  */
+  const roster = useQuery({
+    queryKey: qk.children({ groupId, page: 1, pageSize: MAX_PAGE_SIZE }),
+    queryFn: () =>
+      get(`/children?groupId=${groupId}&page=1&pageSize=${MAX_PAGE_SIZE}`, childrenPageSchema),
+    enabled: Boolean(groupId),
+    staleTime: 60_000,
+  });
+
+  const children = (roster.data?.items ?? []).map((child) => ({
+    childId: child.id,
+    lastName: child.lastName,
+    firstName: child.firstName,
+  }));
 
   const anyChildId = children[0]?.childId;
   const types = useQuery({
@@ -1030,13 +1065,34 @@ function NewRecordStrip({
     ["daily", "conversation", "artwork"].includes(type.code ?? ""),
   );
 
+  /*
+    ★ A skeleton while the roster loads, not nothing.
+
+    Returning null until the names arrive is what made this look broken: the
+    strip is the first thing under the heading, and an empty space there reads
+    as a screen that failed rather than one that is loading.
+  */
+  if (roster.isLoading) return <LoadingState rows={1} />;
   if (children.length === 0) return null;
 
   return (
     <Card pad="compact" className="grid items-end gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
+      {/*
+        ★ `aria-label` on the control, not a `sr-only` span inside a wrapping
+        `<label>` — fixed 2026-09-10.
+
+        `Select` is a Radix listbox: a `<button role="combobox">` with a popup,
+        not a native `<select>`. A `<label>` wrapping it renders the words and
+        associates with nothing that a screen reader or a query can resolve, so
+        this control had a visible-to-nobody name. Naming the control directly
+        is the version that works for both.
+      */}
       <label>
-        <span className="sr-only">Хүүхэд сонгох</span>
-        <Select value={selectedId} onChange={(event) => setChildId(event.target.value)}>
+        <Select
+          aria-label="Хүүхэд сонгох"
+          value={selectedId}
+          onChange={(event) => setChildId(event.target.value)}
+        >
           {children.map((child) => (
             <option key={child.childId} value={child.childId}>
               {child.lastName ? `${child.lastName} ` : ""}
