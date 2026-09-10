@@ -465,9 +465,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
 
   /** An entry only an administrator has, dropped entirely for anyone else. */
   const adminEntry = (label: string, href: string, art?: ArtName) =>
-    isAdmin
-      ? [{ label, href, icon: art ? artIcon(art, 18) : routeIcon(href) }]
-      : [];
+    isAdmin ? [{ label, href, icon: art ? artIcon(art, 18) : routeIcon(href) }] : [];
 
   /*
    * ★ A teacher with one group links straight at it; everybody else takes the
@@ -860,7 +858,11 @@ function supportNav(isCook: boolean): NavItem[] {
     ? [
         { href: "/kitchen/dashboard", label: "Самбар", icon: <LayoutGrid {...iconProps} /> },
         { href: "/menu", label: "Хоолны цэс", icon: artIcon("food", 20) },
-        { href: "/kitchen/recipes", label: "Технологийн карт", icon: artIcon("kitchenRecipeCard", 20) },
+        {
+          href: "/kitchen/recipes",
+          label: "Технологийн карт",
+          icon: artIcon("kitchenRecipeCard", 20),
+        },
         { href: "/settings", label: "Цэс", icon: <Menu {...iconProps} /> },
       ]
     : [
@@ -868,7 +870,11 @@ function supportNav(isCook: boolean): NavItem[] {
         // `/finance`, which is now the register rather than the overview.
         { href: "/finance/dashboard", label: "Самбар", icon: <LayoutGrid {...iconProps} /> },
         { href: "/invoices", label: "Нэхэмжлэл", icon: artIcon("accountingInvoice", 20) },
-        { href: "/attendance/journal", label: "Ирц", icon: artIcon("accountingAttendanceDetails", 20) },
+        {
+          href: "/attendance/journal",
+          label: "Ирц",
+          icon: artIcon("accountingAttendanceDetails", 20),
+        },
         { href: "/settings", label: "Цэс", icon: <Menu {...iconProps} /> },
       ];
 }
@@ -883,7 +889,25 @@ function supportNav(isCook: boolean): NavItem[] {
  * lifting it or copying it, and a copy is where `routeIcon()` stops being
  * consulted on one of them.
  */
-const navEntry = (label: string, href: string) => ({ label, href, icon: routeIcon(href) });
+/**
+ * ★ `art` names an icon for this row directly, instead of letting `ROUTE_ART`
+ * derive one from the href.
+ *
+ * The accountant's rail is why it exists: four of its rows point at routes the
+ * map already answers for somebody else — `/invoices` and `/finance/audit-log`
+ * resolve to the generic `finance` glyph, `/attendance/journal` to
+ * `attendance` — so the whole menu drew two or three copies of the same
+ * picture. A per-row override is the only place that can differ, because
+ * `ROUTE_ART` is keyed by route and the route is what they share.
+ *
+ * `18`, matching `routeIcon` and `adminEntry`: this is a sidebar row either
+ * way, and an override should change which icon is drawn, not how big it is.
+ */
+const navEntry = (label: string, href: string, art?: ArtName) => ({
+  label,
+  href,
+  icon: art ? artIcon(art, 18) : routeIcon(href),
+});
 
 function supportSections(isCook: boolean): NavSection[] {
   return [
