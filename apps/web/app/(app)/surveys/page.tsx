@@ -129,32 +129,53 @@ function SurveysHub() {
         <p className="mt-0.5 text-body text-muted">Эцэг эхийн санал, оролцоог хялбархан аваарай.</p>
       </header>
 
-      <div className="flex flex-col gap-3 md:flex-row">
+      {/*
+        ★ Side by side on a phone too — 2026-09-10, at the client's request.
+
+        They stacked below `md`, which is the safe default for a card carrying
+        an icon, a name and a sentence: at 390px each column is about 170px and
+        that content does not fit across. It fits *down*. So the card turns its
+        axis instead of the grid turning its own — icon over name over hint,
+        going back to a row from `sm` where the width exists.
+
+        The chevron is dropped in the stacked layout rather than shrunk. A
+        24px arrow beside a 170px column is most of a line for an affordance
+        the whole card already has, and the two cards are the only things on
+        this screen that can be pressed.
+      */}
+      <div className="grid grid-cols-2 gap-3">
         {KINDS.map(({ kind, href, Icon, chip, card, title }) => (
           <Link
             key={kind}
             href={href}
             className={cn(
-              "group flex flex-1 items-center gap-3.5 rounded-card border p-4 transition-all hover:-translate-y-0.5 hover:shadow-md",
+              "group flex flex-col items-start gap-2 rounded-card border p-3.5 transition-all hover:-translate-y-0.5 hover:shadow-md sm:flex-row sm:items-center sm:gap-3.5 sm:p-4",
               card,
             )}
           >
             <span
               aria-hidden="true"
-              className={cn("grid size-12 shrink-0 place-items-center rounded-control", chip)}
+              className={cn(
+                "grid size-10 shrink-0 place-items-center rounded-control sm:size-12",
+                chip,
+              )}
             >
-              <Icon size={22} />
+              <Icon size={20} className="sm:size-[22px]" />
             </span>
             <span className="min-w-0 flex-1">
-              <span className={cn("block text-lead font-semibold leading-heading", title)}>
+              <span
+                className={cn("block text-body font-semibold leading-heading sm:text-lead", title)}
+              >
                 {SURVEY_KIND_LABEL[kind]}
               </span>
-              <span className="mt-0.5 block text-caption text-muted">{SURVEY_KIND_HINT[kind]}</span>
+              <span className="mt-0.5 block text-caption leading-snug text-muted">
+                {SURVEY_KIND_HINT[kind]}
+              </span>
             </span>
             <ChevronRight
               size={20}
               aria-hidden="true"
-              className="shrink-0 text-faint transition-transform group-hover:translate-x-0.5"
+              className="hidden shrink-0 text-faint transition-transform group-hover:translate-x-0.5 sm:block"
             />
           </Link>
         ))}
