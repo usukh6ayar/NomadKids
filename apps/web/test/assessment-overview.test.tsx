@@ -83,98 +83,154 @@ const summary = (termId?: string) =>
   );
 
 describe("the assessment summary", () => {
-  it("leads with the four figures the design asks for", async () => {
+  /**
+   * ★ Ангийн хамрагдалт — the ring is the headline and the parts are named.
+   *
+   * "80%" alone does not say of what; the two lines under it add up to the
+   * roster, so a reader can check the ring against the numbers rather than
+   * trusting it.
+   */
+  it("reports the class's coverage as a ring and its parts", async () => {
     stubStats();
     summary();
 
-    expect(await screen.findByText("Нийт хүүхэд")).toBeInTheDocument();
-    expect(screen.getByText("Үнэлгээтэй")).toBeInTheDocument();
-    expect(screen.getByText("Үлдсэн")).toBeInTheDocument();
-    expect(screen.getByText("Нийт үзүүлэлт")).toBeInTheDocument();
-    // 9 enrolled, 5 with notes, 4 left, 12 notes.
-    expect(screen.getByText("12")).toBeInTheDocument();
-    expect(screen.getByText("4")).toBeInTheDocument();
+    expect(await screen.findByText("Ангийн хамрагдалт")).toBeInTheDocument();
+    // 5 of 9 children have a note.
+    expect(screen.getByRole("img", { name: "9 хүүхдээс 5 нь баримттай" })).toBeInTheDocument();
+    expect(screen.getByText("Хамрагдсан")).toBeInTheDocument();
+    expect(screen.getByText("Хараахан баримтгүй")).toBeInTheDocument();
   });
 
   /**
-   * ★ Four rows that navigate, not three panels side by side.
+   * ★ The client's design has a third slice, "Шинэ хүүхэд".
    *
-   * On a phone the panels were most of a scroll before the register itself,
-   * with the two a teacher was not reading costing as much height as the one
-   * they were.
+   * Nothing in the product distinguishes a newly enrolled child from any other
+   * child with no note yet, and inventing the distinction would put a number
+   * on screen that no query stands behind. Asserted as an absence so it cannot
+   * arrive later as a plausible-looking guess.
    */
-  it("offers each breakdown as a screen of its own", async () => {
+  it("does not invent a slice the data cannot support", async () => {
     stubStats();
     summary();
 
-    const nav = await screen.findByRole("navigation", { name: "Дэлгэрэнгүй" });
-    const links = within(nav).getAllByRole("link");
+    await screen.findByText("Ангийн хамрагдалт");
+    expect(screen.queryByText("Шинэ хүүхэд")).not.toBeInTheDocument();
+  });
 
+  /**
+   * ★ Баримтжуулалтын хэлбэр as three figures, not three bars.
+   *
+   * Bars compare against a denominator; these are compared against each other,
+   * and the question is whether one kind has been neglected.
+   */
+  it("counts the three kinds of record and their total", async () => {
+    stubStats();
+    summary();
+
+    expect(await screen.findByText("Баримтжуулалтын хэлбэр")).toBeInTheDocument();
+    // 7 + 0 + 5, with the family-submitted 40 excluded.
+    expect(screen.getByText("Нийт 12 баримт")).toBeInTheDocument();
+  });
+
+  /**
+   * ★ The bars *and* a way into their own screen.
+   *
+   * Rows that only navigated made a teacher press to find out whether it was
+   * worth pressing. The shape is read here; the screen behind it is where they
+   * filter and act.
+   */
+  it("shows each breakdown inline with a link into its screen", async () => {
+    stubStats();
+    summary(TERM_ID);
+
+    expect(await screen.findByText("Сургалтын чиглэлийн хамралт")).toBeInTheDocument();
+    expect(screen.getByText("Үйл ажиллагааны үеийн хамралт")).toBeInTheDocument();
+
+    const links = screen.getAllByRole("link", { name: "Дэлгэрэнгүй" });
     expect(links.map((link) => link.getAttribute("href"))).toEqual([
-      `/groups/${GROUP_ID}/assessment/types`,
-      `/groups/${GROUP_ID}/assessment/domains`,
-      `/groups/${GROUP_ID}/assessment/activities`,
-      `/groups/${GROUP_ID}/assessment/months`,
+      `/groups/${GROUP_ID}/assessment/types?termId=${TERM_ID}`,
+      `/groups/${GROUP_ID}/assessment/domains?termId=${TERM_ID}`,
+      `/groups/${GROUP_ID}/assessment/activities?termId=${TERM_ID}`,
+      `/groups/${GROUP_ID}/assessment/months?termId=${TERM_ID}`,
     ]);
   });
 
   /**
-   * ★ The term rides along, so Буцах returns to the one that was open.
+   * ★ The goal counts children, not notes — and says so in those words.
    *
-   * The breakdowns are taken over the school year, so `termId` changes nothing
-   * about what they show — but it is what the register behind them is keyed
-   * on, and dropping it would land a returning teacher on the default term
-   * with their selection lost.
+   * A goal counted in notes is met by writing twenty about one child. This one
+   * is only met by reaching twenty different children.
    */
-  it("carries the open term into each breakdown", async () => {
-    stubStats();
-    summary(TERM_ID);
-
-    const nav = await screen.findByRole("navigation", { name: "Дэлгэрэнгүй" });
-    for (const link of within(nav).getAllByRole("link")) {
-      expect(link.getAttribute("href")).toContain(`?termId=${TERM_ID}`);
-    }
-  });
-
-  /**
-   * ★ The goal comes from the kindergarten, and this is the defect that
-   * mattered.
-   *
-   * It was `localStorage`: the two teachers of one group could hold different
-   * targets, a director saw neither, and clearing site data lost it. A shared
-   * commitment stored per browser is not a shared commitment.
-   */
-  it("reads the goal from the kindergarten", async () => {
+  it("reads the goal from the kindergarten and counts children against it", async () => {
     stubStats(2);
     summary();
 
-    expect(await screen.findByText("Зорилт")).toBeInTheDocument();
-    // September has six children with notes against a target of two.
+    expect(await screen.findByText("Энэ сарын зорилт")).toBeInTheDocument();
+    expect(screen.getByText("хүүхдийн хөгжлийн явцыг баримтжуулах")).toBeInTheDocument();
+    // Six children documented in September against a target of two.
     expect(screen.getByText("6 / 2")).toBeInTheDocument();
-    expect(screen.getByText("100%")).toBeInTheDocument();
   });
 
-  /** A target nobody agreed to would be a bar failing against an invented number. */
-  it("draws no goal card when the kindergarten has set none", async () => {
+  it("says so plainly when no goal is set", async () => {
     stubStats(null);
     summary();
 
-    await screen.findByText("Нийт хүүхэд");
-    expect(screen.queryByText("Зорилт")).not.toBeInTheDocument();
+    expect(await screen.findByText(/Сарын зорилт тохируулаагүй байна/)).toBeInTheDocument();
   });
 
   /**
-   * ★ The target is no longer typed on this screen.
-   *
-   * Deciding it is the director's; every member of staff reads it. It was
-   * previously whatever each teacher had entered into their own browser.
+   * ★ Only an administrator may set it, and the button is absent for a teacher
+   * rather than disabled — a control that will never work for this account
+   * promises something it cannot give.
    */
-  it("does not let a teacher type a target here", async () => {
+  it("does not offer a teacher the goal control", async () => {
     stubStats();
     summary();
 
-    await screen.findByText("Зорилт");
-    expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
+    await screen.findByText("Энэ сарын зорилт");
+    expect(screen.queryByRole("button", { name: "Зорилт тохируулах" })).not.toBeInTheDocument();
+  });
+
+  it("offers an administrator the goal control", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: `/groups/${GROUP_ID}/observation-stats`, body: STATS },
+      {
+        path: `/kindergartens/${KINDERGARTEN_ID}/assessment-config`,
+        body: { domains: [], levels: [], monthlyNoteGoal: 2 },
+      },
+    ]);
+    summary();
+
+    expect(await screen.findByRole("button", { name: "Зорилт тохируулах" })).toBeInTheDocument();
+  });
+
+  /**
+   * ★ Both notes are computed, and absent when they have nothing to say.
+   *
+   * A fixed pair would keep congratulating a group that had stopped and keep
+   * advising one that was already even — worse than silence, because a caption
+   * that never changes stops being read.
+   */
+  it("congratulates only a group that has kept it up", async () => {
+    stubStats();
+    summary();
+
+    await screen.findByText("Ангийн хамрагдалт");
+    // October has one child documented and every later month none, so the
+    // months are not steady and the green card stays away.
+    expect(screen.queryByText("Сайн байна")).not.toBeInTheDocument();
+  });
+
+  it("names the strands that are running ahead", async () => {
+    stubStats();
+    summary();
+
+    // Scoped to the advice card: the strand also names a bar above it, which
+    // is the point — the sentence points at a row the reader can go and see.
+    const advice = (await screen.findByText("Санал")).closest("p") as HTMLElement;
+    // Ten of fifteen domain notes are on one strand.
+    expect(within(advice).getByText(/Нийгэм-сэтгэл хөдлөл/)).toBeInTheDocument();
   });
 });
 

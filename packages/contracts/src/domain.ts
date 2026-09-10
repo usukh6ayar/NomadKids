@@ -1356,7 +1356,11 @@ export const assessmentConfigSchema = z.object({
   domains: z.array(domainSchema),
   levels: z.array(levelSchema),
   /**
-   * Сарын зорилт — how many notes each child should have per month.
+   * Энэ сарын зорилт — how many *children* to document each month.
+   *
+   * ★ Children, not notes. A goal counted in notes is met by writing twenty
+   * about one child; this one is only met by reaching twenty different
+   * children, which is what the card's own words ask for.
    *
    * ★ Configuration, which is why it rides with the domains and levels.
    *

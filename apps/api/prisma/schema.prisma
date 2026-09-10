@@ -585,8 +585,15 @@ model Kindergarten {
   /// directly reachable, so there is no address a `logo String` could hold that
   /// this system is allowed to hand out. The column mirrors
   /// `Child.photoMediaFileId` exactly — one image pattern, not two.
-  /// How many observation notes each child is expected to have per month —
-  /// the client's "Сарын зорилт", 2026-09-10.
+  /// How many *children* the group is expected to document each month — the
+  /// client's "Энэ сарын зорилт", 2026-09-10.
+  ///
+  /// ★ Children, not notes, and the distinction is the whole point.
+  ///
+  /// The client's card reads "20 хүүхдийн хөгжлийн явцыг баримтжуулах" and
+  /// "Одоогоор 14 / 20 хүүхэд". A goal counted in notes is met by writing
+  /// twenty about one child; this one is only met by reaching twenty
+  /// different children, which is what "хүүхэд бүрийн хөгжлийн явц" asks for.
   ///
   /// ★ A column, not a table, and that is not a §2.3 exception.
   ///

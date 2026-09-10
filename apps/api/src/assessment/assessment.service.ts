@@ -60,7 +60,7 @@ export class AssessmentService {
   }
 
   /**
-   * Sets the kindergarten's monthly note goal — administrator only.
+   * Sets the kindergarten's monthly documentation goal — administrator only.
    *
    * ★ Narrower than who reads it, deliberately.
    *

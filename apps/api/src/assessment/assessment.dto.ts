@@ -91,7 +91,7 @@ export const termIdQuerySchema = z.object({ termId: uuidSchema.optional() });
 export const requiredTermSchema = z.object({ termId: uuidSchema });
 
 /**
- * Сарын зорилт — how many notes each child should have per month.
+ * Энэ сарын зорилт — how many children to document each month.
  *
  * ★ Bounded at twenty, and nullable rather than zero-able.
  *

@@ -1,30 +1,19 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import {
-  BarChart3,
-  CalendarDays,
-  CheckCheck,
-  ChevronRight,
-  ClipboardList,
-  Clock,
-  Eye,
-  ListChecks,
-  MessageCircle,
-  Palette,
-  Target,
-  Users,
-} from "lucide-react";
+import { CheckCircle2, Eye, Lightbulb, MessageCircle, Palette, Target } from "lucide-react";
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { assessmentConfigSchema, groupObservationStatsSchema } from "@kinder/contracts";
+import { useSession } from "@/lib/auth/session";
+import { Donut } from "@/components/ui/chart/donut";
+import { GoalDialog } from "./goal-dialog";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Card } from "@/components/ui/card";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { TONE_VAR, type Tone } from "@/components/ui/tone";
-import { cn } from "@/lib/utils";
 
 const ACADEMIC_MONTHS = [9, 10, 11, 12, 1, 2, 3, 4, 5] as const;
 const OBSERVATION_TYPES = ["Ажиглалт", "Ярилцлага", "Бүтээл"] as const;
@@ -240,8 +229,19 @@ export function GroupCoverage({
   /** The term the register behind this summary has open, carried into the links. */
   termId?: string;
 }) {
+  const { hasRole } = useSession();
   const rows = useCoverageRows({ groupId, startsOn, endsOn });
-  const { stats, data, months, selected, currentMonth, setSelectedMonth } = rows;
+  const {
+    stats,
+    data,
+    months,
+    selected,
+    currentMonth,
+    setSelectedMonth,
+    typeRows,
+    domainRows,
+    activityRows,
+  } = rows;
 
   /*
     ★ The goal comes from the kindergarten, not from this browser.
@@ -277,6 +277,33 @@ export function GroupCoverage({
 
   const enrolled = data?.enrolled ?? 0;
   const withNotes = data?.childrenWithNotes ?? 0;
+  const isAdmin = hasRole("ADMIN");
+
+  /*
+    ★ "Сайн байна" only when the recent months are genuinely even.
+
+    Every month that has passed and has notes in it, with none of them at zero
+    — a group that documented in September and stopped is not steady, and
+    congratulating it would be the caption that stops being read.
+  */
+  const elapsed = months.filter((month) => month.key <= currentMonth);
+  const steady = elapsed.length >= 2 && elapsed.every((month) => month.childrenCount > 0);
+
+  /*
+    ★ "Санал" names the strands that are running ahead, and only when one
+    genuinely is.
+
+    A strand carrying more than a third of every note is lopsided; an even
+    spread gets no advice rather than hedged advice.
+  */
+  const domainTotal = domainRows.reduce((sum, row) => sum + row.count, 0);
+  const lopsided =
+    domainTotal >= 6
+      ? domainRows
+          .filter((row) => row.count / domainTotal >= 0.33)
+          .map((row) => row.name)
+          .join(", ")
+      : "";
   /*
     ★ The term rides along, so Буцах returns to the one the teacher had open.
 
@@ -287,33 +314,6 @@ export function GroupCoverage({
   */
   const href = (kind: string) =>
     `/groups/${groupId}/assessment/${kind}${termId ? `?termId=${termId}` : ""}`;
-
-  const LINKS = [
-    {
-      kind: "types",
-      Icon: ClipboardList,
-      title: "Тэмдэглэлийн төрлийн бүрдэлт",
-      hint: `${OBSERVATION_TYPES.length} төрлийн тэмдэглэлийн төлөв`,
-    },
-    {
-      kind: "domains",
-      Icon: BarChart3,
-      title: "Сургалтын чиглэлийн хамралт",
-      hint: `${DEVELOPMENT_DOMAINS.length} чиглэл`,
-    },
-    {
-      kind: "activities",
-      Icon: ListChecks,
-      title: "Үйл ажиллагааны явц",
-      hint: `${DAILY_ACTIVITIES.length} үйл ажиллагаа`,
-    },
-    {
-      kind: "months",
-      Icon: CalendarDays,
-      title: "Сарын тэмдэглэлийн хамралт",
-      hint: "9–5 сар",
-    },
-  ];
 
   return (
     <section aria-label="Үнэлгээний сарын тойм" className="flex flex-col gap-4">
@@ -331,19 +331,24 @@ export function GroupCoverage({
       ) : null}
 
       {/*
-        ★ Drawn only when the kindergarten has set a goal.
+        ★ Энэ сарын зорилт — children documented this month, not notes written.
 
-        A target nobody agreed to would be a bar failing against a number the
-        product invented — and the number used to be exactly that: whatever
-        each teacher had typed into their own browser.
+        A goal counted in notes is met by writing twenty about one child; this
+        one is only met by reaching twenty different children, which is what
+        "хүүхэд бүрийн хөгжлийн явц" asks for.
+
+        Drawn only when the kindergarten has set one: a target nobody agreed to
+        would be a bar failing against a number the product invented — and the
+        number used to be exactly that, whatever each teacher had typed into
+        their own browser.
       */}
-      {target !== null ? (
-        <Card tone="mint" pad="compact" className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="flex items-center gap-1.5 text-caption font-bold uppercase text-mint-ink">
-              <Target size={14} aria-hidden="true" />
-              Зорилт
-            </span>
+      <Card tone="mint" pad="compact" className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="flex items-center gap-1.5 text-body font-semibold text-ink">
+            <Target size={16} aria-hidden="true" className="text-mint-ink" />
+            Энэ сарын зорилт
+          </span>
+          <div className="flex items-center gap-2">
             <label>
               <span className="sr-only">Тайлант сар сонгох</span>
               <select
@@ -358,114 +363,212 @@ export function GroupCoverage({
                 ))}
               </select>
             </label>
+            {/*
+              ★ Administrator only, and absent rather than disabled for a
+              teacher — the rule the sidebar note states: a control that will
+              never work for this account promises something it cannot give.
+            */}
+            {isAdmin ? <GoalDialog kindergartenId={kindergartenId} current={target} /> : null}
           </div>
+        </div>
 
-          <div>
-            <h2 className="text-lead font-semibold text-ink">Хүүхэд бүрийн үнэлгээний хамралт</h2>
-            <p className="mt-0.5 text-caption text-mint-ink">
-              {selectedMonthLocative} {target} өөр хүүхдэд тэмдэглэл хөтлөх.
-            </p>
-          </div>
-
-          <div>
-            <div className="flex items-baseline justify-between gap-4">
-              <strong className="text-display font-semibold tabular-nums text-ink">
-                {completed} / {target}
+        {target === null ? (
+          <p className="text-body text-ink">
+            Сарын зорилт тохируулаагүй байна.
+            {isAdmin ? "" : " Цэцэрлэгийн удирдлага тохируулна."}
+          </p>
+        ) : (
+          <>
+            <p className="flex items-baseline gap-2 text-body text-ink">
+              <strong className="text-display font-semibold tabular-nums leading-none">
+                {target}
               </strong>
-              <span className="text-lead font-bold tabular-nums text-mint-ink">{percent}%</span>
-            </div>
-            <div
-              role="progressbar"
-              aria-label={`${selected.label}: ${target} хүүхдийн зорилтоос ${completed} хүүхэд`}
-              aria-valuemin={0}
-              aria-valuemax={target}
-              aria-valuenow={Math.min(completed, target)}
-              className="mt-2 h-2.5 overflow-hidden rounded-pill bg-surface"
-            >
-              <div
-                className="h-full rounded-pill bg-mint-ink transition-[width]"
-                style={{ width: `${percent}%` }}
-              />
-            </div>
-            <p className="mt-3 flex items-start gap-2 text-caption text-muted">
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "mt-1 size-2.5 shrink-0 rounded-pill",
-                  targetMet ? "bg-mint-ink" : "bg-sun-ink",
-                )}
-              />
-              {targetMet
-                ? `${selectedMonthGenitive} зорилт биелсэн байна.`
-                : `${selectedMonthLocative} одоогоор ${completed}/${target} хүүхэд — ${percent}% биелэлттэй байна.`}
+              хүүхдийн хөгжлийн явцыг баримтжуулах
             </p>
-          </div>
+
+            <div>
+              <div className="flex items-baseline justify-between gap-4 text-body">
+                <span className="text-ink">
+                  Одоогоор{" "}
+                  <strong className="tabular-nums">
+                    {completed} / {target}
+                  </strong>{" "}
+                  хүүхэд
+                </span>
+                <span className="font-bold tabular-nums text-mint-ink">{percent}%</span>
+              </div>
+              <div
+                role="progressbar"
+                aria-label={`${selected.label}: ${target} хүүхдийн зорилтоос ${completed} хүүхэд`}
+                aria-valuemin={0}
+                aria-valuemax={target}
+                aria-valuenow={Math.min(completed, target)}
+                className="mt-2 h-2.5 overflow-hidden rounded-pill bg-surface"
+              >
+                <div
+                  className="h-full rounded-pill bg-mint-ink transition-[width]"
+                  style={{ width: `${percent}%` }}
+                />
+              </div>
+              <p className="mt-2 text-caption text-muted">
+                {targetMet
+                  ? `${selectedMonthGenitive} зорилт биелсэн байна.`
+                  : `${Math.max(target - completed, 0)} хүүхдийн явцыг баримтжуулах үлдсэн.`}
+              </p>
+            </div>
+          </>
+        )}
+      </Card>
+
+      {/*
+        ★ Ангийн хамрагдалт — the ring is the headline and the parts are named.
+
+        "80%" alone does not say of what; the three lines under it add up to the
+        roster, so a reader can check the ring against the numbers rather than
+        trusting it.
+
+        ★★ The client's design has a third slice, "Шинэ хүүхэд". Nothing in the
+        product distinguishes a newly enrolled child from any other child with
+        no note yet, and inventing the distinction here would put a number on
+        screen that no query stands behind. Two slices, honestly.
+      */}
+      <Card pad="roomy" className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-body font-semibold text-ink">Ангийн хамрагдалт</h3>
+        </div>
+
+        <div className="flex items-center gap-5">
+          <Donut
+            size={120}
+            segments={[
+              { label: "Хамрагдсан", value: withNotes, tone: "mint" },
+              {
+                label: "Хараахан баримтгүй",
+                value: Math.max(0, enrolled - withNotes),
+                tone: "sun",
+              },
+            ]}
+            label={`${enrolled} хүүхдээс ${withNotes} нь баримттай`}
+            centre={
+              <span className="text-lead font-semibold tabular-nums leading-none text-ink">
+                {enrolled === 0 ? "—" : `${Math.round((withNotes / enrolled) * 100)}%`}
+              </span>
+            }
+          />
+
+          <dl className="min-w-0 flex-1 text-body">
+            <dt className="text-caption text-muted">Нийт хүүхэд</dt>
+            <dd className="mb-2 text-title font-semibold tabular-nums leading-none text-ink">
+              {enrolled}
+            </dd>
+            <div className="flex items-center gap-2">
+              <span aria-hidden="true" className="size-2.5 shrink-0 rounded-pill bg-mint-ink" />
+              <dt className="flex-1 text-muted">Хамрагдсан</dt>
+              <dd className="font-semibold tabular-nums text-ink">{withNotes}</dd>
+            </div>
+            <div className="mt-1 flex items-center gap-2">
+              <span aria-hidden="true" className="size-2.5 shrink-0 rounded-pill bg-sun-ink" />
+              <dt className="flex-1 text-muted">Хараахан баримтгүй</dt>
+              <dd className="font-semibold tabular-nums text-ink">
+                {Math.max(0, enrolled - withNotes)}
+              </dd>
+            </div>
+          </dl>
+        </div>
+      </Card>
+
+      {/*
+        ★ Баримтжуулалтын хэлбэр — the three kinds as figures, not bars.
+
+        Bars compare against a denominator; these three are compared against
+        each other, and the question is whether one has been neglected. Three
+        numbers side by side answer that at a glance, which is why the client's
+        design draws them as tiles and the breakdown screen behind them as
+        bars.
+      */}
+      <section aria-labelledby="record-kinds" className="flex flex-col gap-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <h3 id="record-kinds" className="text-body font-semibold text-ink">
+            Баримтжуулалтын хэлбэр
+          </h3>
+          <Link
+            href={href("types")}
+            className="text-caption font-medium text-primary hover:underline"
+          >
+            Дэлгэрэнгүй
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          {typeRows.map((row) => (
+            <Card key={row.id} pad="compact" className="flex flex-col gap-1.5 bg-sunken">
+              <span aria-hidden="true" className="text-muted">
+                {observationTypeIcon(row.name)}
+              </span>
+              <span className="text-caption leading-snug text-muted">{row.name}</span>
+              <span className="text-title font-semibold tabular-nums leading-none text-ink">
+                {row.count}
+              </span>
+            </Card>
+          ))}
+        </div>
+
+        <p className="text-caption text-muted">
+          Нийт {typeRows.reduce((sum, row) => sum + row.count, 0)} баримт
+        </p>
+      </section>
+
+      {/*
+        ★ The two breakdowns inline, each with a way into its own screen.
+
+        The client's design shows the bars on the summary *and* a Дэлгэрэнгүй
+        link beside them — which is right: the shape is what a teacher reads
+        here, and the screen behind it is where they filter and act. Rows that
+        only navigated made them press to learn whether it was worth pressing.
+      */}
+      <InlineBars
+        title="Сургалтын чиглэлийн хамралт"
+        href={href("domains")}
+        rows={domainRows}
+        tone="sky"
+      />
+      <InlineBars
+        title="Үйл ажиллагааны үеийн хамралт"
+        href={href("activities")}
+        rows={activityRows}
+        tone="sun"
+      />
+
+      <MonthBalance months={months} href={href("months")} />
+
+      {/*
+        ★ Both notes are computed, and each is absent when it has nothing to
+        say.
+
+        The client's mock prints a green "Сайн байна" and an amber "Санал". A
+        fixed pair would keep congratulating a group that had stopped and keep
+        advising one that was already even — which is worse than silence,
+        because a caption that never changes stops being read.
+      */}
+      {steady ? (
+        <Card pad="roomy" tone="mint" className="flex items-start gap-2.5">
+          <CheckCircle2 size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-mint-ink" />
+          <p className="text-body leading-snug text-ink">
+            <strong className="block">Сайн байна</strong>
+            Сүүлийн саруудад хүүхдүүдийг тогтмол хамруулж баримтжуулсан байна.
+          </p>
         </Card>
       ) : null}
 
-      {/*
-        ★ Үндсэн тойм — the four figures the client's design leads with.
-
-        Every one of them comes from the same aggregate: enrolled children,
-        those with at least one note, the difference, and the notes themselves.
-        "Нийт үзүүлэлт" is notes and "Үнэлгээтэй" is children — labelled so the
-        two cannot be read as one figure disagreeing with itself.
-      */}
-      <dl className="grid grid-cols-2 gap-3">
-        <SummaryTile label="Нийт хүүхэд" value={enrolled} Icon={Users} />
-        <SummaryTile
-          label="Үнэлгээтэй"
-          value={withNotes}
-          hint={enrolled === 0 ? undefined : `${Math.round((withNotes / enrolled) * 100)}%`}
-          tone="mint"
-          Icon={CheckCheck}
-        />
-        <SummaryTile
-          label="Үлдсэн"
-          value={Math.max(0, enrolled - withNotes)}
-          hint={enrolled === 0 ? undefined : `${100 - Math.round((withNotes / enrolled) * 100)}%`}
-          tone="peach"
-          Icon={Clock}
-        />
-        <SummaryTile label="Нийт үзүүлэлт" value={data?.total ?? 0} tone="sky" Icon={BarChart3} />
-      </dl>
-
-      {/*
-        ★ Rows that navigate — 2026-09-10, at the client's request.
-
-        They were three panels side by side and a chart under them, which on a
-        phone is most of a scroll before the register itself, with the two
-        breakdowns a teacher is not reading costing as much height as the one
-        they are. The four screens share this screen's query key, so opening
-        one is a render rather than a request.
-      */}
-      <nav aria-label="Дэлгэрэнгүй" className="flex flex-col gap-2">
-        {LINKS.map((link) => (
-          <Link
-            key={link.kind}
-            href={href(link.kind)}
-            className="group flex items-center gap-3 rounded-card border border-border bg-surface px-3.5 py-3 transition-colors hover:border-primary hover:bg-canvas"
-          >
-            <span
-              aria-hidden="true"
-              className="grid size-9 shrink-0 place-items-center rounded-control bg-primary-soft text-primary"
-            >
-              <link.Icon size={18} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-body font-medium leading-snug text-ink transition-colors group-hover:text-primary">
-                {link.title}
-              </span>
-              <span className="block text-caption text-muted">{link.hint}</span>
-            </span>
-            <ChevronRight
-              size={18}
-              aria-hidden="true"
-              className="shrink-0 text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
-            />
-          </Link>
-        ))}
-      </nav>
+      {lopsided ? (
+        <Card pad="roomy" tone="sun" className="flex items-start gap-2.5">
+          <Lightbulb size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-sun-ink" />
+          <p className="text-body leading-snug text-ink">
+            <strong className="block">Санал</strong>
+            Тэмдэглэл {lopsided} чиглэлээр түлхүү байна. Бусад чиглэлд нэмэгдүүлэх боломжтой.
+          </p>
+        </Card>
+      ) : null}
     </section>
   );
 }
@@ -564,39 +667,134 @@ export function MonthlyCoverage({ months }: { months: MonthPoint[] }) {
 }
 
 /**
- * One figure of Үндсэн тойм.
+ * A breakdown on the summary, with a way into its own screen.
  *
- * ★ Icon, label, number — in that order down the tile.
+ * ★ The bars *and* the link, not one or the other.
  *
- * The client's design puts the glyph above the words, which on a two-column
- * phone grid is what lets four tiles read as four things rather than as a
- * block of digits.
+ * Rows that only navigated made a teacher press to find out whether it was
+ * worth pressing. The shape is what they read here; the screen behind it is
+ * where they filter and act.
+ *
+ * ★★ Scaled to the busiest row rather than to the roster, because these count
+ * notes and a strand can carry more notes than there are children. The
+ * question on the summary is which strand is ahead of which, and that is a
+ * comparison between the bars themselves.
  */
-function SummaryTile({
-  label,
-  value,
-  hint,
+function InlineBars({
+  title,
+  href,
+  rows,
   tone,
-  Icon,
 }: {
-  label: string;
-  value: number;
-  hint?: string;
-  tone?: Tone;
-  Icon: typeof Users;
+  title: string;
+  href: string;
+  rows: CountRow[];
+  tone: Tone;
 }) {
+  const peak = Math.max(...rows.map((row) => row.count), 1);
+
   return (
-    <Card
-      pad="compact"
-      tone={tone}
-      className={cn("flex flex-col gap-1.5", tone ? undefined : "bg-sunken")}
-    >
-      <Icon size={18} aria-hidden="true" className="text-muted" />
-      <dt className="text-caption leading-snug text-muted">{label}</dt>
-      <dd className="flex items-baseline gap-1.5">
-        <span className="text-title font-semibold tabular-nums leading-none text-ink">{value}</span>
-        {hint ? <span className="text-caption tabular-nums text-muted">{hint}</span> : null}
-      </dd>
+    <Card pad="roomy" className="flex flex-col gap-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-body font-semibold text-ink">{title}</h3>
+        <Link href={href} className="text-caption font-medium text-primary hover:underline">
+          Дэлгэрэнгүй
+        </Link>
+      </div>
+
+      {rows.map((row) => (
+        <div
+          key={row.id}
+          className="grid grid-cols-[minmax(110px,1fr)_minmax(64px,1.3fr)_28px] items-center gap-2"
+        >
+          <span className="min-w-0 truncate text-caption leading-snug text-ink">{row.name}</span>
+          <span
+            role="img"
+            aria-label={`${row.name}: ${row.count} тэмдэглэл`}
+            className="h-2 overflow-hidden rounded-pill bg-track"
+          >
+            <span
+              className="block h-full rounded-pill"
+              style={{ width: `${(row.count / peak) * 100}%`, background: TONE_VAR[tone] }}
+            />
+          </span>
+          <strong className="text-right text-caption tabular-nums text-ink">{row.count}</strong>
+        </div>
+      ))}
+    </Card>
+  );
+}
+
+/**
+ * 9–5 сарын тэнцвэртэй байдал — children reached against notes written.
+ *
+ * ★ Two series, and they are not the same question.
+ *
+ * The columns are how many *children* were documented; the dots are how many
+ * notes were written. A month where the two diverge is one where a lot was
+ * written about a few — which is exactly what a balance chart is for and what
+ * either series alone cannot show.
+ *
+ * ★★ Columns and a line rather than two sets of columns: the eye reads a line
+ * as a trend and a column as a quantity, which is what each of these is.
+ */
+function MonthBalance({ months, href }: { months: MonthPoint[]; href: string }) {
+  const peakChildren = Math.max(...months.map((month) => month.childrenCount), 1);
+  const peakNotes = Math.max(...months.map((month) => month.count), 1);
+
+  return (
+    <Card pad="roomy" className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-body font-semibold text-ink">9–5 сарын тэнцвэртэй байдал</h3>
+        <Link href={href} className="text-caption font-medium text-primary hover:underline">
+          Дэлгэрэнгүй
+        </Link>
+      </div>
+
+      <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-caption text-muted">
+        <span className="flex items-center gap-1.5">
+          <span aria-hidden="true" className="size-2.5 rounded-pill bg-primary" />
+          Хамрагдсан хүүхэд
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span aria-hidden="true" className="size-2.5 rounded-pill bg-mint-ink" />
+          Баримтын тоо
+        </span>
+      </p>
+
+      <ul className="grid h-[110px] grid-cols-9 items-end gap-1 border-b border-border-soft">
+        {months.map((month) => (
+          <li
+            key={month.key}
+            aria-label={`${month.label}: ${month.childrenCount} хүүхэд, ${month.count} баримт`}
+            className="relative flex h-full min-w-0 flex-col items-center justify-end"
+          >
+            <span
+              aria-hidden="true"
+              className="w-full max-w-4 rounded-t-control bg-primary"
+              style={{ height: Math.max(2, (month.childrenCount / peakChildren) * 78) }}
+            />
+            {/*
+              The note count as a dot at its own height — a line drawn in SVG
+              would need a viewBox and a scale for two numbers a dot already
+              places.
+            */}
+            <span
+              aria-hidden="true"
+              className="absolute left-1/2 size-2.5 -translate-x-1/2 rounded-pill border-2 border-surface bg-mint-ink"
+              style={{ bottom: Math.max(2, (month.count / peakNotes) * 78) + 14 }}
+            />
+          </li>
+        ))}
+      </ul>
+
+      <ul aria-hidden="true" className="grid grid-cols-9 gap-1 text-center">
+        {months.map((month) => (
+          <li key={month.key} className="text-caption tabular-nums text-muted">
+            {Number(month.key.slice(5))}
+          </li>
+        ))}
+      </ul>
     </Card>
   );
 }
