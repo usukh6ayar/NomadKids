@@ -83,12 +83,35 @@ process.env.REPORTS_WORKER_ENABLED = "false";
 // `test/portal-access.test.ts` set a price themselves.
 process.env.ACCESS_FEE_AMOUNT ??= "0";
 
+/*
+ * ★★ ESIS gets the same treatment, and for a sharper reason — 2026-09-11.
+ *
+ * The paragraph above is written about QPay, but every word of it applies here
+ * and ESIS was left out because at the time no machine had a token: `.env`
+ * shipped `ESIS_BASE_URL=` empty and `ESIS_DEMO_MODE` absent, so the schema
+ * default (`"true"`) made the transport a fixture no matter what.
+ *
+ * That stopped being true the day a real one-month ministry token was issued
+ * and `.env` was set to `ESIS_DEMO_MODE=false` to use it. `.env` is loaded
+ * above, so from that moment the suite would have run with a live token
+ * against hubv2.esis.edu.mn — a government system, on someone else's quota,
+ * from `pnpm test`.
+ *
+ * Forcing demo mode rather than deleting the token alone is deliberate: with
+ * the token gone but the mode still `false`, `isConfigured` turns false and
+ * the tests that assert the *configured* path would fail for a reason that has
+ * nothing to do with them.
+ */
+process.env.ESIS_DEMO_MODE = "true";
+
 for (const key of [
   "QPAY_BASE_URL",
   "QPAY_USERNAME",
   "QPAY_PASSWORD",
   "QPAY_INVOICE_CODE",
   "QPAY_CALLBACK_URL",
+  "ESIS_TOKEN",
+  "ESIS_BASE_URL",
 ]) {
   delete process.env[key];
 }
