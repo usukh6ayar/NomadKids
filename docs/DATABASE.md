@@ -310,16 +310,51 @@ never deleted, only ended.
 
 `childId`, `age` (2–5), `schoolYearId?`, plus the favourites and free-text
 fields (`favoriteColor`, `favoriteFood`, `favoriteToy`, `favoriteBook`,
-`favoriteSong`, `favoriteStory`, `favoriteActivity`, `personality`,
-`emotionalTraits`, `familyMembers`, `learningInterest`, `newSkills`,
-`parentNote`, `teacherNote`).
+`favoriteSong`, `favoriteStory`, `favoriteActivity`, `favoriteClothes`,
+`favoriteMovie`, `favoriteTreat`, `personality`, `emotionalTraits`,
+`familyMembers`, `dream`, `learningInterest`, `newSkills`, `parentNote`,
+`teacherNote`), the structured parent answers added 2026-09-08
+(`kindergartenSkills`, `kindergartenSkillNotes`, `kindergartenOtherSkill`,
+`familyLearningSkills`, `familyLearningNotes`, `familyLearningOther`,
+`characterTraits`, `characterObservation`, `familyMemberTypes`,
+`familyDescription`) and `familyMemories`.
 
 **Constraint:** unique `(childId, age)`.
 
 > The reference system has 18 such columns. They are kept as columns rather than
 > collapsed into JSON because the PDF report renders them as a labelled list and
-> the admin edits them as a form — both want named, typed fields. Two rarely used
-> reference columns (`favoriteMovie`, `favoriteClothes`) are dropped.
+> the admin edits them as a form — both want named, typed fields.
+>
+> ★ This paragraph used to end "Two rarely used reference columns
+> (`favoriteMovie`, `favoriteClothes`) are dropped." Both shipped on
+> 2026-09-08, along with `favoriteTreat` and ten structured columns, and the
+> list above had said otherwise ever since. Corrected rather than left
+> standing, for the reason CLAUDE.md §7 keeps repeating about itself: a
+> document the schema contradicts stops being read.
+
+#### `familyMemories` — "Гэр бүлийн дурсамж"
+
+`Json`, defaulting to `[]`. A short per-age list of
+`{ id, mediaId?, members[], title, description?, date?, createdAt? }` — who the
+child was with, what they did, when, and the photograph of it.
+
+JSON rather than a table, and that is the exception the paragraph above argues
+against, so it needs its own reason: this list is only ever read and written
+**whole**, by one screen, and nothing points at an individual entry. A table
+would buy queryability nobody asks for and cost a join on every portfolio read.
+`familyLearningNotes` and `kindergartenSkillNotes` are the same shape and the
+same argument.
+
+`mediaId` is a `MediaFile` id, **not** an embedded image. The photograph is an
+ordinary album row written by `POST /children/:id/media` with
+`category=FAMILY` and the same `age`, which is exactly what the age album
+(`portfolio/gallery/:age`) reads — so a memory's picture appears in "Миний гэр
+бүл" for that year without a second write, and `GET /media/:id` still runs
+`canAccessChild` before it serves the file. Nothing here is a second copy of an
+image or a second authorization path.
+
+Validated field by field in `updateAgeProfileSchema` — a `Json` column will
+otherwise store whatever a crafted request hands it.
 
 ### 6.3 `BirthdayNote`
 
