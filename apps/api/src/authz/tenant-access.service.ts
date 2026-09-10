@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import type { Actor } from "./actor";
 import { hasRoleIn } from "./actor";
 import { Role } from "../domain/enums";
+import { AuthzRepository } from "./authz.repository";
 
 /**
  * Authorization for kindergarten-scoped resources — groups, school years,
@@ -19,6 +20,8 @@ import { Role } from "../domain/enums";
  */
 @Injectable()
 export class TenantAccessService {
+  constructor(private readonly repo: AuthzRepository) {}
+
   /** Throws 404 unless the actor administers this kindergarten. */
   assertAdmin(actor: Actor, kindergartenId: string): void {
     if (!hasRoleIn(actor, Role.ADMIN, kindergartenId)) throw new NotFoundException();
@@ -195,6 +198,85 @@ export class TenantAccessService {
    */
   assertCanManageStaffRecords(actor: Actor, kindergartenId: string): void {
     if (!this.isAdmin(actor, kindergartenId)) throw new NotFoundException();
+  }
+
+  /**
+   * Throws 404 unless the actor may address this audience — a notice board
+   * post, a survey, anything published *to* families.
+   *
+   * ★ A teacher writes to their own groups. Only an administrator writes to
+   * the kindergarten. Client, 2026-09-10: "багш зөвхөн өөрийн бүлэгтээ л пост
+   * оруулна ... Удирдлага л бүх цэцэрлэг болон бүлэг сонгон судалгаа болон
+   * пост оруулж болно."
+   *
+   * ★★ Here, not in the two services that call it.
+   *
+   * Notices and surveys are the same rule twice, and §1.1 is the reason this
+   * is one method rather than two: two copies of "may this person write to
+   * that audience" would answer differently the first time either is edited,
+   * and a teacher would keep a route into the whole kindergarten through
+   * whichever one was missed.
+   *
+   * ★★★ An empty audience is the kindergarten, and that is what makes the
+   * `null` case load-bearing rather than a tidy-up.
+   *
+   * Both models say "no target rows means everyone" — `targetSchema` for
+   * notices, `Survey.groupId: null` for surveys. So a teacher who simply omits
+   * the field is asking for the widest audience there is, and refusing it is
+   * the whole rule. It cannot be enforced by narrowing the select on the
+   * compose screen: the field is optional in both DTOs, and omitting it is
+   * exactly what a request that skipped the screen would do.
+   *
+   * ★★★★ Async, and therefore this service's first DB read.
+   *
+   * "Which groups does this person teach" is not in the actor — §1.3 keeps
+   * roles and kindergartens there and nothing else, because a `GroupTeacher`
+   * row revoked this morning must take effect on this request rather than when
+   * a token expires. `loadActiveTeachingGroupIds` is the same read the child
+   * visibility filter already makes.
+   */
+  async assertCanAddressAudience(
+    actor: Actor,
+    kindergartenId: string,
+    audience: { groupIds?: (string | null | undefined)[]; childIds?: string[] },
+  ): Promise<void> {
+    this.assertStaff(actor, kindergartenId);
+    if (this.isAdmin(actor, kindergartenId)) return;
+
+    const groupIds = audience.groupIds ?? [];
+    const childIds = [...new Set(audience.childIds ?? [])];
+
+    /*
+      ★ Two ways to say "the whole kindergarten", and both are refused.
+
+      A `null` group is how a survey says it (`Survey.groupId`); naming nothing
+      at all is how a notice says it (`targetSchema`). Written as one condition
+      because they are one request — and the second half is the one that would
+      be missed: a loop over an empty list runs nothing and reads as if it had
+      checked.
+    */
+    const wide = groupIds.some((id) => !id) || (groupIds.length === 0 && childIds.length === 0);
+    if (wide) throw new NotFoundException();
+
+    const teaching = await this.repo.loadActiveTeachingGroupIds(actor);
+    const taught = new Set(teaching);
+
+    for (const groupId of groupIds) {
+      if (!taught.has(groupId!)) throw new NotFoundException();
+    }
+
+    /*
+      ★ A named child is narrower than a group, so it is allowed — but only
+      when the child is in a group this person actually teaches.
+
+      Counted in one query rather than checked child by child: fifty targets
+      would otherwise be fifty round trips (§3.4). A short count means at least
+      one child is outside, which is all the caller needs to know.
+    */
+    if (childIds.length > 0) {
+      const inside = await this.repo.countChildrenEnrolledInGroups(childIds, teaching);
+      if (inside !== childIds.length) throw new NotFoundException();
+    }
   }
 
   isAdmin(actor: Actor, kindergartenId: string): boolean {

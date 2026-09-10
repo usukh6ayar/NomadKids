@@ -28,7 +28,17 @@ export class SurveysService {
   // ── Management — staff only ─────────────────────────────────────────────
 
   async create(actor: Actor, kindergartenId: string, dto: CreateSurveyDto) {
-    this.tenants.assertStaff(actor, kindergartenId);
+    /*
+      ★ A teacher surveys their own groups; only an administrator surveys the
+      kindergarten — client, 2026-09-10.
+
+      This replaces `assertStaff` rather than sitting beside it: the audience
+      check begins with the same staff assertion and then narrows, so keeping
+      both would be one rule stated twice, with the weaker one first.
+    */
+    await this.tenants.assertCanAddressAudience(actor, kindergartenId, {
+      groupIds: [dto.groupId ?? null],
+    });
 
     /*
       ★ The group must belong to this kindergarten.

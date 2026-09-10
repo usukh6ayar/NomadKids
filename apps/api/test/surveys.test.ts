@@ -6,6 +6,7 @@ import { resetData, testDb } from "./support/db";
 import {
   authed,
   createChild,
+  createGroup,
   createScenario,
   enrollChild,
   linkGuardian,
@@ -48,12 +49,22 @@ beforeEach(async () => {
 
 const server = () => app.getHttpServer();
 
-/** Creates a DRAFT CHILD-scope survey with one RATING question and publishes it. */
+/**
+ * A DRAFT CHILD-scope survey with one RATING question, published.
+ *
+ * ★ Addressed to the teacher's own group since 2026-09-10.
+ *
+ * A survey with no `groupId` is the whole kindergarten, which is now the
+ * administrator's to send (client: "Удирдлага л бүх цэцэрлэг ... судалгаа
+ * ... оруулж болно"). The author stays the teacher, because that is what most
+ * of this file is about; only the audience narrowed, and `a.group` is the one
+ * `a.child` is enrolled in, so every roster assertion below reads the same.
+ */
 async function publishedChildSurvey(session = teacherA) {
   const created = await authed(
     request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
     session,
-  ).send({ title: "Хичээлийн жилийн эхэн", scope: "CHILD" });
+  ).send({ title: "Хичээлийн жилийн эхэн", scope: "CHILD", groupId: a.group.id });
 
   await authed(request(server()).put(`/v1/surveys/${created.body.id}/questions`), session).send({
     questions: [{ order: 0, type: "RATING", prompt: "Нийгэмшихүй ямар түвшинд байна?" }],
@@ -181,7 +192,7 @@ describe("management — staff only", () => {
   it("creates a draft, adds questions, and publishes", async () => {
     const created = await authed(
       request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
-      teacherA,
+      adminA,
     ).send({ title: "Судалгаа", scope: "KINDERGARTEN" });
 
     expect(created.status).toBe(201);
@@ -203,7 +214,7 @@ describe("management — staff only", () => {
   it("refuses to publish a survey with no questions", async () => {
     const created = await authed(
       request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
-      teacherA,
+      adminA,
     ).send({ title: "Хоосон", scope: "KINDERGARTEN" });
 
     const res = await authed(
@@ -223,7 +234,7 @@ describe("management — staff only", () => {
   it("refuses a CHECKBOX question with no options", async () => {
     const created = await authed(
       request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
-      teacherA,
+      adminA,
     ).send({ title: "Судалгаа", scope: "KINDERGARTEN" });
 
     const res = await authed(
@@ -336,7 +347,7 @@ describe("SINGLE_CHOICE questions", () => {
     const created = await authed(
       request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
       teacherA,
-    ).send({ title: "Аялалд оролцох эсэх", scope: "CHILD", kind: "POLL" });
+    ).send({ title: "Аялалд оролцох эсэх", scope: "CHILD", kind: "POLL", groupId: a.group.id });
 
     await authed(request(server()).put(`/v1/surveys/${created.body.id}/questions`), teacherA).send({
       questions: [
@@ -361,7 +372,7 @@ describe("SINGLE_CHOICE questions", () => {
   it("refuses a question with no options, as CHECKBOX does", async () => {
     const created = await authed(
       request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
-      teacherA,
+      adminA,
     ).send({ title: "Судалгаа", scope: "KINDERGARTEN" });
 
     const res = await authed(
@@ -472,7 +483,7 @@ describe("responding — KINDERGARTEN scope", () => {
   it("any member answers once, with no child attached", async () => {
     const created = await authed(
       request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
-      teacherA,
+      adminA,
     ).send({ title: "Ерөнхий санал асуулга", scope: "KINDERGARTEN" });
     await authed(request(server()).put(`/v1/surveys/${created.body.id}/questions`), teacherA).send({
       questions: [{ order: 0, type: "TEXT", prompt: "Санал хүсэлт" }],
@@ -496,7 +507,7 @@ describe("responding — KINDERGARTEN scope", () => {
   it("a member of another kindergarten gets 404", async () => {
     const created = await authed(
       request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
-      teacherA,
+      adminA,
     ).send({ title: "x", scope: "KINDERGARTEN" });
     await authed(request(server()).put(`/v1/surveys/${created.body.id}/questions`), teacherA).send({
       questions: [{ order: 0, type: "TEXT", prompt: "y" }],
@@ -640,7 +651,7 @@ describe("results by group", () => {
     const created = await authed(
       request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
       teacherA,
-    ).send({ title: "Хоёр асуулттай", scope: "CHILD" });
+    ).send({ title: "Хоёр асуулттай", scope: "CHILD", groupId: a.group.id });
 
     await authed(request(server()).put(`/v1/surveys/${created.body.id}/questions`), teacherA).send({
       questions: [
@@ -722,7 +733,7 @@ async function publishedPoll(options = ["Ирнэ", "Ирэхгүй"]) {
   const created = await authed(
     request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
     teacherA,
-  ).send({ title: "Аялалд оролцох уу?", scope: "CHILD", kind: "POLL" });
+  ).send({ title: "Аялалд оролцох уу?", scope: "CHILD", kind: "POLL", groupId: a.group.id });
 
   await authed(request(server()).put(`/v1/surveys/${created.body.id}/questions`), teacherA).send({
     questions: [{ order: 0, type: "SINGLE_CHOICE", prompt: "Аялалд оролцох уу?", options }],
@@ -841,7 +852,12 @@ describe("a poll's tally, as the family sees it", () => {
     const created = await authed(
       request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
       teacherA,
-    ).send({ title: "Өөр бүлгийн асуулга", scope: "CHILD", kind: "POLL" });
+    ).send({
+      title: "Өөр бүлгийн асуулга",
+      scope: "CHILD",
+      kind: "POLL",
+      groupId: a.group.id,
+    });
 
     await authed(request(server()).put(`/v1/surveys/${created.body.id}/questions`), teacherA).send({
       questions: [{ order: 0, type: "SINGLE_CHOICE", prompt: "Уу?", options: ["A", "B"] }],
@@ -1102,7 +1118,7 @@ describe("the staff list's participation counts", () => {
 
     const created = await authed(
       request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
-      teacherA,
+      adminA,
     ).send({ title: "Цэцэрлэгийн судалгаа", scope: "KINDERGARTEN" });
 
     const res = await authed(
@@ -1131,5 +1147,69 @@ describe("the staff list's participation counts", () => {
 
     expect(res.body.map((s: { id: string }) => s.id)).toContain(surveyId);
     expect(res.body.map((s: { id: string }) => s.id)).not.toContain(created.body.id);
+  });
+});
+
+/**
+ * Whose audience is whose — client, 2026-09-10: "багш ... зөвхөн өөрийн
+ * бүлэгтээ л судалгаа авна. Удирдлага л бүх цэцэрлэг болон бүлэг сонгон
+ * судалгаа ... оруулж болно."
+ *
+ * ★ The same rule as the notice board's, deliberately.
+ *
+ * It lives once, in `TenantAccessService.assertCanAddressAudience`, and
+ * `notifications.test.ts` covers its edges in depth — the mixed list, the
+ * unassigned teacher, the widening edit. What is asserted here is that surveys
+ * are actually wired to it, because a rule that exists and is not called is
+ * the §1.1 failure in its most convincing form: the code reads correctly and
+ * the endpoint checks nothing.
+ */
+describe("who may survey whom", () => {
+  const create = (session: AuthSession, body: Record<string, unknown>) =>
+    authed(request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`), session).send({
+      title: "Судалгаа",
+      scope: "CHILD",
+      ...body,
+    });
+
+  it("lets a teacher survey a group they teach", async () => {
+    expect((await create(teacherA, { groupId: a.group.id })).status).toBe(201);
+  });
+
+  /**
+   * ★ Omitting `groupId` is not a smaller request than sending one.
+   *
+   * `Survey.groupId: null` means every group, including families who enrol
+   * next month, so the field's absence asks for the widest audience the
+   * product has.
+   */
+  it("refuses a teacher the whole kindergarten", async () => {
+    expect((await create(teacherA, {})).status).toBe(404);
+  });
+
+  it("refuses a teacher a group they do not teach", async () => {
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Тэдний биш бүлэг");
+
+    expect((await create(teacherA, { groupId: other.id })).status).toBe(404);
+  });
+
+  it("lets an administrator do both", async () => {
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Аль ч бүлэг");
+
+    expect((await create(adminA, {})).status).toBe(201);
+    expect((await create(adminA, { groupId: other.id })).status).toBe(201);
+  });
+
+  /**
+   * ★ 404 before 400 — the order of the two checks is itself the assertion.
+   *
+   * A group from another kindergarten fails the tenant check with 400
+   * ("Бүлэг олдсонгүй"), which for an administrator is the right answer. A
+   * teacher must not reach it: the audience rule runs first and answers 404,
+   * so the response cannot tell them whether that id names a real group.
+   */
+  it("tells a teacher nothing about a group in another kindergarten", async () => {
+    expect((await create(teacherA, { groupId: b.group.id })).status).toBe(404);
+    expect((await create(adminA, { groupId: b.group.id })).status).toBe(400);
   });
 });

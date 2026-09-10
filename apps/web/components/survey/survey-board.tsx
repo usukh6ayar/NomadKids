@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 import {
   CalendarCheck,
@@ -891,6 +891,15 @@ function CreateSurveyDialog({
    * бүлэг / бүлэг сонгох болгох". `Survey.groupId` carries it, and null there
    * means every group rather than a frozen list of the ones that exist today.
    */
+  /*
+    ★ A teacher's dialog opens on their first group, not on "every group".
+
+    "" is the whole kindergarten, which is the administrator's audience since
+    2026-09-10 — so for a teacher it is not a default, it is the one value the
+    server will refuse. The first group is chosen once the list arrives (see
+    the effect below) rather than left empty, because a select whose only
+    invalid state is its initial one is a form that opens broken.
+  */
   const [groupId, setGroupId] = useState("");
   /**
    * ★ Fixed by the tab that opened this dialog, and not editable here —
@@ -921,6 +930,23 @@ function CreateSurveyDialog({
     queryFn: () => get("/groups?page=1&pageSize=100", groupsSchema),
     staleTime: 60_000,
   });
+
+  /*
+    ★ `isLoading` counts as "not yet known", not as "not an administrator".
+
+    `hasRole` answers false for everybody while `/auth/me` is in flight, so
+    without this the dialog would drop "Бүх бүлэг" for an administrator for a
+    frame and — worse — the effect below would pick a group for them.
+  */
+  const { hasRole, isLoading: sessionLoading } = useSession();
+  const canAddressEveryone = sessionLoading || hasRole("ADMIN");
+
+  const firstGroupId = groups.data?.items[0]?.id;
+  useEffect(() => {
+    if (!sessionLoading && !canAddressEveryone && !groupId && firstGroupId) {
+      setGroupId(firstGroupId);
+    }
+  }, [sessionLoading, canAddressEveryone, groupId, firstGroupId]);
 
   const create = useMutation({
     mutationFn: () =>
@@ -1015,7 +1041,30 @@ function CreateSurveyDialog({
               )}
             </Field>
 
-            <Field label="Хэнд зориулагдсан" hint="Сонгосон бүлгийн эцэг эхэд л харагдана.">
+            {/*
+              ★ "Бүх бүлэг" is the administrator's option — client, 2026-09-10:
+              "багш ... зөвхөн өөрийн бүлэгтээ л судалгаа авна. Удирдлага л бүх
+              цэцэрлэг болон бүлэг сонгон судалгаа ... оруулж болно."
+
+              It hides a control; it does not enforce anything.
+              `TenantAccessService.assertCanAddressAudience` is the rule (§1.1)
+              and answers 404 to a teacher who omits `groupId` whatever this
+              screen drew. What this prevents is a teacher meeting that 404
+              after filling the form in.
+
+              The options themselves are `GET /groups`, which is already scoped
+              to the actor's memberships — so a teacher's list is their own
+              groups without this screen deciding anything about whose they
+              are.
+            */}
+            <Field
+              label="Хэнд зориулагдсан"
+              hint={
+                canAddressEveryone
+                  ? "Сонгосон бүлгийн эцэг эхэд л харагдана."
+                  : "Өөрийн бүлгээ сонгоно уу."
+              }
+            >
               {({ id, describedBy }) => (
                 <Select
                   id={id}
@@ -1023,7 +1072,7 @@ function CreateSurveyDialog({
                   value={groupId}
                   onChange={(e) => setGroupId(e.target.value)}
                 >
-                  <option value="">Бүх бүлэг</option>
+                  {canAddressEveryone ? <option value="">Бүх бүлэг</option> : null}
                   {(groups.data?.items ?? []).map((group) => (
                     <option key={group.id} value={group.id}>
                       {group.name}

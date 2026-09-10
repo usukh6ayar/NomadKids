@@ -466,24 +466,33 @@ describe("lifecycle", () => {
    * would empty the family's album months later with nothing to say why.
    */
   describe("keeping a class-board photograph", () => {
-    /** Publishes a notice with one photo on it, and returns that photo's id. */
-    async function postWithPhoto(targets: { groupId?: string }[] = []) {
+    /**
+     * Publishes a notice with one photo on it, and returns that photo's id.
+     *
+     * ★ Signed by the administrator, and addressed to child A's own group by
+     * default — 2026-09-10.
+     *
+     * A teacher may only address groups they teach, so a notice aimed at
+     * `other` has to be signed by somebody who may aim it there. The default
+     * names `a.group` rather than nobody, because an empty target list is the
+     * whole kindergarten and that is now the administrator's alone — the
+     * audience these tests actually want is "the family this photo is about",
+     * which the group states directly.
+     */
+    async function postWithPhoto(targets: { groupId?: string }[] = [{ groupId: a.group.id }]) {
       const created = await authed(
         request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/notifications`),
-        teacherA,
+        adminA,
       ).send({ title: "Өнөөдрийн зураг", body: "Дэлгэрэнгүй", targets });
       if (created.status !== 201) throw new Error(`notify failed: ${created.text}`);
 
       const upload = await authed(
         request(server()).post(`/v1/notifications/${created.body.id}/media`),
-        teacherA,
+        adminA,
       ).attach("file", await photoBytes(), "зураг.jpg");
       if (upload.status !== 201) throw new Error(`attach failed: ${upload.text}`);
 
-      await authed(
-        request(server()).post(`/v1/notifications/${created.body.id}/publish`),
-        teacherA,
-      );
+      await authed(request(server()).post(`/v1/notifications/${created.body.id}/publish`), adminA);
       return upload.body.id as string;
     }
 
