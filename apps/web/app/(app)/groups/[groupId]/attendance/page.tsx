@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { CheckCircle2, Pencil, Save, Send, X } from "lucide-react";
+import { CheckCircle2, Pencil, Save, Search, Send, X } from "lucide-react";
 import { z } from "zod";
 import {
   attendanceRecordSchema,
@@ -27,7 +27,6 @@ import { Badge } from "@/components/ui/badge";
 import { TableShell, Td, Th } from "@/components/ui/table";
 import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
-import { RegisterProgress } from "@/components/register/register-progress";
 import {
   AttendanceRequestQueue,
   useAttendanceRequestCount,
@@ -122,6 +121,13 @@ function GroupAttendance() {
    * from the director's register still lands on the day it names.
    */
   const [from, setFrom] = useState(() => `${date.slice(0, 7)}-01`);
+  /*
+   * What the two fields hold, which is not yet what the grid is showing.
+   * "Хайх" copies them across — see the card below for why the range is not
+   * live.
+   */
+  const [draftFrom, setDraftFrom] = useState(from);
+  const [draftTo, setDraftTo] = useState(date);
   const [editing, setEditing] = useState(() => search.get("edit") === "1");
   const [draft, setDraft] = useState<Record<string, string>>({});
 
@@ -226,6 +232,19 @@ function GroupAttendance() {
     setDraft({});
   }
 
+  /*
+   * ★ Applying a span cancels an open edit.
+   *
+   * A draft belongs to the day it was started on, and carrying it to another
+   * date is how the wrong morning gets saved. The fields themselves no longer
+   * do this on every keystroke — only pressing Хайх does.
+   */
+  function applyRange() {
+    setFrom(draftFrom);
+    setDate(draftTo);
+    cancelEdit();
+  }
+
   const esisPreview = useQuery({
     queryKey: qk.groupAttendanceEsis(groupId, date),
     queryFn: () =>
@@ -296,56 +315,15 @@ function GroupAttendance() {
 
   return (
     <div className="page-band">
-      <PageHeader
-        title="Ирц"
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            {editing ? (
-              <>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={cancelEdit}
-                  disabled={save.isPending}
-                >
-                  <X aria-hidden /> Болих
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => save.mutate()}
-                  disabled={save.isPending || dirtyEntries.length === 0}
-                >
-                  <Save aria-hidden />
-                  {save.isPending ? "Бүртгэж байна…" : `Ирц бүртгэх (${dirtyEntries.length})`}
-                </Button>
-              </>
-            ) : (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={beginEdit}
-                disabled={rows.length === 0}
-              >
-                <Pencil aria-hidden /> Засах
-              </Button>
-            )}
-            {!editing ? (
-              <Button
-                size="sm"
-                onClick={() => submitEsis.mutate()}
-                disabled={!esisPreview.data || submitEsis.isPending}
-              >
-                <Send aria-hidden />
-                {submitEsis.isPending
-                  ? "Илгээж байна…"
-                  : submitEsis.data
-                    ? "Дахин илгээх"
-                    : "ESIS рүү илгээх"}
-              </Button>
-            ) : null}
-          </div>
-        }
-      />
+      {/*
+        ★ No actions here — 2026-09-10, at the client's request.
+
+        Засах and ESIS рүү илгээх lived in the page header, a scroll above the
+        register they act on: a teacher finished the last row of the sheet and
+        had to go back to the top to save it. All three controls are under the
+        grid now, in the order the work happens — засах, бүртгэх, илгээх.
+      */}
+      <PageHeader title="Ирц" />
 
       <GroupSwitcher
         groups={switchable.data?.items ?? []}
@@ -354,42 +332,36 @@ function GroupAttendance() {
       />
 
       {/*
-        ★ Two columns from `lg`: today on the left, the month on the right.
+        ★ The span is *applied*, not live — 2026-09-10, at the client's request.
 
-        The card was a date field and a progress ring in its left third with
-        about 900px of white beside them — on the screen a teacher opens every
-        morning. The split is the honest one: the left half is the work in
-        front of you, the right half is what that work has added up to. They
-        stack on a phone, work first, because a register is filled in one
-        thumb at a time and the month can wait for a scroll.
-      */}
-      {/*
-        ★ One column again. The right half held `AttendanceMonthPanel`, which
-        moved to the foot of the page — a chart about finished days was the
-        first thing on the screen a teacher opens to fill today in.
+        Typing into a date field fires `onChange` per keystroke, so a live
+        range asked the API for "2026-09-0", "2026-09-01" and every state in
+        between while a teacher was still choosing. "Хайх" makes one request
+        for the span they meant, and the fields below say what is being edited
+        rather than what has been typed.
+
+        The progress ring that used to sit under these fields moved into the
+        month report at the foot of the page — the client asked for the two
+        graphs to be one, and they were answering the same question a scroll
+        apart.
       */}
       <Card className="px-4 py-4 sm:px-5">
-        <div className="flex flex-col gap-3.5">
-          {/*
-            ★ A span, not one date — the client's sheet, 2026-09-10.
-
-            The right-hand field is still the day being written; the left one
-            only widens what the grid shows behind it. Both cancel an open
-            edit, because a draft belongs to the day it was started on and
-            carrying it to another date is how the wrong morning gets saved.
-          */}
-          <div className="grid gap-3 sm:grid-cols-2">
+        <form
+          className="flex flex-col gap-3 sm:flex-row sm:items-end"
+          onSubmit={(event) => {
+            event.preventDefault();
+            applyRange();
+          }}
+        >
+          <div className="grid flex-1 gap-3 sm:grid-cols-2">
             <Field label="Эхлэх огноо">
               {({ id }) => (
                 <Input
                   id={id}
                   type="date"
-                  max={date}
-                  value={from}
-                  onChange={(e) => {
-                    setFrom(e.target.value);
-                    cancelEdit();
-                  }}
+                  max={draftTo}
+                  value={draftFrom}
+                  onChange={(e) => setDraftFrom(e.target.value)}
                 />
               )}
             </Field>
@@ -399,32 +371,17 @@ function GroupAttendance() {
                   id={id}
                   type="date"
                   max={today()}
-                  value={date}
-                  onChange={(e) => {
-                    setDate(e.target.value);
-                    cancelEdit();
-                  }}
+                  value={draftTo}
+                  onChange={(e) => setDraftTo(e.target.value)}
                 />
               )}
             </Field>
           </div>
-
-          {sheet.data && rows.length > 0 ? (
-            <RegisterProgress inset recorded={recorded} total={rows.length} breakdown={breakdown} />
-          ) : null}
-        </div>
+          <Button type="submit" variant="secondary" className="sm:mb-0.5">
+            <Search aria-hidden /> Хайх
+          </Button>
+        </form>
       </Card>
-
-      <FormError message={save.isError ? errorMessage(save.error) : null} />
-
-      {!editing && rows.length > 0 && !savedComplete ? (
-        <Card pad="compact" tone="sun">
-          <p className="text-body font-medium text-ink">
-            {rows.filter((row) => !row.record).length} хүүхдийн ирц хадгалагдаагүй байна. Засаж
-            дууссаны дараа ESIS илгээх утга бэлтгэгдэнэ.
-          </p>
-        </Card>
-      ) : null}
 
       {sheet.isLoading ? <LoadingState rows={6} shape="register" /> : null}
 
@@ -481,6 +438,51 @@ function GroupAttendance() {
             </p>
           ) : null}
 
+          {/*
+            The three acts of a register, in the order they happen and beneath
+            the sheet they are about. `Илгээх` is disabled rather than hidden
+            until the day is complete and previewed: a button that appears only
+            once some other condition is met is a button a teacher never learns
+            they have.
+          */}
+          {rows.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {editing ? (
+                <>
+                  <Button variant="secondary" onClick={cancelEdit} disabled={save.isPending}>
+                    <X aria-hidden /> Болих
+                  </Button>
+                  <Button
+                    onClick={() => save.mutate()}
+                    disabled={save.isPending || dirtyEntries.length === 0}
+                  >
+                    <Save aria-hidden />
+                    {save.isPending ? "Бүртгэж байна…" : `Ирц бүртгэх (${dirtyEntries.length})`}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button variant="secondary" onClick={beginEdit}>
+                    <Pencil aria-hidden /> Засах
+                  </Button>
+                  <Button
+                    onClick={() => submitEsis.mutate()}
+                    disabled={!esisPreview.data || submitEsis.isPending}
+                  >
+                    <Send aria-hidden />
+                    {submitEsis.isPending
+                      ? "Илгээж байна…"
+                      : submitEsis.data
+                        ? "Дахин илгээх"
+                        : "ESIS рүү илгээх"}
+                  </Button>
+                </>
+              )}
+            </div>
+          ) : null}
+
+          <FormError message={save.isError ? errorMessage(save.error) : null} />
+
           {!editing && esisPreview.data ? (
             <GroupEsisPayload
               preview={esisPreview.data}
@@ -524,7 +526,11 @@ function GroupAttendance() {
         month adds up to.
       */}
       <Card pad="roomy">
-        <AttendanceMonthPanel groupId={groupId} month={date.slice(0, 7)} />
+        <AttendanceMonthPanel
+          groupId={groupId}
+          month={date.slice(0, 7)}
+          progress={{ recorded, total: rows.length, breakdown }}
+        />
       </Card>
     </div>
   );

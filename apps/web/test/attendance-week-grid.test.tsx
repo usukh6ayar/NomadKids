@@ -281,6 +281,45 @@ describe("the register's three panels", () => {
     );
   });
 
+  /*
+   * ★ The question the journal exists to answer — "how often was this child
+   * ill" — which the register above cannot, because it is one morning.
+   */
+  it("counts each child's own month in trailing columns", async () => {
+    const user = userEvent.setup();
+    stubRegister();
+    renderWithProviders(<GroupAttendancePage />);
+    await grid();
+
+    await user.click(door("Ирцийн дэлгэрэнгүй"));
+    await screen.findByLabelText("Сар");
+
+    const journal = (await screen.findAllByRole("table", { name: /Бүлгийн ирцийн бүртгэл/ })).at(
+      -1,
+    )!;
+    // Ануужин carries one SICK day in the stubbed span and nothing else.
+    const row = within(journal).getByRole("row", { name: /Б\.Ануужин/ });
+    const cells = within(row).getAllByRole("cell");
+    // …Ирсэн, Өвчтэй, Чөлөөтэй, Тасалсан, Нийт — the last five of the row.
+    expect(cells.slice(-5).map((cell) => cell.textContent)).toEqual(["0", "1", "0", "0", "1"]);
+  });
+
+  it("offers the month as a spreadsheet", async () => {
+    const user = userEvent.setup();
+    stubRegister();
+    renderWithProviders(<GroupAttendancePage />);
+    await grid();
+
+    await user.click(door("Ирцийн дэлгэрэнгүй"));
+
+    const link = await screen.findByRole("link", { name: /Сарын дэлгэрэнгүй татах/ });
+    // A plain link, so the browser saves the attachment and keeps the cookie
+    // the API authorises on.
+    expect(link.getAttribute("href")).toContain(
+      `/groups/${GROUP}/attendance/range/export?from=${MONTH_START}`,
+    );
+  });
+
   it("counts the waiting notices on the Чөлөөний хүсэлт button", async () => {
     stubRegister({ pendingRequests: 3 });
     renderWithProviders(<GroupAttendancePage />);
@@ -326,5 +365,84 @@ describe("the register's three panels", () => {
     await user.click(door("Ирцийн дэлгэрэнгүй"));
 
     await waitFor(() => expect(screen.queryByLabelText("Сар")).not.toBeInTheDocument());
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The controls, and where they sit
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("the register's controls", () => {
+  /*
+   * ★ Засах and ESIS рүү илгээх lived in the page header, a scroll above the
+   * sheet they act on: a teacher finished the last row and had to go back to
+   * the top to save it.
+   */
+  it("puts all three acts under the grid, not in the page header", async () => {
+    stubRegister({ recorded: true });
+    renderWithProviders(<GroupAttendancePage />);
+    const table = await grid();
+
+    const after = (name: RegExp) => {
+      const button = screen.getByRole("button", { name });
+      // DOCUMENT_POSITION_FOLLOWING: the button comes after the table.
+      return Boolean(table.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING);
+    };
+
+    expect(after(/Засах/), "Засах is above the register").toBe(true);
+    expect(after(/илгээх/), "ESIS илгээх is above the register").toBe(true);
+  });
+
+  it("offers Болих and Ирц бүртгэх under the grid while editing", async () => {
+    const user = userEvent.setup();
+    stubRegister();
+    renderWithProviders(<GroupAttendancePage />);
+    await grid();
+
+    await user.click(screen.getByRole("button", { name: /Засах/ }));
+
+    expect(screen.getByRole("button", { name: /Ирц бүртгэх/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Болих/ })).toBeInTheDocument();
+    // Editing is not the moment to file a day that is still being changed.
+    expect(screen.queryByRole("button", { name: /илгээх/ })).not.toBeInTheDocument();
+  });
+
+  /*
+   * The banner said "N хүүхдийн ирц хадгалагдаагүй байна" above a grid that
+   * already shows exactly which children and which days. The client asked for
+   * it to go.
+   */
+  it("no longer warns in words about what the grid already draws", async () => {
+    stubRegister();
+    renderWithProviders(<GroupAttendancePage />);
+    await grid();
+
+    expect(screen.queryByText(/хадгалагдаагүй байна/)).not.toBeInTheDocument();
+  });
+
+  it("applies a new span only when Хайх is pressed", async () => {
+    const user = userEvent.setup();
+    const api = stubRegister();
+    renderWithProviders(<GroupAttendancePage />);
+    await grid();
+
+    const before = api.calls.filter((call) => call.url.includes("/range")).length;
+    const start = screen.getByLabelText("Эхлэх огноо");
+
+    // A date input fires onChange per keystroke; a live range would ask the
+    // API about every half-typed date on the way.
+    await user.clear(start);
+    await user.type(start, "2026-01-05");
+    expect(api.calls.filter((call) => call.url.includes("/range")).length).toBe(before);
+
+    await user.click(screen.getByRole("button", { name: /Хайх/ }));
+
+    await waitFor(() =>
+      expect(
+        api.calls.some(
+          (call) => call.url.includes("/range") && call.url.includes("from=2026-01-05"),
+        ),
+      ).toBe(true),
+    );
   });
 });

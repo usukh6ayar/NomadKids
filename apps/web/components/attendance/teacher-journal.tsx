@@ -2,8 +2,11 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Download } from "lucide-react";
 import { groupAttendanceRangeSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
+import { downloadUrl } from "@/lib/api/client";
+import { Button } from "@/components/ui/button";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Field, Input } from "@/components/ui/field";
@@ -59,18 +62,34 @@ export function TeacherJournal({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="max-w-[220px]">
-        <Field label="Сар">
-          {({ id }) => (
-            <Input
-              id={id}
-              type="month"
-              value={month}
-              max={new Date().toISOString().slice(0, 7)}
-              onChange={(event) => setMonth(event.target.value)}
-            />
-          )}
-        </Field>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="w-full max-w-[220px]">
+          <Field label="Сар">
+            {({ id }) => (
+              <Input
+                id={id}
+                type="month"
+                value={month}
+                max={new Date().toISOString().slice(0, 7)}
+                onChange={(event) => setMonth(event.target.value)}
+              />
+            )}
+          </Field>
+        </div>
+
+        {/*
+          ★ A plain link, not a fetch-then-blob.
+
+          The endpoint answers with `Content-Disposition: attachment`, so the
+          browser saves it and never navigates away — the same thing the
+          director's journal does, and it keeps the cookie the API authorises
+          on without this component having to hold a file in memory.
+        */}
+        <Button asChild variant="secondary">
+          <a href={downloadUrl(`/groups/${groupId}/attendance/range/export?from=${from}&to=${to}`)}>
+            <Download aria-hidden /> Сарын дэлгэрэнгүй татах
+          </a>
+        </Button>
       </div>
 
       {range.isLoading ? <LoadingState rows={6} shape="register" /> : null}
@@ -82,7 +101,13 @@ export function TeacherJournal({
             description="Энэ бүлэгт идэвхтэй бүртгэлтэй хүүхэд байхгүй байна."
           />
         ) : (
-          <AttendanceWeekGrid data={range.data} editableDay={null} draft={{}} onSet={() => {}} />
+          <AttendanceWeekGrid
+            data={range.data}
+            editableDay={null}
+            draft={{}}
+            onSet={() => {}}
+            showChildTotals
+          />
         )
       ) : null}
     </div>

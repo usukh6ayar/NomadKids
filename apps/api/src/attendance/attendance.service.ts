@@ -618,6 +618,50 @@ export class AttendanceService {
     };
   }
 
+  /**
+   * The group's own span as a spreadsheet — the journal's "татах".
+   *
+   * ★ A teacher-scoped sibling of `exportRegister`, not a widening of it.
+   *
+   * That one is the whole kindergarten and is `@Roles("ADMIN", "ACCOUNTANT")`
+   * behind `assertCanReadFinance`: an accountant filing a claim reads every
+   * group. A teacher reads one, and `assertCanReadGroup` is the check that
+   * already says which. Sharing `buildJournalWorkbook` keeps the two files
+   * identical in shape — the difference is whose rows go into it.
+   *
+   * `groupRangeSheet` is reused rather than re-queried, so the spreadsheet and
+   * the grid on screen cannot disagree about a day.
+   */
+  async exportGroupRange(actor: Actor, groupId: string, fromIso: string, toIso: string) {
+    const sheet = await this.groupRangeSheet(actor, groupId, fromIso, toIso);
+    const group = await this.repo.findGroup(groupId, this.tenants.memberKindergartenIds(actor));
+    if (!group) throw new NotFoundException();
+
+    const totals: Record<string, number> = {};
+    const rows = sheet.rows.map((row) => {
+      const counts: Record<string, number> = {};
+      const days = sheet.days.map((day) => {
+        const record = row.records[day];
+        if (!record) return null;
+        counts[record.status] = (counts[record.status] ?? 0) + 1;
+        totals[record.status] = (totals[record.status] ?? 0) + 1;
+        return { status: record.status, note: record.note ?? null };
+      });
+      return { child: row.child, group: { name: group.name }, days, counts };
+    });
+
+    const buffer = await buildJournalWorkbook({
+      kindergartenName: group.name,
+      from: fromIso,
+      to: toIso,
+      days: sheet.days,
+      rows,
+      totals,
+    });
+
+    return { buffer, filename: `irts-${group.name}-${fromIso}-${toIso}.xlsx` };
+  }
+
   /** Builds the exact ESIS attendance input for one group-day. */
   async groupEsisAttendancePreview(actor: Actor, groupId: string, dateIso: string) {
     await this.assertCanReadGroup(actor, groupId);

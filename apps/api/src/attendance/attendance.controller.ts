@@ -307,6 +307,30 @@ export class GroupAttendanceController {
     return this.service.groupRangeSheet(actor, params.id, query.from, query.to);
   }
 
+  /** The same span as a spreadsheet — the journal's download. */
+  @Get("range/export")
+  @Roles("TEACHER", "ADMIN")
+  async exportRange(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(groupRangeSheetQuerySchema)) query: GroupRangeSheetQuery,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.service.exportGroupRange(
+      actor,
+      params.id,
+      query.from,
+      query.to,
+    );
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
+    res.send(buffer);
+  }
+
   /** Exact API-000269 body for one teacher-owned group day. */
   @Get("esis-preview")
   @Roles("TEACHER", "ADMIN")

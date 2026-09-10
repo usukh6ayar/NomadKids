@@ -7,6 +7,7 @@ import { qk } from "@/lib/api/keys";
 import { BarRow } from "@/components/ui/chart/bar-row";
 import { ColumnChart } from "@/components/ui/chart/columns";
 import { Skeleton } from "@/components/ui/states";
+import { RegisterProgress, type RegisterCount } from "@/components/register/register-progress";
 import { ATTENDANCE_STATUS_CHART_TONE, ATTENDANCE_STATUS_ORDER } from "@/lib/attendance-meta";
 
 /**
@@ -66,7 +67,32 @@ function workingDaysIn(month: string, today: string): { total: number; elapsed: 
   return { total, elapsed };
 }
 
-export function AttendanceMonthPanel({ groupId, month }: { groupId: string; month: string }) {
+/**
+ * The month behind the register, with the day's own progress folded in.
+ *
+ * ★ `progress` arrives from the register — 2026-09-10, at the client's
+ * request that the two graphs become one.
+ *
+ * `RegisterProgress` sat under the date fields at the top of the page and
+ * this panel sat at the bottom, and they were answering the same question a
+ * scroll apart: how much of the register is done. The ring is about the
+ * selected *day* and the bars below are about the month, which is why they are
+ * two blocks rather than one chart — but they belong on the same card, and a
+ * teacher should not have to hold one in their head while scrolling to the
+ * other.
+ *
+ * Optional, because the journal renders this panel too and has no day being
+ * edited to report progress on.
+ */
+export function AttendanceMonthPanel({
+  groupId,
+  month,
+  progress,
+}: {
+  groupId: string;
+  month: string;
+  progress?: { recorded: number; total: number; breakdown: RegisterCount[] };
+}) {
   const summary = useQuery({
     queryKey: qk.groupAttendanceSummary(groupId, month),
     queryFn: () =>
@@ -162,6 +188,15 @@ export function AttendanceMonthPanel({ groupId, month }: { groupId: string; mont
 
   return (
     <div className="flex flex-col gap-4">
+      {progress && progress.total > 0 ? (
+        <RegisterProgress
+          inset
+          recorded={progress.recorded}
+          total={progress.total}
+          breakdown={progress.breakdown}
+        />
+      ) : null}
+
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <h3 className="text-lead font-semibold text-ink">
           {monthLabel} · ажлын {working.total} хоног

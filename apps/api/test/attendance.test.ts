@@ -848,6 +848,60 @@ describe("group range sheet", () => {
   });
 
   /** 404, not 403 — §1.7, and the same answer the day sheet beside it gives. */
+  /*
+   * ★ The teacher's own download — a sibling of `/attendance/register/export`,
+   * not a widening of it. That one is the whole kindergarten behind
+   * `assertCanReadFinance`; this one is the one group `assertCanReadGroup`
+   * already allows.
+   */
+  it("answers the same span as a spreadsheet, with the marks in it", async () => {
+    await mark(a.child.id, "2026-02-10", "PRESENT");
+    await mark(a.child.id, "2026-02-11", "SICK");
+
+    const res = await authed(
+      request(server()).get(
+        `/v1/groups/${a.group.id}/attendance/range/export?from=2026-02-09&to=2026-02-13`,
+      ),
+      teacherA,
+    )
+      .buffer(true)
+      .parse((r, cb) => {
+        const chunks: Buffer[] = [];
+        r.on("data", (c: Buffer) => chunks.push(c));
+        r.on("end", () => cb(null, Buffer.concat(chunks)));
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toContain("spreadsheetml");
+    expect(res.headers["content-disposition"]).toContain("attachment");
+
+    /*
+     * ★ Read back, not weighed. §4.3's rule about PDFs is the same rule here:
+     * a generator returning an empty workbook passes every "did it produce a
+     * file" check, and the thing worth asserting is that the day the teacher
+     * marked is the day the spreadsheet carries.
+     */
+    const ExcelJS = (await import("exceljs")).default;
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(res.body);
+    const summary = book.worksheets.map((sheet) => sheet.name);
+    expect(summary.length).toBeGreaterThan(0);
+
+    const text = JSON.stringify(book.worksheets.map((sheet) => sheet.getSheetValues()));
+    expect(text).toContain("Ирсэн");
+    expect(text).toContain("Өвчтэй");
+  });
+
+  it("a teacher cannot export another group's register", async () => {
+    const res = await authed(
+      request(server()).get(
+        `/v1/groups/${b.group.id}/attendance/range/export?from=2026-02-09&to=2026-02-13`,
+      ),
+      teacherA,
+    );
+    expect(res.status).toBe(404);
+  });
+
   it("a guardian cannot read the group's register", async () => {
     const res = await authed(
       request(server()).get(

@@ -72,6 +72,7 @@ export function AttendanceWeekGrid({
   draft,
   onSet,
   disabled = false,
+  showChildTotals = false,
 }: {
   data: GroupAttendanceRange;
   /** The one ISO date whose column accepts input, or null for a read-only grid. */
@@ -80,6 +81,17 @@ export function AttendanceWeekGrid({
   draft: Record<string, string>;
   onSet: (childId: string, status: string) => void;
   disabled?: boolean;
+  /**
+   * Trailing columns counting each child's own month — Ирсэн · Өвчтэй ·
+   * Чөлөөтэй · Тасалсан, then the days they carry a record at all.
+   *
+   * ★ Off by default, and on for the journal — 2026-09-10, at the client's
+   * request. The register above is one morning's work and a per-child total
+   * there would be a column about a month nobody is looking at; the journal
+   * *is* the month, and "how often was this child ill" is the question it
+   * exists to answer.
+   */
+  showChildTotals?: boolean;
 }) {
   const statusFor = (row: GroupAttendanceRange["rows"][number], day: string) =>
     (day === editableDay ? draft[row.child.id] : undefined) ?? row.records[day]?.status ?? null;
@@ -103,6 +115,19 @@ export function AttendanceWeekGrid({
     }
     return { day, counts, recorded };
   });
+
+  /** One child's month, counted across the span the grid is drawing. */
+  const totalsFor = (row: GroupAttendanceRange["rows"][number]) => {
+    const counts: Record<string, number> = {};
+    let recorded = 0;
+    for (const day of data.days) {
+      const status = statusFor(row, day);
+      if (!status) continue;
+      counts[status] = (counts[status] ?? 0) + 1;
+      recorded += 1;
+    }
+    return { counts, recorded };
+  };
 
   return (
     <div className="overflow-x-auto">
@@ -136,6 +161,23 @@ export function AttendanceWeekGrid({
                 </th>
               );
             })}
+            {showChildTotals
+              ? [...TEACHER_ATTENDANCE_STATUSES, "TOTAL" as const].map((key, index) => (
+                  <th
+                    key={key}
+                    scope="col"
+                    className={cn(
+                      "w-12 px-1 py-2.5 text-center text-caption font-semibold text-ink",
+                      index === 0 && "border-l border-border",
+                    )}
+                  >
+                    {key === "TOTAL" ? "Нийт" : ATTENDANCE_STATUS_LETTER[key]}
+                    <span className="sr-only">
+                      {key === "TOTAL" ? " бүртгэсэн өдөр" : ` ${ATTENDANCE_STATUS_LABEL[key]}`}
+                    </span>
+                  </th>
+                ))
+              : null}
           </tr>
         </thead>
 
@@ -157,6 +199,23 @@ export function AttendanceWeekGrid({
                   />
                 </td>
               ))}
+              {showChildTotals
+                ? (() => {
+                    const { counts, recorded } = totalsFor(row);
+                    return [...TEACHER_ATTENDANCE_STATUSES, "TOTAL" as const].map((key, index) => (
+                      <td
+                        key={key}
+                        className={cn(
+                          "px-1 py-2 text-center text-caption tabular-nums",
+                          index === 0 && "border-l border-border",
+                          key === "TOTAL" ? "font-bold text-ink" : "text-muted",
+                        )}
+                      >
+                        {key === "TOTAL" ? recorded : (counts[key] ?? 0)}
+                      </td>
+                    ));
+                  })()
+                : null}
             </tr>
           ))}
         </tbody>
@@ -179,6 +238,7 @@ export function AttendanceWeekGrid({
                   {counts[status] ?? 0}
                 </td>
               ))}
+              {showChildTotals ? <td colSpan={TEACHER_ATTENDANCE_STATUSES.length + 1} /> : null}
             </tr>
           ))}
           <tr>
@@ -197,6 +257,7 @@ export function AttendanceWeekGrid({
                 {recorded}
               </td>
             ))}
+            {showChildTotals ? <td colSpan={TEACHER_ATTENDANCE_STATUSES.length + 1} /> : null}
           </tr>
         </tfoot>
       </table>
