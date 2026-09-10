@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setPathname, stubApi } from "./support/render";
 import AppLayout from "@/app/(app)/layout";
@@ -480,6 +481,7 @@ describe("role-based navigation", () => {
     );
     expect(within(nav).getAllByText("Батмөнх Тэмүүлэн").length).toBeGreaterThan(0);
 
+    // The rows a guardian navigates with, plus the folding group's own header.
     for (const label of [
       "Нүүр",
       "Хүүхдийн мэдээлэл",
@@ -487,14 +489,9 @@ describe("role-based navigation", () => {
       "Мэдээ",
       "Багштай холбогдох",
       "Үйлчилгээний эрх",
-      "Миний гэрээ",
-      "Гарын авлага",
-      "Түгээмэл асуулт",
-      "Холбоо барих",
-      "Үйлчилгээний нөхцөл",
-      "Нууцлалын бодлого",
+      "Тусламж",
     ]) {
-      expect(within(nav).getByText(label), `${label} is missing`).toBeInTheDocument();
+      expect(within(nav).getByText(label), `${label} is missing`).toBeVisible();
     }
 
     expect(within(nav).getByText("3")).toBeInTheDocument();
@@ -508,6 +505,69 @@ describe("role-based navigation", () => {
       "href",
       "/chat",
     );
+  });
+
+  /*
+   * The six reference rows fold away so the menu the parent actually uses fits
+   * a phone screen. `toBeVisible` rather than `toBeInTheDocument` is the whole
+   * point of these two cases: the panel stays mounted while closed, so the
+   * weaker matcher would pass on a disclosure that never opens *and* on one
+   * that never closes.
+   */
+  const FOLDED = [
+    "Миний гэрээ",
+    "Гарын авлага",
+    "Түгээмэл асуулт",
+    "Үйлчилгээний нөхцөл",
+    "Нууцлалын бодлого",
+    "Холбоо барих",
+  ];
+
+  it("keeps the six help rows folded away until Тусламж is opened", async () => {
+    const user = userEvent.setup();
+    renderShell(["PARENT"], "/home", [OWN_CHILD], GROUPS, 3);
+    const nav = await sidebar();
+
+    const toggle = within(nav).getByRole("button", { name: "Тусламж" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    for (const label of FOLDED) {
+      expect(within(nav).getByText(label), `${label} should start folded`).not.toBeVisible();
+    }
+
+    await user.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    for (const label of FOLDED) {
+      expect(within(nav).getByText(label), `${label} should be revealed`).toBeVisible();
+    }
+  });
+
+  it("folds Тусламж shut again, and reaches support last", async () => {
+    const user = userEvent.setup();
+    renderShell(["PARENT"], "/home", [OWN_CHILD], GROUPS, 3);
+    const nav = await sidebar();
+
+    const toggle = within(nav).getByRole("button", { name: "Тусламж" });
+    await user.click(toggle);
+
+    // Ordered so the address to write to sits below the five pages that may
+    // save the parent from needing it.
+    const opened = FOLDED.map((label) => within(nav).getByText(label));
+    for (let i = 1; i < opened.length; i += 1) {
+      expect(
+        opened[i - 1]!.compareDocumentPosition(opened[i]!) & Node.DOCUMENT_POSITION_FOLLOWING,
+        `${FOLDED[i]} should follow ${FOLDED[i - 1]}`,
+      ).toBeTruthy();
+    }
+    expect(within(nav).getByRole("link", { name: "Холбоо барих" })).toHaveAttribute(
+      "href",
+      "mailto:Nomadkidsmn@gmail.com",
+    );
+
+    await user.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(within(nav).getByText("Миний гэрээ")).not.toBeVisible();
   });
 });
 
