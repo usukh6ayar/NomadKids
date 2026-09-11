@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   Apple,
   CalendarDays,
   CalendarRange,
   Copy,
+  FileSpreadsheet,
   Flame,
   Moon,
   Soup,
@@ -131,6 +132,8 @@ export interface MenuRowActions {
   photoEndpoint: string;
   onPhotoUploaded: (kind: MealKind, date: string, mediaId: string) => void;
   onPhotoRemoved: (kind: MealKind, date: string) => void;
+  /** Opens the Excel panel — drawn above the week table. */
+  onImport: () => void;
 }
 
 /**
@@ -169,6 +172,8 @@ export function FamilyMenu({
   actions?: MenuRowActions;
 }) {
   const [view, setView] = useState<View>("today");
+  /** Whether the week table's cells are editable — staff only, off by default. */
+  const [editingWeek, setEditingWeek] = useState(false);
   const activeDate = view === "tomorrow" ? tomorrowIso : todayIso;
 
   return (
@@ -191,8 +196,41 @@ export function FamilyMenu({
       </div>
 
       {view === "week" ? (
-        <div role="tabpanel" aria-label="7 хоног">
-          <WeekTable byDate={byDate} weekDates={weekDates} todayIso={todayIso} />
+        <div role="tabpanel" aria-label="7 хоног" className="flex flex-col gap-2">
+          {/*
+            ★ Excel оруулах and Засах above the week — 2026-09-11, at the
+            client's request, and Засах edits the table itself rather than
+            sending anyone to another screen.
+          */}
+          {actions ? (
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                className="border-mint bg-mint/30 text-mint-ink hover:bg-mint/50"
+                onClick={actions.onImport}
+              >
+                <FileSpreadsheet size={16} aria-hidden="true" />
+                Excel оруулах
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setEditingWeek((current) => !current)}
+                aria-pressed={editingWeek}
+              >
+                <PencilLine size={16} aria-hidden="true" />
+                {editingWeek ? "Засварыг хаах" : "Засах"}
+              </Button>
+            </div>
+          ) : null}
+
+          <WeekTable
+            byDate={byDate}
+            weekDates={weekDates}
+            todayIso={todayIso}
+            onSaveCell={editingWeek && actions ? actions.onSaveNames : undefined}
+          />
         </div>
       ) : (
         <div role="tabpanel" aria-label={view === "today" ? "Өнөөдөр" : "Маргааш"}>
@@ -532,10 +570,20 @@ export function WeekTable({
   byDate,
   weekDates,
   todayIso,
+  onSaveCell,
 }: {
   byDate: Map<string, MenuDay>;
   weekDates: string[];
   todayIso: string;
+  /**
+   * Makes each cell editable. Given, a cell is a text box of comma-separated
+   * dish names that writes back on blur; omitted, the table is what it was.
+   *
+   * ★ On blur rather than behind a Хадгалах: a week is thirty-five cells, and
+   * one save button for all of them is either thirty-five requests on one press
+   * or a diff nobody can see. Leaving a cell is the smallest edit there is.
+   */
+  onSaveCell?: (kind: MealKind, date: string, names: string[]) => void;
 }) {
   const kinds = MEAL_KIND_ORDER.filter((kind) =>
     weekDates.some((date) => dishesOf(byDate.get(date)?.dishes ?? [], kind).length > 0),
@@ -604,7 +652,22 @@ export function WeekTable({
                       date === todayIso && "bg-primary-soft/40",
                     )}
                   >
-                    {named.length > 0 ? (
+                    {onSaveCell ? (
+                      <CellEditor
+                        value={named.map((dish) => dish.name).join(", ")}
+                        label={`${formatDayMonth(date)} · ${MEAL_KIND_LABEL[kind]}`}
+                        onCommit={(text) =>
+                          onSaveCell(
+                            kind,
+                            date,
+                            text
+                              .split(",")
+                              .map((part) => part.trim())
+                              .filter(Boolean),
+                          )
+                        }
+                      />
+                    ) : named.length > 0 ? (
                       named.map((dish) => dish.name).join(", ")
                     ) : (
                       <span className="text-faint">—</span>
@@ -654,4 +717,44 @@ function matchedAllergens(dishes: MenuDish[], healthNotes: string | null | undef
   }
 
   return [...hits];
+}
+
+/**
+ * One cell of the editable week — comma-separated dish names.
+ *
+ * ★ Committed on blur, and only when it changed.
+ *
+ * Typing in a cell must not fire a request per keystroke, and a week of
+ * thirty-five cells cannot wait behind one Хадгалах without either sending
+ * thirty-five requests at once or hiding what is about to be saved. Leaving the
+ * cell is the edit; unchanged text writes nothing.
+ */
+function CellEditor({
+  value,
+  label,
+  onCommit,
+}: {
+  value: string;
+  label: string;
+  onCommit: (text: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+
+  // The server's value wins when it changes — a refetch after somebody else's
+  // edit must not be overwritten by a stale local string.
+  useEffect(() => setDraft(value), [value]);
+
+  return (
+    <input
+      aria-label={label}
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => {
+        if (draft.trim() === value.trim()) return;
+        onCommit(draft);
+      }}
+      placeholder="—"
+      className="w-full rounded-control border border-border bg-surface px-1.5 py-1 text-center text-caption text-ink focus:border-primary focus:outline-none"
+    />
+  );
 }

@@ -35,7 +35,9 @@ function todayIso(): string {
  * table, the day form — is behind "Цэс засах".
  */
 async function openEdit(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole("button", { name: "Цэс засах" }));
+  // The door moved into the header's ⋮ on 2026-09-11 — see the page's own note.
+  await user.click(await screen.findByRole("button", { name: "Хоолны цэсний үйлдэл" }));
+  await user.click(await screen.findByRole("menuitem", { name: /Цэс засах/ }));
 }
 
 /**
@@ -446,12 +448,15 @@ describe("the menu as a spreadsheet", () => {
   });
 
   it("★ offers an admin neither the import nor the editor", async () => {
+    const user = userEvent.setup();
     stubWeek(["ADMIN"]);
     renderWithProviders(<MenuPage />);
 
     await screen.findByText("Хоолны цэс");
-    // No door at all — a director reads the family's view and stays there.
-    expect(screen.queryByRole("button", { name: "Цэс засах" })).not.toBeInTheDocument();
+    // The ⋮ is there for the downloads; the door into editing is not in it.
+    await user.click(screen.getByRole("button", { name: "Хоолны цэсний үйлдэл" }));
+    expect(screen.queryByRole("menuitem", { name: /Цэс засах/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("menuitem", { name: /Excel —/ }).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "Excel оруулах" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Хадгалах/ })).not.toBeInTheDocument();
   });
@@ -520,7 +525,9 @@ describe("the menu as a spreadsheet", () => {
     renderWithProviders(<MenuPage />);
 
     expect(await screen.findByRole("tab", { name: "Өнөөдөр" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Цэс засах" })).toBeInTheDocument();
+    // ★ No button under the day — the door is in the header's ⋮.
+    expect(screen.queryByRole("button", { name: "Цэс засах" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Хоолны цэсний үйлдэл" })).toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: "Хүснэгтээр" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Excel оруулах" })).not.toBeInTheDocument();
   });
@@ -774,7 +781,7 @@ describe("the menu as a spreadsheet", () => {
     await user.click(await screen.findByRole("button", { name: /Уръдчилан харах/ }));
 
     expect(await screen.findByRole("tab", { name: "Өнөөдөр" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Цэс засах" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Хоолны цэсний үйлдэл" })).toBeInTheDocument();
   });
 
   /*
@@ -875,6 +882,72 @@ describe("the menu as a spreadsheet", () => {
     expect((put.body as { dishes: { name: string }[] }).dishes.map((d) => d.name)).toEqual([
       "Тараг",
       "Тараг",
+    ]);
+  });
+
+  /*
+    ★ The week edits in place too — 2026-09-11: "7 хоногийн дээд талд Excel-ээр
+    оруулах, засах гэдэг тэмдэг оруул. Засах руу орохоор өөр хуудас руу үсэрч
+    болохгүй."
+  */
+  it("offers Excel оруулах and Засах above the week", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    await user.click(await screen.findByRole("tab", { name: "7 хоног" }));
+    const panel = await screen.findByRole("tabpanel", { name: "7 хоног" });
+
+    expect(within(panel).getByRole("button", { name: "Excel оруулах" })).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Засах" })).toBeInTheDocument();
+  });
+
+  it("turns the week's cells into text boxes, on the same screen", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    await user.click(await screen.findByRole("tab", { name: "7 хоног" }));
+    const panel = await screen.findByRole("tabpanel", { name: "7 хоног" });
+
+    // Reading: no boxes.
+    expect(within(panel).queryByRole("textbox")).not.toBeInTheDocument();
+
+    await user.click(within(panel).getByRole("button", { name: "Засах" }));
+
+    expect(within(panel).getAllByRole("textbox").length).toBeGreaterThan(0);
+    // Still on the week — nothing navigated.
+    expect(screen.queryByText("Хоолны цэс засах")).not.toBeInTheDocument();
+    expect(await screen.findByRole("table", { name: "Долоо хоногийн цэс" })).toBeInTheDocument();
+  });
+
+  /** A cell writes back when it is left, and only when it changed. */
+  it("saves a cell on blur, and not when nothing changed", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    await user.click(await screen.findByRole("tab", { name: "7 хоног" }));
+    const panel = await screen.findByRole("tabpanel", { name: "7 хоног" });
+    await user.click(within(panel).getByRole("button", { name: "Засах" }));
+
+    const cells = within(panel).getAllByRole("textbox");
+    const filled = cells.find((cell) => (cell as HTMLInputElement).value === "Тараг")!;
+
+    // Touched and left unchanged: nothing is written.
+    await user.click(filled);
+    await user.tab();
+    expect(calls.some((call) => call.method === "PUT")).toBe(false);
+
+    await user.clear(filled);
+    await user.type(filled, "Тараг, Талх");
+    await user.tab();
+
+    await waitFor(() => expect(calls.some((call) => call.method === "PUT")).toBe(true));
+    const put = calls.find((call) => call.method === "PUT")!;
+    expect((put.body as { dishes: { name: string }[] }).dishes.map((d) => d.name)).toEqual([
+      "Тараг",
+      "Талх",
     ]);
   });
 });

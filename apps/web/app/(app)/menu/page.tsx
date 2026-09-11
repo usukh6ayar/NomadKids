@@ -36,7 +36,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Textarea } from "@/components/ui/field";
-import { Menu, type MenuItem } from "@/components/ui/menu";
+import { Menu, RowMenu, type MenuItem } from "@/components/ui/menu";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { FamilyMenu, WeekTable, type MenuRowActions } from "@/components/child/family-menu";
@@ -312,6 +312,15 @@ function WeeklyMenu() {
                     index === 0 ? { ...dish, photoMediaFileId: mediaId } : dish,
                   ),
             ),
+          /*
+            Excel оруулах above the week opens the same panel the editing
+            toolbar does, rather than a second one — one import, one preview.
+          */
+          onImport: () => {
+            setEditing(true);
+            setView("table");
+            setImporting(true);
+          },
           onPhotoRemoved: (kind, date) =>
             rewrite(date, kind, (rows) =>
               rows.map((dish) => ({ ...dish, photoMediaFileId: null })),
@@ -432,7 +441,32 @@ function WeeklyMenu() {
               : undefined
         }
         actions={
-          !editing ? null : openDay !== null ? (
+          !editing ? (
+            kindergartenId ? (
+              <RowMenu
+                ariaLabel="Хоолны цэсний үйлдэл"
+                triggerIcon={<MoreHorizontal size={18} aria-hidden="true" />}
+                items={[
+                  ...(canEdit
+                    ? [
+                        {
+                          label: "Цэс засах",
+                          icon: <PencilLine size={16} aria-hidden="true" />,
+                          hint: "Excel-ээр оруулах, өдрийн дэлгэрэнгүй маягт",
+                          onSelect: () => setEditing(true),
+                        },
+                      ]
+                    : []),
+                  ...exportItems.map((item, index) => ({
+                    label: `Excel — ${item.label}`,
+                    hint: item.hint,
+                    href: item.href,
+                    separated: index === 0,
+                  })),
+                ]}
+              />
+            ) : null
+          ) : openDay !== null ? (
             /*
               ★ The day's pager, in the header — the client's drawing puts
               `‹ 2026.09.11 ›` at the top right of the day screen, not inside
@@ -528,12 +562,19 @@ function WeeklyMenu() {
             />
           ) : null}
 
-          {canEdit ? (
-            <Button className="self-start" onClick={() => setEditing(true)}>
-              <PencilLine size={16} aria-hidden="true" />
-              Цэс засах
-            </Button>
-          ) : null}
+          {/*
+            ★ No "Цэс засах" button here — 2026-09-11, at the client's request:
+            "өнөөдөр гэдгээс цэс засах гэдэг арилга."
+
+            The card carries the editing now: the photograph's two buttons and
+            the ⋮'s Засах · Хуулах · Устгах. A button under the day was a second
+            door to a flow the reader is already standing in, and it pushed the
+            week down the screen.
+
+            What is still only reachable through the flow — the Excel import,
+            the day's form with portions and технологийн карт, + Нэмэх — moved
+            into the header's ⋮ beside the downloads.
+          */}
         </>
       ) : null}
 
