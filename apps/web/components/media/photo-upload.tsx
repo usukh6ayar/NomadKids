@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ImagePlus, RotateCw } from "lucide-react";
+import { ImagePlus, Loader2, RotateCw } from "lucide-react";
 import { useId, useRef, useState, type ReactNode } from "react";
 import { z } from "zod";
 import { mediaSchema } from "@kinder/contracts";
@@ -11,6 +11,7 @@ import { errorMessage } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
+import { cn } from "@/lib/utils";
 
 /** The API's own ceiling. Checked here too, so a 12 MB photo fails instantly. */
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -112,6 +113,7 @@ export function PhotoUpload({
   onUploaded,
   onDone,
   variant = "secondary",
+  trigger = "button",
   withCaption = false,
   children,
 }: {
@@ -140,6 +142,19 @@ export function PhotoUpload({
    */
   onDone?: (stored: number) => void | Promise<void>;
   variant?: "primary" | "secondary";
+  /**
+   * How the control is drawn.
+   *
+   * ★ `"tile"` is a dashed square carrying the icon alone, for a picker where
+   * the trigger sits beside the photographs it adds to. Added 2026-09-10 at
+   * the client's request — a labelled button above a grid of thumbnails
+   * repeats in words what the grid already says in shape.
+   *
+   * `label` is still required and still the accessible name; it moves to
+   * `sr-only` rather than being dropped, because an icon-only control with no
+   * name is unusable by anything that cannot see it.
+   */
+  trigger?: "button" | "tile";
   /** Shows one short caption field and sends it with every file in this batch. */
   withCaption?: boolean;
   /** Extra controls rendered beside the button. */
@@ -243,7 +258,11 @@ export function PhotoUpload({
         </Field>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div
+        className={cn(
+          trigger === "tile" ? "flex w-full flex-col gap-2" : "flex flex-wrap items-center gap-2",
+        )}
+      >
         {/*
           A real <input type="file"> behind a label, not a div with a click
           handler: the native control is keyboard-reachable and opens the
@@ -258,12 +277,32 @@ export function PhotoUpload({
           className="sr-only"
           onChange={(e) => void handleFiles(e.target.files)}
         />
-        <Button asChild variant={variant} disabled={upload.isPending}>
-          <label htmlFor={inputId} className="cursor-pointer">
-            <ImagePlus size={18} />
-            {upload.isPending ? "Илгээж байна…" : label}
+        {trigger === "tile" ? (
+          <label
+            htmlFor={inputId}
+            aria-disabled={upload.isPending || undefined}
+            className={cn(
+              "grid aspect-square w-full cursor-pointer place-items-center rounded-control",
+              "border-2 border-dashed border-border bg-surface text-muted",
+              "transition-colors hover:border-primary hover:bg-primary-soft hover:text-primary",
+              upload.isPending && "pointer-events-none opacity-60",
+            )}
+          >
+            {upload.isPending ? (
+              <Loader2 size={20} aria-hidden="true" className="animate-spin" />
+            ) : (
+              <ImagePlus size={20} aria-hidden="true" />
+            )}
+            <span className="sr-only">{upload.isPending ? "Илгээж байна" : label}</span>
           </label>
-        </Button>
+        ) : (
+          <Button asChild variant={variant} disabled={upload.isPending}>
+            <label htmlFor={inputId} className="cursor-pointer">
+              <ImagePlus size={18} />
+              {upload.isPending ? "Илгээж байна…" : label}
+            </label>
+          </Button>
+        )}
 
         {failed && !upload.isPending ? (
           <Button variant="secondary" onClick={() => upload.mutate(failed)}>

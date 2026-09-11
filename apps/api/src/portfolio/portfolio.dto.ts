@@ -19,6 +19,43 @@ const choices = z.array(z.string().trim().min(1).max(200)).max(50).optional();
 const categoryNotes = z.record(z.string().trim().min(1).max(100), z.string().max(2000)).optional();
 
 /**
+ * "Гэр бүлийн дурсамж" — one entry per photographed moment.
+ *
+ * ★ Validated field by field, not accepted as free JSON.
+ *
+ * The column is `Json`, which Prisma will store whatever is handed to it —
+ * including a megabyte of nested objects from a crafted request, since nothing
+ * downstream reads the shape. So the shape is asserted here: the list is
+ * capped, every string is bounded, and `mediaId` must be a UUID.
+ *
+ * ★★ It does not check that `mediaId` names a photograph this child owns, and
+ * it does not need to. The id is only ever handed back to `GET /media/:id`,
+ * which runs `canAccessChild` itself — a guardian who stores someone else's id
+ * gets a 404 from that endpoint, exactly as they would by typing the URL. The
+ * rule is one authorization module (CLAUDE.md §1.1), not a second check here
+ * that could answer differently.
+ */
+const familyMemories = z
+  .array(
+    z.object({
+      id: z.string().trim().min(1).max(64),
+      mediaId: z.uuid().nullable().optional(),
+      members: z.array(z.string().trim().min(1).max(200)).max(20).optional(),
+      title: z.string().trim().min(1).max(120),
+      description: z.string().max(1000).nullable().optional(),
+      /** `YYYY-MM-DD`, or absent when the family does not recall the day. */
+      date: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/, "Огноо YYYY-MM-DD хэлбэртэй байна")
+        .nullable()
+        .optional(),
+      createdAt: z.string().max(40).nullable().optional(),
+    }),
+  )
+  .max(50)
+  .optional();
+
+/**
  * ★ These schemas are `.strict()`: an unknown field is a 400, not a silent
  * strip.
  *
@@ -114,6 +151,7 @@ export const updateAgeProfileSchema = z
     characterObservation: text(2000),
     familyMemberTypes: choices,
     familyDescription: text(2000),
+    familyMemories,
     parentNote: text(2000),
     teacherNote: text(2000),
   })

@@ -97,7 +97,9 @@ export function ageSectionCompletion(profile: AgeProfile | undefined) {
       hasText(profile?.characterObservation) ||
       hasText(profile?.personality) ||
       hasText(profile?.emotionalTraits),
-    Boolean(profile?.familyMemberTypes.length) || hasText(profile?.familyDescription),
+    Boolean(profile?.familyMemberTypes.length) ||
+      hasText(profile?.familyDescription) ||
+      Boolean(profile?.familyMemories.length),
   ];
   const completed = sections.filter(Boolean).length;
   return { completed, total: sections.length, percent: completed * 20, sections };

@@ -6,9 +6,12 @@ import {
 } from "@/components/public/public-info-shell";
 import { BRAND } from "@/lib/vocabulary";
 
+// `canonical` and the brand-free title: see `app/faq/page.tsx`, which carries
+// the reasoning for all three public information pages.
 export const metadata: Metadata = {
-  title: `Нууцлалын бодлого | ${BRAND}`,
+  title: "Нууцлалын бодлого",
   description: `${BRAND} систем хүний хувийн болон хүүхдийн мэдээллийг хэрхэн цуглуулж, ашиглаж, хамгаалах тухай.`,
+  alternates: { canonical: "/privacy" },
 };
 
 export default function PrivacyPage() {
