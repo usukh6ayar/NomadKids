@@ -212,6 +212,16 @@ function WeeklyMenu() {
     button to.
   */
   const [editing, setEditing] = useState(false);
+  /*
+    ★ Which day is open for editing, or none — 2026-09-11, the client's second
+    drawing.
+
+    Editing a day is its own screen, not a form under a week: the drawing has
+    its own toolbar ("← Жагсаалтад буцах", Excel оруулах, "+ Хоолны цаг нэмэх"),
+    its own day pager and its own footer. A week view with a form stapled
+    underneath was answering two questions at once.
+  */
+  const [openDay, setOpenDay] = useState<number | null>(null);
   const weekDates = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   /*
     ★ Seven for reading, five for editing.
@@ -388,7 +398,7 @@ function WeeklyMenu() {
         </>
       ) : null}
 
-      {editing ? (
+      {editing && openDay === null ? (
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="secondary"
@@ -475,6 +485,37 @@ function WeeklyMenu() {
         </div>
       ) : null}
 
+      {/*
+        ★ The day screen's toolbar — the client's drawing, exactly these three.
+
+        No view toggle here: there is one day on screen and nothing to switch
+        it to. "Жагсаалтад буцах" is the way out, which is also why the week's
+        own Буцах is hidden while a day is open.
+      */}
+      {editing && openDay !== null ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={() => setOpenDay(null)}>
+            <ArrowLeft size={16} aria-hidden="true" />
+            Жагсаалтад буцах
+          </Button>
+
+          {kindergartenId && canEdit ? (
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                className="border-mint bg-mint/30 text-mint-ink hover:bg-mint/50"
+                onClick={() => setImporting((current) => !current)}
+                aria-expanded={importing}
+              >
+                <FileSpreadsheet size={16} aria-hidden="true" />
+                Excel оруулах
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {kindergartenId && canEdit && editing && importing ? (
         <MenuExcelImport kindergartenId={kindergartenId} />
       ) : null}
@@ -511,11 +552,11 @@ function WeeklyMenu() {
         </div>
       ) : null}
 
-      {kindergartenId && editing && view === "table" && !week.isLoading ? (
+      {kindergartenId && editing && openDay === null && view === "table" && !week.isLoading ? (
         <WeekTable byDate={byDate} weekDates={weekDates} todayIso={today} />
       ) : null}
 
-      {editing && view === "list" ? (
+      {editing && openDay === null && view === "list" ? (
         <div className="grid grid-cols-7 gap-1.5">
           {weekDates.map((date, i) => {
             const day = byDate.get(date);
@@ -529,7 +570,10 @@ function WeeklyMenu() {
                 type="button"
                 aria-pressed={active}
                 aria-label={`${WEEKDAYS_SHORT[i]}, ${formatDate(date)}${filled ? " — цэстэй" : ""}`}
-                onClick={() => setSelectedOffset(i)}
+                onClick={() => {
+                  setSelectedOffset(i);
+                  setOpenDay(i);
+                }}
                 className={cn(
                   "flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-row border px-1 py-2 text-caption font-semibold transition-colors",
                   active
@@ -550,7 +594,7 @@ function WeeklyMenu() {
         </div>
       ) : null}
 
-      {kindergartenId && editing && view === "list" && !week.isLoading ? (
+      {kindergartenId && editing && openDay !== null && !week.isLoading ? (
         <MenuDayCard
           key={activeDate}
           kindergartenId={kindergartenId}
@@ -563,13 +607,25 @@ function WeeklyMenu() {
           isKitchen={isKitchen}
           canEdit={canEdit}
           onPreviousDay={
-            selectedOffset > 0 ? () => setSelectedOffset(selectedOffset - 1) : undefined
-          }
-          onNextDay={
-            selectedOffset < weekDates.length - 1
-              ? () => setSelectedOffset(selectedOffset + 1)
+            openDay > 0
+              ? () => {
+                  setSelectedOffset(openDay - 1);
+                  setOpenDay(openDay - 1);
+                }
               : undefined
           }
+          onNextDay={
+            openDay < weekDates.length - 1
+              ? () => {
+                  setSelectedOffset(openDay + 1);
+                  setOpenDay(openDay + 1);
+                }
+              : undefined
+          }
+          /* Цуцлах leaves the day rather than reverting it — the drawing's
+             footer pairs it with Хадгалах, and the draft is per-day state that
+             unmounting discards anyway. */
+          onCancel={() => setOpenDay(null)}
         />
       ) : null}
     </div>
@@ -603,6 +659,7 @@ function MenuDayCard({
   canEdit,
   onPreviousDay,
   onNextDay,
+  onCancel,
 }: {
   kindergartenId: string;
   queryFrom: string;
@@ -617,6 +674,8 @@ function MenuDayCard({
   /** Absent at the ends of the week, which is what disables the arrow. */
   onPreviousDay?: () => void;
   onNextDay?: () => void;
+  /** Leaves the day. Drawn as "Цуцлах" beside "Хадгалах". */
+  onCancel?: () => void;
 }) {
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -823,6 +882,7 @@ function MenuDayCard({
             setDirty(true);
           }}
           onSave={() => save.mutate()}
+          onCancel={onCancel}
           saving={save.isPending}
           error={save.isError ? errorMessage(save.error) : null}
           /*

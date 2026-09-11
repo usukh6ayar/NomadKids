@@ -38,9 +38,21 @@ async function openEdit(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByRole("button", { name: "Цэс засах" }));
 }
 
+/**
+ * Opens one day's editor.
+ *
+ * ★ Editing a day is its own screen since 2026-09-11, the client's second
+ * drawing: Цэс засах → Жагсаалтаар → press a day. It has its own toolbar
+ * ("← Жагсаалтад буцах"), its own day pager and its own footer, rather than
+ * being a form stapled under the week.
+ */
 async function openList(user: ReturnType<typeof userEvent.setup>) {
   await openEdit(user);
   await user.click(await screen.findByRole("radio", { name: "Жагсаалтаар" }));
+  // Any day; the cases below do not depend on which.
+  // The strip's buttons are named "Да, 09.07" — see the page's own aria-label.
+  const days = await screen.findAllByRole("button", { name: /^(Да|Мя|Лх|Пү|Ба|Бя|Ня), / });
+  await user.click(days[0]!);
 }
 
 /**
@@ -642,5 +654,49 @@ describe("the menu as a spreadsheet", () => {
     await user.click((await screen.findAllByRole("button", { name: /үйлдэл/ }))[0]!);
     expect(screen.queryByRole("menuitem", { name: "Дээр зөөх" })).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Устгах" })).toBeInTheDocument();
+  });
+
+  /*
+    ★ Editing a day is its own screen — the client's second drawing.
+
+    Цэс засах → Жагсаалтаар → a day. It carries its own toolbar, its own day
+    pager and its own footer, rather than being a form under the week.
+  */
+  it("opens a day on its own screen, with a way back to the list", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+    await openList(user);
+
+    expect(await screen.findByText("Хоолны цэс засах")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Жагсаалтад буцах" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Дараах өдөр" })).toBeInTheDocument();
+    // The week's own controls are not on the day screen.
+    expect(screen.queryByRole("radio", { name: "Хүснэгтээр" })).not.toBeInTheDocument();
+  });
+
+  it("returns to the list without leaving the editing flow", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+    await openList(user);
+
+    await user.click(screen.getByRole("button", { name: "Жагсаалтад буцах" }));
+
+    expect(await screen.findByRole("radio", { name: "Жагсаалтаар" })).toBeInTheDocument();
+    expect(screen.queryByText("Хоолны цэс засах")).not.toBeInTheDocument();
+    // Still editing — not thrown back to the family's view.
+    expect(screen.queryByRole("button", { name: "Цэс засах" })).not.toBeInTheDocument();
+  });
+
+  /** Цуцлах leaves the day, the drawing's pair for Хадгалах. */
+  it("pairs Хадгалах with a Цуцлах that leaves the day", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+    await openList(user);
+
+    await user.click(await screen.findByRole("button", { name: "Цуцлах" }));
+    expect(screen.queryByText("Хоолны цэс засах")).not.toBeInTheDocument();
   });
 });

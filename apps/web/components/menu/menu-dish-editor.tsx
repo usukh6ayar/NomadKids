@@ -424,6 +424,21 @@ export function MenuDishEditor({
     >
       <FormError message={error} />
 
+      {/*
+        ★ Above the cards, not below them — 2026-09-11, the client's drawing
+        puts "+ Хоолны цаг нэмэх" at the top of the day.
+
+        At the foot it was the last thing after five long cards: adding the
+        evening meal meant scrolling past breakfast, lunch and both snacks to
+        find the control, then scrolling back to the new row.
+      */}
+      <div className="flex justify-end">
+        <Button type="button" variant="secondary" size="sm" onClick={addRow}>
+          <Plus size={16} aria-hidden="true" />
+          Хоолны цаг нэмэх
+        </Button>
+      </div>
+
       {draftDishes.length === 0 ? (
         <p className="text-body text-muted">Хоол алга. Доор нэмнэ үү.</p>
       ) : (
@@ -892,11 +907,6 @@ export function MenuDishEditor({
           })}
         </div>
       )}
-
-      <Button type="button" variant="secondary" size="sm" onClick={addRow} className="self-start">
-        <Plus size={16} aria-hidden="true" />
-        Хоолны цаг нэмэх
-      </Button>
 
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={saving}>
