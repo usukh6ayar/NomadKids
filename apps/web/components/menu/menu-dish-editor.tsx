@@ -1,9 +1,11 @@
 "use client";
 
-import { ArrowDown, ArrowUp, ChefHat, PencilLine, Plus, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { ArrowDown, ArrowUp, ChefHat, ImagePlus, PencilLine, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { MEAL_KIND_LABEL, type MealKind, type MenuDish } from "@kinder/contracts";
 import type { EsisFoodProduct } from "@/components/esis/use-esis-food-products";
+import { MediaThumb } from "@/components/media/media-image";
 import { SingleImageUpload } from "@/components/media/single-image-upload";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -362,6 +364,20 @@ export function MenuDishEditor({
      mode disabled over a dropdown that was ready to use. */
   const hasReadyDishes = (kitchen?.recipes.length ?? 0) > 0 || esisProducts.length > 0;
 
+  /*
+    ★ Which row has its detail open — 2026-09-11, the client's drawing.
+
+    The card shows what a cook fills in every day: the photograph, the dish's
+    name and what is in it. Illчлэг, порц, харшлын шошго, технологийн карт and
+    the sitting select are the same fields they always were, one press away
+    behind the ⋮'s "Засах" — "яг зураг дээрх шиг бай, гурван цэгээр засаж
+    устгана".
+
+    One at a time, by key rather than index, so moving a row does not carry the
+    open state to whatever took its place.
+  */
+  const [detailKey, setDetailKey] = useState<string | null>(null);
+
   function update(index: number, patch: Partial<DishDraft>) {
     onChange(draftDishes.map((d, i) => (i === index ? { ...d, ...patch } : d)));
   }
@@ -448,6 +464,12 @@ export function MenuDishEditor({
                   <RowMenu
                     ariaLabel={`${dish.name || MEAL_KIND_LABEL[dish.kind]} — үйлдэл`}
                     items={[
+                      {
+                        label: detailKey === dish.key ? "Дэлгэрэнгүй хаах" : "Засах",
+                        icon: <PencilLine size={16} aria-hidden="true" />,
+                        onSelect: () =>
+                          setDetailKey((current) => (current === dish.key ? null : dish.key)),
+                      },
                       ...(i > 0
                         ? [
                             {
@@ -477,39 +499,92 @@ export function MenuDishEditor({
                   />
                 </div>
 
-                {kitchen ? (
-                  <ModeSwitch
-                    value={dish.useRecipe}
-                    hasRecipes={hasReadyDishes}
-                    onChange={(useRecipe) =>
-                      /*
-                       * ★ Switching to free text clears `recipeId`, and it has
-                       * to: `MealsService.saveDay` freezes a recipe-linked
-                       * dish's name, allergens and calories over anything the
-                       * form sends, so a row left pointing at a card while
-                       * showing free-text fields would save none of what the
-                       * cook just typed.
-                       *
-                       * The name is deliberately kept. A cook who picked
-                       * "Гурилтай шөл" and then switches to free text almost
-                       * always means "the same dish, my own way", and clearing
-                       * the field makes them type it again.
-                       */
-                      update(i, useRecipe ? { useRecipe } : { useRecipe, recipeId: "" })
-                    }
-                  />
-                ) : null}
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  {/*
+                    ★ The photograph, with both of its controls in the open —
+                    2026-09-11: "зураг оруулах, устгах ил хялбар бай."
 
-                <div className="flex items-end gap-2">
-                  <div className="flex-1">
-                    {kitchen && dish.useRecipe ? (
-                      <Field
-                        label="Бэлэн хоол"
-                        hint={
-                          !hasReadyDishes
-                            ? undefined
-                            : dish.esisProductId
-                              ? /*
+                    It was a labelled block at the foot of the card, below every
+                    other field, and removing one was not possible at all: the
+                    id could be replaced and never cleared. Now the picture is
+                    the first thing in the row, and Зураг солих and Устгах sit
+                    under it where they can be seen without scrolling.
+                  */}
+                  {kitchen ? (
+                    <div className="flex shrink-0 flex-col gap-1.5 sm:w-[168px]">
+                      {dish.photoMediaFileId ? (
+                        <MediaThumb
+                          mediaId={dish.photoMediaFileId}
+                          caption={dish.name || "Хоолны зураг"}
+                          className="h-[120px] w-full"
+                        />
+                      ) : (
+                        <div
+                          aria-hidden="true"
+                          className="grid h-[120px] w-full place-items-center rounded-control border border-dashed border-border bg-canvas text-faint"
+                        >
+                          <ImagePlus size={24} />
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-1.5">
+                        <SingleImageUpload
+                          endpoint={`/kindergartens/${kitchen.kindergartenId}/menu/dish-photo`}
+                          currentMediaId={dish.photoMediaFileId || null}
+                          label="Зураг нэмэх"
+                          alt={`${dish.name || recipe?.name || "Хоол"} зураг`}
+                          hidePreview
+                          onUploaded={(media) => update(i, { photoMediaFileId: media.id })}
+                        />
+                        {dish.photoMediaFileId ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            aria-label="Зургийг устгах"
+                            onClick={() => update(i, { photoMediaFileId: "" })}
+                          >
+                            <Trash2 size={16} aria-hidden="true" />
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="flex min-w-0 flex-1 flex-col gap-2.5">
+                    {kitchen && detailKey === dish.key ? (
+                      <ModeSwitch
+                        value={dish.useRecipe}
+                        hasRecipes={hasReadyDishes}
+                        onChange={(useRecipe) =>
+                          /*
+                           * ★ Switching to free text clears `recipeId`, and it has
+                           * to: `MealsService.saveDay` freezes a recipe-linked
+                           * dish's name, allergens and calories over anything the
+                           * form sends, so a row left pointing at a card while
+                           * showing free-text fields would save none of what the
+                           * cook just typed.
+                           *
+                           * The name is deliberately kept. A cook who picked
+                           * "Гурилтай шөл" and then switches to free text almost
+                           * always means "the same dish, my own way", and clearing
+                           * the field makes them type it again.
+                           */
+                          update(i, useRecipe ? { useRecipe } : { useRecipe, recipeId: "" })
+                        }
+                      />
+                    ) : null}
+
+                    <div className="flex items-end gap-2">
+                      <div className="flex-1">
+                        {kitchen && dish.useRecipe ? (
+                          <Field
+                            label="Бэлэн хоол"
+                            hint={
+                              !hasReadyDishes
+                                ? undefined
+                                : dish.esisProductId
+                                  ? /*
                                    ★ A different promise, because a different
                                    thing happens. A local card's values are
                                    frozen server-side from the card; an ESIS
@@ -519,174 +594,198 @@ export function MenuDishEditor({
                                    know before RFP Module 2's cross-check
                                    silently has nothing to check.
                                 */
-                                "ESIS-ээс нэр, илчлэг бөглөгдлөө. Харшлын мэдээллийг гараар нэмнэ үү"
-                              : "Орц, илчлэг, харшил нь картаас өөрөө бөглөгдөнө"
-                        }
-                      >
-                        {({ id, describedBy }) =>
-                          kitchen.recipes.length === 0 && esisProducts.length === 0 ? (
-                            <NoApprovedRecipes />
-                          ) : (
-                            <Select
-                              id={id}
-                              aria-describedby={describedBy}
-                              value={
-                                dish.recipeId ||
-                                (dish.esisProductId
-                                  ? `${ESIS_OPTION_PREFIX}${dish.esisProductId}`
-                                  : "")
-                              }
-                              onChange={(e) => {
-                                const value = e.target.value;
+                                    "ESIS-ээс нэр, илчлэг бөглөгдлөө. Харшлын мэдээллийг гараар нэмнэ үү"
+                                  : "Орц, илчлэг, харшил нь картаас өөрөө бөглөгдөнө"
+                            }
+                          >
+                            {({ id, describedBy }) =>
+                              kitchen.recipes.length === 0 && esisProducts.length === 0 ? (
+                                <NoApprovedRecipes />
+                              ) : (
+                                <Select
+                                  id={id}
+                                  aria-describedby={describedBy}
+                                  value={
+                                    dish.recipeId ||
+                                    (dish.esisProductId
+                                      ? `${ESIS_OPTION_PREFIX}${dish.esisProductId}`
+                                      : "")
+                                  }
+                                  onChange={(e) => {
+                                    const value = e.target.value;
 
-                                /*
-                                 * ★ An ESIS product copies its values onto the
-                                 * draft and leaves `recipeId` empty — see
-                                 * `DishDraft.esisProductId` for why it must
-                                 * never be written there.
-                                 *
-                                 * `portions` is deliberately not defaulted to
-                                 * "1" the way a card's is. A технологийн карт
-                                 * declares a `yieldPortions`, so "one batch"
-                                 * means something; the ministry's reference is
-                                 * a single порц with no batch size to multiply,
-                                 * and pre-filling a count nobody stated would
-                                 * be inventing data.
-                                 */
-                                if (value.startsWith(ESIS_OPTION_PREFIX)) {
-                                  const productId = value.slice(ESIS_OPTION_PREFIX.length);
-                                  const product = esisProducts.find(
-                                    (p) => p.productId === productId,
-                                  );
-                                  update(i, {
-                                    recipeId: "",
-                                    esisProductId: productId,
-                                    name: product?.name ?? "",
-                                    calories: product?.calories ?? "",
-                                  });
-                                  return;
-                                }
+                                    /*
+                                     * ★ An ESIS product copies its values onto the
+                                     * draft and leaves `recipeId` empty — see
+                                     * `DishDraft.esisProductId` for why it must
+                                     * never be written there.
+                                     *
+                                     * `portions` is deliberately not defaulted to
+                                     * "1" the way a card's is. A технологийн карт
+                                     * declares a `yieldPortions`, so "one batch"
+                                     * means something; the ministry's reference is
+                                     * a single порц with no batch size to multiply,
+                                     * and pre-filling a count nobody stated would
+                                     * be inventing data.
+                                     */
+                                    if (value.startsWith(ESIS_OPTION_PREFIX)) {
+                                      const productId = value.slice(ESIS_OPTION_PREFIX.length);
+                                      const product = esisProducts.find(
+                                        (p) => p.productId === productId,
+                                      );
+                                      update(i, {
+                                        recipeId: "",
+                                        esisProductId: productId,
+                                        name: product?.name ?? "",
+                                        calories: product?.calories ?? "",
+                                      });
+                                      return;
+                                    }
 
-                                const picked = kitchen.recipes.find((r) => r.id === value);
-                                update(i, {
-                                  recipeId: value,
-                                  // Picking a local card drops any ESIS origin;
-                                  // a row has one source at a time.
-                                  esisProductId: "",
-                                  /*
-                                   * ★★ The name is copied onto the draft, not
-                                   * left to the server.
-                                   *
-                                   * `fromDraft` drops any row whose name is
-                                   * blank, and `menuDishInputSchema` requires
-                                   * `name.min(1)`. A fresh row with a card
-                                   * picked and nothing typed therefore used to
-                                   * be **filtered out on save** — the cook
-                                   * chose a dish, pressed Хадгалах, and it was
-                                   * simply not there afterwards, with no error.
-                                   * The server re-freezes the name from the
-                                   * card either way, so this only has to be
-                                   * non-empty and true.
-                                   */
-                                  name: picked?.name ?? "",
-                                  // Default to one batch of the card — a cook
-                                  // doubling or tripling it for a bigger group
-                                  // edits the number in place.
-                                  portions: value ? dish.portions || "1" : "",
-                                  // Follow the card's own sitting when it names
-                                  // one; the cook can still move it.
-                                  ...(picked?.mealKind ? { kind: picked.mealKind } : {}),
-                                });
-                              }}
-                            >
-                              <option value="">Сонгоно уу</option>
-                              {groupByKind(kitchen.recipes).map(([label, options]) => (
-                                <optgroup key={label} label={label}>
-                                  {options.map((r) => (
-                                    <option key={r.id} value={r.id}>
-                                      {r.name}
-                                    </option>
+                                    const picked = kitchen.recipes.find((r) => r.id === value);
+                                    update(i, {
+                                      recipeId: value,
+                                      // Picking a local card drops any ESIS origin;
+                                      // a row has one source at a time.
+                                      esisProductId: "",
+                                      /*
+                                       * ★★ The name is copied onto the draft, not
+                                       * left to the server.
+                                       *
+                                       * `fromDraft` drops any row whose name is
+                                       * blank, and `menuDishInputSchema` requires
+                                       * `name.min(1)`. A fresh row with a card
+                                       * picked and nothing typed therefore used to
+                                       * be **filtered out on save** — the cook
+                                       * chose a dish, pressed Хадгалах, and it was
+                                       * simply not there afterwards, with no error.
+                                       * The server re-freezes the name from the
+                                       * card either way, so this only has to be
+                                       * non-empty and true.
+                                       */
+                                      name: picked?.name ?? "",
+                                      // Default to one batch of the card — a cook
+                                      // doubling or tripling it for a bigger group
+                                      // edits the number in place.
+                                      portions: value ? dish.portions || "1" : "",
+                                      // Follow the card's own sitting when it names
+                                      // one; the cook can still move it.
+                                      ...(picked?.mealKind ? { kind: picked.mealKind } : {}),
+                                    });
+                                  }}
+                                >
+                                  <option value="">Сонгоно уу</option>
+                                  {groupByKind(kitchen.recipes).map(([label, options]) => (
+                                    <optgroup key={label} label={label}>
+                                      {options.map((r) => (
+                                        <option key={r.id} value={r.id}>
+                                          {r.name}
+                                        </option>
+                                      ))}
+                                    </optgroup>
                                   ))}
-                                </optgroup>
-                              ))}
-                              {/*
+                                  {/*
                                 ★ Last, and in a group that names its source.
                                 The kindergarten's own approved cards are what
                                 a cook should reach for first — those carry the
                                 allergen list RFP Module 2's cross-check reads,
                                 and an ESIS product carries none.
                               */}
-                              {esisProducts.length > 0 ? (
-                                <optgroup label="ESIS — бэлэн бүтээгдэхүүн">
-                                  {esisProducts.map((product) => (
-                                    <option
-                                      key={product.productId}
-                                      value={`${ESIS_OPTION_PREFIX}${product.productId}`}
-                                    >
-                                      {product.name}
-                                    </option>
-                                  ))}
-                                </optgroup>
-                              ) : null}
-                            </Select>
-                          )
-                        }
-                      </Field>
-                    ) : dish.useRecipe ? (
-                      /*
-                       * ★ A recipe-linked dish on a screen with no `kitchen`
-                       * prop — `child-menu.tsx`'s quick edit from inside a
-                       * child's page. It reads the name, it does not offer to
-                       * change it.
-                       *
-                       * An editable input here would be a form that lies:
-                       * `MealsService.saveDay` re-freezes a recipe-linked
-                       * dish's name from the card, so a teacher could type over
-                       * it, press Хадгалах, get a success toast, and watch the
-                       * old name come back. That is the same class of bug as
-                       * the silently dropped dish above — the save reports
-                       * success and does something else.
-                       */
-                      <Field label="Хоолны нэр">
-                        {() => (
-                          <p className="flex h-12 items-center text-body text-ink">
-                            {recipe?.name ?? dish.name}
-                          </p>
+                                  {esisProducts.length > 0 ? (
+                                    <optgroup label="ESIS — бэлэн бүтээгдэхүүн">
+                                      {esisProducts.map((product) => (
+                                        <option
+                                          key={product.productId}
+                                          value={`${ESIS_OPTION_PREFIX}${product.productId}`}
+                                        >
+                                          {product.name}
+                                        </option>
+                                      ))}
+                                    </optgroup>
+                                  ) : null}
+                                </Select>
+                              )
+                            }
+                          </Field>
+                        ) : dish.useRecipe ? (
+                          /*
+                           * ★ A recipe-linked dish on a screen with no `kitchen`
+                           * prop — `child-menu.tsx`'s quick edit from inside a
+                           * child's page. It reads the name, it does not offer to
+                           * change it.
+                           *
+                           * An editable input here would be a form that lies:
+                           * `MealsService.saveDay` re-freezes a recipe-linked
+                           * dish's name from the card, so a teacher could type over
+                           * it, press Хадгалах, get a success toast, and watch the
+                           * old name come back. That is the same class of bug as
+                           * the silently dropped dish above — the save reports
+                           * success and does something else.
+                           */
+                          <Field label="Хоолны нэр">
+                            {() => (
+                              <p className="flex h-12 items-center text-body text-ink">
+                                {recipe?.name ?? dish.name}
+                              </p>
+                            )}
+                          </Field>
+                        ) : (
+                          <Field label="Хоолны нэр">
+                            {({ id }) => (
+                              <Input
+                                id={id}
+                                value={dish.name}
+                                onChange={(e) => update(i, { name: e.target.value })}
+                                autoFocus={i === draftDishes.length - 1}
+                              />
+                            )}
+                          </Field>
                         )}
-                      </Field>
-                    ) : (
-                      <Field label="Хоолны нэр">
-                        {({ id }) => (
-                          <Input
-                            id={id}
-                            value={dish.name}
-                            onChange={(e) => update(i, { name: e.target.value })}
-                            autoFocus={i === draftDishes.length - 1}
-                          />
-                        )}
-                      </Field>
-                    )}
-                  </div>
-                </div>
+                      </div>
+                    </div>
 
-                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                  <Field label="Хоолны цаг">
-                    {({ id }) => (
-                      <Select
-                        id={id}
-                        value={dish.kind}
-                        onChange={(e) => update(i, { kind: e.target.value as MealKind })}
-                      >
-                        {MEAL_KIND_ORDER.map((kind) => (
-                          <option key={kind} value={kind}>
-                            {MEAL_KIND_LABEL[kind]}
-                          </option>
-                        ))}
-                      </Select>
-                    )}
-                  </Field>
+                    {/*
+                  ★ "Тайлбар (бүтэц, орц)" — the client's own label, and the
+                  field the form never had.
 
-                  {/*
+                  `DishDraft.ingredients` has been carried to the server and
+                  rendered on every menu since it was added, with no input
+                  anywhere to type it: the column could only ever be filled by a
+                  технологийн карт. A cook writing a day by hand had no way to
+                  say what was in it.
+                */}
+                    <Field label="Тайлбар (бүтэц, орц)">
+                      {({ id }) => (
+                        <Textarea
+                          id={id}
+                          rows={3}
+                          value={dish.ingredients}
+                          onChange={(e) => update(i, { ingredients: e.target.value })}
+                          disabled={dish.useRecipe && Boolean(dish.recipeId)}
+                        />
+                      )}
+                    </Field>
+
+                    {detailKey === dish.key ? (
+                      <>
+                        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                          <Field label="Хоолны цаг">
+                            {({ id }) => (
+                              <Select
+                                id={id}
+                                value={dish.kind}
+                                onChange={(e) => update(i, { kind: e.target.value as MealKind })}
+                              >
+                                {MEAL_KIND_ORDER.map((kind) => (
+                                  <option key={kind} value={kind}>
+                                    {MEAL_KIND_LABEL[kind]}
+                                  </option>
+                                ))}
+                              </Select>
+                            )}
+                          </Field>
+
+                          {/*
                     ★ An ESIS-picked dish takes the free-text fields, not the
                     card's "Багцын тоо".
 
@@ -703,108 +802,91 @@ export function MenuDishEditor({
                     dish with no route to that field is a dish the allergy
                     warning can never fire for.
                   */}
-                  {dish.useRecipe && !dish.esisProductId ? (
-                    <Field
-                      label="Багцын тоо"
-                      hint={
-                        dish.portions
-                          ? `${Number(dish.portions) * (recipe?.yieldPortions ?? 0)} хүүхдэд`
-                          : "Хэдэн багц технологийн картаар хийсэн бэ"
-                      }
-                    >
-                      {({ id }) => (
-                        <Input
-                          id={id}
-                          type="number"
-                          inputMode="decimal"
-                          min={0}
-                          step={0.5}
-                          value={dish.portions}
-                          onChange={(e) => update(i, { portions: e.target.value })}
-                        />
-                      )}
-                    </Field>
-                  ) : (
-                    <>
-                      <Field label="Илчлэг (ккал)">
-                        {({ id }) => (
-                          <Input
-                            id={id}
-                            type="number"
-                            inputMode="numeric"
-                            min={0}
-                            max={3000}
-                            value={dish.calories}
-                            onChange={(e) => update(i, { calories: e.target.value })}
-                          />
-                        )}
-                      </Field>
-                      <Field label="Порц">
-                        {({ id }) => (
-                          <Input
-                            id={id}
-                            type="number"
-                            inputMode="decimal"
-                            min={0}
-                            step={0.5}
-                            value={dish.portions}
-                            onChange={(e) => update(i, { portions: e.target.value })}
-                          />
-                        )}
-                      </Field>
-                      <Field label="Харшлын орц" hint="Таслалаар тусгаарлана">
-                        {({ id, describedBy }) => (
-                          <Input
-                            id={id}
-                            aria-describedby={describedBy}
-                            placeholder="сүү, өндөг"
-                            value={dish.allergenTags}
-                            onChange={(e) => update(i, { allergenTags: e.target.value })}
-                          />
-                        )}
-                      </Field>
-                    </>
-                  )}
-                </div>
+                          {dish.useRecipe && !dish.esisProductId ? (
+                            <Field
+                              label="Багцын тоо"
+                              hint={
+                                dish.portions
+                                  ? `${Number(dish.portions) * (recipe?.yieldPortions ?? 0)} хүүхдэд`
+                                  : "Хэдэн багц технологийн картаар хийсэн бэ"
+                              }
+                            >
+                              {({ id }) => (
+                                <Input
+                                  id={id}
+                                  type="number"
+                                  inputMode="decimal"
+                                  min={0}
+                                  step={0.5}
+                                  value={dish.portions}
+                                  onChange={(e) => update(i, { portions: e.target.value })}
+                                />
+                              )}
+                            </Field>
+                          ) : (
+                            <>
+                              <Field label="Илчлэг (ккал)">
+                                {({ id }) => (
+                                  <Input
+                                    id={id}
+                                    type="number"
+                                    inputMode="numeric"
+                                    min={0}
+                                    max={3000}
+                                    value={dish.calories}
+                                    onChange={(e) => update(i, { calories: e.target.value })}
+                                  />
+                                )}
+                              </Field>
+                              <Field label="Порц">
+                                {({ id }) => (
+                                  <Input
+                                    id={id}
+                                    type="number"
+                                    inputMode="decimal"
+                                    min={0}
+                                    step={0.5}
+                                    value={dish.portions}
+                                    onChange={(e) => update(i, { portions: e.target.value })}
+                                  />
+                                )}
+                              </Field>
+                              <Field label="Харшлын орц" hint="Таслалаар тусгаарлана">
+                                {({ id, describedBy }) => (
+                                  <Input
+                                    id={id}
+                                    aria-describedby={describedBy}
+                                    placeholder="сүү, өндөг"
+                                    value={dish.allergenTags}
+                                    onChange={(e) => update(i, { allergenTags: e.target.value })}
+                                  />
+                                )}
+                              </Field>
+                            </>
+                          )}
+                        </div>
 
-                {dish.useRecipe && dish.recipeId ? (
-                  <p className="text-caption text-muted">
-                    Орц, шим тэжээл, харшлын шошго технологийн картаас автоматаар бодогдоно.
-                  </p>
-                ) : null}
+                        {dish.useRecipe && dish.recipeId ? (
+                          <p className="text-caption text-muted">
+                            Орц, шим тэжээл, харшлын шошго технологийн картаас автоматаар бодогдоно.
+                          </p>
+                        ) : null}
 
-                <Field label="Тэмдэглэл">
-                  {({ id }) => (
-                    <Textarea
-                      id={id}
-                      rows={2}
-                      value={dish.note}
-                      onChange={(e) => update(i, { note: e.target.value })}
-                      placeholder="Жишээ нь: өнөөдөр амттай гарсан"
-                    />
-                  )}
-                </Field>
-
-                {/*
-                  ★ "Зураг солих" once there is one, "Зураг нэмэх" while there
-                  is not — 2026-09-11, the client's drawing.
-
-                  One word, and it is the difference between a control that
-                  looks like it will add a second photograph and one that says
-                  it replaces the first. A dish carries exactly one.
-                */}
-                {kitchen ? (
-                  <div className="flex flex-col gap-1 border-t border-border-soft pt-2.5">
-                    <span className="text-caption font-medium text-muted">Хоолны зураг</span>
-                    <SingleImageUpload
-                      endpoint={`/kindergartens/${kitchen.kindergartenId}/menu/dish-photo`}
-                      currentMediaId={dish.photoMediaFileId || null}
-                      label={dish.photoMediaFileId ? "Зураг солих" : "Зураг нэмэх"}
-                      alt={`${dish.name || recipe?.name || "Хоол"} зураг`}
-                      onUploaded={(media) => update(i, { photoMediaFileId: media.id })}
-                    />
+                        <Field label="Тэмдэглэл">
+                          {({ id }) => (
+                            <Textarea
+                              id={id}
+                              rows={2}
+                              value={dish.note}
+                              onChange={(e) => update(i, { note: e.target.value })}
+                              placeholder="Жишээ нь: өнөөдөр амттай гарсан"
+                            />
+                          )}
+                        </Field>
+                      </>
+                    ) : null}
                   </div>
-                ) : null}
+                </div>
               </Card>
             );
           })}

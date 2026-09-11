@@ -43,6 +43,20 @@ async function openList(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByRole("radio", { name: "Жагсаалтаар" }));
 }
 
+/**
+ * Opens a row's detail — ⋮ → Засах.
+ *
+ * ★ Илчлэг, порц, харшлын шошго and the технологийн карт picker moved behind
+ * the row menu on 2026-09-11, at the client's request: the card shows the
+ * photograph, the name and what is in the dish, and everything else is one
+ * press away. Every case that reaches those fields goes through here.
+ */
+async function openDetail(user: ReturnType<typeof userEvent.setup>) {
+  const menus = await screen.findAllByRole("button", { name: /үйлдэл/ });
+  await user.click(menus[0]!);
+  await user.click(await screen.findByRole("menuitem", { name: "Засах" }));
+}
+
 /** Opens the Excel panel, which is a step rather than a permanent block. */
 async function openImport(user: ReturnType<typeof userEvent.setup>) {
   await openEdit(user);
@@ -146,6 +160,7 @@ describe("the cook's weekly menu", () => {
     const nameInputs = await screen.findAllByLabelText("Хоолны нэр");
     await user.type(nameInputs[0]!, "Гурилтай шөл");
 
+    await openDetail(user);
     const allergenInputs = screen.getAllByLabelText("Харшлын орц");
     await user.type(allergenInputs[0]!, "сүү, өндөг");
 
@@ -259,6 +274,7 @@ describe("the cook's weekly menu", () => {
     await user.click(addButtons[0]!);
 
     // A new row opens on "Бэлэн хоол" once there is an approved card to pick.
+    await openDetail(user);
     await selectOption(user, "Бэлэн хоол", "Гурилтай шөл");
 
     const saveButtons = screen.getAllByRole("button", { name: /Хадгалах/ });
@@ -307,6 +323,7 @@ describe("the cook's weekly menu", () => {
     const addButtons = await screen.findAllByRole("button", { name: "Хоолны цаг нэмэх" });
     await user.click(addButtons[0]!);
 
+    await openDetail(user);
     const readyButtons = await screen.findAllByRole("button", { name: /Бэлэн хоол/ });
     // Offered, and visibly unavailable — rather than missing with no explanation.
     expect(readyButtons[0]!).toBeDisabled();
@@ -575,5 +592,55 @@ describe("the menu as a spreadsheet", () => {
     // Still on the table view — no press needed to see it.
     expect(await screen.findByText("Харшлын анхааруулга")).toBeInTheDocument();
     expect(screen.getByText(/Батаа Золбоо — Самар/)).toBeInTheDocument();
+  });
+
+  /*
+    ★ The card shows what a cook fills in daily; the rest is one press away.
+
+    Client, 2026-09-11: "яг зураг дээрх шиг бай, гурван цэгээр засаж устгана"
+    and "зураг оруулах, устгах ил хялбар бай".
+  */
+  it("shows the photo, the name and what is in the dish, and hides the rest", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+    await openList(user);
+    await user.click((await screen.findAllByRole("button", { name: "Хоолны цаг нэмэх" }))[0]!);
+
+    expect(screen.getAllByLabelText("Хоолны нэр")[0]).toBeInTheDocument();
+    expect(screen.getAllByLabelText("Тайлбар (бүтэц, орц)")[0]).toBeInTheDocument();
+    // Behind the ⋮ until asked for.
+    expect(screen.queryByLabelText("Илчлэг (ккал)")).not.toBeInTheDocument();
+
+    await openDetail(user);
+    expect(screen.getAllByLabelText("Илчлэг (ккал)")[0]).toBeInTheDocument();
+  });
+
+  /** Both photo controls are on the card, not in a menu. */
+  it("puts adding and removing the photo in the open", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+    await openList(user);
+    await user.click((await screen.findAllByRole("button", { name: "Хоолны цаг нэмэх" }))[0]!);
+
+    expect(screen.getAllByText("Зураг нэмэх")[0]).toBeInTheDocument();
+    // Nothing to remove yet, so no Устгах beside it.
+    expect(screen.queryByRole("button", { name: "Зургийг устгах" })).not.toBeInTheDocument();
+  });
+
+  it("offers Дээр зөөх only where there is a row above", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+    await openList(user);
+
+    const add = (await screen.findAllByRole("button", { name: "Хоолны цаг нэмэх" }))[0]!;
+    await user.click(add);
+
+    // One row: it can go nowhere, so neither move entry is offered.
+    await user.click((await screen.findAllByRole("button", { name: /үйлдэл/ }))[0]!);
+    expect(screen.queryByRole("menuitem", { name: "Дээр зөөх" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Устгах" })).toBeInTheDocument();
   });
 });
