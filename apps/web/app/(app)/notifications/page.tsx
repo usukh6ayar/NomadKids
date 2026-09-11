@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  useInfiniteQuery,
-  useMutation,
-  useQueries,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -29,6 +23,7 @@ import { SavePostPhoto } from "@/components/notifications/save-post-photo";
 import { LikeButton } from "@/components/notifications/like-button";
 import { ChildAvatar, MediaThumb } from "@/components/media/media-image";
 import { useSession } from "@/lib/auth/session";
+import { useSelectedChild } from "@/lib/selected-child";
 import {
   CalendarRange,
   ChevronRight,
@@ -71,6 +66,7 @@ const activeSurveysSchema = z.array(surveySchema);
  */
 export default function NotificationsPage() {
   const { hasRole, session } = useSession();
+  const { selectedChildId } = useSelectedChild();
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
   /*
    * ★ Added 2026-09-08, when COOK started reading this board too
@@ -187,32 +183,23 @@ export default function NotificationsPage() {
     staleTime: 60_000,
   });
 
-  const [surveyChildId, setSurveyChildId] = useState<string | null>(null);
   const surveyChildren = myChildren.data ?? [];
   const selectedSurveyChild =
-    surveyChildren.find((c) => c.id === surveyChildId) ?? surveyChildren[0];
+    surveyChildren.find((c) => c.id === selectedChildId) ??
+    (surveyChildren.length === 1 ? surveyChildren[0] : undefined);
 
   /*
-   * ★ One query per child, so the tab's own badge counts every family
-   * member's unanswered surveys — not only whichever one happens to be
-   * selected below. A family with one child (most of them) pays for exactly
-   * one request; the same shape `home/page.tsx`'s `SurveyTile` already pays
-   * per child, just summed here instead of shown per tile.
+   * Surveys follow the child selected in the app shell. The parent must not
+   * see a second, competing child switcher here: changing the shell selection
+   * changes both this query and every link rendered below.
    */
-  const surveyQueries = useQueries({
-    queries: surveyChildren.map((child) => ({
-      queryKey: qk.childSurveys(child.id),
-      queryFn: () => get(`/children/${child.id}/surveys`, activeSurveysSchema),
-      enabled: isGuardian,
-      staleTime: 60_000,
-    })),
+  const selectedSurveys = useQuery({
+    queryKey: qk.childSurveys(selectedSurveyChild?.id ?? ""),
+    queryFn: () => get(`/children/${selectedSurveyChild!.id}/surveys`, activeSurveysSchema),
+    enabled: isGuardian && Boolean(selectedSurveyChild?.id),
+    staleTime: 60_000,
   });
-  const totalPending = surveyQueries.reduce(
-    (sum, q) => sum + (q.data?.filter((s) => !s.respondedByMe).length ?? 0),
-    0,
-  );
-  const selectedChildSurveys = surveyChildren.findIndex((c) => c.id === selectedSurveyChild?.id);
-  const selectedSurveys = surveyQueries[selectedChildSurveys];
+  const totalPending = selectedSurveys.data?.filter((s) => !s.respondedByMe).length ?? 0;
 
   /**
    * ★ An endless feed, not pages.
@@ -556,9 +543,7 @@ export default function NotificationsPage() {
 
       {tab === "surveys" && isGuardian ? (
         <SurveysTab
-          familyChildren={surveyChildren}
           selectedChild={selectedSurveyChild}
-          onSelectChild={setSurveyChildId}
           surveys={selectedSurveys}
           searchTerm={searchInput}
         />
@@ -776,22 +761,18 @@ function TabButton({
  * sees the switcher at all — same rule `/home`'s own child switcher follows.
  */
 function SurveysTab({
-  familyChildren,
   selectedChild,
-  onSelectChild,
   surveys,
   searchTerm,
 }: {
-  familyChildren: { id: string; firstName?: string | null; lastName?: string | null }[];
   selectedChild: { id: string; firstName?: string | null; lastName?: string | null } | undefined;
-  onSelectChild: (id: string) => void;
   surveys:
     | { data?: z.infer<typeof activeSurveysSchema>; isLoading: boolean; isError: boolean }
     | undefined;
   /** Filters the already-loaded list client-side — see the search box's own note above. */
   searchTerm: string;
 }) {
-  if (familyChildren.length === 0) {
+  if (!selectedChild) {
     return (
       <EmptyState
         title="Холбогдсон хүүхэд алга"
@@ -810,33 +791,6 @@ function SurveysTab({
 
   return (
     <section aria-label="Идэвхтэй судалгаа" className="flex w-full max-w-[920px] flex-col gap-4">
-      {familyChildren.length > 1 ? (
-        <div className="rounded-card border border-border bg-surface p-2 shadow-sm">
-          <div role="group" aria-label="Хүүхэд сонгох" className="flex gap-1.5 overflow-x-auto">
-            {familyChildren.map((child) => {
-              const active = child.id === selectedChild?.id;
-              return (
-                <button
-                  key={child.id}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => onSelectChild(child.id)}
-                  className={cn(
-                    "flex min-h-[44px] shrink-0 items-center gap-2 rounded-control border px-3 py-1.5 text-body font-semibold transition-colors",
-                    active
-                      ? "border-primary bg-primary-soft text-primary"
-                      : "border-transparent text-muted hover:bg-sunken hover:text-ink",
-                  )}
-                >
-                  <ChildAvatar child={child} size={24} />
-                  <span className="max-w-[140px] truncate">{child.firstName}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-
       {surveys?.isLoading ? <LoadingState rows={2} /> : null}
       {surveys?.isError ? <ErrorState description="Судалгаа ачаалахад алдаа гарлаа." /> : null}
 

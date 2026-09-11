@@ -168,6 +168,20 @@ describe("the family's meal screen", () => {
     expect(await screen.findByText(/сүү агуулсан/)).toBeInTheDocument();
   });
 
+  /*
+    ★ A parent's card carries none of the staff controls — the client said the
+    family's view must not change at all, and `FamilyMenu` draws them only when
+    `actions` are handed in.
+  */
+  it("offers a family no editing controls on the card", async () => {
+    stub();
+    render();
+
+    const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
+    expect(within(panel).queryByLabelText("Зураг нэмэх")).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: /үйлдэл/ })).not.toBeInTheDocument();
+  });
+
   it("says nothing about allergens when the child has no notes", async () => {
     stub();
     render();

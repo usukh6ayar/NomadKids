@@ -8,7 +8,6 @@ import {
   surveyResultsSchema,
   type SurveyGroupResult,
   surveySchema,
-  SURVEY_PERIOD_LABEL,
   SURVEY_QUESTION_TYPE_LABEL,
   hasOptionList,
   type MatrixOptions,
@@ -21,8 +20,20 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
-import { ArrowDown, ArrowUp, Plus, Star, Trash2, X } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Copy,
+  Download,
+  LockKeyhole,
+  Plus,
+  Printer,
+  Star,
+  Trash2,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
@@ -90,6 +101,7 @@ function SurveyDetail() {
     <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title={data.title}
+        compact
         /*
           ★ The purpose leads the category when there is one — 2026-09-10.
 
@@ -102,12 +114,15 @@ function SurveyDetail() {
         */
         lede={data.purpose?.trim() || SURVEY_CATEGORY_LABEL[data.category]}
         actions={
-          <div className="flex flex-wrap items-center gap-2">
+          <div
+            data-ui="survey-actions"
+            className="flex w-full max-w-full items-center gap-1.5 overflow-x-auto pb-1 sm:w-auto sm:flex-wrap sm:justify-end sm:overflow-visible sm:pb-0"
+          >
             {data.status !== "DRAFT" ? (
               <>
+                <CloneButton surveyId={surveyId} schoolYear={data.schoolYear ?? null} />
                 <PrintButton />
                 <ExportButton surveyId={surveyId} />
-                <CloneButton surveyId={surveyId} schoolYear={data.schoolYear ?? null} />
               </>
             ) : null}
             {data.status === "DRAFT" ? (
@@ -115,6 +130,7 @@ function SurveyDetail() {
             ) : data.status === "PUBLISHED" ? (
               <CloseButton surveyId={surveyId} />
             ) : null}
+            <DeleteSurveyButton surveyId={surveyId} title={data.title} />
           </div>
         }
       />
@@ -396,8 +412,15 @@ function SurveyQuestionIndex({
  */
 function PrintButton() {
   return (
-    <Button size="sm" variant="secondary" onClick={() => window.print()}>
-      Хэвлэх
+    <Button
+      className="shrink-0"
+      size="icon"
+      variant="secondary"
+      aria-label="Хэвлэх"
+      title="Хэвлэх"
+      onClick={() => window.print()}
+    >
+      <Printer size={15} aria-hidden="true" />
     </Button>
   );
 }
@@ -412,8 +435,14 @@ function PrintButton() {
  */
 function ExportButton({ surveyId }: { surveyId: string }) {
   return (
-    <Button asChild size="sm" variant="secondary">
-      <a href={downloadUrl(`/surveys/${surveyId}/export`)}>Excel татах</a>
+    <Button asChild className="shrink-0" size="icon" variant="secondary">
+      <a
+        href={downloadUrl(`/surveys/${surveyId}/export`)}
+        aria-label="Excel татах"
+        title="Excel татах"
+      >
+        <Download size={15} aria-hidden="true" />
+      </a>
     </Button>
   );
 }
@@ -428,7 +457,7 @@ function ExportButton({ surveyId }: { surveyId: string }) {
 function CloneButton({ surveyId, schoolYear }: { surveyId: string; schoolYear: string | null }) {
   const toast = useToast();
   const router = useRouter();
-  const [period, setPeriod] = useState<"MIDLINE" | "ENDLINE">("ENDLINE");
+  const [period, setPeriod] = useState<"MIDLINE" | "ENDLINE">("MIDLINE");
 
   const clone = useMutation({
     mutationFn: () =>
@@ -444,7 +473,7 @@ function CloneButton({ surveyId, schoolYear }: { surveyId: string; schoolYear: s
   });
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex shrink-0 items-center gap-1">
       <label className="sr-only" htmlFor="clone-period">
         Хувилах үе
       </label>
@@ -452,18 +481,21 @@ function CloneButton({ surveyId, schoolYear }: { surveyId: string; schoolYear: s
         id="clone-period"
         value={period}
         onChange={(e) => setPeriod(e.target.value as "MIDLINE" | "ENDLINE")}
-        className="w-auto"
+        className="h-9 w-[174px] text-caption sm:w-auto"
       >
-        <option value="MIDLINE">{SURVEY_PERIOD_LABEL.MIDLINE}</option>
-        <option value="ENDLINE">{SURVEY_PERIOD_LABEL.ENDLINE}</option>
+        <option value="MIDLINE">Явцын үнэлгээ</option>
+        <option value="ENDLINE">Үр дүнгийн үнэлгээ</option>
       </Select>
       <Button
-        size="sm"
+        size="icon"
         variant="secondary"
         disabled={clone.isPending}
         onClick={() => clone.mutate()}
+        className="shrink-0"
+        aria-label={clone.isPending ? "Хувилж байна…" : "Хувилах"}
+        title="Хувилах"
       >
-        {clone.isPending ? "Хувилж байна…" : "Хувилах"}
+        <Copy size={15} aria-hidden="true" />
       </Button>
     </div>
   );
@@ -517,9 +549,59 @@ function CloseButton({ surveyId }: { surveyId: string }) {
   });
 
   return (
-    <Button size="sm" variant="secondary" disabled={close.isPending} onClick={() => close.mutate()}>
-      {close.isPending ? "Хааж байна…" : "Хаах"}
+    <Button
+      className="shrink-0"
+      size="icon"
+      variant="secondary"
+      disabled={close.isPending}
+      onClick={() => close.mutate()}
+      aria-label={close.isPending ? "Хааж байна…" : "Хаах"}
+      title="Хаах"
+    >
+      <LockKeyhole size={15} aria-hidden="true" />
     </Button>
+  );
+}
+
+function DeleteSurveyButton({ surveyId, title }: { surveyId: string; title: string }) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const remove = useMutation({
+    mutationFn: () => mutate(`/surveys/${surveyId}`, surveySchema.optional(), { method: "DELETE" }),
+    onSuccess: () => {
+      setOpen(false);
+      toast.success("Судалгаа устгагдлаа.");
+      void queryClient.invalidateQueries({ queryKey: ["surveys"] });
+      router.replace("/surveys");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  return (
+    <>
+      <Button
+        className="shrink-0 text-danger hover:text-danger"
+        size="icon"
+        variant="ghost"
+        onClick={() => setOpen(true)}
+        aria-label="Устгах"
+        title="Устгах"
+      >
+        <Trash2 size={15} aria-hidden="true" />
+      </Button>
+      <ConfirmDialog
+        open={open}
+        onOpenChange={setOpen}
+        title={`“${title}” судалгааг устгах уу?`}
+        description="Судалгаа жагсаалтаас хасагдана. Өгсөн хариултууд бүртгэлд хэвээр үлдэнэ."
+        confirmLabel="Устгах"
+        tone="danger"
+        pending={remove.isPending}
+        onConfirm={() => remove.mutate()}
+      />
+    </>
   );
 }
 

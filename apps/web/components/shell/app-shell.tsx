@@ -180,6 +180,7 @@ export function PageHeader({
   title,
   actions,
   search = false,
+  compact = false,
   meta,
   lede,
 }: {
@@ -188,6 +189,8 @@ export function PageHeader({
   actions?: ReactNode;
   /** Shows the header search field. Screens with something to search set it. */
   search?: boolean;
+  /** Uses phone-friendly title spacing while retaining the desktop hierarchy. */
+  compact?: boolean;
   /**
    * A visual identity for the screen — an `IconChip`, usually.
    *
@@ -223,11 +226,25 @@ export function PageHeader({
           spend a second visual slot on decorative artwork. */}
       <div className="flex min-w-0 flex-1 items-start gap-3">
         <div className="min-w-0">
-          <h1 className="text-display font-semibold leading-heading tracking-[-0.02em] text-ink">
+          <h1
+            className={cn(
+              "font-semibold leading-heading tracking-[-0.02em] text-ink",
+              compact ? "text-title sm:text-display" : "text-display",
+            )}
+          >
             {title}
           </h1>
 
-          {lede ? <div className="mt-1 text-body text-muted">{lede}</div> : null}
+          {lede ? (
+            <div
+              className={cn(
+                "text-muted",
+                compact ? "mt-0.5 text-caption sm:mt-1 sm:text-body" : "mt-1 text-body",
+              )}
+            >
+              {lede}
+            </div>
+          ) : null}
 
           {/*
           `flex-wrap`, because a row of chips at 375px is the width that
@@ -268,7 +285,12 @@ export function PageHeader({
         worse of the two failures and the reason this went unnoticed.
       */}
       {actions ? (
-        <div className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">
+        <div
+          className={cn(
+            "flex max-w-full shrink-0 flex-wrap items-center gap-2",
+            compact ? "basis-full justify-start sm:basis-auto sm:justify-end" : "justify-end",
+          )}
+        >
           {actions}
         </div>
       ) : null}

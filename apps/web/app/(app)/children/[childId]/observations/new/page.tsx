@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { ChevronLeft, Users } from "lucide-react";
+import { Users } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
@@ -18,6 +18,7 @@ import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
+import { BackButton } from "@/components/ui/back-button";
 import { ChildAvatar } from "@/components/media/media-image";
 import { ChildPickerDialog } from "@/components/child/child-picker-dialog";
 import { DAILY_ACTIVITIES } from "@/components/assessment/group-coverage";
@@ -27,7 +28,6 @@ import { PORTFOLIO } from "@/lib/vocabulary";
 import { Card } from "@/components/ui/card";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
-import { ObservationPhotos } from "@/components/observations/observation-photos";
 import { ObservationPhotoPicker } from "@/components/observations/observation-photo-picker";
 import { uploadChildPhotos } from "@/components/media/photo-upload";
 import { ageInYears, formatAge, fullName, todayLocal } from "@/lib/format";
@@ -275,7 +275,6 @@ function NewObservationForm() {
    * Дуусгах two seconds into a five-photograph upload with nothing on screen
    * suggesting anything is still happening.
    */
-  const [uploading, setUploading] = useState(false);
 
   /*
     The chosen strand's indicators. Asked for only once a strand is chosen —
@@ -306,7 +305,7 @@ function NewObservationForm() {
    * — the honest half, and the alternative is reading five photographs into
    * base64 on every keystroke.
    */
-  const { clear: clearDraft, resume: resumeDraft } = useDraftAutosave<ObservationDraft>(draftKey, {
+  const { clear: clearDraft } = useDraftAutosave<ObservationDraft>(draftKey, {
     typeId,
     observedTime,
     activityName,
@@ -317,9 +316,6 @@ function NewObservationForm() {
     visibleToParents,
     includeInReport,
   });
-
-  /** Set once the observation exists, so photos can be attached to it. */
-  const [savedId, setSavedId] = useState<string | null>(null);
 
   const save = useMutation({
     mutationFn: () => {
@@ -364,21 +360,7 @@ function NewObservationForm() {
         },
       });
     },
-    onSuccess: (observation) => {
-      /*
-        ★ No success toast here, deliberately — unlike the other ten screens in
-        this pass.
-
-        Saving replaces the form with a confirmation card that also says what
-        to do next ("Хүсвэл нэмж зураг хавсаргана уу"), and the photo uploader
-        appears under it. A toast would be the same sentence twice, two inches
-        apart. `toast.ts` makes this argument the other way round for errors:
-        the one that is actionable stays inline.
-
-        `onError` below is the half that was genuinely missing.
-      */
-      setSavedId(observation.id);
-
+    onSuccess: async (observation) => {
       /*
         ★ After the note, never before: `POST /children/:id/media` needs an
         observation to attach to.
@@ -389,22 +371,20 @@ function NewObservationForm() {
         to save the picture.
       */
       if (photos.length > 0) {
-        setUploading(true);
-        void uploadChildPhotos({
-          childId,
-          files: photos,
-          observationId: observation.id,
-          purpose: "OBSERVATION",
-        })
-          .then((result) => {
-            if (result.failed.length > 0) {
-              toast.error(`${result.failed.length} зураг хавсрагдсангүй.`);
-            }
-            setPhotos([]);
-            void queryClient.invalidateQueries({ queryKey: qk.childMedia(childId) });
-          })
-          .catch((error: unknown) => toast.error(errorMessage(error)))
-          .finally(() => setUploading(false));
+        try {
+          const result = await uploadChildPhotos({
+            childId,
+            files: photos,
+            observationId: observation.id,
+            purpose: "OBSERVATION",
+          });
+          if (result.failed.length > 0) {
+            toast.error(`${result.failed.length} зураг хавсрагдсангүй.`);
+          }
+          void queryClient.invalidateQueries({ queryKey: qk.childMedia(childId) });
+        } catch (error: unknown) {
+          toast.error(errorMessage(error));
+        }
       }
       /*
         ★ The draft is discarded here and nowhere else.
@@ -418,6 +398,9 @@ function NewObservationForm() {
       // Prefix invalidation: everything under this child is now stale.
       void queryClient.invalidateQueries({ queryKey: qk.child(childId) });
       void queryClient.invalidateQueries({ queryKey: qk.dashboard.teacher() });
+      // Replace the compose route so Back never reopens the form that was just
+      // submitted; it returns to the screen the teacher came from instead.
+      router.replace(listHref);
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -504,6 +487,24 @@ function NewObservationForm() {
 
   const errors = fieldErrors(save.error);
 
+  /*
+    ★ Where leaving this form lands — the child's notes of this kind, not their
+    record.
+
+    Client, 2026-09-11: "Цуцлах дээр дарахаар хүүхдийн дэлгэрэнгүй рүү ороод
+    байна. Ингэхгүйгээр хүүхдийн ажиглалт хэсэг рүү ормоор байна." Saving,
+    cancelling and Back all mean "done with this form", and the useful next
+    screen is the same one for all three: the list the note either joined or
+    did not.
+
+    The type code rather than the id, because that is what the list route reads
+    to pick which hub it draws.
+  */
+  const typeCode = (types.data ?? []).find((type) => type.id === typeId)?.code;
+  const listHref = `/children/${childId}/observations${
+    typeCode ? `?type=${encodeURIComponent(typeCode)}` : ""
+  }`;
+
   if (child.isLoading) return <LoadingState rows={5} shape="text" />;
 
   if (child.isError) {
@@ -521,52 +522,6 @@ function NewObservationForm() {
     );
   }
 
-  // Saved. The form stays on screen behind a confirmation so photos can be
-  // attached — navigating away immediately would make adding a picture a
-  // second, separate errand.
-  if (savedId) {
-    return (
-      <div className="flex flex-col gap-5 py-2">
-        <Card className="px-5 py-5">
-          <p role="status" className="font-medium text-mint-ink">
-            Ажиглалт хадгалагдлаа.
-          </p>
-          <p className="mt-1 text-body text-muted" aria-live="polite">
-            {uploading
-              ? `${photos.length} зургийг хуулж байна…`
-              : isStaff
-                ? "Хүсвэл нэмж зураг хавсаргана уу."
-                : "Багш хянаад баталгаажуулна. Хүсвэл нэмж зураг хавсаргана уу."}
-          </p>
-        </Card>
-
-        <ObservationPhotos childId={childId} observationId={savedId} />
-
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={() => router.push(`/children/${childId}/general`)}>Дуусгах</Button>
-          <Button
-            variant="secondary"
-            onClick={() => {
-              // A fresh blank form, same child — the common case is writing
-              // several observations in one sitting.
-              setSavedId(null);
-              save.reset();
-              // The blank form is a new observation and drafts again from here.
-              // Without this the autosave stays latched off from the first save
-              // onward — see `resume` in `lib/use-form-draft.ts`.
-              resumeDraft();
-              setPhotos([]);
-              setSituation("");
-              setActivityName("");
-            }}
-          >
-            Дахин бичих
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     /*
       ★ REDESIGN 2026-09-03 — a reading measure on the writing screen.
@@ -579,16 +534,19 @@ function NewObservationForm() {
       (56rem) and centring is what makes it feel like a document rather than a
       database form. Below that breakpoint nothing changes.
     */
-    <div className="page-band mx-auto w-full max-w-4xl py-2">
+    <div className="page-band mx-auto w-full max-w-3xl py-2">
       <header>
-        <Link
-          href={`/children/${childId}/general`}
-          className="-ml-1 inline-flex min-h-[44px] items-center gap-1 rounded-control px-1 text-body font-medium text-muted transition-colors hover:text-primary"
-        >
-          <ChevronLeft size={16} aria-hidden="true" />
-          {fullName(child.data)}
-        </Link>
-        <h1 className="mt-1 text-heading font-semibold tracking-[-.01em] text-ink md:text-display">
+        {/*
+          ★ A bare Буцах, not "Ганболдын Батбаяр луу буцах" — 2026-09-11, at the
+          client's instruction.
+
+          The name was redundant twice over: the child is named again in the card
+          directly below, and this link claimed a destination the reader may
+          never have come from. `BackButton` goes one step back through history
+          with the child's page as the fallback for a form opened cold.
+        */}
+        <BackButton href={listHref} className="-ml-3" />
+        <h1 className="mt-0.5 text-title font-semibold tracking-[-.01em] text-ink md:text-heading">
           {isStaff ? "Ажиглалт шинээр бичих" : "Гэрийн мөч хуваалцах"}
         </h1>
         {!isStaff ? (
@@ -648,7 +606,7 @@ function NewObservationForm() {
           if (save.isPending) return;
           save.mutate();
         }}
-        className="flex flex-col gap-5"
+        className="flex flex-col gap-3"
         noValidate
       >
         <FormError
@@ -672,8 +630,8 @@ function NewObservationForm() {
           </p>
         ) : null}
 
-        <Card pad="roomy" className="flex flex-col gap-4">
-          <div className="grid gap-4 sm:grid-cols-2">
+        <Card pad="compact" className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-2.5">
             <Field label="Огноо" error={errors.observedOn} required>
               {({ id, describedBy, invalid }) => (
                 <Input
@@ -699,7 +657,7 @@ function NewObservationForm() {
               would have to notice and correct it.
             */}
             {isStaff ? (
-              <Field label="Цаг" error={errors.observedTime} hint="Заавал биш.">
+              <Field label="Цаг" error={errors.observedTime}>
                 {({ id, describedBy, invalid }) => (
                   <Input
                     id={id}
@@ -715,7 +673,7 @@ function NewObservationForm() {
           </div>
 
           {isStaff ? (
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-2 gap-2.5">
               {/*
                 ★ A list, not a free-text box — 2026-09-11, the client's design.
 
@@ -879,6 +837,10 @@ function NewObservationForm() {
           ) : null}
         </Card>
 
+        {!isStaff ? (
+          <ObservationPhotoPicker files={photos} onChange={setPhotos} disabled={save.isPending} />
+        ) : null}
+
         {/*
           ★ One box called Тэмдэглэл — 2026-09-11, at the client's request.
 
@@ -894,7 +856,7 @@ function NewObservationForm() {
           columns are untouched and still render wherever a note is read — the
           form stops asking for them, it does not erase them.
         */}
-        <Card pad="roomy">
+        <Card pad="compact">
           <Field label="Тэмдэглэл" error={errors.situation} hint={`${situation.length}/1000`}>
             {({ id, describedBy, invalid }) => (
               <Textarea
@@ -903,14 +865,11 @@ function NewObservationForm() {
                 invalid={invalid}
                 value={situation}
                 onChange={(e) => setSituation(e.target.value)}
-                rows={6}
-                placeholder="Хаана, хэзээ, ямар нөхцөлд болсон бэ? Хүүхэд юу хийж, юу хэлэв?"
+                rows={4}
               />
             )}
           </Field>
         </Card>
-
-        <ObservationPhotoPicker files={photos} onChange={setPhotos} disabled={save.isPending} />
 
         {/*
           ★ Two checkboxes in one compact card — 2026-09-11, "хэн харахыг зай
@@ -922,7 +881,13 @@ function NewObservationForm() {
           what each one does.
         */}
         {isStaff ? (
-          <Card className="flex flex-col gap-1 px-4 py-2.5">
+          <Card className="grid grid-cols-3 gap-2 px-3 py-3">
+            <ObservationPhotoPicker
+              files={photos}
+              onChange={setPhotos}
+              disabled={save.isPending}
+              compact
+            />
             {/*
               ★ Unchecked by default, matching the API's own default. A
               teacher's working note is private until they deliberately share
@@ -931,11 +896,13 @@ function NewObservationForm() {
             */}
             <Checkbox
               label="Эцэг эх харах боломжтой"
+              className="min-w-0 flex-col items-center justify-center gap-1 px-1 text-center [&>span]:text-caption"
               checked={visibleToParents}
               onChange={(e) => setVisibleToParents(e.target.checked)}
             />
             <Checkbox
               label={`${PORTFOLIO}ны PDF-д оруулах`}
+              className="min-w-0 flex-col items-center justify-center gap-1 px-1 text-center [&>span]:text-caption"
               checked={includeInReport}
               onChange={(e) => setIncludeInReport(e.target.checked)}
             />
@@ -948,7 +915,7 @@ function NewObservationForm() {
               {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
             </Button>
             <Button asChild variant="secondary" size="lg">
-              <Link href={`/children/${childId}/general`}>Цуцлах</Link>
+              <Link href={listHref}>Цуцлах</Link>
             </Button>
           </div>
 

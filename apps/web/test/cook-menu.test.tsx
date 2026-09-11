@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, selectOption, sessionFor, stubApi } from "./support/render";
@@ -775,5 +775,71 @@ describe("the menu as a spreadsheet", () => {
 
     expect(await screen.findByRole("tab", { name: "Өнөөдөр" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Цэс засах" })).toBeInTheDocument();
+  });
+
+  /*
+    ★ Editing a sitting without leaving the day — the client's 2026-09-11
+    report: on the teacher's Өнөөдөр card they expect two small photo buttons
+    on the picture and "засах, хуулах, устгах" behind a ⋮ beside the time.
+
+    ★★ A parent's screen is unchanged — `family-menu.test.tsx` asserts the same
+    card carries none of these when no `actions` are passed.
+  */
+  it("puts the sitting's controls on the card a teacher reads", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
+    expect(within(panel).getByLabelText("Зураг нэмэх")).toBeInTheDocument();
+
+    await user.click(within(panel).getByRole("button", { name: /Өглөөний цай — үйлдэл/ }));
+    expect(screen.getByRole("menuitem", { name: "Засах" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Хуулах/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Устгах" })).toBeInTheDocument();
+  });
+
+  it("Засах opens that day's form", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
+    await user.click(within(panel).getByRole("button", { name: /Өглөөний цай — үйлдэл/ }));
+    await user.click(screen.getByRole("menuitem", { name: "Засах" }));
+
+    expect(await screen.findByText("Хоолны цэс засах")).toBeInTheDocument();
+  });
+
+  /** Every one of these writes the whole day back through the one PUT. */
+  it("Устгах saves the day without that sitting", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
+    await user.click(within(panel).getByRole("button", { name: /Өглөөний цай — үйлдэл/ }));
+    await user.click(screen.getByRole("menuitem", { name: "Устгах" }));
+
+    await waitFor(() => expect(calls.some((call) => call.method === "PUT")).toBe(true));
+    const put = calls.find((call) => call.method === "PUT")!;
+    expect((put.body as { dishes: unknown[] }).dishes).toEqual([]);
+  });
+
+  it("Хуулах saves the sitting twice over", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
+    await user.click(within(panel).getByRole("button", { name: /Өглөөний цай — үйлдэл/ }));
+    await user.click(screen.getByRole("menuitem", { name: /Хуулах/ }));
+
+    await waitFor(() => expect(calls.some((call) => call.method === "PUT")).toBe(true));
+    const put = calls.find((call) => call.method === "PUT")!;
+    expect((put.body as { dishes: { name: string }[] }).dishes.map((d) => d.name)).toEqual([
+      "Тараг",
+      "Тараг",
+    ]);
   });
 });

@@ -5,15 +5,20 @@ import {
   Apple,
   CalendarDays,
   CalendarRange,
+  Copy,
   Flame,
   Moon,
   Soup,
+  PencilLine,
   Sun,
+  Trash2,
   UtensilsCrossed,
 } from "lucide-react";
 import { MEAL_KIND_LABEL, type MealKind, type MenuDay, type MenuDish } from "@kinder/contracts";
 import { MEAL_KIND_ORDER } from "@/components/menu/menu-dish-editor";
 import { MediaThumb } from "@/components/media/media-image";
+import { SingleImageUpload } from "@/components/media/single-image-upload";
+import { RowMenu } from "@/components/ui/menu";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/states";
@@ -93,6 +98,30 @@ const WEEKDAY_NAME = ["Даваа", "Мягмар", "Лхагва", "Пүрэв"
 type View = "today" | "tomorrow" | "week";
 
 /**
+ * What a member of staff may do to a sitting without leaving the day.
+ *
+ * ★ The client's 2026-09-11 report: on the teacher's Өнөөдөр card they expect
+ * "зураг оруулах, устгах 2 жижиг товч" on the picture and "засах, хуулах,
+ * устгах" behind a ⋮ beside the time.
+ *
+ * ★★ Passed in, never derived here. This component is what a *parent* reads and
+ * must stay exactly that for them — the client said so in as many words
+ * ("эцэг эхийн хоолны цэсний харагдац огт өөрчлөгдөж болохгүй"). Omitted, not a
+ * single one of these controls renders, and the markup is what it always was.
+ */
+export interface MenuRowActions {
+  /** Opens the day's form, on this sitting. */
+  onEdit: (kind: MealKind, date: string) => void;
+  /** Duplicates the sitting's dishes so the cook can re-time the copy. */
+  onDuplicate: (kind: MealKind, date: string) => void;
+  onDelete: (kind: MealKind, date: string) => void;
+  /** `POST` target for a dish photograph — `SingleImageUpload`'s endpoint. */
+  photoEndpoint: string;
+  onPhotoUploaded: (kind: MealKind, date: string, mediaId: string) => void;
+  onPhotoRemoved: (kind: MealKind, date: string) => void;
+}
+
+/**
  * The family's view of the kitchen — the client's 2026-09-11 design.
  *
  * ★ Three destinations, not a calendar.
@@ -114,6 +143,7 @@ export function FamilyMenu({
   tomorrowIso,
   healthNotes,
   footer,
+  actions,
 }: {
   byDate: Map<string, MenuDay>;
   /** Monday-first, seven ISO dates. */
@@ -123,6 +153,8 @@ export function FamilyMenu({
   healthNotes: string | null | undefined;
   /** The note box, passed in so this component stays about reading the menu. */
   footer?: ReactNode;
+  /** Staff controls on each sitting. Omitted for a family — see `MenuRowActions`. */
+  actions?: MenuRowActions;
 }) {
   const [view, setView] = useState<View>("today");
   const activeDate = view === "tomorrow" ? tomorrowIso : todayIso;
@@ -152,7 +184,12 @@ export function FamilyMenu({
         </div>
       ) : (
         <div role="tabpanel" aria-label={view === "today" ? "Өнөөдөр" : "Маргааш"}>
-          <DayView date={activeDate} day={byDate.get(activeDate)} healthNotes={healthNotes} />
+          <DayView
+            date={activeDate}
+            day={byDate.get(activeDate)}
+            healthNotes={healthNotes}
+            actions={actions}
+          />
         </div>
       )}
 
@@ -204,10 +241,12 @@ function DayView({
   date,
   day,
   healthNotes,
+  actions,
 }: {
   date: string;
   day?: MenuDay;
   healthNotes: string | null | undefined;
+  actions?: MenuRowActions;
 }) {
   const dishes = day?.dishes ?? [];
   const kinds = MEAL_KIND_ORDER.filter((kind) => dishesOf(dishes, kind).length > 0);
@@ -235,7 +274,13 @@ function DayView({
         <ul className="flex flex-col gap-2 p-2">
           {kinds.map((kind) => (
             <li key={kind}>
-              <MealRow kind={kind} dishes={dishesOf(dishes, kind)} healthNotes={healthNotes} />
+              <MealRow
+                kind={kind}
+                date={date}
+                dishes={dishesOf(dishes, kind)}
+                healthNotes={healthNotes}
+                actions={actions}
+              />
             </li>
           ))}
         </ul>
@@ -246,12 +291,16 @@ function DayView({
 
 function MealRow({
   kind,
+  date,
   dishes,
   healthNotes,
+  actions,
 }: {
   kind: MealKind;
+  date: string;
   dishes: MenuDish[];
   healthNotes: string | null | undefined;
+  actions?: MenuRowActions;
 }) {
   const style = MEAL_KIND_STYLE[kind];
   const photo = dishes.find((dish) => dish.photoMediaFileId)?.photoMediaFileId;
@@ -271,16 +320,50 @@ function MealRow({
 
   return (
     <Card pad="none" className={cn("flex items-stretch gap-3 overflow-hidden", style.card)}>
-      {photo ? (
-        <MediaThumb mediaId={photo} caption={dishes[0]?.name} flush className="size-[88px]" />
-      ) : (
-        <span
-          aria-hidden="true"
-          className="grid size-[88px] shrink-0 place-items-center bg-surface/60 text-muted"
-        >
-          <UtensilsCrossed size={22} />
-        </span>
-      )}
+      <div className="relative size-[88px] shrink-0">
+        {photo ? (
+          <MediaThumb mediaId={photo} caption={dishes[0]?.name} flush className="size-[88px]" />
+        ) : (
+          <span
+            aria-hidden="true"
+            className="grid size-[88px] place-items-center bg-surface/60 text-muted"
+          >
+            <UtensilsCrossed size={22} />
+          </span>
+        )}
+
+        {/*
+          ★ Two small buttons on the picture — the client's 2026-09-11 report.
+
+          A teacher looking at today wants the photograph of today's breakfast
+          on it; making them open the day's form to attach one is three presses
+          for what is one. Устгах appears only when there is something to
+          remove.
+        */}
+        {actions ? (
+          <div className="absolute inset-x-1 bottom-1 flex items-center justify-center gap-1">
+            <SingleImageUpload
+              endpoint={actions.photoEndpoint}
+              currentMediaId={photo ?? null}
+              label={photo ? "Зураг солих" : "Зураг нэмэх"}
+              alt={`${MEAL_KIND_LABEL[kind]} зураг`}
+              hidePreview
+              compactIcon
+              onUploaded={(media) => actions.onPhotoUploaded(kind, date, media.id)}
+            />
+            {photo ? (
+              <button
+                type="button"
+                aria-label={`${MEAL_KIND_LABEL[kind]} — зургийг устгах`}
+                onClick={() => actions.onPhotoRemoved(kind, date)}
+                className="grid size-7 place-items-center rounded-control bg-ink/70 text-white transition-colors hover:bg-danger"
+              >
+                <Trash2 size={13} aria-hidden="true" />
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
 
       <div className="min-w-0 flex-1 py-2.5 pr-3">
         <div className="flex items-start justify-between gap-2">
@@ -299,6 +382,33 @@ function MealRow({
               </span>
             ) : null}
           </span>
+
+          {/* ★ Засах · Хуулах · Устгах, beside the time — the client's report. */}
+          {actions ? (
+            <RowMenu
+              ariaLabel={`${MEAL_KIND_LABEL[kind]} — үйлдэл`}
+              items={[
+                {
+                  label: "Засах",
+                  icon: <PencilLine size={16} aria-hidden="true" />,
+                  onSelect: () => actions.onEdit(kind, date),
+                },
+                {
+                  label: "Хуулах",
+                  icon: <Copy size={16} aria-hidden="true" />,
+                  hint: "Хоолны цагийг хувилж, дараа нь цагийг нь солино",
+                  onSelect: () => actions.onDuplicate(kind, date),
+                },
+                {
+                  label: "Устгах",
+                  icon: <Trash2 size={16} aria-hidden="true" />,
+                  tone: "danger" as const,
+                  separated: true,
+                  onSelect: () => actions.onDelete(kind, date),
+                },
+              ]}
+            />
+          ) : null}
         </div>
 
         <ul className="mt-1 flex flex-col gap-0.5">

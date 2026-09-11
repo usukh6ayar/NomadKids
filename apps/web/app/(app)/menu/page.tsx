@@ -22,6 +22,8 @@ import {
   ingredientUnitSchema,
   menuDayWithWarningsSchema,
   recipeSummarySchema,
+  type MealKind,
+  type MenuDish,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { downloadUrl } from "@/lib/api/client";
@@ -37,7 +39,7 @@ import { Field, Textarea } from "@/components/ui/field";
 import { Menu, type MenuItem } from "@/components/ui/menu";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
-import { FamilyMenu, WeekTable } from "@/components/child/family-menu";
+import { FamilyMenu, WeekTable, type MenuRowActions } from "@/components/child/family-menu";
 import { MenuExcelImport } from "@/components/menu/menu-excel-import";
 import {
   MenuDishEditor,
@@ -232,6 +234,74 @@ function WeeklyMenu() {
     nothing else.
   */
   const addRowRef = useRef<(() => void) | null>(null);
+  const queryClient = useQueryClient();
+  const toast = useToast();
+
+  /*
+    ★ Editing a sitting without leaving the day — 2026-09-11, the client's
+    report: the teacher's Өнөөдөр card carries two small photo buttons and a ⋮
+    of Засах · Хуулах · Устгах.
+
+    Every one of these writes the whole day back through the same
+    `PUT .../menu/:date` the form uses, so there is one way a day is saved and
+    the allergy cross-check re-runs the same way whichever control was pressed.
+  */
+  const saveDay = useMutation({
+    mutationFn: ({ date, dishes }: { date: string; dishes: MenuDish[] }) =>
+      mutate(`/kindergartens/${kindergartenId}/menu/${date}`, menuDayWithWarningsSchema, {
+        method: "PUT",
+        // `note` is left out: these controls do not touch the day's note, and
+        // omitting it is what tells the API to leave the column alone.
+        body: { dishes: fromDraft(toDraft(dishes)) },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["kindergarten", kindergartenId, "menu"] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  /** The day's dishes, with one sitting's rewritten. */
+  function rewrite(date: string, kind: MealKind, next: (rows: MenuDish[]) => MenuDish[]) {
+    const dishes = byDate.get(date)?.dishes ?? [];
+    const inKind = dishes.filter((dish) => (dish.kind ?? "BREAKFAST") === kind);
+    const rest = dishes.filter((dish) => (dish.kind ?? "BREAKFAST") !== kind);
+    saveDay.mutate({ date, dishes: [...rest, ...next(inKind)] });
+  }
+
+  const rowActions: MenuRowActions | undefined =
+    canEdit && kindergartenId
+      ? {
+          onEdit: (_kind, date) => {
+            const offset = weekDates.indexOf(date);
+            if (offset < 0) return;
+            setEditing(true);
+            setView("list");
+            setSelectedOffset(offset);
+            setOpenDay(offset);
+          },
+          /*
+            Хуулах duplicates the sitting's dishes in place. The copy lands on
+            the same sitting, which is what makes it useful: a cook who serves
+            the same thing twice re-times one of them from the form rather than
+            typing the dishes again.
+          */
+          onDuplicate: (kind, date) => rewrite(date, kind, (rows) => [...rows, ...rows]),
+          onDelete: (kind, date) => rewrite(date, kind, () => []),
+          photoEndpoint: `/kindergartens/${kindergartenId}/menu/dish-photo`,
+          onPhotoUploaded: (kind, date, mediaId) =>
+            rewrite(date, kind, (rows) =>
+              rows.length === 0
+                ? rows
+                : rows.map((dish, index) =>
+                    index === 0 ? { ...dish, photoMediaFileId: mediaId } : dish,
+                  ),
+            ),
+          onPhotoRemoved: (kind, date) =>
+            rewrite(date, kind, (rows) =>
+              rows.map((dish) => ({ ...dish, photoMediaFileId: null })),
+            ),
+        }
+      : undefined;
   const weekDates = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   /*
     ★ Seven for reading, five for editing.
@@ -438,6 +508,7 @@ function WeeklyMenu() {
               todayIso={today}
               tomorrowIso={tomorrow}
               healthNotes={null}
+              actions={rowActions}
             />
           ) : null}
 

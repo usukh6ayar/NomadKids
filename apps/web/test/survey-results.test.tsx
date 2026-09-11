@@ -126,12 +126,16 @@ describe("the survey results overview", () => {
     await screen.findByText("Нийт асуулт");
     const actions = container.querySelector('[data-ui="survey-actions"]') as HTMLElement;
     expect(actions).toHaveClass("overflow-x-auto");
+    expect(actions.parentElement).toHaveClass("basis-full", "justify-start");
     expect(within(actions).getByRole("link", { name: "Excel татах" })).toBeInTheDocument();
     for (const label of ["Хэвлэх", "Хувилах", "Хаах", "Устгах"]) {
       expect(within(actions).getByRole("button", { name: label })).toBeInTheDocument();
     }
     expect(within(actions).getByRole("combobox", { name: "Хувилах үе" })).toHaveTextContent(
-      "Явцын ба үр дүнгийн үнэлгээ",
+      "Явцын үнэлгээ",
+    );
+    expect(actions.firstElementChild).toContainElement(
+      within(actions).getByRole("combobox", { name: "Хувилах үе" }),
     );
   });
 
