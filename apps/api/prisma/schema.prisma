@@ -416,6 +416,7 @@ model User {
   reviewed              Observation[]             @relation("ObservationReviewer")
   assessments           Assessment[]              @relation("AssessmentAuthor")
   termReports           TermReport[]              @relation("TermReportAuthor")
+  childMealNotes        ChildMealNote[]           @relation("ChildMealNoteAuthor")
   notifications         Notification[]            @relation("NotificationAuthor")
   reads                 NotificationRead[]
   reactions             NotificationReaction[]
@@ -612,6 +613,7 @@ model Kindergarten {
   assessments            Assessment[]
   termReports            TermReport[]
   termReportObservations TermReportObservation[]
+  childMealNotes         ChildMealNote[]
   mediaFiles             MediaFile[]
   notifications          Notification[]
   notificationTargets    NotificationTarget[]
@@ -864,6 +866,7 @@ model Child {
   ageProfiles         ChildAgeProfile[]
   birthdayNotes       BirthdayNote[]
   observations        Observation[]
+  mealNotes           ChildMealNote[]
   assessments         Assessment[]
   termReports         TermReport[]
   mediaFiles          MediaFile[]               @relation("ChildMedia")
@@ -3565,6 +3568,48 @@ model TermReport {
   @@index([childId, termId])
   @@index([kindergartenId, termId])
   @@map("term_reports")
+}
+
+/// A family's note about their child's meals for one day.
+///
+/// ★ From the parent, read by staff — the client's 2026-09-11 design, whose own
+/// placeholder says what it is for: "бага хэмжээгээр өгч болохгүй, орлуулах
+/// хоол санал болгох гэх мэт".
+///
+/// ★★ Not a chat message, and that is a privacy decision rather than a
+/// stylistic one. The only rooms that exist are `group:` and `staff:`
+/// (`authz/chat-access.ts`), and a group room holds every parent in the group —
+/// sending "my child cannot have dairy" there would publish one child's dietary
+/// restriction to thirty families. This row is reachable only through
+/// `canAccessChild`, like every other thing written about a child.
+///
+/// ★★★ One row per note, not one per child-day. A family that writes again
+/// tomorrow has said a second thing, and collapsing the two would lose the first
+/// silently; `@@index([childId, date])` is what makes the day's notes one query.
+model ChildMealNote {
+  id             String   @id @default(uuid()) @db.Uuid
+  kindergartenId String   @db.Uuid
+  childId        String   @db.Uuid
+  /// The day the note is *about*, which is not always the day it was written.
+  date           DateTime @db.Date
+
+  body String
+
+  /// Who wrote it. Nullable only because `User` deletion sets it null — every
+  /// note is written by somebody, and `AuditLog` holds the durable answer.
+  authorId String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  author       User?        @relation("ChildMealNoteAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([childId, date(sort: Desc)])
+  @@index([kindergartenId, date(sort: Desc)])
+  @@map("child_meal_notes")
 }
 
 /// The observations a term report was written from — the teacher's own citation.

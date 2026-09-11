@@ -12,7 +12,12 @@ import { parseDishes, type MenuDishLike } from "./dish-json";
 import { MealsRepository } from "./meals.repository";
 import { findAllergenWarnings } from "./allergen-match";
 import { buildMenuWorkbook } from "./menu-workbook";
-import type { RecordGroupMealsDto, SaveMenuDayDto } from "./meals.dto";
+import type {
+  CreateMealNoteDto,
+  MealNotesQuery,
+  RecordGroupMealsDto,
+  SaveMenuDayDto,
+} from "./meals.dto";
 
 @Injectable()
 export class MealsService {
@@ -528,6 +533,77 @@ export class MealsService {
        * stays.
        */
       daysFed,
+    };
+  }
+
+  // ── A family's notes about their child's meals ─────────────────────────────
+  //
+  // ★ The client's 2026-09-11 design puts a box under the day's menu: "бага
+  // хэмжээгээр өгч болохгүй, орлуулах хоол санал болгох гэх мэт". It is a note
+  // from the family to the kitchen and the teacher.
+
+  /**
+   * The notes on a child over a range.
+   *
+   * ★ `assertCanAccess`, so a guardian reads their own family's notes and staff
+   * read the ones on the children they are responsible for — and anybody else
+   * gets 404 (§1.7) without this method knowing which case it was.
+   */
+  async listMealNotes(actor: Actor, childId: string, query: MealNotesQuery) {
+    await this.childAccess.assertCanAccess(actor, childId);
+
+    // The cap is the guarantee, not the range (§3.4) — see the repository.
+    const notes = await this.repo.listMealNotes(childId, query.from, query.to, 100);
+
+    return notes.map((note) => ({
+      id: note.id,
+      date: note.date.toISOString().slice(0, 10),
+      body: note.body,
+      createdAt: note.createdAt.toISOString(),
+      author: note.author,
+    }));
+  }
+
+  /**
+   * Writes one.
+   *
+   * ★ `assertCanAccess`, not `assertCanRecord` — deliberately, and it is the one
+   * decision in this method.
+   *
+   * `assertCanRecord` is "may this person do the teaching work", which every
+   * other write about a child asks. This note is the *family's*, so a guardian
+   * has to be able to make it; the protection that matters is that they may only
+   * write about their own child, which `assertCanAccess` is exactly. Staff may
+   * write one too — a teacher relaying what a parent said at the door is the
+   * same note.
+   */
+  async createMealNote(actor: Actor, childId: string, dto: CreateMealNoteDto) {
+    const facts = await this.childAccess.assertCanAccess(actor, childId);
+
+    const note = await this.repo.createMealNote({
+      kindergartenId: facts.childKindergartenId,
+      childId,
+      date: dto.date,
+      body: dto.body,
+      authorId: actor.userId,
+    });
+
+    await this.audit.append({
+      action: "CREATE",
+      kindergartenId: facts.childKindergartenId,
+      actorUserId: actor.userId,
+      objectType: "ChildMealNote",
+      objectId: note.id,
+      childId,
+      metadata: { date: note.date.toISOString().slice(0, 10) },
+    });
+
+    return {
+      id: note.id,
+      date: note.date.toISOString().slice(0, 10),
+      body: note.body,
+      createdAt: note.createdAt.toISOString(),
+      author: note.author,
     };
   }
 }

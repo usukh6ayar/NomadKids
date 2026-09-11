@@ -520,6 +520,18 @@ export const observationSchema = z.object({
   indicatorId: uuidSchema.nullish(),
   indicatorLevel: z.number().nullish(),
   indicator: curriculumIndicatorRefSchema.nullish(),
+  domains: z
+    .array(
+      z.object({
+        domain: z.object({
+          id: uuidSchema,
+          name: z.string(),
+          color: z.string().nullish(),
+        }),
+        level: z.object({ id: uuidSchema, value: z.number(), label: z.string() }).nullish(),
+      }),
+    )
+    .default([]),
   author: personRefSchema.nullish(),
   media: z.array(observationMediaSchema).default([]),
 });
@@ -916,6 +928,24 @@ export const menuDishSchema = z.object({
   photoMediaFileId: uuidSchema.nullish(),
 });
 export type MenuDish = z.infer<typeof menuDishSchema>;
+
+/**
+ * A family's note about one day's meals.
+ *
+ * ★ Written by the guardian, read by the child's staff — the box the client's
+ * 2026-09-11 design puts under the day's menu. Not a chat message: the only
+ * rooms that exist hold a whole group, and a dietary restriction is one child's
+ * business. See `ChildMealNote` in the schema.
+ */
+export const childMealNoteSchema = z.object({
+  id: uuidSchema,
+  /** "YYYY-MM-DD" — the day the note is about. */
+  date: z.string(),
+  body: z.string(),
+  createdAt: z.string(),
+  author: personRefSchema.nullish(),
+});
+export type ChildMealNote = z.infer<typeof childMealNoteSchema>;
 
 export const menuDayStatusSchema = z.enum(["DRAFT", "APPROVED"]);
 export type MenuDayStatus = z.infer<typeof menuDayStatusSchema>;

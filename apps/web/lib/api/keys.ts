@@ -339,6 +339,14 @@ export const qk = {
     filters && Object.keys(filters).length > 0
       ? (["child", childId, "media", filters] as const)
       : (["child", childId, "media"] as const),
+  /**
+   * A family's meal notes — prefixed under the child, so invalidating without
+   * filters clears every day's list at once.
+   */
+  childMealNotes: (childId: string, filters?: Record<string, unknown>) =>
+    filters && Object.keys(filters).length > 0
+      ? (["child", childId, "meal-notes", filters] as const)
+      : (["child", childId, "meal-notes"] as const),
   childAgeAlbum: (childId: string, age: number) =>
     ["child", childId, "media", "age-album", age] as const,
   childReports: (childId: string) => ["child", childId, "reports"] as const,

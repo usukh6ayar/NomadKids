@@ -205,6 +205,49 @@ export class MealsRepository {
     });
   }
 
+  // ── A family's notes about their child's meals ─────────────────────────
+
+  /**
+   * The child's notes over a date range, newest day first.
+   *
+   * ★ Bounded by `take`, not by trust in the range (§3.4). A range is a client
+   * value and "from 1970" is a legal one; the cap is what keeps this endpoint
+   * from being a way to pull a child's whole history in one request.
+   */
+  async listMealNotes(childId: string, from: Date, to: Date, take: number) {
+    return this.prisma.childMealNote.findMany({
+      where: { childId, deletedAt: null, date: { gte: from, lte: to } },
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+      take,
+      select: {
+        id: true,
+        date: true,
+        body: true,
+        createdAt: true,
+        author: { select: { id: true, lastName: true, firstName: true } },
+      },
+    });
+  }
+
+  async createMealNote(data: {
+    kindergartenId: string;
+    childId: string;
+    date: Date;
+    body: string;
+    authorId: string;
+  }) {
+    return this.prisma.childMealNote.create({
+      data,
+      select: {
+        id: true,
+        date: true,
+        body: true,
+        createdAt: true,
+        author: { select: { id: true, lastName: true, firstName: true } },
+      },
+    });
+  }
+
   /** The kindergarten's name, for the exported workbook's Тайлбар sheet. */
   async kindergartenName(kindergartenId: string) {
     const row = await this.prisma.kindergarten.findFirst({

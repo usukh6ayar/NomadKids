@@ -31,6 +31,8 @@ import {
   toDraft,
   type DishDraft,
 } from "@/components/menu/menu-dish-editor";
+import { FamilyMenu } from "@/components/child/family-menu";
+import { MenuNoteBox } from "@/components/child/menu-note-box";
 import { formatDayMonth, formatLongDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -133,10 +135,19 @@ function groupByKind(dishes: MenuDish[]): Partial<Record<MealKind, MenuDish[]>> 
  */
 export function ChildMenu({
   kindergartenId,
+  childId,
   healthNotes,
   isStaff,
 }: {
   kindergartenId: string;
+  /**
+   * Whose menu this is.
+   *
+   * ★ Optional, because the cook's own `(app)/menu` screen has no child at all —
+   * it edits the kindergarten's week. Without one the family footer is not
+   * drawn, which is right: a note box needs a child to be about.
+   */
+  childId?: string;
   healthNotes: string | null | undefined;
   isStaff: boolean;
 }) {
@@ -170,6 +181,33 @@ export function ChildMenu({
 
   if (menu.isPending) return <LoadingState rows={3} />;
   if (menu.isError) return <ErrorState description={errorMessage(menu.error)} />;
+
+  /*
+    ★ A family gets a different screen entirely — 2026-09-11, the client's
+    design: "эцэг дээр хоол ийм байна өмнөх загвар арилгаад ийм болго".
+
+    Not a narrowed version of this one. The staff screen is a week pager over an
+    editable day, and the questions a parent has are "what is my child eating
+    today" and "what is coming" — so `FamilyMenu` answers those three (today,
+    tomorrow, the week as a table) and carries none of the pager, the weekday
+    strip, the "Хоолны цаг" jump list or the editor.
+
+    Everything below this line is the staff path, unchanged.
+  */
+  if (!isStaff) {
+    const family = new Map(menu.data.map((day) => [day.date.slice(0, 10), day]));
+
+    return (
+      <FamilyMenu
+        byDate={family}
+        weekDates={weekDates}
+        todayIso={todayIso}
+        tomorrowIso={toIso(tomorrow)}
+        healthNotes={healthNotes}
+        footer={childId ? <MenuNoteBox childId={childId} date={todayIso} /> : null}
+      />
+    );
+  }
 
   // ★ `day.date` is a full ISO datetime from the API (`2026-08-27T00:00:00.000Z`),
   // not the plain `YYYY-MM-DD` this component works in — `attendance-calendar.tsx`

@@ -7,14 +7,18 @@ import { Roles } from "../auth/decorators/roles.decorator";
 import type { Actor } from "../authz/actor";
 import { MealsService } from "./meals.service";
 import {
+  createMealNoteSchema,
   dateParamSchema,
   groupMealSheetQuerySchema,
+  mealNotesQuerySchema,
   listMenuQuerySchema,
   mealSummaryQuerySchema,
   recordGroupMealsSchema,
   saveMenuDaySchema,
+  type CreateMealNoteDto,
   type DateParam,
   type GroupMealSheetQuery,
+  type MealNotesQuery,
   type ListMenuQuery,
   type MealSummaryQuery,
   type RecordGroupMealsDto,
@@ -167,5 +171,30 @@ export class ChildMealsController {
     @Query(new ZodValidationPipe(mealSummaryQuerySchema)) query: MealSummaryQuery,
   ) {
     return this.service.childMealSummary(actor, params.id, query.month);
+  }
+
+  /*
+    ★ No `@Roles` on either of these — the family is the author.
+
+    Every other write about a child is staff-only; this one is the point. The
+    guard that matters is `assertCanAccess` in the service, which is what keeps a
+    guardian to their own child and answers 404 for anyone else.
+  */
+  @Get("notes")
+  async notes(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(mealNotesQuerySchema)) query: MealNotesQuery,
+  ) {
+    return this.service.listMealNotes(actor, params.id, query);
+  }
+
+  @Post("notes")
+  async addNote(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(createMealNoteSchema)) body: CreateMealNoteDto,
+  ) {
+    return this.service.createMealNote(actor, params.id, body);
   }
 }

@@ -57,6 +57,7 @@ export default function ChildMenuPage() {
 
       <ChildMenu
         kindergartenId={data.kindergarten?.id ?? ""}
+        childId={childId}
         healthNotes={data.healthNotes}
         isStaff={isStaff}
       />

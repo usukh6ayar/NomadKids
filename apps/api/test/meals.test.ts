@@ -592,4 +592,140 @@ describe("the meal register", () => {
       expect(res.status).toBe(404);
     });
   });
+
+  /*
+    A family's note about their child's meals — the client's 2026-09-11 design.
+
+    ★ The one write in the product a guardian is the *intended* author of, so
+    these cases are about the opposite risk from usual: not "can a parent do a
+    teacher's job" but "does the parent-authored write still stop at their own
+    child".
+  */
+  describe("a family's meal notes", () => {
+    const NOTE = { date: "2026-03-04", body: "Сүүн бүтээгдэхүүн өгч болохгүй." };
+
+    it("a guardian writes one and reads it back", async () => {
+      const created = await authed(
+        request(server()).post(`/v1/children/${a.child.id}/meals/notes`),
+        parentA,
+      ).send(NOTE);
+
+      expect(created.status).toBe(201);
+      expect(created.body.body).toBe(NOTE.body);
+      expect(created.body.date).toBe("2026-03-04");
+
+      const read = await authed(
+        request(server()).get(
+          `/v1/children/${a.child.id}/meals/notes?from=2026-03-01&to=2026-03-31`,
+        ),
+        parentA,
+      );
+      expect(read.status).toBe(200);
+      expect(read.body).toHaveLength(1);
+    });
+
+    /** The point of the note: the kitchen and the teacher have to see it. */
+    it("the child's teacher reads it", async () => {
+      await authed(request(server()).post(`/v1/children/${a.child.id}/meals/notes`), parentA).send(
+        NOTE,
+      );
+
+      const res = await authed(
+        request(server()).get(
+          `/v1/children/${a.child.id}/meals/notes?from=2026-03-01&to=2026-03-31`,
+        ),
+        teacherA,
+      );
+      expect(res.status).toBe(200);
+      expect(res.body[0].body).toBe(NOTE.body);
+    });
+
+    it("★ a guardian of another child gets 404 writing one", async () => {
+      const res = await authed(
+        request(server()).post(`/v1/children/${a.child.id}/meals/notes`),
+        parentB,
+      ).send(NOTE);
+
+      expect(res.status).toBe(404);
+    });
+
+    it("★ a guardian of another child gets 404 reading them", async () => {
+      await authed(request(server()).post(`/v1/children/${a.child.id}/meals/notes`), parentA).send(
+        NOTE,
+      );
+
+      const res = await authed(
+        request(server()).get(
+          `/v1/children/${a.child.id}/meals/notes?from=2026-03-01&to=2026-03-31`,
+        ),
+        parentB,
+      );
+
+      // 404, not an empty list — an empty list would say the child exists.
+      expect(res.status).toBe(404);
+    });
+
+    it("★ a teacher from another kindergarten gets 404", async () => {
+      const teacherB = await login(app, b.teacherUser.username);
+
+      const res = await authed(
+        request(server()).get(
+          `/v1/children/${a.child.id}/meals/notes?from=2026-03-01&to=2026-03-31`,
+        ),
+        teacherB,
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it("refuses an empty note", async () => {
+      const res = await authed(
+        request(server()).post(`/v1/children/${a.child.id}/meals/notes`),
+        parentA,
+      ).send({ date: "2026-03-04", body: "   " });
+
+      expect(res.status).toBe(400);
+    });
+
+    /** The counter on screen is a courtesy; this is the limit. */
+    it("refuses a note over 500 characters", async () => {
+      const res = await authed(
+        request(server()).post(`/v1/children/${a.child.id}/meals/notes`),
+        parentA,
+      ).send({ date: "2026-03-04", body: "х".repeat(501) });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("keeps a second note rather than replacing the first", async () => {
+      await authed(request(server()).post(`/v1/children/${a.child.id}/meals/notes`), parentA).send(
+        NOTE,
+      );
+      await authed(request(server()).post(`/v1/children/${a.child.id}/meals/notes`), parentA).send({
+        ...NOTE,
+        body: "Өнөөдөр хоолны дуршил муутай байна.",
+      });
+
+      const res = await authed(
+        request(server()).get(
+          `/v1/children/${a.child.id}/meals/notes?from=2026-03-01&to=2026-03-31`,
+        ),
+        parentA,
+      );
+      expect(res.body).toHaveLength(2);
+    });
+
+    it("returns only the days asked for", async () => {
+      await authed(request(server()).post(`/v1/children/${a.child.id}/meals/notes`), parentA).send(
+        NOTE,
+      );
+
+      const res = await authed(
+        request(server()).get(
+          `/v1/children/${a.child.id}/meals/notes?from=2026-04-01&to=2026-04-30`,
+        ),
+        parentA,
+      );
+      expect(res.body).toEqual([]);
+    });
+  });
 });
