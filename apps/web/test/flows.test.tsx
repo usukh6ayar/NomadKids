@@ -194,7 +194,14 @@ describe("recording an observation", () => {
     await user.click(screen.getByLabelText(/Эцэг эх харах боломжтой/));
     await user.click(screen.getByRole("button", { name: "Хадгалах" }));
 
-    await waitFor(() => expect(screen.getByText("Ажиглалт хадгалагдлаа.")).toBeInTheDocument());
+    /*
+      ★ Saving leaves the form rather than confirming on it.
+
+      The confirmation card existed to host the photo uploader, which the note
+      form now carries itself — so there is nothing left to stay for, and the
+      teacher lands back on the list their note is now in.
+    */
+    await waitFor(() => expect(ROUTER.push).toHaveBeenCalled());
 
     const post = calls.find((c) => c.method === "POST" && c.url.includes("/observations"));
     expect(post?.body).toMatchObject({ typeId: TYPE_ID, visibleToParents: true });
@@ -668,14 +675,54 @@ describe("the term report", () => {
     endsOn: "2026-12-31",
   };
 
-  function stubFor(role: "TEACHER" | "PARENT", report: Record<string, unknown>) {
+  const NOTE_IN_TERM = {
+    id: "77777777-7777-4777-8777-000000000001",
+    childId: CHILD_ID,
+    observedOn: "2026-10-14",
+    source: "TEACHER",
+    reviewStatus: "APPROVED",
+    visibleToParents: false,
+    activityName: "Чөлөөт тоглоом",
+    situation: "Блокоор цамхаг барив",
+    type: { id: TYPE_ID, name: "Өдөр тутмын ажиглалт", code: "daily" },
+    media: [],
+  };
+
+  /** Outside the term's dates, so the picker must not offer it. */
+  const NOTE_OUT_OF_TERM = {
+    ...NOTE_IN_TERM,
+    id: "77777777-7777-4777-8777-000000000002",
+    observedOn: "2026-05-02",
+    situation: "Өмнөх улирлын тэмдэглэл",
+  };
+
+  function stubFor(
+    role: "TEACHER" | "PARENT",
+    report: Record<string, unknown>,
+    notes: Record<string, unknown>[] = [],
+  ) {
     // Order matters: `stubApi` matches by startsWith, so the term-report stub
     // has to come before the child detail one it would otherwise be swallowed
     // by. The terms request is `/kindergartens/:id/terms`, not `/terms`.
     return stubApi([
       { path: "/auth/me", body: sessionFor([role]) },
       { path: `/children/${CHILD_ID}/term-report`, body: report },
+      {
+        path: `/children/${CHILD_ID}/observations`,
+        body: { items: notes, page: 1, pageSize: 25, total: notes.length, totalPages: 1 },
+      },
+      { path: `/children/${CHILD_ID}/media`, body: emptyMediaPage },
       { path: `/children/${CHILD_ID}`, body: child },
+      {
+        path: "/kindergartens/33333333-3333-4333-8333-333333333333/assessment-config",
+        body: {
+          domains: [
+            { id: DOMAIN_ID, name: "Хэл яриа, харилцаа", order: 3 },
+            { id: "88888888-8888-4888-8888-000000000002", name: "Танин мэдэхүй", order: 4 },
+          ],
+          levels: [],
+        },
+      },
       { path: "/kindergartens/", body: [TERM] },
     ]);
   }
@@ -731,6 +778,121 @@ describe("the term report", () => {
 
     expect(await screen.findByText(/баталгаажсан тул засах боломжгүй/)).toBeInTheDocument();
     expect(screen.queryByLabelText("Давуу тал")).not.toBeInTheDocument();
+  });
+
+  /*
+    ★ The notes are ticked, and the ticking is part of the form.
+
+    Client, 2026-09-11: "өмнө нь бичсэн хэсгүүдээ чекэлж сонгож байгаад тэдгээр
+    дээрээ багцлан дүгнэлт гаргадаг." The citation saves with the paragraphs,
+    under the one Ноорог хадгалах press.
+  */
+  it("ticks a note and sends it with the report", async () => {
+    const user = userEvent.setup();
+    setParams({ childId: CHILD_ID });
+    const { calls } = stubFor("TEACHER", { exists: true, status: "DRAFT" }, [NOTE_IN_TERM]);
+
+    renderWithProviders(<TermReportPage />);
+
+    // Scoped: the Ажиглалт tab at the foot lists the same notes.
+    const picker = await screen.findByRole("group", { name: "Дүгнэлтэд авах тэмдэглэлүүд" });
+    await user.click(await within(picker).findByText("Блокоор цамхаг барив"));
+    await user.click(screen.getByRole("button", { name: /Ноорог хадгалах/ }));
+
+    await waitFor(() => expect(calls.some((c) => c.method === "PUT")).toBe(true));
+    const put = calls.find((c) => c.method === "PUT")?.body as Record<string, unknown>;
+    expect(put.observationIds).toEqual([NOTE_IN_TERM.id]);
+  });
+
+  /** The term bounds the list, so last term's notes are not on offer. */
+  it("offers only the notes inside the chosen term", async () => {
+    setParams({ childId: CHILD_ID });
+    stubFor("TEACHER", { exists: true, status: "DRAFT" }, [NOTE_IN_TERM, NOTE_OUT_OF_TERM]);
+
+    renderWithProviders(<TermReportPage />);
+
+    const picker = await screen.findByRole("group", { name: "Дүгнэлтэд авах тэмдэглэлүүд" });
+    expect(await within(picker).findByText("Блокоор цамхаг барив")).toBeInTheDocument();
+    expect(within(picker).queryByText("Өмнөх улирлын тэмдэглэл")).not.toBeInTheDocument();
+  });
+
+  /*
+    ★ The strand goes to the server, because a note's list shape carries no
+    domains — `?domainId=` is the only way to ask the question.
+  */
+  it("asks the server for one strand when the filter is set", async () => {
+    const user = userEvent.setup();
+    setParams({ childId: CHILD_ID });
+    const { calls } = stubFor("TEACHER", { exists: true, status: "DRAFT" }, [NOTE_IN_TERM]);
+
+    renderWithProviders(<TermReportPage />);
+    await screen.findByRole("group", { name: "Дүгнэлтэд авах тэмдэглэлүүд" });
+
+    await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
+
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.includes(`domainId=${DOMAIN_ID}`))).toBe(true),
+    );
+  });
+
+  /** A saved report reopens with its citation already ticked. */
+  it("reopens with the notes it already cites", async () => {
+    setParams({ childId: CHILD_ID });
+    stubFor(
+      "TEACHER",
+      {
+        exists: true,
+        status: "DRAFT",
+        observations: [{ id: NOTE_IN_TERM.id, observedOn: NOTE_IN_TERM.observedOn }],
+      },
+      [NOTE_IN_TERM],
+    );
+
+    renderWithProviders(<TermReportPage />);
+
+    const picker = await screen.findByRole("group", { name: "Дүгнэлтэд авах тэмдэглэлүүд" });
+    expect(await within(picker).findByText(/сонгосон 1/)).toBeInTheDocument();
+  });
+
+  /*
+    ★ Ажиглалт · Дүгнэлт — the client's two sections at the foot.
+
+    "Ажиглалт дээр дарахаар бичсэн ажиглалтууд. Харин дүгнэлтээр дарахаар
+    нэгдсэн тайлан бичсэн дүгнэлтүүд гарч ирнэ."
+  */
+  it("puts the notes and the conclusions behind two tabs at the foot", async () => {
+    const user = userEvent.setup();
+    setParams({ childId: CHILD_ID });
+    stubFor("TEACHER", { exists: true, status: "FINAL", strengths: "Хамт олонтойгоо сайн" }, [
+      NOTE_IN_TERM,
+    ]);
+
+    renderWithProviders(<TermReportPage />);
+
+    const tabs = await screen.findByRole("tablist", { name: "Ажиглалт ба дүгнэлт" });
+    expect(within(tabs).getByRole("tab", { name: "Ажиглалт" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    await user.click(within(tabs).getByRole("tab", { name: "Дүгнэлт" }));
+
+    const panel = await screen.findByRole("tabpanel", { name: "Дүгнэлт" });
+    expect(within(panel).getByText("1. I улирал")).toBeInTheDocument();
+    expect(within(panel).getByText("Баталгаажсан")).toBeInTheDocument();
+  });
+
+  it("says so when no conclusion has been written yet", async () => {
+    const user = userEvent.setup();
+    setParams({ childId: CHILD_ID });
+    stubFor("TEACHER", { exists: false, status: null }, [NOTE_IN_TERM]);
+
+    renderWithProviders(<TermReportPage />);
+
+    const tabs = await screen.findByRole("tablist", { name: "Ажиглалт ба дүгнэлт" });
+    await user.click(within(tabs).getByRole("tab", { name: "Дүгнэлт" }));
+
+    expect(await screen.findByText("Дүгнэлт бичигдээгүй байна")).toBeInTheDocument();
   });
 });
 
