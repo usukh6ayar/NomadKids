@@ -1,7 +1,17 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowDown, ArrowUp, ChefHat, ImagePlus, PencilLine, Plus, Trash2 } from "lucide-react";
+import { useState, type MutableRefObject, type ReactNode } from "react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Check,
+  ChefHat,
+  Eye,
+  ImagePlus,
+  PencilLine,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import Link from "next/link";
 import { MEAL_KIND_LABEL, type MealKind, type MenuDish } from "@kinder/contracts";
 import type { EsisFoodProduct } from "@/components/esis/use-esis-food-products";
@@ -341,9 +351,13 @@ export function MenuDishEditor({
   onChange,
   onSave,
   onCancel,
+  onPreview,
   saving,
   error,
   kitchen,
+  chrome = "full",
+  addRowRef,
+  footer,
 }: {
   draftDishes: DishDraft[];
   onChange: (next: DishDraft[]) => void;
@@ -351,11 +365,24 @@ export function MenuDishEditor({
   /** Omit where there is no separate read state to fall back to — the
    * cook's page is always in this form, so it has no "Цуцлах". */
   onCancel?: () => void;
+  /** Drawn only with `chrome="none"` — the day screen's own footer. */
+  onPreview?: () => void;
   saving: boolean;
   error: string | null;
   /** Shows the технологийн карт picker and the dish photo upload. Omit for a
    * quick edit that has neither reference data nor a reason to offer them. */
   kitchen?: KitchenOptions;
+  /*
+    ★ The screen supplies its own "add" and its own footer.
+
+    The cook's day screen draws "+ Хоолны цаг нэмэх" in its toolbar and
+    Уръдчилан харах · Цуцлах · Хадгалах along its foot, which is where the
+    client drew them. `chrome="none"` renders the cards and nothing else;
+    `addRowRef` is how the toolbar reaches the row-adding this component owns.
+  */
+  chrome?: "full" | "none";
+  addRowRef?: MutableRefObject<(() => void) | null>;
+  footer?: ReactNode;
 }) {
   const esisProducts = kitchen?.esisProducts ?? [];
   /* Either source makes "Бэлэн хоол" a real choice. Before ESIS joined the
@@ -414,6 +441,9 @@ export function MenuDishEditor({
     onChange([...draftDishes, newDraft(lastKind, hasReadyDishes)]);
   }
 
+  // Handed up on every render, so the closure the toolbar calls is never stale.
+  if (addRowRef) addRowRef.current = addRow;
+
   return (
     <form
       onSubmit={(e) => {
@@ -432,12 +462,14 @@ export function MenuDishEditor({
         evening meal meant scrolling past breakfast, lunch and both snacks to
         find the control, then scrolling back to the new row.
       */}
-      <div className="flex justify-end">
-        <Button type="button" variant="secondary" size="sm" onClick={addRow}>
-          <Plus size={16} aria-hidden="true" />
-          Хоолны цаг нэмэх
-        </Button>
-      </div>
+      {chrome === "full" ? (
+        <div className="flex justify-end">
+          <Button type="button" variant="secondary" size="sm" onClick={addRow}>
+            <Plus size={16} aria-hidden="true" />
+            Хоолны цаг нэмэх
+          </Button>
+        </div>
+      ) : null}
 
       {draftDishes.length === 0 ? (
         <p className="text-body text-muted">Хоол алга. Доор нэмнэ үү.</p>
@@ -908,16 +940,56 @@ export function MenuDishEditor({
         </div>
       )}
 
-      <div className="flex gap-2">
-        <Button type="submit" size="sm" disabled={saving}>
-          {saving ? "Хадгалж байна…" : "Хадгалах"}
-        </Button>
-        {onCancel ? (
-          <Button type="button" variant="secondary" size="sm" onClick={onCancel} disabled={saving}>
-            Цуцлах
+      {footer}
+
+      {chrome === "full" ? (
+        <div className="flex gap-2">
+          <Button type="submit" size="sm" disabled={saving}>
+            {saving ? "Хадгалж байна…" : "Хадгалах"}
           </Button>
-        ) : null}
-      </div>
+          {onCancel ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={onCancel}
+              disabled={saving}
+            >
+              Цуцлах
+            </Button>
+          ) : null}
+        </div>
+      ) : (
+        /*
+          ★ The client's footer: preview on the left, the pair on the right.
+
+          Уръдчилан харах leaves the editor for the family's own view — the
+          only honest preview there is, since that screen is literally what a
+          parent opens.
+        */
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border-soft pt-3">
+          {onPreview ? (
+            <Button type="button" variant="secondary" onClick={onPreview} disabled={saving}>
+              <Eye size={16} aria-hidden="true" />
+              Уръдчилан харах
+            </Button>
+          ) : (
+            <span />
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            {onCancel ? (
+              <Button type="button" variant="secondary" onClick={onCancel} disabled={saving}>
+                Цуцлах
+              </Button>
+            ) : null}
+            <Button type="submit" disabled={saving}>
+              <Check size={16} aria-hidden="true" />
+              {saving ? "Хадгалж байна…" : "Хадгалах"}
+            </Button>
+          </div>
+        </div>
+      )}
     </form>
   );
 }

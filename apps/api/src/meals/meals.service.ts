@@ -200,6 +200,9 @@ export class MealsService {
       dishes,
       dto.totalCalories ?? null,
       actor.userId,
+      // Sent by the form on every save, so an emptied box clears the column;
+      // omitted by the import, which leaves whatever the cook typed.
+      dto.note === undefined ? undefined : dto.note?.trim() || null,
     );
   }
 

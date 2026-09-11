@@ -1057,7 +1057,7 @@ model ChildAgeProfile {
   /// short, per-age list only ever read and written whole, with nothing else
   /// pointing at it. The photograph itself is an ordinary album row, so it
   /// appears under `category=FAMILY` for this age without a second write.
-  familyMemories         Json     @default("[]")
+  familyMemories Json @default("[]")
 
   parentNote  String?
   teacherNote String?
@@ -2820,6 +2820,10 @@ model MenuDay {
   /// never get one, and a blank value must read as "not entered" rather than
   /// "zero calories".
   totalCalories  Int?
+  /// "Нэмэлт мэдээлэл" — the kitchen's own note about the day, from the editor's
+  /// footer. A dish already has a `note`; this is about the day itself, which
+  /// is where "бага хэмжээгээр өгсөн" or "цэс өөрчлөгдсөн" belongs.
+  note           String?
   status         MenuDayStatus @default(DRAFT)
 
   createdById  String?   @db.Uuid

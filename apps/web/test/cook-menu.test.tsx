@@ -191,6 +191,8 @@ describe("the cook's weekly menu", () => {
 
     const put = calls.find((c) => c.method === "PUT")!;
     expect(put.body).toEqual({
+      // The day's own note goes up with its dishes — empty here.
+      note: null,
       dishes: [
         {
           name: "Гурилтай шөл",
@@ -296,6 +298,8 @@ describe("the cook's weekly menu", () => {
 
     const put = calls.find((c) => c.method === "PUT")!;
     expect(put.body).toEqual({
+      // The day's own note goes up with its dishes — empty here.
+      note: null,
       dishes: [
         {
           name: "Гурилтай шөл",
@@ -670,6 +674,7 @@ describe("the menu as a spreadsheet", () => {
 
     expect(await screen.findByText("Хоолны цэс засах")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Жагсаалтад буцах" })).toBeInTheDocument();
+    // The pager is in the page header now, where the client drew it.
     expect(screen.getByRole("button", { name: "Дараах өдөр" })).toBeInTheDocument();
     // The week's own controls are not on the day screen.
     expect(screen.queryByRole("radio", { name: "Хүснэгтээр" })).not.toBeInTheDocument();
@@ -698,5 +703,77 @@ describe("the menu as a spreadsheet", () => {
 
     await user.click(await screen.findByRole("button", { name: "Цуцлах" }));
     expect(screen.queryByText("Хоолны цэс засах")).not.toBeInTheDocument();
+  });
+
+  /*
+    ★ The day screen, against the client's drawing, top to bottom.
+
+    Title, long date, day pager, the three toolbar buttons, the cards, the
+    day's note, and a footer of Уръдчилан харах · Цуцлах · Хадгалах. Asserted
+    as one case because what the client reported was the *shape*, not any one
+    control: "яагаад ийм болохгүй байна вэ".
+  */
+  it("draws the day screen the way the client drew it", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+    await openList(user);
+
+    // Header
+    expect(await screen.findByText("Хоолны цэс засах")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Өмнөх өдөр" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Дараах өдөр" })).toBeInTheDocument();
+    // The week's pager is not also on screen.
+    expect(screen.queryByRole("button", { name: "Өмнөх долоо хоног" })).not.toBeInTheDocument();
+
+    // Toolbar
+    expect(screen.getByRole("button", { name: "Жагсаалтад буцах" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Excel оруулах" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Хоолны цаг нэмэх" })).toBeInTheDocument();
+
+    // The day's own note, and the footer
+    expect(screen.getByLabelText("Нэмэлт мэдээлэл")).toBeInTheDocument();
+    expect(screen.getByText("0/500")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Уръдчилан харах/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Цуцлах" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Хадгалах/ })).toBeInTheDocument();
+  });
+
+  /** The toolbar's + presses the editor's own add, through the ref it hands up. */
+  it("adds a sitting from the toolbar", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+    await openList(user);
+
+    await user.click(await screen.findByRole("button", { name: "Хоолны цаг нэмэх" }));
+    expect(screen.getAllByLabelText("Хоолны нэр").length).toBeGreaterThan(0);
+  });
+
+  it("sends the day's note with the save", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubWeek();
+    renderWithProviders(<MenuPage />);
+    await openList(user);
+
+    await user.type(await screen.findByLabelText("Нэмэлт мэдээлэл"), "Цэс өөрчлөгдсөн");
+    await user.click(screen.getByRole("button", { name: /Хадгалах/ }));
+
+    await waitFor(() => expect(calls.some((call) => call.method === "PUT")).toBe(true));
+    const put = calls.find((call) => call.method === "PUT")!;
+    expect((put.body as Record<string, unknown>).note).toBe("Цэс өөрчлөгдсөн");
+  });
+
+  /** Уръдчилан харах leaves for the family's own view — the only honest preview. */
+  it("previews by showing the family's screen", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+    await openList(user);
+
+    await user.click(await screen.findByRole("button", { name: /Уръдчилан харах/ }));
+
+    expect(await screen.findByRole("tab", { name: "Өнөөдөр" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Цэс засах" })).toBeInTheDocument();
   });
 });

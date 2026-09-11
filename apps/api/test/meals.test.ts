@@ -603,6 +603,73 @@ describe("the meal register", () => {
     teacher's job" but "does the parent-authored write still stop at their own
     child".
   */
+  /*
+    "Нэмэлт мэдээлэл" on the day itself — the client's 2026-09-11 drawing puts
+    it under the cards on the edit screen. A dish already had a note; this is
+    about the day.
+  */
+  describe("the day's own note", () => {
+    it("saves and reads back", async () => {
+      const saved = await authed(
+        request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-03-02`),
+        cookA,
+      ).send({ dishes: [{ name: "Шөл", allergenTags: [] }], note: "Цэс өөрчлөгдсөн" });
+
+      expect(saved.status).toBe(200);
+      expect(saved.body.note).toBe("Цэс өөрчлөгдсөн");
+    });
+
+    it("clears it when the box is emptied", async () => {
+      const put = () =>
+        authed(
+          request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-03-02`),
+          cookA,
+        );
+
+      await put().send({ dishes: [{ name: "Шөл", allergenTags: [] }], note: "Анхны тэмдэглэл" });
+      const cleared = await put().send({ dishes: [{ name: "Шөл", allergenTags: [] }], note: "" });
+
+      expect(cleared.body.note).toBeNull();
+    });
+
+    /*
+      ★ The import does not send the field, and must not wipe what a cook typed.
+      `undefined` leaves it alone; only the form's explicit empty clears it.
+    */
+    it("survives an Excel import of the same day", async () => {
+      await authed(
+        request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-03-02`),
+        cookA,
+      ).send({ dishes: [{ name: "Шөл", allergenTags: [] }], note: "Хадгалагдах ёстой" });
+
+      const ExcelJS = (await import("exceljs")).default;
+      const book = new ExcelJS.Workbook();
+      const sheet = book.addWorksheet("Хоолны цэс");
+      sheet.addRow(["Огноо", "Гараг", "Хоолны цаг", "Хоолны нэр"]);
+      sheet.addRow(["2026-03-02", "Даваа", "Өглөөний цай", "Тараг"]);
+      const file = Buffer.from(await book.xlsx.writeBuffer());
+
+      await authed(
+        request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/menu/import?dryRun=false`),
+        cookA,
+      ).attach("file", file, "menu.xlsx");
+
+      const day = await db.menuDay.findFirstOrThrow({
+        where: { kindergartenId: a.kindergarten.id },
+      });
+      expect(day.note).toBe("Хадгалагдах ёстой");
+    });
+
+    it("refuses a note over 500 characters", async () => {
+      const res = await authed(
+        request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-03-02`),
+        cookA,
+      ).send({ dishes: [{ name: "Шөл", allergenTags: [] }], note: "х".repeat(501) });
+
+      expect(res.status).toBe(400);
+    });
+  });
+
   describe("a family's meal notes", () => {
     const NOTE = { date: "2026-03-04", body: "Сүүн бүтээгдэхүүн өгч болохгүй." };
 

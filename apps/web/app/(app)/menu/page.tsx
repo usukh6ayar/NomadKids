@@ -16,7 +16,7 @@ import {
   Plus,
   Table2,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState, type MutableRefObject } from "react";
 import { z } from "zod";
 import {
   ingredientUnitSchema,
@@ -33,6 +33,7 @@ import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Field, Textarea } from "@/components/ui/field";
 import { Menu, type MenuItem } from "@/components/ui/menu";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
@@ -222,6 +223,15 @@ function WeeklyMenu() {
     underneath was answering two questions at once.
   */
   const [openDay, setOpenDay] = useState<number | null>(null);
+  /*
+    ★ The day card hands its "add a sitting" up, so the toolbar can press it.
+
+    A ref rather than lifting the draft: the draft, its dirty flag and its save
+    all belong to the open day and moving them into this component would make
+    the week's screen own a day's form. One callback crosses the boundary and
+    nothing else.
+  */
+  const addRowRef = useRef<(() => void) | null>(null);
   const weekDates = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   /*
     ★ Seven for reading, five for editing.
@@ -327,10 +337,52 @@ function WeeklyMenu() {
         puts the first one on screen and the second behind a control.
       */}
       <PageHeader
-        title="Хоолны цэс"
-        lede={editing ? "7 хоногийн хоолны цэсийг удирдах" : undefined}
+        title={openDay === null ? "Хоолны цэс" : "Хоолны цэс засах"}
+        lede={
+          openDay !== null
+            ? `${formatLongDate(activeDate)}, ${weekdayLabel(activeDate)} гараг`
+            : editing
+              ? "7 хоногийн хоолны цэсийг удирдах"
+              : undefined
+        }
         actions={
-          !editing ? null : (
+          !editing ? null : openDay !== null ? (
+            /*
+              ★ The day's pager, in the header — the client's drawing puts
+              `‹ 2026.09.11 ›` at the top right of the day screen, not inside
+              the form, where it was a second header on one screen.
+            */
+            <div className="flex items-center gap-1 rounded-control border border-border bg-surface px-1 py-0.5">
+              <button
+                type="button"
+                aria-label="Өмнөх өдөр"
+                disabled={openDay === 0}
+                onClick={() => {
+                  setSelectedOffset(openDay - 1);
+                  setOpenDay(openDay - 1);
+                }}
+                className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink disabled:opacity-40"
+              >
+                <ChevronLeft size={18} aria-hidden="true" />
+              </button>
+              <span className="inline-flex items-center gap-2 px-1 text-body font-medium tabular-nums text-ink">
+                <CalendarDays size={16} aria-hidden="true" className="text-muted" />
+                {formatDate(activeDate)}
+              </span>
+              <button
+                type="button"
+                aria-label="Дараах өдөр"
+                disabled={openDay >= weekDates.length - 1}
+                onClick={() => {
+                  setSelectedOffset(openDay + 1);
+                  setOpenDay(openDay + 1);
+                }}
+                className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink disabled:opacity-40"
+              >
+                <ChevronRight size={18} aria-hidden="true" />
+              </button>
+            </div>
+          ) : (
             <div className="flex items-center gap-1 rounded-control border border-border bg-surface px-1 py-0.5">
               <button
                 type="button"
@@ -511,6 +563,16 @@ function WeeklyMenu() {
                 <FileSpreadsheet size={16} aria-hidden="true" />
                 Excel оруулах
               </Button>
+
+              {/*
+                ★ In the toolbar, where the client drew it. The editor still
+                owns the row it adds — this only presses the same button,
+                through a ref the card hands up.
+              */}
+              <Button variant="secondary" size="sm" onClick={() => addRowRef.current?.()}>
+                <Plus size={16} aria-hidden="true" />
+                Хоолны цаг нэмэх
+              </Button>
             </div>
           ) : null}
         </div>
@@ -606,26 +668,15 @@ function WeeklyMenu() {
           recipes={recipes.data ?? []}
           isKitchen={isKitchen}
           canEdit={canEdit}
-          onPreviousDay={
-            openDay > 0
-              ? () => {
-                  setSelectedOffset(openDay - 1);
-                  setOpenDay(openDay - 1);
-                }
-              : undefined
-          }
-          onNextDay={
-            openDay < weekDates.length - 1
-              ? () => {
-                  setSelectedOffset(openDay + 1);
-                  setOpenDay(openDay + 1);
-                }
-              : undefined
-          }
           /* Цуцлах leaves the day rather than reverting it — the drawing's
              footer pairs it with Хадгалах, and the draft is per-day state that
              unmounting discards anyway. */
           onCancel={() => setOpenDay(null)}
+          onPreview={() => {
+            setOpenDay(null);
+            setEditing(false);
+          }}
+          addRowRef={addRowRef}
         />
       ) : null}
     </div>
@@ -657,9 +708,9 @@ function MenuDayCard({
   recipes,
   isKitchen,
   canEdit,
-  onPreviousDay,
-  onNextDay,
   onCancel,
+  onPreview,
+  addRowRef,
 }: {
   kindergartenId: string;
   queryFrom: string;
@@ -671,16 +722,18 @@ function MenuDayCard({
   isKitchen: boolean;
   /** COOK or TEACHER — see `WeeklyMenu`'s own note. */
   canEdit: boolean;
-  /** Absent at the ends of the week, which is what disables the arrow. */
-  onPreviousDay?: () => void;
-  onNextDay?: () => void;
   /** Leaves the day. Drawn as "Цуцлах" beside "Хадгалах". */
   onCancel?: () => void;
+  /** Shows the day as a family would read it — the drawing's "Уръдчилан харах". */
+  onPreview?: () => void;
+  /** Handed the card's "add a sitting", so the page toolbar can press it. */
+  addRowRef?: MutableRefObject<(() => void) | null>;
 }) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const esisProducts = useEsisFoodProducts();
   const [draftDishes, setDraftDishes] = useState<DishDraft[]>(() => toDraft(day?.dishes ?? []));
+  const [note, setNote] = useState(day?.note ?? "");
   const [dirty, setDirty] = useState(false);
 
   const refresh = () => {
@@ -693,7 +746,7 @@ function MenuDayCard({
     mutationFn: () =>
       mutate(`/kindergartens/${kindergartenId}/menu/${date}`, z.unknown(), {
         method: "PUT",
-        body: { dishes: fromDraft(draftDishes) },
+        body: { dishes: fromDraft(draftDishes), note: note.trim() || null },
       }),
     onSuccess: () => {
       toast.success(`${weekday} гарагийн цэс хадгалагдлаа.`);
@@ -751,55 +804,20 @@ function MenuDayCard({
   return (
     <Card pad="roomy" className="flex flex-col gap-3">
       {/*
-        ★ "Хоолны цэс засах" with the day it is editing — 2026-09-11, the
-        client's drawing.
-
-        The card said only the weekday ("Баасан") and put the date in small
-        grey text on the right, which on a phone is the one fact you cannot read
-        at arm's length. The heading now names what the screen is and the long
-        date sits under it, with Өмнөх/Дараах өдөр beside — a cook entering a
-        week walks days, not weeks.
+        ★ The badges alone — the heading, the date and the pager moved to the
+        page header, where the client drew them. Two headers on one screen was
+        the shape this replaces.
       */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="flex flex-wrap items-center gap-2 text-lead font-semibold text-ink">
-            Хоолны цэс засах
-            {day ? (
-              <Badge tone={isApproved ? "mint" : "neutral"}>
-                {isApproved ? "Батлагдсан" : "Ноорог"}
-              </Badge>
-            ) : null}
-            {day && !dirty ? <Badge tone="mint">Хадгалагдсан</Badge> : null}
-          </h2>
-          <p className="mt-0.5 text-caption text-muted">
-            {formatLongDate(date)}, {weekday} гараг
-          </p>
+      {day || (day && !dirty) ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {day ? (
+            <Badge tone={isApproved ? "mint" : "neutral"}>
+              {isApproved ? "Батлагдсан" : "Ноорог"}
+            </Badge>
+          ) : null}
+          {day && !dirty ? <Badge tone="mint">Хадгалагдсан</Badge> : null}
         </div>
-
-        <div className="flex items-center gap-1 rounded-control border border-border bg-surface px-1 py-0.5">
-          <button
-            type="button"
-            aria-label="Өмнөх өдөр"
-            disabled={!onPreviousDay}
-            onClick={() => onPreviousDay?.()}
-            className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink disabled:opacity-40"
-          >
-            <ChevronLeft size={18} aria-hidden="true" />
-          </button>
-          <span className="px-1 text-body font-medium tabular-nums text-ink">
-            {formatDate(date)}
-          </span>
-          <button
-            type="button"
-            aria-label="Дараах өдөр"
-            disabled={!onNextDay}
-            onClick={() => onNextDay?.()}
-            className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink disabled:opacity-40"
-          >
-            <ChevronRight size={18} aria-hidden="true" />
-          </button>
-        </div>
-      </div>
+      ) : null}
 
       {/*
         ★ The cross-check, RFP Module 2 — and the reason this screen reads the
@@ -883,6 +901,33 @@ function MenuDayCard({
           }}
           onSave={() => save.mutate()}
           onCancel={onCancel}
+          onPreview={onPreview}
+          chrome="none"
+          addRowRef={addRowRef}
+          footer={
+            /*
+              ★ "Нэмэлт мэдээлэл" — the day's own note, `MenuDay.note`.
+
+              A dish already had one; this is about the day, which is where
+              "цэс өөрчлөгдсөн" or "бага хэмжээгээр өгсөн" belongs. Added
+              2026-09-11 with the client's drawing, which puts it under the
+              cards and above the footer.
+            */
+            <Field label="Нэмэлт мэдээлэл" hint={`${note.length}/500`}>
+              {({ id }) => (
+                <Textarea
+                  id={id}
+                  rows={2}
+                  value={note}
+                  maxLength={500}
+                  onChange={(event) => {
+                    setNote(event.target.value);
+                    setDirty(true);
+                  }}
+                />
+              )}
+            </Field>
+          }
           saving={save.isPending}
           error={save.isError ? errorMessage(save.error) : null}
           /*

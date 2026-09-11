@@ -53,6 +53,8 @@ export const saveMenuDaySchema = z
     // A generous but real ceiling — catches a stray extra digit without
     // rejecting anything a kindergarten's own day of meals could plausibly be.
     totalCalories: z.number().int().min(0).max(5000).nullish(),
+    /** "Нэмэлт мэдээлэл" — 500 characters, which is what the box counts down. */
+    note: z.string().max(500).nullable().optional(),
   })
   .strict();
 export type SaveMenuDayDto = z.infer<typeof saveMenuDaySchema>;

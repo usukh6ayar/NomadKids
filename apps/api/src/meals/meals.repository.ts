@@ -58,14 +58,30 @@ export class MealsRepository {
     dishes: unknown,
     totalCalories: number | null,
     createdById: string,
+    /*
+      "Нэмэлт мэдээлэл" — the day's own note.
+
+      ★ `undefined` leaves it alone, `null` clears it. The Excel import writes a
+      day without one and must not wipe what a cook typed; the form always
+      sends the field, so an emptied box clears the column.
+    */
+    note?: string | null,
   ) {
     return this.prisma.menuDay.upsert({
       where: { kindergartenId_date: { kindergartenId, date } },
-      create: { kindergartenId, date, dishes: dishes as object, totalCalories, createdById },
+      create: {
+        kindergartenId,
+        date,
+        dishes: dishes as object,
+        totalCalories,
+        createdById,
+        note: note ?? null,
+      },
       update: {
         dishes: dishes as object,
         totalCalories,
         createdById,
+        ...(note === undefined ? {} : { note }),
         status: "DRAFT",
         approvedById: null,
         approvedAt: null,

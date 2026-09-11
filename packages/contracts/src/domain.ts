@@ -960,6 +960,8 @@ export const menuDaySchema = z.object({
   date: z.string(),
   dishes: z.array(menuDishSchema),
   totalCalories: z.number().int().nullish(),
+  /** "Нэмэлт мэдээлэл" — the kitchen's own note about the day. */
+  note: z.string().nullish(),
   status: menuDayStatusSchema,
   approvedAt: z.string().nullish(),
   consumedAt: z.string().nullish(),
