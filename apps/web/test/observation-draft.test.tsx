@@ -53,6 +53,17 @@ function routes() {
   return [
     { path: "/auth/me", body: sessionFor(["TEACHER"]) },
     { path: `/children/${CHILD}/observations/types`, body: TYPES },
+    /*
+      Before `/children/:id`, which carries no method and would otherwise
+      answer this POST with a child record — see `stubApi`, which returns the
+      first route whose path is a prefix.
+    */
+    {
+      path: `/children/${CHILD}/media`,
+      method: "POST",
+      body: { items: [], failed: [] },
+      status: 201,
+    },
     { path: `/children/${CHILD}`, body: CHILD_DETAIL },
     {
       path: `/kindergartens/${KINDERGARTEN_ID}/assessment-config`,
@@ -124,7 +135,7 @@ describe("Шинэ ажиглалт — ноорог", () => {
 
       const first = renderWithProviders(<NewObservationPage />);
 
-      const situation = await screen.findByLabelText("Ажиглагдсан байдал");
+      const situation = await screen.findByLabelText("Тэмдэглэл");
       await user.type(situation, "Цэцэрлэгийн талбайд");
 
       // The write is debounced, so the draft lands a moment after typing stops.
@@ -140,7 +151,7 @@ describe("Шинэ ажиглалт — ноорог", () => {
       stubApi(routes());
       renderWithProviders(<NewObservationPage />);
 
-      expect(await screen.findByLabelText("Ажиглагдсан байдал")).toHaveValue("Цэцэрлэгийн талбайд");
+      expect(await screen.findByLabelText("Тэмдэглэл")).toHaveValue("Цэцэрлэгийн талбайд");
     },
   );
 
@@ -152,7 +163,7 @@ describe("Шинэ ажиглалт — ноорог", () => {
       stubApi(routes());
 
       const first = renderWithProviders(<NewObservationPage />);
-      await user.type(await screen.findByLabelText("Хүүхэд юу хийсэн бэ?"), "Бөмбөг өнхрүүлэв");
+      await user.type(await screen.findByLabelText("Тэмдэглэл"), "Бөмбөг өнхрүүлэв");
       await waitFor(() =>
         expect(
           window.localStorage.getItem(`nomadkids:observation-draft:staff:${CHILD}`),
@@ -171,7 +182,7 @@ describe("Шинэ ажиглалт — ноорог", () => {
     stubApi(routes());
     renderWithProviders(<NewObservationPage />);
 
-    await screen.findByLabelText("Ажиглагдсан байдал");
+    await screen.findByLabelText("Тэмдэглэл");
     expect(screen.queryByText("Хадгалаагүй ноорог сэргээгдлээ.")).not.toBeInTheDocument();
   });
 
@@ -195,7 +206,7 @@ describe("Шинэ ажиглалт — ноорог", () => {
       ]);
 
       renderWithProviders(<NewObservationPage />);
-      await user.type(await screen.findByLabelText("Ажиглагдсан байдал"), "Хашаанд");
+      await user.type(await screen.findByLabelText("Тэмдэглэл"), "Хашаанд");
       const key = `nomadkids:observation-draft:staff:${CHILD}`;
       await waitFor(() => expect(window.localStorage.getItem(key)).toBeTruthy());
 
@@ -245,7 +256,7 @@ describe("Шинэ ажиглалт — ноорог", () => {
       ]);
 
       renderWithProviders(<NewObservationPage />);
-      await user.type(await screen.findByLabelText("Ажиглагдсан байдал"), "Богино тэмдэглэл");
+      await user.type(await screen.findByLabelText("Тэмдэглэл"), "Богино тэмдэглэл");
 
       // No `waitFor` on the draft: the point is to save while it is still armed.
       await user.click(screen.getByRole("button", { name: "Хадгалах" }));
@@ -289,7 +300,7 @@ describe("Шинэ ажиглалт — ноорог", () => {
     ]);
 
     renderWithProviders(<NewObservationPage />);
-    await user.type(await screen.findByLabelText("Ажиглагдсан байдал"), "Эхний ажиглалт");
+    await user.type(await screen.findByLabelText("Тэмдэглэл"), "Эхний ажиглалт");
     await waitFor(() => expect(window.localStorage.getItem(key)).toBeTruthy());
 
     await user.click(screen.getByRole("button", { name: "Хадгалах" }));
@@ -298,7 +309,7 @@ describe("Шинэ ажиглалт — ноорог", () => {
     await waitFor(() => expect(window.localStorage.getItem(key)).toBeNull());
 
     await user.click(await screen.findByRole("button", { name: "Дахин бичих" }));
-    await user.type(await screen.findByLabelText("Ажиглагдсан байдал"), "Хоёр дахь ажиглалт");
+    await user.type(await screen.findByLabelText("Тэмдэглэл"), "Хоёр дахь ажиглалт");
 
     await waitFor(() => expect(window.localStorage.getItem(key)).toContain("Хоёр дахь ажиглалт"));
   });
@@ -314,7 +325,7 @@ describe("Шинэ ажиглалт — ноорог", () => {
       ]);
 
       const parent = renderWithProviders(<NewObservationPage />);
-      await user.type(await screen.findByLabelText("Ажиглагдсан байдал"), "Гэртээ ном уншив");
+      await user.type(await screen.findByLabelText("Тэмдэглэл"), "Гэртээ ном уншив");
       await waitFor(() =>
         expect(
           window.localStorage.getItem(`nomadkids:observation-draft:parent:${CHILD}`),
@@ -327,7 +338,7 @@ describe("Шинэ ажиглалт — ноорог", () => {
       stubApi(routes());
       renderWithProviders(<NewObservationPage />);
 
-      expect(await screen.findByLabelText("Ажиглагдсан байдал")).toHaveValue("");
+      expect(await screen.findByLabelText("Тэмдэглэл")).toHaveValue("");
     },
   );
 });
@@ -364,7 +375,7 @@ describe("Шинэ ажиглалт — the form's own fields", () => {
     renderWithProviders(<NewObservationPage />);
 
     await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
-    await user.type(await screen.findByLabelText(/Ажиглагдсан байдал/), "Тэмдэглэл");
+    await user.type(await screen.findByLabelText("Тэмдэглэл"), "Тэмдэглэл");
     await user.click(screen.getByRole("button", { name: /Хадгалах/ }));
 
     await waitFor(() =>
@@ -386,7 +397,7 @@ describe("Шинэ ажиглалт — the form's own fields", () => {
     const api = stubNewObservation();
     renderWithProviders(<NewObservationPage />);
 
-    await user.type(await screen.findByLabelText(/Ажиглагдсан байдал/), "Тэмдэглэл");
+    await user.type(await screen.findByLabelText("Тэмдэглэл"), "Тэмдэглэл");
     await user.click(screen.getByRole("button", { name: /Хадгалах/ }));
 
     await waitFor(() => expect(api.calls.some((call) => call.method === "POST")).toBe(true));
@@ -401,9 +412,8 @@ describe("Шинэ ажиглалт — the form's own fields", () => {
     renderWithProviders(<NewObservationPage />);
 
     expect(await screen.findByText("0/1000")).toBeInTheDocument();
-    await user.type(screen.getByLabelText(/Ажиглагдсан байдал/), "Тэмдэглэл");
+    await user.type(screen.getByLabelText("Тэмдэглэл"), "Тэмдэглэл");
     expect(screen.getByText("9/1000")).toBeInTheDocument();
-    expect(screen.getByText("0/500")).toBeInTheDocument();
   });
 });
 
@@ -435,7 +445,9 @@ async function chooseIndicator(user: ReturnType<typeof userEvent.setup>, code: s
   // the control — so this waits for both to settle before pressing.
   await waitFor(() => expect(screen.getByLabelText("СҮД код")).toBeEnabled());
   await user.click(screen.getByLabelText("СҮД код"));
-  await user.click(await screen.findByRole("option", { name: code }));
+  // Matched on the prefix: an option reads `КОД — агуулга`, and which
+  // descriptor it carries depends on the level chosen above it.
+  await user.click(await screen.findByRole("option", { name: new RegExp(`^${code} — `) }));
 }
 
 describe("Шинэ ажиглалт — СҮД", () => {
@@ -453,21 +465,16 @@ describe("Шинэ ажиглалт — СҮД", () => {
   });
 
   it("preselects the level the child's age suggests", async () => {
-    const user = userEvent.setup();
     stubNewObservation();
     renderWithProviders(<NewObservationPage />);
-
-    await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
-    await chooseIndicator(user, "ХЯ1а");
 
     // Сараа was born 2021-04-02 and the suite runs in 2026 — five years old,
     // which the client's rule puts at IV.
     await waitFor(() =>
-      expect(
-        within(levelCards()).getByRole("radio", {
-          name: "IV түвшин Тогтвортой, бусдад үлгэрлэдэг",
-        }),
-      ).toHaveAttribute("aria-checked", "true"),
+      expect(within(levelCards()).getByRole("radio", { name: "IV түвшин" })).toHaveAttribute(
+        "aria-checked",
+        "true",
+      ),
     );
   });
 
@@ -483,33 +490,62 @@ describe("Шинэ ажиглалт — СҮД", () => {
     stubNewObservation();
     renderWithProviders(<NewObservationPage />);
 
-    await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
-    await chooseIndicator(user, "ХЯ1а");
     // The level is four cards now, not a select — see the design's own
     // reasoning: the four are a scale, and choosing one is a judgement about
     // where a child sits on it, which a control showing one at a time hides.
-    await user.click(within(levelCards()).getByRole("radio", { name: "II түвшин Дэмжлэгтэй" }));
+    // The group has to exist before `within` can look inside it, and the form
+    // paints after the child query resolves.
+    await screen.findByRole("radiogroup", { name: "Түвшин" });
+    await user.click(within(levelCards()).getByRole("radio", { name: "II түвшин" }));
 
-    expect(
-      within(levelCards()).getByRole("radio", { name: "II түвшин Дэмжлэгтэй" }),
-    ).toHaveAttribute("aria-checked", "true");
+    expect(within(levelCards()).getByRole("radio", { name: "II түвшин" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
   });
 
-  /** The descriptor is read back, so a teacher sees what they have claimed. */
-  it("shows the chosen descriptor", async () => {
+  /**
+   * ★ Every option spells out what its code means.
+   *
+   * 2026-09-11, "сүд кодуудын арын бичвэр текст бүрэн бичээд оруулаад өг". The
+   * codes are the client's own notation and there are seventy-one of them; a
+   * list of bare codes is a control a teacher cannot answer. It was a paragraph
+   * *below* the select, readable only after guessing.
+   *
+   * ★★ Which descriptor depends on the level chosen above, which is why the
+   * level comes first.
+   */
+  it("spells out each code's meaning at the level chosen", async () => {
     const user = userEvent.setup();
     stubNewObservation();
     renderWithProviders(<NewObservationPage />);
 
+    // Five years old, so IV — and IV's text is what the option should read.
     await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
-    await chooseIndicator(user, "ХЯ1а");
-    // The level is four cards now, not a select — see the design's own
-    // reasoning: the four are a scale, and choosing one is a judgement about
-    // where a child sits on it, which a control showing one at a time hides.
-    await user.click(within(levelCards()).getByRole("radio", { name: "II түвшин Дэмжлэгтэй" }));
+    await waitFor(() => expect(screen.getByLabelText("СҮД код")).toBeEnabled());
+    await user.click(screen.getByLabelText("СҮД код"));
 
-    expect(await screen.findByText("СҮД-ийн агуулга")).toBeInTheDocument();
-    expect(screen.getByText(/Хоёр дахь түвшний тайлбар/)).toBeInTheDocument();
+    expect(
+      await screen.findByRole("option", { name: "ХЯ1а — Дөрөв дэх түвшний тайлбар." }),
+    ).toBeInTheDocument();
+  });
+
+  it("re-reads the codes at a level the teacher moved to", async () => {
+    const user = userEvent.setup();
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    // The group has to exist before `within` can look inside it, and the form
+    // paints after the child query resolves.
+    await screen.findByRole("radiogroup", { name: "Түвшин" });
+    await user.click(within(levelCards()).getByRole("radio", { name: "II түвшин" }));
+    await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
+    await waitFor(() => expect(screen.getByLabelText("СҮД код")).toBeEnabled());
+    await user.click(screen.getByLabelText("СҮД код"));
+
+    expect(
+      await screen.findByRole("option", { name: "ХЯ1а — Хоёр дахь түвшний тайлбар." }),
+    ).toBeInTheDocument();
   });
 
   it("sends the code and the level together", async () => {
@@ -519,7 +555,7 @@ describe("Шинэ ажиглалт — СҮД", () => {
 
     await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
     await chooseIndicator(user, "ХЯ1а");
-    await user.type(screen.getByLabelText(/Ажиглагдсан байдал/), "Тэмдэглэл");
+    await user.type(screen.getByLabelText("Тэмдэглэл"), "Тэмдэглэл");
     await user.click(screen.getByRole("button", { name: /Хадгалах/ }));
 
     await waitFor(() =>
@@ -590,7 +626,7 @@ describe("Шинэ ажиглалт — the form's shape", () => {
     expect(time).toHaveValue("");
 
     await user.type(time, "10:30");
-    await user.type(screen.getByLabelText(/Ажиглагдсан байдал/), "Тэмдэглэл");
+    await user.type(screen.getByLabelText("Тэмдэглэл"), "Тэмдэглэл");
     await user.click(screen.getByRole("button", { name: /Хадгалах/ }));
 
     await waitFor(() =>
@@ -605,7 +641,7 @@ describe("Шинэ ажиглалт — the form's shape", () => {
     const api = stubNewObservation();
     renderWithProviders(<NewObservationPage />);
 
-    await user.type(await screen.findByLabelText(/Ажиглагдсан байдал/), "Тэмдэглэл");
+    await user.type(await screen.findByLabelText("Тэмдэглэл"), "Тэмдэглэл");
     await user.click(screen.getByRole("button", { name: /Хадгалах/ }));
 
     await waitFor(() => expect(api.calls.some((call) => call.method === "POST")).toBe(true));
@@ -614,23 +650,224 @@ describe("Шинэ ажиглалт — the form's shape", () => {
   });
 
   /**
-   * ★ The whole scale is on screen, with what each level means.
+   * ★ The whole scale is on screen, and it says nothing but the levels.
    *
    * A select shows one at a time and hides the thing being judged against;
-   * four cards put the scale in front of the teacher, which is what makes the
-   * choice a judgement rather than a guess.
+   * four cards put the scale in front of the teacher. What they no longer carry
+   * is a one-line gloss each — 2026-09-11, "түвшин гэдгээс өөр бичиг байж
+   * болохгүй" — so the row fits four across on a phone.
    */
-  it("shows all four levels with what each one means", async () => {
-    const user = userEvent.setup();
+  it("shows all four levels and nothing but the levels", async () => {
     stubNewObservation();
     renderWithProviders(<NewObservationPage />);
 
-    await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
-    await chooseIndicator(user, "ХЯ1а");
-
+    await screen.findByRole("radiogroup", { name: "Түвшин" });
     const cards = within(levelCards()).getAllByRole("radio");
     expect(cards).toHaveLength(4);
-    expect(within(levelCards()).getByText("Дэмжлэг их шаардлагатай")).toBeInTheDocument();
-    expect(within(levelCards()).getByText("Тогтвортой, бусдад үлгэрлэдэг")).toBeInTheDocument();
+    expect(cards.map((card) => card.textContent)).toEqual([
+      "I түвшин",
+      "II түвшин",
+      "III түвшин",
+      "IV түвшин",
+    ]);
+  });
+});
+
+/**
+ * What the form stopped asking for — the client's 2026-09-11 cut.
+ *
+ * ★ These are assertions that controls are *absent*, which is a weak kind of
+ * test on its own and the right kind here: the request was a deletion, and the
+ * way a deletion regresses is that somebody restores the field while adding
+ * something near it.
+ *
+ * The columns behind them are untouched. A note written before today still
+ * carries its Хүүхэд юу хийсэн бэ? and its Багшийн дүгнэлт, and
+ * `child-observations.tsx` still renders both — the form stopped collecting
+ * them, the product did not stop remembering them.
+ */
+describe("Шинэ ажиглалт — what it no longer asks", () => {
+  it("resolves the kind instead of asking for it", async () => {
+    const api = stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    await screen.findByLabelText("Тэмдэглэл");
+    expect(screen.queryByLabelText("Ажиглалтын төрөл")).not.toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /Хадгалах/ }));
+
+    await waitFor(() => expect(api.calls.some((call) => call.method === "POST")).toBe(true));
+    const body = api.calls.find((call) => call.method === "POST")?.body as Record<string, unknown>;
+    // Answered from the configured types, not left empty for the API to refuse.
+    expect(body.typeId).toBe(TYPE);
+  });
+
+  it("collects the writing in one box rather than five", async () => {
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    await screen.findByLabelText("Тэмдэглэл");
+    for (const label of [
+      "Ажиглагдсан байдал",
+      "Хүүхэд юу хийсэн бэ?",
+      "Хүүхдийн хэлсэн үг",
+      "Тайлбар",
+      "Дараагийн алхам",
+    ]) {
+      expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
+    }
+    expect(screen.queryByText("Юу болсон бэ?")).not.toBeInTheDocument();
+    expect(screen.queryByText("Багшийн дүгнэлт")).not.toBeInTheDocument();
+  });
+
+  it("sends only the one note field it now collects", async () => {
+    const user = userEvent.setup();
+    const api = stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    await user.type(await screen.findByLabelText("Тэмдэглэл"), "Хашаанд бөмбөг өнхрүүлэв");
+    await user.click(screen.getByRole("button", { name: /Хадгалах/ }));
+
+    await waitFor(() => expect(api.calls.some((call) => call.method === "POST")).toBe(true));
+    const body = api.calls.find((call) => call.method === "POST")?.body as Record<string, unknown>;
+    expect(body.situation).toBe("Хашаанд бөмбөг өнхрүүлэв");
+    for (const key of ["childDid", "childSaid", "teacherComment", "nextSteps"]) {
+      expect(body).not.toHaveProperty(key);
+    }
+  });
+});
+
+/**
+ * Photographs attached from the compose form itself.
+ *
+ * ★ The client's 2026-09-11 design puts them above Хадгалах, and that is the
+ * whole difficulty: `POST /children/:id/media` needs an `observationId`, which
+ * does not exist until the note is saved. So the form holds the files and
+ * uploads them on the way out of a successful save — one press, two requests,
+ * in that order.
+ *
+ * ★★ These assert on the request rather than on a thumbnail.
+ *
+ * jsdom has no decoder, so an `<img src="blob:…">` proves only that a URL was
+ * made. What matters is that the file a teacher picked reaches the media
+ * endpoint tagged with the note that was just written.
+ */
+describe("Шинэ ажиглалт — зураг", () => {
+  const SAVED = {
+    id: "dddddddd-dddd-4ddd-8ddd-000000000009",
+    childId: CHILD,
+    observedOn: "2026-09-11",
+    source: "TEACHER",
+    reviewStatus: "APPROVED",
+    visibleToParents: false,
+    media: [],
+  };
+
+  /** The POST route first, for the reason given in `routes()`. */
+  function savingRoutes() {
+    return [{ path: `/children/${CHILD}/observations`, method: "POST", body: SAVED }, ...routes()];
+  }
+
+  function photo(name: string) {
+    return new File(["\u0089PNG"], name, { type: "image/png" });
+  }
+
+  it("sends the photos picked on the form with the note that was just saved", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubApi(savingRoutes());
+
+    renderWithProviders(<NewObservationPage />);
+
+    await user.upload(await screen.findByLabelText("Нэмэх"), [photo("a.png"), photo("b.png")]);
+    expect(await screen.findByText("2/5")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
+
+    const upload = await waitFor(() => {
+      const found = calls.find((c) => c.url.endsWith("/media") && c.method === "POST");
+      expect(found).toBeTruthy();
+      return found!;
+    });
+
+    const form = upload.body as FormData;
+    // Tagged with the note, or the picture lands in the album unattached.
+    expect(form.get("observationId")).toBe(SAVED.id);
+    expect(form.get("purpose")).toBe("OBSERVATION");
+    expect((form.getAll("file") as File[]).map((f) => f.name)).toEqual(["a.png", "b.png"]);
+  });
+
+  /** The note, then the photograph — never the other way round. */
+  it("does not upload before the observation exists", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubApi(savingRoutes());
+
+    renderWithProviders(<NewObservationPage />);
+    await user.upload(await screen.findByLabelText("Нэмэх"), [photo("a.png")]);
+
+    expect(calls.some((c) => c.url.endsWith("/media"))).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
+
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith("/media"))).toBe(true));
+    const order = calls.filter((c) => c.method === "POST").map((c) => c.url);
+    expect(order.indexOf(`/children/${CHILD}/observations`)).toBeLessThan(
+      order.findIndex((url) => url.endsWith("/media")),
+    );
+  });
+
+  it("asks for no upload at all when no photo was picked", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubApi(savingRoutes());
+
+    renderWithProviders(<NewObservationPage />);
+    await screen.findByLabelText("Тэмдэглэл");
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
+
+    await screen.findByText("Ажиглалт хадгалагдлаа.");
+    expect(calls.some((c) => c.url.endsWith("/media"))).toBe(false);
+  });
+
+  it("takes a photo back out of the selection before the note is saved", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubApi(savingRoutes());
+
+    renderWithProviders(<NewObservationPage />);
+    await user.upload(await screen.findByLabelText("Нэмэх"), [photo("a.png"), photo("b.png")]);
+
+    await user.click(screen.getByRole("button", { name: "a.png — хасах" }));
+    expect(await screen.findByText("1/5")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
+
+    const upload = await waitFor(() => {
+      const found = calls.find((c) => c.url.endsWith("/media") && c.method === "POST");
+      expect(found).toBeTruthy();
+      return found!;
+    });
+    expect(((upload.body as FormData).getAll("file") as File[]).map((f) => f.name)).toEqual([
+      "b.png",
+    ]);
+  });
+
+  /*
+    Trimmed rather than refused: the cap exists to keep the note readable, and a
+    teacher who selected their whole camera roll should get five photographs and
+    a sentence, not an empty picker.
+  */
+  it("keeps five of a larger selection and says so", async () => {
+    const user = userEvent.setup();
+    stubApi(savingRoutes());
+
+    renderWithProviders(<NewObservationPage />);
+    await user.upload(
+      await screen.findByLabelText("Нэмэх"),
+      ["a", "b", "c", "d", "e", "f"].map((name) => photo(`${name}.png`)),
+    );
+
+    expect(await screen.findByText("5/5")).toBeInTheDocument();
+    expect(await screen.findByText("Хамгийн олондоо 5 зураг хавсаргана.")).toBeInTheDocument();
+    // Full, so there is nothing left to press.
+    expect(screen.queryByLabelText("Нэмэх")).not.toBeInTheDocument();
   });
 });

@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { Check, ChevronLeft, Users } from "lucide-react";
+import { ChevronLeft, Users } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { z } from "zod";
@@ -23,10 +23,12 @@ import { DAILY_ACTIVITIES } from "@/components/assessment/group-coverage";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { PORTFOLIO } from "@/lib/vocabulary";
-import { Card, SectionHeader } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ObservationPhotos } from "@/components/observations/observation-photos";
+import { ObservationPhotoPicker } from "@/components/observations/observation-photo-picker";
+import { uploadChildPhotos } from "@/components/media/photo-upload";
 import { ageInYears, formatAge, fullName, todayLocal } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { readDraft, useDraftAutosave } from "@/lib/use-form-draft";
@@ -43,24 +45,13 @@ const indicatorsSchema = z.array(curriculumIndicatorSchema);
 const LEVEL_NAME: Record<number, string> = { 1: "I", 2: "II", 3: "III", 4: "IV" };
 
 /**
- * What each level means, in a line — the client's own wording, 2026-09-11.
+ * The whole scale, drawn whether or not an indicator has been chosen.
  *
- * ★ Not read from `AssessmentLevel`, and that is the awkward part said out
- * loud.
- *
- * That table holds four labels a kindergarten may edit ("Дэмжлэгтэй",
- * "Хөгжиж буй" …) and they describe an *assessment*'s levels. These four
- * describe the curriculum's, they are the ministry's rather than the
- * kindergarten's, and the design writes them out beside each card. Reading the
- * editable labels here would let one kindergarten's wording change what the
- * national scale appears to mean.
+ * ★ Not read off the indicator's own rows any more. An indicator written only
+ * at II and III would otherwise draw two cards, and a teacher would be choosing
+ * from a scale whose shape changed under them as they picked codes.
  */
-const LEVEL_SUMMARY: Record<number, string> = {
-  1: "Дэмжлэг их шаардлагатай",
-  2: "Дэмжлэгтэй",
-  3: "Илүү даан гүйцэтгэдэг",
-  4: "Тогтвортой, бусдад үлгэрлэдэг",
-};
+const LEVELS = [1, 2, 3, 4] as const;
 
 /**
  * The level a child's age puts them at — client, 2026-09-11: 2→I, 3→II, 4→III,
@@ -96,10 +87,6 @@ interface ObservationDraft {
    */
   indicatorLevel: string;
   situation: string;
-  childDid: string;
-  childSaid: string;
-  teacherComment: string;
-  nextSteps: string;
   visibleToParents: boolean;
   includeInReport: boolean;
   [key: string]: string | boolean;
@@ -227,6 +214,27 @@ function NewObservationForm() {
    * quietly override the button just pressed.
    */
   const [typeId, setTypeId] = useState(searchParams.get("typeId") ?? draft?.typeId ?? "");
+
+  /*
+    ★ Resolved rather than asked for — 2026-09-11, "Ажиглалтын төрөл энийг хас".
+
+    Every route into this form names the kind: the hub's Шинэ тэмдэглэл tile and
+    the assessment sheet's type buttons both link with `?typeId=`, so the select
+    was a required field whose answer the screen already had. Removing it means
+    the one case it *was* load-bearing — an old bookmark, a link without the
+    parameter — has to be answered here instead, or Хадгалах would fail on a
+    field the teacher can no longer see.
+
+    `daily` first, then whatever the kindergarten configured first: the everyday
+    observation is the overwhelming majority of notes, and a kindergarten that
+    renamed or reordered its types still gets a real one rather than none.
+  */
+  useEffect(() => {
+    if (typeId) return;
+    const rows = types.data ?? [];
+    const fallback = rows.find((row) => row.code === "daily") ?? rows[0];
+    if (fallback) setTypeId(fallback.id);
+  }, [typeId, types.data]);
   // The date is not restored. A draft opened the next morning should be filed
   // under the day it is being written, not the day it was abandoned.
   const [observedOn, setObservedOn] = useState(todayLocal());
@@ -246,6 +254,27 @@ function NewObservationForm() {
   /** Whether the teacher has touched the level, which stops the age reclaiming it. */
   const [levelTouched, setLevelTouched] = useState(Boolean(draft?.indicatorLevel));
   const [switching, setSwitching] = useState(false);
+  /**
+   * Photographs chosen but not yet uploaded — the client's "Зураг / Видео
+   * (0/5)".
+   *
+   * ★ Held, not uploaded on pick, and deliberately outside the draft.
+   *
+   * The design attaches them before the note exists, and a photograph cannot
+   * be attached to an observation that has no id — so they wait here and go up
+   * behind the one Save press. `use-form-draft` persists to `localStorage`,
+   * which cannot hold a `File`: a restored draft brings back every word and no
+   * pictures, which is the honest half rather than a crash.
+   */
+  const [photos, setPhotos] = useState<File[]>([]);
+  /**
+   * Set while the photographs are going up, after the note itself has saved.
+   *
+   * The confirmation card says so, because the alternative is a teacher pressing
+   * Дуусгах two seconds into a five-photograph upload with nothing on screen
+   * suggesting anything is still happening.
+   */
+  const [uploading, setUploading] = useState(false);
 
   /*
     The chosen strand's indicators. Asked for only once a strand is chosen —
@@ -264,19 +293,17 @@ function NewObservationForm() {
   });
 
   const [situation, setSituation] = useState(draft?.situation ?? "");
-  const [childDid, setChildDid] = useState(draft?.childDid ?? "");
-  const [childSaid, setChildSaid] = useState(draft?.childSaid ?? "");
-  const [teacherComment, setTeacherComment] = useState(draft?.teacherComment ?? "");
-  const [nextSteps, setNextSteps] = useState(draft?.nextSteps ?? "");
   const [visibleToParents, setVisibleToParents] = useState(draft?.visibleToParents ?? false);
   const [includeInReport, setIncludeInReport] = useState(draft?.includeInReport ?? true);
 
   /*
    * ★ Only the text is persisted, plus the two visibility choices.
    *
-   * Photos are not: they are attached to an observation that already exists
-   * (`ObservationPhotos` runs after the save), so there is nothing to restore
-   * and a draft cannot hold a `File` anyway.
+   * Photos are not, and since 2026-09-11 that is a real loss rather than a
+   * non-issue: the form now holds a selection of its own. `localStorage` cannot
+   * hold a `File`, so a restored draft brings back every word and no pictures
+   * — the honest half, and the alternative is reading five photographs into
+   * base64 on every keystroke.
    */
   const { clear: clearDraft, resume: resumeDraft } = useDraftAutosave<ObservationDraft>(draftKey, {
     typeId,
@@ -286,10 +313,6 @@ function NewObservationForm() {
     indicatorId,
     indicatorLevel,
     situation,
-    childDid,
-    childSaid,
-    teacherComment,
-    nextSteps,
     visibleToParents,
     includeInReport,
   });
@@ -310,8 +333,6 @@ function NewObservationForm() {
           body: {
             observedOn,
             situation: optional(situation),
-            childDid: optional(childDid),
-            childSaid: optional(childSaid),
           },
         });
       }
@@ -337,10 +358,6 @@ function NewObservationForm() {
           ...(indicatorId ? { indicatorId } : {}),
           ...(indicatorId && indicatorLevel ? { indicatorLevel: Number(indicatorLevel) } : {}),
           situation: optional(situation),
-          childDid: optional(childDid),
-          childSaid: optional(childSaid),
-          teacherComment: optional(teacherComment),
-          nextSteps: optional(nextSteps),
           visibleToParents,
           includeInReport,
         },
@@ -352,7 +369,7 @@ function NewObservationForm() {
         this pass.
 
         Saving replaces the form with a confirmation card that also says what
-        to do next ("Хүсвэл зураг хавсаргана уу"), and the photo uploader
+        to do next ("Хүсвэл нэмж зураг хавсаргана уу"), and the photo uploader
         appears under it. A toast would be the same sentence twice, two inches
         apart. `toast.ts` makes this argument the other way round for errors:
         the one that is actionable stays inline.
@@ -360,6 +377,34 @@ function NewObservationForm() {
         `onError` below is the half that was genuinely missing.
       */
       setSavedId(observation.id);
+
+      /*
+        ★ After the note, never before: `POST /children/:id/media` needs an
+        observation to attach to.
+
+        Failures are reported and the note is kept. A photograph that did not
+        upload is recoverable from the screen below — the note is not, and
+        rolling it back to keep the two consistent would throw away the writing
+        to save the picture.
+      */
+      if (photos.length > 0) {
+        setUploading(true);
+        void uploadChildPhotos({
+          childId,
+          files: photos,
+          observationId: observation.id,
+          purpose: "OBSERVATION",
+        })
+          .then((result) => {
+            if (result.failed.length > 0) {
+              toast.error(`${result.failed.length} зураг хавсрагдсангүй.`);
+            }
+            setPhotos([]);
+            void queryClient.invalidateQueries({ queryKey: qk.childMedia(childId) });
+          })
+          .catch((error: unknown) => toast.error(errorMessage(error)))
+          .finally(() => setUploading(false));
+      }
       /*
         ★ The draft is discarded here and nowhere else.
 
@@ -377,33 +422,48 @@ function NewObservationForm() {
   });
 
   const childGroup = child.data?.enrollments?.find((row) => row.group)?.group?.name;
-  const selectedIndicator = (indicators.data ?? []).find((row) => row.id === indicatorId);
-  const indicatorText = selectedIndicator?.levels.find(
-    (row) => String(row.level) === indicatorLevel,
-  )?.text;
-
   /*
     ★ The age fills the level in, once, and only while the teacher has not.
 
     `levelTouched` is what makes it a suggestion rather than a correction: a
-    teacher who moved it to II must not have it snap back to III when the
-    indicator list refetches in the background.
+    teacher who moved it to II must not have it snap back when the child query
+    refetches in the background.
+
+    ★★ It no longer waits for an indicator — 2026-09-11, "эхлээд түвшин
+    харагдана … дараа нь багш сүд код сонгох".
+
+    The level used to be drawn from the chosen indicator's own rows, which put
+    it *after* the code and made it fall to whichever level that indicator
+    happened to carry. The order is now the other way round, and it is the
+    better one: the level is a fact about the child, the same four for every
+    indicator, and with it chosen first the codes below can each read out what
+    they mean *at that level* — which is the whole reason the text is worth
+    showing.
   */
   const suggestedLevel = levelForAge(ageInYears(child.data?.dateOfBirth));
   useEffect(() => {
-    if (levelTouched || !selectedIndicator || !suggestedLevel) return;
-    const available = selectedIndicator.levels.map((row) => row.level);
-    // The indicator may not be written at the suggested level — several begin
-    // at II or III — so the nearest one it does carry is the honest default.
-    const nearest = available.reduce<number | null>(
-      (best, level) =>
-        best === null || Math.abs(level - suggestedLevel) < Math.abs(best - suggestedLevel)
-          ? level
-          : best,
-      null,
+    if (levelTouched || !suggestedLevel) return;
+    setIndicatorLevel(String(suggestedLevel));
+  }, [levelTouched, suggestedLevel]);
+
+  /*
+    What an indicator says at the level now chosen.
+
+    ★ The nearest level it does carry, when it is not written at that one.
+
+    Several indicators begin at II or III, and an option reading "ХЯ3б — " is a
+    code with its meaning withheld. Falling to the nearest text keeps every
+    option legible; the level that gets *sent* is still the one the teacher
+    chose, because the judgement is theirs and not the curriculum's.
+  */
+  function textAtChosenLevel(indicator: { levels: { level: number; text: string }[] }) {
+    const wanted = Number(indicatorLevel);
+    if (indicator.levels.length === 0) return "";
+    const nearest = indicator.levels.reduce((best, row) =>
+      Math.abs(row.level - wanted) < Math.abs(best.level - wanted) ? row : best,
     );
-    if (nearest !== null) setIndicatorLevel(String(nearest));
-  }, [levelTouched, selectedIndicator, suggestedLevel]);
+    return nearest.text;
+  }
 
   const errors = fieldErrors(save.error);
 
@@ -434,10 +494,12 @@ function NewObservationForm() {
           <p role="status" className="font-medium text-mint-ink">
             Ажиглалт хадгалагдлаа.
           </p>
-          <p className="mt-1 text-body text-muted">
-            {isStaff
-              ? "Хүсвэл зураг хавсаргана уу."
-              : "Багш хянаад баталгаажуулна. Хүсвэл зураг хавсаргана уу."}
+          <p className="mt-1 text-body text-muted" aria-live="polite">
+            {uploading
+              ? `${photos.length} зургийг хуулж байна…`
+              : isStaff
+                ? "Хүсвэл нэмж зураг хавсаргана уу."
+                : "Багш хянаад баталгаажуулна. Хүсвэл нэмж зураг хавсаргана уу."}
           </p>
         </Card>
 
@@ -456,11 +518,8 @@ function NewObservationForm() {
               // Without this the autosave stays latched off from the first save
               // onward — see `resume` in `lib/use-form-draft.ts`.
               resumeDraft();
+              setPhotos([]);
               setSituation("");
-              setChildDid("");
-              setChildSaid("");
-              setTeacherComment("");
-              setNextSteps("");
               setActivityName("");
             }}
           >
@@ -578,28 +637,6 @@ function NewObservationForm() {
 
         <Card pad="roomy" className="flex flex-col gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            {isStaff ? (
-              <Field label="Ажиглалтын төрөл" error={errors.typeId} required>
-                {({ id, describedBy, invalid }) => (
-                  <Select
-                    id={id}
-                    aria-describedby={describedBy}
-                    invalid={invalid}
-                    value={typeId}
-                    onChange={(e) => setTypeId(e.target.value)}
-                    required
-                  >
-                    <option value="">Сонгоно уу</option>
-                    {(types.data ?? []).map((type) => (
-                      <option key={type.id} value={type.id}>
-                        {type.name}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-              </Field>
-            ) : null}
-
             <Field label="Огноо" error={errors.observedOn} required>
               {({ id, describedBy, invalid }) => (
                 <Input
@@ -639,6 +676,56 @@ function NewObservationForm() {
               </Field>
             ) : null}
           </div>
+
+          {/*
+            ★ Four cards, not a select — the client's 2026-09-11 design.
+
+            The four levels are not interchangeable options: they are a scale,
+            and choosing one means judging where a child sits on it. A select
+            shows one at a time and hides the thing being judged against; four
+            cards side by side put the whole scale in front of the teacher,
+            which is what makes the choice a judgement rather than a guess.
+
+            ★★ Before the code, not after it, and always drawn.
+
+            The client's order — "эхлээд түвшин харагдана … дараа нь багш сүд
+            код сонгох". The level arrives already chosen from the child's age
+            (2→I, 3→II, 4→III, 5→IV) and stops suggesting the moment a teacher
+            touches it. Choosing it first is what lets each code below read out
+            what it means at that level.
+          */}
+          {isStaff ? (
+            <fieldset>
+              <legend className="mb-1.5 text-body font-medium text-ink">Түвшин</legend>
+
+              <div role="radiogroup" aria-label="Түвшин" className="grid grid-cols-4 gap-1.5">
+                {LEVELS.map((level) => {
+                  const chosen = String(level) === indicatorLevel;
+
+                  return (
+                    <button
+                      key={level}
+                      type="button"
+                      role="radio"
+                      aria-checked={chosen}
+                      onClick={() => {
+                        setIndicatorLevel(String(level));
+                        setLevelTouched(true);
+                      }}
+                      className={cn(
+                        "grid min-h-[44px] place-items-center rounded-control border text-body font-semibold transition-colors",
+                        chosen
+                          ? "border-primary bg-primary-soft text-primary"
+                          : "border-border bg-surface text-muted hover:bg-canvas",
+                      )}
+                    >
+                      {LEVEL_NAME[level]} түвшин
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+          ) : null}
 
           {isStaff ? (
             <div className="grid gap-4 sm:grid-cols-2">
@@ -709,240 +796,111 @@ function NewObservationForm() {
           ) : null}
 
           {/*
-            ★ СҮД — the curriculum indicator, and the level judged against it.
+            ★ СҮД — the curriculum indicator this note evidences.
 
             Drawn only once a strand is chosen, because the codes belong to the
             strand: an empty picker above an unanswered question is a control
             that asks for something the screen has not made possible yet.
+
+            ★★ Each option carries the code *and* what it says, in full —
+            2026-09-11, "сүд кодуудын арын бичвэр текст бүрэн бичээд оруулаад
+            өг".
+
+            The codes are the client's own notation and nobody memorises
+            seventy-one of them, so a list of bare codes is a control a teacher
+            cannot answer. The descriptor was a tinted paragraph *below* the
+            select, which meant reading it only after guessing — the text has to
+            be on the options themselves to be any use in choosing between them.
+            Which text depends on the level, chosen just above.
           */}
           {isStaff && domainId ? (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="СҮД код" error={errors.indicatorId}>
-                {({ id, describedBy, invalid }) => (
-                  <Select
-                    id={id}
-                    aria-describedby={describedBy}
-                    invalid={invalid}
-                    value={indicatorId}
-                    onChange={(e) => setIndicatorId(e.target.value)}
-                    disabled={indicators.isLoading}
-                  >
-                    <option value="">Сонгоно уу</option>
-                    {(indicators.data ?? []).map((indicator) => (
-                      <option key={indicator.id} value={indicator.id}>
-                        {indicator.code}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-              </Field>
-            </div>
-          ) : null}
-
-          {/*
-            ★ Four cards, not a select — the client's 2026-09-11 design.
-
-            The four levels are not interchangeable options: they are a scale,
-            and choosing one means judging where a child sits on it. A select
-            shows one at a time and hides the thing being judged against; four
-            cards side by side put the whole scale in front of the teacher,
-            which is what makes the choice a judgement rather than a guess.
-
-            ★★ The level the child's age suggests arrives already chosen —
-            client's rule: 2→I, 3→II, 4→III, 5→IV. It is a suggestion: it stops
-            the moment a teacher touches it, and where the indicator is not
-            written at that level it falls to the nearest one it does carry.
-          */}
-          {isStaff && selectedIndicator ? (
-            <fieldset>
-              <legend className="mb-2 flex items-baseline gap-2 text-body font-medium text-ink">
-                Түвшин
-                <span aria-hidden="true" className="text-danger">
-                  *
-                </span>
-              </legend>
-
-              <div
-                role="radiogroup"
-                aria-label="Түвшин"
-                className="grid grid-cols-2 gap-2 sm:grid-cols-4"
-              >
-                {selectedIndicator.levels.map((row) => {
-                  const chosen = String(row.level) === indicatorLevel;
-
-                  return (
-                    <button
-                      key={row.level}
-                      type="button"
-                      role="radio"
-                      aria-checked={chosen}
-                      onClick={() => {
-                        setIndicatorLevel(String(row.level));
-                        setLevelTouched(true);
-                      }}
-                      className={cn(
-                        "relative flex min-h-[84px] flex-col gap-1 rounded-card border p-2.5 text-left transition-colors",
-                        chosen
-                          ? "border-primary bg-primary-soft"
-                          : "border-border bg-surface hover:bg-canvas",
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "text-body font-semibold",
-                          chosen ? "text-primary" : "text-ink",
-                        )}
-                      >
-                        {LEVEL_NAME[row.level]} түвшин
-                      </span>
-                      <span className="text-caption leading-snug text-muted">
-                        {LEVEL_SUMMARY[row.level]}
-                      </span>
-                      {chosen ? (
-                        <Check
-                          size={15}
-                          strokeWidth={3}
-                          aria-hidden="true"
-                          className="absolute right-2 top-2 text-primary"
-                        />
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </div>
-            </fieldset>
-          ) : null}
-
-          {/*
-            ★ The chosen descriptor, read back.
-
-            The client's design puts it under the two selects so a teacher can
-            see what they have just claimed before writing the note that
-            evidences it — "СҮД-ийн агуулга ... тул багш зөв сонгоход дэмжинэ".
-          */}
-          {indicatorText ? (
-            <p className="rounded-card bg-primary-soft px-3.5 py-3 text-body leading-snug text-ink">
-              <span className="mb-0.5 block text-caption font-semibold text-primary">
-                СҮД-ийн агуулга
-              </span>
-              {indicatorText}
-            </p>
+            <Field label="СҮД код" error={errors.indicatorId}>
+              {({ id, describedBy, invalid }) => (
+                <Select
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  // The trigger truncates what the popup shows in full: an
+                  // option is a paragraph, and a 48px control cannot hold one
+                  // without pushing the chevron off the row.
+                  className="[&>span:first-child]:min-w-0 [&>span:first-child]:truncate [&>span:first-child]:text-left"
+                  value={indicatorId}
+                  onChange={(e) => setIndicatorId(e.target.value)}
+                  disabled={indicators.isLoading}
+                >
+                  <option value="">Сонгоно уу</option>
+                  {(indicators.data ?? []).map((indicator) => (
+                    <option key={indicator.id} value={indicator.id}>
+                      {`${indicator.code} — ${textAtChosenLevel(indicator)}`}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
           ) : null}
         </Card>
 
-        <section>
-          <SectionHeader title="Юу болсон бэ?" as="h2" />
-          <Card pad="roomy" className="flex flex-col gap-4">
-            {/*
-              ★ "Ажиглагдсан байдал", with a counter — 2026-09-11's design.
+        {/*
+          ★ One box called Тэмдэглэл — 2026-09-11, at the client's request.
 
-              It was "Нөхцөл байдал", which asks for the setting; what a
-              teacher actually writes here is what happened, and the label was
-              answering a narrower question than the box. The counter is the
-              client's: a 1000-character limit nobody can see is a limit
-              discovered by losing the end of a sentence.
-            */}
-            <Field
-              label="Ажиглагдсан байдал"
-              error={errors.situation}
-              hint={`${situation.length}/1000`}
-            >
-              {({ id, describedBy, invalid }) => (
-                <Textarea
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  value={situation}
-                  onChange={(e) => setSituation(e.target.value)}
-                  placeholder="Хаана, хэзээ, ямар нөхцөлд болсон бэ?"
-                />
-              )}
-            </Field>
+          This was a "Юу болсон бэ?" section holding three textareas —
+          Ажиглагдсан байдал, Хүүхэд юу хийсэн бэ?, Хүүхдийн хэлсэн үг — and
+          below it a "Багшийн дүгнэлт" section holding two more, Тайлбар and
+          Дараагийн алхам. Five boxes and two headings to file one moment, and
+          the client's answer was to delete all of it and keep the writing:
+          "энэ 2 арилаад зүгээр тэмдэглэл болго".
 
-            <Field label="Хүүхэд юу хийсэн бэ?" error={errors.childDid}>
-              {({ id, describedBy, invalid }) => (
-                <Textarea
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  value={childDid}
-                  onChange={(e) => setChildDid(e.target.value)}
-                />
-              )}
-            </Field>
+          `situation` is what stays, so every note already written keeps its
+          text where the list and the PDF already look for it. The other four
+          columns are untouched and still render wherever a note is read — the
+          form stops asking for them, it does not erase them.
+        */}
+        <Card pad="roomy">
+          <Field label="Тэмдэглэл" error={errors.situation} hint={`${situation.length}/1000`}>
+            {({ id, describedBy, invalid }) => (
+              <Textarea
+                id={id}
+                aria-describedby={describedBy}
+                invalid={invalid}
+                value={situation}
+                onChange={(e) => setSituation(e.target.value)}
+                rows={6}
+                placeholder="Хаана, хэзээ, ямар нөхцөлд болсон бэ? Хүүхэд юу хийж, юу хэлэв?"
+              />
+            )}
+          </Field>
+        </Card>
 
-            <Field
-              label="Хүүхдийн хэлсэн үг"
-              error={errors.childSaid}
-              hint={`${childSaid.length}/500`}
-            >
-              {({ id, describedBy, invalid }) => (
-                <Textarea
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  value={childSaid}
-                  onChange={(e) => setChildSaid(e.target.value)}
-                />
-              )}
-            </Field>
-          </Card>
-        </section>
+        <ObservationPhotoPicker files={photos} onChange={setPhotos} disabled={save.isPending} />
 
+        {/*
+          ★ Two checkboxes in one compact card — 2026-09-11, "хэн харахыг зай
+          бага эзлэхээр болго".
+
+          The "Хэн харах вэ?" heading and the second checkbox's description were
+          three lines of chrome around two taps, at the bottom of a phone screen
+          the teacher is trying to get to the end of. The labels already say
+          what each one does.
+        */}
         {isStaff ? (
-          <>
-            <section>
-              <SectionHeader title="Багшийн дүгнэлт" as="h2" />
-              <Card pad="roomy" className="flex flex-col gap-4">
-                <Field label="Тайлбар" error={errors.teacherComment}>
-                  {({ id, describedBy, invalid }) => (
-                    <Textarea
-                      id={id}
-                      aria-describedby={describedBy}
-                      invalid={invalid}
-                      value={teacherComment}
-                      onChange={(e) => setTeacherComment(e.target.value)}
-                    />
-                  )}
-                </Field>
-
-                <Field label="Дараагийн алхам" error={errors.nextSteps}>
-                  {({ id, describedBy, invalid }) => (
-                    <Textarea
-                      id={id}
-                      aria-describedby={describedBy}
-                      invalid={invalid}
-                      value={nextSteps}
-                      onChange={(e) => setNextSteps(e.target.value)}
-                    />
-                  )}
-                </Field>
-              </Card>
-            </section>
-
-            <section>
-              <SectionHeader title="Хэн харах вэ?" as="h2" />
-              <Card className="px-4 py-3 sm:px-5">
-                {/*
-                  ★ Unchecked by default, matching the API's own default. A
-                  teacher's working note is private until they deliberately
-                  share it; a checkbox that starts on would publish notes nobody
-                  meant to publish.
-                */}
-                <Checkbox
-                  label="Эцэг эх харах боломжтой"
-                  description="Тэмдэглэхгүй бол зөвхөн багш нар харна."
-                  checked={visibleToParents}
-                  onChange={(e) => setVisibleToParents(e.target.checked)}
-                />
-                <Checkbox
-                  label={`${PORTFOLIO}ны PDF-д оруулах`}
-                  checked={includeInReport}
-                  onChange={(e) => setIncludeInReport(e.target.checked)}
-                />
-              </Card>
-            </section>
-          </>
+          <Card className="flex flex-col gap-1 px-4 py-2.5">
+            {/*
+              ★ Unchecked by default, matching the API's own default. A
+              teacher's working note is private until they deliberately share
+              it; a checkbox that starts on would publish notes nobody meant to
+              publish.
+            */}
+            <Checkbox
+              label="Эцэг эх харах боломжтой"
+              checked={visibleToParents}
+              onChange={(e) => setVisibleToParents(e.target.checked)}
+            />
+            <Checkbox
+              label={`${PORTFOLIO}ны PDF-д оруулах`}
+              checked={includeInReport}
+              onChange={(e) => setIncludeInReport(e.target.checked)}
+            />
+          </Card>
         ) : null}
 
         <div className="flex flex-col gap-2">

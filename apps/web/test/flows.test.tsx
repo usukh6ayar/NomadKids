@@ -181,11 +181,16 @@ describe("recording an observation", () => {
 
     renderWithProviders(<NewObservationPage />);
 
-    // The option arrives with the types query, which resolves after the
-    // select itself renders — `selectOption`'s own wait is what makes this
-    // deterministic rather than the types list happening to be there in time.
-    await selectOption(user, /Ажиглалтын төрөл/, "Чөлөөт");
-    await user.type(screen.getByLabelText(/Ажиглагдсан байдал/), "Тоглоомын талбайд");
+    /*
+      ★ No type select to answer — 2026-09-11, "Ажиглалтын төрөл энийг хас".
+
+      The form resolves the kind instead: `?typeId=` when a link named one, and
+      otherwise the `daily` type, or the kindergarten's first. This test arrives
+      with no parameter and one configured type, so the assertion below on
+      `typeId` is what proves the resolution actually ran — without it the POST
+      would be missing a required field and the API would 400.
+    */
+    await user.type(await screen.findByLabelText("Тэмдэглэл"), "Тоглоомын талбайд");
     await user.click(screen.getByLabelText(/Эцэг эх харах боломжтой/));
     await user.click(screen.getByRole("button", { name: "Хадгалах" }));
 
@@ -226,13 +231,13 @@ describe("recording an observation", () => {
 
     renderWithProviders(<NewObservationPage />);
 
-    await screen.findByLabelText(/Ажиглагдсан байдал/);
+    await screen.findByLabelText("Тэмдэглэл");
 
     // The teacher's controls are simply not rendered.
     expect(screen.queryByLabelText(/Эцэг эх харах боломжтой/)).toBeNull();
-    expect(screen.queryByLabelText(/Ажиглалтын төрөл/)).toBeNull();
+    expect(screen.queryByLabelText("СҮД код")).toBeNull();
 
-    await user.type(screen.getByLabelText(/Ажиглагдсан байдал/), "Гэртээ ном уншлаа");
+    await user.type(screen.getByLabelText("Тэмдэглэл"), "Гэртээ ном уншлаа");
     await user.click(screen.getByRole("button", { name: "Хадгалах" }));
 
     await waitFor(() =>
