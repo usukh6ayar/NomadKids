@@ -603,6 +603,7 @@ model Kindergarten {
   childAgeProfiles       ChildAgeProfile[]
   birthdayNotes          BirthdayNote[]
   developmentDomains     DevelopmentDomain[]
+  curriculumIndicators   CurriculumIndicator[]
   assessmentLevels       AssessmentLevel[]
   observationTypes       ObservationType[]
   terms                  Term[]
@@ -2378,9 +2379,10 @@ model DevelopmentDomain {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  kindergarten       Kindergarten?       @relation(fields: [kindergartenId], references: [id], onDelete: Cascade)
-  observationDomains ObservationDomain[]
-  assessments        Assessment[]
+  kindergarten         Kindergarten?         @relation(fields: [kindergartenId], references: [id], onDelete: Cascade)
+  observationDomains   ObservationDomain[]
+  assessments          Assessment[]
+  curriculumIndicators CurriculumIndicator[]
 
   @@unique([kindergartenId, code])
   @@index([kindergartenId, isActive, order])
@@ -2409,6 +2411,68 @@ model AssessmentLevel {
   @@unique([kindergartenId, value])
   @@index([kindergartenId, isActive, order])
   @@map("assessment_levels")
+}
+
+/// A development indicator of the national preschool curriculum — СҮД.
+///
+/// ★ A table, and system rows rather than per-kindergarten configuration.
+///
+/// Seven strands, seventy-one indicators, each written out at up to four
+/// levels — the client's own spreadsheet, transcribed in `prisma/curriculum.ts`.
+/// It is a national standard: a kindergarten may add its own indicator beside
+/// these (`kindergartenId`) but may not edit the ones the ministry wrote, which
+/// is exactly what `DevelopmentDomain` and `AssessmentLevel` already do.
+///
+/// ★★ The code is the identity a teacher reads — "НСХ1а" — and it is stable
+/// across levels: `НСХ1а` at level II and at level IV are the same indicator
+/// described twice, which is why the level text is a row of its own rather
+/// than four columns here.
+model CurriculumIndicator {
+  id             String  @id @default(uuid()) @db.Uuid
+  /// NULL is the national standard; a value is one kindergarten's own addition.
+  kindergartenId String? @db.Uuid
+  domainId       String  @db.Uuid
+  /// "НСХ1а" — the prefix names the strand, the digit and letter the indicator.
+  code           String
+  order          Int     @default(0)
+  isActive       Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten?              @relation(fields: [kindergartenId], references: [id], onDelete: Cascade)
+  domain       DevelopmentDomain          @relation(fields: [domainId], references: [id], onDelete: Restrict)
+  levels       CurriculumIndicatorLevel[]
+  observations Observation[]
+
+  @@unique([kindergartenId, code])
+  @@index([domainId, isActive, order])
+  @@map("curriculum_indicators")
+}
+
+/// One indicator as it is written at one level.
+///
+/// ★ A row per level, not four columns, and an absent level is meaningful.
+///
+/// Several indicators begin at level II or III because the behaviour does not
+/// exist earlier — the source leaves those cells empty and so does this table.
+/// Four nullable columns would store the same fact and invite a screen to draw
+/// an empty card where "this indicator starts at III" is the honest answer.
+model CurriculumIndicatorLevel {
+  id          String @id @default(uuid()) @db.Uuid
+  indicatorId String @db.Uuid
+  /// 1–4, matching `AssessmentLevel.value`.
+  level       Int    @db.SmallInt
+  text        String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  indicator CurriculumIndicator @relation(fields: [indicatorId], references: [id], onDelete: Cascade)
+
+  @@unique([indicatorId, level])
+  @@map("curriculum_indicator_levels")
 }
 
 model ObservationType {
@@ -2447,7 +2511,23 @@ model Observation {
   source     ObservationSource @default(TEACHER)
   observedOn DateTime          @db.Date
 
-  activityName   String?
+  activityName String?
+
+  /// The curriculum indicator this note evidences — СҮД код, 2026-09-11.
+  ///
+  /// ★ Optional, because a note is not always an assessment.
+  ///
+  /// A teacher writing down what happened at the water table has something
+  /// worth keeping whether or not it maps onto an indicator, and requiring one
+  /// would make the quick note the slowest thing on the screen. When it is
+  /// there it is what turns a note into evidence, which is what the term
+  /// report reads.
+  indicatorId    String? @db.Uuid
+  /// Which of the indicator's levels the teacher judged — 1–4, matching
+  /// `AssessmentLevel.value`. Meaningless without `indicatorId` and written
+  /// with it.
+  indicatorLevel Int?    @db.SmallInt
+
   situation      String?
   childDid       String?
   childSaid      String?
@@ -2473,14 +2553,15 @@ model Observation {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  kindergarten Kindergarten        @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
-  child        Child               @relation(fields: [childId], references: [id], onDelete: Cascade)
-  enrollment   Enrollment          @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
-  type         ObservationType     @relation(fields: [typeId], references: [id], onDelete: Restrict)
-  author       User?               @relation("ObservationAuthor", fields: [authorId], references: [id], onDelete: SetNull)
-  reviewedBy   User?               @relation("ObservationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  kindergarten Kindergarten         @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child                @relation(fields: [childId], references: [id], onDelete: Cascade)
+  enrollment   Enrollment           @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
+  type         ObservationType      @relation(fields: [typeId], references: [id], onDelete: Restrict)
+  indicator    CurriculumIndicator? @relation(fields: [indicatorId], references: [id], onDelete: Restrict)
+  author       User?                @relation("ObservationAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  reviewedBy   User?                @relation("ObservationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   domains      ObservationDomain[]
-  media        MediaFile[]         @relation("ObservationMedia")
+  media        MediaFile[]          @relation("ObservationMedia")
 
   @@index([childId, observedOn(sort: Desc)])
   @@index([kindergartenId, observedOn(sort: Desc)])

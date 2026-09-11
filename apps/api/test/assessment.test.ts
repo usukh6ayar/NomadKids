@@ -561,7 +561,12 @@ describe("terms and config", () => {
         .set("Cookie", session.cookies);
 
       expect(res.status).toBe(200);
-      expect(res.body.domains).toHaveLength(5);
+      // ★ Seven since 2026-09-11, when the client's СҮД spreadsheet named the
+      // strands. Five of them are the old rows renamed — the codes are
+      // unchanged, so every assessment already filed still points at the
+      // strand it was filed under — and "Байгаль, нийгмийн орчин" and
+      // "Хөгжим" are genuinely new.
+      expect(res.body.domains).toHaveLength(7);
       expect(res.body.levels).toHaveLength(4);
     }
   });

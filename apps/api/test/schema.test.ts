@@ -60,11 +60,37 @@ beforeEach(async () => {
 });
 
 describe("system configuration rows", () => {
-  it("seeds five development domains, four levels and four observation types", async () => {
+  it("seeds seven development strands, four levels and four observation types", async () => {
     // These are created by the seed and survive resetData(). If they are
     // missing, the database was not seeded and every other test is unreliable.
-    expect(await db.developmentDomain.count({ where: { kindergartenId: null } })).toBe(5);
+
+    /*
+      ★ Seven, not five, since 2026-09-11 — see `SYSTEM_DOMAINS`.
+
+      The client's own СҮД spreadsheet names the strands, and
+      `group-coverage.tsx` had been aliasing the seven onto five for months,
+      which is the tell that five was the wrong list wearing different words.
+      Five are renamed rather than replaced — the codes are unchanged, so every
+      assessment already filed still points at the strand it was filed under —
+      and `environment` and `music` are genuinely new.
+    */
+    expect(await db.developmentDomain.count({ where: { kindergartenId: null } })).toBe(7);
     expect(await db.assessmentLevel.count({ where: { kindergartenId: null } })).toBe(4);
+
+    /*
+      ★ The curriculum itself, which the strands exist to carry.
+
+      Seventy-one indicators at up to four levels each — the source has real
+      gaps, several strands beginning at level II or III because the behaviour
+      does not exist earlier, so the level rows are fewer than 71 × 4.
+
+      Asserted here rather than left to the seed because these survive
+      `resetData` by design (`buildDeleteStatement` holds the two tables back),
+      and a reset that started emptying them would slow every case in the suite
+      without failing anything.
+    */
+    expect(await db.curriculumIndicator.count({ where: { kindergartenId: null } })).toBe(71);
+    expect(await db.curriculumIndicatorLevel.count()).toBe(265);
 
     /*
       ★ Four, not five, since 2026-09-06 — see `SYSTEM_OBSERVATION_TYPES`.

@@ -51,6 +51,10 @@ export async function closeTestDb(): Promise<void> {
 export async function resetData(): Promise<void> {
   const db = testDb();
   await emptyEveryTable(db);
+  // The two curriculum tables are held back from the bulk delete (see
+  // `buildDeleteStatement`); a kindergarten's own indicators are not reference
+  // data and must not survive a case. Their level rows cascade.
+  await db.curriculumIndicator.deleteMany({ where: { kindergartenId: { not: null } } });
   await applySystemConfig(db);
   await resetRateLimits();
 }
@@ -139,10 +143,34 @@ let deleteEverything: string | undefined;
  * them off there is no dependency order to maintain, which is the one property
  * that made `TRUNCATE ... CASCADE` worth its cost.
  */
+/**
+ * Every table but the ones holding reference data.
+ *
+ * ★ The national curriculum survives a reset — 2026-09-11.
+ *
+ * Seventy-one indicators and two hundred and sixty-five level rows are
+ * reference data with `kindergartenId = NULL`, so nothing cascades them when
+ * the kindergartens go. Emptying and re-seeding them before every one of two
+ * thousand cases would put ~284 round trips into the critical path of each;
+ * leaving them costs nothing, and `applySystemConfig` then finds the right
+ * count and returns.
+ *
+ * What a test *can* create — a kindergarten's own indicator — is cleared in
+ * `resetData` instead, so nothing leaks between cases.
+ *
+ * ★★ The exclusion list is inlined into the SQL rather than written as a
+ * comment inside it: this is a template literal, and a backtick in an SQL
+ * comment ends the string.
+ */
 async function buildDeleteStatement(db: PrismaClient): Promise<string> {
   const rows = await db.$queryRawUnsafe<{ tablename: string }[]>(
     `SELECT tablename FROM pg_tables
-     WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'
+     WHERE schemaname = 'public'
+       AND tablename NOT IN (
+         '_prisma_migrations',
+         'curriculum_indicators',
+         'curriculum_indicator_levels'
+       )
      ORDER BY tablename`,
   );
 
