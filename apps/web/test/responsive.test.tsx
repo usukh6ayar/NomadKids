@@ -135,9 +135,20 @@ describe("horizontal overflow", () => {
    * measured in a headless browser; these two pin the *constraints* that
    * produced them, which is the part a future edit would quietly remove.
    */
+  /*
+    ★ The three constraints, not one exact spelling — 2026-09-11.
+
+    This matched the whole class string in order, and `PageHeader` gained a
+    `compact` variant that moves `justify-end` into a conditional. The
+    constraint the test exists for is unchanged and still asserted: the block
+    may not grow the row (`max-w-full`), may not be squeezed (`shrink-0`), and
+    may give by wrapping (`flex-wrap`). Pinning their order as well made the
+    test fail for a change that could not affect what it protects.
+  */
   it("a header action block is allowed to wrap rather than pin the page wide", () => {
     // `max-w-full` is what caps `shrink-0` at the row's width.
-    expect(APP_SHELL).toMatch(/flex max-w-full shrink-0 flex-wrap items-center justify-end/);
+    expect(APP_SHELL).toMatch(/flex max-w-full shrink-0 flex-wrap items-center gap-2/);
+    expect(APP_SHELL).toMatch(/justify-end/);
   });
 
   it("the children screen's action row wraps", () => {

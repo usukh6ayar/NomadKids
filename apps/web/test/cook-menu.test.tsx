@@ -27,6 +27,22 @@ function todayIso(): string {
 }
 
 /**
+ * Opens the day editor — "Жагсаалтаар".
+ *
+ * ★ The screen opens on "Хүснэгтээр" since 2026-09-11, the client's drawing:
+ * the week as a table, with the form behind a control. Every case below that
+ * types into a day goes through here first.
+ */
+async function openList(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole("radio", { name: "Жагсаалтаар" }));
+}
+
+/** Opens the Excel panel, which is a step rather than a permanent block. */
+async function openImport(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole("button", { name: "Excel оруулах" }));
+}
+
+/**
  * The week, stubbed — every request this screen makes, in one place.
  *
  * ★ Added for the 2026-09-11 import tests. The cases above predate it and stub
@@ -53,7 +69,21 @@ function stubWeek(
       body: importResult,
       status: 201,
     },
-    { path: `/kindergartens/${KG_ID}/menu/with-warnings`, body: [] },
+    {
+      path: `/kindergartens/${KG_ID}/menu/with-warnings`,
+      // One real day, so the table has a row to draw rather than its empty
+      // state — `WeekTable` shows nothing at all for a week with no dishes.
+      body: [
+        {
+          id: "44444444-4444-4444-8444-444444444444",
+          date: todayIso(),
+          dishes: [{ name: "Тараг", allergenTags: [], kind: "BREAKFAST" }],
+          totalCalories: null,
+          status: "DRAFT",
+          warnings: [],
+        },
+      ],
+    },
     {
       path: `/kindergartens/${KG_ID}/menu/`,
       method: "PUT",
@@ -100,8 +130,9 @@ describe("the cook's weekly menu", () => {
     ]);
 
     renderWithProviders(<MenuPage />);
+    await openList(user);
 
-    // The page opens on "Өнөөдөр" by default — one empty day, one button.
+    // One day open at a time, so one "Хоол нэмэх".
     const addButtons = await screen.findAllByRole("button", { name: "Хоол нэмэх" });
     await user.click(addButtons[0]!);
 
@@ -215,6 +246,8 @@ describe("the cook's weekly menu", () => {
 
     renderWithProviders(<MenuPage />);
 
+    await openList(user);
+
     const addButtons = await screen.findAllByRole("button", { name: "Хоол нэмэх" });
     await user.click(addButtons[0]!);
 
@@ -261,6 +294,8 @@ describe("the cook's weekly menu", () => {
     ]);
 
     renderWithProviders(<MenuPage />);
+
+    await openList(user);
 
     const addButtons = await screen.findAllByRole("button", { name: "Хоол нэмэх" });
     await user.click(addButtons[0]!);
@@ -362,7 +397,9 @@ describe("the menu as a spreadsheet", () => {
   */
   it("offers a cook the Excel import beside the download", async () => {
     stubWeek();
+    const user = userEvent.setup();
     renderWithProviders(<MenuPage />);
+    await openImport(user);
 
     expect(await screen.findByText("Excel-ээр оруулах")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Excel татах" })).toBeInTheDocument();
@@ -372,14 +409,18 @@ describe("the menu as a spreadsheet", () => {
     stubWeek(["ADMIN"]);
     renderWithProviders(<MenuPage />);
 
-    await screen.findByText("Долоо хоногийн цэс");
-    expect(screen.queryByText("Excel-ээр оруулах")).not.toBeInTheDocument();
+    await screen.findByText("Хоолны цэс");
+    // Neither control is drawn at all — not drawn-and-disabled.
+    expect(screen.queryByRole("button", { name: "Excel оруулах" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Нэмэх" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Хадгалах/ })).not.toBeInTheDocument();
   });
 
   it("a teacher may enter the menu", async () => {
+    const user = userEvent.setup();
     stubWeek(["TEACHER"]);
     renderWithProviders(<MenuPage />);
+    await openImport(user);
 
     expect(await screen.findByText("Excel-ээр оруулах")).toBeInTheDocument();
   });
@@ -390,6 +431,7 @@ describe("the menu as a spreadsheet", () => {
     const { calls } = stubWeek();
     renderWithProviders(<MenuPage />);
 
+    await openImport(user);
     await screen.findByText("Excel-ээр оруулах");
     const input = document.querySelector('input[type=file][accept*=".xlsx"]') as HTMLInputElement;
     await user.upload(input, new File(["PK"], "menu.xlsx"));
@@ -413,6 +455,7 @@ describe("the menu as a spreadsheet", () => {
     });
     renderWithProviders(<MenuPage />);
 
+    await openImport(user);
     await screen.findByText("Excel-ээр оруулах");
     const input = document.querySelector('input[type=file][accept*=".xlsx"]') as HTMLInputElement;
     await user.upload(input, new File(["PK"], "menu.xlsx"));
@@ -420,5 +463,90 @@ describe("the menu as a spreadsheet", () => {
     expect(await screen.findByText(/4-р мөр: Огноо танигдсангүй/)).toBeInTheDocument();
     // Nothing to write, so the confirm button is not offered as usable.
     expect(screen.getByRole("button", { name: "Оруулах" })).toBeDisabled();
+  });
+
+  /*
+    The client's 2026-09-11 drawing: a title with the week it is showing, one
+    row of controls, then the week itself.
+  */
+  it("opens on the week as a table, with the form behind a control", async () => {
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    expect(await screen.findByText("7 хоногийн хоолны цэсийг удирдах")).toBeInTheDocument();
+    expect(await screen.findByRole("table", { name: "Долоо хоногийн цэс" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Хоол нэмэх" })).not.toBeInTheDocument();
+  });
+
+  it("shows the day's form once Жагсаалтаар is pressed", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    await openList(user);
+    expect(await screen.findByRole("button", { name: "Хоол нэмэх" })).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "Долоо хоногийн цэс" })).not.toBeInTheDocument();
+  });
+
+  /*
+    ★ The pager is back — a kitchen plans *next* week, which is the whole point
+    of the Excel round trip, and a screen fixed to this one could not do it.
+  */
+  it("pages the week and asks the API for the new range", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    await screen.findByRole("table", { name: "Долоо хоногийн цэс" });
+    const before = calls.filter((call) => call.url.includes("with-warnings")).length;
+
+    await user.click(screen.getByRole("button", { name: "Дараах долоо хоног" }));
+
+    await waitFor(() =>
+      expect(calls.filter((call) => call.url.includes("with-warnings")).length).toBeGreaterThan(
+        before,
+      ),
+    );
+  });
+
+  /*
+    ★ The allergy warnings sit above both views.
+
+    They used to live inside the open day's card, which the table does not draw
+    — switching to the week hid the one thing here that is about a child's
+    safety rather than the kitchen's convenience (RFP Module 2).
+  */
+  it("keeps the allergy warning visible in the table view", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["COOK"]) },
+      {
+        path: `/kindergartens/${KG_ID}/menu/with-warnings`,
+        body: [
+          {
+            id: "44444444-4444-4444-8444-444444444444",
+            date: todayIso(),
+            dishes: [{ name: "Самрын бялуу", allergenTags: ["самар"] }],
+            totalCalories: null,
+            status: "DRAFT",
+            warnings: [
+              {
+                childId: "55555555-5555-4555-8555-555555555555",
+                childName: "Батаа Золбоо",
+                dishName: "Самрын бялуу",
+                allergenTag: "самар",
+                allergen: "Самар",
+                severity: "SEVERE",
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    renderWithProviders(<MenuPage />);
+
+    // Still on the table view — no press needed to see it.
+    expect(await screen.findByText("Харшлын анхааруулга")).toBeInTheDocument();
+    expect(screen.getByText(/Батаа Золбоо — Самар/)).toBeInTheDocument();
   });
 });

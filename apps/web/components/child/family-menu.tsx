@@ -325,13 +325,17 @@ function MealRow({
 /**
  * The week at once — sittings down the side, days across the top.
  *
- * ★ It scrolls inside its own box rather than widening the page.
+ * ★ Exported since 2026-09-11 — the staff menu screen's "Хүснэгтээр" view is
+ * this exact table, and a second copy would be a second chance for the two to
+ * disagree about what a week looks like.
+ *
+ * ★★ It scrolls inside its own box rather than widening the page.
  *
  * Seven days of dish names does not fit a phone and never will. The first
  * column is sticky so a parent scrolling to Ням still knows which sitting they
  * are reading, which is the whole reason a table beats seven stacked days here.
  */
-function WeekTable({
+export function WeekTable({
   byDate,
   weekDates,
   todayIso,
