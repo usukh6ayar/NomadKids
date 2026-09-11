@@ -154,7 +154,8 @@ describe("navigation icons", () => {
       "Хүүхдүүд",
       "Явцын үнэлгээ",
       "Ирц",
-      "Хоол ба цэс",
+      "Хоолны цэс",
+      "Хоолны бүртгэл",
       "Ангийн самбар / Мэдээ",
       "Судалгаа",
       // The screens that used to sit behind the "Удирдлага" hub, which no
@@ -355,7 +356,17 @@ describe("role-based navigation", () => {
     expect(within(nav).getByRole("link", { name: "Явцын үнэлгээ" })).toBeInTheDocument();
     // Өдөр тутмын бүртгэл
     expect(within(nav).getByRole("link", { name: "Ирц" })).toBeInTheDocument();
-    expect(within(nav).getByRole("link", { name: "Хоол ба цэс" })).toBeInTheDocument();
+    /*
+      ★ Two rows since 2026-09-11: the menu, and the register underneath it.
+
+      The client asked for the menu in this slot ("хоолны хуучин бүртгэл гэсэн
+      хэсгийг арилгаад … хоолны цэс хэсгийг … оруул"). The register kept a row
+      rather than being dropped — `нэмэлт.md` §3 multiplies its "хооллосон
+      өдөр" into the food-cost calculation, and a screen with no door is a
+      funding figure that quietly stops being entered.
+    */
+    expect(within(nav).getByRole("link", { name: "Хоолны цэс" })).toHaveAttribute("href", "/menu");
+    expect(within(nav).getByRole("link", { name: "Хоолны бүртгэл" })).toBeInTheDocument();
     // Харилцаа холбоо
     expect(within(nav).getByRole("link", { name: "Судалгаа" })).toBeInTheDocument();
     // Багш ба байгууллага: the foot's own row is the single route to /settings.

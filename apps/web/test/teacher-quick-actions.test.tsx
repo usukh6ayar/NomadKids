@@ -8,7 +8,7 @@ import DashboardPage from "@/app/(app)/dashboard/page";
  *
  * ★ Eight since 2026-09-10, all at the client's request and all in one day:
  * Ирц · Мэдээ · Судалгаа · Явцын үнэлгээ, then Тайлан and Баримт бичгийн сан,
- * then Хүүхдүүд and Хоол ба цэс.
+ * then Хүүхдүүд and Хоолны цэс.
  *
  * Every destination already existed and was already in the sidebar. What this
  * file is really guarding is the pair of things that made them worth adding
@@ -78,7 +78,7 @@ describe("the teacher dashboard's quick actions", () => {
     const expected = [
       ["Ирц", "/attendance", "icon-attendance-3d.png"],
       ["Хүүхдүүд", "/children", "icon-children-3d.png"],
-      ["Хоол ба цэс", "/meals", "icon-food-3d.png"],
+      ["Хоолны цэс", "/menu", "icon-food-3d.png"],
       ["Мэдээ", "/notifications/new", "icon-notice-3d.png"],
       ["Судалгаа", "/surveys", "icon-survey-3d.png"],
       ["Явцын үнэлгээ", "/assessment", "icon-progress-3d.png"],
@@ -114,24 +114,20 @@ describe("the teacher dashboard's quick actions", () => {
   });
 
   /**
-   * ★ Хоол ба цэс is group-scoped, like Ирц and Явцын үнэлгээ.
+   * ★ Хоолны цэс is *not* group-scoped, unlike Ирц and Явцын үнэлгээ.
    *
-   * `/meals` is a doorway that resolves the first group and forwards, so the
-   * bare route works — but a teacher who has a group should not spend a
-   * redirect on a question their session already answers. Asserted on the
-   * exact href rather than a substring: `/meals` alone would pass against the
-   * scoped URL too, which is the assertion that would notice nothing.
+   * It pointed at `/groups/:id/meals` — the register of who ate — until
+   * 2026-09-11, when the client asked for the menu in this slot instead. The
+   * menu is the kindergarten's week, so it takes no group id and needs no
+   * doorway to resolve one.
    */
-  it("takes the teacher's own group straight to its meal sheet", async () => {
+  it("sends the meal tile to the kindergarten's menu, not a group's register", async () => {
     stubDashboard();
     renderWithProviders(<DashboardPage />);
     const band = await tiles();
 
     await waitFor(() =>
-      expect(band.getByRole("link", { name: /Хоол ба цэс/ })).toHaveAttribute(
-        "href",
-        `/groups/${GROUP_ID}/meals`,
-      ),
+      expect(band.getByRole("link", { name: /Хоолны цэс/ })).toHaveAttribute("href", "/menu"),
     );
   });
 
@@ -149,7 +145,8 @@ describe("the teacher dashboard's quick actions", () => {
     await waitFor(() =>
       expect(band.getByRole("link", { name: /Ирц/ })).toHaveAttribute("href", "/attendance"),
     );
-    expect(band.getByRole("link", { name: /Хоол ба цэс/ })).toHaveAttribute("href", "/meals");
+    // The menu takes no group, so it is the same href either way.
+    expect(band.getByRole("link", { name: /Хоолны цэс/ })).toHaveAttribute("href", "/menu");
     expect(band.getByRole("link", { name: /Тайлан/ })).toHaveAttribute("href", "/reports");
     expect(band.getByRole("link", { name: /Баримт бичгийн сан/ })).toHaveAttribute(
       "href",

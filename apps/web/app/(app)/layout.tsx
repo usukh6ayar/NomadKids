@@ -674,8 +674,29 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
           href: isAdmin ? "/attendance/daily" : scoped("attendance"),
           icon: artIcon("attendance", 18),
         },
+        /*
+          ★ The menu first, the register second — 2026-09-11, at the client's
+          request: "хоолны хуучин бүртгэл гэсэн хэсгийг арилгаад эцэг эх дээр
+          хийгдсэн байгаа хоолны цэс хэсгийг яг тэр загвараар … оруул."
+
+          This row opened `/groups/:id/meals` — "Хоолны бүртгэл", which is who
+          ate what, not what is being served. The client asked for the menu
+          here, so the menu is here.
+
+          ★★ The register keeps a row of its own rather than being dropped.
+          It is the daily "did this child eat", and `нэмэлт.md` §3 multiplies
+          its "хооллосон өдөр" into the food-cost calculation — a screen with no
+          door is a funding figure that quietly stops being entered. If it is
+          meant to go entirely, that is a decision with a number attached and
+          the client should make it knowingly.
+        */
         {
-          label: "Хоол ба цэс",
+          label: "Хоолны цэс",
+          href: "/menu",
+          icon: artIcon("food", 18),
+        },
+        {
+          label: "Хоолны бүртгэл",
           href: scoped("meals"),
           icon: artIcon("food", 18),
         },

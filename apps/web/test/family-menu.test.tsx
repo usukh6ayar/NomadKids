@@ -281,3 +281,56 @@ describe("the family's note to the kitchen", () => {
     expect(within(sent).getByText("Өчигдөр хоолны дуршил муутай байсан.")).toBeInTheDocument();
   });
 });
+
+/**
+ * The same design on every role's screen — 2026-09-11, at the client's request.
+ *
+ * ★ "Эцэг эх дээр хийгдсэн байгаа хоолны цэс хэсгийг яг тэр загвараар эцэг эх,
+ * удирдлага, тогоочид оруул." Staff read what a family reads and keep the
+ * editor underneath, rather than reading through a form.
+ */
+describe("the staff view of a child's menu", () => {
+  function renderStaff() {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: `/children/${CHILD_ID}/meals/notes`, body: [] },
+      { path: `/kindergartens/${KG_ID}/menu`, body: MENU },
+    ]);
+    return renderWithProviders(
+      <ChildMenu kindergartenId={KG_ID} childId={CHILD_ID} healthNotes={null} isStaff />,
+    );
+  }
+
+  it("reads the same three tabs a family gets", async () => {
+    renderStaff();
+
+    const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
+    expect(within(panel).getByText("Тараг")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "7 хоног" })).toBeInTheDocument();
+  });
+
+  it("keeps the editor, under the reading view", async () => {
+    renderStaff();
+
+    await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
+    expect(screen.getByText("Цэс оруулах")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Засах" })).toBeInTheDocument();
+  });
+
+  /** The old staff shape: a week pager and a jump list, both gone. */
+  it("carries none of the old pager or jump list", async () => {
+    renderStaff();
+
+    await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
+    expect(screen.queryByRole("button", { name: "Өмнөх долоо хоног" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Долоо хоногийн цэс")).not.toBeInTheDocument();
+  });
+
+  /** A note box is the family's; staff have the register for what a child ate. */
+  it("does not offer staff the family's note box", async () => {
+    renderStaff();
+
+    await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
+    expect(screen.queryByLabelText("Нэмэлт мэдээлэл")).not.toBeInTheDocument();
+  });
+});

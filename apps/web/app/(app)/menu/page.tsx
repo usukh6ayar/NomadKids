@@ -18,10 +18,11 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, SectionHeader } from "@/components/ui/card";
 import { Menu, type MenuItem } from "@/components/ui/menu";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
+import { FamilyMenu } from "@/components/child/family-menu";
 import { MenuExcelImport } from "@/components/menu/menu-excel-import";
 import {
   MenuDishEditor,
@@ -174,12 +175,16 @@ function WeeklyMenu() {
   // the header's own comment below).
   const weekStart = mondayOf(new Date());
   const weekDates = Array.from({ length: 5 }, (_, i) => addDays(weekStart, i));
-  // Its own state, not derived from `weekStart` — see `child-menu.tsx`'s
-  // identical `quickView` for why: "7 хоног" is a way back to the current
-  // week, not a third destination, and deriving this from the date would
-  // make it do nothing when the open week already contains today.
-  const [quickView, setQuickView] = useState<"today" | "tomorrow" | "week">("today");
-  // Which weekday the "7 хоног" strip has open — an offset into `weekDates`,
+  /*
+    ★ Seven for reading, five for editing.
+
+    `FamilyMenu` draws Даваа–Ням because that is the table the client designed
+    and a family reads; the editor below stays Mon–Fri, which is the week a
+    kindergarten actually cooks. Two ranges rather than one compromise that is
+    wrong for both.
+  */
+  const fullWeek = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  // Which weekday the edit strip has open — an offset into `weekDates`,
   // not a stored date, the same reasoning `child-menu.tsx`'s `selectedOffset`
   // gives: it is what turns a week into one day's detail instead of five
   // full editors stacked and scrolled past to reach Friday.
@@ -188,11 +193,19 @@ function WeeklyMenu() {
   // The whole Mon–Fri range for "week" — the strip needs every day's
   // fill-state at once, not just the one currently open — versus a single
   // day for "today"/"tomorrow", which have no strip to feed.
-  const from = quickView === "week" ? weekStart : quickView === "today" ? today : tomorrow;
-  const to = quickView === "week" ? addDays(weekStart, 4) : from;
+  /*
+    ★ Always the whole week now.
+
+    The range used to follow the tri-toggle — one day for Өнөөдөр, one for
+    Маргааш — because the screen only ever drew the open day. `FamilyMenu` draws
+    all seven at once, so a narrower fetch would leave its table empty on every
+    tab but the one that happened to be selected.
+  */
+  const from = weekStart;
+  const to = addDays(weekStart, 6);
   // The one day actually rendered below: the strip's selection in "week",
   // otherwise whichever of "today"/"tomorrow" is active.
-  const activeDate = quickView === "week" ? weekDates[selectedOffset]! : from;
+  const activeDate = weekDates[selectedOffset]!;
 
   const week = useQuery({
     enabled: Boolean(kindergartenId),
@@ -279,60 +292,41 @@ function WeeklyMenu() {
       */}
       {kindergartenId && canEdit ? <MenuExcelImport kindergartenId={kindergartenId} /> : null}
 
-      {/* Same 3-way quick view as a parent's own menu tab (`child-menu.tsx`)
-          — "Өнөөдөр"/"Маргааш" jump straight to that day; "7 хоног" opens the
-          Mon–Fri strip below, starting this Monday, the only week this
-          screen shows now that there is no control left to move `weekStart`
-          off it. */}
-      <div
-        role="group"
-        aria-label="Хугацаа сонгох"
-        className="grid grid-cols-3 gap-1 rounded-control bg-canvas p-1"
-      >
-        {(
-          [
-            [
-              "today",
-              "Өнөөдөр",
-              () => {
-                setSelectedOffset(weekdayOffset(today));
-                setQuickView("today");
-              },
-            ],
-            [
-              "tomorrow",
-              "Маргааш",
-              () => {
-                setSelectedOffset(weekdayOffset(tomorrow));
-                setQuickView("tomorrow");
-              },
-            ],
-            ["week", "7 хоног", () => setQuickView("week")],
-          ] as const
-        ).map(([value, label, onClick]) => (
-          <button
-            key={value}
-            type="button"
-            onClick={onClick}
-            aria-pressed={quickView === value}
-            className={cn(
-              "min-h-[40px] rounded-control text-caption font-semibold transition-colors",
-              quickView === value
-                ? "bg-primary text-primary-ink shadow-sm"
-                : "text-muted hover:text-ink",
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {/*
+        ★ One design for everybody — 2026-09-11, at the client's request:
+        "эцэг эх дээр хийгдсэн байгаа хоолны цэс хэсгийг яг тэр загвараар эцэг
+        эх, удирдлага, тогоочид оруул."
 
-      {/* The weekday strip is what "7 хоног" means — Өнөөдөр/Маргааш jump
-          straight to a day without it, so it only shows once that's the
-          actual quick view selected, same as `child-menu.tsx`. Picking a day
-          here narrows the week down to that one day's card below instead of
-          stacking all five and scrolling. */}
-      {quickView === "week" ? (
+        `FamilyMenu` was built for a parent and is now what every role reads:
+        today, tomorrow and the week as a table, with the dish photograph and
+        the sitting's energy. The old tri-toggle and weekday strip that used to
+        live here were a second answer to the same question.
+
+        The strip did not disappear — it moved below, where it is a *day
+        picker for editing* rather than a way of reading, which is the only job
+        it still has.
+      */}
+      {kindergartenId && !week.isLoading ? (
+        <FamilyMenu
+          byDate={byDate}
+          weekDates={fullWeek}
+          todayIso={today}
+          tomorrowIso={tomorrow}
+          healthNotes={null}
+        />
+      ) : null}
+
+      {week.isLoading ? <LoadingState rows={1} /> : null}
+      {week.isError ? <ErrorState description={errorMessage(week.error)} /> : null}
+
+      {kindergartenId && canEdit && !week.isLoading ? (
+        <SectionHeader
+          title="Цэс оруулах"
+          lede="Өдрөө сонгоод гараар бичих, технологийн картаас сонгох, эсвэл Excel-ээр оруулна."
+        />
+      ) : null}
+
+      {canEdit ? (
         <div className="grid grid-cols-5 gap-1.5">
           {weekDates.map((date, i) => {
             const day = byDate.get(date);
@@ -367,10 +361,7 @@ function WeeklyMenu() {
         </div>
       ) : null}
 
-      {week.isLoading ? <LoadingState rows={1} /> : null}
-      {week.isError ? <ErrorState description={errorMessage(week.error)} /> : null}
-
-      {kindergartenId && !week.isLoading ? (
+      {kindergartenId && canEdit && !week.isLoading ? (
         <MenuDayCard
           key={activeDate}
           kindergartenId={kindergartenId}

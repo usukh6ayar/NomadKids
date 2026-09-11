@@ -4,8 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Apple,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Cookie,
   Flame,
   Info,
@@ -155,19 +153,17 @@ export function ChildMenu({
   const todayIso = toIso(now);
   const tomorrow = addDays(now, 1);
 
-  const [monday, setMonday] = useState(() => mondayOf(now));
-  // An offset into the week, not a stored date — so paging a week keeps the
-  // same weekday selected (Wednesday stays Wednesday) instead of always
-  // resetting to Monday.
+  /*
+    ★ This week, and only this week — 2026-09-11.
+
+    The pager that moved `monday` was part of the old staff shape and went with
+    it: reading any week is `FamilyMenu`'s job above, and a teacher editing is
+    editing the week they are in. A constant rather than state, so nothing can
+    move it without somebody deciding to put a control back.
+  */
+  const monday = mondayOf(now);
+  // Which day the strip below has open — an offset, not a stored date.
   const [selectedOffset, setSelectedOffset] = useState(mondayFirstIndex(now));
-  // ★ Its own state, not derived from `activeDate` — "7 хоног" only reveals
-  // the weekday strip, it does not have to move `activeDate` off today's
-  // date to do it. Deriving this from the date meant pressing "7 хоног"
-  // while still viewing today did nothing, because the date it would have
-  // matched against had not changed. Paging the week with the chevrons still
-  // switches into "week" (below), so landing back on today via the strip
-  // itself reads the same as it always did.
-  const [quickView, setQuickView] = useState<"today" | "tomorrow" | "week">("today");
 
   const weekDates = Array.from({ length: 7 }, (_, i) => toIso(addDays(monday, i)));
   const from = weekDates[0]!;
@@ -183,31 +179,34 @@ export function ChildMenu({
   if (menu.isError) return <ErrorState description={errorMessage(menu.error)} />;
 
   /*
-    ★ A family gets a different screen entirely — 2026-09-11, the client's
-    design: "эцэг дээр хоол ийм байна өмнөх загвар арилгаад ийм болго".
+    ★ One design for everybody — 2026-09-11, at the client's request:
+    "хоолны хуучин бүртгэл гэсэн хэсгийг арилгаад эцэг эх дээр хийгдсэн байгаа
+    хоолны цэс хэсгийг яг тэр загвараар … оруул."
 
-    Not a narrowed version of this one. The staff screen is a week pager over an
-    editable day, and the questions a parent has are "what is my child eating
-    today" and "what is coming" — so `FamilyMenu` answers those three (today,
-    tomorrow, the week as a table) and carries none of the pager, the weekday
-    strip, the "Хоолны цаг" jump list or the editor.
+    `FamilyMenu` was built for a parent a few hours earlier and is now what
+    every role reads on this screen: today, tomorrow, and the week as a table.
+    What it replaces for staff is the week pager, the weekday strip and the
+    "Хоолны цаг" jump list — three controls answering the same question three
+    ways.
 
-    Everything below this line is the staff path, unchanged.
+    ★★ Staff keep the editor, below the reading view rather than instead of it.
+    A teacher opens this screen far more often to check what is being served
+    than to change it, and the old shape put the form first.
   */
-  if (!isStaff) {
-    const family = new Map(menu.data.map((day) => [day.date.slice(0, 10), day]));
+  const family = new Map(menu.data.map((day) => [day.date.slice(0, 10), day]));
 
-    return (
-      <FamilyMenu
-        byDate={family}
-        weekDates={weekDates}
-        todayIso={todayIso}
-        tomorrowIso={toIso(tomorrow)}
-        healthNotes={healthNotes}
-        footer={childId ? <MenuNoteBox childId={childId} date={todayIso} /> : null}
-      />
-    );
-  }
+  const reading = (
+    <FamilyMenu
+      byDate={family}
+      weekDates={weekDates}
+      todayIso={todayIso}
+      tomorrowIso={toIso(tomorrow)}
+      healthNotes={healthNotes}
+      footer={!isStaff && childId ? <MenuNoteBox childId={childId} date={todayIso} /> : null}
+    />
+  );
+
+  if (!isStaff) return reading;
 
   // ★ `day.date` is a full ISO datetime from the API (`2026-08-27T00:00:00.000Z`),
   // not the plain `YYYY-MM-DD` this component works in — `attendance-calendar.tsx`
@@ -217,143 +216,59 @@ export function ChildMenu({
 
   return (
     <div className="flex flex-col gap-6">
+      {reading}
+
       <section aria-labelledby="menu-heading">
         <SectionHeader
           id="menu-heading"
-          title="Долоо хоногийн цэс"
+          title="Цэс оруулах"
           lede={
             healthNotes
               ? "Эрүүл мэндийн тэмдэглэлтэй тохирсон орц бүхий хоол улаан тэмдгээр харагдана. Энэ бол баталгаат харшлын систем биш."
               : undefined
           }
-          action={
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setMonday((cur) => addDays(cur, -7));
-                  setQuickView("week");
-                }}
-                aria-label="Өмнөх долоо хоног"
-                className="grid size-11 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
-              >
-                <ChevronLeft size={18} aria-hidden="true" />
-              </button>
-              <span className="min-w-[92px] text-center text-body font-medium text-ink">
-                {formatDayMonth(from)}–{formatDayMonth(to)}
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setMonday((cur) => addDays(cur, 7));
-                  setQuickView("week");
-                }}
-                aria-label="Дараах долоо хоног"
-                className="grid size-11 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
-              >
-                <ChevronRight size={18} aria-hidden="true" />
-              </button>
-            </div>
-          }
         />
 
-        {/*
-          ★ A 3-way quick view, above the week nav rather than replacing it —
-          "Өнөөдөр"/"Маргааш" jump straight to that day regardless of which
-          week is currently open; "7 хоног" is not a third destination but a
-          way back, resetting the open week to the current one without
-          disturbing which weekday is selected.
-        */}
-        <div
-          role="group"
-          aria-label="Хугацаа сонгох"
-          className="mb-3 grid grid-cols-3 gap-1 rounded-control bg-canvas p-1"
-        >
-          {(
-            [
-              [
-                "today",
-                "Өнөөдөр",
-                () => {
-                  setMonday(mondayOf(now));
-                  setSelectedOffset(mondayFirstIndex(now));
-                  setQuickView("today");
-                },
-              ],
-              [
-                "tomorrow",
-                "Маргааш",
-                () => {
-                  setMonday(mondayOf(tomorrow));
-                  setSelectedOffset(mondayFirstIndex(tomorrow));
-                  setQuickView("tomorrow");
-                },
-              ],
-              [
-                "week",
-                "7 хоног",
-                () => {
-                  setMonday(mondayOf(now));
-                  setQuickView("week");
-                },
-              ],
-            ] as const
-          ).map(([value, label, onClick]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={onClick}
-              aria-pressed={quickView === value}
-              className={cn(
-                "min-h-[44px] rounded-control text-caption font-semibold transition-colors",
-                quickView === value
-                  ? "bg-primary text-primary-ink shadow-sm"
-                  : "text-muted hover:text-ink",
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <div className="flex flex-col gap-3">
+          {/*
+            ★ The strip is a day picker now, not a way of reading.
 
-        <Card pad="roomy" className="flex flex-col gap-4">
-          {/* The weekday strip is what "7 хоног" means — Өнөөдөр/Маргааш
-              jump straight to a day without it, so it only shows once that's
-              the actual quick view selected. */}
-          {quickView === "week" ? (
-            <div className="grid grid-cols-7 gap-1.5">
-              {weekDates.map((date, i) => {
-                const day = byDate.get(date);
-                const filled = (day?.dishes.length ?? 0) > 0;
-                const isToday = date === todayIso;
-                const active = i === selectedOffset;
+            Reading happens in `FamilyMenu` above. What a teacher still needs
+            here is "which day am I editing", and seven buttons answer that in
+            one press where a pager and a tri-toggle answered it in three.
+          */}
+          <div className="grid grid-cols-7 gap-1.5">
+            {weekDates.map((date, i) => {
+              const day = byDate.get(date);
+              const filled = (day?.dishes.length ?? 0) > 0;
+              const isToday = date === todayIso;
+              const active = i === selectedOffset;
 
-                return (
-                  <button
-                    key={date}
-                    type="button"
-                    aria-pressed={active}
-                    aria-label={`${WEEKDAYS[i]}, ${formatDayMonth(date)}${filled ? " — цэстэй" : ""}`}
-                    onClick={() => setSelectedOffset(i)}
-                    className={cn(
-                      "flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-row border px-1 py-2 text-caption font-semibold transition-colors",
-                      active
-                        ? "border-primary bg-primary-soft text-primary-strong"
-                        : "border-border bg-surface text-ink hover:border-primary",
-                      isToday && !active && "border-primary/50",
-                    )}
-                  >
-                    <span className="text-faint">{WEEKDAYS[i]}</span>
-                    <span>{Number(date.slice(8, 10))}</span>
-                    <span
-                      aria-hidden="true"
-                      className={cn("size-1.5 rounded-pill", filled ? "bg-mint" : "bg-transparent")}
-                    />
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
+              return (
+                <button
+                  key={date}
+                  type="button"
+                  aria-pressed={active}
+                  aria-label={`${WEEKDAYS[i]}, ${formatDayMonth(date)}${filled ? " — цэстэй" : ""}`}
+                  onClick={() => setSelectedOffset(i)}
+                  className={cn(
+                    "flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-row border px-1 py-2 text-caption font-semibold transition-colors",
+                    active
+                      ? "border-primary bg-primary-soft text-primary-strong"
+                      : "border-border bg-surface text-ink hover:border-primary",
+                    isToday && !active && "border-primary/50",
+                  )}
+                >
+                  <span className="text-faint">{WEEKDAYS[i]}</span>
+                  <span>{Number(date.slice(8, 10))}</span>
+                  <span
+                    aria-hidden="true"
+                    className={cn("size-1.5 rounded-pill", filled ? "bg-mint" : "bg-transparent")}
+                  />
+                </button>
+              );
+            })}
+          </div>
 
           {!isStaff && !hasAnyDish ? (
             <EmptyState
@@ -373,7 +288,7 @@ export function ChildMenu({
               isStaff={isStaff}
             />
           )}
-        </Card>
+        </div>
       </section>
     </div>
   );

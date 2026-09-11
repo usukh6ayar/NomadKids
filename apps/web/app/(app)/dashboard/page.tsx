@@ -325,16 +325,14 @@ function TeacherDashboard() {
           `/meals` resolves the first group and forwards, so the bare route is
           a working fallback rather than a dead end — but a teacher who has a
           group should not spend a redirect on a question their account already
-          answers. The label is `staffSections`' "Хоол ба цэс", which is the
-          day sheet; `/menu`'s "Хоолны цэс" is the kitchen's week and a
-          different screen.
+          answers.
+
+          ★ It points at the menu now, not the register — 2026-09-11, with the
+          nav row it mirrors (`layout.tsx`). What a teacher opens before lunch
+          is what is being served; who ate it is marked afterwards, from
+          "Хоолны бүртгэл" in the menu below.
         */}
-        <QuickAction
-          href={group ? `/groups/${group.id}/meals` : "/meals"}
-          title="Хоол ба цэс"
-          description="Өдрийн хоол, харшил"
-          art="food"
-        />
+        <QuickAction href="/menu" title="Хоолны цэс" description="Өдрийн хоол, харшил" art="food" />
         <QuickAction
           href="/notifications/new"
           title="Мэдээ"
