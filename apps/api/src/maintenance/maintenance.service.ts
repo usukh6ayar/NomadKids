@@ -10,6 +10,15 @@ export const RETENTION = {
   loginAttempts: 30 * DAY_MS,
   /** A revoked session must outlive its refresh token for reuse detection. */
   sessions: 7 * DAY_MS,
+  /**
+   * How long a notice stays on the board — the client, 2026-09-11.
+   *
+   * ★ The one entry here that is not an operational record. It is measured
+   * from `publishedAt` and skips anything the author marked important, so
+   * "seven days" is the default life of a notice rather than a ceiling on all
+   * of them. `MaintenanceRepository.retireNotifications` has the reasoning.
+   */
+  notifications: 7 * DAY_MS,
 } as const;
 
 /**
@@ -42,12 +51,17 @@ export class MaintenanceService {
       // And jobs the queue never picked up get another chance, rather than
       // leaving a client polling something nobody is working on.
       reportsRequeued: (await this.reportRetention.requeueStale(now)).requeued,
+      // ★ Soft, unlike everything above it — see the repository.
+      notifications: await this.repo.retireNotifications(
+        new Date(now.getTime() - RETENTION.notifications),
+      ),
     };
 
     this.logger.log(
       `Cleanup: ${result.loginAttempts} login attempts, ` +
         `${result.authTokens} auth tokens, ${result.sessions} sessions, ` +
-        `${result.reportFiles} report files, ${result.reportsRequeued} jobs requeued`,
+        `${result.reportFiles} report files, ${result.reportsRequeued} jobs requeued, ` +
+        `${result.notifications} notices retired`,
     );
     return result;
   }
@@ -59,4 +73,6 @@ export interface CleanupResult {
   sessions: number;
   reportFiles: number;
   reportsRequeued: number;
+  /** Notices soft-deleted a week after publication. */
+  notifications: number;
 }

@@ -1,10 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, Info } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Info } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { Card } from "@/components/ui/card";
 import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
 import { ErrorState, LoadingState } from "@/components/ui/states";
@@ -90,11 +89,17 @@ export function CoverageDetail({
 
   const header = (
     <div className="flex items-start gap-2">
-      <Button asChild variant="ghost" size="icon" aria-label="Буцах">
-        <Link href={back}>
-          <ArrowLeft size={18} aria-hidden="true" />
-        </Link>
-      </Button>
+      {/*
+        ★ `BackButton`, not a link to `back` — 2026-09-11.
+
+        This drew the same arrow and carried the same "Буцах" label, but it
+        always went to the group's assessment screen. A teacher who reached this
+        breakdown from the dashboard's coverage tile landed somewhere they had
+        never been, which is the failure `BackButton` exists to fix (the
+        client, 2026-09-08: "хаанаас ч байсан нэг л ухрана"). `back` stays, as
+        the fallback for a page opened from a pasted URL.
+      */}
+      <BackButton href={back} className="ml-0" />
       <div className="min-w-0 flex-1 pt-1.5">
         <h1 className="text-title font-semibold leading-heading text-ink">{meta.title}</h1>
         <p className="mt-0.5 text-caption leading-snug text-muted">{meta.lede}</p>
