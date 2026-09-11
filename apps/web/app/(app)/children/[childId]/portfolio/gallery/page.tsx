@@ -3,15 +3,14 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, ChevronRight, Images } from "lucide-react";
+import { ChevronRight, Images } from "lucide-react";
 import { ageAlbumSummarySchema, childDetailSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
-import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/ui/back-button";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { MediaThumb } from "@/components/media/media-image";
 import { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
-import { PORTFOLIO } from "@/lib/vocabulary";
 import { DevelopmentHistoryLink } from "@/components/child/age-photo-album";
 import { PortfolioSpecialAlbums } from "@/components/child/portfolio-special-albums";
 import { useSession } from "@/lib/auth/session";
@@ -44,12 +43,16 @@ export default function PhotoAlbumLandingPage() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <Button asChild variant="ghost" size="sm" className="-ml-2 self-start">
-        <Link href={`/children/${childId}/portfolio`}>
-          <ArrowLeft size={18} />
-          {PORTFOLIO}
-        </Link>
-      </Button>
+      {/*
+        ★ A bare Буцах, not the destination's name — 2026-09-11, at the client's
+        instruction: "хүүхдийн нэрийг арилгаад зүгээр л буцах гэсэн тэмдэг
+        болго … бүх газар … зөвхөн нэг удаа буцах тэмдэг."
+
+        `BackButton` is one step back through history with `href` as the
+        fallback, which is also the honest control: this link named a screen the
+        reader may never have come from.
+      */}
+      <BackButton href={`/children/${childId}/portfolio`} />
 
       <DevelopmentHistoryLink childId={childId} />
 
