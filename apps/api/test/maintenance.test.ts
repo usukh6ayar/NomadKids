@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { AppModule } from "../src/app.module";
 import { MaintenanceService, RETENTION } from "../src/maintenance/maintenance.service";
 import { resetData, testDb, uniq } from "./support/db";
-import { createUser } from "./support/fixtures";
+import { createKindergarten, createUser } from "./support/fixtures";
 
 /**
  * Cleanup of operational tables.
@@ -138,5 +138,83 @@ describe("session pruning", () => {
 
     await service.runCleanup();
     expect(await db.session.count()).toBe(1);
+  });
+});
+
+/**
+ * Notices leave the board after a week — the client, 2026-09-11.
+ *
+ * ★ The only **soft** delete in this sweep, and the cases below are mostly
+ * about what it must not touch. A retention rule that takes one row too many
+ * is indistinguishable from a bug that deletes notices at random, and the
+ * kindergarten discovers it by a parent asking about a notice nobody can find.
+ */
+describe("notice retirement", () => {
+  const publishNotice = async (
+    kindergartenId: string,
+    overrides: { publishedAt?: Date; isImportant?: boolean; status?: "DRAFT" | "PUBLISHED" } = {},
+  ) =>
+    db.notification.create({
+      data: {
+        kindergartenId,
+        title: uniq("Мэдээ"),
+        body: "Тэмдэглэл",
+        status: overrides.status ?? "PUBLISHED",
+        publishedAt: overrides.publishedAt ?? new Date(Date.now() - RETENTION.notifications - DAY),
+        isImportant: overrides.isImportant ?? false,
+      },
+    });
+
+  it("retires a notice a week after it was published", async () => {
+    const kg = await createKindergarten();
+    const notice = await publishNotice(kg.id);
+
+    expect((await service.runCleanup()).notifications).toBe(1);
+
+    /*
+      ★ The row survives. CLAUDE.md §3.2 — and the reason it matters here is
+      that "what did you tell the parents in March" is a question a
+      kindergarten gets asked, and a hard delete makes it unanswerable to save
+      one row.
+    */
+    const after = await db.notification.findUnique({ where: { id: notice.id } });
+    expect(after?.deletedAt).toBeInstanceOf(Date);
+  });
+
+  it("KEEPS a notice the author marked important", async () => {
+    const kg = await createKindergarten();
+    await publishNotice(kg.id, { isImportant: true });
+
+    expect((await service.runCleanup()).notifications).toBe(0);
+    expect(await db.notification.count({ where: { deletedAt: null } })).toBe(1);
+  });
+
+  it("KEEPS a notice published inside the week", async () => {
+    const kg = await createKindergarten();
+    await publishNotice(kg.id, { publishedAt: new Date(Date.now() - DAY) });
+
+    expect((await service.runCleanup()).notifications).toBe(0);
+  });
+
+  /*
+    ★ A draft has not started its week.
+
+    The clock runs from `publishedAt`, so a notice written on Monday and
+    published on Friday gets its seven days from Friday — and one saved and
+    never published is not on any board to leave.
+  */
+  it("KEEPS a draft that was never published", async () => {
+    const kg = await createKindergarten();
+    await publishNotice(kg.id, { status: "DRAFT", publishedAt: null as unknown as Date });
+
+    expect((await service.runCleanup()).notifications).toBe(0);
+  });
+
+  it("does not retire the same notice twice", async () => {
+    const kg = await createKindergarten();
+    await publishNotice(kg.id);
+
+    expect((await service.runCleanup()).notifications).toBe(1);
+    expect((await service.runCleanup()).notifications).toBe(0);
   });
 });
