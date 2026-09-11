@@ -519,6 +519,17 @@ export class AssessmentService {
     const facts = await this.childAccess.assertCanAccess(actor, childId);
     const report = await this.repo.findTermReport(childId, termId, isGuardianOf(actor, facts));
 
+    /*
+      Flattened before it leaves: the join row carries nothing a reader wants, so
+      the response is a list of notes rather than a list of wrappers around
+      notes. Keeping the join's shape in the contract would push it into the web
+      app and the PDF template both.
+    */
+    if (report) {
+      const { observations, ...rest } = report;
+      return { ...rest, observations: observations.map((row) => row.observation) };
+    }
+
     return (
       report ?? {
         childId,
@@ -529,6 +540,7 @@ export class AssessmentService {
         needsSupport: null,
         nextGoals: null,
         adviceForParents: null,
+        observations: [],
       }
     );
   }
@@ -553,6 +565,24 @@ export class AssessmentService {
       throw new BadRequestException("Хүүхэд энэ хичээлийн жилд бүртгэлгүй байна");
     }
 
+    /*
+      ★ Every cited note must be this child's — checked before the report is
+      written, and answered with 404.
+
+      §1.7: an observation id belonging to another child must not be
+      distinguishable from one that never existed, or this endpoint becomes a
+      way to test whether a given note id is real. The actor has already passed
+      `assertCanRecord` for *this* child, which is the only thing that licenses
+      them to cite anything at all.
+
+      A count rather than a fetch, and one query for the whole set (§3.4).
+    */
+    if (dto.observationIds && dto.observationIds.length > 0) {
+      const unique = [...new Set(dto.observationIds)];
+      const found = await this.repo.countObservationsForChild(unique, childId);
+      if (found !== unique.length) throw new NotFoundException();
+    }
+
     const saved = await this.repo.upsertTermReport({
       kindergartenId: enrollment.kindergartenId,
       childId,
@@ -565,6 +595,20 @@ export class AssessmentService {
       adviceForParents: dto.adviceForParents ?? null,
     });
 
+    /*
+      ★ Only when the field was sent. `undefined` leaves the selection alone;
+      `[]` clears it.
+
+      A screen that saves the narrative without re-sending the citations must
+      not drop them, and unticking the last box must not be indistinguishable
+      from not mentioning citations at all.
+    */
+    if (dto.observationIds) {
+      await this.repo.replaceTermReportObservations(saved.id, enrollment.kindergartenId, [
+        ...new Set(dto.observationIds),
+      ]);
+    }
+
     await this.audit.append({
       action: "UPDATE",
       kindergartenId: enrollment.kindergartenId,
@@ -572,7 +616,11 @@ export class AssessmentService {
       objectType: "TermReport",
       objectId: saved.id,
       childId,
-      metadata: { termId: dto.termId, status: saved.status },
+      metadata: {
+        termId: dto.termId,
+        status: saved.status,
+        ...(dto.observationIds ? { citedObservations: dto.observationIds.length } : {}),
+      },
     });
 
     return saved;

@@ -743,14 +743,16 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
       title: "Багш ба байгууллага",
       entries: [
         /*
-         * ★ "Тохиргоо" — one name for this destination in every role's menu,
-         * renamed 2026-09-10 at the client's request.
+         * ★ "Хувийн тохиргоо" — one name for this destination in every role's
+         * menu, renamed 2026-09-10 and settled 2026-09-11 at the client's
+         * request ("Хувийн тохиргоо дотор хүмүүсийн бүх мэдээллүүд нь байна").
          *
-         * The name has been three things at once: "Багшийн мэдээлэл", then
-         * "Хувийн тохиргоо" here (2026-09-06) while the cook's and the
-         * accountant's rail said "Профайл" and the sidebar's own identity card
-         * said "Профайл" a third time. The client read that as three screens.
-         * One screen gets one name.
+         * The name has been four things: "Багшийн мэдээлэл", then "Хувийн
+         * тохиргоо" here (2026-09-06) while the cook's and the accountant's rail
+         * said "Профайл" and the sidebar's own identity card said "Профайл" a
+         * third time, then "Тохиргоо" for a day. The client read that as three
+         * screens. One screen gets one name, and the menu's own foot names it
+         * the same — `app-shell.tsx`'s `WhoAmI`.
          *
          * The row points at `/settings`, which is the signed-in person's *own*
          * account: their picture, their password, and — since this change —
@@ -758,7 +760,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
          * of the kindergarten's teachers: that is "Хэрэглэгч ба эрх" one row
          * below, and "Багшийн мэдээлэл" promised this row was it.
          */
-        entry("Тохиргоо", "/settings"),
+        entry("Хувийн тохиргоо", "/settings"),
         /*
          * ★ The administration screens, named — and no "Удирдлага" row above
          * them any more.
@@ -967,7 +969,7 @@ function supportSections(isCook: boolean): NavSection[] {
     },
     {
       title: "Миний мэдээлэл",
-      entries: [navEntry("Тохиргоо", "/settings")],
+      entries: [navEntry("Хувийн тохиргоо", "/settings")],
     },
   ];
 }
@@ -1006,7 +1008,7 @@ function platformNav(): NavItem[] {
       label: "Байгууллагын хүсэлт",
       icon: artIcon("kindergarten", 20),
     },
-    { href: "/settings", label: "Тохиргоо", icon: <Settings {...iconProps} /> },
+    { href: "/settings", label: "Хувийн тохиргоо", icon: <Settings {...iconProps} /> },
   ];
 }
 

@@ -63,7 +63,7 @@ export default function SettingsPage() {
       on the page, the line is the page.
     */
     <div className="flex w-full flex-col gap-6 lg:gap-8">
-      <PageHeader title="Тохиргоо" />
+      <PageHeader title="Хувийн тохиргоо" />
 
       {/*
         ★ The reading measure holds the form, not the ESIS panels —
@@ -390,7 +390,12 @@ function SignOutCard() {
         <p className="font-medium text-ink">Системээс гарах</p>
         <p className="text-body text-muted">Энэ төхөөрөмжөөс гарч, нэвтрэх хуудас руу буцна.</p>
       </div>
-      <Button variant="secondary" onClick={() => void logout()}>
+      {/*
+        ★ Red since 2026-09-11 — the client asked for it in the menu, and this
+        is the same action. Painting one of them as a neutral secondary and the
+        other as a warning would be two answers to "is this dangerous?".
+      */}
+      <Button variant="danger" onClick={() => void logout()}>
         <LogOut aria-hidden="true" />
         Системээс гарах
       </Button>

@@ -1473,6 +1473,27 @@ export const termReportSchema = z.object({
   adviceForParents: z.string().nullish(),
   finalizedAt: z.string().nullish(),
   author: personRefSchema.nullish(),
+  /**
+   * The observations this report was written from — the teacher's citation.
+   *
+   * ★ Chosen, not computed. A term may hold forty notes about one child and the
+   * report is written from the handful that evidence what it claims, which is
+   * why this is stored rather than derived from the term's dates.
+   *
+   * Defaults to `[]` so a report written before the field existed, and the
+   * "no report yet" shape, both parse without a null check at every use.
+   */
+  observations: z
+    .array(
+      z.object({
+        id: uuidSchema,
+        observedOn: z.string(),
+        activityName: z.string().nullish(),
+        situation: z.string().nullish(),
+        type: z.object({ id: uuidSchema, name: z.string(), code: z.string().nullish() }).nullish(),
+      }),
+    )
+    .default([]),
 });
 
 // ── Portfolio ────────────────────────────────────────────────────────────────

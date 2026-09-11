@@ -417,6 +417,30 @@ describe("assessment visibility", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("term reports", () => {
+  /**
+   * Files a note for a child directly, bypassing the API.
+   *
+   * ★ Straight to the database because what is under test here is the report's
+   * citation of a note, not the note's own creation — which `observations.test.ts`
+   * covers at length. Going through the endpoint would make every case in this
+   * block depend on the observation controller's rules as well as its own.
+   */
+  async function noteFor(scenario: Scenario, day = "2025-10-05") {
+    const type = await db.observationType.findFirstOrThrow({ where: { code: "daily" } });
+    const row = await db.observation.create({
+      data: {
+        kindergartenId: scenario.kindergarten.id,
+        childId: scenario.child.id,
+        enrollmentId: scenario.enrollment.id,
+        typeId: type.id,
+        observedOn: new Date(day),
+        source: "TEACHER",
+        situation: `Тэмдэглэл ${day}`,
+      },
+    });
+    return row.id;
+  }
+
   async function writeReport() {
     return authed(request(server()).put(`/v1/children/${a.child.id}/term-report`), teacherA).send({
       termId,
@@ -546,6 +570,183 @@ describe("term reports", () => {
     ).send({ termId, strengths: "Эцэг эхийн бичсэн" });
 
     expect(res.status).toBe(404);
+  });
+
+  // ── Cited observations ────────────────────────────────────────────────────
+  //
+  // ★ The client's 2026-09-11 ask: "өмнө нь бичсэн хэсгүүдээ чекэлж сонгож
+  // байгаад тэдгээр дээрээ багцлан дүгнэлт гаргадаг." The report stores which
+  // notes it was written from, rather than implying every note in the term.
+
+  it("stores the notes a report was written from", async () => {
+    const one = await noteFor(a, "2025-10-05");
+    const two = await noteFor(a, "2025-11-02");
+
+    const res = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/term-report`),
+      teacherA,
+    ).send({ termId, strengths: "Багаараа тоглодог", observationIds: [one, two] });
+
+    expect(res.status).toBe(200);
+
+    const read = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/term-report?termId=${termId}`),
+      teacherA,
+    );
+    expect(read.body.observations.map((row: { id: string }) => row.id)).toEqual([one, two]);
+  });
+
+  /*
+    ★ 404, not 400 — §1.7.
+
+    An observation id belonging to another child must not be distinguishable
+    from one that never existed, or this endpoint becomes a way to test whether
+    a note id is real.
+  */
+  it("★ refuses a note belonging to another child with 404", async () => {
+    const mine = await noteFor(a);
+    const theirs = await noteFor(b);
+
+    const res = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/term-report`),
+      teacherA,
+    ).send({ termId, observationIds: [mine, theirs] });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("★ answers the same 404 for a note id that does not exist", async () => {
+    const res = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/term-report`),
+      teacherA,
+    ).send({ termId, observationIds: ["00000000-0000-4000-8000-000000000000"] });
+
+    expect(res.status).toBe(404);
+  });
+
+  /*
+    ★ Nothing is written when one id is refused.
+
+    The check runs before the upsert, so a report that did not exist still does
+    not — a teacher whose selection was rejected must not find a blank report
+    waiting for them.
+  */
+  it("writes no report at all when a cited note is refused", async () => {
+    const theirs = await noteFor(b);
+
+    await authed(request(server()).put(`/v1/children/${a.child.id}/term-report`), teacherA).send({
+      termId,
+      strengths: "Энэ хадгалагдах ёсгүй",
+      observationIds: [theirs],
+    });
+
+    expect(await db.termReport.count({ where: { childId: a.child.id, termId } })).toBe(0);
+  });
+
+  it("replaces the selection rather than adding to it", async () => {
+    const one = await noteFor(a, "2025-10-05");
+    const two = await noteFor(a, "2025-11-02");
+
+    await authed(request(server()).put(`/v1/children/${a.child.id}/term-report`), teacherA).send({
+      termId,
+      observationIds: [one, two],
+    });
+    await authed(request(server()).put(`/v1/children/${a.child.id}/term-report`), teacherA).send({
+      termId,
+      observationIds: [two],
+    });
+
+    const read = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/term-report?termId=${termId}`),
+      teacherA,
+    );
+    expect(read.body.observations.map((row: { id: string }) => row.id)).toEqual([two]);
+  });
+
+  /*
+    ★ Omitting the field is not the same as sending an empty one.
+
+    A screen saving only the narrative must not drop the citations, and
+    unticking the last box must still be expressible.
+  */
+  it("leaves the selection alone when the field is not sent", async () => {
+    const one = await noteFor(a);
+
+    await authed(request(server()).put(`/v1/children/${a.child.id}/term-report`), teacherA).send({
+      termId,
+      observationIds: [one],
+    });
+    await authed(request(server()).put(`/v1/children/${a.child.id}/term-report`), teacherA).send({
+      termId,
+      strengths: "Зөвхөн текст",
+    });
+
+    const read = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/term-report?termId=${termId}`),
+      teacherA,
+    );
+    expect(read.body.observations).toHaveLength(1);
+    expect(read.body.strengths).toBe("Зөвхөн текст");
+  });
+
+  it("clears the selection when an empty list is sent", async () => {
+    const one = await noteFor(a);
+
+    await authed(request(server()).put(`/v1/children/${a.child.id}/term-report`), teacherA).send({
+      termId,
+      observationIds: [one],
+    });
+    await authed(request(server()).put(`/v1/children/${a.child.id}/term-report`), teacherA).send({
+      termId,
+      observationIds: [],
+    });
+
+    const read = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/term-report?termId=${termId}`),
+      teacherA,
+    );
+    expect(read.body.observations).toEqual([]);
+  });
+
+  it("★ a teacher from another kindergarten cannot cite this child's notes", async () => {
+    const mine = await noteFor(a);
+    const teacherB = await login(app, b.teacherUser.username);
+
+    const res = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/term-report`),
+      teacherB,
+    ).send({ termId, observationIds: [mine] });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("★ a guardian cannot write a report at all", async () => {
+    const mine = await noteFor(a);
+
+    const res = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/term-report`),
+      parentA,
+    ).send({ termId, observationIds: [mine] });
+
+    expect(res.status).toBe(404);
+  });
+
+  /*
+    The cap is §3.4's bound: `findTermReport` includes the notes without
+    paginating, which is only defensible because the set cannot grow past this.
+  */
+  it("refuses more than fifty cited notes", async () => {
+    const ids = Array.from(
+      { length: 51 },
+      (_, index) => `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    );
+
+    const res = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/term-report`),
+      teacherA,
+    ).send({ termId, observationIds: ids });
+
+    expect(res.status).toBe(400);
   });
 });
 

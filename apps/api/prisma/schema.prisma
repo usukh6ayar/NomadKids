@@ -611,6 +611,7 @@ model Kindergarten {
   observationDomains     ObservationDomain[]
   assessments            Assessment[]
   termReports            TermReport[]
+  termReportObservations TermReportObservation[]
   mediaFiles             MediaFile[]
   notifications          Notification[]
   notificationTargets    NotificationTarget[]
@@ -2569,15 +2570,16 @@ model Observation {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  kindergarten Kindergarten         @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
-  child        Child                @relation(fields: [childId], references: [id], onDelete: Cascade)
-  enrollment   Enrollment           @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
-  type         ObservationType      @relation(fields: [typeId], references: [id], onDelete: Restrict)
-  indicator    CurriculumIndicator? @relation(fields: [indicatorId], references: [id], onDelete: Restrict)
-  author       User?                @relation("ObservationAuthor", fields: [authorId], references: [id], onDelete: SetNull)
-  reviewedBy   User?                @relation("ObservationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  kindergarten Kindergarten            @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child                   @relation(fields: [childId], references: [id], onDelete: Cascade)
+  enrollment   Enrollment              @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
+  type         ObservationType         @relation(fields: [typeId], references: [id], onDelete: Restrict)
+  indicator    CurriculumIndicator?    @relation(fields: [indicatorId], references: [id], onDelete: Restrict)
+  author       User?                   @relation("ObservationAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  reviewedBy   User?                   @relation("ObservationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   domains      ObservationDomain[]
-  media        MediaFile[]          @relation("ObservationMedia")
+  media        MediaFile[]             @relation("ObservationMedia")
+  termReports  TermReportObservation[]
 
   @@index([childId, observedOn(sort: Desc)])
   @@index([kindergartenId, observedOn(sort: Desc)])
@@ -3557,10 +3559,46 @@ model TermReport {
   term         Term         @relation(fields: [termId], references: [id], onDelete: Restrict)
   author       User?        @relation("TermReportAuthor", fields: [authorId], references: [id], onDelete: SetNull)
 
+  observations TermReportObservation[]
+
   @@unique([childId, termId])
   @@index([childId, termId])
   @@index([kindergartenId, termId])
   @@map("term_reports")
+}
+
+/// The observations a term report was written from — the teacher's own citation.
+///
+/// ★ A selection, not a computed set.
+///
+/// A term report could have listed every note in its term automatically, and
+/// that would be a different document: the teacher picks the handful that
+/// evidence what they are claiming, out of a term that may hold forty. The
+/// client's words (2026-09-11): "өмнө нь бичсэн хэсгүүдээ чекэлж сонгож байгаад
+/// тэдгээр дээрээ багцлан дүгнэлт гаргадаг."
+///
+/// ★★ Hard-deleted when unchecked, unlike almost everything else here.
+///
+/// §3.2 protects records; this is tag membership, and the row carries no
+/// content of its own — unchecking a note is editing the report's draft, not
+/// deleting a thing that happened. `ObservationDomain` is replaced the same way
+/// (`observations.repository.ts` `update()`), and one table changing its mind
+/// about what a join row means is how a codebase stops being predictable.
+model TermReportObservation {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  termReportId   String @db.Uuid
+  observationId  String @db.Uuid
+
+  createdAt DateTime @default(now())
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  termReport   TermReport   @relation(fields: [termReportId], references: [id], onDelete: Cascade)
+  observation  Observation  @relation(fields: [observationId], references: [id], onDelete: Cascade)
+
+  @@unique([termReportId, observationId])
+  @@index([observationId])
+  @@map("term_report_observations")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

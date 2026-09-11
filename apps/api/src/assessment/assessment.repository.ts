@@ -417,7 +417,76 @@ export class AssessmentRepository {
       include: {
         author: { select: { id: true, lastName: true, firstName: true } },
         term: { select: { id: true, number: true, name: true } },
+        /*
+          The notes the report was written from, in the order they happened.
+
+          ★ One `include`, not a second round trip per report (§3.4). The set is
+          bounded by `saveTermReportSchema`'s cap of fifty, which is what makes
+          an unpaginated include defensible here.
+        */
+        observations: {
+          orderBy: { observation: { observedOn: "asc" } },
+          select: {
+            observation: {
+              select: {
+                id: true,
+                observedOn: true,
+                activityName: true,
+                situation: true,
+                type: { select: { id: true, name: true, code: true } },
+              },
+            },
+          },
+        },
       },
+    });
+  }
+
+  /**
+   * How many of these observations are really this child's, and still here.
+   *
+   * ★ One query for the whole set, and a count rather than the rows (§3.4).
+   *
+   * The caller only needs to know whether every id it was handed is legitimate;
+   * comparing the count to the ids' length answers that without fetching a
+   * single note. A teacher citing a note from another child — or one that has
+   * since been deleted — gets a 404 rather than a report that quietly drops it.
+   */
+  async countObservationsForChild(observationIds: string[], childId: string): Promise<number> {
+    if (observationIds.length === 0) return 0;
+    return this.prisma.observation.count({
+      where: { id: { in: observationIds }, childId, deletedAt: null },
+    });
+  }
+
+  /**
+   * Replaces the report's cited notes with exactly this set.
+   *
+   * ★ `deleteMany` then `createMany`, in one transaction.
+   *
+   * The same shape `observations.repository.ts` uses to replace a note's
+   * domains, and for the same reason: this is tag membership, not a record with
+   * a history of its own, and diffing two sets to preserve row ids would buy
+   * nothing any reader of this table can see. The transaction is what keeps a
+   * failed write from leaving a report citing nothing.
+   */
+  async replaceTermReportObservations(
+    termReportId: string,
+    kindergartenId: string,
+    observationIds: string[],
+  ) {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.termReportObservation.deleteMany({ where: { termReportId } });
+      if (observationIds.length > 0) {
+        await tx.termReportObservation.createMany({
+          data: observationIds.map((observationId) => ({
+            termReportId,
+            kindergartenId,
+            observationId,
+          })),
+          skipDuplicates: true,
+        });
+      }
     });
   }
 

@@ -83,6 +83,21 @@ export const saveTermReportSchema = z
     needsSupport: z.string().max(4000).nullable().optional(),
     nextGoals: z.string().max(4000).nullable().optional(),
     adviceForParents: z.string().max(4000).nullable().optional(),
+    /*
+      ★ The notes this report is drawn from — the teacher's own citation,
+      2026-09-11.
+
+      Capped at fifty, which is the §3.4 bound that lets `findTermReport`
+      include them without paginating. A term holds nowhere near that many notes
+      about one child, and a teacher who ticks every box in a busy term still
+      lands inside it.
+
+      Optional and *distinct from empty*: omitting it leaves the existing
+      selection alone, so a screen saving only the narrative cannot silently
+      drop the citations. `[]` clears them, which is what unticking the last box
+      has to mean.
+    */
+    observationIds: z.array(uuidSchema).max(50).optional(),
   })
   .strict();
 export type SaveTermReportDto = z.infer<typeof saveTermReportSchema>;
