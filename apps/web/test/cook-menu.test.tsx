@@ -799,16 +799,51 @@ describe("the menu as a spreadsheet", () => {
     expect(screen.getByRole("menuitem", { name: "Устгах" })).toBeInTheDocument();
   });
 
-  it("Засах opens that day's form", async () => {
+  /*
+    ★ Засах edits in place — 2026-09-11: "засах гэдэг дээр дарахаар өөр цонх руу
+    үсрэхгүй байх, бичвэрийг засаж болох болго."
+  */
+  it("Засах edits the dishes on the card, without leaving it", async () => {
     const user = userEvent.setup();
-    stubWeek();
+    const { calls } = stubWeek();
     renderWithProviders(<MenuPage />);
 
     const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
     await user.click(within(panel).getByRole("button", { name: /Өглөөний цай — үйлдэл/ }));
     await user.click(screen.getByRole("menuitem", { name: "Засах" }));
 
-    expect(await screen.findByText("Хоолны цэс засах")).toBeInTheDocument();
+    // Still on the same screen.
+    expect(screen.queryByText("Хоолны цэс засах")).not.toBeInTheDocument();
+
+    const box = await screen.findByLabelText("Өглөөний цай — хоолны нэрс");
+    expect(box).toHaveValue("Тараг");
+
+    await user.clear(box);
+    await user.type(box, "Тараг{Enter}Талх");
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
+
+    await waitFor(() => expect(calls.some((call) => call.method === "PUT")).toBe(true));
+    const put = calls.find((call) => call.method === "PUT")!;
+    expect((put.body as { dishes: { name: string }[] }).dishes.map((d) => d.name)).toEqual([
+      "Тараг",
+      "Талх",
+    ]);
+  });
+
+  it("Болих leaves the dishes as they were", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
+    await user.click(within(panel).getByRole("button", { name: /Өглөөний цай — үйлдэл/ }));
+    await user.click(screen.getByRole("menuitem", { name: "Засах" }));
+
+    await user.type(await screen.findByLabelText("Өглөөний цай — хоолны нэрс"), " өөрчлөв");
+    await user.click(screen.getByRole("button", { name: "Болих" }));
+
+    expect(screen.queryByLabelText("Өглөөний цай — хоолны нэрс")).not.toBeInTheDocument();
+    expect(calls.some((call) => call.method === "PUT")).toBe(false);
   });
 
   /** Every one of these writes the whole day back through the one PUT. */

@@ -175,11 +175,11 @@ export function SingleImageUpload({
               htmlFor={inputId}
               aria-label={label}
               className={cn(
-                "grid size-7 cursor-pointer place-items-center rounded-control bg-ink/70 text-white transition-colors hover:bg-primary",
+                "grid size-8 cursor-pointer touch-manipulation place-items-center rounded-control bg-ink/70 text-white transition-colors hover:bg-primary",
                 upload.isPending && "pointer-events-none opacity-60",
               )}
             >
-              <ImagePlus size={13} aria-hidden="true" />
+              <ImagePlus size={15} aria-hidden="true" />
             </label>
           ) : (
             <Button

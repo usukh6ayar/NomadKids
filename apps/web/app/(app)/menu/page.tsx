@@ -271,14 +271,30 @@ function WeeklyMenu() {
   const rowActions: MenuRowActions | undefined =
     canEdit && kindergartenId
       ? {
-          onEdit: (_kind, date) => {
-            const offset = weekDates.indexOf(date);
-            if (offset < 0) return;
-            setEditing(true);
-            setView("list");
-            setSelectedOffset(offset);
-            setOpenDay(offset);
-          },
+          /*
+            ★ The names are written back where they were typed — the card does
+            not send the reader anywhere.
+
+            Existing dishes keep their photograph, allergens and calories by
+            position; extra lines become new dishes and deleted lines go. A
+            renamed dish loses its `recipeId`, because `saveDay` freezes a
+            card-linked name server-side and the typed one would be discarded
+            without a word — the same call `ModeSwitch` makes: "the same dish,
+            my own way".
+          */
+          onSaveNames: (kind, date, names) =>
+            rewrite(date, kind, (rows) =>
+              names.map((name, index) => {
+                const existing = rows[index];
+                if (!existing) return { name, allergenTags: [], kind };
+                return {
+                  ...existing,
+                  name,
+                  kind,
+                  ...(existing.recipeId && existing.name !== name ? { recipeId: null } : {}),
+                };
+              }),
+            ),
           /*
             Хуулах duplicates the sitting's dishes in place. The copy lands on
             the same sitting, which is what makes it useful: a cook who serves

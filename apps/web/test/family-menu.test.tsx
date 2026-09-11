@@ -182,6 +182,27 @@ describe("the family's meal screen", () => {
     expect(within(panel).queryByRole("button", { name: /үйлдэл/ })).not.toBeInTheDocument();
   });
 
+  /*
+    ★ Nothing between the sitting's ⋮ and the page clips it — 2026-09-11: the
+    client saw Засах and no Устгах, because an 88px card with `overflow-hidden`
+    cut a 150px popup off below its own edge. On a phone that is the menu gone
+    but for its first line.
+
+    Asserted on the class, the way `responsive.test.tsx` does: jsdom has no
+    layout engine, so nothing here can measure a clip. What it defends is the
+    next person restoring `overflow-hidden` to round a corner.
+  */
+  it("lets a sitting's menu escape the card", async () => {
+    stub();
+    render();
+
+    const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
+    for (const card of panel.querySelectorAll('[data-ui="card"]')) {
+      expect(card.className).not.toContain("overflow-hidden");
+    }
+    expect(panel.firstElementChild!.className).not.toContain("overflow-hidden");
+  });
+
   it("says nothing about allergens when the child has no notes", async () => {
     stub();
     render();

@@ -20,7 +20,9 @@ import { MediaThumb } from "@/components/media/media-image";
 import { SingleImageUpload } from "@/components/media/single-image-upload";
 import { RowMenu } from "@/components/ui/menu";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/field";
 import { EmptyState } from "@/components/ui/states";
 import { formatDayMonth, formatLongDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -110,8 +112,18 @@ type View = "today" | "tomorrow" | "week";
  * single one of these controls renders, and the markup is what it always was.
  */
 export interface MenuRowActions {
-  /** Opens the day's form, on this sitting. */
-  onEdit: (kind: MealKind, date: string) => void;
+  /**
+   * Writes the sitting's dish names back.
+   *
+   * ★ Засах edits in place — 2026-09-11, at the client's request: "засах гэдэг
+   * дээр дарахаар өөр цонх руу үсрэхгүй байх, бичвэрийг засаж болох болго."
+   *
+   * It opened the day's form, which is the right destination for portions,
+   * calories and a технологийн карт and the wrong one for fixing a typo in
+   * "Тарагтай мюсли". One line per dish, so a line added or removed adds or
+   * removes one.
+   */
+  onSaveNames: (kind: MealKind, date: string, names: string[]) => void;
   /** Duplicates the sitting's dishes so the cook can re-time the copy. */
   onDuplicate: (kind: MealKind, date: string) => void;
   onDelete: (kind: MealKind, date: string) => void;
@@ -252,7 +264,13 @@ function DayView({
   const kinds = MEAL_KIND_ORDER.filter((kind) => dishesOf(dishes, kind).length > 0);
 
   return (
-    <div className="overflow-hidden rounded-card border border-border bg-surface">
+    /*
+      ★ This one does not clip either, for the same reason: a menu opened on
+      the last sitting would be cut by the day's own box. The header's rule is
+      a border rather than a filled band, so there is nothing here that needed
+      the corners clipped.
+    */
+    <div className="rounded-card border border-border bg-surface">
       <div className="flex items-center gap-3 border-b border-border px-4 py-3">
         <span className="grid size-10 shrink-0 place-items-center rounded-control bg-primary-soft text-primary">
           <CalendarDays size={20} aria-hidden="true" />
@@ -306,6 +324,16 @@ function MealRow({
   const photo = dishes.find((dish) => dish.photoMediaFileId)?.photoMediaFileId;
   const allergens = matchedAllergens(dishes, healthNotes);
 
+  /**
+   * The dish names being edited, one per line — or `null` while reading.
+   *
+   * ★ A textarea rather than an input per dish. The list *is* lines of text:
+   * adding a dish is pressing Enter, removing one is deleting a line, and on a
+   * phone that beats a column of little fields with their own add and remove
+   * buttons beside each.
+   */
+  const [editingNames, setEditingNames] = useState<string | null>(null);
+
   /*
     ★ The sitting's energy, shown to the family — 2026-09-11, at the client's
     request: "хоол дээр килокалори нь харагдах ёстой."
@@ -319,8 +347,18 @@ function MealRow({
   const hasCalories = dishes.some((dish) => dish.calories !== null && dish.calories !== undefined);
 
   return (
-    <Card pad="none" className={cn("flex items-stretch gap-3 overflow-hidden", style.card)}>
-      <div className="relative size-[88px] shrink-0">
+    /*
+      ★ No `overflow-hidden` on this card — 2026-09-11, the client: "засах
+      харагдаад устгах харагдахгүй байна."
+
+      It was here to clip the photograph's corners, and it clipped the row
+      menu with them: the card is 88px tall and the popup is about 150, so
+      Засах showed and Хуулах and Устгах were cut off below the edge. On a
+      phone that is the whole menu gone but its first line. The photograph
+      rounds its own corners now, which is the only thing the clip was for.
+    */
+    <Card pad="none" className={cn("flex items-stretch gap-3", style.card)}>
+      <div className="relative size-[88px] shrink-0 overflow-hidden rounded-l-card">
         {photo ? (
           <MediaThumb mediaId={photo} caption={dishes[0]?.name} flush className="size-[88px]" />
         ) : (
@@ -340,8 +378,19 @@ function MealRow({
           for what is one. Устгах appears only when there is something to
           remove.
         */}
+        {/*
+          ★ 32px, not the 44px floor §5 asks for — a deliberate exception, and
+          the only one on this card.
+
+          Two 44px targets plus a gap is 92px across an 88px photograph: the
+          controls would cover the thing they act on, which is the failure the
+          floor exists to prevent, arrived at from the other side. 32px with
+          `touch-manipulation` is the largest pair that leaves the picture
+          readable, and the same two actions are also on the day's form at full
+          size — this is the shortcut, not the only route.
+        */}
         {actions ? (
-          <div className="absolute inset-x-1 bottom-1 flex items-center justify-center gap-1">
+          <div className="absolute inset-x-1 bottom-1 flex touch-manipulation items-center justify-center gap-1.5">
             <SingleImageUpload
               endpoint={actions.photoEndpoint}
               currentMediaId={photo ?? null}
@@ -356,9 +405,9 @@ function MealRow({
                 type="button"
                 aria-label={`${MEAL_KIND_LABEL[kind]} — зургийг устгах`}
                 onClick={() => actions.onPhotoRemoved(kind, date)}
-                className="grid size-7 place-items-center rounded-control bg-ink/70 text-white transition-colors hover:bg-danger"
+                className="grid size-8 place-items-center rounded-control bg-ink/70 text-white transition-colors hover:bg-danger"
               >
-                <Trash2 size={13} aria-hidden="true" />
+                <Trash2 size={15} aria-hidden="true" />
               </button>
             ) : null}
           </div>
@@ -391,7 +440,7 @@ function MealRow({
                 {
                   label: "Засах",
                   icon: <PencilLine size={16} aria-hidden="true" />,
-                  onSelect: () => actions.onEdit(kind, date),
+                  onSelect: () => setEditingNames(dishes.map((dish) => dish.name).join("\n")),
                 },
                 {
                   label: "Хуулах",
@@ -411,16 +460,50 @@ function MealRow({
           ) : null}
         </div>
 
-        <ul className="mt-1 flex flex-col gap-0.5">
-          {dishes.map((dish, index) => (
-            <li key={index} className="flex gap-1.5 text-caption leading-snug text-ink">
-              <span aria-hidden="true" className="text-faint">
-                •
-              </span>
-              <span className="min-w-0">{dish.name}</span>
-            </li>
-          ))}
-        </ul>
+        {editingNames === null ? (
+          <ul className="mt-1 flex flex-col gap-0.5">
+            {dishes.map((dish, index) => (
+              <li key={index} className="flex gap-1.5 text-caption leading-snug text-ink">
+                <span aria-hidden="true" className="text-faint">
+                  •
+                </span>
+                <span className="min-w-0">{dish.name}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="mt-1.5 flex flex-col gap-1.5">
+            <Textarea
+              aria-label={`${MEAL_KIND_LABEL[kind]} — хоолны нэрс`}
+              rows={Math.max(2, editingNames.split("\n").length)}
+              value={editingNames}
+              autoFocus
+              onChange={(event) => setEditingNames(event.target.value)}
+            />
+            <p className="text-caption text-muted">Мөр тутамд нэг хоол.</p>
+            <div className="flex flex-wrap gap-1.5">
+              <Button
+                size="sm"
+                onClick={() => {
+                  actions?.onSaveNames(
+                    kind,
+                    date,
+                    editingNames
+                      .split("\n")
+                      .map((line) => line.trim())
+                      .filter(Boolean),
+                  );
+                  setEditingNames(null);
+                }}
+              >
+                Хадгалах
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => setEditingNames(null)}>
+                Болих
+              </Button>
+            </div>
+          </div>
+        )}
 
         {allergens.length > 0 ? (
           <Badge tone="danger" className="mt-1.5">
