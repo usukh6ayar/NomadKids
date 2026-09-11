@@ -188,6 +188,36 @@ export class ObservationsService {
     const domainIds = dto.domainIds ?? [];
     await this.assertDomainsValid(domainIds, enrollment.kindergartenId);
 
+    /*
+      ★ The indicator and the level are checked together, and against the
+      indicator's own levels.
+
+      The DTO bounds the level at 1–4, which is the shape of the field and not
+      the rule: several indicators begin at II or III because the behaviour
+      does not exist earlier, so only the row knows which of the four it was
+      actually written at. A note filed against a level the ministry never
+      wrote would print an empty descriptor on the family's report.
+
+      ★★ A level without an indicator is refused rather than dropped. It means
+      the screen sent half a judgement, and storing the half that arrived would
+      make a note look assessed against nothing.
+    */
+    if (dto.indicatorLevel !== undefined && !dto.indicatorId) {
+      throw new BadRequestException("СҮД код сонгоно уу");
+    }
+
+    if (dto.indicatorId) {
+      const indicator = await this.repo.findIndicator(dto.indicatorId, enrollment.kindergartenId);
+      if (!indicator) throw new BadRequestException("СҮД код олдсонгүй");
+
+      if (
+        dto.indicatorLevel !== undefined &&
+        !indicator.levels.some((row) => row.level === dto.indicatorLevel)
+      ) {
+        throw new BadRequestException("Энэ СҮД код тухайн түвшинд бичигдээгүй байна");
+      }
+    }
+
     const observation = await this.repo.create(
       {
         kindergartenId: enrollment.kindergartenId,
@@ -206,6 +236,8 @@ export class ObservationsService {
         childSaid: dto.childSaid ?? null,
         teacherComment: dto.teacherComment ?? null,
         nextSteps: dto.nextSteps ?? null,
+        indicatorId: dto.indicatorId ?? null,
+        indicatorLevel: dto.indicatorLevel ?? null,
       },
       domainIds,
     );

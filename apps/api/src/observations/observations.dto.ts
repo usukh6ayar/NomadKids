@@ -22,6 +22,22 @@ export const createObservationSchema = z
     }),
     ...textFields,
     domainIds: z.array(uuidSchema).max(10).optional(),
+    /*
+      ★ The curriculum indicator and the level judged against it — СҮД, added
+      2026-09-11.
+
+      Optional, because a note is not always an assessment: what happened at
+      the water table is worth keeping whether or not it maps onto an
+      indicator, and requiring one would make the quick note the slowest thing
+      on the screen.
+
+      The level is 1–4 and is checked against the *indicator's own* levels in
+      the service, not here — several indicators begin at II or III because the
+      behaviour does not exist earlier, so "1 to 4" is the wrong rule and only
+      the row knows the right one.
+    */
+    indicatorId: uuidSchema.optional(),
+    indicatorLevel: z.number().int().min(1).max(4).optional(),
     /**
      * Optional: the default depends on who is filing. A teacher's note is
      * private unless they say otherwise; a parent's own note is visible to them.
@@ -61,6 +77,22 @@ export const updateObservationSchema = z
     observedOn: z.coerce.date().optional(),
     ...textFields,
     domainIds: z.array(uuidSchema).max(10).optional(),
+    /*
+      ★ The curriculum indicator and the level judged against it — СҮД, added
+      2026-09-11.
+
+      Optional, because a note is not always an assessment: what happened at
+      the water table is worth keeping whether or not it maps onto an
+      indicator, and requiring one would make the quick note the slowest thing
+      on the screen.
+
+      The level is 1–4 and is checked against the *indicator's own* levels in
+      the service, not here — several indicators begin at II or III because the
+      behaviour does not exist earlier, so "1 to 4" is the wrong rule and only
+      the row knows the right one.
+    */
+    indicatorId: uuidSchema.optional(),
+    indicatorLevel: z.number().int().min(1).max(4).optional(),
     visibleToParents: z.boolean().optional(),
     includeInReport: z.boolean().optional(),
   })
@@ -96,6 +128,22 @@ export const reviewObservationSchema = z
     reviewNote: z.string().max(2000).nullable().optional(),
     visibleToParents: z.boolean().optional(),
     domainIds: z.array(uuidSchema).max(10).optional(),
+    /*
+      ★ The curriculum indicator and the level judged against it — СҮД, added
+      2026-09-11.
+
+      Optional, because a note is not always an assessment: what happened at
+      the water table is worth keeping whether or not it maps onto an
+      indicator, and requiring one would make the quick note the slowest thing
+      on the screen.
+
+      The level is 1–4 and is checked against the *indicator's own* levels in
+      the service, not here — several indicators begin at II or III because the
+      behaviour does not exist earlier, so "1 to 4" is the wrong rule and only
+      the row knows the right one.
+    */
+    indicatorId: uuidSchema.optional(),
+    indicatorLevel: z.number().int().min(1).max(4).optional(),
   })
   .strict();
 export type ReviewObservationDto = z.infer<typeof reviewObservationSchema>;

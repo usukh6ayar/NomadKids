@@ -19,6 +19,54 @@ export class AssessmentRepository {
   // ── Configuration ─────────────────────────────────────────────────────────
 
   /** A kindergarten's own rows plus the shared system defaults. */
+  /**
+   * The curriculum's indicators for one strand — СҮД.
+   *
+   * ★ Scoped to a strand, never returned whole.
+   *
+   * Seventy-one indicators with two hundred and sixty-five descriptors between
+   * them is about forty kilobytes, and the form asks for them only once a
+   * teacher has chosen a strand — at which point it wants between five and
+   * twenty-two. §3.4's rule is about unbounded sets; this one is bounded by
+   * the strand, which is the bound the screen already imposes.
+   *
+   * ★★ The kindergarten's own indicators sit beside the national ones, exactly
+   * as `listDomains` treats strands: `kindergartenId IS NULL` is the standard,
+   * a value is this kindergarten's addition, and anybody else's is invisible.
+   */
+  async listIndicators(kindergartenId: string, domainId: string) {
+    return this.prisma.curriculumIndicator.findMany({
+      where: {
+        domainId,
+        deletedAt: null,
+        isActive: true,
+        OR: [{ kindergartenId }, { kindergartenId: null }],
+      },
+      orderBy: [{ order: "asc" }, { code: "asc" }],
+      select: {
+        id: true,
+        code: true,
+        domainId: true,
+        levels: { orderBy: { level: "asc" }, select: { level: true, text: true } },
+      },
+    });
+  }
+
+  /**
+   * One indicator, only if this kindergarten may use it — the check `create`
+   * makes before storing an id that came from a client.
+   */
+  async findIndicator(indicatorId: string, kindergartenId: string) {
+    return this.prisma.curriculumIndicator.findFirst({
+      where: {
+        id: indicatorId,
+        deletedAt: null,
+        OR: [{ kindergartenId }, { kindergartenId: null }],
+      },
+      select: { id: true, levels: { select: { level: true } } },
+    });
+  }
+
   async listDomains(kindergartenId: string) {
     return this.prisma.developmentDomain.findMany({
       where: {

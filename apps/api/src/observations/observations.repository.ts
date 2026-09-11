@@ -93,6 +93,9 @@ export class ObservationsRepository {
         take,
         include: {
           type: { select: { id: true, name: true, code: true } },
+          // The indicator's code is what a note is read by; its descriptors
+          // belong to the picker, which asks for them a strand at a time.
+          indicator: { select: { id: true, code: true, domainId: true } },
           author: { select: { id: true, lastName: true, firstName: true } },
           domains: {
             include: {
@@ -123,6 +126,7 @@ export class ObservationsRepository {
       where: { AND: [this.readableWhere(childId, viewer), { id: observationId }] },
       include: {
         type: { select: { id: true, name: true, code: true } },
+        indicator: { select: { id: true, code: true, domainId: true } },
         author: { select: { id: true, lastName: true, firstName: true } },
         reviewedBy: { select: { id: true, lastName: true, firstName: true } },
         domains: {
@@ -152,6 +156,29 @@ export class ObservationsRepository {
         source: true,
         reviewStatus: true,
       },
+    });
+  }
+
+  /**
+   * One curriculum indicator, only if this kindergarten may use it.
+   *
+   * ★ Read here rather than through the assessment module, which owns the
+   * picker's own list.
+   *
+   * It is two columns and a join, and reaching across for it would couple two
+   * modules so that one could not be tested without the other. The rule it
+   * enforces is the same one `findGroupInKindergarten` enforces for a group:
+   * the id came from a client, so the row has to be this kindergarten's or the
+   * national standard's.
+   */
+  async findIndicator(indicatorId: string, kindergartenId: string) {
+    return this.prisma.curriculumIndicator.findFirst({
+      where: {
+        id: indicatorId,
+        deletedAt: null,
+        OR: [{ kindergartenId }, { kindergartenId: null }],
+      },
+      select: { id: true, levels: { select: { level: true } } },
     });
   }
 
@@ -462,4 +489,7 @@ export interface CreateObservationData {
   childSaid?: string | null;
   teacherComment?: string | null;
   nextSteps?: string | null;
+  /** The СҮД indicator this note evidences, and the level judged against it. */
+  indicatorId?: string | null;
+  indicatorLevel?: number | null;
 }

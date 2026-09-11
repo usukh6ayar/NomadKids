@@ -101,6 +101,22 @@ export class AssessmentService {
     };
   }
 
+  /**
+   * The СҮД indicators of one strand.
+   *
+   * Readable by every member, like `listConfig` beside it: a parent's screen
+   * names the indicator a note was filed against, so hiding the list from them
+   * would leave that name unresolvable.
+   */
+  async listIndicators(actor: Actor, kindergartenId: string, domainId: string) {
+    this.tenants.assertMember(actor, kindergartenId);
+
+    const domain = await this.repo.findDomain(domainId, kindergartenId);
+    if (!domain) throw new BadRequestException("Хөгжлийн чиглэл олдсонгүй");
+
+    return this.repo.listIndicators(kindergartenId, domainId);
+  }
+
   // ── Terms ─────────────────────────────────────────────────────────────────
 
   async listTerms(actor: Actor, kindergartenId: string, schoolYearId?: string) {

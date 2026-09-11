@@ -33,6 +33,7 @@ const CHILD = "66666666-6666-4666-8666-666666666666";
 const TYPE = "77777777-7777-4777-8777-777777777777";
 const DOMAIN_ID = "88888888-8888-4888-8888-888888888888";
 const KINDERGARTEN_ID = "33333333-3333-4333-8333-333333333333";
+const INDICATOR_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
 const CHILD_DETAIL = {
   id: CHILD,
@@ -62,6 +63,22 @@ function routes() {
         ],
         levels: [],
       },
+    },
+    {
+      path: `/kindergartens/${KINDERGARTEN_ID}/curriculum-indicators`,
+      body: [
+        {
+          id: INDICATOR_ID,
+          code: "ХЯ1а",
+          domainId: DOMAIN_ID,
+          levels: [
+            { level: 1, text: "Нэг дэх түвшний тайлбар." },
+            { level: 2, text: "Хоёр дахь түвшний тайлбар." },
+            { level: 3, text: "Гурав дахь түвшний тайлбар." },
+            { level: 4, text: "Дөрөв дэх түвшний тайлбар." },
+          ],
+        },
+      ],
     },
     {
       path: `/children/${CHILD}/observations`,
@@ -387,5 +404,129 @@ describe("Шинэ ажиглалт — the form's own fields", () => {
     await user.type(screen.getByLabelText(/Ажиглагдсан байдал/), "Тэмдэглэл");
     expect(screen.getByText("9/1000")).toBeInTheDocument();
     expect(screen.getByText("0/500")).toBeInTheDocument();
+  });
+});
+
+/**
+ * СҮД — the curriculum indicator and the level judged against it.
+ *
+ * ★ The level the child's age suggests is offered, not imposed — client,
+ * 2026-09-11: 2→I, 3→II, 4→III, 5→IV.
+ *
+ * A four-year-old is described at level III by default because that is where
+ * the curriculum expects them, and preselecting the commonest answer saves a
+ * press on every note. But a teacher recording exactly the thing that differs
+ * from expectation must be able to move it — and it must then stay moved,
+ * which is the half a naive default gets wrong.
+ */
+/**
+ * The code picker is disabled while the strand's indicators are in flight, so
+ * a click on it before they land does nothing at all — this waits for the
+ * control to be usable rather than for the option to exist.
+ */
+async function chooseIndicator(user: ReturnType<typeof userEvent.setup>, code: string) {
+  // The picker is disabled while the strand's indicators are in flight, and
+  // Radix swallows a popup opened in the same tick as the click that mounted
+  // the control — so this waits for both to settle before pressing.
+  await waitFor(() => expect(screen.getByLabelText("СҮД код")).toBeEnabled());
+  await user.click(screen.getByLabelText("СҮД код"));
+  await user.click(await screen.findByRole("option", { name: code }));
+}
+
+describe("Шинэ ажиглалт — СҮД", () => {
+  it("asks for a code only once a strand is chosen", async () => {
+    const user = userEvent.setup();
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    await screen.findByLabelText("Сургалтын чиглэл");
+    expect(screen.queryByLabelText("СҮД код")).not.toBeInTheDocument();
+
+    await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
+
+    expect(await screen.findByLabelText("СҮД код")).toBeInTheDocument();
+  });
+
+  it("preselects the level the child's age suggests", async () => {
+    const user = userEvent.setup();
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
+    await chooseIndicator(user, "ХЯ1а");
+
+    // Сараа was born 2021-04-02 and the suite runs in 2026 — five years old,
+    // which the client's rule puts at IV.
+    await waitFor(() => expect(screen.getByLabelText("Түвшин")).toHaveTextContent("IV түвшин"));
+  });
+
+  /**
+   * ★ Moved stays moved.
+   *
+   * The indicator list refetches in the background; a default that reclaimed
+   * the field would undo the teacher's judgement without them touching
+   * anything.
+   */
+  it("leaves the level alone once the teacher has set it", async () => {
+    const user = userEvent.setup();
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
+    await chooseIndicator(user, "ХЯ1а");
+    await selectOption(user, "Түвшин", "II түвшин");
+
+    expect(screen.getByLabelText("Түвшин")).toHaveTextContent("II түвшин");
+  });
+
+  /** The descriptor is read back, so a teacher sees what they have claimed. */
+  it("shows the chosen descriptor", async () => {
+    const user = userEvent.setup();
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
+    await chooseIndicator(user, "ХЯ1а");
+    await selectOption(user, "Түвшин", "II түвшин");
+
+    expect(await screen.findByText("СҮД-ийн агуулга")).toBeInTheDocument();
+    expect(screen.getByText(/Хоёр дахь түвшний тайлбар/)).toBeInTheDocument();
+  });
+
+  it("sends the code and the level together", async () => {
+    const user = userEvent.setup();
+    const api = stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
+    await chooseIndicator(user, "ХЯ1а");
+    await user.type(screen.getByLabelText(/Ажиглагдсан байдал/), "Тэмдэглэл");
+    await user.click(screen.getByRole("button", { name: /Хадгалах/ }));
+
+    await waitFor(() =>
+      expect(api.calls.find((call) => call.method === "POST")?.body).toMatchObject({
+        indicatorId: INDICATOR_ID,
+        indicatorLevel: 4,
+      }),
+    );
+  });
+
+  /**
+   * ★ Changing the strand clears the code.
+   *
+   * The codes belong to the strand, so a code left behind would name an
+   * indicator from somewhere else — and the API would refuse it, after the
+   * teacher had written the note.
+   */
+  it("clears the code when the strand changes", async () => {
+    const user = userEvent.setup();
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
+    await chooseIndicator(user, "ХЯ1а");
+    await selectOption(user, "Сургалтын чиглэл", "Танин мэдэхүй");
+
+    expect(screen.getByLabelText("СҮД код")).toHaveTextContent("Сонгоно уу");
   });
 });

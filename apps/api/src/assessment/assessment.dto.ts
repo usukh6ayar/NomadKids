@@ -110,3 +110,6 @@ export const monthlyNoteGoalSchema = z
   )
   .strict();
 export type MonthlyNoteGoalDto = z.infer<typeof monthlyNoteGoalSchema>;
+
+/** Which strand's indicators to list — required, for the reason above. */
+export const indicatorQuerySchema = z.object({ domainId: uuidSchema }).strict();

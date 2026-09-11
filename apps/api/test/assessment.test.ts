@@ -1248,3 +1248,71 @@ describe("a group's monthly documentation goal", () => {
     expect(entry?.metadata).toMatchObject({ monthlyNoteGoal: 12 });
   });
 });
+
+/**
+ * Сургалтын чиглэлийн СҮД — the indicator list behind the compose form's
+ * picker.
+ *
+ * ★ Read by every member, including a parent.
+ *
+ * A family's screen names the indicator a note was filed against, so hiding
+ * the list from them would leave that name unresolvable — the same reasoning
+ * `listConfig` beside it already makes for domains and levels.
+ */
+describe("the curriculum's indicators", () => {
+  const list = (session: AuthSession, domain = domainId, kg = a.kindergarten.id) =>
+    authed(
+      request(server()).get(`/v1/kindergartens/${kg}/curriculum-indicators?domainId=${domain}`),
+      session,
+    );
+
+  it("returns one strand's indicators with their level descriptors", async () => {
+    const social = await db.developmentDomain.findFirstOrThrow({
+      where: { kindergartenId: null, code: "social" },
+    });
+
+    const res = await list(teacherA, social.id);
+
+    expect(res.status).toBe(200);
+    // Нийгэм-сэтгэл хөдлөл carries nine indicators in the client's sheet.
+    expect(res.body).toHaveLength(9);
+    const first = res.body.find((row: { code: string }) => row.code === "НСХ1а");
+    expect(first.levels).toHaveLength(4);
+    expect(first.levels[0]).toMatchObject({ level: 1 });
+    expect(first.levels[0].text).toContain("Биеийн зарим мэдрэмж");
+  });
+
+  /**
+   * ★ Never the whole curriculum.
+   *
+   * Seventy-one indicators and their descriptors is about forty kilobytes, and
+   * the form asks only once a strand is chosen. `domainId` is required so the
+   * endpoint cannot quietly become the bulk export.
+   */
+  it("refuses to list without a strand", async () => {
+    const res = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/curriculum-indicators`),
+      teacherA,
+    );
+
+    expect(res.status).toBe(400);
+  });
+
+  it("a parent reads it too", async () => {
+    expect((await list(parentA)).status).toBe(200);
+  });
+
+  it("a member of another kindergarten gets 404", async () => {
+    const teacherB = await login(app, b.teacherUser.username);
+    expect((await list(teacherB)).status).toBe(404);
+  });
+
+  /** A strand from another kindergarten is not a way in. */
+  it("refuses a strand that is not this kindergarten's", async () => {
+    const foreign = await db.developmentDomain.create({
+      data: { kindergartenId: b.kindergarten.id, code: "own", name: "Өөрийн чиглэл" },
+    });
+
+    expect((await list(teacherA, foreign.id)).status).toBe(400);
+  });
+});

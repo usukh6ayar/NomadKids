@@ -4,10 +4,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { z } from "zod";
 import {
   assessmentConfigSchema,
+  curriculumIndicatorSchema,
   childDetailSchema,
   observationSchema,
   observationTypeSchema,
@@ -24,7 +25,7 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ObservationPhotos } from "@/components/observations/observation-photos";
-import { fullName, todayLocal } from "@/lib/format";
+import { ageInYears, fullName, todayLocal } from "@/lib/format";
 import { readDraft, useDraftAutosave } from "@/lib/use-form-draft";
 
 const typesSchema = z.array(observationTypeSchema);
@@ -33,11 +34,42 @@ const typesSchema = z.array(observationTypeSchema);
  * What survives a Back button. Flat strings and booleans — see
  * `lib/use-form-draft.ts` for why the shape is deliberately this narrow.
  */
+const indicatorsSchema = z.array(curriculumIndicatorSchema);
+
+/** I–IV, as the curriculum writes them. */
+const LEVEL_NAME: Record<number, string> = { 1: "I", 2: "II", 3: "III", 4: "IV" };
+
+/**
+ * The level a child's age puts them at — client, 2026-09-11: 2→I, 3→II, 4→III,
+ * 5→IV.
+ *
+ * ★ Clamped at both ends rather than left undefined.
+ *
+ * A child who has just turned two and one who is nearly six are both real, and
+ * the curriculum has four levels for the whole range: below the first is the
+ * first, above the last is the last. Returning nothing would leave the
+ * commonest case — a form opened for a child at either edge — with no
+ * suggestion at all.
+ */
+function levelForAge(years: number | null): number | null {
+  if (years === null) return null;
+  return Math.min(4, Math.max(1, years - 1));
+}
+
 interface ObservationDraft {
   typeId: string;
   activityName: string;
   /** The development strand, added to the form 2026-09-11. */
   domainId: string;
+  indicatorId: string;
+  /**
+   * ★ A string, not a number, and that is the draft's own constraint.
+   *
+   * `ObservationDraft` carries an index signature so `use-form-draft` can walk
+   * it, and widening that to admit a number would let every other field become
+   * one. "" is "no level chosen"; the form parses it back.
+   */
+  indicatorLevel: string;
   situation: string;
   childDid: string;
   childSaid: string;
@@ -182,6 +214,28 @@ function NewObservationForm() {
    * array because the review screen tags several after the fact.
    */
   const [domainId, setDomainId] = useState(draft?.domainId ?? "");
+  /** Which СҮД indicator this note evidences, and the level judged. */
+  const [indicatorId, setIndicatorId] = useState(draft?.indicatorId ?? "");
+  const [indicatorLevel, setIndicatorLevel] = useState(draft?.indicatorLevel ?? "");
+  /** Whether the teacher has touched the level, which stops the age reclaiming it. */
+  const [levelTouched, setLevelTouched] = useState(Boolean(draft?.indicatorLevel));
+
+  /*
+    The chosen strand's indicators. Asked for only once a strand is chosen —
+    the endpoint requires `domainId` for that reason, so the whole curriculum
+    is never one request away.
+  */
+  const indicators = useQuery({
+    queryKey: qk.curriculumIndicators(primaryKindergartenId ?? "", domainId),
+    queryFn: () =>
+      get(
+        `/kindergartens/${primaryKindergartenId}/curriculum-indicators?domainId=${domainId}`,
+        indicatorsSchema,
+      ),
+    enabled: Boolean(primaryKindergartenId && domainId),
+    staleTime: 5 * 60_000,
+  });
+
   const [situation, setSituation] = useState(draft?.situation ?? "");
   const [childDid, setChildDid] = useState(draft?.childDid ?? "");
   const [childSaid, setChildSaid] = useState(draft?.childSaid ?? "");
@@ -201,6 +255,8 @@ function NewObservationForm() {
     typeId,
     activityName,
     domainId,
+    indicatorId,
+    indicatorLevel,
     situation,
     childDid,
     childSaid,
@@ -242,6 +298,15 @@ function NewObservationForm() {
           // schema would accept and the service would store as "tagged with
           // nothing" — indistinguishable from a note nobody classified.
           ...(domainId ? { domainIds: [domainId] } : {}),
+          /*
+            ★ The level goes only with the indicator.
+
+            The API refuses one without the other rather than storing half a
+            judgement, so sending a level for an indicator that was cleared
+            would be an error the teacher never caused.
+          */
+          ...(indicatorId ? { indicatorId } : {}),
+          ...(indicatorId && indicatorLevel ? { indicatorLevel: Number(indicatorLevel) } : {}),
           situation: optional(situation),
           childDid: optional(childDid),
           childSaid: optional(childSaid),
@@ -281,6 +346,34 @@ function NewObservationForm() {
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
+
+  const selectedIndicator = (indicators.data ?? []).find((row) => row.id === indicatorId);
+  const indicatorText = selectedIndicator?.levels.find(
+    (row) => String(row.level) === indicatorLevel,
+  )?.text;
+
+  /*
+    ★ The age fills the level in, once, and only while the teacher has not.
+
+    `levelTouched` is what makes it a suggestion rather than a correction: a
+    teacher who moved it to II must not have it snap back to III when the
+    indicator list refetches in the background.
+  */
+  const suggestedLevel = levelForAge(ageInYears(child.data?.dateOfBirth));
+  useEffect(() => {
+    if (levelTouched || !selectedIndicator || !suggestedLevel) return;
+    const available = selectedIndicator.levels.map((row) => row.level);
+    // The indicator may not be written at the suggested level — several begin
+    // at II or III — so the nearest one it does carry is the honest default.
+    const nearest = available.reduce<number | null>(
+      (best, level) =>
+        best === null || Math.abs(level - suggestedLevel) < Math.abs(best - suggestedLevel)
+          ? level
+          : best,
+      null,
+    );
+    if (nearest !== null) setIndicatorLevel(String(nearest));
+  }, [levelTouched, selectedIndicator, suggestedLevel]);
 
   const errors = fieldErrors(save.error);
 
@@ -496,7 +589,12 @@ function NewObservationForm() {
                     aria-describedby={describedBy}
                     invalid={invalid}
                     value={domainId}
-                    onChange={(e) => setDomainId(e.target.value)}
+                    onChange={(e) => {
+                      setDomainId(e.target.value);
+                      // The codes belong to the strand, so changing it leaves
+                      // the old one naming an indicator from somewhere else.
+                      setIndicatorId("");
+                    }}
                   >
                     <option value="">Сонгоно уу</option>
                     {(config.data?.domains ?? []).map((domain) => (
@@ -508,6 +606,87 @@ function NewObservationForm() {
                 )}
               </Field>
             </div>
+          ) : null}
+
+          {/*
+            ★ СҮД — the curriculum indicator, and the level judged against it.
+
+            Drawn only once a strand is chosen, because the codes belong to the
+            strand: an empty picker above an unanswered question is a control
+            that asks for something the screen has not made possible yet.
+          */}
+          {isStaff && domainId ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="СҮД код" error={errors.indicatorId}>
+                {({ id, describedBy, invalid }) => (
+                  <Select
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    value={indicatorId}
+                    onChange={(e) => setIndicatorId(e.target.value)}
+                    disabled={indicators.isLoading}
+                  >
+                    <option value="">Сонгоно уу</option>
+                    {(indicators.data ?? []).map((indicator) => (
+                      <option key={indicator.id} value={indicator.id}>
+                        {indicator.code}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+
+              {/*
+                ★ The level the child's age suggests, offered rather than
+                imposed — client, 2026-09-11: 2→I, 3→II, 4→III, 5→IV.
+
+                It is a starting point: a four-year-old is described at level
+                III by default because that is where the curriculum expects
+                them, and a teacher who is recording exactly the thing that
+                differs from expectation moves it. Preselecting the commonest
+                answer saves a press on every note; refusing to let it move
+                would make the form disagree with the observation.
+              */}
+              <Field label="Түвшин" error={errors.indicatorLevel}>
+                {({ id, describedBy, invalid }) => (
+                  <Select
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    value={indicatorLevel}
+                    onChange={(e) => {
+                      setIndicatorLevel(e.target.value);
+                      setLevelTouched(true);
+                    }}
+                    disabled={!selectedIndicator}
+                  >
+                    <option value="">Сонгоно уу</option>
+                    {(selectedIndicator?.levels ?? []).map((row) => (
+                      <option key={row.level} value={String(row.level)}>
+                        {LEVEL_NAME[row.level] ?? row.level} түвшин
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            </div>
+          ) : null}
+
+          {/*
+            ★ The chosen descriptor, read back.
+
+            The client's design puts it under the two selects so a teacher can
+            see what they have just claimed before writing the note that
+            evidences it — "СҮД-ийн агуулга ... тул багш зөв сонгоход дэмжинэ".
+          */}
+          {indicatorText ? (
+            <p className="rounded-card bg-primary-soft px-3.5 py-3 text-body leading-snug text-ink">
+              <span className="mb-0.5 block text-caption font-semibold text-primary">
+                СҮД-ийн агуулга
+              </span>
+              {indicatorText}
+            </p>
           ) : null}
         </Card>
 

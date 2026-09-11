@@ -244,6 +244,7 @@ async function syncCurriculum(db: {
   curriculumIndicator: {
     count: (args: unknown) => Promise<number>;
     findFirst: (args: unknown) => Promise<{ id: string } | null>;
+    updateMany: (args: unknown) => Promise<unknown>;
     create: (args: unknown) => Promise<{ id: string }>;
     update: (args: unknown) => Promise<{ id: string }>;
   };
@@ -269,6 +270,30 @@ async function syncCurriculum(db: {
   */
   const expected = CURRICULUM.reduce((sum, strand) => sum + strand.indicators.length, 0);
   const present = await db.curriculumIndicator.count({ where: { kindergartenId: null } });
+
+  /*
+    ★★ The strand a kept indicator points at is re-resolved every time, even
+    when nothing else needs doing.
+
+    `resetData` empties `development_domains` with FK triggers off and seeds
+    them again — with **new ids**. The indicators are held back from that
+    delete on purpose (see `buildDeleteStatement`), so without this they would
+    keep pointing at strands that no longer exist and the picker would return
+    an empty list. Seven statements, one per strand, against the ~284 the full
+    seed costs.
+  */
+  for (const strand of CURRICULUM) {
+    const domain = (await db.developmentDomain.findFirst({
+      where: { kindergartenId: null, code: strand.domainCode },
+    })) as { id: string } | null;
+    if (!domain) continue;
+
+    await db.curriculumIndicator.updateMany({
+      where: { kindergartenId: null, code: { in: strand.indicators.map((i) => i.code) } },
+      data: { domainId: domain.id },
+    });
+  }
+
   if (present === expected) return;
 
   for (const strand of CURRICULUM) {

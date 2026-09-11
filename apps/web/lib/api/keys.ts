@@ -163,6 +163,15 @@ export const qk = {
    * Keyed beside `groupAssessment` so saving a column can invalidate both with
    * one prefix: the overview counts exactly what the column writes.
    */
+  /**
+   * One strand's СҮД indicators.
+   *
+   * Keyed by strand because that is how they are fetched — the endpoint
+   * requires a `domainId`, so the whole curriculum is never one request away.
+   */
+  curriculumIndicators: (kindergartenId: string, domainId: string) =>
+    ["kindergarten", kindergartenId, "curriculum-indicators", domainId] as const,
+
   groupCoverage: (groupId: string, termId: string, month = "") =>
     ["group", groupId, "assessment-coverage", termId, month] as const,
 

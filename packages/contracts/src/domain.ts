@@ -463,6 +463,32 @@ export const observationMediaSchema = z.object({
   originalName: z.string().nullish(),
 });
 
+/**
+ * A curriculum indicator as a note refers to it — СҮД.
+ *
+ * ★ The code is the identity a teacher reads and it carries no level: `НСХ1а`
+ * at level II and at level IV are the same indicator described twice, which is
+ * why the descriptor is a list rather than a field.
+ */
+export const curriculumIndicatorRefSchema = z.object({
+  id: uuidSchema,
+  code: z.string(),
+  domainId: uuidSchema.nullish(),
+});
+
+/**
+ * An indicator with everything the picker needs.
+ *
+ * ★ `levels` may hold fewer than four, and the gap is the curriculum's own:
+ * several indicators begin at level II or III because the behaviour does not
+ * exist earlier. A screen can say "this one starts at III" rather than drawing
+ * an empty card.
+ */
+export const curriculumIndicatorSchema = curriculumIndicatorRefSchema.extend({
+  levels: z.array(z.object({ level: z.number(), text: z.string() })).default([]),
+});
+export type CurriculumIndicator = z.infer<typeof curriculumIndicatorSchema>;
+
 export const observationSchema = z.object({
   id: uuidSchema,
   childId: uuidSchema.nullish(),
@@ -479,6 +505,19 @@ export const observationSchema = z.object({
   nextSteps: z.string().nullish(),
   reviewNote: z.string().nullish(),
   type: z.object({ id: uuidSchema, name: z.string(), code: z.string().nullish() }).nullish(),
+  /**
+   * The СҮД indicator this note evidences, and the level judged against it.
+   *
+   * ★ Both nullish, because a note is not always an assessment — what happened
+   * at the water table is worth keeping whether or not it maps onto an
+   * indicator.
+   *
+   * The level is meaningless without the indicator and is written with it; the
+   * API refuses one without the other rather than storing half a judgement.
+   */
+  indicatorId: uuidSchema.nullish(),
+  indicatorLevel: z.number().nullish(),
+  indicator: curriculumIndicatorRefSchema.nullish(),
   author: personRefSchema.nullish(),
   media: z.array(observationMediaSchema).default([]),
 });

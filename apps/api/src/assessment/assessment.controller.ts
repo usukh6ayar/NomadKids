@@ -12,6 +12,7 @@ import {
   requiredTermSchema,
   saveAssessmentSchema,
   saveGroupColumnSchema,
+  indicatorQuerySchema,
   monthlyNoteGoalSchema,
   saveTermReportSchema,
   termIdQuerySchema,
@@ -38,6 +39,16 @@ export class AssessmentConfigController {
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
   ) {
     return this.service.listConfig(actor, params.id);
+  }
+
+  /** Сургалтын чиглэлийн СҮД жагсаалт — the indicator picker's own list. */
+  @Get("curriculum-indicators")
+  async indicators(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(indicatorQuerySchema)) query: { domainId: string },
+  ) {
+    return this.service.listIndicators(actor, params.id, query.domainId);
   }
 
   @Get("terms")
