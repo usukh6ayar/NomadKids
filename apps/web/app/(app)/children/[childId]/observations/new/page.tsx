@@ -8,6 +8,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import {
   assessmentConfigSchema,
+  curriculumCodeAtLevel,
   curriculumIndicatorSchema,
   childDetailSchema,
   observationSchema,
@@ -457,18 +458,32 @@ function NewObservationForm() {
     curriculum: dropping the codes that say nothing at this level, and changing
     the text of the ones that do.
 
-    ★★ It is *not* a filter on the digit in the code, which is what the digit
-    looks like it should mean and does not. `НСХ3а`'s "3" is the standard number
-    inside the strand, and every standard is taught at all four levels — `ХӨГ`
-    has only standard 1 and carries text at I, II, III and IV. Matching the
-    digit against the level would show a teacher no codes at all for four of the
-    seven strands above level II.
+    ★★ The code itself is written at the level too — `ХЭМ1н` is shown as
+    `ХЭМ4.1н`, because that is what the curriculum calls it at IV.
+
+    The stored code carries the strand, the standard and the letter, which is
+    what identifies one indicator across its four levels; the level digit is
+    spliced back in for display by `curriculumCodeAtLevel`. The import dropped
+    it, and the client found the picker offering `ХЭМ1н` the same day.
+
+    ★★★ It is *not* a filter on that digit, which is the mistake next door.
+    `ХЭМ1н`'s "1" is the standard number inside the strand, and every standard
+    is taught at all four levels — `ХӨГ` has only standard 1 and carries text at
+    I, II, III and IV. Matching the standard against the level would show a
+    teacher no codes at all for four of the seven strands above level II.
   */
   const levelCodes = useMemo(
     () =>
       (indicators.data ?? []).flatMap((indicator) => {
         const written = indicator.levels.find((row) => String(row.level) === indicatorLevel);
-        return written ? [{ id: indicator.id, code: indicator.code, text: written.text }] : [];
+        if (!written) return [];
+        return [
+          {
+            id: indicator.id,
+            code: curriculumCodeAtLevel(indicator.code, written.level),
+            text: written.text,
+          },
+        ];
       }),
     [indicators.data, indicatorLevel],
   );

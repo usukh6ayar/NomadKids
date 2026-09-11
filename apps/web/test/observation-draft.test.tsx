@@ -453,6 +453,13 @@ function levelCards(): HTMLElement {
   return screen.getByRole("radiogroup", { name: "Түвшин" });
 }
 
+/**
+ * Presses an option by the code the curriculum writes at the chosen level.
+ *
+ * ★ Callers pass that level-qualified form — `ХЯ4.1а`, not the stored `ХЯ1а` —
+ * because it is what a teacher reads on screen, and a helper that quietly
+ * accepted either would hide the day the splice stopped happening.
+ */
 async function chooseIndicator(user: ReturnType<typeof userEvent.setup>, code: string) {
   // The picker is disabled while the strand's indicators are in flight, and
   // Radix swallows a popup opened in the same tick as the click that mounted
@@ -461,7 +468,8 @@ async function chooseIndicator(user: ReturnType<typeof userEvent.setup>, code: s
   await user.click(screen.getByLabelText("СҮД код"));
   // Matched on the prefix: an option reads `КОД — агуулга`, and which
   // descriptor it carries depends on the level chosen above it.
-  await user.click(await screen.findByRole("option", { name: new RegExp(`^${code} — `) }));
+  const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  await user.click(await screen.findByRole("option", { name: new RegExp(`^${escaped} — `) }));
 }
 
 describe("Шинэ ажиглалт — СҮД", () => {
@@ -540,7 +548,7 @@ describe("Шинэ ажиглалт — СҮД", () => {
     await user.click(screen.getByLabelText("СҮД код"));
 
     expect(
-      await screen.findByRole("option", { name: "ХЯ1а — Дөрөв дэх түвшний тайлбар." }),
+      await screen.findByRole("option", { name: "ХЯ4.1а — Дөрөв дэх түвшний тайлбар." }),
     ).toBeInTheDocument();
   });
 
@@ -558,7 +566,7 @@ describe("Шинэ ажиглалт — СҮД", () => {
     await user.click(screen.getByLabelText("СҮД код"));
 
     expect(
-      await screen.findByRole("option", { name: "ХЯ1а — Хоёр дахь түвшний тайлбар." }),
+      await screen.findByRole("option", { name: "ХЯ2.1а — Хоёр дахь түвшний тайлбар." }),
     ).toBeInTheDocument();
   });
 
@@ -568,7 +576,7 @@ describe("Шинэ ажиглалт — СҮД", () => {
     renderWithProviders(<NewObservationPage />);
 
     await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
-    await chooseIndicator(user, "ХЯ1а");
+    await chooseIndicator(user, "ХЯ4.1а");
     await user.type(screen.getByLabelText("Тэмдэглэл"), "Тэмдэглэл");
     await user.click(screen.getByRole("button", { name: /Хадгалах/ }));
 
@@ -593,7 +601,7 @@ describe("Шинэ ажиглалт — СҮД", () => {
     renderWithProviders(<NewObservationPage />);
 
     await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
-    await chooseIndicator(user, "ХЯ1а");
+    await chooseIndicator(user, "ХЯ4.1а");
     await selectOption(user, "Сургалтын чиглэл", "Танин мэдэхүй");
 
     expect(screen.getByLabelText("СҮД код")).toHaveTextContent("Сонгоно уу");
@@ -717,8 +725,8 @@ describe("Шинэ ажиглалт — түвшин ба код", () => {
     await openCodes(user);
 
     // ХЯ2а starts at III, so at I it is not a code a teacher can choose.
-    expect(await screen.findByRole("option", { name: /^ХЯ1а — / })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: /^ХЯ2а — / })).not.toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: /^ХЯ1\.1а — / })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /^ХЯ1\.2а — / })).not.toBeInTheDocument();
   });
 
   it("offers the late code once the level reaches it", async () => {
@@ -732,7 +740,7 @@ describe("Шинэ ажиглалт — түвшин ба код", () => {
     await openCodes(user);
 
     expect(
-      await screen.findByRole("option", { name: "ХЯ2а — Хожуу үзүүлэлт, гурав." }),
+      await screen.findByRole("option", { name: "ХЯ3.2а — Хожуу үзүүлэлт, гурав." }),
     ).toBeInTheDocument();
   });
 
@@ -751,7 +759,7 @@ describe("Шинэ ажиглалт — түвшин ба код", () => {
     await screen.findByRole("radiogroup", { name: "Түвшин" });
     await user.click(within(levelCards()).getByRole("radio", { name: "III түвшин" }));
     await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
-    await chooseIndicator(user, "ХЯ2а");
+    await chooseIndicator(user, "ХЯ3.2а");
 
     await user.click(within(levelCards()).getByRole("radio", { name: "I түвшин" }));
     await waitFor(() => expect(screen.getByLabelText("СҮД код")).toHaveTextContent("Сонгоно уу"));
@@ -763,6 +771,29 @@ describe("Шинэ ажиглалт — түвшин ба код", () => {
     const body = api.calls.find((call) => call.method === "POST")?.body as Record<string, unknown>;
     expect(body).not.toHaveProperty("indicatorId");
     expect(body).not.toHaveProperty("indicatorLevel");
+  });
+
+  /*
+    ★ The code a teacher reads is the one the curriculum writes at that level.
+
+    Transcription dropped the level digit and the dot from every code, so the
+    picker offered `ХЯ1а` where the client's own curriculum says `ХЯ4.1а` — found
+    by the client on 2026-09-11 with a list of ХЭМ codes at level IV. The stored
+    code still identifies the indicator across all four levels; only the display
+    carries the level.
+  */
+  it("writes the level into the code, as the curriculum does", async () => {
+    const user = userEvent.setup();
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    await screen.findByRole("radiogroup", { name: "Түвшин" });
+    await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
+    await openCodes(user);
+
+    // Five years old, so IV — and the indicator stored as `ХЯ1а` is `ХЯ4.1а` there.
+    expect(await screen.findByRole("option", { name: /^ХЯ4\.1а — / })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /^ХЯ1а — / })).not.toBeInTheDocument();
   });
 
   it("names the activity field the way the client does", async () => {

@@ -9,6 +9,7 @@
  *    existed would have been guessing.
  */
 export * from "./birth-facts";
+export * from "./curriculum";
 export * from "./domain";
 export * from "./ids";
 export * from "./pagination";
