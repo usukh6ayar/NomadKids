@@ -46,6 +46,15 @@ import Image from "next/image";
  * across the product.
  */
 const SOURCE = {
+  accountingAttendanceCalculation: "/icons/icon-accounting-attendance-calculation-3d.png",
+  accountingAttendanceDetails: "/icons/icon-accounting-attendance-details-3d.png",
+  accountingAudit: "/icons/icon-accounting-audit-3d.png",
+  accountingInvoice: "/icons/icon-accounting-invoice-3d.png",
+  adminCurriculum: "/icons/icon-admin-curriculum-3d.png",
+  adminEsisHub: "/icons/icon-admin-esis-hub-3d.png",
+  adminSchoolYear: "/icons/icon-admin-school-year-3d.png",
+  adminTerm: "/icons/icon-admin-term-3d.png",
+  adminUsersPermissions: "/icons/icon-admin-users-permissions-3d.png",
   analytics: "/icons/icon-analytics.png",
   ageCharacter: "/icons/icon-age-character-3d.png",
   ageFamily: "/icons/icon-age-family-3d.png",
@@ -65,6 +74,18 @@ const SOURCE = {
   food: "/icons/icon-food-3d.png",
   group: "/icons/icon-group-3d.png",
   kindergarten: "/icons/icon-kindergarten-3d.png",
+  kitchenIngredients: "/icons/icon-kitchen-ingredients-3d.png",
+  kitchenRecipeCard: "/icons/icon-kitchen-recipe-card-3d.png",
+  /*
+   * ★ The guardian's phone bar. Restored 2026-09-11 — they were added by #92
+   * and deleted by #93, which was cut before it and carried the older map.
+   *
+   * Nothing about #93 wanted them gone: it is a commit about giving the
+   * accountant and administrator rails distinct glyphs, and it removed these
+   * four only because its branch had never seen them. The four PNGs stayed on
+   * disk the whole time and `layout.tsx` never stopped asking for them, so
+   * what shipped was a bottom bar naming icons this map could not resolve.
+   */
   navFood: "/icons/icon-nav-food.png",
   navGallery: "/icons/icon-nav-gallery.png",
   navHome: "/icons/icon-nav-home.png",

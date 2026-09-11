@@ -55,6 +55,7 @@ export const SHARED_AGE_FIELDS = [
   "characterObservation",
   "familyMemberTypes",
   "familyDescription",
+  "familyMemories",
 ] as const;
 
 /** Guardians only. */

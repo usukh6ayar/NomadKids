@@ -729,7 +729,7 @@ export function AppShell({
         <div
           className={cn(
             desktopSidebar &&
-              (isTeacherWorkspace
+              (isTeacherWorkspace || isAdmin
                 ? "lg:pl-[276px]"
                 : variant === "parent"
                   ? "lg:pl-[256px]"
@@ -1225,9 +1225,7 @@ function ParentSidebarContent({
 
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div className="-mr-1.5 flex min-h-0 flex-1 flex-col overflow-y-auto pr-1.5">
-          {primary ? (
-            <ParentSidebarRow item={primary} pathname={pathname} activeHref={activeHref} />
-          ) : null}
+          {primary ? <ParentSidebarRow item={primary} activeHref={activeHref} /> : null}
 
           <div data-testid="nav-sections" className="flex flex-col">
             {sections.map((section) =>
@@ -1235,7 +1233,6 @@ function ParentSidebarContent({
                 <ParentSidebarDisclosure
                   key={section.title}
                   section={section}
-                  pathname={pathname}
                   activeHref={activeHref}
                 />
               ) : (
@@ -1243,7 +1240,6 @@ function ParentSidebarContent({
                   <ParentSidebarRow
                     key={`${item.href ?? item.label}-${index}`}
                     item={item}
-                    pathname={pathname}
                     activeHref={activeHref}
                   />
                 ))
@@ -1276,13 +1272,10 @@ function ParentSidebarContent({
  */
 function ParentSidebarDisclosure({
   section,
-  pathname,
   activeHref,
 }: {
   section: NavSection;
-  pathname: string;
-  /** The one href the whole rail resolved as current — see `activeHrefIn`. */
-  activeHref?: string | null;
+  activeHref: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
@@ -1318,7 +1311,6 @@ function ParentSidebarDisclosure({
           <ParentSidebarRow
             key={`${item.href ?? item.label}-${index}`}
             item={item}
-            pathname={pathname}
             activeHref={activeHref}
           />
         ))}
@@ -1327,25 +1319,33 @@ function ParentSidebarDisclosure({
   );
 }
 
+/**
+ * One row of the guardian rail.
+ *
+ * ★ `activeHref` is **required**, and that is the point of it.
+ *
+ * Which row is current is resolved once for the whole rail by
+ * `ParentSidebarContent` (`activeHrefIn`), because a row cannot know whether a
+ * more specific sibling exists. A per-row prefix fallback would let a row opt
+ * out of that resolution and light up beside the row that actually won —
+ * `aria-current="page"` twice, which is not a thing a page can be.
+ *
+ * It is required rather than optional because this prop has now been dropped
+ * in a merge twice: once on the staff rail (#90, fixed by #91) and once here
+ * (#92). Optional, the loss is a highlight bug nobody sees; required, it is a
+ * compile error.
+ */
 function ParentSidebarRow({
   item,
-  pathname,
   activeHref,
 }: {
   item: ParentSidebarEntry;
-  pathname: string;
-  /**
-   * The one href this rail resolved as current (`activeHrefIn`). A caller that
-   * passes nothing falls back to prefix matching on `pathname`.
-   */
-  activeHref?: string | null;
+  activeHref: string | null;
 }) {
-  const active = Boolean(
-    item.href?.startsWith("/") &&
-    (activeHref !== undefined
-      ? item.href === activeHref
-      : pathname === item.href || pathname.startsWith(`${item.href}/`)),
-  );
+  // A row with no `href` opens something in place and is never the current
+  // page; `mailto:` is not a page of this app at all. `activeHrefIn` has
+  // already applied the root and prefix rules to whatever is left.
+  const active = Boolean(item.href?.startsWith("/") && item.href === activeHref);
 
   const content = (
     <>
@@ -1420,7 +1420,7 @@ function Sidebar({
        */
       className={cn(
         "fixed inset-y-0 left-0 z-20 hidden flex-col overflow-hidden border-r border-border-soft bg-surface/92 py-[18px] shadow-[8px_0_28px_-22px_rgb(29_78_216_/_0.28)] backdrop-blur lg:flex",
-        teacherTheme
+        teacherTheme || isAdmin
           ? "w-[264px] gap-5 px-3.5"
           : variant === "parent"
             ? "w-[244px] gap-4 px-4"

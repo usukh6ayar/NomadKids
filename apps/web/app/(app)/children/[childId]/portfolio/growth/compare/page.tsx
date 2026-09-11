@@ -184,8 +184,18 @@ const AGE_COMPARE_SECTIONS: CompareSection[] = [
       },
       {
         id: "familyDescription",
-        label: "Гэр бүлийн тухай, хамтдаа хийх дуртай зүйлс",
+        label: "Хамтдаа хийх дуртай зүйлс",
         answer: (profile) => profile.familyDescription,
+      },
+      {
+        /**
+         * The memories' own titles, not a count. "3 дурсамж" across four
+         * columns compares nothing; the titles are what a parent reads a
+         * year against.
+         */
+        id: "familyMemories",
+        label: "Гэр бүлийн дурсамж",
+        answer: (profile) => joined(profile.familyMemories.map((memory) => memory.title)),
       },
     ],
   },

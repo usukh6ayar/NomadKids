@@ -679,6 +679,81 @@ describe("age profiles", () => {
     );
   });
 
+  /**
+   * "Гэр бүлийн дурсамж" — the family section's memory list.
+   *
+   * ★ It rides the same PATCH as every other age-profile field, which is the
+   * point: no new route, no new table, and the same field-permission check.
+   * A teacher and a guardian both write it (`SHARED_AGE_FIELDS`), because a
+   * memory of a child's family is not one side's voice.
+   */
+  it("stores family memories and keeps them separate per age", async () => {
+    const memory = {
+      id: "m1",
+      mediaId: "11111111-1111-4111-8111-111111111111",
+      members: ["Эмээ, өвөө"],
+      title: "2 насандаа эмээтэйгээ парк орсон",
+      description: "Парканд цэцэг үзэж алхсан.",
+      date: "2024-06-20",
+      createdAt: "2026-09-10T00:00:00.000Z",
+    };
+
+    const save = await authed(
+      request(server()).patch(`/v1/children/${a.child.id}/age-profiles/2`),
+      parentA,
+    ).send({ familyMemories: [memory] });
+
+    expect(save.status).toBe(200);
+    expect(save.body.familyMemories).toEqual([memory]);
+
+    // A later save of a *different* field must not erase the list — the same
+    // partial-upsert guarantee every other section relies on.
+    const other = await authed(
+      request(server()).patch(`/v1/children/${a.child.id}/age-profiles/2`),
+      parentA,
+    ).send({ familyDescription: "Хамт ном уншдаг." });
+    expect(other.body.familyMemories).toEqual([memory]);
+
+    const otherAge = await request(server())
+      .get(`/v1/children/${a.child.id}/age-profiles/3`)
+      .set("Cookie", parentA.cookies);
+    expect(otherAge.body.familyMemories ?? []).toEqual([]);
+  });
+
+  /** An age that has never been written reads back an empty list, not `undefined`. */
+  it("defaults family memories to an empty list", async () => {
+    await authed(
+      request(server()).patch(`/v1/children/${a.child.id}/age-profiles/5`),
+      teacherA,
+    ).send({ favoriteColor: "Хөх" });
+
+    const res = await request(server())
+      .get(`/v1/children/${a.child.id}/age-profiles/5`)
+      .set("Cookie", teacherA.cookies);
+
+    expect(res.body.familyMemories).toEqual([]);
+  });
+
+  /**
+   * ★ The column is `Json`, so nothing downstream would object to whatever is
+   * handed to it. The validation is the only thing standing between a crafted
+   * request and a megabyte of arbitrary structure in a portfolio row.
+   */
+  it("refuses a memory with no title or a malformed date", async () => {
+    for (const bad of [
+      { id: "m1", members: [], title: "" },
+      { id: "m1", title: "Зөв", date: "20 зургадугаар сар" },
+      { id: "m1", title: "Зөв", mediaId: "not-a-uuid" },
+    ]) {
+      const res = await authed(
+        request(server()).patch(`/v1/children/${a.child.id}/age-profiles/2`),
+        parentA,
+      ).send({ familyMemories: [bad] });
+
+      expect({ bad, status: res.status }).toEqual({ bad, status: 400 });
+    }
+  });
+
   it("rejects an age outside 2–5", async () => {
     for (const age of [1, 6, 0, 99]) {
       const res = await authed(

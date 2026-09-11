@@ -1051,6 +1051,14 @@ model ChildAgeProfile {
   familyMemberTypes      String[] @default([])
   familyDescription      String?
 
+  /// Гэр бүлийн дурсамж — one entry per photographed moment: who the child was
+  /// with, what they did, when, and the `MediaFile` id of the picture. JSON
+  /// rather than a table for the same reason `familyLearningNotes` is: it is a
+  /// short, per-age list only ever read and written whole, with nothing else
+  /// pointing at it. The photograph itself is an ordinary album row, so it
+  /// appears under `category=FAMILY` for this age without a second write.
+  familyMemories         Json     @default("[]")
+
   parentNote  String?
   teacherNote String?
 

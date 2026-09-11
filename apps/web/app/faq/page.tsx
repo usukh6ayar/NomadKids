@@ -3,9 +3,26 @@ import Link from "next/link";
 import { PublicInfoShell, PublicNotice } from "@/components/public/public-info-shell";
 import { BRAND } from "@/lib/vocabulary";
 
+/**
+ * ★ `canonical` is set, and the reason it has to be is that it is inherited.
+ *
+ * The root layout declares `alternates: { canonical: "/" }` for itself, and
+ * Next passes that down to every page that does not override it — so this page
+ * shipped telling Google it was a duplicate of the home page while
+ * `sitemap.ts` listed it as a URL of its own. That contradiction resolves in
+ * the crawler's favour: the canonical wins and the page is dropped.
+ *
+ * `/login` canonicalises to `/` deliberately and says so — it renders the same
+ * `PublicLanding`. This page does not.
+ *
+ * ★★ The title carries no brand. The root's `template` appends
+ * `| ${BRAND} · ${BRAND_LATIN}` to whatever a page sets, so `| ${BRAND}` here
+ * printed the Cyrillic name twice inside the ~60 characters Google shows.
+ */
 export const metadata: Metadata = {
-  title: `Түгээмэл асуулт | ${BRAND}`,
+  title: "Түгээмэл асуулт",
   description: `${BRAND} системийн бүртгэл, нэвтрэлт, мэдээллийн хамгаалалт, ESIS болон хэрэглээний түгээмэл асуултууд.`,
+  alternates: { canonical: "/faq" },
 };
 
 const FAQ_GROUPS = [

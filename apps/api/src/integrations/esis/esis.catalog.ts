@@ -320,10 +320,22 @@ export const ESIS_RESOURCE_CATALOG = (Object.keys(ESIS_ENDPOINTS) as EsisEndpoin
       .length,
     sampleRow: sampleRow(key),
     sampleRows: sampleRows(key),
-    direction:
-      ESIS_ENDPOINTS[key].method === "GET"
-        ? ("ESIS_TO_NOMADKIDS" as const)
-        : ("NOMADKIDS_TO_ESIS" as const),
+    /*
+     * ★ Which way the data moves, from **readability** rather than from the
+     * HTTP verb.
+     *
+     * The two agreed on every service until `studentContacts` — "Гэр бүлийн
+     * мэдээлэл лавлах" — turned out to be a lookup the ministry exposes over
+     * POST (`esis.endpoints.ts`, proven by probe). Deriving this from `method`
+     * would have flipped that row to "NomadKids → ESIS" on the operator
+     * screen: a service that only ever reads, reported as one that writes, on
+     * the one screen an operator checks before granting access.
+     *
+     * `readable` below is the same predicate and is the honest one — a service
+     * is a read because we registered a reader and a schema for it, not
+     * because of the verb it happens to travel over.
+     */
+    direction: isReadable(key) ? ("ESIS_TO_NOMADKIDS" as const) : ("NOMADKIDS_TO_ESIS" as const),
     targetModel: targetModel(key),
     mappings: fieldMappings(key, ESIS_FIELDS[key]),
     readable: isReadable(key),
