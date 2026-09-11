@@ -309,11 +309,20 @@ describe("the staff view of a child's menu", () => {
     expect(screen.getByRole("tab", { name: "7 хоног" })).toBeInTheDocument();
   });
 
-  it("keeps the editor, under the reading view", async () => {
+  /*
+    ★ Reading first, editing behind a door — the client's clarification: staff
+    see exactly what a family sees, and everything they drew is the editing
+    flow, which is a separate thing to open.
+  */
+  it("keeps the editor behind Цэс засах", async () => {
+    const user = userEvent.setup();
     renderStaff();
 
     await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
-    expect(screen.getByText("Цэс оруулах")).toBeInTheDocument();
+    expect(screen.queryByText("Хоолны цэс засах")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Цэс засах" }));
+    expect(await screen.findByText("Хоолны цэс засах")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Засах" })).toBeInTheDocument();
   });
 

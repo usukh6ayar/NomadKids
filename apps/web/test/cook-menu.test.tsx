@@ -27,18 +27,25 @@ function todayIso(): string {
 }
 
 /**
- * Opens the day editor — "Жагсаалтаар".
+ * Opens the editing flow, and then the day form.
  *
- * ★ The screen opens on "Хүснэгтээр" since 2026-09-11, the client's drawing:
- * the week as a table, with the form behind a control. Every case below that
- * types into a day goes through here first.
+ * ★ The screen opens as the *family's* view since 2026-09-11, at the client's
+ * clarification: "эцэг эхийн хоолны цэсний харагдац огт өөрчлөгдөж болохгүй …
+ * зөвхөн засах үйл явц". Everything the client drew — the toolbar, the week
+ * table, the day form — is behind "Цэс засах".
  */
+async function openEdit(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole("button", { name: "Цэс засах" }));
+}
+
 async function openList(user: ReturnType<typeof userEvent.setup>) {
+  await openEdit(user);
   await user.click(await screen.findByRole("radio", { name: "Жагсаалтаар" }));
 }
 
 /** Opens the Excel panel, which is a step rather than a permanent block. */
 async function openImport(user: ReturnType<typeof userEvent.setup>) {
+  await openEdit(user);
   await user.click(await screen.findByRole("button", { name: "Excel оруулах" }));
 }
 
@@ -132,8 +139,8 @@ describe("the cook's weekly menu", () => {
     renderWithProviders(<MenuPage />);
     await openList(user);
 
-    // One day open at a time, so one "Хоол нэмэх".
-    const addButtons = await screen.findAllByRole("button", { name: "Хоол нэмэх" });
+    // One day open at a time, so one "Хоолны цаг нэмэх".
+    const addButtons = await screen.findAllByRole("button", { name: "Хоолны цаг нэмэх" });
     await user.click(addButtons[0]!);
 
     const nameInputs = await screen.findAllByLabelText("Хоолны нэр");
@@ -248,7 +255,7 @@ describe("the cook's weekly menu", () => {
 
     await openList(user);
 
-    const addButtons = await screen.findAllByRole("button", { name: "Хоол нэмэх" });
+    const addButtons = await screen.findAllByRole("button", { name: "Хоолны цаг нэмэх" });
     await user.click(addButtons[0]!);
 
     // A new row opens on "Бэлэн хоол" once there is an approved card to pick.
@@ -297,7 +304,7 @@ describe("the cook's weekly menu", () => {
 
     await openList(user);
 
-    const addButtons = await screen.findAllByRole("button", { name: "Хоол нэмэх" });
+    const addButtons = await screen.findAllByRole("button", { name: "Хоолны цаг нэмэх" });
     await user.click(addButtons[0]!);
 
     const readyButtons = await screen.findAllByRole("button", { name: /Бэлэн хоол/ });
@@ -410,9 +417,9 @@ describe("the menu as a spreadsheet", () => {
     renderWithProviders(<MenuPage />);
 
     await screen.findByText("Хоолны цэс");
-    // Neither control is drawn at all — not drawn-and-disabled.
+    // No door at all — a director reads the family's view and stays there.
+    expect(screen.queryByRole("button", { name: "Цэс засах" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Excel оруулах" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Нэмэх" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Хадгалах/ })).not.toBeInTheDocument();
   });
 
@@ -469,13 +476,31 @@ describe("the menu as a spreadsheet", () => {
     The client's 2026-09-11 drawing: a title with the week it is showing, one
     row of controls, then the week itself.
   */
-  it("opens on the week as a table, with the form behind a control", async () => {
+  /*
+    ★ The landing is the family's screen, unchanged.
+
+    A cook, a teacher and a director open this and see what a parent sees. Every
+    editing control is behind "Цэс засах".
+  */
+  it("opens as the family's own view, with the editing flow behind a door", async () => {
     stubWeek();
     renderWithProviders(<MenuPage />);
 
+    expect(await screen.findByRole("tab", { name: "Өнөөдөр" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Цэс засах" })).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "Хүснэгтээр" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Excel оруулах" })).not.toBeInTheDocument();
+  });
+
+  it("opens the editing flow on the week as a table", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+    await openEdit(user);
+
     expect(await screen.findByText("7 хоногийн хоолны цэсийг удирдах")).toBeInTheDocument();
     expect(await screen.findByRole("table", { name: "Долоо хоногийн цэс" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Хоол нэмэх" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Хоолны цаг нэмэх" })).not.toBeInTheDocument();
   });
 
   it("shows the day's form once Жагсаалтаар is pressed", async () => {
@@ -484,8 +509,9 @@ describe("the menu as a spreadsheet", () => {
     renderWithProviders(<MenuPage />);
 
     await openList(user);
-    expect(await screen.findByRole("button", { name: "Хоол нэмэх" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Хоолны цаг нэмэх" })).toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "Долоо хоногийн цэс" })).not.toBeInTheDocument();
+    expect(screen.getByText("Хоолны цэс засах")).toBeInTheDocument();
   });
 
   /*
@@ -497,6 +523,7 @@ describe("the menu as a spreadsheet", () => {
     const { calls } = stubWeek();
     renderWithProviders(<MenuPage />);
 
+    await openEdit(user);
     await screen.findByRole("table", { name: "Долоо хоногийн цэс" });
     const before = calls.filter((call) => call.url.includes("with-warnings")).length;
 

@@ -7,6 +7,7 @@ import {
   Cookie,
   Flame,
   Info,
+  PencilLine,
   Soup,
   Sun,
   Utensils,
@@ -164,6 +165,8 @@ export function ChildMenu({
   const monday = mondayOf(now);
   // Which day the strip below has open — an offset, not a stored date.
   const [selectedOffset, setSelectedOffset] = useState(mondayFirstIndex(now));
+  /** Whether the editing flow is open — staff only; see the note below. */
+  const [editing, setEditing] = useState(false);
 
   const weekDates = Array.from({ length: 7 }, (_, i) => toIso(addDays(monday, i)));
   const from = weekDates[0]!;
@@ -208,6 +211,12 @@ export function ChildMenu({
 
   if (!isStaff) return reading;
 
+  /*
+    ★ Reading first, editing behind a door — 2026-09-11, at the client's
+    clarification: staff see what a family sees, and the editing flow is a
+    separate thing they choose to open.
+  */
+
   // ★ `day.date` is a full ISO datetime from the API (`2026-08-27T00:00:00.000Z`),
   // not the plain `YYYY-MM-DD` this component works in — `attendance-calendar.tsx`
   // normalises the same way for the identical reason.
@@ -218,78 +227,92 @@ export function ChildMenu({
     <div className="flex flex-col gap-6">
       {reading}
 
-      <section aria-labelledby="menu-heading">
-        <SectionHeader
-          id="menu-heading"
-          title="Цэс оруулах"
-          lede={
-            healthNotes
-              ? "Эрүүл мэндийн тэмдэглэлтэй тохирсон орц бүхий хоол улаан тэмдгээр харагдана. Энэ бол баталгаат харшлын систем биш."
-              : undefined
-          }
-        />
+      {!editing ? (
+        <Button className="self-start" onClick={() => setEditing(true)}>
+          <PencilLine size={16} aria-hidden="true" />
+          Цэс засах
+        </Button>
+      ) : null}
 
-        <div className="flex flex-col gap-3">
-          {/*
+      {editing ? (
+        <section aria-labelledby="menu-heading">
+          <SectionHeader
+            id="menu-heading"
+            title="Хоолны цэс засах"
+            action={
+              <Button variant="secondary" size="sm" onClick={() => setEditing(false)}>
+                Буцах
+              </Button>
+            }
+            lede={
+              healthNotes
+                ? "Эрүүл мэндийн тэмдэглэлтэй тохирсон орц бүхий хоол улаан тэмдгээр харагдана. Энэ бол баталгаат харшлын систем биш."
+                : undefined
+            }
+          />
+
+          <div className="flex flex-col gap-3">
+            {/*
             ★ The strip is a day picker now, not a way of reading.
 
             Reading happens in `FamilyMenu` above. What a teacher still needs
             here is "which day am I editing", and seven buttons answer that in
             one press where a pager and a tri-toggle answered it in three.
           */}
-          <div className="grid grid-cols-7 gap-1.5">
-            {weekDates.map((date, i) => {
-              const day = byDate.get(date);
-              const filled = (day?.dishes.length ?? 0) > 0;
-              const isToday = date === todayIso;
-              const active = i === selectedOffset;
+            <div className="grid grid-cols-7 gap-1.5">
+              {weekDates.map((date, i) => {
+                const day = byDate.get(date);
+                const filled = (day?.dishes.length ?? 0) > 0;
+                const isToday = date === todayIso;
+                const active = i === selectedOffset;
 
-              return (
-                <button
-                  key={date}
-                  type="button"
-                  aria-pressed={active}
-                  aria-label={`${WEEKDAYS[i]}, ${formatDayMonth(date)}${filled ? " — цэстэй" : ""}`}
-                  onClick={() => setSelectedOffset(i)}
-                  className={cn(
-                    "flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-row border px-1 py-2 text-caption font-semibold transition-colors",
-                    active
-                      ? "border-primary bg-primary-soft text-primary-strong"
-                      : "border-border bg-surface text-ink hover:border-primary",
-                    isToday && !active && "border-primary/50",
-                  )}
-                >
-                  <span className="text-faint">{WEEKDAYS[i]}</span>
-                  <span>{Number(date.slice(8, 10))}</span>
-                  <span
-                    aria-hidden="true"
-                    className={cn("size-1.5 rounded-pill", filled ? "bg-mint" : "bg-transparent")}
-                  />
-                </button>
-              );
-            })}
+                return (
+                  <button
+                    key={date}
+                    type="button"
+                    aria-pressed={active}
+                    aria-label={`${WEEKDAYS[i]}, ${formatDayMonth(date)}${filled ? " — цэстэй" : ""}`}
+                    onClick={() => setSelectedOffset(i)}
+                    className={cn(
+                      "flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-row border px-1 py-2 text-caption font-semibold transition-colors",
+                      active
+                        ? "border-primary bg-primary-soft text-primary-strong"
+                        : "border-border bg-surface text-ink hover:border-primary",
+                      isToday && !active && "border-primary/50",
+                    )}
+                  >
+                    <span className="text-faint">{WEEKDAYS[i]}</span>
+                    <span>{Number(date.slice(8, 10))}</span>
+                    <span
+                      aria-hidden="true"
+                      className={cn("size-1.5 rounded-pill", filled ? "bg-mint" : "bg-transparent")}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+
+            {!isStaff && !hasAnyDish ? (
+              <EmptyState
+                icon={
+                  <Image src="/background/mascot-boy-orange.webp" alt="" width={96} height={96} />
+                }
+                title="Цэс оруулаагүй байна"
+                description="Багш цэс оруулсны дараа энд харагдана."
+              />
+            ) : (
+              <DayDetail
+                key={activeDate}
+                kindergartenId={kindergartenId}
+                date={activeDate}
+                day={byDate.get(activeDate)}
+                healthNotes={healthNotes}
+                isStaff={isStaff}
+              />
+            )}
           </div>
-
-          {!isStaff && !hasAnyDish ? (
-            <EmptyState
-              icon={
-                <Image src="/background/mascot-boy-orange.webp" alt="" width={96} height={96} />
-              }
-              title="Цэс оруулаагүй байна"
-              description="Багш цэс оруулсны дараа энд харагдана."
-            />
-          ) : (
-            <DayDetail
-              key={activeDate}
-              kindergartenId={kindergartenId}
-              date={activeDate}
-              day={byDate.get(activeDate)}
-              healthNotes={healthNotes}
-              isStaff={isStaff}
-            />
-          )}
-        </div>
-      </section>
+        </section>
+      ) : null}
     </div>
   );
 }

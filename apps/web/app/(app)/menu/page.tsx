@@ -9,8 +9,10 @@ import {
   ChevronRight,
   FileSpreadsheet,
   List,
+  ArrowLeft,
   MoreHorizontal,
   PackageMinus,
+  PencilLine,
   Plus,
   Table2,
 } from "lucide-react";
@@ -34,7 +36,7 @@ import { Card } from "@/components/ui/card";
 import { Menu, type MenuItem } from "@/components/ui/menu";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
-import { WeekTable } from "@/components/child/family-menu";
+import { FamilyMenu, WeekTable } from "@/components/child/family-menu";
 import { MenuExcelImport } from "@/components/menu/menu-excel-import";
 import {
   MenuDishEditor,
@@ -44,7 +46,7 @@ import {
   type RecipeOption,
 } from "@/components/menu/menu-dish-editor";
 import { useEsisFoodProducts } from "@/components/esis/use-esis-food-products";
-import { formatDate, formatMonthLabel } from "@/lib/format";
+import { formatDate, formatLongDate, formatMonthLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const weekSchema = z.array(menuDayWithWarningsSchema);
@@ -180,6 +182,7 @@ function WeeklyMenu() {
   const canEdit = hasRole("COOK") || hasRole("TEACHER");
 
   const today = todayIso();
+  const tomorrow = addDays(today, 1);
 
   /*
     ★ Paged again — 2026-09-11, the client's drawing puts `‹ 2026.09.07 –
@@ -195,8 +198,20 @@ function WeeklyMenu() {
   */
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
 
-  /** "Хүснэгтээр" or "Жагсаалтаар" — the client's two views. */
+  /** "Хүснэгтээр" or "Жагсаалтаар" — the client's two views, while editing. */
   const [view, setView] = useState<"table" | "list">("table");
+  /*
+    ★ Reading and editing are two screens, not one — 2026-09-11, at the
+    client's clarification: "эцэг эхийн хоолны цэсний харагдац огт өөрчлөгдөж
+    болохгүй; тогооч, багш, удирдлагад эцэг эхийнх шиг харагдаад зөвхөн засах
+    үйл явцыг [зургаар илгээсэн]."
+
+    So this screen opens as the family's own — `FamilyMenu`, unchanged — and
+    the toolbar, the week table and the day form the client drew are what
+    "Цэс засах" opens. A director never leaves the first state; they have no
+    button to.
+  */
+  const [editing, setEditing] = useState(false);
   const weekDates = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   /*
     ★ Seven for reading, five for editing.
@@ -303,30 +318,32 @@ function WeeklyMenu() {
       */}
       <PageHeader
         title="Хоолны цэс"
-        lede="7 хоногийн хоолны цэсийг удирдах"
+        lede={editing ? "7 хоногийн хоолны цэсийг удирдах" : undefined}
         actions={
-          <div className="flex items-center gap-1 rounded-control border border-border bg-surface px-1 py-0.5">
-            <button
-              type="button"
-              aria-label="Өмнөх долоо хоног"
-              onClick={() => setWeekStart((current) => addDays(current, -7))}
-              className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
-            >
-              <ChevronLeft size={18} aria-hidden="true" />
-            </button>
-            <span className="inline-flex items-center gap-2 px-1 text-body font-medium tabular-nums text-ink">
-              <CalendarDays size={16} aria-hidden="true" className="text-muted" />
-              {formatDate(from)} – {formatDate(to)}
-            </span>
-            <button
-              type="button"
-              aria-label="Дараах долоо хоног"
-              onClick={() => setWeekStart((current) => addDays(current, 7))}
-              className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
-            >
-              <ChevronRight size={18} aria-hidden="true" />
-            </button>
-          </div>
+          !editing ? null : (
+            <div className="flex items-center gap-1 rounded-control border border-border bg-surface px-1 py-0.5">
+              <button
+                type="button"
+                aria-label="Өмнөх долоо хоног"
+                onClick={() => setWeekStart((current) => addDays(current, -7))}
+                className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
+              >
+                <ChevronLeft size={18} aria-hidden="true" />
+              </button>
+              <span className="inline-flex items-center gap-2 px-1 text-body font-medium tabular-nums text-ink">
+                <CalendarDays size={16} aria-hidden="true" className="text-muted" />
+                {formatDate(from)} – {formatDate(to)}
+              </span>
+              <button
+                type="button"
+                aria-label="Дараах долоо хоног"
+                onClick={() => setWeekStart((current) => addDays(current, 7))}
+                className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
+              >
+                <ChevronRight size={18} aria-hidden="true" />
+              </button>
+            </div>
+          )
         }
       />
 
@@ -342,80 +359,123 @@ function WeeklyMenu() {
         week with neither, rather than being offered controls the API answers
         with 404.
       */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div
-          role="radiogroup"
-          aria-label="Харагдац"
-          className="flex items-center gap-1 rounded-control bg-canvas p-1"
-        >
-          {(
-            [
-              ["table", "Хүснэгтээр", <Table2 key="t" size={16} aria-hidden="true" />],
-              ["list", "Жагсаалтаар", <List key="l" size={16} aria-hidden="true" />],
-            ] as const
-          ).map(([value, label, icon]) => (
-            <button
-              key={value}
-              type="button"
-              role="radio"
-              aria-checked={view === value}
-              onClick={() => setView(value)}
-              className={cn(
-                "inline-flex min-h-[40px] items-center gap-2 rounded-control px-3 text-body font-medium transition-colors",
-                view === value
-                  ? "bg-primary text-primary-ink shadow-sm"
-                  : "text-muted hover:bg-surface hover:text-ink",
-              )}
-            >
-              {icon}
-              {label}
-            </button>
-          ))}
-        </div>
+      {!editing ? (
+        /*
+          ★ The family's own screen, unchanged — the client's clarification.
 
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          {kindergartenId && canEdit ? (
-            <>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="border-mint bg-mint/30 text-mint-ink hover:bg-mint/50"
-                onClick={() => setImporting((current) => !current)}
-                aria-expanded={importing}
+          A cook, a teacher and a director open this and see exactly what a
+          parent sees: today, tomorrow, the week. The only thing added is the
+          door into the editing flow, and only for someone who may walk through
+          it.
+        */
+        <>
+          {kindergartenId && !week.isLoading ? (
+            <FamilyMenu
+              byDate={byDate}
+              weekDates={weekDates}
+              todayIso={today}
+              tomorrowIso={tomorrow}
+              healthNotes={null}
+            />
+          ) : null}
+
+          {canEdit ? (
+            <Button className="self-start" onClick={() => setEditing(true)}>
+              <PencilLine size={16} aria-hidden="true" />
+              Цэс засах
+            </Button>
+          ) : null}
+        </>
+      ) : null}
+
+      {editing ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setEditing(false);
+              setView("table");
+            }}
+          >
+            <ArrowLeft size={16} aria-hidden="true" />
+            Буцах
+          </Button>
+
+          <div
+            role="radiogroup"
+            aria-label="Харагдац"
+            className="flex items-center gap-1 rounded-control bg-canvas p-1"
+          >
+            {(
+              [
+                ["table", "Хүснэгтээр", <Table2 key="t" size={16} aria-hidden="true" />],
+                ["list", "Жагсаалтаар", <List key="l" size={16} aria-hidden="true" />],
+              ] as const
+            ).map(([value, label, icon]) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={view === value}
+                onClick={() => setView(value)}
+                className={cn(
+                  "inline-flex min-h-[40px] items-center gap-2 rounded-control px-3 text-body font-medium transition-colors",
+                  view === value
+                    ? "bg-primary text-primary-ink shadow-sm"
+                    : "text-muted hover:bg-surface hover:text-ink",
+                )}
               >
-                <FileSpreadsheet size={16} aria-hidden="true" />
-                Excel оруулах
-              </Button>
+                {icon}
+                {label}
+              </button>
+            ))}
+          </div>
 
-              {/*
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {kindergartenId && canEdit ? (
+              <>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="border-mint bg-mint/30 text-mint-ink hover:bg-mint/50"
+                  onClick={() => setImporting((current) => !current)}
+                  aria-expanded={importing}
+                >
+                  <FileSpreadsheet size={16} aria-hidden="true" />
+                  Excel оруулах
+                </Button>
+
+                {/*
                 Нэмэх opens the day's form — the list view *is* the form, so
                 this switches to it rather than opening a dialog that would then
                 have to ask which day.
               */}
-              <Button size="sm" onClick={() => setView("list")}>
-                <Plus size={16} aria-hidden="true" />
-                Нэмэх
-              </Button>
-            </>
-          ) : null}
+                <Button size="sm" onClick={() => setView("list")}>
+                  <Plus size={16} aria-hidden="true" />
+                  Нэмэх
+                </Button>
+              </>
+            ) : null}
 
-          {kindergartenId ? (
-            <Menu
-              variant="secondary"
-              ariaLabel="Excel татах"
-              items={exportItems}
-              label={
-                <>
-                  <MoreHorizontal size={18} aria-hidden="true" />
-                  <span className="sr-only">Excel татах</span>
-                </>
-              }
-            />
-          ) : null}
+            {kindergartenId ? (
+              <Menu
+                variant="secondary"
+                ariaLabel="Excel татах"
+                items={exportItems}
+                label={
+                  <>
+                    <MoreHorizontal size={18} aria-hidden="true" />
+                    <span className="sr-only">Excel татах</span>
+                  </>
+                }
+              />
+            ) : null}
+          </div>
         </div>
-      </div>
+      ) : null}
 
-      {kindergartenId && canEdit && importing ? (
+      {kindergartenId && canEdit && editing && importing ? (
         <MenuExcelImport kindergartenId={kindergartenId} />
       ) : null}
 
@@ -451,11 +511,11 @@ function WeeklyMenu() {
         </div>
       ) : null}
 
-      {kindergartenId && view === "table" && !week.isLoading ? (
+      {kindergartenId && editing && view === "table" && !week.isLoading ? (
         <WeekTable byDate={byDate} weekDates={weekDates} todayIso={today} />
       ) : null}
 
-      {view === "list" ? (
+      {editing && view === "list" ? (
         <div className="grid grid-cols-7 gap-1.5">
           {weekDates.map((date, i) => {
             const day = byDate.get(date);
@@ -490,7 +550,7 @@ function WeeklyMenu() {
         </div>
       ) : null}
 
-      {kindergartenId && view === "list" && !week.isLoading ? (
+      {kindergartenId && editing && view === "list" && !week.isLoading ? (
         <MenuDayCard
           key={activeDate}
           kindergartenId={kindergartenId}
@@ -502,6 +562,14 @@ function WeeklyMenu() {
           recipes={recipes.data ?? []}
           isKitchen={isKitchen}
           canEdit={canEdit}
+          onPreviousDay={
+            selectedOffset > 0 ? () => setSelectedOffset(selectedOffset - 1) : undefined
+          }
+          onNextDay={
+            selectedOffset < weekDates.length - 1
+              ? () => setSelectedOffset(selectedOffset + 1)
+              : undefined
+          }
         />
       ) : null}
     </div>
@@ -533,6 +601,8 @@ function MenuDayCard({
   recipes,
   isKitchen,
   canEdit,
+  onPreviousDay,
+  onNextDay,
 }: {
   kindergartenId: string;
   queryFrom: string;
@@ -544,6 +614,9 @@ function MenuDayCard({
   isKitchen: boolean;
   /** COOK or TEACHER — see `WeeklyMenu`'s own note. */
   canEdit: boolean;
+  /** Absent at the ends of the week, which is what disables the arrow. */
+  onPreviousDay?: () => void;
+  onNextDay?: () => void;
 }) {
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -618,18 +691,54 @@ function MenuDayCard({
 
   return (
     <Card pad="roomy" className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="flex items-center gap-2 text-lead font-semibold text-ink">
-          {weekday}
-          {day ? (
-            <Badge tone={isApproved ? "mint" : "neutral"}>
-              {isApproved ? "Батлагдсан" : "Ноорог"}
-            </Badge>
-          ) : null}
-        </h2>
-        <div className="flex items-center gap-2">
-          {day && !dirty ? <Badge tone="mint">Хадгалагдсан</Badge> : null}
-          <span className="text-caption text-muted">{formatDate(date)}</span>
+      {/*
+        ★ "Хоолны цэс засах" with the day it is editing — 2026-09-11, the
+        client's drawing.
+
+        The card said only the weekday ("Баасан") and put the date in small
+        grey text on the right, which on a phone is the one fact you cannot read
+        at arm's length. The heading now names what the screen is and the long
+        date sits under it, with Өмнөх/Дараах өдөр beside — a cook entering a
+        week walks days, not weeks.
+      */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="flex flex-wrap items-center gap-2 text-lead font-semibold text-ink">
+            Хоолны цэс засах
+            {day ? (
+              <Badge tone={isApproved ? "mint" : "neutral"}>
+                {isApproved ? "Батлагдсан" : "Ноорог"}
+              </Badge>
+            ) : null}
+            {day && !dirty ? <Badge tone="mint">Хадгалагдсан</Badge> : null}
+          </h2>
+          <p className="mt-0.5 text-caption text-muted">
+            {formatLongDate(date)}, {weekday} гараг
+          </p>
+        </div>
+
+        <div className="flex items-center gap-1 rounded-control border border-border bg-surface px-1 py-0.5">
+          <button
+            type="button"
+            aria-label="Өмнөх өдөр"
+            disabled={!onPreviousDay}
+            onClick={() => onPreviousDay?.()}
+            className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink disabled:opacity-40"
+          >
+            <ChevronLeft size={18} aria-hidden="true" />
+          </button>
+          <span className="px-1 text-body font-medium tabular-nums text-ink">
+            {formatDate(date)}
+          </span>
+          <button
+            type="button"
+            aria-label="Дараах өдөр"
+            disabled={!onNextDay}
+            onClick={() => onNextDay?.()}
+            className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink disabled:opacity-40"
+          >
+            <ChevronRight size={18} aria-hidden="true" />
+          </button>
         </div>
       </div>
 

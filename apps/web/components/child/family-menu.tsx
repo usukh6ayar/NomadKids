@@ -52,7 +52,7 @@ export const MEAL_KIND_TIME: Record<MealKind, string> = {
  * reading anything. `dot` is the same meaning shrunk to a bullet for the week
  * table, where a full wash would make a grid unreadable.
  */
-const MEAL_KIND_STYLE: Record<
+export const MEAL_KIND_STYLE: Record<
   MealKind,
   { icon: ReactNode; card: string; title: string; dot: string }
 > = {

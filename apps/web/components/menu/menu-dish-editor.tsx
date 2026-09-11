@@ -1,14 +1,17 @@
 "use client";
 
-import { ChefHat, PencilLine, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ChefHat, PencilLine, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { MEAL_KIND_LABEL, type MealKind, type MenuDish } from "@kinder/contracts";
 import type { EsisFoodProduct } from "@/components/esis/use-esis-food-products";
 import { SingleImageUpload } from "@/components/media/single-image-upload";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { RowMenu } from "@/components/ui/menu";
+import { MEAL_KIND_STYLE, MEAL_KIND_TIME } from "@/components/child/family-menu";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
+import { cn } from "@/lib/utils";
 
 /**
  * One day's dish editor — every field `saveMenuDaySchema` accepts
@@ -367,6 +370,22 @@ export function MenuDishEditor({
     onChange(draftDishes.filter((_, i) => i !== index));
   }
 
+  /*
+    ★ Дээр зөөх / Доор зөөх — 2026-09-11, from the client's drawing.
+
+    The order of the rows is the order the day is served in, and it was only
+    changeable by deleting a dish and typing it again. A swap with the
+    neighbour is the whole of it: a drag handle on a phone fights the page
+    scroll, and two menu entries say what they do.
+  */
+  function move(index: number, delta: number) {
+    const target = index + delta;
+    if (target < 0 || target >= draftDishes.length) return;
+    const next = [...draftDishes];
+    [next[index], next[target]] = [next[target]!, next[index]!];
+    onChange(next);
+  }
+
   function addRow() {
     const lastKind = draftDishes.at(-1)?.kind ?? "BREAKFAST";
     /*
@@ -397,7 +416,67 @@ export function MenuDishEditor({
             const recipe = kitchen?.recipes.find((r) => r.id === dish.recipeId);
 
             return (
-              <Card key={dish.key} pad="compact" className="flex flex-col gap-2.5">
+              <Card
+                key={dish.key}
+                pad="compact"
+                className={cn("flex flex-col gap-2.5", MEAL_KIND_STYLE[dish.kind].card)}
+              >
+                {/*
+                  ★ The sitting names the card — the client's 2026-09-11
+                  drawing: its glyph, its label and its time, in its own tint.
+
+                  The rows were five identical white boxes whose only difference
+                  was a "Хоолны цаг" select three fields down. A cook scanning a
+                  day for the afternoon snack had to read every card; now the
+                  purple one is the afternoon snack.
+                */}
+                <div className="flex items-center gap-2">
+                  <span className={cn("shrink-0", MEAL_KIND_STYLE[dish.kind].title)}>
+                    {MEAL_KIND_STYLE[dish.kind].icon}
+                  </span>
+                  <p
+                    className={cn(
+                      "min-w-0 flex-1 truncate font-semibold",
+                      MEAL_KIND_STYLE[dish.kind].title,
+                    )}
+                  >
+                    {MEAL_KIND_LABEL[dish.kind]}
+                  </p>
+                  <span className="shrink-0 text-caption font-semibold tabular-nums text-muted">
+                    {MEAL_KIND_TIME[dish.kind]}
+                  </span>
+                  <RowMenu
+                    ariaLabel={`${dish.name || MEAL_KIND_LABEL[dish.kind]} — үйлдэл`}
+                    items={[
+                      ...(i > 0
+                        ? [
+                            {
+                              label: "Дээр зөөх",
+                              icon: <ArrowUp size={16} aria-hidden="true" />,
+                              onSelect: () => move(i, -1),
+                            },
+                          ]
+                        : []),
+                      ...(i < draftDishes.length - 1
+                        ? [
+                            {
+                              label: "Доор зөөх",
+                              icon: <ArrowDown size={16} aria-hidden="true" />,
+                              onSelect: () => move(i, 1),
+                            },
+                          ]
+                        : []),
+                      {
+                        label: "Устгах",
+                        icon: <Trash2 size={16} aria-hidden="true" />,
+                        tone: "danger" as const,
+                        separated: true,
+                        onSelect: () => remove(i),
+                      },
+                    ]}
+                  />
+                </div>
+
                 {kitchen ? (
                   <ModeSwitch
                     value={dish.useRecipe}
@@ -588,16 +667,6 @@ export function MenuDishEditor({
                       </Field>
                     )}
                   </div>
-
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Энэ хоолыг хасах"
-                    onClick={() => remove(i)}
-                  >
-                    <Trash2 size={18} aria-hidden="true" />
-                  </Button>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
@@ -716,13 +785,21 @@ export function MenuDishEditor({
                   )}
                 </Field>
 
+                {/*
+                  ★ "Зураг солих" once there is one, "Зураг нэмэх" while there
+                  is not — 2026-09-11, the client's drawing.
+
+                  One word, and it is the difference between a control that
+                  looks like it will add a second photograph and one that says
+                  it replaces the first. A dish carries exactly one.
+                */}
                 {kitchen ? (
                   <div className="flex flex-col gap-1 border-t border-border-soft pt-2.5">
                     <span className="text-caption font-medium text-muted">Хоолны зураг</span>
                     <SingleImageUpload
                       endpoint={`/kindergartens/${kitchen.kindergartenId}/menu/dish-photo`}
                       currentMediaId={dish.photoMediaFileId || null}
-                      label="Зураг нэмэх"
+                      label={dish.photoMediaFileId ? "Зураг солих" : "Зураг нэмэх"}
                       alt={`${dish.name || recipe?.name || "Хоол"} зураг`}
                       onUploaded={(media) => update(i, { photoMediaFileId: media.id })}
                     />
@@ -736,7 +813,7 @@ export function MenuDishEditor({
 
       <Button type="button" variant="secondary" size="sm" onClick={addRow} className="self-start">
         <Plus size={16} aria-hidden="true" />
-        Хоол нэмэх
+        Хоолны цаг нэмэх
       </Button>
 
       <div className="flex gap-2">
