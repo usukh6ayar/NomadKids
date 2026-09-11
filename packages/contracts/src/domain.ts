@@ -493,6 +493,8 @@ export const observationSchema = z.object({
   id: uuidSchema,
   childId: uuidSchema.nullish(),
   observedOn: z.string(),
+  /** "HH:MM" — the time of day, when one was recorded. */
+  observedTime: z.string().nullish(),
   source: observationSourceSchema,
   reviewStatus: reviewStatusSchema,
   visibleToParents: z.boolean(),

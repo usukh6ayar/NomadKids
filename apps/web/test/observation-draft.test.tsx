@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -424,6 +424,11 @@ describe("Шинэ ажиглалт — the form's own fields", () => {
  * a click on it before they land does nothing at all — this waits for the
  * control to be usable rather than for the option to exist.
  */
+/** The four level cards, which replaced the select. */
+function levelCards(): HTMLElement {
+  return screen.getByRole("radiogroup", { name: "Түвшин" });
+}
+
 async function chooseIndicator(user: ReturnType<typeof userEvent.setup>, code: string) {
   // The picker is disabled while the strand's indicators are in flight, and
   // Radix swallows a popup opened in the same tick as the click that mounted
@@ -457,7 +462,13 @@ describe("Шинэ ажиглалт — СҮД", () => {
 
     // Сараа was born 2021-04-02 and the suite runs in 2026 — five years old,
     // which the client's rule puts at IV.
-    await waitFor(() => expect(screen.getByLabelText("Түвшин")).toHaveTextContent("IV түвшин"));
+    await waitFor(() =>
+      expect(
+        within(levelCards()).getByRole("radio", {
+          name: "IV түвшин Тогтвортой, бусдад үлгэрлэдэг",
+        }),
+      ).toHaveAttribute("aria-checked", "true"),
+    );
   });
 
   /**
@@ -474,9 +485,14 @@ describe("Шинэ ажиглалт — СҮД", () => {
 
     await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
     await chooseIndicator(user, "ХЯ1а");
-    await selectOption(user, "Түвшин", "II түвшин");
+    // The level is four cards now, not a select — see the design's own
+    // reasoning: the four are a scale, and choosing one is a judgement about
+    // where a child sits on it, which a control showing one at a time hides.
+    await user.click(within(levelCards()).getByRole("radio", { name: "II түвшин Дэмжлэгтэй" }));
 
-    expect(screen.getByLabelText("Түвшин")).toHaveTextContent("II түвшин");
+    expect(
+      within(levelCards()).getByRole("radio", { name: "II түвшин Дэмжлэгтэй" }),
+    ).toHaveAttribute("aria-checked", "true");
   });
 
   /** The descriptor is read back, so a teacher sees what they have claimed. */
@@ -487,7 +503,10 @@ describe("Шинэ ажиглалт — СҮД", () => {
 
     await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
     await chooseIndicator(user, "ХЯ1а");
-    await selectOption(user, "Түвшин", "II түвшин");
+    // The level is four cards now, not a select — see the design's own
+    // reasoning: the four are a scale, and choosing one is a judgement about
+    // where a child sits on it, which a control showing one at a time hides.
+    await user.click(within(levelCards()).getByRole("radio", { name: "II түвшин Дэмжлэгтэй" }));
 
     expect(await screen.findByText("СҮД-ийн агуулга")).toBeInTheDocument();
     expect(screen.getByText(/Хоёр дахь түвшний тайлбар/)).toBeInTheDocument();
@@ -528,5 +547,90 @@ describe("Шинэ ажиглалт — СҮД", () => {
     await selectOption(user, "Сургалтын чиглэл", "Танин мэдэхүй");
 
     expect(screen.getByLabelText("СҮД код")).toHaveTextContent("Сонгоно уу");
+  });
+});
+
+/**
+ * The rest of the client's 2026-09-11 compose design.
+ *
+ * ★ The child card, the optional time, and the level as four cards.
+ *
+ * Each of these is a small thing on its own and each guards a mistake the
+ * screen could make silently: writing a note about the wrong child, stamping
+ * the moment it was typed up instead of the moment it happened, and hiding
+ * three quarters of a scale behind a control that shows one option.
+ */
+describe("Шинэ ажиглалт — the form's shape", () => {
+  it("names the child the note is about, with a way to change them", async () => {
+    const user = userEvent.setup();
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    // The name is on the back-link too; the card is the statement of who the
+    // note is about, and it carries the age and group the link does not.
+    expect(await screen.findByText("5 нас")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Солих/ }));
+    expect(await screen.findByRole("dialog", { name: "Хүүхдээ сонгох" })).toBeInTheDocument();
+  });
+
+  /**
+   * ★ Empty by default.
+   *
+   * Prefilling the current time would record when the note was typed up rather
+   * than when the moment happened — and a teacher writing up yesterday morning
+   * would have to notice and correct it.
+   */
+  it("leaves the time empty and sends it only when filled", async () => {
+    const user = userEvent.setup();
+    const api = stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    const time = await screen.findByLabelText(/Цаг/);
+    expect(time).toHaveValue("");
+
+    await user.type(time, "10:30");
+    await user.type(screen.getByLabelText(/Ажиглагдсан байдал/), "Тэмдэглэл");
+    await user.click(screen.getByRole("button", { name: /Хадгалах/ }));
+
+    await waitFor(() =>
+      expect(api.calls.find((call) => call.method === "POST")?.body).toMatchObject({
+        observedTime: "10:30",
+      }),
+    );
+  });
+
+  it("sends no time when none was given", async () => {
+    const user = userEvent.setup();
+    const api = stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    await user.type(await screen.findByLabelText(/Ажиглагдсан байдал/), "Тэмдэглэл");
+    await user.click(screen.getByRole("button", { name: /Хадгалах/ }));
+
+    await waitFor(() => expect(api.calls.some((call) => call.method === "POST")).toBe(true));
+    const body = api.calls.find((call) => call.method === "POST")?.body as Record<string, unknown>;
+    expect(body).not.toHaveProperty("observedTime");
+  });
+
+  /**
+   * ★ The whole scale is on screen, with what each level means.
+   *
+   * A select shows one at a time and hides the thing being judged against;
+   * four cards put the scale in front of the teacher, which is what makes the
+   * choice a judgement rather than a guess.
+   */
+  it("shows all four levels with what each one means", async () => {
+    const user = userEvent.setup();
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
+    await chooseIndicator(user, "ХЯ1а");
+
+    const cards = within(levelCards()).getAllByRole("radio");
+    expect(cards).toHaveLength(4);
+    expect(within(levelCards()).getByText("Дэмжлэг их шаардлагатай")).toBeInTheDocument();
+    expect(within(levelCards()).getByText("Тогтвортой, бусдад үлгэрлэдэг")).toBeInTheDocument();
   });
 });

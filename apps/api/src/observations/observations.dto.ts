@@ -36,6 +36,19 @@ export const createObservationSchema = z
       behaviour does not exist earlier, so "1 to 4" is the wrong rule and only
       the row knows the right one.
     */
+    /**
+     * The time of day, "HH:MM" — optional, and validated as a clock rather
+     * than coerced to a date.
+     *
+     * ★ A regex, not `z.coerce.date()`. The value is a time of day with no
+     * date attached; parsing it would invent one in whatever zone the server
+     * runs in, which is the boundary bug `observedOn` stays a `@db.Date` to
+     * avoid.
+     */
+    observedTime: z
+      .string()
+      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Цаг HH:MM хэлбэртэй байна")
+      .optional(),
     indicatorId: uuidSchema.optional(),
     indicatorLevel: z.number().int().min(1).max(4).optional(),
     /**
@@ -91,6 +104,19 @@ export const updateObservationSchema = z
       behaviour does not exist earlier, so "1 to 4" is the wrong rule and only
       the row knows the right one.
     */
+    /**
+     * The time of day, "HH:MM" — optional, and validated as a clock rather
+     * than coerced to a date.
+     *
+     * ★ A regex, not `z.coerce.date()`. The value is a time of day with no
+     * date attached; parsing it would invent one in whatever zone the server
+     * runs in, which is the boundary bug `observedOn` stays a `@db.Date` to
+     * avoid.
+     */
+    observedTime: z
+      .string()
+      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Цаг HH:MM хэлбэртэй байна")
+      .optional(),
     indicatorId: uuidSchema.optional(),
     indicatorLevel: z.number().int().min(1).max(4).optional(),
     visibleToParents: z.boolean().optional(),
@@ -142,6 +168,19 @@ export const reviewObservationSchema = z
       behaviour does not exist earlier, so "1 to 4" is the wrong rule and only
       the row knows the right one.
     */
+    /**
+     * The time of day, "HH:MM" — optional, and validated as a clock rather
+     * than coerced to a date.
+     *
+     * ★ A regex, not `z.coerce.date()`. The value is a time of day with no
+     * date attached; parsing it would invent one in whatever zone the server
+     * runs in, which is the boundary bug `observedOn` stays a `@db.Date` to
+     * avoid.
+     */
+    observedTime: z
+      .string()
+      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Цаг HH:MM хэлбэртэй байна")
+      .optional(),
     indicatorId: uuidSchema.optional(),
     indicatorLevel: z.number().int().min(1).max(4).optional(),
   })

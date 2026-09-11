@@ -480,6 +480,8 @@ export interface CreateObservationData {
   authorId: string;
   source: ObservationSource;
   observedOn: Date;
+  /** "HH:MM", when the teacher recorded one. */
+  observedTime?: string | null;
   visibleToParents: boolean;
   includeInReport: boolean;
   reviewStatus: ReviewStatus;

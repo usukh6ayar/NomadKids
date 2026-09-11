@@ -227,6 +227,7 @@ export class ObservationsService {
         authorId: actor.userId,
         source: "TEACHER",
         observedOn: dto.observedOn,
+        observedTime: dto.observedTime ?? null,
         visibleToParents: dto.visibleToParents ?? defaultVisibleToParents("TEACHER"),
         includeInReport: dto.includeInReport ?? true,
         reviewStatus: initialReviewStatus("TEACHER"),

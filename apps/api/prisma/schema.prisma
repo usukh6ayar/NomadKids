@@ -2508,8 +2508,24 @@ model Observation {
   enrollmentId   String @db.Uuid
   typeId         String @db.Uuid
 
-  source     ObservationSource @default(TEACHER)
-  observedOn DateTime          @db.Date
+  source       ObservationSource @default(TEACHER)
+  observedOn   DateTime          @db.Date
+  /// The time of day, as "HH:MM" — the client's "Цаг", 2026-09-11.
+  ///
+  /// ★ A string beside the date, not a `DateTime` replacing it.
+  ///
+  /// `observedOn` is `@db.Date` and every query, index and report in the
+  /// product groups on it as a calendar day; widening it to an instant would
+  /// move every one of those into a timezone conversation for a field that is
+  /// decoration on most notes. The time is what a teacher writes when two
+  /// notes about the same child on the same morning need telling apart, and
+  /// "10:30" is the whole of what they mean by it.
+  ///
+  /// ★★ Optional, and no default. A note filed without one happened that day
+  /// and no more precisely, which is the truth for most of them — stamping the
+  /// moment the form was submitted would record when it was typed up rather
+  /// than when it happened.
+  observedTime String?
 
   activityName String?
 

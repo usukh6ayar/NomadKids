@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+import { Check, ChevronLeft, Users } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { z } from "zod";
@@ -17,6 +17,8 @@ import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
+import { ChildAvatar } from "@/components/media/media-image";
+import { ChildPickerDialog } from "@/components/child/child-picker-dialog";
 import { DAILY_ACTIVITIES } from "@/components/assessment/group-coverage";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -25,7 +27,8 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ObservationPhotos } from "@/components/observations/observation-photos";
-import { ageInYears, fullName, todayLocal } from "@/lib/format";
+import { ageInYears, formatAge, fullName, todayLocal } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { readDraft, useDraftAutosave } from "@/lib/use-form-draft";
 
 const typesSchema = z.array(observationTypeSchema);
@@ -38,6 +41,26 @@ const indicatorsSchema = z.array(curriculumIndicatorSchema);
 
 /** I–IV, as the curriculum writes them. */
 const LEVEL_NAME: Record<number, string> = { 1: "I", 2: "II", 3: "III", 4: "IV" };
+
+/**
+ * What each level means, in a line — the client's own wording, 2026-09-11.
+ *
+ * ★ Not read from `AssessmentLevel`, and that is the awkward part said out
+ * loud.
+ *
+ * That table holds four labels a kindergarten may edit ("Дэмжлэгтэй",
+ * "Хөгжиж буй" …) and they describe an *assessment*'s levels. These four
+ * describe the curriculum's, they are the ministry's rather than the
+ * kindergarten's, and the design writes them out beside each card. Reading the
+ * editable labels here would let one kindergarten's wording change what the
+ * national scale appears to mean.
+ */
+const LEVEL_SUMMARY: Record<number, string> = {
+  1: "Дэмжлэг их шаардлагатай",
+  2: "Дэмжлэгтэй",
+  3: "Илүү даан гүйцэтгэдэг",
+  4: "Тогтвортой, бусдад үлгэрлэдэг",
+};
 
 /**
  * The level a child's age puts them at — client, 2026-09-11: 2→I, 3→II, 4→III,
@@ -58,6 +81,8 @@ function levelForAge(years: number | null): number | null {
 
 interface ObservationDraft {
   typeId: string;
+  /** "HH:MM", or "" — see `Observation.observedTime`. */
+  observedTime: string;
   activityName: string;
   /** The development strand, added to the form 2026-09-11. */
   domainId: string;
@@ -205,6 +230,7 @@ function NewObservationForm() {
   // The date is not restored. A draft opened the next morning should be filed
   // under the day it is being written, not the day it was abandoned.
   const [observedOn, setObservedOn] = useState(todayLocal());
+  const [observedTime, setObservedTime] = useState(draft?.observedTime ?? "");
   const [activityName, setActivityName] = useState(draft?.activityName ?? "");
   /**
    * Which development strand this note is about.
@@ -219,6 +245,7 @@ function NewObservationForm() {
   const [indicatorLevel, setIndicatorLevel] = useState(draft?.indicatorLevel ?? "");
   /** Whether the teacher has touched the level, which stops the age reclaiming it. */
   const [levelTouched, setLevelTouched] = useState(Boolean(draft?.indicatorLevel));
+  const [switching, setSwitching] = useState(false);
 
   /*
     The chosen strand's indicators. Asked for only once a strand is chosen —
@@ -253,6 +280,7 @@ function NewObservationForm() {
    */
   const { clear: clearDraft, resume: resumeDraft } = useDraftAutosave<ObservationDraft>(draftKey, {
     typeId,
+    observedTime,
     activityName,
     domainId,
     indicatorId,
@@ -294,6 +322,7 @@ function NewObservationForm() {
           typeId,
           observedOn,
           activityName: optional(activityName),
+          ...(observedTime ? { observedTime } : {}),
           // An empty select sends nothing rather than an empty array, which the
           // schema would accept and the service would store as "tagged with
           // nothing" — indistinguishable from a note nobody classified.
@@ -347,6 +376,7 @@ function NewObservationForm() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  const childGroup = child.data?.enrollments?.find((row) => row.group)?.group?.name;
   const selectedIndicator = (indicators.data ?? []).find((row) => row.id === indicatorId);
   const indicatorText = selectedIndicator?.levels.find(
     (row) => String(row.level) === indicatorLevel,
@@ -463,12 +493,58 @@ function NewObservationForm() {
           {fullName(child.data)}
         </Link>
         <h1 className="mt-1 text-heading font-semibold tracking-[-.01em] text-ink md:text-display">
-          {isStaff ? "Шинэ ажиглалт" : "Гэрийн мөч хуваалцах"}
+          {isStaff ? "Ажиглалт шинээр бичих" : "Гэрийн мөч хуваалцах"}
         </h1>
         {!isStaff ? (
           <p className="mt-1.5 text-body text-muted">Таны бичсэнийг багш хянаад хавтаст нэмнэ.</p>
         ) : null}
       </header>
+
+      {/*
+        ★ The child, named with their age and group and a way to change them —
+        the client's 2026-09-11 design.
+
+        The link above the title already carries the name, but it is a way
+        *back*; this is a statement of who the note is about, which is the one
+        thing a teacher must not get wrong on this screen. Солих is beside it
+        because writing notes is done down a roster, and the commonest next
+        action after finishing one child is the same form for the next.
+      */}
+      {isStaff && child.data ? (
+        <Card pad="compact" className="flex items-center gap-3">
+          <ChildAvatar child={child.data} size={44} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-body font-semibold leading-snug text-ink">
+              {fullName(child.data)}
+            </p>
+            <p className="truncate text-caption text-muted">
+              {formatAge(child.data.dateOfBirth)}
+              {childGroup ? ` · ${childGroup}` : ""}
+            </p>
+          </div>
+          <Button type="button" size="sm" variant="secondary" onClick={() => setSwitching(true)}>
+            <Users size={15} aria-hidden="true" />
+            Солих
+          </Button>
+        </Card>
+      ) : null}
+
+      {switching ? (
+        <ChildPickerDialog
+          selectedId={childId}
+          onClose={() => setSwitching(false)}
+          onSelect={(next) => {
+            /*
+              The draft belongs to the child it was written about — switching
+              carries the type across and nothing else, because a sentence
+              about one child is not a sentence about another.
+            */
+            if (next !== childId) {
+              router.push(`/children/${next}/observations/new?typeId=${typeId}`);
+            }
+          }}
+        />
+      ) : null}
 
       <form
         onSubmit={(event) => {
@@ -538,6 +614,30 @@ function NewObservationForm() {
                 />
               )}
             </Field>
+
+            {/*
+              ★ Optional, and left empty by default — the client's "Цаг".
+
+              A note filed without one happened that day and no more precisely,
+              which is the truth for most of them. Prefilling the current time
+              would record when the note was typed up rather than when the
+              moment happened, and a teacher writing up yesterday's morning
+              would have to notice and correct it.
+            */}
+            {isStaff ? (
+              <Field label="Цаг" error={errors.observedTime} hint="Заавал биш.">
+                {({ id, describedBy, invalid }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    type="time"
+                    value={observedTime}
+                    onChange={(e) => setObservedTime(e.target.value)}
+                  />
+                )}
+              </Field>
+            ) : null}
           </div>
 
           {isStaff ? (
@@ -636,41 +736,81 @@ function NewObservationForm() {
                   </Select>
                 )}
               </Field>
-
-              {/*
-                ★ The level the child's age suggests, offered rather than
-                imposed — client, 2026-09-11: 2→I, 3→II, 4→III, 5→IV.
-
-                It is a starting point: a four-year-old is described at level
-                III by default because that is where the curriculum expects
-                them, and a teacher who is recording exactly the thing that
-                differs from expectation moves it. Preselecting the commonest
-                answer saves a press on every note; refusing to let it move
-                would make the form disagree with the observation.
-              */}
-              <Field label="Түвшин" error={errors.indicatorLevel}>
-                {({ id, describedBy, invalid }) => (
-                  <Select
-                    id={id}
-                    aria-describedby={describedBy}
-                    invalid={invalid}
-                    value={indicatorLevel}
-                    onChange={(e) => {
-                      setIndicatorLevel(e.target.value);
-                      setLevelTouched(true);
-                    }}
-                    disabled={!selectedIndicator}
-                  >
-                    <option value="">Сонгоно уу</option>
-                    {(selectedIndicator?.levels ?? []).map((row) => (
-                      <option key={row.level} value={String(row.level)}>
-                        {LEVEL_NAME[row.level] ?? row.level} түвшин
-                      </option>
-                    ))}
-                  </Select>
-                )}
-              </Field>
             </div>
+          ) : null}
+
+          {/*
+            ★ Four cards, not a select — the client's 2026-09-11 design.
+
+            The four levels are not interchangeable options: they are a scale,
+            and choosing one means judging where a child sits on it. A select
+            shows one at a time and hides the thing being judged against; four
+            cards side by side put the whole scale in front of the teacher,
+            which is what makes the choice a judgement rather than a guess.
+
+            ★★ The level the child's age suggests arrives already chosen —
+            client's rule: 2→I, 3→II, 4→III, 5→IV. It is a suggestion: it stops
+            the moment a teacher touches it, and where the indicator is not
+            written at that level it falls to the nearest one it does carry.
+          */}
+          {isStaff && selectedIndicator ? (
+            <fieldset>
+              <legend className="mb-2 flex items-baseline gap-2 text-body font-medium text-ink">
+                Түвшин
+                <span aria-hidden="true" className="text-danger">
+                  *
+                </span>
+              </legend>
+
+              <div
+                role="radiogroup"
+                aria-label="Түвшин"
+                className="grid grid-cols-2 gap-2 sm:grid-cols-4"
+              >
+                {selectedIndicator.levels.map((row) => {
+                  const chosen = String(row.level) === indicatorLevel;
+
+                  return (
+                    <button
+                      key={row.level}
+                      type="button"
+                      role="radio"
+                      aria-checked={chosen}
+                      onClick={() => {
+                        setIndicatorLevel(String(row.level));
+                        setLevelTouched(true);
+                      }}
+                      className={cn(
+                        "relative flex min-h-[84px] flex-col gap-1 rounded-card border p-2.5 text-left transition-colors",
+                        chosen
+                          ? "border-primary bg-primary-soft"
+                          : "border-border bg-surface hover:bg-canvas",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "text-body font-semibold",
+                          chosen ? "text-primary" : "text-ink",
+                        )}
+                      >
+                        {LEVEL_NAME[row.level]} түвшин
+                      </span>
+                      <span className="text-caption leading-snug text-muted">
+                        {LEVEL_SUMMARY[row.level]}
+                      </span>
+                      {chosen ? (
+                        <Check
+                          size={15}
+                          strokeWidth={3}
+                          aria-hidden="true"
+                          className="absolute right-2 top-2 text-primary"
+                        />
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
           ) : null}
 
           {/*
