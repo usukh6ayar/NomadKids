@@ -1,9 +1,10 @@
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestApp } from "./support/app";
 import { authed, createScenario, createUser, login } from "./support/fixtures";
 import { uniq } from "./support/db";
+import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
 
 /**
  * ★ One application for the whole file, deliberately.
@@ -18,6 +19,21 @@ let app: INestApplication;
 
 beforeAll(async () => {
   app = await createTestApp();
+});
+
+/*
+  ★ The login counter, cleared before every test — CLAUDE.md §4.4's own remedy
+  for the one failure class in this suite that has a known cause.
+
+  This file logs in a fresh user per test and had no `beforeEach` at all, so it
+  inherited whatever the previous file left on a 60-per-15-minutes limit shared
+  through Redis. It passed for as long as the suite happened to stay under that
+  line; it stopped the day another file's logins grew. Four tests then failed
+  with 429s that read as ESIS-boundary defects, which is exactly what §4.4
+  warns the symptom looks like.
+*/
+beforeEach(async () => {
+  await app.get(RateLimitService).resetAll();
 });
 
 afterAll(async () => {

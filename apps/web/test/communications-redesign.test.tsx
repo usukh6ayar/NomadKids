@@ -10,11 +10,13 @@ import {
 } from "./support/render";
 import NotificationsPage from "@/app/(app)/notifications/page";
 import { SurveyBoard } from "@/components/survey/survey-board";
+import { SelectedChildProvider } from "@/lib/selected-child";
 
 const KINDERGARTEN_ID = "33333333-3333-4333-8333-333333333333";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.removeItem("nomadkids.selectedChildId");
   setParams({});
   setSearchParams("");
 });
@@ -37,6 +39,52 @@ describe("communications redesign", () => {
     expect(tabs).toHaveAttribute("data-ui", "communication-tabs");
     expect(tabs.closest('[data-ui="communications-toolbar"]')).not.toBeNull();
     expect(container.querySelectorAll('[data-ui="communications-toolbar"]')).toHaveLength(1);
+  });
+
+  it("shows surveys only for the child selected in the parent menu", async () => {
+    const user = userEvent.setup();
+    const firstId = "11111111-1111-4111-8111-111111111112";
+    const selectedId = "22222222-2222-4222-8222-222222222223";
+    window.localStorage.setItem("nomadkids.selectedChildId", selectedId);
+
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["PARENT"]) },
+      {
+        path: "/children/mine",
+        body: [
+          {
+            id: firstId,
+            firstName: "Тэмүүлэн",
+            lastName: "Болд",
+            dateOfBirth: "2021-01-01",
+          },
+          {
+            id: selectedId,
+            firstName: "Батбаяр",
+            lastName: "Ганболд",
+            dateOfBirth: "2020-01-01",
+          },
+        ],
+      },
+      { path: `/children/${selectedId}/surveys`, body: [] },
+      {
+        path: "/notifications",
+        body: { items: [], page: 1, pageSize: 25, total: 0, totalPages: 0 },
+      },
+    ]);
+
+    renderWithProviders(
+      <SelectedChildProvider myChildIds={[firstId, selectedId]}>
+        <NotificationsPage />
+      </SelectedChildProvider>,
+    );
+
+    await user.click(await screen.findByRole("tab", { name: /Судалгаа/ }));
+    await screen.findByText("Идэвхтэй судалгаа алга");
+
+    expect(screen.queryByRole("group", { name: "Хүүхэд сонгох" })).not.toBeInTheDocument();
+    expect(calls.some((call) => call.url.startsWith(`/children/${selectedId}/surveys`))).toBe(true);
+    expect(calls.some((call) => call.url.startsWith(`/children/${firstId}/surveys`))).toBe(false);
   });
 
   it("groups staff survey status, search, and category controls into one toolbar", async () => {

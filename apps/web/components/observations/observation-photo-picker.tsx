@@ -33,10 +33,12 @@ export function ObservationPhotoPicker({
   files,
   onChange,
   disabled,
+  compact = false,
 }: {
   files: File[];
   onChange: (next: File[]) => void;
   disabled?: boolean;
+  compact?: boolean;
 }) {
   const toast = useToast();
 
@@ -84,6 +86,64 @@ export function ObservationPhotoPicker({
   }
 
   const full = files.length >= MAX_OBSERVATION_PHOTOS;
+
+  if (compact) {
+    return (
+      <div className="min-w-0">
+        <label
+          className={
+            "flex min-h-[52px] flex-col items-center justify-center rounded-control border border-dashed border-mint px-1.5 text-center text-caption font-medium text-muted transition-colors" +
+            (disabled || full
+              ? " pointer-events-none opacity-50"
+              : " cursor-pointer focus-within:border-primary hover:border-primary hover:text-primary")
+          }
+        >
+          <ImagePlus size={18} aria-hidden="true" />
+          <span className="mt-0.5 truncate">Зураг</span>
+          <span className="tabular-nums">
+            {files.length}/{MAX_OBSERVATION_PHOTOS}
+          </span>
+          {full ? null : (
+            <input
+              type="file"
+              multiple
+              accept={ACCEPTED_TYPES}
+              aria-label="Нэмэх"
+              disabled={disabled}
+              className="sr-only"
+              onChange={(event) => {
+                add(event.target.files);
+                event.target.value = "";
+              }}
+            />
+          )}
+        </label>
+
+        {files.length > 0 ? (
+          <ul className="mt-2 flex flex-wrap gap-1.5">
+            {files.map((file, index) => (
+              <li key={`${file.name}-${file.lastModified}-${index}`} className="relative">
+                <img
+                  src={previews[index]}
+                  alt={file.name}
+                  className="size-11 rounded-control border border-mint object-cover"
+                />
+                <button
+                  type="button"
+                  disabled={disabled}
+                  aria-label={`${file.name} — хасах`}
+                  onClick={() => onChange(files.filter((_, at) => at !== index))}
+                  className="absolute -right-1 -top-1 grid size-4 place-items-center rounded-pill bg-surface text-muted shadow-sm"
+                >
+                  <X size={10} aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+    );
+  }
 
   /*
     ★ One compact card, not a section with a heading of its own — 2026-09-11,
@@ -161,8 +221,6 @@ export function ObservationPhotoPicker({
           </li>
         )}
       </ul>
-
-      <p className="text-caption text-muted">JPG, PNG, WebP · 10MB хүртэл · хадгалахад хамт орно</p>
     </Card>
   );
 }

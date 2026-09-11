@@ -200,8 +200,11 @@ describe("recording an observation", () => {
       The confirmation card existed to host the photo uploader, which the note
       form now carries itself — so there is nothing left to stay for, and the
       teacher lands back on the list their note is now in.
+
+      `replace`, not `push`: Back must not reopen a form whose note is already
+      saved.
     */
-    await waitFor(() => expect(ROUTER.push).toHaveBeenCalled());
+    await waitFor(() => expect(ROUTER.replace).toHaveBeenCalled());
 
     const post = calls.find((c) => c.method === "POST" && c.url.includes("/observations"));
     expect(post?.body).toMatchObject({ typeId: TYPE_ID, visibleToParents: true });

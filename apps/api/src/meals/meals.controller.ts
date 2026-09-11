@@ -1,4 +1,17 @@
-import { Body, Controller, Get, Param, Post, Put, Query, Res } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  Res,
+  UploadedFile,
+  UseInterceptors,
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
 import { idParamSchema } from "@kinder/contracts";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
@@ -6,6 +19,7 @@ import { CurrentActor } from "../auth/decorators/actor.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
 import type { Actor } from "../authz/actor";
 import { MealsService } from "./meals.service";
+import { MAX_SPREADSHEET_BYTES } from "../media/upload-validation";
 import {
   createMealNoteSchema,
   dateParamSchema,
@@ -87,8 +101,34 @@ export class MealsController {
     res.send(buffer);
   }
 
+  /**
+   * A week's menu from a spreadsheet — 2026-09-11, at the client's request.
+   *
+   * ★ TEACHER and COOK, not ADMIN. See `assertCanEditMenu`: a director reads
+   * the week and no longer enters it.
+   *
+   * ★★ A dry run unless `?dryRun=false`, and the multer ceiling is a second
+   * limit in front of `validateSpreadsheetUpload` — one stops the bytes
+   * reaching the process, the other is what the parser trusts. `children/import`
+   * carries the same pair and the same argument.
+   */
+  @Post("import")
+  @Roles("TEACHER", "COOK")
+  @UseInterceptors(
+    FileInterceptor("file", { limits: { fileSize: MAX_SPREADSHEET_BYTES, files: 1 } }),
+  )
+  async importMenu(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @UploadedFile() file: { buffer: Buffer } | undefined,
+    @Query("dryRun") dryRun?: string,
+  ) {
+    if (!file) throw new BadRequestException("Файл сонгоно уу");
+    return this.service.importMenu(actor, params.id, file.buffer, dryRun !== "false");
+  }
+
   @Put(":date")
-  @Roles("TEACHER", "ADMIN", "COOK")
+  @Roles("TEACHER", "COOK")
   async save(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(dayParamsSchema)) params: { id: string } & DateParam,

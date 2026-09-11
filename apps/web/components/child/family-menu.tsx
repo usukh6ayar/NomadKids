@@ -1,7 +1,16 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Apple, CalendarDays, CalendarRange, Moon, Soup, Sun, UtensilsCrossed } from "lucide-react";
+import {
+  Apple,
+  CalendarDays,
+  CalendarRange,
+  Flame,
+  Moon,
+  Soup,
+  Sun,
+  UtensilsCrossed,
+} from "lucide-react";
 import { MEAL_KIND_LABEL, type MealKind, type MenuDay, type MenuDish } from "@kinder/contracts";
 import { MEAL_KIND_ORDER } from "@/components/menu/menu-dish-editor";
 import { MediaThumb } from "@/components/media/media-image";
@@ -248,6 +257,18 @@ function MealRow({
   const photo = dishes.find((dish) => dish.photoMediaFileId)?.photoMediaFileId;
   const allergens = matchedAllergens(dishes, healthNotes);
 
+  /*
+    ★ The sitting's energy, shown to the family — 2026-09-11, at the client's
+    request: "хоол дээр килокалори нь харагдах ёстой."
+
+    Summed across the sitting rather than printed per dish: a parent asks what
+    the meal came to, and five numbers down the side of a card is a table nobody
+    reads. Drawn only when the kitchen actually entered one — a bare "0 ккал"
+    on a menu whose calories were never filled in is worse than silence.
+  */
+  const calories = dishes.reduce((sum, dish) => sum + (dish.calories ?? 0), 0);
+  const hasCalories = dishes.some((dish) => dish.calories !== null && dish.calories !== undefined);
+
   return (
     <Card pad="none" className={cn("flex items-stretch gap-3 overflow-hidden", style.card)}>
       {photo ? (
@@ -267,8 +288,16 @@ function MealRow({
             <span className="shrink-0">{style.icon}</span>
             <span className="truncate">{MEAL_KIND_LABEL[kind]}</span>
           </p>
-          <span className="shrink-0 text-caption font-semibold tabular-nums text-muted">
-            {MEAL_KIND_TIME[kind]}
+          <span className="flex shrink-0 flex-col items-end">
+            <span className="text-caption font-semibold tabular-nums text-muted">
+              {MEAL_KIND_TIME[kind]}
+            </span>
+            {hasCalories ? (
+              <span className="inline-flex items-center gap-1 text-caption tabular-nums text-muted">
+                <Flame size={12} aria-hidden="true" className="text-primary" />
+                {calories} ккал
+              </span>
+            ) : null}
           </span>
         </div>
 

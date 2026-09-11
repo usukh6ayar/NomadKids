@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   renderWithProviders,
+  ROUTER,
   selectOption,
   sessionFor,
   setParams,
@@ -48,7 +49,7 @@ const CHILD_DETAIL = {
   guardianships: [],
 };
 
-const TYPES = [{ id: TYPE, name: "Өдөр тутмын ажиглалт" }];
+const TYPES = [{ id: TYPE, name: "Өдөр тутмын ажиглалт", code: "daily" }];
 
 function routes() {
   return [
@@ -121,6 +122,8 @@ function stubNewObservation() {
 
 beforeEach(() => {
   window.localStorage.clear();
+  ROUTER.push.mockClear();
+  ROUTER.replace.mockClear();
   setParams({ childId: CHILD });
   setSearchParams("");
 });
@@ -274,7 +277,9 @@ describe("Шинэ ажиглалт — ноорог", () => {
 
       // No `waitFor` on the draft: the point is to save while it is still armed.
       await user.click(screen.getByRole("button", { name: "Хадгалах" }));
-      await screen.findByText("Ажиглалт хадгалагдлаа.");
+      await waitFor(() =>
+        expect(ROUTER.replace).toHaveBeenCalledWith(`/children/${CHILD}/observations?type=daily`),
+      );
 
       // Outlast the debounce, then confirm nothing was written back.
       await new Promise((resolve) => setTimeout(resolve, 900));
@@ -282,19 +287,8 @@ describe("Шинэ ажиглалт — ноорог", () => {
     },
   );
 
-  /**
-   * ★ The second observation of a sitting drafts too.
-   *
-   * `clear()` latches deliberately, so that the field reset which follows a
-   * save is not written back out as a fresh empty draft. That latch is
-   * permanent, and "Дахин бичих" reuses the same mounted form for the next
-   * observation about the same child — the case the button exists for. Without
-   * `resume()` autosave would be silently dead from the first save onward:
-   * the guarantee this whole file is about, failing later instead of never.
-   */
-  it("drafts again after Дахин бичих", { timeout: TIMEOUT }, async () => {
+  it("returns directly to the child's observation list after saving", async () => {
     const user = userEvent.setup();
-    const key = `nomadkids:observation-draft:staff:${CHILD}`;
     // The POST route first — see the note in the failing-save test above.
     stubApi([
       {
@@ -315,17 +309,12 @@ describe("Шинэ ажиглалт — ноорог", () => {
 
     renderWithProviders(<NewObservationPage />);
     await user.type(await screen.findByLabelText("Тэмдэглэл"), "Эхний ажиглалт");
-    await waitFor(() => expect(window.localStorage.getItem(key)).toBeTruthy());
-
     await user.click(screen.getByRole("button", { name: "Хадгалах" }));
-
-    // Saved for real, so the draft is gone — that much the other tests cover.
-    await waitFor(() => expect(window.localStorage.getItem(key)).toBeNull());
-
-    await user.click(await screen.findByRole("button", { name: "Дахин бичих" }));
-    await user.type(await screen.findByLabelText("Тэмдэглэл"), "Хоёр дахь ажиглалт");
-
-    await waitFor(() => expect(window.localStorage.getItem(key)).toContain("Хоёр дахь ажиглалт"));
+    await waitFor(() =>
+      expect(ROUTER.replace).toHaveBeenCalledWith(`/children/${CHILD}/observations?type=daily`),
+    );
+    expect(screen.queryByText(/Хүсвэл нэмж зураг хавсаргана уу/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Дахин бичих" })).not.toBeInTheDocument();
   });
 
   it(
@@ -619,6 +608,22 @@ describe("Шинэ ажиглалт — СҮД", () => {
  * three quarters of a scale behind a control that shows one option.
  */
 describe("Шинэ ажиглалт — the form's shape", () => {
+  it("keeps the mobile form compact and removes instructional filler", async () => {
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    await screen.findByLabelText("Тэмдэглэл");
+    expect(screen.queryByPlaceholderText(/Хаана, хэзээ, ямар нөхцөлд/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/JPG, PNG, WebP/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Заавал биш.")).not.toBeInTheDocument();
+
+    const dateGrid = screen.getByLabelText(/Огноо/).closest("div.grid");
+    expect(dateGrid).toHaveClass("grid-cols-2");
+    const activityGrid = screen.getByLabelText("Үйл ажиллагааны төрөл").closest("div.grid");
+    expect(activityGrid).toHaveClass("grid-cols-2");
+    expect(screen.getByText("Зураг").closest("div.grid")).toHaveClass("grid-cols-3");
+  });
+
   it("names the child the note is about, with a way to change them", async () => {
     const user = userEvent.setup();
     stubNewObservation();
@@ -796,6 +801,28 @@ describe("Шинэ ажиглалт — түвшин ба код", () => {
     expect(screen.queryByRole("option", { name: /^ХЯ1а — / })).not.toBeInTheDocument();
   });
 
+  /*
+    ★ Хадгалах, Цуцлах and the back arrow all land on the same screen.
+
+    Client, 2026-09-11: Цуцлах was going to the child's record. Leaving a note
+    form means being done with it, and the useful next screen is the list the
+    note either joined or did not — not a profile page the teacher then has to
+    navigate out of again.
+  */
+  it("sends Цуцлах and the back arrow to the child's notes, not their record", async () => {
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    const cancel = await screen.findByRole("link", { name: "Цуцлах" });
+    await waitFor(() =>
+      expect(cancel).toHaveAttribute("href", `/children/${CHILD}/observations?type=daily`),
+    );
+    expect(screen.getByRole("link", { name: "Буцах" })).toHaveAttribute(
+      "href",
+      `/children/${CHILD}/observations?type=daily`,
+    );
+  });
+
   it("names the activity field the way the client does", async () => {
     stubNewObservation();
     renderWithProviders(<NewObservationPage />);
@@ -956,7 +983,9 @@ describe("Шинэ ажиглалт — зураг", () => {
     await screen.findByLabelText("Тэмдэглэл");
     await user.click(screen.getByRole("button", { name: "Хадгалах" }));
 
-    await screen.findByText("Ажиглалт хадгалагдлаа.");
+    await waitFor(() =>
+      expect(ROUTER.replace).toHaveBeenCalledWith(`/children/${CHILD}/observations?type=daily`),
+    );
     expect(calls.some((c) => c.url.endsWith("/media"))).toBe(false);
   });
 

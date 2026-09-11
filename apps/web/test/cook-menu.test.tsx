@@ -27,6 +27,47 @@ function todayIso(): string {
 }
 
 /**
+ * The week, stubbed — every request this screen makes, in one place.
+ *
+ * ★ Added for the 2026-09-11 import tests. The cases above predate it and stub
+ * inline; they are left alone rather than rewritten, because what they assert is
+ * unrelated and a churned diff hides the change that matters.
+ */
+function stubWeek(
+  roles: ("COOK" | "TEACHER" | "ADMIN")[] = ["COOK"],
+  importResult: Record<string, unknown> = {
+    dryRun: true,
+    days: [
+      { date: "2026-03-02", dishes: 2 },
+      { date: "2026-03-03", dishes: 2 },
+    ],
+    dishCount: 4,
+    problems: [],
+  },
+) {
+  return stubApi([
+    { path: "/auth/me", body: sessionFor(roles) },
+    {
+      path: `/kindergartens/${KG_ID}/menu/import`,
+      method: "POST",
+      body: importResult,
+      status: 201,
+    },
+    { path: `/kindergartens/${KG_ID}/menu/with-warnings`, body: [] },
+    {
+      path: `/kindergartens/${KG_ID}/menu/`,
+      method: "PUT",
+      body: {
+        id: "44444444-4444-4444-8444-444444444444",
+        date: "2026-01-05",
+        dishes: [],
+        totalCalories: null,
+      },
+    },
+  ]);
+}
+
+/**
  * The Тогооч role's own screen — client reported (2026-08-30) that it could
  * only ever save a dish's name.
  *
@@ -307,5 +348,77 @@ describe("the dish editor without a kitchen", () => {
     );
 
     expect(screen.getByRole("textbox", { name: "Хоолны нэр" })).toHaveValue("Гар хоол");
+  });
+});
+
+describe("the menu as a spreadsheet", () => {
+  /*
+    The menu from a spreadsheet, and who may enter one — 2026-09-11.
+
+    ★ The client narrowed writing to COOK and TEACHER: "Багш болон тогооч засаж
+    болдог … нягтлан, удирдлага, эцэг эх оруулсан цэсүүдийг зүгээр харна." An
+    admin still opens this screen; what they must not be offered is a control
+    whose save the API answers with 404.
+  */
+  it("offers a cook the Excel import beside the download", async () => {
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    expect(await screen.findByText("Excel-ээр оруулах")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Excel татах" })).toBeInTheDocument();
+  });
+
+  it("★ offers an admin neither the import nor the editor", async () => {
+    stubWeek(["ADMIN"]);
+    renderWithProviders(<MenuPage />);
+
+    await screen.findByText("Долоо хоногийн цэс");
+    expect(screen.queryByText("Excel-ээр оруулах")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Хадгалах/ })).not.toBeInTheDocument();
+  });
+
+  it("a teacher may enter the menu", async () => {
+    stubWeek(["TEACHER"]);
+    renderWithProviders(<MenuPage />);
+
+    expect(await screen.findByText("Excel-ээр оруулах")).toBeInTheDocument();
+  });
+
+  /** Two presses: the file is checked before anything is written. */
+  it("previews the file before writing it", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    await screen.findByText("Excel-ээр оруулах");
+    const input = document.querySelector('input[type=file][accept*=".xlsx"]') as HTMLInputElement;
+    await user.upload(input, new File(["PK"], "menu.xlsx"));
+
+    expect(await screen.findByText(/2 өдөр, 4 хоол оруулна/)).toBeInTheDocument();
+    // The dry run went up; nothing was written.
+    expect(calls.some((call) => call.url.includes("dryRun=true"))).toBe(true);
+    expect(calls.some((call) => call.url.includes("dryRun=false"))).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "Оруулах" }));
+    await waitFor(() => expect(calls.some((call) => call.url.includes("dryRun=false"))).toBe(true));
+  });
+
+  it("names the rows it could not read", async () => {
+    const user = userEvent.setup();
+    stubWeek(["COOK"], {
+      dryRun: true,
+      days: [],
+      dishCount: 0,
+      problems: [{ rowNumber: 4, message: "Огноо танигдсангүй" }],
+    });
+    renderWithProviders(<MenuPage />);
+
+    await screen.findByText("Excel-ээр оруулах");
+    const input = document.querySelector('input[type=file][accept*=".xlsx"]') as HTMLInputElement;
+    await user.upload(input, new File(["PK"], "menu.xlsx"));
+
+    expect(await screen.findByText(/4-р мөр: Огноо танигдсангүй/)).toBeInTheDocument();
+    // Nothing to write, so the confirm button is not offered as usable.
+    expect(screen.getByRole("button", { name: "Оруулах" })).toBeDisabled();
   });
 });

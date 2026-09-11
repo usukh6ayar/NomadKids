@@ -37,6 +37,21 @@ export class MealsRepository {
    * has just been edited is, by definition, not the plan somebody signed off
    * on, whether it was DRAFT already or APPROVED a moment ago.
    */
+  /**
+   * The state of several days at once — whether each has been consumed.
+   *
+   * ★ One query for the whole import, not `findDayState` per day (§3.4). A
+   * week is seven and a month is thirty, and the import checks every one of
+   * them before it writes anything.
+   */
+  async findDayStates(kindergartenId: string, dates: Date[]) {
+    if (dates.length === 0) return [];
+    return this.prisma.menuDay.findMany({
+      where: { kindergartenId, deletedAt: null, date: { in: dates } },
+      select: { date: true, consumedAt: true },
+    });
+  }
+
   async upsertDay(
     kindergartenId: string,
     date: Date,

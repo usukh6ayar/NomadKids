@@ -540,7 +540,7 @@ function MomentCard({
   );
 }
 
-function ObservationDetailDialog({
+export function ObservationDetailDialog({
   observation,
   onClose,
 }: {

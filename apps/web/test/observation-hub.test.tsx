@@ -80,6 +80,20 @@ function observation(id: string, typeId: string, code: string, observedOn: strin
     source: "TEACHER",
     reviewStatus: "APPROVED",
     visibleToParents: true,
+    situation: `${observedOn} өдөр бичсэн ажиглалт`,
+    domains:
+      code === "daily"
+        ? [
+            {
+              domain: {
+                id: "a1111111-1111-4111-8111-111111111111",
+                name: "Хэл яриа",
+                color: "#3b82f6",
+              },
+              level: null,
+            },
+          ]
+        : [],
     type: {
       id: typeId,
       name: code === "daily" ? "Ажиглалт" : code === "conversation" ? "Ярилцлага" : "Бүтээл",
@@ -198,8 +212,21 @@ describe("the record hub", () => {
   it("counts only this kind's records", async () => {
     openHub("daily");
 
-    expect(await screen.findByText("Нийт ажиглалт")).toBeInTheDocument();
-    expect(screen.getByText("3")).toBeInTheDocument();
+    const total = (await screen.findByText("Нийт ажиглалт")).closest("button") as HTMLElement;
+    expect(within(total).getByText("3")).toBeInTheDocument();
+  });
+
+  it("uses a search field, icon-only filter and a compact domain dashboard", async () => {
+    openHub("daily");
+
+    expect(await screen.findByRole("searchbox", { name: "Ажиглалтаас хайх" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Шүүлтүүр" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Ажиглалтаас хайх" })).not.toBeInTheDocument();
+    const dashboard = screen
+      .getByText("Чиглэлийн хамралт")
+      .closest('[data-ui="card"]') as HTMLElement;
+    expect(within(dashboard).getByText("Хэл яриа")).toBeInTheDocument();
+    expect(within(dashboard).getByText("3")).toBeInTheDocument();
   });
 
   it("counts the other kind separately", async () => {
@@ -219,7 +246,7 @@ describe("the record hub", () => {
     openHub("daily");
 
     const panel = (await screen.findByText("Улирлаар")).closest('[data-ui="card"]') as HTMLElement;
-    const rows = within(panel).getAllByRole("link");
+    const rows = within(panel).getAllByRole("button");
 
     expect(rows).toHaveLength(2);
     // September and October fall in the first term, December in the second.
@@ -227,6 +254,33 @@ describe("the record hub", () => {
     expect(rows[0]!.textContent).toContain("2");
     expect(rows[1]!.textContent).toContain("2-р улирал");
     expect(rows[1]!.textContent).toContain("1");
+  });
+
+  it("opens the written observations from the total and then shows the full note", async () => {
+    const user = userEvent.setup();
+    openHub("daily");
+
+    await user.click(await screen.findByRole("button", { name: /Нийт ажиглалт/ }));
+    const list = screen.getByRole("region", { name: "Бичсэн тэмдэглэлүүд" });
+    expect(within(list).getByText("3 тэмдэглэл")).toBeInTheDocument();
+    expect(within(list).getByText(/2026-09-15 өдөр бичсэн ажиглалт/)).toBeInTheDocument();
+
+    await user.click(within(list).getByRole("button", { name: /2026-09-15 өдөр/ }));
+    expect(await screen.findByRole("dialog", { name: "Ажиглалт" })).toHaveTextContent(
+      "2026-09-15 өдөр бичсэн ажиглалт",
+    );
+  });
+
+  it("opens only the records from the pressed term", async () => {
+    const user = userEvent.setup();
+    openHub("daily");
+
+    const terms = (await screen.findByText("Улирлаар")).closest('[data-ui="card"]') as HTMLElement;
+    await user.click(within(terms).getByRole("button", { name: /1-р улирал/ }));
+
+    const list = screen.getByRole("region", { name: "Бичсэн тэмдэглэлүүд" });
+    expect(within(list).getByText("2 тэмдэглэл")).toBeInTheDocument();
+    expect(within(list).queryByText(/2026-12-10 өдөр бичсэн/)).not.toBeInTheDocument();
   });
 
   /** The compose form is one press away, with the kind already chosen. */

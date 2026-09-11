@@ -22,6 +22,7 @@ import { Card } from "@/components/ui/card";
 import { Menu, type MenuItem } from "@/components/ui/menu";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
+import { MenuExcelImport } from "@/components/menu/menu-excel-import";
 import {
   MenuDishEditor,
   fromDraft,
@@ -153,6 +154,17 @@ function WeeklyMenu() {
   const { session, hasRole } = useSession();
   const kindergartenId = session?.memberships?.[0]?.kindergartenId ?? null;
   const isKitchen = hasRole("COOK") || hasRole("ADMIN");
+  /*
+    ★ Who may *write* the menu — COOK and TEACHER, 2026-09-11.
+
+    Narrower than `isKitchen`, which gates approving and the sufficiency check
+    and stays COOK/ADMIN. The client's line: "Багш болон тогооч засаж болдог …
+    нягтлан, удирдлага, эцэг эх оруулсан цэсүүдийг зүгээр харна." An ADMIN still
+    opens this screen and reads the week; `assertCanEditMenu` on the API is the
+    guarantee and this is what keeps them from being offered controls that would
+    answer 404.
+  */
+  const canEdit = hasRole("COOK") || hasRole("TEACHER");
 
   const today = todayIso();
   const tomorrow = addDays(today, 1);
@@ -258,6 +270,15 @@ function WeeklyMenu() {
         }
       />
 
+      {/*
+        ★ Excel in, beside Excel out — 2026-09-11, at the client's request.
+
+        The download lives in the header's ⋮ because it is three ranges of one
+        action; the upload is a block of its own because it has a preview step
+        and a refusal list, and a menu item cannot hold either.
+      */}
+      {kindergartenId && canEdit ? <MenuExcelImport kindergartenId={kindergartenId} /> : null}
+
       {/* Same 3-way quick view as a parent's own menu tab (`child-menu.tsx`)
           — "Өнөөдөр"/"Маргааш" jump straight to that day; "7 хоног" opens the
           Mon–Fri strip below, starting this Monday, the only week this
@@ -360,6 +381,7 @@ function WeeklyMenu() {
           day={byDate.get(activeDate) ?? null}
           recipes={recipes.data ?? []}
           isKitchen={isKitchen}
+          canEdit={canEdit}
         />
       ) : null}
     </div>
@@ -390,6 +412,7 @@ function MenuDayCard({
   day,
   recipes,
   isKitchen,
+  canEdit,
 }: {
   kindergartenId: string;
   queryFrom: string;
@@ -399,6 +422,8 @@ function MenuDayCard({
   day: z.infer<typeof menuDayWithWarningsSchema> | null;
   recipes: RecipeOption[];
   isKitchen: boolean;
+  /** COOK or TEACHER — see `WeeklyMenu`'s own note. */
+  canEdit: boolean;
 }) {
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -539,16 +564,39 @@ function MenuDayCard({
         </div>
       ) : null}
 
-      <MenuDishEditor
-        draftDishes={draftDishes}
-        onChange={(next) => {
-          setDraftDishes(next);
-          setDirty(true);
-        }}
-        onSave={() => save.mutate()}
-        saving={save.isPending}
-        error={save.isError ? errorMessage(save.error) : null}
+      {!canEdit ? (
         /*
+          ★ A reader gets the dishes, not a form — 2026-09-11.
+
+          `assertCanEditMenu` refuses their save with a 404, so drawing the
+          editor would offer an administrator a Хадгалах that always fails.
+          The week, the warnings and the Excel download above are unchanged.
+        */
+        <ul className="flex flex-col gap-1.5">
+          {draftDishes.length === 0 ? (
+            <li className="text-body text-muted">Цэс оруулаагүй.</li>
+          ) : (
+            draftDishes.map((dish, index) => (
+              <li key={index} className="flex flex-wrap items-baseline gap-x-2 text-body text-ink">
+                <span className="font-medium">{dish.name}</span>
+                {dish.calories ? (
+                  <span className="text-caption text-muted">{dish.calories} ккал</span>
+                ) : null}
+              </li>
+            ))
+          )}
+        </ul>
+      ) : (
+        <MenuDishEditor
+          draftDishes={draftDishes}
+          onChange={(next) => {
+            setDraftDishes(next);
+            setDirty(true);
+          }}
+          onSave={() => save.mutate()}
+          saving={save.isPending}
+          error={save.isError ? errorMessage(save.error) : null}
+          /*
           ★ ESIS-ийн бэлэн бүтээгдэхүүн joins the same picker as the local
           cards — 2026-09-09, at the client's request ("тогоочийн хэсэгт бэлэн
           хоол сонгох хэсэгт API-г дуудах").
@@ -557,8 +605,9 @@ function MenuDayCard({
           teacher opening this screen gets an empty list and a picker that
           looks exactly as it did before. Nothing here has to know that.
         */
-        kitchen={{ kindergartenId, recipes, esisProducts }}
-      />
+          kitchen={{ kindergartenId, recipes, esisProducts }}
+        />
+      )}
 
       {isKitchen ? (
         <div className="flex flex-wrap items-center gap-3 border-t border-border-soft pt-3">

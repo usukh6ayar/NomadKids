@@ -40,9 +40,9 @@ const TOMORROW = iso(1);
 
 const MENU = [
   day(TODAY, [
-    { name: "Тараг", allergenTags: ["сүү"], kind: "BREAKFAST" },
-    { name: "Мюсли", allergenTags: [], kind: "BREAKFAST" },
-    { name: "Ногоотой хуурга", allergenTags: [], kind: "MID_MORNING_SNACK" },
+    { name: "Тараг", allergenTags: ["сүү"], kind: "BREAKFAST", calories: 120 },
+    { name: "Мюсли", allergenTags: [], kind: "BREAKFAST", calories: 180 },
+    { name: "Ногоотой хуурга", allergenTags: [], kind: "MID_MORNING_SNACK", calories: 240 },
     { name: "Шөл", allergenTags: [], kind: "EXTRA" },
   ]),
   day(TOMORROW, [{ name: "Бууз", allergenTags: [], kind: "BREAKFAST" }]),
@@ -96,6 +96,30 @@ describe("the family's meal screen", () => {
     const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
     expect(within(panel).getByText("08:30")).toBeInTheDocument();
     expect(within(panel).getByText("17:30")).toBeInTheDocument();
+  });
+
+  /*
+    ★ Summed across the sitting, not printed per dish — the client asked for the
+    calories on the meal, and five numbers down a card is a table nobody reads.
+  */
+  it("adds up the sitting's calories for the family", async () => {
+    stub();
+    render();
+
+    const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
+    expect(within(panel).getByText("300 ккал")).toBeInTheDocument();
+    expect(within(panel).getByText("240 ккал")).toBeInTheDocument();
+  });
+
+  /** A menu whose calories were never entered says nothing rather than "0 ккал". */
+  it("says nothing about energy when the kitchen entered none", async () => {
+    stub();
+    render();
+
+    const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
+    // Шөл carries no `calories`, so its card has no figure.
+    const soup = within(panel).getByText("Оройн хоол").closest('[data-ui="card"]')!;
+    expect(within(soup as HTMLElement).queryByText(/ккал/)).not.toBeInTheDocument();
   });
 
   it("moves to tomorrow without touching the week", async () => {
@@ -198,6 +222,14 @@ describe("the family's note to the kitchen", () => {
     );
     const post = calls.find((call) => call.method === "POST")!;
     expect(post.body).toMatchObject({ date: TODAY, body: "Сүүн бүтээгдэхүүн өгч болохгүй." });
+  });
+
+  /** No example text in the box — the client read grey text as content. */
+  it("offers an empty box, with no placeholder", async () => {
+    stub();
+    render();
+
+    expect(await screen.findByLabelText("Нэмэлт мэдээлэл")).not.toHaveAttribute("placeholder");
   });
 
   it("will not send an empty note", async () => {

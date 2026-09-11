@@ -808,7 +808,9 @@ export class MediaService {
     kindergartenId: string,
     file: { buffer: Buffer; originalname: string },
   ) {
-    this.tenants.assertCanManageMeals(actor, kindergartenId);
+    // ★ The same people who may edit the menu, so a photograph cannot be
+    // uploaded by somebody who could not then attach it (`assertCanEditMenu`).
+    this.tenants.assertCanEditMenu(actor, kindergartenId);
 
     let validated;
     try {

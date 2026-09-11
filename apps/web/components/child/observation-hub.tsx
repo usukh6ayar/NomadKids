@@ -4,7 +4,16 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, ChevronRight, FolderOpen, PenLine, Search, Users } from "lucide-react";
+import {
+  BarChart3,
+  ChevronRight,
+  FolderOpen,
+  PenLine,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  Users,
+} from "lucide-react";
 import {
   MAX_PAGE_SIZE,
   childDetailSchema,
@@ -19,9 +28,12 @@ import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/field";
+import { SearchField } from "@/components/ui/search-field";
 import { ChildAvatar } from "@/components/media/media-image";
 import { Button } from "@/components/ui/button";
-import { ErrorState, LoadingState } from "@/components/ui/states";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
+import { ObservationRow } from "@/components/observations/observation-row";
+import { ObservationDetailDialog } from "./child-observations";
 import { ChildPickerDialog } from "./child-picker-dialog";
 import { formatAge, fullName } from "@/lib/format";
 import { termNumberForDay } from "@/lib/terms";
@@ -164,6 +176,11 @@ export function ObservationHub({
   const { primaryKindergartenId } = useSession();
   const [picking, setPicking] = useState(false);
   const [yearId, setYearId] = useState("");
+  const [recordScope, setRecordScope] = useState<"all" | string | null>(null);
+  const [detail, setDetail] = useState<z.infer<typeof observationSchema> | null>(null);
+  const [searchText, setSearchText] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filterTermId, setFilterTermId] = useState("");
 
   const child = useQuery({
     queryKey: qk.child(childId),
@@ -231,6 +248,46 @@ export function ObservationHub({
     ),
   );
 
+  const selectedTerm = termsInYear.find((term) => term.id === recordScope);
+  const scopedRecords =
+    recordScope === "all"
+      ? mine
+      : selectedTerm?.startsOn && selectedTerm.endsOn
+        ? mine.filter((row) => {
+            const day = row.observedOn.slice(0, 10);
+            return (
+              day >= selectedTerm.startsOn!.slice(0, 10) && day <= selectedTerm.endsOn!.slice(0, 10)
+            );
+          })
+        : [];
+  const normalizedSearch = searchText.trim().toLocaleLowerCase("mn-MN");
+  const shownRecords = scopedRecords.filter((row) => {
+    const termMatches =
+      !filterTermId ||
+      (() => {
+        const term = termsInYear.find((candidate) => candidate.id === filterTermId);
+        const day = row.observedOn.slice(0, 10);
+        return Boolean(term?.startsOn && term.endsOn && day >= term.startsOn && day <= term.endsOn);
+      })();
+    const text = [row.situation, row.childDid, row.childSaid, row.teacherComment, row.activityName]
+      .filter(Boolean)
+      .join(" ")
+      .toLocaleLowerCase("mn-MN");
+    return termMatches && (!normalizedSearch || text.includes(normalizedSearch));
+  });
+
+  const domainCounts = new Map<string, { name: string; color?: string | null; count: number }>();
+  for (const observation of mine) {
+    for (const entry of observation.domains) {
+      const current = domainCounts.get(entry.domain.id);
+      domainCounts.set(entry.domain.id, {
+        name: entry.domain.name,
+        color: entry.domain.color,
+        count: (current?.count ?? 0) + 1,
+      });
+    }
+  }
+
   const href = (key: string) => {
     if (key === "new") return `/children/${childId}/observations/new?typeId=${typeId}`;
     if (key === "parent") return `/children/${childId}/observations?type=${typeCode}&source=parent`;
@@ -267,25 +324,111 @@ export function ObservationHub({
         </Button>
       </Card>
 
+      {typeCode === "daily" ? (
+        <Link
+          href={href("new")}
+          className="flex min-h-12 items-center justify-center gap-2 rounded-button bg-primary px-4 text-body font-semibold text-white shadow-sm transition-transform hover:-translate-y-0.5"
+        >
+          <Plus size={19} strokeWidth={2.5} aria-hidden="true" />
+          Шинээр ажиглалт үүсгэх
+        </Link>
+      ) : null}
+
       <div className="grid grid-cols-2 gap-3">
-        {doors.tiles.map((tile) => (
-          <Link
-            key={tile.key}
-            href={href(tile.key)}
-            className={cn(
-              "flex min-h-[104px] flex-col items-center justify-center gap-2 rounded-card px-3 py-4 text-center transition-transform hover:-translate-y-0.5",
-              tile.tone,
-            )}
-          >
-            <tile.Icon size={22} aria-hidden="true" />
-            <span className="text-caption font-semibold leading-snug">{tile.label}</span>
-          </Link>
-        ))}
+        {doors.tiles
+          .filter((tile) => typeCode !== "daily" || !["new", "search"].includes(tile.key))
+          .map((tile) => (
+            <Link
+              key={tile.key}
+              href={href(tile.key)}
+              className={cn(
+                "flex min-h-[104px] flex-col items-center justify-center gap-2 rounded-card px-3 py-4 text-center transition-transform hover:-translate-y-0.5",
+                tile.tone,
+              )}
+            >
+              <tile.Icon size={22} aria-hidden="true" />
+              <span className="text-caption font-semibold leading-snug">{tile.label}</span>
+            </Link>
+          ))}
       </div>
 
-      <Link
-        href={href("search")}
-        className="group flex items-center gap-3 rounded-card border border-border bg-surface px-3.5 py-3 transition-colors hover:border-primary"
+      {typeCode === "daily" ? (
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2">
+            <SearchField
+              label="Ажиглалтаас хайх"
+              placeholder="Ажиглалтаас хайх"
+              value={searchText}
+              onChange={(value) => {
+                setSearchText(value);
+                setRecordScope("all");
+              }}
+            />
+            <Button
+              type="button"
+              size="icon"
+              variant={filtersOpen ? "primary" : "secondary"}
+              aria-label="Шүүлтүүр"
+              aria-expanded={filtersOpen}
+              onClick={() => setFiltersOpen((open) => !open)}
+            >
+              <SlidersHorizontal aria-hidden="true" />
+            </Button>
+          </div>
+          {filtersOpen ? (
+            <div className="rounded-card border border-border bg-surface p-3">
+              <Select
+                aria-label="Улирлаар шүүх"
+                value={filterTermId}
+                onChange={(event) => {
+                  setFilterTermId(event.target.value);
+                  setRecordScope("all");
+                }}
+              >
+                <option value="">Бүх улирал</option>
+                {termsInYear.map((term) => (
+                  <option key={term.id} value={term.id}>
+                    {term.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          ) : null}
+
+          <Card pad="compact">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h2 className="text-body font-semibold text-ink">Чиглэлийн хамралт</h2>
+              <span className="text-caption text-muted">{domainCounts.size} чиглэл</span>
+            </div>
+            {domainCounts.size > 0 ? (
+              <div className="grid grid-cols-2 gap-2">
+                {[...domainCounts.entries()].map(([id, row]) => (
+                  <div key={id} className="rounded-row bg-canvas px-3 py-2">
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className="size-2 shrink-0 rounded-pill"
+                        style={{ backgroundColor: row.color ?? "var(--color-primary)" }}
+                      />
+                      <span className="min-w-0 flex-1 truncate text-caption text-muted">
+                        {row.name}
+                      </span>
+                      <strong className="text-body tabular-nums text-ink">{row.count}</strong>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-caption text-muted">Чиглэлтэй ажиглалт ороогүй.</p>
+            )}
+          </Card>
+        </div>
+      ) : null}
+
+      <button
+        type="button"
+        aria-expanded={recordScope === "all"}
+        onClick={() => setRecordScope((current) => (current === "all" ? null : "all"))}
+        className="group flex items-center gap-3 rounded-card border border-border bg-surface px-3.5 py-3 text-left transition-colors hover:border-primary"
       >
         <span className="min-w-0 flex-1">
           <span className="block text-caption text-muted">{doors.total}</span>
@@ -298,7 +441,7 @@ export function ObservationHub({
           aria-hidden="true"
           className="shrink-0 text-faint transition-transform group-hover:translate-x-0.5"
         />
-      </Link>
+      </button>
 
       {/*
         ★ Улирлаар, over the kindergarten's own terms.
@@ -343,9 +486,13 @@ export function ObservationHub({
 
                 return (
                   <li key={term.id}>
-                    <Link
-                      href={`${href("search")}&termId=${term.id}`}
-                      className="group flex min-h-11 items-center gap-3 border-b border-border-soft py-2 last:border-0"
+                    <button
+                      type="button"
+                      aria-expanded={recordScope === term.id}
+                      onClick={() =>
+                        setRecordScope((current) => (current === term.id ? null : term.id))
+                      }
+                      className="group flex min-h-11 w-full items-center gap-3 border-b border-border-soft py-2 text-left last:border-0"
                     >
                       <span className="min-w-0 flex-1 truncate text-body text-ink">
                         {term.name}
@@ -358,13 +505,49 @@ export function ObservationHub({
                         aria-hidden="true"
                         className="shrink-0 text-faint transition-transform group-hover:translate-x-0.5"
                       />
-                    </Link>
+                    </button>
                   </li>
                 );
               })}
           </ul>
         </Card>
       ) : null}
+
+      {recordScope ? (
+        <section
+          aria-label="Бичсэн тэмдэглэлүүд"
+          className="overflow-hidden rounded-card border border-border bg-surface"
+        >
+          <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+            <div>
+              <h2 className="text-body font-semibold text-ink">
+                {recordScope === "all" ? doors.total : selectedTerm?.name}
+              </h2>
+              <p className="text-caption text-muted">{shownRecords.length} тэмдэглэл</p>
+            </div>
+            <Button size="sm" variant="ghost" onClick={() => setRecordScope(null)}>
+              Хаах
+            </Button>
+          </div>
+
+          {shownRecords.length > 0 ? (
+            <div className="divide-y divide-border-soft">
+              {shownRecords.map((observation) => (
+                <ObservationRow
+                  key={observation.id}
+                  observation={observation}
+                  showVisibility
+                  onClick={() => setDetail(observation)}
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptyState title="Тэмдэглэл ороогүй" />
+          )}
+        </section>
+      ) : null}
+
+      <ObservationDetailDialog observation={detail} onClose={() => setDetail(null)} />
 
       {picking ? (
         <ChildPickerDialog

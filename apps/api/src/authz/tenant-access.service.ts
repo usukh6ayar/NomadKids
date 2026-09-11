@@ -72,6 +72,35 @@ export class TenantAccessService {
   }
 
   /**
+   * Throws 404 unless the actor may **write** the weekly menu.
+   *
+   * ★ COOK and TEACHER only — narrower than `assertCanManageMeals`, which stays
+   * COOK/TEACHER/ADMIN and is what *reading* the menu with its allergy warnings
+   * goes through.
+   *
+   * Client, 2026-09-11: "Багш болон тогооч засаж болдог … нягтлан, удирдлага,
+   * эцэг эх оруулсан цэсүүдийг зүгээр харна." A director reads the week and its
+   * warnings and no longer edits it; the people who cook the food and the people
+   * who serve it are the two who enter it.
+   *
+   * ★★ This is a capability an ADMIN used to have and now does not, which is
+   * the kind of change that gets quietly reverted by the next person who reads
+   * `assertCanManageMeals` and assumes the two should match. They should not:
+   * one answers "may you see what is being served", the other "may you decide".
+   *
+   * Approving (`assertCanManageKitchen`, COOK/ADMIN) is untouched — signing off
+   * what the kitchen is about to cook is a different act from planning it, and
+   * the client's sentence was about who enters the menu.
+   */
+  assertCanEditMenu(actor: Actor, kindergartenId: string): void {
+    const ok = actor.memberships.some(
+      (m) =>
+        m.kindergartenId === kindergartenId && (m.role === Role.COOK || m.role === Role.TEACHER),
+    );
+    if (!ok) throw new NotFoundException();
+  }
+
+  /**
    * Throws 404 unless the actor may manage the kitchen's production data —
    * ingredients, technology cards, suppliers, food orders and stock.
    *

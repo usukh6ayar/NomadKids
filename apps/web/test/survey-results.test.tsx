@@ -119,6 +119,22 @@ const openTab = async (user: ReturnType<typeof userEvent.setup>, name: string) =
   user.click(await screen.findByRole("tab", { name }));
 
 describe("the survey results overview", () => {
+  it("keeps the compact survey actions together and uses the new assessment label", async () => {
+    stubResults();
+    const { container } = renderWithProviders(<SurveyDetailPage />);
+
+    await screen.findByText("Нийт асуулт");
+    const actions = container.querySelector('[data-ui="survey-actions"]') as HTMLElement;
+    expect(actions).toHaveClass("overflow-x-auto");
+    expect(within(actions).getByRole("link", { name: "Excel татах" })).toBeInTheDocument();
+    for (const label of ["Хэвлэх", "Хувилах", "Хаах", "Устгах"]) {
+      expect(within(actions).getByRole("button", { name: label })).toBeInTheDocument();
+    }
+    expect(within(actions).getByRole("combobox", { name: "Хувилах үе" })).toHaveTextContent(
+      "Явцын ба үр дүнгийн үнэлгээ",
+    );
+  });
+
   it("opens on Тойм with the four headline figures", async () => {
     stubResults();
     renderWithProviders(<SurveyDetailPage />);

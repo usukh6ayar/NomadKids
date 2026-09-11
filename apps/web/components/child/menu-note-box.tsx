@@ -22,8 +22,10 @@ const MAX = 500;
 /**
  * "Нэмэлт мэдээлэл" — what a family wants the kitchen to know.
  *
- * ★ The client's own placeholder says what it is for: "бага хэмжээгээр өгч
- * болохгүй, орлуулах хоол санал болгох гэх мэт."
+ * ★ The box is empty, with no placeholder — 2026-09-11, at the client's
+ * request. It carried an example ("бага хэмжээгээр өгч болохгүй, орлуулах хоол
+ * санал болгох гэх мэт") which was two lines of grey text in a two-line box:
+ * from a phone it read as content already there rather than as a prompt.
  *
  * ★★ It is not a chat message, and that is a privacy decision.
  *
@@ -63,13 +65,19 @@ export function MenuNoteBox({ childId, date }: { childId: string; date: string }
   const tooLong = body.length > MAX;
 
   return (
-    <Card pad="roomy" className="flex flex-col gap-3">
+    /*
+      ★ Compact — 2026-09-11, at the client's request: "зайг жижиг болгоод
+      Илгээх товчийг ч бас цомхон жижиг болго." It sits under a screen whose
+      whole job is above it, and a roomy card with a full-width primary button
+      read as the point of the page rather than a footnote to it.
+    */
+    <Card className="flex flex-col gap-2 px-4 py-3">
       <form
         onSubmit={(event) => {
           event.preventDefault();
           if (!send.isPending && body.trim() && !tooLong) send.mutate();
         }}
-        className="flex flex-col gap-2"
+        className="flex flex-col gap-1.5"
         noValidate
       >
         <FormError message={send.isError ? errorMessage(send.error) : null} />
@@ -84,16 +92,20 @@ export function MenuNoteBox({ childId, date }: { childId: string; date: string }
               id={id}
               aria-describedby={describedBy}
               invalid={invalid || tooLong}
-              rows={3}
+              rows={2}
               value={body}
               onChange={(event) => setBody(event.target.value)}
-              placeholder="Жишээ нь: бага хэмжээгээр өгч болохгүй, орлуулах хоол санал болгох гэх мэт…"
             />
           )}
         </Field>
 
-        <Button type="submit" size="lg" block disabled={send.isPending || !body.trim() || tooLong}>
-          <Send size={16} aria-hidden="true" />
+        <Button
+          type="submit"
+          size="sm"
+          className="self-end"
+          disabled={send.isPending || !body.trim() || tooLong}
+        >
+          <Send size={14} aria-hidden="true" />
           {send.isPending ? "Илгээж байна…" : "Илгээх"}
         </Button>
       </form>

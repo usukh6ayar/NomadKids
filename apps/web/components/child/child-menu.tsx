@@ -451,6 +451,21 @@ function DayDetail({
           onCancel={() => setEditing(false)}
           saving={save.isPending}
           error={save.isError ? errorMessage(save.error) : null}
+          /*
+            ★ The photo control, on the teacher's quick edit too — 2026-09-11,
+            at the client's request: "зураг оруулж болдог болго."
+
+            `kitchen` used to be omitted here entirely, which turned off the
+            технологийн карт picker *and* the dish photograph together. The
+            recipe picker is still off — those are the kitchen's own planning
+            documents and a teacher fixing a typo has no business choosing one —
+            so `recipes` is empty and the photo is what this turns on.
+
+            The upload is authorised by `assertCanEditMenu`, the same check that
+            lets this screen save at all, so a teacher who can reach this form
+            can reach the upload behind it.
+          */
+          kitchen={{ kindergartenId, recipes: [] }}
         />
       ) : dishes.length === 0 ? (
         <p className="text-body text-muted">Хоол оруулаагүй.</p>
