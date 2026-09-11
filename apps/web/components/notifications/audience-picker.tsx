@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 import {
   MAX_PAGE_SIZE,
   childSummarySchema,
@@ -9,6 +10,7 @@ import {
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
+import { useSession } from "@/lib/auth/session";
 import { Checkbox, Select } from "@/components/ui/field";
 
 /** The roster, already scoped by `canAccessChild` — see the note below. */
@@ -87,11 +89,41 @@ export function AudiencePicker({
   value,
   onChange,
   disabled,
+  showSummary = true,
 }: {
   value: Audience;
   onChange: (next: Audience) => void;
   disabled: boolean;
+  /** The compact composer already makes the selected audience explicit. */
+  showSummary?: boolean;
 }) {
+  /*
+    ★ "Бүх хүүхэд" is the administrator's option — client, 2026-09-10: "багш
+    зөвхөн өөрийн бүлэгтээ л пост оруулна ... Удирдлага л бүх цэцэрлэг болон
+    бүлэг сонгон ... пост оруулж болно."
+
+    Read here rather than passed in by each caller, which is the same argument
+    the note above makes for the group and child lists: two screens computing
+    "may I offer everyone" would eventually disagree, and the one that got it
+    wrong would draw an option the server answers 404 to.
+
+    ★★ It hides a control; it does not enforce anything.
+    `TenantAccessService.assertCanAddressAudience` is the rule (§1.1). A
+    teacher who sends an empty target list without this screen still gets 404 —
+    what this prevents is a teacher meeting that 404 after writing a notice.
+  */
+  const { hasRole, isLoading: sessionLoading } = useSession();
+  /*
+    ★ While the session is loading, `hasRole` answers false for everybody.
+
+    Treated as "not yet known" rather than as "not an administrator": the
+    effect below rewrites the caller's audience, and firing it during that
+    window would silently move an administrator off "Бүх хүүхэд" on every
+    compose. The select is hidden for the same moment, which is right — an
+    option nobody has established a right to is better absent than flickering.
+  */
+  const canAddressEveryone = sessionLoading || hasRole("ADMIN");
+
   const groups = useQuery({
     queryKey: qk.groups({ pageSize: 100 }),
     // The same key every register uses, so this usually reads a warm cache.
@@ -125,6 +157,22 @@ export function AudiencePicker({
   const groupItems = groups.data?.items ?? [];
   const childItems = children.data?.items ?? [];
   const everyone = value === null;
+
+  /*
+    ★ A teacher's form starts on "named", not on an option they cannot use.
+
+    `null` is this control's initial value in both callers, and for a teacher
+    that is now the one audience they may not send — so without this the
+    compose screen opens already invalid and says nothing about why.
+
+    In an effect rather than in the callers' `useState`, so it also corrects a
+    draft loaded from an existing notice that was addressed to everyone.
+  */
+  useEffect(() => {
+    if (!sessionLoading && !canAddressEveryone && value === null) {
+      onChange({ groupIds: [], childIds: [] });
+    }
+  }, [sessionLoading, canAddressEveryone, value, onChange]);
   const groupIds = value?.groupIds ?? [];
   const childIds = value?.childIds ?? [];
 
@@ -159,16 +207,31 @@ export function AudiencePicker({
         a blank area and you had to infer that a list was about to appear. Two
         named options say what the second state is before you are in it.
       */}
-      <Select
-        aria-label="Хэнд харагдах"
-        value={everyone ? "all" : "named"}
-        disabled={disabled}
-        onChange={(event) => setScope(event.target.value as "all" | "named")}
-        className="max-w-[280px]"
-      >
-        <option value="all">Бүх бүлэг</option>
-        <option value="named">Сонгосон бүлэг, хүүхэд</option>
-      </Select>
+      {canAddressEveryone ? (
+        <Select
+          aria-label="Хэнд харагдах"
+          value={everyone ? "all" : "named"}
+          disabled={disabled}
+          onChange={(event) => setScope(event.target.value as "all" | "named")}
+          className="max-w-[280px]"
+        >
+          <option value="all">Бүх хүүхэд</option>
+          <option value="named">Сонгосон бүлэг, хүүхэд</option>
+        </Select>
+      ) : (
+        /*
+          ★ A sentence, not a select with one option.
+
+          A teacher has exactly one audience shape available, and a dropdown
+          that cannot be changed is a control that invites a press and does
+          nothing. This says why the choice is not there — which is the thing a
+          teacher would otherwise ask about.
+        */
+        <p className="text-caption text-muted">
+          Та өөрийн бүлгийн эцэг эхэд илгээнэ. Бүх цэцэрлэгт зориулсан мэдэгдлийг удирдлага
+          нийтэлнэ.
+        </p>
+      )}
 
       {!everyone ? (
         <div className="flex flex-col gap-3">
@@ -194,21 +257,24 @@ export function AudiencePicker({
             )}
           </div>
 
-          <details className="rounded-card border border-border">
-            {/*
-              ★ Folded, because it is the exception.
+          {/*
+            ★ Open, not folded — 2026-09-10, at the client's request that
+            choosing from all the children be visible straight away.
 
-              A whole group is what almost every notice is for. The individual
-              children are still one click away — "эдгээр гурван гэр бүлд" is a
-              real message — but forty checkboxes should not be the first thing
-              under the group list, pushing the publish button off the screen.
-            */}
-            <summary className="cursor-pointer px-3.5 py-2.5 text-body text-ink">
+            It sat behind a `<details>` whose note said why: forty checkboxes
+            under the group list would push the publish button off a phone
+            screen. That concern is real and is answered by the height cap
+            below rather than by the fold — the list scrolls inside its own
+            220px, so it can be open without moving anything under it. What
+            the fold cost was a teacher having to know the option existed.
+          */}
+          <div className="rounded-card border border-border">
+            <p className="px-3.5 py-2.5 text-body text-ink">
               Тодорхой хүүхэд сонгох
               {childIds.length > 0 ? (
                 <span className="text-muted"> · {childIds.length} сонгосон</span>
               ) : null}
-            </summary>
+            </p>
 
             <div className="max-h-[220px] overflow-y-auto border-t border-border p-3">
               {children.isLoading ? (
@@ -230,17 +296,19 @@ export function AudiencePicker({
                 </ul>
               )}
             </div>
-          </details>
+          </div>
         </div>
       ) : null}
 
-      <p className="text-caption text-muted">
-        {everyone
-          ? "Бүх бүлгийн эцэг эхэд харагдана."
-          : named === 0
-            ? "Хараахан сонгоогүй байна — сонгохгүй бол бүх бүлэгт харагдана."
-            : `${groupIds.length} бүлэг, ${childIds.length} хүүхдийн эцэг эхэд харагдана.`}
-      </p>
+      {showSummary ? (
+        <p className="text-caption text-muted">
+          {everyone
+            ? "Бүх бүлгийн эцэг эхэд харагдана."
+            : named === 0
+              ? "Хараахан сонгоогүй байна — сонгохгүй бол бүх бүлэгт харагдана."
+              : `${groupIds.length} бүлэг, ${childIds.length} хүүхдийн эцэг эхэд харагдана.`}
+        </p>
+      ) : null}
     </fieldset>
   );
 }

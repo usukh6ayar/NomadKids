@@ -60,21 +60,46 @@ beforeEach(async () => {
 const server = () => app.getHttpServer();
 
 /** Creates a notice and returns its id. Draft unless `publish` is set. */
+/**
+ * ★ Posted by the administrator, not the teacher — changed 2026-09-10.
+ *
+ * A teacher may now only address their own groups (client: "багш зөвхөн
+ * өөрийн бүлэгтээ л пост оруулна"), and most of this file's notices are
+ * kindergarten-wide, which is the administrator's to send. Every test below
+ * keeps the audience it was written for; only who signed it changed.
+ *
+ * `as` lets the handful of tests that are *about* the new rule post as the
+ * teacher and assert what they get.
+ */
 async function notify(
   targets: { groupId?: string; childId?: string }[] = [],
-  options: { publish?: boolean; title?: string; kindergartenId?: string } = {},
+  options: {
+    publish?: boolean;
+    title?: string;
+    kindergartenId?: string;
+    as?: AuthSession;
+  } = {},
 ) {
   const res = await authed(
     request(server()).post(
       `/v1/kindergartens/${options.kindergartenId ?? a.kindergarten.id}/notifications`,
     ),
-    teacherA,
+    options.as ?? adminA,
   ).send({ title: options.title ?? "Мэдэгдэл", body: "Дэлгэрэнгүй", targets });
 
   if (res.status !== 201) throw new Error(`create failed: ${res.status} ${res.text}`);
 
   if (options.publish !== false) {
-    await authed(request(server()).post(`/v1/notifications/${res.body.id}/publish`), teacherA);
+    // The same signature that created it: `requireStaffOwned` lets the author
+    // or an administrator publish, and a silent 404 here would leave every
+    // audience test reading an unpublished draft as "nobody can see it".
+    const published = await authed(
+      request(server()).post(`/v1/notifications/${res.body.id}/publish`),
+      options.as ?? adminA,
+    );
+    if (published.status !== 201) {
+      throw new Error(`publish failed: ${published.status} ${published.text}`);
+    }
   }
   return res.body.id as string;
 }
@@ -137,7 +162,7 @@ describe("targeting", () => {
   it("refuses a target group from another kindergarten", async () => {
     const res = await authed(
       request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/notifications`),
-      teacherA,
+      adminA,
     ).send({ title: "Халдлага", body: "x", targets: [{ groupId: b.group.id }] });
 
     expect(res.status).toBe(400);
@@ -146,7 +171,7 @@ describe("targeting", () => {
   it("refuses a target child from another kindergarten", async () => {
     const res = await authed(
       request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/notifications`),
-      teacherA,
+      adminA,
     ).send({ title: "Халдлага", body: "x", targets: [{ childId: b.child.id }] });
 
     expect(res.status).toBe(400);
@@ -209,7 +234,10 @@ describe("draft and publish", () => {
   });
 
   it("the author sees their own draft", async () => {
-    const id = await notify([], { publish: false });
+    // Addressed to the teacher's own group, because that is the only audience
+    // a teacher may write to since 2026-09-10 — and "the author" is the point
+    // of this test, so the author has to be somebody other than the admin.
+    const id = await notify([{ groupId: a.group.id }], { publish: false, as: teacherA });
 
     const res = await request(server())
       .get(`/v1/notifications/${id}`)
@@ -228,7 +256,7 @@ describe("draft and publish", () => {
 
   it("refuses to publish twice", async () => {
     const id = await notify([]);
-    const res = await authed(request(server()).post(`/v1/notifications/${id}/publish`), teacherA);
+    const res = await authed(request(server()).post(`/v1/notifications/${id}/publish`), adminA);
     expect(res.status).toBe(400);
   });
 
@@ -278,9 +306,9 @@ describe("date window", () => {
   it("shows one inside its window", async () => {
     const res = await authed(
       request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/notifications`),
-      teacherA,
+      adminA,
     ).send({ title: "Идэвхтэй", body: "x", startsOn: "2020-01-01", endsOn: "2099-01-01" });
-    await authed(request(server()).post(`/v1/notifications/${res.body.id}/publish`), teacherA);
+    await authed(request(server()).post(`/v1/notifications/${res.body.id}/publish`), adminA);
 
     const list = await request(server()).get("/v1/notifications").set("Cookie", parentA.cookies);
     expect(list.body.items).toHaveLength(1);
@@ -482,7 +510,7 @@ describe("editing", () => {
     const otherGroup = await createGroup(a.kindergarten.id, a.schoolYear.id, "Өөр бүлэг");
     const id = await notify([{ groupId: a.group.id }], { publish: false });
 
-    await authed(request(server()).patch(`/v1/notifications/${id}`), teacherA).send({
+    await authed(request(server()).patch(`/v1/notifications/${id}`), adminA).send({
       targets: [{ groupId: otherGroup.id }],
     });
 
@@ -499,7 +527,7 @@ describe("editing", () => {
       (await request(server()).get("/v1/notifications").set("Cookie", parentA.cookies)).body.items,
     ).toHaveLength(0);
 
-    await authed(request(server()).patch(`/v1/notifications/${id}`), teacherA).send({
+    await authed(request(server()).patch(`/v1/notifications/${id}`), adminA).send({
       targets: [],
     });
 
@@ -510,7 +538,7 @@ describe("editing", () => {
 
   it("archiving hides it from families", async () => {
     const id = await notify([]);
-    await authed(request(server()).delete(`/v1/notifications/${id}`), teacherA);
+    await authed(request(server()).delete(`/v1/notifications/${id}`), adminA);
 
     const res = await request(server()).get("/v1/notifications").set("Cookie", parentA.cookies);
     expect(res.body.items).toHaveLength(0);
@@ -542,9 +570,9 @@ describe("ordering and audit", () => {
     await notify([], { title: "Энгийн" });
     const res = await authed(
       request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/notifications`),
-      teacherA,
+      adminA,
     ).send({ title: "Чухал", body: "x", isImportant: true });
-    await authed(request(server()).post(`/v1/notifications/${res.body.id}/publish`), teacherA);
+    await authed(request(server()).post(`/v1/notifications/${res.body.id}/publish`), adminA);
 
     const list = await request(server()).get("/v1/notifications").set("Cookie", parentA.cookies);
     expect(list.body.items[0].title).toBe("Чухал");
@@ -555,7 +583,7 @@ describe("ordering and audit", () => {
     const entry = await db.auditLog.findFirst({
       where: { objectType: "Notification", action: "CREATE" },
     });
-    expect(entry?.actorUserId).toBe(a.teacherUser.id);
+    expect(entry?.actorUserId).toBe(a.adminUser.id);
   });
 
   it("a teacher who is also a parent sees both audiences", async () => {
@@ -573,12 +601,12 @@ describe("ordering and audit", () => {
 
     await notify([]); // kindergarten A, as staff
 
-    const teacherB = await login(app, b.teacherUser.username);
+    const adminB = await login(app, b.adminUser.username);
     const forB = await authed(
       request(server()).post(`/v1/kindergartens/${b.kindergarten.id}/notifications`),
-      teacherB,
+      adminB,
     ).send({ title: "B-ийн мэдэгдэл", body: "x" });
-    await authed(request(server()).post(`/v1/notifications/${forB.body.id}/publish`), teacherB);
+    await authed(request(server()).post(`/v1/notifications/${forB.body.id}/publish`), adminB);
 
     const res = await request(server()).get("/v1/notifications").set("Cookie", session.cookies);
     expect(res.body.items).toHaveLength(2);
@@ -944,7 +972,7 @@ describe("post ownership", () => {
   });
 
   it("lets a teacher delete their own post", async () => {
-    const id = await notify([{ groupId: a.group.id }]);
+    const id = await notify([{ groupId: a.group.id }], { as: teacherA });
 
     const res = await authed(request(server()).delete(`/v1/notifications/${id}`), teacherA);
 
@@ -1264,5 +1292,152 @@ describe("cook", () => {
       cookA,
     ).send({ title: "x", body: "y", targets: [] });
     expect(res.status).toBe(404);
+  });
+});
+
+/**
+ * Whose audience is whose — client, 2026-09-10: "багш зөвхөн өөрийн бүлэгтээ л
+ * пост оруулна ... Удирдлага л бүх цэцэрлэг болон бүлэг сонгон судалгаа болон
+ * пост оруулж болно."
+ *
+ * ★ Enforced on the server, not by narrowing the compose screen's select.
+ *
+ * `targets` is optional in the DTO and an empty list *means* the whole
+ * kindergarten, so a request that never loaded that screen asks for the widest
+ * audience there is simply by omitting a field. Every case below goes through
+ * HTTP for that reason (§4.1).
+ *
+ * ★★ 404, not 403 — `docs/SECURITY.md` §5.4. A teacher must not learn which
+ * groups exist by watching the error code change.
+ */
+describe("who may address whom", () => {
+  const post = (session: AuthSession, body: Record<string, unknown>) =>
+    authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/notifications`),
+      session,
+    ).send({ title: "Мэдэгдэл", body: "x", ...body });
+
+  it("lets a teacher post to a group they teach", async () => {
+    const res = await post(teacherA, { targets: [{ groupId: a.group.id }] });
+    expect(res.status).toBe(201);
+  });
+
+  it("refuses a teacher the whole kindergarten", async () => {
+    const res = await post(teacherA, { targets: [] });
+    expect(res.status).toBe(404);
+  });
+
+  /**
+   * ★ The case the loop would have missed.
+   *
+   * Omitting `targets` altogether is the same request as sending `[]` — the
+   * DTO defaults it — and a check written as "every named group must be mine"
+   * passes trivially when nothing is named.
+   */
+  it("refuses a teacher who names no audience at all", async () => {
+    const res = await post(teacherA, {});
+    expect(res.status).toBe(404);
+  });
+
+  it("refuses a teacher a group in their own kindergarten that they do not teach", async () => {
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Тэдний биш бүлэг");
+
+    const res = await post(teacherA, { targets: [{ groupId: other.id }] });
+
+    expect(res.status).toBe(404);
+  });
+
+  /** A named child is narrower than a group, so it is allowed — if it is theirs. */
+  it("lets a teacher post to a child in their own group", async () => {
+    const res = await post(teacherA, { targets: [{ childId: a.child.id }] });
+    expect(res.status).toBe(201);
+  });
+
+  it("refuses a teacher a child outside their groups", async () => {
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Тэдний биш бүлэг");
+    const child = await createChild(a.kindergarten.id, { firstName: "Хөрш" });
+    await enrollChild(a.kindergarten.id, child.id, other.id, a.schoolYear.id);
+
+    const res = await post(teacherA, { targets: [{ childId: child.id }] });
+
+    expect(res.status).toBe(404);
+  });
+
+  /**
+   * ★ One good target does not carry the rest.
+   *
+   * The natural way to widen an audience is to keep the group you are allowed
+   * and add one you are not, which passes any check that stops at the first
+   * match.
+   */
+  it("refuses a mixed list where one group is not theirs", async () => {
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Тэдний биш бүлэг");
+
+    const res = await post(teacherA, {
+      targets: [{ groupId: a.group.id }, { groupId: other.id }],
+    });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("lets an administrator address the whole kindergarten", async () => {
+    const res = await post(adminA, { targets: [] });
+    expect(res.status).toBe(201);
+  });
+
+  it("lets an administrator address a group they do not teach", async () => {
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Аль ч бүлэг");
+
+    const res = await post(adminA, { targets: [{ groupId: other.id }] });
+
+    expect(res.status).toBe(201);
+  });
+
+  /**
+   * ★ Re-checked on edit, because widening afterwards is the same act with an
+   * extra step.
+   *
+   * A teacher publishes to their own group, then PATCHes the targets to `[]`.
+   * `PATCH` runs `requireStaffOwned`, which the author passes — so without the
+   * audience check on this path the rule would hold for exactly one request.
+   */
+  it("refuses a teacher widening their own post afterwards", async () => {
+    const id = await notify([{ groupId: a.group.id }], { as: teacherA, publish: false });
+
+    const res = await authed(request(server()).patch(`/v1/notifications/${id}`), teacherA).send({
+      targets: [],
+    });
+
+    expect(res.status).toBe(404);
+    expect(await db.notificationTarget.count({ where: { notificationId: id } })).toBe(1);
+  });
+
+  /** An edit that does not touch the audience is untouched by the rule. */
+  it("still lets a teacher edit the words of their own post", async () => {
+    const id = await notify([{ groupId: a.group.id }], { as: teacherA, publish: false });
+
+    const res = await authed(request(server()).patch(`/v1/notifications/${id}`), teacherA).send({
+      title: "Засварласан",
+    });
+
+    expect(res.status).toBe(200);
+  });
+
+  /**
+   * ★ A teacher assigned to no group has no audience, not the whole
+   * kindergarten.
+   *
+   * The failure this guards is the tempting shortcut of treating an empty
+   * teaching set as "unscoped" — which is precisely backwards, and which the
+   * child visibility filter's own note warns must never be "optimised" into
+   * omitting the filter.
+   */
+  it("gives an unassigned teacher no audience at all", async () => {
+    const stranger = await createUser({ username: uniq("nogroup") });
+    await createMembership(stranger.id, a.kindergarten.id, "TEACHER");
+    const session = await login(app, stranger.username);
+
+    expect((await post(session, { targets: [{ groupId: a.group.id }] })).status).toBe(404);
+    expect((await post(session, { targets: [] })).status).toBe(404);
   });
 });

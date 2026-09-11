@@ -779,6 +779,8 @@ describe("group observation stats", () => {
     expect(res.body.total).toBe(2);
     expect(res.body.childrenWithNotes).toBe(1);
     expect(res.body.enrolled).toBe(1);
+    expect(res.body.byChild).toEqual([{ childId: a.child.id, count: 2 }]);
+    expect(res.body.byChildType).toEqual([{ childId: a.child.id, typeId, count: 2 }]);
   });
 
   it("buckets notes by calendar month", async () => {
@@ -863,5 +865,92 @@ describe("group observation stats", () => {
     );
 
     expect(res.status).toBe(400);
+  });
+});
+
+/**
+ * СҮД — the curriculum indicator a note evidences, and the level judged.
+ *
+ * ★ Optional, because a note is not always an assessment.
+ *
+ * What happened at the water table is worth keeping whether or not it maps
+ * onto an indicator, and requiring one would make the quick note the slowest
+ * thing on the screen. What the rules below protect is the case where a
+ * teacher *does* claim one.
+ */
+describe("filing a note against a curriculum indicator", () => {
+  async function indicator(code = "ХЯ1а") {
+    return db.curriculumIndicator.findFirstOrThrow({
+      where: { kindergartenId: null, code },
+      include: { levels: true },
+    });
+  }
+
+  const file = (body: Record<string, unknown>) =>
+    authed(request(server()).post(`/v1/children/${a.child.id}/observations`), teacherA).send({
+      typeId,
+      observedOn: "2026-09-10",
+      situation: "Тэмдэглэл",
+      ...body,
+    });
+
+  it("stores the indicator and the level together", async () => {
+    const row = await indicator();
+
+    const res = await file({ indicatorId: row.id, indicatorLevel: 3 });
+
+    expect(res.status).toBe(201);
+    const saved = await db.observation.findUniqueOrThrow({ where: { id: res.body.id } });
+    expect(saved.indicatorId).toBe(row.id);
+    expect(saved.indicatorLevel).toBe(3);
+  });
+
+  it("still accepts a note with no indicator at all", async () => {
+    expect((await file({})).status).toBe(201);
+  });
+
+  /**
+   * ★ Half a judgement is refused, not stored.
+   *
+   * A level without an indicator means the screen sent half of something, and
+   * keeping the half that arrived would make a note look assessed against
+   * nothing.
+   */
+  it("refuses a level with no indicator", async () => {
+    expect((await file({ indicatorLevel: 2 })).status).toBe(400);
+  });
+
+  /**
+   * ★ The level is checked against the *indicator's own* levels.
+   *
+   * The DTO bounds it at 1–4, which is the shape of the field and not the
+   * rule: several indicators begin at II or III because the behaviour does not
+   * exist earlier. A note filed at a level the ministry never wrote would
+   * print an empty descriptor on the family's report.
+   */
+  it("refuses a level the indicator was never written at", async () => {
+    const sparse = await db.curriculumIndicator.findFirst({
+      where: { kindergartenId: null, levels: { none: { level: 1 } } },
+      include: { levels: true },
+    });
+    // The client's sheet has several; if a future import fills them all in,
+    // this case has nothing to prove and says so rather than failing.
+    if (!sparse) return;
+
+    const res = await file({ indicatorId: sparse.id, indicatorLevel: 1 });
+
+    expect(res.status).toBe(400);
+  });
+
+  /** An id from another kindergarten's own indicator is not a way in. */
+  it("refuses an indicator this kindergarten may not use", async () => {
+    const domain = await db.developmentDomain.findFirstOrThrow({
+      where: { kindergartenId: null, code: "language" },
+    });
+    const foreign = await db.curriculumIndicator.create({
+      data: { kindergartenId: b.kindergarten.id, domainId: domain.id, code: "ӨӨР1а" },
+    });
+
+    expect((await file({ indicatorId: foreign.id })).status).toBe(400);
   });
 });

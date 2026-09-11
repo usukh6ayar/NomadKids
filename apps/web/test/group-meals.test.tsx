@@ -112,7 +112,8 @@ describe("бүртгэлийн дэлгэц", () => {
 
     expect(await screen.findByText("Батбаяр Ганболд")).toBeInTheDocument();
     expect(screen.getByText("Дорж Сараа")).toBeInTheDocument();
-    expect(screen.getByText("0/2 бүртгэсэн")).toBeInTheDocument();
+    expect(screen.getByText("0 хүүхэд бүртгэсэн")).toBeInTheDocument();
+    expect(screen.getByText("2 хүүхдээс · 2 үлдсэн")).toBeInTheDocument();
   });
 
   /**
@@ -139,7 +140,8 @@ describe("бүртгэлийн дэлгэц", () => {
 
     await screen.findByText("Батбаяр Ганболд");
     expect(screen.getByText("Бүртгээгүй")).toBeInTheDocument();
-    expect(screen.getByText("1/2 бүртгэсэн")).toBeInTheDocument();
+    expect(screen.getByText("1 хүүхэд бүртгэсэн")).toBeInTheDocument();
+    expect(screen.getByText("2 хүүхдээс · 1 үлдсэн")).toBeInTheDocument();
   });
 
   it("shows a saved status as selected", async () => {

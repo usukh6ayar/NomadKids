@@ -37,20 +37,51 @@ export class MealsRepository {
    * has just been edited is, by definition, not the plan somebody signed off
    * on, whether it was DRAFT already or APPROVED a moment ago.
    */
+  /**
+   * The state of several days at once — whether each has been consumed.
+   *
+   * ★ One query for the whole import, not `findDayState` per day (§3.4). A
+   * week is seven and a month is thirty, and the import checks every one of
+   * them before it writes anything.
+   */
+  async findDayStates(kindergartenId: string, dates: Date[]) {
+    if (dates.length === 0) return [];
+    return this.prisma.menuDay.findMany({
+      where: { kindergartenId, deletedAt: null, date: { in: dates } },
+      select: { date: true, consumedAt: true },
+    });
+  }
+
   async upsertDay(
     kindergartenId: string,
     date: Date,
     dishes: unknown,
     totalCalories: number | null,
     createdById: string,
+    /*
+      "Нэмэлт мэдээлэл" — the day's own note.
+
+      ★ `undefined` leaves it alone, `null` clears it. The Excel import writes a
+      day without one and must not wipe what a cook typed; the form always
+      sends the field, so an emptied box clears the column.
+    */
+    note?: string | null,
   ) {
     return this.prisma.menuDay.upsert({
       where: { kindergartenId_date: { kindergartenId, date } },
-      create: { kindergartenId, date, dishes: dishes as object, totalCalories, createdById },
+      create: {
+        kindergartenId,
+        date,
+        dishes: dishes as object,
+        totalCalories,
+        createdById,
+        note: note ?? null,
+      },
       update: {
         dishes: dishes as object,
         totalCalories,
         createdById,
+        ...(note === undefined ? {} : { note }),
         status: "DRAFT",
         approvedById: null,
         approvedAt: null,
@@ -202,6 +233,49 @@ export class MealsRepository {
     return this.prisma.group.findFirst({
       where: { id: groupId, deletedAt: null, kindergartenId: { in: kindergartenIds } },
       select: { id: true, kindergartenId: true },
+    });
+  }
+
+  // ── A family's notes about their child's meals ─────────────────────────
+
+  /**
+   * The child's notes over a date range, newest day first.
+   *
+   * ★ Bounded by `take`, not by trust in the range (§3.4). A range is a client
+   * value and "from 1970" is a legal one; the cap is what keeps this endpoint
+   * from being a way to pull a child's whole history in one request.
+   */
+  async listMealNotes(childId: string, from: Date, to: Date, take: number) {
+    return this.prisma.childMealNote.findMany({
+      where: { childId, deletedAt: null, date: { gte: from, lte: to } },
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+      take,
+      select: {
+        id: true,
+        date: true,
+        body: true,
+        createdAt: true,
+        author: { select: { id: true, lastName: true, firstName: true } },
+      },
+    });
+  }
+
+  async createMealNote(data: {
+    kindergartenId: string;
+    childId: string;
+    date: Date;
+    body: string;
+    authorId: string;
+  }) {
+    return this.prisma.childMealNote.create({
+      data,
+      select: {
+        id: true,
+        date: true,
+        body: true,
+        createdAt: true,
+        author: { select: { id: true, lastName: true, firstName: true } },
+      },
     });
   }
 

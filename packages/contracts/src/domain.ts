@@ -463,10 +463,38 @@ export const observationMediaSchema = z.object({
   originalName: z.string().nullish(),
 });
 
+/**
+ * A curriculum indicator as a note refers to it — СҮД.
+ *
+ * ★ The code is the identity a teacher reads and it carries no level: `НСХ1а`
+ * at level II and at level IV are the same indicator described twice, which is
+ * why the descriptor is a list rather than a field.
+ */
+export const curriculumIndicatorRefSchema = z.object({
+  id: uuidSchema,
+  code: z.string(),
+  domainId: uuidSchema.nullish(),
+});
+
+/**
+ * An indicator with everything the picker needs.
+ *
+ * ★ `levels` may hold fewer than four, and the gap is the curriculum's own:
+ * several indicators begin at level II or III because the behaviour does not
+ * exist earlier. A screen can say "this one starts at III" rather than drawing
+ * an empty card.
+ */
+export const curriculumIndicatorSchema = curriculumIndicatorRefSchema.extend({
+  levels: z.array(z.object({ level: z.number(), text: z.string() })).default([]),
+});
+export type CurriculumIndicator = z.infer<typeof curriculumIndicatorSchema>;
+
 export const observationSchema = z.object({
   id: uuidSchema,
   childId: uuidSchema.nullish(),
   observedOn: z.string(),
+  /** "HH:MM" — the time of day, when one was recorded. */
+  observedTime: z.string().nullish(),
   source: observationSourceSchema,
   reviewStatus: reviewStatusSchema,
   visibleToParents: z.boolean(),
@@ -479,6 +507,31 @@ export const observationSchema = z.object({
   nextSteps: z.string().nullish(),
   reviewNote: z.string().nullish(),
   type: z.object({ id: uuidSchema, name: z.string(), code: z.string().nullish() }).nullish(),
+  /**
+   * The СҮД indicator this note evidences, and the level judged against it.
+   *
+   * ★ Both nullish, because a note is not always an assessment — what happened
+   * at the water table is worth keeping whether or not it maps onto an
+   * indicator.
+   *
+   * The level is meaningless without the indicator and is written with it; the
+   * API refuses one without the other rather than storing half a judgement.
+   */
+  indicatorId: uuidSchema.nullish(),
+  indicatorLevel: z.number().nullish(),
+  indicator: curriculumIndicatorRefSchema.nullish(),
+  domains: z
+    .array(
+      z.object({
+        domain: z.object({
+          id: uuidSchema,
+          name: z.string(),
+          color: z.string().nullish(),
+        }),
+        level: z.object({ id: uuidSchema, value: z.number(), label: z.string() }).nullish(),
+      }),
+    )
+    .default([]),
   author: personRefSchema.nullish(),
   media: z.array(observationMediaSchema).default([]),
 });
@@ -758,6 +811,36 @@ export const groupAttendanceRowSchema = z.object({
 });
 export type GroupAttendanceRow = z.infer<typeof groupAttendanceRowSchema>;
 
+/**
+ * A group's register over a span of days — a child per row, a day per column.
+ *
+ * ★ One request, not one per day. The teacher's register draws the week the
+ * chosen date falls in, and fetching that as seven day sheets would put seven
+ * round trips on the screen a teacher opens every morning, on a phone, on a
+ * kindergarten's connection.
+ *
+ * `days` is every date in the range in ascending order, so the client renders
+ * columns from it rather than recomputing the calendar and risking a different
+ * answer about which days the register covers. A child's `records` is keyed by
+ * that same ISO date, and a day nobody marked is simply absent from the map —
+ * "not recorded" and "recorded as absent" are different facts and the register
+ * draws them differently.
+ */
+export const groupAttendanceRangeSchema = z.object({
+  days: z.array(z.string()),
+  rows: z.array(
+    z.object({
+      child: personRefSchema,
+      enrollmentId: uuidSchema,
+      records: z.record(
+        z.string(),
+        z.object({ id: uuidSchema, status: attendanceStatusSchema, note: z.string().nullish() }),
+      ),
+    }),
+  ),
+});
+export type GroupAttendanceRange = z.infer<typeof groupAttendanceRangeSchema>;
+
 export const attendanceRequestSchema = z.object({
   id: uuidSchema,
   childId: uuidSchema,
@@ -846,6 +929,24 @@ export const menuDishSchema = z.object({
 });
 export type MenuDish = z.infer<typeof menuDishSchema>;
 
+/**
+ * A family's note about one day's meals.
+ *
+ * ★ Written by the guardian, read by the child's staff — the box the client's
+ * 2026-09-11 design puts under the day's menu. Not a chat message: the only
+ * rooms that exist hold a whole group, and a dietary restriction is one child's
+ * business. See `ChildMealNote` in the schema.
+ */
+export const childMealNoteSchema = z.object({
+  id: uuidSchema,
+  /** "YYYY-MM-DD" — the day the note is about. */
+  date: z.string(),
+  body: z.string(),
+  createdAt: z.string(),
+  author: personRefSchema.nullish(),
+});
+export type ChildMealNote = z.infer<typeof childMealNoteSchema>;
+
 export const menuDayStatusSchema = z.enum(["DRAFT", "APPROVED"]);
 export type MenuDayStatus = z.infer<typeof menuDayStatusSchema>;
 
@@ -859,6 +960,8 @@ export const menuDaySchema = z.object({
   date: z.string(),
   dishes: z.array(menuDishSchema),
   totalCalories: z.number().int().nullish(),
+  /** "Нэмэлт мэдээлэл" — the kitchen's own note about the day. */
+  note: z.string().nullish(),
   status: menuDayStatusSchema,
   approvedAt: z.string().nullish(),
   consumedAt: z.string().nullish(),
@@ -948,6 +1051,12 @@ export const surveyCategorySchema = z.enum([
   "PHYSICAL_DEVELOPMENT",
   "COGNITIVE_DEVELOPMENT",
   "HABITS_INDEPENDENCE",
+  // ★ Added 2026-09-10. The six above are developmental or attitudinal; a
+  // kindergarten also asks about the group itself, and about things that fit
+  // none of them — `OTHER` is the escape hatch that stops a survey being
+  // mislabelled as one of the six to get it filed at all.
+  "CLASS_GROUP",
+  "OTHER",
 ]);
 export type SurveyCategory = z.infer<typeof surveyCategorySchema>;
 
@@ -958,6 +1067,8 @@ export const SURVEY_CATEGORY_LABEL: Record<SurveyCategory, string> = {
   PHYSICAL_DEVELOPMENT: "Бие бялдрын хөгжлийн үнэлгээ",
   COGNITIVE_DEVELOPMENT: "Танин мэдэхүйн хөгжлийн үнэлгээ",
   HABITS_INDEPENDENCE: "Дадал хэвшил, бие даах чадварын үнэлгээ",
+  CLASS_GROUP: "Анги бүлэг",
+  OTHER: "Бусад",
 };
 
 /** RFP Module 1.1's archival classification, and Module 1.2's pairing key. */
@@ -1010,9 +1121,17 @@ export function hasOptionList(type: SurveyQuestionType): boolean {
 export const surveyKindSchema = z.enum(["POLL", "FORM"]);
 export type SurveyKind = z.infer<typeof surveyKindSchema>;
 
+/*
+ * ★ "Асуулга" and "Судалгаа" — the client's own words, 2026-09-10.
+ *
+ * They were "Пол" and "Форм судалгаа": one a transliteration of an English
+ * word and the other a compound nobody says. The enum values stay `POLL` and
+ * `FORM`, which is the point of keeping labels out of the enum — renaming what
+ * a teacher reads is a one-line change here and not a migration.
+ */
 export const SURVEY_KIND_LABEL: Record<SurveyKind, string> = {
-  POLL: "Пол",
-  FORM: "Форм судалгаа",
+  POLL: "Асуулга",
+  FORM: "Судалгаа",
 };
 
 /** The one-line description each kind carries on the composer's two tabs. */
@@ -1060,6 +1179,27 @@ export const surveySchema = z.object({
    * to stay possible — see `Survey.closesAt` for why it is not `closedAt`.
    */
   closesAt: z.string().nullish(),
+  /** When it starts accepting answers. Null is "from publication". */
+  opensAt: z.string().nullish(),
+  /** Why the kindergarten is running it — staff-facing, not on the form. */
+  purpose: z.string().nullish(),
+  /** Which term of the school year, as a `Term` row. */
+  termId: uuidSchema.nullish(),
+  term: z.object({ id: uuidSchema, number: z.number(), name: z.string() }).nullish(),
+  /**
+   * Answers recorded without naming who gave them.
+   *
+   * ★ It hides the respondent from readers, not from the database — see
+   * `Survey.isAnonymous`. `participation` reports counts instead of names and
+   * the workbook omits the respondent column.
+   */
+  isAnonymous: z.boolean().default(false),
+  /** Whether one respondent may answer more than once. */
+  allowMultipleResponses: z.boolean().default(false),
+  /** Whether the answering form shuffles its questions. */
+  shuffleQuestions: z.boolean().default(false),
+  /** What a family reads after submitting. Null falls back to the default. */
+  closingNote: z.string().nullish(),
   createdAt: z.string(),
   /** "2025-2026" — a school year spans two calendar years. */
   schoolYear: z.string().nullish(),
@@ -1081,8 +1221,64 @@ export const surveySchema = z.object({
   /** Set only on the child-facing list — has this guardian already answered
    * for this child (or, for a KINDERGARTEN-scope survey, at all)? */
   respondedByMe: z.boolean().nullish(),
+  /**
+   * How far this survey has got, on the staff list only.
+   *
+   * ★ Counted in bulk by the API, never per card.
+   *
+   * `expectedCount` is the size of the *audience* — one group, or the whole
+   * kindergarten, and its parents rather than its children when the scope is
+   * KINDERGARTEN. Nullish because the child-facing list does not carry them
+   * and should not: a family has no business knowing who else has not replied.
+   */
+  respondedCount: z.number().nullish(),
+  expectedCount: z.number().nullish(),
 });
 export type Survey = z.infer<typeof surveySchema>;
+
+/**
+ * A poll's running count, as the family answering it sees it.
+ *
+ * ★ Counts and the asker's own answer. Never a respondent.
+ *
+ * `GET /children/:id/surveys/:surveyId/tally` builds this from two queries for
+ * exactly that reason — the aggregate carries no identity to leak, and
+ * `myAnswer` is read separately keyed on whoever asked. The shape is flat here
+ * so nothing about "whose" can be smuggled in later without changing it.
+ *
+ * ★★ `options` lists the question's choices, not the answered ones. A choice
+ * nobody has picked is the most informative bar on a poll, and it is every bar
+ * for the first family to look.
+ */
+export const pollTallySchema = z.object({
+  surveyId: uuidSchema,
+  respondedByMe: z.boolean(),
+  questions: z.array(
+    z.object({
+      questionId: uuidSchema,
+      prompt: z.string(),
+      type: surveyQuestionTypeSchema,
+      /** How many families answered this question — the percentage's denominator. */
+      totalResponses: z.number(),
+      options: z.array(z.object({ label: z.string(), count: z.number() })),
+      /**
+       * This family's own answer: a string for SINGLE_CHOICE, an array for
+       * CHECKBOX, null before they have answered. `unknown` because the column
+       * is `Json` and the reader narrows by the question's type.
+       */
+      myAnswer: z.unknown(),
+    }),
+  ),
+});
+export type PollTally = z.infer<typeof pollTallySchema>;
+
+/** What `POST …/questions/:id/options` answers — the list after the append. */
+export const pollOptionAddedSchema = z.object({
+  questionId: uuidSchema,
+  options: z.array(z.string()),
+  /** False when the choice was already there, which is success, not an error. */
+  added: z.boolean(),
+});
 
 /** One indicator's begin-to-end movement — RFP Module 1.2. */
 export const indicatorComparisonSchema = z.object({
@@ -1160,6 +1356,19 @@ export type SurveyQuestionResult = z.infer<typeof surveyQuestionResultSchema>;
 export const surveyGroupResultSchema = z.object({
   group: z.object({ id: uuidSchema.nullable(), name: z.string() }),
   responseCount: z.number(),
+  /**
+   * This group's own roster — the denominator behind "5 / 6 (83%)".
+   *
+   * ★ Children, always, even when the survey's headline counts parents.
+   *
+   * A parent belongs to no group and a family with two children belongs to
+   * two, so a per-group split is only expressible through the children. Zero
+   * for "Бүлэггүй", which has no roster to be a share of.
+   *
+   * Defaulted for a response from an API that predates it: a share of zero
+   * draws no bar, which is the honest picture of "not known".
+   */
+  expectedChildren: z.number().default(0),
   questions: z.array(
     z.object({
       questionId: uuidSchema,
@@ -1296,6 +1505,27 @@ export const termReportSchema = z.object({
   adviceForParents: z.string().nullish(),
   finalizedAt: z.string().nullish(),
   author: personRefSchema.nullish(),
+  /**
+   * The observations this report was written from — the teacher's citation.
+   *
+   * ★ Chosen, not computed. A term may hold forty notes about one child and the
+   * report is written from the handful that evidence what it claims, which is
+   * why this is stored rather than derived from the term's dates.
+   *
+   * Defaults to `[]` so a report written before the field existed, and the
+   * "no report yet" shape, both parse without a null check at every use.
+   */
+  observations: z
+    .array(
+      z.object({
+        id: uuidSchema,
+        observedOn: z.string(),
+        activityName: z.string().nullish(),
+        situation: z.string().nullish(),
+        type: z.object({ id: uuidSchema, name: z.string(), code: z.string().nullish() }).nullish(),
+      }),
+    )
+    .default([]),
 });
 
 // ── Portfolio ────────────────────────────────────────────────────────────────
@@ -2495,6 +2725,21 @@ export const groupSchema = z.object({
    */
   programKind: programKindSchema.nullish(),
   attendanceForm: attendanceFormSchema.nullish(),
+  /**
+   * Энэ сарын зорилт — how many *children* this group documents each month.
+   *
+   * ★ Children, not notes. A goal counted in notes is met by writing twenty
+   * about one child; this one is only met by reaching twenty different
+   * children, which is what "хүүхэд бүрийн хөгжлийн явц" asks for.
+   *
+   * On the group rather than the kindergarten because the teacher sets it, and
+   * a kindergarten-wide number set by one teacher would silently change every
+   * other group's. Nullish for the same reason `programKind` is — this schema
+   * doubles as the bare group reference other payloads embed.
+   */
+  monthlyNoteGoal: z.number().nullish(),
+  /** How many notes each targeted child should receive in the month. */
+  monthlyNotesPerChildGoal: z.number().nullish(),
 });
 
 /**
@@ -4061,6 +4306,19 @@ export const groupObservationStatsSchema = z.object({
   enrolled: z.number(),
   /** How many *different* children were written about, not how many notes. */
   childrenWithNotes: z.number(),
+  /**
+   * Notes per child in the window — what the per-child depth goal counts
+   * against.
+   *
+   * ★ Ids and counts, no names. The screen needs "how many children have four
+   * or more", which is a count over this array; sending who they are would put
+   * a roster into a payload that reports on a group.
+   */
+  byChild: z.array(z.object({ childId: uuidSchema, count: z.number() })).default([]),
+  /** Notes per child and kind, used by the teacher's class coverage picker. */
+  byChildType: z
+    .array(z.object({ childId: uuidSchema, typeId: uuidSchema, count: z.number() }))
+    .default([]),
   /** Every configured type, including the ones sitting at zero. */
   byType: z.array(statBucketSchema).default([]),
   byDomain: z.array(statBucketSchema).default([]),

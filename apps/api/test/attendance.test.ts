@@ -774,6 +774,145 @@ describe("group month summary", () => {
  * tempting to skip — the ids are "already known to be in the group" — and
  * `recordGroupMeals` had exactly that omission for a while.
  */
+// ═══════════════════════════════════════════════════════════════════════════
+// The week grid behind the teacher's register
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("group range sheet", () => {
+  async function mark(childId: string, date: string, status: string) {
+    const res = await authed(
+      request(server()).put(`/v1/children/${childId}/attendance/${date}`),
+      teacherA,
+    ).send({ status });
+    if (res.status !== 200) throw new Error(`mark failed: ${res.status} ${res.text}`);
+  }
+
+  const range = (from: string, to: string) =>
+    authed(
+      request(server()).get(`/v1/groups/${a.group.id}/attendance/range?from=${from}&to=${to}`),
+      teacherA,
+    );
+
+  it("returns every day in the span, in order, marked or not", async () => {
+    await mark(a.child.id, "2026-02-10", "PRESENT");
+    await mark(a.child.id, "2026-02-12", "SICK");
+
+    const res = await range("2026-02-09", "2026-02-13");
+
+    expect(res.status).toBe(200);
+    // Five columns, including the two nobody marked — the register draws a
+    // week, not only the days that happen to carry a row.
+    expect(res.body.days).toEqual([
+      "2026-02-09",
+      "2026-02-10",
+      "2026-02-11",
+      "2026-02-12",
+      "2026-02-13",
+    ]);
+
+    const row = res.body.rows.find((r: { child: { id: string } }) => r.child.id === a.child.id);
+    expect(row.records["2026-02-10"].status).toBe("PRESENT");
+    expect(row.records["2026-02-12"].status).toBe("SICK");
+    // Absent from the map, not present-and-null: "nobody marked this day" and
+    // "marked as absent" are different facts and the grid draws them apart.
+    expect(row.records["2026-02-11"]).toBeUndefined();
+  });
+
+  it("lists a child with nothing recorded at all", async () => {
+    const res = await range("2026-02-09", "2026-02-13");
+
+    const row = res.body.rows.find((r: { child: { id: string } }) => r.child.id === a.child.id);
+    expect(row).toBeDefined();
+    expect(row.records).toEqual({});
+  });
+
+  it("never reaches another group's records", async () => {
+    await mark(a.child.id, "2026-02-10", "PRESENT");
+
+    const res = await authed(
+      request(server()).get(
+        `/v1/groups/${b.group.id}/attendance/range?from=2026-02-09&to=2026-02-13`,
+      ),
+      teacherA,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("refuses a span wider than a month, rather than answering unbounded", () => {
+    // §3.4 — no endpoint returns an unbounded set.
+    return range("2026-01-01", "2026-06-30").expect(400);
+  });
+
+  it("refuses a range that ends before it starts", () => {
+    return range("2026-02-13", "2026-02-09").expect(400);
+  });
+
+  /** 404, not 403 — §1.7, and the same answer the day sheet beside it gives. */
+  /*
+   * ★ The teacher's own download — a sibling of `/attendance/register/export`,
+   * not a widening of it. That one is the whole kindergarten behind
+   * `assertCanReadFinance`; this one is the one group `assertCanReadGroup`
+   * already allows.
+   */
+  it("answers the same span as a spreadsheet, with the marks in it", async () => {
+    await mark(a.child.id, "2026-02-10", "PRESENT");
+    await mark(a.child.id, "2026-02-11", "SICK");
+
+    const res = await authed(
+      request(server()).get(
+        `/v1/groups/${a.group.id}/attendance/range/export?from=2026-02-09&to=2026-02-13`,
+      ),
+      teacherA,
+    )
+      .buffer(true)
+      .parse((r, cb) => {
+        const chunks: Buffer[] = [];
+        r.on("data", (c: Buffer) => chunks.push(c));
+        r.on("end", () => cb(null, Buffer.concat(chunks)));
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toContain("spreadsheetml");
+    expect(res.headers["content-disposition"]).toContain("attachment");
+
+    /*
+     * ★ Read back, not weighed. §4.3's rule about PDFs is the same rule here:
+     * a generator returning an empty workbook passes every "did it produce a
+     * file" check, and the thing worth asserting is that the day the teacher
+     * marked is the day the spreadsheet carries.
+     */
+    const ExcelJS = (await import("exceljs")).default;
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(res.body);
+    const summary = book.worksheets.map((sheet) => sheet.name);
+    expect(summary.length).toBeGreaterThan(0);
+
+    const text = JSON.stringify(book.worksheets.map((sheet) => sheet.getSheetValues()));
+    expect(text).toContain("Ирсэн");
+    expect(text).toContain("Өвчтэй");
+  });
+
+  it("a teacher cannot export another group's register", async () => {
+    const res = await authed(
+      request(server()).get(
+        `/v1/groups/${b.group.id}/attendance/range/export?from=2026-02-09&to=2026-02-13`,
+      ),
+      teacherA,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("a guardian cannot read the group's register", async () => {
+    const res = await authed(
+      request(server()).get(
+        `/v1/groups/${a.group.id}/attendance/range?from=2026-02-09&to=2026-02-13`,
+      ),
+      parentA,
+    );
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("group batch recording", () => {
   const DATE = "2026-02-10";
   const url = (groupId: string) => `/v1/groups/${groupId}/attendance`;

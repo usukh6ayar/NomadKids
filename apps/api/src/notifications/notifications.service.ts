@@ -125,7 +125,7 @@ export class NotificationsService {
    * hundred families because someone hit save.
    */
   async create(actor: Actor, kindergartenId: string, dto: CreateNotificationDto) {
-    this.tenants.assertStaff(actor, kindergartenId);
+    await this.assertCanAddress(actor, kindergartenId, dto.targets);
     await this.assertTargetsBelong(dto.targets, kindergartenId);
 
     const notification = await this.repo.create(
@@ -157,7 +157,13 @@ export class NotificationsService {
   async update(actor: Actor, id: string, dto: UpdateNotificationDto) {
     const row = await this.requireStaffOwned(actor, id);
 
-    if (dto.targets) await this.assertTargetsBelong(dto.targets, row.kindergartenId);
+    if (dto.targets) {
+      // Re-checked on edit, not only on create: a teacher who published to
+      // their own group could otherwise widen the audience afterwards, which
+      // is the same act with an extra step.
+      await this.assertCanAddress(actor, row.kindergartenId, dto.targets);
+      await this.assertTargetsBelong(dto.targets, row.kindergartenId);
+    }
 
     const { targets, ...rest } = dto;
     const updated = await this.repo.update(id, definedOnly(rest), targets);
@@ -372,6 +378,31 @@ export class NotificationsService {
    * the guardian filter checks the notice's kindergarten, but a target pointing
    * outside it is still a mistake worth refusing at the source.
    */
+  /**
+   * ★ A teacher posts to their own groups; only an administrator posts to the
+   * kindergarten — client, 2026-09-10.
+   *
+   * The rule itself lives in `authz/` (§1.1) and is shared with surveys, which
+   * ask the same question about the same people. This method only turns a
+   * notice's target rows into the audience that method understands: a group
+   * target is a group, a child target is a child, and *no rows at all* is the
+   * whole kindergarten, which is exactly the case a teacher must not have.
+   *
+   * Separate from `assertTargetsBelong`, which answers a different question —
+   * does this id belong to this kindergarten — and answers it with 400 for
+   * both audiences. This one is authorization and answers 404.
+   */
+  private async assertCanAddress(
+    actor: Actor,
+    kindergartenId: string,
+    targets: { groupId?: string; childId?: string }[],
+  ) {
+    await this.tenants.assertCanAddressAudience(actor, kindergartenId, {
+      groupIds: targets.map((t) => t.groupId).filter((v): v is string => Boolean(v)),
+      childIds: targets.map((t) => t.childId).filter((v): v is string => Boolean(v)),
+    });
+  }
+
   private async assertTargetsBelong(
     targets: { groupId?: string; childId?: string }[],
     kindergartenId: string,

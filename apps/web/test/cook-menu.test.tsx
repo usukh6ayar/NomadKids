@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, selectOption, sessionFor, stubApi } from "./support/render";
@@ -24,6 +24,112 @@ function todayIso(): string {
   return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
     .toISOString()
     .slice(0, 10);
+}
+
+/**
+ * Opens the editing flow, and then the day form.
+ *
+ * ★ The screen opens as the *family's* view since 2026-09-11, at the client's
+ * clarification: "эцэг эхийн хоолны цэсний харагдац огт өөрчлөгдөж болохгүй …
+ * зөвхөн засах үйл явц". Everything the client drew — the toolbar, the week
+ * table, the day form — is behind "Цэс засах".
+ */
+async function openEdit(user: ReturnType<typeof userEvent.setup>) {
+  // The door moved into the header's ⋮ on 2026-09-11 — see the page's own note.
+  await user.click(await screen.findByRole("button", { name: "Хоолны цэсний үйлдэл" }));
+  await user.click(await screen.findByRole("menuitem", { name: /Цэс засах/ }));
+}
+
+/**
+ * Opens one day's editor.
+ *
+ * ★ Editing a day is its own screen since 2026-09-11, the client's second
+ * drawing: Цэс засах → Жагсаалтаар → press a day. It has its own toolbar
+ * ("← Жагсаалтад буцах"), its own day pager and its own footer, rather than
+ * being a form stapled under the week.
+ */
+async function openList(user: ReturnType<typeof userEvent.setup>) {
+  await openEdit(user);
+  await user.click(await screen.findByRole("radio", { name: "Жагсаалтаар" }));
+  // Any day; the cases below do not depend on which.
+  // The strip's buttons are named "Да, 09.07" — see the page's own aria-label.
+  const days = await screen.findAllByRole("button", { name: /^(Да|Мя|Лх|Пү|Ба|Бя|Ня), / });
+  await user.click(days[0]!);
+}
+
+/**
+ * Opens a row's detail — ⋮ → Засах.
+ *
+ * ★ Илчлэг, порц, харшлын шошго and the технологийн карт picker moved behind
+ * the row menu on 2026-09-11, at the client's request: the card shows the
+ * photograph, the name and what is in the dish, and everything else is one
+ * press away. Every case that reaches those fields goes through here.
+ */
+async function openDetail(user: ReturnType<typeof userEvent.setup>) {
+  const menus = await screen.findAllByRole("button", { name: /үйлдэл/ });
+  await user.click(menus[0]!);
+  await user.click(await screen.findByRole("menuitem", { name: "Засах" }));
+}
+
+/** Opens the Excel panel, which is a step rather than a permanent block. */
+async function openImport(user: ReturnType<typeof userEvent.setup>) {
+  await openEdit(user);
+  await user.click(await screen.findByRole("button", { name: "Excel оруулах" }));
+}
+
+/**
+ * The week, stubbed — every request this screen makes, in one place.
+ *
+ * ★ Added for the 2026-09-11 import tests. The cases above predate it and stub
+ * inline; they are left alone rather than rewritten, because what they assert is
+ * unrelated and a churned diff hides the change that matters.
+ */
+function stubWeek(
+  roles: ("COOK" | "TEACHER" | "ADMIN")[] = ["COOK"],
+  importResult: Record<string, unknown> = {
+    dryRun: true,
+    days: [
+      { date: "2026-03-02", dishes: 2 },
+      { date: "2026-03-03", dishes: 2 },
+    ],
+    dishCount: 4,
+    problems: [],
+  },
+) {
+  return stubApi([
+    { path: "/auth/me", body: sessionFor(roles) },
+    {
+      path: `/kindergartens/${KG_ID}/menu/import`,
+      method: "POST",
+      body: importResult,
+      status: 201,
+    },
+    {
+      path: `/kindergartens/${KG_ID}/menu/with-warnings`,
+      // One real day, so the table has a row to draw rather than its empty
+      // state — `WeekTable` shows nothing at all for a week with no dishes.
+      body: [
+        {
+          id: "44444444-4444-4444-8444-444444444444",
+          date: todayIso(),
+          dishes: [{ name: "Тараг", allergenTags: [], kind: "BREAKFAST" }],
+          totalCalories: null,
+          status: "DRAFT",
+          warnings: [],
+        },
+      ],
+    },
+    {
+      path: `/kindergartens/${KG_ID}/menu/`,
+      method: "PUT",
+      body: {
+        id: "44444444-4444-4444-8444-444444444444",
+        date: "2026-01-05",
+        dishes: [],
+        totalCalories: null,
+      },
+    },
+  ]);
 }
 
 /**
@@ -59,14 +165,16 @@ describe("the cook's weekly menu", () => {
     ]);
 
     renderWithProviders(<MenuPage />);
+    await openList(user);
 
-    // The page opens on "Өнөөдөр" by default — one empty day, one button.
-    const addButtons = await screen.findAllByRole("button", { name: "Хоол нэмэх" });
+    // One day open at a time, so one "Хоолны цаг нэмэх".
+    const addButtons = await screen.findAllByRole("button", { name: "Хоолны цаг нэмэх" });
     await user.click(addButtons[0]!);
 
     const nameInputs = await screen.findAllByLabelText("Хоолны нэр");
     await user.type(nameInputs[0]!, "Гурилтай шөл");
 
+    await openDetail(user);
     const allergenInputs = screen.getAllByLabelText("Харшлын орц");
     await user.type(allergenInputs[0]!, "сүү, өндөг");
 
@@ -85,6 +193,8 @@ describe("the cook's weekly menu", () => {
 
     const put = calls.find((c) => c.method === "PUT")!;
     expect(put.body).toEqual({
+      // The day's own note goes up with its dishes — empty here.
+      note: null,
       dishes: [
         {
           name: "Гурилтай шөл",
@@ -174,10 +284,13 @@ describe("the cook's weekly menu", () => {
 
     renderWithProviders(<MenuPage />);
 
-    const addButtons = await screen.findAllByRole("button", { name: "Хоол нэмэх" });
+    await openList(user);
+
+    const addButtons = await screen.findAllByRole("button", { name: "Хоолны цаг нэмэх" });
     await user.click(addButtons[0]!);
 
     // A new row opens on "Бэлэн хоол" once there is an approved card to pick.
+    await openDetail(user);
     await selectOption(user, "Бэлэн хоол", "Гурилтай шөл");
 
     const saveButtons = screen.getAllByRole("button", { name: /Хадгалах/ });
@@ -187,6 +300,8 @@ describe("the cook's weekly menu", () => {
 
     const put = calls.find((c) => c.method === "PUT")!;
     expect(put.body).toEqual({
+      // The day's own note goes up with its dishes — empty here.
+      note: null,
       dishes: [
         {
           name: "Гурилтай шөл",
@@ -221,9 +336,12 @@ describe("the cook's weekly menu", () => {
 
     renderWithProviders(<MenuPage />);
 
-    const addButtons = await screen.findAllByRole("button", { name: "Хоол нэмэх" });
+    await openList(user);
+
+    const addButtons = await screen.findAllByRole("button", { name: "Хоолны цаг нэмэх" });
     await user.click(addButtons[0]!);
 
+    await openDetail(user);
     const readyButtons = await screen.findAllByRole("button", { name: /Бэлэн хоол/ });
     // Offered, and visibly unavailable — rather than missing with no explanation.
     expect(readyButtons[0]!).toBeDisabled();
@@ -307,5 +425,529 @@ describe("the dish editor without a kitchen", () => {
     );
 
     expect(screen.getByRole("textbox", { name: "Хоолны нэр" })).toHaveValue("Гар хоол");
+  });
+});
+
+describe("the menu as a spreadsheet", () => {
+  /*
+    The menu from a spreadsheet, and who may enter one — 2026-09-11.
+
+    ★ The client narrowed writing to COOK and TEACHER: "Багш болон тогооч засаж
+    болдог … нягтлан, удирдлага, эцэг эх оруулсан цэсүүдийг зүгээр харна." An
+    admin still opens this screen; what they must not be offered is a control
+    whose save the API answers with 404.
+  */
+  it("offers a cook the Excel import beside the download", async () => {
+    stubWeek();
+    const user = userEvent.setup();
+    renderWithProviders(<MenuPage />);
+    await openImport(user);
+
+    expect(await screen.findByText("Excel-ээр оруулах")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Excel татах" })).toBeInTheDocument();
+  });
+
+  it("★ offers an admin neither the import nor the editor", async () => {
+    const user = userEvent.setup();
+    stubWeek(["ADMIN"]);
+    renderWithProviders(<MenuPage />);
+
+    await screen.findByText("Хоолны цэс");
+    // The ⋮ is there for the downloads; the door into editing is not in it.
+    await user.click(screen.getByRole("button", { name: "Хоолны цэсний үйлдэл" }));
+    expect(screen.queryByRole("menuitem", { name: /Цэс засах/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("menuitem", { name: /Excel —/ }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Excel оруулах" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Хадгалах/ })).not.toBeInTheDocument();
+  });
+
+  it("a teacher may enter the menu", async () => {
+    const user = userEvent.setup();
+    stubWeek(["TEACHER"]);
+    renderWithProviders(<MenuPage />);
+    await openImport(user);
+
+    expect(await screen.findByText("Excel-ээр оруулах")).toBeInTheDocument();
+  });
+
+  /** Two presses: the file is checked before anything is written. */
+  it("previews the file before writing it", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    await openImport(user);
+    await screen.findByText("Excel-ээр оруулах");
+    const input = document.querySelector('input[type=file][accept*=".xlsx"]') as HTMLInputElement;
+    await user.upload(input, new File(["PK"], "menu.xlsx"));
+
+    expect(await screen.findByText(/2 өдөр, 4 хоол оруулна/)).toBeInTheDocument();
+    // The dry run went up; nothing was written.
+    expect(calls.some((call) => call.url.includes("dryRun=true"))).toBe(true);
+    expect(calls.some((call) => call.url.includes("dryRun=false"))).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "Оруулах" }));
+    await waitFor(() => expect(calls.some((call) => call.url.includes("dryRun=false"))).toBe(true));
+  });
+
+  it("names the rows it could not read", async () => {
+    const user = userEvent.setup();
+    stubWeek(["COOK"], {
+      dryRun: true,
+      days: [],
+      dishCount: 0,
+      problems: [{ rowNumber: 4, message: "Огноо танигдсангүй" }],
+    });
+    renderWithProviders(<MenuPage />);
+
+    await openImport(user);
+    await screen.findByText("Excel-ээр оруулах");
+    const input = document.querySelector('input[type=file][accept*=".xlsx"]') as HTMLInputElement;
+    await user.upload(input, new File(["PK"], "menu.xlsx"));
+
+    expect(await screen.findByText(/4-р мөр: Огноо танигдсангүй/)).toBeInTheDocument();
+    // Nothing to write, so the confirm button is not offered as usable.
+    expect(screen.getByRole("button", { name: "Оруулах" })).toBeDisabled();
+  });
+
+  /*
+    The client's 2026-09-11 drawing: a title with the week it is showing, one
+    row of controls, then the week itself.
+  */
+  /*
+    ★ The landing is the family's screen, unchanged.
+
+    A cook, a teacher and a director open this and see what a parent sees. Every
+    editing control is behind "Цэс засах".
+  */
+  it("opens as the family's own view, with the editing flow behind a door", async () => {
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    expect(await screen.findByRole("tab", { name: "Өнөөдөр" })).toBeInTheDocument();
+    // ★ No button under the day — the door is in the header's ⋮.
+    expect(screen.queryByRole("button", { name: "Цэс засах" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Хоолны цэсний үйлдэл" })).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "Хүснэгтээр" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Excel оруулах" })).not.toBeInTheDocument();
+  });
+
+  it("opens the editing flow on the week as a table", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+    await openEdit(user);
+
+    expect(await screen.findByText("7 хоногийн хоолны цэсийг удирдах")).toBeInTheDocument();
+    expect(await screen.findByRole("table", { name: "Долоо хоногийн цэс" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Хоолны цаг нэмэх" })).not.toBeInTheDocument();
+  });
+
+  it("shows the day's form once Жагсаалтаар is pressed", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    await openList(user);
+    expect(await screen.findByRole("button", { name: "Хоолны цаг нэмэх" })).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "Долоо хоногийн цэс" })).not.toBeInTheDocument();
+    expect(screen.getByText("Хоолны цэс засах")).toBeInTheDocument();
+  });
+
+  /*
+    ★ The pager is back — a kitchen plans *next* week, which is the whole point
+    of the Excel round trip, and a screen fixed to this one could not do it.
+  */
+  it("pages the week and asks the API for the new range", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    await openEdit(user);
+    await screen.findByRole("table", { name: "Долоо хоногийн цэс" });
+    const before = calls.filter((call) => call.url.includes("with-warnings")).length;
+
+    await user.click(screen.getByRole("button", { name: "Дараах долоо хоног" }));
+
+    await waitFor(() =>
+      expect(calls.filter((call) => call.url.includes("with-warnings")).length).toBeGreaterThan(
+        before,
+      ),
+    );
+  });
+
+  /*
+    ★ The allergy warnings sit above both views.
+
+    They used to live inside the open day's card, which the table does not draw
+    — switching to the week hid the one thing here that is about a child's
+    safety rather than the kitchen's convenience (RFP Module 2).
+  */
+  it("keeps the allergy warning visible in the table view", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["COOK"]) },
+      {
+        path: `/kindergartens/${KG_ID}/menu/with-warnings`,
+        body: [
+          {
+            id: "44444444-4444-4444-8444-444444444444",
+            date: todayIso(),
+            dishes: [{ name: "Самрын бялуу", allergenTags: ["самар"] }],
+            totalCalories: null,
+            status: "DRAFT",
+            warnings: [
+              {
+                childId: "55555555-5555-4555-8555-555555555555",
+                childName: "Батаа Золбоо",
+                dishName: "Самрын бялуу",
+                allergenTag: "самар",
+                allergen: "Самар",
+                severity: "SEVERE",
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    renderWithProviders(<MenuPage />);
+
+    // Still on the table view — no press needed to see it.
+    expect(await screen.findByText("Харшлын анхааруулга")).toBeInTheDocument();
+    expect(screen.getByText(/Батаа Золбоо — Самар/)).toBeInTheDocument();
+  });
+
+  /*
+    ★ The card shows what a cook fills in daily; the rest is one press away.
+
+    Client, 2026-09-11: "яг зураг дээрх шиг бай, гурван цэгээр засаж устгана"
+    and "зураг оруулах, устгах ил хялбар бай".
+  */
+  it("shows the photo, the name and what is in the dish, and hides the rest", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+    await openList(user);
+    await user.click((await screen.findAllByRole("button", { name: "Хоолны цаг нэмэх" }))[0]!);
+
+    expect(screen.getAllByLabelText("Хоолны нэр")[0]).toBeInTheDocument();
+    expect(screen.getAllByLabelText("Тайлбар (бүтэц, орц)")[0]).toBeInTheDocument();
+    // Behind the ⋮ until asked for.
+    expect(screen.queryByLabelText("Илчлэг (ккал)")).not.toBeInTheDocument();
+
+    await openDetail(user);
+    expect(screen.getAllByLabelText("Илчлэг (ккал)")[0]).toBeInTheDocument();
+  });
+
+  /** Both photo controls are on the card, not in a menu. */
+  it("puts adding and removing the photo in the open", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+    await openList(user);
+    await user.click((await screen.findAllByRole("button", { name: "Хоолны цаг нэмэх" }))[0]!);
+
+    expect(screen.getAllByText("Зураг нэмэх")[0]).toBeInTheDocument();
+    // Nothing to remove yet, so no Устгах beside it.
+    expect(screen.queryByRole("button", { name: "Зургийг устгах" })).not.toBeInTheDocument();
+  });
+
+  it("offers Дээр зөөх only where there is a row above", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+    await openList(user);
+
+    const add = (await screen.findAllByRole("button", { name: "Хоолны цаг нэмэх" }))[0]!;
+    await user.click(add);
+
+    // One row: it can go nowhere, so neither move entry is offered.
+    await user.click((await screen.findAllByRole("button", { name: /үйлдэл/ }))[0]!);
+    expect(screen.queryByRole("menuitem", { name: "Дээр зөөх" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Устгах" })).toBeInTheDocument();
+  });
+
+  /*
+    ★ Editing a day is its own screen — the client's second drawing.
+
+    Цэс засах → Жагсаалтаар → a day. It carries its own toolbar, its own day
+    pager and its own footer, rather than being a form under the week.
+  */
+  it("opens a day on its own screen, with a way back to the list", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+    await openList(user);
+
+    expect(await screen.findByText("Хоолны цэс засах")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Жагсаалтад буцах" })).toBeInTheDocument();
+    // The pager is in the page header now, where the client drew it.
+    expect(screen.getByRole("button", { name: "Дараах өдөр" })).toBeInTheDocument();
+    // The week's own controls are not on the day screen.
+    expect(screen.queryByRole("radio", { name: "Хүснэгтээр" })).not.toBeInTheDocument();
+  });
+
+  it("returns to the list without leaving the editing flow", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+    await openList(user);
+
+    await user.click(screen.getByRole("button", { name: "Жагсаалтад буцах" }));
+
+    expect(await screen.findByRole("radio", { name: "Жагсаалтаар" })).toBeInTheDocument();
+    expect(screen.queryByText("Хоолны цэс засах")).not.toBeInTheDocument();
+    // Still editing — not thrown back to the family's view.
+    expect(screen.queryByRole("button", { name: "Цэс засах" })).not.toBeInTheDocument();
+  });
+
+  /** Цуцлах leaves the day, the drawing's pair for Хадгалах. */
+  it("pairs Хадгалах with a Цуцлах that leaves the day", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+    await openList(user);
+
+    await user.click(await screen.findByRole("button", { name: "Цуцлах" }));
+    expect(screen.queryByText("Хоолны цэс засах")).not.toBeInTheDocument();
+  });
+
+  /*
+    ★ The day screen, against the client's drawing, top to bottom.
+
+    Title, long date, day pager, the three toolbar buttons, the cards, the
+    day's note, and a footer of Уръдчилан харах · Цуцлах · Хадгалах. Asserted
+    as one case because what the client reported was the *shape*, not any one
+    control: "яагаад ийм болохгүй байна вэ".
+  */
+  it("draws the day screen the way the client drew it", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+    await openList(user);
+
+    // Header
+    expect(await screen.findByText("Хоолны цэс засах")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Өмнөх өдөр" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Дараах өдөр" })).toBeInTheDocument();
+    // The week's pager is not also on screen.
+    expect(screen.queryByRole("button", { name: "Өмнөх долоо хоног" })).not.toBeInTheDocument();
+
+    // Toolbar
+    expect(screen.getByRole("button", { name: "Жагсаалтад буцах" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Excel оруулах" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Хоолны цаг нэмэх" })).toBeInTheDocument();
+
+    // The day's own note, and the footer
+    expect(screen.getByLabelText("Нэмэлт мэдээлэл")).toBeInTheDocument();
+    expect(screen.getByText("0/500")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Уръдчилан харах/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Цуцлах" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Хадгалах/ })).toBeInTheDocument();
+  });
+
+  /** The toolbar's + presses the editor's own add, through the ref it hands up. */
+  it("adds a sitting from the toolbar", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+    await openList(user);
+
+    await user.click(await screen.findByRole("button", { name: "Хоолны цаг нэмэх" }));
+    expect(screen.getAllByLabelText("Хоолны нэр").length).toBeGreaterThan(0);
+  });
+
+  it("sends the day's note with the save", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubWeek();
+    renderWithProviders(<MenuPage />);
+    await openList(user);
+
+    await user.type(await screen.findByLabelText("Нэмэлт мэдээлэл"), "Цэс өөрчлөгдсөн");
+    await user.click(screen.getByRole("button", { name: /Хадгалах/ }));
+
+    await waitFor(() => expect(calls.some((call) => call.method === "PUT")).toBe(true));
+    const put = calls.find((call) => call.method === "PUT")!;
+    expect((put.body as Record<string, unknown>).note).toBe("Цэс өөрчлөгдсөн");
+  });
+
+  /** Уръдчилан харах leaves for the family's own view — the only honest preview. */
+  it("previews by showing the family's screen", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+    await openList(user);
+
+    await user.click(await screen.findByRole("button", { name: /Уръдчилан харах/ }));
+
+    expect(await screen.findByRole("tab", { name: "Өнөөдөр" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Хоолны цэсний үйлдэл" })).toBeInTheDocument();
+  });
+
+  /*
+    ★ Editing a sitting without leaving the day — the client's 2026-09-11
+    report: on the teacher's Өнөөдөр card they expect two small photo buttons
+    on the picture and "засах, хуулах, устгах" behind a ⋮ beside the time.
+
+    ★★ A parent's screen is unchanged — `family-menu.test.tsx` asserts the same
+    card carries none of these when no `actions` are passed.
+  */
+  it("puts the sitting's controls on the card a teacher reads", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
+    expect(within(panel).getByLabelText("Зураг нэмэх")).toBeInTheDocument();
+
+    await user.click(within(panel).getByRole("button", { name: /Өглөөний цай — үйлдэл/ }));
+    expect(screen.getByRole("menuitem", { name: "Засах" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Хуулах/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Устгах" })).toBeInTheDocument();
+  });
+
+  /*
+    ★ Засах edits in place — 2026-09-11: "засах гэдэг дээр дарахаар өөр цонх руу
+    үсрэхгүй байх, бичвэрийг засаж болох болго."
+  */
+  it("Засах edits the dishes on the card, without leaving it", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
+    await user.click(within(panel).getByRole("button", { name: /Өглөөний цай — үйлдэл/ }));
+    await user.click(screen.getByRole("menuitem", { name: "Засах" }));
+
+    // Still on the same screen.
+    expect(screen.queryByText("Хоолны цэс засах")).not.toBeInTheDocument();
+
+    const box = await screen.findByLabelText("Өглөөний цай — хоолны нэрс");
+    expect(box).toHaveValue("Тараг");
+
+    await user.clear(box);
+    await user.type(box, "Тараг{Enter}Талх");
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
+
+    await waitFor(() => expect(calls.some((call) => call.method === "PUT")).toBe(true));
+    const put = calls.find((call) => call.method === "PUT")!;
+    expect((put.body as { dishes: { name: string }[] }).dishes.map((d) => d.name)).toEqual([
+      "Тараг",
+      "Талх",
+    ]);
+  });
+
+  it("Болих leaves the dishes as they were", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
+    await user.click(within(panel).getByRole("button", { name: /Өглөөний цай — үйлдэл/ }));
+    await user.click(screen.getByRole("menuitem", { name: "Засах" }));
+
+    await user.type(await screen.findByLabelText("Өглөөний цай — хоолны нэрс"), " өөрчлөв");
+    await user.click(screen.getByRole("button", { name: "Болих" }));
+
+    expect(screen.queryByLabelText("Өглөөний цай — хоолны нэрс")).not.toBeInTheDocument();
+    expect(calls.some((call) => call.method === "PUT")).toBe(false);
+  });
+
+  /** Every one of these writes the whole day back through the one PUT. */
+  it("Устгах saves the day without that sitting", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
+    await user.click(within(panel).getByRole("button", { name: /Өглөөний цай — үйлдэл/ }));
+    await user.click(screen.getByRole("menuitem", { name: "Устгах" }));
+
+    await waitFor(() => expect(calls.some((call) => call.method === "PUT")).toBe(true));
+    const put = calls.find((call) => call.method === "PUT")!;
+    expect((put.body as { dishes: unknown[] }).dishes).toEqual([]);
+  });
+
+  it("Хуулах saves the sitting twice over", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
+    await user.click(within(panel).getByRole("button", { name: /Өглөөний цай — үйлдэл/ }));
+    await user.click(screen.getByRole("menuitem", { name: /Хуулах/ }));
+
+    await waitFor(() => expect(calls.some((call) => call.method === "PUT")).toBe(true));
+    const put = calls.find((call) => call.method === "PUT")!;
+    expect((put.body as { dishes: { name: string }[] }).dishes.map((d) => d.name)).toEqual([
+      "Тараг",
+      "Тараг",
+    ]);
+  });
+
+  /*
+    ★ The week edits in place too — 2026-09-11: "7 хоногийн дээд талд Excel-ээр
+    оруулах, засах гэдэг тэмдэг оруул. Засах руу орохоор өөр хуудас руу үсэрч
+    болохгүй."
+  */
+  it("offers Excel оруулах and Засах above the week", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    await user.click(await screen.findByRole("tab", { name: "7 хоног" }));
+    const panel = await screen.findByRole("tabpanel", { name: "7 хоног" });
+
+    expect(within(panel).getByRole("button", { name: "Excel оруулах" })).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Засах" })).toBeInTheDocument();
+  });
+
+  it("turns the week's cells into text boxes, on the same screen", async () => {
+    const user = userEvent.setup();
+    stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    await user.click(await screen.findByRole("tab", { name: "7 хоног" }));
+    const panel = await screen.findByRole("tabpanel", { name: "7 хоног" });
+
+    // Reading: no boxes.
+    expect(within(panel).queryByRole("textbox")).not.toBeInTheDocument();
+
+    await user.click(within(panel).getByRole("button", { name: "Засах" }));
+
+    expect(within(panel).getAllByRole("textbox").length).toBeGreaterThan(0);
+    // Still on the week — nothing navigated.
+    expect(screen.queryByText("Хоолны цэс засах")).not.toBeInTheDocument();
+    expect(await screen.findByRole("table", { name: "Долоо хоногийн цэс" })).toBeInTheDocument();
+  });
+
+  /** A cell writes back when it is left, and only when it changed. */
+  it("saves a cell on blur, and not when nothing changed", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    await user.click(await screen.findByRole("tab", { name: "7 хоног" }));
+    const panel = await screen.findByRole("tabpanel", { name: "7 хоног" });
+    await user.click(within(panel).getByRole("button", { name: "Засах" }));
+
+    const cells = within(panel).getAllByRole("textbox");
+    const filled = cells.find((cell) => (cell as HTMLInputElement).value === "Тараг")!;
+
+    // Touched and left unchanged: nothing is written.
+    await user.click(filled);
+    await user.tab();
+    expect(calls.some((call) => call.method === "PUT")).toBe(false);
+
+    await user.clear(filled);
+    await user.type(filled, "Тараг, Талх");
+    await user.tab();
+
+    await waitFor(() => expect(calls.some((call) => call.method === "PUT")).toBe(true));
+    const put = calls.find((call) => call.method === "PUT")!;
+    expect((put.body as { dishes: { name: string }[] }).dishes.map((d) => d.name)).toEqual([
+      "Тараг",
+      "Талх",
+    ]);
   });
 });

@@ -37,6 +37,14 @@ import { EsisService } from "../integrations/esis/esis.service";
 import { EsisError } from "../integrations/esis/esis.client";
 
 const DEMO_ESIS_INSTITUTION_ID = 40305;
+
+/**
+ * The widest span `groupRangeSheet` will answer — §3.4's "no endpoint returns
+ * an unbounded set", expressed in the unit this endpoint is asked in. A week
+ * is what the register draws; a month is what somebody will eventually ask
+ * for; a term is a report, and that is `attendanceRegister`.
+ */
+const MAX_REGISTER_DAYS = 31;
 const DEMO_ESIS_GROUPS: Record<string, number> = {
   "Наран бүлэг": 10001,
   "Дэлбээ бүлэг": 10002,
@@ -558,6 +566,100 @@ export class AttendanceService {
       enrollmentId: enrollment.id,
       record: byEnrollment.get(enrollment.id) ?? null,
     }));
+  }
+
+  /**
+   * The group's register across a span of days — the teacher's week grid.
+   *
+   * ★ Capped, because an unbounded range is an unbounded result (§3.4). The
+   * register draws a week; 31 days lets a month be asked for without letting
+   * "since September" through.
+   *
+   * The day list is built here rather than in the browser so the columns and
+   * the records are answered by one source: a client computing its own
+   * calendar can disagree with the map it is indexing into, and the cell that
+   * disagrees renders as empty rather than as an error.
+   */
+  async groupRangeSheet(actor: Actor, groupId: string, fromIso: string, toIso: string) {
+    await this.assertCanReadGroup(actor, groupId);
+
+    const from = new Date(`${fromIso}T00:00:00.000Z`);
+    const to = new Date(`${toIso}T00:00:00.000Z`);
+    if (to < from) throw new BadRequestException("Эхлэх огноо нь дуусах огнооноос хойш байна");
+
+    const days: string[] = [];
+    for (let day = new Date(from); day <= to; day.setUTCDate(day.getUTCDate() + 1)) {
+      days.push(day.toISOString().slice(0, 10));
+      if (days.length > MAX_REGISTER_DAYS) {
+        throw new BadRequestException(`Хамгийн ихдээ ${MAX_REGISTER_DAYS} хоногийн ирц харна`);
+      }
+    }
+
+    const { enrollments, records } = await this.repo.groupRangeSheet(groupId, from, to);
+
+    const byEnrollment = new Map<string, Record<string, (typeof records)[number]>>();
+    for (const record of records) {
+      const forChild = byEnrollment.get(record.enrollmentId) ?? {};
+      forChild[record.date.toISOString().slice(0, 10)] = record;
+      byEnrollment.set(record.enrollmentId, forChild);
+    }
+
+    return {
+      days,
+      rows: enrollments.map((enrollment) => ({
+        child: {
+          id: enrollment.child.id,
+          lastName: enrollment.child.lastName,
+          firstName: enrollment.child.firstName,
+        },
+        enrollmentId: enrollment.id,
+        records: byEnrollment.get(enrollment.id) ?? {},
+      })),
+    };
+  }
+
+  /**
+   * The group's own span as a spreadsheet — the journal's "татах".
+   *
+   * ★ A teacher-scoped sibling of `exportRegister`, not a widening of it.
+   *
+   * That one is the whole kindergarten and is `@Roles("ADMIN", "ACCOUNTANT")`
+   * behind `assertCanReadFinance`: an accountant filing a claim reads every
+   * group. A teacher reads one, and `assertCanReadGroup` is the check that
+   * already says which. Sharing `buildJournalWorkbook` keeps the two files
+   * identical in shape — the difference is whose rows go into it.
+   *
+   * `groupRangeSheet` is reused rather than re-queried, so the spreadsheet and
+   * the grid on screen cannot disagree about a day.
+   */
+  async exportGroupRange(actor: Actor, groupId: string, fromIso: string, toIso: string) {
+    const sheet = await this.groupRangeSheet(actor, groupId, fromIso, toIso);
+    const group = await this.repo.findGroup(groupId, this.tenants.memberKindergartenIds(actor));
+    if (!group) throw new NotFoundException();
+
+    const totals: Record<string, number> = {};
+    const rows = sheet.rows.map((row) => {
+      const counts: Record<string, number> = {};
+      const days = sheet.days.map((day) => {
+        const record = row.records[day];
+        if (!record) return null;
+        counts[record.status] = (counts[record.status] ?? 0) + 1;
+        totals[record.status] = (totals[record.status] ?? 0) + 1;
+        return { status: record.status, note: record.note ?? null };
+      });
+      return { child: row.child, group: { name: group.name }, days, counts };
+    });
+
+    const buffer = await buildJournalWorkbook({
+      kindergartenName: group.name,
+      from: fromIso,
+      to: toIso,
+      days: sheet.days,
+      rows,
+      totals,
+    });
+
+    return { buffer, filename: `irts-${group.name}-${fromIso}-${toIso}.xlsx` };
   }
 
   /** Builds the exact ESIS attendance input for one group-day. */

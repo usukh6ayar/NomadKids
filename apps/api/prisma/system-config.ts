@@ -8,13 +8,32 @@
  * their own overrides but may not edit these — docs/DATABASE.md §7.
  */
 
-/** The five development domains of the Mongolian preschool curriculum. */
+import { CURRICULUM } from "./curriculum";
+
+/**
+ * The seven development strands of the Mongolian preschool curriculum.
+ *
+ * ★ Seven since 2026-09-11, and five of them are renamed rather than replaced.
+ *
+ * The client's own СҮД spreadsheet names the strands, and `group-coverage.tsx`
+ * had been aliasing them onto these five for months — which is the tell that
+ * the five were the wrong list wearing different words. The codes are
+ * unchanged, so every `Assessment` and `ObservationDomain` row already filed
+ * keeps pointing at the strand it was filed under; only the label a teacher
+ * reads has moved onto the curriculum's own wording.
+ *
+ * `environment` and `music` are genuinely new: the five had nowhere to put
+ * "Байгаль, нийгмийн орчин" or "Хөгжим", which is why the alias table could
+ * only ever cover five of the seven.
+ */
 export const SYSTEM_DOMAINS = [
-  { code: "physical", name: "Бие бялдрын хөгжил", color: "#f97316", order: 1 },
-  { code: "social", name: "Нийгэмшихүй, сэтгэл хөдлөл", color: "#ec4899", order: 2 },
-  { code: "language", name: "Хэл яриа, харилцаа", color: "#3b82f6", order: 3 },
-  { code: "cognitive", name: "Танин мэдэхүй", color: "#8b5cf6", order: 4 },
-  { code: "creative", name: "Урлаг, гоо зүйн хүмүүжил", color: "#10b981", order: 5 },
+  { code: "social", name: "Нийгэм-сэтгэл хөдлөл", color: "#ec4899", order: 1 },
+  { code: "physical", name: "Хөдөлгөөн, эрүүл мэнд", color: "#f97316", order: 2 },
+  { code: "language", name: "Хэл яриа", color: "#3b82f6", order: 3 },
+  { code: "environment", name: "Байгаль, нийгмийн орчин", color: "#14b8a6", order: 4 },
+  { code: "cognitive", name: "Математик", color: "#8b5cf6", order: 5 },
+  { code: "creative", name: "Зураг, урлал", color: "#10b981", order: 6 },
+  { code: "music", name: "Хөгжим", color: "#f43f5e", order: 7 },
 ] as const;
 
 /** Four assessment levels, values 1–4. RFP §6.2. */
@@ -140,6 +159,8 @@ export async function applySystemConfig(db: {
   assessmentLevel: SystemTable;
   observationType: SystemTable;
   specialNeedsCategory: SystemTable;
+  curriculumIndicator: Parameters<typeof syncCurriculum>[0]["curriculumIndicator"];
+  curriculumIndicatorLevel: Parameters<typeof syncCurriculum>[0]["curriculumIndicatorLevel"];
 }): Promise<void> {
   await syncSystemRows(db.developmentDomain, SYSTEM_DOMAINS, "code", (d) => ({
     code: d.code,
@@ -196,6 +217,118 @@ export async function applySystemConfig(db: {
     where: { kindergartenId: null, deletedAt: null, code: { notIn: [...systemCodes] } },
     data: { deletedAt: new Date() },
   });
+
+  await syncCurriculum(db);
+}
+
+/**
+ * The СҮД indicators — seventy-one of them, at up to four levels each.
+ *
+ * ★ Idempotent by code, like every other system list here.
+ *
+ * The partial unique index on `(code) WHERE "kindergartenId" IS NULL` is what
+ * makes that safe rather than hopeful: a second seed of the same indicator is
+ * a database error, not a duplicate row nobody notices.
+ *
+ * ★★ Levels are replaced, not merged. An indicator whose level III wording was
+ * corrected in the source must not keep both versions, and the four rows are
+ * small enough that deleting and rewriting them is simpler than diffing.
+ *
+ * ★★★ Nothing is retired here. Unlike an observation type, an indicator is
+ * referenced by `Observation.indicatorId` — a note filed as evidence for
+ * НСХ1а stays evidence for НСХ1а even if the ministry renumbers, and the
+ * sweep that would tidy the list would quietly orphan years of them.
+ */
+async function syncCurriculum(db: {
+  developmentDomain: SystemTable;
+  curriculumIndicator: {
+    count: (args: unknown) => Promise<number>;
+    findFirst: (args: unknown) => Promise<{ id: string } | null>;
+    updateMany: (args: unknown) => Promise<unknown>;
+    create: (args: unknown) => Promise<{ id: string }>;
+    update: (args: unknown) => Promise<{ id: string }>;
+  };
+  curriculumIndicatorLevel: {
+    deleteMany: (args: unknown) => Promise<unknown>;
+    createMany: (args: unknown) => Promise<unknown>;
+  };
+}): Promise<void> {
+  /*
+    ★ One count before ~284 round trips.
+
+    `resetData` runs before every test case, and re-seeding seventy-one
+    indicators and their two hundred and sixty-five level rows each time would
+    put a `findFirst`, an `update` and two writes per indicator into the
+    critical path of every one of two thousand cases. The curriculum is a
+    national standard: if the right number of system rows is already there,
+    there is nothing to do.
+
+    A count rather than a checksum, deliberately — a wrong *text* is a seed
+    change, which arrives with a fresh database anyway. What this guards
+    against is a wrong *number*, which is the only way the table goes stale
+    within a run.
+  */
+  const expected = CURRICULUM.reduce((sum, strand) => sum + strand.indicators.length, 0);
+  const present = await db.curriculumIndicator.count({ where: { kindergartenId: null } });
+
+  /*
+    ★★ The strand a kept indicator points at is re-resolved every time, even
+    when nothing else needs doing.
+
+    `resetData` empties `development_domains` with FK triggers off and seeds
+    them again — with **new ids**. The indicators are held back from that
+    delete on purpose (see `buildDeleteStatement`), so without this they would
+    keep pointing at strands that no longer exist and the picker would return
+    an empty list. Seven statements, one per strand, against the ~284 the full
+    seed costs.
+  */
+  for (const strand of CURRICULUM) {
+    const domain = (await db.developmentDomain.findFirst({
+      where: { kindergartenId: null, code: strand.domainCode },
+    })) as { id: string } | null;
+    if (!domain) continue;
+
+    await db.curriculumIndicator.updateMany({
+      where: { kindergartenId: null, code: { in: strand.indicators.map((i) => i.code) } },
+      data: { domainId: domain.id },
+    });
+  }
+
+  if (present === expected) return;
+
+  for (const strand of CURRICULUM) {
+    const domain = (await db.developmentDomain.findFirst({
+      where: { kindergartenId: null, code: strand.domainCode },
+    })) as { id: string } | null;
+
+    // A strand whose domain is missing is a seed run against a database that
+    // predates it — skipped rather than throwing, so the rest still lands.
+    if (!domain) continue;
+
+    for (const [index, indicator] of strand.indicators.entries()) {
+      const existing = await db.curriculumIndicator.findFirst({
+        where: { kindergartenId: null, code: indicator.code },
+      });
+
+      const row = existing
+        ? await db.curriculumIndicator.update({
+            where: { id: existing.id },
+            data: { domainId: domain.id, order: index, isActive: true, deletedAt: null },
+          })
+        : await db.curriculumIndicator.create({
+            data: { code: indicator.code, domainId: domain.id, order: index },
+          });
+
+      await db.curriculumIndicatorLevel.deleteMany({ where: { indicatorId: row.id } });
+      await db.curriculumIndicatorLevel.createMany({
+        data: Object.entries(indicator.levels).map(([level, text]) => ({
+          indicatorId: row.id,
+          level: Number(level),
+          text,
+        })),
+      });
+    }
+  }
 }
 
 /**

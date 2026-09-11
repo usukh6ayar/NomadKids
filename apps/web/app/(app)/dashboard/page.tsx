@@ -8,7 +8,7 @@ import { get } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
-import { formatDate, fullName } from "@/lib/format";
+import { formatLongDate, formatWeekday } from "@/lib/format";
 import { useSession } from "@/lib/auth/session";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
@@ -168,25 +168,44 @@ function TeacherDashboard() {
    * where it submits to `/children?q=...`. The action menu's destinations are
    * the four illustrated quick tiles immediately under the greeting.
    */
-  const teacherName = fullName(session?.user);
-  const greetingName = teacherName === "—" ? "багш" : teacherName;
+  /*
+   * Keep the dashboard identity quiet and compact. Teacher records in this
+   * screen carry the called name in `lastName` and the patronymic in
+   * `firstName`, so "Дэлгэрмаа Сувдаа" becomes "С.Дэлгэрмаа".
+   */
+  const calledName = session?.user?.lastName?.trim();
+  const patronymic = session?.user?.firstName?.trim();
+  const teacherName =
+    calledName && patronymic
+      ? `${patronymic[0]!.toUpperCase()}.${calledName}`
+      : calledName || patronymic || "Багш";
   const today = new Date();
-  const weekday = new Intl.DateTimeFormat("mn-MN", { weekday: "long" }).format(today);
+  /*
+   * ★ Not `Intl` — 2026-09-10. `mn-MN` is not stable across runtimes: a Node
+   * build without full ICU answers in English, which is how this greeted a
+   * teacher with "Thursday". `formatWeekday` writes the seven out.
+   */
+  const weekday = formatWeekday(today);
   const header = (
     <div className="teacher-dashboard-header">
       <PageHeader
-        title={`Сайн байна уу, ${greetingName}!`}
+        title={teacherName}
         meta={
           <>
             {group ? (
-              <span className="inline-flex min-h-7 items-center gap-1.5 rounded-pill bg-surface px-2.5 text-caption font-semibold text-ink shadow-sm">
-                <UsersRound size={14} aria-hidden="true" className="text-primary" />
+              /*
+                ★ A step quieter than the greeting — the client's reading.
+                Which group and which day are context for the name above them,
+                not two more headings.
+              */
+              <span className="inline-flex min-h-6 items-center gap-1 rounded-pill bg-surface px-2 text-compact font-medium text-muted shadow-sm">
+                <UsersRound size={12} aria-hidden="true" className="text-primary" />
                 {group.name}
               </span>
             ) : null}
-            <span className="inline-flex min-h-7 items-center gap-1.5 rounded-pill bg-surface px-2.5 text-caption font-medium text-muted shadow-sm">
-              <CalendarDays size={14} aria-hidden="true" className="text-mint-ink" />
-              {formatDate(today)} · {weekday}
+            <span className="inline-flex min-h-6 items-center gap-1 rounded-pill bg-surface px-2 text-compact font-medium text-muted shadow-sm">
+              <CalendarDays size={12} aria-hidden="true" className="text-mint-ink" />
+              {formatLongDate(today)} · {weekday}
             </span>
           </>
         }
@@ -216,8 +235,9 @@ function TeacherDashboard() {
           §4.1 asks loading and error to share the header so nothing shifts;
           the body has to hold up its half of that.
         */}
-        <div className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, index) => (
+        {/* Six and three-across, matching the real tile band below. */}
+        <div className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, index) => (
             <Skeleton key={index} className="h-[112px] w-full rounded-card" />
           ))}
         </div>
@@ -272,13 +292,47 @@ function TeacherDashboard() {
     <div className="page-band">
       {header}
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      {/*
+        ★ Eight tiles — four on 2026-09-10, then Тайлан and Баримт бичгийн сан
+        the same day, then Хүүхдүүд and Хоол ба цэс, each at the client's
+        request.
+
+        None of these destinations is new. Every one of them is already a row
+        in `staffSections`, and this band takes its label, its href and its
+        drawing from that row rather than inventing any — two names for one
+        door is how a teacher ends up believing there are two screens.
+
+        The column count follows the tile count so neither row is a remainder:
+        four gave two rows of two, six went to `xl:grid-cols-3`, and eight goes
+        back to four. The phone's `grid-cols-2` divides all three evenly, which
+        is why it never had to change.
+
+        The order is the reading, not the history — the first row is what a
+        teacher opens before lunch (Ирц · Хүүхдүүд · Хоол ба цэс · Мэдээ), the
+        second what they open on a schedule.
+      */}
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4" data-testid="teacher-quick-actions">
         <QuickAction
           href={group ? `/groups/${group.id}/attendance` : "/attendance"}
           title="Ирц"
           description="Өнөөдрийн ирц бүртгэх"
           art="attendance"
         />
+        <QuickAction href="/children" title="Хүүхдүүд" description="Бүлгийн нэрс" art="child" />
+        {/*
+          ★ Group-scoped, like Ирц and Явцын үнэлгээ beside it.
+
+          `/meals` resolves the first group and forwards, so the bare route is
+          a working fallback rather than a dead end — but a teacher who has a
+          group should not spend a redirect on a question their account already
+          answers.
+
+          ★ It points at the menu now, not the register — 2026-09-11, with the
+          nav row it mirrors (`layout.tsx`). What a teacher opens before lunch
+          is what is being served; who ate it is marked afterwards, from
+          "Хоолны бүртгэл" in the menu below.
+        */}
+        <QuickAction href="/menu" title="Хоолны цэс" description="Өдрийн хоол, харшил" art="food" />
         <QuickAction
           href="/notifications/new"
           title="Мэдээ"
@@ -296,6 +350,18 @@ function TeacherDashboard() {
           title="Явцын үнэлгээ"
           description="Хүүхдийн үнэлгээ оруулах"
           art="progress"
+        />
+        <QuickAction
+          href="/reports"
+          title="Тайлан"
+          description="Бүлгээ сараар харах"
+          art="report"
+        />
+        <QuickAction
+          href="/documents"
+          title="Баримт бичгийн сан"
+          description="Хөтөлбөр, арга зүй, журам"
+          art="documents"
         />
       </div>
 

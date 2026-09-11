@@ -117,6 +117,37 @@ export class AuthzRepository {
    * Returning a filter instead of ids keeps list endpoints to one query and
    * avoids loading every child id into memory to build an `IN (...)`.
    */
+  /**
+   * How many of these children are actively enrolled in one of these groups.
+   *
+   * ★ One query for the whole list, not one per child.
+   *
+   * A notice may name up to fifty children, and the question "are all of these
+   * in a group I teach" asked child by child is fifty round trips inside a
+   * request somebody is waiting on (§3.4). The caller compares this against
+   * `new Set(childIds).size` — anything short means at least one child is
+   * outside the teacher's groups, and it does not need to know which.
+   *
+   * ★★ `status: "ACTIVE"`, like every other "which group is this child in
+   * today" read. `child-access.ts` deliberately reads enrolment *history* for
+   * authorization; this is not that question — a teacher does not gain the
+   * right to write to a family because the child was in their group last year.
+   */
+  async countChildrenEnrolledInGroups(childIds: string[], groupIds: string[]): Promise<number> {
+    if (childIds.length === 0 || groupIds.length === 0) return 0;
+
+    const rows = await this.prisma.child.findMany({
+      where: {
+        id: { in: childIds },
+        deletedAt: null,
+        enrollments: { some: { groupId: { in: groupIds }, status: "ACTIVE", deletedAt: null } },
+      },
+      select: { id: true },
+    });
+
+    return rows.length;
+  }
+
   async visibleChildrenWhere(actor: Actor): Promise<VisibleChildrenFilter> {
     const teachingGroupIds = await this.loadActiveTeachingGroupIds(actor);
     const adminKindergartenIds = actor.memberships

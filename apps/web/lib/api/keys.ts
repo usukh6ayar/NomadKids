@@ -90,6 +90,13 @@ export const qk = {
   groupAttendanceEsis: (groupId: string, date: string) =>
     ["group", groupId, "attendance", date, "esis-preview"] as const,
   /**
+   * The register's week grid. Under the same `["group", id, "attendance"]`
+   * prefix as the day sheet, so the save that invalidates one invalidates the
+   * grid it is drawn in.
+   */
+  groupAttendanceRange: (groupId: string, from: string, to: string) =>
+    ["group", groupId, "attendance", "range", from, to] as const,
+  /**
    * One group's month, for the register's own panel.
    *
    * ★ Shares the `["group", id, "attendance"]` prefix with the day sheet on
@@ -125,6 +132,15 @@ export const qk = {
     ["kindergarten", kindergartenId, "incidents", filters] as const,
 
   childSurveys: (childId: string) => ["child", childId, "surveys"] as const,
+  /**
+   * One poll's running count for one child.
+   *
+   * ★ Nested under `childSurveys` so answering a poll can invalidate both with
+   * one prefix — the tally is what the screen redraws and the list carries the
+   * `respondedByMe` that stops the board offering the poll again.
+   */
+  childSurveyTally: (childId: string, surveyId: string) =>
+    ["child", childId, "surveys", surveyId, "tally"] as const,
   kindergartenSurveys: (kindergartenId: string) =>
     ["kindergarten", kindergartenId, "surveys"] as const,
   survey: (surveyId: string) => ["survey", surveyId] as const,
@@ -141,6 +157,23 @@ export const qk = {
     ["child", childId, "term-report", termId] as const,
   groupAssessment: (groupId: string, termId: string, domainId: string) =>
     ["group", groupId, "assessment", termId, domainId] as const,
+  /**
+   * One group's assessment coverage for one term — the Явцын үнэлгээ overview.
+   *
+   * Keyed beside `groupAssessment` so saving a column can invalidate both with
+   * one prefix: the overview counts exactly what the column writes.
+   */
+  /**
+   * One strand's СҮД indicators.
+   *
+   * Keyed by strand because that is how they are fetched — the endpoint
+   * requires a `domainId`, so the whole curriculum is never one request away.
+   */
+  curriculumIndicators: (kindergartenId: string, domainId: string) =>
+    ["kindergarten", kindergartenId, "curriculum-indicators", domainId] as const,
+
+  groupCoverage: (groupId: string, termId: string, month = "") =>
+    ["group", groupId, "assessment-coverage", termId, month] as const,
 
   /** The coverage dashboard. Keyed by window, so a new school year is a new entry. */
   groupObservationStats: (groupId: string, from: string, to: string) =>
@@ -306,6 +339,14 @@ export const qk = {
     filters && Object.keys(filters).length > 0
       ? (["child", childId, "media", filters] as const)
       : (["child", childId, "media"] as const),
+  /**
+   * A family's meal notes — prefixed under the child, so invalidating without
+   * filters clears every day's list at once.
+   */
+  childMealNotes: (childId: string, filters?: Record<string, unknown>) =>
+    filters && Object.keys(filters).length > 0
+      ? (["child", childId, "meal-notes", filters] as const)
+      : (["child", childId, "meal-notes"] as const),
   childAgeAlbum: (childId: string, age: number) =>
     ["child", childId, "media", "age-album", age] as const,
   childReports: (childId: string) => ["child", childId, "reports"] as const,

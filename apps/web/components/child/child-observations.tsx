@@ -9,6 +9,7 @@ import { MAX_PAGE_SIZE, observationSchema, paginated, termSchema } from "@kinder
 import { z } from "zod";
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
+import { termNumberForDay } from "@/lib/terms";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { Badge } from "@/components/ui/badge";
@@ -539,7 +540,7 @@ function MomentCard({
   );
 }
 
-function ObservationDetailDialog({
+export function ObservationDetailDialog({
   observation,
   onClose,
 }: {
@@ -741,22 +742,6 @@ function todayIso(): string {
   const now = new Date();
   const offset = now.getTimezoneOffset();
   return new Date(now.getTime() - offset * 60_000).toISOString().slice(0, 10);
-}
-
-function termNumberForDay(day: string, terms: z.infer<typeof termsSchema>): number {
-  const configured = terms.find(
-    (candidate) =>
-      candidate.startsOn &&
-      candidate.endsOn &&
-      day >= candidate.startsOn &&
-      day <= candidate.endsOn,
-  );
-  if (configured && configured.number >= 1 && configured.number <= 3) return configured.number;
-
-  const month = Number(day.slice(5, 7));
-  if (month >= 9) return 1;
-  if (month <= 3) return 2;
-  return 3;
 }
 
 function firstAvailableDateForTerm(

@@ -41,6 +41,7 @@ export function SingleImageUpload({
   shape = "square",
   invalidateKeys = [],
   hidePreview = false,
+  compactIcon = false,
   onUploaded,
 }: {
   /** The API path that accepts the file, e.g. `/kindergartens/:id/logo`. */
@@ -63,6 +64,15 @@ export function SingleImageUpload({
    * as a broken one.
    */
   hidePreview?: boolean;
+  /**
+   * Draw the control as a single 28px icon button, with the label as its
+   * accessible name only.
+   *
+   * ★ For a control that sits *on* the image rather than beside it — the menu
+   * card's two small buttons, 2026-09-11. A worded button at that size covers
+   * the photograph it is about.
+   */
+  compactIcon?: boolean;
   /** A portrait is round; a logo and a class photo are not. */
   shape?: "square" | "round";
   /** Query keys to refetch once the server has the new file. */
@@ -160,17 +170,30 @@ export function SingleImageUpload({
             className="sr-only"
             onChange={(e) => handleFile(e.target.files)}
           />
-          <Button
-            asChild
-            variant="secondary"
-            size={hidePreview ? "sm" : "md"}
-            disabled={upload.isPending}
-          >
-            <label htmlFor={inputId} className="cursor-pointer">
-              <ImagePlus size={18} />
-              {upload.isPending ? "Илгээж байна…" : shownId ? "Солих" : label}
+          {compactIcon ? (
+            <label
+              htmlFor={inputId}
+              aria-label={label}
+              className={cn(
+                "grid size-8 cursor-pointer touch-manipulation place-items-center rounded-control bg-ink/70 text-white transition-colors hover:bg-primary",
+                upload.isPending && "pointer-events-none opacity-60",
+              )}
+            >
+              <ImagePlus size={15} aria-hidden="true" />
             </label>
-          </Button>
+          ) : (
+            <Button
+              asChild
+              variant="secondary"
+              size={hidePreview ? "sm" : "md"}
+              disabled={upload.isPending}
+            >
+              <label htmlFor={inputId} className="cursor-pointer">
+                <ImagePlus size={18} />
+                {upload.isPending ? "Илгээж байна…" : shownId ? "Солих" : label}
+              </label>
+            </Button>
+          )}
           {/*
             ★ No hint line without the preview.
 

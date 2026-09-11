@@ -20,15 +20,24 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { useSwitchableGroups } from "@/components/shell/group-switcher";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
+import { RowMenu } from "@/components/ui/menu";
+import { ChildPickerDialog } from "@/components/child/child-picker-dialog";
 import { useToast } from "@/components/ui/toast";
 import Link from "next/link";
-import { Eye, Images, MessageCircle } from "lucide-react";
-import { observationTypeSchema } from "@kinder/contracts";
+import { Eye, Images, MessageCircle, Printer, Users } from "lucide-react";
+import {
+  MAX_PAGE_SIZE,
+  childSummarySchema,
+  groupObservationStatsSchema,
+  observationTypeSchema,
+  paginated,
+} from "@kinder/contracts";
 
 /** The kindergarten's configured record kinds — one shortcut button each. */
 const observationTypesSchema = z.array(observationTypeSchema);
+/** The group's roster — one request, independent of term and domain. */
+const childrenPageSchema = paginated(childSummarySchema);
 import { Card, SectionHeader } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { GroupCoverage } from "@/components/assessment/group-coverage";
 import { RegisterProgress } from "@/components/register/register-progress";
 import { RegisterSaveBar } from "@/components/register/save-bar";
@@ -83,6 +92,20 @@ function GroupAssessment() {
   // The selection lives in the URL, so a teacher can bookmark "this term, this
   // domain" and a reload does not throw them back to the first option.
   const termId = searchParams.get("termId") ?? "";
+  /**
+   * Which of the two readings is open.
+   *
+   * ★ Component state, not the URL, unlike `termId` and `domainId`.
+   *
+   * Those two are what makes a register linkable — "this term, this domain" is
+   * worth bookmarking and worth surviving a reload. Which tab you were looking
+   * at is not: it is a glance, and putting it in the address bar would add a
+   * history entry every time somebody looked at the summary.
+   */
+  // The page is now one documentation overview. The old Үнэлэх tab is kept
+  // out of the interface; `tab` remains fixed only while the legacy register
+  // code below is retired without changing its data contract.
+  const [tab] = useState<"overview" | "assess">("overview");
   const domainId = searchParams.get("domainId") ?? "";
 
   function setSelection(next: { termId?: string; domainId?: string }) {
@@ -174,7 +197,7 @@ function GroupAssessment() {
         `/groups/${groupId}/assessments?termId=${termId}&domainId=${domainId}`,
         groupColumnSchema,
       ),
-    enabled: Boolean(termId && domainId),
+    enabled: Boolean(termId && domainId && tab === "assess"),
   });
 
   /** Pending level choices, keyed by child. Empty until something is tapped. */
@@ -327,9 +350,35 @@ function GroupAssessment() {
         the only page heading that did not. The same mistake `dashboard/page.tsx`
         records fixing in its own three branches.
       */}
+      {/*
+        ★ The overflow menu carries what the screen does *to* the whole group —
+        2026-09-10, the ⋮ on the client's design.
+
+        Both entries were reachable before and both are one press from here
+        now: the term report is the document this register feeds, and the
+        printable sheet is what a director asks for. Neither belongs among the
+        controls that change what is on screen, which is what a header menu is
+        for.
+      */}
       <PageHeader
         title="Явцын үнэлгээ"
-        lede="Бүлгийн бүх хүүхдийг нэг чиглэлээр дараалан үнэлнэ."
+        actions={
+          <RowMenu
+            ariaLabel="Явцын үнэлгээний үйлдэл"
+            items={[
+              {
+                label: "Хэвлэх",
+                icon: <Printer size={16} />,
+                onSelect: () => window.print(),
+              },
+              {
+                label: "Бүлгийн мэдээлэл",
+                icon: <Users size={16} />,
+                onSelect: () => router.push(`/groups/${groupId}`),
+              },
+            ]}
+          />
+        }
       />
 
       {/*
@@ -344,26 +393,6 @@ function GroupAssessment() {
         thing on the screen is what the group looks like rather than two
         dropdowns to configure before anything appears.
       */}
-      <NewRecordStrip children={children} />
-
-      <GroupCoverage
-        groupId={groupId}
-        startsOn={groupSchoolYear?.startsOn}
-        endsOn={groupSchoolYear?.endsOn}
-      />
-
-      {column.data ? (
-        <p className="flex flex-wrap items-center gap-2 text-body text-muted">
-          <span>Нийт {children.length} хүүхэд</span>
-          <span aria-hidden="true">·</span>
-          <Badge tone={assessed === children.length ? "mint" : "sun"}>
-            {assessed === children.length
-              ? "Бүгд үнэлэгдсэн"
-              : `${Math.max(children.length - assessed, 0)} үнэлэгдээгүй`}
-          </Badge>
-        </p>
-      ) : null}
-
       {/* `pad="roomy"` rather than four inline padding values — `card.tsx`
           documents the two named steps and why call sites stopped inventing
           their own. */}
@@ -385,7 +414,21 @@ function GroupAssessment() {
         both — so this select pushes a route, and the chips are gone rather
         than the addressing.
       */}
-      <Card pad="roomy" className="flex flex-col gap-4">
+      {/*
+        ★ Hidden on Тойм — 2026-09-10, at the client's request ("энэ байх
+        шаардлагагүй").
+
+        Бүлэг, Хичээлийн жил, Улирал and Хөгжлийн чиглэл are what the *column*
+        is keyed on: they decide which children and which criterion the
+        register below lists. Тойм answers a different question — how is the
+        group doing this month — and reports across every criterion, so all
+        four of these narrowed nothing a reader could see while taking most of
+        the first screen on a phone.
+
+        Hidden rather than unmounted: the selection is what the Үнэлэх tab
+        needs the moment it opens, and re-mounting these would drop it.
+      */}
+      <Card pad="roomy" className={cn("flex-col gap-4", tab === "assess" ? "flex" : "hidden")}>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Field label="Бүлэг">
             {({ id }) => (
@@ -458,7 +501,19 @@ function GroupAssessment() {
             )}
           </Field>
 
-          <Field label="Хөгжлийн чиглэл" hint="Нэг удаад нэг чиглэлээр үнэлнэ.">
+          {/*
+            ★ Hidden on Тойм, because Тойм is every domain at once.
+
+            A select that narrows nothing on the view in front of you is a
+            control that invites a press and changes the screen you are not
+            looking at — and worse, it would then be set to something
+            unexpected when Үнэлэх opens.
+          */}
+          <Field
+            label="Хөгжлийн чиглэл"
+            hint="Нэг удаад нэг чиглэлээр үнэлнэ."
+            className={tab === "overview" ? "hidden" : undefined}
+          >
             {({ id, describedBy }) => (
               <Select
                 id={id}
@@ -477,7 +532,7 @@ function GroupAssessment() {
           </Field>
         </div>
 
-        {column.data && children.length > 0 ? (
+        {tab === "assess" && column.data && children.length > 0 ? (
           <RegisterProgress
             inset
             recorded={assessed}
@@ -495,9 +550,40 @@ function GroupAssessment() {
         />
       ) : null}
 
-      {column.isLoading ? <LoadingState rows={6} shape="register" /> : null}
+      {/*
+        ★ Тойм opens first — the client's 2026-09-10 design.
 
-      {column.isError ? (
+        The question a teacher brings to this screen is "what is left", and
+        until now the only answer was to pick a domain and count the blanks
+        down a column — once per domain. Тойм answers it across every domain at
+        once, and Үнэлэх is where the work is then done.
+
+        ★★ Tabs rather than two routes: they are one dataset read two ways, the
+        selection above (group, year, term) belongs to both, and duplicating it
+        on a second page is how the two come to disagree about which term is
+        open.
+      */}
+      {tab === "overview" ? (
+        <GroupCoverage
+          groupId={groupId}
+          termId={termId}
+          startsOn={groupSchoolYear?.startsOn}
+          endsOn={groupSchoolYear?.endsOn}
+          recordComposer={({ from, to, notesPerChildTarget }) => (
+            <NewRecordStrip
+              groupId={groupId}
+              embedded
+              from={from}
+              to={to}
+              notesPerChildTarget={notesPerChildTarget}
+            />
+          )}
+        />
+      ) : null}
+
+      {tab === "assess" && column.isLoading ? <LoadingState rows={6} shape="register" /> : null}
+
+      {tab === "assess" && column.isError ? (
         <ErrorState
           description={errorMessage(column.error)}
           action={
@@ -508,7 +594,7 @@ function GroupAssessment() {
         />
       ) : null}
 
-      {column.data ? (
+      {tab === "assess" && column.data ? (
         <>
           {/* The headcount moved into the strip above — see the meal
               register's note on not printing one figure twice. */}
@@ -916,11 +1002,71 @@ const KIND_STYLE: Record<string, { tone: Tone; Icon: typeof Eye }> = {
 const KIND_FALLBACK = { tone: "cornflower" as Tone, Icon: Eye };
 
 function NewRecordStrip({
-  children,
+  groupId,
+  embedded = false,
+  from,
+  to,
+  notesPerChildTarget,
 }: {
-  children: { childId: string; lastName?: string | null; firstName: string }[];
+  groupId: string;
+  embedded?: boolean;
+  /** The month selected in the goal card. */
+  from: string;
+  to: string;
+  notesPerChildTarget: number | null;
 }) {
-  const [childId, setChildId] = useState("");
+  const router = useRouter();
+  const [selectedType, setSelectedType] = useState<{ code: string; name: string } | null>(null);
+
+  /*
+    ★ The same query key `GroupCoverage` uses, so this is a cached read.
+
+    The summary above the picker is one number out of a payload the screen
+    behind it has already fetched — asking for it again on every door press
+    would be a request for data in memory.
+  */
+  const stats = useQuery({
+    queryKey: qk.groupObservationStats(groupId, from, to),
+    queryFn: () =>
+      get(
+        `/groups/${groupId}/observation-stats?from=${from}&to=${to}`,
+        groupObservationStatsSchema,
+      ),
+    enabled: Boolean(groupId),
+    staleTime: 60_000,
+  });
+
+  /*
+    ★ The group's own roster, not the assessment column's — fixed 2026-09-10.
+
+    This strip took its children from `column.data`, which is the roster
+    *joined to one term and one development domain*. So it could not appear
+    until three requests had finished in sequence — terms, then the config that
+    seeds the domain, then the column keyed on both — and it renders nothing
+    while `children` is empty, so a teacher opening the screen watched an empty
+    space where the child picker belonged. Worse, a kindergarten with no domain
+    configured never got past step two and the strip never appeared at all.
+
+    Which child to write a note about has nothing to do with which domain is
+    selected. One request, keyed on the group, and it arrives with the page.
+
+    ★★ `MAX_PAGE_SIZE`, not a number picked by eye. `pagination.ts` caps it at
+    100 and answers 400 above that — the mistake `audience-picker.tsx` records
+    making with `?pageSize=200`.
+  */
+  const roster = useQuery({
+    queryKey: qk.children({ groupId, page: 1, pageSize: MAX_PAGE_SIZE }),
+    queryFn: () =>
+      get(`/children?groupId=${groupId}&page=1&pageSize=${MAX_PAGE_SIZE}`, childrenPageSchema),
+    enabled: Boolean(groupId),
+    staleTime: 60_000,
+  });
+
+  const children = (roster.data?.items ?? []).map((child) => ({
+    childId: child.id,
+    lastName: child.lastName,
+    firstName: child.firstName,
+  }));
 
   const anyChildId = children[0]?.childId;
   const types = useQuery({
@@ -930,49 +1076,114 @@ function NewRecordStrip({
     staleTime: 5 * 60_000,
   });
 
-  const selectedId = childId || children[0]?.childId || "";
-  const selected = children.find((child) => child.childId === selectedId);
   const doors = (types.data ?? []).filter((type) =>
     ["daily", "conversation", "artwork"].includes(type.code ?? ""),
   );
 
+  /*
+    ★ A skeleton while the roster loads, not nothing.
+
+    Returning null until the names arrive is what made this look broken: the
+    strip is the first thing under the heading, and an empty space there reads
+    as a screen that failed rather than one that is loading.
+  */
+  /*
+    ★ Matched on the type's *name*, because `byType` carries no code.
+
+    `statBucketSchema` is an id, a name and a count, and the id is the
+    kindergarten's own row — which is what the door carries too, so the name is
+    the one field both sides agree on here. Null when the stats have not
+    arrived, and the summary draws "—" rather than a zero that would read as
+    "the class has written none".
+  */
+  const classTotal = stats.data
+    ? (stats.data.byType.find((row) => row.name === selectedType?.name)?.count ?? 0)
+    : null;
+
+  if (roster.isLoading) return <LoadingState rows={1} />;
   if (children.length === 0) return null;
 
-  return (
-    <Card pad="compact" className="grid items-end gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
-      <label>
-        <span className="sr-only">Хүүхэд сонгох</span>
-        <Select value={selectedId} onChange={(event) => setChildId(event.target.value)}>
-          {children.map((child) => (
-            <option key={child.childId} value={child.childId}>
-              {child.lastName ? `${child.lastName} ` : ""}
-              {child.firstName}
-            </option>
-          ))}
-        </Select>
-      </label>
-
-      <div className="min-w-0">
-        <p className="mb-1.5 text-caption font-semibold uppercase text-muted">Шинэ тэмдэглэл</p>
-        <div className="flex flex-wrap gap-2">
-          {doors.map((type) => {
-            const style = KIND_STYLE[type.code ?? ""] ?? KIND_FALLBACK;
-            return (
-              <Link
-                key={type.id}
-                href={`/children/${selected!.childId}/observations/new?typeId=${type.id}`}
-                className={cn(
-                  "flex min-h-[48px] min-w-[112px] items-center justify-center gap-2 rounded-control border border-transparent px-3.5 text-body font-semibold transition-transform hover:-translate-y-0.5",
-                  TONE_SURFACE[style.tone],
-                )}
-              >
-                <style.Icon size={18} aria-hidden="true" />
-                <span>{type.name}</span>
-              </Link>
-            );
-          })}
-        </div>
+  const content = (
+    <div className="min-w-0">
+      <div className="grid grid-cols-3 gap-2">
+        {doors.map((type) => {
+          const style = KIND_STYLE[type.code ?? ""] ?? KIND_FALLBACK;
+          return (
+            <button
+              key={type.id}
+              type="button"
+              onClick={() => setSelectedType({ code: type.code ?? "daily", name: type.name })}
+              className={cn(
+                "flex min-h-[48px] min-w-0 items-center justify-center gap-1.5 rounded-control border border-transparent px-2 text-caption font-semibold transition-transform hover:-translate-y-0.5 sm:text-body",
+                TONE_SURFACE[style.tone],
+              )}
+            >
+              <style.Icon size={18} aria-hidden="true" className="shrink-0" />
+              <span className="truncate">{type.name}</span>
+            </button>
+          );
+        })}
       </div>
-    </Card>
+
+      {/*
+        ★ The hub, not the compose form — 2026-09-11, the client's design.
+
+        Pressing a door used to open a blank form for the chosen child. That is
+        right when a teacher has already decided what to write and wrong when
+        they came to look, and the design puts a landing between the two: the
+        four things that can be done with this kind of record, the total, and
+        the terms.
+      */}
+      {selectedType ? (
+        <ChildPickerDialog
+          groupId={groupId}
+          title={selectedType.name}
+          /*
+            ★ The class's own figure above the roster — 2026-09-11, at the
+            client's request ("ангийн нийт ажиглалт болон хүүхэд сонгох
+            гарна").
+
+            A teacher pressing a door is choosing a child, and the number that
+            makes that choice easier is how much of this kind the class has
+            already. It sits above the list rather than on the screen behind,
+            because that is the moment it is being used.
+          */
+          summary={
+            <div className="flex items-baseline justify-between gap-3 rounded-card bg-sunken px-3.5 py-3">
+              <span className="text-caption text-muted">
+                Ангийн нийт {selectedType.name.toLowerCase()}
+              </span>
+              <span className="text-title font-semibold tabular-nums leading-none text-ink">
+                {classTotal === null ? "—" : classTotal}
+              </span>
+            </div>
+          }
+          coverage={
+            stats.data
+              ? {
+                  counts: Object.fromEntries(
+                    stats.data.byChildType
+                      .filter((row) =>
+                        doors.some(
+                          (type) => type.id === row.typeId && type.name === selectedType.name,
+                        ),
+                      )
+                      .map((row) => [row.childId, row.count]),
+                  ),
+                  target: notesPerChildTarget ?? 1,
+                  title: `${selectedType.name} · ангийн хамралт`,
+                }
+              : undefined
+          }
+          onClose={() => setSelectedType(null)}
+          onSelect={(childId) =>
+            router.push(`/children/${childId}/observations?type=${selectedType.code}`)
+          }
+        />
+      ) : null}
+    </div>
   );
+
+  if (embedded) return content;
+  return <Card pad="compact">{content}</Card>;
 }

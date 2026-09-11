@@ -31,9 +31,29 @@ export class SurveysRepository {
     period?: SurveyPeriod | null;
     /** Null is every group — see `Survey.groupId`. */
     groupId?: string | null;
+    /* The wizard's settings — every one optional, and every default is the
+       behaviour a survey had before the column existed. */
+    opensAt?: Date | null;
+    purpose?: string | null;
+    termId?: string | null;
+    isAnonymous?: boolean;
+    allowMultipleResponses?: boolean;
+    shuffleQuestions?: boolean;
+    closingNote?: string | null;
     clonedFromSurveyId?: string | null;
   }) {
     return this.prisma.survey.create({ data });
+  }
+
+  /**
+   * A term, only if it is this kindergarten's — the check `create` makes
+   * before filing a survey against an id that came from a client.
+   */
+  async findTermInKindergarten(termId: string, kindergartenId: string) {
+    return this.prisma.term.findFirst({
+      where: { id: termId, kindergartenId, deletedAt: null },
+      select: { id: true },
+    });
   }
 
   /**
@@ -63,6 +83,62 @@ export class SurveysRepository {
     });
   }
 
+  /**
+   * How many families have answered each survey, and how many were asked.
+   *
+   * ★ Three queries for the whole list, never two per row (§3.4).
+   *
+   * The staff list draws "23 / 35 харуулсан" on every card, and the obvious
+   * shape — `countResponses` and `countExpectedRespondents` per survey — is
+   * seventy round trips for a screen with thirty-five surveys on it. The
+   * denominators are not per-survey facts at all: they are per *audience*, and
+   * a kindergarten has a handful of those (each group, plus "everyone"), so
+   * they are counted once here and looked up per row by the caller.
+   *
+   * ★★ The two scopes count different populations, and that is not a detail.
+   *
+   * A CHILD-scope survey is answered once per enrolled child; a
+   * KINDERGARTEN-scope one is answered once per parent, however many children
+   * they have. Reusing one denominator would make a family of three look like
+   * three non-responders on a survey they answered. `countExpectedRespondents`
+   * makes the same distinction one survey at a time, and these two must agree
+   * — they are the same question asked in bulk.
+   */
+  async participationCounts(kindergartenId: string) {
+    const [responses, byGroup, parents] = await Promise.all([
+      this.prisma.surveyResponse.groupBy({
+        by: ["surveyId"],
+        where: { kindergartenId, deletedAt: null },
+        _count: { _all: true },
+      }),
+      this.prisma.enrollment.groupBy({
+        by: ["groupId"],
+        where: { kindergartenId, status: "ACTIVE", deletedAt: null },
+        _count: { _all: true },
+      }),
+      this.prisma.membership.findMany({
+        where: { kindergartenId, role: "PARENT", deletedAt: null },
+        select: { userId: true },
+        distinct: ["userId"],
+      }),
+    ]);
+
+    const childrenByGroup = new Map<string, number>();
+    let childrenTotal = 0;
+    for (const row of byGroup) {
+      if (row.groupId) childrenByGroup.set(row.groupId, row._count._all);
+      childrenTotal += row._count._all;
+    }
+
+    return {
+      responded: new Map(responses.map((row) => [row.surveyId, row._count._all])),
+      childrenByGroup,
+      childrenTotal,
+      /** Distinct people, not memberships — one parent of two children is one. */
+      parentCount: parents.length,
+    };
+  }
+
   /** Raw row for authorization and status checks — no visibility filter. */
   async findForAuthorization(surveyId: string) {
     return this.prisma.survey.findFirst({
@@ -79,6 +155,19 @@ export class SurveysRepository {
         scope: true,
         status: true,
         closesAt: true,
+        /*
+          ★ Selected for the same reason `closesAt` is, and the note above
+          applies word for word: `submitResponse` enforces both ends of the
+          window from this row, and a column omitted from the select reads
+          `undefined` — which is falsy, so every check would silently pass
+          rather than fail loudly.
+        */
+        opensAt: true,
+        allowMultipleResponses: true,
+        isAnonymous: true,
+        // Which group was asked. `participation` builds its roster from it,
+        // and null is every group — see `Survey.groupId`.
+        groupId: true,
       },
     });
   }
@@ -128,6 +217,53 @@ export class SurveysRepository {
     if (status === "PUBLISHED") data.publishedAt = timestamp;
     if (status === "CLOSED") data.closedAt = timestamp;
     return this.prisma.survey.update({ where: { id: surveyId }, data });
+  }
+
+  /** §3.2 — sets `deletedAt`; the row and its answers stay for the audit. */
+  async softDelete(surveyId: string) {
+    return this.prisma.survey.update({
+      where: { id: surveyId },
+      data: { deletedAt: new Date() },
+    });
+  }
+
+  /**
+   * Who a survey was asked of, and who has answered — the "Оролцоо" panel.
+   *
+   * ★ The roster comes from `Enrollment`, not from the responses.
+   *
+   * A list built from the answers can only ever show the families who replied,
+   * which is the half nobody needs to chase. The children with nothing against
+   * their name are the point of the panel, so the roster has to be the active
+   * enrollments and the responses are matched onto it.
+   *
+   * `groupId` null is the whole kindergarten — the same "null is every group"
+   * contract `Survey.groupId` carries.
+   */
+  async participation(surveyId: string, kindergartenId: string, groupId: string | null) {
+    const [enrollments, responses] = await Promise.all([
+      this.prisma.enrollment.findMany({
+        where: {
+          status: "ACTIVE",
+          deletedAt: null,
+          ...(groupId ? { groupId } : { group: { kindergartenId, deletedAt: null } }),
+        },
+        select: {
+          child: { select: { id: true, lastName: true, firstName: true } },
+          group: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.surveyResponse.findMany({
+        where: { surveyId, deletedAt: null },
+        select: {
+          childId: true,
+          submittedAt: true,
+          respondent: { select: { id: true, lastName: true, firstName: true } },
+        },
+      }),
+    ]);
+
+    return { enrollments, responses };
   }
 
   // ── Reading (parent + staff) ─────────────────────────────────────────────
@@ -206,6 +342,71 @@ export class SurveysRepository {
         })),
       });
       return response;
+    });
+  }
+
+  /**
+   * This respondent's own answers to one survey.
+   *
+   * ★ Their own, and only their own — this is a *parent's* read path.
+   *
+   * A poll shows a family how the class voted and which option they picked,
+   * so the tally comes from `allAnswers` (counts, no identities) and the
+   * highlight comes from here (one row, keyed by the person asking). Keeping
+   * them in two queries is what stops the second becoming a way to ask which
+   * of my neighbours chose what.
+   */
+  async findMyAnswers(surveyId: string, respondentId: string, childId: string | null) {
+    return this.prisma.surveyAnswer.findMany({
+      where: {
+        response: { surveyId, respondentId, childId, deletedAt: null },
+      },
+      select: { questionId: true, value: true },
+    });
+  }
+
+  /**
+   * Appends one choice to a question's `options`, and answers what happened.
+   *
+   * ★ Read and write inside one transaction, because two parents will do this
+   * at the same time.
+   *
+   * `options` is a `Json` column holding an array, so "add one" is a
+   * read-modify-write with no database-level append. Done outside a
+   * transaction, two families adding a choice in the same second each read the
+   * same list and the second write silently discards the first's option — a
+   * lost update that looks exactly like the feature not working.
+   *
+   * ★★ Returns `null` when the question is gone, and the unchanged list when
+   * the label is already there. The caller needs to tell those apart: one is a
+   * 404 and the other is success — a parent who adds a choice somebody else
+   * added a moment ago got what they wanted.
+   */
+  async appendQuestionOption(
+    questionId: string,
+    label: string,
+    max: number,
+  ): Promise<{ options: string[]; added: boolean; full: boolean } | null> {
+    return this.prisma.$transaction(async (tx) => {
+      const question = await tx.surveyQuestion.findFirst({
+        where: { id: questionId, deletedAt: null },
+        select: { id: true, options: true },
+      });
+      if (!question) return null;
+
+      const options = Array.isArray(question.options)
+        ? question.options.filter((o): o is string => typeof o === "string")
+        : [];
+
+      // Case-insensitive, because "Тийм" and "тийм" are one choice to everyone
+      // except a string comparison.
+      const already = options.some((o) => o.toLowerCase() === label.toLowerCase());
+      if (already) return { options, added: false, full: false };
+      if (options.length >= max) return { options, added: false, full: true };
+
+      const next = [...options, label];
+      await tx.surveyQuestion.update({ where: { id: questionId }, data: { options: next } });
+      return { options: next, added: true, full: false };
     });
   }
 

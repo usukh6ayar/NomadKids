@@ -3,6 +3,7 @@ import {
   BarChart3,
   Brain,
   HeartHandshake,
+  School,
   Smile,
   Sparkles,
   UsersRound,
@@ -43,6 +44,22 @@ export const SURVEY_CATEGORY_META: Record<
     label: SURVEY_CATEGORY_LABEL.HABITS_INDEPENDENCE,
     tone: "sun",
     Icon: Sparkles,
+  },
+  CLASS_GROUP: {
+    label: SURVEY_CATEGORY_LABEL.CLASS_GROUP,
+    tone: "mint",
+    Icon: School,
+  },
+  /*
+   * `BarChart3` — the neutral one, and the only category whose icon says
+   * nothing about the subject. That is the point of the category: a survey
+   * filed here is one the other seven did not describe, and an icon
+   * suggesting a subject would put it back in one of them by the picture.
+   */
+  OTHER: {
+    label: SURVEY_CATEGORY_LABEL.OTHER,
+    tone: "peach",
+    Icon: BarChart3,
   },
 };
 

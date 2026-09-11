@@ -3,12 +3,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { CheckCircle2, Pencil, Save, Send, X } from "lucide-react";
+import { CalendarRange, CheckCircle2, Database, MailQuestion, Search } from "lucide-react";
 import { z } from "zod";
 import {
   attendanceRecordSchema,
   attendanceSubmissionSchema,
   esisAttendancePreviewSchema,
+  groupAttendanceRangeSchema,
   groupAttendanceRowSchema,
   type EsisAttendancePreview,
 } from "@kinder/contracts";
@@ -24,37 +25,41 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TableShell, Td, Th } from "@/components/ui/table";
-import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
-import { ChildAvatar } from "@/components/media/media-image";
-import { SelectBox, SelectionBar, useSelection } from "@/components/ui/selection";
-import { RegisterProgress } from "@/components/register/register-progress";
-import { AttendanceRequestQueue } from "@/components/attendance/request-queue";
+import {
+  AttendanceRequestQueue,
+  useAttendanceRequestCount,
+} from "@/components/attendance/request-queue";
+import { TeacherJournal } from "@/components/attendance/teacher-journal";
 import { AttendanceMonthPanel } from "@/components/attendance/month-panel";
-import { TONE_SURFACE } from "@/components/ui/tone";
+import { AttendanceWeekGrid, isWeekend } from "@/components/attendance/week-grid";
 import {
   ATTENDANCE_STATUS_CHART_TONE,
   ATTENDANCE_STATUS_LABEL,
   ATTENDANCE_STATUS_ORDER,
 } from "@/lib/attendance-meta";
+import { useSession } from "@/lib/auth/session";
 import { fullName } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const daySheetSchema = z.array(groupAttendanceRowSchema);
 
-/*
- * ★ The five statuses come from `lib/attendance-meta.ts`, not from a copy here.
- *
- * This file kept its own map, which is how the day sheet came to be the one
- * screen where the summary strip above the list could disagree with the buttons
- * inside it. The order is fixed there too — best to worst, never sorted by
- * count — and the tones are the product's own status palette, so a red count in
- * this strip is the same red as the calendar on the child's page.
- */
-const STATUS_LABEL = ATTENDANCE_STATUS_LABEL;
-
 function today(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * The Monday of the week `iso` falls in.
+ *
+ * ★ Monday, not Sunday. A Mongolian kindergarten week runs Даваа–Баасан, and
+ * `getUTCDay()` calls Sunday 0 — so Sunday has to reach *back* six days rather
+ * than forward one, which is the off-by-one this exists to name.
+ */
+function mondayOf(iso: string): string {
+  const date = new Date(`${iso}T00:00:00.000Z`);
+  const weekday = date.getUTCDay();
+  date.setUTCDate(date.getUTCDate() - (weekday === 0 ? 6 : weekday - 1));
+  return date.toISOString().slice(0, 10);
 }
 
 /**
@@ -76,6 +81,8 @@ function GroupAttendance() {
   const params = useParams<{ groupId: string }>();
   const groupId = params.groupId;
   const queryClient = useQueryClient();
+  const { session } = useSession();
+  const pendingRequests = useAttendanceRequestCount();
 
   /*
    * ★ A director reads this sheet; they do not fill it in — 2026-09-06.
@@ -117,6 +124,32 @@ function GroupAttendance() {
       ? requested
       : today();
   });
+  /*
+   * ★ The span the grid draws, and `date` is its last column — 2026-09-10.
+   *
+   * The client's sheet opens on "огноо" with two fields and shows the month so
+   * far, which is what a teacher checks before filing: not "is today done" but
+   * "is anything behind me missing". `date` keeps its old meaning — the one day
+   * being written — and is simply the right-hand end of that span, so `?date=`
+   * from the director's register still lands on the day it names.
+   */
+  /*
+   * ★ The week the chosen day sits in — 2026-09-10, at the client's request
+   * ("тухайн 7 хоног харагдахад л болох юм байна").
+   *
+   * It opened on the first of the month, so by the end of September the
+   * register was twenty-two columns wide and a teacher scrolled sideways past
+   * three weeks they had already filed to reach today. A week is what the
+   * sheet is for; the month is `Ирцийн дэлгэрэнгүй` one button below.
+   */
+  const [from, setFrom] = useState(() => mondayOf(date));
+  /*
+   * What the two fields hold, which is not yet what the grid is showing.
+   * "Хайх" copies them across — see the card below for why the range is not
+   * live.
+   */
+  const [draftFrom, setDraftFrom] = useState(from);
+  const [draftTo, setDraftTo] = useState(date);
   const [editing, setEditing] = useState(() => search.get("edit") === "1");
   const [draft, setDraft] = useState<Record<string, string>>({});
 
@@ -129,6 +162,14 @@ function GroupAttendance() {
   const sheet = useQuery({
     queryKey: qk.groupAttendance(groupId, date),
     queryFn: () => get(`/groups/${groupId}/attendance?date=${date}`, daySheetSchema),
+  });
+  const range = useQuery({
+    queryKey: qk.groupAttendanceRange(groupId, from, date),
+    queryFn: () =>
+      get(
+        `/groups/${groupId}/attendance/range?from=${from}&to=${date}`,
+        groupAttendanceRangeSchema,
+      ),
   });
   const rows = sheet.data ?? [];
   const savedComplete = rows.length > 0 && rows.every((row) => row.record);
@@ -170,9 +211,6 @@ function GroupAttendance() {
    * their own status pills for that, and for the corrections that carry a note
    * or a drop-off, which the batch endpoint deliberately cannot send.
    */
-  // Nothing to select when nothing can be written — the bulk bar's only
-  // controls are the six status buttons.
-  const selection = useSelection(editing ? rows.map((row) => row.child.id) : []);
 
   const save = useMutation({
     mutationFn: () =>
@@ -187,16 +225,36 @@ function GroupAttendance() {
       toast.success(`${saved.length} хүүхдийн ирц хадгалагдлаа.`);
       setEditing(false);
       setDraft({});
-      selection.clear();
       void queryClient.invalidateQueries({ queryKey: ["group", groupId, "attendance"] });
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  /*
+   * ★ Opens with everybody marked Ирсэн — the client's instruction, and the
+   * register's own shape.
+   *
+   * A kindergarten morning is "everybody came except two". Starting from an
+   * empty sheet made the common case twenty taps and the exception two, which
+   * is the wrong way round; starting from present makes it two taps either
+   * way. A child already marked keeps what they were marked, so re-opening a
+   * saved day never quietly overwrites a recorded absence with PRESENT.
+   */
+  /*
+   * ★ Never on a weekend.
+   *
+   * The grid refuses to draw a control on a Saturday, but `beginEdit` fills
+   * the draft for every child on the editable day — so opening the editor on
+   * a closed day would queue a register nobody could see and the save button
+   * would offer to write it.
+   */
+  const closedDay = isWeekend(date);
+
   function beginEdit() {
+    if (closedDay) return;
     const saved: Record<string, string> = {};
     for (const row of rows) {
-      if (row.record) saved[row.child.id] = row.record.status;
+      saved[row.child.id] = row.record?.status ?? "PRESENT";
     }
     setDraft(saved);
     setEditing(true);
@@ -205,14 +263,19 @@ function GroupAttendance() {
   function cancelEdit() {
     setEditing(false);
     setDraft({});
-    selection.clear();
   }
 
-  function setSelectedStatus(status: string) {
-    setDraft((current) => ({
-      ...current,
-      ...Object.fromEntries(selection.ids.map((childId) => [childId, status])),
-    }));
+  /*
+   * ★ Applying a span cancels an open edit.
+   *
+   * A draft belongs to the day it was started on, and carrying it to another
+   * date is how the wrong morning gets saved. The fields themselves no longer
+   * do this on every keystroke — only pressing Хайх does.
+   */
+  function applyRange() {
+    setFrom(draftFrom);
+    setDate(draftTo);
+    cancelEdit();
   }
 
   const esisPreview = useQuery({
@@ -285,56 +348,15 @@ function GroupAttendance() {
 
   return (
     <div className="page-band">
-      <PageHeader
-        title="Ирц"
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            {editing ? (
-              <>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={cancelEdit}
-                  disabled={save.isPending}
-                >
-                  <X aria-hidden /> Болих
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => save.mutate()}
-                  disabled={save.isPending || dirtyEntries.length === 0}
-                >
-                  <Save aria-hidden />
-                  {save.isPending ? "Хадгалж байна…" : `Хадгалах (${dirtyEntries.length})`}
-                </Button>
-              </>
-            ) : (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={beginEdit}
-                disabled={rows.length === 0}
-              >
-                <Pencil aria-hidden /> Засах
-              </Button>
-            )}
-            {!editing ? (
-              <Button
-                size="sm"
-                onClick={() => submitEsis.mutate()}
-                disabled={!esisPreview.data || submitEsis.isPending}
-              >
-                <Send aria-hidden />
-                {submitEsis.isPending
-                  ? "Илгээж байна…"
-                  : submitEsis.data
-                    ? "Дахин илгээх"
-                    : "ESIS рүү илгээх"}
-              </Button>
-            ) : null}
-          </div>
-        }
-      />
+      {/*
+        ★ No actions here — 2026-09-10, at the client's request.
+
+        Засах and ESIS рүү илгээх lived in the page header, a scroll above the
+        register they act on: a teacher finished the last row of the sheet and
+        had to go back to the top to save it. All three controls are under the
+        grid now, in the order the work happens — засах, бүртгэх, илгээх.
+      */}
+      <PageHeader title="Ирц" />
 
       <GroupSwitcher
         groups={switchable.data?.items ?? []}
@@ -343,54 +365,58 @@ function GroupAttendance() {
       />
 
       {/*
-        ★ Two columns from `lg`: today on the left, the month on the right.
+        ★ The span is *applied*, not live — 2026-09-10, at the client's request.
 
-        The card was a date field and a progress ring in its left third with
-        about 900px of white beside them — on the screen a teacher opens every
-        morning. The split is the honest one: the left half is the work in
-        front of you, the right half is what that work has added up to. They
-        stack on a phone, work first, because a register is filled in one
-        thumb at a time and the month can wait for a scroll.
+        Typing into a date field fires `onChange` per keystroke, so a live
+        range asked the API for "2026-09-0", "2026-09-01" and every state in
+        between while a teacher was still choosing. "Хайх" makes one request
+        for the span they meant, and the fields below say what is being edited
+        rather than what has been typed.
+
+        The progress ring that used to sit under these fields moved into the
+        month report at the foot of the page — the client asked for the two
+        graphs to be one, and they were answering the same question a scroll
+        apart.
       */}
-      <Card className="grid gap-5 px-4 py-4 sm:px-5 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] lg:gap-8">
-        <div className="flex flex-col gap-3.5">
-          <Field label="Огноо">
-            {({ id }) => (
-              <Input
-                id={id}
-                type="date"
-                max={today()}
-                value={date}
-                onChange={(e) => {
-                  setDate(e.target.value);
-                  cancelEdit();
-                }}
-              />
-            )}
-          </Field>
+      {/*
+        ★ Quiet — 2026-09-10, at the client's request that this stop drawing
+        the eye.
 
-          {sheet.data && rows.length > 0 ? (
-            <RegisterProgress inset recorded={recorded} total={rows.length} breakdown={breakdown} />
-          ) : null}
-        </div>
-
-        {/*
-          The month the chosen date falls in, so moving the date picker to
-          July shows July's shape rather than always this month's.
-        */}
-        <AttendanceMonthPanel groupId={groupId} month={date.slice(0, 7)} />
-      </Card>
-
-      <FormError message={save.isError ? errorMessage(save.error) : null} />
-
-      {!editing && rows.length > 0 && !savedComplete ? (
-        <Card pad="compact" tone="sun">
-          <p className="text-body font-medium text-ink">
-            {rows.filter((row) => !row.record).length} хүүхдийн ирц хадгалагдаагүй байна. Засаж
-            дууссаны дараа ESIS илгээх утга бэлтгэгдэнэ.
-          </p>
-        </Card>
-      ) : null}
+        It is how you change *which* week you are looking at, not the work, and
+        two 48px fields under their own labels announced it as the first task
+        on the screen. Two small controls on one line now, labels folded into
+        `aria-label`, against the register below which is what the page is for.
+      */}
+      <form
+        className="flex items-center gap-1.5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          applyRange();
+        }}
+      >
+        <input
+          type="date"
+          aria-label="Эхлэх огноо"
+          max={draftTo}
+          value={draftFrom}
+          onChange={(e) => setDraftFrom(e.target.value)}
+          className="min-w-0 flex-1 rounded-control border border-border-soft bg-canvas px-2 py-1.5 text-caption text-muted focus:bg-surface focus:text-ink focus-visible:outline-2 focus-visible:outline-primary"
+        />
+        <span aria-hidden="true" className="shrink-0 text-caption text-faint">
+          —
+        </span>
+        <input
+          type="date"
+          aria-label="Дуусах огноо"
+          max={today()}
+          value={draftTo}
+          onChange={(e) => setDraftTo(e.target.value)}
+          className="min-w-0 flex-1 rounded-control border border-border-soft bg-canvas px-2 py-1.5 text-caption text-muted focus:bg-surface focus:text-ink focus-visible:outline-2 focus-visible:outline-primary"
+        />
+        <Button type="submit" variant="ghost" size="icon" className="shrink-0" aria-label="Хайх">
+          <Search aria-hidden />
+        </Button>
+      </form>
 
       {sheet.isLoading ? <LoadingState rows={6} shape="register" /> : null}
 
@@ -398,72 +424,123 @@ function GroupAttendance() {
 
       {sheet.data ? (
         <>
-          <SectionHeader
-            title="Бүлгийн ирц"
-            action={
-              <span className="flex items-center gap-2">
-                <span className="text-body text-muted">{sheet.data.length} хүүхэд</span>
-                {sheet.data.length > 0 && editing ? (
-                  <SelectBox
-                    checked={selection.allSelected}
-                    indeterminate={selection.someSelected}
-                    onChange={selection.toggleAll}
-                    label="Бүх хүүхдийг сонгох"
-                  />
-                ) : null}
-              </span>
-            }
-          />
-
+          {/*
+            ★ No "Бүлгийн ирц" heading — 2026-09-10, at the client's request.
+            The grid under it is unmistakably the register, and the headcount
+            it carried is the last row of the grid's own tally.
+          */}
           {sheet.data.length === 0 ? (
             <EmptyState
               title="Бүлэгт хүүхэд алга"
               description="Энэ хичээлийн жилд идэвхтэй бүртгэлтэй хүүхэд байхгүй байна."
             />
           ) : (
-            <Card className="divide-y divide-border">
-              {sheet.data.map((row) => (
-                <ChildRow
-                  key={row.enrollmentId}
-                  child={row.child}
-                  status={draftStatus(row.child.id, row.record?.status ?? null)}
-                  readOnly={!editing}
-                  pending={save.isPending}
-                  onSelect={(status) =>
-                    setDraft((current) => ({ ...current, [row.child.id]: status }))
+            <Card className="px-2 py-3 sm:px-4">
+              {/*
+                ★ The week the chosen date sits in, one child per row — the
+                client's own sheet, 2026-09-10. It replaced a list of the
+                selected day alone, which could show a teacher that today was
+                filled in without showing that Tuesday never was.
+
+                Only `date`'s column takes input; see `AttendanceWeekGrid`.
+              */}
+              {range.isLoading ? <LoadingState rows={6} shape="register" /> : null}
+              {range.isError ? <ErrorState description={errorMessage(range.error)} /> : null}
+              {range.data ? (
+                <AttendanceWeekGrid
+                  data={range.data}
+                  editableDay={editing ? date : null}
+                  draft={draft}
+                  disabled={save.isPending}
+                  onSet={(childId, status) =>
+                    setDraft((current) => ({ ...current, [childId]: status }))
                   }
-                  checked={selection.has(row.child.id)}
-                  onToggle={() => selection.toggle(row.child.id)}
                 />
-              ))}
+              ) : null}
             </Card>
           )}
 
           {/*
-            ★ The same six statuses as the rows, in the same order and the same
-            tints, because they mean the same thing.
-
-            A second, shorter set here — "Ирсэн" and nothing else — would be the
-            common case at the cost of making the register's other half (a
-            correction pass: three sick, one excused) go back to one tap per
-            child. `ATTENDANCE_STATUS_LABEL` is the one source both read.
+            ★ Who gave this account of the morning — shown once the day is
+            saved, at the client's request. The register is the teacher's own
+            statement and the funding claim is built on it, so "who said this
+            child was here" should be readable on the sheet rather than only
+            in the audit log.
           */}
-          <SelectionBar count={editing ? selection.count : 0} onClear={selection.clear}>
-            {Object.entries(STATUS_LABEL).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                disabled={save.isPending}
-                onClick={() => setSelectedStatus(value)}
-                className={cn(
-                  "min-h-11 rounded-control border border-transparent px-3 text-body font-semibold transition-all duration-150 active:translate-y-[1px] disabled:opacity-60",
-                  TONE_SURFACE[ATTENDANCE_STATUS_CHART_TONE[value] ?? "sky"],
-                )}
+          {savedComplete && !editing ? (
+            <p className="px-1 text-right text-caption italic text-muted">
+              Ирц авсан бүлгийн багш {fullName(session?.user)}
+            </p>
+          ) : null}
+
+          {/*
+            ★ All three, always — the client asked for three buttons after a
+            register is taken, not two that swap.
+
+            Засах · Ирц бүртгэх · ESIS рүү илгээх is the order the work
+            happens, and each is *disabled* rather than absent when its turn
+            has not come: a control that appears only once some other condition
+            is met is a control a teacher never learns they have. Болих is the
+            one addition, and only while there is a draft to abandon.
+          */}
+          {rows.length > 0 ? (
+            <div className="flex items-center justify-end gap-2">
+              {editing ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="min-w-0 shrink"
+                  onClick={cancelEdit}
+                  disabled={save.isPending}
+                >
+                  <span className="truncate">Болих</span>
+                </Button>
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="min-w-0 shrink"
+                  onClick={beginEdit}
+                  disabled={closedDay}
+                >
+                  <span className="truncate">Засах</span>
+                </Button>
+              )}
+
+              <Button
+                size="sm"
+                className="min-w-0 shrink"
+                onClick={() => save.mutate()}
+                disabled={save.isPending || dirtyEntries.length === 0}
               >
-                {label}
-              </button>
-            ))}
-          </SelectionBar>
+                <span className="truncate">
+                  {save.isPending
+                    ? "Бүртгэж байна…"
+                    : dirtyEntries.length > 0
+                      ? `Ирц бүртгэх (${dirtyEntries.length})`
+                      : "Ирц бүртгэх"}
+                </span>
+              </Button>
+
+              <Button
+                variant="secondary"
+                size="sm"
+                className="min-w-0 shrink"
+                onClick={() => submitEsis.mutate()}
+                disabled={editing || !esisPreview.data || submitEsis.isPending}
+              >
+                <span className="truncate">
+                  {submitEsis.isPending
+                    ? "Илгээж байна…"
+                    : submitEsis.data
+                      ? "Дахин илгээх"
+                      : "ESIS рүү илгээх"}
+                </span>
+              </Button>
+            </div>
+          ) : null}
+
+          <FormError message={save.isError ? errorMessage(save.error) : null} />
 
           {!editing && esisPreview.data ? (
             <GroupEsisPayload
@@ -478,45 +555,170 @@ function GroupAttendance() {
       ) : null}
 
       {/*
-        ★ The guardians' notices, under the sheet they are about.
+        ★ Three doors, one panel — the client's sheet, 2026-09-10.
 
-        Approving one writes the `Attendance` rows for those days, so it is the
-        same register seen from the other end. It had a sidebar entry of its
-        own, which asked a teacher to know that the absence they were about to
-        mark by hand might already have been explained on a different screen.
+        All three of these were open on the page at once: the guardians' queue,
+        which is usually empty, and two ESIS field tables that between them run
+        to sixty rows. A teacher scrolled past all of it every morning to reach
+        nothing. They are the same three destinations, now named on buttons and
+        opened one at a time.
+
+        Toggle buttons rather than `Disclosure`'s `<details>`: the client drew
+        a row of three, and a stack of three summaries is a different shape. The
+        cost is find-in-page, which `Disclosure` documents caring about for the
+        accountant's hundred-row register — none of these three is a list
+        somebody searches by name, so the trade lands the other way here.
       */}
-      <AttendanceRequestQueue heading="Эцэг эхийн мэдэгдэл" />
+      <RegisterPanels
+        groupId={groupId}
+        month={date.slice(0, 7)}
+        pendingRequests={pendingRequests}
+      />
 
       {/*
-        ★ The two ESIS attendance services, on the sheet they are about —
-        2026-09-09, at the client's request ("ирц хадгалах", "ирц харах").
+        ★ The month, at the foot of the register rather than beside the date.
 
-        They are the two halves of one exchange and belong together: the fields
-        this screen *sends* when a confirmed day goes up, and the record that
-        comes back when it is read again. Reading them apart is how a teacher
-        ends up believing a day was filed because the button said so.
-
-        ★★ `saveAttendanceV3` is the catalog's only write service, so its panel
-        shows the request payload rather than a response — the eight fields
-        `API-000269` takes. Nothing here submits: the submit is
-        `GroupEsisPayload` above, which is this screen's own control and writes
-        an `AttendanceSubmission` when it succeeds.
-
-        ★★★ Both are keyed by ESIS's `studentGroupId`, which the panel asks
-        for: our group ids are uuids the ministry has never seen, and §15's
-        external-id history is what would let this be filled in automatically.
+        It sat in the header card's right half, above the sheet it summarises —
+        so the first thing on the screen a teacher opens to fill in today was a
+        chart about days already done. The client's own layout puts it last,
+        which is also the reading order: fill the day in, then see what the
+        month adds up to.
       */}
-      <EsisDataPanel
-        resource="saveAttendanceV3"
-        title="Ирц хадгалах"
-        description="Баталгаажсан өдрийн ирцээр ESIS рүү илгээх талбарууд"
-      />
-      <EsisDataPanel
-        resource="groupAttendance"
-        title="Ирц харах"
-        description="Илгээсэн ирцийг ESIS-ээс буцааж уншсан нь"
-      />
+      <Card pad="roomy">
+        <AttendanceMonthPanel
+          groupId={groupId}
+          month={date.slice(0, 7)}
+          progress={{ recorded, total: rows.length, breakdown }}
+        />
+      </Card>
     </div>
+  );
+}
+
+/**
+ * Ирцийн дэлгэрэнгүй · Чөлөөний хүсэлт · Esis ирц.
+ *
+ * ★ One open at a time, and none open to begin with.
+ *
+ * The default matters more than the mechanism: this screen is opened to fill
+ * in a morning, and every one of these three is something looked up
+ * afterwards. Opening none of them is what puts the register back at the top
+ * of the page.
+ *
+ * `aria-expanded`/`aria-controls` rather than a `tablist`: these are three
+ * disclosures that happen to share a row, not three views of one thing, and a
+ * tablist would promise arrow-key navigation between panels that have nothing
+ * to do with one another.
+ */
+function RegisterPanels({
+  groupId,
+  month,
+  pendingRequests,
+}: {
+  groupId: string;
+  month: string;
+  pendingRequests: number;
+}) {
+  const [open, setOpen] = useState<"journal" | "requests" | "esis" | null>(null);
+  const panelId = "register-panel";
+
+  const doors = [
+    { key: "journal" as const, label: "Ирцийн дэлгэрэнгүй", count: 0, icon: CalendarRange },
+    {
+      key: "requests" as const,
+      label: "Чөлөөний хүсэлт",
+      count: pendingRequests,
+      icon: MailQuestion,
+    },
+    { key: "esis" as const, label: "Esis ирц", count: 0, icon: Database },
+  ];
+
+  return (
+    <section aria-labelledby="register-panels-heading" className="flex flex-col gap-4">
+      <h2 id="register-panels-heading" className="sr-only">
+        Ирцийн нэмэлт хэсгүүд
+      </h2>
+
+      {/*
+        ★ The product's own `Button`, not a hand-rolled pill — 2026-09-10, at
+        the client's request that these match everything else. The row had its
+        own border, radius and hover written inline, which is how a screen ends
+        up with two button languages a few pixels apart.
+
+        ★★ One row at every width, with every word — 2026-09-10.
+
+        They wrapped to a second line for a while, which the client did not
+        want either. What makes three full labels fit a 390px row is dropping
+        the icons below `sm` and stepping the type down to `text-compact`:
+        "Ирцийн дэлгэрэнгүй · Чөлөөний хүсэлт · Esis ирц" is 41 characters, and
+        at 11px with 6px of padding each that is about 360px. The icons return
+        at `sm`, where there is room for both.
+
+        The open one is `primary` and the rest are `secondary`: that is the
+        same pair the register's own controls use above, so "this is the one
+        you are looking at" reads the same way twice on one page.
+      */}
+      <div className="flex gap-1.5 sm:gap-2.5">
+        {doors.map((door) => {
+          const active = open === door.key;
+          const Icon = door.icon;
+          return (
+            <Button
+              key={door.key}
+              variant={active ? "primary" : "secondary"}
+              size="sm"
+              className="min-w-0 flex-1 px-1.5 text-compact sm:flex-none sm:px-4 sm:text-body"
+              aria-expanded={active}
+              aria-controls={panelId}
+              onClick={() => setOpen(active ? null : door.key)}
+            >
+              <Icon aria-hidden className="hidden sm:block" />
+              {door.label}
+              {door.count > 0 ? (
+                <span
+                  className={cn(
+                    "grid min-w-4 shrink-0 place-items-center rounded-pill px-1 text-compact font-bold sm:min-w-6 sm:px-1.5 sm:text-caption",
+                    active ? "bg-white/25 text-primary-ink" : "bg-danger text-white",
+                  )}
+                >
+                  {door.count}
+                  <span className="sr-only">хүлээгдэж буй</span>
+                </span>
+              ) : null}
+            </Button>
+          );
+        })}
+      </div>
+
+      <div id={panelId} hidden={open === null}>
+        {open === "journal" ? <TeacherJournal groupId={groupId} initialMonth={month} /> : null}
+        {open === "requests" ? <AttendanceRequestQueue heading="Эцэг эхийн мэдэгдэл" /> : null}
+        {open === "esis" ? (
+          <div className="flex flex-col gap-4">
+            {/*
+              The two halves of one exchange: the fields this screen sends when
+              a confirmed day goes up, and the record that comes back when it is
+              read again. Reading them apart is how a teacher ends up believing
+              a day was filed because the button said so.
+
+              Both are keyed by ESIS's `studentGroupId`, which the panel asks
+              for — our group ids are uuids the ministry has never seen, and
+              §15's external-id history is what would fill this in.
+            */}
+            <EsisDataPanel
+              resource="saveAttendanceV3"
+              title="Ирц хадгалах"
+              description="Баталгаажсан өдрийн ирцээр ESIS рүү илгээх талбарууд"
+            />
+            <EsisDataPanel
+              resource="groupAttendance"
+              title="Ирц харах"
+              description="Илгээсэн ирцийг ESIS-ээс буцааж уншсан нь"
+            />
+          </div>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
@@ -630,123 +832,6 @@ function PayloadField({ label, value }: { label: string; value: string | number 
     <div>
       <dt className="font-mono text-caption text-muted">{label}</dt>
       <dd className="mt-1 text-body font-semibold text-ink">{value}</dd>
-    </div>
-  );
-}
-
-function ChildRow({
-  child,
-  status,
-  readOnly,
-  pending,
-  onSelect,
-  checked,
-  onToggle,
-}: {
-  child: { id: string; lastName: string; firstName: string };
-  status: string | null;
-  /** Saved view until the user explicitly enters edit mode. */
-  readOnly: boolean;
-  pending: boolean;
-  onSelect: (status: string) => void;
-  checked: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <div className="flex flex-col gap-3 px-4 py-3.5 transition-colors hover:bg-sunken sm:flex-row sm:items-center sm:gap-4">
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        {/*
-          Leading the row, before the avatar: a column of boxes down the left
-          edge is scannable as a column, and one tucked between the face and
-          the name is not.
-        */}
-        {readOnly ? null : (
-          <SelectBox checked={checked} onChange={onToggle} label={`${fullName(child)} — сонгох`} />
-        )}
-        <ChildAvatar child={child} size={40} />
-        <span className="min-w-0 truncate text-lead font-semibold text-ink">{fullName(child)}</span>
-      </div>
-
-      {/*
-        ★ One tinted chip instead of six buttons, when this is being read.
-
-        Not six disabled buttons: a greyed-out row of controls still says "you
-        may press these, but not now", and there is no "now" in which a
-        director may. The chip carries the same tone the selected button would
-        have, so the sheet scans identically — the exceptions stand out in the
-        same colours — and it simply has nothing to press.
-      */}
-      {readOnly ? (
-        <div className="flex flex-wrap gap-2 sm:justify-end">
-          {status ? (
-            <span
-              className={cn(
-                "inline-flex min-h-9 items-center rounded-control px-3 text-body font-semibold",
-                TONE_SURFACE[ATTENDANCE_STATUS_CHART_TONE[status] ?? "sky"],
-              )}
-            >
-              {STATUS_LABEL[status] ?? status}
-            </span>
-          ) : (
-            <span className="inline-flex min-h-9 items-center rounded-control border border-dashed border-border px-3 text-body text-faint">
-              Бүртгээгүй
-            </span>
-          )}
-        </div>
-      ) : (
-        <div
-          role="radiogroup"
-          aria-label={`${fullName(child)} — ирц`}
-          className="flex flex-wrap gap-2"
-        >
-          {Object.entries(STATUS_LABEL).map(([value, label]) => {
-            const selected = value === status;
-            return (
-              <button
-                key={value}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                disabled={pending}
-                onClick={() => onSelect(value)}
-                className={cn(
-                  /*
-                  ★ REDESIGN 2026-09-03 — the chosen status is coloured for what
-                  it *means*, not filled with the brand blue.
-
-                  Every selected pill was `bg-primary`, so a register of thirty
-                  children read as thirty identical blue buttons and the one
-                  fact a teacher scans this sheet for — who is missing — could
-                  only be got by reading each label. The tint ramp is what the
-                  design direction asks for ("Ирсэн filled mint, Өвчтэй filled
-                  peach") and it makes the exceptions findable at a glance.
-
-                  `ATTENDANCE_STATUS_CHART_TONE` is reused rather than a second
-                  map: the same status must not be mint on the register and
-                  peach on the month panel beside it. `TONE_SURFACE` pairs each
-                  tint with an ink measured at 4.5:1 or better
-                  (`ui-foundation.test.tsx`), which a hand-picked pastel would
-                  not be.
-
-                  Colour is not the only signal — `aria-checked` carries the
-                  state, and the selected pill also takes a heavier weight and
-                  a matching border.
-                */
-                  "min-h-11 rounded-control border px-3 text-body font-medium transition-all duration-150 active:translate-y-[1px] disabled:opacity-60",
-                  selected
-                    ? cn(
-                        TONE_SURFACE[ATTENDANCE_STATUS_CHART_TONE[value] ?? "sky"],
-                        "border-transparent font-semibold shadow-sm",
-                      )
-                    : "border-border bg-surface text-muted hover:border-faint hover:bg-canvas hover:text-ink",
-                )}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { ChildAccessService } from "../authz/child-access.service";
 import { ChatAccessService } from "../authz/chat-access.service";
 import { TenantAccessService } from "../authz/tenant-access.service";
 import { NotificationsService } from "../notifications/notifications.service";
-import { isGuardianOf } from "../authz/child-access";
+import { childKindergartenIds, isGuardianOf } from "../authz/child-access";
 import type { Actor } from "../authz/actor";
 import { StorageService } from "../storage/storage.service";
 import { MediaRepository, type MediaFilters } from "./media.repository";
@@ -643,6 +643,92 @@ export class MediaService {
    * random — never derived from the notice, the kindergarten name or the
    * uploaded filename.
    */
+  /**
+   * Copies a photograph from a class-board post into a child's own album.
+   *
+   * ★ RFP §2.3 — a family may keep what the kindergarten shows them. A teacher
+   * posts the morning's photographs to the board, and a parent recognising
+   * their own child had no way to put it in that child's year.
+   *
+   * ★★ A real copy, not a second row on the same object.
+   *
+   * Sharing a `storageKey` between two `MediaFile` rows would be cheaper and
+   * is the wrong trade: the two then have one lifetime between them, so the
+   * orphan sweep collecting the post's photograph would empty the family's
+   * album months later and nothing would say why. `get` + `put` under a fresh
+   * random key makes them independent objects — which is also what makes a
+   * later delete of either one safe.
+   *
+   * ★★★ Authorization is asked, not re-derived.
+   *
+   * Two questions, and each already has one owner: may this actor *see* that
+   * post (`NotificationsService.get`, which 404s on a notice for another
+   * family), and may they write to this child's album
+   * (`assertCanContributeMedia`). Re-implementing either here would be the
+   * second answer §1.1 exists to prevent — and the audience rule in
+   * particular is a query nobody should be writing twice.
+   */
+  async saveNotificationPhotoToChild(
+    actor: Actor,
+    childId: string,
+    input: { mediaId: string; age?: number | null; category?: string | null },
+  ) {
+    const facts = await this.childAccess.assertCanContributeMedia(actor, childId);
+    /*
+     * §1.2 — the kindergarten comes from enrollment history, never from the
+     * denormalised column. `childKindergartenIds` is the one reader of that
+     * rule, and the fallback it documents (a child with no enrollments yet)
+     * is exactly the newly registered child a teacher might file a photo for.
+     */
+    const kindergartens = childKindergartenIds(facts);
+
+    const source = await this.repo.findForAuthorization(input.mediaId);
+    if (!source || !source.notificationId || source.status !== "READY") {
+      throw new NotFoundException();
+    }
+
+    // Throws 404 for a post this actor may not read — a notice written for
+    // another group is not a source they can copy from.
+    await this.notifications.get(actor, source.notificationId);
+
+    // The post and the child must belong to the same kindergarten. A guardian
+    // with children in two would otherwise carry a photograph across.
+    if (!kindergartens.has(source.kindergartenId)) throw new NotFoundException();
+
+    const buffer = await this.storage.get(source.storageKey);
+    const storageKey = this.storage.buildKey(childId);
+    await this.storage.put(storageKey, buffer, source.mimeType);
+
+    const media = await this.repo.create({
+      kindergartenId: source.kindergartenId,
+      childId,
+      purpose: "CHILD_PHOTO",
+      storageKey,
+      originalName: source.originalName,
+      mimeType: source.mimeType,
+      sizeBytes: buffer.byteLength,
+      width: null,
+      height: null,
+      caption: null,
+      order: 0,
+      age: input.age ?? null,
+      category: input.category ?? null,
+      uploadedById: actor.userId,
+    });
+
+    await this.audit.append({
+      action: "CREATE",
+      kindergartenId: source.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "MediaFile",
+      objectId: media.id,
+      childId,
+      metadata: { purpose: media.purpose, copiedFrom: input.mediaId },
+    });
+
+    return this.toPublicShape(media);
+  }
+
   async uploadForNotification(
     actor: Actor,
     notificationId: string,
@@ -722,7 +808,9 @@ export class MediaService {
     kindergartenId: string,
     file: { buffer: Buffer; originalname: string },
   ) {
-    this.tenants.assertCanManageMeals(actor, kindergartenId);
+    // ★ The same people who may edit the menu, so a photograph cannot be
+    // uploaded by somebody who could not then attach it (`assertCanEditMenu`).
+    this.tenants.assertCanEditMenu(actor, kindergartenId);
 
     let validated;
     try {

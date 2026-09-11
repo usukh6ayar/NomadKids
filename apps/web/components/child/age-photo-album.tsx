@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import {
-  ArrowLeft,
   CakeSlice,
   ChevronRight,
   CircleUserRound,
@@ -41,6 +40,7 @@ import { mediaUrl } from "@/lib/api/client";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
+import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FormDialog } from "@/components/ui/form-dialog";
@@ -201,12 +201,16 @@ export function AgePhotoAlbum({ childId, age }: { childId: string; age: Age }) {
         </ol>
       </nav>
 
-      <Button asChild variant="ghost" size="sm" className="-ml-2 self-start">
-        <Link href={`/children/${childId}/portfolio/gallery`}>
-          <ArrowLeft size={18} />
-          Зургийн цомог
-        </Link>
-      </Button>
+      {/*
+        ★ A bare Буцах, not the destination's name — 2026-09-11, at the client's
+        instruction: "хүүхдийн нэрийг арилгаад зүгээр л буцах гэсэн тэмдэг
+        болго … бүх газар … зөвхөн нэг удаа буцах тэмдэг."
+
+        `BackButton` is one step back through history with `href` as the
+        fallback, which is also the honest control: this link named a screen the
+        reader may never have come from.
+      */}
+      <BackButton href={`/children/${childId}/portfolio/gallery`} />
 
       <DevelopmentHistoryLink childId={childId} />
 

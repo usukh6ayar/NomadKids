@@ -50,6 +50,23 @@ export function formatDate(value: string | Date | null | undefined): string {
   return `${date.getFullYear()}.${m}.${d}`;
 }
 
+/**
+ * `Пүрэв` — the weekday, written out rather than asked of `Intl`.
+ *
+ * ★ `toLocaleDateString("mn-MN", { weekday: "long" })` is not stable across
+ * runtimes: a Node build without full ICU answers in English, which is how the
+ * teacher's dashboard came to greet them with "Thursday". Seven strings cost
+ * nothing and cannot regress on a different server.
+ *
+ * Sunday first, because `getDay()` calls it 0.
+ */
+const WEEKDAYS = ["Ням", "Даваа", "Мягмар", "Лхагва", "Пүрэв", "Баасан", "Бямба"] as const;
+
+export function formatWeekday(value: string | Date | null | undefined): string {
+  const date = toDate(value);
+  return date ? WEEKDAYS[date.getDay()]! : "—";
+}
+
 /** `2026 оны 8-р сар` — a month, not a day, for a calendar heading. */
 export function formatMonthLabel(monthKey: string): string {
   const [year, month] = monthKey.split("-").map(Number);
@@ -173,6 +190,28 @@ export function fullName(
 ): string {
   if (!person) return "—";
   return [person.lastName, person.firstName].filter(Boolean).join(" ") || "—";
+}
+
+/**
+ * `Б.Батзориг` — the surname as one initial, then the given name.
+ *
+ * ★ The register's own convention, asked for by the client on 2026-09-10, and
+ * it is a column-width decision rather than a stylistic one: a register is a
+ * name against twenty date columns, and "Батжаргал Ануужин" spends most of the
+ * row's width on the half a teacher does not read. Mongolian names are given
+ * as patronymic-then-given, so the initial is the surname's and the name that
+ * survives in full is the one a teacher calls the child by.
+ *
+ * Falls back to whichever half exists — `fullName`'s "—" for neither, the
+ * given name alone when there is no surname to abbreviate.
+ */
+export function shortName(
+  person: { lastName?: string | null; firstName?: string | null } | null | undefined,
+): string {
+  const last = person?.lastName?.trim();
+  const first = person?.firstName?.trim();
+  if (!first) return last || "—";
+  return last ? `${last[0]!.toUpperCase()}.${first}` : first;
 }
 
 /** Initials for a photoless avatar. */

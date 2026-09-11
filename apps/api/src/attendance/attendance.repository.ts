@@ -86,6 +86,37 @@ export class AttendanceRepository {
   }
 
   /**
+   * The same sheet over a span of days — the teacher's week grid.
+   *
+   * ★ Two queries for the whole range, not two per day. The `date` filter is
+   * the only difference from `groupDaySheet` above: a `gte`/`lte` window
+   * instead of one value, which Postgres answers from the same index.
+   */
+  async groupRangeSheet(groupId: string, from: Date, to: Date) {
+    const [enrollments, records] = await Promise.all([
+      this.prisma.enrollment.findMany({
+        where: { groupId, status: "ACTIVE", deletedAt: null },
+        select: {
+          id: true,
+          childId: true,
+          child: {
+            select: { id: true, lastName: true, firstName: true, dateOfBirth: true },
+          },
+        },
+      }),
+      this.prisma.attendance.findMany({
+        where: {
+          deletedAt: null,
+          date: { gte: from, lte: to },
+          enrollment: { groupId, deletedAt: null },
+        },
+      }),
+    ]);
+
+    return { enrollments, records };
+  }
+
+  /**
    * One group's month, aggregated three ways for the register's own panel.
    *
    * ★ Three grouped queries, not a page of rows the service counts.

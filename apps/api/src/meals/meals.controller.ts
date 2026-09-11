@@ -1,4 +1,17 @@
-import { Body, Controller, Get, Param, Post, Put, Query, Res } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  Res,
+  UploadedFile,
+  UseInterceptors,
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
 import { idParamSchema } from "@kinder/contracts";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
@@ -6,15 +19,20 @@ import { CurrentActor } from "../auth/decorators/actor.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
 import type { Actor } from "../authz/actor";
 import { MealsService } from "./meals.service";
+import { MAX_SPREADSHEET_BYTES } from "../media/upload-validation";
 import {
+  createMealNoteSchema,
   dateParamSchema,
   groupMealSheetQuerySchema,
+  mealNotesQuerySchema,
   listMenuQuerySchema,
   mealSummaryQuerySchema,
   recordGroupMealsSchema,
   saveMenuDaySchema,
+  type CreateMealNoteDto,
   type DateParam,
   type GroupMealSheetQuery,
+  type MealNotesQuery,
   type ListMenuQuery,
   type MealSummaryQuery,
   type RecordGroupMealsDto,
@@ -83,8 +101,34 @@ export class MealsController {
     res.send(buffer);
   }
 
+  /**
+   * A week's menu from a spreadsheet — 2026-09-11, at the client's request.
+   *
+   * ★ TEACHER and COOK, not ADMIN. See `assertCanEditMenu`: a director reads
+   * the week and no longer enters it.
+   *
+   * ★★ A dry run unless `?dryRun=false`, and the multer ceiling is a second
+   * limit in front of `validateSpreadsheetUpload` — one stops the bytes
+   * reaching the process, the other is what the parser trusts. `children/import`
+   * carries the same pair and the same argument.
+   */
+  @Post("import")
+  @Roles("TEACHER", "COOK")
+  @UseInterceptors(
+    FileInterceptor("file", { limits: { fileSize: MAX_SPREADSHEET_BYTES, files: 1 } }),
+  )
+  async importMenu(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @UploadedFile() file: { buffer: Buffer } | undefined,
+    @Query("dryRun") dryRun?: string,
+  ) {
+    if (!file) throw new BadRequestException("Файл сонгоно уу");
+    return this.service.importMenu(actor, params.id, file.buffer, dryRun !== "false");
+  }
+
   @Put(":date")
-  @Roles("TEACHER", "ADMIN", "COOK")
+  @Roles("TEACHER", "COOK")
   async save(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(dayParamsSchema)) params: { id: string } & DateParam,
@@ -167,5 +211,30 @@ export class ChildMealsController {
     @Query(new ZodValidationPipe(mealSummaryQuerySchema)) query: MealSummaryQuery,
   ) {
     return this.service.childMealSummary(actor, params.id, query.month);
+  }
+
+  /*
+    ★ No `@Roles` on either of these — the family is the author.
+
+    Every other write about a child is staff-only; this one is the point. The
+    guard that matters is `assertCanAccess` in the service, which is what keeps a
+    guardian to their own child and answers 404 for anyone else.
+  */
+  @Get("notes")
+  async notes(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(mealNotesQuerySchema)) query: MealNotesQuery,
+  ) {
+    return this.service.listMealNotes(actor, params.id, query);
+  }
+
+  @Post("notes")
+  async addNote(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(createMealNoteSchema)) body: CreateMealNoteDto,
+  ) {
+    return this.service.createMealNote(actor, params.id, body);
   }
 }

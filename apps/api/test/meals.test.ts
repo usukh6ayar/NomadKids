@@ -35,6 +35,7 @@ let teacherA: AuthSession;
 let parentA: AuthSession;
 let parentB: AuthSession;
 let cookA: AuthSession;
+let adminA: AuthSession;
 let storageAvailable = true;
 
 beforeAll(async () => {
@@ -69,6 +70,7 @@ beforeEach(async () => {
   });
   await createMembership(cookUser.id, a.kindergarten.id, "COOK");
   cookA = await login(app, cookUser.username);
+  adminA = await login(app, a.adminUser.username);
 });
 
 const server = () => app.getHttpServer();
@@ -590,6 +592,422 @@ describe("the meal register", () => {
         parentB,
       );
       expect(res.status).toBe(404);
+    });
+  });
+
+  /*
+    A family's note about their child's meals — the client's 2026-09-11 design.
+
+    ★ The one write in the product a guardian is the *intended* author of, so
+    these cases are about the opposite risk from usual: not "can a parent do a
+    teacher's job" but "does the parent-authored write still stop at their own
+    child".
+  */
+  /*
+    "Нэмэлт мэдээлэл" on the day itself — the client's 2026-09-11 drawing puts
+    it under the cards on the edit screen. A dish already had a note; this is
+    about the day.
+  */
+  describe("the day's own note", () => {
+    it("saves and reads back", async () => {
+      const saved = await authed(
+        request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-03-02`),
+        cookA,
+      ).send({ dishes: [{ name: "Шөл", allergenTags: [] }], note: "Цэс өөрчлөгдсөн" });
+
+      expect(saved.status).toBe(200);
+      expect(saved.body.note).toBe("Цэс өөрчлөгдсөн");
+    });
+
+    it("clears it when the box is emptied", async () => {
+      const put = () =>
+        authed(
+          request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-03-02`),
+          cookA,
+        );
+
+      await put().send({ dishes: [{ name: "Шөл", allergenTags: [] }], note: "Анхны тэмдэглэл" });
+      const cleared = await put().send({ dishes: [{ name: "Шөл", allergenTags: [] }], note: "" });
+
+      expect(cleared.body.note).toBeNull();
+    });
+
+    /*
+      ★ The import does not send the field, and must not wipe what a cook typed.
+      `undefined` leaves it alone; only the form's explicit empty clears it.
+    */
+    it("survives an Excel import of the same day", async () => {
+      await authed(
+        request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-03-02`),
+        cookA,
+      ).send({ dishes: [{ name: "Шөл", allergenTags: [] }], note: "Хадгалагдах ёстой" });
+
+      const ExcelJS = (await import("exceljs")).default;
+      const book = new ExcelJS.Workbook();
+      const sheet = book.addWorksheet("Хоолны цэс");
+      sheet.addRow(["Огноо", "Гараг", "Хоолны цаг", "Хоолны нэр"]);
+      sheet.addRow(["2026-03-02", "Даваа", "Өглөөний цай", "Тараг"]);
+      const file = Buffer.from(await book.xlsx.writeBuffer());
+
+      await authed(
+        request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/menu/import?dryRun=false`),
+        cookA,
+      ).attach("file", file, "menu.xlsx");
+
+      const day = await db.menuDay.findFirstOrThrow({
+        where: { kindergartenId: a.kindergarten.id },
+      });
+      expect(day.note).toBe("Хадгалагдах ёстой");
+    });
+
+    it("refuses a note over 500 characters", async () => {
+      const res = await authed(
+        request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-03-02`),
+        cookA,
+      ).send({ dishes: [{ name: "Шөл", allergenTags: [] }], note: "х".repeat(501) });
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe("a family's meal notes", () => {
+    const NOTE = { date: "2026-03-04", body: "Сүүн бүтээгдэхүүн өгч болохгүй." };
+
+    it("a guardian writes one and reads it back", async () => {
+      const created = await authed(
+        request(server()).post(`/v1/children/${a.child.id}/meals/notes`),
+        parentA,
+      ).send(NOTE);
+
+      expect(created.status).toBe(201);
+      expect(created.body.body).toBe(NOTE.body);
+      expect(created.body.date).toBe("2026-03-04");
+
+      const read = await authed(
+        request(server()).get(
+          `/v1/children/${a.child.id}/meals/notes?from=2026-03-01&to=2026-03-31`,
+        ),
+        parentA,
+      );
+      expect(read.status).toBe(200);
+      expect(read.body).toHaveLength(1);
+    });
+
+    /** The point of the note: the kitchen and the teacher have to see it. */
+    it("the child's teacher reads it", async () => {
+      await authed(request(server()).post(`/v1/children/${a.child.id}/meals/notes`), parentA).send(
+        NOTE,
+      );
+
+      const res = await authed(
+        request(server()).get(
+          `/v1/children/${a.child.id}/meals/notes?from=2026-03-01&to=2026-03-31`,
+        ),
+        teacherA,
+      );
+      expect(res.status).toBe(200);
+      expect(res.body[0].body).toBe(NOTE.body);
+    });
+
+    it("★ a guardian of another child gets 404 writing one", async () => {
+      const res = await authed(
+        request(server()).post(`/v1/children/${a.child.id}/meals/notes`),
+        parentB,
+      ).send(NOTE);
+
+      expect(res.status).toBe(404);
+    });
+
+    it("★ a guardian of another child gets 404 reading them", async () => {
+      await authed(request(server()).post(`/v1/children/${a.child.id}/meals/notes`), parentA).send(
+        NOTE,
+      );
+
+      const res = await authed(
+        request(server()).get(
+          `/v1/children/${a.child.id}/meals/notes?from=2026-03-01&to=2026-03-31`,
+        ),
+        parentB,
+      );
+
+      // 404, not an empty list — an empty list would say the child exists.
+      expect(res.status).toBe(404);
+    });
+
+    it("★ a teacher from another kindergarten gets 404", async () => {
+      const teacherB = await login(app, b.teacherUser.username);
+
+      const res = await authed(
+        request(server()).get(
+          `/v1/children/${a.child.id}/meals/notes?from=2026-03-01&to=2026-03-31`,
+        ),
+        teacherB,
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it("refuses an empty note", async () => {
+      const res = await authed(
+        request(server()).post(`/v1/children/${a.child.id}/meals/notes`),
+        parentA,
+      ).send({ date: "2026-03-04", body: "   " });
+
+      expect(res.status).toBe(400);
+    });
+
+    /** The counter on screen is a courtesy; this is the limit. */
+    it("refuses a note over 500 characters", async () => {
+      const res = await authed(
+        request(server()).post(`/v1/children/${a.child.id}/meals/notes`),
+        parentA,
+      ).send({ date: "2026-03-04", body: "х".repeat(501) });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("keeps a second note rather than replacing the first", async () => {
+      await authed(request(server()).post(`/v1/children/${a.child.id}/meals/notes`), parentA).send(
+        NOTE,
+      );
+      await authed(request(server()).post(`/v1/children/${a.child.id}/meals/notes`), parentA).send({
+        ...NOTE,
+        body: "Өнөөдөр хоолны дуршил муутай байна.",
+      });
+
+      const res = await authed(
+        request(server()).get(
+          `/v1/children/${a.child.id}/meals/notes?from=2026-03-01&to=2026-03-31`,
+        ),
+        parentA,
+      );
+      expect(res.body).toHaveLength(2);
+    });
+
+    it("returns only the days asked for", async () => {
+      await authed(request(server()).post(`/v1/children/${a.child.id}/meals/notes`), parentA).send(
+        NOTE,
+      );
+
+      const res = await authed(
+        request(server()).get(
+          `/v1/children/${a.child.id}/meals/notes?from=2026-04-01&to=2026-04-30`,
+        ),
+        parentA,
+      );
+      expect(res.body).toEqual([]);
+    });
+  });
+
+  /*
+    The weekly menu from a spreadsheet — the client's 2026-09-11 request, and
+    the role narrowing that came with it.
+
+    ★ `assertCanEditMenu` (COOK/TEACHER) is new and *narrower* than
+    `assertCanManageMeals` (COOK/TEACHER/ADMIN), which still guards reading. The
+    client's line: "Багш болон тогооч засаж болдог … нягтлан, удирдлага, эцэг эх
+    оруулсан цэсүүдийг зүгээр харна."
+  */
+  describe("the menu as a spreadsheet", () => {
+    /** A workbook in the shape `/menu/export` writes. */
+    async function workbook(rows: (string | number)[][]) {
+      const ExcelJS = (await import("exceljs")).default;
+      const book = new ExcelJS.Workbook();
+      const sheet = book.addWorksheet("Хоолны цэс");
+      sheet.addRow([
+        "Огноо",
+        "Гараг",
+        "Хоолны цаг",
+        "Хоолны нэр",
+        "Порц",
+        "Ккал",
+        "Харшлын шошго",
+        "Тэмдэглэл",
+      ]);
+      for (const row of rows) sheet.addRow(row);
+      return Buffer.from(await book.xlsx.writeBuffer());
+    }
+
+    const ONE_DAY = [
+      ["2026-03-02", "Даваа", "Өглөөний цай", "Тараг", 1, 120, "сүү", ""],
+      ["2026-03-02", "Даваа", "Өдрийн хоол", "Гурилтай шөл", 1, 320, "", "Халуун"],
+    ];
+
+    function post(session: AuthSession, file: Buffer, query = "") {
+      return authed(
+        request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/menu/import${query}`),
+        session,
+      ).attach("file", file, "menu.xlsx");
+    }
+
+    it("a cook uploads a week and it is a dry run by default", async () => {
+      const res = await post(cookA, await workbook(ONE_DAY));
+
+      expect(res.status).toBe(201);
+      expect(res.body.dryRun).toBe(true);
+      expect(res.body.dishCount).toBe(2);
+      expect(res.body.days).toEqual([{ date: "2026-03-02", dishes: 2 }]);
+
+      // ★ Nothing written. An import that writes on the first click is one
+      // misplaced press away from erasing a week.
+      expect(await db.menuDay.count({ where: { kindergartenId: a.kindergarten.id } })).toBe(0);
+    });
+
+    it("writes when the dry run is turned off", async () => {
+      const res = await post(cookA, await workbook(ONE_DAY), "?dryRun=false");
+
+      expect(res.status).toBe(201);
+      expect(res.body.dryRun).toBe(false);
+
+      const day = await db.menuDay.findFirstOrThrow({
+        where: { kindergartenId: a.kindergarten.id },
+      });
+      const dishes = day.dishes as { name: string; kind: string | null; calories: number }[];
+      expect(dishes.map((dish) => dish.name)).toEqual(["Тараг", "Гурилтай шөл"]);
+      expect(dishes[0]!.kind).toBe("BREAKFAST");
+      expect(dishes[1]!.calories).toBe(320);
+    });
+
+    it("a teacher may import too", async () => {
+      const res = await post(teacherA, await workbook(ONE_DAY), "?dryRun=false");
+      expect(res.status).toBe(201);
+    });
+
+    /*
+      ★ The narrowing, asserted from both sides: an admin may still read the
+      menu and may no longer write it.
+    */
+    it("★ an admin can no longer import or save the menu", async () => {
+      const imported = await post(adminA, await workbook(ONE_DAY));
+      // 404, not 403 — §1.7's rule reaches the role guard too.
+      expect(imported.status).toBe(404);
+
+      const saved = await authed(
+        request(server()).put(`/v1/kindergartens/${a.kindergarten.id}/menu/2026-03-02`),
+        adminA,
+      ).send({ dishes: [{ name: "Шөл", allergenTags: [] }] });
+      expect(saved.status).toBe(404);
+    });
+
+    it("★ an admin still reads the menu", async () => {
+      await post(cookA, await workbook(ONE_DAY), "?dryRun=false");
+
+      const res = await authed(
+        request(server()).get(
+          `/v1/kindergartens/${a.kindergarten.id}/menu?from=2026-03-01&to=2026-03-07`,
+        ),
+        adminA,
+      );
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+    });
+
+    it("★ a parent cannot import", async () => {
+      const res = await post(parentA, await workbook(ONE_DAY));
+      expect(res.status).toBe(404);
+    });
+
+    it("★ a cook from another kindergarten gets 404", async () => {
+      const outsider = await createUser({
+        username: `cook-b-${Math.random().toString(36).slice(2, 8)}`,
+      });
+      await createMembership(outsider.id, b.kindergarten.id, "COOK");
+      const cookB = await login(app, outsider.username);
+
+      const res = await post(cookB, await workbook(ONE_DAY));
+      expect(res.status).toBe(404);
+    });
+
+    /** Replaces the day, so deleting a name in Excel deletes the dish. */
+    it("replaces a day rather than appending to it", async () => {
+      await post(cookA, await workbook(ONE_DAY), "?dryRun=false");
+      await post(
+        cookA,
+        await workbook([["2026-03-02", "Даваа", "Өглөөний цай", "Будаа", 1, 200, "", ""]]),
+        "?dryRun=false",
+      );
+
+      const day = await db.menuDay.findFirstOrThrow({
+        where: { kindergartenId: a.kindergarten.id },
+      });
+      expect((day.dishes as { name: string }[]).map((dish) => dish.name)).toEqual(["Будаа"]);
+    });
+
+    /*
+      ★ A day named with no dish empties it. That is how a week is cleared, and
+      without it the import could only ever add.
+    */
+    it("empties a day whose dishes were deleted in the spreadsheet", async () => {
+      await post(cookA, await workbook(ONE_DAY), "?dryRun=false");
+      await post(
+        cookA,
+        await workbook([["2026-03-02", "Даваа", "", "", "", "", "", ""]]),
+        "?dryRun=false",
+      );
+
+      const day = await db.menuDay.findFirstOrThrow({
+        where: { kindergartenId: a.kindergarten.id },
+      });
+      expect(day.dishes).toEqual([]);
+    });
+
+    /** One bad row must not discard the good ones. */
+    it("reports a bad row and keeps the rest", async () => {
+      const res = await post(
+        cookA,
+        await workbook([
+          ["2026-03-02", "Даваа", "Өглөөний цай", "Тараг", 1, 120, "", ""],
+          ["огноо биш", "", "Өглөөний цай", "Талх", 1, 90, "", ""],
+          ["2026-03-03", "Мягмар", "Ийм цаг байхгүй", "Будаа", 1, 200, "", ""],
+        ]),
+      );
+
+      expect(res.status).toBe(201);
+      expect(res.body.dishCount).toBe(1);
+      expect(res.body.problems).toHaveLength(2);
+    });
+
+    it("refuses a file that is not a workbook", async () => {
+      const res = await post(cookA, Buffer.from("Энэ бол excel биш"));
+      expect(res.status).toBe(400);
+    });
+
+    it("says which column is missing rather than importing nothing quietly", async () => {
+      const ExcelJS = (await import("exceljs")).default;
+      const book = new ExcelJS.Workbook();
+      const sheet = book.addWorksheet("Хоолны цэс");
+      sheet.addRow(["Гараг", "Хоолны цаг"]);
+      const file = Buffer.from(await book.xlsx.writeBuffer());
+
+      const res = await post(cookA, file);
+      expect(res.status).toBe(201);
+      expect(res.body.problems[0].message).toContain("Огноо");
+    });
+
+    /*
+      ★ A consumed day is refused, not skipped silently — the stock ledger was
+      written against that plan.
+    */
+    it("refuses to overwrite a day already consumed", async () => {
+      await post(cookA, await workbook(ONE_DAY), "?dryRun=false");
+      await db.menuDay.updateMany({
+        where: { kindergartenId: a.kindergarten.id },
+        data: { consumedAt: new Date() },
+      });
+
+      const res = await post(
+        cookA,
+        await workbook([["2026-03-02", "Даваа", "Өглөөний цай", "Өөр хоол", 1, 100, "", ""]]),
+        "?dryRun=false",
+      );
+
+      expect(res.status).toBe(201);
+      expect(res.body.dishCount).toBe(0);
+      expect(res.body.problems[0].message).toContain("хэрэглээнд бүртгэсэн");
+
+      const day = await db.menuDay.findFirstOrThrow({
+        where: { kindergartenId: a.kindergarten.id },
+      });
+      expect((day.dishes as { name: string }[])[0]!.name).toBe("Тараг");
     });
   });
 });

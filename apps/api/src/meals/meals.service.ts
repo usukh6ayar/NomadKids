@@ -12,7 +12,14 @@ import { parseDishes, type MenuDishLike } from "./dish-json";
 import { MealsRepository } from "./meals.repository";
 import { findAllergenWarnings } from "./allergen-match";
 import { buildMenuWorkbook } from "./menu-workbook";
-import type { RecordGroupMealsDto, SaveMenuDayDto } from "./meals.dto";
+import { parseMenuWorkbook } from "./menu-import";
+import { UploadRejected, validateSpreadsheetUpload } from "../media/upload-validation";
+import type {
+  CreateMealNoteDto,
+  MealNotesQuery,
+  RecordGroupMealsDto,
+  SaveMenuDayDto,
+} from "./meals.dto";
 
 @Injectable()
 export class MealsService {
@@ -152,7 +159,8 @@ export class MealsService {
    * point is a stock `ADJUSTMENT`, not a rewritten plan.
    */
   async saveDay(actor: Actor, kindergartenId: string, dateIso: string, dto: SaveMenuDayDto) {
-    this.tenants.assertCanManageMeals(actor, kindergartenId);
+    // ★ Editing, not reading — COOK/TEACHER. See `assertCanEditMenu`.
+    this.tenants.assertCanEditMenu(actor, kindergartenId);
     const date = new Date(`${dateIso}T00:00:00.000Z`);
 
     const existing = await this.repo.findDayState(kindergartenId, date);
@@ -192,7 +200,115 @@ export class MealsService {
       dishes,
       dto.totalCalories ?? null,
       actor.userId,
+      // Sent by the form on every save, so an emptied box clears the column;
+      // omitted by the import, which leaves whatever the cook typed.
+      dto.note === undefined ? undefined : dto.note?.trim() || null,
     );
+  }
+
+  /**
+   * A week's menu from a spreadsheet — the client's 2026-09-11 request.
+   *
+   * ★ It reads back exactly what `/menu/export` writes, so the loop is
+   * download → edit in Excel → upload. A kitchen plans next week by changing
+   * this week's names, which a bespoke template would break the first time a
+   * column moved.
+   *
+   * ★★ A dry run by default, like `importFromWorkbook` for children — and for
+   * the same reason, with more force here: this **replaces** each named day's
+   * dishes. A file covering Monday to Friday wipes and rewrites five days, and
+   * an import that writes on the first click is one misplaced press away from
+   * erasing a week somebody spent an afternoon entering.
+   *
+   * ★★★ A day the kitchen has already consumed is refused, not skipped
+   * silently — the stock ledger was written against that plan, and editing it
+   * afterwards leaves the two disagreeing. Same rule `saveDay` enforces one day
+   * at a time.
+   *
+   * Photographs and recipe links survive nothing here: a spreadsheet has no
+   * column for either, and replacing a day drops what it does not carry. That
+   * is why the screen offers this beside the manual editor rather than instead
+   * of it — the client asked for both ("тогооч гараар оруулахыг үлдээ").
+   */
+  async importMenu(actor: Actor, kindergartenId: string, file: Buffer, dryRun: boolean) {
+    this.tenants.assertCanEditMenu(actor, kindergartenId);
+
+    /*
+      `upload-validation.ts` stays free of Nest, so its refusal is translated
+      here — the same catch `children.service.ts` carries. Without it a file
+      that is not a spreadsheet answers 500, which reads as "the server is
+      broken" rather than "this is the wrong file".
+    */
+    try {
+      validateSpreadsheetUpload(file);
+    } catch (error) {
+      if (error instanceof UploadRejected) throw new BadRequestException(error.reason);
+      throw error;
+    }
+
+    const parsed = await parseMenuWorkbook(file);
+    const problems = [...parsed.problems];
+
+    // Which of the named days may not be rewritten. One query, not one per day.
+    const states = await this.repo.findDayStates(
+      kindergartenId,
+      parsed.days.map((day) => toDate(day.date)),
+    );
+    const consumed = new Set(
+      states
+        .filter((state) => state.consumedAt)
+        .map((state) => state.date.toISOString().slice(0, 10)),
+    );
+
+    const writable = parsed.days.filter((day) => {
+      if (!consumed.has(day.date)) return true;
+      problems.push({
+        rowNumber: 0,
+        message: `${day.date}: хэрэглээнд бүртгэсэн тул солих боломжгүй`,
+      });
+      return false;
+    });
+
+    const summary = {
+      dryRun,
+      days: writable.map((day) => ({ date: day.date, dishes: day.dishes.length })),
+      dishCount: writable.reduce((sum, day) => sum + day.dishes.length, 0),
+      problems,
+    };
+
+    if (dryRun || writable.length === 0) return summary;
+
+    for (const day of writable) {
+      await this.repo.upsertDay(
+        kindergartenId,
+        toDate(day.date),
+        day.dishes.map((dish) => ({
+          name: dish.name,
+          kind: dish.kind,
+          portions: dish.portions,
+          calories: dish.calories,
+          allergenTags: dish.allergenTags,
+          note: dish.note,
+        })),
+        null,
+        actor.userId,
+      );
+    }
+
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "MenuDay",
+      objectId: kindergartenId,
+      metadata: {
+        source: "excel-import",
+        days: writable.map((day) => day.date),
+        dishes: summary.dishCount,
+      },
+    });
+
+    return summary;
   }
 
   /**
@@ -528,6 +644,77 @@ export class MealsService {
        * stays.
        */
       daysFed,
+    };
+  }
+
+  // ── A family's notes about their child's meals ─────────────────────────────
+  //
+  // ★ The client's 2026-09-11 design puts a box under the day's menu: "бага
+  // хэмжээгээр өгч болохгүй, орлуулах хоол санал болгох гэх мэт". It is a note
+  // from the family to the kitchen and the teacher.
+
+  /**
+   * The notes on a child over a range.
+   *
+   * ★ `assertCanAccess`, so a guardian reads their own family's notes and staff
+   * read the ones on the children they are responsible for — and anybody else
+   * gets 404 (§1.7) without this method knowing which case it was.
+   */
+  async listMealNotes(actor: Actor, childId: string, query: MealNotesQuery) {
+    await this.childAccess.assertCanAccess(actor, childId);
+
+    // The cap is the guarantee, not the range (§3.4) — see the repository.
+    const notes = await this.repo.listMealNotes(childId, query.from, query.to, 100);
+
+    return notes.map((note) => ({
+      id: note.id,
+      date: note.date.toISOString().slice(0, 10),
+      body: note.body,
+      createdAt: note.createdAt.toISOString(),
+      author: note.author,
+    }));
+  }
+
+  /**
+   * Writes one.
+   *
+   * ★ `assertCanAccess`, not `assertCanRecord` — deliberately, and it is the one
+   * decision in this method.
+   *
+   * `assertCanRecord` is "may this person do the teaching work", which every
+   * other write about a child asks. This note is the *family's*, so a guardian
+   * has to be able to make it; the protection that matters is that they may only
+   * write about their own child, which `assertCanAccess` is exactly. Staff may
+   * write one too — a teacher relaying what a parent said at the door is the
+   * same note.
+   */
+  async createMealNote(actor: Actor, childId: string, dto: CreateMealNoteDto) {
+    const facts = await this.childAccess.assertCanAccess(actor, childId);
+
+    const note = await this.repo.createMealNote({
+      kindergartenId: facts.childKindergartenId,
+      childId,
+      date: dto.date,
+      body: dto.body,
+      authorId: actor.userId,
+    });
+
+    await this.audit.append({
+      action: "CREATE",
+      kindergartenId: facts.childKindergartenId,
+      actorUserId: actor.userId,
+      objectType: "ChildMealNote",
+      objectId: note.id,
+      childId,
+      metadata: { date: note.date.toISOString().slice(0, 10) },
+    });
+
+    return {
+      id: note.id,
+      date: note.date.toISOString().slice(0, 10),
+      body: note.body,
+      createdAt: note.createdAt.toISOString(),
+      author: note.author,
     };
   }
 }

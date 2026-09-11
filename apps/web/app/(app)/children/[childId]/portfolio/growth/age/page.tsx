@@ -1,12 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
 import { AgeStepper } from "@/components/child/age-stepper";
-import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/ui/back-button";
 import { GradientUnderline } from "@/components/child/portfolio-hero";
-import { PORTFOLIO } from "@/lib/vocabulary";
 
 /**
  * Navigation-only landing for the age folders.
@@ -20,12 +17,16 @@ export default function AgeFolderLandingPage() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <Button asChild variant="ghost" size="sm" className="-ml-2 self-start">
-        <Link href={`/children/${childId}/portfolio`}>
-          <ArrowLeft size={18} />
-          {PORTFOLIO}
-        </Link>
-      </Button>
+      {/*
+        ★ A bare Буцах, not the destination's name — 2026-09-11, at the client's
+        instruction: "хүүхдийн нэрийг арилгаад зүгээр л буцах гэсэн тэмдэг
+        болго … бүх газар … зөвхөн нэг удаа буцах тэмдэг."
+
+        `BackButton` is one step back through history with `href` as the
+        fallback, which is also the honest control: this link named a screen the
+        reader may never have come from.
+      */}
+      <BackButton href={`/children/${childId}/portfolio`} />
 
       <div>
         <h1 className="text-heading font-semibold text-ink">Насны мэдээлэл</h1>

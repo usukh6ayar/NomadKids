@@ -154,7 +154,8 @@ describe("navigation icons", () => {
       "Хүүхдүүд",
       "Явцын үнэлгээ",
       "Ирц",
-      "Хоол ба цэс",
+      "Хоолны цэс",
+      "Хоолны бүртгэл",
       "Ангийн самбар / Мэдээ",
       "Судалгаа",
       // The screens that used to sit behind the "Удирдлага" hub, which no
@@ -355,11 +356,21 @@ describe("role-based navigation", () => {
     expect(within(nav).getByRole("link", { name: "Явцын үнэлгээ" })).toBeInTheDocument();
     // Өдөр тутмын бүртгэл
     expect(within(nav).getByRole("link", { name: "Ирц" })).toBeInTheDocument();
-    expect(within(nav).getByRole("link", { name: "Хоол ба цэс" })).toBeInTheDocument();
+    /*
+      ★ Two rows since 2026-09-11: the menu, and the register underneath it.
+
+      The client asked for the menu in this slot ("хоолны хуучин бүртгэл гэсэн
+      хэсгийг арилгаад … хоолны цэс хэсгийг … оруул"). The register kept a row
+      rather than being dropped — `нэмэлт.md` §3 multiplies its "хооллосон
+      өдөр" into the food-cost calculation, and a screen with no door is a
+      funding figure that quietly stops being entered.
+    */
+    expect(within(nav).getByRole("link", { name: "Хоолны цэс" })).toHaveAttribute("href", "/menu");
+    expect(within(nav).getByRole("link", { name: "Хоолны бүртгэл" })).toBeInTheDocument();
     // Харилцаа холбоо
     expect(within(nav).getByRole("link", { name: "Судалгаа" })).toBeInTheDocument();
-    // Багш ба байгууллага: the account card is the single route to /settings.
-    expect(within(nav).getByRole("link", { name: /Тохиргоо: Тест Хэрэглэгч/ })).toBeInTheDocument();
+    // Багш ба байгууллага: the foot's own row is the single route to /settings.
+    expect(within(nav).getByRole("link", { name: "Хувийн тохиргоо" })).toBeInTheDocument();
   });
 
   /**
@@ -657,52 +668,68 @@ describe("the sidebar footer", () => {
     expect(within(nav).queryByText("Дэлбээ бүлэг")).not.toBeInTheDocument();
   });
 
-  it("routes a parent through their profile before sign-out", async () => {
-    renderShell(["PARENT"], "/home", [OWN_CHILD]);
-    const nav = await sidebar();
-
-    expect(within(nav).getByRole("link", { name: /Тохиргоо: Тест Хэрэглэгч/ })).toHaveAttribute(
-      "href",
-      "/settings",
-    );
-    expect(within(nav).queryByRole("button", { name: /гарах/i })).not.toBeInTheDocument();
-  });
-
-  it("opens settings from the account card and keeps sign-out out of the shell", async () => {
-    renderShell(["TEACHER"]);
-    const nav = await sidebar();
-
-    expect(within(nav).getByRole("link", { name: /Тохиргоо: Тест Хэрэглэгч/ })).toHaveAttribute(
-      "href",
-      "/settings",
-    );
-    expect(within(nav).queryByRole("button", { name: /гарах/i })).not.toBeInTheDocument();
-  });
-
+  /**
+   * The menu's foot, for every role — 2026-09-11, at the client's instruction.
+   *
+   * ★ Three things where there was one: who you are, where to change it, and
+   * the way out.
+   *
+   * It was a single 56px row doing two jobs — naming the signed-in person and
+   * being the only door to `/settings` — and sign-out lived at the bottom of
+   * that screen, three taps away and past a page of read-only records. The
+   * client asked for the two to be split ("Энэ 2-ыг салга") and for the way out
+   * to sit at the foot in red ("хамгийн доор нь системээс гарах гэж улаанаар
+   * бич").
+   *
+   * ★★ Asserted for all five audiences, because the client asked for all five
+   * ("5 хэрэглэгчийг тавууланг нь ийм болго") and because one `SidebarContent`
+   * serves them — a regression would take every role at once, or none.
+   */
   it.each([
+    { label: "teacher", roles: ["TEACHER"] as const },
+    { label: "parent", roles: ["PARENT"] as const },
     { label: "admin", roles: ["ADMIN"] as const },
     { label: "cook", roles: ["COOK"] as const },
     { label: "accountant", roles: ["ACCOUNTANT"] as const },
-  ])("uses the same profile-only sign-out flow for $label", async ({ roles }) => {
-    renderShell([...roles]);
+  ])("names the person, their settings and the way out for $label", async ({ label, roles }) => {
+    renderShell([...roles], label === "parent" ? "/home" : "/dashboard", [OWN_CHILD]);
     const nav = await sidebar();
 
-    expect(within(nav).getByRole("link", { name: /Тохиргоо: Тест Хэрэглэгч/ })).toHaveAttribute(
+    // Who — plain text now, not the label of a control.
+    expect(within(nav).getByText("Тест Хэрэглэгч")).toBeInTheDocument();
+
+    expect(within(nav).getByRole("link", { name: "Хувийн тохиргоо" })).toHaveAttribute(
       "href",
       "/settings",
     );
-    expect(within(nav).queryByRole("button", { name: /гарах/i })).not.toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: "Системээс гарах" })).toBeInTheDocument();
   });
 
-  it("uses the same profile-only sign-out flow for the platform role", async () => {
+  it("offers the same three at the foot of the platform menu", async () => {
     renderShell([], "/platform", [], GROUPS, 0, true);
     const nav = await sidebar();
 
-    expect(within(nav).getByRole("link", { name: /Тохиргоо: Тест Хэрэглэгч/ })).toHaveAttribute(
+    expect(within(nav).getByRole("link", { name: "Хувийн тохиргоо" })).toHaveAttribute(
       "href",
       "/settings",
     );
-    expect(within(nav).queryByRole("button", { name: /гарах/i })).not.toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: "Системээс гарах" })).toBeInTheDocument();
+  });
+
+  /*
+    ★ Red, and the assertion is on the token rather than a hex value.
+
+    `text-danger` is the one meaning in `tone.ts` that says "this ends
+    something". A class assertion is weak on its own; what it defends is a later
+    tidy-up repainting the row as a neutral ghost button, which is exactly what
+    it was before the client asked.
+  */
+  it("paints the way out in the danger tone", async () => {
+    renderShell(["TEACHER"]);
+    const nav = await sidebar();
+
+    const out = within(nav).getByRole("button", { name: "Системээс гарах" });
+    expect(out.className).toContain("text-danger");
   });
 
   it("truncates a long name rather than pushing the controls off the panel", async () => {

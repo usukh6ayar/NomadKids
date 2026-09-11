@@ -1,13 +1,29 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, Download, PackageMinus } from "lucide-react";
-import { useState } from "react";
+import {
+  AlertTriangle,
+  CalendarDays,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  FileSpreadsheet,
+  List,
+  ArrowLeft,
+  MoreHorizontal,
+  PackageMinus,
+  PencilLine,
+  Plus,
+  Table2,
+} from "lucide-react";
+import { useRef, useState, type MutableRefObject } from "react";
 import { z } from "zod";
 import {
   ingredientUnitSchema,
   menuDayWithWarningsSchema,
   recipeSummarySchema,
+  type MealKind,
+  type MenuDish,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { downloadUrl } from "@/lib/api/client";
@@ -19,9 +35,12 @@ import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Menu, type MenuItem } from "@/components/ui/menu";
+import { Field, Textarea } from "@/components/ui/field";
+import { Menu, RowMenu, type MenuItem } from "@/components/ui/menu";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
+import { FamilyMenu, WeekTable, type MenuRowActions } from "@/components/child/family-menu";
+import { MenuExcelImport } from "@/components/menu/menu-excel-import";
 import {
   MenuDishEditor,
   fromDraft,
@@ -30,7 +49,7 @@ import {
   type RecipeOption,
 } from "@/components/menu/menu-dish-editor";
 import { useEsisFoodProducts } from "@/components/esis/use-esis-food-products";
-import { formatDate, formatMonthLabel } from "@/lib/format";
+import { formatDate, formatLongDate, formatMonthLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const weekSchema = z.array(menuDayWithWarningsSchema);
@@ -153,34 +172,194 @@ function WeeklyMenu() {
   const { session, hasRole } = useSession();
   const kindergartenId = session?.memberships?.[0]?.kindergartenId ?? null;
   const isKitchen = hasRole("COOK") || hasRole("ADMIN");
+  /*
+    ★ Who may *write* the menu — COOK and TEACHER, 2026-09-11.
+
+    Narrower than `isKitchen`, which gates approving and the sufficiency check
+    and stays COOK/ADMIN. The client's line: "Багш болон тогооч засаж болдог …
+    нягтлан, удирдлага, эцэг эх оруулсан цэсүүдийг зүгээр харна." An ADMIN still
+    opens this screen and reads the week; `assertCanEditMenu` on the API is the
+    guarantee and this is what keeps them from being offered controls that would
+    answer 404.
+  */
+  const canEdit = hasRole("COOK") || hasRole("TEACHER");
 
   const today = todayIso();
   const tomorrow = addDays(today, 1);
 
-  // A constant, not state — there is no control left that moves it off "this
-  // week" (the Өмнөх/Энэ долоо хоног/Дараах row was removed 2026-09-05; see
-  // the header's own comment below).
-  const weekStart = mondayOf(new Date());
-  const weekDates = Array.from({ length: 5 }, (_, i) => addDays(weekStart, i));
-  // Its own state, not derived from `weekStart` — see `child-menu.tsx`'s
-  // identical `quickView` for why: "7 хоног" is a way back to the current
-  // week, not a third destination, and deriving this from the date would
-  // make it do nothing when the open week already contains today.
-  const [quickView, setQuickView] = useState<"today" | "tomorrow" | "week">("today");
-  // Which weekday the "7 хоног" strip has open — an offset into `weekDates`,
+  /*
+    ★ Paged again — 2026-09-11, the client's drawing puts `‹ 2026.09.07 –
+    2026.09.13 ›` in the header.
+
+    It was a constant from 2026-09-05, when the Өмнөх/Энэ долоо хоног/Дараах row
+    was removed for duplicating a tri-toggle that has itself since gone. What is
+    left is one pager and no second way to move, which is what made the old pair
+    worth cutting.
+
+    A kitchen plans *next* week — the whole point of the Excel round trip — so a
+    screen fixed to this one could not do the job the import exists for.
+  */
+  const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
+
+  /** "Хүснэгтээр" or "Жагсаалтаар" — the client's two views, while editing. */
+  const [view, setView] = useState<"table" | "list">("table");
+  /*
+    ★ Reading and editing are two screens, not one — 2026-09-11, at the
+    client's clarification: "эцэг эхийн хоолны цэсний харагдац огт өөрчлөгдөж
+    болохгүй; тогооч, багш, удирдлагад эцэг эхийнх шиг харагдаад зөвхөн засах
+    үйл явцыг [зургаар илгээсэн]."
+
+    So this screen opens as the family's own — `FamilyMenu`, unchanged — and
+    the toolbar, the week table and the day form the client drew are what
+    "Цэс засах" opens. A director never leaves the first state; they have no
+    button to.
+  */
+  const [editing, setEditing] = useState(false);
+  /*
+    ★ Which day is open for editing, or none — 2026-09-11, the client's second
+    drawing.
+
+    Editing a day is its own screen, not a form under a week: the drawing has
+    its own toolbar ("← Жагсаалтад буцах", Excel оруулах, "+ Хоолны цаг нэмэх"),
+    its own day pager and its own footer. A week view with a form stapled
+    underneath was answering two questions at once.
+  */
+  const [openDay, setOpenDay] = useState<number | null>(null);
+  /*
+    ★ The day card hands its "add a sitting" up, so the toolbar can press it.
+
+    A ref rather than lifting the draft: the draft, its dirty flag and its save
+    all belong to the open day and moving them into this component would make
+    the week's screen own a day's form. One callback crosses the boundary and
+    nothing else.
+  */
+  const addRowRef = useRef<(() => void) | null>(null);
+  const queryClient = useQueryClient();
+  const toast = useToast();
+
+  /*
+    ★ Editing a sitting without leaving the day — 2026-09-11, the client's
+    report: the teacher's Өнөөдөр card carries two small photo buttons and a ⋮
+    of Засах · Хуулах · Устгах.
+
+    Every one of these writes the whole day back through the same
+    `PUT .../menu/:date` the form uses, so there is one way a day is saved and
+    the allergy cross-check re-runs the same way whichever control was pressed.
+  */
+  const saveDay = useMutation({
+    mutationFn: ({ date, dishes }: { date: string; dishes: MenuDish[] }) =>
+      mutate(`/kindergartens/${kindergartenId}/menu/${date}`, menuDayWithWarningsSchema, {
+        method: "PUT",
+        // `note` is left out: these controls do not touch the day's note, and
+        // omitting it is what tells the API to leave the column alone.
+        body: { dishes: fromDraft(toDraft(dishes)) },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["kindergarten", kindergartenId, "menu"] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  /** The day's dishes, with one sitting's rewritten. */
+  function rewrite(date: string, kind: MealKind, next: (rows: MenuDish[]) => MenuDish[]) {
+    const dishes = byDate.get(date)?.dishes ?? [];
+    const inKind = dishes.filter((dish) => (dish.kind ?? "BREAKFAST") === kind);
+    const rest = dishes.filter((dish) => (dish.kind ?? "BREAKFAST") !== kind);
+    saveDay.mutate({ date, dishes: [...rest, ...next(inKind)] });
+  }
+
+  const rowActions: MenuRowActions | undefined =
+    canEdit && kindergartenId
+      ? {
+          /*
+            ★ The names are written back where they were typed — the card does
+            not send the reader anywhere.
+
+            Existing dishes keep their photograph, allergens and calories by
+            position; extra lines become new dishes and deleted lines go. A
+            renamed dish loses its `recipeId`, because `saveDay` freezes a
+            card-linked name server-side and the typed one would be discarded
+            without a word — the same call `ModeSwitch` makes: "the same dish,
+            my own way".
+          */
+          onSaveNames: (kind, date, names) =>
+            rewrite(date, kind, (rows) =>
+              names.map((name, index) => {
+                const existing = rows[index];
+                if (!existing) return { name, allergenTags: [], kind };
+                return {
+                  ...existing,
+                  name,
+                  kind,
+                  ...(existing.recipeId && existing.name !== name ? { recipeId: null } : {}),
+                };
+              }),
+            ),
+          /*
+            Хуулах duplicates the sitting's dishes in place. The copy lands on
+            the same sitting, which is what makes it useful: a cook who serves
+            the same thing twice re-times one of them from the form rather than
+            typing the dishes again.
+          */
+          onDuplicate: (kind, date) => rewrite(date, kind, (rows) => [...rows, ...rows]),
+          onDelete: (kind, date) => rewrite(date, kind, () => []),
+          photoEndpoint: `/kindergartens/${kindergartenId}/menu/dish-photo`,
+          onPhotoUploaded: (kind, date, mediaId) =>
+            rewrite(date, kind, (rows) =>
+              rows.length === 0
+                ? rows
+                : rows.map((dish, index) =>
+                    index === 0 ? { ...dish, photoMediaFileId: mediaId } : dish,
+                  ),
+            ),
+          /*
+            Excel оруулах above the week opens the same panel the editing
+            toolbar does, rather than a second one — one import, one preview.
+          */
+          onImport: () => {
+            setEditing(true);
+            setView("table");
+            setImporting(true);
+          },
+          onPhotoRemoved: (kind, date) =>
+            rewrite(date, kind, (rows) =>
+              rows.map((dish) => ({ ...dish, photoMediaFileId: null })),
+            ),
+        }
+      : undefined;
+  const weekDates = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  /*
+    ★ Seven for reading, five for editing.
+
+    ★ Seven days, Даваа–Ням — the client's table has all seven columns, and a
+    kindergarten that serves on Saturday had no way to enter it while this was
+    Mon–Fri.
+  */
+
+  // Which weekday the edit strip has open — an offset into `weekDates`,
   // not a stored date, the same reasoning `child-menu.tsx`'s `selectedOffset`
   // gives: it is what turns a week into one day's detail instead of five
   // full editors stacked and scrolled past to reach Friday.
   const [selectedOffset, setSelectedOffset] = useState(() => weekdayOffset(today));
+  /** Whether the Excel panel is open — it is a step, not a permanent block. */
+  const [importing, setImporting] = useState(false);
 
   // The whole Mon–Fri range for "week" — the strip needs every day's
   // fill-state at once, not just the one currently open — versus a single
   // day for "today"/"tomorrow", which have no strip to feed.
-  const from = quickView === "week" ? weekStart : quickView === "today" ? today : tomorrow;
-  const to = quickView === "week" ? addDays(weekStart, 4) : from;
+  /*
+    ★ Always the whole week now.
+
+    The range used to follow the tri-toggle — one day for Өнөөдөр, one for
+    Маргааш — because the screen only ever drew the open day. `FamilyMenu` draws
+    all seven at once, so a narrower fetch would leave its table empty on every
+    tab but the one that happened to be selected.
+  */
+  const from = weekDates[0]!;
+  const to = weekDates[6]!;
   // The one day actually rendered below: the strip's selection in "week",
   // otherwise whichever of "today"/"tomorrow" is active.
-  const activeDate = quickView === "week" ? weekDates[selectedOffset]! : from;
+  const activeDate = weekDates[selectedOffset]!;
 
   const week = useQuery({
     enabled: Boolean(kindergartenId),
@@ -196,8 +375,12 @@ function WeeklyMenu() {
   });
 
   const byDate = new Map((week.data ?? []).map((day) => [day.date.slice(0, 10), day]));
+  /** Every warning the week raises, each carrying the day it falls on. */
+  const weekWarnings = weekDates.flatMap((date) =>
+    (byDate.get(date)?.warnings ?? []).map((warning) => ({ ...warning, date })),
+  );
 
-  const weekEnd = addDays(weekStart, 4);
+  const weekEnd = weekDates[6]!;
   const month = monthRange(new Date());
 
   /*
@@ -238,81 +421,333 @@ function WeeklyMenu() {
     : [];
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-6">
+    <div className="flex flex-col gap-4 lg:gap-5">
+      {/*
+        ★ The client's 2026-09-11 drawing, top to bottom: a title with the week
+        it is showing, then one row of controls, then the week itself.
+
+        What it replaces is a header carrying a single ⋮ and a body that opened
+        straight into one day's form. The two questions this screen answers are
+        "what does the week look like" and "let me change a day", and the design
+        puts the first one on screen and the second behind a control.
+      */}
       <PageHeader
-        title="Долоо хоногийн цэс"
+        title={openDay === null ? "Хоолны цэс" : "Хоолны цэс засах"}
+        lede={
+          openDay !== null
+            ? `${formatLongDate(activeDate)}, ${weekdayLabel(activeDate)} гараг`
+            : editing
+              ? "7 хоногийн хоолны цэсийг удирдах"
+              : undefined
+        }
         actions={
-          kindergartenId ? (
-            <Menu
-              variant="secondary"
-              ariaLabel="Excel татах"
-              items={exportItems}
-              label={
-                <>
-                  <Download size={18} aria-hidden="true" />
-                  <span className="sr-only">Excel татах</span>
-                </>
-              }
-            />
-          ) : null
+          !editing ? (
+            kindergartenId ? (
+              <RowMenu
+                ariaLabel="Хоолны цэсний үйлдэл"
+                triggerIcon={<MoreHorizontal size={18} aria-hidden="true" />}
+                items={[
+                  ...(canEdit
+                    ? [
+                        {
+                          label: "Цэс засах",
+                          icon: <PencilLine size={16} aria-hidden="true" />,
+                          hint: "Excel-ээр оруулах, өдрийн дэлгэрэнгүй маягт",
+                          onSelect: () => setEditing(true),
+                        },
+                      ]
+                    : []),
+                  ...exportItems.map((item, index) => ({
+                    label: `Excel — ${item.label}`,
+                    hint: item.hint,
+                    href: item.href,
+                    separated: index === 0,
+                  })),
+                ]}
+              />
+            ) : null
+          ) : openDay !== null ? (
+            /*
+              ★ The day's pager, in the header — the client's drawing puts
+              `‹ 2026.09.11 ›` at the top right of the day screen, not inside
+              the form, where it was a second header on one screen.
+            */
+            <div className="flex items-center gap-1 rounded-control border border-border bg-surface px-1 py-0.5">
+              <button
+                type="button"
+                aria-label="Өмнөх өдөр"
+                disabled={openDay === 0}
+                onClick={() => {
+                  setSelectedOffset(openDay - 1);
+                  setOpenDay(openDay - 1);
+                }}
+                className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink disabled:opacity-40"
+              >
+                <ChevronLeft size={18} aria-hidden="true" />
+              </button>
+              <span className="inline-flex items-center gap-2 px-1 text-body font-medium tabular-nums text-ink">
+                <CalendarDays size={16} aria-hidden="true" className="text-muted" />
+                {formatDate(activeDate)}
+              </span>
+              <button
+                type="button"
+                aria-label="Дараах өдөр"
+                disabled={openDay >= weekDates.length - 1}
+                onClick={() => {
+                  setSelectedOffset(openDay + 1);
+                  setOpenDay(openDay + 1);
+                }}
+                className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink disabled:opacity-40"
+              >
+                <ChevronRight size={18} aria-hidden="true" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 rounded-control border border-border bg-surface px-1 py-0.5">
+              <button
+                type="button"
+                aria-label="Өмнөх долоо хоног"
+                onClick={() => setWeekStart((current) => addDays(current, -7))}
+                className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
+              >
+                <ChevronLeft size={18} aria-hidden="true" />
+              </button>
+              <span className="inline-flex items-center gap-2 px-1 text-body font-medium tabular-nums text-ink">
+                <CalendarDays size={16} aria-hidden="true" className="text-muted" />
+                {formatDate(from)} – {formatDate(to)}
+              </span>
+              <button
+                type="button"
+                aria-label="Дараах долоо хоног"
+                onClick={() => setWeekStart((current) => addDays(current, 7))}
+                className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
+              >
+                <ChevronRight size={18} aria-hidden="true" />
+              </button>
+            </div>
+          )
         }
       />
 
-      {/* Same 3-way quick view as a parent's own menu tab (`child-menu.tsx`)
-          — "Өнөөдөр"/"Маргааш" jump straight to that day; "7 хоног" opens the
-          Mon–Fri strip below, starting this Monday, the only week this
-          screen shows now that there is no control left to move `weekStart`
-          off it. */}
-      <div
-        role="group"
-        aria-label="Хугацаа сонгох"
-        className="grid grid-cols-3 gap-1 rounded-control bg-canvas p-1"
-      >
-        {(
-          [
-            [
-              "today",
-              "Өнөөдөр",
-              () => {
-                setSelectedOffset(weekdayOffset(today));
-                setQuickView("today");
-              },
-            ],
-            [
-              "tomorrow",
-              "Маргааш",
-              () => {
-                setSelectedOffset(weekdayOffset(tomorrow));
-                setQuickView("tomorrow");
-              },
-            ],
-            ["week", "7 хоног", () => setQuickView("week")],
-          ] as const
-        ).map(([value, label, onClick]) => (
-          <button
-            key={value}
-            type="button"
-            onClick={onClick}
-            aria-pressed={quickView === value}
-            className={cn(
-              "min-h-[40px] rounded-control text-caption font-semibold transition-colors",
-              quickView === value
-                ? "bg-primary text-primary-ink shadow-sm"
-                : "text-muted hover:text-ink",
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {/*
+        ★ One toolbar: how to look, then what to do.
 
-      {/* The weekday strip is what "7 хоног" means — Өнөөдөр/Маргааш jump
-          straight to a day without it, so it only shows once that's the
-          actual quick view selected, same as `child-menu.tsx`. Picking a day
-          here narrows the week down to that one day's card below instead of
-          stacking all five and scrolling. */}
-      {quickView === "week" ? (
-        <div className="grid grid-cols-5 gap-1.5">
+        The two view buttons are a `radiogroup` rather than tabs, because they
+        do not switch panels of unrelated content — they are two renderings of
+        the same week, and "Жагсаалтаар" is where a day is actually edited.
+
+        Excel оруулах and Нэмэх are drawn only for someone who may write
+        (`assertCanEditMenu`, COOK/TEACHER). An administrator reads the same
+        week with neither, rather than being offered controls the API answers
+        with 404.
+      */}
+      {!editing ? (
+        /*
+          ★ The family's own screen, unchanged — the client's clarification.
+
+          A cook, a teacher and a director open this and see exactly what a
+          parent sees: today, tomorrow, the week. The only thing added is the
+          door into the editing flow, and only for someone who may walk through
+          it.
+        */
+        <>
+          {kindergartenId && !week.isLoading ? (
+            <FamilyMenu
+              byDate={byDate}
+              weekDates={weekDates}
+              todayIso={today}
+              tomorrowIso={tomorrow}
+              healthNotes={null}
+              actions={rowActions}
+            />
+          ) : null}
+
+          {/*
+            ★ No "Цэс засах" button here — 2026-09-11, at the client's request:
+            "өнөөдөр гэдгээс цэс засах гэдэг арилга."
+
+            The card carries the editing now: the photograph's two buttons and
+            the ⋮'s Засах · Хуулах · Устгах. A button under the day was a second
+            door to a flow the reader is already standing in, and it pushed the
+            week down the screen.
+
+            What is still only reachable through the flow — the Excel import,
+            the day's form with portions and технологийн карт, + Нэмэх — moved
+            into the header's ⋮ beside the downloads.
+          */}
+        </>
+      ) : null}
+
+      {editing && openDay === null ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setEditing(false);
+              setView("table");
+            }}
+          >
+            <ArrowLeft size={16} aria-hidden="true" />
+            Буцах
+          </Button>
+
+          <div
+            role="radiogroup"
+            aria-label="Харагдац"
+            className="flex items-center gap-1 rounded-control bg-canvas p-1"
+          >
+            {(
+              [
+                ["table", "Хүснэгтээр", <Table2 key="t" size={16} aria-hidden="true" />],
+                ["list", "Жагсаалтаар", <List key="l" size={16} aria-hidden="true" />],
+              ] as const
+            ).map(([value, label, icon]) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={view === value}
+                onClick={() => setView(value)}
+                className={cn(
+                  "inline-flex min-h-[40px] items-center gap-2 rounded-control px-3 text-body font-medium transition-colors",
+                  view === value
+                    ? "bg-primary text-primary-ink shadow-sm"
+                    : "text-muted hover:bg-surface hover:text-ink",
+                )}
+              >
+                {icon}
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {kindergartenId && canEdit ? (
+              <>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="border-mint bg-mint/30 text-mint-ink hover:bg-mint/50"
+                  onClick={() => setImporting((current) => !current)}
+                  aria-expanded={importing}
+                >
+                  <FileSpreadsheet size={16} aria-hidden="true" />
+                  Excel оруулах
+                </Button>
+
+                {/*
+                Нэмэх opens the day's form — the list view *is* the form, so
+                this switches to it rather than opening a dialog that would then
+                have to ask which day.
+              */}
+                <Button size="sm" onClick={() => setView("list")}>
+                  <Plus size={16} aria-hidden="true" />
+                  Нэмэх
+                </Button>
+              </>
+            ) : null}
+
+            {kindergartenId ? (
+              <Menu
+                variant="secondary"
+                ariaLabel="Excel татах"
+                items={exportItems}
+                label={
+                  <>
+                    <MoreHorizontal size={18} aria-hidden="true" />
+                    <span className="sr-only">Excel татах</span>
+                  </>
+                }
+              />
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {/*
+        ★ The day screen's toolbar — the client's drawing, exactly these three.
+
+        No view toggle here: there is one day on screen and nothing to switch
+        it to. "Жагсаалтад буцах" is the way out, which is also why the week's
+        own Буцах is hidden while a day is open.
+      */}
+      {editing && openDay !== null ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={() => setOpenDay(null)}>
+            <ArrowLeft size={16} aria-hidden="true" />
+            Жагсаалтад буцах
+          </Button>
+
+          {kindergartenId && canEdit ? (
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                className="border-mint bg-mint/30 text-mint-ink hover:bg-mint/50"
+                onClick={() => setImporting((current) => !current)}
+                aria-expanded={importing}
+              >
+                <FileSpreadsheet size={16} aria-hidden="true" />
+                Excel оруулах
+              </Button>
+
+              {/*
+                ★ In the toolbar, where the client drew it. The editor still
+                owns the row it adds — this only presses the same button,
+                through a ref the card hands up.
+              */}
+              <Button variant="secondary" size="sm" onClick={() => addRowRef.current?.()}>
+                <Plus size={16} aria-hidden="true" />
+                Хоолны цаг нэмэх
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {kindergartenId && canEdit && editing && importing ? (
+        <MenuExcelImport kindergartenId={kindergartenId} />
+      ) : null}
+
+      {week.isLoading ? <LoadingState rows={1} /> : null}
+      {week.isError ? <ErrorState description={errorMessage(week.error)} /> : null}
+
+      {/*
+        ★ The week's allergy warnings, above both views — 2026-09-11.
+
+        They used to live inside the open day's card, which the table view does
+        not draw: switching to the week hid the one thing on this screen that is
+        about a child's safety rather than the kitchen's convenience (RFP Module
+        2). A cook reading the week has to see them without having to find the
+        right day first, so this names the day each one falls on.
+
+        `isKitchen` because the warnings name other people's children and what
+        they react to — medical information about another family.
+      */}
+      {isKitchen && weekWarnings.length > 0 ? (
+        <div className="flex flex-col gap-1.5 rounded-row bg-peach/40 px-3.5 py-3">
+          <p className="flex items-center gap-1.5 text-body font-medium text-peach-ink">
+            <AlertTriangle size={16} aria-hidden="true" />
+            Харшлын анхааруулга
+          </p>
+          <ul className="flex flex-col gap-1">
+            {weekWarnings.map((warning, index) => (
+              <li key={index} className="text-caption text-peach-ink">
+                {formatDate(warning.date)} · {warning.childName} — {warning.allergen}
+                {warning.dishName ? ` (${warning.dishName})` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {kindergartenId && editing && openDay === null && view === "table" && !week.isLoading ? (
+        <WeekTable byDate={byDate} weekDates={weekDates} todayIso={today} />
+      ) : null}
+
+      {editing && openDay === null && view === "list" ? (
+        <div className="grid grid-cols-7 gap-1.5">
           {weekDates.map((date, i) => {
             const day = byDate.get(date);
             const filled = (day?.dishes.length ?? 0) > 0;
@@ -325,7 +760,10 @@ function WeeklyMenu() {
                 type="button"
                 aria-pressed={active}
                 aria-label={`${WEEKDAYS_SHORT[i]}, ${formatDate(date)}${filled ? " — цэстэй" : ""}`}
-                onClick={() => setSelectedOffset(i)}
+                onClick={() => {
+                  setSelectedOffset(i);
+                  setOpenDay(i);
+                }}
                 className={cn(
                   "flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-row border px-1 py-2 text-caption font-semibold transition-colors",
                   active
@@ -346,10 +784,7 @@ function WeeklyMenu() {
         </div>
       ) : null}
 
-      {week.isLoading ? <LoadingState rows={1} /> : null}
-      {week.isError ? <ErrorState description={errorMessage(week.error)} /> : null}
-
-      {kindergartenId && !week.isLoading ? (
+      {kindergartenId && editing && openDay !== null && !week.isLoading ? (
         <MenuDayCard
           key={activeDate}
           kindergartenId={kindergartenId}
@@ -360,6 +795,16 @@ function WeeklyMenu() {
           day={byDate.get(activeDate) ?? null}
           recipes={recipes.data ?? []}
           isKitchen={isKitchen}
+          canEdit={canEdit}
+          /* Цуцлах leaves the day rather than reverting it — the drawing's
+             footer pairs it with Хадгалах, and the draft is per-day state that
+             unmounting discards anyway. */
+          onCancel={() => setOpenDay(null)}
+          onPreview={() => {
+            setOpenDay(null);
+            setEditing(false);
+          }}
+          addRowRef={addRowRef}
         />
       ) : null}
     </div>
@@ -390,6 +835,10 @@ function MenuDayCard({
   day,
   recipes,
   isKitchen,
+  canEdit,
+  onCancel,
+  onPreview,
+  addRowRef,
 }: {
   kindergartenId: string;
   queryFrom: string;
@@ -399,11 +848,20 @@ function MenuDayCard({
   day: z.infer<typeof menuDayWithWarningsSchema> | null;
   recipes: RecipeOption[];
   isKitchen: boolean;
+  /** COOK or TEACHER — see `WeeklyMenu`'s own note. */
+  canEdit: boolean;
+  /** Leaves the day. Drawn as "Цуцлах" beside "Хадгалах". */
+  onCancel?: () => void;
+  /** Shows the day as a family would read it — the drawing's "Уръдчилан харах". */
+  onPreview?: () => void;
+  /** Handed the card's "add a sitting", so the page toolbar can press it. */
+  addRowRef?: MutableRefObject<(() => void) | null>;
 }) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const esisProducts = useEsisFoodProducts();
   const [draftDishes, setDraftDishes] = useState<DishDraft[]>(() => toDraft(day?.dishes ?? []));
+  const [note, setNote] = useState(day?.note ?? "");
   const [dirty, setDirty] = useState(false);
 
   const refresh = () => {
@@ -416,7 +874,7 @@ function MenuDayCard({
     mutationFn: () =>
       mutate(`/kindergartens/${kindergartenId}/menu/${date}`, z.unknown(), {
         method: "PUT",
-        body: { dishes: fromDraft(draftDishes) },
+        body: { dishes: fromDraft(draftDishes), note: note.trim() || null },
       }),
     onSuccess: () => {
       toast.success(`${weekday} гарагийн цэс хадгалагдлаа.`);
@@ -473,20 +931,21 @@ function MenuDayCard({
 
   return (
     <Card pad="roomy" className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="flex items-center gap-2 text-lead font-semibold text-ink">
-          {weekday}
+      {/*
+        ★ The badges alone — the heading, the date and the pager moved to the
+        page header, where the client drew them. Two headers on one screen was
+        the shape this replaces.
+      */}
+      {day || (day && !dirty) ? (
+        <div className="flex flex-wrap items-center gap-2">
           {day ? (
             <Badge tone={isApproved ? "mint" : "neutral"}>
               {isApproved ? "Батлагдсан" : "Ноорог"}
             </Badge>
           ) : null}
-        </h2>
-        <div className="flex items-center gap-2">
           {day && !dirty ? <Badge tone="mint">Хадгалагдсан</Badge> : null}
-          <span className="text-caption text-muted">{formatDate(date)}</span>
         </div>
-      </div>
+      ) : null}
 
       {/*
         ★ The cross-check, RFP Module 2 — and the reason this screen reads the
@@ -539,16 +998,67 @@ function MenuDayCard({
         </div>
       ) : null}
 
-      <MenuDishEditor
-        draftDishes={draftDishes}
-        onChange={(next) => {
-          setDraftDishes(next);
-          setDirty(true);
-        }}
-        onSave={() => save.mutate()}
-        saving={save.isPending}
-        error={save.isError ? errorMessage(save.error) : null}
+      {!canEdit ? (
         /*
+          ★ A reader gets the dishes, not a form — 2026-09-11.
+
+          `assertCanEditMenu` refuses their save with a 404, so drawing the
+          editor would offer an administrator a Хадгалах that always fails.
+          The week, the warnings and the Excel download above are unchanged.
+        */
+        <ul className="flex flex-col gap-1.5">
+          {draftDishes.length === 0 ? (
+            <li className="text-body text-muted">Цэс оруулаагүй.</li>
+          ) : (
+            draftDishes.map((dish, index) => (
+              <li key={index} className="flex flex-wrap items-baseline gap-x-2 text-body text-ink">
+                <span className="font-medium">{dish.name}</span>
+                {dish.calories ? (
+                  <span className="text-caption text-muted">{dish.calories} ккал</span>
+                ) : null}
+              </li>
+            ))
+          )}
+        </ul>
+      ) : (
+        <MenuDishEditor
+          draftDishes={draftDishes}
+          onChange={(next) => {
+            setDraftDishes(next);
+            setDirty(true);
+          }}
+          onSave={() => save.mutate()}
+          onCancel={onCancel}
+          onPreview={onPreview}
+          chrome="none"
+          addRowRef={addRowRef}
+          footer={
+            /*
+              ★ "Нэмэлт мэдээлэл" — the day's own note, `MenuDay.note`.
+
+              A dish already had one; this is about the day, which is where
+              "цэс өөрчлөгдсөн" or "бага хэмжээгээр өгсөн" belongs. Added
+              2026-09-11 with the client's drawing, which puts it under the
+              cards and above the footer.
+            */
+            <Field label="Нэмэлт мэдээлэл" hint={`${note.length}/500`}>
+              {({ id }) => (
+                <Textarea
+                  id={id}
+                  rows={2}
+                  value={note}
+                  maxLength={500}
+                  onChange={(event) => {
+                    setNote(event.target.value);
+                    setDirty(true);
+                  }}
+                />
+              )}
+            </Field>
+          }
+          saving={save.isPending}
+          error={save.isError ? errorMessage(save.error) : null}
+          /*
           ★ ESIS-ийн бэлэн бүтээгдэхүүн joins the same picker as the local
           cards — 2026-09-09, at the client's request ("тогоочийн хэсэгт бэлэн
           хоол сонгох хэсэгт API-г дуудах").
@@ -557,8 +1067,9 @@ function MenuDayCard({
           teacher opening this screen gets an empty list and a picker that
           looks exactly as it did before. Nothing here has to know that.
         */
-        kitchen={{ kindergartenId, recipes, esisProducts }}
-      />
+          kitchen={{ kindergartenId, recipes, esisProducts }}
+        />
+      )}
 
       {isKitchen ? (
         <div className="flex flex-wrap items-center gap-3 border-t border-border-soft pt-3">

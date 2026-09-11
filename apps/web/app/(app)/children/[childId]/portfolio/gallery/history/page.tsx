@@ -1,10 +1,9 @@
 "use client";
 
 import { useQueries } from "@tanstack/react-query";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
-import { ArrowLeft, Images } from "lucide-react";
+import { Images } from "lucide-react";
 import {
   AGE_ALBUM_CATEGORIES,
   AGE_ALBUM_CATEGORY_LABEL,
@@ -13,7 +12,7 @@ import {
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
-import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/ui/back-button";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { MediaThumb } from "@/components/media/media-image";
 import { PhotoLightbox } from "@/components/media/photo-lightbox";
@@ -97,12 +96,16 @@ export default function PhotoHistoryPage() {
 
   return (
     <div className="flex flex-col gap-5 py-2">
-      <Button asChild variant="ghost" size="sm" className="-ml-2 self-start">
-        <Link href={`/children/${childId}/portfolio/gallery`}>
-          <ArrowLeft size={18} aria-hidden="true" />
-          Зургийн цомог
-        </Link>
-      </Button>
+      {/*
+        ★ A bare Буцах, not the destination's name — 2026-09-11, at the client's
+        instruction: "хүүхдийн нэрийг арилгаад зүгээр л буцах гэсэн тэмдэг
+        болго … бүх газар … зөвхөн нэг удаа буцах тэмдэг."
+
+        `BackButton` is one step back through history with `href` as the
+        fallback, which is also the honest control: this link named a screen the
+        reader may never have come from.
+      */}
+      <BackButton href={`/children/${childId}/portfolio/gallery`} />
 
       <header>
         <h1 className="text-heading font-semibold text-ink">Зургийн цомог 2-5 нас</h1>

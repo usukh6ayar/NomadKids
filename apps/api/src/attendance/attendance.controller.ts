@@ -26,6 +26,7 @@ import {
   createAttendanceRequestSchema,
   dateParamSchema,
   groupDaySheetQuerySchema,
+  groupRangeSheetQuerySchema,
   attendanceRegisterQuerySchema,
   listAttendanceQuerySchema,
   recordAttendanceSchema,
@@ -36,6 +37,7 @@ import {
   type CreateAttendanceRequestDto,
   type DateParam,
   type GroupDaySheetQuery,
+  type GroupRangeSheetQuery,
   type AttendanceRegisterQuery,
   type ListAttendanceQuery,
   type RecordAttendanceDto,
@@ -287,6 +289,46 @@ export class GroupAttendanceController {
     @Body(new ZodValidationPipe(recordGroupAttendanceSchema)) body: RecordGroupAttendanceDto,
   ) {
     return this.service.recordGroupAttendance(actor, params.id, body);
+  }
+
+  /**
+   * The same register over a span of days — the teacher's week grid.
+   *
+   * On a literal path and declared before nothing that could shadow it, the
+   * same care `summary` below is declared with.
+   */
+  @Get("range")
+  @Roles("TEACHER", "ADMIN")
+  async rangeSheet(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(groupRangeSheetQuerySchema)) query: GroupRangeSheetQuery,
+  ) {
+    return this.service.groupRangeSheet(actor, params.id, query.from, query.to);
+  }
+
+  /** The same span as a spreadsheet — the journal's download. */
+  @Get("range/export")
+  @Roles("TEACHER", "ADMIN")
+  async exportRange(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(groupRangeSheetQuerySchema)) query: GroupRangeSheetQuery,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.service.exportGroupRange(
+      actor,
+      params.id,
+      query.from,
+      query.to,
+    );
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
+    res.send(buffer);
   }
 
   /** Exact API-000269 body for one teacher-owned group day. */

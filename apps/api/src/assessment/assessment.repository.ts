@@ -19,6 +19,54 @@ export class AssessmentRepository {
   // ── Configuration ─────────────────────────────────────────────────────────
 
   /** A kindergarten's own rows plus the shared system defaults. */
+  /**
+   * The curriculum's indicators for one strand — СҮД.
+   *
+   * ★ Scoped to a strand, never returned whole.
+   *
+   * Seventy-one indicators with two hundred and sixty-five descriptors between
+   * them is about forty kilobytes, and the form asks for them only once a
+   * teacher has chosen a strand — at which point it wants between five and
+   * twenty-two. §3.4's rule is about unbounded sets; this one is bounded by
+   * the strand, which is the bound the screen already imposes.
+   *
+   * ★★ The kindergarten's own indicators sit beside the national ones, exactly
+   * as `listDomains` treats strands: `kindergartenId IS NULL` is the standard,
+   * a value is this kindergarten's addition, and anybody else's is invisible.
+   */
+  async listIndicators(kindergartenId: string, domainId: string) {
+    return this.prisma.curriculumIndicator.findMany({
+      where: {
+        domainId,
+        deletedAt: null,
+        isActive: true,
+        OR: [{ kindergartenId }, { kindergartenId: null }],
+      },
+      orderBy: [{ order: "asc" }, { code: "asc" }],
+      select: {
+        id: true,
+        code: true,
+        domainId: true,
+        levels: { orderBy: { level: "asc" }, select: { level: true, text: true } },
+      },
+    });
+  }
+
+  /**
+   * One indicator, only if this kindergarten may use it — the check `create`
+   * makes before storing an id that came from a client.
+   */
+  async findIndicator(indicatorId: string, kindergartenId: string) {
+    return this.prisma.curriculumIndicator.findFirst({
+      where: {
+        id: indicatorId,
+        deletedAt: null,
+        OR: [{ kindergartenId }, { kindergartenId: null }],
+      },
+      select: { id: true, levels: { select: { level: true } } },
+    });
+  }
+
   async listDomains(kindergartenId: string) {
     return this.prisma.developmentDomain.findMany({
       where: {
@@ -168,6 +216,13 @@ export class AssessmentRepository {
           });
 
     return { enrollments, assessments };
+  }
+
+  async setGroupNoteGoal(
+    groupId: string,
+    goal: { monthlyNoteGoal?: number | null; monthlyNotesPerChildGoal?: number | null },
+  ) {
+    await this.prisma.group.update({ where: { id: groupId }, data: goal });
   }
 
   /**
@@ -362,7 +417,76 @@ export class AssessmentRepository {
       include: {
         author: { select: { id: true, lastName: true, firstName: true } },
         term: { select: { id: true, number: true, name: true } },
+        /*
+          The notes the report was written from, in the order they happened.
+
+          ★ One `include`, not a second round trip per report (§3.4). The set is
+          bounded by `saveTermReportSchema`'s cap of fifty, which is what makes
+          an unpaginated include defensible here.
+        */
+        observations: {
+          orderBy: { observation: { observedOn: "asc" } },
+          select: {
+            observation: {
+              select: {
+                id: true,
+                observedOn: true,
+                activityName: true,
+                situation: true,
+                type: { select: { id: true, name: true, code: true } },
+              },
+            },
+          },
+        },
       },
+    });
+  }
+
+  /**
+   * How many of these observations are really this child's, and still here.
+   *
+   * ★ One query for the whole set, and a count rather than the rows (§3.4).
+   *
+   * The caller only needs to know whether every id it was handed is legitimate;
+   * comparing the count to the ids' length answers that without fetching a
+   * single note. A teacher citing a note from another child — or one that has
+   * since been deleted — gets a 404 rather than a report that quietly drops it.
+   */
+  async countObservationsForChild(observationIds: string[], childId: string): Promise<number> {
+    if (observationIds.length === 0) return 0;
+    return this.prisma.observation.count({
+      where: { id: { in: observationIds }, childId, deletedAt: null },
+    });
+  }
+
+  /**
+   * Replaces the report's cited notes with exactly this set.
+   *
+   * ★ `deleteMany` then `createMany`, in one transaction.
+   *
+   * The same shape `observations.repository.ts` uses to replace a note's
+   * domains, and for the same reason: this is tag membership, not a record with
+   * a history of its own, and diffing two sets to preserve row ids would buy
+   * nothing any reader of this table can see. The transaction is what keeps a
+   * failed write from leaving a report citing nothing.
+   */
+  async replaceTermReportObservations(
+    termReportId: string,
+    kindergartenId: string,
+    observationIds: string[],
+  ) {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.termReportObservation.deleteMany({ where: { termReportId } });
+      if (observationIds.length > 0) {
+        await tx.termReportObservation.createMany({
+          data: observationIds.map((observationId) => ({
+            termReportId,
+            kindergartenId,
+            observationId,
+          })),
+          skipDuplicates: true,
+        });
+      }
     });
   }
 
@@ -405,7 +529,14 @@ export class AssessmentRepository {
   async findGroupForAssessment(groupId: string, kindergartenIds: string[]) {
     return this.prisma.group.findFirst({
       where: { id: groupId, deletedAt: null, kindergartenId: { in: kindergartenIds } },
-      select: { id: true, kindergartenId: true, schoolYearId: true, name: true },
+      select: {
+        id: true,
+        kindergartenId: true,
+        schoolYearId: true,
+        name: true,
+        monthlyNoteGoal: true,
+        monthlyNotesPerChildGoal: true,
+      },
     });
   }
 }

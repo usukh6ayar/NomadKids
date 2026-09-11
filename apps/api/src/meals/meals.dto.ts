@@ -53,6 +53,8 @@ export const saveMenuDaySchema = z
     // A generous but real ceiling — catches a stray extra digit without
     // rejecting anything a kindergarten's own day of meals could plausibly be.
     totalCalories: z.number().int().min(0).max(5000).nullish(),
+    /** "Нэмэлт мэдээлэл" — 500 characters, which is what the box counts down. */
+    note: z.string().max(500).nullable().optional(),
   })
   .strict();
 export type SaveMenuDayDto = z.infer<typeof saveMenuDaySchema>;
@@ -106,3 +108,24 @@ export const mealSummaryQuerySchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/, "Сар YYYY-MM хэлбэртэй байна"),
 });
 export type MealSummaryQuery = z.infer<typeof mealSummaryQuerySchema>;
+
+/**
+ * A family's note about one day's meals — the client's 2026-09-11 design.
+ *
+ * ★ 500 characters, which is what the box on screen counts down from. The API
+ * is the authority: a counter in a browser is a courtesy, not a limit.
+ */
+export const createMealNoteSchema = z
+  .object({
+    date: z.coerce.date(),
+    body: z.string().trim().min(1).max(500),
+  })
+  .strict();
+export type CreateMealNoteDto = z.infer<typeof createMealNoteSchema>;
+
+/** The range a family's notes are read over. Both ends required — see the service. */
+export const mealNotesQuerySchema = z.object({
+  from: z.coerce.date(),
+  to: z.coerce.date(),
+});
+export type MealNotesQuery = z.infer<typeof mealNotesQuerySchema>;

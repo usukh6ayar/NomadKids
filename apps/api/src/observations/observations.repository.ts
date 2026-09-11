@@ -93,6 +93,9 @@ export class ObservationsRepository {
         take,
         include: {
           type: { select: { id: true, name: true, code: true } },
+          // The indicator's code is what a note is read by; its descriptors
+          // belong to the picker, which asks for them a strand at a time.
+          indicator: { select: { id: true, code: true, domainId: true } },
           author: { select: { id: true, lastName: true, firstName: true } },
           domains: {
             include: {
@@ -123,6 +126,7 @@ export class ObservationsRepository {
       where: { AND: [this.readableWhere(childId, viewer), { id: observationId }] },
       include: {
         type: { select: { id: true, name: true, code: true } },
+        indicator: { select: { id: true, code: true, domainId: true } },
         author: { select: { id: true, lastName: true, firstName: true } },
         reviewedBy: { select: { id: true, lastName: true, firstName: true } },
         domains: {
@@ -152,6 +156,29 @@ export class ObservationsRepository {
         source: true,
         reviewStatus: true,
       },
+    });
+  }
+
+  /**
+   * One curriculum indicator, only if this kindergarten may use it.
+   *
+   * ★ Read here rather than through the assessment module, which owns the
+   * picker's own list.
+   *
+   * It is two columns and a join, and reaching across for it would couple two
+   * modules so that one could not be tested without the other. The rule it
+   * enforces is the same one `findGroupInKindergarten` enforces for a group:
+   * the id came from a client, so the row has to be this kindergarten's or the
+   * national standard's.
+   */
+  async findIndicator(indicatorId: string, kindergartenId: string) {
+    return this.prisma.curriculumIndicator.findFirst({
+      where: {
+        id: indicatorId,
+        deletedAt: null,
+        OR: [{ kindergartenId }, { kindergartenId: null }],
+      },
+      select: { id: true, levels: { select: { level: true } } },
     });
   }
 
@@ -334,44 +361,57 @@ export class ObservationsRepository {
       observedOn: { gte: from, lte: to },
     };
 
-    const [byType, byDomain, byActivity, distinctChildren, total, enrolled] = await Promise.all([
-      this.prisma.observation.groupBy({
-        by: ["typeId"],
-        where: window,
-        _count: { _all: true },
-      }),
-      this.prisma.observationDomain.groupBy({
-        by: ["domainId"],
-        where: { deletedAt: null, observation: window },
-        _count: { _all: true },
-      }),
-      this.prisma.observation.groupBy({
-        by: ["activityName"],
-        where: { ...window, activityName: { not: null } },
-        _count: { _all: true },
-        orderBy: { _count: { activityName: "desc" } },
-        take: 12,
-      }),
-      /*
+    const [byType, byDomain, byActivity, byChild, byChildType, distinctChildren, total, enrolled] =
+      await Promise.all([
+        this.prisma.observation.groupBy({
+          by: ["typeId"],
+          where: window,
+          _count: { _all: true },
+        }),
+        this.prisma.observationDomain.groupBy({
+          by: ["domainId"],
+          where: { deletedAt: null, observation: window },
+          _count: { _all: true },
+        }),
+        this.prisma.observation.groupBy({
+          by: ["activityName"],
+          where: { ...window, activityName: { not: null } },
+          _count: { _all: true },
+          orderBy: { _count: { activityName: "desc" } },
+          take: 12,
+        }),
+        this.prisma.observation.groupBy({
+          by: ["childId"],
+          where: window,
+          _count: { _all: true },
+        }),
+        this.prisma.observation.groupBy({
+          by: ["childId", "typeId"],
+          where: window,
+          _count: { _all: true },
+        }),
+        /*
         "How many *different* children were written about" — the client's
         Зорилт. `distinct` on the row rather than a `groupBy` count, because the
         question is the size of the set, not the shape of it.
       */
-      this.prisma.observation.findMany({
-        where: window,
-        select: { childId: true },
-        distinct: ["childId"],
-      }),
-      this.prisma.observation.count({ where: window }),
-      this.prisma.enrollment.count({
-        where: { groupId, status: "ACTIVE", deletedAt: null },
-      }),
-    ]);
+        this.prisma.observation.findMany({
+          where: window,
+          select: { childId: true },
+          distinct: ["childId"],
+        }),
+        this.prisma.observation.count({ where: window }),
+        this.prisma.enrollment.count({
+          where: { groupId, status: "ACTIVE", deletedAt: null },
+        }),
+      ]);
 
     return {
       byType,
       byDomain,
       byActivity,
+      byChild,
+      byChildType,
       childrenWithNotes: distinctChildren.length,
       total,
       enrolled,
@@ -440,6 +480,8 @@ export interface CreateObservationData {
   authorId: string;
   source: ObservationSource;
   observedOn: Date;
+  /** "HH:MM", when the teacher recorded one. */
+  observedTime?: string | null;
   visibleToParents: boolean;
   includeInReport: boolean;
   reviewStatus: ReviewStatus;
@@ -449,4 +491,7 @@ export interface CreateObservationData {
   childSaid?: string | null;
   teacherComment?: string | null;
   nextSteps?: string | null;
+  /** The СҮД indicator this note evidences, and the level judged against it. */
+  indicatorId?: string | null;
+  indicatorLevel?: number | null;
 }

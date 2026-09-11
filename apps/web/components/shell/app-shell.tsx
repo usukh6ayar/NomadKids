@@ -5,7 +5,15 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, ChevronDown, ChevronRight, Search, X } from "lucide-react";
+import {
+  Bell,
+  ChevronDown,
+  ChevronRight,
+  LogOut,
+  Search,
+  Settings as SettingsIcon,
+  X,
+} from "lucide-react";
 import {
   createContext,
   isValidElement,
@@ -28,7 +36,7 @@ import { z } from "zod";
 import { Input } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/states";
 import { qk } from "@/lib/api/keys";
-import { useSession } from "@/lib/auth/session";
+import { useLogout, useSession } from "@/lib/auth/session";
 import { formatRelative, fullName, initials } from "@/lib/format";
 import { BRAND } from "@/lib/vocabulary";
 import { Art } from "@/components/ui/art";
@@ -172,6 +180,7 @@ export function PageHeader({
   title,
   actions,
   search = false,
+  compact = false,
   meta,
   lede,
 }: {
@@ -180,6 +189,8 @@ export function PageHeader({
   actions?: ReactNode;
   /** Shows the header search field. Screens with something to search set it. */
   search?: boolean;
+  /** Uses phone-friendly title spacing while retaining the desktop hierarchy. */
+  compact?: boolean;
   /**
    * A visual identity for the screen — an `IconChip`, usually.
    *
@@ -215,11 +226,25 @@ export function PageHeader({
           spend a second visual slot on decorative artwork. */}
       <div className="flex min-w-0 flex-1 items-start gap-3">
         <div className="min-w-0">
-          <h1 className="text-display font-semibold leading-heading tracking-[-0.02em] text-ink">
+          <h1
+            className={cn(
+              "font-semibold leading-heading tracking-[-0.02em] text-ink",
+              compact ? "text-title sm:text-display" : "text-display",
+            )}
+          >
             {title}
           </h1>
 
-          {lede ? <div className="mt-1 text-body text-muted">{lede}</div> : null}
+          {lede ? (
+            <div
+              className={cn(
+                "text-muted",
+                compact ? "mt-0.5 text-caption sm:mt-1 sm:text-body" : "mt-1 text-body",
+              )}
+            >
+              {lede}
+            </div>
+          ) : null}
 
           {/*
           `flex-wrap`, because a row of chips at 375px is the width that
@@ -260,7 +285,12 @@ export function PageHeader({
         worse of the two failures and the reason this went unnoticed.
       */}
       {actions ? (
-        <div className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">
+        <div
+          className={cn(
+            "flex max-w-full shrink-0 flex-wrap items-center gap-2",
+            compact ? "basis-full justify-start sm:basis-auto sm:justify-end" : "justify-end",
+          )}
+        >
           {actions}
         </div>
       ) : null}
@@ -848,6 +878,7 @@ function Brand({ subtitle }: { subtitle: string }) {
  */
 function WhoAmI({ variant, isAdmin }: { variant: Variant; isAdmin: boolean }) {
   const { session, hasRole } = useSession();
+  const logout = useLogout();
 
   // The teacher variant covers three staff roles; only a real teacher has a
   // group to show beneath their name.
@@ -883,44 +914,72 @@ function WhoAmI({ variant, isAdmin }: { variant: Variant; isAdmin: boolean }) {
       negative margin makes the rule span the panel's full width rather than
       stopping at this card's own inset.
     */
-    <div className="-mx-1 shrink-0 border-t border-border-soft pt-3">
+    <div className="-mx-1 flex shrink-0 flex-col gap-1 border-t border-border-soft pt-3">
       {/*
-        ★ Named "Тохиргоо", not "Профайл" — 2026-09-10, with the rename that
-        gave `/settings` one name in every role's menu.
+        ★ Three things, not one — 2026-09-11, at the client's instruction:
+        "тухайн хүний мэдээлэл гарах товч жижигхэн байгаад байна. Энэ 2-ыг
+        салга … хамгийн доор нь системээс гарах гэж улаанаар бич."
 
-        This row is the sidebar's only door to that screen (`SidebarContent`
-        filters the `/settings` entry out of the nav lists so it is not offered
-        twice), so its accessible name is what a screen-reader user is told the
-        destination is called. "Профайл" here and "Тохиргоо" in the menu is the
-        same screen under two names, which is the confusion this pass removes.
+        This was a single 56px row doing two jobs: saying who is signed in, and
+        being the only door to their settings. Both suffered for it — the name
+        and the role were squeezed into two 12px lines inside a control, and the
+        one route to the account screen was a row that looked like a label.
 
-        The person's name stays in the label: the row shows their name and
-        their role, and an accessible name of just "Тохиргоо" would drop what
-        the row visibly says.
+        Now: who you are, then where to change it, then the way out. Every role
+        gets all three, because `SidebarContent` is the one menu the desktop
+        column and the phone drawer both render — "5 хэрэглэгчийг тавууланг нь".
       */}
-      <Link
-        href="/settings"
-        aria-label={`Тохиргоо: ${fullName(session?.user)}`}
-        className="group flex min-h-[56px] items-center gap-2.5 rounded-card bg-canvas/70 px-3 py-2 transition-colors hover:bg-primary-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-      >
-        <span className="grid size-9 shrink-0 place-items-center rounded-pill bg-primary-soft text-compact font-bold text-primary">
+      <div className="flex items-center gap-2.5 px-1.5 py-1">
+        <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-primary-soft text-body font-bold text-primary">
           {initials(session?.user)}
         </span>
-
-        {/* The whole row is the one profile affordance. Long names yield to
-            the route chevron instead of widening the sidebar. */}
         <div className="flex min-w-0 flex-1 flex-col justify-center">
-          <span className="block truncate text-compact font-semibold leading-[1.2] text-ink">
+          <span className="block truncate text-body font-semibold leading-tight text-ink">
             {fullName(session?.user)}
           </span>
           <span className="block truncate text-caption text-muted">{context}</span>
         </div>
+      </div>
+
+      {/*
+        ★ "Хувийн тохиргоо", and it is the row's whole accessible name now.
+
+        The identity above is plain text rather than part of a link, so the
+        destination no longer has to carry the person's name to keep what the
+        row visibly says — which is what the old `aria-label` was compensating
+        for.
+      */}
+      <Link
+        href="/settings"
+        className="group flex min-h-[44px] items-center gap-2.5 rounded-card px-2.5 py-2 text-compact font-medium text-ink transition-colors hover:bg-primary-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        <SettingsIcon size={17} aria-hidden="true" className="shrink-0 text-muted" />
+        <span className="min-w-0 flex-1 truncate">Хувийн тохиргоо</span>
         <ChevronRight
-          size={17}
+          size={16}
           className="shrink-0 text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
           aria-hidden="true"
         />
       </Link>
+
+      {/*
+        ★ Red, and a button rather than a link.
+
+        Sign-out was reachable only from the bottom of the settings screen —
+        three taps from the menu and past a page of read-only records. It is the
+        one destructive-feeling action in the shell, so it is the one thing here
+        painted in `text-danger`: "хамгийн доор нь системээс гарах гэж улаанаар
+        бич." It stays on the settings screen too, for anyone who learnt it
+        there.
+      */}
+      <button
+        type="button"
+        onClick={() => void logout()}
+        className="flex min-h-[44px] items-center gap-2.5 rounded-card px-2.5 py-2 text-compact font-medium text-danger transition-colors hover:bg-danger-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger"
+      >
+        <LogOut size={17} aria-hidden="true" className="shrink-0" />
+        Системээс гарах
+      </button>
     </div>
   );
 }
@@ -1064,15 +1123,27 @@ function SidebarContent({
                           >
                             {section.title}
                           </p>
-                          {section.entries.map((entry, index) => (
-                            <NavLink
-                              key={`${entry.href ?? entry.label}-${index}`}
-                              item={{ ...entry, icon: entry.icon ?? null }}
-                              pathname={pathname}
-                              orientation="vertical"
-                              activeHref={activeHref}
-                            />
-                          ))}
+                          {/*
+                            ★ `/settings` filtered here too — 2026-09-11.
+
+                            The flat branch below has filtered it since the foot
+                            became its only door, and the grouped branch never
+                            did: the row was rendered twice and nobody saw it,
+                            because the foot's link was named "Тохиргоо: <name>"
+                            and this one "Тохиргоо". Giving both the same name
+                            made the duplicate visible.
+                          */}
+                          {section.entries
+                            .filter((entry) => entry.href !== "/settings")
+                            .map((entry, index) => (
+                              <NavLink
+                                key={`${entry.href ?? entry.label}-${index}`}
+                                item={{ ...entry, icon: entry.icon ?? null }}
+                                pathname={pathname}
+                                orientation="vertical"
+                                activeHref={activeHref}
+                              />
+                            ))}
                         </div>
                       ))
                     : sectionEntries.map((entry, index) => (

@@ -416,6 +416,7 @@ model User {
   reviewed              Observation[]             @relation("ObservationReviewer")
   assessments           Assessment[]              @relation("AssessmentAuthor")
   termReports           TermReport[]              @relation("TermReportAuthor")
+  childMealNotes        ChildMealNote[]           @relation("ChildMealNoteAuthor")
   notifications         Notification[]            @relation("NotificationAuthor")
   reads                 NotificationRead[]
   reactions             NotificationReaction[]
@@ -603,6 +604,7 @@ model Kindergarten {
   childAgeProfiles       ChildAgeProfile[]
   birthdayNotes          BirthdayNote[]
   developmentDomains     DevelopmentDomain[]
+  curriculumIndicators   CurriculumIndicator[]
   assessmentLevels       AssessmentLevel[]
   observationTypes       ObservationType[]
   terms                  Term[]
@@ -610,6 +612,8 @@ model Kindergarten {
   observationDomains     ObservationDomain[]
   assessments            Assessment[]
   termReports            TermReport[]
+  termReportObservations TermReportObservation[]
+  childMealNotes         ChildMealNote[]
   mediaFiles             MediaFile[]
   notifications          Notification[]
   notificationTargets    NotificationTarget[]
@@ -712,12 +716,33 @@ model SchoolYear {
 }
 
 model Group {
-  id             String      @id @default(uuid()) @db.Uuid
-  kindergartenId String      @db.Uuid
-  schoolYearId   String      @db.Uuid
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  schoolYearId   String @db.Uuid
   name           String
-  ageBand        AgeBand
-  status         GroupStatus @default(ACTIVE)
+
+  /// How many *children* this group aims to document each month — the client's
+  /// "Энэ сарын зорилт", 2026-09-10.
+  ///
+  /// ★ Children, not notes, and the distinction is the whole point.
+  ///
+  /// The card reads "20 хүүхдийн хөгжлийн явцыг баримтжуулах" and "14 / 20
+  /// хүүхэд". A goal counted in notes is met by writing twenty about one child;
+  /// this one is only met by reaching twenty different children.
+  ///
+  /// ★★ On the group rather than the kindergarten, and that is what lets the
+  /// teacher set it (client, 2026-09-10: "багш өөрөө сонгох"). It lived on
+  /// `Kindergarten` for one day, which would have meant one teacher's decision
+  /// silently changing every other group's target — the same defect as the
+  /// `localStorage` version it replaced, one level up.
+  ///
+  /// NULL is "no goal set", which is the default. The screen draws no goal card
+  /// rather than inventing a target nobody agreed to.
+  monthlyNoteGoal          Int?
+  /// How many notes each targeted child should receive in the month.
+  monthlyNotesPerChildGoal Int?
+  ageBand                  AgeBand
+  status                   GroupStatus @default(ACTIVE)
 
   /// Order А/261, Annex 2 §1 items 5, 6, 13, 14 and 16. Both default to the
   /// ordinary case, so every group that existed before this migration is a
@@ -841,6 +866,7 @@ model Child {
   ageProfiles         ChildAgeProfile[]
   birthdayNotes       BirthdayNote[]
   observations        Observation[]
+  mealNotes           ChildMealNote[]
   assessments         Assessment[]
   termReports         TermReport[]
   mediaFiles          MediaFile[]               @relation("ChildMedia")
@@ -1031,7 +1057,7 @@ model ChildAgeProfile {
   /// short, per-age list only ever read and written whole, with nothing else
   /// pointing at it. The photograph itself is an ordinary album row, so it
   /// appears under `category=FAMILY` for this age without a second write.
-  familyMemories         Json     @default("[]")
+  familyMemories Json @default("[]")
 
   parentNote  String?
   teacherNote String?
@@ -2365,9 +2391,10 @@ model DevelopmentDomain {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  kindergarten       Kindergarten?       @relation(fields: [kindergartenId], references: [id], onDelete: Cascade)
-  observationDomains ObservationDomain[]
-  assessments        Assessment[]
+  kindergarten         Kindergarten?         @relation(fields: [kindergartenId], references: [id], onDelete: Cascade)
+  observationDomains   ObservationDomain[]
+  assessments          Assessment[]
+  curriculumIndicators CurriculumIndicator[]
 
   @@unique([kindergartenId, code])
   @@index([kindergartenId, isActive, order])
@@ -2396,6 +2423,68 @@ model AssessmentLevel {
   @@unique([kindergartenId, value])
   @@index([kindergartenId, isActive, order])
   @@map("assessment_levels")
+}
+
+/// A development indicator of the national preschool curriculum — СҮД.
+///
+/// ★ A table, and system rows rather than per-kindergarten configuration.
+///
+/// Seven strands, seventy-one indicators, each written out at up to four
+/// levels — the client's own spreadsheet, transcribed in `prisma/curriculum.ts`.
+/// It is a national standard: a kindergarten may add its own indicator beside
+/// these (`kindergartenId`) but may not edit the ones the ministry wrote, which
+/// is exactly what `DevelopmentDomain` and `AssessmentLevel` already do.
+///
+/// ★★ The code is the identity a teacher reads — "НСХ1а" — and it is stable
+/// across levels: `НСХ1а` at level II and at level IV are the same indicator
+/// described twice, which is why the level text is a row of its own rather
+/// than four columns here.
+model CurriculumIndicator {
+  id             String  @id @default(uuid()) @db.Uuid
+  /// NULL is the national standard; a value is one kindergarten's own addition.
+  kindergartenId String? @db.Uuid
+  domainId       String  @db.Uuid
+  /// "НСХ1а" — the prefix names the strand, the digit and letter the indicator.
+  code           String
+  order          Int     @default(0)
+  isActive       Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten?              @relation(fields: [kindergartenId], references: [id], onDelete: Cascade)
+  domain       DevelopmentDomain          @relation(fields: [domainId], references: [id], onDelete: Restrict)
+  levels       CurriculumIndicatorLevel[]
+  observations Observation[]
+
+  @@unique([kindergartenId, code])
+  @@index([domainId, isActive, order])
+  @@map("curriculum_indicators")
+}
+
+/// One indicator as it is written at one level.
+///
+/// ★ A row per level, not four columns, and an absent level is meaningful.
+///
+/// Several indicators begin at level II or III because the behaviour does not
+/// exist earlier — the source leaves those cells empty and so does this table.
+/// Four nullable columns would store the same fact and invite a screen to draw
+/// an empty card where "this indicator starts at III" is the honest answer.
+model CurriculumIndicatorLevel {
+  id          String @id @default(uuid()) @db.Uuid
+  indicatorId String @db.Uuid
+  /// 1–4, matching `AssessmentLevel.value`.
+  level       Int    @db.SmallInt
+  text        String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  indicator CurriculumIndicator @relation(fields: [indicatorId], references: [id], onDelete: Cascade)
+
+  @@unique([indicatorId, level])
+  @@map("curriculum_indicator_levels")
 }
 
 model ObservationType {
@@ -2431,10 +2520,42 @@ model Observation {
   enrollmentId   String @db.Uuid
   typeId         String @db.Uuid
 
-  source     ObservationSource @default(TEACHER)
-  observedOn DateTime          @db.Date
+  source       ObservationSource @default(TEACHER)
+  observedOn   DateTime          @db.Date
+  /// The time of day, as "HH:MM" — the client's "Цаг", 2026-09-11.
+  ///
+  /// ★ A string beside the date, not a `DateTime` replacing it.
+  ///
+  /// `observedOn` is `@db.Date` and every query, index and report in the
+  /// product groups on it as a calendar day; widening it to an instant would
+  /// move every one of those into a timezone conversation for a field that is
+  /// decoration on most notes. The time is what a teacher writes when two
+  /// notes about the same child on the same morning need telling apart, and
+  /// "10:30" is the whole of what they mean by it.
+  ///
+  /// ★★ Optional, and no default. A note filed without one happened that day
+  /// and no more precisely, which is the truth for most of them — stamping the
+  /// moment the form was submitted would record when it was typed up rather
+  /// than when it happened.
+  observedTime String?
 
-  activityName   String?
+  activityName String?
+
+  /// The curriculum indicator this note evidences — СҮД код, 2026-09-11.
+  ///
+  /// ★ Optional, because a note is not always an assessment.
+  ///
+  /// A teacher writing down what happened at the water table has something
+  /// worth keeping whether or not it maps onto an indicator, and requiring one
+  /// would make the quick note the slowest thing on the screen. When it is
+  /// there it is what turns a note into evidence, which is what the term
+  /// report reads.
+  indicatorId    String? @db.Uuid
+  /// Which of the indicator's levels the teacher judged — 1–4, matching
+  /// `AssessmentLevel.value`. Meaningless without `indicatorId` and written
+  /// with it.
+  indicatorLevel Int?    @db.SmallInt
+
   situation      String?
   childDid       String?
   childSaid      String?
@@ -2460,14 +2581,16 @@ model Observation {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  kindergarten Kindergarten        @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
-  child        Child               @relation(fields: [childId], references: [id], onDelete: Cascade)
-  enrollment   Enrollment          @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
-  type         ObservationType     @relation(fields: [typeId], references: [id], onDelete: Restrict)
-  author       User?               @relation("ObservationAuthor", fields: [authorId], references: [id], onDelete: SetNull)
-  reviewedBy   User?               @relation("ObservationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  kindergarten Kindergarten            @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child                   @relation(fields: [childId], references: [id], onDelete: Cascade)
+  enrollment   Enrollment              @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
+  type         ObservationType         @relation(fields: [typeId], references: [id], onDelete: Restrict)
+  indicator    CurriculumIndicator?    @relation(fields: [indicatorId], references: [id], onDelete: Restrict)
+  author       User?                   @relation("ObservationAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  reviewedBy   User?                   @relation("ObservationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   domains      ObservationDomain[]
-  media        MediaFile[]         @relation("ObservationMedia")
+  media        MediaFile[]             @relation("ObservationMedia")
+  termReports  TermReportObservation[]
 
   @@index([childId, observedOn(sort: Desc)])
   @@index([kindergartenId, observedOn(sort: Desc)])
@@ -2697,6 +2820,10 @@ model MenuDay {
   /// never get one, and a blank value must read as "not entered" rather than
   /// "zero calories".
   totalCalories  Int?
+  /// "Нэмэлт мэдээлэл" — the kitchen's own note about the day, from the editor's
+  /// footer. A dish already has a `note`; this is about the day itself, which
+  /// is where "бага хэмжээгээр өгсөн" or "цэс өөрчлөгдсөн" belongs.
+  note           String?
   status         MenuDayStatus @default(DRAFT)
 
   createdById  String?   @db.Uuid
@@ -3096,6 +3223,13 @@ enum SurveyCategory {
   PHYSICAL_DEVELOPMENT
   COGNITIVE_DEVELOPMENT
   HABITS_INDEPENDENCE
+  /// Added 2026-09-10 at the client's request. The six above are all
+  /// developmental or attitudinal; a kindergarten also asks about the group
+  /// itself — an outing, a parents' evening — and had nowhere to file it.
+  CLASS_GROUP
+  /// The escape hatch every vocabulary needs, so a survey that fits none of
+  /// the others is filed rather than mislabelled as one of them.
+  OTHER
 }
 
 model Survey {
@@ -3125,6 +3259,82 @@ model Survey {
   /// still moves to CLOSED only when a person closes it, which keeps "why did
   /// this stop accepting answers" answerable from the row itself.
   closesAt DateTime?
+
+  /// When it starts accepting answers — the client's "Эхлэх огноо", 2026-09-10.
+  ///
+  /// ★ The mirror of `closesAt`, and enforced in the same one place.
+  ///
+  /// A survey published on Monday for a meeting on Friday should not collect
+  /// answers all week; a teacher sets both dates when they build it. NULL is
+  /// "from the moment it is published", which is what every survey written
+  /// before this field did and what most still mean.
+  ///
+  /// Like `closesAt` this is an *intention*, not a state: nothing sweeps it,
+  /// `status` stays PUBLISHED, and `submitResponse` is the single place that
+  /// asks. A scheduled job flipping a status at midnight would still leave the
+  /// window between the instant and the sweep wrong.
+  opensAt DateTime?
+
+  /// Why it is being run — the client's "Зорилго", 2026-09-10.
+  ///
+  /// ★ Separate from `description`, which is what a *parent* reads under the
+  /// title. This is what the kindergarten is trying to learn, and it belongs
+  /// on the results sheet and in the archive rather than on the answering
+  /// form: "did we get an answer to the question we ran this for" is what a
+  /// director asks of a survey a year later.
+  purpose String?
+
+  /// Which term of the school year — the client's "Улирал", 2026-09-10.
+  ///
+  /// ★ A row, not a number, because `Term` is administrator-editable (§2.3):
+  /// its dates and names are configured per kindergarten, and a `SmallInt`
+  /// here would be a second copy of `Term.number` that nothing keeps in step.
+  ///
+  /// Nullable and `onDelete: Restrict`: a survey may sit outside any term (the
+  /// summer), and a term with surveys filed against it must not be deletable
+  /// out from under them.
+  termId String? @db.Uuid
+
+  /// Whether answers are recorded without naming who gave them — the client's
+  /// "Хариулт нуух" / "Нэрээ харах", 2026-09-10.
+  ///
+  /// ★ It hides the respondent from *readers*, not from the database.
+  ///
+  /// `SurveyResponse.respondentId` is still written, and must be: it is what
+  /// stops one family answering twice, and `AuditLog` answers for the row. What
+  /// this changes is what the product will show — `participation` reports
+  /// counts instead of names and the workbook omits the respondent column.
+  /// Promising true anonymity while storing the id would be the worse of the
+  /// two failures, so the flag is named for what it does.
+  isAnonymous Boolean @default(false)
+
+  /// Whether one respondent may answer more than once — the client's "Олон
+  /// удаа хариулахыг хязгаарлах" toggle, inverted.
+  ///
+  /// ★ Default false, which is the behaviour every survey has had.
+  ///
+  /// `submitResponse` refuses a second response outright today. That is right
+  /// for a questionnaire — a family's considered answers, submitted once — and
+  /// wrong for the standing polls the client wants ("Маргаашийн аялалд хэн
+  /// ирэх вэ" asked every week). The rule moves from the code to the row.
+  allowMultipleResponses Boolean @default(false)
+
+  /// Whether the answering form shuffles its questions — "Асуултын дарааллыг
+  /// санамсаргүй болгох".
+  ///
+  /// ★ Order effects are real: the first question of a satisfaction survey is
+  /// answered more generously than the fifth. It is off by default because a
+  /// questionnaire that builds an argument across its questions is ruined by
+  /// shuffling, and the person writing it knows which kind theirs is.
+  shuffleQuestions Boolean @default(false)
+
+  /// What a family reads after submitting — "Нэмэлт тэмдэглэл".
+  ///
+  /// NULL falls back to the product's own thank-you. A kindergarten that wants
+  /// to say what happens next ("Хариултыг 9-р сарын 20-нд хэлэлцэнэ") writes it
+  /// here rather than in the description, where it would be read before
+  /// answering instead of after.
+  closingNote String?
 
   /// "2025-2026". A string, not a year number: a school year spans two.
   schoolYear String?
@@ -3174,6 +3384,7 @@ model Survey {
   kindergarten Kindergarten     @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   createdBy    User?            @relation("SurveyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   group        Group?           @relation("SurveyGroup", fields: [groupId], references: [id], onDelete: Restrict)
+  term         Term?            @relation(fields: [termId], references: [id], onDelete: Restrict)
   questions    SurveyQuestion[]
   responses    SurveyResponse[]
   clonedFrom   Survey?          @relation("SurveyClone", fields: [clonedFromSurveyId], references: [id], onDelete: SetNull)
@@ -3185,6 +3396,8 @@ model Survey {
   @@index([kindergartenId, groupId])
   /// "This year's waves, in order" — what Module 1.2 asks for.
   @@index([kindergartenId, schoolYear, period])
+  /// The staff list grouped by term, and the FK's own lookups.
+  @@index([kindergartenId, termId])
   @@map("surveys")
 }
 
@@ -3294,6 +3507,7 @@ model Term {
   schoolYear   SchoolYear   @relation(fields: [schoolYearId], references: [id], onDelete: Cascade)
   assessments  Assessment[]
   termReports  TermReport[]
+  surveys      Survey[]
 
   @@unique([schoolYearId, number])
   @@index([kindergartenId, startsOn])
@@ -3360,10 +3574,88 @@ model TermReport {
   term         Term         @relation(fields: [termId], references: [id], onDelete: Restrict)
   author       User?        @relation("TermReportAuthor", fields: [authorId], references: [id], onDelete: SetNull)
 
+  observations TermReportObservation[]
+
   @@unique([childId, termId])
   @@index([childId, termId])
   @@index([kindergartenId, termId])
   @@map("term_reports")
+}
+
+/// A family's note about their child's meals for one day.
+///
+/// ★ From the parent, read by staff — the client's 2026-09-11 design, whose own
+/// placeholder says what it is for: "бага хэмжээгээр өгч болохгүй, орлуулах
+/// хоол санал болгох гэх мэт".
+///
+/// ★★ Not a chat message, and that is a privacy decision rather than a
+/// stylistic one. The only rooms that exist are `group:` and `staff:`
+/// (`authz/chat-access.ts`), and a group room holds every parent in the group —
+/// sending "my child cannot have dairy" there would publish one child's dietary
+/// restriction to thirty families. This row is reachable only through
+/// `canAccessChild`, like every other thing written about a child.
+///
+/// ★★★ One row per note, not one per child-day. A family that writes again
+/// tomorrow has said a second thing, and collapsing the two would lose the first
+/// silently; `@@index([childId, date])` is what makes the day's notes one query.
+model ChildMealNote {
+  id             String   @id @default(uuid()) @db.Uuid
+  kindergartenId String   @db.Uuid
+  childId        String   @db.Uuid
+  /// The day the note is *about*, which is not always the day it was written.
+  date           DateTime @db.Date
+
+  body String
+
+  /// Who wrote it. Nullable only because `User` deletion sets it null — every
+  /// note is written by somebody, and `AuditLog` holds the durable answer.
+  authorId String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  author       User?        @relation("ChildMealNoteAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([childId, date(sort: Desc)])
+  @@index([kindergartenId, date(sort: Desc)])
+  @@map("child_meal_notes")
+}
+
+/// The observations a term report was written from — the teacher's own citation.
+///
+/// ★ A selection, not a computed set.
+///
+/// A term report could have listed every note in its term automatically, and
+/// that would be a different document: the teacher picks the handful that
+/// evidence what they are claiming, out of a term that may hold forty. The
+/// client's words (2026-09-11): "өмнө нь бичсэн хэсгүүдээ чекэлж сонгож байгаад
+/// тэдгээр дээрээ багцлан дүгнэлт гаргадаг."
+///
+/// ★★ Hard-deleted when unchecked, unlike almost everything else here.
+///
+/// §3.2 protects records; this is tag membership, and the row carries no
+/// content of its own — unchecking a note is editing the report's draft, not
+/// deleting a thing that happened. `ObservationDomain` is replaced the same way
+/// (`observations.repository.ts` `update()`), and one table changing its mind
+/// about what a join row means is how a codebase stops being predictable.
+model TermReportObservation {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  termReportId   String @db.Uuid
+  observationId  String @db.Uuid
+
+  createdAt DateTime @default(now())
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  termReport   TermReport   @relation(fields: [termReportId], references: [id], onDelete: Cascade)
+  observation  Observation  @relation(fields: [observationId], references: [id], onDelete: Cascade)
+
+  @@unique([termReportId, observationId])
+  @@index([observationId])
+  @@map("term_report_observations")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -48,6 +48,75 @@ export class AssessmentService {
     return { domains, levels };
   }
 
+  /**
+   * Sets a group's monthly documentation goal — how many *children* to
+   * document each month.
+   *
+   * ★ The teacher of the group sets it, not only the administrator — client,
+   * 2026-09-10: "багш өөрөө сонгох".
+   *
+   * That reverses what this endpoint did for one day, and the reversal is what
+   * made the column move from `Kindergarten` to `Group`: a kindergarten-wide
+   * target set by a teacher would silently change every other group's number.
+   * On the group it is theirs.
+   *
+   * ★★ The same assignment check the column editor makes. Membership is not
+   * enough — a teacher may only act on a group they are assigned to — and
+   * `getGroupColumn` states why. 404 either way (§1.7).
+   */
+  async setGroupNoteGoal(
+    actor: Actor,
+    groupId: string,
+    goal: { monthlyNoteGoal?: number | null; monthlyNotesPerChildGoal?: number | null },
+  ) {
+    const group = await this.repo.findGroupForAssessment(
+      groupId,
+      this.tenants.memberKindergartenIds(actor),
+    );
+    if (!group) throw new NotFoundException();
+
+    if (!this.tenants.isAdmin(actor, group.kindergartenId)) {
+      const assigned = await this.authz.loadActiveTeachingGroupIds(actor);
+      if (!assigned.includes(groupId)) throw new NotFoundException();
+    }
+
+    await this.repo.setGroupNoteGoal(groupId, goal);
+
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId: group.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "Group",
+      objectId: groupId,
+      metadata: goal,
+    });
+
+    return {
+      monthlyNoteGoal:
+        goal.monthlyNoteGoal === undefined ? group.monthlyNoteGoal : goal.monthlyNoteGoal,
+      monthlyNotesPerChildGoal:
+        goal.monthlyNotesPerChildGoal === undefined
+          ? group.monthlyNotesPerChildGoal
+          : goal.monthlyNotesPerChildGoal,
+    };
+  }
+
+  /**
+   * The СҮД indicators of one strand.
+   *
+   * Readable by every member, like `listConfig` beside it: a parent's screen
+   * names the indicator a note was filed against, so hiding the list from them
+   * would leave that name unresolvable.
+   */
+  async listIndicators(actor: Actor, kindergartenId: string, domainId: string) {
+    this.tenants.assertMember(actor, kindergartenId);
+
+    const domain = await this.repo.findDomain(domainId, kindergartenId);
+    if (!domain) throw new BadRequestException("Хөгжлийн чиглэл олдсонгүй");
+
+    return this.repo.listIndicators(kindergartenId, domainId);
+  }
+
   // ── Terms ─────────────────────────────────────────────────────────────────
 
   async listTerms(actor: Actor, kindergartenId: string, schoolYearId?: string) {
@@ -450,6 +519,17 @@ export class AssessmentService {
     const facts = await this.childAccess.assertCanAccess(actor, childId);
     const report = await this.repo.findTermReport(childId, termId, isGuardianOf(actor, facts));
 
+    /*
+      Flattened before it leaves: the join row carries nothing a reader wants, so
+      the response is a list of notes rather than a list of wrappers around
+      notes. Keeping the join's shape in the contract would push it into the web
+      app and the PDF template both.
+    */
+    if (report) {
+      const { observations, ...rest } = report;
+      return { ...rest, observations: observations.map((row) => row.observation) };
+    }
+
     return (
       report ?? {
         childId,
@@ -460,6 +540,7 @@ export class AssessmentService {
         needsSupport: null,
         nextGoals: null,
         adviceForParents: null,
+        observations: [],
       }
     );
   }
@@ -484,6 +565,24 @@ export class AssessmentService {
       throw new BadRequestException("Хүүхэд энэ хичээлийн жилд бүртгэлгүй байна");
     }
 
+    /*
+      ★ Every cited note must be this child's — checked before the report is
+      written, and answered with 404.
+
+      §1.7: an observation id belonging to another child must not be
+      distinguishable from one that never existed, or this endpoint becomes a
+      way to test whether a given note id is real. The actor has already passed
+      `assertCanRecord` for *this* child, which is the only thing that licenses
+      them to cite anything at all.
+
+      A count rather than a fetch, and one query for the whole set (§3.4).
+    */
+    if (dto.observationIds && dto.observationIds.length > 0) {
+      const unique = [...new Set(dto.observationIds)];
+      const found = await this.repo.countObservationsForChild(unique, childId);
+      if (found !== unique.length) throw new NotFoundException();
+    }
+
     const saved = await this.repo.upsertTermReport({
       kindergartenId: enrollment.kindergartenId,
       childId,
@@ -496,6 +595,20 @@ export class AssessmentService {
       adviceForParents: dto.adviceForParents ?? null,
     });
 
+    /*
+      ★ Only when the field was sent. `undefined` leaves the selection alone;
+      `[]` clears it.
+
+      A screen that saves the narrative without re-sending the citations must
+      not drop them, and unticking the last box must not be indistinguishable
+      from not mentioning citations at all.
+    */
+    if (dto.observationIds) {
+      await this.repo.replaceTermReportObservations(saved.id, enrollment.kindergartenId, [
+        ...new Set(dto.observationIds),
+      ]);
+    }
+
     await this.audit.append({
       action: "UPDATE",
       kindergartenId: enrollment.kindergartenId,
@@ -503,7 +616,11 @@ export class AssessmentService {
       objectType: "TermReport",
       objectId: saved.id,
       childId,
-      metadata: { termId: dto.termId, status: saved.status },
+      metadata: {
+        termId: dto.termId,
+        status: saved.status,
+        ...(dto.observationIds ? { citedObservations: dto.observationIds.length } : {}),
+      },
     });
 
     return saved;

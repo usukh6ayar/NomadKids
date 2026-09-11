@@ -83,9 +83,48 @@ export const saveTermReportSchema = z
     needsSupport: z.string().max(4000).nullable().optional(),
     nextGoals: z.string().max(4000).nullable().optional(),
     adviceForParents: z.string().max(4000).nullable().optional(),
+    /*
+      ★ The notes this report is drawn from — the teacher's own citation,
+      2026-09-11.
+
+      Capped at fifty, which is the §3.4 bound that lets `findTermReport`
+      include them without paginating. A term holds nowhere near that many notes
+      about one child, and a teacher who ticks every box in a busy term still
+      lands inside it.
+
+      Optional and *distinct from empty*: omitting it leaves the existing
+      selection alone, so a screen saving only the narrative cannot silently
+      drop the citations. `[]` clears them, which is what unticking the last box
+      has to mean.
+    */
+    observationIds: z.array(uuidSchema).max(50).optional(),
   })
   .strict();
 export type SaveTermReportDto = z.infer<typeof saveTermReportSchema>;
 
 export const termIdQuerySchema = z.object({ termId: uuidSchema.optional() });
 export const requiredTermSchema = z.object({ termId: uuidSchema });
+
+/**
+ * Энэ сарын зорилт — how many children to document each month.
+ *
+ * ★ Bounded at twenty, and nullable rather than zero-able.
+ *
+ * Null is "no goal", which draws no card. Zero would be a goal every group
+ * meets without writing anything — a bar permanently at 100% saying nothing,
+ * which is worse than no bar at all.
+ */
+export const monthlyNoteGoalSchema = z
+  .object({
+    monthlyNoteGoal: z.number().int().min(1).max(20).nullable().optional(),
+    monthlyNotesPerChildGoal: z.number().int().min(1).max(10).nullable().optional(),
+  })
+  .refine(
+    (value) => value.monthlyNoteGoal !== undefined || value.monthlyNotesPerChildGoal !== undefined,
+    { message: "At least one goal field is required" },
+  )
+  .strict();
+export type MonthlyNoteGoalDto = z.infer<typeof monthlyNoteGoalSchema>;
+
+/** Which strand's indicators to list — required, for the reason above. */
+export const indicatorQuerySchema = z.object({ domainId: uuidSchema }).strict();

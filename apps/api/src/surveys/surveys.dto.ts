@@ -51,8 +51,38 @@ export const createSurveySchema = z
       `surveys.test.ts` — keeps compiling and keeps meaning what it meant.
     */
     groupId: uuidSchema.nullable().optional(),
+    /*
+      ★ The wizard's remaining fields — 2026-09-10, all optional.
+
+      Every one of them is a *setting*, and every setting's omitted value is
+      the behaviour every survey written before them had: no opening date, no
+      stated purpose, no term, named answers, one response each, questions in
+      the order they were written, and the product's own thank-you. So the
+      clone endpoint, the seeds and every existing test keep compiling and keep
+      meaning what they meant — the same argument `kind` and `groupId` make
+      above, and the reason none of these is required.
+    */
+    opensAt: z.coerce.date().nullable().optional(),
+    purpose: z.string().max(2000).nullable().optional(),
+    termId: uuidSchema.nullable().optional(),
+    isAnonymous: z.boolean().optional(),
+    allowMultipleResponses: z.boolean().optional(),
+    shuffleQuestions: z.boolean().optional(),
+    closingNote: z.string().max(500).nullable().optional(),
   })
-  .strict();
+  .strict()
+  /*
+    ★ A window that closes before it opens is refused here, not discovered by a
+    family who cannot answer.
+
+    Checked in the schema rather than the service because it is a property of
+    the two values alone — no row, no actor, nothing to look up. `notifications
+    .dto.ts` states the same rule for `startsOn`/`endsOn`.
+  */
+  .refine((dto) => !dto.opensAt || !dto.closesAt || dto.opensAt <= dto.closesAt, {
+    message: "Эхлэх огноо дуусах огнооноос хойш байж болохгүй",
+    path: ["closesAt"],
+  });
 export type CreateSurveyDto = z.infer<typeof createSurveySchema>;
 
 /**
@@ -218,3 +248,16 @@ export type CompareSurveyQuery = z.infer<typeof compareSurveyQuerySchema>;
  */
 export const surveyResultsQuerySchema = z.object({ groupId: uuidSchema.optional() }).strict();
 export type SurveyResultsQuery = z.infer<typeof surveyResultsQuerySchema>;
+
+/**
+ * One choice a family adds to a poll question.
+ *
+ * ★ Bounded at the same 80 characters the composer's own option inputs use.
+ *
+ * This is the one field on a teacher's object that a parent writes, so the
+ * limit is the whole validation story: no markup is stripped and none needs to
+ * be, because the value is rendered as text and never as HTML — but a 10 kB
+ * "option" would break the bars for everyone reading the poll.
+ */
+export const addPollOptionSchema = z.object({ label: z.string().min(1).max(80) }).strict();
+export type AddPollOptionDto = z.infer<typeof addPollOptionSchema>;

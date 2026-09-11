@@ -417,6 +417,30 @@ describe("assessment visibility", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("term reports", () => {
+  /**
+   * Files a note for a child directly, bypassing the API.
+   *
+   * ★ Straight to the database because what is under test here is the report's
+   * citation of a note, not the note's own creation — which `observations.test.ts`
+   * covers at length. Going through the endpoint would make every case in this
+   * block depend on the observation controller's rules as well as its own.
+   */
+  async function noteFor(scenario: Scenario, day = "2025-10-05") {
+    const type = await db.observationType.findFirstOrThrow({ where: { code: "daily" } });
+    const row = await db.observation.create({
+      data: {
+        kindergartenId: scenario.kindergarten.id,
+        childId: scenario.child.id,
+        enrollmentId: scenario.enrollment.id,
+        typeId: type.id,
+        observedOn: new Date(day),
+        source: "TEACHER",
+        situation: `Тэмдэглэл ${day}`,
+      },
+    });
+    return row.id;
+  }
+
   async function writeReport() {
     return authed(request(server()).put(`/v1/children/${a.child.id}/term-report`), teacherA).send({
       termId,
@@ -547,6 +571,183 @@ describe("term reports", () => {
 
     expect(res.status).toBe(404);
   });
+
+  // ── Cited observations ────────────────────────────────────────────────────
+  //
+  // ★ The client's 2026-09-11 ask: "өмнө нь бичсэн хэсгүүдээ чекэлж сонгож
+  // байгаад тэдгээр дээрээ багцлан дүгнэлт гаргадаг." The report stores which
+  // notes it was written from, rather than implying every note in the term.
+
+  it("stores the notes a report was written from", async () => {
+    const one = await noteFor(a, "2025-10-05");
+    const two = await noteFor(a, "2025-11-02");
+
+    const res = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/term-report`),
+      teacherA,
+    ).send({ termId, strengths: "Багаараа тоглодог", observationIds: [one, two] });
+
+    expect(res.status).toBe(200);
+
+    const read = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/term-report?termId=${termId}`),
+      teacherA,
+    );
+    expect(read.body.observations.map((row: { id: string }) => row.id)).toEqual([one, two]);
+  });
+
+  /*
+    ★ 404, not 400 — §1.7.
+
+    An observation id belonging to another child must not be distinguishable
+    from one that never existed, or this endpoint becomes a way to test whether
+    a note id is real.
+  */
+  it("★ refuses a note belonging to another child with 404", async () => {
+    const mine = await noteFor(a);
+    const theirs = await noteFor(b);
+
+    const res = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/term-report`),
+      teacherA,
+    ).send({ termId, observationIds: [mine, theirs] });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("★ answers the same 404 for a note id that does not exist", async () => {
+    const res = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/term-report`),
+      teacherA,
+    ).send({ termId, observationIds: ["00000000-0000-4000-8000-000000000000"] });
+
+    expect(res.status).toBe(404);
+  });
+
+  /*
+    ★ Nothing is written when one id is refused.
+
+    The check runs before the upsert, so a report that did not exist still does
+    not — a teacher whose selection was rejected must not find a blank report
+    waiting for them.
+  */
+  it("writes no report at all when a cited note is refused", async () => {
+    const theirs = await noteFor(b);
+
+    await authed(request(server()).put(`/v1/children/${a.child.id}/term-report`), teacherA).send({
+      termId,
+      strengths: "Энэ хадгалагдах ёсгүй",
+      observationIds: [theirs],
+    });
+
+    expect(await db.termReport.count({ where: { childId: a.child.id, termId } })).toBe(0);
+  });
+
+  it("replaces the selection rather than adding to it", async () => {
+    const one = await noteFor(a, "2025-10-05");
+    const two = await noteFor(a, "2025-11-02");
+
+    await authed(request(server()).put(`/v1/children/${a.child.id}/term-report`), teacherA).send({
+      termId,
+      observationIds: [one, two],
+    });
+    await authed(request(server()).put(`/v1/children/${a.child.id}/term-report`), teacherA).send({
+      termId,
+      observationIds: [two],
+    });
+
+    const read = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/term-report?termId=${termId}`),
+      teacherA,
+    );
+    expect(read.body.observations.map((row: { id: string }) => row.id)).toEqual([two]);
+  });
+
+  /*
+    ★ Omitting the field is not the same as sending an empty one.
+
+    A screen saving only the narrative must not drop the citations, and
+    unticking the last box must still be expressible.
+  */
+  it("leaves the selection alone when the field is not sent", async () => {
+    const one = await noteFor(a);
+
+    await authed(request(server()).put(`/v1/children/${a.child.id}/term-report`), teacherA).send({
+      termId,
+      observationIds: [one],
+    });
+    await authed(request(server()).put(`/v1/children/${a.child.id}/term-report`), teacherA).send({
+      termId,
+      strengths: "Зөвхөн текст",
+    });
+
+    const read = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/term-report?termId=${termId}`),
+      teacherA,
+    );
+    expect(read.body.observations).toHaveLength(1);
+    expect(read.body.strengths).toBe("Зөвхөн текст");
+  });
+
+  it("clears the selection when an empty list is sent", async () => {
+    const one = await noteFor(a);
+
+    await authed(request(server()).put(`/v1/children/${a.child.id}/term-report`), teacherA).send({
+      termId,
+      observationIds: [one],
+    });
+    await authed(request(server()).put(`/v1/children/${a.child.id}/term-report`), teacherA).send({
+      termId,
+      observationIds: [],
+    });
+
+    const read = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/term-report?termId=${termId}`),
+      teacherA,
+    );
+    expect(read.body.observations).toEqual([]);
+  });
+
+  it("★ a teacher from another kindergarten cannot cite this child's notes", async () => {
+    const mine = await noteFor(a);
+    const teacherB = await login(app, b.teacherUser.username);
+
+    const res = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/term-report`),
+      teacherB,
+    ).send({ termId, observationIds: [mine] });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("★ a guardian cannot write a report at all", async () => {
+    const mine = await noteFor(a);
+
+    const res = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/term-report`),
+      parentA,
+    ).send({ termId, observationIds: [mine] });
+
+    expect(res.status).toBe(404);
+  });
+
+  /*
+    The cap is §3.4's bound: `findTermReport` includes the notes without
+    paginating, which is only defensible because the set cannot grow past this.
+  */
+  it("refuses more than fifty cited notes", async () => {
+    const ids = Array.from(
+      { length: 51 },
+      (_, index) => `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    );
+
+    const res = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/term-report`),
+      teacherA,
+    ).send({ termId, observationIds: ids });
+
+    expect(res.status).toBe(400);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -561,7 +762,12 @@ describe("terms and config", () => {
         .set("Cookie", session.cookies);
 
       expect(res.status).toBe(200);
-      expect(res.body.domains).toHaveLength(5);
+      // ★ Seven since 2026-09-11, when the client's СҮД spreadsheet named the
+      // strands. Five of them are the old rows renamed — the codes are
+      // unchanged, so every assessment already filed still points at the
+      // strand it was filed under — and "Байгаль, нийгмийн орчин" and
+      // "Хөгжим" are genuinely new.
+      expect(res.body.domains).toHaveLength(7);
       expect(res.body.levels).toHaveLength(4);
     }
   });
@@ -1114,5 +1320,200 @@ describe("★ previous term", () => {
 
     expect(await countPreviousQueries(2)).toBe(1);
     expect(await countPreviousQueries(20)).toBe(1);
+  });
+});
+
+/**
+ * Энэ сарын зорилт — the group's own monthly documentation target.
+ *
+ * ★ It has moved twice, and both moves fixed a real fault.
+ *
+ * It began in `localStorage`, so the two teachers of one group could hold
+ * different targets, a director saw neither, and clearing site data lost it.
+ * It then spent a day on `Kindergarten`, which had the opposite fault: the
+ * client asked that the teacher set it ("багш өөрөө сонгох"), and a
+ * kindergarten-wide number set by one teacher would silently change every
+ * other group's. On the group, set by whoever teaches it, it is theirs.
+ *
+ * ★★ Children, not notes. A goal counted in notes is met by writing twenty
+ * about one child.
+ */
+describe("a group's monthly documentation goal", () => {
+  const setGoal = (session: AuthSession, monthlyNoteGoal: number | null, group = a.group.id) =>
+    authed(
+      request(server()).put(`/v1/groups/${group}/assessments/monthly-note-goal`),
+      session,
+    ).send({
+      monthlyNoteGoal,
+    });
+
+  const readGoal = async (group = a.group.id) =>
+    (await authed(request(server()).get(`/v1/groups/${group}`), teacherA)).body.monthlyNoteGoal;
+
+  it("is null until somebody sets one", async () => {
+    expect(await readGoal()).toBeNull();
+  });
+
+  it("the group's own teacher sets it", async () => {
+    expect((await setGoal(teacherA, 20)).status).toBe(200);
+    expect(await readGoal()).toBe(20);
+  });
+
+  it("stores how many notes each targeted child should receive", async () => {
+    const response = await authed(
+      request(server()).put(`/v1/groups/${a.group.id}/assessments/monthly-note-goal`),
+      teacherA,
+    ).send({ monthlyNotesPerChildGoal: 3 });
+
+    expect(response.status).toBe(200);
+    expect(response.body.monthlyNotesPerChildGoal).toBe(3);
+    expect(
+      (await authed(request(server()).get(`/v1/groups/${a.group.id}`), teacherA)).body
+        .monthlyNotesPerChildGoal,
+    ).toBe(3);
+  });
+
+  it("an administrator sets it too", async () => {
+    expect((await setGoal(adminA, 15)).status).toBe(200);
+    expect(await readGoal()).toBe(15);
+  });
+
+  /**
+   * ★ Membership is not enough — the same rule the column editor makes.
+   *
+   * A teacher may only act on a group they are assigned to. This is the check
+   * the screen cannot make, and it is why the control can be offered to every
+   * member of staff who reaches the page.
+   */
+  it("a teacher not assigned to the group gets 404", async () => {
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Тэдний биш бүлэг");
+
+    expect((await setGoal(teacherA, 20, other.id)).status).toBe(404);
+  });
+
+  it("a teacher from another kindergarten gets 404", async () => {
+    const teacherB = await login(app, b.teacherUser.username);
+    expect((await setGoal(teacherB, 20)).status).toBe(404);
+  });
+
+  it("a guardian gets 404", async () => {
+    expect((await setGoal(parentA, 20)).status).toBe(404);
+  });
+
+  /** Null clears it; the screen then draws no goal card. */
+  it("can be cleared", async () => {
+    await setGoal(teacherA, 20);
+    expect((await setGoal(teacherA, null)).status).toBe(200);
+    expect(await readGoal()).toBeNull();
+  });
+
+  /**
+   * ★ Zero is refused, not stored.
+   *
+   * A goal of zero is met by every group without writing anything — a bar
+   * permanently at 100% saying nothing, which is worse than no bar.
+   */
+  it("refuses a goal of zero or an absurd one", async () => {
+    expect((await setGoal(teacherA, 0)).status).toBe(400);
+    expect((await setGoal(teacherA, 99)).status).toBe(400);
+
+    const tooManyNotes = await authed(
+      request(server()).put(`/v1/groups/${a.group.id}/assessments/monthly-note-goal`),
+      teacherA,
+    ).send({ monthlyNotesPerChildGoal: 11 });
+    expect(tooManyNotes.status).toBe(400);
+  });
+
+  /** ★ One group's target does not move another's. */
+  it("belongs to the group and nobody else", async () => {
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Өөр бүлэг");
+
+    await setGoal(adminA, 20);
+    await setGoal(adminA, 8, other.id);
+
+    expect(await readGoal()).toBe(20);
+    expect(
+      (await authed(request(server()).get(`/v1/groups/${other.id}`), adminA)).body.monthlyNoteGoal,
+    ).toBe(8);
+  });
+
+  it("records who changed it", async () => {
+    await setGoal(teacherA, 12);
+
+    const entry = await db.auditLog.findFirst({
+      where: { objectType: "Group", action: "UPDATE" },
+      orderBy: { createdAt: "desc" },
+    });
+
+    expect(entry?.actorUserId).toBe(a.teacherUser.id);
+    expect(entry?.metadata).toMatchObject({ monthlyNoteGoal: 12 });
+  });
+});
+
+/**
+ * Сургалтын чиглэлийн СҮД — the indicator list behind the compose form's
+ * picker.
+ *
+ * ★ Read by every member, including a parent.
+ *
+ * A family's screen names the indicator a note was filed against, so hiding
+ * the list from them would leave that name unresolvable — the same reasoning
+ * `listConfig` beside it already makes for domains and levels.
+ */
+describe("the curriculum's indicators", () => {
+  const list = (session: AuthSession, domain = domainId, kg = a.kindergarten.id) =>
+    authed(
+      request(server()).get(`/v1/kindergartens/${kg}/curriculum-indicators?domainId=${domain}`),
+      session,
+    );
+
+  it("returns one strand's indicators with their level descriptors", async () => {
+    const social = await db.developmentDomain.findFirstOrThrow({
+      where: { kindergartenId: null, code: "social" },
+    });
+
+    const res = await list(teacherA, social.id);
+
+    expect(res.status).toBe(200);
+    // Нийгэм-сэтгэл хөдлөл carries nine indicators in the client's sheet.
+    expect(res.body).toHaveLength(9);
+    const first = res.body.find((row: { code: string }) => row.code === "НСХ1а");
+    expect(first.levels).toHaveLength(4);
+    expect(first.levels[0]).toMatchObject({ level: 1 });
+    expect(first.levels[0].text).toContain("Биеийн зарим мэдрэмж");
+  });
+
+  /**
+   * ★ Never the whole curriculum.
+   *
+   * Seventy-one indicators and their descriptors is about forty kilobytes, and
+   * the form asks only once a strand is chosen. `domainId` is required so the
+   * endpoint cannot quietly become the bulk export.
+   */
+  it("refuses to list without a strand", async () => {
+    const res = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/curriculum-indicators`),
+      teacherA,
+    );
+
+    expect(res.status).toBe(400);
+  });
+
+  it("a parent reads it too", async () => {
+    expect((await list(parentA)).status).toBe(200);
+  });
+
+  it("a member of another kindergarten gets 404", async () => {
+    const teacherB = await login(app, b.teacherUser.username);
+    expect((await list(teacherB)).status).toBe(404);
+  });
+
+  /** A strand from another kindergarten is not a way in. */
+  it("refuses a strand that is not this kindergarten's", async () => {
+    const foreign = await db.developmentDomain.create({
+      data: { kindergartenId: b.kindergarten.id, code: "own", name: "Өөрийн чиглэл" },
+    });
+
+    expect((await list(teacherA, foreign.id)).status).toBe(400);
   });
 });

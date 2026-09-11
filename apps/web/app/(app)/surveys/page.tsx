@@ -1,50 +1,32 @@
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
-import { ChevronRight, ListChecks, Plus, Search, Users } from "lucide-react";
+import { BarChart3, ChevronRight, MessageSquare } from "lucide-react";
 import {
-  SURVEY_CATEGORY_LABEL,
   SURVEY_KIND_HINT,
   SURVEY_KIND_LABEL,
-  groupListItemSchema,
-  paginated,
-  surveyCategorySchema,
-  surveyKindSchema,
   surveySchema,
-  type SurveyCategory,
   type SurveyKind,
 } from "@kinder/contracts";
-
-/** The two kinds in the order the client's drawing puts them: Пол, then Форм. */
-const SURVEY_KINDS = surveyKindSchema.options;
-const SURVEY_CATEGORIES = surveyCategorySchema.options;
-import { get, mutate } from "@/lib/api/browser";
+import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
-import { errorMessage, fieldErrors } from "@/lib/api/errors";
+import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
-import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
-import { Field, Input, Select } from "@/components/ui/field";
-import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { formatDate } from "@/lib/format";
-import { SURVEY_CATEGORY_META, SURVEY_TONE_BG } from "@/lib/survey-meta";
 import { cn } from "@/lib/utils";
 
 const surveysSchema = z.array(surveySchema);
-const groupsSchema = paginated(groupListItemSchema);
 
 const STATUS_LABEL: Record<string, string> = {
   DRAFT: "Ноорог",
-  PUBLISHED: "Нийтэлсэн",
-  CLOSED: "Хаасан",
+  PUBLISHED: "Идэвхтэй",
+  CLOSED: "Дууссан",
 };
 
 const STATUS_TONE: Record<string, "neutral" | "mint" | "sun"> = {
@@ -53,46 +35,77 @@ const STATUS_TONE: Record<string, "neutral" | "mint" | "sun"> = {
   CLOSED: "sun",
 };
 
-const SCOPE_LABEL: Record<string, string> = {
-  CHILD: "Хүүхэд тус бүрээр",
-  KINDERGARTEN: "Цэцэрлэгээр нэг удаа",
-};
+/**
+ * ★ Two kinds, two colours, and the colours are the navigation.
+ *
+ * The client's drawing gives Судалгаа blue and Асуулга green, and a reader who
+ * has been here once knows which list they are on before reading a word, which
+ * is most of what a hub is for.
+ *
+ * ★★ `mint` for a *kind*, which `tone.ts` would normally refuse.
+ *
+ * That file says a tone is a meaning and `mint` means "complete" — the rule
+ * exists so a screen does not pick an accent because it looks nice. This is
+ * the same exception `chat-widget.tsx` already makes, drawing a group room
+ * `bg-mint text-mint-ink` against a direct room's `bg-primary-soft`: when two
+ * kinds of one thing sit side by side, the accent is telling them apart rather
+ * than reporting a state. Written down here because the next reader will
+ * check.
+ */
+const KINDS: {
+  kind: SurveyKind;
+  href: string;
+  Icon: typeof BarChart3;
+  chip: string;
+  card: string;
+  title: string;
+}[] = [
+  {
+    kind: "FORM",
+    href: "/surveys/forms",
+    Icon: BarChart3,
+    chip: "bg-primary-soft text-primary",
+    card: "border-primary/25 bg-primary-soft/60 hover:border-primary",
+    title: "text-primary",
+  },
+  {
+    kind: "POLL",
+    href: "/surveys/polls",
+    Icon: MessageSquare,
+    chip: "bg-mint text-mint-ink",
+    card: "border-mint bg-mint/25 hover:border-mint-ink/40",
+    title: "text-mint-ink",
+  },
+];
 
-export default function SurveysPage() {
+/**
+ * Судалгаа, асуулга — the hub, 2026-09-10, at the client's request.
+ *
+ * ★ A screen whose whole job is a choice, which is why it is not a tab strip.
+ *
+ * The two lived on one page behind tabs until this drawing arrived, and the
+ * client's words about it were plain: "Энэ 2 тусдаа байх ёстой." Tabs claim
+ * two views of one thing. A poll is answered in a tap and read as a bar; a
+ * questionnaire is filled in and read as a report. They share a table and
+ * almost nothing else.
+ *
+ * ★★ The recent list underneath is the reason this is not merely a menu.
+ *
+ * A hub of two links is a screen a teacher resents, because it costs a tap and
+ * answers nothing. "Сүүлийн үүсгэсэн" makes the landing worth arriving at: the
+ * thing you came back for is usually the thing you made last, and it is a
+ * direct link rather than a route through whichever list it belongs to.
+ */
+export default function SurveysHubPage() {
   return (
     <RequireRole roles={["TEACHER", "ADMIN"]}>
-      <SurveysList />
+      <SurveysHub />
     </RequireRole>
   );
 }
 
-/**
- * ★ Two tabs, and the mapping to `status` is deliberate rather than obvious.
- *
- * `surveyStatusSchema` has three states and the brief asks for two tabs, so a
- * `DRAFT` has to land in one of them. It goes in Идэвхтэй: a draft is work in
- * progress that the person on this screen still has to finish, and the tab a
- * teacher opens to find unfinished work is not the one labelled "done". It
- * keeps its own "Ноорог" badge inside the card, so the two are never confused
- * for each other — the tab is where you look, the badge is what it is.
- */
-const TABS = [
-  { key: "active" as const, label: "Идэвхтэй", statuses: ["DRAFT", "PUBLISHED"] },
-  { key: "closed" as const, label: "Дууссан", statuses: ["CLOSED"] },
-];
-
-function SurveysList() {
+function SurveysHub() {
   const { primaryKindergartenId } = useSession();
-  const [creating, setCreating] = useState(false);
-  const [tab, setTab] = useState<"active" | "closed">("active");
-  const [category, setCategory] = useState<SurveyCategory | null>(null);
-  /**
-   * Client-side, like the notifications page's survey tab and for the same
-   * reason: a kindergarten's surveys are a handful of rows already in memory,
-   * so filtering them again on the server would be a request for data this
-   * screen is holding.
-   */
-  const [search, setSearch] = useState("");
 
   const surveys = useQuery({
     queryKey: qk.kindergartenSurveys(primaryKindergartenId ?? ""),
@@ -100,519 +113,127 @@ function SurveysList() {
     enabled: Boolean(primaryKindergartenId),
   });
 
-  const all = surveys.data ?? [];
-  const term = search.trim().toLowerCase();
-  const statuses = TABS.find((t) => t.key === tab)!.statuses;
+  /*
+    ★ The same query key both lists use, so arriving here fills their cache.
 
-  const visible = all.filter(
-    (survey) =>
-      statuses.includes(survey.status) &&
-      (!category || survey.category === category) &&
-      (!term ||
-        survey.title.toLowerCase().includes(term) ||
-        (survey.description ?? "").toLowerCase().includes(term)),
-  );
-
-  /** The tab counts, which the filters above must not change — see `TabPill`. */
-  const countFor = (key: "active" | "closed") =>
-    all.filter((s) => TABS.find((t) => t.key === key)!.statuses.includes(s.status)).length;
+    `listForKindergarten` returns every survey in one bounded response, which
+    is what makes that safe: this screen shows five of them and the list screen
+    that follows shows the rest without a second request.
+  */
+  const recent = (surveys.data ?? []).slice(0, 5);
 
   return (
     <div className="flex flex-col gap-5 lg:gap-6">
-      <PageHeader
-        title="Судалгаа"
-        actions={
-          <Button onClick={() => setCreating(true)}>
-            <Plus size={18} aria-hidden="true" />
-            Санал асуулга үүсгэх
-          </Button>
-        }
-      />
-
-      <section
-        aria-label="Судалгааны удирдлага"
-        data-ui="communications-toolbar"
-        className="overflow-hidden rounded-card border border-border bg-surface shadow-sm"
-      >
-        <div className="flex flex-col gap-3 bg-sunken p-1.5 sm:flex-row sm:items-center sm:justify-between">
-          <div
-            role="tablist"
-            aria-label="Судалгааны төлөв"
-            data-ui="communication-tabs"
-            className="grid grid-cols-2 gap-1 sm:w-[360px]"
-          >
-            {TABS.map((t) => (
-              <TabPill
-                key={t.key}
-                active={tab === t.key}
-                count={countFor(t.key)}
-                onClick={() => setTab(t.key)}
-              >
-                {t.label}
-              </TabPill>
-            ))}
-          </div>
-
-          <div className="relative m-1 mt-0 sm:mt-1 sm:w-[320px]">
-            <Search
-              size={18}
-              aria-hidden="true"
-              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
-            />
-            <Input
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Судалгаа хайх"
-              aria-label="Судалгаа хайх"
-              className="border-border-soft bg-surface pl-11"
-            />
-          </div>
-        </div>
-
-        <div className="border-t border-border-soft p-3 sm:p-4">
-          <FilterChipRow label="Судалгааны ангиллаар шүүх" scroll>
-            <FilterChip active={category === null} onClick={() => setCategory(null)}>
-              Бүгд
-            </FilterChip>
-            {SURVEY_CATEGORIES.map((key) => (
-              <FilterChip key={key} active={category === key} onClick={() => setCategory(key)}>
-                {SURVEY_CATEGORY_LABEL[key]}
-              </FilterChip>
-            ))}
-          </FilterChipRow>
-        </div>
-      </section>
-
-      {surveys.isLoading ? <LoadingState rows={3} /> : null}
-      {surveys.isError ? <ErrorState description={errorMessage(surveys.error)} /> : null}
-
-      {surveys.data && all.length === 0 ? (
-        <EmptyState
-          title="Судалгаа алга"
-          description="Эхний судалгаагаа үүсгэж эхэлнэ үү."
-          action={<Button onClick={() => setCreating(true)}>Шинэ судалгаа</Button>}
-        />
-      ) : null}
-
-      {surveys.data && all.length > 0 && visible.length === 0 ? (
-        <EmptyState
-          title="Тохирох судалгаа алга"
-          description="Хайлт эсвэл шүүлтүүрээ өөрчилж үзнэ үү."
-          action={
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setSearch("");
-                setCategory(null);
-              }}
-            >
-              Шүүлтүүр цэвэрлэх
-            </Button>
-          }
-        />
-      ) : null}
+      <header>
+        <h1 className="text-title font-semibold leading-heading text-ink">Судалгаа, асуулга</h1>
+        <p className="mt-0.5 text-body text-muted">Эцэг эхийн санал, оролцоог хялбархан аваарай.</p>
+      </header>
 
       {/*
-        ★ One column on a phone, two from `md`, three at `2xl`.
+        ★ Side by side on a phone too — 2026-09-10, at the client's request.
 
-        The brief asks for wider cards on a desktop and a responsive grid where
-        there are several — which are the same request at two window sizes. A
-        1336px content column carrying one survey title per row is the
-        stretched-mobile-page failure this pass exists to remove; three tracks
-        at `2xl` put each card at about 430px, which is the width the card was
-        designed around (a title over two meta lines).
+        They stacked below `md`, which is the safe default for a card carrying
+        an icon, a name and a sentence: at 390px each column is about 170px and
+        that content does not fit across. It fits *down*. So the card turns its
+        axis instead of the grid turning its own — icon over name over hint,
+        going back to a row from `sm` where the width exists.
 
-        `items-stretch` is the default and is what makes cards in a row end
-        level regardless of how long their titles wrap.
+        The chevron is dropped in the stacked layout rather than shrunk. A
+        24px arrow beside a 170px column is most of a line for an affordance
+        the whole card already has, and the two cards are the only things on
+        this screen that can be pressed.
       */}
-      {visible.length > 0 ? (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 2xl:grid-cols-3">
-          {visible.map((survey) => (
-            <SurveyCard key={survey.id} survey={survey} />
-          ))}
-        </div>
-      ) : null}
-
-      {creating && primaryKindergartenId ? (
-        <CreateSurveyDialog
-          kindergartenId={primaryKindergartenId}
-          onClose={() => setCreating(false)}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * One tab of the Идэвхтэй / Дууссан strip.
- *
- * ★ The count is of the *tab*, not of what is showing.
- *
- * It counts every survey in that state, ignoring the search box and the type
- * chips above. A count that moved with the filters would answer "how many did
- * my search find" — which the list underneath already answers — instead of
- * "is there anything over there", which is the only question a tab label can
- * usefully answer before you press it.
- */
-function TabPill({
-  active,
-  count,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  count: number;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={onClick}
-      className={cn(
-        "flex min-h-[48px] items-center justify-center rounded-control border px-3 text-body font-semibold transition-all",
-        active
-          ? "border-border bg-surface text-primary shadow-sm"
-          : "border-transparent text-muted hover:bg-surface/70 hover:text-ink",
-      )}
-    >
-      {children}
-      <span
-        className={cn(
-          "ml-2 inline-flex min-w-6 items-center justify-center rounded-pill px-1.5 text-caption font-bold tabular-nums",
-          active ? "bg-primary-soft text-primary" : "bg-canvas text-faint",
-        )}
-      >
-        {count}
-      </span>
-    </button>
-  );
-}
-
-/**
- * A survey, as a card.
- *
- * ★ Replaces a 64px row carrying a title, a scope and a status badge.
- *
- * Everything on it comes from `surveySchema` — the category chip from
- * `category`, the question count from `questions.length`, and the date from
- * whichever of `closedAt` /
- * `publishedAt` / `createdAt` describes the state it is in. Nothing here is a
- * field the API does not send.
- *
- * `h-full` so a card in a grid row fills the height its tallest neighbour
- * sets, which is what keeps the footers of a row on one line.
- */
-function SurveyCard({ survey }: { survey: z.infer<typeof surveySchema> }) {
-  const meta = SURVEY_CATEGORY_META[survey.category];
-  const questionCount = survey.questions.length;
-  const date = survey.closedAt ?? survey.publishedAt ?? survey.createdAt;
-
-  return (
-    <Link href={`/surveys/${survey.id}`} className="group h-full">
-      <Card
-        pad="roomy"
-        className="flex h-full min-h-[260px] flex-col gap-4 transition-all group-hover:-translate-y-0.5 group-hover:border-primary group-hover:shadow-md"
-      >
-        <div className="flex items-start justify-between gap-3">
-          <span
+      <div className="grid grid-cols-2 gap-3">
+        {KINDS.map(({ kind, href, Icon, chip, card, title }) => (
+          <Link
+            key={kind}
+            href={href}
             className={cn(
-              "grid size-12 shrink-0 place-items-center rounded-control",
-              SURVEY_TONE_BG[meta.tone],
+              "group flex flex-col items-start gap-2 rounded-card border p-3.5 transition-all hover:-translate-y-0.5 hover:shadow-md sm:flex-row sm:items-center sm:gap-3.5 sm:p-4",
+              card,
             )}
-            aria-hidden="true"
           >
-            <meta.Icon size={22} />
-          </span>
-
-          <div className="flex flex-wrap justify-end gap-1.5">
-            <Badge tone={meta.tone}>{meta.label}</Badge>
-            <Badge tone={STATUS_TONE[survey.status]}>{STATUS_LABEL[survey.status]}</Badge>
-          </div>
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <h3 className="text-lead font-semibold leading-[1.35] text-ink transition-colors group-hover:text-primary">
-            {survey.title}
-          </h3>
-          {survey.description ? (
-            <p className="mt-1 line-clamp-2 text-body text-muted">{survey.description}</p>
-          ) : null}
-        </div>
-
-        {/*
-          The footer sits on a hairline and carries the three facts a teacher
-          scans a list of surveys for: who it asks, how long it is, and when it
-          last moved.
-        */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border-soft pt-3 text-caption text-muted">
-          {/*
-            ★ The audience, before the answering shape — 2026-09-06.
-
-            A survey aimed at one group is a different thing from a survey the
-            whole kindergarten is being asked, and until `groupId` existed the
-            list could not say which this was. It leads the footer because it
-            is the question a teacher scans for; the scope follows it.
-          */}
-          <span className="inline-flex items-center gap-1.5">
-            <Users size={14} aria-hidden="true" />
-            {survey.group?.name ?? "Бүх бүлэг"}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <ListChecks size={14} aria-hidden="true" />
-            {SCOPE_LABEL[survey.scope]}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <ListChecks size={14} aria-hidden="true" />
-            {questionCount} асуулт
-          </span>
-          <span className="ml-auto inline-flex items-center gap-1.5 tabular-nums">
-            {formatDate(date)}
-            <ChevronRight
-              size={16}
-              className="text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
+            <span
               aria-hidden="true"
+              className={cn(
+                "grid size-10 shrink-0 place-items-center rounded-control sm:size-12",
+                chip,
+              )}
+            >
+              <Icon size={20} className="sm:size-[22px]" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span
+                className={cn("block text-body font-semibold leading-heading sm:text-lead", title)}
+              >
+                {SURVEY_KIND_LABEL[kind]}
+              </span>
+              <span className="mt-0.5 block text-caption leading-snug text-muted">
+                {SURVEY_KIND_HINT[kind]}
+              </span>
+            </span>
+            <ChevronRight
+              size={20}
+              aria-hidden="true"
+              className="hidden shrink-0 text-faint transition-transform group-hover:translate-x-0.5 sm:block"
             />
-          </span>
-        </div>
-      </Card>
-    </Link>
-  );
-}
+          </Link>
+        ))}
+      </div>
 
-function CreateSurveyDialog({
-  kindergartenId,
-  onClose,
-}: {
-  kindergartenId: string;
-  onClose: () => void;
-}) {
-  const router = useRouter();
-  const [title, setTitle] = useState("");
-  const [category, setCategory] = useState<SurveyCategory>("PARENT_ENGAGEMENT");
-  const [scope, setScope] = useState<"CHILD" | "KINDERGARTEN">("CHILD");
-  /**
-   * Which group the survey is for — "" is every group.
-   *
-   * ★ Added 2026-09-06, at the client's request: "хэнд зориулсан гэхэд бүх
-   * бүлэг / бүлэг сонгох болгох". `Survey.groupId` carries it, and null there
-   * means every group rather than a frozen list of the ones that exist today.
-   */
-  const [groupId, setGroupId] = useState("");
-  const [kind, setKind] = useState<SurveyKind>("POLL");
-  /**
-   * The optional closing date, as the `yyyy-mm-dd` an `<input type="date">`
-   * produces. Empty means no deadline, which the client asked to keep possible.
-   */
-  const [closesOn, setClosesOn] = useState("");
+      <section aria-labelledby="recent-surveys" className="flex flex-col gap-2.5">
+        <h2 id="recent-surveys" className="text-lead font-semibold leading-heading text-ink">
+          Сүүлийн үүсгэсэн
+        </h2>
 
-  // The audience options. Same key every register uses, so this normally reads
-  // a cache the shell has already filled.
-  const groups = useQuery({
-    queryKey: qk.groups({ pageSize: 100 }),
-    queryFn: () => get("/groups?page=1&pageSize=100", groupsSchema),
-    staleTime: 60_000,
-  });
+        {surveys.isLoading ? <LoadingState rows={3} /> : null}
+        {surveys.isError ? <ErrorState description={errorMessage(surveys.error)} /> : null}
 
-  const create = useMutation({
-    mutationFn: () =>
-      mutate(`/kindergartens/${kindergartenId}/surveys`, surveySchema, {
-        method: "POST",
-        body: {
-          title,
-          category,
-          scope,
-          kind,
-          /*
-            ★ End of the chosen day, not its midnight.
+        {surveys.data && recent.length === 0 ? (
+          <EmptyState
+            title="Хараахан юу ч үүсгээгүй байна"
+            description="Дээрх хоёрын аль нэгийг сонгон эхлүүлнэ үү."
+          />
+        ) : null}
 
-            `<input type="date">` yields `2026-09-15`, which parses as
-            00:00 — so sending it raw would close the survey at the start of
-            the day a teacher wrote down, and everyone answering on the 15th
-            would be a day late. `T23:59:59` makes the date inclusive, which is
-            what "хаагдах огноо: 9-р сарын 15" means to the person typing it.
-          */
-          closesAt: closesOn ? new Date(`${closesOn}T23:59:59`).toISOString() : null,
-          // "" is the whole kindergarten, which the API stores as a null
-          // column rather than as every group listed.
-          groupId: groupId || null,
-        },
-      }),
-    onSuccess: (survey) => router.push(`/surveys/${survey.id}`),
-  });
-
-  const errors = fieldErrors(create.error);
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Шинэ судалгаа"
-      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4"
-    >
-      <div className="w-full max-w-[480px] rounded-card border border-border bg-surface p-5">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!create.isPending) create.mutate();
-          }}
-          className="flex flex-col gap-4"
-          noValidate
-        >
-          <h2 className="text-title font-semibold text-ink">Шинэ судалгаа</h2>
-
-          <FormError message={create.isError ? errorMessage(create.error) : null} />
-
-          {/*
-            ★ The two kinds, as a radio group drawn like tabs.
-
-            Tabs in appearance because that is the client's drawing, but
-            `role="radiogroup"` underneath: these two choose *what is being
-            created* rather than switching between two views of one thing, and
-            a screen reader announcing "tab" for a permanent property of the
-            survey would describe the wrong control.
-          */}
-          <fieldset>
-            <legend className="mb-2 text-body font-medium text-ink">Төрөл</legend>
-            <div className="grid grid-cols-2 gap-2">
-              {SURVEY_KINDS.map((value) => (
-                <label
-                  key={value}
+        {recent.map((survey) => {
+          const look = KINDS.find((k) => k.kind === survey.kind) ?? KINDS[0]!;
+          return (
+            <Link key={survey.id} href={`/surveys/${survey.id}`} className="group block">
+              <Card
+                pad="compact"
+                className="flex items-center gap-3 transition-all group-hover:border-primary group-hover:shadow-sm"
+              >
+                <span
+                  aria-hidden="true"
                   className={cn(
-                    "cursor-pointer rounded-card border px-3 py-2.5 transition-colors",
-                    kind === value
-                      ? "border-primary bg-primary-soft"
-                      : "border-border hover:bg-canvas",
+                    "grid size-9 shrink-0 place-items-center rounded-control",
+                    look.chip,
                   )}
                 >
-                  <input
-                    type="radio"
-                    name="survey-kind"
-                    value={value}
-                    checked={kind === value}
-                    onChange={() => setKind(value)}
-                    className="sr-only"
-                  />
-                  <span
-                    className={cn(
-                      "block text-body font-semibold",
-                      kind === value ? "text-primary" : "text-ink",
-                    )}
-                  >
-                    {SURVEY_KIND_LABEL[value]}
+                  <look.Icon size={17} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-body font-medium leading-snug text-ink transition-colors group-hover:text-primary">
+                    {survey.title}
                   </span>
-                  <span className="block text-caption text-muted">{SURVEY_KIND_HINT[value]}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-
-          <Field label="Гарчиг" error={errors.title} required>
-            {({ id, describedBy, invalid }) => (
-              <Input
-                id={id}
-                aria-describedby={describedBy}
-                invalid={invalid}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                autoFocus
-              />
-            )}
-          </Field>
-
-          <Field label="Судалгааны ангилал" error={errors.category} required>
-            {({ id, describedBy, invalid }) => (
-              <Select
-                id={id}
-                aria-describedby={describedBy}
-                invalid={invalid}
-                value={category}
-                onChange={(e) => setCategory(e.target.value as SurveyCategory)}
-              >
-                {SURVEY_CATEGORIES.map((value) => (
-                  <option key={value} value={value}>
-                    {SURVEY_CATEGORY_LABEL[value]}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
-
-          {/*
-            ★ Two questions, not one — and the label that used to cover both
-            now covers the one it was actually about.
-
-            "Хэнд зориулагдсан" named the *scope* control, which chooses how
-            many times one family answers. That is a real question and it is
-            not the one the client meant by the words: they meant the audience —
-            "бүх бүлэг эсвэл бүлэг сонгох". Both are here now, in that order,
-            each with the label that describes it.
-          */}
-          <Field label="Хэнд зориулагдсан" hint="Сонгосон бүлгийн эцэг эхэд л харагдана.">
-            {({ id, describedBy }) => (
-              <Select
-                id={id}
-                aria-describedby={describedBy}
-                value={groupId}
-                onChange={(e) => setGroupId(e.target.value)}
-              >
-                <option value="">Бүх бүлэг</option>
-                {(groups.data?.items ?? []).map((group) => (
-                  <option key={group.id} value={group.id}>
-                    {group.name}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
-
-          <Field
-            label="Хариулах хэлбэр"
-            hint="Хүүхэд тус бүрээр гэвэл эцэг эх хүүхдийнхээ нэрээр хариулна."
-          >
-            {({ id, describedBy }) => (
-              <Select
-                id={id}
-                aria-describedby={describedBy}
-                value={scope}
-                onChange={(e) => setScope(e.target.value as "CHILD" | "KINDERGARTEN")}
-              >
-                <option value="CHILD">Хүүхэд тус бүрээр</option>
-                <option value="KINDERGARTEN">Цэцэрлэгээр нэг удаа</option>
-              </Select>
-            )}
-          </Field>
-
-          <Field
-            label="Хаагдах огноо"
-            hint="Заавал биш — хоосон орхивол гараар хаах хүртэл нээлттэй байна."
-            error={errors.closesAt}
-          >
-            {({ id, describedBy, invalid }) => (
-              <Input
-                id={id}
-                type="date"
-                aria-describedby={describedBy}
-                invalid={invalid}
-                value={closesOn}
-                onChange={(e) => setClosesOn(e.target.value)}
-              />
-            )}
-          </Field>
-
-          <div className="flex flex-wrap gap-2 border-t border-border pt-4">
-            <Button type="submit" disabled={create.isPending}>
-              {create.isPending ? "Үүсгэж байна…" : "Үргэлжлүүлэх"}
-            </Button>
-            <Button type="button" variant="ghost" onClick={onClose} disabled={create.isPending}>
-              Болих
-            </Button>
-          </div>
-        </form>
-      </div>
+                  <span className="mt-1 flex flex-wrap items-center gap-2">
+                    <Badge tone={STATUS_TONE[survey.status]}>{STATUS_LABEL[survey.status]}</Badge>
+                    <span className="text-caption tabular-nums text-muted">
+                      {formatDate(survey.closedAt ?? survey.publishedAt ?? survey.createdAt)}
+                    </span>
+                  </span>
+                </span>
+                <ChevronRight
+                  size={18}
+                  aria-hidden="true"
+                  className="shrink-0 text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
+                />
+              </Card>
+            </Link>
+          );
+        })}
+      </section>
     </div>
   );
 }

@@ -1,18 +1,14 @@
 "use client";
 
-import {
-  useInfiniteQuery,
-  useMutation,
-  useQueries,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import {
   NOTIFICATION_CATEGORIES,
+  type ChildSummary,
   NOTIFICATION_CATEGORY_LABEL,
   childSummarySchema,
   notificationSchema,
@@ -21,20 +17,22 @@ import {
   type NotificationCategory,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
-import { PageHeader } from "@/components/shell/app-shell";
 import { useSwitchableGroups } from "@/components/shell/group-switcher";
+import { RowMenu } from "@/components/ui/menu";
+import { SavePostPhoto } from "@/components/notifications/save-post-photo";
 import { LikeButton } from "@/components/notifications/like-button";
 import { ChildAvatar, MediaThumb } from "@/components/media/media-image";
 import { useSession } from "@/lib/auth/session";
+import { useSelectedChild } from "@/lib/selected-child";
 import {
-  Building2,
   CalendarRange,
   ChevronRight,
   PenLine,
+  MoreVertical,
   Search,
   Pencil,
+  SlidersHorizontal,
   Trash2,
-  Users,
 } from "lucide-react";
 import { Art } from "@/components/ui/art";
 import { qk } from "@/lib/api/keys";
@@ -46,7 +44,7 @@ import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
 import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
-import { excerpt, formatRelative, fullName } from "@/lib/format";
+import { excerpt, formatRelative, shortName } from "@/lib/format";
 import { SURVEY_CATEGORY_META, SURVEY_TONE_BG } from "@/lib/survey-meta";
 import { cn } from "@/lib/utils";
 
@@ -68,6 +66,7 @@ const activeSurveysSchema = z.array(surveySchema);
  */
 export default function NotificationsPage() {
   const { hasRole, session } = useSession();
+  const { selectedChildId } = useSelectedChild();
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
   /*
    * ★ Added 2026-09-08, when COOK started reading this board too
@@ -111,6 +110,7 @@ export default function NotificationsPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [datesOpen, setDatesOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setQ(searchInput.trim()), 350);
     return () => clearTimeout(t);
@@ -134,6 +134,14 @@ export default function NotificationsPage() {
   const filters = { unread: showUnreadOnly, q, groupId, category, from, to };
 
   /*
+   * How many narrowing choices are on — the number on the filter icon. The
+   * group board is not counted: it is which board this is, not a filter over
+   * it, and a teacher always has one selected.
+   */
+  const activeFilters =
+    (category ? 1 : 0) + (showUnreadOnly ? 1 : 0) + (importantOnly ? 1 : 0) + (from || to ? 1 : 0);
+
+  /*
    * ★ Two tabs, one screen — the mock-up's own pairing of Мэдээ and Судалгаа
    * under the bottom bar's single "Мэдээ" tab. Staff never sees the second
    * tab: a teacher's surveys are the ones they manage from the sidebar's own
@@ -152,6 +160,22 @@ export default function NotificationsPage() {
    */
   const boardGroups = useSwitchableGroups(isStaff);
 
+  /*
+   * ★ A teacher lands on their own group, not on an unfiltered feed.
+   *
+   * The "Бүх бүлэг" chip is administrator-only now, so leaving `groupId` empty
+   * for a teacher would show every group's board with no chip lit to say so —
+   * the state the chip row was added to end, reached by removing its escape
+   * hatch. An administrator keeps the empty default: reading across the
+   * kindergarten is what their board is for.
+   */
+  const isAdmin = hasRole("ADMIN");
+  const firstGroupId = boardGroups.data?.items[0]?.id;
+  useEffect(() => {
+    if (isAdmin || !isStaff || !firstGroupId) return;
+    setGroupId((current) => current || firstGroupId);
+  }, [isAdmin, isStaff, firstGroupId]);
+
   const myChildren = useQuery({
     queryKey: qk.myChildren(),
     queryFn: () => get("/children/mine", ownChildrenSchema),
@@ -159,32 +183,23 @@ export default function NotificationsPage() {
     staleTime: 60_000,
   });
 
-  const [surveyChildId, setSurveyChildId] = useState<string | null>(null);
   const surveyChildren = myChildren.data ?? [];
   const selectedSurveyChild =
-    surveyChildren.find((c) => c.id === surveyChildId) ?? surveyChildren[0];
+    surveyChildren.find((c) => c.id === selectedChildId) ??
+    (surveyChildren.length === 1 ? surveyChildren[0] : undefined);
 
   /*
-   * ★ One query per child, so the tab's own badge counts every family
-   * member's unanswered surveys — not only whichever one happens to be
-   * selected below. A family with one child (most of them) pays for exactly
-   * one request; the same shape `home/page.tsx`'s `SurveyTile` already pays
-   * per child, just summed here instead of shown per tile.
+   * Surveys follow the child selected in the app shell. The parent must not
+   * see a second, competing child switcher here: changing the shell selection
+   * changes both this query and every link rendered below.
    */
-  const surveyQueries = useQueries({
-    queries: surveyChildren.map((child) => ({
-      queryKey: qk.childSurveys(child.id),
-      queryFn: () => get(`/children/${child.id}/surveys`, activeSurveysSchema),
-      enabled: isGuardian,
-      staleTime: 60_000,
-    })),
+  const selectedSurveys = useQuery({
+    queryKey: qk.childSurveys(selectedSurveyChild?.id ?? ""),
+    queryFn: () => get(`/children/${selectedSurveyChild!.id}/surveys`, activeSurveysSchema),
+    enabled: isGuardian && Boolean(selectedSurveyChild?.id),
+    staleTime: 60_000,
   });
-  const totalPending = surveyQueries.reduce(
-    (sum, q) => sum + (q.data?.filter((s) => !s.respondedByMe).length ?? 0),
-    0,
-  );
-  const selectedChildSurveys = surveyChildren.findIndex((c) => c.id === selectedSurveyChild?.id);
-  const selectedSurveys = surveyQueries[selectedChildSurveys];
+  const totalPending = selectedSurveys.data?.filter((s) => !s.respondedByMe).length ?? 0;
 
   /**
    * ★ An endless feed, not pages.
@@ -256,15 +271,35 @@ export default function NotificationsPage() {
 
   return (
     <div className="flex flex-col gap-4 lg:gap-5">
-      <PageHeader title={tab === "news" ? "Мэдээ" : "Судалгаа"} />
+      {/*
+        ★ The heading is `sr-only` — 2026-09-10, at the client's request that
+        the first word go and the page move up.
+
+        `PageHeader` already draws its `<h1>` `sr-only` on every other screen
+        (see `page-header.test.tsx`); what this removes is the block's own
+        vertical space above a toolbar that names the tab anyway. The heading
+        itself stays, because a page with no `<h1>` has no name in a screen
+        reader's landmark list and no top level in its outline.
+      */}
+      <h1 className="sr-only">{tab === "news" ? "Мэдээ" : "Судалгаа"}</h1>
 
       <section
         aria-label={tab === "news" ? "Мэдээний удирдлага" : "Судалгааны удирдлага"}
         data-ui="communications-toolbar"
-        className="overflow-hidden rounded-card border border-border bg-surface shadow-sm"
+        /*
+         * ★ No card around the controls — 2026-09-10, at the client's request
+         * that the box behind "Мэдээ хайх" and "Шинэ мэдээ" go.
+         *
+         * The feed under it is a column of cards, so a bordered panel above
+         * them read as one more card that happened to hold controls, and its
+         * padding pushed the first post further down a phone screen. The
+         * guardian's tab strip keeps its own surface below — that one is a
+         * control that needs a ground to sit on.
+         */
+        className="flex flex-col gap-3"
       >
         {isGuardian ? (
-          <div className="border-b border-border-soft bg-sunken p-1.5">
+          <div className="rounded-card bg-sunken p-1.5">
             <div
               role="tablist"
               aria-label="Мэдээ эсвэл судалгаа"
@@ -290,9 +325,9 @@ export default function NotificationsPage() {
           </div>
         ) : null}
 
-        <div className="flex flex-col gap-3 p-3 sm:p-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative w-full sm:max-w-[440px]">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <div className="relative min-w-0 flex-1 sm:max-w-[440px]">
               <Search
                 size={18}
                 aria-hidden="true"
@@ -307,6 +342,37 @@ export default function NotificationsPage() {
                 className="border-border-soft bg-canvas pl-11 focus:bg-surface"
               />
             </div>
+
+            {/*
+              ★ The filters fold behind one icon — 2026-09-10, at the client's
+              request ("шүүлтүүр гэсэн товч үсэггүй зургаар бай").
+
+              Nine categories, two flags and a date range is four rows of chips
+              above a feed, which on a phone is most of the first screen spent
+              on controls nobody has asked for yet. The icon opens them; the
+              dot on it says some are on, so a filter that is set is never
+              invisible — the same concern the date chip's own note records.
+            */}
+            {tab === "news" ? (
+              <Button
+                type="button"
+                variant={filtersOpen ? "primary" : "secondary"}
+                size="icon"
+                aria-expanded={filtersOpen}
+                aria-controls="news-filters"
+                aria-label="Шүүлтүүр"
+                className="relative shrink-0"
+                onClick={() => setFiltersOpen(!filtersOpen)}
+              >
+                <SlidersHorizontal aria-hidden="true" />
+                {activeFilters > 0 ? (
+                  <span className="absolute -right-1 -top-1 grid min-w-5 place-items-center rounded-pill bg-danger px-1 text-compact font-bold text-white">
+                    {activeFilters}
+                    <span className="sr-only">шүүлтүүр идэвхтэй</span>
+                  </span>
+                ) : null}
+              </Button>
+            ) : null}
 
             {isStaff && tab === "news" ? (
               <Button asChild className="w-full sm:ml-auto sm:w-auto">
@@ -330,11 +396,25 @@ export default function NotificationsPage() {
             audience comes first, because it is the question the other depends
             on.
           */}
+              {/*
+                ★ "Бүх бүлэг" is an administrator's chip — 2026-09-10, at the
+                client's request that a teacher see only their own group.
+
+                A director reads across the kindergarten and needs the
+                unfiltered board; a teacher's own board is their group's, and
+                offering them "all groups" invited the scroll past Наран
+                бүлэг's notices that this chip row exists to end. A teacher
+                assigned to two groups still picks between those two — the row
+                itself is unchanged, only the "everything" escape hatch is
+                administrator-only.
+              */}
               {isStaff && (boardGroups.data?.items.length ?? 0) > 1 ? (
                 <FilterChipRow label="Бүлгийн самбар">
-                  <FilterChip active={!groupId} onClick={() => setGroupId("")}>
-                    Бүх бүлэг
-                  </FilterChip>
+                  {isAdmin ? (
+                    <FilterChip active={!groupId} onClick={() => setGroupId("")}>
+                      Бүх бүлэг
+                    </FilterChip>
+                  ) : null}
                   {(boardGroups.data?.items ?? []).map((group) => (
                     <FilterChip
                       key={group.id}
@@ -347,49 +427,59 @@ export default function NotificationsPage() {
                 </FilterChipRow>
               ) : null}
 
-              <FilterChipRow label="Мэдээг ангиллаар шүүх" scroll>
-                <FilterChip
-                  active={category === null && !showUnreadOnly && !importantOnly}
-                  onClick={() => {
-                    setCategory(null);
-                    setShowUnreadOnly(false);
-                    setImportantOnly(false);
-                  }}
-                >
-                  Бүгд
-                </FilterChip>
-                {NOTIFICATION_CATEGORIES.map((value) => (
+              {/*
+                `flex` only while open: `display:flex` beats the user agent's
+                `[hidden] { display: none }`, so the panel would never close —
+                the same trap `ParentSidebarDisclosure` records.
+              */}
+              <div
+                id="news-filters"
+                hidden={!filtersOpen}
+                className={cn("flex-col gap-3", filtersOpen && "flex")}
+              >
+                <FilterChipRow label="Мэдээг ангиллаар шүүх" scroll>
                   <FilterChip
-                    key={value}
-                    active={category === value}
-                    onClick={() => setCategory(category === value ? null : value)}
+                    active={category === null && !showUnreadOnly && !importantOnly}
+                    onClick={() => {
+                      setCategory(null);
+                      setShowUnreadOnly(false);
+                      setImportantOnly(false);
+                    }}
                   >
-                    {NOTIFICATION_CATEGORY_LABEL[value]}
+                    Бүгд
                   </FilterChip>
-                ))}
-              </FilterChipRow>
+                  {NOTIFICATION_CATEGORIES.map((value) => (
+                    <FilterChip
+                      key={value}
+                      active={category === value}
+                      onClick={() => setCategory(category === value ? null : value)}
+                    >
+                      {NOTIFICATION_CATEGORY_LABEL[value]}
+                    </FilterChip>
+                  ))}
+                </FilterChipRow>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <FilterChip
-                  active={showUnreadOnly}
-                  onClick={() => {
-                    setShowUnreadOnly(!showUnreadOnly);
-                    setImportantOnly(false);
-                  }}
-                >
-                  Уншаагүй
-                </FilterChip>
-                <FilterChip
-                  active={importantOnly}
-                  onClick={() => {
-                    setImportantOnly(!importantOnly);
-                    setShowUnreadOnly(false);
-                  }}
-                >
-                  Чухал
-                </FilterChip>
+                <div className="flex flex-wrap items-center gap-2">
+                  <FilterChip
+                    active={showUnreadOnly}
+                    onClick={() => {
+                      setShowUnreadOnly(!showUnreadOnly);
+                      setImportantOnly(false);
+                    }}
+                  >
+                    Уншаагүй
+                  </FilterChip>
+                  <FilterChip
+                    active={importantOnly}
+                    onClick={() => {
+                      setImportantOnly(!importantOnly);
+                      setShowUnreadOnly(false);
+                    }}
+                  >
+                    Чухал
+                  </FilterChip>
 
-                {/*
+                  {/*
               ★ The date range is behind a toggle, not two inputs always on
               screen.
 
@@ -400,51 +490,52 @@ export default function NotificationsPage() {
               chip carries the range once it is set, so a filter that is on is
               never invisible.
             */}
-                <FilterChip active={Boolean(from || to)} onClick={() => setDatesOpen(!datesOpen)}>
-                  <CalendarRange size={14} aria-hidden="true" />
-                  {from || to ? `${from || "…"} — ${to || "…"}` : "Огноогоор"}
-                </FilterChip>
+                  <FilterChip active={Boolean(from || to)} onClick={() => setDatesOpen(!datesOpen)}>
+                    <CalendarRange size={14} aria-hidden="true" />
+                    {from || to ? `${from || "…"} — ${to || "…"}` : "Огноогоор"}
+                  </FilterChip>
 
-                {from || to ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFrom("");
-                      setTo("");
-                    }}
-                    className="text-caption text-muted underline-offset-2 hover:text-ink hover:underline"
-                  >
-                    Огноог арилгах
-                  </button>
+                  {from || to ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFrom("");
+                        setTo("");
+                      }}
+                      className="text-caption text-muted underline-offset-2 hover:text-ink hover:underline"
+                    >
+                      Огноог арилгах
+                    </button>
+                  ) : null}
+                </div>
+
+                {datesOpen ? (
+                  <div className="grid gap-3 rounded-row bg-sunken p-3 sm:max-w-[440px] sm:grid-cols-2">
+                    <Field label="Эхлэх огноо">
+                      {({ id }) => (
+                        <Input
+                          id={id}
+                          type="date"
+                          value={from}
+                          max={to || undefined}
+                          onChange={(event) => setFrom(event.target.value)}
+                        />
+                      )}
+                    </Field>
+                    <Field label="Дуусах огноо">
+                      {({ id }) => (
+                        <Input
+                          id={id}
+                          type="date"
+                          value={to}
+                          min={from || undefined}
+                          onChange={(event) => setTo(event.target.value)}
+                        />
+                      )}
+                    </Field>
+                  </div>
                 ) : null}
               </div>
-
-              {datesOpen ? (
-                <div className="grid gap-3 rounded-row bg-sunken p-3 sm:max-w-[440px] sm:grid-cols-2">
-                  <Field label="Эхлэх огноо">
-                    {({ id }) => (
-                      <Input
-                        id={id}
-                        type="date"
-                        value={from}
-                        max={to || undefined}
-                        onChange={(event) => setFrom(event.target.value)}
-                      />
-                    )}
-                  </Field>
-                  <Field label="Дуусах огноо">
-                    {({ id }) => (
-                      <Input
-                        id={id}
-                        type="date"
-                        value={to}
-                        min={from || undefined}
-                        onChange={(event) => setTo(event.target.value)}
-                      />
-                    )}
-                  </Field>
-                </div>
-              ) : null}
             </div>
           ) : null}
         </div>
@@ -452,9 +543,7 @@ export default function NotificationsPage() {
 
       {tab === "surveys" && isGuardian ? (
         <SurveysTab
-          familyChildren={surveyChildren}
           selectedChild={selectedSurveyChild}
-          onSelectChild={setSurveyChildId}
           surveys={selectedSurveys}
           searchTerm={searchInput}
         />
@@ -515,17 +604,25 @@ export default function NotificationsPage() {
               aria-labelledby="news-feed-heading"
               className="flex w-full max-w-[920px] flex-col gap-3"
             >
-              <div className="flex flex-wrap items-end justify-between gap-2">
-                <div>
-                  <h2 id="news-feed-heading" className="text-title font-semibold text-ink">
-                    {boardName}
-                  </h2>
-                  <p className="mt-0.5 text-body text-muted" aria-live="polite">
-                    {data?.pages[0]?.total ?? 0} мэдээ
-                    {showUnreadOnly ? " · зөвхөн уншаагүй" : ""}
-                    {importantOnly ? " · зөвхөн чухал" : ""}
-                  </p>
-                </div>
+              {/*
+                ★ The heading is `sr-only` — 2026-09-10, at the client's
+                request ("Дэлбээ бүлэг / 3 мэдээ энэ бичиг арилга").
+
+                The chip row above already names whose board this is, and the
+                count restated what the feed under it shows. Two lines of
+                chrome between the filters and the first post is what a reader
+                came past, not for. It stays in the accessibility tree, because
+                a section that `aria-labelledby` points at must have something
+                to point at — and the live count goes with it, so a screen
+                reader is still told when filtering changes the total.
+              */}
+              <div className="sr-only">
+                <h2 id="news-feed-heading">{boardName}</h2>
+                <p aria-live="polite">
+                  {data?.pages[0]?.total ?? 0} мэдээ
+                  {showUnreadOnly ? " · зөвхөн уншаагүй" : ""}
+                  {importantOnly ? " · зөвхөн чухал" : ""}
+                </p>
               </div>
 
               {/*
@@ -581,6 +678,7 @@ export default function NotificationsPage() {
                     canDelete={
                       hasRole("ADMIN") || (isStaff && notification.author?.id === session?.user?.id)
                     }
+                    savableChildren={isGuardian ? surveyChildren : undefined}
                   />
                 ))}
               </div>
@@ -663,22 +761,18 @@ function TabButton({
  * sees the switcher at all — same rule `/home`'s own child switcher follows.
  */
 function SurveysTab({
-  familyChildren,
   selectedChild,
-  onSelectChild,
   surveys,
   searchTerm,
 }: {
-  familyChildren: { id: string; firstName?: string | null; lastName?: string | null }[];
   selectedChild: { id: string; firstName?: string | null; lastName?: string | null } | undefined;
-  onSelectChild: (id: string) => void;
   surveys:
     | { data?: z.infer<typeof activeSurveysSchema>; isLoading: boolean; isError: boolean }
     | undefined;
   /** Filters the already-loaded list client-side — see the search box's own note above. */
   searchTerm: string;
 }) {
-  if (familyChildren.length === 0) {
+  if (!selectedChild) {
     return (
       <EmptyState
         title="Холбогдсон хүүхэд алга"
@@ -697,33 +791,6 @@ function SurveysTab({
 
   return (
     <section aria-label="Идэвхтэй судалгаа" className="flex w-full max-w-[920px] flex-col gap-4">
-      {familyChildren.length > 1 ? (
-        <div className="rounded-card border border-border bg-surface p-2 shadow-sm">
-          <div role="group" aria-label="Хүүхэд сонгох" className="flex gap-1.5 overflow-x-auto">
-            {familyChildren.map((child) => {
-              const active = child.id === selectedChild?.id;
-              return (
-                <button
-                  key={child.id}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => onSelectChild(child.id)}
-                  className={cn(
-                    "flex min-h-[44px] shrink-0 items-center gap-2 rounded-control border px-3 py-1.5 text-body font-semibold transition-colors",
-                    active
-                      ? "border-primary bg-primary-soft text-primary"
-                      : "border-transparent text-muted hover:bg-sunken hover:text-ink",
-                  )}
-                >
-                  <ChildAvatar child={child} size={24} />
-                  <span className="max-w-[140px] truncate">{child.firstName}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-
       {surveys?.isLoading ? <LoadingState rows={2} /> : null}
       {surveys?.isError ? <ErrorState description="Судалгаа ачаалахад алдаа гарлаа." /> : null}
 
@@ -852,6 +919,7 @@ function SurveysTab({
 function NotificationRow({
   notification,
   canDelete,
+  savableChildren,
 }: {
   notification: z.infer<typeof notificationSchema>;
   /**
@@ -866,9 +934,17 @@ function NotificationRow({
    * server side of it with a second teacher in the same kindergarten.
    */
   canDelete: boolean;
+  /**
+   * The reader's own children, when they are a guardian — what "Хадгалах" on
+   * a photograph files into. `undefined` for staff, who already own the album
+   * and have no child of their own on this board.
+   */
+  savableChildren?: ChildSummary[];
 }) {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const toast = useToast();
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const isUnread = notification.reads.length === 0;
 
   const remove = useMutation({
@@ -928,17 +1004,20 @@ function NotificationRow({
       be marked three ways and the brief calls out that a dot alone is not
       enough.
 
-      Unread now carries a 3px brand rule down its leading edge plus the
-      resting card shadow, so it reads as raised and flagged; read notices lose
-      the shadow and sit flat on the canvas. Together with the heavier title,
-      the "Шинэ" badge and the `sr-only` "Уншаагүй" already present, that is
-      four signals and none of them is colour alone.
+      ★★ The 3px brand rule down the leading edge went on 2026-09-10, at the
+      client's request. It was one of four signals and the only one that was
+      pure decoration on the card's edge; the three that carry the meaning
+      remain — an unread notice sits raised on `bg-surface` with the resting
+      shadow while a read one lies flat on the canvas, its title is heavier,
+      and it carries the "Шинэ" badge and the `sr-only` "Уншаагүй". So the rule
+      the paragraph above states is intact: none of what is left is colour
+      alone.
     */
     <article
       className={cn(
         "flex flex-col gap-2.5 rounded-card border p-4 transition-all duration-150",
         isUnread
-          ? "border-l-[3px] border-border border-l-primary bg-surface shadow-sm hover:border-primary/50 hover:border-l-primary hover:shadow-md"
+          ? "border-border bg-surface shadow-sm hover:border-primary/50 hover:shadow-md"
           : "border-border-soft bg-canvas hover:border-border",
       )}
     >
@@ -946,20 +1025,29 @@ function NotificationRow({
           lastName}` and draws initials when there is no photograph — an author
           has no `photoMediaFileId`, so it is always the initials here. */}
       {/*
-        ★ `flex-wrap`, with a floor under the name-and-time line.
+        ★ One row on a phone, and it cannot wrap — 2026-09-10, at the client's
+        request.
 
-        Three badges — a category, "Чухал", "Шинэ" — are `shrink-0`, so on a
-        390px phone they took the row and left the author line about 90px: less
-        than the timestamp alone, which is itself `shrink-0` and so spilled out
-        of its paragraph and was clipped mid-word by the card. The name it was
-        meant to give way to had already truncated to two letters.
+        This row used to be `flex-wrap` with a `min-w-[9rem]` floor under the
+        author line, and the wrapping was the point: three `shrink-0` badges
+        took the row on a 390px phone and left the author about 90px, less than
+        the timestamp alone. Wrapping fixed the clipping and cost four rows —
+        the client's screen read author, name, time, badges, audience, one
+        under another, before a single word of the actual notice.
 
-        The floor is what makes the wrap happen: without a minimum the author
-        line shrinks towards zero and the badges never move down, because a
-        flex item that can shrink is never a reason to wrap.
+        Wrapping is no longer needed because the row no longer holds anything
+        unbounded. The two admin-editable labels — the category and the
+        audience — moved down into the meta line under the name, where they
+        are text that truncates instead of badges that push. What is left on
+        the right is at most "Чухал", "Шинэ" and the menu: three fixed widths
+        that always fit, so `flex-nowrap` is safe rather than a clipping risk.
+
+        `min-w-0` on the author paragraph is what makes the truncation
+        possible — a flex item's default `min-width: auto` refuses to shrink
+        below its content, which is the usual reason `truncate` does nothing.
       */}
-      <div className="flex flex-wrap items-center gap-2.5">
-        <ChildAvatar child={notification.author ?? {}} size={40} />
+      <div className="flex items-center gap-2.5">
+        <ChildAvatar child={notification.author ?? {}} size={36} />
 
         {/*
           ★ One line, not two.
@@ -970,14 +1058,42 @@ function NotificationRow({
           does. `truncate` on the name and `shrink-0` on the time means a long
           Mongolian name gives way rather than pushing the date off the row.
         */}
-        <p className="flex min-w-[9rem] flex-1 items-baseline gap-1.5">
+        {/*
+          ★ The role leads and the name sits under it — 2026-09-10, at the
+          client's request ("Бүлгийн багш гээд доор жижиг С.Дэлгэрмаа").
+
+          A parent reading the board wants to know *who is speaking* before
+          which person it is: "the group's teacher" is what tells them whether
+          this is about their child's day, and the name is how they answer it
+          later. `shortName` for the same reason the register uses it — a card
+          header is not the place to spend a line on a patronymic.
+        */}
+        {/*
+          ★ Four facts on one line, ordered by what a parent loses least.
+
+          Name · time · audience · category, and `truncate` means the tail is
+          what goes when the line runs out. That order is the argument: a
+          parent scanning the board needs to know whose voice it is, how fresh
+          it is, and **whether it is aimed at their child** before they need
+          the category — and the category is the one label here with no upper
+          bound on its length, because an administrator writes it. Putting the
+          unbounded label last makes it the thing that gives way, which is also
+          the thing the chip row at the top of the feed already filters by.
+        */}
+        <p className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-body font-semibold text-ink">
-            {fullName(notification.author)}
+            {notification.author ? "Бүлгийн багш" : "Цэцэрлэг"}
           </span>
-          <span aria-hidden="true" className="text-faint">
-            ·
+          <span className="truncate text-caption text-muted">
+            {[
+              notification.author ? shortName(notification.author) : null,
+              formatRelative(when),
+              audienceLabel(notification.targets),
+              NOTIFICATION_CATEGORY_LABEL[notification.category],
+            ]
+              .filter(Boolean)
+              .join(" · ")}
           </span>
-          <span className="shrink-0 text-caption text-muted">{formatRelative(when)}</span>
         </p>
         {/*
           ★ Both classifications sit here, and both are `Badge`.
@@ -997,110 +1113,87 @@ function NotificationRow({
           does about the notice; new only says they have not seen it yet.
         */}
         {/*
-          ★ `flex-wrap`, and no `shrink-0` — found in browser QA, 2026-09-03.
+          ★ `shrink-0` and no wrapping — and that is safe now, which it was not
+          before.
 
-          This row holds a category badge, "Чухал", "Шинэ" and two 44px icon
-          buttons, and it was `shrink-0` on one unwrappable line. A category is
-          administrator-editable text: "Сургалт, үйл ажиллагаа" made the row
-          **405px wide inside a 390px viewport**, so every notification card
-          pushed the whole document to 441px and the page overflowed
-          horizontally — hidden by `html { overflow-x: hidden }` rather than
-          scrollable, so the edit and delete buttons were simply off-screen.
+          Browser QA on 2026-09-03 found this row `shrink-0` on one unwrappable
+          line while it still held the category badge, and an administrator's
+          "Сургалт, үйл ажиллагаа" made it **405px wide inside a 390px
+          viewport**: every card pushed the document to 441px, the page
+          overflowed horizontally, `html { overflow-x: hidden }` swallowed it,
+          and the edit and delete buttons were simply off-screen. Wrapping was
+          the fix then and it was the right one — the unbounded label was still
+          in here.
 
-          Constraint 2 is exactly this: never assume a Mongolian label fits on
-          one line. Wrapping is the fix; `justify-end` keeps the badges against
-          the card's right edge when they do fit, so nothing moves at the widths
-          where the row was already fine.
+          It is not any more. Only statuses remain, and a status is a fixed
+          word this file chooses: "Чухал", "Шинэ", and a 36px menu. Constraint
+          2 — never assume a Mongolian label fits — is answered by having
+          nothing here that a Mongolian label can lengthen, rather than by
+          giving the row somewhere to spill.
+
+          ★★ Colour is what is left, and now it means one thing.
+
+          The category used to sit here as a `neutral` badge beside two
+          coloured ones, and that was the note's own compromise: a *label*
+          drawn as a badge because there was nowhere else to put it. There is
+          now — the meta line under the name — so what remains in this corner
+          is only ever "something to do" or "something unseen". A reader no
+          longer has to tell a status from a label by its tone.
         */}
-        <span className="flex flex-wrap items-center justify-end gap-1.5">
-          {/*
-            ★ The category, which the note above this component said could not
-            be rendered — until 2026-08-30 it was right.
-
-            It read: "There is no category on a notification. `isImportant` is
-            the only classification the model carries… Inventing a taxonomy
-            would mean a chip row that filters on a field nobody fills."
-            `Notification.category` is that field now, the composer sets it and
-            the feed filters on it, so the chip is a fact rather than an
-            invention.
-
-            `neutral`, not a colour per category: nine tones would make the
-            header a paint chart and none of them would mean anything. The two
-            coloured badges beside it are *statuses* — something to do, or
-            something unseen — and colour is how a reader tells those from a
-            label.
-          */}
-          <Badge tone="neutral">{NOTIFICATION_CATEGORY_LABEL[notification.category]}</Badge>
+        <span className="flex shrink-0 items-center gap-1.5">
           {notification.isImportant ? <Badge tone="danger">Чухал</Badge> : null}
           {isUnread ? <Badge tone="primary">Шинэ</Badge> : null}
 
           {/*
-            ★ Editing, added 2026-08-31 at the client's request, and gated on
-            the same flag as the delete below.
+            ★ One overflow menu in the corner, not two icon buttons in the
+            footer — 2026-09-10, at the client's request.
 
-            `canDelete` is "this reader authored this post, or administers this
-            kindergarten" — which is exactly `requireStaffOwned`, the rule
-            `PATCH /notifications/:id` already enforces. One flag for both
-            actions because one server-side rule governs both; a second
-            `canEdit` computed separately would be a second answer to the same
-            question, and the two would drift.
+            `canDelete` gates both, and deliberately: it is "this reader wrote
+            this post, or administers this kindergarten", which is exactly
+            `requireStaffOwned`, the rule `PATCH` and `DELETE` both enforce.
+            One flag for both actions because one server rule governs both — a
+            second `canEdit` computed separately would be a second answer to
+            the same question, and the two would drift.
+
+            The delete opens `ConfirmDialog` from this component's own state
+            rather than from a trigger: a menu closes when an entry is chosen,
+            and a `Dialog.Trigger` that unmounts on the same click takes the
+            dialog with it. `ConfirmDialog`'s own docblock names this case.
           */}
           {canDelete ? (
-            <Link
-              href={`/notifications/${notification.id}/edit`}
-              aria-label="Постыг засах"
-              className="grid size-11 place-items-center rounded-control text-muted transition-colors hover:bg-canvas hover:text-ink"
-            >
-              <Pencil size={16} aria-hidden="true" />
-            </Link>
-          ) : null}
-
-          {/*
-            Withdrawing a post. `ConfirmDialog` owns its own open state and
-            takes the control that opens it, so the button *is* the trigger —
-            CLAUDE.md §5 asks for a confirmation before a delete and this is
-            the shape the rest of the product uses for one.
-          */}
-          {canDelete ? (
-            <ConfirmDialog
-              trigger={
-                <button
-                  type="button"
-                  aria-label="Постыг устгах"
-                  className="grid size-11 place-items-center rounded-control text-muted transition-colors hover:bg-canvas hover:text-danger"
-                >
-                  <Trash2 size={16} aria-hidden="true" />
-                </button>
-              }
-              title="Энэ постыг устгах уу?"
-              description="Эцэг эхийн самбараас хасагдана. Хэн устгасныг бүртгэлд үлдээнэ."
-              confirmLabel="Устгах"
-              cancelLabel="Цуцлах"
-              tone="danger"
-              pending={remove.isPending}
-              onConfirm={() => remove.mutate()}
-            />
+            <>
+              <RowMenu
+                ariaLabel="Постын үйлдэл"
+                triggerIcon={<MoreVertical size={18} aria-hidden="true" />}
+                items={[
+                  {
+                    label: "Засах",
+                    icon: <Pencil size={16} />,
+                    onSelect: () => router.push(`/notifications/${notification.id}/edit`),
+                  },
+                  {
+                    label: "Устгах",
+                    icon: <Trash2 size={16} />,
+                    tone: "danger",
+                    onSelect: () => setConfirmDelete(true),
+                  },
+                ]}
+              />
+              <ConfirmDialog
+                open={confirmDelete}
+                onOpenChange={(next) => (next ? undefined : setConfirmDelete(false))}
+                title="Энэ постыг устгах уу?"
+                description="Эцэг эхийн самбараас хасагдана. Хэн устгасныг бүртгэлд үлдээнэ."
+                confirmLabel="Устгах"
+                cancelLabel="Цуцлах"
+                tone="danger"
+                pending={remove.isPending}
+                onConfirm={() => remove.mutate()}
+              />
+            </>
           ) : null}
         </span>
       </div>
-
-      {/*
-        ★ Who the notice is for, which the card never said.
-
-        `NotificationTarget` has carried the audience since §8.1 was built and
-        the API has always returned it — the card simply did not render it, so
-        a notice for Дэлбээ бүлэг and one for the whole kindergarten looked
-        identical on a board holding both. A parent could not tell whether "Маргааш
-        аялал" was about their child; a teacher could not tell whose class they
-        were reading.
-
-        ★★ "Бүх цэцэрлэг" is stated, not left blank.
-
-        No target rows means everyone (`targetSchema` in the API), and rendering
-        nothing for that case makes the most important audience the one with no
-        label — a reader would have to know the convention to read the absence.
-      */}
-      <AudienceBadge targets={notification.targets} />
 
       {/*
         The title is the link, not the whole card.
@@ -1190,12 +1283,23 @@ function NotificationRow({
           )}
         >
           {notification.media.slice(0, 4).map((photo) => (
-            <MediaThumb
-              key={photo.id}
-              mediaId={photo.id}
-              caption={photo.caption}
-              className={notification.media.length === 1 ? "aspect-[16/9]" : "aspect-square"}
-            />
+            /*
+              ★ "Хадгалах" on each photograph — RFP §2.3, at the client's
+              request. A teacher posts the morning's pictures and a parent
+              recognising their own child had no way to keep it; the API copies
+              the object into that child's album rather than pointing a second
+              row at the same key. Guardians only: staff already own the album.
+            */
+            <div key={photo.id} className="relative">
+              <MediaThumb
+                mediaId={photo.id}
+                caption={photo.caption}
+                className={notification.media.length === 1 ? "aspect-[16/9]" : "aspect-square"}
+              />
+              {savableChildren ? (
+                <SavePostPhoto mediaId={photo.id} children={savableChildren} />
+              ) : null}
+            </div>
           ))}
         </div>
       ) : null}
@@ -1228,7 +1332,7 @@ function NotificationRow({
 }
 
 /**
- * Who a notice was written for.
+ * Who a notice was written for, as one phrase.
  *
  * ★ It reads the targeting rows rather than a summary field, because there is
  * no summary field and there should not be one.
@@ -1245,30 +1349,27 @@ function NotificationRow({
  * their names on a board every other family reads would tell each of them who
  * else was written to. The same reasoning `notificationSchema` gives for
  * collapsing reactions to a count and reads to a boolean.
+ *
+ * ★★★ A string rather than a component, since 2026-09-10.
+ *
+ * This was a `<p>` with a building-or-people icon on the card's own row, and
+ * the row is what the client asked to reclaim. A phrase can join the meta line
+ * under the author's name; an element with an icon cannot, not inside a
+ * `truncate`. The icon is no loss — it distinguished "the kindergarten" from
+ * "some groups", which is precisely what the words it sat beside already say.
+ *
+ * ★★★★ "Бүх цэцэрлэг" is still stated, not left blank. No target rows means
+ * everyone, and rendering nothing for that case would make the widest audience
+ * the one with no label — a reader would have to know the convention to read
+ * the absence.
  */
-function AudienceBadge({ targets }: { targets: z.infer<typeof notificationSchema>["targets"] }) {
+function audienceLabel(targets: z.infer<typeof notificationSchema>["targets"]): string {
+  if (targets.length === 0) return "Бүх цэцэрлэг";
+
   const groups = targets.map((t) => t.group?.name).filter((name): name is string => Boolean(name));
   const childCount = targets.filter((t) => t.childId).length;
 
-  if (targets.length === 0) {
-    return (
-      <p className="flex items-center gap-1.5 text-caption text-muted">
-        <Building2 size={14} aria-hidden="true" className="shrink-0" />
-        Бүх цэцэрлэг
-      </p>
-    );
-  }
-
-  return (
-    <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-caption text-muted">
-      <Users size={14} aria-hidden="true" className="shrink-0" />
-      {groups.length > 0 ? <span>{groups.join(", ")}</span> : null}
-      {childCount > 0 ? (
-        <span>
-          {groups.length > 0 ? "· " : ""}
-          {childCount} хүүхэд
-        </span>
-      ) : null}
-    </p>
-  );
+  return [groups.join(", "), childCount > 0 ? `${childCount} хүүхэд` : ""]
+    .filter(Boolean)
+    .join(" · ");
 }
