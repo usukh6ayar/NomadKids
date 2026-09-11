@@ -189,7 +189,7 @@ describe("the assessment summary", () => {
     summary(TERM_ID);
 
     expect(await screen.findByText("Сургалтын чиглэлийн хамралт")).toBeInTheDocument();
-    expect(screen.getByText("Үйл ажиллагааны үеийн хамралт")).toBeInTheDocument();
+    expect(screen.getByText("Үйл ажиллагааны төрлийн хамралт")).toBeInTheDocument();
 
     const links = screen.getAllByRole("link", { name: "Дэлгэрэнгүй" });
     expect(links.map((link) => link.getAttribute("href"))).toEqual([

@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { ChevronLeft, Users } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import {
   assessmentConfigSchema,
@@ -447,23 +447,45 @@ function NewObservationForm() {
   }, [levelTouched, suggestedLevel]);
 
   /*
-    What an indicator says at the level now chosen.
+    The codes offered at the level now chosen, each with what it says there.
 
-    ★ The nearest level it does carry, when it is not written at that one.
+    ★ An indicator the curriculum does not write at this level is not offered.
 
-    Several indicators begin at II or III, and an option reading "ХЯ3б — " is a
-    code with its meaning withheld. Falling to the nearest text keeps every
-    option legible; the level that gets *sent* is still the one the teacher
-    chose, because the judgement is theirs and not the curriculum's.
+    Fourteen of the seventy-one begin at II or III — the behaviour does not
+    exist earlier — so at I the list is 58 codes rather than 71. This is what
+    "сүд код түвшингөөс хамааран бас өөрчлөгдөнө" comes to against the real
+    curriculum: dropping the codes that say nothing at this level, and changing
+    the text of the ones that do.
+
+    ★★ It is *not* a filter on the digit in the code, which is what the digit
+    looks like it should mean and does not. `НСХ3а`'s "3" is the standard number
+    inside the strand, and every standard is taught at all four levels — `ХӨГ`
+    has only standard 1 and carries text at I, II, III and IV. Matching the
+    digit against the level would show a teacher no codes at all for four of the
+    seven strands above level II.
   */
-  function textAtChosenLevel(indicator: { levels: { level: number; text: string }[] }) {
-    const wanted = Number(indicatorLevel);
-    if (indicator.levels.length === 0) return "";
-    const nearest = indicator.levels.reduce((best, row) =>
-      Math.abs(row.level - wanted) < Math.abs(best.level - wanted) ? row : best,
-    );
-    return nearest.text;
-  }
+  const levelCodes = useMemo(
+    () =>
+      (indicators.data ?? []).flatMap((indicator) => {
+        const written = indicator.levels.find((row) => String(row.level) === indicatorLevel);
+        return written ? [{ id: indicator.id, code: indicator.code, text: written.text }] : [];
+      }),
+    [indicators.data, indicatorLevel],
+  );
+
+  /*
+    A code chosen at one level, then dropped by moving to another, must not stay
+    in the body — the API would store a judgement at a level the curriculum does
+    not describe.
+  */
+  useEffect(() => {
+    // Only once the list has actually arrived. Clearing while the query is in
+    // flight would wipe the code a restored draft brought back, on the one
+    // render where every list is empty.
+    if (!indicatorId || !indicators.isSuccess) return;
+    if (levelCodes.some((row) => row.id === indicatorId)) return;
+    setIndicatorId("");
+  }, [indicatorId, indicators.isSuccess, levelCodes]);
 
   const errors = fieldErrors(save.error);
 
@@ -677,56 +699,6 @@ function NewObservationForm() {
             ) : null}
           </div>
 
-          {/*
-            ★ Four cards, not a select — the client's 2026-09-11 design.
-
-            The four levels are not interchangeable options: they are a scale,
-            and choosing one means judging where a child sits on it. A select
-            shows one at a time and hides the thing being judged against; four
-            cards side by side put the whole scale in front of the teacher,
-            which is what makes the choice a judgement rather than a guess.
-
-            ★★ Before the code, not after it, and always drawn.
-
-            The client's order — "эхлээд түвшин харагдана … дараа нь багш сүд
-            код сонгох". The level arrives already chosen from the child's age
-            (2→I, 3→II, 4→III, 5→IV) and stops suggesting the moment a teacher
-            touches it. Choosing it first is what lets each code below read out
-            what it means at that level.
-          */}
-          {isStaff ? (
-            <fieldset>
-              <legend className="mb-1.5 text-body font-medium text-ink">Түвшин</legend>
-
-              <div role="radiogroup" aria-label="Түвшин" className="grid grid-cols-4 gap-1.5">
-                {LEVELS.map((level) => {
-                  const chosen = String(level) === indicatorLevel;
-
-                  return (
-                    <button
-                      key={level}
-                      type="button"
-                      role="radio"
-                      aria-checked={chosen}
-                      onClick={() => {
-                        setIndicatorLevel(String(level));
-                        setLevelTouched(true);
-                      }}
-                      className={cn(
-                        "grid min-h-[44px] place-items-center rounded-control border text-body font-semibold transition-colors",
-                        chosen
-                          ? "border-primary bg-primary-soft text-primary"
-                          : "border-border bg-surface text-muted hover:bg-canvas",
-                      )}
-                    >
-                      {LEVEL_NAME[level]} түвшин
-                    </button>
-                  );
-                })}
-              </div>
-            </fieldset>
-          ) : null}
-
           {isStaff ? (
             <div className="grid gap-4 sm:grid-cols-2">
               {/*
@@ -740,7 +712,7 @@ function NewObservationForm() {
                 breakdown and the form cannot disagree about what an activity
                 is called.
               */}
-              <Field label="Үйл ажиллагааны явц" error={errors.activityName}>
+              <Field label="Үйл ажиллагааны төрөл" error={errors.activityName}>
                 {({ id, describedBy, invalid }) => (
                   <Select
                     id={id}
@@ -796,6 +768,58 @@ function NewObservationForm() {
           ) : null}
 
           {/*
+            ★ Four cards, not a select — the client's 2026-09-11 design.
+
+            The four levels are not interchangeable options: they are a scale,
+            and choosing one means judging where a child sits on it. A select
+            shows one at a time and hides the thing being judged against; four
+            cards side by side put the whole scale in front of the teacher,
+            which is what makes the choice a judgement rather than a guess.
+
+            ★★ Between the strand and the code, and always drawn.
+
+            The client's order, revised twice on 2026-09-11: the level goes
+            after Сургалтын чиглэл and before СҮД код ("түвшин сургалтын
+            чиглэлийн дараа байна"). It arrives already chosen from the child's
+            age (2→I, 3→II, 4→III, 5→IV) and stops suggesting the moment a
+            teacher touches it. Sitting above the code is what lets each code
+            read out what it means at that level, and be dropped when it says
+            nothing there at all.
+          */}
+          {isStaff ? (
+            <fieldset>
+              <legend className="mb-1.5 text-body font-medium text-ink">Түвшин</legend>
+
+              <div role="radiogroup" aria-label="Түвшин" className="grid grid-cols-4 gap-1.5">
+                {LEVELS.map((level) => {
+                  const chosen = String(level) === indicatorLevel;
+
+                  return (
+                    <button
+                      key={level}
+                      type="button"
+                      role="radio"
+                      aria-checked={chosen}
+                      onClick={() => {
+                        setIndicatorLevel(String(level));
+                        setLevelTouched(true);
+                      }}
+                      className={cn(
+                        "grid min-h-[44px] place-items-center rounded-control border text-body font-semibold transition-colors",
+                        chosen
+                          ? "border-primary bg-primary-soft text-primary"
+                          : "border-border bg-surface text-muted hover:bg-canvas",
+                      )}
+                    >
+                      {LEVEL_NAME[level]} түвшин
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+          ) : null}
+
+          {/*
             ★ СҮД — the curriculum indicator this note evidences.
 
             Drawn only once a strand is chosen, because the codes belong to the
@@ -829,9 +853,9 @@ function NewObservationForm() {
                   disabled={indicators.isLoading}
                 >
                   <option value="">Сонгоно уу</option>
-                  {(indicators.data ?? []).map((indicator) => (
-                    <option key={indicator.id} value={indicator.id}>
-                      {`${indicator.code} — ${textAtChosenLevel(indicator)}`}
+                  {levelCodes.map((row) => (
+                    <option key={row.id} value={row.id}>
+                      {`${row.code} — ${row.text}`}
                     </option>
                   ))}
                 </Select>

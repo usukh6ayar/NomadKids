@@ -651,7 +651,7 @@ export function GroupCoverage({
         tone="sky"
       />
       <InlineBars
-        title="Үйл ажиллагааны үеийн хамралт"
+        title="Үйл ажиллагааны төрлийн хамралт"
         href={href("activities")}
         rows={activityRows}
         tone="sun"

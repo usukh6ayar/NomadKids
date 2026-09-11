@@ -34,6 +34,7 @@ const TYPE = "77777777-7777-4777-8777-777777777777";
 const DOMAIN_ID = "88888888-8888-4888-8888-888888888888";
 const KINDERGARTEN_ID = "33333333-3333-4333-8333-333333333333";
 const INDICATOR_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const LATE_INDICATOR_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab";
 
 const CHILD_DETAIL = {
   id: CHILD,
@@ -87,6 +88,19 @@ function routes() {
             { level: 2, text: "Хоёр дахь түвшний тайлбар." },
             { level: 3, text: "Гурав дахь түвшний тайлбар." },
             { level: 4, text: "Дөрөв дэх түвшний тайлбар." },
+          ],
+        },
+        /*
+          ★ Written at III and IV only — fourteen of the client's seventy-one
+          are like this, because the behaviour does not exist earlier.
+        */
+        {
+          id: LATE_INDICATOR_ID,
+          code: "ХЯ2а",
+          domainId: DOMAIN_ID,
+          levels: [
+            { level: 3, text: "Хожуу үзүүлэлт, гурав." },
+            { level: 4, text: "Хожуу үзүүлэлт, дөрөв." },
           ],
         },
       ],
@@ -361,7 +375,7 @@ describe("Шинэ ажиглалт — the form's own fields", () => {
     stubNewObservation();
     renderWithProviders(<NewObservationPage />);
 
-    const activity = await screen.findByLabelText("Үйл ажиллагааны явц");
+    const activity = await screen.findByLabelText("Үйл ажиллагааны төрөл");
     await user.click(activity);
 
     // The same reference list the coverage breakdown groups by, so the form
@@ -670,6 +684,93 @@ describe("Шинэ ажиглалт — the form's shape", () => {
       "III түвшин",
       "IV түвшин",
     ]);
+  });
+});
+
+/**
+ * The codes follow the level — the client's 2026-09-11 revision.
+ *
+ * ★ "сүд код түвшингөөс хамааран бас өөрчлөгдөнө." What that comes to against
+ * the real curriculum is two things: the text of each code changes, and the
+ * codes the curriculum does not write at that level are not offered at all.
+ *
+ * ★★ It is deliberately *not* a filter on the digit in the code. `НСХ3а`'s "3"
+ * is the standard number within the strand, not a level, and every standard is
+ * taught at all four — `ХӨГ` has only standard 1 and carries text at I, II, III
+ * and IV. Matching the digit against the level would empty the picker for four
+ * of the seven strands above level II.
+ */
+describe("Шинэ ажиглалт — түвшин ба код", () => {
+  async function openCodes(user: ReturnType<typeof userEvent.setup>) {
+    await waitFor(() => expect(screen.getByLabelText("СҮД код")).toBeEnabled());
+    await user.click(screen.getByLabelText("СҮД код"));
+  }
+
+  it("offers only the codes written at the level chosen", async () => {
+    const user = userEvent.setup();
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    await screen.findByRole("radiogroup", { name: "Түвшин" });
+    await user.click(within(levelCards()).getByRole("radio", { name: "I түвшин" }));
+    await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
+    await openCodes(user);
+
+    // ХЯ2а starts at III, so at I it is not a code a teacher can choose.
+    expect(await screen.findByRole("option", { name: /^ХЯ1а — / })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /^ХЯ2а — / })).not.toBeInTheDocument();
+  });
+
+  it("offers the late code once the level reaches it", async () => {
+    const user = userEvent.setup();
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    await screen.findByRole("radiogroup", { name: "Түвшин" });
+    await user.click(within(levelCards()).getByRole("radio", { name: "III түвшин" }));
+    await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
+    await openCodes(user);
+
+    expect(
+      await screen.findByRole("option", { name: "ХЯ2а — Хожуу үзүүлэлт, гурав." }),
+    ).toBeInTheDocument();
+  });
+
+  /*
+    ★ A code the new level does not describe is dropped from the body too.
+
+    Leaving it would store a judgement at a level the curriculum says nothing
+    about — and the teacher would have no control on screen showing it was still
+    selected, because the option itself is gone.
+  */
+  it("drops a chosen code when the level moves past what it describes", async () => {
+    const user = userEvent.setup();
+    const api = stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    await screen.findByRole("radiogroup", { name: "Түвшин" });
+    await user.click(within(levelCards()).getByRole("radio", { name: "III түвшин" }));
+    await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
+    await chooseIndicator(user, "ХЯ2а");
+
+    await user.click(within(levelCards()).getByRole("radio", { name: "I түвшин" }));
+    await waitFor(() => expect(screen.getByLabelText("СҮД код")).toHaveTextContent("Сонгоно уу"));
+
+    await user.type(screen.getByLabelText("Тэмдэглэл"), "Тэмдэглэл");
+    await user.click(screen.getByRole("button", { name: /Хадгалах/ }));
+
+    await waitFor(() => expect(api.calls.some((call) => call.method === "POST")).toBe(true));
+    const body = api.calls.find((call) => call.method === "POST")?.body as Record<string, unknown>;
+    expect(body).not.toHaveProperty("indicatorId");
+    expect(body).not.toHaveProperty("indicatorLevel");
+  });
+
+  it("names the activity field the way the client does", async () => {
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    expect(await screen.findByLabelText("Үйл ажиллагааны төрөл")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Үйл ажиллагааны явц")).not.toBeInTheDocument();
   });
 });
 

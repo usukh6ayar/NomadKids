@@ -49,8 +49,8 @@ const KINDS: Record<CoverageKind, { title: string; lede: string; noun: string; t
     tone: "sky",
   },
   activities: {
-    title: "Үйл ажиллагааны явц",
-    lede: "Үйл ажиллагааны үе шат бүрийн тэмдэглэлийн хамралтыг харуулна.",
+    title: "Үйл ажиллагааны төрөл",
+    lede: "Үйл ажиллагааны төрөл бүрийн тэмдэглэлийн хамралтыг харуулна.",
     noun: "үйл ажиллагаа",
     tone: "sun",
   },
