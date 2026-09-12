@@ -565,6 +565,18 @@ function GroupTotals({
  * folding an unexplained status into Тасалсан is a policy call that moves a
  * funding figure, and it is not this table's to make. The four therefore need
  * not sum to the days in the range.
+ *
+ * ★★ A fifth Бусад column was added and reverted on 2026-09-13.
+ *
+ * The client asked for the accountant's class figures to read complete
+ * ("бүлгийн сарын доод тооцоолол бүгд бүрэн харагд") and the columns not
+ * summing to Нийт looked like the gap. It is not this one: what blocked that
+ * screen was `GET /groups` refusing an accountant, so no group could be
+ * selected at all (`TenantsService.listGroups`). Meanwhile `VISIBLE_STATUS_ORDER`
+ * above deliberately keeps Хагас өдөр and Бусад off this screen, with tests
+ * holding it — so a Бусад column here would contradict a decision, not fill a
+ * hole. The export's "Дүн" and "Ангийн дүн" sheets do carry a Бусад column,
+ * which is where a reconciliation to Нийт is available.
  */
 const TOTAL_COLUMNS = [
   { key: "Ирсэн", of: ["PRESENT", "HALF_DAY"] },
