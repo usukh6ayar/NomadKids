@@ -697,11 +697,29 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
           href: "/menu",
           icon: artIcon("food", 18),
         },
-        {
-          label: "Хоолны бүртгэл",
-          href: scoped("meals"),
-          icon: artIcon("food", 18),
-        },
+        /*
+          ★ "Хоолны бүртгэл" is the director's row now — 2026-09-12, at the
+          client's request: "багшаас хоолны бүртгэл хас."
+
+          It is the per-child "did this child eat", and `нэмэлт.md` §3
+          multiplies its "хооллосон өдөр" into the food-cost calculation, so it
+          keeps a door rather than losing one. The teacher's menu stays; what
+          they no longer carry is the register underneath it.
+
+          ★★ The API is unchanged: `PUT /groups/:id/meals` is still
+          TEACHER/ADMIN. Narrowing it would take the recording away from the one
+          person who is in the room at lunch, and the client asked for the row,
+          not the right. A teacher following a link still records.
+        */
+        ...(isAdmin
+          ? [
+              {
+                label: "Хоолны бүртгэл",
+                href: scoped("meals"),
+                icon: artIcon("food", 18),
+              },
+            ]
+          : []),
         entry("Аюулгүй байдал", "/incidents"),
       ],
     },

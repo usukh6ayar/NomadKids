@@ -176,7 +176,7 @@ export function ChildOverviewContent({
       ) : null}
 
       {isStaff ? (
-        <TodayAttendanceRecorder childId={childId} childFirstName={data.firstName} />
+        <TodayAttendanceRecorder childId={childId} childName={data.firstName} />
       ) : null}
 
       <section aria-labelledby="special-days-heading">

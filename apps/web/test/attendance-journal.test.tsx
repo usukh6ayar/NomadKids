@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { renderWithProviders, sessionFor, setParams, stubApi } from "./support/render";
@@ -46,6 +46,15 @@ function journal(overrides: Record<string, unknown> = {}) {
     to: DAYS[2],
     days: DAYS,
     totals: { PRESENT: 1, SICK: 1 },
+    groups: [
+      {
+        groupId: "g1",
+        group: "Бэлтгэл",
+        children: 1,
+        counts: { PRESENT: 1, SICK: 1 },
+        recorded: 2,
+      },
+    ],
     ...overrides,
   };
 }
@@ -97,6 +106,28 @@ describe("the grid", () => {
     expect(await screen.findByLabelText("2026-03-03 — бүртгэлгүй")).toBeInTheDocument();
     expect(screen.getByLabelText("2026-03-02 — Ирсэн")).toBeInTheDocument();
     expect(screen.getByLabelText("2026-03-04 — Өвчтэй")).toBeInTheDocument();
+  });
+
+  /*
+   * ★ 2026-09-12: "доор ангийн нийт ирсэн, нийт гэсэн тоон үзүүлэлтүүдийг хойно
+   * нь бодож гарга."
+   *
+   * The figures come down from the API, counted over every child the filter
+   * matched — this screen pages over children, and a class total assembled
+   * from the rows on screen would change when somebody turned to page two.
+   */
+  it("★ totals each class under the register, across every matching child", async () => {
+    stub();
+    renderWithProviders(<AttendanceJournalPage />);
+
+    const table = await screen.findByRole("table", { name: /Ангийн дүн/ });
+    const row = within(table).getByRole("rowheader", { name: "Бэлтгэл" }).closest("tr")!;
+    // One child, one present day, one sick day — two recorded in all.
+    expect(
+      within(row)
+        .getAllByRole("cell")
+        .map((cell) => cell.textContent),
+    ).toEqual(["1", "1", "0", "1", "0", "2"]);
   });
 
   it("shows the period's totals across every child, not just this page", async () => {

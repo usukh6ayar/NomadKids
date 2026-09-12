@@ -111,6 +111,17 @@ describe("the family's meal screen", () => {
     expect(within(panel).getByText("240 ккал")).toBeInTheDocument();
   });
 
+  it("shows each sitting's calories in the weekly menu too", async () => {
+    const user = userEvent.setup();
+    stub();
+    render();
+
+    await user.click(await screen.findByRole("tab", { name: "7 хоног" }));
+    const panel = screen.getByRole("tabpanel", { name: "7 хоног" });
+    expect(within(panel).getByText("300 ккал")).toBeInTheDocument();
+    expect(within(panel).getByText("240 ккал")).toBeInTheDocument();
+  });
+
   /** A menu whose calories were never entered says nothing rather than "0 ккал". */
   it("says nothing about energy when the kitchen entered none", async () => {
     stub();

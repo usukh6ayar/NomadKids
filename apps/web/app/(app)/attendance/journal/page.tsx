@@ -7,6 +7,7 @@ import {
   attendanceJournalSchema,
   groupListItemSchema,
   paginated,
+  type AttendanceJournal,
   type AttendanceJournalRow,
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
@@ -332,6 +333,20 @@ function AttendanceJournal() {
           <Grid rows={data.items} days={data.days} selection={selection} />
 
           {/*
+            ★ Class totals under the register — 2026-09-12, at the client's
+            request ("доор ангийн нийт ирсэн, нийт гэсэн тоон үзүүлэлтүүдийг
+            хойно нь бодож гарга").
+
+            The figures come from the API, not from `data.items`: this screen
+            pages over children, and a class total assembled from the twenty-five
+            rows on screen would change when somebody turned to page two. They
+            are counted across every child the filter matched, which is the same
+            set the "Хугацааны дүн" card above reports, and the Excel export
+            carries them on a sheet of their own.
+          */}
+          <GroupTotals groups={data.groups} totals={data.totals} />
+
+          {/*
             ★ The register's own export, narrowed to the ticked rows.
 
             `?childId=` is a filter like `groupId` — it is ANDed into the same
@@ -376,6 +391,99 @@ function Totals({ totals }: { totals: Record<string, number> }) {
         </div>
       ))}
     </Card>
+  );
+}
+
+/**
+ * Ангийн дүн — a row per class, and the kindergarten's own row under it.
+ *
+ * ★ The same four columns the grid ends in, and deliberately: a director
+ * reading "Ирсэн" across a child's row and "Ирсэн" across their class's row is
+ * reading one definition, `TOTAL_COLUMNS`, rendered twice.
+ *
+ * "Нийт" is every recorded day, which is what the four are a breakdown of —
+ * `OTHER` included, so a class with an unexplained status still adds up. The
+ * four columns need not sum to it, for the reason `TOTAL_COLUMNS` gives.
+ */
+function GroupTotals({
+  groups,
+  totals,
+}: {
+  groups: AttendanceJournal["groups"];
+  totals: Record<string, number>;
+}) {
+  if (groups.length === 0) return null;
+
+  const recorded = groups.reduce((sum, group) => sum + group.recorded, 0);
+  const children = groups.reduce((sum, group) => sum + group.children, 0);
+  const sumOf = (counts: Record<string, number>, of: readonly string[]) =>
+    of.reduce((sum, status) => sum + (counts[status] ?? 0), 0);
+
+  return (
+    <>
+      <SectionHeader
+        title="Ангийн дүн"
+        lede="Шүүлтэд тохирсон бүх хүүхдээр бодсон — хуудсаар өөрчлөгдөхгүй"
+      />
+
+      <Card pad="none" className="overflow-x-auto">
+        <table className="w-full border-collapse text-caption">
+          <caption className="sr-only">Ангийн дүн</caption>
+          <thead>
+            <tr className="border-b-2 border-border bg-sunken text-ink">
+              <th scope="col" className="px-3 py-2 text-left font-semibold">
+                Анги
+              </th>
+              <th scope="col" className="px-2 py-2 text-right font-semibold">
+                Хүүхэд
+              </th>
+              {TOTAL_COLUMNS.map((column) => (
+                <th key={column.key} scope="col" className="px-2 py-2 text-right font-semibold">
+                  {column.key}
+                </th>
+              ))}
+              <th scope="col" className="px-3 py-2 text-right font-semibold">
+                Нийт
+              </th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {groups.map((group) => (
+              <tr key={group.groupId} className="border-b border-line last:border-0">
+                <th scope="row" className="px-3 py-2 text-left font-normal text-ink">
+                  {group.group}
+                </th>
+                <td className="px-2 py-2 text-right tabular-nums text-muted">{group.children}</td>
+                {TOTAL_COLUMNS.map((column) => (
+                  <td key={column.key} className="px-2 py-2 text-right tabular-nums text-ink">
+                    {sumOf(group.counts, column.of)}
+                  </td>
+                ))}
+                <td className="px-3 py-2 text-right font-semibold tabular-nums text-ink">
+                  {group.recorded}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+
+          <tfoot>
+            <tr className="border-t-2 border-border bg-sunken font-semibold text-ink">
+              <th scope="row" className="px-3 py-2 text-left">
+                Нийт
+              </th>
+              <td className="px-2 py-2 text-right tabular-nums">{children}</td>
+              {TOTAL_COLUMNS.map((column) => (
+                <td key={column.key} className="px-2 py-2 text-right tabular-nums">
+                  {sumOf(totals, column.of)}
+                </td>
+              ))}
+              <td className="px-3 py-2 text-right tabular-nums">{recorded}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </Card>
+    </>
   );
 }
 
@@ -455,6 +563,16 @@ function isWeekend(day: string): boolean {
  * and had nothing but a matching background to say so; it has a right border
  * and a shadow now, which is what makes a frozen column look frozen.
  *
+ * ★★★ It is drawn to fit the screen — 2026-09-12, at the client's instruction
+ * ("хойшоо скролдож явдаг биш дэлгэцэд бүхлээрээ харагддаг бай").
+ *
+ * A month is 31 columns, so the only way a register of this shape fits without
+ * scrolling sideways is for a day to be narrow: a 20px box, no horizontal
+ * padding on a day cell, and the four totals set in the compact size. That is
+ * about 940px for a full month, which a laptop holds. `overflow-x-auto` stays
+ * on the wrapper — a phone cannot hold 31 columns at any size that can be read,
+ * and a grid clipped is worse than a grid scrolled.
+ *
  * ★★ The letters are explained on the page rather than in a tooltip.
  *
  * И, Х, Ч, Ө, Т, Б were readable only by hovering each square. A legend under
@@ -479,7 +597,7 @@ function Grid({
               <tr className="border-b-2 border-border bg-sunken">
                 <th
                   scope="col"
-                  className="sticky left-0 z-20 border-r border-border bg-sunken px-3 py-2 text-left font-semibold text-ink shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]"
+                  className="sticky left-0 z-20 border-r border-border bg-sunken px-2 py-1.5 text-left font-semibold text-ink shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]"
                 >
                   {/*
                     The select-all sits inside the sticky name header rather
@@ -507,14 +625,14 @@ function Grid({
                        rather than "Лх 3". */
                     aria-label={day}
                     className={cn(
-                      "px-1 py-1.5 text-center font-medium",
+                      "px-0 py-1 text-center font-medium",
                       isWeekend(day) ? "bg-canvas text-faint" : "text-muted",
                     )}
                   >
-                    <span className="block text-caption font-normal leading-tight">
+                    <span className="block text-compact font-normal leading-tight">
                       {WEEKDAY_SHORT[weekdayOf(day)]}
                     </span>
-                    <span className="block text-caption font-semibold tabular-nums leading-tight text-ink">
+                    <span className="block text-compact font-semibold tabular-nums leading-tight text-ink">
                       {Number(day.slice(8, 10))}
                     </span>
                   </th>
@@ -525,7 +643,7 @@ function Grid({
                     key={column.key}
                     scope="col"
                     className={cn(
-                      "whitespace-nowrap px-3 py-2 text-right font-semibold text-ink",
+                      "whitespace-nowrap px-1.5 py-1.5 text-right text-compact font-semibold text-ink",
                       // A rule where the days end and the totals begin: without
                       // it the last day and the first total read as neighbours.
                       index === 0 && "border-l border-border",
@@ -542,7 +660,7 @@ function Grid({
                 <tr key={row.childId} className="border-b border-line last:border-0">
                   <th
                     scope="row"
-                    className="sticky left-0 z-10 max-w-[14rem] border-r border-border bg-surface px-3 py-2 text-left font-normal text-ink shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]"
+                    className="sticky left-0 z-10 max-w-[11rem] border-r border-border bg-surface px-2 py-1 text-left font-normal text-ink shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]"
                   >
                     <span className="flex items-center gap-2">
                       <SelectBox
@@ -552,7 +670,7 @@ function Grid({
                       />
                       <span className="min-w-0 truncate">
                         {row.child.lastName} {row.child.firstName}
-                        <span className="block text-caption text-muted">{row.group.name}</span>
+                        <span className="block text-compact text-muted">{row.group.name}</span>
                       </span>
                     </span>
                   </th>
@@ -566,7 +684,7 @@ function Grid({
                     return (
                       <td
                         key={day}
-                        className={cn("px-1 py-1.5 text-center", isWeekend(day) && "bg-canvas")}
+                        className={cn("px-0 py-1 text-center", isWeekend(day) && "bg-canvas")}
                       >
                         {/*
                           ★ One 24px box per cell, filled or hollow.
@@ -587,7 +705,7 @@ function Grid({
                           title={label}
                           aria-label={label}
                           className={cn(
-                            "inline-flex h-6 w-6 items-center justify-center rounded-control text-caption font-semibold",
+                            "inline-flex h-5 w-5 items-center justify-center rounded-control text-compact font-semibold",
                             cell
                               ? (STATUS_TONE[cell.status] ?? "bg-canvas text-muted")
                               : "border border-dashed border-border text-transparent",
@@ -603,7 +721,7 @@ function Grid({
                     <td
                       key={column.key}
                       className={cn(
-                        "px-3 py-2 text-right tabular-nums text-ink",
+                        "px-1.5 py-1 text-right text-compact tabular-nums text-ink",
                         index === 0 && "border-l border-border",
                       )}
                     >

@@ -155,7 +155,6 @@ describe("navigation icons", () => {
       "Явцын үнэлгээ",
       "Ирц",
       "Хоолны цэс",
-      "Хоолны бүртгэл",
       "Ангийн самбар / Мэдээ",
       "Судалгаа",
       // The screens that used to sit behind the "Удирдлага" hub, which no
@@ -366,7 +365,6 @@ describe("role-based navigation", () => {
       funding figure that quietly stops being entered.
     */
     expect(within(nav).getByRole("link", { name: "Хоолны цэс" })).toHaveAttribute("href", "/menu");
-    expect(within(nav).getByRole("link", { name: "Хоолны бүртгэл" })).toBeInTheDocument();
     // Харилцаа холбоо
     expect(within(nav).getByRole("link", { name: "Судалгаа" })).toBeInTheDocument();
     // Багш ба байгууллага: the foot's own row is the single route to /settings.
@@ -788,5 +786,31 @@ describe("mobile navigation", () => {
       // caption pattern every other tab bar in the shell already uses.
       expect(within(link).getByText(label)).not.toHaveClass("sr-only");
     }
+  });
+
+  /*
+    ★ "Хоолны бүртгэл" is the director's row — 2026-09-12, at the client's
+    request ("багшаас хоолны бүртгэл хас").
+
+    It is the per-child "did this child eat", and `нэмэлт.md` §3 multiplies its
+    "хооллосон өдөр" into the food cost — so it keeps a door rather than losing
+    one. The API is untouched: a teacher following a link still records, because
+    they are the one in the room at lunch.
+  */
+  it("keeps the meal register off a teacher's menu and on a director's", async () => {
+    renderShell(["TEACHER"]);
+    const teacherNav = await sidebar();
+
+    expect(within(teacherNav).getByRole("link", { name: "Хоолны цэс" })).toBeInTheDocument();
+    expect(
+      within(teacherNav).queryByRole("link", { name: "Хоолны бүртгэл" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("gives a director the register", async () => {
+    renderShell(["ADMIN"]);
+    const nav = await sidebar();
+
+    expect(within(nav).getByRole("link", { name: "Хоолны бүртгэл" })).toBeInTheDocument();
   });
 });

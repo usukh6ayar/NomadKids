@@ -100,12 +100,26 @@ const RESULTS = {
   ],
 };
 
-function stubResults() {
+function stubResults(
+  overrides: Record<string, unknown> = {},
+  extra: Parameters<typeof stubApi>[0] = [],
+) {
   return stubApi([
     { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+    // Ahead of the 404 below: `stubApi` matches on a prefix and answers with
+    // the first hit, so a comparison a case wants must precede the empty one.
+    ...extra,
+    // The two writes the lock makes, before the survey route that would
+    // otherwise swallow them — `stubApi` matches on the path's prefix.
+    { path: `/surveys/${SURVEY_ID}/close`, method: "POST", body: { ...SURVEY, status: "CLOSED" } },
+    {
+      path: `/surveys/${SURVEY_ID}/reopen`,
+      method: "POST",
+      body: { ...SURVEY, status: "PUBLISHED" },
+    },
     { path: `/surveys/${SURVEY_ID}/results`, body: RESULTS },
     { path: `/surveys/${SURVEY_ID}/comparison`, body: null, status: 404 },
-    { path: `/surveys/${SURVEY_ID}`, body: SURVEY },
+    { path: `/surveys/${SURVEY_ID}`, body: { ...SURVEY, ...overrides } },
   ]);
 }
 
@@ -118,158 +132,389 @@ beforeEach(() => {
 const openTab = async (user: ReturnType<typeof userEvent.setup>, name: string) =>
   user.click(await screen.findByRole("tab", { name }));
 
-describe("the survey results overview", () => {
-  it("keeps the compact survey actions together and uses the new assessment label", async () => {
-    stubResults();
-    const { container } = renderWithProviders(<SurveyDetailPage />);
+/**
+ * Opens "эцэг эхэд харагдах байдал" — the eye beside Хувилах.
+ *
+ * ★ The preview used to sit open on the page, so every visit to read the
+ * answers scrolled past a copy of the questions first. 2026-09-12, at the
+ * client's request, it waits behind a control.
+ */
+const openPreview = async (user: ReturnType<typeof userEvent.setup>) =>
+  user.click(await screen.findByRole("button", { name: "Эцэг эхэд харагдах байдал" }));
 
-    await screen.findByText("Нийт асуулт");
-    const actions = container.querySelector('[data-ui="survey-actions"]') as HTMLElement;
-    expect(actions).toHaveClass("overflow-x-auto");
-    expect(actions.parentElement).toHaveClass("basis-full", "justify-start");
-    expect(within(actions).getByRole("link", { name: "Excel татах" })).toBeInTheDocument();
-    for (const label of ["Хэвлэх", "Хувилах", "Хаах", "Устгах"]) {
-      expect(within(actions).getByRole("button", { name: label })).toBeInTheDocument();
-    }
-    expect(within(actions).getByRole("combobox", { name: "Хувилах үе" })).toHaveTextContent(
-      "Явцын үнэлгээ",
-    );
-    expect(actions.firstElementChild).toContainElement(
-      within(actions).getByRole("combobox", { name: "Хувилах үе" }),
-    );
-  });
+/*
+  ★ A way back — 2026-09-12, at the client's request: "дэлгэрэнгүй гэдэг дээр
+  дарахаар буцаж болохгүй байна."
 
-  it("opens on Тойм with the four headline figures", async () => {
-    stubResults();
-    renderWithProviders(<SurveyDetailPage />);
-
-    expect(await screen.findByText("Нийт асуулт")).toBeInTheDocument();
-    expect(screen.getByText("Нийт хариулт")).toBeInTheDocument();
-    // 6 of 10. Asserted on the ring's own name as well as the figure, because
-    // the ring is what carries it for a screen reader — `Ring` is `aria-hidden`
-    // everywhere else on the product precisely because the number is usually
-    // beside it, and here it is the sole carrier.
-    expect(screen.getAllByText("60%").length).toBeGreaterThan(0);
-    expect(screen.getByRole("img", { name: "10-аас 6 нь хариулсан" })).toBeInTheDocument();
-    expect(screen.getByText("Бүх бүлэг")).toBeInTheDocument();
-  });
-
-  /**
-   * ★ Each group against its own roster, not against the biggest group.
-   *
-   * 5 of 6 is nearly done; 1 of 4 has barely started. Scaled against each other
-   * they were drawn five-to-one and the second looked merely quieter.
-   */
-  it("measures each group against its own roster", async () => {
+  The screen is reached from one of the two boards and had no exit of its own,
+  so a teacher opening a survey to read its answers was left with the browser's
+  own button. The fallback is the board the survey belongs to — a form's board
+  for a form, a poll's for a poll.
+*/
+describe("getting back out of a survey", () => {
+  it("offers a back arrow, pointing at the board the survey belongs to", async () => {
     stubResults();
     renderWithProviders(<SurveyDetailPage />);
 
-    expect(await screen.findByText("5 / 6")).toBeInTheDocument();
-    expect(screen.getByText("(83%)")).toBeInTheDocument();
-    expect(screen.getByText("1 / 4")).toBeInTheDocument();
-    expect(screen.getByText("(25%)")).toBeInTheDocument();
-  });
-
-  it("goes straight to the answers from the overview", async () => {
-    const user = userEvent.setup();
-    stubResults();
-    renderWithProviders(<SurveyDetailPage />);
-
-    await user.click(await screen.findByRole("button", { name: "Үр дүнг дэлгэрэнгүй харах" }));
-
-    expect(await screen.findByRole("tab", { name: "Хариултууд" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    /*
+      The arrow is on the loading branch too, pointing at the hub while the
+      survey's kind is still unknown — so this waits for the loaded screen
+      before reading it, or it would assert on that first one.
+    */
+    // Wait for the loaded screen: the arrow is on the loading branch too,
+    // pointing at the hub while the survey's kind is still unknown.
+    await screen.findByRole("button", { name: "Эцэг эхэд харагдах байдал" });
+    expect(screen.getByRole("link", { name: "Буцах" })).toHaveAttribute("href", "/surveys/forms");
   });
 });
 
-describe("the question index", () => {
-  it("lists every question with its type and count", async () => {
+/*
+  The lock, and the eye — 2026-09-12, at the client's request: "судалгааны цоож
+  дээр дарахаар судалгаа хаагдлаа гэж бичиг гар, цоожоо онгойлгоод нээж болдог
+  бай" and "хувилах гэдгийн урд нүдний зураг нэм".
+*/
+describe("closing, re-opening and previewing", () => {
+  it("says so when the lock goes on", async () => {
     const user = userEvent.setup();
-    stubResults();
+    const { calls } = stubResults();
     renderWithProviders(<SurveyDetailPage />);
-    await openTab(user, "Асуултууд");
 
-    expect(await screen.findByText("Нийт 3 асуулт")).toBeInTheDocument();
-    const rows = screen.getAllByRole("listitem");
-    expect(within(rows[0]!).getByText("Үнэлгээ (1–5)")).toBeInTheDocument();
-    expect(within(rows[1]!).getByText("Тийм/Үгүй")).toBeInTheDocument();
-    expect(within(rows[2]!).getByText("2 хариулт")).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Хаах" }));
+
+    await waitFor(() =>
+      expect(calls.some((call) => call.url.endsWith("/close") && call.method === "POST")).toBe(
+        true,
+      ),
+    );
+    expect(await screen.findByText(/Судалгааг хаалаа/)).toBeInTheDocument();
   });
 
-  it("opens the answers when a question is pressed", async () => {
+  /** A closed survey offers the way back open, where the lock used to be. */
+  it("offers Дахин нээх once the survey is closed", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubResults({ status: "CLOSED" });
+    renderWithProviders(<SurveyDetailPage />);
+
+    expect(screen.queryByRole("button", { name: "Хаах" })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Дахин нээх" }));
+
+    await waitFor(() =>
+      expect(calls.some((call) => call.url.endsWith("/reopen") && call.method === "POST")).toBe(
+        true,
+      ),
+    );
+  });
+
+  /*
+    ★ The preview is closed until asked for.
+
+    It used to sit open under the header, so every visit to read the answers
+    scrolled past a copy of the questions first.
+  */
+  it("keeps the parent's view behind the eye", async () => {
     const user = userEvent.setup();
     stubResults();
     renderWithProviders(<SurveyDetailPage />);
-    await openTab(user, "Асуултууд");
+
+    await screen.findByRole("button", { name: "Эцэг эхэд харагдах байдал" });
+    expect(screen.queryByRole("heading", { name: "Асуулгын харагдац" })).not.toBeInTheDocument();
+
+    await openPreview(user);
+    expect(await screen.findByRole("heading", { name: "Асуулгын харагдац" })).toBeInTheDocument();
+
+    await openPreview(user);
+    expect(screen.queryByRole("heading", { name: "Асуулгын харагдац" })).not.toBeInTheDocument();
+  });
+});
+
+describe("ерөнхий дүн", () => {
+  it("shows the questionnaire's real answer shapes behind the eye", async () => {
+    const user = userEvent.setup();
+    stubResults();
+    renderWithProviders(<SurveyDetailPage />);
+
+    await openPreview(user);
+    const preview = await screen.findByRole("heading", { name: "Асуулгын харагдац" });
+    const card = preview.closest<HTMLElement>("[aria-labelledby='survey-preview-title']")!;
+    expect(within(card).getByText(RATING.prompt, { exact: false })).toBeInTheDocument();
+    expect(within(card).getByText("Үнэлгээ (1–5)")).toBeInTheDocument();
+    expect(within(card).getByText(YES_NO.prompt, { exact: false })).toBeInTheDocument();
+    expect(within(card).getByText("Тийм")).toBeInTheDocument();
+    expect(within(card).getByText("Үгүй")).toBeInTheDocument();
+  });
+
+  /*
+    ★ The controls at the foot of the card, round and hard right — 2026-09-12,
+    from the client's header drawing and the note after it.
+
+    What the row holds is the things a teacher *does* with a survey. The clone
+    period that used to sit beside the title is gone entirely.
+  */
+  it("gathers the survey's controls at the foot of its card", async () => {
+    stubResults();
+    const { container } = renderWithProviders(<SurveyDetailPage />);
+
+    await screen.findByRole("tab", { name: "Ерөнхий дүн" });
+    const actions = container.querySelector('[data-ui="survey-actions"]') as HTMLElement;
+
+    expect(within(actions).getByRole("link", { name: "Excel татах" })).toBeInTheDocument();
+    for (const label of ["Эцэг эхэд харагдах байдал", "Хэвлэх", "Хувилах", "Хаах", "Устгах"]) {
+      expect(within(actions).getByRole("button", { name: label })).toBeInTheDocument();
+    }
+
+    /*
+      ★ No period picker anywhere on the card — 2026-09-12: "харшлын судалгаа
+      гэсний ард байгаа хайрцаг хэсэг арилга." A copy is filed as the midline,
+      and the wave is editable on the copy itself.
+    */
+    expect(screen.queryByRole("combobox", { name: "Хувилах үе" })).not.toBeInTheDocument();
+
+    // And the row hugs the right edge, at every width — `ms-auto` is a no-op
+    // while it shares a line with the audience and the fix once it wraps.
+    expect(actions).toHaveClass("ms-auto");
+  });
+  it("★ rings how many replied, and names both halves", async () => {
+    stubResults();
+    renderWithProviders(<SurveyDetailPage />);
+
+    // 6 of 10 replied, so four have not — and the gap is a named figure, not
+    // the empty part of a circle.
+    expect(await screen.findByText("Хамрагдсан байдал")).toBeInTheDocument();
+    expect(screen.getByText("60%")).toBeInTheDocument();
+    expect(screen.getByText("6/10")).toBeInTheDocument();
+    expect(screen.getByText("Бөглөсөн").parentElement).toHaveTextContent("6");
+    expect(screen.getByText("Бөглөөгүй").parentElement).toHaveTextContent("4");
+    // The ring carries the same fact for a screen reader, since a donut is the
+    // one element on this card whose meaning is entirely visual.
+    expect(screen.getAllByRole("img").map((node) => node.getAttribute("aria-label"))).toContain(
+      "10-аас 6 нь бөглөсөн",
+    );
+
+    expect(screen.getAllByRole("tab")).toHaveLength(3);
+    expect(screen.getByRole("tab", { name: "Хариулт" })).toBeInTheDocument();
+  });
+
+  /*
+    ★ The header card the client drew: the survey as a card inside a screen
+    called "Судалгааны дүн" — icon, title, the window it runs in, whether it is
+    live, and who it went to.
+  */
+  it("★ heads the screen with the survey's own card", async () => {
+    stubResults();
+    renderWithProviders(<SurveyDetailPage />);
+
+    expect(await screen.findByRole("heading", { name: "Судалгааны дүн" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: SURVEY.title })).toBeInTheDocument();
+    // "Нийтэлсэн" on the board; "Идэвхтэй" here, matching the tab it was found
+    // under.
+    expect(screen.getByText("Идэвхтэй")).toBeInTheDocument();
+    // The roster comes off the results query the tabs below already read.
+    expect(await screen.findByText(/Бүх бүлэг · 10 хүүхэд/)).toBeInTheDocument();
+  });
+
+  it("offers the way through to who has and has not replied", async () => {
+    stubResults();
+    renderWithProviders(<SurveyDetailPage />);
+
+    expect(
+      await screen.findByRole("link", { name: /Хэн бөглөсөн \/ бөглөөгүй харах/ }),
+    ).toHaveAttribute("href", `/surveys/${SURVEY_ID}/respondents`);
+  });
+
+  /** A row per question, its mean beside it — the drawing's "Асуултуудын дүн". */
+  it("scores every question in one list", async () => {
+    stubResults();
+    renderWithProviders(<SurveyDetailPage />);
+
+    await screen.findByText("Асуултуудын дүн");
+    const rows = screen.getAllByRole("listitem");
+
+    // 2×5 + 2×4 + 2×3 over 6 answers.
+    expect(within(rows[0]!).getByText(RATING.prompt)).toBeInTheDocument();
+    expect(rows[0]!.textContent).toContain("4.0");
+
+    // A yes/no and a free text carry no mean, so the row shows how many
+    // answered rather than an invented score.
+    expect(rows[2]!.textContent).toContain("2");
+  });
+
+  it("opens the question a row names, on the other tab", async () => {
+    const user = userEvent.setup();
+    stubResults();
+    renderWithProviders(<SurveyDetailPage />);
 
     await user.click(await screen.findByRole("button", { name: new RegExp(RATING.prompt) }));
 
     await waitFor(() =>
-      expect(screen.getByRole("tab", { name: "Хариултууд" })).toHaveAttribute(
+      expect(screen.getByRole("tab", { name: "Асуулт тус бүр" })).toHaveAttribute(
         "aria-selected",
         "true",
       ),
     );
+    expect(screen.getByRole("combobox", { name: "Асуулт сонгох" })).toHaveTextContent(
+      RATING.prompt,
+    );
   });
 });
 
-describe("a question drawn the way its type is read", () => {
-  async function answers(user: ReturnType<typeof userEvent.setup>) {
+describe("асуулт тус бүр", () => {
+  async function open(user: ReturnType<typeof userEvent.setup>) {
     stubResults();
     renderWithProviders(<SurveyDetailPage />);
-    await openTab(user, "Хариултууд");
-    return screen.findByText(RATING.prompt);
+    await openTab(user, "Асуулт тус бүр");
+    return screen.findByRole("combobox", { name: "Асуулт сонгох" });
   }
 
-  it("gives a rating its average", async () => {
+  /*
+    ★ The five bands the drawing names — "Маш сайн · Сайн · Дунд · Муу".
+
+    A RATING question stores a score and carries no labels of its own, so the
+    words are the screen's. The empty scores keep their bars: "nobody gave this
+    a 1" is one of the more useful things on the chart, and a distribution whose
+    columns move is not a distribution.
+  */
+  it("★ draws a rating as named bands, zeros included", async () => {
     const user = userEvent.setup();
-    await answers(user);
+    await open(user);
 
-    // 2×5 + 2×4 + 2×3 over 6.
-    expect(screen.getByText("4.0")).toBeInTheDocument();
-  });
+    for (const band of ["Маш сайн", "Сайн", "Дунд", "Муу", "Маш муу"]) {
+      expect(screen.getByText(band)).toBeInTheDocument();
+    }
 
-  /**
-   * ★ Fixed 5 → 1, zeros included.
-   *
-   * `AnswerBars` sorts by count because a list of named options has no inherent
-   * order; a scale does, and a scale that drops its empty scores hides the most
-   * informative thing on the card.
-   */
-  it("keeps a rating's empty scores on the scale", async () => {
-    const user = userEvent.setup();
-    await answers(user);
-
-    // "2" and "1" were never answered and still have a row.
-    expect(screen.getAllByText("0")).not.toHaveLength(0);
+    // 2 of 6 is 33%; the two unused scores are still drawn, at zero.
+    expect(screen.getAllByText("(33%)")).toHaveLength(3);
     expect(screen.getAllByText("(0%)")).toHaveLength(2);
   });
 
-  it("draws a yes/no as a share of the whole", async () => {
+  it("qualifies the chart with the mean and who took part", async () => {
     const user = userEvent.setup();
-    await answers(user);
+    await open(user);
 
-    expect(screen.getByRole("img", { name: /Тийм 67 хувь, Үгүй 33 хувь/ })).toBeInTheDocument();
+    expect(screen.getByText("Дундаж үнэлгээ").parentElement).toHaveTextContent("4.0");
+    expect(screen.getByText("Оролцсон").parentElement).toHaveTextContent("6/10");
+    expect(screen.getByText("Оролцсон").parentElement).toHaveTextContent("(60%)");
+  });
+
+  it("switches to another question's answers", async () => {
+    const user = userEvent.setup();
+    const picker = await open(user);
+
+    await user.click(picker);
+    await user.click(await screen.findByRole("option", { name: new RegExp(YES_NO.prompt) }));
+
+    expect(screen.getByText("Тийм")).toBeInTheDocument();
+    expect(screen.getByText("Үгүй")).toBeInTheDocument();
+    // A yes/no has no mean — the tile says so rather than inventing one.
+    expect(screen.getByText("Дундаж үнэлгээ").parentElement).toHaveTextContent("—");
   });
 
   it("shows free text as what people wrote", async () => {
     const user = userEvent.setup();
-    await answers(user);
+    const picker = await open(user);
+
+    await user.click(picker);
+    await user.click(await screen.findByRole("option", { name: new RegExp(TEXT.prompt) }));
 
     expect(screen.getByText("Багш нар маш анхааралтай ханддаг.")).toBeInTheDocument();
   });
 
-  /** The number a teacher refers to a question by, in a meeting. */
-  it("numbers the questions", async () => {
+  /*
+    ★ No baseline, no block. A survey with nothing to compare against is the
+    ordinary case — most are run once — and a heading over an empty state is a
+    section a reader has to dismiss on every visit.
+  */
+  it("draws no comparison when there is nothing to compare against", async () => {
     const user = userEvent.setup();
-    await answers(user);
+    await open(user);
 
-    // The badge leads the card, so the card's text starts with its number —
-    // asserted this way rather than by `getByText("1")`, which also matches the
-    // "1" row of the rating scale inside the same card.
-    const card = screen.getByText(RATING.prompt).closest('[data-ui="card"]')!;
-    expect(card.textContent?.startsWith("1")).toBe(true);
+    expect(
+      screen.queryByRole("heading", { name: "Өмнө авсан ижил судалгаатай харьцуулах" }),
+    ).not.toBeInTheDocument();
+  });
+
+  /*
+    ★ 2026-09-12, the client's second drawing: paired bars, the table that reads
+    them out, and the one sentence the movement supports.
+  */
+  it("★ sets this question against the previous wave, and says what moved", async () => {
+    const user = userEvent.setup();
+    stubResults({}, [
+      {
+        path: `/surveys/${SURVEY_ID}/comparison`,
+        body: {
+          baseline: {
+            id: GROUP_A,
+            title: "2026.05 судалгаа",
+            period: null,
+            publishedAt: "2026-05-04T00:00:00.000Z",
+          },
+          endline: { id: SURVEY_ID, title: SURVEY.title, publishedAt: "2026-09-01T00:00:00.000Z" },
+          indicators: [],
+          children: [],
+          note: null,
+          questions: [
+            {
+              questionId: RATING.id,
+              prompt: RATING.prompt,
+              type: "RATING",
+              // 2 of 5 was "Маш сайн" then; 2 of 6 now — 40% to 33%.
+              baselineCounts: { "5": 2, "4": 2, "3": 1 },
+              endlineCounts: { "5": 2, "4": 2, "3": 2 },
+            },
+          ],
+        },
+      },
+    ]);
+    renderWithProviders(<SurveyDetailPage />);
+    await openTab(user, "Асуулт тус бүр");
+
+    expect(
+      await screen.findByRole("heading", { name: "Өмнө авсан ижил судалгаатай харьцуулах" }),
+    ).toBeInTheDocument();
+
+    const table = screen.getByRole("table", { name: "Хариултын харьцуулалт" });
+    const row = within(table).getByRole("rowheader", { name: "Маш сайн" }).closest("tr")!;
+    expect(
+      within(row)
+        .getAllByRole("cell")
+        .map((cell) => cell.textContent),
+    ).toEqual(["2 (40%)", "2 (33%)"]);
+
+    expect(
+      screen.getByText(/«Маш сайн» үзүүлэлт өмнөхөөс -7% буурсан байна\./),
+    ).toBeInTheDocument();
+
+    // The columns are named by when each wave ran, not "Өмнө/Одоо": "өмнө" is
+    // true of every earlier wave there has ever been.
+    expect(within(table).getByRole("columnheader", { name: "2026.05" })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: "2026.09" })).toBeInTheDocument();
+    // And the question itself heads the card a teacher screenshots.
+    expect(screen.getAllByText(RATING.prompt).length).toBeGreaterThan(0);
+  });
+});
+
+describe("хүүхэд бүрийн хариулт", () => {
+  it("асуултын дүнгээс хүүхэд бүрийн хариултыг нээнэ", async () => {
+    const user = userEvent.setup();
+    stubResults({}, [
+      {
+        path: `/surveys/${SURVEY_ID}/questions/${RATING.id}/answers`,
+        body: {
+          anonymous: false,
+          items: [
+            { child: { id: GROUP_A, firstName: "Ананд", lastName: "Амар" }, value: 5 },
+            { child: { id: GROUP_B, firstName: "Болор", lastName: "Ба" }, value: 3 },
+          ],
+        },
+      },
+    ]);
+    renderWithProviders(<SurveyDetailPage />);
+
+    await openTab(user, "Хариулт");
+    expect(
+      await screen.findByRole("combobox", { name: "Хариултын асуулт сонгох" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /А\.Ананд/ })).toHaveTextContent("Маш сайн");
+    expect(screen.getByRole("link", { name: /Б\.Болор/ })).toHaveTextContent("Дунд");
   });
 });

@@ -43,6 +43,7 @@ const WEEKDAYS = ["Да", "Мя", "Лх", "Пү", "Ба", "Бя", "Ня"];
  * glance rather than five identical white boxes with different headings. */
 const MEAL_KIND_STYLE: Record<MealKind, { icon: ReactNode; tone: string }> = {
   BREAKFAST: { icon: <Sun size={22} aria-hidden="true" />, tone: "bg-sun text-sun-ink" },
+  SNACK: { icon: <Cookie size={22} aria-hidden="true" />, tone: "bg-sun/50 text-sun-ink" },
   MID_MORNING_SNACK: {
     icon: <Apple size={22} aria-hidden="true" />,
     tone: "bg-primary-soft text-primary",

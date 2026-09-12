@@ -157,6 +157,7 @@ export class AttendanceService {
       to: query.to,
       days: built.days,
       totals: built.totals,
+      groups: built.groups,
     };
   }
 
@@ -435,6 +436,7 @@ export class AttendanceService {
       days: built.days,
       rows: built.rows,
       totals: built.totals,
+      groups: built.groups,
     });
 
     return { buffer, filename: `irts-${query.from}-${query.to}.xlsx` };
@@ -513,6 +515,34 @@ export class AttendanceService {
       };
     });
 
+    /*
+     * ★ The same totals split by class — 2026-09-12, at the client's request
+     * ("доор ангийн нийт ирсэн, нийт гэсэн тоон үзүүлэлтүүдийг бод").
+     *
+     * Counted here rather than on the screen, and that is the whole point:
+     * `register()` pages over children, so a class total assembled from the
+     * rows on screen would change when somebody turned to page two. `rows` is
+     * every matching child, which is the only set the figure can honestly be
+     * taken from — and the export reads the same function, so the file and the
+     * screen cannot disagree.
+     */
+    const byGroup = new Map<
+      string,
+      { group: string; children: number; counts: Record<string, number>; recorded: number }
+    >();
+    for (const row of rows) {
+      let entry = byGroup.get(row.group.id);
+      if (!entry) {
+        entry = { group: row.group.name, children: 0, counts: {}, recorded: 0 };
+        byGroup.set(row.group.id, entry);
+      }
+      entry.children += 1;
+      entry.recorded += row.recorded;
+      for (const [status, count] of Object.entries(row.counts)) {
+        entry.counts[status] = (entry.counts[status] ?? 0) + count;
+      }
+    }
+
     return {
       rows,
       days,
@@ -523,6 +553,9 @@ export class AttendanceService {
         }
         return acc;
       }, {}),
+      groups: [...byGroup.entries()]
+        .map(([groupId, entry]) => ({ groupId, ...entry }))
+        .sort((a, b) => a.group.localeCompare(b.group, "mn")),
     };
   }
 
@@ -657,6 +690,24 @@ export class AttendanceService {
       days: sheet.days,
       rows,
       totals,
+      /*
+       * ★ The class's own line, so the teacher's download carries the figures
+       * their screen shows under the grid — 2026-09-12, at the client's
+       * instruction ("татахад энэ мэдээлэл бүхлээрээ татагддаг байна,
+       * бодолтууд бүгд орно").
+       *
+       * One row, because this export is one group: the sheet's shape is the
+       * director's, and a teacher's file that shares it can be pasted under
+       * theirs without re-arranging a column.
+       */
+      groups: [
+        {
+          group: group.name,
+          children: rows.length,
+          counts: totals,
+          recorded: Object.values(totals).reduce((sum, count) => sum + count, 0),
+        },
+      ],
     });
 
     return { buffer, filename: `irts-${group.name}-${fromIso}-${toIso}.xlsx` };
@@ -1160,6 +1211,25 @@ export class AttendanceService {
       dateFrom,
       dateTo,
       requestedStatus: dto.requestedStatus,
+      /*
+        ★ An arrival or a pickup is *told*, not asked — 2026-09-12, at the
+        client's instruction: "хүүхдийн ирлээ, явлаа … багшаар баталгаажиж
+        зөвшөөрөгдөхгүй; зөвхөн чөлөөний хүсэлт л багшаар баталгаажуулна."
+
+        A parent saying "I dropped him off at 08:40 with his grandmother" is
+        reporting a fact about a morning the teacher was present for. There is
+        nothing to approve, and leaving it PENDING put every drop-off in the
+        review queue, where a teacher had to press Зөвшөөрөх on a thing that had
+        already happened.
+
+        A leave request is the opposite — it asks for a day off that has not
+        happened yet — and stays PENDING.
+
+        ★★ The teacher still corrects it: the register is theirs, and
+        `record()` overwrites whatever a parent claimed. What this removes is a
+        decision, not their authority.
+      */
+      reviewStatus: isPresentClaim ? "APPROVED" : "PENDING",
       reason: dto.reason ?? null,
       arrivedWith: isPresentClaim ? dto.arrivedWith : undefined,
       arrivedWithName:
@@ -1182,6 +1252,37 @@ export class AttendanceService {
         : undefined,
     });
 
+    /*
+      ★ An arrival or pickup is written to the register as it is reported.
+
+      Approving a request is what used to copy the companion and the time onto
+      the `Attendance` row (see `reviewRequest`), so marking these APPROVED and
+      stopping there would have recorded the fact nowhere: the parent would see
+      "sent", the teacher would see nothing, and the register would be empty for
+      a child who was standing in the room.
+
+      The same writer, on the same day, with the same `?? undefined` care — a
+      pickup reported in the afternoon must not blank the morning's arrival.
+      Staff remain the register's authority: `record()` overwrites any of this.
+    */
+    if (isPresentClaim) {
+      await this.repo.upsertForChild({
+        kindergartenId: enrollment.kindergartenId,
+        childId,
+        enrollmentId: enrollment.id,
+        date: dateFrom,
+        status: dto.requestedStatus,
+        note: null,
+        recordedById: actor.userId,
+        arrivedWith: dto.arrivedWith ?? undefined,
+        arrivedWithName: dto.arrivedWith === "OTHER" ? (dto.arrivedWithName ?? null) : undefined,
+        arrivedAt: arrivedAt ?? undefined,
+        pickedUpWith: dto.pickedUpWith ?? undefined,
+        pickedUpWithName: dto.pickedUpWith === "OTHER" ? (dto.pickedUpWithName ?? null) : undefined,
+        pickedUpAt: pickedUpAt ?? undefined,
+      });
+    }
+
     await this.audit.append({
       action: "CREATE",
       kindergartenId: enrollment.kindergartenId,
@@ -1192,6 +1293,8 @@ export class AttendanceService {
       metadata: {
         requestedStatus: dto.requestedStatus,
         hasAttachment: Boolean(storedAttachment),
+        // Told rather than asked — see `reviewStatus` above.
+        applied: isPresentClaim,
       },
     });
 

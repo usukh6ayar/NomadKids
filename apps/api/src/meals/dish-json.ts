@@ -8,6 +8,7 @@ export interface MenuDishLike {
   name: string;
   allergenTags: string[];
   kind?: string | null;
+  time?: string | null;
   ingredients?: string | null;
   note?: string | null;
   calories?: number | null;
@@ -37,6 +38,7 @@ export function parseDishes(value: unknown): MenuDishLike[] {
           ? dish.allergenTags.filter((tag): tag is string => typeof tag === "string")
           : [],
         kind: typeof dish.kind === "string" ? dish.kind : null,
+        time: typeof dish.time === "string" ? dish.time : null,
         ingredients: typeof dish.ingredients === "string" ? dish.ingredients : null,
         note: typeof dish.note === "string" ? dish.note : null,
         calories: typeof dish.calories === "number" ? dish.calories : null,

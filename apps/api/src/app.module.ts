@@ -26,6 +26,7 @@ import { MaintenanceModule } from "./maintenance/maintenance.module";
 import { MailModule } from "./mail/mail.module";
 import { MealsModule } from "./meals/meals.module";
 import { MediaModule } from "./media/media.module";
+import { GroupReportsModule } from "./group-reports/group-reports.module";
 import { ObservationsModule } from "./observations/observations.module";
 import { ChatModule } from "./chat/chat.module";
 import { NotificationsModule } from "./notifications/notifications.module";
@@ -64,6 +65,7 @@ import { UsersModule } from "./users/users.module";
     UsersModule,
     ChildrenModule,
     PortfolioModule,
+    GroupReportsModule,
     ObservationsModule,
     StorageModule,
     MediaModule,

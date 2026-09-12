@@ -58,6 +58,7 @@ import { cn } from "@/lib/utils";
  */
 export const MEAL_KIND_ORDER: MealKind[] = [
   "BREAKFAST",
+  "SNACK",
   "MID_MORNING_SNACK",
   "LUNCH",
   "AFTERNOON_SNACK",
@@ -70,6 +71,7 @@ export interface DishDraft {
   key: string;
   name: string;
   kind: MealKind;
+  time: string;
   allergenTags: string;
   ingredients: string;
   calories: string;
@@ -117,6 +119,7 @@ export function toDraft(dishes: MenuDish[]): DishDraft[] {
     key: `${i}-${dish.recipeId ?? dish.name}`,
     name: dish.name,
     kind: dish.kind ?? "BREAKFAST",
+    time: dish.time ?? "",
     allergenTags: dish.allergenTags.join(", "),
     ingredients: dish.ingredients ?? "",
     calories: dish.calories === null || dish.calories === undefined ? "" : String(dish.calories),
@@ -151,6 +154,7 @@ export function fromDraft(drafts: DishDraft[]) {
     .map((d) => ({
       name: d.name.trim(),
       kind: d.kind,
+      ...(d.time ? { time: d.time } : {}),
       allergenTags: d.allergenTags
         .split(",")
         .map((t) => t.trim())
@@ -169,6 +173,7 @@ export function newDraft(kind: MealKind, useRecipe = false): DishDraft {
     key: crypto.randomUUID(),
     name: "",
     kind,
+    time: "",
     allergenTags: "",
     ingredients: "",
     calories: "",
@@ -189,6 +194,8 @@ export interface RecipeOption {
   yieldPortions: number;
   /** Groups the picker. `null` cards fall into "Бусад" rather than vanishing. */
   mealKind: MealKind | null;
+  /** Computed per serving; quick menu entry fills calories from it. */
+  calories?: number | null;
 }
 
 /**

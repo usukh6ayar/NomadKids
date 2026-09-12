@@ -588,6 +588,7 @@ function GroupAttendance() {
         <AttendanceMonthPanel
           groupId={groupId}
           month={date.slice(0, 7)}
+          date={date}
           progress={{ recorded, total: rows.length, breakdown }}
         />
       </Card>

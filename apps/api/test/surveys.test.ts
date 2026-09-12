@@ -146,6 +146,73 @@ describe("who answered and who has not", () => {
   });
 });
 
+/*
+  ★ "Хариулт" — who said what to one question. 2026-09-12, to the client's own
+  drawing: a distribution says 60% answered "Маш сайн", and this says which
+  children they were.
+*/
+describe("one question's answers, child by child", () => {
+  it("names the child beside their answer", async () => {
+    const { surveyId, questionId } = await publishedChildSurvey();
+
+    await authed(request(server()).post(`/v1/surveys/${surveyId}/responses`), parentA).send({
+      childId: a.child.id,
+      answers: [{ questionId, value: "4" }],
+    });
+
+    const res = await authed(
+      request(server()).get(`/v1/surveys/${surveyId}/questions/${questionId}/answers`),
+      teacherA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.anonymous).toBe(false);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0].child.id).toBe(a.child.id);
+    expect(String(res.body.items[0].value)).toBe("4");
+  });
+
+  /** A question from another survey is a question this one does not have. */
+  it("404s for a question that belongs to a different survey", async () => {
+    const { surveyId } = await publishedChildSurvey();
+    const other = await publishedChildSurvey();
+
+    const res = await authed(
+      request(server()).get(`/v1/surveys/${surveyId}/questions/${other.questionId}/answers`),
+      teacherA,
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  it("a guardian cannot read it", async () => {
+    const { surveyId, questionId } = await publishedChildSurvey();
+
+    expect(
+      (
+        await authed(
+          request(server()).get(`/v1/surveys/${surveyId}/questions/${questionId}/answers`),
+          parentA,
+        )
+      ).status,
+    ).toBe(404);
+  });
+
+  it("a teacher from another kindergarten gets 404", async () => {
+    const { surveyId, questionId } = await publishedChildSurvey();
+    const teacherB = await login(app, b.teacherUser.username);
+
+    expect(
+      (
+        await authed(
+          request(server()).get(`/v1/surveys/${surveyId}/questions/${questionId}/answers`),
+          teacherB,
+        )
+      ).status,
+    ).toBe(404);
+  });
+});
+
 describe("withdrawing a survey", () => {
   /*
    * ★ Soft, and the answers stay — §3.2.
@@ -1544,5 +1611,80 @@ describe("an anonymous survey", () => {
     // The group survives: it is not identifying and it is the unit every
     // analysis of this sheet is grouped by.
     expect(text).toContain(a.group.name);
+  });
+});
+
+/**
+ * The lock, and taking it off — 2026-09-12, at the client's request: "цоожоо
+ * онгойлгоод нээж болдог бай."
+ *
+ * ★ Two routes, not a toggle. A "flip it" request would close a survey somebody
+ * else had just re-opened, and the audit row would then say the opposite of
+ * what happened.
+ */
+describe("closing and re-opening a survey", () => {
+  it("closes a published survey and stops taking answers", async () => {
+    const { surveyId, questionId } = await publishedChildSurvey();
+
+    const closed = await authed(request(server()).post(`/v1/surveys/${surveyId}/close`), teacherA);
+    expect(closed.status).toBe(201);
+    expect(closed.body.status).toBe("CLOSED");
+
+    const late = await authed(
+      request(server()).post(`/v1/surveys/${surveyId}/responses`),
+      parentA,
+    ).send({ childId: a.child.id, answers: [{ questionId, value: "4" }] });
+    expect(late.status).toBe(400);
+  });
+
+  it("re-opens it, and answers are taken again", async () => {
+    const { surveyId, questionId } = await publishedChildSurvey();
+    await authed(request(server()).post(`/v1/surveys/${surveyId}/close`), teacherA);
+
+    const reopened = await authed(
+      request(server()).post(`/v1/surveys/${surveyId}/reopen`),
+      teacherA,
+    );
+    expect(reopened.status).toBe(201);
+    expect(reopened.body.status).toBe("PUBLISHED");
+
+    const answered = await authed(
+      request(server()).post(`/v1/surveys/${surveyId}/responses`),
+      parentA,
+    ).send({ childId: a.child.id, answers: [{ questionId, value: "4" }] });
+    expect(answered.status).toBe(201);
+  });
+
+  /*
+    ★ Re-opening does not rewrite when the survey went out.
+
+    `publishedAt` is what a family's "sent on" line and every report's range
+    read. Taking the lock off only clears `closedAt`.
+  */
+  it("keeps the original publication date", async () => {
+    const { surveyId } = await publishedChildSurvey();
+    const before = await db.survey.findUniqueOrThrow({ where: { id: surveyId } });
+
+    await authed(request(server()).post(`/v1/surveys/${surveyId}/close`), teacherA);
+    await authed(request(server()).post(`/v1/surveys/${surveyId}/reopen`), teacherA);
+
+    const after = await db.survey.findUniqueOrThrow({ where: { id: surveyId } });
+    expect(after.publishedAt?.toISOString()).toBe(before.publishedAt?.toISOString());
+    expect(after.closedAt).toBeNull();
+  });
+
+  it("refuses to re-open something that was never closed", async () => {
+    const { surveyId } = await publishedChildSurvey();
+
+    const res = await authed(request(server()).post(`/v1/surveys/${surveyId}/reopen`), teacherA);
+    expect(res.status).toBe(400);
+  });
+
+  it("★ a guardian cannot re-open one", async () => {
+    const { surveyId } = await publishedChildSurvey();
+    await authed(request(server()).post(`/v1/surveys/${surveyId}/close`), teacherA);
+
+    const res = await authed(request(server()).post(`/v1/surveys/${surveyId}/reopen`), parentA);
+    expect(res.status).toBe(404);
   });
 });

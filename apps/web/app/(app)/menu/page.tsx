@@ -20,6 +20,7 @@ import { useRef, useState, type MutableRefObject } from "react";
 import { z } from "zod";
 import {
   ingredientUnitSchema,
+  MEAL_KIND_LABEL,
   menuDayWithWarningsSchema,
   recipeSummarySchema,
   type MealKind,
@@ -35,7 +36,8 @@ import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Field, Textarea } from "@/components/ui/field";
+import { Field, Input, Select, Textarea } from "@/components/ui/field";
+import { FormDialog } from "@/components/ui/form-dialog";
 import { Menu, RowMenu, type MenuItem } from "@/components/ui/menu";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
@@ -59,7 +61,16 @@ const weekSchema = z.array(menuDayWithWarningsSchema);
  * client was simply throwing it away.
  */
 const approvedRecipesSchema = z.array(
-  recipeSummarySchema.pick({ id: true, name: true, yieldPortions: true, mealKind: true }),
+  recipeSummarySchema
+    .pick({ id: true, name: true, yieldPortions: true, mealKind: true, nutritionPerPortion: true })
+    .partial({ nutritionPerPortion: true })
+    .transform((recipe) => ({
+      id: recipe.id,
+      name: recipe.name,
+      yieldPortions: recipe.yieldPortions,
+      mealKind: recipe.mealKind,
+      calories: recipe.nutritionPerPortion?.calories ?? null,
+    })),
 );
 
 /** `GET .../menu/:date/sufficiency` — this day's recipe-linked, portioned
@@ -168,6 +179,185 @@ export default function MenuPage() {
   );
 }
 
+const QUICK_MEAL_KINDS: MealKind[] = [
+  "BREAKFAST",
+  "LUNCH",
+  "SNACK",
+  "MID_MORNING_SNACK",
+  "AFTERNOON_SNACK",
+  "EXTRA",
+];
+
+const QUICK_MEAL_TIME: Record<MealKind, string> = {
+  BREAKFAST: "08:30",
+  LUNCH: "12:30",
+  SNACK: "10:00",
+  MID_MORNING_SNACK: "11:00",
+  AFTERNOON_SNACK: "15:00",
+  EXTRA: "17:30",
+};
+
+/** Compact entry from the + on Өнөөдөр/Маргааш. */
+function QuickAddMealDialog({
+  open,
+  date,
+  recipes,
+  busy,
+  onClose,
+  onSave,
+}: {
+  open: boolean;
+  date: string;
+  recipes: RecipeOption[];
+  busy: boolean;
+  onClose: () => void;
+  onSave: (dishes: MenuDish[]) => void;
+}) {
+  const [kind, setKind] = useState<MealKind>("BREAKFAST");
+  const [time, setTime] = useState(QUICK_MEAL_TIME.BREAKFAST);
+  const [rows, setRows] = useState([{ name: "", calories: "", recipeId: "" }]);
+
+  const rowCount = kind === "LUNCH" ? 2 : 1;
+  const visibleRows = Array.from(
+    { length: rowCount },
+    (_, index) => rows[index] ?? { name: "", calories: "", recipeId: "" },
+  );
+  const valid =
+    Boolean(time) &&
+    visibleRows.every(
+      (row) =>
+        row.name.trim() &&
+        (!row.calories || (Number(row.calories) >= 0 && Number(row.calories) <= 3000)),
+    );
+
+  function updateRow(index: number, name: string) {
+    const recipe = recipes.find((entry) => entry.name.toLowerCase() === name.trim().toLowerCase());
+    setRows((current) => {
+      const next = [...current];
+      next[index] = {
+        name,
+        calories:
+          recipe?.calories === null || recipe?.calories === undefined
+            ? (next[index]?.calories ?? "")
+            : String(recipe.calories),
+        recipeId: recipe?.id ?? "",
+      };
+      return next;
+    });
+  }
+
+  return (
+    <FormDialog
+      open={open}
+      onOpenChange={(next) => (!next ? onClose() : undefined)}
+      title="Хоол нэмэх"
+      description={formatLongDate(date)}
+      busy={busy}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
+            Болих
+          </Button>
+          <Button
+            disabled={!valid || busy}
+            onClick={() =>
+              onSave(
+                visibleRows.map((row) => ({
+                  name: row.name.trim(),
+                  kind,
+                  time,
+                  calories: row.calories ? Number(row.calories) : null,
+                  allergenTags: [],
+                  ...(row.recipeId ? { recipeId: row.recipeId } : {}),
+                })),
+              )
+            }
+          >
+            {busy ? "Хадгалж байна…" : "Нэмэх"}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        <Field label="Хугацаа">
+          {({ id }) => (
+            <Select
+              id={id}
+              value={kind}
+              onChange={(event) => {
+                const next = event.target.value as MealKind;
+                setKind(next);
+                setTime(QUICK_MEAL_TIME[next]);
+                setRows((current) =>
+                  next === "LUNCH"
+                    ? [
+                        current[0] ?? { name: "", calories: "", recipeId: "" },
+                        { name: "", calories: "", recipeId: "" },
+                      ]
+                    : [current[0] ?? { name: "", calories: "", recipeId: "" }],
+                );
+              }}
+            >
+              {QUICK_MEAL_KINDS.map((value) => (
+                <option key={value} value={value}>
+                  {MEAL_KIND_LABEL[value]}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+
+        <datalist id="quick-meal-catalog">
+          {recipes.map((recipe) => (
+            <option key={recipe.id} value={recipe.name} />
+          ))}
+        </datalist>
+
+        {visibleRows.map((row, index) => (
+          <div key={index} className="grid grid-cols-[minmax(0,1fr)_110px] gap-2">
+            <Field label={kind === "LUNCH" ? `${index + 1}-р хоол` : "Хоолны нэр"}>
+              {({ id }) => (
+                <Input
+                  id={id}
+                  list="quick-meal-catalog"
+                  value={row.name}
+                  placeholder="Каталогоос хайх эсвэл нэр бичих"
+                  onChange={(event) => updateRow(index, event.target.value)}
+                />
+              )}
+            </Field>
+            <Field label="Илчлэг">
+              {({ id }) => (
+                <Input
+                  id={id}
+                  type="number"
+                  min="0"
+                  max="3000"
+                  inputMode="numeric"
+                  value={row.calories}
+                  onChange={(event) =>
+                    setRows((current) => {
+                      const next = [...current];
+                      next[index] = { ...row, calories: event.target.value, recipeId: "" };
+                      return next;
+                    })
+                  }
+                />
+              )}
+            </Field>
+          </div>
+        ))}
+
+        <Field label="Цаг">
+          {({ id }) => (
+            <Input id={id} type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+          )}
+        </Field>
+      </div>
+    </FormDialog>
+  );
+}
+
 function WeeklyMenu() {
   const { session, hasRole } = useSession();
   const kindergartenId = session?.memberships?.[0]?.kindergartenId ?? null;
@@ -225,6 +415,7 @@ function WeeklyMenu() {
     underneath was answering two questions at once.
   */
   const [openDay, setOpenDay] = useState<number | null>(null);
+  const [quickAddDate, setQuickAddDate] = useState<string | null>(null);
   /*
     ★ The day card hands its "add a sitting" up, so the toolbar can press it.
 
@@ -247,15 +438,37 @@ function WeeklyMenu() {
     the allergy cross-check re-runs the same way whichever control was pressed.
   */
   const saveDay = useMutation({
-    mutationFn: ({ date, dishes }: { date: string; dishes: MenuDish[] }) =>
+    mutationFn: ({ date, dishes }: { date: string; dishes: MenuDish[]; closeQuickAdd?: boolean }) =>
       mutate(`/kindergartens/${kindergartenId}/menu/${date}`, menuDayWithWarningsSchema, {
         method: "PUT",
         // `note` is left out: these controls do not touch the day's note, and
         // omitting it is what tells the API to leave the column alone.
         body: { dishes: fromDraft(toDraft(dishes)) },
       }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["kindergarten", kindergartenId, "menu"] });
+    onSuccess: (savedDay, { date, dishes, closeQuickAdd }) => {
+      /*
+       * Keep the card in step with the successful write immediately. The old
+       * invalidation key did not match `qk.weeklyMenu`, so React Query kept
+       * rendering its pre-save copy until a full reload. We still refetch the
+       * authoritative day (recipe calories/warnings may be resolved there),
+       * but the food the cook just entered must be visible at once.
+       */
+      queryClient.setQueryData<z.infer<typeof weekSchema>>(
+        qk.weeklyMenu(kindergartenId ?? "", from, to),
+        (current) => {
+          if (!current) return current;
+          const index = current.findIndex((day) => day.date.slice(0, 10) === date);
+          const nextDay = { ...savedDay, date, dishes };
+          if (index === -1) return [...current, nextDay];
+          return current.map((day, dayIndex) =>
+            dayIndex === index ? { ...day, ...savedDay, date: day.date, dishes } : day,
+          );
+        },
+      );
+      void queryClient.invalidateQueries({
+        queryKey: qk.weeklyMenu(kindergartenId ?? "", from, to),
+      });
+      if (closeQuickAdd) setQuickAddDate(null);
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -325,6 +538,7 @@ function WeeklyMenu() {
             rewrite(date, kind, (rows) =>
               rows.map((dish) => ({ ...dish, photoMediaFileId: null })),
             ),
+          onAdd: (date) => setQuickAddDate(date),
         }
       : undefined;
   const weekDates = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
@@ -559,6 +773,25 @@ function WeeklyMenu() {
               tomorrowIso={tomorrow}
               healthNotes={null}
               actions={rowActions}
+            />
+          ) : null}
+
+          {quickAddDate ? (
+            <QuickAddMealDialog
+              key={quickAddDate}
+              open
+              date={quickAddDate}
+              recipes={recipes.data ?? []}
+              busy={saveDay.isPending}
+              onClose={() => setQuickAddDate(null)}
+              onSave={(dishes) => {
+                const current = byDate.get(quickAddDate)?.dishes ?? [];
+                saveDay.mutate({
+                  date: quickAddDate,
+                  dishes: [...current, ...dishes],
+                  closeQuickAdd: true,
+                });
+              }}
             />
           ) : null}
 

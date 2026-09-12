@@ -219,6 +219,23 @@ export class SurveysRepository {
     return this.prisma.survey.update({ where: { id: surveyId }, data });
   }
 
+  /**
+   * Re-opens a closed survey.
+   *
+   * ★ Not `setStatus(id, "PUBLISHED", now)` — that would rewrite `publishedAt`.
+   *
+   * A survey was published on a date, and that date is what a family's "sent on"
+   * line and every report's range read. Re-opening it does not change when it
+   * went out; it only takes the lock off, so `closedAt` is cleared and
+   * `publishedAt` is left exactly where it was.
+   */
+  async reopen(surveyId: string) {
+    return this.prisma.survey.update({
+      where: { id: surveyId },
+      data: { status: "PUBLISHED", closedAt: null },
+    });
+  }
+
   /** §3.2 — sets `deletedAt`; the row and its answers stay for the audit. */
   async softDelete(surveyId: string) {
     return this.prisma.survey.update({
@@ -486,6 +503,44 @@ export class SurveysRepository {
       responseId: answer.responseId,
       group: answer.response.childId ? (groupOfChild.get(answer.response.childId) ?? null) : null,
     }));
+  }
+
+  /**
+   * Every answer with the child it was given about — the roster behind
+   * "Хариултууд".
+   *
+   * ★ Two queries and a join in memory, the trade `answersByGroup` above
+   * documents: a kindergarten's response volume is dozens, and a per-answer
+   * child lookup is the N+1 §3.4 forbids.
+   *
+   * ★★ The child, not the respondent. A guardian with two children answers a
+   * CHILD survey twice, and the list a teacher reads is "what was said about
+   * each child" — filing both answers under one parent would lose which child
+   * each was about. Responses with no child (a survey asked of the family)
+   * carry a null and the caller drops them: there is no roster row to show
+   * them against.
+   */
+  async answersWithChild(surveyId: string, questionId: string) {
+    const answers = await this.prisma.surveyAnswer.findMany({
+      where: { questionId, response: { surveyId, deletedAt: null } },
+      select: { value: true, response: { select: { childId: true } } },
+    });
+
+    const childIds = [
+      ...new Set(answers.map((row) => row.response.childId).filter((id): id is string => !!id)),
+    ];
+    if (childIds.length === 0) return [];
+
+    const children = await this.prisma.child.findMany({
+      where: { id: { in: childIds }, deletedAt: null },
+      select: { id: true, firstName: true, lastName: true },
+    });
+    const byId = new Map(children.map((child) => [child.id, child]));
+
+    return answers.flatMap((row) => {
+      const child = row.response.childId ? byId.get(row.response.childId) : undefined;
+      return child ? [{ child, value: row.value }] : [];
+    });
   }
 
   /**

@@ -14,4 +14,5 @@ export * from "./domain";
 export * from "./ids";
 export * from "./pagination";
 export * from "./password";
+export * from "./working-days";
 export * from "./problem";

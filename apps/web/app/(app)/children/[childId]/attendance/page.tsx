@@ -9,6 +9,7 @@ import { errorMessage } from "@/lib/api/errors";
 import { BackButton } from "@/components/ui/back-button";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAttendance } from "@/components/child/child-attendance";
+import { shortName } from "@/lib/format";
 import { useSession } from "@/lib/auth/session";
 
 /**
@@ -53,7 +54,7 @@ export default function ChildAttendancePage() {
 
       <h1 className="sr-only">{data.firstName}-ийн ирц</h1>
 
-      <ChildAttendance childId={childId} isStaff={isStaff} childFirstName={data.firstName} />
+      <ChildAttendance childId={childId} isStaff={isStaff} childName={shortName(data)} />
     </div>
   );
 }
