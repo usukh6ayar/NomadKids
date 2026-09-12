@@ -184,6 +184,21 @@ describe("navigation icons", () => {
     expect(icon.getAttribute("width")).toBe("18");
   });
 
+  it("uses the supplied document and report drawings for management", async () => {
+    renderShell(["ADMIN"]);
+    const nav = await sections();
+
+    expect(
+      within(nav)
+        .getByRole("link", { name: "Баримт бичгийн сан" })
+        .querySelector("img")
+        ?.getAttribute("src"),
+    ).toContain("icon-admin-documents-3d.png");
+    expect(
+      within(nav).getByRole("link", { name: "Тайлан" }).querySelector("img")?.getAttribute("src"),
+    ).toContain("icon-admin-report-3d.png");
+  });
+
   /*
    * ★ The property the route→icon map exists to guarantee.
    *
@@ -352,7 +367,10 @@ describe("role-based navigation", () => {
     const nav = await sidebar();
 
     // Хүүхдийн хөгжил ба үнэлгээ
-    expect(within(nav).getByRole("link", { name: "Явцын үнэлгээ" })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Явцын үнэлгээ" })).toHaveAttribute(
+      "href",
+      "/admin/assessment",
+    );
     // Өдөр тутмын бүртгэл
     expect(within(nav).getByRole("link", { name: "Ирц" })).toBeInTheDocument();
     /*
@@ -788,16 +806,7 @@ describe("mobile navigation", () => {
     }
   });
 
-  /*
-    ★ "Хоолны бүртгэл" is the director's row — 2026-09-12, at the client's
-    request ("багшаас хоолны бүртгэл хас").
-
-    It is the per-child "did this child eat", and `нэмэлт.md` §3 multiplies its
-    "хооллосон өдөр" into the food cost — so it keeps a door rather than losing
-    one. The API is untouched: a teacher following a link still records, because
-    they are the one in the room at lunch.
-  */
-  it("keeps the meal register off a teacher's menu and on a director's", async () => {
+  it("keeps the meal register off a teacher's menu", async () => {
     renderShell(["TEACHER"]);
     const teacherNav = await sidebar();
 
@@ -807,10 +816,10 @@ describe("mobile navigation", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("gives a director the register", async () => {
+  it("keeps the meal register off a director's menu", async () => {
     renderShell(["ADMIN"]);
     const nav = await sidebar();
 
-    expect(within(nav).getByRole("link", { name: "Хоолны бүртгэл" })).toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Хоолны бүртгэл" })).not.toBeInTheDocument();
   });
 });

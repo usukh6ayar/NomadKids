@@ -131,12 +131,39 @@ describe("ирц ба тооцоолол", () => {
     expect(screen.getByText("₮45,000")).toBeInTheDocument();
   });
 
+  it("hides half-day and other from the management attendance view", async () => {
+    stub({
+      items: [
+        row({
+          counts: { PRESENT: 17, HALF_DAY: 1, EXCUSED: 1, SICK: 2, ABSENT: 1, OTHER: 2 },
+        }),
+      ],
+      totals: {
+        ...register().totals,
+        counts: { PRESENT: 89, HALF_DAY: 7, EXCUSED: 5, SICK: 7, ABSENT: 4, OTHER: 9 },
+      },
+    });
+    renderWithProviders(<AdminFundingPage />);
+
+    const table = await screen.findByRole("table", {
+      name: "Хүүхэд тус бүрийн сарын ирцийн задаргаа",
+    });
+    expect(within(table).queryByRole("columnheader", { name: "Хагас өдөр" })).toBeNull();
+    expect(within(table).queryByRole("columnheader", { name: "Бусад" })).toBeNull();
+    expect(screen.queryByText("Хагас өдөр")).toBeNull();
+    expect(screen.queryByText("Бусад")).toBeNull();
+
+    const childRow = within(table).getByText("Батмөнх Тэмүүлэн").closest("tr")!;
+    expect(within(childRow).getAllByRole("cell")[1]).toHaveTextContent("18");
+  });
+
   /**
    * ★ The footer is the month, not the page.
    *
-   * The stub returns one row of 17 present days and a total of 89 — a shape
-   * that only exists to catch a footer summing what it can see. Read from the
-   * page it would say 17.
+   * The stub returns one row of 18 attended days and a total of 96 — a shape
+   * that only exists to catch a footer summing what it can see. Both figures
+   * include historical half-days inside Ирсэн without exposing a separate
+   * status.
    */
   it("totals the whole filter rather than the visible page", async () => {
     stub();
@@ -146,7 +173,7 @@ describe("ирц ба тооцоолол", () => {
       .getByText("Нийт дүн")
       .closest("tr");
     expect(totalRow).not.toBeNull();
-    expect(within(totalRow as HTMLElement).getByText("89")).toBeInTheDocument();
+    expect(within(totalRow as HTMLElement).getByText("96")).toBeInTheDocument();
   });
 
   it("prices the same children on the funding tab", async () => {

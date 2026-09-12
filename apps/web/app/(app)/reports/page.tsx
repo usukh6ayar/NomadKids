@@ -2,26 +2,27 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useMemo, useState, type ReactNode } from "react";
+import { UsersRound } from "lucide-react";
 import { z } from "zod";
 import { groupReportSchema, termSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
-import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
 import { GroupSwitcher, useSwitchableGroups } from "@/components/shell/group-switcher";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { StatCard } from "@/components/ui/stat-card";
 import { BarRow } from "@/components/ui/chart/bar-row";
 import { ColumnChart } from "@/components/ui/chart/columns";
 import { Donut } from "@/components/ui/chart/donut";
+import { Art, type ArtName } from "@/components/ui/art";
 import { ATTENDANCE_STATUS_CHART_TONE, ATTENDANCE_STATUS_LABEL } from "@/lib/attendance-meta";
 import { formatDayMonth } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { AdminReportsOverview } from "@/components/admin/admin-reports-overview";
 
 const termsSchema = z.array(termSchema);
 
@@ -46,10 +47,15 @@ export default function ReportsPage() {
   return (
     <RequireRole roles={["TEACHER", "ADMIN"]}>
       <Suspense fallback={<LoadingState rows={4} />}>
-        <Reports />
+        <ReportsForRole />
       </Suspense>
     </RequireRole>
   );
+}
+
+function ReportsForRole() {
+  const { hasRole } = useSession();
+  return hasRole("ADMIN") ? <AdminReportsOverview /> : <Reports />;
 }
 
 type Period = "month" | "term" | "year";
@@ -140,11 +146,18 @@ function Reports() {
     enabled: Boolean(groupId && range),
   });
 
+  const selectedGroupName =
+    group?.name ?? items.find((item) => item.id === groupId)?.name ?? "Бүлгийн тайлан";
   const header = (
-    <PageHeader
-      title="Тайлан"
-      lede="Багшийн өдөр тутмын ажил, хүүхдийн хөгжил, эцэг эхийн оролцооны нэгтгэл"
-    />
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 lg:mb-5">
+      <h1 className="min-w-0 flex-1 text-display font-semibold leading-heading tracking-[-0.02em] text-ink">
+        Судалгааны мэдээлэл
+      </h1>
+      <span className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-pill bg-sky px-3 text-caption font-semibold text-sky-ink sm:px-4 sm:text-body">
+        <UsersRound aria-hidden="true" className="size-5" />
+        {selectedGroupName}
+      </span>
+    </div>
   );
 
   if (!groupId && !groups.isLoading) {
@@ -173,11 +186,11 @@ function Reports() {
         attendance covers September and the surveys cover the year is four
         reports in a trench coat.
       */}
-      <Card pad="roomy" className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-end gap-3 rounded-card border border-border bg-surface p-3 shadow-sm">
         <div
           role="radiogroup"
           aria-label="Хугацаа"
-          className="grid grid-cols-3 gap-1 rounded-control bg-canvas p-1"
+          className="grid min-w-0 flex-1 grid-cols-3 gap-1 rounded-control bg-canvas p-1 sm:max-w-md"
         >
           {(
             [
@@ -243,11 +256,11 @@ function Reports() {
         ) : null}
 
         {range ? (
-          <p className="text-caption text-muted">
+          <p className="pb-1 text-caption text-muted">
             {formatDayMonth(range.from)} – {formatDayMonth(range.to)}
           </p>
         ) : null}
-      </Card>
+      </div>
 
       {report.isLoading ? <LoadingState rows={4} /> : null}
       {report.isError ? <ErrorState description={errorMessage(report.error)} /> : null}
@@ -268,49 +281,127 @@ function ReportBody({
 }) {
   const { attendance, assessment, observations, surveys, children } = report;
 
+  const noteCounts = useMemo(() => {
+    const countMatching = (words: string[]) =>
+      observations.byType
+        .filter((row) => {
+          const searchable = `${row.code ?? ""} ${row.name}`.toLocaleLowerCase("mn");
+          return words.some((word) => searchable.includes(word));
+        })
+        .reduce((sum, row) => sum + row.count, 0);
+
+    const conversations = countMatching(["conversation", "interview", "ярилц"]);
+    const artwork = countMatching(["artwork", "creation", "бүтээл"]);
+
+    return {
+      conversations,
+      artwork,
+    };
+  }, [observations]);
+
+  const missingAssessments = Math.max(0, children - assessment.assessed);
+
   return (
     <div className="flex flex-col gap-4">
-      {/*
-        ★ Five figures, the client's own five. Each is a fact a teacher is asked
-        for by name, and each names its denominator — "24 / 28" says what is
-        left to do in a way "86%" does not.
-      */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <StatCard
-          label="Нийт хүүхэд"
-          value={String(children)}
-          tone="sky"
-          footer={report.group.name}
-        />
-        <StatCard
-          label="Ирцийн хувь"
-          value={attendance.percent === null ? "—" : `${attendance.percent}%`}
-          tone="mint"
-          footer={attendance.recorded === 0 ? "Бүртгэл алга" : `${attendance.recorded} бүртгэл`}
-        />
-        <StatCard
-          label="Үнэлгээ хийсэн"
-          value={`${assessment.assessed} / ${children}`}
-          tone="sun"
-          footer={
-            children - assessment.assessed > 0
-              ? `${children - assessment.assessed} хүүхдийн үнэлгээ дутуу`
-              : "Бүгд хийгдсэн"
-          }
-        />
-        <StatCard
-          label="Судалгаанд оролцсон"
-          value={`${surveys.responded} / ${children}`}
-          tone="cornflower"
-          footer={surveys.percent === null ? "—" : `${surveys.percent}%`}
-        />
-        <StatCard
-          label="Ажиглалт нэмсэн"
-          value={String(observations.total)}
-          tone="peach"
-          footer={`${observations.children} хүүхдэд`}
-        />
-      </div>
+      <section aria-label="Бүлгийн тайлангийн нэгтгэл" className="flex flex-col gap-3">
+        <Card className="relative min-h-52 overflow-hidden border-sky bg-gradient-to-br from-white via-sky/25 to-sky/60 p-5 sm:min-h-64 sm:p-8">
+          <div className="relative z-10 max-w-[55%]">
+            <h2 className="text-lead font-semibold text-ink">Нийт хүүхэд</h2>
+            <p className="mt-2 text-hero font-bold leading-none tracking-tight text-primary tabular-nums sm:text-hero-lg">
+              {children}
+            </p>
+            <p className="mt-3 text-body font-medium text-ink sm:text-lead">{report.group.name}</p>
+          </div>
+          <div aria-hidden="true" className="absolute inset-y-0 right-0 w-[55%] overflow-hidden">
+            <Art
+              name="reportChildrenStar"
+              size={360}
+              className="absolute -bottom-8 right-0 h-auto w-full max-w-[360px] object-contain object-bottom sm:-bottom-12"
+            />
+          </div>
+        </Card>
+
+        <div className="grid grid-cols-2 gap-3">
+          <ReportMetricCard
+            label="Ирцийн хувь"
+            value={attendance.percent === null ? "—" : `${attendance.percent}%`}
+            footer={attendance.recorded === 0 ? "Бүртгэл алга" : `${attendance.recorded} бүртгэл`}
+            tone="sky"
+            art="attendance"
+          >
+            <Donut
+              size={76}
+              label={`Ирц ${attendance.percent ?? 0}%`}
+              segments={[
+                { label: "Ирсэн", value: attendance.percent ?? 0, tone: "sky" },
+                {
+                  label: "Үлдсэн",
+                  value: 100 - (attendance.percent ?? 0),
+                  color: "var(--color-track)",
+                },
+              ]}
+              centre={
+                <span className="text-body font-bold text-ink">{attendance.percent ?? 0}</span>
+              }
+              className="hidden sm:grid"
+            />
+          </ReportMetricCard>
+
+          <ReportMetricCard
+            label="Үнэлгээ хийсэн"
+            value={`${assessment.assessed} / ${children}`}
+            footer={
+              missingAssessments > 0
+                ? `${missingAssessments} хүүхдийн үнэлгээ дутуу`
+                : "Бүгд хийсэн"
+            }
+            tone="mint"
+            art="progress"
+          />
+
+          <ReportMetricCard
+            label="Судалгаанд оролцсон"
+            value={`${surveys.responded} / ${children}`}
+            footer={surveys.percent === null ? "—" : `${surveys.percent}%`}
+            tone="cornflower"
+            art="survey"
+          >
+            <div
+              aria-hidden="true"
+              className="hidden h-2 w-full overflow-hidden rounded-pill bg-track sm:block"
+            >
+              <span
+                className="block h-full rounded-pill bg-cornflower-ink"
+                style={{ width: `${surveys.percent ?? 0}%` }}
+              />
+            </div>
+          </ReportMetricCard>
+
+          <ReportMetricCard
+            label="Ажиглалт нэмсэн"
+            value={String(observations.total)}
+            footer={`${observations.children} хүүхдэд`}
+            tone="sun"
+            art="observation"
+          />
+
+          <ReportMetricCard
+            label="Ярилцлага"
+            value={String(noteCounts.conversations)}
+            footer="ярилцлага"
+            tone="pink"
+            art="conversation"
+          />
+
+          <ReportMetricCard
+            label="Бүтээлд дүн шинжилгээ"
+            value={String(noteCounts.artwork)}
+            footer="шинжилгээ"
+            tone="sky"
+            art="reportArtworkAnalysis"
+          />
+        </div>
+      </section>
 
       <div role="tablist" aria-label="Тайлангийн хэсэг" className="flex flex-wrap gap-1.5">
         {TABS.map((entry) => (
@@ -339,6 +430,54 @@ function ReportBody({
         {tab === "summary" || tab === "surveys" ? <SurveyPanel report={report} /> : null}
       </div>
     </div>
+  );
+}
+
+function ReportMetricCard({
+  label,
+  value,
+  footer,
+  tone,
+  art,
+  children,
+}: {
+  label: string;
+  value: string;
+  footer: string;
+  tone: "sky" | "mint" | "sun" | "cornflower" | "pink";
+  art: ArtName;
+  children?: ReactNode;
+}) {
+  const backgrounds = {
+    sky: "border-sky bg-gradient-to-br from-white to-sky/60",
+    mint: "border-mint bg-gradient-to-br from-white to-mint/60",
+    sun: "border-sun bg-gradient-to-br from-white to-sun/60",
+    cornflower: "border-cornflower bg-gradient-to-br from-white to-cornflower/60",
+    pink: "border-pink bg-gradient-to-br from-white to-pink/60",
+  } as const;
+
+  return (
+    <Card
+      className={cn("relative min-h-40 overflow-hidden p-4 sm:min-h-52 sm:p-6", backgrounds[tone])}
+    >
+      <div className="relative z-10 flex h-full flex-col">
+        <h3 className="max-w-[78%] text-body font-semibold leading-snug text-ink sm:text-lead">
+          {label}
+        </h3>
+        <p className="mt-3 text-figure font-bold leading-none tracking-tight text-primary tabular-nums sm:text-figure-lg">
+          {value}
+        </p>
+        <div className="mt-auto pt-3">
+          {children}
+          <p className="mt-2 text-caption font-medium text-ink sm:text-body">{footer}</p>
+        </div>
+      </div>
+      <Art
+        name={art}
+        size={128}
+        className="pointer-events-none absolute -bottom-3 -right-4 h-auto w-[48%] max-w-36 object-contain sm:bottom-2 sm:right-3"
+      />
+    </Card>
   );
 }
 

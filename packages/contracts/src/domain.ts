@@ -1251,6 +1251,21 @@ export const surveySchema = z.object({
    * for this child (or, for a KINDERGARTEN-scope survey, at all)? */
   respondedByMe: z.boolean().nullish(),
   /**
+   * This guardian's own answers, on the child-facing list only.
+   *
+   * ★ Added 2026-09-13, at the client's request: "хариулсан хариултууд
+   * харагддаг баймаар байна." An answered survey had `respondedByMe` and
+   * nothing else, so the family's screen could say *that* they had replied and
+   * never *what* they said — the one thing a parent reopens a survey for.
+   *
+   * Their own response and no one else's: `findResponse` is keyed on
+   * `respondentId` and on the child, so there is no other family's answer in
+   * the payload to leak. An anonymous survey still withholds it — the promise
+   * is to the other families, and a guardian who can read their own row back
+   * has not broken it, but `listActiveForChild` documents that call.
+   */
+  myAnswers: z.array(z.object({ questionId: uuidSchema, value: z.unknown() })).nullish(),
+  /**
    * How far this survey has got, on the staff list only.
    *
    * ★ Counted in bulk by the API, never per card.
@@ -1472,6 +1487,20 @@ export type SurveyResults = z.infer<typeof surveyResultsSchema>;
 export const domainSchema = z.object({
   id: uuidSchema,
   name: z.string(),
+  /**
+   * The strand's stable key — `creative`, `language`, `physical`…
+   *
+   * ★ Added 2026-09-12, so a screen can recognise one strand without matching
+   * on its name. A name is a row an administrator may edit (§2.3); the code is
+   * the part that does not move, and the observation form uses it to file a
+   * Бүтээл note under Зураг, урлал on its own.
+   *
+   * `nullish`, not required: `listDomains` returns the whole row and always
+   * carries it, but this schema is also reused where a query selects a
+   * domain down to `id`/`name`/`color` (`assessmentSchema.domain`), and a
+   * required field would fail those parses for a key they never needed.
+   */
+  code: z.string().nullish(),
   color: z.string().nullish(),
   order: z.number().nullish(),
 });

@@ -1,11 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { ArrowRight, ChevronRight, Star, TrendingDown, TrendingUp, Users } from "lucide-react";
+import { ChevronDown, ChevronRight, TrendingDown, TrendingUp } from "lucide-react";
 import { z } from "zod";
 import {
+  hasOptionList,
   surveyComparisonSchema,
   surveyResultsSchema,
   type SurveyQuestionResult,
@@ -14,7 +15,6 @@ import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Card } from "@/components/ui/card";
-import { Select } from "@/components/ui/field";
 import { Donut } from "@/components/ui/chart/donut";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { TONE_SURFACE, TONE_VAR, type Tone } from "@/components/ui/tone";
@@ -33,8 +33,21 @@ import { cn } from "@/lib/utils";
  * checking one question read past five others to reach it.
  *
  * The drawing is two questions asked in order: **how many replied** (one ring,
- * and a way through to the names), then **what did they say to this one**
- * (a picker, one chart, and the two figures that qualify it).
+ * and a way through to the names), then **what did they say to each one** —
+ * every question's chart, stacked down the page.
+ *
+ * ★★★ 2026-09-12, at the client's request: "асуултуудыг бүгдийг доош жагсаан
+ * харуулаад өг сонгохгүй". The second tab had a picker and drew one question
+ * at a time, so reading a ten-question survey was ten selections and no way to
+ * see two charts at once or to print the lot. It now draws them all in order,
+ * and the overview's list scrolls to the one it names rather than selecting it.
+ *
+ * ★★★ Dropped in the same pass, also at the client's request: the "Дундаж
+ * үнэлгээ" and "Оролцсон" tiles under each chart, and the "Хариултуудыг харах"
+ * row. The mean is already the number every row of "Асуултуудын дүн" carries,
+ * the participation figure is what the ring at the head of Ерөнхий дүн says,
+ * and the third tab is the way to the answers — repeating all three under every
+ * chart is what made the page long enough to need a picker.
  *
  * ★★ One query, `qk.surveyResults(surveyId, "")`, shared with everything that
  * was already reading it — so the tabs cannot disagree about a total, which two
@@ -64,9 +77,9 @@ type Slice = { key: string; label: string; count: number; tone: Tone };
 /**
  * A question's answers as bars, whatever its type.
  *
- * RATING becomes the five named bands; CHECKBOX its own options; YES_NO the two
- * words. TEXT has no distribution — it answers `null`, and the caller prints the
- * replies instead of drawing a chart of nothing.
+ * RATING becomes the five named bands; SINGLE_CHOICE and CHECKBOX their own
+ * options; YES_NO the two words. TEXT has no distribution — it answers `null`,
+ * and the caller prints the replies instead of drawing a chart of nothing.
  */
 function slicesOf(result: SurveyQuestionResult): Slice[] | null {
   const counts = result.counts ?? {};
@@ -88,7 +101,22 @@ function slicesOf(result: SurveyQuestionResult): Slice[] | null {
     ];
   }
 
-  if (type === "CHECKBOX" && Array.isArray(result.question.options)) {
+  /*
+    ★ SINGLE_CHOICE draws the same chart as CHECKBOX — 2026-09-12.
+
+    It used to fall through to `null` and be printed as free text, so a poll —
+    which is one SINGLE_CHOICE question by definition — answered "Бичвэр
+    хариулт алга" on the very tab that exists to show its percentages. The API
+    had the counts all along (`SurveysService.results` buckets by the value,
+    which for a single choice *is* the option). The two types differ in how
+    many boxes a parent may tick, which is a fact about the form and not about
+    the chart.
+
+    `hasOptionList` rather than a second literal: the pair of types that carry
+    an option list is the contract's own fact, and this is the third place that
+    would have had to be edited when a fourth choice type arrives.
+  */
+  if (hasOptionList(type) && Array.isArray(result.question.options)) {
     const palette: Tone[] = ["mint", "sky", "sun", "peach", "cornflower", "teal"];
     return result.question.options.map((option, index) => ({
       key: option,
@@ -119,8 +147,6 @@ function averageOf(result: SurveyQuestionResult): number | null {
 
 export function SurveyResultsView({ surveyId }: { surveyId: string }) {
   const [tab, setTab] = useState<"overview" | "questions" | "answers">("overview");
-  /** Which question the second tab is showing, by id. */
-  const [questionId, setQuestionId] = useState<string | null>(null);
 
   const results = useQuery({
     queryKey: qk.surveyResults(surveyId, ""),
@@ -129,7 +155,6 @@ export function SurveyResultsView({ surveyId }: { surveyId: string }) {
 
   const data = results.data;
   const questions = useMemo(() => data?.questions ?? [], [data]);
-  const selected = questions.find((row) => row.question.id === questionId) ?? questions[0];
 
   if (results.isPending) return <LoadingState rows={4} />;
   if (results.isError) return <ErrorState description={errorMessage(results.error)} />;
@@ -183,17 +208,25 @@ export function SurveyResultsView({ surveyId }: { surveyId: string }) {
           aria-labelledby="survey-results-tab-overview"
           className="flex flex-col gap-4"
         >
-          <Coverage
-            surveyId={surveyId}
-            answered={data!.totalResponses}
-            expected={data!.expectedResponses}
-          />
+          <Coverage answered={data!.totalResponses} expected={data!.expectedResponses} />
 
           <QuestionIndex
             questions={questions}
             onOpen={(id) => {
-              setQuestionId(id);
               setTab("questions");
+              /*
+                The panel it opens lists every question, so the row has to land
+                the reader on its own chart — without this the tab switches and
+                they are at the top of a page of charts hunting for the one they
+                tapped. After paint, and `?.()` because jsdom has no
+                `scrollIntoView`.
+              */
+              requestAnimationFrame(() =>
+                document.getElementById(questionAnchor(id))?.scrollIntoView?.({
+                  behavior: "smooth",
+                  block: "start",
+                }),
+              );
             }}
           />
         </div>
@@ -204,44 +237,41 @@ export function SurveyResultsView({ surveyId }: { surveyId: string }) {
           role="tabpanel"
           id="survey-results-panel-questions"
           aria-labelledby="survey-results-tab-questions"
-          className="flex flex-col gap-4"
+          className="flex flex-col gap-6"
         >
-          {questions.length === 0 || !selected ? (
+          {questions.length === 0 ? (
             <EmptyState
               title="Асуулт алга"
               description="Энэ судалгаанд асуулт нэмэгдээгүй байна."
             />
           ) : (
-            <>
-              <label className="sr-only" htmlFor="survey-question-picker">
-                Асуулт сонгох
-              </label>
-              <Select
-                id="survey-question-picker"
-                value={selected.question.id}
-                onChange={(event) => setQuestionId(event.target.value)}
-                className="h-12"
+            /*
+              Every question, in the order it was asked. Each is a landmark
+              with the prompt as its name, which is what lets the overview's
+              list jump to one and a screen reader move between them.
+            */
+            questions.map((row, index) => (
+              <section
+                key={row.question.id}
+                id={questionAnchor(row.question.id)}
+                aria-labelledby={`${questionAnchor(row.question.id)}-heading`}
+                className="flex scroll-mt-4 flex-col gap-3"
               >
-                {questions.map((row, index) => (
-                  <option key={row.question.id} value={row.question.id}>
-                    {index + 1}. {row.question.prompt}
-                  </option>
-                ))}
-              </Select>
+                <h3
+                  id={`${questionAnchor(row.question.id)}-heading`}
+                  className="flex items-start gap-2.5 text-lead font-semibold text-ink"
+                >
+                  <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-control bg-sunken text-caption font-bold tabular-nums text-ink">
+                    {index + 1}
+                  </span>
+                  <span className="min-w-0 flex-1 leading-snug">{row.question.prompt}</span>
+                </h3>
 
-              <QuestionBreakdown result={selected} expected={data!.expectedResponses} />
+                <QuestionBreakdown result={row} />
 
-              <button
-                type="button"
-                onClick={() => setTab("answers")}
-                className="flex min-h-11 w-full items-center rounded-card border border-border bg-surface px-3 text-body font-semibold text-primary transition-colors hover:bg-primary-soft"
-              >
-                Хариултуудыг харах
-                <ChevronRight size={18} aria-hidden="true" className="ms-auto" />
-              </button>
-
-              <QuestionComparisonCard surveyId={surveyId} questionId={selected.question.id} />
-            </>
+                <QuestionComparisonCard surveyId={surveyId} questionId={row.question.id} />
+              </section>
+            ))
           )}
         </div>
       ) : null}
@@ -253,35 +283,23 @@ export function SurveyResultsView({ surveyId }: { surveyId: string }) {
           aria-labelledby="survey-results-tab-answers"
           className="flex flex-col gap-3"
         >
-          {questions.length === 0 || !selected ? (
+          {questions.length === 0 ? (
             <EmptyState
               title="Асуулт алга"
               description="Энэ судалгаанд асуулт нэмэгдээгүй байна."
             />
           ) : (
-            <>
-              <label className="sr-only" htmlFor="survey-answer-question-picker">
-                Хариултын асуулт сонгох
-              </label>
-              <Select
-                id="survey-answer-question-picker"
-                value={selected.question.id}
-                onChange={(event) => setQuestionId(event.target.value)}
-                className="h-12"
-              >
-                {questions.map((row, index) => (
-                  <option key={row.question.id} value={row.question.id}>
-                    {index + 1}. {row.question.prompt}
-                  </option>
-                ))}
-              </Select>
-              <ChildAnswers surveyId={surveyId} result={selected} />
-            </>
+            <ResponseRoster surveyId={surveyId} questions={questions} />
           )}
         </div>
       ) : null}
     </div>
   );
+}
+
+/** The id the overview's list jumps to, and the question section's own anchor. */
+function questionAnchor(questionId: string): string {
+  return `survey-question-${questionId}`;
 }
 
 function tabClass(active: boolean): string {
@@ -292,21 +310,14 @@ function tabClass(active: boolean): string {
 }
 
 /**
- * Хамрагдсан байдал — the ring, and the way through to the names.
+ * Хамрагдсан байдал — the ring, and the two numbers it splits into.
  *
- * ★ The link is the drawing's own row, and it goes to a screen rather than
- * opening a panel: "who has not replied yet" is a list a teacher works through
- * with a phone in their hand, and it wants the width.
+ * ★ 2026-09-12, at the client's request: the "Хэн бөглөсөн / бөглөөгүй харах"
+ * row is gone. The Хариулт tab now opens on those two rosters itself, so the
+ * link was a second door onto the same lists one tab away — and the ring's own
+ * "Бөглөсөн / Бөглөөгүй" legend already names what it led to.
  */
-function Coverage({
-  surveyId,
-  answered,
-  expected,
-}: {
-  surveyId: string;
-  answered: number;
-  expected: number;
-}) {
+function Coverage({ answered, expected }: { answered: number; expected: number }) {
   const missing = Math.max(0, expected - answered);
   const percent = expected === 0 ? null : Math.round((answered / expected) * 100);
 
@@ -351,14 +362,6 @@ function Coverage({
           ))}
         </dl>
       </div>
-
-      <Link
-        href={`/surveys/${surveyId}/respondents`}
-        className="-mx-1 flex min-h-11 items-center gap-2 rounded-control border-t border-border px-1 pt-3 text-body font-medium text-primary hover:underline"
-      >
-        Хэн бөглөсөн / бөглөөгүй харах
-        <ArrowRight size={16} aria-hidden="true" className="ms-auto" />
-      </Link>
     </Card>
   );
 }
@@ -435,44 +438,35 @@ function QuestionIndex({
   );
 }
 
-/** One question: the bars, then the two figures that qualify them. */
-function QuestionBreakdown({
-  result,
-  expected,
-}: {
-  result: SurveyQuestionResult;
-  expected: number;
-}) {
+/** One question's answers, as the chart that type is read by. */
+function QuestionBreakdown({ result }: { result: SurveyQuestionResult }) {
   const slices = slicesOf(result);
-  const average = averageOf(result);
   const answered = slices
     ? slices.reduce((sum, slice) => sum + slice.count, 0)
     : result.responseCount;
-  const share = expected === 0 ? null : Math.round((result.responseCount / expected) * 100);
   const tallest = Math.max(1, ...(slices ?? []).map((slice) => slice.count));
 
   return (
-    <div className="flex flex-col gap-3">
-      <Card pad="roomy">
-        {slices === null ? (
-          /*
+    <Card pad="roomy">
+      {slices === null ? (
+        /*
             A TEXT question has no distribution, so it shows what was written
             instead of a chart of nothing. Capped, because a hundred answers is
             an export rather than a screen.
           */
-          <div className="flex flex-col gap-2">
-            {(result.responses ?? []).length === 0 ? (
-              <p className="text-body text-muted">Бичвэр хариулт алга.</p>
-            ) : (
-              (result.responses ?? []).slice(0, 20).map((text, index) => (
-                <p key={index} className="rounded-row bg-sunken px-3 py-2 text-body text-ink">
-                  {text}
-                </p>
-              ))
-            )}
-          </div>
-        ) : (
-          /*
+        <div className="flex flex-col gap-2">
+          {(result.responses ?? []).length === 0 ? (
+            <p className="text-body text-muted">Бичвэр хариулт алга.</p>
+          ) : (
+            (result.responses ?? []).slice(0, 20).map((text, index) => (
+              <p key={index} className="rounded-row bg-sunken px-3 py-2 text-body text-ink">
+                {text}
+              </p>
+            ))
+          )}
+        </div>
+      ) : (
+        /*
             ★ Columns, not rows — the drawing's own shape.
 
             A vertical bar per option with the count and its share written over
@@ -481,119 +475,116 @@ function QuestionBreakdown({
             question a reader asks of this picture is "which answer won", not
             "what fraction of the whole is each".
           */
-          <div className="flex items-end justify-between gap-2 sm:gap-4" style={{ height: 208 }}>
-            {slices.map((slice) => {
-              const percent = answered === 0 ? 0 : Math.round((slice.count / answered) * 100);
-              return (
-                <div key={slice.key} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
-                  <span className="text-caption font-semibold tabular-nums text-ink">
-                    {slice.count}
-                    <span className="ms-1 font-normal text-muted">({percent}%)</span>
-                  </span>
-                  <span
-                    role="img"
-                    aria-label={`${slice.label}: ${slice.count} хариулт, ${percent} хувь`}
-                    className="w-full rounded-t-control"
-                    style={{
-                      height: `${Math.max(4, (slice.count / tallest) * 130)}px`,
-                      background: TONE_VAR[slice.tone],
-                    }}
-                  />
-                  <span className="w-full truncate text-center text-caption text-muted">
-                    {slice.label}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </Card>
-
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <Figure
-          tone="sun"
-          icon={<Star size={18} />}
-          label="Дундаж үнэлгээ"
-          value={average === null ? "—" : average.toFixed(1)}
-          note={average === null ? undefined : "/ 5"}
-        />
-        <Figure
-          tone="sky"
-          icon={<Users size={18} />}
-          label="Оролцсон"
-          value={`${result.responseCount}/${expected}`}
-          note={share === null ? undefined : `(${share}%)`}
-        />
-      </div>
-    </div>
+        <div className="flex items-end justify-between gap-2 sm:gap-4" style={{ height: 208 }}>
+          {slices.map((slice) => {
+            const percent = answered === 0 ? 0 : Math.round((slice.count / answered) * 100);
+            return (
+              <div key={slice.key} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
+                <span className="text-caption font-semibold tabular-nums text-ink">
+                  {slice.count}
+                  <span className="ms-1 font-normal text-muted">({percent}%)</span>
+                </span>
+                <span
+                  role="img"
+                  aria-label={`${slice.label}: ${slice.count} хариулт, ${percent} хувь`}
+                  className="w-full rounded-t-control"
+                  style={{
+                    height: `${Math.max(4, (slice.count / tallest) * 130)}px`,
+                    background: TONE_VAR[slice.tone],
+                  }}
+                />
+                <span className="w-full truncate text-center text-caption text-muted">
+                  {slice.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
   );
 }
 
-function Figure({
-  tone,
-  icon,
-  label,
-  value,
-  note,
+/** A child, the way both `/participation` and the answers route name one. */
+const rosterChildSchema = z.object({
+  id: z.string(),
+  firstName: z.string(),
+  lastName: z.string().nullish(),
+});
+
+const rosterRowSchema = z.object({
+  child: rosterChildSchema,
+  group: z.object({ id: z.string(), name: z.string() }).nullish(),
+});
+
+const participationSchema = z.object({
+  anonymous: z.boolean().default(false),
+  answered: z.array(rosterRowSchema.extend({ submittedAt: z.string() })).default([]),
+  pending: z.array(rosterRowSchema).default([]),
+});
+
+const questionAnswersSchema = z.object({
+  anonymous: z.boolean().default(false),
+  items: z.array(z.object({ child: rosterChildSchema, value: z.unknown() })).default([]),
+});
+
+type RosterSide = "done" | "todo";
+
+/**
+ * Хариулт — бөглөсөн, бөглөөгүй, and what each child actually said.
+ *
+ * ★ 2026-09-12, at the client's request: "хариулт хэсэг рүү дарахаар бөглөсөн
+ * бөглөөгүй гэсэн 2 тусдаа болгочих, бөглөсөн хүүхэд дээр дараад орохоор
+ * асуулт тус бүрд юу гэж хариулсан нь дропдаун харагд."
+ *
+ * What it replaced was a question picker over one flat list of children — so
+ * reading one family's questionnaire meant selecting each question in turn and
+ * finding the same name six times. The axis is turned: the child is the row,
+ * and their whole questionnaire opens underneath it.
+ *
+ * ★★ The roster comes from `/participation`, which is also what says who has
+ * *not* replied — the half this tab could not show before, and the reason the
+ * overview's link out to a separate screen could go.
+ *
+ * ★★★ An anonymous survey shows neither list. That is the API's decision, not
+ * this screen's (`SurveysService.participation`, `questionAnswers`): a list of
+ * everybody who has not replied names the others by subtraction.
+ */
+function ResponseRoster({
+  surveyId,
+  questions,
 }: {
-  tone: Tone;
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  note?: string;
+  surveyId: string;
+  questions: SurveyQuestionResult[];
 }) {
-  return (
-    <div className="flex items-center gap-2.5 rounded-card border border-border-soft bg-surface p-3">
-      <span
-        className={cn(
-          "grid size-9 shrink-0 place-items-center rounded-control",
-          TONE_SURFACE[tone],
-        )}
-        aria-hidden="true"
-      >
-        {icon}
-      </span>
-      <div className="min-w-0">
-        <p className="text-caption leading-snug text-muted">{label}</p>
-        <p className="text-lead font-bold leading-tight tabular-nums text-ink">
-          {value}
-          {note ? <span className="ms-1 text-body font-normal text-muted">{note}</span> : null}
-        </p>
-      </div>
-    </div>
-  );
-}
+  const [side, setSide] = useState<RosterSide>("done");
+  /** Which child's questionnaire is open. One at a time — the drawing's own. */
+  const [openChildId, setOpenChildId] = useState<string | null>(null);
 
-/** One child's answer, in the compact list shown in the supplied design. */
-function ChildAnswers({ surveyId, result }: { surveyId: string; result: SurveyQuestionResult }) {
-  const questionId = result.question.id;
-  const answers = useQuery({
-    queryKey: ["surveys", surveyId, "answers", questionId],
-    queryFn: () =>
-      get(
-        `/surveys/${surveyId}/questions/${questionId}/answers`,
-        z.object({
-          anonymous: z.boolean().default(false),
-          items: z
-            .array(
-              z.object({
-                child: z.object({
-                  id: z.string(),
-                  firstName: z.string(),
-                  lastName: z.string().nullish(),
-                }),
-                value: z.unknown(),
-              }),
-            )
-            .default([]),
-        }),
-      ),
+  const participation = useQuery({
+    queryKey: ["surveys", surveyId, "participation"],
+    queryFn: () => get(`/surveys/${surveyId}/participation`, participationSchema),
   });
 
-  if (answers.isPending) return <LoadingState rows={4} />;
-  if (answers.isError) return <ErrorState description={errorMessage(answers.error)} />;
+  /*
+    One request per question, under the key the per-question list already used,
+    so the two readings of this data share a cache entry rather than fetching
+    it twice. The pivot is this screen's own work: the API answers "who said
+    what to question three", and the drawing asks "what did this child say to
+    all of them".
+  */
+  const answers = useQueries({
+    queries: questions.map((row) => ({
+      queryKey: ["surveys", surveyId, "answers", row.question.id],
+      queryFn: () =>
+        get(`/surveys/${surveyId}/questions/${row.question.id}/answers`, questionAnswersSchema),
+    })),
+  });
 
-  const data = answers.data!;
+  if (participation.isPending) return <LoadingState rows={6} />;
+  if (participation.isError) return <ErrorState description={errorMessage(participation.error)} />;
+
+  const data = participation.data!;
   if (data.anonymous) {
     return (
       <EmptyState
@@ -602,46 +593,233 @@ function ChildAnswers({ surveyId, result }: { surveyId: string; result: SurveyQu
       />
     );
   }
-  if (data.items.length === 0) {
-    return <EmptyState title="Хариулт алга" description="Одоогоор хариулт ирээгүй байна." />;
-  }
 
-  const rows = [...data.items].sort((a, b) =>
-    shortName(a.child).localeCompare(shortName(b.child), "mn"),
-  );
+  const byName = (a: { child: { firstName: string; lastName?: string | null } }, b: typeof a) =>
+    shortName(a.child).localeCompare(shortName(b.child), "mn");
+  const done = [...data.answered].sort(byName);
+  const todo = [...data.pending].sort(byName);
+
+  /** This child's answer to the question at `index`, or undefined. */
+  const valueOf = (index: number, childId: string): unknown =>
+    (answers[index]?.data?.items ?? []).find((item) => item.child.id === childId)?.value;
+  const answersPending = answers.some((query) => query.isPending);
 
   return (
-    <Card pad="none" className="divide-y divide-border-soft overflow-hidden">
-      {rows.map((row) => {
-        const badge = answerBadge(result, row.value);
-        return (
-          <Link
-            key={`${row.child.id}-${String(row.value)}`}
-            href={`/children/${row.child.id}/general`}
-            className="flex min-h-14 items-center gap-3 px-3 py-2.5 transition-colors hover:bg-canvas"
+    <div className="flex flex-col gap-3">
+      <div
+        role="tablist"
+        aria-label="Бөглөлтийн байдал"
+        className="grid grid-cols-2 gap-1 rounded-card bg-sunken p-1"
+      >
+        {(
+          [
+            { key: "done", label: "Бөглөсөн", count: done.length },
+            { key: "todo", label: "Бөглөөгүй", count: todo.length },
+          ] as { key: RosterSide; label: string; count: number }[]
+        ).map((entry) => (
+          <button
+            key={entry.key}
+            role="tab"
+            type="button"
+            aria-selected={side === entry.key}
+            onClick={() => setSide(entry.key)}
+            className={tabClass(side === entry.key)}
           >
-            <span
-              aria-hidden="true"
-              className="grid size-9 shrink-0 place-items-center rounded-pill bg-sunken text-caption font-bold text-muted"
+            {entry.label} ({entry.count})
+          </button>
+        ))}
+      </div>
+
+      {side === "done" ? (
+        done.length === 0 ? (
+          <EmptyState title="Хариулт алга" description="Одоогоор хариулт ирээгүй байна." />
+        ) : (
+          <Card pad="none" className="divide-y divide-border-soft overflow-hidden">
+            {done.map((row) => {
+              const open = openChildId === row.child.id;
+              const panelId = `survey-child-answers-${row.child.id}`;
+              return (
+                <div key={row.child.id}>
+                  <button
+                    type="button"
+                    aria-expanded={open}
+                    aria-controls={panelId}
+                    onClick={() => setOpenChildId(open ? null : row.child.id)}
+                    className="flex min-h-14 w-full items-center gap-3 px-3 py-2.5 text-start transition-colors hover:bg-canvas"
+                  >
+                    <Initial child={row.child} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-body text-ink">
+                        {shortName(row.child)}
+                      </span>
+                      {row.group ? (
+                        <span className="block truncate text-caption text-muted">
+                          {row.group.name}
+                        </span>
+                      ) : null}
+                    </span>
+                    <ChevronDown
+                      size={18}
+                      aria-hidden="true"
+                      className={cn(
+                        "shrink-0 text-muted transition-transform",
+                        open ? "rotate-180" : null,
+                      )}
+                    />
+                  </button>
+
+                  {open ? (
+                    <div
+                      id={panelId}
+                      className="border-t border-border-soft bg-sunken px-3 py-3 pb-4"
+                    >
+                      {answersPending ? (
+                        <LoadingState rows={questions.length} />
+                      ) : (
+                        <dl className="flex flex-col gap-3">
+                          {questions.map((question, index) => (
+                            <div key={question.question.id} className="flex flex-col gap-1">
+                              <dt className="text-caption leading-snug text-muted">
+                                {index + 1}. {question.question.prompt}
+                              </dt>
+                              <dd>
+                                <AnswerValue
+                                  result={question}
+                                  value={valueOf(index, row.child.id)}
+                                />
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </Card>
+        )
+      ) : todo.length === 0 ? (
+        <EmptyState title="Бүгд бөглөсөн" description="Бөглөөгүй хүүхэд байхгүй байна." />
+      ) : (
+        /*
+          A pending row goes to the child rather than opening — there is nothing
+          to open, and the next thing a teacher does with this list is find the
+          family's number.
+        */
+        <Card pad="none" className="divide-y divide-border-soft overflow-hidden">
+          {todo.map((row) => (
+            <Link
+              key={row.child.id}
+              href={`/children/${row.child.id}/general`}
+              className="flex min-h-14 items-center gap-3 px-3 py-2.5 transition-colors hover:bg-canvas"
             >
-              {(row.child.firstName[0] ?? "?").toUpperCase()}
+              <Initial child={row.child} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-body text-ink">{shortName(row.child)}</span>
+                {row.group ? (
+                  <span className="block truncate text-caption text-muted">{row.group.name}</span>
+                ) : null}
+              </span>
+              <ChevronRight size={18} aria-hidden="true" className="shrink-0 text-muted" />
+            </Link>
+          ))}
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/** The initial in a circle, the roster's own avatar. */
+function Initial({ child }: { child: { firstName: string } }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="grid size-9 shrink-0 place-items-center rounded-pill bg-sunken text-caption font-bold text-muted"
+    >
+      {(child.firstName[0] ?? "?").toUpperCase()}
+    </span>
+  );
+}
+
+/**
+ * One child's answer to one question, drawn the way that type reads.
+ *
+ * A rating and a yes/no are one word and carry a colour; a free text is a
+ * paragraph and carries none; a multiple choice is however many it picked. The
+ * value arrives as whatever JSON the answering form wrote, so the shape is
+ * checked here rather than assumed from the type alone.
+ */
+function AnswerValue({ result, value }: { result: SurveyQuestionResult; value: unknown }) {
+  if (value === null || value === undefined || value === "") {
+    return <span className="text-body text-muted">Хариулаагүй</span>;
+  }
+
+  /* CHECKBOX answers with the options it picked. */
+  if (Array.isArray(value)) {
+    return (
+      <span className="flex flex-wrap gap-1.5">
+        {value.map((entry, index) => (
+          <span
+            key={index}
+            className="rounded-pill bg-surface px-2.5 py-1 text-caption font-semibold text-ink"
+          >
+            {String(entry)}
+          </span>
+        ))}
+      </span>
+    );
+  }
+
+  /* MATRIX answers with a score per indicator row. */
+  if (typeof value === "object") {
+    return (
+      <span className="flex flex-col gap-1">
+        {Object.entries(value as Record<string, unknown>).map(([indicator, score]) => {
+          const band = typeof score === "number" ? RATING_BAND[score] : undefined;
+          return (
+            <span key={indicator} className="flex items-center gap-2 text-body">
+              <span className="min-w-0 flex-1 truncate text-muted">{indicator}</span>
+              <span className="shrink-0 font-semibold text-ink">
+                {band?.label ?? String(score)}
+              </span>
             </span>
-            <span className="min-w-0 flex-1 truncate text-body text-ink">
-              {shortName(row.child)}
-            </span>
-            <span
-              className={cn(
-                "max-w-32 truncate rounded-pill px-2.5 py-1 text-caption font-semibold",
-                badge.tone ? TONE_SURFACE[badge.tone] : "bg-sunken text-muted",
-              )}
-            >
-              {badge.label}
-            </span>
-            <ChevronRight size={18} aria-hidden="true" className="shrink-0 text-muted" />
-          </Link>
-        );
-      })}
-    </Card>
+          );
+        })}
+      </span>
+    );
+  }
+
+  if (result.question.type === "TEXT") {
+    return (
+      <span className="block rounded-row bg-surface px-3 py-2 text-body text-ink">
+        {String(value)}
+      </span>
+    );
+  }
+
+  /*
+    A single choice is its own option, uncut — `answerBadge` shortens a value to
+    fit a 32-wide pill in a list, and this one has the full row.
+  */
+  if (result.question.type === "SINGLE_CHOICE") {
+    return (
+      <span className="inline-block rounded-pill bg-surface px-2.5 py-1 text-caption font-semibold text-ink">
+        {String(value)}
+      </span>
+    );
+  }
+
+  const badge = answerBadge(result, value);
+  return (
+    <span
+      className={cn(
+        "inline-block rounded-pill px-2.5 py-1 text-caption font-semibold",
+        badge.tone ? TONE_SURFACE[badge.tone] : "bg-surface text-ink",
+      )}
+    >
+      {badge.label}
+    </span>
   );
 }
 
@@ -691,6 +869,11 @@ function QuestionComparisonCard({
   surveyId: string;
   questionId: string;
 }) {
+  /*
+    One heading id per question — every question draws its own card now, and a
+    duplicated id would point every section's label at the first one.
+  */
+  const headingId = `survey-comparison-${questionId}`;
   const comparison = useQuery({
     queryKey: qk.surveyComparison(surveyId),
     queryFn: () => get(`/surveys/${surveyId}/comparison`, surveyComparisonSchema),
@@ -729,17 +912,17 @@ function QuestionComparisonCard({
   const nowLabel = waveLabel(data.endline?.publishedAt, "Одоо");
 
   return (
-    <section aria-labelledby="survey-comparison-heading" className="flex flex-col gap-3">
-      <h3 id="survey-comparison-heading" className="text-lead font-semibold text-ink">
+    <section aria-labelledby={headingId} className="flex flex-col gap-3">
+      <h3 id={headingId} className="text-lead font-semibold text-ink">
         Өмнө авсан ижил судалгаатай харьцуулах
       </h3>
 
       <Card pad="roomy" className="flex flex-col gap-4">
         {/*
           ★ The question itself heads the card — the client's own second
-          drawing. The picker above says which question is selected, but this
-          card is the piece a teacher screenshots for a meeting, and a chart
-          with no question on it is a chart about nothing.
+          drawing. Its section already carries the prompt, but this card is the
+          piece a teacher screenshots for a meeting, and a chart with no
+          question on it is a chart about nothing.
         */}
         <p className="text-body font-semibold leading-snug text-ink">{row.prompt}</p>
 

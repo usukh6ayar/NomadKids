@@ -618,6 +618,60 @@ describe("the child-facing list", () => {
     expect(after.body[0].respondedByMe).toBe(true);
   });
 
+  /*
+   * ★ `myAnswers` — 2026-09-13, at the client's request: "хариулсан хариултууд
+   * харагддаг баймаар байна."
+   *
+   * The list said *that* a family had replied and never *what* they said, so
+   * an answered survey was a dead row on their screen. Their own response and
+   * no one else's: `findResponse` is keyed on the respondent and the child.
+   */
+  it("★ carries the guardian's own answers back with the list", async () => {
+    const { surveyId, questionId } = await publishedChildSurvey();
+
+    const before = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/surveys`),
+      parentA,
+    );
+    expect(before.body[0].myAnswers).toEqual([]);
+
+    await authed(request(server()).post(`/v1/surveys/${surveyId}/responses`), parentA).send({
+      childId: a.child.id,
+      answers: [{ questionId, value: 4 }],
+    });
+
+    const after = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/surveys`),
+      parentA,
+    );
+    expect(after.body[0].myAnswers).toEqual([{ questionId, value: 4 }]);
+  });
+
+  /*
+   * ★★ One family's answer never reaches another's payload. The same rule
+   * `pollTally` states for a running count, asserted here because this is the
+   * route that newly carries answers at all.
+   */
+  it("★★ never carries another family's answer", async () => {
+    const { surveyId, questionId } = await publishedChildSurvey();
+
+    await authed(request(server()).post(`/v1/surveys/${surveyId}/responses`), parentA).send({
+      childId: a.child.id,
+      answers: [{ questionId, value: 4 }],
+    });
+
+    /*
+      `teacherA` may read this child, and has answered nothing — so the array
+      is empty rather than holding the guardian's 4. A reader who has not
+      replied sees no answer, whoever else has.
+    */
+    const res = await authed(request(server()).get(`/v1/children/${a.child.id}/surveys`), teacherA);
+
+    expect(res.status).toBe(200);
+    expect(res.body[0].respondedByMe).toBe(false);
+    expect(res.body[0].myAnswers).toEqual([]);
+  });
+
   it("a guardian of another child gets 404", async () => {
     const res = await authed(request(server()).get(`/v1/children/${a.child.id}/surveys`), parentB);
     expect(res.status).toBe(404);

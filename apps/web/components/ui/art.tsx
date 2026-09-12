@@ -51,7 +51,9 @@ const SOURCE = {
   accountingAudit: "/icons/icon-accounting-audit-3d.png",
   accountingInvoice: "/icons/icon-accounting-invoice-3d.png",
   adminCurriculum: "/icons/icon-admin-curriculum-3d.png",
+  adminDocuments: "/icons/icon-admin-documents-3d.png",
   adminEsisHub: "/icons/icon-admin-esis-hub-3d.png",
+  adminReport: "/icons/icon-admin-report-3d.png",
   adminSchoolYear: "/icons/icon-admin-school-year-3d.png",
   adminTerm: "/icons/icon-admin-term-3d.png",
   adminUsersPermissions: "/icons/icon-admin-users-permissions-3d.png",
@@ -102,10 +104,14 @@ const SOURCE = {
   progress: "/icons/icon-progress-3d.png",
   register: "/icons/icon-register.png",
   report: "/icons/icon-report-3d.png",
+  reportArtworkAnalysis: "/icons/icon-report-artwork-analysis-3d.png",
+  reportChildrenStar: "/illustrations/report-children-star.png",
   safety: "/icons/icon-safety-3d.png",
   settings: "/icons/icon-settings-3d.png",
   survey: "/icons/icon-survey-3d.png",
   teacher: "/icons/icon-teacher-3d.png",
+  teacherPoll: "/icons/icon-teacher-poll-3d.png",
+  teacherSurvey: "/icons/icon-teacher-survey-3d.png",
 } as const;
 
 export type ArtName = keyof typeof SOURCE;

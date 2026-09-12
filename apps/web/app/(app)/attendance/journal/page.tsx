@@ -53,10 +53,28 @@ export default function AttendanceJournalPage() {
   );
 }
 
-/** The six the column can hold — `OTHER` included, since 2026-09-02. */
 const groupsSchema = paginated(groupListItemSchema);
 
-const STATUS_ORDER = ["PRESENT", "HALF_DAY", "EXCUSED", "SICK", "ABSENT", "OTHER"] as const;
+/** The four statuses visible to management. Legacy HALF_DAY rows are displayed
+ * as PRESENT; OTHER stays readable by the API but has no UI category. */
+const VISIBLE_STATUS_ORDER = ["PRESENT", "EXCUSED", "SICK", "ABSENT"] as const;
+
+/**
+ * The four a director may filter by — Ирсэн · Чөлөөтэй · Өвчтэй · Тасалсан.
+ *
+ * ★ 2026-09-12, at the client's request: "Ирсэн · Хагас өдөр — хас · Чөлөөтэй ·
+ * Өвчтэй · Тасалсан · Бусад — хас."
+ *
+ * The same narrowing the teacher's day sheet already has
+ * (`TEACHER_ATTENDANCE_STATUSES`, 2026-09-10: "4 сонголт л байна"), arriving
+ * here for the same reason: no new day can be recorded as `HALF_DAY` or
+ * `OTHER`, so a chip for either filters a set only history can fill.
+ *
+ * Historical HALF_DAY rows are folded into Ирсэн in the summaries and grid.
+ * OTHER stays in the response for compatibility but is not exposed as a
+ * management category.
+ */
+const FILTERABLE_STATUSES = ["PRESENT", "EXCUSED", "SICK", "ABSENT"] as const;
 
 /**
  * One letter per status, for a grid where a word would not fit.
@@ -67,11 +85,9 @@ const STATUS_ORDER = ["PRESENT", "HALF_DAY", "EXCUSED", "SICK", "ABSENT", "OTHER
  */
 const STATUS_SHORT: Record<string, string> = {
   PRESENT: "И",
-  HALF_DAY: "Х",
   EXCUSED: "Ч",
   SICK: "Ө",
   ABSENT: "Т",
-  OTHER: "Б",
 };
 
 /**
@@ -95,11 +111,9 @@ const STATUS_SHORT: Record<string, string> = {
  */
 const STATUS_TONE: Record<string, string> = {
   PRESENT: "bg-mint text-mint-ink",
-  HALF_DAY: "bg-sun text-sun-ink",
   EXCUSED: "bg-sky text-sky-ink",
   SICK: "bg-sun text-sun-ink",
   ABSENT: "bg-peach text-peach-ink",
-  OTHER: "bg-canvas text-muted",
 };
 
 function AttendanceJournal() {
@@ -287,7 +301,7 @@ function AttendanceJournal() {
         </div>
 
         <FilterChipRow label="Ирцийн төлөв" scroll>
-          {STATUS_ORDER.map((status) => (
+          {FILTERABLE_STATUSES.map((status) => (
             <FilterChip
               key={status}
               active={statuses.includes(status)}
@@ -377,20 +391,63 @@ function AttendanceJournal() {
   );
 }
 
-/** The period's totals, across every matching child rather than the page. */
+/**
+ * The period's totals, across every matching child rather than the page.
+ *
+ * ★ A box each — 2026-09-12, at the client's request: "энийг тусдаа жижиг
+ * хайрцгуудад хий."
+ *
+ * They were six columns wrapping inside one roomy card, which on a phone put
+ * "Өвчтэй" under "37" and left a reader pairing labels with figures by
+ * eye. One card per figure is the same information with the pairing settled by
+ * the border, and it is the shape every other count in this product already
+ * has.
+ *
+ * Historical half-days are added to Ирсэн. The API may still return older
+ * categories, but this management summary deliberately presents only the four
+ * current statuses.
+ */
 function Totals({ totals }: { totals: Record<string, number> }) {
-  const present = STATUS_ORDER.filter((status) => (totals[status] ?? 0) > 0);
-  if (present.length === 0) return null;
+  const visible = VISIBLE_STATUS_ORDER.map((status) => ({
+    status,
+    count:
+      status === "PRESENT" ? (totals.PRESENT ?? 0) + (totals.HALF_DAY ?? 0) : (totals[status] ?? 0),
+  })).filter((item) => item.count > 0);
+  if (visible.length === 0) return null;
 
   return (
-    <Card pad="roomy" className="flex flex-wrap gap-x-6 gap-y-2">
-      {present.map((status) => (
-        <div key={status} className="flex flex-col">
-          <span className="text-caption text-muted">{ATTENDANCE_STATUS_LABEL[status]}</span>
-          <span className="text-title text-ink">{totals[status]}</span>
-        </div>
+    <div
+      /*
+        Named, so the six boxes are one addressable region. "Ирсэн" also labels
+        a filter chip a few rows up, and without a landmark a reader — or a
+        test — has no way to say which of the two they mean.
+      */
+      role="group"
+      aria-label="Хугацааны дүн"
+      className="grid grid-cols-2 gap-2 sm:grid-cols-4"
+    >
+      {visible.map(({ status, count }) => (
+        <Card key={status} pad="compact" className="flex flex-col gap-1">
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span
+              aria-hidden="true"
+              /*
+                `STATUS_TONE`, this screen's own map — the same colour the grid
+                cell and the legend below already give this status. Importing
+                `ATTENDANCE_STATUS_BG` instead would put two disagreeing
+                palettes on one screen: it paints SICK peach and this one
+                paints it sun.
+              */
+              className={cn("size-2.5 shrink-0 rounded-pill", STATUS_TONE[status] ?? "bg-track")}
+            />
+            <span className="min-w-0 truncate text-caption text-muted">
+              {ATTENDANCE_STATUS_LABEL[status]}
+            </span>
+          </span>
+          <span className="text-title font-bold tabular-nums text-ink">{count}</span>
+        </Card>
       ))}
-    </Card>
+    </div>
   );
 }
 
@@ -677,9 +734,17 @@ function Grid({
 
                   {row.days.map((cell, index) => {
                     const day = days[index]!;
-                    const label = cell
-                      ? `${day} — ${ATTENDANCE_STATUS_LABEL[cell.status] ?? cell.status}`
-                      : `${day} — бүртгэлгүй`;
+                    const visibleStatus =
+                      cell?.status === "HALF_DAY"
+                        ? "PRESENT"
+                        : cell?.status === "OTHER"
+                          ? null
+                          : cell?.status;
+                    const label = visibleStatus
+                      ? `${day} — ${ATTENDANCE_STATUS_LABEL[visibleStatus] ?? visibleStatus}`
+                      : cell
+                        ? `${day} — бүртгэлтэй`
+                        : `${day} — бүртгэлгүй`;
 
                     return (
                       <td
@@ -706,12 +771,14 @@ function Grid({
                           aria-label={label}
                           className={cn(
                             "inline-flex h-5 w-5 items-center justify-center rounded-control text-compact font-semibold",
-                            cell
-                              ? (STATUS_TONE[cell.status] ?? "bg-canvas text-muted")
-                              : "border border-dashed border-border text-transparent",
+                            visibleStatus
+                              ? (STATUS_TONE[visibleStatus] ?? "bg-canvas text-muted")
+                              : cell
+                                ? "bg-canvas text-muted"
+                                : "border border-dashed border-border text-transparent",
                           )}
                         >
-                          {cell ? (STATUS_SHORT[cell.status] ?? "?") : "·"}
+                          {visibleStatus ? (STATUS_SHORT[visibleStatus] ?? "?") : "·"}
                         </span>
                       </td>
                     );
@@ -754,7 +821,7 @@ function Grid({
 function StatusLegend() {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-caption text-muted">
-      {Object.entries(STATUS_SHORT).map(([status, short]) => (
+      {VISIBLE_STATUS_ORDER.map((status) => (
         <span key={status} className="flex items-center gap-1.5">
           <span
             aria-hidden="true"
@@ -763,7 +830,7 @@ function StatusLegend() {
               STATUS_TONE[status] ?? "bg-canvas text-muted",
             )}
           >
-            {short}
+            {STATUS_SHORT[status]}
           </span>
           {ATTENDANCE_STATUS_LABEL[status] ?? status}
         </span>

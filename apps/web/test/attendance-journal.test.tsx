@@ -138,6 +138,72 @@ describe("the grid", () => {
     expect(screen.getByText("Өвчтэй")).toBeInTheDocument();
   });
 
+  /*
+    ★ One card per figure — 2026-09-12, at the client's request: "энийг тусдаа
+    жижиг хайрцгуудад хий."
+
+    Four columns wrapping inside one card put "Өвчтэй" under "37" on a phone and
+    left the reader pairing labels with figures by eye. Asserted as the pairing
+    rather than as a class name: what the client asked for is that a label and
+    its number share a box, and that is what a restyle must not break.
+  */
+  it("★ gives each total its own box, paired with its label", async () => {
+    stub(
+      journal({ totals: { PRESENT: 37, HALF_DAY: 3, EXCUSED: 2, SICK: 5, ABSENT: 4, OTHER: 2 } }),
+    );
+    renderWithProviders(<AttendanceJournalPage />);
+
+    // Scoped to the totals region: "Ирсэн" also labels a filter chip above.
+    const totals = within(await screen.findByRole("group", { name: "Хугацааны дүн" }));
+
+    for (const [label, count] of [
+      ["Ирсэн", "40"],
+      ["Чөлөөтэй", "2"],
+      ["Өвчтэй", "5"],
+      ["Тасалсан", "4"],
+    ] as const) {
+      const box = totals.getByText(label).closest('[data-ui="card"]');
+      expect(box).not.toBeNull();
+      expect(box).toHaveTextContent(count);
+    }
+    expect(totals.queryByText("Хагас өдөр")).not.toBeInTheDocument();
+    expect(totals.queryByText("Бусад")).not.toBeInTheDocument();
+  });
+
+  /*
+    A status with nothing in it draws no box. Six empty cards on a March filter
+    would be five statements that nothing happened.
+  */
+  it("draws no box for a status the period has none of", async () => {
+    stub(journal({ totals: { PRESENT: 4 } }));
+    renderWithProviders(<AttendanceJournalPage />);
+
+    const totals = within(await screen.findByRole("group", { name: "Хугацааны дүн" }));
+    expect(totals.getByText("Ирсэн")).toBeInTheDocument();
+    expect(totals.queryByText("Хагас өдөр")).not.toBeInTheDocument();
+  });
+
+  it("folds historical half-days into present and hides other in the day grid", async () => {
+    stub(
+      journal({
+        items: [
+          {
+            ...journal().items[0],
+            days: [{ status: "HALF_DAY", note: null }, { status: "OTHER", note: null }, null],
+            counts: { HALF_DAY: 1, OTHER: 1 },
+          },
+        ],
+        totals: { HALF_DAY: 1, OTHER: 1 },
+      }),
+    );
+    renderWithProviders(<AttendanceJournalPage />);
+
+    expect(await screen.findByLabelText("2026-03-02 — Ирсэн")).toBeInTheDocument();
+    expect(screen.getByLabelText("2026-03-03 — бүртгэлтэй")).toBeInTheDocument();
+    expect(screen.queryByText("Хагас өдөр")).not.toBeInTheDocument();
+    expect(screen.queryByText("Бусад")).not.toBeInTheDocument();
+  });
+
   it("says what to do next when nothing matches rather than showing an empty grid", async () => {
     stub(journal({ items: [], total: 0, totalPages: 0, totals: {} }));
     renderWithProviders(<AttendanceJournalPage />);
@@ -177,15 +243,31 @@ describe("the filters", () => {
     expect(link.getAttribute("href")).toContain("status=SICK");
   });
 
-  it("offers all six statuses — OTHER included", async () => {
-    // The column holds six and the recording path accepts six as of
-    // 2026-09-02; a filter row short of one would hide rows without saying so.
+  /*
+    ★ Four chips, not six — 2026-09-12, at the client's request: "Ирсэн · Хагас
+    өдөр — хас · Чөлөөтэй · Өвчтэй · Тасалсан · Бусад — хас."
+
+    This replaces "offers all six statuses — OTHER included", whose argument was
+    that "a filter row short of one would hide rows without saying so". That is
+    not what removing a chip does, which is why the request is safe to take
+    literally: the chips only ever *narrow*, and none are pressed on arrival —
+    so with two gone the grid still lists every recorded day, `Totals` still
+    counts a legacy Хагас өдөр, and the legend still explains the Х and Б the
+    grid draws. What is lost is the ability to isolate two statuses no new day
+    can be recorded as (`TEACHER_ATTENDANCE_STATUSES`, 2026-09-10).
+  */
+  it("★ offers the four statuses a day can still be recorded as", async () => {
     stub();
     renderWithProviders(<AttendanceJournalPage />);
 
     await screen.findByText(/Дорж/);
-    for (const label of ["Ирсэн", "Хагас өдөр", "Чөлөөтэй", "Өвчтэй", "Тасалсан", "Бусад"]) {
-      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+
+    const chips = within(screen.getByRole("group", { name: "Ирцийн төлөв" }));
+    for (const label of ["Ирсэн", "Чөлөөтэй", "Өвчтэй", "Тасалсан"]) {
+      expect(chips.getByRole("button", { name: label })).toBeInTheDocument();
+    }
+    for (const gone of ["Хагас өдөр", "Бусад"]) {
+      expect(chips.queryByRole("button", { name: gone })).not.toBeInTheDocument();
     }
   });
 });

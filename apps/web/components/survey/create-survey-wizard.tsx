@@ -175,7 +175,6 @@ export function CreateSurveyWizard({
 
   // ── step 1 ──────────────────────────────────────────────────────────────
   const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
   /** A poll's own shape question: one question, or several. */
   const [multiQuestion, setMultiQuestion] = useState(false);
 
@@ -210,7 +209,6 @@ export function CreateSurveyWizard({
       if (!raw) return;
       const saved = JSON.parse(raw) as Record<string, unknown>;
       if (typeof saved.title === "string") setTitle(saved.title);
-      if (typeof saved.description === "string") setDescription(saved.description);
       if (typeof saved.groupId === "string") setGroupId(saved.groupId);
       if (
         typeof saved.category === "string" &&
@@ -257,7 +255,6 @@ export function CreateSurveyWizard({
         draftStorageKey,
         JSON.stringify({
           title,
-          description,
           groupId,
           category,
           period,
@@ -278,7 +275,6 @@ export function CreateSurveyWizard({
     category,
     closesOn,
     created,
-    description,
     draftLoaded,
     draftStorageKey,
     groupId,
@@ -347,7 +343,7 @@ export function CreateSurveyWizard({
         method: "POST",
         body: {
           title: title.trim(),
-          description: description.trim() || null,
+          description: null,
           purpose: null,
           category,
           scope: "CHILD",
@@ -488,7 +484,7 @@ export function CreateSurveyWizard({
                 </div>
               ) : null}
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div>
                 <Field label="Гарчиг" error={errors.title} required>
                   {({ id, describedBy, invalid }) => (
                     <Input
@@ -502,18 +498,6 @@ export function CreateSurveyWizard({
                     />
                   )}
                 </Field>
-                {!isPoll ? (
-                  <Field label="Тайлбар">
-                    {({ id }) => (
-                      <Input
-                        id={id}
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        placeholder="Товч тайлбар"
-                      />
-                    )}
-                  </Field>
-                ) : null}
               </div>
 
               {isPoll ? (
@@ -616,7 +600,7 @@ export function CreateSurveyWizard({
               />
 
               {previewing && questions.length > 0 ? (
-                <SurveyDraftPreview title={title} description={description} questions={questions} />
+                <SurveyDraftPreview title={title} questions={questions} />
               ) : null}
 
               <button
@@ -971,15 +955,7 @@ function QuestionBuilder({
 }
 
 /** The phone-sized form a parent will see after publication. */
-function SurveyDraftPreview({
-  title,
-  description,
-  questions,
-}: {
-  title: string;
-  description: string;
-  questions: DraftQuestion[];
-}) {
+function SurveyDraftPreview({ title, questions }: { title: string; questions: DraftQuestion[] }) {
   return (
     <section
       aria-labelledby="survey-draft-preview-title"
@@ -990,9 +966,6 @@ function SurveyDraftPreview({
           <p id="survey-draft-preview-title" className="text-lead font-semibold text-ink">
             {title.trim() || "Судалгааны гарчиг"}
           </p>
-          {description.trim() ? (
-            <p className="mt-1 text-caption text-muted">{description.trim()}</p>
-          ) : null}
         </div>
 
         {questions.map((question, index) => (

@@ -166,7 +166,6 @@ export function FamilyMenu({
   todayIso,
   tomorrowIso,
   healthNotes,
-  footer,
   actions,
 }: {
   byDate: Map<string, MenuDay>;
@@ -175,8 +174,6 @@ export function FamilyMenu({
   todayIso: string;
   tomorrowIso: string;
   healthNotes: string | null | undefined;
-  /** The note box, passed in so this component stays about reading the menu. */
-  footer?: ReactNode;
   /** Staff controls on each sitting. Omitted for a family — see `MenuRowActions`. */
   actions?: MenuRowActions;
 }) {
@@ -252,8 +249,6 @@ export function FamilyMenu({
           />
         </div>
       )}
-
-      {footer}
     </div>
   );
 }

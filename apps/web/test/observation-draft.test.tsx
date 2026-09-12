@@ -49,7 +49,13 @@ const CHILD_DETAIL = {
   guardianships: [],
 };
 
-const TYPES = [{ id: TYPE, name: "Өдөр тутмын ажиглалт", code: "daily" }];
+const ARTWORK_TYPE = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const CREATIVE_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
+const TYPES = [
+  { id: TYPE, name: "Өдөр тутмын ажиглалт", code: "daily" },
+  { id: ARTWORK_TYPE, name: "Бүтээл", code: "artwork" },
+];
 
 function routes() {
   return [
@@ -71,8 +77,20 @@ function routes() {
       path: `/kindergartens/${KINDERGARTEN_ID}/assessment-config`,
       body: {
         domains: [
-          { id: DOMAIN_ID, name: "Хэл яриа, харилцаа", color: "#3b82f6", order: 3 },
-          { id: "99999999-9999-4999-8999-999999999999", name: "Танин мэдэхүй", order: 4 },
+          {
+            id: DOMAIN_ID,
+            name: "Хэл яриа, харилцаа",
+            code: "language",
+            color: "#3b82f6",
+            order: 3,
+          },
+          {
+            id: "99999999-9999-4999-8999-999999999999",
+            name: "Танин мэдэхүй",
+            code: "cognitive",
+            order: 4,
+          },
+          { id: CREATIVE_ID, name: "Зураг, урлал", code: "creative", order: 6 },
         ],
         levels: [],
       },
@@ -1030,5 +1048,79 @@ describe("Шинэ ажиглалт — зураг", () => {
     expect(await screen.findByText("Хамгийн олондоо 5 зураг хавсаргана.")).toBeInTheDocument();
     // Full, so there is nothing left to press.
     expect(screen.queryByLabelText("Нэмэх")).not.toBeInTheDocument();
+  });
+});
+
+/*
+  ★ Бүтээл arrives already filed under Зураг, урлал — 2026-09-12, at the
+  client's request: "бүтээлд дүн шинжилгээ хийх хэсгийг сонгон шинээр бичихэд
+  сургалтын чиглэл автоматаар зураг урлал сонгогдоно, учир нь бүтээлд дан зураг
+  бүтээлүүд ордог."
+
+  An artwork note is about a drawing or a craft by definition, so the strand was
+  a required answer the form already had — and it is the answer a teacher skips,
+  which is what left "Сургалтын чиглэлийн хамралт" counting almost nothing.
+*/
+describe("Бүтээл — сургалтын чиглэл автоматаар", () => {
+  /*
+    `waitFor`, not `findBy`: the trigger exists on the first paint and reads
+    "Сонгоно уу" until `assessment-config` answers — a `findBy` would resolve
+    on that first render and assert against the placeholder.
+  */
+  it("★ preselects Зураг, урлал for an artwork note", async () => {
+    setSearchParams(`typeId=${ARTWORK_TYPE}`);
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    const strand = await screen.findByLabelText("Сургалтын чиглэл");
+    await waitFor(() => expect(strand).toHaveTextContent("Зураг, урлал"));
+  });
+
+  /* Only Бүтээл. Every other kind is still the teacher's own answer. */
+  it("★ leaves the strand unanswered for any other kind", async () => {
+    const user = userEvent.setup();
+    setSearchParams(`typeId=${TYPE}`);
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    const strand = await screen.findByLabelText("Сургалтын чиглэл");
+
+    /*
+      Opening it proves the strands have arrived — otherwise this case would
+      pass against an empty select that had not loaded yet, which is the same
+      "Сонгоно уу" for a different reason.
+    */
+    await user.click(strand);
+    expect(await screen.findByRole("option", { name: "Зураг, урлал" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    expect(strand).toHaveTextContent("Сонгоно уу");
+  });
+
+  /*
+    Offered, not enforced — a restored draft is the teacher's own work and
+    outranks the suggestion. This is the guard that keeps the effect from
+    overwriting a choice already made.
+  */
+  it("★ does not overrule a draft that already names a strand", async () => {
+    /*
+      `use-form-draft`'s own envelope — `{ savedAt, values }`. Written by hand
+      rather than by typing into the form, because what is being tested is the
+      restore path: the draft has to exist *before* the first render for the
+      suggestion to have something to not overrule.
+    */
+    window.localStorage.setItem(
+      `nomadkids:observation-draft:staff:${CHILD}`,
+      JSON.stringify({
+        savedAt: Date.now(),
+        values: { typeId: ARTWORK_TYPE, domainId: DOMAIN_ID, situation: "Зурсан зураг" },
+      }),
+    );
+    setSearchParams(`typeId=${ARTWORK_TYPE}`);
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    const strand = await screen.findByLabelText("Сургалтын чиглэл");
+    await waitFor(() => expect(strand).toHaveTextContent("Хэл яриа, харилцаа"));
   });
 });

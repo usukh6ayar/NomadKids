@@ -6,23 +6,21 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { z } from "zod";
 import {
-  CalendarCheck,
-  CalendarDays,
   ChevronRight,
   Copy,
   Download,
-  ListChecks,
   MoreVertical,
   Pencil,
   Plus,
   Search,
   SlidersHorizontal,
   Trash2,
-  Users,
   UsersRound,
 } from "lucide-react";
 import {
   SURVEY_CATEGORY_LABEL,
+  groupListItemSchema,
+  paginated,
   termSchema,
   personRefSchema,
   SURVEY_KIND_HINT,
@@ -60,16 +58,19 @@ import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
 import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { formatDate, fullName } from "@/lib/format";
-import { SURVEY_CATEGORY_META, SURVEY_TONE_BG } from "@/lib/survey-meta";
+import { SURVEY_CATEGORY_META } from "@/lib/survey-meta";
 import { downloadUrl } from "@/lib/api/client";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { RowMenu } from "@/components/ui/menu";
 import { useToast } from "@/components/ui/toast";
 import { TERM_NUMBERS, termLabel, termNumberForDay } from "@/lib/terms";
+import { isSurveyOwner, staffSurveysSchema } from "@/lib/survey-access";
 import { cn } from "@/lib/utils";
+import { BackButton } from "@/components/ui/back-button";
+import { SearchField } from "@/components/ui/search-field";
 
-const surveysSchema = z.array(surveySchema);
+const groupsSchema = paginated(groupListItemSchema);
 
 const STATUS_LABEL: Record<string, string> = {
   DRAFT: "Ноорог",
@@ -77,10 +78,21 @@ const STATUS_LABEL: Record<string, string> = {
   CLOSED: "Хаасан",
 };
 
-const STATUS_TONE: Record<string, "neutral" | "mint" | "sun"> = {
-  DRAFT: "neutral",
-  PUBLISHED: "mint",
-  CLOSED: "sun",
+/**
+ * The state as a coloured word — 2026-09-12.
+ *
+ * ★ It was a filled `Badge`, beside a second filled badge for the category and
+ * a tinted icon tile: three blocks of colour on a card whose only actual signal
+ * is a progress bar. The client's drawing keeps the word and drops the pill —
+ * "хэт их өнгөтэй, онцгүй байна" — so the one thing left carrying colour is the
+ * bar, which is the thing worth looking at.
+ *
+ * `-ink` tokens: they are text colours by definition, and these are text.
+ */
+const STATUS_TEXT: Record<string, string> = {
+  DRAFT: "text-muted",
+  PUBLISHED: "text-mint-ink",
+  CLOSED: "text-sun-ink",
 };
 
 /**
@@ -109,6 +121,117 @@ export function SurveyBoard({ kind }: { kind: SurveyKind }) {
 }
 
 /**
+ * One group's survey shelf for management.
+ *
+ * The group id is an exact audience filter. Kindergarten-wide surveys and
+ * surveys addressed to another group stay out of this view, so selecting a
+ * group on the hub has one predictable meaning.
+ */
+export function GroupSurveyBoard({ groupId }: { groupId: string }) {
+  return (
+    <RequireRole roles={["ADMIN"]}>
+      <GroupSurveysList groupId={groupId} />
+    </RequireRole>
+  );
+}
+
+type GroupKindFilter = "ALL" | SurveyKind;
+
+function GroupSurveysList({ groupId }: { groupId: string }) {
+  const { primaryKindergartenId } = useSession();
+  const [search, setSearch] = useState("");
+  const [kind, setKind] = useState<GroupKindFilter>("ALL");
+
+  const groups = useQuery({
+    queryKey: qk.groups({ pageSize: 100 }),
+    queryFn: () => get("/groups?page=1&pageSize=100", groupsSchema),
+    staleTime: 60_000,
+  });
+
+  const surveys = useQuery({
+    queryKey: qk.kindergartenSurveys(primaryKindergartenId ?? ""),
+    queryFn: () => get(`/kindergartens/${primaryKindergartenId}/surveys`, staffSurveysSchema),
+    enabled: Boolean(primaryKindergartenId),
+  });
+
+  const group = groups.data?.items.find((item) => item.id === groupId);
+  const groupSurveys = (surveys.data ?? []).filter((survey) => survey.groupId === groupId);
+  const term = search.trim().toLowerCase();
+  const visible = groupSurveys.filter(
+    (survey) =>
+      (kind === "ALL" || survey.kind === kind) &&
+      (!term ||
+        survey.title.toLowerCase().includes(term) ||
+        (survey.description ?? "").toLowerCase().includes(term)),
+  );
+
+  return (
+    <div className="flex flex-col gap-5 lg:gap-6">
+      <header className="flex items-start gap-3">
+        <BackButton href="/surveys" />
+        <div className="min-w-0 pt-1">
+          <h1 className="truncate text-title font-semibold leading-heading text-ink">
+            {group?.name ?? "Бүлгийн судалгаа"}
+          </h1>
+          <p className="mt-0.5 text-body text-muted">Тус бүлэгт зориулсан судалгаа, асуулга</p>
+        </div>
+      </header>
+
+      <section aria-label="Бүлгийн судалгааны шүүлтүүр" className="flex flex-col gap-3">
+        <SearchField
+          label="Судалгаа, асуулга хайх"
+          placeholder="Судалгаа, асуулга хайх..."
+          value={search}
+          onChange={setSearch}
+          className="w-full sm:max-w-[420px]"
+        />
+        <FilterChipRow label="Төрлөөр шүүх" scroll>
+          <FilterChip active={kind === "ALL"} onClick={() => setKind("ALL")}>
+            Бүгд ({groupSurveys.length})
+          </FilterChip>
+          <FilterChip active={kind === "FORM"} onClick={() => setKind("FORM")}>
+            Судалгаа ({groupSurveys.filter((survey) => survey.kind === "FORM").length})
+          </FilterChip>
+          <FilterChip active={kind === "POLL"} onClick={() => setKind("POLL")}>
+            Асуулга ({groupSurveys.filter((survey) => survey.kind === "POLL").length})
+          </FilterChip>
+        </FilterChipRow>
+      </section>
+
+      {groups.isLoading || surveys.isLoading ? <LoadingState rows={3} /> : null}
+      {groups.isError ? <ErrorState description={errorMessage(groups.error)} /> : null}
+      {surveys.isError ? <ErrorState description={errorMessage(surveys.error)} /> : null}
+
+      {groups.data && !group ? (
+        <EmptyState title="Бүлэг олдсонгүй" description="Бүлгийн жагсаалт руу буцаж сонгоно уу." />
+      ) : null}
+
+      {group && surveys.data && groupSurveys.length === 0 ? (
+        <EmptyState
+          title="Энэ бүлэгт судалгаа алга"
+          description="Одоогоор тус бүлэгт зориулсан судалгаа, асуулга үүсгээгүй байна."
+        />
+      ) : null}
+
+      {group && groupSurveys.length > 0 && visible.length === 0 ? (
+        <EmptyState
+          title="Тохирох судалгаа олдсонгүй"
+          description="Хайлт эсвэл төрлийн шүүлтүүрээ өөрчилж үзнэ үү."
+        />
+      ) : null}
+
+      {visible.length > 0 ? (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 2xl:grid-cols-3">
+          {visible.map((survey) => (
+            <SurveyCard key={survey.id} survey={survey} />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * ★ Three tabs since 2026-09-10 — Идэвхтэй, Дууссан, Ноорог.
  *
  * `surveyStatusSchema` has exactly three states and now each has a tab, which
@@ -131,7 +254,7 @@ const TABS = [
 type TabKey = (typeof TABS)[number]["key"];
 
 function SurveysList({ kind }: { kind: SurveyKind }) {
-  const { primaryKindergartenId } = useSession();
+  const { primaryKindergartenId, session } = useSession();
   /**
    * Which kind is being created, or `null` for "no dialog open".
    *
@@ -154,7 +277,7 @@ function SurveysList({ kind }: { kind: SurveyKind }) {
 
   const surveys = useQuery({
     queryKey: qk.kindergartenSurveys(primaryKindergartenId ?? ""),
-    queryFn: () => get(`/kindergartens/${primaryKindergartenId}/surveys`, surveysSchema),
+    queryFn: () => get(`/kindergartens/${primaryKindergartenId}/surveys`, staffSurveysSchema),
     enabled: Boolean(primaryKindergartenId),
   });
 
@@ -166,7 +289,9 @@ function SurveysList({ kind }: { kind: SurveyKind }) {
     make every one of them report the other kind's rows — "Идэвхтэй 2" over an
     empty list is the failure that shape produces.
   */
-  const all = (surveys.data ?? []).filter((survey) => survey.kind === kind);
+  const all = (surveys.data ?? []).filter(
+    (survey) => survey.kind === kind && isSurveyOwner(survey, session?.user.id),
+  );
   const term = search.trim().toLowerCase();
   /** How many narrowing choices are on — the number on the filter icon. */
   const activeFilters = (category ? 1 : 0) + (from || to ? 1 : 0);
@@ -520,20 +645,30 @@ function TabPill({
 /**
  * A survey, as a card.
  *
- * ★ Replaces a 64px row carrying a title, a scope and a status badge.
+ * ★★ REDESIGN 2026-09-12, to the client's own drawing: "хэт их өнгөтэй, онцгүй
+ * байна. ийм минимал болго, цэвэрхэн… энэ зураг дээр байгаагаас бусад үг зураг
+ * харагдахгүй."
  *
- * Everything on it comes from `surveySchema` — the category chip from
- * `category`, the question count from `questions.length`, and the date from
- * whichever of `closedAt` /
- * `publishedAt` / `createdAt` describes the state it is in. Nothing here is a
- * field the API does not send.
+ * Five things, in the order the drawing has them: the date, the state as a
+ * word, the title, how many have replied, the bar, and the category in the
+ * footer. **Nothing else** — the instruction was literal, so what came off is
+ * the tinted category tile and its icon, both filled badges, the audience row
+ * ("Бүх бүлэг"), the question count, the description, and the three little
+ * calendar and list icons that labelled figures already readable in words.
+ *
+ * What is left is one colour on the card — the progress bar — which is the
+ * only element on it a teacher is actually reading for.
+ *
+ * ★ The category survives as the footer line because it is the one fact that
+ * tells two similarly-titled surveys apart, and it is the drawing's own grey
+ * italic. Everything still comes from `surveySchema`; nothing here is a field
+ * the API does not send.
  *
  * `h-full` so a card in a grid row fills the height its tallest neighbour
  * sets, which is what keeps the footers of a row on one line.
  */
 function SurveyCard({ survey }: { survey: z.infer<typeof surveySchema> }) {
   const meta = SURVEY_CATEGORY_META[survey.category];
-  const questionCount = survey.questions.length;
   /*
     ★ Nullish, and read as zero rather than hidden.
 
@@ -641,87 +776,42 @@ function SurveyCard({ survey }: { survey: z.infer<typeof surveySchema> }) {
       <Link href={`/surveys/${survey.id}`} className="block h-full">
         <Card
           pad="compact"
-          className="flex h-full min-h-[190px] flex-col gap-3 transition-all group-hover:-translate-y-0.5 group-hover:border-primary group-hover:shadow-md"
+          className="flex h-full flex-col gap-3 transition-colors group-hover:border-primary"
         >
-          <div className="flex items-start justify-between gap-3">
-            <span
-              className={cn(
-                "grid size-10 shrink-0 place-items-center rounded-control",
-                SURVEY_TONE_BG[meta.tone],
-              )}
-              aria-hidden="true"
-            >
-              <meta.Icon size={20} />
+          {/*
+            ★ `pe-9` — the overflow menu is absolutely positioned over this same
+            corner, so without a reserved lane the state word would sit under
+            the three dots. The trigger is a 44px icon button inset by 8px.
+          */}
+          <div className="flex items-baseline gap-3 pe-9">
+            <span className="text-body tabular-nums text-muted">{formatDate(date)}</span>
+            <span className={cn("ms-auto text-body font-semibold", STATUS_TEXT[survey.status])}>
+              {STATUS_LABEL[survey.status]}
             </span>
-
-            {/*
-              ★ `pe-9` — 2026-09-10. The overflow menu is absolutely positioned
-              over this same corner, so without a reserved lane the two
-              overlapped: the status badge sat under the three dots. The menu's
-              trigger is a 44px icon button inset by 8px, and 36px of padding
-              plus the row's own gap clears it.
-            */}
-            <div className="flex flex-wrap justify-end gap-1.5 pe-9">
-              <Badge tone={meta.tone}>{meta.label}</Badge>
-              <Badge tone={STATUS_TONE[survey.status]}>{STATUS_LABEL[survey.status]}</Badge>
-            </div>
           </div>
 
-          <div className="min-w-0 flex-1">
-            <h3 className="text-lead font-semibold leading-[1.35] text-ink transition-colors group-hover:text-primary">
-              {survey.title}
-            </h3>
-            {survey.description ? (
-              <p className="mt-1 line-clamp-2 text-body text-muted">{survey.description}</p>
-            ) : null}
-          </div>
+          <h3 className="text-title font-bold leading-snug text-ink transition-colors group-hover:text-primary">
+            {survey.title}
+          </h3>
 
           {/*
-            ★ The footer is three bands now, not one row — 2026-09-10's drawing.
-
-            It carried audience · scope · question count · date on one wrapping
-            line, and the drawing replaces the scope with the fact a teacher
-            actually chases: how many families have replied. That number wants
-            a bar under it, and a bar wants its own line, so the date moved
-            down to a line of its own rather than fighting the fill for the
-            right-hand end.
-
-            The scope ("Хүүхэд тус бүрээр") is dropped rather than moved. It
-            describes how the survey is answered, which the family reading it
-            needs and a teacher scanning a list does not — and it was the one
-            item on the row nobody could act on.
+            Right-aligned over the bar it describes, the way the drawing sets
+            them — the number and the fill end on the same edge, so the eye
+            reads one line rather than two.
           */}
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border-soft pt-3 text-caption text-muted">
-            {/*
-            ★ The audience, before the answering shape — 2026-09-06.
-
-            A survey aimed at one group is a different thing from a survey the
-            whole kindergarten is being asked, and until `groupId` existed the
-            list could not say which this was. It leads the footer because it
-            is the question a teacher scans for; the scope follows it.
-          */}
-            <span className="inline-flex items-center gap-1.5">
-              <Users size={14} aria-hidden="true" />
-              {survey.group?.name ?? "Бүх бүлэг"}
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <ListChecks size={14} aria-hidden="true" />
-              {questionCount} асуулт
-            </span>
-            <span className="inline-flex items-center gap-1.5 tabular-nums">
-              <CalendarCheck size={14} aria-hidden="true" />
-              {answered} / {expected} хариулсан
-            </span>
-          </div>
+          <p className="mt-auto text-end text-body tabular-nums text-muted">
+            {answered} / {expected} хариулсан
+          </p>
 
           <SurveyProgress answered={answered} expected={expected} />
 
-          <div className="flex items-center gap-1.5 text-caption tabular-nums text-muted">
-            <CalendarDays size={14} aria-hidden="true" />
-            {formatDate(date)}
+          <div className="flex items-center gap-2 pt-1">
+            <span className="min-w-0 flex-1 truncate text-end text-body italic text-faint">
+              {meta.label}
+            </span>
             <ChevronRight
-              size={16}
-              className="ml-auto text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
+              size={18}
+              className="shrink-0 text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
               aria-hidden="true"
             />
           </div>
@@ -761,7 +851,7 @@ function SurveyProgress({ answered, expected }: { answered: number; expected: nu
           style={{ width: `${percent}%` }}
         />
       </span>
-      <span className="shrink-0 text-caption font-semibold tabular-nums text-ink">{percent}%</span>
+      <span className="shrink-0 text-title font-bold tabular-nums text-ink">{percent}%</span>
     </div>
   );
 }

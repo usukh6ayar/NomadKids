@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, stubApi } from "./support/render";
@@ -51,19 +51,13 @@ const MENU = [
 function stub(menu = MENU) {
   return stubApi([
     { path: "/auth/me", body: sessionFor(["PARENT"]) },
-    { path: `/children/${CHILD_ID}/meals/notes`, body: [] },
     { path: `/kindergartens/${KG_ID}/menu`, body: menu },
   ]);
 }
 
 function render(healthNotes: string | null = null) {
   return renderWithProviders(
-    <ChildMenu
-      kindergartenId={KG_ID}
-      childId={CHILD_ID}
-      healthNotes={healthNotes}
-      isStaff={false}
-    />,
+    <ChildMenu kindergartenId={KG_ID} healthNotes={healthNotes} isStaff={false} />,
   );
 }
 
@@ -242,89 +236,39 @@ describe("the family's meal screen", () => {
   });
 });
 
-/**
- * "Нэмэлт мэдээлэл" — the box under the menu.
- *
- * ★ It posts to `/children/:id/meals/notes`, not to chat. The only chat rooms
- * that exist hold a whole group, and a dietary restriction is one child's
- * business — `menu-note-box.tsx` carries the argument.
- */
+/*
+  ★ "Нэмэлт мэдээлэл" is gone — 2026-09-12, at the client's request: "эцэг эхийн
+  хоол хэсэгт байгаа нэмэлт мэдээлэл илгээх юм бичих хэсэг одоогоор хэрэггүй,
+  арилгачих."
+
+  Five cases went with it — what it posted, the empty box with no placeholder,
+  the disabled send, the character counter, and the list of what had already
+  been sent. They are in the commit that removed them, alongside
+  `menu-note-box.tsx` itself, for whenever "одоогоор" ends.
+
+  What is left is the one assertion that outlives the box: the family's menu
+  screen offers nothing to write in. It is stated for the parent here and for
+  staff at the foot of this file, so restoring the box cannot slip back in
+  unnoticed on either role.
+*/
 describe("the family's note to the kitchen", () => {
-  it("sends what was typed, against today's date", async () => {
-    const user = userEvent.setup();
+  it("★ offers a family nothing to write to the kitchen", async () => {
+    stub();
+    render();
+
+    await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
+    expect(screen.queryByLabelText("Нэмэлт мэдээлэл")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Илгээх" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Илгээсэн мэдээлэл" })).not.toBeInTheDocument();
+  });
+
+  /* Nor is the endpoint reached for a screen that no longer shows its answer. */
+  it("★ does not fetch the notes it no longer draws", async () => {
     const { calls } = stub();
     render();
 
-    await user.type(
-      await screen.findByLabelText("Нэмэлт мэдээлэл"),
-      "Сүүн бүтээгдэхүүн өгч болохгүй.",
-    );
-    await user.click(screen.getByRole("button", { name: "Илгээх" }));
-
-    await waitFor(() =>
-      expect(calls.some((call) => call.method === "POST" && call.url.endsWith("/notes"))).toBe(
-        true,
-      ),
-    );
-    const post = calls.find((call) => call.method === "POST")!;
-    expect(post.body).toMatchObject({ date: TODAY, body: "Сүүн бүтээгдэхүүн өгч болохгүй." });
-  });
-
-  /** No example text in the box — the client read grey text as content. */
-  it("offers an empty box, with no placeholder", async () => {
-    stub();
-    render();
-
-    expect(await screen.findByLabelText("Нэмэлт мэдээлэл")).not.toHaveAttribute("placeholder");
-  });
-
-  it("will not send an empty note", async () => {
-    stub();
-    render();
-
-    expect(await screen.findByRole("button", { name: "Илгээх" })).toBeDisabled();
-  });
-
-  it("counts the characters against the limit", async () => {
-    const user = userEvent.setup();
-    stub();
-    render();
-
-    expect(await screen.findByText("0/500")).toBeInTheDocument();
-    await user.type(await screen.findByLabelText("Нэмэлт мэдээлэл"), "Сайн");
-    expect(screen.getByText("4/500")).toBeInTheDocument();
-  });
-
-  /*
-    A box that empties and says "sent" leaves a parent unable to check whether
-    they already mentioned the thing they are about to mention again.
-  */
-  it("shows what has already been sent", async () => {
-    stubApi([
-      { path: "/auth/me", body: sessionFor(["PARENT"]) },
-      {
-        path: `/children/${CHILD_ID}/meals/notes`,
-        body: [
-          {
-            id: "55555555-5555-4555-8555-555555555555",
-            date: TODAY,
-            body: "Өчигдөр хоолны дуршил муутай байсан.",
-            createdAt: `${TODAY}T08:00:00.000Z`,
-            // `personRefSchema` needs both names; one alone fails the parse silently.
-            author: {
-              id: "66666666-6666-4666-8666-666666666666",
-              lastName: "Болд",
-              firstName: "Сараа",
-            },
-          },
-        ],
-      },
-      { path: `/kindergartens/${KG_ID}/menu`, body: MENU },
-    ]);
-    render();
-
-    const sent = await screen.findByRole("list", { name: "Илгээсэн мэдээлэл" });
-    expect(within(sent).getByText("Өчигдөр хоолны дуршил муутай байсан.")).toBeInTheDocument();
+    await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
+    expect(calls.some((call) => call.url.includes("/meals/notes"))).toBe(false);
   });
 });
 
@@ -342,9 +286,7 @@ describe("the staff view of a child's menu", () => {
       { path: `/children/${CHILD_ID}/meals/notes`, body: [] },
       { path: `/kindergartens/${KG_ID}/menu`, body: MENU },
     ]);
-    return renderWithProviders(
-      <ChildMenu kindergartenId={KG_ID} childId={CHILD_ID} healthNotes={null} isStaff />,
-    );
+    return renderWithProviders(<ChildMenu kindergartenId={KG_ID} healthNotes={null} isStaff />);
   }
 
   it("reads the same three tabs a family gets", async () => {
@@ -381,8 +323,8 @@ describe("the staff view of a child's menu", () => {
     expect(screen.queryByText("Долоо хоногийн цэс")).not.toBeInTheDocument();
   });
 
-  /** A note box is the family's; staff have the register for what a child ate. */
-  it("does not offer staff the family's note box", async () => {
+  /** Nobody has the box now — staff have the register for what a child ate. */
+  it("does not offer staff a note box either", async () => {
     renderStaff();
 
     await screen.findByRole("tabpanel", { name: "Өнөөдөр" });

@@ -100,10 +100,11 @@ function stub(report: Record<string, unknown> = REPORT) {
  * арилган шинийг оруул".
  */
 describe("the teacher's report", () => {
-  it("leads with the five figures the client asked for", async () => {
+  it("leads with the illustrated group dashboard and its six report figures", async () => {
     stub();
     renderWithProviders(<ReportsPage />);
 
+    expect(await screen.findByRole("heading", { name: "Судалгааны мэдээлэл" })).toBeInTheDocument();
     expect(await screen.findByText("Нийт хүүхэд")).toBeInTheDocument();
     expect(screen.getByText("28")).toBeInTheDocument();
     expect(screen.getByText("91%")).toBeInTheDocument();
@@ -111,6 +112,9 @@ describe("the teacher's report", () => {
     expect(screen.getByText("24 / 28")).toBeInTheDocument();
     expect(screen.getByText("22 / 28")).toBeInTheDocument();
     expect(screen.getByText("37")).toBeInTheDocument();
+    const dashboard = screen.getByRole("region", { name: "Бүлгийн тайлангийн нэгтгэл" });
+    expect(within(dashboard).getByText("Ярилцлага")).toBeInTheDocument();
+    expect(within(dashboard).getByText("Бүтээлд дүн шинжилгээ")).toBeInTheDocument();
   });
 
   it("says how many assessments are still missing", async () => {

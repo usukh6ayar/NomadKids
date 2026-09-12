@@ -319,11 +319,31 @@ export class SurveysService {
     const now = Date.now();
     const surveys = all.filter((survey) => !survey.opensAt || survey.opensAt.getTime() <= now);
 
+    /*
+      ★ `myAnswers` — 2026-09-13, at the client's request: "хариулсан
+      хариултууд харагддаг баймаар байна."
+
+      The family's list said *that* they had replied and never *what* they
+      said, which is the one thing a parent reopens a survey for. It is their
+      own response and no one else's: `findResponse` is keyed on
+      `actor.userId` and on the child, so there is no other family's answer in
+      the payload to withhold.
+
+      ★★ An anonymous survey is no exception, and that is deliberate. The
+      promise anonymity makes is to the *other* families — `questionAnswers`
+      and `participation` both refuse names for exactly that reason — and a
+      guardian reading back the row they wrote themselves reveals nothing
+      about anybody else. The aggregate stays the teacher's either way.
+    */
     return Promise.all(
       surveys.map(async (survey) => {
         const responseChildId = survey.scope === "CHILD" ? childId : null;
         const existing = await this.repo.findResponse(survey.id, actor.userId, responseChildId);
-        return { ...survey, respondedByMe: Boolean(existing) };
+        return {
+          ...survey,
+          respondedByMe: Boolean(existing),
+          myAnswers: existing?.answers ?? [],
+        };
       }),
     );
   }

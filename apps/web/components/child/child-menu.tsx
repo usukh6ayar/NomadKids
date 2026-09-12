@@ -31,7 +31,6 @@ import {
   type DishDraft,
 } from "@/components/menu/menu-dish-editor";
 import { FamilyMenu } from "@/components/child/family-menu";
-import { MenuNoteBox } from "@/components/child/menu-note-box";
 import { formatDayMonth, formatLongDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -135,19 +134,18 @@ function groupByKind(dishes: MenuDish[]): Partial<Record<MealKind, MenuDish[]>> 
  */
 export function ChildMenu({
   kindergartenId,
-  childId,
   healthNotes,
   isStaff,
 }: {
   kindergartenId: string;
-  /**
-   * Whose menu this is.
-   *
-   * ★ Optional, because the cook's own `(app)/menu` screen has no child at all —
-   * it edits the kindergarten's week. Without one the family footer is not
-   * drawn, which is right: a note box needs a child to be about.
-   */
-  childId?: string;
+  /*
+    ★ No `childId` — 2026-09-12, with the note box it existed for.
+
+    It was optional only because the cook's own `(app)/menu` screen has no
+    child at all, and the one thing it fed was the family footer. What this
+    component draws is a kindergarten's week; whose week it is has never
+    changed a dish on it.
+  */
   healthNotes: string | null | undefined;
   isStaff: boolean;
 }) {
@@ -199,6 +197,23 @@ export function ChildMenu({
   */
   const family = new Map(menu.data.map((day) => [day.date.slice(0, 10), day]));
 
+  /*
+    ★ No "Нэмэлт мэдээлэл" box — 2026-09-12, at the client's request: "эцэг
+    эхийн хоол хэсэгт байгаа нэмэлт мэдээлэл илгээх юм бичих хэсэг одоогоор
+    хэрэггүй, арилгачих."
+
+    A family read the menu and then wrote to the kitchen under it, which was
+    `MenuNoteBox` in `FamilyMenu`'s `footer` slot. The card, that slot, and the
+    component are all gone rather than hidden behind a flag: a prop no caller
+    passes reads as a feature to the next person here, and "одоогоор" is what
+    git history is for — `menu-note-box.tsx` comes back whole from the commit
+    that removed it.
+
+    `POST /children/:id/meals/notes`, `childMealNoteSchema` and
+    `qk.childMealNotes` are left standing. They are the server's contract, not
+    this screen's, and the client asked for the box to go — not for the
+    kitchen to lose the notes it already has.
+  */
   const reading = (
     <FamilyMenu
       byDate={family}
@@ -206,7 +221,6 @@ export function ChildMenu({
       todayIso={todayIso}
       tomorrowIso={toIso(tomorrow)}
       healthNotes={healthNotes}
-      footer={!isStaff && childId ? <MenuNoteBox childId={childId} date={todayIso} /> : null}
     />
   );
 

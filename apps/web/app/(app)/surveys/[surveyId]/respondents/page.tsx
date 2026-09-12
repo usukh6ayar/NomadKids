@@ -7,6 +7,8 @@ import { z } from "zod";
 import { CheckCircle2, Circle, Search } from "lucide-react";
 import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
+import { useSession } from "@/lib/auth/session";
+import { canManageSurvey, staffSurveySchema } from "@/lib/survey-access";
 import { BackButton } from "@/components/ui/back-button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/field";
@@ -48,13 +50,23 @@ type Tab = "all" | "done" | "todo";
 export default function SurveyRespondentsPage() {
   const params = useParams<{ surveyId: string }>();
   const surveyId = params.surveyId;
+  const { hasRole, session } = useSession();
+  const isAdmin = hasRole("ADMIN");
 
   const [tab, setTab] = useState<Tab>("all");
   const [search, setSearch] = useState("");
 
+  const survey = useQuery({
+    queryKey: ["surveys", surveyId],
+    queryFn: () => get(`/surveys/${surveyId}`, staffSurveySchema),
+  });
+
+  const mayManage = survey.data ? canManageSurvey(survey.data, session?.user.id, isAdmin) : false;
+
   const participation = useQuery({
     queryKey: ["surveys", surveyId, "participation"],
     queryFn: () => get(`/surveys/${surveyId}/participation`, participationSchema),
+    enabled: mayManage,
   });
 
   const data = participation.data;
@@ -87,6 +99,26 @@ export default function SurveyRespondentsPage() {
     { key: "done", label: "Бөглөсөн", count: rows.filter((row) => row.answered).length },
     { key: "todo", label: "Бөглөөгүй", count: rows.filter((row) => !row.answered).length },
   ];
+
+  if (survey.isPending) {
+    return <LoadingState rows={6} />;
+  }
+
+  if (survey.isError) {
+    return <ErrorState description={errorMessage(survey.error)} />;
+  }
+
+  if (!mayManage) {
+    return (
+      <div className="flex flex-col gap-4 py-2">
+        <BackButton href="/surveys" />
+        <EmptyState
+          title="Судалгаа олдсонгүй"
+          description="Таны үүсгэсэн судалгаа, асуулга энд харагдана."
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4 py-2">

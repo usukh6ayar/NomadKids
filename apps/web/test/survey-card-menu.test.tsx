@@ -36,6 +36,7 @@ const SURVEY = {
   status: "PUBLISHED",
   questions: [],
   group: null,
+  createdById: "11111111-1111-4111-8111-111111111111",
   createdAt: "2026-09-01T00:00:00.000Z",
   publishedAt: "2026-09-02T00:00:00.000Z",
   closedAt: null,
@@ -103,10 +104,44 @@ describe("a survey card's menu", () => {
       expect(screen.getByRole("menuitem", { name: new RegExp(label) })).toBeInTheDocument();
     }
 
-    expect(screen.getByText(SURVEY.title).closest('[data-ui="card"]')).toHaveClass(
-      "min-h-[190px]",
-      "p-3",
+    expect(screen.getByText(SURVEY.title).closest('[data-ui="card"]')).toHaveClass("p-3");
+  });
+
+  /*
+    ★ REDESIGN 2026-09-12, to the client's own drawing: "хэт их өнгөтэй, онцгүй
+    байна. ийм минимал болго, цэвэрхэн… энэ зураг дээр байгаагаас бусад үг зураг
+    харагдахгүй."
+
+    The instruction was literal about what may appear, so this case is written
+    as what may *not*: the tinted category tile and its icon, the two filled
+    badges, the audience row, the question count and the three little calendar
+    and list icons are all gone. What survives is the six things the drawing
+    has, and the assertions below name each one.
+  */
+  it("★ carries only the six things the client's drawing has", async () => {
+    stubSurveys();
+    renderWithProviders(<SurveyBoard kind="FORM" />);
+
+    const card = within(
+      (await screen.findByText(SURVEY.title)).closest('[data-ui="card"]') as HTMLElement,
     );
+
+    // The date, the state as a plain coloured word, the title, the count, the
+    // percentage, and the category in the footer.
+    expect(card.getByText("2026.09.02")).toBeInTheDocument();
+    expect(card.getByText("Нийтэлсэн")).toHaveClass("text-mint-ink");
+    expect(card.getByText(SURVEY.title)).toBeInTheDocument();
+    expect(card.getByText("0 / 0 хариулсан")).toBeInTheDocument();
+    expect(card.getByText("0%")).toBeInTheDocument();
+    expect(card.getByText("Сэтгэл ханамжийн судалгаа")).toBeInTheDocument();
+
+    // …and nothing else. The audience and the question count were the two
+    // lines the drawing has no room for.
+    expect(card.queryByText("Бүх бүлэг")).not.toBeInTheDocument();
+    expect(card.queryByText(/асуулт$/)).not.toBeInTheDocument();
+    // One decorative graphic on the card — the chevron. The category icon tile
+    // and the two badges are what used to bring the colour.
+    expect(card.queryByText("Судалгаа")).not.toBeInTheDocument();
   });
 
   it("names who has not answered, before who has", async () => {
@@ -166,6 +201,62 @@ describe("a survey card's menu", () => {
  * `/surveys/forms` and `/surveys/polls` each mount it once.
  */
 describe("the two boards", () => {
+  it("hides management-created surveys from a teacher", async () => {
+    const teacherId = "11111111-1111-4111-8111-111111111111";
+    const teacherSurvey = {
+      ...SURVEY,
+      id: "99999999-9999-4999-8999-999999999991",
+      title: "Багшийн судалгаа",
+      createdById: teacherId,
+    };
+    const managementSurvey = {
+      ...SURVEY,
+      id: "99999999-9999-4999-8999-999999999992",
+      title: "Удирдлагын судалгаа",
+      createdById: "99999999-9999-4999-8999-999999999999",
+    };
+
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"], teacherId) },
+      {
+        path: `/kindergartens/${KINDERGARTEN_ID}/surveys`,
+        body: [managementSurvey, teacherSurvey],
+      },
+    ]);
+    renderWithProviders(<SurveyBoard kind="FORM" />);
+
+    expect(await screen.findByText(teacherSurvey.title)).toBeInTheDocument();
+    expect(screen.queryByText(managementSurvey.title)).not.toBeInTheDocument();
+  });
+
+  it("shows management only its own surveys on the main board", async () => {
+    const adminId = "99999999-9999-4999-8999-999999999999";
+    const managementSurvey = {
+      ...SURVEY,
+      id: "99999999-9999-4999-8999-999999999993",
+      title: "Удирдлагын өөрийн судалгаа",
+      createdById: adminId,
+    };
+    const teacherSurvey = {
+      ...SURVEY,
+      id: "99999999-9999-4999-8999-999999999994",
+      title: "Бүлгийн багшийн судалгаа",
+      createdById: "11111111-1111-4111-8111-111111111111",
+    };
+
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"], adminId) },
+      {
+        path: `/kindergartens/${KINDERGARTEN_ID}/surveys`,
+        body: [teacherSurvey, managementSurvey],
+      },
+    ]);
+    renderWithProviders(<SurveyBoard kind="FORM" />);
+
+    expect(await screen.findByText(managementSurvey.title)).toBeInTheDocument();
+    expect(screen.queryByText(teacherSurvey.title)).not.toBeInTheDocument();
+  });
+
   it("shows only its own kind, whichever board is mounted", async () => {
     stubSurveys();
     const form = renderWithProviders(<SurveyBoard kind="FORM" />);

@@ -330,10 +330,28 @@ export class SurveysRepository {
     return enrollment?.groupId ?? null;
   }
 
+  /**
+   * This respondent's own response, with what they answered.
+   *
+   * ★ `answers` added 2026-09-13, for the family's list — it says not only
+   * that they replied but what they said. One query rather than a second read
+   * per survey: `listActiveForChild` already calls this once per survey, and
+   * asking for the answers separately would double a loop §3.4 is watching.
+   *
+   * Keyed on `respondentId` and the child, so the rows can only ever be the
+   * asker's own. `orderBy` the question's order, so the screen renders the
+   * questionnaire in the order it was asked without sorting it again.
+   */
   async findResponse(surveyId: string, respondentId: string, childId: string | null) {
     return this.prisma.surveyResponse.findFirst({
       where: { surveyId, respondentId, childId, deletedAt: null },
-      select: { id: true },
+      select: {
+        id: true,
+        answers: {
+          select: { questionId: true, value: true },
+          orderBy: { question: { order: "asc" } },
+        },
+      },
     });
   }
 

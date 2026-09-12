@@ -11,12 +11,15 @@ import {
   hasOptionList,
   type MatrixOptions,
   type SurveyQuestionType,
+  type SurveyKind,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { downloadUrl } from "@/lib/api/client";
 import { SurveyResultsView } from "@/components/survey/survey-results-view";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
+import { useSession } from "@/lib/auth/session";
+import { canManageSurvey, staffSurveySchema } from "@/lib/survey-access";
 import { BackButton } from "@/components/ui/back-button";
 import { RequireRole } from "@/components/shell/require-role";
 import {
@@ -40,7 +43,13 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
-import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
+
+/** "Судалгааны дүн" for a form, "Асуулгын дүн" for a poll — the screen's title. */
+const RESULTS_TITLE: Record<SurveyKind, string> = {
+  POLL: "Асуулгын дүн",
+  FORM: "Судалгааны дүн",
+};
 
 type DraftQuestion = {
   order: number;
@@ -106,13 +115,17 @@ function SurveyDetail() {
   const params = useParams<{ surveyId: string }>();
   const surveyId = params.surveyId;
   const queryClient = useQueryClient();
+  const { hasRole, session } = useSession();
+  const isAdmin = hasRole("ADMIN");
   /** Whether the parent's-eye-view card is open — see the eye button below. */
   const [previewing, setPreviewing] = useState(false);
 
   const survey = useQuery({
     queryKey: qk.survey(surveyId),
-    queryFn: () => get(`/surveys/${surveyId}`, surveySchema),
+    queryFn: () => get(`/surveys/${surveyId}`, staffSurveySchema),
   });
+
+  const mayManage = survey.data ? canManageSurvey(survey.data, session?.user.id, isAdmin) : false;
 
   /*
     ★ The roster, for the header card's "1А бүлэг · 25 хүүхэд" — 2026-09-12,
@@ -126,7 +139,7 @@ function SurveyDetail() {
   const results = useQuery({
     queryKey: qk.surveyResults(surveyId, ""),
     queryFn: () => get(`/surveys/${surveyId}/results`, surveyResultsSchema),
-    enabled: survey.data ? survey.data.status !== "DRAFT" : false,
+    enabled: mayManage && survey.data ? survey.data.status !== "DRAFT" : false,
   });
 
   /*
@@ -159,6 +172,18 @@ function SurveyDetail() {
 
   const data = survey.data!;
 
+  if (!mayManage) {
+    return (
+      <div className="flex flex-col gap-4">
+        <BackButton href="/surveys" />
+        <EmptyState
+          title="Судалгаа олдсонгүй"
+          description="Таны үүсгэсэн судалгаа, асуулга энд харагдана."
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6 lg:gap-8">
       {/*
@@ -170,11 +195,17 @@ function SurveyDetail() {
         as a **card** inside it: icon, title, the dates it runs between, whether
         it is live, and who it went to. That card is the thing a teacher is
         looking at; the page is just where it sits.
+
+        ★★ The title follows the kind — 2026-09-12, at the client's request:
+        "Судалгааны дүн гэж бичсэн байна, Асуулгын дүн болго." A poll is an
+        асуулга everywhere else in the product — its board, its composer tab,
+        `SURVEY_KIND_LABEL` — and this screen was the one place that called it
+        a судалгаа. Genitive, so it cannot be `SURVEY_KIND_LABEL` plus a word.
       */}
       <div className="flex items-center gap-2">
         <BackButton href={data.kind === "POLL" ? "/surveys/polls" : "/surveys/forms"} />
         <h1 className="min-w-0 flex-1 truncate text-center text-title font-semibold text-ink">
-          Судалгааны дүн
+          {RESULTS_TITLE[data.kind]}
         </h1>
         <span className="size-11 shrink-0" aria-hidden="true" />
       </div>

@@ -80,6 +80,7 @@ describe("single-page survey creation", () => {
   it("shows every creation section on one screen without wizard steps", async () => {
     open();
     expect(await screen.findByLabelText(/Гарчиг/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Тайлбар/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Асуулт нэмэх" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Үнэлгээний төрөл" })).toHaveTextContent(
       "Явцын үнэлгээ",

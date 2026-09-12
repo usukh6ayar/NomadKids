@@ -295,13 +295,7 @@ export function AdminOverview() {
                 }
                 href="/documents"
                 tone="teal"
-                /*
-                  ★ `Art`, not a lucide glyph — #69 turned this grid 3D while
-                  #70 was replacing this card's icon for a different reason, and
-                  the merge kept one of the two. `register` is the ledger; the
-                  set has no `document`, and `report` belongs to the card below.
-                */
-                art={<Art name="register" size={36} />}
+                art={<Art name="adminDocuments" size={36} />}
                 artSurface={false}
               />
               <StatCard
@@ -314,7 +308,8 @@ export function AdminOverview() {
                     : `${storage.reports.total} нийт`
                 }
                 tone="sun"
-                art={<Art name="report" size={36} />}
+                art={<Art name="adminReport" size={36} />}
+                artSurface={false}
               />
             </>
           ) : null}
@@ -408,23 +403,18 @@ const domainsSchema = z.array(developmentDomainSchema);
 const ATTENDED = ["PRESENT", "HALF_DAY"] as const;
 
 /**
- * The register's six statuses, in the order a reader thinks about them.
+ * The four statuses shown in the administrator's attendance summary.
  *
  * ★ Present first, absent last, and the order is fixed rather than sorted by
  * size — a legend that reorders itself between renders makes a reader re-learn
  * it every time, and the colours are handed out by position in this list.
+ * `HALF_DAY` and `OTHER` remain valid API values for historical records, but
+ * are intentionally omitted from this frontend summary.
  */
-const STATUS_ORDER = ["PRESENT", "HALF_DAY", "EXCUSED", "SICK", "OTHER", "ABSENT"] as const;
+const STATUS_ORDER = ["PRESENT", "EXCUSED", "SICK", "ABSENT"] as const;
 
 /**
  * A tone per status, chosen by meaning rather than by position.
- *
- * ★ `seriesColor` hands these out by index, and two of the six collide.
- *
- * `SERIES_TONES` is `sky · mint · sun · peach · cornflower · teal`, and both
- * `sky-ink` (#1d4e89) and `cornflower-ink` (#2b5aa8) are blue — fine when a
- * chart has three categories, confusing when it has six and the first and
- * fifth are "Ирсэн" and "Бусад".
  *
  * Naming them instead also uses `tone.ts` as documented — a tone is a meaning:
  * present is `mint` (complete), illness is `sun` (waiting) and an unexplained
@@ -434,20 +424,16 @@ const STATUS_ORDER = ["PRESENT", "HALF_DAY", "EXCUSED", "SICK", "OTHER", "ABSENT
  */
 const STATUS_TONE: Record<string, Tone> = {
   PRESENT: "mint",
-  HALF_DAY: "sky",
   EXCUSED: "cornflower",
   SICK: "sun",
-  OTHER: "teal",
   ABSENT: "peach",
 };
 
 const STATUS_LABEL: Record<string, string> = {
   PRESENT: "Ирсэн",
-  HALF_DAY: "Хагас өдөр",
   EXCUSED: "Чөлөөтэй",
   SICK: "Өвчтэй",
   ABSENT: "Тасалсан",
-  OTHER: "Бусад",
 };
 
 /**
@@ -522,9 +508,8 @@ function TodayDial({ today }: { today: AdminDashboard["attendanceToday"] }) {
  *
  * ★ A `Donut`, because these are parts of a whole.
  *
- * Every recorded day falls into exactly one of six statuses, which is the
- * definition of a pie: the segments sum to the total by construction, so a
- * reader can trust the proportions without reading a single number.
+ * Every status shown here is one part of the displayed total, so the reader
+ * can trust the proportions without reading a single number.
  * `gender-ratio.tsx` uses the same component for the same reason.
  *
  * ★★ The whole kindergarten, not per group.
